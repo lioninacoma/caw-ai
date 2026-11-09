@@ -1,0 +1,26 @@
+# Example test. Record it with: npx caw-ai record create-ticket --target local
+id: create-ticket
+app: web
+role: user
+targets: [local]
+mutates: true
+notes: |
+  A support agent takes a call: they log a ticket for a customer and start working on it.
+
+steps:
+  - id: S1
+    name: Open the ticket list
+    do: Open "Tickets" in the navigation.
+    expect: The ticket list is visible.
+  - id: S2
+    name: Create a ticket
+    do: Create a new ticket "Printer offline {{runTag}}" for customer "Acme Corp" with priority "High".
+    expect: A confirmation shows the number of the new ticket.
+  - id: S3
+    name: Find the ticket
+    do: Search the list for "{{runTag}}".
+    expect: Exactly one ticket is listed, with priority "High" and status "Open".
+  - id: S4
+    name: Start working on it
+    do: Open the ticket and change its status to "In progress".
+    expect: The ticket shows the status "In progress".

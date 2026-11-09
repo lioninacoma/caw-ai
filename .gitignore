@@ -1,0 +1,14 @@
+/node_modules/
+.caw/
+caw/.env
+caw/.auth/
+*.tgz
+e2e/*.log
+e2e/*.log.*
+e2e/*.png
+e2e/projekt/.caw/
+e2e/projekt/tmp/
+e2e/projekt/caw/.env
+e2e/projekt/sub/
+e2e/projekt/caw/recordings/
+e2e/.caw-home/

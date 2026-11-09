@@ -1,0 +1,64 @@
+{
+    "language": "de",
+    "framework": "extjs",
+    "agent": {
+        "sandbox": "docker"
+    },
+    "assetUrlPattern": "DataProxy(?:\\.|[^#]*?[?&])url=repo:/{3}Root/([^&#]*)",
+    "sites": [
+        "local"
+    ],
+    "environments": {
+        "dev": {
+            "urls": {
+                "local": "https://portal.localhost:8443"
+            },
+            "agent": true,
+            "localCode": true,
+            "writable": true
+        }
+    },
+    "auth": {
+        "type": "form",
+        "path": "/signin",
+        "userSelector": "#login_login",
+        "passwordSelector": "#login_password",
+        "signedInSelector": "body.signed-in"
+    },
+    "consoleIgnore": [
+        "AppConstants",
+        "Cannot read",
+        "is not a function",
+        "is not defined",
+        "undefined",
+        "favicon"
+    ],
+    "apps": {
+        "bestellung": {
+            "dir": ".",
+            "startUrl": "/app",
+            "redirects": [
+                {
+                    "name": "Fx/Model.js",
+                    "target": "Pkg"
+                }
+            ],
+            "statics": [
+                {
+                    "name": "Fx/Static.js",
+                    "path": "static.js"
+                }
+            ]
+        }
+    },
+    "roles": {
+        "kunde": {
+            "loginEnv": "CAW_LOGIN_KUNDE",
+            "passwordEnv": "CAW_PW_KUNDE"
+        }
+    },
+    "requestKeys": [
+        "connector"
+    ],
+    "insecureTls": true
+}

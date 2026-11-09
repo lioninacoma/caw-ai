@@ -1,0 +1,21 @@
+# Kopf vom Menschen
+id: fx-schritte
+app: bestellung
+role: kunde
+targets: [local/dev]
+source: watch
+mutates: true
+notes: Bleibe bei deinem Vorgang.
+steps:
+  - id: S1
+    name: Ziel erreichen
+    do: Klicke Weiter.
+    expect: Das Ziel erscheint.
+  - id: S2
+    name: Vorgang anlegen
+    do: Fuelle das Anliegen und sende es.
+    expect: Der Vorgang steht da.
+  - id: S3
+    name: Abschliessen
+    do: Schliesse den Vorgang ab.
+    expect: Der Vorgang ist fertig.

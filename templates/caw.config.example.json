@@ -1,0 +1,20 @@
+{
+    "framework": "web",
+    "environments": {
+        "local": { "url": "http://localhost:5173", "agent": true, "writable": true },
+        "staging": { "url": "https://staging.example.com" }
+    },
+    "auth": {
+        "type": "form",
+        "path": "/login",
+        "userSelector": "#username",
+        "passwordSelector": "#password",
+        "signedInSelector": "[data-testid=user-menu]"
+    },
+    "apps": {
+        "web": { "dir": ".", "startUrl": "/" }
+    },
+    "roles": {
+        "tester": { "loginEnv": "CAW_LOGIN_TESTER", "passwordEnv": "CAW_PW_TESTER" }
+    }
+}

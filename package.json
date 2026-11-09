@@ -1,0 +1,44 @@
+{
+    "name": "caw-ai",
+    "version": "0.1.0",
+    "description": "caw-ai, the Constrained Agentic Webtester: AI-driven integration tests for web apps, Claude behind a fixed set of browser commands, locally or in Docker",
+    "license": "MIT",
+    "keywords": [
+        "testing",
+        "integration-testing",
+        "e2e",
+        "claude",
+        "ai",
+        "playwright",
+        "chrome",
+        "web-testing"
+    ],
+    "type": "module",
+    "bin": {
+        "caw-ai": "bin/caw-ai.mjs"
+    },
+    "files": [
+        "assets/",
+        "bin/",
+        "src/",
+        "templates/",
+        "README.md",
+        "NOTICE.md",
+        "README.de.md",
+        "LICENSE",
+        "CHANGELOG.md"
+    ],
+    "engines": {
+        "node": ">=22"
+    },
+    "scripts": {
+        "test": "node --import ./test/setup-de.mjs --test \"test/*.test.mjs\"",
+        "e2e": "node e2e/schritte-e2e.mjs",
+        "pack:check": "node scripts/pack-check.mjs",
+        "prepack": "node scripts/pack-check.mjs"
+    },
+    "dependencies": {
+        "playwright-core": "1.64.1",
+        "yaml": "2.9.1"
+    }
+}
