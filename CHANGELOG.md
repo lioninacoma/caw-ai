@@ -4,6 +4,9 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Docs
+- `CONTRIBUTING.md` and templates for issues and pull requests.
+
 ## [0.1.0] - 2026-11-09
 
 First public release.
