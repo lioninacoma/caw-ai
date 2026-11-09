@@ -2,7 +2,6 @@
     "name": "caw-ai",
     "version": "0.1.0",
     "description": "caw-ai, the Constrained Agentic Webtester: AI-driven integration tests for web apps, Claude behind a fixed set of browser commands, locally or in Docker",
-    "license": "MIT",
     "keywords": [
         "testing",
         "integration-testing",
@@ -13,6 +12,16 @@
         "chrome",
         "web-testing"
     ],
+    "author": "Frederick Schubert",
+    "homepage": "https://github.com/lioninacoma/caw-ai#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/lioninacoma/caw-ai.git"
+    },
+    "bugs": {
+        "url": "https://github.com/lioninacoma/caw-ai/issues"
+    },
+    "license": "MIT",
     "type": "module",
     "bin": {
         "caw-ai": "bin/caw-ai.mjs"
