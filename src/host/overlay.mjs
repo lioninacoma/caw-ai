@@ -524,23 +524,52 @@ export const routeOverlay = async (context, overlay, { onProblem = () => {} } = 
 };
 
 /** Ein WebSocket der Seite zum Dev-Server. Andere Sockets (die der Anwendung) gehen unveraendert an ihr Ziel. */
+// Codes, die nur der Browser meldet (1005 ohne Code, 1006 abgebrochen), darf niemand selbst senden.
+const closeCode = (code) => (code === undefined || code === 1005 || code === 1006 ? 1000 : code);
+
 export const bridgeWebSocket = (ws, devOrigin, devHost, WebSocketImpl = WebSocket) => {
     const requested = new URL(ws.url());
-    // Vite (auch Angular ab 17) meldet sich mit dem Protokoll vite-hmr; webpack-dev-server nennt seinen eigenen Host.
-    const hmr = requested.host === devHost || ws.protocols().includes('vite-hmr');
-    if (!hmr) {
-        ws.connectToServer();
-        return;
-    }
+    // Vite (auch Angular ab 17) meldet sich mit dem Protokoll vite-hmr; webpack-dev-server nennt seinen eigenen Host. Ein anderes
+    // Socket kann trotzdem dem Dev-Server gehoeren (webpack-dev-server mit webSocketURL auto: Host der Seite, Pfad /ws): Es versucht
+    // zuerst ihn unter demselben Pfad; nimmt er den Handshake nicht an, geht es unveraendert an sein Ziel.
+    const sure = requested.host === devHost || ws.protocols().includes('vite-hmr');
     const target = `${devOrigin.replace(/^http/, 'ws')}${requested.pathname}${requested.search}`;
+    const queue = [];
+    let forward = (message) => queue.push(message);
+    ws.onMessage((message) => forward(message));
+    const toOriginal = () => {
+        const original = ws.connectToServer();
+        original.onMessage((message) => ws.send(message));
+        original.onClose((code, reason) => { ws.close({ code: closeCode(code), reason }).catch(() => {}); });
+        forward = (message) => original.send(message);
+        for (const message of queue.splice(0)) original.send(message);
+        ws.onClose((code, reason) => { original.close({ code: closeCode(code), reason }).catch(() => {}); });
+    };
     // Der Dev-Server prueft den Origin (webpack-dev-server): Er bekommt seinen eigenen.
     const server = new WebSocketImpl(target, { protocols: ws.protocols(), headers: { origin: devOrigin } });
     server.binaryType = 'arraybuffer';
-    const queue = [];
-    server.onopen = () => { for (const message of queue.splice(0)) server.send(message); };
+    let opened = false;
+    const giveUp = sure ? null : setTimeout(() => {
+        if (opened) return;
+        server.onclose = null;
+        server.close();
+        toOriginal();
+    }, PROBE_MS);
+    server.onopen = () => {
+        opened = true;
+        if (giveUp !== null) clearTimeout(giveUp);
+        forward = (message) => server.send(message);
+        for (const message of queue.splice(0)) server.send(message);
+    };
     server.onmessage = (event) => ws.send(typeof event.data === 'string' ? event.data : Buffer.from(event.data));
-    server.onclose = (event) => { ws.close({ code: event.code === 1005 || event.code === 1006 ? 1000 : event.code }).catch(() => {}); };
+    server.onclose = (event) => {
+        if (!opened && !sure) {
+            clearTimeout(giveUp);
+            toOriginal();
+            return;
+        }
+        ws.close({ code: closeCode(event.code) }).catch(() => {});
+    };
     server.onerror = () => {};
-    ws.onMessage((message) => { if (server.readyState === 1) server.send(message); else queue.push(message); });
-    ws.onClose(() => server.close());
+    ws.onClose(() => { if (opened || sure) server.close(); });
 };

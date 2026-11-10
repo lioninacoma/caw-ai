@@ -9,7 +9,7 @@ Each test has two YAML files:
 | `caw/tests/<id>.yaml` | you: what the test does, in plain language | yes |
 | `caw/recordings/<id>.yaml` | caw-ai: how to replay it | yes, review it first |
 
-You write the test plan. `record` writes the recording; by hand you only add the [extras](#hand-written-additions) Claude does not record.
+You write the test plan. `record` writes the recording; by hand you only add the [extras](#hand-written-additions) Claude does not record. `recording` and `knownMessages` belong in the recording only; in the test plan `validate` rejects them.
 
 ## Test plan
 
@@ -49,8 +49,7 @@ steps:
 | `role` | with login, if the config has several roles | Role from the config. Defaults to the only role. |
 | `targets` | no | Environments the test may run on. Defaults to all environments except production. |
 | `mutates` | yes | `true` if it creates or changes data; such tests only run on environments with `writable: true`. `false` if it only reads. |
-| `also` | no | More apps the flow passes through, e.g. `[admin]`. Their local code is served too. |
-| `code` | no | `deployed`: always test the deployed version, even where a local build could be served. Default `local`: the local build where environment and app have one, see [Testing local code](configuration.md#testing-local-code). Formerly `source: watch` / `source: deployed`, which still works with a note. |
+| `also` | no | More apps the flow passes through, e.g. `[admin]`. With `--overlay` their local code comes along too, if they have a source. |
 | `notes` | no | Context for the whole test. |
 | `steps` | yes | See below. |
 
@@ -76,7 +75,7 @@ Tips:
 Each step has a hash over `name`, `do`, `expect` and `note`. Change one of them and only that step is outdated:
 
 ```bash
-npx caw-ai run create-ticket --target local       # exit 3: S2 changed, prints the fix command
+npx caw-ai run create-ticket --target local       # exit 4: S2 changed, prints the fix command
 npx caw-ai fix create-ticket S2 --target local    # re-record S2 only
 ```
 

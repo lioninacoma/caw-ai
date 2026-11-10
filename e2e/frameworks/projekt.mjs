@@ -13,17 +13,16 @@ const yamlString = (value) => JSON.stringify(value);
  * @param url       Adresse der Umgebung
  * @param build     erwarteter Text hinter "Build:" (dev, deployed, local)
  * @param embed     true: zusaetzlich S3 mit iframe und Web Component (nur react-vite hat beides)
- * @param local     { build }: lokaler Build-Ordner (`localBuild`), oder { pattern, statics }: einzelne Dateien per assetUrlPattern
+ * @param overlay   App-Config fuer das Overlay ({ build, dev, buildCommand, devCommand }); dann darf die Umgebung es
  */
-export const writeProject = (root, { framework, url, build, local, embed = false }) => {
+export const writeProject = (root, { framework, url, build, overlay, embed = false }) => {
     const config = {
         language: 'de',
         framework,
-        environments: { test: { url, claude: true, writable: true, ...(local ? { overlay: true } : {}) } },
+        environments: { test: { url, claude: true, writable: true, ...(overlay ? { overlay: true } : {}) } },
         auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
-        apps: { web: { dir: '.', startUrl: '/', ...(local?.statics ? { statics: local.statics } : {}), ...(local?.build ? { localBuild: local.build } : {}) } },
+        apps: { web: { dir: '.', startUrl: '/', ...(overlay ? { overlay } : {}) } },
         roles: { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEnv: 'CAW_PW_TESTER' } },
-        ...(local?.pattern ? { assetUrlPattern: local.pattern } : {}),
         ...(url.startsWith('https:') ? { insecureTls: true } : {}),
     };
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify(config, null, 4)}\n`);

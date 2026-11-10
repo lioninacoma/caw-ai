@@ -94,7 +94,10 @@ test('HMR: Sockets des Dev-Servers gehen an ihn, mit seinem Origin; andere unver
     }
     const page = (url, protocols = []) => {
         const ws = { url: () => url, protocols: () => protocols, sent: [], handlers: {} };
-        ws.connectToServer = () => { ws.direct = true; };
+        ws.connectToServer = () => {
+            ws.direct = { sent: [], onMessage: (handler) => { ws.direct.message = handler; }, onClose: () => {}, send: (message) => ws.direct.sent.push(message), close: async () => {} };
+            return ws.direct;
+        };
         ws.send = (message) => ws.sent.push(message);
         ws.close = async () => { ws.closed = true; };
         ws.onMessage = (handler) => { ws.handlers.message = handler; };
@@ -114,8 +117,21 @@ test('HMR: Sockets des Dev-Servers gehen an ihn, mit seinem Origin; andere unver
     const webpack = page('ws://localhost:5173/ws');
     bridgeWebSocket(webpack, 'http://localhost:5173', 'localhost:5173', FakeSocket);
     assert.equal(made[1].url, 'ws://localhost:5173/ws');
+    // Ein Socket der Anwendung: erst der Dev-Server unter demselben Pfad; lehnt er ab, das Original, ohne dass etwas verloren geht.
     const app = page('wss://staging.example/live');
     bridgeWebSocket(app, 'http://localhost:5173', 'localhost:5173', FakeSocket);
-    assert.equal(app.direct, true);
-    assert.equal(made.length, 2);
+    assert.equal(made[2].url, 'ws://localhost:5173/live');
+    app.handlers.message('hallo');
+    made[2].onclose({ code: 1006 });
+    assert.deepEqual(app.direct.sent, ['hallo']);
+    app.direct.message('vom Server');
+    assert.deepEqual(app.sent, ['vom Server']);
+    // webpack-dev-server mit webSocketURL auto: Host der Seite, aber der Dev-Server nimmt den Handshake an.
+    const auto = page('wss://staging.example/ws');
+    bridgeWebSocket(auto, 'http://localhost:5173', 'localhost:5173', FakeSocket);
+    made[3].readyState = 1;
+    made[3].onopen();
+    auto.handlers.message('{"type":"hash"}');
+    assert.deepEqual(made[3].sent, ['{"type":"hash"}']);
+    assert.equal(auto.direct, undefined);
 });

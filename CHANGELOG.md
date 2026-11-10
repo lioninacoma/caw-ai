@@ -5,11 +5,15 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 ## [Unreleased]
 
 ### Added
-- `localBuild` per app: local code from a build folder with normal hashed file names (Vite, Angular CLI, webpack). The deployed entry files are mapped to the local ones by name without hash; lazy chunks, CSS, source maps, fonts and images follow. No fixed file names, no list of files, no `assetUrlPattern` needed.
+- `--overlay [build|dev|<url>]` on `run`, `record`, `fix` and `open`: local code over a deployed environment, only where the environment has `"overlay": true`. The app names its sources in `apps.<app>.overlay`: a build folder (`build`), a dev server (`dev`), fixed files (`statics`); with ExtJS the Sencha watch. Without a value the one configured source; a URL is a dev server at that address. Without `--overlay` every run tests the deployed version; a dev server on your machine is an environment of its own.
+- With `--overlay` caw gets the source ready before Chrome starts, like Playwright's `webServer`: it starts the dev server with `devCommand` (with ExtJS the Sencha watch), builds once with `buildCommand` when the build is missing or older than the sources, prints each action and stops what it started at the end. Otherwise exit 2 with the reason and the command. The source never switches.
+- Page swap: each HTML page of the app gets the code tags of the local page (build folder or dev server) at the position of the old ones, with the page's CSP nonce and without `integrity`. Inline scripts, project copies such as `public/env.js` and foreign origins stay from the server. Build requests match the exact file or the same name up to the hash (one hash rule for all bundlers); code requests and the HMR WebSocket go to the dev server.
+- Checks after the first load with `--overlay`: a server-rendered page (Next.js, Nuxt, SvelteKit, Angular SSR) or a run where nothing came from local code ends with exit 2; scripts from the local asset folder served by the server and a build with a different base path are warnings. `report.md` has an `Overlay:` line with source, local and server files and whether the page was swapped.
+- ExtJS: the build names of app and packages come from `app.json`, `.sencha/app/*.properties` and `bootstrap.json`; framework packages are never replaced; an ambiguous name ends with exit 2 and names both parts.
+- `caw-ai open`: open the app signed in, with workbench and chat, without a test. Learns nothing and writes no test file.
 - Targets in iframes of the application: recording adds `frame` (the iframe, described in the document above it, nested if needed), replay finds the element there, and a missing iframe is named in the step's error.
-- Which code a run tests is decided in one place and always shown: `Code: local build (dist/local, built 14:02, 3 min ago)` or `Code: deployed (environment staging has no localCode)`, also in CI output. `--code local|deployed` on `run`, `record` and `fix` overrides it; `--code local` where no local code is possible is rejected and names the missing setting.
-- A local build older than the newest source file of the app is reported before the run ("Is the build watch running?").
-- `validate` prints per test and target which code runs there, and notes settings without effect (`localCode` without local code, `localBuild` without an environment allowing it), `auth` values still `TODO` and old field names.
+- Every run names its code in a `Code:` line, also in CI: `Code: deployed`, `Code: dev server localhost:5173, your current version` or `Code: overlay, build dist, built 14:02, 3 min ago`.
+- `validate` prints per test and target which code runs there and where `--overlay` would apply, and notes settings without effect (an app with `overlay` while no environment allows it) and `auth` values still `TODO`.
 - "Did you mean …?" for unknown fields in `caw.config.json` and test files (`insecureTLS`, `target`, `expected`), for test names, steps and commands; unknown roles and apps list the valid names.
 - `caw-ai list`: tests with targets, recording status (recorded, stale with steps, not recorded) and whether they write; `list <test>` per step.
 - `run a b c` and `run --all` for CI: tests one after another without chat, a table at the end, exit code of the worst run; `--report junit=<file>` writes JUnit XML.
@@ -23,27 +27,21 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Workbench: before a new window opens (Claude, check run), chat and terminal say so. Keyboard shortcuts are shown on the buttons they trigger.
 
 ### Changed
-- Exit code 4 ("needs recording") for a missing or outdated recording (`replay-missing`, `replay-stale`); before, it was 3 like a typo. CI scripts checking for 3 need adjusting.
-- Test files: `code: local|deployed` replaces `source: watch|deployed`; `source` is still read and `validate` names the new field. `record` no longer writes `source: deployed` into new tests; only `--code deployed` writes `code: deployed`.
+- Exit code 4 ("needs recording") for a missing or outdated recording (`replay-missing`, `replay-stale`).
 - Test files: `id`, `app`, `role` and `targets` may be left out: file name, the only app, the only role, all non-production environments.
-- Environments: `claude: true` replaces `agent: true` (which collided with the `agent` section); `agent` still works with a note.
-- `--until` switches to the local build only where the app has local code, and says so in the `Code:` line.
 - Error output: the message first, then the short form for usage errors, then `(code: …, exit …)`; an unknown command gets a suggestion instead of the full help.
-- Wording: "local build" and "deployed" everywhere (German "lokaler Build" and "ausgelieferter Stand"); every regular end of a run is "End run", "Cancel" only aborts.
+- Wording: every regular end of a run is "End run", "Cancel" only aborts.
 - Workbench: the first Esc only asks before cancelling (a second Esc confirms); Esc while typing clears the field. Choices in the failure and decision cards are compact and the card scrolls into view. The steps panel unfolds on failure on narrow screens. The workbench's refresh button is disabled while a test runs.
 
 ### Fixed
 - Open shadow roots also count for an enclosing `<label>`, the sign-in marker, messages and dialogs as web components, and `wait-ready` counts.
-- Local code of apps under `also`: `statics` were never served, only `redirects`.
-- Local code with only `statics` (Vite, Angular CLI, webpack builds) no longer crashes looking for a Sencha `bootstrap.json`.
-- A missing `statics` file (no build, watch not started) stops the run with `watch-missing` and names the file, instead of "the application is not loaded".
 - React apps that hydrate the whole document (Next.js App Router, React Router framework mode, Remix) count as loaded; before, every run ended with `app-not-loaded`.
 - Sign-in on server-rendered pages (Nuxt, Next.js, Angular SSR) waits until the framework has taken over the form; before, the values were lost on hydration or Enter submitted the form natively.
 - Source maps load on Windows for environments under `*.localhost` and for `localhost` dev servers listening on 127.0.0.1 only.
-- With local code, a script from `statics` is mapped with the source map next to the local file, not the deployed one.
+- With `--overlay`, a local script is mapped with the source map next to the local file, not the deployed one.
 - Index source maps with `sections` (Turbopack, `next dev`) and `file:///` sources are understood.
 - Errors that a framework catches and logs with a stack (Angular's `ErrorHandler`, Vue in production, React error boundaries) point to the source file and count as clear application errors, like uncaught ones. Failed requests logged that way (`HttpErrorResponse`, `AxiosError`) stay network evidence.
-- Deployed pages with Subresource Integrity (`integrity` on scripts and styles, e.g. Angular's `subresourceIntegrity`) accept local code; the attributes are removed from the deployed HTML only while local code is served.
+- Deployed pages with Subresource Integrity (`integrity` on scripts and styles, e.g. Angular's `subresourceIntegrity`) accept local code; the attributes are removed from the deployed HTML only with `--overlay`.
 - Angular with SSR counts as loaded only after hydration, not as soon as the server HTML carries `ng-version`.
 - Sign-in through a foreign login page (Keycloak, Entra ID) no longer waits for the app's framework there.
 - An environment on `http://127.0.0.1:<port>` was blocked by the browser's network rules.
@@ -55,14 +53,14 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - An effect-only failure (the check passes, the app reacts differently than in healthy runs) is recognized after retries and when the check reports itself, so the diagnosis says "likely" and offers to forget the learned effect.
 - Re-recording an existing test keeps its `knownMessages` patterns, `secret: true` markers and check time limits.
 - `caw/.env` is read like dotenv: a comment after the value (`KEY=value # note`), quotes and surrounding spaces are no longer part of the value.
-- `validate` checks each entry of `statics`, `constants` and `redirects` and the fields of a role (unknown keys, variable names); before, a bad entry crashed the run.
+- `validate` checks each entry of `overlay.statics` and the fields of a role (unknown keys, variable names); before, a bad entry crashed the run.
 - A test name is a file name in `caw/tests` (letters of any language such as `kündigung`, digits, `_`, `-`, `.`; no folders, no trailing dot); `record team/login` failed only after the whole recording.
 - In CI (`CI` set) `record`, `fix`, `run --until` and `run --handover` are rejected with exit 3 instead of waiting for a person until the runner times out.
 - A missing session file (`auth-missing`) or `TODO` selectors end `run` with exit 3 as documented, not 2. An unexpected internal error ends with exit 2 (environment), not 1 (test failed), and stops Claude.
 - `.devcontainer` `image` is checked like `sandboxImage` before it goes into the Dockerfile.
 - With `localhost` allowed, `127.0.0.1` is reachable too and vice versa: a dev server opened under one name often opens its HMR socket under the other (webpack-dev-server with `host: 127.0.0.1`).
-- Local code with Subresource Integrity also works in popups and new tabs of the app, not only in the first tab.
-- `localBuild` with many lazy chunks (Angular names each `chunk-<hash>.js`) no longer slows every request: which files the local build reaches is computed once per build, not per request.
+- `--overlay` with Subresource Integrity also works in popups and new tabs of the app, not only in the first tab.
+- A build folder with many lazy chunks (Angular names each `chunk-<hash>.js`) no longer slows every request under `--overlay`: which files the local build reaches is computed once per build, not per request.
 - A chain of top-level navigations by the app no longer counts as a reload by the person when the navigation type can't be read; only reload and back/forward do.
 
 ### Security
@@ -75,7 +73,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Source maps are fetched without following redirects, so an open redirect on an allowed host can't send a request from your machine elsewhere.
 
 ### Tests
-- `e2e/frameworks`: test projects for React (Vite and webpack 5), Vue (Vite), Angular 21 (zoneless and Zone.js), Next.js 16 and Nuxt 4, each against the dev server, as a production build over HTTPS and with local code (`localBuild` with hashed builds, `statics` with fixed names), with and without a running build watch. React also covers an iframe and a web component.
+- `e2e/frameworks`: test projects for React (Vite and webpack 5), Vue (Vite), Angular 21 (zoneless and Zone.js), Next.js 16 and Nuxt 4, each against the dev server, as a production build over HTTPS and, where possible, with `--overlay`, with and without a ready build (exit 2 instead of a silent run on the deployed version). React also covers an iframe and a web component.
 
 ### Docs
 - `CONTRIBUTING.md` and templates for issues and pull requests.
@@ -118,7 +116,7 @@ First public release.
 
 ### Fixing and developing
 - When a step fails: ask Claude in the chat (read-only), let it fix the step, or get recommendations with code edits you accept or reject.
-- `run --until <step>` / `--handover`: get the app into a state and keep the window for development, with your local code where allowed.
+- `run --until <step>` / `--handover`: get the app into a state and keep the window for development.
 - MCP server (`caw-ai mcp`) for your Claude Code session: start runs, act as the agent, read the element you picked with the crosshair.
 
 ### Setup and operation

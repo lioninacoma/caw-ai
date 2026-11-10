@@ -17,6 +17,7 @@ Run every command from your project root: `npx caw-ai <command>` (or `pnpm exec`
 | [`record`](#record) | Record a test or replace its recording | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
 | [`fix`](#fix) | Re-record one step | yes |
+| [`open`](#open) | Open the app signed in, with workbench and chat, without a test | only if you ask |
 | [`auth`](#auth) | Sign in by hand and store the session (SSO) | no |
 | [`mcp`](#mcp) | MCP server for your own Claude Code session | – |
 
@@ -92,7 +93,7 @@ npx caw-ai validate
 
 Checks `caw.config.json` and every file in `caw/tests/` without browser or Claude. Errors name file and line. Use it in CI and pre-commit hooks.
 
-Per test and target it prints which code runs there, e.g. `smoke (dev): local build from dist` or `smoke (staging): deployed (environment staging has no localCode)`. Notes that don't fail validation: `auth` values still `TODO`, old names such as `agent` or `source`, and settings without effect (see [Testing local code](configuration.md#testing-local-code)).
+Per test and target it prints which code runs there and where `--overlay` would apply, e.g. `smoke (staging): deployed` or `smoke (dev): deployed; with --overlay: overlay, build dist`. Notes that don't fail validation: `auth` values still `TODO` and settings without effect, such as an app with `overlay` while no environment allows it (see [Testing local code](configuration.md#testing-local-code)).
 
 ## list
 
@@ -127,7 +128,7 @@ Runs only on environments where Claude may work (`"claude": true`). `--target` c
 | `--app <app>` | First recording only. Not needed if the config has one app. |
 | `--also <app>` | First recording only: the flow continues in another app of the project. |
 | `--read-only` | First recording only: the test doesn't write data (`mutates: false`). |
-| `--code local\|deployed` | Which code runs, see [Testing local code](configuration.md#testing-local-code). With `deployed` a new test keeps `code: deployed`. |
+| `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment, see [Testing local code](configuration.md#testing-local-code). |
 | `--agent local\|docker\|session` | Where Claude runs. Default: `agent.sandbox` from the config, else `local`. |
 | `--timeout <minutes>` | Time limit for Claude, default 60. |
 | `--max-steps <n>` | Limit on Claude's browser actions, default `maxSteps` or 100. |
@@ -145,8 +146,8 @@ With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml
 
 | Option | |
 |---|---|
-| `--until <S4>` | Stop after S4, the window stays open. Implies `--handover`; uses the local build where the environment allows it. |
-| `--code local\|deployed` | Which code runs: the local build or the deployed version. Default: `code` in the test and the config, see [Testing local code](configuration.md#testing-local-code). `local` on an environment without `localCode` is rejected (exit 3). |
+| `--until <S4>` | Stop after S4, the window stays open. Implies `--handover`. Runs the deployed version like every run, unless you add `--overlay`. |
+| `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment: the build folder, the dev server, or the dev server at `<url>`; without a value the one configured source. Only on environments with `"overlay": true`. Without the option the deployed version always runs. See [Testing local code](configuration.md#testing-local-code). |
 | `--handover` | Leave the window open after the run. |
 | `--advise` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
 | `--no-chat` | Visible window, no chat, no Claude. Like CI. |
@@ -157,7 +158,7 @@ With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml
 | `--max-steps <n>` | Limit on Claude's actions when fixing. |
 | `--agent local\|docker\|session` | As for `record`. |
 
-With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`; `--until` and `--handover` are rejected (exit 3), since nobody would take over the browser. `record` and `fix` need a person and are rejected in CI too. On runners without a display add `--headless` or use `xvfb-run`.
+With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`; `--until` and `--handover` are rejected (exit 3), since nobody would take over the browser. `record`, `fix` and `open` need a person and are rejected in CI too. On runners without a display add `--headless` or use `xvfb-run`.
 
 ### Several tests (CI)
 
@@ -176,7 +177,21 @@ Runs the tests one after another, without chat (`--advise`, `--handover` and `--
 npx caw-ai fix create-ticket S2 --target local
 ```
 
-Re-records exactly one step. Use it after you changed a step's text by hand, or added a new step at the end. Steps before it replay without Claude. The other steps stay untouched. Options: `--agent`, `--code`, `--timeout`, `--max-steps`, `--step-timeout`.
+Re-records exactly one step. Use it after you changed a step's text by hand, or added a new step at the end. Steps before it replay without Claude. The other steps stay untouched. Options: `--agent`, `--overlay`, `--timeout`, `--max-steps`, `--step-timeout`.
+
+## open
+
+```bash
+npx caw-ai open --target dev --overlay
+```
+
+Opens the app signed in, with workbench and chat, without a test: navigate, try things, develop with Claude. Like `run --until` without steps before it. Learns nothing and writes no test file. Without `--target` it takes the only environment where Claude may work.
+
+| Option | |
+|---|---|
+| `--role <role>`, `--app <app>` | Not needed if the config has only one. |
+| `--overlay [build\|dev\|<url>]` | As for `run`. |
+| `--agent local\|docker\|session`, `--timeout <minutes>`, `--max-steps <n>` | As for `record`. |
 
 ## auth
 
@@ -221,7 +236,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `CAW_AI_HOME` | Folder for personal settings (`prefs.json`). Default `%APPDATA%\caw-ai` or `~/.config/caw-ai`. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token for the `docker` agent. Create one with `claude setup-token`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
-| `CI` | Set: no chat, `docker` agent only; `record`, `fix`, `--until` and `--handover` are rejected. |
+| `CI` | Set: no chat, `docker` agent only; `record`, `fix`, `open`, `--until` and `--handover` are rejected. |
 | `NO_COLOR`, `FORCE_COLOR` | Terminal colors off or on. |
 | `MCP_TOOL_TIMEOUT` | In Claude Code's environment: raise it if `plan` or `chat` time out in your session. |
 
@@ -246,7 +261,11 @@ When caw-ai stops, it prints the reason and then the code.
 | `target-unreachable`, `unreachable` | 2 | Start the dev server, check the URL |
 | `app-not-loaded`, `app-not-settled` | 2 | Open the page by hand, check the console |
 | `browser-missing` | 2 | Install Google Chrome, or set `browser` in the config |
-| `watch-missing`, `watch-stale`, `local-code` | 2 | Start your framework's watch |
+| `overlay-not-ready` | 2 | Start the dev server or build, or set `devCommand` / `buildCommand` on the app; the message names the command |
+| `overlay-ssr` | 2 | Server-rendered page: test local code with the dev server as the environment (`--target local`) |
+| `overlay-unused` | 2 | Nothing came from local code: do build or dev server match the app, does `assetUrlPattern` cover its requests? |
+| `overlay-ambiguous` | 2 | ExtJS: give one app its own `output.js.path` in `app.json` |
+| `watch-missing`, `watch-stale` | 2 | Start the Sencha watch (`sencha app watch`) or set `devCommand` |
 | `claude-missing` | 2 | Install Claude Code and sign in, or use `--agent docker` |
 | `token-missing` | 2 | Set `CLAUDE_CODE_OAUTH_TOKEN` |
 | `docker-missing`, `docker-not-running`, `docker-wrong-mode` | 2 | Start Docker with Linux containers, or use `--agent local` |

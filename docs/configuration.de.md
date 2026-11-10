@@ -64,7 +64,7 @@ Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du a
 ```json
 "environments": {
   "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
-  "dev":     { "url": "https://dev.example.com", "claude": true, "localCode": true, "writable": true },
+  "dev":     { "url": "https://dev.example.com", "claude": true, "overlay": true, "writable": true },
   "staging": { "url": "https://staging.example.com" },
   "prod":    { "url": "https://example.com", "production": true }
 }
@@ -73,10 +73,10 @@ Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du a
 | Feld | |
 |---|---|
 | `url` | Origin der App. `https`, oder `http` für `localhost`, `127.0.0.1` und `*.localhost`. |
-| `claude` | `true`: Claude darf hier aufnehmen, reparieren und untersuchen. Früher `agent`; das gilt weiter, `validate` weist darauf hin. |
+| `claude` | `true`: Claude darf hier aufnehmen, reparieren und untersuchen. |
 | `writable` | `true`: Tests mit `mutates: true` dürfen hier laufen. |
-| `localCode` | `true`: deinen lokalen Build in diese entfernte Umgebung einspielen. Braucht `localBuild` (oder Einträge) an der App; für einen Dev-Server auf deinem Rechner unnötig. Siehe [Lokalen Code testen](#lokalen-code-testen). |
-| `production` | Pflicht für Namen wie `prod` oder `live`. Eine solche Umgebung kann kein `claude`, `localCode` oder `writable` haben. |
+| `overlay` | `true`: `--overlay` darf deinen lokalen Code über diese ausgelieferte Umgebung legen. Das erlaubt es nur und schaltet nichts ein. Für einen Dev-Server auf deinem Rechner unnötig. Siehe [Lokalen Code testen](#lokalen-code-testen). |
+| `production` | Pflicht für Namen wie `prod` oder `live`. Eine solche Umgebung kann kein `claude`, `overlay` oder `writable` haben. |
 | `urls` | Statt `url`, wenn du `sites` nutzt: `{ "nord": "https://nord.example.com", … }`. |
 
 Was nicht auf `true` steht, ist aus. Gegen `staging` oben läuft also nur Abspielen, nur lesende Tests, gegen den ausgelieferten Stand.
@@ -141,58 +141,118 @@ Pflicht. Meist eine App; Monorepos können mehrere nennen.
 |---|---|
 | `dir` | App-Ordner relativ zum Projekt, `.` für eine einzelne App. |
 | `startUrl` | Pfad, an dem Tests beginnen. Nur für Apps, in denen ein Test startet. |
-| `localBuild` | Lokaler Code: der Build-Ordner relativ zum Projekt, z. B. `"dist"` oder `"dist/app/browser"`. Funktioniert mit normalen Builds mit Hash (Vite, Angular CLI, webpack). Siehe [Lokalen Code testen](#lokalen-code-testen). |
-| `statics` | Lokaler Code, einzelne Dateien: `[{ "name": "main.js", "path": "dist/main.js" }]` |
-| `redirects`, `constants` | Lokaler Code für Sencha-/ExtJS-Apps. |
+| `overlay` | Woher `--overlay` den lokalen Code der App nimmt: Build-Ordner, Dev-Server, die Befehle für beide, feste Dateien. Siehe [Lokalen Code testen](#lokalen-code-testen). |
 
 ## Lokalen Code testen
 
-Welchen Code ein Lauf testet, entscheidet eine Stelle, und jeder Lauf nennt es in seinen ersten Zeilen, auch in CI:
+caw-ai kennt zwei Modi:
+
+- **E2E** (Standard, CI, nightly, jedes einfache `run`): immer der ausgelieferte Code der Umgebung, auch mit `--until`.
+- **Entwicklung:** dein lokaler Code, nur mit `--overlay`. Nichts schaltet still darauf um.
+
+Jeder Lauf nennt den Code in seinen ersten Zeilen, auch in CI:
 
 ```
-Code: lokaler Build (dist, gebaut 14:02, vor 3 min)
-Code: ausgelieferter Stand (Umgebung staging hat kein localCode)
+Code: ausgelieferter Stand
+Code: Dev-Server localhost:5173, dein aktueller Stand
+Code: Overlay, Build dist, gebaut 14:02, vor 3 min
+Code: Overlay, Dev-Server http://localhost:5173
 ```
 
-Was du einträgst, hängt davon ab, wo deine App läuft:
+### Dein Dev-Server als Umgebung
 
-| Aufbau | Was eintragen |
-|---|---|
-| Dev-Server auf deinem Rechner (`http://localhost:5173`: Vite, `ng serve`, webpack-Dev-Server) | Nichts. Der Dev-Server liefert deinen Code schon aus; `localCode` bewirkt dort nichts. |
-| Entfernte Umgebung (dev, test) und ein normaler Build mit Hashes (Vite, Angular CLI, webpack) | `"localCode": true` an der Umgebung, `"localBuild": "dist"` an der App: der Ordner, in den dein Build oder Build-Watch schreibt. |
-| Entfernte Umgebung, die App lädt gebaute Dateien unter festen Namen | `"localCode": true`, `statics` an der App und `assetUrlPattern`. |
-| ExtJS / Sencha | `"localCode": true`, `redirects` und/oder `constants` an der App und `assetUrlPattern`; der Sencha-Watch läuft. |
+Gegen deinen lokalen Dev-Server testest du ohne Option. Der Dev-Server ist eine Umgebung wie jede andere:
 
 ```json
 "environments": {
-  "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
-  "dev":   { "url": "https://dev.example.com", "claude": true, "localCode": true, "writable": true }
+  "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+}
+```
+
+`--target local` testet dann, was in deinem Editor steht (Vite, `ng serve`, webpack-Dev-Server, Next.js, Nuxt). `--overlay` wird dort abgelehnt (Exit 3): Es ist für ausgelieferte Umgebungen.
+
+### `--overlay`: lokaler Code über einer ausgelieferten Umgebung
+
+Für Apps, die nur in einer ausgelieferten Umgebung funktionieren, etwa in einem Portal oder einer Shell, oder mit einem Backend, das es nur auf Staging gibt. Seite, API, Cookies und Anmeldung bleiben die der Umgebung; nur der Code der App kommt von deinem Rechner.
+
+Dafür braucht die Umgebung `"overlay": true` und die App eine Quelle:
+
+```json
+"environments": {
+  "dev": { "url": "https://dev.example.com", "claude": true, "overlay": true, "writable": true }
 },
-"apps": { "web": { "dir": ".", "startUrl": "/", "localBuild": "dist" } }
+"apps": {
+  "web": {
+    "dir": ".",
+    "startUrl": "/",
+    "overlay": {
+      "build": "dist",
+      "dev": "http://localhost:5173",
+      "buildCommand": "npm run build",
+      "devCommand": "npm run dev -- --port 5173 --strictPort",
+      "statics": [{ "name": "Fx/Static.js", "path": "static.js" }]
+    }
+  }
+}
 ```
 
-**Welcher Code läuft.** Die erste Regel, die passt, gilt:
+| Feld in `overlay` | |
+|---|---|
+| `build` | Build-Ordner relativ zum Projekt, z. B. `"dist"` oder `"dist/app/browser"`. |
+| `dev` | Adresse des Dev-Servers, z. B. `"http://localhost:5173"`. |
+| `buildCommand` | Einmaliger Build, etwa `"npm run build"`, kein `--watch`. Braucht `build`. |
+| `devCommand` | Startet den Dev-Server, etwa `"npm run dev -- --port 5173 --strictPort"`. Braucht `dev`. |
+| `statics` | Feste Namen, bei jedem Laden frisch von der Platte: `name` ist der Name im Request, `path` die Datei relativ zum App-Ordner. Für jedes Framework und jede Quelle. |
 
-1. `--code local` oder `--code deployed` bei `run`, `fix` oder `record`. `--code local` auf einer Umgebung ohne `localCode` oder für eine App ohne lokalen Code wird abgelehnt (Exit 3), die Meldung nennt den fehlenden Schlüssel.
-2. `--until`: Ein Zustand für die Entwicklung nimmt den lokalen Build, wo Umgebung und App einen haben, auch bei `code: deployed` im Test.
-3. `code: deployed` im Test ([Testdateien](test-files.de.md)).
-4. Sonst der lokale Build, wenn die Umgebung `localCode` hat und die App des Tests (oder eine aus `also`) `localBuild`, `statics`, `redirects` oder `constants`. Wenn nicht, der ausgelieferte Stand, und die Zeile `Code:` sagt, warum.
+Unbekannte Felder sind ein Fehler. Von `build` und `dev` reicht eins.
 
-Bei ExtJS: Läuft kein Sencha-Watch, nimmt der Lauf den ausgelieferten Stand und sagt das; mit `--code local` warnt er und nimmt trotzdem den lokalen Code.
+| Aufruf | Quelle |
+|---|---|
+| `--overlay` | Die eine konfigurierte Quelle. Hat die App `build` und `dev`, bricht der Aufruf ab (Exit 3) und lässt dich wählen. |
+| `--overlay build` | Der Build-Ordner. |
+| `--overlay dev` | Der Dev-Server. |
+| `--overlay http://localhost:5174` | Der Dev-Server unter dieser Adresse. Geht vor der Config, braucht kein `overlay` an der App. Nur für einen Test mit einer App (mit `also` Exit 3), nicht bei ExtJS (Exit 3). |
 
-**Veralteter Build.** Vor einem Lauf mit `localBuild` vergleicht caw-ai die jüngste Datei im Build-Ordner mit der jüngsten Datei unter `dir` der App. Nicht mit: `node_modules`, der Build-Ordner, Ordner mit Punkt (`.angular`, `.next`, …), übliche Build-Ordner (`dist`, `build`, `out`, `coverage`), `caw/` und Markdown-Dateien; angesehen werden höchstens 5000 Dateien. Hast du nach dem letzten Build Code geändert, warnt der Lauf und läuft weiter:
+`--overlay` gibt es bei `run`, `record`, `fix` und `open`. Abgelehnt wird es (Exit 3) mit Grund auf einer Umgebung ohne `"overlay": true`, auf einer Umgebung, die selbst ein Dev-Server auf deinem Rechner ist, und für eine App ohne Quelle. Apps aus `also` nehmen ihre eigene Quelle; ohne eine bleiben sie ausgeliefert.
+
+**caw startet und baut selbst**, wie `webServer` bei Playwright. Bevor Chrome startet:
+
+- **Dev-Server** antwortet nicht: Mit `devCommand` startet caw ihn im App-Ordner und wartet bis zu 60 s. Die Ausgabe steht in `.caw/<app>-dev-server.log`. Am Ende des Laufs beendet caw den ganzen Prozessbaum; bei `open` und `--until`, wenn du das Fenster schließt.
+- **Build** fehlt oder ist älter als die jüngste Quelldatei der App: Mit `buildCommand` baut caw einmal im App-Ordner (Ausgabe in `.caw/<app>-build.log`) und prüft erneut. Nicht als Quelle zählen: `node_modules`, der Build-Ordner, Ordner mit Punkt, übliche Build-Ordner (`dist`, `build`, `out`, `coverage`, …), `caw/`, Markdown-Dateien und `caw.config.json`; angesehen werden höchstens 5000 Dateien.
+- Sonst endet der Lauf mit Exit 2, dem Grund und dem Befehl, der es behebt.
+
+caw nennt jede Aktion, etwa `Der Dev-Server http://localhost:5173 läuft nicht, starte npm run dev -- --port 5173 --strictPort …`. Die Quelle wechselt nie: Ein gescheiterter Build weicht nicht auf den Dev-Server oder den ausgelieferten Stand aus.
+
+**Wie der lokale Code in die Seite kommt:**
+
+- **Seiten:** Jede HTML-Seite der App kommt vom Server. caw tauscht darin die Code-Tags der App gegen die der lokalen Seite: bei `build` die Seite im Build-Ordner mit den meisten Treffern, bei `dev` das HTML des Dev-Servers unter demselben Pfad. Die neuen Tags stehen an der Stelle der alten und tragen die CSP-Nonce der Seite; `integrity` fällt weg. Inline-Skripte, Projektkopien (etwa `public/env.js`: Die Umgebung setzt sie, sie bleibt vom Server) und Skripte fremder Origins bleiben. Kein Tausch auf Seiten ohne Tags der App (Anmeldeseite), auf serverseitig gerenderten Seiten und wenn der Build einen anderen Basispfad hat (eine Warnung sagt es); dann kommen nur einzelne Requests aus dem lokalen Code.
+- **Requests bei `build`:** die Datei selbst oder die mit gleichem Namen bis auf den Hash. Ein Hash ist `name[-.]hash.endung` mit 6 bis 64 Zeichen aus `[A-Za-z0-9_-]`, darunter eine Ziffer oder ein Großbuchstabe. Seine Länge darf sich ändern (`assets/index-Bx81.js` → `assets/index-Q7f2kL9a.js`), und ein fester Name und einer mit Hash gelten als dieselbe Datei (`main.js` ↔ `main-A1B2C3D4.js`).
+- **Requests bei `dev`:** Code-Requests (Skripte, Stile, Schriften, Bilder, Module) gehen an den Dev-Server. Sein HMR-WebSocket wird durchgereicht, Hot Reload geht also auch in der ausgelieferten Seite.
+- **`statics`** werden zuerst beantwortet, bei jeder Quelle.
+- Alles Lokale geht mit `cache-control: no-store` raus; Service Worker sind im Testbrowser gesperrt. Der Name eines Requests ist sein Pfad unterhalb der Umgebungs-URL oder Gruppe 1 von `assetUrlPattern`.
+
+**Prüfungen nach dem ersten Laden:**
+
+| Befund | Folge |
+|---|---|
+| Serverseitig gerenderte Seite (Next.js, Nuxt, SvelteKit, Angular SSR) | Exit 2 (`overlay-ssr`). Lokalen Code testest du dort mit dem Dev-Server als Umgebung (`--target local`). |
+| Nichts kam aus dem lokalen Code | Exit 2 (`overlay-unused`). |
+| Skripte aus dem lokalen Asset-Ordner kamen vom Server | Warnung „Mischstand“: neu bauen oder prüfen, ob der Build zur ausgelieferten Version passt. |
+| Build mit anderem Basispfad | Warnung, kein Tausch der Seite. |
+
+`report.md` nennt, was geschah: `Overlay: dist; 14 Datei(en) lokal, 2 Skript(e)/Stylesheet(s) vom Server; Seite getauscht: ja`.
+
+**ExtJS:** Mit `"framework": "extjs"` kommt der lokale Code vom Sencha-Watch. Die App braucht keinen Eintrag `overlay`, optional `statics` und `devCommand` (etwa `"sencha app watch"`, dann startet caw den Watch). `build`, `dev` und `buildCommand` sind dort Fehler; nimm `--overlay` oder `--overlay dev`. Einzelheiten: [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
+
+**`validate`** nennt den Code je Test und Ziel und wo `--overlay` ginge:
 
 ```
-Der lokale Build (dist) ist älter als deine letzte Änderung (src/x.tsx, vor 12 min). Läuft der Build-Watch? Sonst --code deployed.
+smoke (local): Dev-Server localhost:5173, dein aktueller Stand
+smoke (dev): ausgelieferter Stand; mit --overlay: Overlay, Build dist
+smoke (dev): ausgelieferter Stand; mit --overlay build bzw. dev: Overlay, Build dist | Overlay, Dev-Server http://localhost:5173
 ```
 
-**`validate`** nennt den Code je Test und Ziel, etwa `smoke (dev): lokaler Build aus dist`, und weist auf Einstellungen ohne Wirkung hin: eine Umgebung mit `localCode`, während keine App lokalen Code hat, eine App mit `localBuild`, während keine Umgebung `localCode` hat, und einen Test mit `code: deployed`, dessen App inzwischen lokalen Code hat.
-
-**Wie der lokale Build in die App kommt.** Auf Umgebungen mit `localCode` beantwortet Chrome bestimmte Requests aus dem Projektordner statt vom Server:
-
-- **`localBuild`:** Gebaut wird wie immer, mit Hash. Ein Request auf eine Datei, die im Ordner liegt, bekommt diese Datei; ein Request auf eine Datei des deployten Builds, etwa `assets/index-Bx81.js` aus dem deployten `index.html`, bekommt die lokale Datei, die sich nur im Hash unterscheidet (`assets/index-Q7f2.js`). Alles, was der lokale Einstieg nachlädt, auch Lazy-Chunks, trägt lokale Namen und kommt ebenfalls aus dem Ordner. Seiten (`index.html`, Routen) kommen immer vom Server, damit bleiben seine Konfiguration, `<base href>` und CSP. JS, CSS, Quellkarten, Schriften und Bilder gehen mit ihrem Typ raus. Ohne `assetUrlPattern` ist der Name der Pfad unterhalb der Umgebungs-URL. Im Ordner muss vor dem Lauf ein Build liegen, sonst endet er mit `watch-missing`. Nicht für serverseitig gerenderte Apps (Next.js, Nuxt): Deren Server schreibt die deployten Dateinamen in jede Seite. Service Worker sind im Testbrowser gesperrt, ein gecachter deployter Build verdeckt den lokalen also nie.
-- **`statics`:** eine Datei, `{ "name": "main.js", "path": "dist/main.js" }`, mit etwa `"assetUrlPattern": "/static/js/([^?#]+)"` (die erste Gruppe ist der Name). Jede Datei, die sich ändert, muss genannt sein; eine nicht genannte kommt vom Server. Die Datei muss vor dem Lauf existieren, sonst endet er mit `watch-missing`.
-- **`redirects`, `constants`:** Sencha/ExtJS, siehe [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
+Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay": true` hat.
 
 ## Alles Weitere
 
@@ -212,9 +272,9 @@ Der lokale Build (dist) ist älter als deine letzte Änderung (src/x.tsx, vor 12
 | `maxSteps` | `100` | Aktionsbudget für Claude beim Aufnehmen und Reparieren. |
 | `readyTimeoutMs` | | Wie lange auf eine ruhige App gewartet wird. |
 | `lintCommand` | | Dein Prüfbefehl, etwa `npm run lint`. Claude nennt ihn bei Code-Vorschlägen. |
-| `assetUrlPattern` | | Regulärer Ausdruck für Requests, die App-Code laden; Gruppe 1 ist der Dateiname in `statics`/`redirects`/`constants` oder der Pfad in `localBuild`. Ohne ihn nimmt `localBuild` den Pfad unterhalb der Umgebungs-URL. |
+| `assetUrlPattern` | | Regulärer Ausdruck für Requests, die App-Code laden; Gruppe 1 ist der Name für `overlay.statics`, der Pfad in `overlay.build` oder der Build-Name einer ExtJS-App oder eines Pakets. Gilt mit `--overlay` zusätzlich zum Pfad unterhalb der Umgebungs-URL. |
 | `sites` | | Dieselbe App für mehrere Mandanten: `["nord", "sued"]`, dann `urls` je Umgebung. |
-| `extends` | | Gemeinsame Vorgaben aus einer Datei, etwa `"./caw/presets/basis.json"`. |
+| `extends` | | Gemeinsame Vorgaben aus einer Datei, etwa `"./caw/basis.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den Agenten `docker`. Sonst `image` aus `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | Nutzer im Container. |
 

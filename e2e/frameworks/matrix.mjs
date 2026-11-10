@@ -1,11 +1,12 @@
-// Framework-Matrix: React, Vue, Angular (zoneless und Zone.js), Next.js und Nuxt, jeweils am Dev-Server (lokal, Watch des
-// Frameworks), als Produktions-Build hinter HTTPS (deployt) und, wo moeglich, deployt mit lokalem Code, einmal mit laufendem
-// Build-Watch und einmal ohne: als Build-Ordner (`localBuild`, normale gehashte Builds) und, nur fuer React, als einzelne Dateien
-// (`statics` mit festen Namen). Claude wird nie gestartet: Aufzeichnungen stehen von Hand in projekt.mjs.
+// Framework-Matrix: React (Vite und webpack), Vue, Angular (zoneless und Zone.js), Next.js und Nuxt. Je Variante: der Dev-Server als
+// Umgebung (dev), der Produktions-Build hinter HTTPS (deployt) und das Overlay ueber dem deployten Stand: ohne Option bleibt er es
+// trotz laufendem Watch (e2e-ohne-option), --overlay build mit anderer Aufteilung (React, webpack), caw baut selbst (buildCommand),
+// Exit 2 ohne Build oder mit altem Build, --overlay dev mit devCommand, Exit 2 ohne Dev-Server, bei Next und Nuxt Exit 2 wegen SSR.
+// Claude wird nie gestartet: Aufzeichnungen stehen von Hand in projekt.mjs.
 //   node e2e/frameworks/matrix.mjs [filter]       z. B. "react" oder "angular-zone/dev"
 // Voraussetzungen: npm install in jedem Projekt, Chrome. Ergebnis in e2e/frameworks/ergebnis/.
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,11 +57,11 @@ const waitForFile = async (file, timeoutMs = 60_000) => {
 };
 
 /** Ein caw-ai-Lauf im Projekt, wie in CI. Liefert Exit-Code, Ausgabe und, falls geschrieben, result.json und report.md. */
-const cawRun = (root, test, extra = []) => {
+const cawRun = (root, test, extra = [], env = {}) => {
     rmSync(join(root, '.caw/runs'), { recursive: true, force: true });
     const result = spawnSync(process.execPath, [bin, 'run', test, '--target', 'test', '--headless', ...extra], {
         cwd: root, encoding: 'utf8', timeout: 180_000,
-        env: { ...process.env, CI: '1', CAW_LANG: 'de', CAW_AI_HOME: join(here, '.caw-home'), NO_COLOR: '1' },
+        env: { ...process.env, ...env, CI: '1', CAW_LANG: 'de', CAW_AI_HOME: join(here, '.caw-home'), NO_COLOR: '1' },
     });
     const runs = join(root, '.caw/runs');
     const dir = existsSync(runs) ? readdirSync(runs).map((name) => join(runs, name)).find((path) => existsSync(join(path, 'result.json'))) : undefined;
@@ -73,14 +74,14 @@ const cawRun = (root, test, extra = []) => {
 };
 
 const vite = (dir, port) => ({
-    dev: [npx, ['vite', '--port', String(port)]], build: [npx, ['vite', 'build']], buildWatch: [npx, ['vite', 'build', '--watch']], out: 'dist', env: (value) => ({ VITE_BUILD: value }),
+    dev: [npx, ['vite', '--port', String(port)]], build: [npx, ['vite', 'build']], out: 'dist', env: (value) => ({ VITE_BUILD: value }),
     // Normale Builds mit Hash: deployt nach deploy/, lokal per Watch nach local/.
-    localBuild: { deploy: [npx, ['vite', 'build', '--outDir', 'deploy'], { VITE_BUILD: 'deployed' }], served: 'deploy', watch: [npx, ['vite', 'build', '--watch', '--outDir', 'local'], { VITE_BUILD: 'local' }], dir: 'local' },
+    localBuild: { deploy: [npx, ['vite', 'build', '--outDir', 'deploy'], { VITE_BUILD: 'deployed' }], served: 'deploy', watch: [npx, ['vite', 'build', '--watch', '--outDir', 'local'], { VITE_BUILD: 'local', CAW_SPLIT: '1' }], dir: 'local' },
 });
 // webpack 5: klassische Skripte, eine Laufzeit laedt Chunks per JSONP, Hash als [contenthash] hinter einem Punkt.
 const webpack = (port) => ({
     dev: [npx, ['webpack', 'serve', '--mode', 'development', '--port', String(port)]], build: [npx, ['webpack', '--mode', 'production']], out: 'dist', env: (value) => ({ CAW_BUILD: value }),
-    localBuild: { deploy: [npx, ['webpack', '--mode', 'production', '--output-path', 'deploy'], { CAW_BUILD: 'deployed' }], served: 'deploy', watch: [npx, ['webpack', '--mode', 'production', '--watch', '--output-path', 'local'], { CAW_BUILD: 'local' }], dir: 'local' },
+    localBuild: { deploy: [npx, ['webpack', '--mode', 'production', '--output-path', 'deploy'], { CAW_BUILD: 'deployed' }], served: 'deploy', watch: [npx, ['webpack', '--mode', 'production', '--watch', '--output-path', 'local'], { CAW_BUILD: 'local', CAW_SPLIT: '1' }], dir: 'local' },
 });
 const ng = (configs) => ({
     deploy: [npx, ['ng', 'build', '-c', configs, '--output-path', 'deploy']], served: 'deploy/browser',
@@ -89,7 +90,7 @@ const ng = (configs) => ({
 
 // Jede Variante: Projekt, Framework fuer caw-ai, und wie sie lokal (Dev-Server) bzw. deployt laeuft.
 const APPS = [
-    { name: 'react', dir: 'react-vite', framework: 'react', embed: true, devPort: 5173, deployPort: 8441, ...vite('react-vite', 5173), pattern: '/assets/([^?#]+)', statics: (d) => [{ name: 'index.js', path: `${d}/assets/index.js` }, { name: 'InfoScreen.js', path: `${d}/assets/InfoScreen.js` }] },
+    { name: 'react', dir: 'react-vite', framework: 'react', embed: true, devPort: 5173, deployPort: 8441, ...vite('react-vite', 5173) },
     { name: 'webpack', dir: 'react-webpack', framework: 'react', embed: true, devPort: 5175, deployPort: 8447, ...webpack(5175) },
     { name: 'vue', dir: 'vue-vite', framework: 'vue', devPort: 5174, deployPort: 8442, ...vite('vue-vite', 5174) },
     {
@@ -170,62 +171,89 @@ for (const app of APPS) {
         record(`${app.name}/deployt`, 'fehler', failsInApp, fail, explodeSource(fail));
     });
 
-    const expectEnvError = (run) => run.code === 2;
-    const envHint = (run) => (run.output.match(/\[caw-ai\][^\n]*(lokal|Watch|watch|statics|Build|fehlt)[^\n]*/) ?? [''])[0].slice(0, 160);
-    // Beide Arten lokalen Codes: Der Server liefert einen Build "deployed", Chrome bekommt Dateien aus dem lokalen Build "local".
-    const variants = [
-        ...(app.localBuild === undefined ? [] : [{
-            label: 'lokaler-build', dir: app.localBuild.dir,
-            deploy: () => {
-                rmSync(join(root, 'deploy'), { recursive: true, force: true });
-                build(root, ...app.localBuild.deploy);
-                return join(root, app.localBuild.served);
-            },
-            watch: () => start(`${app.name}-watch`, root, ...app.localBuild.watch),
-            ready: () => hasBuild(join(root, app.localBuild.dir)) && existsSync(join(root, app.localBuild.dir, 'index.html')),
-            local: { build: app.localBuild.dir },
-        }]),
-        ...(app.statics === undefined ? [] : [{
-            label: 'lokaler-code', dir: 'dist',
-            deploy: () => {
-                rmSync(join(root, 'deploy'), { recursive: true, force: true });
-                build(root, npx, ['vite', 'build', '--outDir', 'deploy'], { VITE_BUILD: 'deployed', FIXED_NAMES: '1' });
-                return join(root, 'deploy');
-            },
-            watch: () => start(`${app.name}-watch`, root, ...app.buildWatch, { VITE_BUILD: 'local', FIXED_NAMES: '1' }),
-            ready: () => app.statics('dist').every(({ path }) => existsSync(join(root, path))),
-            local: { pattern: app.pattern, statics: app.statics('dist') },
-        }]),
-    ];
-    for (const variant of variants) {
-        const localProject = () => writeProject(root, { framework: app.framework, embed: app.embed === true, url: `https://${app.name.split('-')[0]}.localhost:${app.deployPort}`, build: 'local', local: variant.local });
+    const expectEnvError = (pattern) => (run) => run.code === 2 && pattern.test(run.output);
+    const envHint = (run) => (run.output.match(/\[caw-ai\][^\n]*(Overlay|Build|Dev-Server|serverseitig|lokal)[^\n]*/) ?? [''])[0].slice(0, 160);
+    const deployedUrl = `https://${app.name.split('-')[0]}.localhost:${app.deployPort}`;
+    const serveDeployed = async () => {
+        rmSync(join(root, 'deploy'), { recursive: true, force: true });
+        build(root, ...app.localBuild.deploy);
+        start(`${app.name}-https`, here, process.execPath, ['shared/serve.mjs', join(root, app.localBuild.served), String(app.deployPort)]);
+        await waitFor(`https://127.0.0.1:${app.deployPort}/login`);
+    };
+    // Der Befehl, den caw selbst startet: wie auf der Kommandozeile, die Umgebung (VITE_BUILD, CAW_SPLIT) erbt er vom Lauf.
+    const commandOf = ([, args]) => ['npx', ...args].join(' ');
 
-        await scenario(`${app.name}/${variant.label}-mit-watch`, async () => {
-            const served = variant.deploy();
-            start(`${app.name}-https`, here, process.execPath, ['shared/serve.mjs', served, String(app.deployPort)]);
-            rmSync(join(root, variant.dir.split('/')[0]), { recursive: true, force: true });
-            variant.watch();
+    if (app.localBuild !== undefined) {
+        const localDir = app.localBuild.dir;
+        const buildOnce = [app.localBuild.watch[0], app.localBuild.watch[1].filter((arg) => arg !== '--watch'), app.localBuild.watch[2]];
+        const overlay = (extra = {}) => ({ build: localDir, ...extra });
+
+        await scenario(`${app.name}/overlay-build`, async () => {
+            // Server: Build "deployed". Lokal: ein Build-Watch "local", bei React und webpack mit anderer Aufteilung (CAW_SPLIT).
+            await serveDeployed();
+            rmSync(join(root, localDir.split('/')[0]), { recursive: true, force: true });
+            start(`${app.name}-watch`, root, ...app.localBuild.watch);
+            const ready = () => hasBuild(join(root, localDir)) && existsSync(join(root, localDir, 'index.html'));
             const deadline = Date.now() + 180_000;
-            while (Date.now() < deadline && !variant.ready()) await sleep(500);
-            if (!variant.ready()) throw new Error(`Watch schreibt ${variant.dir} nicht`);
+            while (Date.now() < deadline && !ready()) await sleep(500);
+            if (!ready()) throw new Error(`Watch schreibt ${localDir} nicht`);
             await sleep(2000);
-            await waitFor(`https://127.0.0.1:${app.deployPort}/login`);
-            localProject();
-            const smoke = cawRun(root, 'smoke', ['--overlay']);
-            record(`${app.name}/${variant.label}-mit-watch`, 'smoke', passes, smoke);
-            const fail = cawRun(root, 'fehler', ['--overlay']);
-            record(`${app.name}/${variant.label}-mit-watch`, 'fehler', failsInApp, fail, explodeSource(fail));
+            // Ohne Option: Der laufende Watch wird nicht genutzt, getestet wird der ausgelieferte Stand.
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'deployed', overlay: overlay() });
+            record(`${app.name}/e2e-ohne-option`, 'smoke', passes, cawRun(root, 'smoke'));
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'local', overlay: overlay() });
+            const smoke = cawRun(root, 'smoke', ['--overlay', 'build']);
+            record(`${app.name}/overlay-build`, 'smoke', passes, smoke, /Seite getauscht: ja/.test(smoke.report) ? 'getauscht' : 'nicht getauscht');
+            const fail = cawRun(root, 'fehler', ['--overlay', 'build']);
+            record(`${app.name}/overlay-build`, 'fehler', failsInApp, fail, explodeSource(fail));
         });
 
-        await scenario(`${app.name}/${variant.label}-ohne-watch`, async () => {
-            // Ohne Watch und ohne lokalen Build: kein stiller Erfolg gegen den deployten Stand, sondern ein Umgebungsfehler (Exit 2).
-            const served = variant.deploy();
-            start(`${app.name}-https`, here, process.execPath, ['shared/serve.mjs', served, String(app.deployPort)]);
-            rmSync(join(root, variant.dir.split('/')[0]), { recursive: true, force: true });
+        await scenario(`${app.name}/overlay-build-baut`, async () => {
+            // Kein lokaler Build: Mit buildCommand baut caw einmal selbst; ohne endet der Lauf mit Exit 2, ebenso bei einem alten Build.
+            await serveDeployed();
+            rmSync(join(root, localDir.split('/')[0]), { recursive: true, force: true });
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'local', overlay: overlay() });
+            const missing = cawRun(root, 'smoke', ['--overlay', 'build']);
+            record(`${app.name}/build-fehlt`, 'smoke', expectEnvError(/kein Build|buildCommand/), missing, envHint(missing));
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'local', overlay: overlay({ buildCommand: commandOf(buildOnce) }) });
+            const built = cawRun(root, 'smoke', ['--overlay', 'build'], buildOnce[2]);
+            record(`${app.name}/overlay-build-baut`, 'smoke', (run) => passes(run) && /Baue mit/.test(run.output), built);
+            // Eine Quelle nach dem Build geaendert, ohne buildCommand: Der Build ist alt.
+            const source = ['src/main.tsx', 'src/main.ts', 'index.html'].map((file) => join(root, file)).find(existsSync);
+            const now = new Date();
+            utimesSync(source, now, now);
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'local', overlay: overlay() });
+            const stale = cawRun(root, 'smoke', ['--overlay', 'build']);
+            record(`${app.name}/build-alt`, 'smoke', expectEnvError(/älter als deine letzte Änderung/), stale, envHint(stale));
+        });
+
+        await scenario(`${app.name}/overlay-dev`, async () => {
+            // Der Dev-Server als Quelle ueber der ausgelieferten Umgebung: caw startet ihn mit devCommand und beendet ihn am Ende.
+            await serveDeployed();
+            const dev = `http://localhost:${app.devPort}`;
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'dev', overlay: { dev, devCommand: commandOf(app.dev) } });
+            const smoke = cawRun(root, 'smoke', ['--overlay', 'dev']);
+            record(`${app.name}/overlay-dev`, 'smoke', (run) => passes(run) && /starte/.test(run.output), smoke, /Seite getauscht: ja/.test(smoke.report) ? 'getauscht' : 'nicht getauscht');
+            // Danach laeuft er nicht mehr, und ohne devCommand endet der Lauf mit Exit 2.
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'dev', overlay: { dev } });
+            const down = cawRun(root, 'smoke', ['--overlay', 'dev']);
+            record(`${app.name}/dev-server-aus`, 'smoke', expectEnvError(/antwortet nicht/), down, envHint(down));
+        });
+    }
+
+    if (app.serveCmd !== undefined) {
+        await scenario(`${app.name}/overlay-ssr`, async () => {
+            // SSR laesst sich nicht ueberlagern: Exit 2 mit dem Hinweis auf den Dev-Server als Umgebung, nie still der Server.
+            build(root, ...app.build, app.env?.('deployed') ?? {});
+            start(`${app.name}-server`, root, ...app.serveCmd, { ...(app.serveEnv ?? {}), ...(app.env?.('deployed') ?? {}) });
+            if (!await waitFor(`http://127.0.0.1:${app.servePort}/login`, 60_000)) throw new Error('Produktionsserver kommt nicht hoch');
+            start(`${app.name}-https`, here, process.execPath, ['shared/serve.mjs', '-', String(app.deployPort), '--proxy', `http://127.0.0.1:${app.servePort}`]);
             await waitFor(`https://127.0.0.1:${app.deployPort}/login`);
-            localProject();
-            const smoke = cawRun(root, 'smoke', ['--overlay']);
-            record(`${app.name}/${variant.label}-ohne-watch`, 'smoke', expectEnvError, smoke, envHint(smoke));
+            start(`${app.name}-dev`, root, ...app.dev);
+            if (!await waitFor(`http://127.0.0.1:${app.devPort}/login`, 180_000)) throw new Error('Dev-Server kommt nicht hoch');
+            writeProject(root, { framework: app.framework, url: deployedUrl, build: 'dev', overlay: { dev: `http://127.0.0.1:${app.devPort}` } });
+            const run = cawRun(root, 'smoke', ['--overlay', 'dev']);
+            record(`${app.name}/overlay-ssr`, 'smoke', expectEnvError(/serverseitig gerendert/), run, envHint(run));
         });
     }
 }

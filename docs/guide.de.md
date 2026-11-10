@@ -68,9 +68,11 @@ Die Prüfung läuft vor allem anderen und bricht mit einer eigenen Meldung ab (E
 | `run <test> --target <umgebung>` | Testlauf nach Plan, optional bis zu einem Schritt | Chat auf Umgebungen mit `claude` von Anfang an daneben; Claude erst nach deiner Nachricht, deinem Klick auf „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“, oder mit `--advise` | alle |
 | `fix <test> <S4> --target <umgebung>` | Genau diesen Schritt ändern. Hat er eine gültige Aufzeichnung, spielt `fix` zuerst bis zu ihm ab: Scheitert er, klärt der Chat die Ursache wie bei `run`, neu aufgenommen wird nur ein bestandener oder veralteter Schritt | immer | nur Umgebungen mit `claude` |
 
+`open --target <umgebung>` öffnet die Anwendung angemeldet, mit Werkbank und Chat, aber ohne Test, siehe [Befehle](commands.de.md#open).
+
 `<umgebung>` ist ein Name aus `environments`, etwa `local`. Mit Mandanten (`sites`) heißt das Ziel `mandant/umgebung`, etwa `nord/dev`.
 
-**Testplan** heißt: eine YAML-Datei je Test unter `caw/tests/<test>.yaml`. Sie enthält die Testschritte und je Schritt seine Aufzeichnung, siehe [Testdatei](test-files.de.md).
+**Testplan** heißt: eine YAML-Datei je Test unter `caw/tests/<test>.yaml`. Sie enthält die Testschritte; ihre Aufzeichnung steht in `caw/recordings/<test>.yaml`, siehe [Testdateien](test-files.de.md).
 
 ```bash
 # Neuer Test: vorführen, Plan freigeben, am Ende übernehmen
@@ -98,7 +100,7 @@ In Claude Code reicht ein Satz: `/caw-ai bring mich dahin, wo der Warenkorb gef�
 
 ## So arbeitest du damit
 
-1. Watch der App starten, wo du entwickelst: im Devcontainer oder auf Windows.
+1. Dev-Server der App starten, wo du entwickelst: im Devcontainer oder auf Windows.
 2. Im Projektordner aus PowerShell aufrufen: `pnpm caw:my-app:smoke`. Chrome geht maximiert auf, und du siehst dem Test zu.
 3. Ändern und Schritt 2 wiederholen.
 
@@ -109,7 +111,7 @@ Im Devcontainer selbst geht der Aufruf nicht, dort fehlt Chrome (und für den Ag
 `pnpm caw:my-app:smoke --handover` lässt das Fenster nach dem Urteil offen:
 
 - **Weiterklicken:** Du machst in derselben Seite und im selben Maskenzustand weiter, auch mit ungespeicherten Eingaben und DevTools.
-- **Weiterentwickeln:** Der lokale Code bleibt eingespielt, bis du das Fenster schließt. F5 lädt den aktuellen Stand aus dem Projektordner. Einen automatischen Reload gibt es nicht.
+- **Weiterentwickeln:** Gegen deinen Dev-Server als Umgebung lädt F5 deinen aktuellen Code. Mit `--overlay` bleibt der lokale Code, bis du das Fenster schließt, und F5 lädt den aktuellen Stand aus Build-Ordner bzw. Dev-Server. Einen automatischen Reload gibt es nicht, außer dem Hot Reload des Dev-Servers.
 - **Zustand:** F5 verliert, was nur im Browser stand, etwa offene Dialoge und ungespeicherte Eingaben. Zurück dorthin bringt dich „Zustand neu herstellen“ im Chat oder ein neuer Testlauf.
 - **Ende:** Fenster schließen beendet den Lauf. Der Exit-Code bleibt das Urteil.
 - **Tastatur im Chat:** Strg+Enter (Cmd+Enter) löst den Hauptknopf aus, etwa „Plan freigeben“ oder „Vorführung beenden“; der Knopf zeigt dazu `Strg+↵`. Esc leert zuerst das Eingabefeld, wenn du darin tippst. Sonst fragt Esc den Abbruch an („Wirklich abbrechen? (Esc)“ und „Nein“), erst ein zweites Esc innerhalb von 4 Sekunden bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
@@ -126,7 +128,7 @@ Ein Lauf mit Claude, also beim Aufnehmen und Beheben, macht Folgendes:
 
 1. **Abweisen, was nicht laufen darf:** Config, Testdatei, Ziel und Schreibschutz werden geprüft. Beim Agenten `local` dazu, ob Claude Code da ist.
 2. **Image** (nur `docker`): Einmal bauen, aus dem Image des Projekts plus Claude und dem Container-Teil des Tools. Neu gebaut wird nur nach Änderungen daran.
-3. **Öffnen:** `bootstrap.json` prüfen, Chrome starten, anmelden, lokalen Code einspielen, Seite öffnen. Fehler hier ergeben `error`, ohne dass Tokens anfallen.
+3. **Öffnen:** mit `--overlay` die Quelle bereitmachen (Dev-Server, Build, Sencha-Watch), Chrome starten, anmelden, Seite öffnen; mit `--overlay` nach dem ersten Laden prüfen, ob lokaler Code ankam. Fehler hier ergeben `error`, ohne dass Tokens anfallen.
 4. **Claude starten:** Bei `local` startet `claude -p` auf deinem Rechner mit den gesperrten Werkzeugen (siehe [Sandbox-Grenzen](#sandbox-grenzen)), bei `session` wartet der Lauf auf deine Session. Bei `docker` startet der Container (`docker run --rm`): Firewall setzen, danach gibt der Container alle Rechte ab. Ist die Sandbox nicht nachweislich dicht, läuft Claude nicht.
 5. **Testen:** `claude -p` arbeitet den Plan ab, jeder Browserbefehl geht als Datei über den Kanal an den Host. Das Urteil prüft der Host.
 6. **Abschließen:** Mit dem Urteil endet Claude sofort (Prozess bzw. Container). Bericht, Trace und `floats.log` (Klicks und, bei `extjs`, die Reihenfolge der schwebenden Fenster mit Zeiten, ohne Inhalte) liegen unter `.caw/runs/<lauf>/`. Der Trace (`trace.zip`) enthält Seiteninhalte, Requests und Cookies des Testkontos; gib ihn nicht weiter. Bei `auth.type: basic` zeichnet er keine Snapshots auf, damit das Passwort aus dem Authorization-Header nicht darin landet, Screenshots und `claude.log` unter `agent/`. Das Log entsteht laufend und zeigt Claudes Text und Befehle mit den Sekunden seit dem Start; dieselben Zeilen laufen im Terminal mit. Eine Schlusszusammenfassung nach dem Urteil fehlt darin. Im Terminal ist die Ausgabe farbig, die Datei bleibt ohne Farbcodes; `NO_COLOR=1` schaltet Farben ab. Chrome verschwindet ebenfalls.
@@ -139,7 +141,7 @@ Alle Fehlercodes mit Abhilfe: [Befehle › Fehlercodes](commands.de.md#fehlercod
 
 ## Testplan aufnehmen: `record`
 
-Rolle und App nennst du nur beim ersten Mal, die Metadaten schreibt das Tool (`targets: [<ziel>]`, `mutates: true`, und `code: deployed` nur mit `--code deployed`). Bei einer Neuaufnahme bleibt es erhalten. Claude Code bzw. Docker, Token und Image werden vorab geprüft, damit deine Vorführung nicht umsonst ist.
+Rolle und App nennst du nur beim ersten Mal, die Metadaten schreibt das Tool (`targets: [<ziel>]`, `mutates: true`). Bei einer Neuaufnahme bleibt es erhalten. Claude Code bzw. Docker, Token und Image werden vorab geprüft, damit deine Vorführung nicht umsonst ist.
 
 1. **Start.** Chrome und der Chat gehen auf, du bist angemeldet. Bei einem neuen Test führst du direkt vor. Bei einem bestehenden fragt der Chat zuerst: selbst vorführen oder Claude geht dem Testplan nach.
 2. **Ablaufplan.** Claude legt den Entwurf als Karte im Chat vor: je Testschritt ID, Titel, Aktion und ein erwartetes Ergebnis, dazu Hinweise mit Annahmen und offenen Fragen. Der Plan ist die spätere Testdatei ohne Aufzeichnung, YAML mit `notes` und `steps`. Metadaten oder Aufzeichnungen, die Claude dort einträgt, wirft das Tool weg. Du gibst frei oder schreibst, was anders sein soll, und Claude legt eine neue Fassung vor. Bis zur Freigabe weist der Host jede Aktion in der Anwendung als `plan-required` ab, Lesen geht.
@@ -204,7 +206,7 @@ Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard h
 - **Daten relativ zu heute:** Ein Datum höchstens 60 Tage vor oder nach dem Aufnahmetag (`TT.MM.JJJJ` oder `JJJJ-MM-TT`) speichert die Aufzeichnung als `{{today}}`, `{{today+7}}` bzw. `{{todayIso-1}}`. Das Abspielen setzt das Datum seines Tages ein, so scheitert ein Test nicht am nächsten Tag an „Datum liegt in der Vergangenheit“. Daten weiter weg bleiben fest.
 - **Werte aus dem Lauf:** Eine Bestellnummer gibt es bei jedem Lauf neu. Claude liest sie mit `remember bestellnr "<ausdruck>"`, die Aufzeichnung speichert danach `{{bestellnr}}` samt Ausdruck, und das Abspielen liest den Wert neu aus der Seite. Werte unter vier Zeichen weist der Befehl ab.
 - **Projektkontext über Tests hinweg:** `caw/caw.md` ist für die Tests, was CLAUDE.md für Claude Code ist: relevante Infos zum Projekt und Eigenheiten der Anwendungen. Du hältst sie von Hand und checkst sie ein, etwa „die Suche merkt sich die letzte Eingabe“. Claude bekommt sie in jedem Lauf mit Claude. Die Datei zählt nicht zum Schritt-Hash, eine Änderung entwertet also keine Aufzeichnung. Betrifft eine Notiz den Weg, nimm neu auf. Nur Verhalten, keine personenbezogenen Daten.
-- **Zwei Apps in einem Test:** Führt der Weg in eine zweite App des Projekts, nenne sie beim ersten `record` mit `--also verwaltung` (in der Testdatei `also: [verwaltung]`). Auch deren lokaler Code wird dann eingespielt. Die App braucht einen Eintrag in `apps`, eine `startUrl` aber nicht.
+- **Zwei Apps in einem Test:** Führt der Weg in eine zweite App des Projekts, nenne sie beim ersten `record` mit `--also verwaltung` (in der Testdatei `also: [verwaltung]`). Mit `--overlay` kommt auch deren lokaler Code mit, wenn sie eine Quelle hat. Die App braucht einen Eintrag in `apps`, eine `startUrl` aber nicht.
 
 **Grenzen:**
 
@@ -232,7 +234,7 @@ caw-ai run <test> --target local --until S4
 
 Das Tool spielt die Aufzeichnung bis zum bestandenen `check` von `S4` ab und übergibt das Fenster. Spätere Schritte laufen nicht, sie dürfen also auch veraltet sein. Der Ablauf ist deterministisch, die Umgebung nicht: Das ist kein Snapshot. Der Weg läuft jedes Mal neu, mit neuen Daten, und weicht die Anwendung ab, scheitert der Schritt sichtbar.
 
-- **Lokaler Code:** Wo Umgebung und App ihn haben, auch bei `code: deployed`; die Zeile `Code:` sagt es (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)). Änderungen siehst du mit F5, der Maskenzustand ist danach weg. Um wieder hinzukommen, startest du den Befehl neu.
+- **Code:** Wie bei jedem Lauf der ausgelieferte Stand, außer du gibst `--overlay` an; gegen deinen Dev-Server als Umgebung ohnehin dein aktueller Code. Die Zeile `Code:` sagt, welcher (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)). Änderungen siehst du mit F5, der Maskenzustand ist danach weg. Um wieder hinzukommen, startest du den Befehl neu.
 - **Weg scheitert:** Du klärst den Fehler im Chat und kannst den Schritt beheben lassen. Schließt du ihn, geht das Fenster trotzdem an dich, der Bericht nennt den Fehler. Der Exit-Code bleibt das Urteil.
 - **Keine Aufzeichnung:** Exit 4, erst aufnehmen.
 - **Zustand nach Reload:** Ob eine Ansicht nach F5 im selben Zustand bleibt, hängt von der Anwendung ab.
@@ -352,21 +354,22 @@ Im Terminal zeigt das Tool Farben, Symbole und am Ende einen Ergebnisblock mit j
 
 ## Wie der lokale Code in die Anwendung kommt
 
-Wann lokaler Code läuft, was du für welchen Aufbau einträgst und wie `localBuild` und `statics` ausgeliefert werden: [Konfiguration › Lokalen Code testen](configuration.de.md#lokalen-code-testen). Dieser Abschnitt behandelt die Einträge für Sencha/ExtJS.
+Wann lokaler Code läuft, was du einträgst und wie Build-Ordner und Dev-Server in die Seite kommen: [Konfiguration › Lokalen Code testen](configuration.de.md#lokalen-code-testen). Dieser Abschnitt behandelt ExtJS (Sencha).
 
-Auf Umgebungen mit `localCode` beantwortet Chrome bestimmte Requests aus dem Projektordner statt vom Server. Welche, sagt `assetUrlPattern`: ein regulärer Ausdruck, dessen erste Gruppe den Namen der Datei liefert. Für diesen Namen sucht das Tool einen Eintrag der App:
+Mit `"framework": "extjs"` nimmt `--overlay` (oder `--overlay dev`) den lokalen Code vom Sencha-Watch. Die ExtJS-App wird in einer ausgelieferten Seite unter ihren Build-Namen geladen; caw beantwortet diese Requests mit den Quellen, die `bootstrap.json` im App-Ordner nennt, in ihrer Reihenfolge. Die App braucht keinen Eintrag `overlay`; optional sind `statics` und `devCommand`. `--overlay build` und `--overlay <adresse>` werden abgelehnt (Exit 3).
 
-- **`localBuild`, `statics`:** ein Build-Ordner oder einzelne gebaute Dateien, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen).
-- **`redirects`:** ein Sencha-Paket oder die App selbst. Welche Quelldateien in welcher Reihenfolge dazugehören, steht in `bootstrap.json` im App-Ordner.
-- **`constants`:** eine Datei, die ein Watch neu schreibt (`watchPath`).
+**Build-Namen.** caw leitet sie ab, wie Sencha Cmd baut:
 
-Ohne Muster oder ohne Einträge gibt es keinen lokalen Code, der Test läuft gegen den deployten Stand.
+- **App:** `output.js.path` (oder `output.js` als Text) in `app.json`, auch in den Stages `production`, `testing` und `development`; sonst `app.output.js.path` bzw. `app.output.js` aus `.sencha/app/*.properties`; sonst `app.js`. Welche Stage ausgeliefert ist, weiß caw nicht, darum zählt jeder dieser Namen.
+- **Paket:** `<name>.js` und `<name>-debug.js`, der Name aus den Paketen in `bootstrap.json`.
 
-Ein Sencha-Watch schreibt `bootstrap.json` in den App-Ordner. Der Host liest beides direkt aus dem Projektordner, ohne Netz zum Watch. Daher gilt:
+Ein Request passt über den letzten Teil seines Pfads; der Ordner davor ist der Ablageort im Portal. Der Name kommt aus dem Pfad unterhalb der Umgebungs-URL oder aus Gruppe 1 von `assetUrlPattern`. Pakete des Frameworks (`ext/`, `node_modules/@sencha/`) werden nie ersetzt, Ext JS selbst kommt also immer vom Server. Passt ein Name zu zwei Teilen oder lädt die Seite zwei Dateien mit demselben Build-Namen, endet der Lauf mit Exit 2 (`overlay-ambiguous`) und nennt beide; gib einer App einen eigenen `output.js.path`.
 
-- **Das Tool startet nie einen Watch.** Du startest ihn; er hält `bootstrap.json` aktuell.
-- **Geänderte Dateien kommen beim nächsten Laden an,** egal ob ein Watch läuft. Neue Klassen stehen erst im `bootstrap.json`, wenn der Watch gebaut hat.
-- **Läuft kein Watch,** sieht das Tool das nicht. Es bricht nur ab, wenn `bootstrap.json` fehlt oder Dateien nennt, die es nicht mehr gibt (`watch-missing`, `watch-stale`).
+**Der Watch.** Der Sencha-Watch schreibt `bootstrap.json` in den App-Ordner. Der Host liest sie und die Quellen direkt aus dem Projektordner, bei jedem Request neu, ohne Netz zum Watch.
+
+- **Kein Watch aktiv:** Mit `devCommand` (etwa `"sencha app watch"`) startet caw ihn im App-Ordner, wartet bis zu 180 s, bis `bootstrap.json` zu den Dateien passt, schreibt die Ausgabe nach `.caw/<app>-watch.log` und beendet ihn am Ende. Ohne `devCommand` endet der Lauf mit Exit 2 (`watch-missing`) und nennt den Befehl.
+- **Geänderte Dateien kommen beim nächsten Laden an.** Neue Klassen stehen erst in `bootstrap.json`, wenn der Watch gebaut hat.
+- **`bootstrap.json` fehlt, ist leer oder nennt Dateien, die es nicht mehr gibt:** Exit 2 (`watch-missing`, `watch-stale`).
 - **`node_modules` muss im Projektordner liegen.** Liegt es in einem benannten Volume des Devcontainers, sieht der Host es nicht und meldet `watch-stale`.
 
 ## Framework: `web`, `react`, `vue`, `angular` oder `extjs`
@@ -433,4 +436,4 @@ npm run pack:check                # Paketinhalt: keine Geheimnisse, keine Tests,
 
 Unter Windows läuft das E2E am besten aus PowerShell über `e2e/waechter.ps1`: Der Wächter beendet den Lauf, wenn das Log zu lange still steht. Maßgeblich sind die Ergebnisse in `<log>.ergebnis` mit der Summe `ERGEBNIS OK=… FEHL=…`, die auch in `<log>.status` steht: Ins Log schreiben die Prozesse des Agenten mit und können dabei Zeilen überschreiben. Gibt es ein FEHL, endet das E2E mit Exit 1. Das E2E baut beim ersten Lauf das Sandbox-Image aus `node:22-bookworm-slim` und braucht dafür Docker, aber kein Token.
 
-Erprobt ist das Tool mit ExtJS 6.5.3 Modern, React 19 (Vite-Dev-Server), Vue 3.5 und Angular 19. `e2e/frameworks` prüft React 19 (Vite 8), Vue 3.5 (Vite 8), Angular 21 (zoneless und mit Zone.js), Next.js 16 und Nuxt 4, jeweils am Dev-Server, als Produktions-Build über HTTPS und mit lokalem Code (`node e2e/frameworks/matrix.mjs`). Offiziell unterstützt sind Windows und Linux als Host; macOS ist ungetestet. Für den Agenten `docker` erprobt ist Docker in WSL; ungeprüft ist Docker Desktop: Firewall im Container, Schreibrechte im Agent-Ordner und der Kanal über dessen Dateifreigabe.
+Erprobt ist das Tool mit ExtJS 6.5.3 Modern, React 19 (Vite-Dev-Server), Vue 3.5 und Angular 19. `e2e/frameworks` prüft React 19 (Vite 8), Vue 3.5 (Vite 8), Angular 21 (zoneless und mit Zone.js), Next.js 16 und Nuxt 4, jeweils am Dev-Server, als Produktions-Build über HTTPS und, wo möglich, mit `--overlay` (`node e2e/frameworks/matrix.mjs`). Offiziell unterstützt sind Windows und Linux als Host; macOS ist ungetestet. Für den Agenten `docker` erprobt ist Docker in WSL; ungeprüft ist Docker Desktop: Firewall im Container, Schreibrechte im Agent-Ordner und der Kanal über dessen Dateifreigabe.

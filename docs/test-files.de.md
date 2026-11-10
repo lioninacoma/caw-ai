@@ -9,7 +9,7 @@ Jeder Test hat zwei YAML-Dateien:
 | `caw/tests/<id>.yaml` | du: was der Test tut, in normaler Sprache | ja |
 | `caw/recordings/<id>.yaml` | caw-ai: wie er abgespielt wird | ja, vorher ansehen |
 
-Du schreibst den Testplan, `record` schreibt die Aufzeichnung. Von Hand trägst du dort nur die [Ergänzungen](#von-hand-ergänzen) ein, die Claude nicht aufnimmt.
+Du schreibst den Testplan, `record` schreibt die Aufzeichnung. Von Hand trägst du dort nur die [Ergänzungen](#von-hand-ergänzen) ein, die Claude nicht aufnimmt. `recording` und `knownMessages` gehören nur in die Aufzeichnung; im Testplan lehnt `validate` sie ab.
 
 ## Testplan
 
@@ -51,8 +51,7 @@ Testpläne kannst du in jeder Sprache schreiben, Claude liest sie so wie ein Tes
 | `role` | mit Login, wenn die Config mehrere Rollen hat | Rolle aus der Config. Standard ist die einzige Rolle. |
 | `targets` | nein | Umgebungen, auf denen der Test laufen darf. Standard sind alle Umgebungen außer Produktion. |
 | `mutates` | ja | `true`, wenn er Daten anlegt oder ändert; solche Tests laufen nur auf Umgebungen mit `writable: true`. `false`, wenn er nur liest. |
-| `also` | nein | Weitere Apps, durch die der Ablauf geht, z. B. `[admin]`. Auch deren lokaler Code wird ausgeliefert. |
-| `code` | nein | `deployed`: immer den ausgelieferten Stand testen, auch wo ein lokaler Build eingespielt werden könnte. Standard `local`: der lokale Build, wo Umgebung und App einen haben, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). Früher `source: watch` / `source: deployed`; das gilt mit Hinweis weiter. |
+| `also` | nein | Weitere Apps, durch die der Ablauf geht, z. B. `[admin]`. Mit `--overlay` kommt auch deren lokaler Code mit, wenn sie eine Quelle hat. |
 | `notes` | nein | Kontext für den ganzen Test. |
 | `steps` | ja | Siehe unten. |
 
@@ -78,7 +77,7 @@ Tipps:
 Jeder Schritt hat einen Hash über `name`, `do`, `expect` und `note`. Änderst du eins davon, ist nur dieser Schritt veraltet:
 
 ```bash
-npx caw-ai run create-ticket --target local       # Exit 3: S2 geändert, nennt den fix-Befehl
+npx caw-ai run create-ticket --target local       # Exit 4: S2 geändert, nennt den fix-Befehl
 npx caw-ai fix create-ticket S2 --target local    # nur S2 neu aufnehmen
 ```
 

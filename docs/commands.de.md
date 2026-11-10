@@ -17,6 +17,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw-ai <befehl>` (oder
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
 | [`fix`](#fix) | Einen Schritt neu aufnehmen | ja |
+| [`open`](#open) | Die App angemeldet öffnen, mit Werkbank und Chat, ohne Test | nur auf Wunsch |
 | [`auth`](#auth) | Von Hand anmelden und die Sitzung speichern (SSO) | nein |
 | [`mcp`](#mcp) | MCP-Server für deine eigene Claude-Code-Sitzung | – |
 
@@ -92,7 +93,7 @@ npx caw-ai validate
 
 Prüft `caw.config.json` und alle Dateien in `caw/tests/` ohne Browser und ohne Claude. Fehler nennen Datei und Zeile. Gut für CI und Pre-Commit-Hooks.
 
-Je Test und Ziel nennt es, welcher Code dort läuft, etwa `smoke (dev): lokaler Build aus dist` oder `smoke (staging): ausgelieferter Stand (Umgebung staging hat kein localCode)`. Hinweise, an denen die Prüfung nicht scheitert: Werte in `auth`, die noch `TODO` sind, alte Namen wie `agent` oder `source` und Einstellungen ohne Wirkung (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)).
+Je Test und Ziel nennt es, welcher Code dort läuft und wo `--overlay` ginge, etwa `smoke (staging): ausgelieferter Stand` oder `smoke (dev): ausgelieferter Stand; mit --overlay: Overlay, Build dist`. Hinweise, an denen die Prüfung nicht scheitert: Werte in `auth`, die noch `TODO` sind, und Einstellungen ohne Wirkung, etwa eine App mit `overlay`, während keine Umgebung es erlaubt (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)).
 
 ## list
 
@@ -127,7 +128,7 @@ Nur auf Umgebungen, auf denen Claude arbeiten darf (`"claude": true`). Gibt es n
 | `--app <app>` | Nur beim ersten Aufnehmen. Unnötig, wenn die Config nur eine App hat. |
 | `--also <app>` | Nur beim ersten Aufnehmen: Der Ablauf geht in einer weiteren App des Projekts weiter. |
 | `--read-only` | Nur beim ersten Aufnehmen: Der Test schreibt keine Daten (`mutates: false`). |
-| `--code local\|deployed` | Welcher Code läuft, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). Mit `deployed` behält ein neuer Test `code: deployed`. |
+| `--overlay [build\|dev\|<url>]` | Lokalen Code über die ausgelieferte Umgebung legen, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). |
 | `--agent local\|docker\|session` | Wo Claude läuft. Standard: `agent.sandbox` aus der Config, sonst `local`. |
 | `--timeout <minuten>` | Zeitgrenze für Claude, Standard 60. |
 | `--max-steps <n>` | Grenze für Claudes Browser-Aktionen, Standard `maxSteps` oder 100. |
@@ -145,8 +146,8 @@ Mit Chat lernt der Lauf fehlende Vergleichswerte in `caw/recordings/<test>.yaml`
 
 | Option | |
 |---|---|
-| `--until <S4>` | Nach S4 anhalten, das Fenster bleibt offen. Schließt `--handover` ein; mit lokalem Build, wenn die Umgebung ihn erlaubt. |
-| `--code local\|deployed` | Welcher Code läuft: der lokale Build oder der ausgelieferte Stand. Standard: `code` im Test und die Config, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). `local` auf einer Umgebung ohne `localCode` wird abgelehnt (Exit 3). |
+| `--until <S4>` | Nach S4 anhalten, das Fenster bleibt offen. Schließt `--handover` ein. Läuft wie jeder Lauf mit dem ausgelieferten Stand, außer du gibst `--overlay` an. |
+| `--overlay [build\|dev\|<url>]` | Lokalen Code über die ausgelieferte Umgebung legen: der Build-Ordner, der Dev-Server oder der Dev-Server unter `<url>`; ohne Wert die eine konfigurierte Quelle. Nur auf Umgebungen mit `"overlay": true`. Ohne die Option läuft immer der ausgelieferte Stand. Siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). |
 | `--handover` | Fenster nach dem Lauf offen lassen. |
 | `--advise` | Bei Fehlern oder Warnungen erklärt Claude die Ursache ungefragt. Kostet Token. |
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
@@ -157,7 +158,7 @@ Mit Chat lernt der Lauf fehlende Vergleichswerte in `caw/recordings/<test>.yaml`
 | `--max-steps <n>` | Grenze für Claudes Aktionen beim Beheben. |
 | `--agent local\|docker\|session` | Wie bei `record`. |
 
-Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`; `--until` und `--handover` werden abgelehnt (Exit 3), denn niemand übernähme den Browser. `record` und `fix` brauchen einen Menschen und werden in CI ebenfalls abgelehnt. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
+Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`; `--until` und `--handover` werden abgelehnt (Exit 3), denn niemand übernähme den Browser. `record`, `fix` und `open` brauchen einen Menschen und werden in CI ebenfalls abgelehnt. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
 
 ### Mehrere Tests (CI)
 
@@ -176,7 +177,21 @@ Spielt die Tests nacheinander ab, ohne Chat (`--advise`, `--handover` und `--unt
 npx caw-ai fix create-ticket S2 --target local
 ```
 
-Nimmt genau einen Schritt neu auf. Für einen Schritt, dessen Text du von Hand geändert hast, oder einen neuen Schritt am Ende. Die Schritte davor laufen ohne Claude. Die übrigen Schritte bleiben unverändert. Optionen: `--agent`, `--code`, `--timeout`, `--max-steps`, `--step-timeout`.
+Nimmt genau einen Schritt neu auf. Für einen Schritt, dessen Text du von Hand geändert hast, oder einen neuen Schritt am Ende. Die Schritte davor laufen ohne Claude. Die übrigen Schritte bleiben unverändert. Optionen: `--agent`, `--overlay`, `--timeout`, `--max-steps`, `--step-timeout`.
+
+## open
+
+```bash
+npx caw-ai open --target dev --overlay
+```
+
+Öffnet die App angemeldet, mit Werkbank und Chat, ohne Test: navigieren, ausprobieren, mit Claude entwickeln. Wie `run --until` ohne Schritte davor. Lernt nichts und schreibt keine Testdatei. Ohne `--target` nimmt es die einzige Umgebung, auf der Claude arbeiten darf.
+
+| Option | |
+|---|---|
+| `--role <rolle>`, `--app <app>` | Nicht nötig, wenn die Config nur eine hat. |
+| `--overlay [build\|dev\|<url>]` | Wie bei `run`. |
+| `--agent local\|docker\|session`, `--timeout <minuten>`, `--max-steps <n>` | Wie bei `record`. |
 
 ## auth
 
@@ -221,7 +236,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token für den Agenten `docker`. Erzeugen mit `claude setup-token`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
-| `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record`, `fix`, `--until` und `--handover` werden abgelehnt. |
+| `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record`, `fix`, `open`, `--until` und `--handover` werden abgelehnt. |
 | `NO_COLOR`, `FORCE_COLOR` | Farben im Terminal aus oder an. |
 | `MCP_TOOL_TIMEOUT` | In der Umgebung von Claude Code: erhöhen, wenn `plan` oder `chat` in deiner Sitzung abbrechen. |
 
@@ -246,7 +261,11 @@ Bricht caw-ai ab, nennt es zuerst den Grund und danach den Code.
 | `target-unreachable`, `unreachable` | 2 | Dev-Server starten, Adresse prüfen |
 | `app-not-loaded`, `app-not-settled` | 2 | Seite von Hand öffnen, Konsole ansehen |
 | `browser-missing` | 2 | Google Chrome installieren oder `browser` in der Config setzen |
-| `watch-missing`, `watch-stale`, `local-code` | 2 | Den Watch deines Frameworks starten |
+| `overlay-not-ready` | 2 | Dev-Server starten oder bauen, oder `devCommand` / `buildCommand` an der App eintragen; die Meldung nennt den Befehl |
+| `overlay-ssr` | 2 | Serverseitig gerenderte Seite: lokalen Code mit dem Dev-Server als Umgebung testen (`--target local`) |
+| `overlay-unused` | 2 | Nichts kam aus dem lokalen Code: Passen Build bzw. Dev-Server zur App, erfasst `assetUrlPattern` ihre Requests? |
+| `overlay-ambiguous` | 2 | ExtJS: einer App in `app.json` einen eigenen `output.js.path` geben |
+| `watch-missing`, `watch-stale` | 2 | Den Sencha-Watch starten (`sencha app watch`) oder `devCommand` eintragen |
 | `claude-missing` | 2 | Claude Code installieren und anmelden, oder `--agent docker` |
 | `token-missing` | 2 | `CLAUDE_CODE_OAUTH_TOKEN` setzen |
 | `docker-missing`, `docker-not-running`, `docker-wrong-mode` | 2 | Docker mit Linux-Containern starten, oder `--agent local` |

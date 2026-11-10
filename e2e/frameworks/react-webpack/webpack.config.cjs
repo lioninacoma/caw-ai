@@ -45,6 +45,8 @@ module.exports = (_env, argv) => {
             client: { webSocketURL: 'auto://0.0.0.0:0/ws' },
             proxy: [{ context: ['/api'], target: 'http://127.0.0.1:3999' }],
         },
+        // CAW_SPLIT=1: Vendor-Code in eigenen Chunks, die die Seite per Tag laedt; ohne die Tags des lokalen Builds startete main nicht.
+        ...(process.env.CAW_SPLIT === '1' ? { optimization: { runtimeChunk: 'single', splitChunks: { chunks: 'all', cacheGroups: { vendor: { test: /[\\/]node_modules[\\/]/, name: 'vendor' } } } } } : {}),
         performance: { hints: false },
     };
 };

@@ -68,9 +68,11 @@ This check runs before anything else and aborts with its own message (exit 2):
 | `run <test> --target <env>` | Test run by plan, optionally up to a step | On environments with `claude` the chat sits alongside from the start; Claude only after your message, your click on "Let Claude find the cause" or "Fix step", or with `--advise` | all |
 | `fix <test> <S4> --target <env>` | Change exactly this step. If it has a valid recording, `fix` first replays up to it: if it fails, the chat clarifies the cause as in `run`; only a passed or outdated step is re-recorded | always | only environments with `claude` |
 
+`open --target <env>` opens the app signed in, with workbench and chat but without a test, see [Commands](commands.md#open).
+
 `<env>` is a name from `environments`, e.g. `local`. With tenants (`sites`) the target is `tenant/env`, e.g. `nord/dev`.
 
-**Test plan** means one YAML file per test under `caw/tests/<test>.yaml`. It holds the test steps and each step's recording, see [Test file](test-files.md).
+**Test plan** means one YAML file per test under `caw/tests/<test>.yaml`. It holds the test steps; their recording is in `caw/recordings/<test>.yaml`, see [Test files](test-files.md).
 
 ```bash
 # New test: demonstrate, approve the plan, adopt at the end
@@ -98,7 +100,7 @@ In Claude Code one sentence is enough: `/caw-ai take me to where the cart is fil
 
 ## How you work with it
 
-1. Start the app's watch where you develop: in the devcontainer or on Windows.
+1. Start the app's dev server where you develop: in the devcontainer or on Windows.
 2. Call it from PowerShell in the project folder: `pnpm caw:my-app:smoke`. Chrome opens maximized and you watch the test.
 3. Change something and repeat step 2.
 
@@ -109,7 +111,7 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 `pnpm caw:my-app:smoke --handover` leaves the window open after the verdict:
 
 - **Keep clicking:** You continue in the same page and the same form state, including unsaved input and DevTools.
-- **Keep developing:** Local code stays injected until you close the window. F5 loads the current state from the project folder. There is no automatic reload.
+- **Keep developing:** Against your dev server as the environment, F5 loads your current code. With `--overlay` the local code stays in place until you close the window, and F5 loads the current state of the build folder or dev server. There is no automatic reload apart from the dev server's hot reload.
 - **State:** F5 loses whatever existed only in the browser, such as open dialogs and unsaved input. "Restore state" in the chat or a new test run brings you back.
 - **End:** Closing the window ends the run. The exit code remains the verdict.
 - **Keyboard in the chat:** Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl+↵`. Esc first clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
@@ -126,7 +128,7 @@ A run with Claude, i.e. recording and fixing, does the following:
 
 1. **Reject what must not run:** config, test file, target and write protection are checked; for the `local` agent also whether Claude Code is present.
 2. **Image** (`docker` only): built once from the project's image plus Claude and the container part of the tool. Rebuilt only when these change.
-3. **Open:** check `bootstrap.json`, start Chrome, sign in, inject local code, open the page. Failures here yield `error` without spending tokens.
+3. **Open:** with `--overlay` get the source ready (dev server, build, Sencha watch), start Chrome, sign in, open the page; with `--overlay` check after the first load that local code arrived. Failures here yield `error` without spending tokens.
 4. **Start Claude:** With `local`, `claude -p` starts on your machine with the locked-down tools (see [Sandbox boundaries](#sandbox-boundaries)); with `session` the run waits for your session. With `docker` the container starts (`docker run --rm`): set the firewall, then the container drops all privileges. If the sandbox isn't provably sealed, Claude doesn't run.
 5. **Test:** `claude -p` works through the plan; every browser command goes to the host as a file over the channel. The host checks the verdict.
 6. **Finish:** Claude ends immediately with the verdict (process or container). Report, trace and `floats.log` (clicks and, with `extjs`, the order of floating windows with timings, no content) are under `.caw/runs/<run>/`. The trace (`trace.zip`) contains page content, requests and cookies of the test account; don't share it. With `auth.type: basic` it records no snapshots, so the password from the Authorization header doesn't end up in it. Screenshots and `claude.log` are under `agent/`. The log is written continuously and shows Claude's text and commands with seconds since start; the same lines appear in the terminal. A closing summary after the verdict is not included. Terminal output is colored, the file has no color codes; `NO_COLOR=1` turns colors off. Chrome closes as well.
@@ -139,7 +141,7 @@ All error codes with fixes: [Commands › Error codes](commands.md#error-codes).
 
 ## Recording a test plan: `record`
 
-You name role and app only the first time; the tool writes the metadata (`targets: [<target>]`, `mutates: true`, and `code: deployed` only with `--code deployed`). A re-recording keeps it. Claude Code or Docker, token and image are checked up front so your demonstration isn't wasted.
+You name role and app only the first time; the tool writes the metadata (`targets: [<target>]`, `mutates: true`). A re-recording keeps it. Claude Code or Docker, token and image are checked up front so your demonstration isn't wasted.
 
 1. **Start.** Chrome and the chat open, you are signed in. For a new test you demonstrate right away. For an existing one the chat first asks: "Show it myself" or "Claude follows the test plan".
 2. **Plan.** Claude presents the draft as a card in the chat: per test step ID, title, action and one expected result, plus notes on assumptions and open questions. The plan is the future test file without recording: YAML with `notes` and `steps`. Metadata or recordings Claude puts there are discarded by the tool. You approve or write what should change, and Claude presents a new version. Until approval the host rejects every action in the application with `plan-required`; reading is allowed.
@@ -204,7 +206,7 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 - **Dates relative to today:** A date at most 60 days before or after the recording day (`DD.MM.YYYY` or `YYYY-MM-DD`) is stored as `{{today}}`, `{{today+7}}` or `{{todayIso-1}}`. Replay substitutes the date of its own day, so a test doesn't fail the next day on "date is in the past". Dates further away stay fixed.
 - **Values from the run:** An order number is new in every run. Claude reads it with `remember bestellnr "<expression>"`; the recording then stores `{{bestellnr}}` with the expression, and replay reads the value from the page again. The command rejects values shorter than four characters.
 - **Project context across tests:** `caw/caw.md` is to the tests what CLAUDE.md is to Claude Code: relevant project information and quirks of the applications. You maintain it by hand and check it in, e.g. "search remembers the last input". Claude gets it in every run with Claude. The file isn't part of the step hash, so changing it invalidates no recording. If a note affects the path, re-record. Behavior only, no personal data.
-- **Two apps in one test:** If the path leads into a second app of the project, name it on the first `record` with `--also verwaltung` (in the test file `also: [verwaltung]`). Its local code is then injected too. The app needs an entry in `apps`, but no `startUrl`.
+- **Two apps in one test:** If the path leads into a second app of the project, name it on the first `record` with `--also verwaltung` (in the test file `also: [verwaltung]`). With `--overlay` its local code comes along too, if it has a source. The app needs an entry in `apps`, but no `startUrl`.
 
 **Limits:**
 
@@ -232,7 +234,7 @@ caw-ai run <test> --target local --until S4
 
 The tool replays the recording up to the passed `check` of `S4` and hands over the window. Later steps don't run, so they may be outdated. The sequence is deterministic, the environment isn't: this is not a snapshot. The path runs anew each time with new data, and if the application deviates, the step fails visibly.
 
-- **Local code:** Wherever environment and app have it, even with `code: deployed`; the `Code:` line says so (see [Testing local code](configuration.md#testing-local-code)). You see changes with F5; the form state is gone afterwards. To get back, start the command again.
+- **Code:** As in every run the deployed version, unless you add `--overlay`; against your dev server as the environment your current code anyway. The `Code:` line says which (see [Testing local code](configuration.md#testing-local-code)). You see changes with F5; the form state is gone afterwards. To get back, start the command again.
 - **Path fails:** You clarify the error in the chat and can have the step fixed. If you close the chat, the window still goes to you and the report names the error. The exit code remains the verdict.
 - **No recording:** exit 4, record first.
 - **State after reload:** Whether a view keeps its state after F5 depends on the application.
@@ -351,21 +353,22 @@ In a terminal the tool shows colors, symbols and, at the end, a result block wit
 
 ## How local code gets into the application
 
-When local code runs, what to set for which setup, and how `localBuild` and `statics` are served: [Configuration › Testing local code](configuration.md#testing-local-code). This section covers the Sencha/ExtJS entries.
+When local code runs, what to set, and how build folder and dev server get into the page: [Configuration › Testing local code](configuration.md#testing-local-code). This section covers ExtJS (Sencha).
 
-On environments with `localCode`, Chrome answers certain requests from the project folder instead of the server. Which ones is set by `assetUrlPattern`: a regular expression whose first group yields the file name. For that name the tool looks for an entry of the app:
+With `"framework": "extjs"`, `--overlay` (or `--overlay dev`) takes the local code from the Sencha watch. The ExtJS app is loaded into a deployed page under its build names; caw answers those requests with the sources that `bootstrap.json` in the app folder lists, in their order. The app needs no `overlay` entry; optional are `statics` and `devCommand`. `--overlay build` and `--overlay <url>` are rejected (exit 3).
 
-- **`localBuild`, `statics`:** a build folder or single built files, see [Testing local code](configuration.md#testing-local-code).
-- **`redirects`:** a Sencha package or the app itself. Which source files belong to it, in which order, is in `bootstrap.json` in the app folder.
-- **`constants`:** a file rewritten by a watch (`watchPath`).
+**Build names.** caw derives them as Sencha Cmd builds:
 
-Without pattern or entries there is no local code; the test runs against the deployed state.
+- **App:** `output.js.path` (or `output.js` as a string) in `app.json`, also in the stages `production`, `testing` and `development`; otherwise `app.output.js.path` or `app.output.js` from `.sencha/app/*.properties`; otherwise `app.js`. caw doesn't know which stage is deployed, so each of these names counts.
+- **Package:** `<name>.js` and `<name>-debug.js`, with the name from the packages in `bootstrap.json`.
 
-A Sencha watch writes `bootstrap.json` into the app folder. The host reads both directly from the project folder, without network access to the watch. Hence:
+A request matches by the last segment of its path; the folder in front of it is where the portal keeps the file. The name comes from the path below the environment URL or from group 1 of `assetUrlPattern`. Framework packages (`ext/`, `node_modules/@sencha/`) are never replaced, so Ext JS itself always comes from the server. If a name fits two parts, or the page loads two files with the same build name, the run ends with exit 2 (`overlay-ambiguous`) and names both; give one app its own `output.js.path`.
 
-- **The tool never starts a watch.** You start it; it keeps `bootstrap.json` current.
-- **Changed files arrive on the next load,** whether a watch is running or not. New classes appear in `bootstrap.json` only after the watch has built.
-- **If no watch is running,** the tool doesn't notice. It aborts only if `bootstrap.json` is missing or names files that no longer exist (`watch-missing`, `watch-stale`).
+**The watch.** The Sencha watch writes `bootstrap.json` into the app folder. The host reads it and the sources directly from the project folder, anew on every request, without network access to the watch.
+
+- **Watch not running:** with `devCommand` (e.g. `"sencha app watch"`) caw starts it in the app folder, waits up to 180 s until `bootstrap.json` matches the files, logs to `.caw/<app>-watch.log` and stops it at the end. Without `devCommand` the run ends with exit 2 (`watch-missing`) and names the command.
+- **Changed files arrive on the next load.** New classes appear in `bootstrap.json` only after the watch has built.
+- **`bootstrap.json` missing, empty or naming files that no longer exist:** exit 2 (`watch-missing`, `watch-stale`).
 - **`node_modules` must be in the project folder.** If it lives in a named devcontainer volume, the host can't see it and reports `watch-stale`.
 
 ## Framework: `web`, `react`, `vue`, `angular` or `extjs`
@@ -432,4 +435,4 @@ npm run pack:check                # package contents: no secrets, no tests, no p
 
 On Windows the E2E runs best from PowerShell via `e2e/waechter.ps1`: the watchdog ends the run when the log stays silent too long. What counts are the results in `<log>.ergebnis` with the summary `ERGEBNIS OK=… FEHL=…`, also in `<log>.status`: the agent's processes write into the log too and can overwrite lines. If there is a FEHL, the E2E ends with exit 1. On its first run the E2E builds the sandbox image from `node:22-bookworm-slim` and needs Docker for it, but no token.
 
-The tool has been tried with ExtJS 6.5.3 Modern, React 19 (Vite dev server), Vue 3.5 and Angular 19. `e2e/frameworks` tests React 19 (Vite 8), Vue 3.5 (Vite 8), Angular 21 (zoneless and with Zone.js), Next.js 16 and Nuxt 4, each on the dev server, as a production build over HTTPS and with local code (`node e2e/frameworks/matrix.mjs`). Windows and Linux are officially supported as hosts; macOS is untested. For the `docker` agent, Docker in WSL has been tried; Docker Desktop is untested: firewall in the container, write permissions in the agent folder and the channel over its file sharing.
+The tool has been tried with ExtJS 6.5.3 Modern, React 19 (Vite dev server), Vue 3.5 and Angular 19. `e2e/frameworks` tests React 19 (Vite 8), Vue 3.5 (Vite 8), Angular 21 (zoneless and with Zone.js), Next.js 16 and Nuxt 4, each on the dev server, as a production build over HTTPS and, where possible, with `--overlay` (`node e2e/frameworks/matrix.mjs`). Windows and Linux are officially supported as hosts; macOS is untested. For the `docker` agent, Docker in WSL has been tried; Docker Desktop is untested: firewall in the container, write permissions in the agent folder and the channel over its file sharing.

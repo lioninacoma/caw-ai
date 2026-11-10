@@ -96,6 +96,8 @@ npx caw-ai run smoke --target local
 | Einen neuen Test aufnehmen | `caw-ai record <test> --target local` |
 | Einen geänderten Schritt aktualisieren | `caw-ai fix <test> S3 --target local` |
 | Die App in einen Zustand bringen und dort weiterentwickeln | `caw-ai run <test> --target local --until S3` |
+| Die App angemeldet öffnen, ohne Test | `caw-ai open --target local` |
+| Lokalen Code in einer ausgelieferten Umgebung testen | `caw-ai run <test> --target dev --overlay` |
 | Fehler sofort von Claude erklären lassen | `caw-ai run <test> --target local --advise` |
 | Config und Tests prüfen | `caw-ai validate` |
 
