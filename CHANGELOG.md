@@ -7,6 +7,30 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 ### Added
 - `localBuild` per app: local code from a build folder with normal hashed file names (Vite, Angular CLI, webpack). The deployed entry files are mapped to the local ones by name without hash; lazy chunks, CSS, source maps, fonts and images follow. No fixed file names, no list of files, no `assetUrlPattern` needed.
 - Targets in iframes of the application: recording adds `frame` (the iframe, described in the document above it, nested if needed), replay finds the element there, and a missing iframe is named in the step's error.
+- Which code a run tests is decided in one place and always shown: `Code: local build (dist/local, built 14:02, 3 min ago)` or `Code: deployed (environment staging has no localCode)`, also in CI output. `--code local|deployed` on `run`, `record` and `fix` overrides it; `--code local` where no local code is possible is rejected and names the missing setting.
+- A local build older than the newest source file of the app is reported before the run ("Is the build watch running?").
+- `validate` prints per test and target which code runs there, and notes settings without effect (`localCode` without local code, `localBuild` without an environment allowing it), `auth` values still `TODO` and old field names.
+- "Did you mean …?" for unknown fields in `caw.config.json` and test files (`insecureTLS`, `target`, `expected`), for test names, steps and commands; unknown roles and apps list the valid names.
+- `caw-ai list`: tests with targets, recording status (recorded, stale with steps, not recorded) and whether they write; `list <test>` per step.
+- `run a b c` and `run --all` for CI: tests one after another without chat, a table at the end, exit code of the worst run; `--report junit=<file>` writes JUnit XML.
+- `--target` can be left out when there is only one choice (the test's only target, or the only environment where Claude may work); the choice is printed.
+- Help per command (`caw-ai run --help`, `-h` anywhere, `caw-ai help agent` for the agent commands). Usage errors show the command's short form.
+- `run --no-learn`: chat without learning baselines. A run with chat ends with what it changed in which file, or "Test file unchanged".
+- After a failed run the terminal shows the exact next commands (run with chat on an environment with Claude, `--until` the step before).
+- `init --offline` (also used without a terminal and without `--url`) writes the template with `TODO` sign-in selectors; `init` creates `caw/tests/` and `caw/caw.md`.
+- Workbench: "Your turn" in the header and a note in the terminal whenever the chat waits for you; "● Recording" while you demonstrate, with "Finish demo"; "Add checkpoint" explains itself.
+- Workbench: the adopt decision is a card ("Check run passed", one line per fact, warnings folded); "Discard draft" asks once more. After the decision the chat says what was saved and the window stays open for 15 s with "Close window".
+- Workbench: before a new window opens (Claude, check run), chat and terminal say so. Keyboard shortcuts are shown on the buttons they trigger.
+
+### Changed
+- Exit code 4 ("needs recording") for a missing or outdated recording (`replay-missing`, `replay-stale`); before, it was 3 like a typo. CI scripts checking for 3 need adjusting.
+- Test files: `code: local|deployed` replaces `source: watch|deployed`; `source` is still read and `validate` names the new field. `record` no longer writes `source: deployed` into new tests; only `--code deployed` writes `code: deployed`.
+- Test files: `id`, `app`, `role` and `targets` may be left out: file name, the only app, the only role, all non-production environments.
+- Environments: `claude: true` replaces `agent: true` (which collided with the `agent` section); `agent` still works with a note.
+- `--until` switches to the local build only where the app has local code, and says so in the `Code:` line.
+- Error output: the message first, then the short form for usage errors, then `(code: …, exit …)`; an unknown command gets a suggestion instead of the full help.
+- Wording: "local build" and "deployed" everywhere (German "lokaler Build" and "ausgelieferter Stand"); every regular end of a run is "End run", "Cancel" only aborts.
+- Workbench: the first Esc only asks before cancelling (a second Esc confirms); Esc while typing clears the field. Choices in the failure and decision cards are compact and the card scrolls into view. The steps panel unfolds on failure on narrow screens. The workbench's refresh button is disabled while a test runs.
 
 ### Fixed
 - Open shadow roots also count for an enclosing `<label>`, the sign-in marker, messages and dialogs as web components, and `wait-ready` counts.

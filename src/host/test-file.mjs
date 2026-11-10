@@ -469,9 +469,10 @@ const codeFor = (spec, resolved, config, { code, until }) => {
     const apps = [spec.app, ...(spec.also ?? [])];
     const environmentHas = resolved.localCode;
     const appsHave = hasLocalCode(config, apps);
-    // Ein Dev-Server auf dem eigenen Rechner liefert den lokalen Code selbst aus: Dort fehlt localCode nicht.
-    const { host, hostname } = new URL(resolved.url);
-    const noEnvironment = isLoopback(hostname) ? t('config.code.reason.devServer', { host }) : t('config.code.reason.environment', { environment: resolved.environment });
+    // Ein Dev-Server auf dem eigenen Rechner (http auf localhost) liefert den lokalen Code selbst aus: Dort fehlt localCode nicht.
+    // Ein Build hinter https auf *.localhost ist dagegen ein ausgelieferter Stand wie jeder andere.
+    const { host, hostname, protocol } = new URL(resolved.url);
+    const noEnvironment = protocol === 'http:' && isLoopback(hostname) ? t('config.code.reason.devServer', { host }) : t('config.code.reason.environment', { environment: resolved.environment });
     const noApp = t('config.code.reason.app', { app: apps.join(', ') });
     if (code === 'deployed') return { source: 'deployed', sourceReason: t('config.code.reason.flag', { code }) };
     if (code === 'local') {

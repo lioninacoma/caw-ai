@@ -204,6 +204,10 @@ test('Welcher Code läuft: eine Entscheidung mit Grund, Vorrang für --code und 
     assert.deepEqual(pick(checkTest(spec, 'local', own)), { source: 'watch' });
     assert.deepEqual(pick(checkTest(spec, 'staging', own)), { source: 'deployed', sourceReason: 'Umgebung staging hat kein localCode' });
     assert.deepEqual(pick(checkTest(spec, 'local', simple())), { source: 'deployed', sourceReason: 'App shop hat keinen lokalen Code (localBuild, statics, redirects oder constants)' });
+    // Ohne localCode: http auf localhost ist ein Dev-Server, https auf *.localhost ein ausgelieferter Build wie jeder andere.
+    const at = (url) => ({ ...own, environments: { box: { url, claude: true } } });
+    assert.match(checkTest(spec, 'box', at('http://localhost:5173')).sourceReason, /^Dev-Server auf localhost:5173/);
+    assert.equal(checkTest(spec, 'box', at('https://shop.localhost:8443')).sourceReason, 'Umgebung box hat kein localCode');
     const deployed = { ...spec, code: 'deployed' };
     assert.deepEqual(pick(checkTest(deployed, 'local', own)), { source: 'deployed', sourceReason: 'der Test sagt code: deployed' });
     assert.deepEqual(pick(checkTest(deployed, 'local', own, { until: 'S2' })), { source: 'watch', sourceReason: '--until S2: Zustand für die Entwicklung' });
