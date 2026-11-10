@@ -1,0 +1,33 @@
+{
+    "blend": "crow.blend",
+    "cell": 16,
+    "render": 24,
+    "baseline": 0,
+    "fps": 24,
+    "pixor": [
+        "--sides", "300", "--view", "side", "--pitch", "12",
+        "--outer", "none", "--inner", "selout1", "--convex", "none",
+        "--bands", "2", "--light", "-20,30",
+        "--material-ramp", "Material.002=#14141c,#262a40",
+        "--material-ramp", "wing=#2c2f50,#4a5088",
+        "--material-ramp", "wingtip=#2c2f50,#4a5088",
+        "--material-ramp", "Material.003=#2c2c34,#4e4e58",
+        "--material-ramp", "beak=#e8c050,#e8c050",
+        "--material-ramp", "beaklow=#c08a28,#c08a28",
+        "--material-ramp", "Material.004=#782834,#c06a86",
+        "--eye", "Material.005", "--eye", "Material.006", "--eyes", "dark:2:2:outer", "--eyes", "least=1", "--eyes", "dark=#14090c", "--eyes", "shine=#e8e9f7"
+    ],
+    "clean": {"eyeDark": "#14090c", "eyeShine": "#e8e9f7", "lid": "#08080c", "halo": ["#262a40", "#14141c"], "dim": 40, "eyeSize": 1, "island": 1, "blob": 2},
+    "outline": {"color": "#08080c", "by": {"#c08a28": "#6a4210", "#e8c050": "#6a4210"}, "bridge": ["#2c2c34", "#4e4e58", "#262a40", "#14141c", "#2c2f50", "#4a5088"]},
+    "beak": {"clips": ["idle", "blink", "wave", "doze"], "colors": ["#e8c050", "#c08a28"]},
+    "bob": {"idle": {"up": [13, 21], "rest": 0}, "wave": {"up": [8, 1]}},
+    "mouth": {"clips": ["caw", "joy"], "upper": "#e8c050", "lower": "#c08a28", "mouth": "#782834", "head": "#262a40",
+              "pattern": [" Yh ", "YYhW", "mmh ", " mh ", "yyh "]},
+    "recolor": {"wave": {"#2c2f50": "#4a5088"}},
+    "plant": {"clips": ["idle", "blink", "caw", "puff", "doze", "wave", "sad", "sigh", "nod", "peck"], "colors": ["#2c2c34", "#4e4e58"]},
+    "credits": {"title": "Crow_rig", "author": "RazielNozac", "source": "https://www.blendswap.com/blend/31727", "license": "CC BY"},
+    "twos": ["idle", "caw", "puff", "doze", "wave", "joy", "sad", "sigh", "nod"],
+    "free": ["fly", "wave"],
+    "loops": ["idle", "fly", "peck", "doze", "wave", "nod"],
+    "clips": ["idle", "fly", "peck", "blink", "caw", "puff", "doze", "wave", "joy", "sad", "sigh", "nod"]
+}

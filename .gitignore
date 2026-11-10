@@ -30,3 +30,8 @@ e2e/frameworks/*.log
 e2e/frameworks/.caw-home/
 e2e/frameworks/ergebnis/
 e2e/frameworks/shared/.cert/
+
+# Maskottchen (assets/mascot): Build-Ausgabe, Blender-Backups
+assets/mascot/out/
+*.blend1
+__pycache__/

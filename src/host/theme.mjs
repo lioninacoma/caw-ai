@@ -22,7 +22,7 @@ export const FONT_FACES = face('Silkscreen', 'silkscreen-latin-400-normal.woff2'
     + face('IBM Plex Mono', 'ibm-plex-mono-latin-400-normal.woff2', 400)
     + face('IBM Plex Mono', 'ibm-plex-mono-latin-500-normal.woff2', 500);
 
-/** Der Rabe: Spritesheet 128 x 96, Raster 16 x 16. Zeile 0 Idle, 1 Flug, 2 Picken, 3 Blinzeln/Kraechzen/Aufgeplustert/Doesen, 4 Winken/Jubel/Tanz/Traurig/Eingerollt, 5 Eingerollt/Nicken. */
+/** Der Rabe als Spritesheet. Welche Zelle zu welchem Clip gehoert und wie lange sie steht, sagt raven-clips.mjs. */
 export const RAVEN_SHEET = asset('raven-sheet.png', 'image/png') ?? '';
 
 const DARK = `--primary-hover:#376f90;--primary-text:#6fb0d6;

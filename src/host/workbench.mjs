@@ -17,6 +17,7 @@
 import { APP_FRAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, interceptDocuments, sourceTag } from './app-view.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
 import { readPrefs, writePref } from '../shared/prefs.mjs';
+import { RAVEN_CLIPS } from './raven-clips.mjs';
 import { FAVICON, FONT_FACES, PAGE_BG, PIXEL_CSS, RAVEN_SHEET, TOKENS, ring } from './theme.mjs';
 
 export const CHAT_FRAME = 'caw-chat';
@@ -86,7 +87,7 @@ button{font:inherit;color:inherit}
 .pa-logo{display:flex;align-items:center;gap:12px}
 .pa-logo__mark{position:relative;padding:8px 0 0;margin:0;border:0;background:none;cursor:pointer}
 .pa-logo__tile{display:block;position:relative;width:40px;height:40px;background:var(--surface)}
-.raven-away .pa-logo__tile::after{content:'';position:absolute;left:4px;top:4px;width:32px;height:32px;background:url(${RAVEN_SHEET}) no-repeat 0 0/256px 192px;image-rendering:pixelated;transform:scaleX(-1);opacity:.28}
+.raven-away .pa-logo__tile::after{content:'';position:absolute;left:4px;top:4px;width:32px;height:32px;background:url(${RAVEN_SHEET}) no-repeat 0 0/${RAVEN_CLIPS.width * 32 / RAVEN_CLIPS.cell}px ${RAVEN_CLIPS.height * 32 / RAVEN_CLIPS.cell}px;image-rendering:pixelated;transform:scaleX(-1);opacity:.28}
 .raven-away .pa-logo__bubble{visibility:hidden}
 .pa-logo__bubble{position:absolute;left:24px;top:0;font:9px var(--font-deco);padding:1px 5px 2px;background:var(--primary);color:var(--primary-ink);box-shadow:${ring('2px', 'var(--bubble-frame)')}}
 .pa-logo__word{font:var(--fs-logo)/.85 var(--font-deco);padding-top:8px}
@@ -203,9 +204,9 @@ td.name{width:60%}td.ok{color:var(--ok-text,var(--ok))}td.bad{color:var(--fail-t
 .pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh}.pa-tools{margin-left:0}}
 @keyframes run{50%{background:var(--primary-soft)}}
 #ravenLayer{position:fixed;inset:0;pointer-events:none;z-index:50;overflow:hidden}
-#raven{position:absolute;left:0;top:0;width:32px;height:32px;pointer-events:auto;cursor:pointer;transform-origin:50% 85%;will-change:transform}
+#raven{position:absolute;left:0;top:0;width:${RAVEN_CLIPS.cell}px;height:${RAVEN_CLIPS.cell}px;pointer-events:auto;cursor:pointer;transform-origin:50% 85%;will-change:transform}
 #raven.home{pointer-events:none}
-#raven .sprite{display:block;width:32px;height:32px;background:url(${RAVEN_SHEET}) no-repeat 0 0/256px 192px;image-rendering:pixelated;scale:var(--raven-dir,-1) 1;
+#raven .sprite{display:block;width:${RAVEN_CLIPS.cell}px;height:${RAVEN_CLIPS.cell}px;background:url(${RAVEN_SHEET}) no-repeat 0 0/${RAVEN_CLIPS.width}px ${RAVEN_CLIPS.height}px;image-rendering:pixelated;scale:var(--raven-dir,-1) 1;translate:calc(var(--raven-dir,-1) * var(--raven-shift-x,0px) * -1) calc(var(--raven-shift-y,0px) * -1);
 filter:drop-shadow(1px 0 0 var(--raven-outline)) drop-shadow(-1px 0 0 var(--raven-outline)) drop-shadow(0 1px 0 var(--raven-outline)) drop-shadow(0 -1px 0 var(--raven-outline)) drop-shadow(0 0 3px var(--raven-outline-fade))}
 #ravenSay{position:absolute;left:0;top:0;font:13px/1.2 var(--font-deco);padding:3px 9px 4px;white-space:nowrap;color:var(--primary-ink);background:var(--primary);box-shadow:${ring('2px', 'var(--bubble-frame)')}}
 #ravenSay[hidden]{display:none}#ravenSay.zz{background:var(--surface-2);color:var(--muted)}
@@ -351,13 +352,16 @@ $('chatFold').addEventListener('click',()=>fold('chat',true));$('chatStrip').add
 // Der Rabe: derselbe wie im Logo. Er sitzt im Logo, auf dem ersten nicht bestandenen Schritt oder auf dem Chat.
 // Ein Schritt weiter huepft er, weiter weg fliegt er. Mit „Animationen aus“ sitzt er still im Logo. Alles rein kosmetisch.
 const raven=(()=>{
-  const K=2,S=32,SETTLE=170,motion=matchMedia('(prefers-reduced-motion: reduce)');
+  const K=2,S=${RAVEN_CLIPS.cell},SETTLE=170,motion=matchMedia('(prefers-reduced-motion: reduce)');
+  // Die Clips des Sheets (raven-clips.mjs): je Frame [Spalte, Zeile, ms]. Was einmal laeuft, dauert so lang wie sein Clip.
+  // FEET: so viele Pixel stehen die Fuesse ueber dem Zellboden (Platz fuer den Flug darunter); er sitzt auf den Fuessen.
+  // SHIFT: Clips mit eigenem Zuschnitt (der Flug) stehen in ihrer Zelle versetzt; die Grafik wird um so viel zurueckgeschoben.
+  const CLIPS=${JSON.stringify(RAVEN_CLIPS.clips)},FEET=${RAVEN_CLIPS.feet ?? 0},SHIFT=${JSON.stringify(RAVEN_CLIPS.shift ?? {})},len=(n)=>CLIPS[n].reduce((s,f)=>s+f[2],0);
   // Weniger Bewegung gilt sofort, auch wenn der Mensch es mitten im Lauf im System umstellt.
   let reduce=motion.matches,fed=${Number(prefs.fed) || 0};
-  const IDLE={blink:[2.5,160],caw:[1,1000],look:[2,1300],puff:[1.5,900],peck:[1.5,900],hop:[.3,520],doze:[0,3200],feed:[0,1000],wave:[0,960],joy:[0,520],nod:[0,700],sigh:[0,900],confetti:[0,0]};
-  const AT_HOME=['blink','look','peck','puff'];
+  const IDLE={blink:[2.5,len('blink')],caw:[1,len('caw')],look:[.5,900],puff:[1.5,len('puff')],peck:[1.5,900],hop:[.3,520],doze:[0,3200],feed:[0,1000],joy:[0,len('joy')],nod:[0,700],sigh:[0,len('sigh')],confetti:[0,0]};
   // Er sagt nie Woerter: nur caw, ! und ?.
-  const REACT={greet:[{name:'caw',text:'caw!'},'wave'],fail:[{name:'caw',text:'caw?!'},'sigh'],done:[{name:'caw',text:'caw!'},'home'],home:['wave','joy','confetti'],ask:[{name:'caw',text:'caw?'},'look'],aborted:['doze']};
+  const REACT={greet:[{name:'caw',text:'caw!'}],fail:[{name:'caw',text:'caw?!'},'sigh'],done:[{name:'caw',text:'caw!'},'home'],home:['joy','confetti'],ask:[{name:'caw',text:'caw?'},'look'],aborted:['doze']};
   const layer=$('ravenLayer'),wrap=$('raven'),sprite=wrap.firstElementChild,say=$('ravenSay'),cloud=$('ravenCloud'),tile=$('tile'),toggle=$('still');
   const LOGO={kind:'logo'};
   let place=LOGO,want=LOGO,move=null,settle=0,act=null,queue=[],nextIdle=0,recent=[],waitSince=0,bubbleTill=0,lastKey='',x=0,y=0;
@@ -375,8 +379,13 @@ const raven=(()=>{
     const r=tile.getBoundingClientRect();return {x:r.left+r.width/2,y:r.bottom,show:shown(r)};
   };
   const frame=(c,r)=>{sprite.style.backgroundPosition=(-c*S)+'px '+(-r*S)+'px';};
+  // Ein Frame des Clips (i<0 zaehlt von hinten), oder der Clip zur Zeit t: im Kreis, oder einmal und dann stehen bleiben.
+  let shifted='';
+  const clip=(n)=>{if(n===shifted)return;shifted=n;const d=SHIFT[n]||[0,0];sprite.style.setProperty('--raven-shift-x',d[0]+'px');sprite.style.setProperty('--raven-shift-y',d[1]+'px');};
+  const pose=(n,i=0)=>{const f=CLIPS[n].at(i);clip(n);frame(f[0],f[1]);};
+  const play=(n,t,loop=true)=>{const L=len(n);let u=loop?((t%L)+L)%L:t;clip(n);for(const f of CLIPS[n]){if(u<f[2]){frame(f[0],f[1]);return;}u-=f[2];}pose(n,-1);};
   const face=(dir)=>{sprite.style.setProperty('--raven-dir',String(dir));};
-  const setT=(px,py,lift,rot)=>{cur={x:px,y:py};wrap.style.transform='translate('+Math.round(px-S/2)+'px,'+Math.round(py-S-(lift||0))+'px)'+(rot?' rotate('+Math.round(rot)+'deg)':'');};
+  const setT=(px,py,lift,rot)=>{cur={x:px,y:py};wrap.style.transform='translate('+Math.round(px-S/2)+'px,'+Math.round(py-S+FEET-(lift||0))+'px)'+(rot?' rotate('+Math.round(rot)+'deg)':'');};
   const hideSay=()=>{say.hidden=true;say.className='';bubbleTill=0;};
   const showCloud=(on)=>{const show=on&&!still&&wrap.style.visibility!=='hidden';cloud.hidden=!show;if(show){cloud.style.left=Math.round(x-14)+'px';cloud.style.top=Math.round(y-S-24)+'px';}};
   // Konfetti aus dem Fortschrittsbalken, wenn alles gruen ist und er zu Hause angekommen ist.
@@ -440,9 +449,9 @@ const raven=(()=>{
     if(name==='hop')hideSay();
   };
   const pickIdle=(now)=>{
-    const home=place.kind==='logo',waited=now-waitSince;
+    const waited=now-waitSince;
     // Die letzten zwei Aktionen kommen nicht gleich wieder, damit er abwechslungsreich bleibt.
-    const pool=Object.entries(IDLE).filter(([n])=>n!=='feed'&&!recent.includes(n)&&(!home||AT_HOME.includes(n))).map(([n,[w]])=>[n,n==='doze'?(waited>9000?1.5:0):w]);
+    const pool=Object.entries(IDLE).filter(([n])=>n!=='feed'&&!recent.includes(n)).map(([n,[w]])=>[n,n==='doze'?(waited>9000?1.5:0):w]);
     let r=Math.random()*pool.reduce((sum,[,w])=>sum+w,0),pick='blink';
     for(const [n,w] of pool)if((r-=w)<0){pick=n;break;}
     recent=[pick,...recent].slice(0,2);return pick;
@@ -451,11 +460,16 @@ const raven=(()=>{
     const from=anchor(place),to=anchor(want),target=want;
     hideSay();showCloud(false);act=null;queue=[];cheering=false;
     if(reduce){place=target;lastKey='';return;}
-    const steps=place.kind==='step'&&target.kind==='step',d=steps?Math.abs(target.i-place.i):0;
-    move={origin:place,from,to,target,start:now,steps,d,kind:steps&&d===1?'hop':'fly',dir:to.x<from.x-2?1:-1};
-    move.dur=move.kind==='hop'?460:steps?420+150*Math.min(d,6):Math.min(1200,Math.max(560,Math.hypot(to.x-from.x,to.y-from.y)*1.1));
+    // Zwischen Schritten gezielt: ein, zwei Schritte ein Hopser, weiter ein flacher Flug geradewegs hin; vom Logo zu den
+    // Schritten und zurueck ebenso geradewegs. Nur zum Chat und vom Chat weg fliegt er nicht quer ueber die Anwendung,
+    // sondern an der naechsten Seite aus dem Fenster und an der Seite des Ziels wieder herein.
+    const steps=place.kind==='step'&&target.kind==='step',d=steps?Math.abs(target.i-place.i):0,chat=place.kind==='chat'||target.kind==='chat';
+    move={origin:place,from,to,target,start:now,steps,d,kind:steps?(d<=2?'hop':'glide'):chat?'out':'glide',dir:to.x<from.x-2?1:-1};
+    const side=(p)=>(p.x<innerWidth/2?-S*2:innerWidth+S*2);
+    if(move.kind==='out'){move.exit={x:side(from),y:from.y-S*3};move.enter={x:side(to),y:to.y-S*3};
+      const leg=(a,b)=>Math.min(900,Math.max(380,Math.hypot(b.x-a.x,b.y-a.y)*1.2));move.out=leg(from,move.exit);move.away=260;move.dur=move.out+move.away+leg(move.enter,to);}
+    else move.dur=move.kind==='hop'?420+80*(d-1):steps?360+70*Math.min(d,8):Math.min(900,Math.max(420,Math.hypot(to.x-from.x,to.y-from.y)*1.1));
   };
-  const bez=(a,b,c,d,u)=>{const v=1-u;return v*v*v*a+3*v*v*u*b+3*v*u*u*c+u*u*u*d;};
   // Start und Ziel in jedem Bild neu messen: Scrollt die Schrittliste oder verschiebt sich der Chat waehrend des Flugs, fliegt er mit,
   // statt zur alten Stelle zu fliegen und dort zu springen.
   const live=(p,fallback)=>(p.kind==='step'||p.kind==='chat'?anchor(p):fallback);
@@ -463,50 +477,51 @@ const raven=(()=>{
     const m=move,t=Math.min(1,(now-m.start)/m.dur),e=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2,f=live(m.origin,m.from),g=live(m.target,m.to),lean=m.dir<0?1:-1;
     wrap.style.visibility='';face(m.dir);
     if(m.kind==='hop'){
-      setT(f.x+Math.sin(Math.PI*t)*S/6*-m.dir,f.y+(g.y-f.y)*e,Math.sin(Math.PI*t)*S*.55,lean*Math.sin(Math.PI*t)*14);
-      if(t<.12||t>.9)frame(0,2);else frame(t<.5?0:7,1);
+      // Geradewegs zum Ziel, nur ein kleiner Bogen nach oben.
+      setT(f.x+(g.x-f.x)*e,f.y+(g.y-f.y)*e,Math.sin(Math.PI*t)*S*.45,lean*Math.sin(Math.PI*t)*8);
+      if(t<.12||t>.9)pose('peck');else pose('fly',t<.5?0:-1);
+    }else if(m.kind==='glide'){
+      setT(f.x+(g.x-f.x)*e,f.y+(g.y-f.y)*e,Math.sin(Math.PI*t)*S*.3,0);
+      play('fly',now);
     }else{
-      let c1,c2;
-      if(m.steps){const out=Math.min(S*2.3,S+m.d*S*.3);c1={x:f.x+out,y:f.y-S*.6};c2={x:g.x+out,y:g.y-S*.4};}
-      else{const top=Math.min(f.y,g.y)-S*1.2;c1={x:f.x+(g.x-f.x)*.2,y:top};c2={x:f.x+(g.x-f.x)*.8,y:top};}
-      const at=(u)=>({x:bez(f.x,c1.x,c2.x,g.x,u),y:bez(f.y,c1.y,c2.y,g.y,u)}),p=at(e),q=at(Math.min(1,e+.03));
-      const ramp=t<.15?t/.15:t>.85?(1-t)/.15:1;
-      setT(p.x,p.y,Math.sin(Math.PI*t)*S/6,(q.y>p.y?26:-12)*ramp*lean);
-      frame(Math.floor(now/55)%8,1);
+      // Hinaus, kurz weg, an der Seite des Ziels wieder herein. Raus beschleunigt er, rein bremst er.
+      const u=now-m.start,inn=m.dur-m.out-m.away;
+      if(u<m.out){const k=u/m.out,a=k*k;face(m.exit.x<f.x?1:-1);setT(f.x+(m.exit.x-f.x)*a,f.y+(m.exit.y-f.y)*a,0,lean*-8);}
+      else if(u<m.out+m.away){wrap.style.visibility='hidden';}
+      else{const k=Math.min(1,(u-m.out-m.away)/inn),b=1-(1-k)*(1-k);face(g.x<m.enter.x?1:-1);setT(m.enter.x+(g.x-m.enter.x)*b,m.enter.y+(g.y-m.enter.y)*b,0,0);}
+      play('fly',now);
     }
-    if(t>=1){place=m.target;move=null;lastKey='';waitSince=now;nextIdle=now+1500+Math.random()*2000;}
+    if(t>=1){place=m.target;move=null;lastKey='';waitSince=now;nextIdle=now+3000+Math.random()*4000;}
   };
   const perched=(now)=>{
     const p=anchor(place);x=p.x;y=p.y;wrap.style.visibility=p.show?'':'hidden';
     face(-1);
-    if(still){frame(0,0);setT(x,y);return;}
+    if(still){pose('idle');setT(x,y);return;}
     const c=condition(),key=place.kind+(place.i??'')+':'+c;
     // Weniger Bewegung: kein Huepfen, Drehen oder Picken; nur die Blase sagt, was los ist.
-    if(reduce){if(key!==lastKey){lastKey=key;const said=c?REACT[c].find((a)=>a.text):null;if(said)speak(said.text);}frame(0,0);setT(x,y);return;}
+    if(reduce){if(key!==lastKey){lastKey=key;const said=c?REACT[c].find((a)=>a.text):null;if(said)speak(said.text);}pose('idle');setT(x,y);return;}
     if(key!==lastKey){lastKey=key;if(c){act=null;queue=REACT[c].slice();}
       // Der erste Punkt nach dem Einflug: Er gruesst einmal.
       else if(!greeted&&place.kind==='step'){greeted=true;act=null;queue=REACT.greet.slice();}}
     showCloud(c==='fail');
-    if(!act){if(queue.length)startAct(queue.shift(),now);else if(!reduce&&now>nextIdle&&c!=='done')startAct(pickIdle(now),now);}
-    let lift=0,dx=0;const a=act;
-    if(!a){if(c==='fail')frame(5,4);else frame(reduce?0:Math.floor(now/520)%2,0);}
+    // Im Logo sitzt er still: keine Idle-Aktionen, kein Atmen; nur Reaktionen (Abbruch, Heimkehr) spielen dort.
+    const home=place.kind==='logo';
+    if(!act){if(queue.length)startAct(queue.shift(),now);else if(!reduce&&!home&&now>nextIdle&&c!=='done')startAct(pickIdle(now),now);}
+    let lift=0;const a=act;
+    if(!a){if(c==='fail')pose('sad',-1);else if(home)pose('idle');else play('idle',now);}
     else{
       const t=now-a.start;
-      if(a.name==='blink')frame(0,3);
-      else if(a.name==='caw'){if(t<140||(t>=520&&t<640))frame(0,0);else frame(1,3);}
-      else if(a.name==='look'){frame(0,0);if((t>150&&t<650)||(t>900&&t<1150))face(1);}
-      else if(a.name==='puff'){const on=Math.floor(t/90)%2;frame(on?2:0,on?3:0);dx=Math.floor(t/45)%2?1:-1;}
-      else if(a.name==='peck')frame([0,1,2,1][Math.floor(t/115)%4],2);
-      else if(a.name==='feed'){if(t<240)frame(0,0);else frame([0,1,2,1][Math.floor((t-240)/115)%4],2);}
-      else if(a.name==='hop'){if(t>=80&&t<=440){frame(0,1);lift=Math.sin(Math.PI*(t-80)/360)*S/3;}else frame(0,2);}
-      else if(a.name==='doze')frame(3,3);
-      else if(a.name==='wave')frame(Math.floor(t/160)%2,4);
-      else if(a.name==='joy'){frame(2,4);lift=t<260?K*2:K;}
-      else if(a.name==='nod')frame(1+Math.floor(t/175)%2,5);
-      else if(a.name==='sigh')frame(t<450?6:5,4);
-      if(t>=a.dur){act=null;nextIdle=now+2000+Math.random()*3000;if(queue.length===0)cheering=false;}
+      // Einmal kurz zurueckblicken, nicht hin und her.
+      if(a.name==='look'){pose('idle');if(t>200&&t<700)face(1);}
+      else if(a.name==='feed'){if(t<240)pose('idle');else play('peck',t-240);}
+      else if(a.name==='hop'){if(t>=80&&t<=440){pose('fly');lift=Math.sin(Math.PI*(t-80)/360)*S/3;}else pose('peck');}
+      // Einmal: blink, caw, puff, joy, sigh; im Kreis, solange die Handlung dauert: peck, doze, nod. Winken (wave) spielt die Werkbank nicht.
+      else if(['blink','caw','puff','joy','sigh'].includes(a.name))play(a.name,t,false);
+      else if(CLIPS[a.name])play(a.name,t);
+      // Animationen nur ab und zu: zwischen zwei Handlungen sitzt er ein paar Sekunden ruhig da (idle atmet weiter).
+      if(t>=a.dur){act=null;nextIdle=now+5000+Math.random()*7000;if(queue.length===0)cheering=false;}
     }
-    setT(x+dx,y,lift);
+    setT(x,y,lift);
   };
   const loop=(now)=>{
     if(!move&&!same(place,want)&&want.kind==='step'&&cheering&&(act!==null||queue.length>0)){/* erst die zwei Huepfer zu Ende */}
@@ -546,7 +561,7 @@ const raven=(()=>{
   const busy=()=>still||homing||move!==null||place.kind==='logo';
   wrap.addEventListener('click',()=>{if(busy())return;clearTimeout(clickTimer);clickTimer=setTimeout(pet,240);});
   wrap.addEventListener('dblclick',()=>{if(busy())return;clearTimeout(clickTimer);feed();});
-  label();frame(0,0);face(-1);
+  label();pose('idle');face(-1);
   requestAnimationFrame(loop);
   return {
     update,
