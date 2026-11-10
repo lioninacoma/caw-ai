@@ -2,15 +2,14 @@
 // damit die Umgebung wie eine entfernte aussieht (nicht http://localhost).
 //   node serve.mjs <dir> <port> [--http] [--proxy http://127.0.0.1:3000]
 // Mit --proxy reicht er alles ausser /api an einen Node-Server weiter (next start, nuxt preview).
-import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttp, request } from 'node:http';
 import { createServer as createHttps } from 'node:https';
-import { dirname, extname, join, normalize } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { extname, join, normalize } from 'node:path';
 
 import { handleApi } from './api.mjs';
+import { readCert } from './cert.mjs';
 
-const here = dirname(fileURLToPath(import.meta.url));
 const [dir, portText, ...rest] = process.argv.slice(2);
 const http = rest.includes('--http');
 const proxy = rest.includes('--proxy') ? new URL(rest[rest.indexOf('--proxy') + 1]) : null;
@@ -42,5 +41,5 @@ const handler = async (req, res) => {
     createReadStream(file).pipe(res);
 };
 
-const server = http ? createHttp(handler) : createHttps({ key: readFileSync(join(here, 'key.pem')), cert: readFileSync(join(here, 'cert.pem')) }, handler);
+const server = http ? createHttp(handler) : createHttps(readCert(), handler);
 server.listen(Number(portText), '127.0.0.1', () => console.log(`serve ${dir} auf ${portText}${http ? '' : ' (https)'}`));

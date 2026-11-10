@@ -29,3 +29,4 @@ e2e/frameworks/**/next-env.d.ts
 e2e/frameworks/*.log
 e2e/frameworks/.caw-home/
 e2e/frameworks/ergebnis/
+e2e/frameworks/shared/.cert/

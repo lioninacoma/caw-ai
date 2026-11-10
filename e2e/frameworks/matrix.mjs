@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { hasBuild } from '../../src/host/local-build.mjs';
 import { writeProject } from './projekt.mjs';
+import { ensureCert } from './shared/cert.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bin = join(here, '../../bin/caw-ai.mjs');
@@ -133,6 +134,8 @@ const scenario = async (name, body) => {
     }
 };
 
+// Einmal vorab: Die HTTPS-Server starten parallel und sollen es nicht gleichzeitig erzeugen.
+ensureCert();
 const api = start('api', here, process.execPath, ['shared/api.mjs', '3999']);
 await waitFor('http://127.0.0.1:3999/api/me');
 
