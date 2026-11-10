@@ -548,6 +548,7 @@ export const buildDevlinkConfig = (config, resolved, appName, source, projectRoo
             builds: replace && hasLocalBuild(app) ? [{
                 uuid: uuidOf(`build:${app.localBuild}`),
                 localDir: posix.join(projectRoot, app.localBuild),
+                projectDir: posix.join(projectRoot, app.dir ?? '.'),
                 // Der Name ist der Pfad unterhalb der Umgebung; ein globales assetUrlPattern (etwa fuer Sencha-statics) gilt zusaetzlich.
                 urlPattern: defaultAssetPattern(resolved.url),
                 active: true,

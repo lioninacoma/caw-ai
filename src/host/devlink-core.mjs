@@ -1,6 +1,7 @@
 // Substitution des lokalen Codes, Readiness und Konsolen-Gate fuer den Browser auf dem Host.
 import { readFile } from "node:fs/promises";
 import { moduleAlias, resolveLocalBuild, scriptKind, servesBuild } from "./local-build.mjs";
+import { isProjectCopyFile } from "./project-files.mjs";
 // substitution/collect
 var isActive = (entry) => entry.active;
 var collectActiveRedirects = (config) => config.projects.filter(isActive).flatMap((project) => [
@@ -196,6 +197,8 @@ var localFileFor = (config, url, resourceType) => {
     for (const name of names) {
       if (!servesBuild(resourceType, name)) continue;
       const found = resolveLocalBuild(collected.entry.localDir, name);
+      // Eine unveraenderte Kopie aus dem Projekt (public/env.js) ersetzt das Deployment je Umgebung: Sie kommt vom Server.
+      if (found !== null && found.alias === void 0 && isProjectCopyFile(collected.entry.projectDir, found.file, { skip: [collected.entry.localDir] })) continue;
       if (found !== null) return { ...collected, repoPath: name, ...found };
     }
   }
