@@ -460,15 +460,16 @@ const raven=(()=>{
     const from=anchor(place),to=anchor(want),target=want;
     hideSay();showCloud(false);act=null;queue=[];cheering=false;
     if(reduce){place=target;lastKey='';return;}
-    // Zwischen Schritten gezielt: ein, zwei Schritte ein Hopser, weiter ein flacher Flug geradewegs hin; vom Logo zu den
+    // Zwischen Schritten gezielt: zum naechsten ein Hopser, weiter ein flacher Flug mit Fluegelschlag geradewegs hin; vom Logo zu den
     // Schritten und zurueck ebenso geradewegs. Nur zum Chat und vom Chat weg fliegt er nicht quer ueber die Anwendung,
     // sondern an der naechsten Seite aus dem Fenster und an der Seite des Ziels wieder herein.
     const steps=place.kind==='step'&&target.kind==='step',d=steps?Math.abs(target.i-place.i):0,chat=place.kind==='chat'||target.kind==='chat';
-    move={origin:place,from,to,target,start:now,steps,d,kind:steps?(d<=2?'hop':'glide'):chat?'out':'glide',dir:to.x<from.x-2?1:-1};
+    move={origin:place,from,to,target,start:now,steps,d,kind:steps&&d===1?'hop':chat?'out':'glide',dir:to.x<from.x-2?1:-1};
     const side=(p)=>(p.x<innerWidth/2?-S*2:innerWidth+S*2);
     if(move.kind==='out'){move.exit={x:side(from),y:from.y-S*3};move.enter={x:side(to),y:to.y-S*3};
-      const leg=(a,b)=>Math.min(900,Math.max(380,Math.hypot(b.x-a.x,b.y-a.y)*1.2));move.out=leg(from,move.exit);move.away=260;move.dur=move.out+move.away+leg(move.enter,to);}
-    else move.dur=move.kind==='hop'?420+80*(d-1):steps?360+70*Math.min(d,8):Math.min(900,Math.max(420,Math.hypot(to.x-from.x,to.y-from.y)*1.1));
+      const leg=(a,b)=>Math.min(1000,Math.max(480,Math.hypot(b.x-a.x,b.y-a.y)*1.2));move.out=leg(from,move.exit);move.away=260;move.dur=move.out+move.away+leg(move.enter,to);}
+    // Lang genug fuer mehrere Fluegelschlaege (ein Schlag sind 8 Frames, etwa 0,45 s).
+    else move.dur=move.kind==='hop'?460:steps?420+150*Math.min(d,6):Math.min(1200,Math.max(560,Math.hypot(to.x-from.x,to.y-from.y)*1.1));
   };
   // Start und Ziel in jedem Bild neu messen: Scrollt die Schrittliste oder verschiebt sich der Chat waehrend des Flugs, fliegt er mit,
   // statt zur alten Stelle zu fliegen und dort zu springen.
