@@ -940,10 +940,12 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const willing = await tokensOk();
         if (!willing) abortSignal();
         const agent = willing ? startAgent(box, containerCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin)], CLAUDE_LOG) : IDLE_AGENT;
+        // Wie der Lauf endete; ausserhalb des try, das return unten braucht es.
+        let ended;
         // Auch bei einem unerwarteten Fehler: Claude und sein Container laufen sonst weiter, bis ihr Zeitlimit greift.
         try {
             if (willing) ui.info(t('run.agentWorking'));
-            const ended = await Promise.race([
+            ended = await Promise.race([
                 verdictGiven.then(() => 'verdict'),
                 agent.ended,
                 session.closed.then(() => 'browser-closed'),
