@@ -40,8 +40,19 @@ test('Hash-Vergleich: Vite, Angular und webpack, aber nicht Namen, die nur ähnl
     assert.equal(sameButHash('index-AAAA1111.js', 'index-AAAA1111.js'), false, 'gleich ist kein Hash-Unterschied');
     assert.equal(sameButHash('index-AAAA1111.js', 'index-BBBB2222.css'), false, 'andere Endung');
     assert.equal(sameButHash('index-AAAA1111.js', 'Info-BBBB2222.js'), false, 'anderer Name');
-    assert.equal(sameButHash('index-AAAA1111.js', 'index-BBBB222.js'), false, 'andere Hash-Länge');
+    assert.equal(sameButHash('index-AAAA1111.js', 'index-BBBB222.js'), true, 'andere Hash-Länge, etwa nach einer anderen Bundler-Einstellung');
+    assert.equal(sameButHash('main.0a1b2c', 'main.9f8e7d'), false, 'ohne Endung kein Hash');
+    assert.equal(sameButHash(`app-${'a1'.repeat(32)}.js`, 'app-B2C3D4E5.js'), true, 'Digest mit 64 Zeichen');
+    assert.equal(sameButHash(`app-${'a1'.repeat(33)}.js`, 'app-B2C3D4E5.js'), false, 'mehr als 64 Zeichen ist kein Hash');
+    assert.equal(sameButHash('app-AB1.js', 'app-CD2.js'), false, 'weniger als 6 Zeichen ist kein Hash');
+    assert.equal(sameButHash('main.0a1b2c3d.chunk.js', 'main.9f8e7d6c.chunk.js'), true, 'Hash vor mehreren Endungen');
+    assert.equal(sameButHash('main.0a1b2c3d.chunk.js', 'main.9f8e7d6c.js'), false, 'andere Endungen');
+    assert.equal(sameButHash('main.js', 'main-A1B2C3D4.js'), true, 'fester Name gegen gehashten');
+    assert.equal(sameButHash('main-A1B2C3D4.js', 'main.js'), true);
+    assert.equal(sameButHash('styles.css', 'styles.0a1b2c3d4e.css'), true);
+    assert.equal(sameButHash('main.js', 'main-button.js'), false, 'ein Wort ist kein Hash');
     assert.equal(sameButHash('my-button.js', 'my-dialog.js'), false, 'kein Hash: nur Kleinbuchstaben');
+    assert.equal(sameButHash('my-button.js', 'my-dialog.js', { loose: true }), true, 'nur wenn die lokale Seite die Datei laedt');
     assert.equal(sameButHash('main.js', 'main.js'), false);
 });
 

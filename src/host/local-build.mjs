@@ -39,32 +39,40 @@ const FETCHED_CODE = /\.(m?js|wasm|css)$/;
 export const servesBuild = (resourceType, name) => resourceType === undefined || BUILD_TYPES.has(resourceType)
     || ((resourceType === 'fetch' || resourceType === 'xhr' || resourceType === 'other') && FETCHED_CODE.test(name));
 
-// Hashes der Bundler: Vite, Rollup und esbuild (Angular CLI) schreiben 8 Zeichen Base64url (`D-7xQ_aZ`, `ABCD1234`), webpack und
-// Next Hex in 8 bis 32 Zeichen. Ein Wort wie `button` oder `react-AB12CD34` ist keiner. Ein Hash ohne Ziffer und Grossbuchstaben
-// (`abcdefgh`, selten) ist nicht von einem Wort zu unterscheiden; er zaehlt nur, wenn die lokale Seite die Datei laedt (`loose`).
-const BASE64_HASH = /^[A-Za-z0-9_-]{8}$/;
-const HEX_HASH = /^[0-9a-f]{8,32}$/;
-const hashLike = (text, loose) => (BASE64_HASH.test(text) && (loose || /[0-9A-Z]/.test(text))) || (HEX_HASH.test(text) && (loose || /[0-9]/.test(text)));
+// Hashes der Bundler, eine Regel fuer alle: `stamm[-.]hash.endung`, der Hash 6 bis 64 Zeichen aus `[A-Za-z0-9_-]` (Vite, Rollup,
+// esbuild: 8 Zeichen Base64url wie `D-7xQ_aZ`; webpack, Next: Hex bis 20; Digests bis 64). Die Laenge darf sich zwischen den Builds
+// aendern (andere Bundler-Einstellung). Ein Hash enthaelt eine Ziffer oder einen Grossbuchstaben (jeder vierte Vite-Hash hat keine
+// Ziffer); ein Wort wie `button` ist keiner. Ein Hash nur aus Kleinbuchstaben (selten) ist nicht von einem Wort zu unterscheiden; er
+// zaehlt nur, wenn die lokale Seite die Datei laedt (`loose`). Nach dem Hash darf mehr als eine Endung stehen (`main.0a1b2c3d.chunk.js`).
+const HASH = /^[A-Za-z0-9_-]{6,64}$/;
+const hashLike = (text, loose) => HASH.test(text) && (loose || /[0-9A-Z]/.test(text));
+const REST = /^(?:\.[A-Za-z0-9]+)+$/;
+
+/** Jede Zerlegung eines Namens in Stamm, Trenner, Hash und Endung(en); dazu die Form ohne Hash. */
+const splits = (name, loose) => {
+    const found = [];
+    for (let at = 1; at < name.length; at += 1) {
+        const sep = name[at];
+        if (sep !== '-' && sep !== '.') continue;
+        for (let end = name.indexOf('.', at + 1); end !== -1; end = name.indexOf('.', end + 1)) {
+            const hash = name.slice(at + 1, end);
+            const rest = name.slice(end);
+            if (hashLike(hash, loose) && REST.test(rest)) found.push({ key: `${name.slice(0, at)}\0${sep}\0${rest}`, hash, plain: name.slice(0, at) + rest });
+        }
+    }
+    return found;
+};
 
 /**
- * Gleicher Name bis auf den Hash? Gleiche Endung, gleicher Anfang bis zu einem Trenner `-` oder `.`, danach je ein Hash gleicher
- * Laenge (siehe oben). Vite-Hashes enthalten selbst `-`, darum zaehlt jeder Trenner im gemeinsamen Anfang als moegliche Grenze.
+ * Gleicher Name bis auf den Hash? Gleicher Stamm, Trenner und Endung, ein anderer Hash (siehe oben), oder einer der Namen ist die Form
+ * ohne Hash (`main.js` und `main-A1B2C3D4.js`: ein fester Name auf der einen, ein gehashter auf der anderen Seite).
  */
 export const sameButHash = (a, b, { loose = false } = {}) => {
     if (a === b) return false;
-    const ext = extname(a);
-    if (ext === '' || extname(b) !== ext || a.length !== b.length) return false;
-    const left = a.slice(0, -ext.length);
-    const right = b.slice(0, -ext.length);
-    for (let at = 1; at < left.length; at += 1) {
-        if (left[at - 1] !== right[at - 1]) return false;
-        if ((left[at] === '-' || left[at] === '.') && right[at] === left[at]) {
-            const one = left.slice(at + 1);
-            const two = right.slice(at + 1);
-            if (one !== two && hashLike(one, loose) && hashLike(two, loose)) return true;
-        }
-    }
-    return false;
+    const left = splits(a, loose);
+    const right = splits(b, loose);
+    if (left.some(({ plain }) => plain === b) || right.some(({ plain }) => plain === a)) return true;
+    return left.some((one) => right.some((two) => one.key === two.key && one.hash !== two.hash));
 };
 
 // Je Ordner die Dateinamen, je Datei der Text; gueltig, solange sich die mtime nicht aendert (der Watch-Build schreibt neu).
