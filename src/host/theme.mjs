@@ -22,8 +22,8 @@ export const FONT_FACES = face('Silkscreen', 'silkscreen-latin-400-normal.woff2'
     + face('IBM Plex Mono', 'ibm-plex-mono-latin-400-normal.woff2', 400)
     + face('IBM Plex Mono', 'ibm-plex-mono-latin-500-normal.woff2', 500);
 
-/** Der Rabe: Spritesheet 128 x 96, Raster 16 x 16. Zeile 0 Idle, 1 Flug, 2 Picken, 3 Blinzeln/Kraechzen/Aufgeplustert/Doesen, 4 Winken/Jubel/Tanz/Traurig/Eingerollt, 5 Eingerollt/Nicken. */
-export const RAVEN_SHEET = asset('raven-sheet.png', 'image/png') ?? '';
+/** Der Rabe als Spritesheet. Welche Zelle zu welchem Clip gehoert und wie lange sie steht, sagt raven-clips.mjs. */
+export const RAVEN_SHEET = asset('mascot/raven-sheet.png', 'image/png') ?? '';
 
 const DARK = `--primary-hover:#376f90;--primary-text:#6fb0d6;
 --bg:#12132a;--bg-dot:#1d1f42;--surface:#1b1d3c;--surface-2:#22254a;
@@ -75,7 +75,7 @@ export const PIXEL_CSS = `.px-frame{background:var(--surface);box-shadow:${ring(
 /** Der Pixel-Hintergrund der Seite: Punktraster im 8-px-Takt. */
 export const PAGE_BG = 'background-color:var(--bg);background-image:radial-gradient(var(--bg-dot) 1.5px,transparent 1.6px);background-size:8px 8px';
 
-const icon = asset('favicon-32.png', 'image/png');
+const icon = asset('mascot/favicon-32.png', 'image/png');
 
 /** Das Logo als Favicon: die Pixel-Kachel mit dem Raben. */
 export const FAVICON = icon === null ? '' : `<link rel="icon" type="image/png" href="${icon}">`;
