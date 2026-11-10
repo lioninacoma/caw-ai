@@ -162,3 +162,21 @@ test('buildReplay: Ein von Hand als geheim markiertes remember bleibt geheim, we
 test('targetLabel: Ein Muster erscheint als /Ausdruck/', () => {
     assert.equal(targetLabel({ role: 'button', name: { pattern: '^Prüfen' } }), 'button "/^Prüfen/"');
 });
+
+test('buildReplay: Neu aufgenommen behält ein bestehender Test seine Muster, geheime Werte und Zeitlimits, nicht seine alten festen Texte', () => {
+    const recorder = { problems: [], steps: [{ action: 'remember', name: 'pw', code: 'neu' }, { action: 'check', id: 'S1', code: 'true' }, { action: 'check', id: 'S2', code: 'true' }], messages: new Set(['Prüfsumme 12 kopiert']) };
+    const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }, { id: 'S2', name: 'd', do: 'e', expect: 'anders' }] };
+    const previous = {
+        ...spec,
+        knownMessages: ['Veraltet', { pattern: '^Prüfsumme \\S+ kopiert$' }],
+        steps: [
+            { ...spec.steps[0], recording: { actions: [{ action: 'remember', name: 'pw', code: 'alt', secret: true }], check: 'true', timeoutMs: 20000 } },
+            { ...spec.steps[1], expect: 'früher', recording: { actions: [], check: 'true', timeoutMs: 9000 } },
+        ],
+    };
+    const { candidate } = buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous, target: 'local' });
+    assert.deepEqual(candidate.knownMessages, [{ pattern: '^Prüfsumme \\S+ kopiert$' }], 'das Muster deckt die neue Meldung, der alte feste Text fällt weg');
+    assert.equal(candidate.steps[0].recording.actions[0].secret, true);
+    assert.equal(candidate.steps[0].recording.timeoutMs, 20000);
+    assert.equal(candidate.steps[1].recording.timeoutMs, undefined, 'ein geändertes Ergebnis prüft neu, ohne das alte Zeitlimit');
+});

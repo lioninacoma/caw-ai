@@ -1,13 +1,14 @@
 // Der Mensch fuehrt im sichtbaren Chrome vor, das Tool schneidet mit. Die Schritte haben das Format des Recorders,
 // denn das Ziel beschreibt dieselbe Funktion wie beim Agenten. Passwoerter verlassen die Seite nie.
 
-import { existsSync, writeFileSync } from 'node:fs';
+import { lstatSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { isWorkbenchDocument } from './app-view.mjs';
-import { frameworkOf, targetLabel } from './framework/index.mjs';
+import { redactDeep } from './secrets.mjs';
+import { frameTargetOf, frameworkOf, targetLabel } from './framework/index.mjs';
 
 const BINDING = '__cawCapture';
 const SETTLE_MS = 300;
@@ -21,7 +22,8 @@ const NOT_TYPED = new Set(['checkbox', 'radio', 'file', 'button', 'submit', 'hid
 export function captureInPage(binding, describeTarget, notTyped) {
     if (window.__cawCaptureOn) return;
     window.__cawCaptureOn = true;
-    const send = (event) => window[binding]?.({ ...event, path: location.pathname });
+    // Die Werkbank markiert sich erst nach diesem Skript (Skript des Tabs, dieses gehoert dem Kontext): Darum hier, nicht beim Start.
+    const send = (event) => { if (window.__cawWorkbench !== true) window[binding]?.({ ...event, path: location.pathname }); };
     const describe = (element) => {
         try {
             return describeTarget(element, { mode: 'describe' });
@@ -109,6 +111,21 @@ export function pickInPage(describeTarget) {
     });
 }
 
+/**
+ * Ein Ziel aus einem Frame der Anwendung bekommt `frame`: die iframes bis zum Hauptframe. Laesst sich ein iframe nicht beschreiben,
+ * ist das Ziel nicht stabil (null), wie ein Element ohne Namen.
+ */
+const withFrame = async (session, frame, target) => {
+    if (target === null || target === undefined || frame === undefined || frame === null) return target ?? null;
+    // Der Hauptframe der Anwendung auf der Seite, von der das Ereignis kommt: Mit Werkbank ihr iframe, sonst der Hauptframe dieser
+    // Seite. Nicht session.page(): Das ist das zuletzt geoeffnete Fenster, und ein Klick im ersten Tab bei offenem Popup gehoert dorthin.
+    const page = frame.page();
+    const top = session.workbench?.page === page ? session.workbench.view.frame : page.mainFrame();
+    if (frame === top) return target;
+    const chain = await frameTargetOf({ mainFrame: () => top }, frame).catch(() => null);
+    return chain === null ? null : chain === undefined ? target : { ...target, frame: chain };
+};
+
 /** In jedem Frame, denn Masken liegen teils in iFrames. Der erste Klick gewinnt, die anderen Frames brechen ab. */
 export const cancelPick = (session) => Promise.all(session.page().frames().map((frame) => frame.evaluate('window.__cawCancelPick?.()').catch(() => {})));
 
@@ -120,11 +137,11 @@ export const pickElement = async (session) => {
         for (const frame of frames) {
             frame.evaluate(script).catch(() => null).then((value) => {
                 open -= 1;
-                if (value !== null && value !== undefined) resolve(value);
+                if (value !== null && value !== undefined) resolve({ value, frame });
                 else if (open === 0) resolve(null);
             });
         }
-    });
+    }).then(async (hit) => (hit === null ? null : { ...hit.value, target: await withFrame(session, hit.frame, hit.value.target) }));
     await cancelPick(session);
     if (picked === null) return null;
     const label = picked.target === null ? `${picked.tag}${picked.text === '' ? '' : ` "${picked.text.slice(0, 40)}"`}` : targetLabel(picked.target);
@@ -134,10 +151,26 @@ export const pickElement = async (session) => {
 // Nie in der Werkbank selbst: Dort tippt der Mensch in den Chat, das ist kein Schritt der Anwendung.
 const captureScript = (framework) => `if (!(${isWorkbenchDocument}) && location.href !== 'about:srcdoc') (${captureInPage})(${JSON.stringify(BINDING)}, ${framework.targets}, ${JSON.stringify([...NOT_TYPED])});`;
 
+// Der Ordner gehoert waehrend des Laufs auch dem Container: Ein Link darin, etwa fehler.json -> ~/.bashrc, darf den Host nicht
+// woandershin schreiben lassen. Darum nie einem Link folgen: lstat statt exists, und nur neu anlegen ('wx'), nie ueberschreiben.
+const taken = (path) => {
+    try {
+        lstatSync(path);
+        return true;
+    } catch {
+        return false;
+    }
+};
+/** Schreibt eine eigene Datei neu. Was dort liegt (auch ein Link), wird entfernt, nicht verfolgt. */
+const writeOwn = (path, data) => {
+    if (taken(path)) rmSync(path, { force: true });
+    writeFileSync(path, data, { flag: 'wx' });
+};
+
 /** Mehrmals Hilfe im selben Lauf: Fruehere Bilder bleiben erhalten. */
 const freeScreenshot = (dir) => {
     let number = 1;
-    while (existsSync(join(dir, `punkt-${number}.png`))) number += 1;
+    while (taken(join(dir, `punkt-${number}.png`))) number += 1;
     return `punkt-${number}.png`;
 };
 
@@ -157,12 +190,17 @@ const captures = new WeakMap();
 const captureOf = async (session) => {
     const known = captures.get(session.context);
     if (known !== undefined) return known;
-    const state = { listener: null };
+    const state = { listener: null, queue: Promise.resolve() };
     captures.set(session.context, state);
     // Nur Frames der Anwendung zaehlen; in der Werkbank sieht auch der Chat das Binding.
     const owns = ({ page, frame }) => (session.ownsFrame === undefined ? session.ownsPage(page) : session.ownsFrame(frame));
+    // Der Frame eines Ziels wird auf dem Host ermittelt, also asynchron; die Warteschlange haelt die Reihenfolge der Ereignisse.
     await session.context.exposeBinding(BINDING, (source, event) => {
-        if (state.listener !== null && owns(source)) state.listener(event);
+        if (state.listener === null || !owns(source)) return;
+        state.queue = state.queue.then(async () => {
+            const target = event?.target === undefined ? undefined : await withFrame(session, source.frame, event.target);
+            state.listener?.(hideSecrets(session, target === undefined ? event : { ...event, target }));
+        }).catch(() => {});
     });
     const script = captureScript(session.framework ?? frameworkOf());
     await session.context.addInitScript({ content: script });
@@ -173,8 +211,12 @@ const captureOf = async (session) => {
         const app = session.workbench?.page === page ? session.workbench.view.frame : page.mainFrame();
         return frame === app;
     };
+    // Durch dieselbe Warteschlange wie die Aktionen: Sonst kaeme der Seitenwechsel eines Klicks im iframe vor dem Klick an, dessen Ziel
+    // noch ermittelt wird, und zaehlte als eigener Seitenwechsel.
     const watchNavigation = (page) => page.on('framenavigated', (frame) => {
-        if (isAppMain(page, frame) && state.listener !== null && owns({ page, frame })) state.navigated?.(frame.url(), frame);
+        if (!isAppMain(page, frame) || state.listener === null || !owns({ page, frame })) return;
+        const url = frame.url();
+        state.queue = state.queue.then(() => state.navigated?.(url, frame)).catch(() => {});
     });
     session.context.on('page', watchNavigation);
     session.context.pages().forEach(watchNavigation);
@@ -286,6 +328,8 @@ export const demonstrate = async ({ session, operator, ui, dir, now = Date.now, 
                 session.closed.then(() => null),
                 interrupted.then(() => { throw new CawError('aborted', t('run.demo.aborted')); }),
             ]);
+            // Erst, was noch auf seinen Frame wartet: Ein Pruefpunkt gehoert hinter den Klick davor.
+            await state.queue;
             if (line?.note !== undefined) {
                 push({ action: 'note', text: line.note, path: new URL(session.page().url()).pathname, ...(line.element === undefined ? {} : { element: line.element }) });
                 continue;
@@ -294,11 +338,20 @@ export const demonstrate = async ({ session, operator, ui, dir, now = Date.now, 
             if (shown === undefined || shown === null || shown.trim() === '') break;
             const screenshot = freeScreenshot(dir);
             const image = await session.page().screenshot().catch(() => null);
-            if (image !== null) writeFileSync(join(dir, screenshot), image);
-            push({ action: 'checkpoint', text: shown.trim(), path: new URL(session.page().url()).pathname, ...(image === null ? {} : { screenshot }), ...(line?.element === undefined ? {} : { element: line.element }) });
+            const saved = image !== null && (() => {
+                try {
+                    writeFileSync(join(dir, screenshot), image, { flag: 'wx' });
+                    return true;
+                } catch {
+                    return false;
+                }
+            })();
+            push({ action: 'checkpoint', text: shown.trim(), path: new URL(session.page().url()).pathname, ...(saved ? { screenshot } : {}), ...(line?.element === undefined ? {} : { element: line.element }) });
         }
         // Was kurz vor dem Enter passiert ist, ist womoeglich noch unterwegs.
         await new Promise((ok) => { setTimeout(ok, SETTLE_MS); });
+        // Ereignisse, deren Frame noch ermittelt wird, gehoeren dazu; danach erst abhaengen.
+        await state.queue;
         watchFailures();
         return items;
     } finally {
@@ -306,8 +359,8 @@ export const demonstrate = async ({ session, operator, ui, dir, now = Date.now, 
         // Belege unabhaengig vom Trace, der bei einem abrupten Ende unvollstaendig sein kann.
         if (dir !== undefined) {
             try {
-                writeFileSync(join(dir, 'fehler.json'), JSON.stringify((session.failures?.() ?? []).slice(failuresAt), null, 2));
-                if (session.network !== undefined) writeFileSync(join(dir, 'netzwerk.json'), JSON.stringify(session.network.since(networkAt), null, 2));
+                writeOwn(join(dir, 'fehler.json'), JSON.stringify((session.failures?.() ?? []).slice(failuresAt), null, 2));
+                if (session.network !== undefined) writeOwn(join(dir, 'netzwerk.json'), JSON.stringify(session.network.since(networkAt), null, 2));
             } catch {
                 // Belege sind Zugabe; die Vorfuehrung selbst zaehlt
             }
@@ -319,6 +372,20 @@ export const demonstrate = async ({ session, operator, ui, dir, now = Date.now, 
         state.listener = null;
         state.navigated = null;
     }
+};
+
+/**
+ * Was der Mensch eintippt, sieht Claude und steht in der Aufnahme. Ein Passwort der Rolle oder geheim gemerkter Wert in einem Feld, das
+ * kein Passwortfeld ist ("Passwort anzeigen", Dialog zur erneuten Anmeldung), gilt wie eines: als geheime Eingabe ohne Wert.
+ */
+export const hideSecrets = (session, event) => {
+    const secrets = (session.secrets?.() ?? []).filter((secret) => typeof secret === 'string' && secret !== '');
+    if (secrets.length === 0 || event === null || typeof event !== 'object') return event;
+    if (event.action === 'fill' && typeof event.value === 'string' && secrets.some((secret) => event.value.includes(secret))) {
+        const { value: _value, ...rest } = event;
+        return redactDeep({ ...rest, secret: true }, secrets);
+    }
+    return redactDeep(event, secrets);
 };
 
 /** Trennt, was sich direkt wiederholen laesst, von dem, was nur der Mensch konnte. */

@@ -124,7 +124,7 @@ Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen mit `agent`
 | `--max-steps <n>` | Grenze für Claudes Aktionen beim Beheben. |
 | `--agent local\|docker\|session` | Wie bei `record`. |
 
-Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
+Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`; `--until` und `--handover` werden abgelehnt (Exit 3), denn niemand übernähme den Browser. `record` und `fix` brauchen einen Menschen und werden in CI ebenfalls abgelehnt. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
 
 ## fix
 
@@ -165,7 +165,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 |---|---|
 | `0` | bestanden |
 | `1` | fehlgeschlagen: Die App tut nicht, was der Test erwartet |
-| `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …) |
+| `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …), oder ein unerwarteter interner Fehler (der Stack steht in der Ausgabe) |
 | `3` | abgewiesen: Aufruf, Config oder Testdatei ungültig. Es lief nichts. |
 
 ## Umgebungsvariablen
@@ -176,7 +176,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token für den Agenten `docker`. Erzeugen mit `claude setup-token`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
-| `CI` | Gesetzt: kein Chat, nur Agent `docker`. |
+| `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record`, `fix`, `--until` und `--handover` werden abgelehnt. |
 | `NO_COLOR`, `FORCE_COLOR` | Farben im Terminal aus oder an. |
 | `MCP_TOOL_TIMEOUT` | In der Umgebung von Claude Code: erhöhen, wenn `plan` oder `chat` in deiner Sitzung abbrechen. |
 

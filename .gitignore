@@ -12,3 +12,20 @@ e2e/projekt/caw/.env
 e2e/projekt/sub/
 e2e/projekt/caw/recordings/
 e2e/.caw-home/
+
+# Framework-Testprojekte (e2e/frameworks): Abhaengigkeiten, Builds, Laufdaten
+e2e/frameworks/**/node_modules/
+e2e/frameworks/**/dist/
+e2e/frameworks/**/deploy/
+e2e/frameworks/*/local/
+e2e/frameworks/**/.angular/
+e2e/frameworks/**/.next/
+e2e/frameworks/**/.nuxt/
+e2e/frameworks/**/.output/
+e2e/frameworks/**/.caw/
+e2e/frameworks/*/caw/
+e2e/frameworks/*/caw.config.json
+e2e/frameworks/**/next-env.d.ts
+e2e/frameworks/*.log
+e2e/frameworks/.caw-home/
+e2e/frameworks/ergebnis/

@@ -11,11 +11,12 @@
 // - `hints`: optional, Hinweise fuer Claude, wo im Quellcode zu suchen ist
 // - `watch`: optional, { label, command }: Woran der Watch des Frameworks als Prozess zu erkennen ist. Laeuft keiner, spielt
 //   caw-ai keinen lokalen Code ein und testet den deployten Stand. Ohne `watch` gilt lokaler Code wie konfiguriert.
+// - `hydrates`: optional, true: Vor dem Ausfuellen der Anmeldung warten, bis `probe` appReady meldet (SSR-Hydration)
 // - `name`, `label`: fuer Config und Meldungen
 
 import { extjs } from './extjs.mjs';
 import { angular, react, vue } from './spa.mjs';
-import { web } from './web.mjs';
+import { web, webTargets } from './web.mjs';
 import { patternLabel } from '../patterns.mjs';
 
 export const FRAMEWORKS = { web, extjs, react, vue, angular };
@@ -30,11 +31,69 @@ export const describeLocator = (framework, locator, options) => locator.evaluate
 
 const findExpression = (framework, target) => `(${framework.targets})(null, ${JSON.stringify({ mode: 'find', target })})`;
 
+// iframes: Ein Ziel in einem Frame der Anwendung traegt unter `frame` das iframe-Element, beschrieben im Dokument darueber, bei
+// verschachtelten Frames wieder mit `frame`. Das iframe beschreibt und findet immer der Adapter `web`: Ein Framework-Adapter wie
+// ExtJS kennt es nicht als Komponente.
+
+/**
+ * Der Frame zu einer `frame`-Angabe: das iframe im Dokument darueber suchen, dann sein Inhalt. Ohne Angabe die Seite selbst; null,
+ * solange das iframe fehlt oder noch nichts geladen hat.
+ */
+export const frameOf = async (page, frameTarget) => {
+    if (frameTarget === undefined) return page;
+    const { frame: outer, ...own } = frameTarget;
+    const parent = await frameOf(page, outer);
+    if (parent === null) return null;
+    const handle = await parent.evaluateHandle(`(${webTargets})(null, ${JSON.stringify({ mode: 'find', target: own, exact: true })})`).catch(() => null);
+    const element = handle?.asElement() ?? null;
+    if (element === null) {
+        await handle?.dispose().catch(() => {});
+        return null;
+    }
+    const frame = await element.contentFrame().catch(() => null);
+    await element.dispose().catch(() => {});
+    return frame;
+};
+
+/**
+ * Die `frame`-Angabe fuer ein Element in `frame`: die iframes vom Frame bis zur Anwendung, jeweils im Dokument darueber beschrieben.
+ * undefined im Hauptframe der Anwendung; null, wenn ein iframe sich nicht beschreiben laesst oder der Frame nicht zur Anwendung gehoert.
+ */
+export const frameTargetOf = async (page, frame) => {
+    const top = page.mainFrame();
+    const levels = [];
+    let current = frame;
+    for (; current !== null && current !== top; current = current.parentFrame()) {
+        const element = await current.frameElement().catch(() => null);
+        if (element === null) return null;
+        const described = await element.evaluate(webTargets, { mode: 'describe', exact: true }).catch(() => null);
+        await element.dispose().catch(() => {});
+        if (described === null) return null;
+        levels.push(described);
+    }
+    if (current === null) return null;
+    let chain;
+    for (const level of levels.reverse()) chain = chain === undefined ? level : { ...level, frame: chain };
+    return chain;
+};
+
+/** Beschreibt ein Element samt Frame: das Ziel wie `describeLocator`, aus einem iframe mit `frame`. null, wenn es nicht geht. */
+export const describeElement = async (framework, page, element, options) => {
+    const described = await element.evaluate(framework.targets, { mode: 'describe' }, options);
+    if (described === null || described === undefined) return null;
+    const frame = await element.ownerFrame().catch(() => null);
+    if (frame === null || frame === page.mainFrame()) return described;
+    const chain = await frameTargetOf(page, frame);
+    return chain === null ? null : chain === undefined ? described : { ...described, frame: chain };
+};
+
 /** Wartet, bis das Ziel klickbar ist. Waehrend eines Seitenwechsels scheitert die Auswertung, das ist normal. */
 export const waitForTarget = async (framework, page, target, { timeoutMs, pollMs = 150, sleep = sleepMs, now = Date.now } = {}) => {
     const deadline = now() + timeoutMs;
+    const { frame: frameTarget, ...own } = target;
     for (;;) {
-        const handle = await page.evaluateHandle(findExpression(framework, target)).catch(() => null);
+        const scope = await frameOf(page, frameTarget);
+        const handle = scope === null ? null : await scope.evaluateHandle(findExpression(framework, own)).catch(() => null);
         const found = handle?.asElement() ?? null;
         if (found !== null) return found;
         await handle?.dispose().catch(() => {});
@@ -48,7 +107,10 @@ export const waitForTarget = async (framework, page, target, { timeoutMs, pollMs
  * Adapter ohne diese Auskunft liefern null.
  */
 export const explainTarget = async (framework, page, target) => {
-    const why = await (async () => page.evaluate(`(${framework.targets})(null, ${JSON.stringify({ mode: 'explain', target })})`))().catch(() => null);
+    const { frame: frameTarget, ...own } = target;
+    const scope = await frameOf(page, frameTarget).catch(() => null);
+    if (scope === null) return { frameMissing: targetLabel(frameTarget) };
+    const why = await (async () => scope.evaluate(`(${framework.targets})(null, ${JSON.stringify({ mode: 'explain', target: own })})`))().catch(() => null);
     if (why === null || typeof why !== 'object' || Array.isArray(why) || !(why.missing || why.hidden || why.covered)) return null;
     if (!why.missing) return why;
     const { names, ...rest } = why;
@@ -86,6 +148,7 @@ export const closestNames = (wanted, names) => {
 /** Der Satz dazu fuer Meldung und Bericht, oder ''. */
 export const explainText = (why) => {
     if (why === null || why === undefined) return '';
+    if (why.frameMissing) return ` Der Frame ${why.frameMissing} fehlt auf der Seite.`;
     if (why.missing) return ` Es fehlt auf der Seite.${(why.similar ?? []).length === 0 ? '' : ` Ähnlich: ${why.similar.map(({ role, name }) => `${role} „${name}“`).join(', ')}. Wurde es umbenannt?`}`;
     if (why.hidden) return ' Es ist da, aber unsichtbar.';
     const { role, tag, name, messages = [] } = why.covered;

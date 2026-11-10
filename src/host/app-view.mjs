@@ -22,7 +22,7 @@ export const sourceTag = `\n//# sourceURL=${WORKBENCH_SOURCE}\n`;
 /** Laeuft im Browser: Ist dieses Dokument die Werkbank selbst? Skripte des Tools, die in jedem Frame laufen, lassen sie aus. */
 export const isWorkbenchDocument = 'window.__cawWorkbench === true';
 
-/** Mit Werkbank ist das oberste Fenster immer die Werkbank. Laeuft vor allen anderen Skripten des Tools. */
+/** Mit Werkbank ist das oberste Fenster ihres Tabs die Werkbank. Nur fuer diesen Tab, nicht fuer Popups der Anwendung. */
 export const WORKBENCH_MARK_SCRIPT = 'if (window === window.top) Object.defineProperty(window, "__cawWorkbench", { value: true });';
 
 /** Stammt eine Meldung (Datei oder Stack) aus Werkbank oder Chat? */
@@ -68,10 +68,12 @@ const HOP_HEADERS = new Set(['host', 'content-length', 'connection', 'cookie']);
  * - ein POST des obersten Fensters (Formular mit target=_top) geht ueber den Request-Kontext des Browsers raus, gleiche Cookies;
  *   eine Weiterleitung laedt danach die Anwendung im iframe, eine direkte Antwort bekommt das iframe einmalig als sein Dokument;
  * - alle anderen Dokumente der Anwendung kommen ohne die Header, die das Einbetten verbieten.
- * @param workbench (url) => HTML der Werkbank mit der Anwendung unter url
+ * Ohne `workbench` (kein Mensch davor) bleibt das oberste Fenster die Anwendung; dann zaehlt nur `rewrite`.
+ * @param workbench (url) => HTML der Werkbank mit der Anwendung unter url, oder undefined
  * @param request   der Request-Kontext des Browsers (context.request)
+ * @param rewrite   (html) => html, optional: aendert jede HTML-Seite der Anwendung, etwa ohne Subresource Integrity bei lokalem Code
  */
-export const interceptDocuments = async (context, page, hosts, { workbench, request }) => {
+export const interceptDocuments = async (context, page, hosts, { workbench, request, rewrite }) => {
     const cdp = await context.newCDPSession(page);
     const { frameTree } = await cdp.send('Page.getFrameTree');
     const topFrame = frameTree.frame.id;
@@ -88,7 +90,7 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
     const onRequest = async (event) => {
         const { requestId, frameId } = event;
         const { url, method, headers } = event.request;
-        if (frameId === topFrame) {
+        if (frameId === topFrame && workbench !== undefined) {
             if (method === 'GET' || method === 'HEAD') {
                 await fulfill(requestId, 200, html, workbench(url));
                 return;
@@ -120,18 +122,33 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
         await quiet(cdp.send('Fetch.continueRequest', { requestId }));
     };
     const onResponse = async (event) => {
-        const headers = embeddableHeaders(event.responseHeaders ?? []);
-        if (headers === null) {
+        const original = event.responseHeaders ?? [];
+        const headers = workbench === undefined ? null : embeddableHeaders(original);
+        const status = event.responseStatusCode ?? 0;
+        const isHtml = original.some(({ name, value }) => name.toLowerCase() === 'content-type' && /text\/html/i.test(value));
+        const rewriting = rewrite !== undefined && isHtml && status >= 200 && status < 300;
+        if (headers === null && !rewriting) {
             await quiet(cdp.send('Fetch.continueResponse', { requestId: event.requestId }));
             return;
         }
         try {
             const { body, base64Encoded } = await cdp.send('Fetch.getResponseBody', { requestId: event.requestId });
+            let bytes = base64Encoded ? Buffer.from(body, 'base64') : Buffer.from(body);
+            let sent = headers ?? original;
+            if (rewriting) {
+                const text = bytes.toString('utf8');
+                const changed = rewrite(text);
+                if (changed !== text) {
+                    bytes = Buffer.from(changed);
+                    // Der Body ist schon entpackt und jetzt anders lang.
+                    sent = sent.filter(({ name }) => !['content-length', 'content-encoding'].includes(name.toLowerCase()));
+                }
+            }
             await cdp.send('Fetch.fulfillRequest', {
                 requestId: event.requestId,
                 responseCode: event.responseStatusCode,
-                responseHeaders: headers,
-                body: base64Encoded ? body : Buffer.from(body).toString('base64'),
+                responseHeaders: sent,
+                body: bytes.toString('base64'),
             });
         } catch {
             await quiet(cdp.send('Fetch.continueResponse', { requestId: event.requestId }));
@@ -144,8 +161,38 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
     const urls = hosts.flatMap((host) => [`*://${host}/*`, `*://${host}:*`]);
     const patterns = urls.flatMap((urlPattern) => ['Request', 'Response'].map((requestStage) => ({ urlPattern, resourceType: 'Document', requestStage })));
     await cdp.send('Fetch.enable', { patterns });
+    if (rewrite !== undefined) await rewriteOtherPages(context, page, hosts, rewrite);
     return cdp;
 };
+
+/**
+ * Popups und neue Tabs der Anwendung: Die CDP-Sitzung oben gilt nur fuer eine Seite. Eine Route des Kontexts greift bei jeder neuen Seite
+ * schon vor ihrem ersten Request; sie aendert nur Dokumente anderer Seiten, die eigene beantwortet weiter CDP.
+ */
+const rewriteOtherPages = (context, page, hosts, rewrite) => context.route((url) => hosts.includes(url.hostname), async (route) => {
+    const request = route.request();
+    // Die erste Navigation eines Popups kommt, bevor es seinen Frame gibt: Dann ist es nie die eigene Seite, die gibt es laengst.
+    let own = false;
+    try {
+        own = request.frame().page() === page;
+    } catch {
+        own = false;
+    }
+    if (request.resourceType() !== 'document' || own) {
+        await route.fallback();
+        return;
+    }
+    const response = await route.fetch({ maxRedirects: 0 });
+    const isHtml = /text\/html/i.test(response.headers()['content-type'] ?? '');
+    if (!isHtml || response.status() < 200 || response.status() >= 300) {
+        await route.fulfill({ response });
+        return;
+    }
+    const text = await response.text();
+    const changed = rewrite(text);
+    const headers = Object.fromEntries(Object.entries(response.headers()).filter(([name]) => !['content-length', 'content-encoding'].includes(name.toLowerCase())));
+    await route.fulfill({ response, headers, body: changed });
+});
 
 /**
  * Laeuft in jedem Dokument: merkt sich das zuletzt fokussierte Element. Verliert das iframe den Fokus, etwa an den Chat, steht

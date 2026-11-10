@@ -6,6 +6,7 @@ import { basename, join } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
+import { buildCheck } from './local-build.mjs';
 
 /** Nur ein Platzhalter: devlink haengt Pfade an eine Basis-URL, gelesen wird von der Platte. */
 export const APP_FILES_BASE = 'http://app-files.invalid/';
@@ -21,6 +22,42 @@ export const createFileTransport = (appDir) => ({
         return { status: 200, text: async () => readFileSync(file, 'utf8') };
     },
 });
+
+/**
+ * Vor dem Lauf: Gibt es die Dateien aus `statics`? Fehlt eine (kein Build, Watch nicht gestartet), lieferte Chrome statt der App
+ * nur einen Fehler, und der Lauf meldete spaeter bloss „Anwendung nicht geladen“. Pfade sind relativ zum Projektordner.
+ */
+export const checkStatics = (root, statics = []) => {
+    const hint = t('session.appFiles.hint');
+    for (const { path } of statics) {
+        const file = join(root, path);
+        if (!existsSync(file)) throw new CawError('watch-missing', t('session.appFiles.missing', { file, hint }));
+    }
+};
+
+/**
+ * Vor dem Lauf: Gibt es die Dateien aus `constants` (`watchPath`, relativ zum App-Ordner)? Sie schreibt der Sencha-Watch; fehlt eine,
+ * scheiterte sonst erst der Request mitten im Lauf, und der Lauf meldete bloss „Anwendung nicht geladen“.
+ */
+export const checkConstants = (appDir, constants = []) => {
+    const hint = t('session.appFiles.hint');
+    for (const { watchPath } of constants) {
+        const file = join(appDir, watchPath);
+        if (!existsSync(file)) throw new CawError('watch-missing', t('session.appFiles.missing', { file, hint }));
+    }
+};
+
+/** Vor dem Lauf: Liegt im Build-Ordner (`localBuild`, relativ zum Projektordner) ein Build? */
+export const checkLocalBuild = (root, dir) => {
+    if (typeof dir !== 'string' || dir === '') return;
+    const folder = join(root, dir);
+    const checked = buildCheck(folder);
+    if (checked.ok) return;
+    // Zeigt localBuild auf einen Ordner ueber dem Build (Angular: `dist` statt `dist/app/browser`), fand der Lauf nichts und testete
+    // still den deployten Stand. Darum hier abbrechen und den Ordner mit der Seite nennen.
+    const hint = checked.hint === undefined ? t('session.appFiles.hint') : t('session.appFiles.buildBelow', { path: `${dir.replace(/[\\/]+$/, '')}/${checked.hint}` });
+    throw new CawError('watch-missing', t('session.appFiles.noBuild', { dir: folder, hint }));
+};
 
 /**
  * Vor dem Lauf: Passt bootstrap.json zu den Dateien? Ob ein Watch laeuft, sieht die Sandbox nicht, aber

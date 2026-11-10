@@ -22,6 +22,7 @@ test('Lokal: nur Lesen und das Tool caw, keine Shell, nichts wird gefragt, Gehei
     assert.equal(args[args.indexOf('--tools') + 1], 'Read,Grep,Glob');
     assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk');
     assert.ok(args.includes('--strict-mcp-config'));
+    assert.equal(args[args.indexOf('--setting-sources') + 1], '', 'keine allow-Regeln aus Nutzer- oder Projekteinstellungen');
     assert.ok(!args.includes('--dangerously-skip-permissions'));
     assert.deepEqual(LOCAL_ALLOWED, ['Read(./**)', 'Grep(./**)', 'Glob(./**)', 'mcp__caw__caw'], 'nur im Projekt lesen');
     for (const tool of ['Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch']) assert.ok(!args.join(' ').includes(tool), tool);
@@ -36,6 +37,14 @@ test('Lokal: Einrichtung im Agent-Ordner, die Anleitung ist der Skill mit Vorspa
     assert.equal(mcp.env.CAW_AGENT_DIR, dir);
     assert.equal(mcp.env.CAW_SANDBOX, '1');
     assert.equal(JSON.parse(readFileSync(setup.settings, 'utf8')).disableAllHooks, true);
+    // Aus den Nutzereinstellungen nur die Verbindung, nie Rechte.
+    const home = tempDir(t);
+    writeFileSync(join(home, 'settings.json'), JSON.stringify({ env: { HTTPS_PROXY: 'http://proxy:8080' }, model: 'opus', permissions: { allow: ['Read'] }, additionalDirectories: ['/'] }));
+    const carried = JSON.parse(readFileSync(writeLocalSetup(dir, { CLAUDE_CONFIG_DIR: home }).settings, 'utf8'));
+    assert.deepEqual(carried.env, { HTTPS_PROXY: 'http://proxy:8080' });
+    assert.equal(carried.model, 'opus');
+    assert.equal(carried.additionalDirectories, undefined);
+    assert.deepEqual(Object.keys(carried.permissions), ['deny']);
     const guide = readFileSync(setup.systemPromptFile, 'utf8');
     assert.match(guide, /^Du laeufst lokal/);
     assert.match(guide, /## Ablauf in der Sandbox/);

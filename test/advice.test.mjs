@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -104,6 +104,21 @@ test('Empfehlungen: Änderungen am Code werden gegen den echten Stand geprüft u
         assert.match(at({ find: 'const b' }), /2-mal/);
         assert.match(at({ find: 'gibt es nicht' }), /nicht in src\/fees\.js/);
         assert.match(at({ file: 'caw/caw.md', find: 'x' }), /gehört nicht zur Anwendung/);
+        // Kein Umweg nach .git oder caw/: Punktsegmente, andere Schreibweise, was Windows still umdeutet.
+        mkdirSync(join(root, '.git'), { recursive: true });
+        writeFileSync(join(root, '.git/config'), '[core]\n');
+        for (const file of ['././.git/config', 'src/../.git/config', 'src//fees.js', '.git./config', '.git /config', 'GIT~1/config', '.git::$DATA']) {
+            assert.match(at({ file, find: '[core]' }), /relativ zum Projekt/, file);
+        }
+        for (const file of ['.GIT/config', 'CAW/caw.md', 'Node_Modules/x.js']) assert.match(at({ file, find: '[core]' }), /gehört nicht zur Anwendung/, file);
+        // Auch nicht ueber einen Link im Projekt (unter Windows eine Junction, die braucht keine Rechte).
+        let linked = true;
+        try {
+            symlinkSync(join(root, '.git'), join(root, 'src/repo'), 'junction');
+        } catch {
+            linked = false;
+        }
+        if (linked) assert.match(at({ file: 'src/repo/config', find: '[core]' }), /gehört nicht zur Anwendung/);
         assert.match(at({ file: '../aussen.js' }), /relativ zum Projekt/);
         assert.match(at({ file: 'C:/x.js' }), /relativ zum Projekt/);
         assert.match(at({ replace: '    timeout: 1,' }), /gleich/);

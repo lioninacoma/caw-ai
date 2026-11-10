@@ -3,8 +3,9 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as dns } from 'node:dns';
-import { openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
+import { existsSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
 import { request as httpsRequest } from 'node:https';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -128,7 +129,7 @@ export const LOCAL_TOOLS = ['Read', 'Grep', 'Glob'];
 export const LOCAL_ALLOWED = [...LOCAL_TOOLS.map((tool) => `${tool}(./**)`), 'mcp__caw__caw'];
 // Dieselben Geheimnisse wie im Container verdeckt (maskArgs), hier als Leseverbot.
 export const LOCAL_DENY = ['.env', '.env.*', '**/.env', '**/.env.*', '.git/**', '**/.git/**', '.claude/**', '.worktrees/**', '.caw/**', 'caw/.auth/**',
-    '**/.npmrc', '**/.netrc', '**/.pgpass', '**/.git-credentials', '**/*.pem', '**/*.key', '**/*.p12', '**/*.pfx', '**/id_rsa*', '**/id_ed25519*', '**/id_ecdsa*']
+    '**/.npmrc', '**/.netrc', '**/.pgpass', '**/.git-credentials', '**/*.pem', '**/*.key', '**/*.p12', '**/*.pfx', '**/id_rsa*', '**/id_dsa*', '**/id_ed25519*', '**/id_ecdsa*']
     .flatMap((pattern) => LOCAL_TOOLS.map((tool) => `${tool}(${pattern})`));
 // Vorweg zum Skill: Lokal gibt es keine Shell, die Befehle laufen ueber ein Tool.
 export const LOCAL_PREAMBLE = `Du laeufst lokal, nicht im Container. Du hast keine Shell und kannst keine Dateien schreiben. Jeder Befehl
@@ -145,10 +146,25 @@ export const localClaudeArgs = (prompt, { mcpConfig, settings, systemPromptFile 
     '--allowedTools', LOCAL_ALLOWED.join(','),
     '--permission-mode', 'dontAsk',
     '--strict-mcp-config', '--mcp-config', mcpConfig,
+    // Keine Einstellungen des Nutzers oder des Projekts: Deren allow-Regeln (etwa "Read" oder "Read(//**)") und additionalDirectories
+    // genehmigte dontAsk sonst still, und Claude laese ~/.ssh. Was der Aufruf davon braucht, traegt writeLocalSetup herueber.
+    '--setting-sources', '',
     '--settings', settings,
     '--append-system-prompt-file', systemPromptFile,
     '--output-format', 'stream-json', '--verbose',
 ];
+
+// Aus den Einstellungen des Nutzers nur, was die Verbindung zu Claude braucht (Proxy, Bedrock, Schluessel-Helfer, Modell), keine Rechte.
+const CONNECTION_KEYS = ['env', 'apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport', 'model'];
+export const connectionSettings = (env = process.env) => {
+    const file = join(env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json');
+    try {
+        const parsed = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+        return Object.fromEntries(CONNECTION_KEYS.filter((key) => parsed?.[key] !== undefined).map((key) => [key, parsed[key]]));
+    } catch {
+        return {};
+    }
+};
 
 /** Die Dateien, die der lokale Aufruf braucht: MCP-Server, Leseverbote und die Anleitung. Alles im Agent-Ordner dieses Laufs. */
 export const writeLocalSetup = (dir, env = process.env) => {
@@ -156,7 +172,7 @@ export const writeLocalSetup = (dir, env = process.env) => {
     const settings = join(dir, 'settings.json');
     const systemPromptFile = join(dir, 'anleitung.md');
     writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { caw: { command: process.execPath, args: [BIN, 'mcp-agent'], env: { CAW_SANDBOX: '1', CAW_AGENT_DIR: dir, ...(env.CAW_COLOR ? { CAW_COLOR: env.CAW_COLOR } : {}) } } } }, null, 2));
-    writeFileSync(settings, JSON.stringify({ permissions: { deny: LOCAL_DENY }, disableAllHooks: true }, null, 2));
+    writeFileSync(settings, JSON.stringify({ ...connectionSettings(env), permissions: { deny: LOCAL_DENY }, disableAllHooks: true }, null, 2));
     writeFileSync(systemPromptFile, `${LOCAL_PREAMBLE}${readFileSync(SKILL_FILE, 'utf8').replace(/^---[\s\S]*?---\s*/, '')}`);
     return { mcpConfig, settings, systemPromptFile };
 };

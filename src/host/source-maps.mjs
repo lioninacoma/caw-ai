@@ -93,7 +93,8 @@ export const sourcePath = (source, mapUrl) => {
             // Bleibt, wie es ist.
         }
     }
-    return decodeURIComponent(path).replace(/^\/@fs\//, '').replace(/^\/+/, '').replace(/^(\.\/)+/, '').replace(/[?#].*$/, '');
+    // `file:///C:/…` (Turbopack) wie `/@fs/C:/…` (Vite): ein absoluter Pfad auf dem Rechner des Dev-Servers.
+    return decodeURIComponent(path).replace(/^file:\/\//, '').replace(/^\/@fs\//, '').replace(/^\/+/, '').replace(/^(\.\/)+/, '').replace(/[?#].*$/, '');
 };
 
 const stripQuery = (url) => url.replace(/[?#].*$/, '');
@@ -103,8 +104,9 @@ const stripQuery = (url) => url.replace(/[?#].*$/, '');
  * zulaesst: Die Seite kann eine Quellkarte ueberall hin zeigen lassen, der Host folgt dem nicht.
  * @param fetchText (url) => Promise<string|null>, z. B. ueber den Request-Kontext des Browsers (gleiche Cookies, gleiche TLS-Regeln)
  * @param allowed   (url) => boolean, etwa die Host-Sperre
+ * @param version   (url) => string, der Stand eines Skripts (etwa die mtime der lokalen Datei); ein neuer Stand laedt die Karte neu
  */
-export const createSourceMapper = ({ fetchText, allowed = () => true }) => {
+export const createSourceMapper = ({ fetchText, allowed = () => true, version = () => '' }) => {
     const cache = new Map();
     const load = async (scriptUrl) => {
         const script = await fetchText(scriptUrl);
@@ -126,12 +128,30 @@ export const createSourceMapper = ({ fetchText, allowed = () => true }) => {
         }
         if (typeof text !== 'string' || text.length > MAX_MAP_BYTES) return null;
         const map = JSON.parse(text);
-        if (map.version !== 3 || typeof map.mappings !== 'string') return null;
-        return { map, lines: parseMappings(map.mappings), mapUrl };
+        if (map.version !== 3) return null;
+        // Index-Karte (Turbopack, also `next dev`): Teilkarten mit Versatz statt einer Karte fuer die ganze Datei.
+        if (Array.isArray(map.sections)) {
+            const sections = map.sections
+                .filter((section) => typeof section?.map?.mappings === 'string' && Number.isInteger(section.offset?.line) && Number.isInteger(section.offset?.column))
+                .map((section) => ({ line: section.offset.line, column: section.offset.column, map: section.map, lines: parseMappings(section.map.mappings) }));
+            return sections.length === 0 ? null : { sections, mapUrl };
+        }
+        if (typeof map.mappings !== 'string') return null;
+        return { sections: [{ line: 0, column: 0, map, lines: parseMappings(map.mappings) }], mapUrl };
     };
+    /** Die Stelle in der Quelle; bei einer Index-Karte in der letzten Teilkarte, die vor der Stelle beginnt. */
+    const positionIn = ({ sections }, line, column) => {
+        const section = sections.filter((entry) => entry.line < line - 1 || (entry.line === line - 1 && entry.column <= column - 1)).at(-1);
+        if (section === undefined) return null;
+        const inner = line - section.line;
+        return originalPosition(section.map, section.lines, inner, inner === 1 ? column - section.column : column);
+    };
+    // Je Skript und Stand: `version` aendert sich, wenn ein Watch die lokale Datei neu schreibt; dann gilt die Karte von vorher nicht mehr.
     const mapFor = (scriptUrl) => {
-        if (!cache.has(scriptUrl)) cache.set(scriptUrl, (allowed(scriptUrl) ? load(scriptUrl) : Promise.resolve(null)).catch(() => null));
-        return cache.get(scriptUrl);
+        const key = `${scriptUrl}
+${version(scriptUrl)}`;
+        if (!cache.has(key)) cache.set(key, (allowed(scriptUrl) ? load(scriptUrl) : Promise.resolve(null)).catch(() => null));
+        return cache.get(key);
     };
 
     /** Eine Zeile des Stacks: `src/a.ts:12:5` mit Quellkarte, sonst die URL mit Zeile und Spalte. */
@@ -140,7 +160,7 @@ export const createSourceMapper = ({ fetchText, allowed = () => true }) => {
         if (found === null) return null;
         const [, url, row, col] = found;
         const loaded = await mapFor(url);
-        const position = loaded === null ? null : originalPosition(loaded.map, loaded.lines, Number(row), Number(col));
+        const position = loaded === null ? null : positionIn(loaded, Number(row), Number(col));
         return position === null
             ? { url, at: `${url}:${row}:${col}`, mapped: false }
             : { url, at: `${sourcePath(position.source, loaded.mapUrl)}:${position.line}:${position.column}`, mapped: true };

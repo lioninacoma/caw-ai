@@ -41,7 +41,11 @@ export const isAllowedUrl = (url, hosts) => {
 /** Referenz aus dem Snapshot oder CSS-Selektor. */
 export const locatorFor = (page, target) => page.locator(ARIA_REF.test(target) ? `aria-ref=${target}` : target);
 
-export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, commandTimeoutMs = COMMAND_TIMEOUT_MS }) => {
+/**
+ * @param expand optional: setzt Platzhalter geheimer gemerkter Werte ({{iban}}) in Werte von fill/type und in den Code einer Pruefung
+ *   ein. Claude sieht sie nie im Klartext und arbeitet mit dem Platzhalter; erst der Host fuellt ihn.
+ */
+export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, expand = (value) => value, commandTimeoutMs = COMMAND_TIMEOUT_MS }) => {
     const screenshots = new Set();
     let finished = false;
 
@@ -126,8 +130,20 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, c
         return secrets.length === 0 ? value : redactDeep(value, secrets);
     };
 
-    return async (command) => {
+    // Wo ein Platzhalter gefuellt wird: im Wert fuer fill/type immer, im Code nur einer Pruefung, die dann nur bestanden oder nicht meldet.
+    // Nie in eval, remember oder einer Adresse: Dort kaeme der Wert umgeformt (zerlegt, kodiert) zurueck, an redactDeep vorbei.
+    const expandable = (action, key) => key === 'value' || (key === 'code' && action === 'check');
+    const handle = async (given, { reveal = false } = {}) => {
         if (finished) throw new CawError('run-finished', t('run.agent.finished'));
+        let filled = false;
+        const command = typeof given === 'object' && given !== null
+            ? Object.fromEntries(Object.entries(given).map(([key, value]) => {
+                if (!expandable(given.action, key) || typeof value !== 'string') return [key, value];
+                const expanded = expand(value);
+                if (key === 'code' && expanded !== value) filled = true;
+                return [key, expanded];
+            }))
+            : given;
         if (typeof command !== 'object' || command === null || !Object.hasOwn(commands, command.action)) {
             throw new CawError('unknown-command', t('run.agent.unknownCommand', { action: String(command?.action) }));
         }
@@ -137,9 +153,15 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, c
         });
         try {
             const result = await Promise.race([commands[command.action](command), limit]);
-            return PAGE_TEXT.has(command.action) ? await hideSecrets(result) : result;
+            if (filled) return { id: result.id, pass: result.pass };
+            return PAGE_TEXT.has(command.action) && !reveal ? await hideSecrets(result) : result;
         } finally {
             clearTimeout(timer);
         }
     };
+    const handler = (command) => handle(command);
+    // Nur fuer den Host (Abspielen): ein geheimer remember-Wert ungeschwaerzt. Sonst laese ein zweiter Versuch des Schritts den beim
+    // ersten versteckten Wert als ••••. Claude erreicht nur `handler` selbst, nie diese Eigenschaft.
+    handler.reveal = (command) => handle(command, { reveal: true });
+    return handler;
 };

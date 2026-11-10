@@ -53,6 +53,8 @@ CAW_LOGIN_USER=test-user@example.com
 CAW_PW_USER=secret
 ```
 
+`caw/.env` is read like dotenv: `KEY=value`, optionally in quotes; a comment after the value needs a space before `#` (`KEY=value # note`). A `#` without a space before it belongs to the value; quote values that contain ` #`.
+
 `npx caw-ai init` writes a config like this for you.
 
 ## environments
@@ -138,7 +140,8 @@ Required. Usually one app; monorepos can list several.
 |---|---|
 | `dir` | App folder relative to the project, `.` for a single app. |
 | `startUrl` | Path where tests start. Only needed for apps a test starts in. |
-| `statics` | Local code: `[{ "name": "main.js", "path": "dist/main.js" }]` |
+| `localBuild` | Local code: the build folder relative to the project, e.g. `"dist"` or `"dist/app/browser"`. Works with normal hashed builds (Vite, Angular CLI, webpack). |
+| `statics` | Local code, single files: `[{ "name": "main.js", "path": "dist/main.js" }]` |
 | `redirects`, `constants` | Local code for Sencha/ExtJS apps. |
 
 ## Everything else
@@ -159,7 +162,7 @@ Required. Usually one app; monorepos can list several.
 | `maxSteps` | `100` | Claude's action budget when recording and fixing. |
 | `readyTimeoutMs` | | How long to wait for the app to settle. |
 | `lintCommand` | | Your check command, e.g. `npm run lint`. Claude mentions it in code suggestions. |
-| `assetUrlPattern` | | Regex for requests that load app code; group 1 is the file name in `statics`/`redirects`/`constants`. |
+| `assetUrlPattern` | | Regex for requests that load app code; group 1 is the file name in `statics`/`redirects`/`constants`, or the path inside `localBuild`. Without it, `localBuild` uses the path below the environment URL. |
 | `sites` | | Same app for several tenants: `["north", "south"]`, then `urls` per environment. |
 | `extends` | | Shared defaults from a file, e.g. `"./caw/presets/base.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Base image for the `docker` agent. Falls back to `image` in `.devcontainer/devcontainer.json`. |

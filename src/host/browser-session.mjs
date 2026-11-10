@@ -17,15 +17,16 @@ import {
     createInterceptionHandler,
     createPlaywrightLauncher,
     createWatchClient,
-    deriveRepoPath,
+    localFileFor,
     isHardFailure,
     parseConfig,
 } from './devlink-core.mjs';
 import { APP_FILES_BASE, createFileTransport } from './app-files.mjs';
+import { withoutIntegrity } from './local-build.mjs';
 import { DEFAULT_MESSAGE_SELECTORS, authOf, browserLaunch, isLoopback } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
 import { responseLine } from './effects.mjs';
-import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource } from './app-view.mjs';
+import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
 import { PREP, openWorkbench } from './workbench.mjs';
@@ -35,6 +36,10 @@ export const CROSS_ORIGIN_TOP = /Blocked a frame with origin .* from accessing a
 export const EMBED_HINT = '(Die Anwendung greift auf das oberste Fenster zu. Das ist die Werkbank, und sie liegt gerade auf einer anderen Adresse als die Anwendung, etwa nach einer Weiterleitung: Der Browser blockt den Zugriff, die Aktion bricht ab. Ohne Werkbank (--no-chat) tritt das nicht auf.)';
 
 const LOGIN_TIMEOUT_MS = 30_000;
+// So lange wartet die Anmeldung hoechstens auf Netzruhe und darauf, dass das Framework die Seite uebernommen hat. Eine Anmeldeseite
+// ausserhalb der App (etwa eines Identity Providers) haengt das Framework nie ein; dann geht es danach trotzdem weiter.
+const LOGIN_HYDRATE_MS = 10_000;
+const LOGIN_MOUNT_MS = 5_000;
 // So lange darf die Anwendung fuer die Antwort auf einen Einmalcode brauchen; steht danach das Codefeld noch da, hat sie ihn abgelehnt.
 const CODE_ANSWER_MS = 10_000;
 // Ein TOTP-Code gilt 30 s. Der neue Code kommt kurz nach Beginn des naechsten Fensters, falls die Uhren etwas abweichen.
@@ -47,21 +52,30 @@ const PROFILE_PREFIX = 'caw-profile-';
 const PROFILE_OWNER = 'caw-owner';
 const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
 
+// localhost und 127.0.0.1 sind derselbe Rechner: Ein Dev-Server unter dem einen Namen oeffnet seinen HMR-Socket oft unter dem anderen
+// (webpack-dev-server mit host 127.0.0.1). Beide frei zu geben erweitert die Grenze nicht, localhost zeigt ohnehin auf 127.0.0.1.
+const LOOPBACK_PAIR = ['localhost', '127.0.0.1'];
+const withLoopbackPair = (hosts) => (hosts.some((host) => LOOPBACK_PAIR.includes(host)) ? [...new Set([...hosts, ...LOOPBACK_PAIR])] : hosts);
+
 /**
  * Die Netzgrenze des Browsers. `--no-proxy-server` gehoert dazu: Ueber einen Proxy loest Chrome Namen
  * nicht selbst auf, die Regeln griffen dann nicht. WebRTC ginge sonst per UDP an ihnen vorbei.
  */
-export const browserArgs = (hosts) => [
-    // localhost und Namen unter .localhost sind Loopback (RFC 6761); fest auf 127.0.0.1, so wie ein Dev-Server meist lauscht.
-    // Mit einer Ausnahme in den Regeln fragte Chrome sonst das System, und Windows kennt .localhost nicht. IP-Adressen loest niemand auf.
-    `--host-resolver-rules=${[
-        ...hosts.filter((host) => isLoopback(host) && host !== '127.0.0.1').map((host) => `MAP ${host} 127.0.0.1`),
-        'MAP * ~NOTFOUND',
-        ...hosts.filter((host) => !isLoopback(host)).map((host) => `EXCLUDE ${host}`),
-    ].join(', ')}`,
-    '--no-proxy-server',
-    '--webrtc-ip-handling-policy=disable_non_proxied_udp',
-];
+export const browserArgs = (allowed) => {
+    const hosts = withLoopbackPair(allowed);
+    return [
+        // localhost und Namen unter .localhost sind Loopback (RFC 6761); fest auf 127.0.0.1, so wie ein Dev-Server meist lauscht.
+        // Mit einer Ausnahme in den Regeln fragte Chrome sonst das System, und Windows kennt .localhost nicht. Auch eine IP-Adresse trifft
+        // `MAP *`: 127.0.0.1 braucht darum, wenn erlaubt, eine Ausnahme wie jeder andere Host.
+        `--host-resolver-rules=${[
+            ...hosts.filter((host) => isLoopback(host) && host !== '127.0.0.1').map((host) => `MAP ${host} 127.0.0.1`),
+            'MAP * ~NOTFOUND',
+            ...hosts.filter((host) => !isLoopback(host) || host === '127.0.0.1').map((host) => `EXCLUDE ${host}`),
+        ].join(', ')}`,
+        '--no-proxy-server',
+        '--webrtc-ip-handling-policy=disable_non_proxied_udp',
+    ];
+};
 
 /**
  * Loescht das Profil. Unter Windows halten Chrome-Prozesse Dateien noch kurz nach dem Schliessen fest,
@@ -150,6 +164,10 @@ export const trackAgentPages = (first) => {
     };
     return {
         current: () => open.at(-1) ?? view ?? first,
+        /** Die Anwendung selbst, nie ein Popup: der erste Tab bzw. das iframe der Werkbank. */
+        main: () => view ?? first,
+        /** Die offenen Popups der Anwendung, neuestes zuletzt. */
+        popups: () => open.filter((page) => page !== (view ?? first)),
         owns: (page) => owned.has(page),
         /** Die Anwendung laeuft ab jetzt im iframe der Werkbank `page`. */
         embed: (page, frameView) => {
@@ -176,11 +194,23 @@ export const trackAgentPages = (first) => {
  * Meldet den Browser an, falls noetig. Die Zugangsdaten bleiben auf dem Host; der Trace startet erst
  * nach der Anmeldung, und keine Meldung enthaelt sie.
  */
-const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors }) => {
+const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, framework }) => {
     const page = context.pages()[0];
     const broken = watchBroken(page);
+    // Nur die SPA-Adapter: Ihre Anmeldeseite ist meist Teil der App. `web` und `extjs` (Portal-Anmeldung ohne Ext) bleiben wie bisher.
+    const originOf = (address) => { try { return new URL(address).origin; } catch { return null; } };
+    // Eine fremde Anmeldeseite (Keycloak, Entra) hat kein Framework der App: Dort zu warten kostete nur LOGIN_MOUNT_MS.
+    const ready = framework?.hydrates === true ? async (current) => {
+        if (originOf(current.url()) !== originOf(url)) return;
+        const deadline = Date.now() + LOGIN_MOUNT_MS;
+        while (Date.now() < deadline) {
+            const sample = await current.evaluate(framework.probe, null).catch(() => null);
+            if (sample?.appReady === true) return;
+            await sleepMs(100);
+        }
+    } : undefined;
     try {
-        await loginSteps(page, { url, marker, login, password, totpSecret, selectors });
+        await loginSteps(page, { url, marker, login, password, totpSecret, selectors, ready });
     } catch (error) {
         const seen = broken.text();
         if (seen !== '' && error instanceof CawError) error.message = `${error.message} ${seen}`;
@@ -243,7 +273,7 @@ const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep })
     if (await codeStays()) await submit();
 };
 
-export const loginSteps = async (page, { url, marker, login, password, totpSecret, selectors, now = Date.now, sleep = sleepMs }) => {
+export const loginSteps = async (page, { url, marker, login, password, totpSecret, selectors, ready, now = Date.now, sleep = sleepMs }) => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector(`${marker}, ${selectors.user}`, { timeout: LOGIN_TIMEOUT_MS }).catch(() => {
         throw new CawError('login-form-missing', t('session.browser.loginFormMissing', { marker, url }));
@@ -251,6 +281,13 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
     if (await page.$(marker) !== null) return;
     // Vor dem Laden ist das Formular oft zwar da, schickt aber noch nicht ab: Enter ginge ins Leere.
     await page.waitForLoadState('load', { timeout: LOGIN_TIMEOUT_MS }).catch(() => {});
+    // Serverseitig gerendert (Nuxt, Next.js, Angular SSR) steht das Formular schon da, bevor das Framework es uebernimmt. Wer
+    // vorher ausfuellt, verliert die Werte bei der Hydration, oder Enter schickt das Formular nativ ab (GET, Felder in der URL).
+    if (ready !== undefined) {
+        await page.waitForLoadState('networkidle', { timeout: LOGIN_HYDRATE_MS }).catch(() => {});
+        await ready(page);
+        if (await page.$(marker) !== null) return;
+    }
     await page.fill(selectors.user, login);
     await page.fill(selectors.password, password);
     if (selectors.submit === undefined) await page.press(selectors.password, 'Enter');
@@ -350,7 +387,7 @@ const decideDepsFor = (appDir) => {
     return createDecideDeps({
         getBootstrap: watch.getBootstrap,
         readWatch: watch.readWatch,
-        fileReader: { readText: async (path) => readFileSync(path, 'utf8') },
+        fileReader: { readText: async (path) => readFileSync(path, 'utf8'), readBinary: async (path) => readFileSync(path) },
         log: () => {},
     });
 };
@@ -360,10 +397,23 @@ const decideDepsFor = (appDir) => {
  * kennt nur ein Bootstrap, darum bekommt jede weitere App eine eigene Route fuer genau ihre Dateien. Spaeter
  * registrierte Routen laufen zuerst.
  */
-export const routeExtraApp = async (context, { dir, devlinkConfig }, portalUrl) => {
-    const names = new Set(devlinkConfig.projects.flatMap(({ redirects }) => redirects.map(({ name }) => name)));
+export const routeExtraApp = async (context, { dir, devlinkConfig }, portalUrl, mainConfig = null) => {
     const handle = createInterceptionHandler({ config: devlinkConfig, portalUrl, onFailure: 'fail' }, decideDepsFor(dir));
-    await context.route((url) => names.has(deriveRepoPath(url.href, devlinkConfig.assetUrlPattern)),(route) => handle(route, route.request().url()));
+    // Spaeter registrierte Routen laufen zuerst: Was die Haupt-App selbst beantwortet, bleibt ihr, auch bei gleichen Namen bis auf den
+    // Hash (zwei Vite-Apps mit je einem assets/index-…js).
+    const ours = (url, resourceType) => localFileFor(devlinkConfig, url, resourceType) !== null
+        && (mainConfig === null || localFileFor(mainConfig, url, resourceType) === null);
+    await context.route(
+        (url) => ours(url.href, undefined),
+        async (route) => {
+            const request = route.request();
+            if (!ours(request.url(), request.resourceType())) {
+                await route.fallback();
+                return;
+            }
+            await handle(route, request.url(), request.resourceType());
+        },
+    );
 };
 
 const FLOATS_BINDING = '__cawFloats';
@@ -375,7 +425,7 @@ export function watchFloatsInPage(binding) {
     if (window.__cawFloatsOn || window.__cawWorkbench === true || location.href === 'about:srcdoc') return;
     if (window !== window.top && window.parent !== window.top) return;
     window.__cawFloatsOn = true;
-    const send = (text) => window[binding]?.(`${Math.round(performance.now())}ms ${text}`);
+    const send = (text) => { if (window.__cawWorkbench !== true) window[binding]?.(`${Math.round(performance.now())}ms ${text}`); };
     const owner = (node) => node?.closest?.('[data-componentid]')?.getAttribute('data-componentid') ?? node?.tagName ?? '?';
     for (const name of ['mousedown', 'mouseup', 'click']) addEventListener(name, ({ target }) => send(`${name} ${owner(target)}`), true);
     let last = '';
@@ -550,8 +600,9 @@ export const openBrowserSession = async (spec) => {
             raw.on('close', closedSignal);
             await grantClipboard(raw, resolved.url);
             timing.chrome = Date.now();
-            // Mit Werkbank vor allen anderen Skripten des Tools: Sie lassen das oberste Fenster, die Werkbank, aus.
-            if (spec.embed === true) await raw.addInitScript({ content: WORKBENCH_MARK_SCRIPT });
+            // Mit Werkbank: Nur ihr Tab, nicht Popups der Anwendung (window.open, target=_blank), in denen der Mensch auch vorfuehrt.
+            // Skripte des Kontexts laufen vor denen des Tabs; darum pruefen sie die Markierung erst beim Ereignis.
+            if (spec.embed === true) await raw.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
             if (auth.type === 'storageState') await applyStorageState(raw, credentials.storageState);
             // Ueber die eigene Anmeldeseite: So laedt die Anwendung nicht schon einmal vor dem Einspielen des lokalen Codes.
             if (auth.type === 'form') {
@@ -561,6 +612,7 @@ export const openBrowserSession = async (spec) => {
                     login: credentials.login,
                     password: credentials.password,
                     totpSecret: credentials.totpSecret,
+                    framework,
                     selectors: {
                         user: auth.userSelector,
                         password: auth.passwordSelector,
@@ -598,7 +650,7 @@ export const openBrowserSession = async (spec) => {
             if (/unsatisfiable/.test(message)) throw new CawError('local-code', t('session.browser.localCode', { message: message.replace(/^devlink: [^—]*— /, '') }));
             throw error;
         });
-        for (const extra of spec.extraApps ?? []) await routeExtraApp(raw, extra, resolved.url);
+        for (const extra of spec.extraApps ?? []) await routeExtraApp(raw, extra, resolved.url, devlinkConfig);
         timing.code = Date.now();
         if (spec.floatsLogPath !== undefined && framework.floats) await logFloats(raw, spec.floatsLogPath);
 
@@ -640,10 +692,63 @@ export const openBrowserSession = async (spec) => {
         };
         // Skriptfehler zeigen auf den Quellcode, wenn die Anwendung Quellkarten ausliefert. Geladen nur von Hosts der Sperre, ueber den
         // Request-Kontext des Browsers, also mit denselben Cookies und TLS-Regeln.
+        // Mit lokalem Code bekommt Chrome Skripte aus `statics` vom Projektordner. Skript und Quellkarte muessen dann von dort kommen,
+        // sonst passt die Karte des deployten Stands nicht zum Code, der den Fehler warf.
+        // Auch der lokale Code weiterer Apps (`also`), jeweils mit dem eigenen Muster; ihre Routen laufen vor der Haupt-App, also hier auch.
+        const localConfigs = [devlinkConfig, ...(spec.extraApps ?? []).map((extra) => extra.devlinkConfig)];
+        const readLocal = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : null);
+        // Das Skript, wie Chrome es bekam (bei einem Alias unter deploytem Namen der lokale Inhalt, denn nur der wirft Fehler), und die Karte
+        // neben der lokalen Datei. Eine fehlende Karte ist keine Einladung, die deployte zu nehmen.
+        const localText = (url) => {
+            for (const config of localConfigs) {
+                const found = localFileFor(config, url);
+                if (found?.file !== undefined) return readLocal(found.file);
+                const bare = url.replace(/[?#].*$/, '');
+                if (!bare.endsWith('.map')) continue;
+                const owner = localFileFor(config, bare.slice(0, -'.map'.length));
+                if (owner?.file !== undefined) return readLocal(`${owner.file}.map`);
+            }
+            return undefined;
+        };
+        // Ein Watch baut neu, die Namen fester statics bleiben: Die Karte gilt nur, solange die lokale Datei dieselbe ist.
+        const localVersion = (url) => {
+            for (const config of localConfigs) {
+                const found = localFileFor(config, url);
+                if (found?.file !== undefined) {
+                    try {
+                        return String(statSync(found.file).mtimeMs);
+                    } catch {
+                        return 'fehlt';
+                    }
+                }
+            }
+            return '';
+        };
         const sourceMaps = createSourceMapper({
+            version: localVersion,
             fetchText: async (url) => {
-                const response = await raw.request.get(url, { timeout: 5000, maxRetries: 0 }).catch(() => null);
-                return response?.ok() ? response.text() : null;
+                const local = localText(url);
+                if (local !== undefined) return local;
+                // undefined: keine Verbindung (Name nicht aufloesbar, Port zu); null: der Server antwortete, aber nicht mit 2xx.
+                // Keiner Weiterleitung folgen: `allowed` prueft nur die erste Adresse, und eine offene Weiterleitung auf einem erlaubten
+                // Host (Anmeldedienste haben oft eine) fuehrte sonst einen Request vom Host-Rechner an eine beliebige Adresse.
+                const get = async (target, options = {}) => {
+                    const response = await raw.request.get(target, { timeout: 5000, maxRetries: 0, maxRedirects: 0, ...options }).catch(() => undefined);
+                    if (response === undefined) return undefined;
+                    return response.ok() ? response.text() : null;
+                };
+                const first = await get(url);
+                const parsed = new URL(url);
+                // Ein 404 fuer eine Karte, die es nicht gibt, ist eine Antwort; nur ohne Verbindung lohnt der zweite Weg.
+                if (first !== undefined || !isLoopback(parsed.hostname) || parsed.hostname === '127.0.0.1') return first ?? null;
+                // Der Request-Kontext loest Namen in Node auf, nicht ueber --host-resolver-rules: Unter Windows kennt Node `.localhost`
+                // nicht, und `localhost` wird oft zu ::1, wo der Server nicht lauscht. Darum wie fuer Chrome ueber 127.0.0.1, mit dem
+                // Namen im Host-Header und den Cookies, die der Browser dorthin schickte.
+                const host = parsed.host;
+                const cookie = (await raw.cookies(url).catch(() => [])).map(({ name, value }) => `${name}=${value}`).join('; ');
+                parsed.hostname = '127.0.0.1';
+                // Das Zertifikat nennt den Namen, nicht 127.0.0.1: Fuer diesen Umweg auf den eigenen Rechner zaehlt es nicht.
+                return (await get(parsed.href, { headers: { host, ...(cookie === '' ? {} : { cookie }) }, ignoreHTTPSErrors: true })) ?? null;
             },
             allowed: (url) => hosts.includes(new URL(url).hostname),
         });
@@ -657,8 +762,21 @@ export const openBrowserSession = async (spec) => {
         // Chrome meldet gescheiterte Requests zusaetzlich als Konsolenfehler. Die erfassen `response` und `requestfailed` schon, mit URL
         // und den Regeln fuer statische Dateien; doppelt gezaehlt machte jeder 404 eines Bildes und jeder fachliche 4xx den Lauf hart.
         const networkEcho = (message) => /^Failed to load resource:/.test(message.text());
+        // Frameworks fangen Fehler oft selbst und schreiben sie samt Stack in die Konsole, statt sie fliegen zu lassen: Angular ueber
+        // seinen ErrorHandler ("ERROR Error: …"), Vue im Produktions-Build, React nach einer Error Boundary. Dann zeigt der Stack wie
+        // beim Skriptfehler auf die Quelle.
+        const stackIn = (text) => (/\n\s+at .*https?:\/\//.test(text) ? text : undefined);
         raw.on('console', (message) => {
-            if (!networkEcho(message)) observe(message.page(), { type: 'console', level: message.type(), text: message.text() }, message.location().url || undefined);
+            if (networkEcho(message)) return;
+            const text = message.text();
+            const stack = message.type() === 'error' ? stackIn(text) : undefined;
+            const entry = observe(message.page(), { type: 'console', level: message.type(), text }, message.location().url || undefined, stack);
+            if (entry !== null && entry !== undefined && stack !== undefined) {
+                sourceMaps.translate(stack, { skip: framework.stackSkip }).then(({ at, stack: mapped }) => {
+                    if (at !== undefined) entry.at = at;
+                    if (mapped.length > 0) entry.stack = mapped;
+                }, () => {});
+            }
         });
         raw.on('weberror', (webError) => {
             const error = webError.error();
@@ -752,9 +870,15 @@ export const openBrowserSession = async (spec) => {
         // host.start() bindet die Interception erst nach dem Laden der Startseite ein; erst diese
         // Navigation laedt die App also mit dem lokalen Code.
         let bench = null;
+        // Lokaler Code aus einem Build-Ordner hat andere Bytes als die Hashes in `integrity` der deployten Seite: Ohne die Attribute
+        // fuehrte Chrome kein eingespieltes Skript aus. Die Seite selbst bleibt die des Servers.
+        const builds = [devlinkConfig, ...(spec.extraApps ?? []).map((extra) => extra.devlinkConfig)]
+            .some(({ projects }) => projects.some(({ builds: list = [] }) => list.some(({ active }) => active)));
+        const rewrite = builds ? withoutIntegrity : undefined;
+        const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
             // Einbetten nur fuer Dokumente der Anwendung selbst, nicht fuer weitere erlaubte Hosts wie einen Anmeldedienst.
-            bench = await openWorkbench(raw, { appUrl: startUrl, hosts: [new URL(resolved.url).hostname], title: spec.title ?? 'caw-ai' });
+            bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw-ai', rewrite });
             pages.embed(bench.page, bench.view);
             bench.view.on('domcontentloaded', () => network.replaced(bench.view));
             const signIn = auth.type === 'form' || auth.type === 'basic' ? t('session.prep.signIn') : auth.type === 'storageState' ? t('session.prep.takeSession') : null;
@@ -768,6 +892,7 @@ export const openBrowserSession = async (spec) => {
             for (const { id, ms } of points) if (ms !== undefined) await bench.point(PREP, id, 'pass', { ms: Math.max(0, ms) });
             await bench.point(PREP, 'load', 'running');
         } else {
+            if (rewrite !== undefined) await interceptDocuments(raw, raw.pages()[0], appHosts, { request: raw.request, rewrite });
             await raw.pages()[0].goto(startUrl, { waitUntil: 'load' });
         }
         // Ruhe laut Framework-Adapter, beim neutralen Adapter auch ohne offene Requests der Seite.
@@ -819,8 +944,11 @@ export const openBrowserSession = async (spec) => {
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
             /** Zurueck auf die Startseite der App, mit frischem Code, und warten, bis sie bereit ist. */
+            // Die Anwendung selbst, nicht ihr neuestes Popup: Sonst luede die Startseite im Popup, ausserhalb der Werkbank. Offene Popups
+            // gehoeren zum verlassenen Zustand und gehen zu.
             restart: async () => {
-                await pages.current().goto(startUrl, { waitUntil: 'load' });
+                for (const popup of pages.popups()) await popup.close().catch(() => {});
+                await pages.main().goto(startUrl, { waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
             /** Der Framework-Adapter: Ziele, Seitenzustand, Bereitschaft. */

@@ -4,6 +4,55 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+- `localBuild` per app: local code from a build folder with normal hashed file names (Vite, Angular CLI, webpack). The deployed entry files are mapped to the local ones by name without hash; lazy chunks, CSS, source maps, fonts and images follow. No fixed file names, no list of files, no `assetUrlPattern` needed.
+- Targets in iframes of the application: recording adds `frame` (the iframe, described in the document above it, nested if needed), replay finds the element there, and a missing iframe is named in the step's error.
+
+### Fixed
+- Open shadow roots also count for an enclosing `<label>`, the sign-in marker, messages and dialogs as web components, and `wait-ready` counts.
+- Local code of apps under `also`: `statics` were never served, only `redirects`.
+- Local code with only `statics` (Vite, Angular CLI, webpack builds) no longer crashes looking for a Sencha `bootstrap.json`.
+- A missing `statics` file (no build, watch not started) stops the run with `watch-missing` and names the file, instead of "the application is not loaded".
+- React apps that hydrate the whole document (Next.js App Router, React Router framework mode, Remix) count as loaded; before, every run ended with `app-not-loaded`.
+- Sign-in on server-rendered pages (Nuxt, Next.js, Angular SSR) waits until the framework has taken over the form; before, the values were lost on hydration or Enter submitted the form natively.
+- Source maps load on Windows for environments under `*.localhost` and for `localhost` dev servers listening on 127.0.0.1 only.
+- With local code, a script from `statics` is mapped with the source map next to the local file, not the deployed one.
+- Index source maps with `sections` (Turbopack, `next dev`) and `file:///` sources are understood.
+- Errors that a framework catches and logs with a stack (Angular's `ErrorHandler`, Vue in production, React error boundaries) point to the source file and count as clear application errors, like uncaught ones. Failed requests logged that way (`HttpErrorResponse`, `AxiosError`) stay network evidence.
+- Deployed pages with Subresource Integrity (`integrity` on scripts and styles, e.g. Angular's `subresourceIntegrity`) accept local code; the attributes are removed from the deployed HTML only while local code is served.
+- Angular with SSR counts as loaded only after hydration, not as soon as the server HTML carries `ng-version`.
+- Sign-in through a foreign login page (Keycloak, Entra ID) no longer waits for the app's framework there.
+- An environment on `http://127.0.0.1:<port>` was blocked by the browser's network rules.
+- The app navigating the top window itself (`top.location`, a form with `target=_top`) no longer aborts the run as if a person had reloaded the page; reloading twice in quick succession restores the workbench fully.
+- Actions demonstrated in a popup of the app are recorded; before, popups were taken for the workbench.
+- Restoring the state or restarting with a popup open loads the start page in the app, not in the popup, and closes the popup.
+- A sign-in check during a client-side redirect keeps waiting instead of failing with "execution context was destroyed".
+- A `remember` with `secret: true` in a step that is retried kept `••••` instead of the value.
+- An effect-only failure (the check passes, the app reacts differently than in healthy runs) is recognized after retries and when the check reports itself, so the diagnosis says "likely" and offers to forget the learned effect.
+- Re-recording an existing test keeps its `knownMessages` patterns, `secret: true` markers and check time limits.
+- `caw/.env` is read like dotenv: a comment after the value (`KEY=value # note`), quotes and surrounding spaces are no longer part of the value.
+- `validate` checks each entry of `statics`, `constants` and `redirects` and the fields of a role (unknown keys, variable names); before, a bad entry crashed the run.
+- A test name is a file name in `caw/tests` (letters of any language such as `kündigung`, digits, `_`, `-`, `.`; no folders, no trailing dot); `record team/login` failed only after the whole recording.
+- In CI (`CI` set) `record`, `fix`, `run --until` and `run --handover` are rejected with exit 3 instead of waiting for a person until the runner times out.
+- A missing session file (`auth-missing`) or `TODO` selectors end `run` with exit 3 as documented, not 2. An unexpected internal error ends with exit 2 (environment), not 1 (test failed), and stops Claude.
+- `.devcontainer` `image` is checked like `sandboxImage` before it goes into the Dockerfile.
+- With `localhost` allowed, `127.0.0.1` is reachable too and vice versa: a dev server opened under one name often opens its HMR socket under the other (webpack-dev-server with `host: 127.0.0.1`).
+- Local code with Subresource Integrity also works in popups and new tabs of the app, not only in the first tab.
+- `localBuild` with many lazy chunks (Angular names each `chunk-<hash>.js`) no longer slows every request: which files the local build reaches is computed once per build, not per request.
+- A chain of top-level navigations by the app no longer counts as a reload by the person when the navigation type can't be read; only reload and back/forward do.
+
+### Security
+- The chat is identified by the frame the workbench created, not by its name: the app (same origin as the workbench) or Claude via `eval` could otherwise replace it with its own `caw-chat` iframe and approve plans or pick options as the person. Loading another page into the real chat iframe (`srcdoc`, `location`) doesn't work either: every chat page carries a one-time key the app can't read.
+- Without a container, Claude Code no longer loads user or project settings (`--setting-sources ""`), whose `allow` rules or `additionalDirectories` would otherwise let it read outside the project; only connection settings (`env`, `apiKeyHelper`, `model`, AWS helpers) are carried over. `id_dsa*` joins the denied files.
+- Evidence files of a demonstration (`fehler.json`, `netzwerk.json`, screenshots) are created fresh and never through a link the container placed in its folder.
+- Code advice can't reach `.git`, `caw/`, `node_modules` or `.claude` through `./` segments, other letter case, trailing dots or spaces, short names or a link.
+- Secret values reach Claude neither in the repair task (the check keeps the placeholder `{{name}}`, filled in by the host when Claude runs the check, which then reports only pass or fail; `eval`, `remember` and `goto` never get the value) nor in the diagnosis and evidence written to `result.json` and `report.md`.
+- A password typed by the person into a field that isn't a password field (show-password toggles) is recorded as a secret input without its value.
+- Source maps are fetched without following redirects, so an open redirect on an allowed host can't send a request from your machine elsewhere.
+
+### Tests
+- `e2e/frameworks`: test projects for React (Vite and webpack 5), Vue (Vite), Angular 21 (zoneless and Zone.js), Next.js 16 and Nuxt 4, each against the dev server, as a production build over HTTPS and with local code (`localBuild` with hashed builds, `statics` with fixed names), with and without a running build watch. React also covers an iframe and a web component.
+
 ### Docs
 - `CONTRIBUTING.md` and templates for issues and pull requests.
 

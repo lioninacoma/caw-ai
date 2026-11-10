@@ -186,3 +186,44 @@ test('web: Eine Meldung über 300 Zeichen kommt ganz, damit sie ihren Eintrag in
     assert.ok(state.messages[0].length > 300);
     return undefined;
 });
+
+// Web Components wie Shoelace oder Ionic: Label um das Feld, Meldung und Marker im Shadow Root, Dialog als Web Component.
+const SHADOW_PARTS = `
+<x-field id="feld"></x-field>
+<x-menu></x-menu>
+<x-toast></x-toast>
+<ul><x-row></x-row><x-row></x-row></ul>
+<x-dialog></x-dialog>
+<script>
+const define = (name, html) => customElements.define(name, class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: 'open' }).innerHTML = html; } });
+define('x-field', '<label>Betrag <input id="i"></label>');
+define('x-menu', '<nav data-testid="user-menu">Konto</nav>');
+define('x-toast', '<div role="status">Ticket <b>4</b> gespeichert</div>');
+define('x-row', '<li class="zeile">Zeile</li>');
+define('x-dialog', '<div role="dialog" aria-modal="true" aria-label="Rückfrage"><p role="alert">Wirklich löschen?</p><input></div>');
+</script>`;
+
+test('web: Shadow DOM auch für Label, Marker, Meldungen, Formular im Dialog und Zählung', async (t) => {
+    if (needsChrome()) return t.skip('kein Chrome');
+    await page.setContent(SHADOW_PARTS);
+    const field = await page.locator('#feld').locator('input').evaluate(webTargets, { mode: 'describe' });
+    assert.equal(field.name, 'Betrag', 'umschließendes Label im Shadow Root');
+    const state = await page.evaluate(webPageState, { marker: '[data-testid=user-menu]', selectors: ['[role=alert]', '[role=status]'] });
+    assert.equal(state.signedIn, true, 'Marker im Shadow Root');
+    assert.deepEqual(state.notes, ['Ticket # gespeichert'], 'Status im Shadow Root ist ein Hinweis, mit Text aus allen Teilen');
+    assert.deepEqual(state.messages, ['Wirklich löschen?'], 'der Dialog mit Feld ist Bedienung, sein Alarm eine Meldung');
+    assert.equal((await page.evaluate(webProbe, '.zeile')).counts, 2, 'Zählung in Shadow Roots');
+    const { webCount } = await import('../src/host/framework/web.mjs');
+    assert.equal(await page.evaluate(webCount, null), null);
+    return undefined;
+});
+
+test('web: Ein Dialog als Web Component über einem Knopf nennt Name und Meldung', async (t) => {
+    if (needsChrome()) return t.skip('kein Chrome');
+    await page.setContent(`<button>Speichern</button>
+<x-modal></x-modal>
+<script>customElements.define('x-modal', class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: 'open' }).innerHTML = '<div role="dialog" aria-modal="true" style="position:fixed;inset:0;background:#fff"><h2>Hinweis</h2><p role="alert">Sitzung läuft ab</p></div>'; } });</script>`);
+    const why = await page.evaluate(`(${webTargets})(null, ${JSON.stringify({ mode: 'explain', target: { role: 'button', name: 'Speichern' } })})`);
+    assert.deepEqual(why, { covered: { role: 'dialog', name: 'Hinweis', messages: ['Sitzung läuft ab'] } });
+    return undefined;
+});

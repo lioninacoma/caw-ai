@@ -7,7 +7,7 @@
  * Laeuft im Browser, darf also nichts von aussen benutzen. `describe` beschreibt ein Element, `find` sucht es wieder. Treffer zaehlen
  * nur, wenn sie wirklich klickbar sind: sichtbar und nicht ueberdeckt.
  */
-export function webTargets(element, { mode, target }) {
+export function webTargets(element, { mode, target, exact = false }) {
     const clean = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
     // Wie TARGET_TEXT_MAX: Laengere Texte waeren kein stabiles Ziel. Ein Muster prueft dagegen den ganzen Text.
     const short = (text) => (text.length <= 80 ? text : '');
@@ -15,7 +15,7 @@ export function webTargets(element, { mode, target }) {
     const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
     const deepAll = (selector, root = document) => {
         const found = [...root.querySelectorAll(selector)];
-        for (const host of root.querySelectorAll('*')) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
+        for (const host of [root, ...root.querySelectorAll('*')]) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
         return found;
     };
     const deepClosest = (node, selector) => {
@@ -123,12 +123,17 @@ export function webTargets(element, { mode, target }) {
         const area = insideOf(node, true);
         return area !== null && Object.keys(wanted).every((key) => (key === 'name' ? fits(wanted.name, area.name, area.whole) : area[key] === wanted[key]));
     };
+    const visible = (node) => {
+        const box = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
     const matches = (wanted) => {
         const pool = deepAll(wanted.tag ?? ACTIONABLE);
         return pool.filter((node) => {
             const seen = describeNode(node);
             return fitsKeys(wanted, node, seen) && fitsInside(wanted.inside, node, seen);
-        }).filter(reachable);
+        }).filter(exact ? visible : reachable);
     };
 
     // Virtualisierte Listen (CDK Virtual Scroll, react-window, vue-virtual-scroller) haben nur die sichtbaren Zeilen im DOM. Fehlt eine
@@ -174,23 +179,24 @@ export function webTargets(element, { mode, target }) {
         if (hit === null || deepContains(node, hit) || deepContains(hit, node)) return { elsewhere: candidates.length > 0 && target.inside !== undefined };
         const layer = deepClosest(hit, 'dialog, [role=dialog], [role=alertdialog], [aria-modal=true]');
         const cover = layer ?? hit;
-        const heading = cover.querySelector?.('h1, h2, h3, [role=heading]');
+        const heading = deepAll('h1, h2, h3, [role=heading]', cover)[0] ?? null;
         const coverName = nameOf(cover) || (heading === null ? '' : short(clean(heading.innerText)));
         // Auch ohne Rolle: der Hintergrund eines modalen Dialogs liegt ueber der ganzen Seite.
         const scope = layer ?? deepAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]').find((dialog) => dialog.getClientRects().length > 0) ?? null;
-        const messages = scope === null ? [] : [...scope.querySelectorAll('[role=alert], [role=status], [aria-live=assertive]')]
+        const messages = scope === null ? [] : deepAll('[role=alert], [role=status], [aria-live=assertive]', scope)
             .map((entry) => clean(entry.innerText).slice(0, 200)).filter((text) => text !== '');
         return {
             covered: {
                 ...(scope === null ? { tag: cover.tagName.toLowerCase() } : { role: 'dialog' }),
-                ...(coverName === '' && scope !== null ? { name: short(clean(scope.querySelector('h1, h2, h3, [role=heading]')?.innerText ?? '')) } : coverName === '' ? {} : { name: coverName }),
+                ...(coverName === '' && scope !== null ? { name: short(clean(deepAll('h1, h2, h3, [role=heading]', scope)[0]?.innerText ?? '')) } : coverName === '' ? {} : { name: coverName }),
                 ...(messages.length === 0 ? {} : { messages: [...new Set(messages)].slice(0, 3) }),
             },
         };
     }
 
-    // Das Bedienelement, zu dem der Klick gehoert: etwa der Knopf um ein Icon.
-    const node = deepClosest(element, 'button, a[href], input, select, textarea, summary, [data-testid], [role]') ?? element;
+    // Das Bedienelement, zu dem der Klick gehoert: etwa der Knopf um ein Icon. Mit `exact` das Element selbst, etwa ein iframe: Sonst
+    // stuende statt seiner der Dialog oder Bereich mit Rolle darum im Ziel, und darin liegt kein Frame.
+    const node = exact ? element : deepClosest(element, 'button, a[href], input, select, textarea, summary, [data-testid], [role]') ?? element;
     const described = describeNode(node);
     const index = matches(described).indexOf(node);
     return index === -1 ? null : { ...described, ...(index === 0 ? {} : { index }) };
@@ -204,7 +210,7 @@ export function webTargets(element, { mode, target }) {
 export function webBusy({ domQuietMs = 0 } = {}) {
     const deepAll = (selector, root = document) => {
         const found = [...root.querySelectorAll(selector)];
-        for (const host of root.querySelectorAll('*')) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
+        for (const host of [root, ...root.querySelectorAll('*')]) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
         return found;
     };
     const seen = (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
@@ -232,22 +238,39 @@ export function webBusy({ domQuietMs = 0 } = {}) {
 export function webPageState({ marker, selectors }) {
     const deepAll = (selector, root = document) => {
         const found = [...root.querySelectorAll(selector)];
-        for (const host of root.querySelectorAll('*')) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
+        for (const host of [root, ...root.querySelectorAll('*')]) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
         return found;
     };
     const seen = (node) => node !== null && node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
+    const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
+    const deepClosest = (node, selector) => {
+        for (let current = node; current !== null; current = parentOf(current)) if (current.matches?.(selector)) return current;
+        return null;
+    };
     // Ein modaler Dialog ist eine Meldung, wenn er etwas mitteilt oder bestaetigen laesst. Ein Formular im Dialog (Eingabefelder ausser
     // Haken) ist Bedienung der Anwendung, keine Meldung: Als bekannte Meldung verdeckte es sonst spaeter echte Meldungen.
     const FIELDS = 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=button]):not([type=submit]), textarea, select, [contenteditable=true]';
-    const isForm = (node) => node.getAttribute('role') !== 'alertdialog' && [...node.querySelectorAll(FIELDS)].some(seen);
+    const isForm = (node) => node.getAttribute('role') !== 'alertdialog' && deepAll(FIELDS, node).some(seen);
     const modal = deepAll('dialog[open], [role=dialog][aria-modal=true], [role=alertdialog]').filter((node) => !isForm(node));
     const alerts = selectors.length === 0 ? [] : deepAll(selectors.join(', '));
     // Text Knoten fuer Knoten mit Leerzeichen: innerText klebt Inline-Elemente aneinander ("Ich weiß" + Knopf "Auflösen").
+    // Offene Shadow Roots mit: Eine Meldung als Web Component traegt ihren Text oft nur dort.
     const readable = (node) => {
         const parts = [];
-        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-        for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
-            if (text.parentElement?.checkVisibility?.({ visibilityProperty: true }) !== false) parts.push(text.data);
+        const walk = (root, deep) => {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+            for (let next = walker.nextNode(); next !== null; next = walker.nextNode()) {
+                if (next.nodeType === Node.ELEMENT_NODE) {
+                    if (deep && next.shadowRoot) walk(next.shadowRoot, deep);
+                } else if (next.parentElement?.checkVisibility?.({ visibilityProperty: true }) !== false) {
+                    parts.push(next.data);
+                }
+            }
+        };
+        walk(node, false);
+        if (parts.join('').trim() === '') {
+            if (node.shadowRoot) walk(node.shadowRoot, true);
+            walk(node, true);
         }
         return parts.join(' ').replace(/\s+/g, ' ').replace(/ ([.,;:!?)\]“”"])/g, '$1').replace(/([(\[„]) /g, '$1').trim();
     };
@@ -259,12 +282,12 @@ export function webPageState({ marker, selectors }) {
         if (['alert', 'status', 'alertdialog'].includes(node.getAttribute('role'))) return [node];
         const children = [...node.children].filter(seen);
         const blocks = children.every((child) => !getComputedStyle(child).display.startsWith('inline'));
-        return children.length > 1 && blocks && !ownText(node) && node.closest('dialog, [role=dialog], [role=alertdialog]') === null ? children : [node];
+        return children.length > 1 && blocks && !ownText(node) && deepClosest(node, 'dialog, [role=dialog], [role=alertdialog]') === null ? children : [node];
     };
     // Ein Statushinweis (role=status, eine hoefliche Live-Region) teilt nur mit, was gerade geschieht, und kommt je nach Tempo oder
     // nicht. Unbekannt warnt er nur. Fehler (role=alert, assertive) und Dialoge sind Meldungen: Unbekannt lassen sie den Schritt scheitern.
-    const isNote = (node) => !modal.includes(node) && node.closest('[role=alert], [role=alertdialog], [aria-live=assertive]') === null
-        && node.closest('[role=status], [role=log], [role=timer], [role=progressbar], [aria-live=polite]') !== null;
+    const isNote = (node) => !modal.includes(node) && deepClosest(node, '[role=alert], [role=alertdialog], [aria-live=assertive]') === null
+        && deepClosest(node, '[role=status], [role=log], [role=timer], [role=progressbar], [aria-live=polite]') !== null;
     // Der ganze Text: Nur so trifft eine lange Meldung ihren Eintrag in knownMessages. Gekuerzt wird erst beim Anzeigen.
     const read = (node) => readable(node).replace(/\d+/g, '#');
     const shown = [...modal, ...alerts.flatMap(split)].filter(seen);
@@ -272,12 +295,24 @@ export function webPageState({ marker, selectors }) {
     const notes = shown.filter(isNote).map(read);
     return {
         appLoaded: document.readyState === 'complete',
-        signedIn: marker === undefined || marker === null ? true : document.querySelector(marker) !== null,
+        // Erst das Dokument selbst, nur ohne Treffer alle Shadow Roots: Der Zustand wird bei jedem Schritt gelesen.
+        signedIn: marker === undefined || marker === null ? true : document.querySelector(marker) !== null || deepAll(marker).length > 0,
         loading: deepAll('[aria-busy=true], [role=progressbar]:not([aria-valuenow])').some(seen),
         path: location.pathname,
         messages: [...new Set(texts)].filter((text) => text !== ''),
         notes: [...new Set(notes)].filter((text) => text !== '' && !texts.includes(text)),
     };
+}
+
+/** Laeuft im Browser: die sichtbaren Treffer eines Selektors, auch in offenen Shadow Roots; null ohne Selektor. */
+export function webCount(store) {
+    if (store === null || store === undefined) return null;
+    const deepAll = (selector, root = document) => {
+        const found = [...root.querySelectorAll(selector)];
+        for (const host of root.querySelectorAll('*')) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
+        return found;
+    };
+    return deepAll(store).filter((node) => node.getClientRects().length > 0).length;
 }
 
 /** So lang darf ein Name oder Text sein, damit er als Ziel zaehlt; `webTargets` liest laengere als leer. */
@@ -292,7 +327,7 @@ export const DOM_QUIET_MS = 150;
  */
 export const webProbe = new Function('store', `
     const busy = (${webBusy})({ domQuietMs: ${DOM_QUIET_MS} });
-    const counts = store === null ? null : [...document.querySelectorAll(store)].filter((node) => node.getClientRects().length > 0).length;
+    const counts = (${webCount})(store);
     return { pendingAjax: 0, loadingStores: busy, counts, appReady: document.readyState === 'complete' };
 `);
 

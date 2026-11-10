@@ -6,7 +6,7 @@
 // - `stackSkip`: Dateien des Frameworks, damit die erste eigene Zeile im Stack die der Anwendung ist.
 // - `hints`: wo Claude im Quellcode typischerweise sucht und wie Pruefungen ohne globalen Store aussehen.
 
-import { DOM_QUIET_MS, web, webBusy, webTargets } from './web.mjs';
+import { DOM_QUIET_MS, web, webBusy, webCount, webTargets } from './web.mjs';
 
 /**
  * Laeuft im Browser: die Komponenten, zu denen das Element gehoert, von aussen nach innen, hoechstens drei. Allein waere die innerste
@@ -81,14 +81,16 @@ const probeWith = (mounted, stable = '() => true') => new Function('store', `
     let ready = false;
     try { ready = document.readyState === 'complete' && (${mounted})(); } catch { ready = false; }
     try { if (ready && !(${stable})()) busy += 1; } catch { /* ohne Auskunft gilt die DOM-Ruhe */ }
-    const counts = store === null ? null : [...document.querySelectorAll(store)].filter((node) => node.getClientRects().length > 0).length;
+    const counts = (${webCount})(store);
     return { pendingAjax: 0, loadingStores: busy, counts, appReady: ready };
 `);
 
-// Wo das Framework die Anwendung einhaengt. Gesucht wird unter den ersten Elementen, nicht nur in #root bzw. #app.
-const REACT_MOUNTED = `() => [...document.querySelectorAll('body, body *')].slice(0, 300).some((node) => Object.keys(node).some((key) => key.startsWith('__reactContainer$')) && node.childNodes.length > 0)`;
+// Wo das Framework die Anwendung einhaengt. Gesucht wird unter den ersten Elementen, nicht nur in #root bzw. #app. Bei SSR mit
+// hydrateRoot(document, …) ist der Container das Dokument selbst (Next.js App Router, React Router im Framework-Modus, Remix).
+const REACT_MOUNTED = `() => [document, ...document.querySelectorAll('html, body, body *')].slice(0, 300).some((node) => Object.keys(node).some((key) => key.startsWith('__reactContainer$')) && node.childNodes.length > 0)`;
 const VUE_MOUNTED = `() => document.querySelector('[data-v-app]') !== null || [...document.querySelectorAll('body *')].slice(0, 300).some((node) => node.__vue_app__ !== undefined)`;
-const ANGULAR_MOUNTED = `() => document.querySelector('[ng-version]') !== null`;
+// Bei SSR steht ng-version schon im HTML vom Server; das `ngh` am Wurzelelement entfernt Angular erst beim Hydrieren.
+const ANGULAR_MOUNTED = `() => { const root = document.querySelector('[ng-version]'); return root !== null && !root.hasAttribute('ngh'); }`;
 // Zone.js meldet ueber Testability, ob noch Aufgaben laufen. Ohne Zone.js (zoneless) gibt es die Funktion nicht, dann reicht die DOM-Ruhe.
 const ANGULAR_STABLE = `() => typeof window.getAllAngularTestabilities !== 'function' || window.getAllAngularTestabilities().every((testability) => testability.isStable())`;
 
@@ -98,6 +100,8 @@ export const react = {
     label: 'die React-Anwendung',
     targets: withComponent(reactComponent),
     probe: probeWith(REACT_MOUNTED),
+    // Die Anmeldeseite ist meist Teil der App und bei SSR vor der Hydration nicht bedienbar; die Anmeldung wartet auf das Einhaengen.
+    hydrates: true,
     stackSkip: /\/(react-dom|react|scheduler)[\w.-]*\.js|\/node_modules\/\.vite\/deps\/(react|scheduler)|\/node_modules\/(react-dom|react|scheduler)\//,
     hints: [
         'Requests stehen meist in Hooks (useEffect, React Query/SWR) oder einer api-Datei mit fetch/axios; der Request-Name aus dem Netzwerkprotokoll führt per Suche zur Stelle.',
@@ -112,6 +116,7 @@ export const vue = {
     label: 'die Vue-Anwendung',
     targets: withComponent(vueComponent),
     probe: probeWith(VUE_MOUNTED),
+    hydrates: true,
     stackSkip: /\/(@vue|vue|vue-router|pinia)[\w./-]*\.js|\/node_modules\/\.vite\/deps\/(vue|@vue|pinia)|\/node_modules\/(@vue|vue|vue-router|pinia)\//,
     hints: [
         'Requests stehen meist in Composables (use…), Pinia-Stores oder einer api-Datei; der Request-Name führt per Suche zur Stelle.',
@@ -126,6 +131,7 @@ export const angular = {
     label: 'die Angular-Anwendung',
     targets: withComponent(angularComponent),
     probe: probeWith(ANGULAR_MOUNTED, ANGULAR_STABLE),
+    hydrates: true,
     stackSkip: /\/(zone|polyfills)[\w.-]*\.js|\/@angular\/|\/node_modules\/\.vite\/deps\/(@angular|zone|rxjs)|\/node_modules\/(@angular|zone\.js|rxjs)\//,
     hints: [
         'Requests stehen in Services mit HttpClient; der Request-Name führt per Suche zur Stelle, `component` im Ziel zur Komponente (Klasse …Component).',

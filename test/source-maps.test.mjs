@@ -86,3 +86,14 @@ test('sourceRoot: mit genau einem / davor, absolute Quellen bleiben', () => {
     assert.equal(withRoot('src', 'webpack://app/./a.ts'), 'webpack://app/./a.ts');
     assert.equal(withRoot('src', '/abs/a.ts'), '/abs/a.ts');
 });
+
+test('Quellkarten: Index-Karte mit sections (Turbopack, next dev) und file:///-Quellen', async () => {
+    const part = (file) => ({ version: 3, sources: [`file:///C:/app/lib/${file}`], mappings: `;${encode([4, 0, 1, 8])}` });
+    const map = { version: 3, sources: [], sections: [{ offset: { line: 4, column: 0 }, map: part('Tickets.tsx') }, { offset: { line: 20, column: 0 }, map: part('explode.ts') }] };
+    const files = { 'https://a.example/chunk.js': '//# sourceMappingURL=chunk.js.map', 'https://a.example/chunk.js.map': JSON.stringify(map) };
+    const mapper = createSourceMapper({ fetchText: async (url) => files[url] ?? null });
+    // Zeile 22 der Datei ist Zeile 2 der zweiten Teilkarte, Spalte 5 trifft das Segment ab Spalte 4.
+    const { at, stack } = await mapper.translate('Error: x\n    at explode (https://a.example/chunk.js:22:5)\n    at f (https://a.example/chunk.js:6:9)\n    at g (https://a.example/chunk.js:2:1)');
+    assert.equal(at, 'C:/app/lib/explode.ts:2:9');
+    assert.deepEqual(stack, ['C:/app/lib/explode.ts:2:9', 'C:/app/lib/Tickets.tsx:2:9', 'https://a.example/chunk.js:2:1']);
+});

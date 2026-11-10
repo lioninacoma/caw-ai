@@ -96,3 +96,13 @@ test('stackSkip: Framework-Dateien, nicht die Anwendung', () => {
     for (const adapter of [FRAMEWORKS.react, FRAMEWORKS.vue, FRAMEWORKS.angular]) assert.ok(!adapter.stackSkip.test('http://app.localhost:5173/src/App.tsx'), adapter.name);
     for (const adapter of [FRAMEWORKS.react, FRAMEWORKS.vue, FRAMEWORKS.angular]) assert.ok(adapter.hints.length > 0);
 });
+
+test('react: SSR mit hydrateRoot(document) (Next.js App Router, React Router Framework-Modus) gilt als eingehaengt', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    await page.setContent(FORM);
+    assert.equal((await probe(FRAMEWORKS.react)).appReady, false);
+    await page.evaluate(() => { document['__reactContainer$xyz'] = {}; });
+    assert.equal((await probe(FRAMEWORKS.react)).appReady, true);
+    await page.evaluate(() => { delete document['__reactContainer$xyz']; });
+    return undefined;
+});

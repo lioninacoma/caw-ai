@@ -1,10 +1,13 @@
 // Substitution des lokalen Codes, Readiness und Konsolen-Gate fuer den Browser auf dem Host.
+import { readFile } from "node:fs/promises";
+import { moduleAlias, resolveLocalBuild, scriptKind, servesBuild } from "./local-build.mjs";
 // substitution/collect
 var isActive = (entry) => entry.active;
 var collectActiveRedirects = (config) => config.projects.filter(isActive).flatMap((project) => [
   ...project.redirects.filter(isActive).map((entry) => ({ kind: "redirect", entry })),
   ...project.constants.filter(isActive).map((entry) => ({ kind: "constant", entry })),
-  ...project.statics.filter(isActive).map((entry) => ({ kind: "static", entry }))
+  ...project.statics.filter(isActive).map((entry) => ({ kind: "static", entry })),
+  ...(project.builds ?? []).filter(isActive).map((entry) => ({ kind: "build", entry }))
 ]);
 
 // substitution/types
@@ -170,7 +173,34 @@ var planSources = (entry, bootstrap) => {
 };
 
 // substitution/resolve
-var resolveRedirect = (repoPath, entries) => entries.find((collected) => collected.entry.name === repoPath) ?? null;
+var resolveRedirect = (repoPath, entries) => entries.find((collected) => collected.kind !== "build" && collected.entry.name === repoPath) ?? null;
+/**
+ * Welcher lokale Code einen Request beantwortet: erst die genannten Eintraege (`statics`, `redirects`, `constants`) nach
+ * `assetUrlPattern`, dann die Build-Ordner, exakt oder gleicher Name bis auf den Hash (local-build.mjs). Ein Build-Ordner leitet den
+ * Namen aus seinem eigenen Muster ab (der Pfad unterhalb der Umgebung), sonst aus `assetUrlPattern`. Einzige Stelle dafuer: Routing,
+ * Quellkarten und weitere Apps fragen alle hier.
+ * @param resourceType wie Playwright ihn meldet; ohne (Quellkarten fuer den Host) zaehlt nur der Name
+ * @returns { kind, entry, repoPath, file?, contentType?, alias? } oder null
+ */
+var localFileFor = (config, url, resourceType) => {
+  if (resourceType === "document") return null;
+  const entries = collectActiveRedirects(config);
+  const repoPath = deriveRepoPath(url, config.assetUrlPattern);
+  if (repoPath !== null) {
+    const named = resolveRedirect(repoPath, entries);
+    if (named !== null) return { ...named, repoPath, ...named.kind === "static" ? { file: named.entry.localPath } : {} };
+  }
+  for (const collected of entries) {
+    if (collected.kind !== "build") continue;
+    const names = [...new Set([deriveRepoPath(url, collected.entry.urlPattern), repoPath])].filter((name) => name !== null && name !== void 0);
+    for (const name of names) {
+      if (!servesBuild(resourceType, name)) continue;
+      const found = resolveLocalBuild(collected.entry.localDir, name);
+      if (found !== null) return { ...collected, repoPath: name, ...found };
+    }
+  }
+  return null;
+};
 
 // substitution/decide
 var CONTENT_TYPE = "application/javascript";
@@ -198,15 +228,16 @@ var readAll = async (sources, deps) => {
   return body;
 };
 var decideResponse = async (opts, deps) => {
-  const { url, portalUrl, config, onFailure = "continue" } = opts;
-  const repoPath = deriveRepoPath(url, config.assetUrlPattern);
-  if (repoPath === null) return { action: "continue", reason: "not-repo-url" };
+  const { url, portalUrl, config, onFailure = "continue", resourceType } = opts;
+  // Seiten (index.html, SPA-Routen) kommen immer vom Server: Er setzt Konfiguration, base href und CSP.
+  if (resourceType === "document") return { action: "continue", reason: "document" };
+  const matched = localFileFor(config, url, resourceType);
+  if (matched === null) return { action: "continue", reason: "no-redirect" };
+  const { repoPath } = matched;
   if (portalUrl === "") {
     deps.log("error", NO_PORTAL, { repoPath });
     return { action: "continue", reason: "no-portal" };
   }
-  const matched = resolveRedirect(repoPath, collectActiveRedirects(config));
-  if (matched === null) return { action: "continue", reason: "no-redirect" };
   const failed = (error2) => {
     const reason = classify(error2);
     const message = messageOf(error2);
@@ -214,6 +245,17 @@ var decideResponse = async (opts, deps) => {
     return onFailure === "fail" ? { action: "fail", reason, message } : { action: "continue", reason };
   };
   try {
+    if (matched.kind === "build") {
+      const raw = await (deps.readBinary ?? ((path) => readFile(path)))(matched.file);
+      // Unter dem deployten Namen eines ES-Moduls nur ein Verweis auf das lokale (sonst liefe es zweimal); ob es eines ist, sagt die
+      // lokale Seite, ohne sie die Syntax.
+      const kind = matched.alias === void 0 ? null : scriptKind(matched.entry.localDir, matched.alias);
+      const body = matched.alias === void 0 ? raw : moduleAlias(matched.alias, raw.toString("utf8"), kind) ?? raw;
+      return {
+        action: "fulfill",
+        response: { status: 200, contentType: matched.contentType, headers: { "content-type": matched.contentType }, body }
+      };
+    }
     const bootstrap = matched.kind === "redirect" ? await deps.getBootstrap() : null;
     const sources = planSources(matched, bootstrap);
     if (sources.length === 0) throw emptyPlan();
@@ -258,10 +300,10 @@ var messageOf2 = (error2) => error2 instanceof Error && error2.message !== "" ? 
 var onException = (onFailure, error2) => onFailure === "fail" ? { action: "fail", reason: "transport", message: messageOf2(error2) } : { action: "continue", reason: "transport" };
 var createInterceptionHandler = (options, deps) => {
   const onFailure = options.onFailure ?? "continue";
-  return async (route, url) => {
+  return async (route, url, resourceType) => {
     let decision;
     try {
-      decision = await decideResponse({ ...options, url }, deps);
+      decision = await decideResponse({ ...options, url, resourceType }, deps);
     } catch (error2) {
       decision = onException(onFailure, error2);
     }
@@ -356,7 +398,12 @@ var waitForQuiet = async (deps, opts = {}) => {
 // host/host
 var AUTH_POLL_ATTEMPTS = 20;
 var AUTH_POLL_INTERVAL_MS = 500;
-var buildAuthMarkerExpression = (marker) => `!!document.querySelector(${JSON.stringify(marker)})`;
+// Auch in offenen Shadow Roots, wie die Anmeldung (Playwright) und der Seitenzustand (webPageState) das Merkmal suchen.
+var buildAuthMarkerExpression = (marker) => `(() => {
+  const marker = ${JSON.stringify(marker)};
+  const deep = (root) => root.querySelector(marker) !== null || [...root.querySelectorAll("*")].some((host) => host.shadowRoot && deep(host.shadowRoot));
+  return deep(document);
+})()`;
 var createDevlinkHost = (config, deps, options) => {
   const gate = createConsoleGate();
   const activePortal = config.portals.find((portal) => portal.uuid === config.activePortal);
@@ -372,7 +419,9 @@ var createDevlinkHost = (config, deps, options) => {
   const pollAuthMarker = async (activePage) => {
     const expression = buildAuthMarkerExpression(authMarker);
     for (let attempt = 1; attempt <= AUTH_POLL_ATTEMPTS; attempt += 1) {
-      const present = await activePage.evaluate(expression);
+      // Leitet die Startseite per Skript weiter (abgelaufene Sitzung zum Anmeldedienst, / auf /app/), geht der Kontext verloren:
+      // Das heisst nur "noch nicht da", weiter pruefen.
+      const present = await activePage.evaluate(expression).catch(() => false);
       if (present) return;
       if (attempt < AUTH_POLL_ATTEMPTS) await deps.sleep(AUTH_POLL_INTERVAL_MS);
     }
@@ -383,7 +432,9 @@ var createDevlinkHost = (config, deps, options) => {
   return {
     async start() {
       const active = collectActiveRedirects(config);
-      if (active.length > 0) {
+      // Nur `redirects` brauchen bootstrap.json (Sencha). `statics` und `constants` lesen ihre Dateien direkt; eine Vite-,
+      // Angular- oder webpack-App hat kein bootstrap.json.
+      if (active.some((entry) => entry.kind === "redirect")) {
         const bootstrap = await deps.decideDeps.getBootstrap();
         const result = preflight(active, bootstrap);
         if (!result.ok) {
@@ -477,7 +528,7 @@ var wrapPage = (page) => ({
 });
 var wrapContext = (context) => ({
   route: async (handler) => {
-    await context.route("**/*", (route, request) => handler(route, request.url()));
+    await context.route("**/*", (route, request) => handler(route, request.url(), request.resourceType()));
   },
   on: (event, listener) => {
     if (event === "console") {
@@ -536,6 +587,7 @@ var createDecideDeps = (parts) => ({
   getBootstrap: parts.getBootstrap,
   readWatch: parts.readWatch,
   readStatic: (path) => parts.fileReader.readText(path),
+  ...parts.fileReader.readBinary === void 0 ? {} : { readBinary: (path) => parts.fileReader.readBinary(path) },
   log: parts.log
 });
 
@@ -638,11 +690,13 @@ var PROJECT_FIELDS = [
   "startUrl",
   "redirects",
   "constants",
-  "statics"
+  "statics",
+  "builds"
 ];
 var REDIRECT_FIELDS = ["uuid", "name", "app", "target", "active"];
 var CONSTANT_FIELDS = ["uuid", "name", "watchPath", "active"];
 var STATIC_FIELDS = ["uuid", "name", "localPath", "active"];
+var BUILD_FIELDS = ["uuid", "localDir", "urlPattern", "active"];
 var report = (into, path, code, severity, detail) => {
   into.issues.push(
     detail === void 0 ? { path, code, severity } : { path, code, severity, detail }
@@ -792,6 +846,22 @@ var parseStatic = (into, raw, path) => {
   if (localPath === void 0 || active === void 0) return void 0;
   return { uuid, name, localPath, active };
 };
+var parseBuild = (into, raw, path) => {
+  if (!isRecord4(raw)) {
+    error(into, path, "not-an-object");
+    return void 0;
+  }
+  reportUnknownFields(into, raw, path, BUILD_FIELDS);
+  const uuid = readUuid(into, raw, path);
+  const localDir = requiredString(into, raw, path, "localDir");
+  const urlPattern = optionalString(into, raw, path, "urlPattern");
+  const active = requiredBoolean(into, raw, path, "active");
+  if (localDir !== void 0 && !isAbsolutePath(localDir)) {
+    error(into, [...path, "localDir"], "static-path-not-absolute");
+  }
+  if (uuid === void 0 || localDir === void 0 || active === void 0) return void 0;
+  return { uuid, localDir, active, ...urlPattern === void 0 ? {} : { urlPattern } };
+};
 var parseEach = (into, list, path, parseOne) => list.map((raw, index) => parseOne(into, raw, [...path, index])).filter((entry) => entry !== void 0);
 var parsePortal = (into, raw, path, seenNames) => {
   if (!isRecord4(raw)) {
@@ -822,6 +892,7 @@ var parseProject = (into, raw, path, seenNames) => {
   const redirects = requiredArray(into, raw, path, "redirects");
   const constants = requiredArray(into, raw, path, "constants");
   const statics = defaultedArray(into, raw, path, "statics");
+  const builds = defaultedArray(into, raw, path, "builds");
   if (name !== void 0) {
     reportDuplicateName(into, seenNames, name, path, "duplicate-project-name");
   }
@@ -831,7 +902,8 @@ var parseProject = (into, raw, path, seenNames) => {
     active: active ?? false,
     redirects: parseEach(into, redirects ?? [], [...path, "redirects"], parseRedirect),
     constants: parseEach(into, constants ?? [], [...path, "constants"], parseConstant),
-    statics: parseEach(into, statics ?? [], [...path, "statics"], parseStatic)
+    statics: parseEach(into, statics ?? [], [...path, "statics"], parseStatic),
+    builds: parseEach(into, builds ?? [], [...path, "builds"], parseBuild)
   };
   if (uuid === void 0 || name === void 0 || active === void 0) return void 0;
   if (redirects === void 0 || constants === void 0 || statics === void 0) return void 0;
@@ -883,5 +955,6 @@ export {
   createWatchClient,
   deriveRepoPath,
   isHardFailure,
+  localFileFor,
   parseConfig
 };

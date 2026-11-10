@@ -124,7 +124,7 @@ Replays the recording. No Claude, no tokens. On environments with `agent` the ch
 | `--max-steps <n>` | Limit on Claude's actions when fixing. |
 | `--agent local\|docker\|session` | As for `record`. |
 
-With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`. On runners without a display add `--headless` or use `xvfb-run`.
+With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`; `--until` and `--handover` are rejected (exit 3), since nobody would take over the browser. `record` and `fix` need a person and are rejected in CI too. On runners without a display add `--headless` or use `xvfb-run`.
 
 ## fix
 
@@ -165,7 +165,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 |---|---|
 | `0` | pass |
 | `1` | fail: the app didn't do what the test expects |
-| `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …) |
+| `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …), or an unexpected internal error (the stack is printed) |
 | `3` | rejected: invalid call, config or test file. Nothing ran. |
 
 ## Environment variables
@@ -176,7 +176,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `CAW_AI_HOME` | Folder for personal settings (`prefs.json`). Default `%APPDATA%\caw-ai` or `~/.config/caw-ai`. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token for the `docker` agent. Create one with `claude setup-token`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
-| `CI` | Set: no chat, `docker` agent only. |
+| `CI` | Set: no chat, `docker` agent only; `record`, `fix`, `--until` and `--handover` are rejected. |
 | `NO_COLOR`, `FORCE_COLOR` | Terminal colors off or on. |
 | `MCP_TOOL_TIMEOUT` | In Claude Code's environment: raise it if `plan` or `chat` time out in your session. |
 

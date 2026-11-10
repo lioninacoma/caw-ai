@@ -16,6 +16,18 @@ export const toWslPath = (path) => {
 export const shellQuote = (value) => `'${String(value).replaceAll("'", `'\\''`)}'`;
 export const shellJoin = (args) => args.map(shellQuote).join(' ');
 
+/**
+ * Ein Wert wie bei dotenv: in Anfuehrungszeichen genau der Inhalt (danach darf ein Kommentar stehen, in "…" wird \n zum Umbruch),
+ * sonst bis zu einem Kommentar nach Leerraum (" # Testkonto") und ohne Leerraum aussen. Ein # ohne Leerraum davor gehoert zum Wert,
+ * Passwoerter enthalten es.
+ */
+const envValue = (raw) => {
+    const value = raw.trim();
+    const quoted = /^(["'`])([\s\S]*?)\1\s*(#.*)?$/.exec(value);
+    if (quoted !== null) return quoted[1] === '"' ? quoted[2].replaceAll('\\n', '\n') : quoted[2];
+    return value.replace(/\s+#.*$/, '').trim();
+};
+
 export const parseEnvFile = (text) => {
     const env = {};
     for (const raw of text.split('\n')) {
@@ -23,7 +35,7 @@ export const parseEnvFile = (text) => {
         if (line === '' || line.startsWith('#')) continue;
         const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
         if (match === null) continue;
-        env[match[1]] = match[2].replace(/^(["'])(.*)\1$/, '$2');
+        env[match[1]] = envValue(match[2]);
     }
     return env;
 };
@@ -80,6 +92,10 @@ export const parseRunArgs = (command, args) => {
         else options.timeoutMin = Number(value);
     }
     if (options.test === undefined) throw new CawError('usage', t('session.args.testMissing'));
+    // Ein Dateiname in caw/tests, flach: Ein Pfad wie team/login scheiterte erst nach der ganzen Aufnahme beim Schreiben, ../x schriebe
+    // ausserhalb von caw/tests.
+    // Buchstaben jeder Sprache (kündigung), keine Trenner und keine Steuerzeichen.
+    if (!/^[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]*$/u.test(options.test) || options.test.endsWith('.') || options.test.length > 100) throw new CawError('usage', t('session.args.testId', { test: options.test }));
     if (command === 'fix' && !STEP_ID.test(options.step ?? '')) throw new CawError('usage', t('session.args.fixStep'));
     if (options.target === undefined) throw new CawError('usage', t('session.args.targetMissing'));
     if (options.timeoutMin !== undefined && (!Number.isFinite(options.timeoutMin) || options.timeoutMin <= 0)) throw new CawError('usage', t('session.args.timeout'));

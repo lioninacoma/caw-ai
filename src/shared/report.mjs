@@ -81,7 +81,9 @@ export const classifyFailure = (observation, { url, stack } = {}, { ignored = []
     if (observation.type === 'http') return 'fail';
     if (isAllowedFailure(observation, url, ignored)) return 'ignore';
     if (observation.type === 'requestfailed') return isStaticFile(url) ? 'warn' : 'fail';
-    const origin = observation.type === 'pageerror' ? stackOrigin(stack, skip) : url;
+    // Ein Konsolenfehler mit Stack (vom Framework gefangen) zaehlt wie ein Skriptfehler nach seinem Ursprung, nicht nach der Datei,
+    // die console.error rief: Das ist fast immer das Framework.
+    const origin = observation.type === 'pageerror' ? stackOrigin(stack, skip) : (stack === undefined ? url : stackOrigin(stack, skip) ?? url);
     return origin !== undefined && foreign.some((pattern) => pattern.test(origin)) ? 'warn' : 'fail';
 };
 
@@ -172,3 +174,14 @@ export const renderReport = ({ status, reason, note, testId, target, source, exp
     if (advice !== undefined) lines.push(...adviceLines(advice));
     return `${lines.join('\n')}\n`;
 };
+
+// Fehler eines Requests, die die Anwendung nur protokolliert (axios, Angulars HttpClient, fetch): Ihr Stack zeigt in die Bibliothek,
+// die Ursache ist der Request, nicht das Skript.
+const REQUEST_ERROR = /\b(AxiosError|HttpErrorResponse|Http failure response|Request failed with status code|Failed to fetch|NetworkError|ERR_NETWORK|ERR_BAD_(REQUEST|RESPONSE))\b/i;
+
+/**
+ * Ein Konsolenfehler, den das Framework gefangen hat und der auf eigenen Code zeigt (Angulars ErrorHandler, Vue, Error Boundary): So
+ * klar wie ein Skriptfehler. Nicht, wenn die Quelle in einer Bibliothek liegt oder der Text ein protokollierter Request-Fehler ist.
+ */
+export const isCaughtScriptError = (failure) => failure?.type === 'console' && typeof failure.at === 'string' && failure.at !== ''
+    && !/(^|\/)node_modules\//.test(failure.at) && !REQUEST_ERROR.test(String(failure.text ?? '').split('\n')[0]);

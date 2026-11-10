@@ -93,12 +93,15 @@ const readYaml = (rawText) => {
     return { value, problems, lineOf };
 };
 
-/** Ein Ziel: einfache Werte oder ein Muster `{pattern}`, dazu hoechstens das umgebende Bauteil unter `inside`. */
+/**
+ * Ein Ziel: einfache Werte oder ein Muster `{pattern}`, dazu hoechstens das umgebende Bauteil unter `inside` und, in einem iframe,
+ * das iframe-Element unter `frame` (selbst ein Ziel, bei verschachtelten Frames wieder mit `frame`).
+ */
 const isTarget = (value) => isObject(value) && Object.keys(value).length > 0 && Object.entries(value).every(([key, item]) => TARGET_KEY.test(key)
-    && (['string', 'number', 'boolean'].includes(typeof item) || isPattern(item) || (key === 'inside' && isTarget(item))));
+    && (key === 'frame' ? isTarget(item) : ['string', 'number', 'boolean'].includes(typeof item) || isPattern(item) || (key === 'inside' && isTarget(item))));
 
 /** Ein Name ueber der Grenze, auch im Bereich darum: Er ist auf der Seite leer, das Ziel traefe nie. */
-const namesOf = (target) => (isObject(target) ? [...TEXT_LIMITED.map((key) => target[key]), ...namesOf(target.inside)] : []);
+const namesOf = (target) => (isObject(target) ? [...TEXT_LIMITED.map((key) => target[key]), ...namesOf(target.inside), ...namesOf(target.frame)] : []);
 const tooLong = (target) => namesOf(target).find((text) => typeof text === 'string' && text.replace(/\s+/g, ' ').trim().length > TARGET_TEXT_MAX);
 
 /** Dateien fuer upload: relativ zum caw-Ordner, nie absolut und nie darueber hinaus. */

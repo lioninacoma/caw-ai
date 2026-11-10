@@ -6,6 +6,7 @@ import { isAbsolute, relative, resolve } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
+import { isCaughtScriptError } from '../shared/report.mjs';
 import { CLICK_DELAY_MS, locatorFor } from './agent-commands.mjs';
 import { patternLabel, textMatcher } from './patterns.mjs';
 import { redactDeep } from './secrets.mjs';
@@ -13,7 +14,7 @@ import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates } from './dates.mjs';
 import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
-import { describeLocator, explainTarget, explainText, frameworkOf, readPageState, targetLabel, waitForTarget } from './framework/index.mjs';
+import { describeElement, describeLocator, explainTarget, explainText, frameworkOf, readPageState, targetLabel, waitForTarget } from './framework/index.mjs';
 import { brokenChain, staleSteps, stepHash, withExpectations } from './test-file.mjs';
 
 const DESCRIBE_TIMEOUT_MS = 5000;
@@ -69,12 +70,15 @@ export const swapToken = (step, value, placeholder) => {
     const swap = (text) => (typeof text === 'string' ? text.replace(pattern, () => placeholder) : text);
     const next = { ...step };
     for (const key of TOKEN_FIELDS) if (key in next) next[key] = swap(next[key]);
-    if (next.target !== null && typeof next.target === 'object') {
-        const target = { ...next.target };
+    // Auch das iframe darueber: Ein Frame mit Bestellnummer im Titel braucht beim naechsten Lauf die neue.
+    const swapTarget = (given) => {
+        const target = { ...given };
         for (const key of TARGET_FIELDS) if (key in target) target[key] = swap(target[key]);
         if (typeof target.inside?.name === 'string') target.inside = { ...target.inside, name: swap(target.inside.name) };
-        next.target = target;
-    }
+        if (target.frame !== null && typeof target.frame === 'object') target.frame = swapTarget(target.frame);
+        return target;
+    };
+    if (next.target !== null && typeof next.target === 'object') next.target = swapTarget(next.target);
     return next;
 };
 
@@ -83,9 +87,16 @@ const relativeUrl = (url, base) => {
     return parsed.origin === new URL(base).origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
 };
 
-export const describeSafely = async (locator, framework = frameworkOf()) => {
+/** Mit `page` auch in iframes: Liegt das Element in einem Frame der Anwendung, traegt das Ziel `frame`. */
+export const describeSafely = async (locator, framework = frameworkOf(), page = undefined) => {
     try {
-        return await describeLocator(framework, locator, { timeout: DESCRIBE_TIMEOUT_MS });
+        if (typeof page?.mainFrame !== 'function' || typeof locator.elementHandle !== 'function') return await describeLocator(framework, locator, { timeout: DESCRIBE_TIMEOUT_MS });
+        const element = await locator.elementHandle({ timeout: DESCRIBE_TIMEOUT_MS });
+        try {
+            return await describeElement(framework, page, element, { timeout: DESCRIBE_TIMEOUT_MS });
+        } finally {
+            await element.dispose().catch(() => {});
+        }
     } catch {
         return null;
     }
@@ -167,7 +178,7 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
             // Statushinweise auch: Ein Banner, das immer steht, soll nicht in jedem Lauf als neu warnen.
             for (const message of [...(state?.messages ?? []), ...(state?.notes ?? [])]) (steps.length === 0 ? initial : seenAfter.at(-1)).add(message);
             const target = TARGETED.has(command?.action) && typeof command.target === 'string'
-                ? await describeSafely(locatorFor(session.page(), command.target), session.framework)
+                ? await describeSafely(locatorFor(session.page(), command.target), session.framework, session.page())
                 : undefined;
             const path = currentPath();
             let value;
@@ -299,7 +310,7 @@ export const missingRemembered = (spec) => {
  * @param draft  beim Beheben der ganze Test, darin wird genau dieser eine Schritt ersetzt
  * @returns { problems, candidate, fresh }, `fresh` nennt Meldungen, die die Aufzeichnung bisher nicht kannte
  */
-export const buildReplay = ({ recorder, outcome, spec, target, draft, now = new Date() }) => {
+export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, now = new Date() }) => {
     const problems = [...recorder.problems];
     // Alle Schritte belegt, nur ein harter Fehler unterwegs, etwa in einem gestrichenen Fehlversuch: Das klaert der Pruefdurchlauf ohne Claude.
     const onlyHardFailures = outcome?.status === 'fail' && outcome.failures?.length > 0 && outcome.results.every(({ status }) => status === 'pass');
@@ -313,14 +324,17 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, now = new 
     if (problems.length > 0) return { problems };
 
     const order = (draft ?? spec).steps.map(({ id }) => id);
-    // Ein von Hand als geheim markierter Wert bleibt geheim, auch wenn Claude den Schritt neu aufnimmt: Claude kennt die Markierung nicht.
-    const secret = new Set((draft?.steps ?? []).flatMap(({ recording }) => recording?.actions ?? []).filter(({ action, secret: hidden }) => action === 'remember' && hidden === true).map(({ name }) => name));
+    // Von Hand Gesetztes ueberlebt das Beheben (draft) wie das Neuaufnehmen eines bestehenden Tests (previous): Claude kennt es nicht.
+    const prior = draft ?? previous;
+    // Ein von Hand als geheim markierter Wert bleibt geheim, auch wenn Claude den Schritt neu aufnimmt.
+    const secret = new Set((prior?.steps ?? []).flatMap(({ recording }) => recording?.actions ?? []).filter(({ action, secret: hidden }) => action === 'remember' && hidden === true).map(({ name }) => name));
     const recorded = spec.steps.map((step) => {
         const before = order[order.indexOf(step.id) - 1];
         const { check } = groups.get(step.id);
         const actions = groups.get(step.id).actions.map((action) => (action.action === 'remember' && secret.has(action.name) ? { ...action, secret: true } : action));
-        // Ein von Hand gesetztes Zeitlimit der Pruefung ueberlebt das Beheben.
-        const timeoutMs = draft?.steps.find(({ id }) => id === step.id)?.recording?.timeoutMs;
+        // Ein von Hand gesetztes Zeitlimit der Pruefung, solange der Schritt dasselbe Ergebnis erwartet.
+        const old = prior?.steps.find(({ id }) => id === step.id);
+        const timeoutMs = old !== undefined && (old.expect ?? '') === (step.expect ?? '') ? old.recording?.timeoutMs : undefined;
         return {
             ...step,
             recording: {
@@ -336,7 +350,8 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, now = new 
     });
     const messages = recorder.messages ?? new Set();
     // Muster von Hand bleiben, hinter den festen Texten; was ein Muster schon deckt, kommt nicht als fester Text dazu.
-    const given = draft?.knownMessages ?? [];
+    // Beim Neuaufnehmen nur die Muster: Feste Texte von damals bringt die neue Aufnahme selbst mit, soweit sie noch erscheinen.
+    const given = draft?.knownMessages ?? (previous?.knownMessages ?? []).filter((entry) => typeof entry !== 'string');
     const known = textMatcher(given);
     const fresh = [...messages].filter((message) => !known(message)).sort();
     const texts = given.filter((entry) => typeof entry === 'string');
@@ -686,7 +701,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const deadline = now() + timeoutMs;
         for (;;) {
             try {
-                const { name, value } = await handler({ action: 'remember', name: step.name, code: step.code });
+                const command = { action: 'remember', name: step.name, code: step.code };
+                const { name, value } = await (step.secret === true && handler.reveal !== undefined ? handler.reveal(command) : handler(command));
                 remembered.set(`{{${name}}}`, value);
                 // Geheim: Ab jetzt steht der Wert weder im Protokoll noch im Bericht, und die Sitzung schwaerzt ihn wie das Passwort der Rolle.
                 if (step.secret === true) {
@@ -836,7 +852,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         await settle(stepTimeoutMs);
         const dropFrom = marks.get(from) ?? marks.get(owner) ?? 0;
         // Ein Skriptfehler verschwindet mit dem neuen Versuch aus dem Urteil, aber nicht aus dem Bericht: Er kann ein seltener Fehler der Anwendung sein.
-        for (const failure of (session.failures?.() ?? []).slice(dropFrom, cut).filter(({ type }) => type === 'pageerror')) {
+        // Dazu Konsolenfehler mit Quelle: vom Framework gefangene Skriptfehler (diagnose zaehlt sie wie `pageerror`).
+        for (const failure of (session.failures?.() ?? []).slice(dropFrom, cut).filter((failure) => failure.type === 'pageerror' || isCaughtScriptError(failure))) {
             session.warn?.({ type: 'retry', text: t('session.replay.hiddenScriptError', { owner, count: tried.length + 1, text: failure.text }) });
         }
         session.retractFailures?.(dropFrom, cut);

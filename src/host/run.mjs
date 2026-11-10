@@ -13,7 +13,7 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { renderReport } from '../shared/report.mjs';
-import { checkAppFiles } from './app-files.mjs';
+import { checkAppFiles, checkConstants, checkLocalBuild, checkStatics } from './app-files.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems } from './test-file.mjs';
@@ -32,7 +32,7 @@ import { startLocalAgent } from './local-agent.mjs';
 import { announceSessionAgent } from '../shared/session-agent.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
-import { redact, redactDeep } from './secrets.mjs';
+import { redactDeep } from './secrets.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 50;
@@ -58,6 +58,8 @@ const APPLY = { id: 'apply', get label() { return t('run.button.apply'); }, prim
 const color = colorEnabled();
 const ui = createUi();
 const sleep = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
+/** Fehler vor dem Lauf, die an Aufruf oder Config liegen: Exit 3 wie in der Doku, nicht 2. */
+const NOTHING_RAN = new Set(['auth-missing', 'config-invalid']);
 
 /** Erreichbarkeit der Umgebung: Jede HTTP-Antwort zaehlt. Zertifikate prueft hier niemand. */
 export const reachable = (url) => new Promise((ok) => {
@@ -140,7 +142,12 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     const also = checked.source === 'watch' ? spec.also ?? [] : [];
     // bootstrap.json braucht nur, wer Sencha-Pakete umleitet (`redirects`); einzelne Dateien (`statics`) kommen ohne aus.
     if (checked.source === 'watch') {
-        for (const name of [spec.app, ...also]) if ((config.apps[name].redirects ?? []).length > 0) checkAppFiles(join(root, config.apps[name].dir));
+        for (const name of [spec.app, ...also]) {
+            if ((config.apps[name].redirects ?? []).length > 0) checkAppFiles(join(root, config.apps[name].dir));
+            checkStatics(root, config.apps[name].statics);
+            checkConstants(join(root, config.apps[name].dir), config.apps[name].constants);
+            checkLocalBuild(root, config.apps[name].localBuild);
+        }
     }
     // Erst hier, denn validate soll auch ohne Browser-Code gehen.
     const { openBrowserSession } = await import('./browser-session.mjs');
@@ -259,6 +266,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
     const finishRun = () => {
         ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), elapsed: (Date.now() - startedAt) / 1000 });
+        // Fehlt die gespeicherte Anmeldung oder steht noch TODO in der Config, lief nichts: ein ungueltiger Aufruf (3), keine Umgebung (2).
+        if (verdict.status === 'error' && NOTHING_RAN.has(verdict.code)) return EXIT.rejected;
         return EXIT[verdict.status];
     };
 
@@ -342,6 +351,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }),
         ...(demonstration === undefined ? {} : { demonstration: demonstration.items }),
     };
+    // Gemerkte Werte des Laufs, Platzhalter -> Wert. Geheime sieht Claude nur als Platzhalter; der Handler setzt sie ein.
+    let remembered = new Map();
+    const isSecret = (value) => (session.secrets?.() ?? []).includes(value);
+    const openRemembered = () => [...remembered].filter(([, value]) => !isSecret(value));
+    const fillSecrets = (text) => [...remembered].filter(([, value]) => isSecret(value)).reduce((current, [placeholder, real]) => current.split(placeholder).join(real), text);
     let verdictGiven;
     /** Je Urteil ein eigener Handler: Nach `finish` nimmt er nichts mehr an, beim Beheben im selben Browser kommt ein zweites Urteil. */
     const newAgentHandler = () => {
@@ -352,6 +366,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             run,
             hosts: browserHosts(config, checked),
             agentDir,
+            expand: fillSecrets,
             onVerdict: (outcome) => { writeResult(outcome); verdictSignal(); },
         });
     };
@@ -584,20 +599,23 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 return result;
             }
             agent = startAgent(box, command, talking ? TALK_LOG : ADVICE_LOG, mode);
-            const ended = await Promise.race([done.then(() => 'done'), agent.ended, session.closed.then(() => 'browser-closed'), aborted.then(() => 'aborted')]);
-            // Im Gespraech hat Claude das Ende eben erst erfahren: kurz Zeit lassen, die letzte Antwort abzuholen und sauber aufzuhoeren.
-            if (ended === 'done' && talking) await Promise.race([agent.ended, new Promise((ok) => { setTimeout(ok, 3000).unref?.(); })]);
-            agent.stopTail();
             let adviceNote;
-            if (ended !== 'done') {
-                const broke = talking ? 'run.consult.talkBroke' : 'run.consult.adviceBroke';
-                if (ended === 'browser-closed' || ended === 'aborted') adviceNote = talking ? undefined : t('run.consult.endedEarly');
-                else if (ended.code !== 0 && agent.log() !== '') adviceNote = t(broke, { reason: claudeFailureReason(ended.code, agent.log()) });
-                else if (ended.code !== 0) adviceNote = t(broke, { reason: t('run.sandboxExit', { code: ended.code }) });
-                else if (!talking) adviceNote = t('run.consult.noAdvice');
+            try {
+                const ended = await Promise.race([done.then(() => 'done'), agent.ended, session.closed.then(() => 'browser-closed'), aborted.then(() => 'aborted')]);
+                // Im Gespraech hat Claude das Ende eben erst erfahren: kurz Zeit lassen, die letzte Antwort abzuholen und sauber aufzuhoeren.
+                if (ended === 'done' && talking) await Promise.race([agent.ended, new Promise((ok) => { setTimeout(ok, 3000).unref?.(); })]);
+                agent.stopTail();
+                if (ended !== 'done') {
+                    const broke = talking ? 'run.consult.talkBroke' : 'run.consult.adviceBroke';
+                    if (ended === 'browser-closed' || ended === 'aborted') adviceNote = talking ? undefined : t('run.consult.endedEarly');
+                    else if (ended.code !== 0 && agent.log() !== '') adviceNote = t(broke, { reason: claudeFailureReason(ended.code, agent.log()) });
+                    else if (ended.code !== 0) adviceNote = t(broke, { reason: t('run.sandboxExit', { code: ended.code }) });
+                    else if (!talking) adviceNote = t('run.consult.noAdvice');
+                }
+            } finally {
+                await agent.stop();
+                await stopPump();
             }
-            await agent.stop();
-            await stopPump();
             if (!talking) chat.advising(false);
             if (adviceNote !== undefined) {
                 adviceNotes.push(adviceNote);
@@ -727,7 +745,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                         await bench?.left?.(true, left);
                         return '';
                     };
-                    const onReload = (listener) => bench?.onReload?.(async () => {
+                    const onReload = (listener) => bench?.onReload?.(async ({ human = true } = {}) => {
+                        if (!human) return;
                         await bench.left?.(true, left);
                         await listener();
                     });
@@ -750,7 +769,6 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         else writeResult({ status: 'error', code: 'aborted', reason: t('run.interrupted.aborted') });
     };
 
-    let remembered = new Map();
     /**
      * Claude arbeitet im Container: aufnehmen oder einen Schritt beheben. Beim Beheben im selben Browser laeuft das nach einem
      * Testlauf, der Browser steht dann schon vor dem Schritt.
@@ -758,7 +776,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
      */
     const claudeWork = async (box) => {
         verdict = null;
-        const fillIn = (value) => fillDates([...remembered].reduce((current, [placeholder, real]) => swapText(current, placeholder, real), fillRun(value, runTag)));
+        // Fuer Claude: geheime Werte bleiben Platzhalter, die der Handler beim Ausfuehren fuellt (fillSecrets).
+        const fillIn = (value) => fillDates(openRemembered().reduce((current, [placeholder, real]) => swapText(current, placeholder, real), fillRun(value, runTag)));
         if (repairing !== undefined) {
             const position = givenSpec.steps.indexOf(repairing);
             run.repair = {
@@ -767,7 +786,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 ...(repair.rerecord ? { rerecord: true } : {}),
                 actions: repairing.recording?.actions.map(stepLabel) ?? [],
                 ...(repairing.recording === undefined ? {} : { check: fillIn(repairing.recording.check) }),
-                remembered: [...remembered].map(([placeholder, value]) => ({ name: placeholder.slice(2, -2), value: redact(value, session.secrets?.() ?? []) })),
+                remembered: [...remembered].map(([placeholder, value]) => ({ name: placeholder.slice(2, -2), ...(isSecret(value) ? { secret: true, value: placeholder } : { value }) })),
                 before: givenSpec.steps.slice(0, position).map(({ id, name }) => ({ id, name })),
                 after: givenSpec.steps.slice(position + 1).map(({ id, name, expect }) => ({ id, name, expect })),
                 // Die Einordnung des Testlaufs: Claude prueft sie zuerst, bevor es den Schritt anpasst.
@@ -921,35 +940,39 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const willing = await tokensOk();
         if (!willing) abortSignal();
         const agent = willing ? startAgent(box, containerCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin)], CLAUDE_LOG) : IDLE_AGENT;
-        if (willing) ui.info(t('run.agentWorking'));
-        const ended = await Promise.race([
-            verdictGiven.then(() => 'verdict'),
-            agent.ended,
-            session.closed.then(() => 'browser-closed'),
-            aborted.then(() => 'aborted'),
-        ]);
-        agent.stopTail();
-        // Mit dem Urteil ist der Lauf fertig. Auf Claudes Schlusszusammenfassung wartet niemand.
-        if (verdict === null) {
-            if (ended === 'browser-closed' || ended === 'aborted') {
-                writeInterrupted(ended);
-            } else {
-                const log = agent.log();
-                let reason = t('run.noVerdict');
-                if (ended.code !== 0) {
-                    reason = log === ''
-                        ? t('run.sandboxNoAgent', { code: ended.code })
-                        : claudeFailureReason(ended.code, log);
+        // Auch bei einem unerwarteten Fehler: Claude und sein Container laufen sonst weiter, bis ihr Zeitlimit greift.
+        try {
+            if (willing) ui.info(t('run.agentWorking'));
+            const ended = await Promise.race([
+                verdictGiven.then(() => 'verdict'),
+                agent.ended,
+                session.closed.then(() => 'browser-closed'),
+                aborted.then(() => 'aborted'),
+            ]);
+            agent.stopTail();
+            // Mit dem Urteil ist der Lauf fertig. Auf Claudes Schlusszusammenfassung wartet niemand.
+            if (verdict === null) {
+                if (ended === 'browser-closed' || ended === 'aborted') {
+                    writeInterrupted(ended);
+                } else {
+                    const log = agent.log();
+                    let reason = t('run.noVerdict');
+                    if (ended.code !== 0) {
+                        reason = log === ''
+                            ? t('run.sandboxNoAgent', { code: ended.code })
+                            : claudeFailureReason(ended.code, log);
+                    }
+                    writeResult({ status: 'error', code: 'no-verdict', reason });
                 }
-                writeResult({ status: 'error', code: 'no-verdict', reason });
             }
+        } finally {
+            await agent.stop();
+            await stopPump();
         }
-        await agent.stop();
-        await stopPump();
 
         if (budget.used() > 0) ui.info(t('run.budget', { used: budget.used(), max: maxSteps ?? t('run.budget.unlimited') }));
 
-        const built = buildReplay({ recorder, outcome: verdict, spec, target, ...(repairing === undefined ? {} : { draft: givenSpec }) });
+        const built = buildReplay({ recorder, outcome: verdict, spec, target, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(creating && previous !== undefined ? { previous } : {}) });
         let { candidate } = built;
         // Als lesend angelegt, aber geschrieben: Dann ist der Test schreibend, sonst liefe er auf Umgebungen ohne writable.
         const written = verdict?.writes ?? [];
@@ -1049,11 +1072,14 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // Der Schritt davor: Seine Pruefung kann bestanden haben, obwohl dort schon etwas abgelehnt wurde.
             const previous = upTo.at(-2);
             const earlier = previous === undefined ? null : { id: previous, requests: ended.requests?.get(previous) ?? [] };
-            failed.diagnosis = diagnose({ failed, broken, failures: session.failures(), requests, baseline, deviation, earlier });
-            const effect = deviation === null ? {} : { effect: deviation };
-            failed.evidence = { requests, ...(baseline === undefined ? {} : { recorded: baseline }), ...effect };
+            // Geschwaerzt wie das Urteil: Meldungen der Seite und Belege koennen geheim gemerkte Werte enthalten, und beides geht in den
+            // Bericht und beim Beheben an Claude.
+            const hide = (value) => redactDeep(value, session.secrets?.() ?? []);
+            failed.diagnosis = hide(diagnose({ failed, broken, failures: session.failures(), requests, baseline, deviation, earlier }));
+            const effect = deviation === null ? {} : { effect: hide(deviation) };
+            failed.evidence = hide({ requests, ...(baseline === undefined ? {} : { recorded: baseline }), ...effect });
             failed.suspect ||= failed.diagnosis.side === 'app';
-            verdict = { ...verdict, diagnosis: { step: failed.id, ...failed.diagnosis, requests, ...(baseline === undefined ? {} : { recorded: baseline }), ...effect } };
+            verdict = { ...verdict, diagnosis: { step: failed.id, ...failed.diagnosis, ...failed.evidence } };
             writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
             writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
         }

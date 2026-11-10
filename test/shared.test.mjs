@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { allTargets, browserHosts, buildDevlinkConfig, effectiveConfig, environmentsWith, resolveTarget, validateConfig } from '../src/shared/config.mjs';
+import { allTargets, browserHosts, buildDevlinkConfig, effectiveConfig, environmentsWith, hasLocalCode, resolveTarget, validateConfig } from '../src/shared/config.mjs';
 import { checkTest } from '../src/host/test-file.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 
@@ -125,9 +125,13 @@ test('Config: http nur auf dem eigenen Rechner (localhost, 127.0.0.1, *.localhos
     for (const url of ['http://app.localhost:5173', 'https://app.localhost:5173', 'http://localhost:5173', 'http://127.0.0.1:5173']) assert.equal(at(url), '', url);
     assert.match(at('http://dev.shop.example'), /http nur auf dem eigenen Rechner.*sonst https/);
     assert.match(at('http://127.0.0.2:5173'), /sonst https/, 'nur genau 127.0.0.1');
-    // Chrome: localhost fest auf 127.0.0.1 (nicht ::1), die IP braucht keine Regel, fremde Hosts sind Ausnahmen.
+    // Chrome: localhost fest auf 127.0.0.1 (nicht ::1); die IP und fremde Hosts sind Ausnahmen, denn auch eine IP trifft MAP *.
     const rules = browserArgs(['localhost', '127.0.0.1', 'app.localhost', 'shop.example'])[0];
-    assert.equal(rules, '--host-resolver-rules=MAP localhost 127.0.0.1, MAP app.localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE shop.example');
+    assert.equal(rules, '--host-resolver-rules=MAP localhost 127.0.0.1, MAP app.localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE shop.example');
+    // Mit localhost auch 127.0.0.1 und umgekehrt: webpack-dev-server oeffnet seinen Socket unter dem Host aus seiner Konfiguration.
+    assert.equal(browserArgs(['localhost'])[0], '--host-resolver-rules=MAP localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1');
+    assert.equal(browserArgs(['127.0.0.1'])[0], '--host-resolver-rules=MAP localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1');
+    assert.equal(browserArgs(['app.localhost'])[0], '--host-resolver-rules=MAP app.localhost 127.0.0.1, MAP * ~NOTFOUND', 'ein Name unter .localhost gibt nicht alles frei');
     assert.match(at('http://app.localhost:5173/pfad'), /nur der Origin, ohne Pfad/);
     assert.match(at('https://preview.shop.example/'), /ohne \/ am Ende \(https:\/\/preview\.shop\.example\)/);
 });
@@ -203,6 +207,28 @@ test('Lokaler Code: Muster aus der Config, ohne Einträge oder Muster gibt es nu
     assert.equal(built.authMarker, '#menu');
     assert.deepEqual(built.projects[0].redirects, []);
     assert.equal(built.projects[0].statics[0].localPath, '/p/dist/main.js');
+});
+
+test('Lokaler Code: localBuild kommt ohne assetUrlPattern aus, der Name ist der Pfad unter der Umgebung', async () => {
+    const { deriveRepoPath } = await import('../src/host/devlink-core.mjs');
+    const own = { ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop', localBuild: 'dist/local' } } };
+    assert.deepEqual(validateConfig(own).issues, []);
+    assert.equal(hasLocalCode(own, ['shop']), true);
+    const { auth, roles, ...open } = own;
+    assert.equal(checkTest({ ...SPEC, app: 'shop', targets: ['local'], role: undefined }, 'local', open).source, 'watch');
+    for (const bad of ['', '/abs', 'C:\\x', '../raus', 3]) {
+        assert.match(issues({ ...own, apps: { shop: { dir: 'shop', localBuild: bad } } }), /localBuild/);
+    }
+    const resolved = resolveTarget(own, 'local');
+    const built = buildDevlinkConfig(own, resolved, 'shop', 'watch', '/p');
+    assert.deepEqual(built.projects[0].builds.map(({ localDir, active }) => ({ localDir, active })), [{ localDir: '/p/dist/local', active: true }]);
+    assert.equal(deriveRepoPath(`${resolved.url}/assets/index-X1Y2Z3W4.js?v=2`, built.projects[0].builds[0].urlPattern), 'assets/index-X1Y2Z3W4.js');
+    assert.equal(deriveRepoPath('https://cdn.example/assets/index.js', built.projects[0].builds[0].urlPattern), null, 'nur die Umgebung');
+    assert.deepEqual(buildDevlinkConfig(own, resolved, 'shop', 'deployed', '/p').projects[0].builds, []);
+    const withPattern = buildDevlinkConfig({ ...own, assetUrlPattern: '/static/(.+)' }, resolved, 'shop', 'watch', '/p');
+    assert.equal(withPattern.assetUrlPattern, '/static/(.+)');
+    assert.equal(withPattern.projects[0].builds[0].urlPattern, built.projects[0].builds[0].urlPattern, 'der Build behält sein eigenes Muster');
+    assert.equal(built.assetUrlPattern, undefined, 'ohne globales Muster keins');
 });
 
 test('Lokaler Code: Dateiname aus der URL nach assetUrlPattern', async () => {
@@ -292,4 +318,18 @@ test('Config: browser wählt einen Chromium-Browser, Standard Chrome', async () 
     assert.match(issues({ ...simple(), browser: { channel: 'firefox' } }), /browser.channel muss einer von/);
     assert.match(issues({ ...simple(), browser: { executablePath: 'chrome.exe' } }), /absoluter Pfad/);
     assert.match(issues({ ...simple(), browser: 'edge' }), /browser muss ein Objekt sein/);
+});
+
+test('Config: Einträge in statics, constants und redirects und die Felder einer Rolle werden geprüft, nicht erst im Lauf', () => {
+    const withApp = (app) => issues({ ...simple(), assetUrlPattern: '^https://[^/]+/(.+)$', apps: { shop: { dir: 'shop', ...app } } });
+    assert.equal(withApp({ statics: [{ name: 'a.js', path: 'dist/a.js' }], constants: [{ name: 'c.js', watchPath: 'c.js' }], redirects: [{ name: 'App.js', app: true }, { name: 'M.js', target: 'Model' }] }), '');
+    assert.match(withApp({ statics: [{ name: 'x' }] }), /statics\[0\] braucht name, path/);
+    assert.match(withApp({ statics: [{ name: 'x', path: '../aussen.js' }] }), /statics\[0\]/);
+    assert.match(withApp({ redirects: [null] }), /redirects\[0\] braucht name, target \| app: true/);
+    assert.match(withApp({ constants: [5] }), /constants\[0\] braucht name, watchPath/);
+    const role = (fields) => issues({ ...simple(), roles: { kaeufer: { loginEnv: 'A', passwordEnv: 'B', ...fields } } });
+    assert.equal(role({ totpEnv: 'TOTP_SECRET' }), '');
+    assert.match(role({ passwortEnv: 'X' }), /unbekanntes Feld passwortEnv/);
+    assert.match(role({ totpEnv: 7 }), /totpEnv muss der Name einer Variable/);
+    assert.match(role({ loginEnv: 'mit leerzeichen' }), /loginEnv muss der Name einer Variable/);
 });

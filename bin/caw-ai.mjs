@@ -108,7 +108,14 @@ const main = async ([command, ...args]) => {
 try {
     process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
-    if (!(error instanceof CawError)) throw error;
+    // Ein unerwarteter Fehler (Datei, Playwright, ein Fehler im Tool) ist kein Urteil ueber die Anwendung: Exit 2, nicht 1, damit CI ihn
+    // nicht als gescheiterten Test zaehlt. Der Stack bleibt fuer die Fehlersuche.
+    if (!(error instanceof CawError)) {
+        process.exitCode = EXIT.error;
+        // Beenden wie ein ungefangener Fehler (offene Browser halten den Prozess sonst), aber erst, wenn der Stack geschrieben ist.
+        process.stderr.write(`${error?.stack ?? String(error)}\n`, () => process.exit());
+        await new Promise(() => {});
+    }
     const [{ colorEnabled }, { createUi }] = await Promise.all([import('../src/shared/color.mjs'), import('../src/shared/ui.mjs')]);
     createUi({ fancy: colorEnabled({ isTTY: process.stderr.isTTY }) }).fatal(error.code, error.message);
     const rejected = ['usage', 'auth-missing', 'finish-rejected', 'test-invalid', 'test-missing', 'write-protected', 'target-invalid', 'config-invalid', 'config-missing', 'target-denied', 'unknown-command', 'command-invalid', 'replay-missing', 'replay-stale', 'step-limit', 'step-order', 'step-unknown', 'human-message', 'plan-required', 'plan-invalid', 'advice-invalid', 'advise-only'];

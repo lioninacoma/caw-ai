@@ -52,6 +52,8 @@ export default {
     'config.roles.notObject': 'roles muss ein Objekt mit mindestens einer Rolle sein',
     'config.role.name': 'Rolle "{name}": nur Kleinbuchstaben, Ziffern, - und _',
     'config.role.notObject': 'Rolle {name} muss ein Objekt sein',
+    'config.role.unknownField': 'Rolle {name}: unbekanntes Feld {key} (erlaubt: {allowed})',
+    'config.role.envName': 'Rolle {name}: {key} muss der Name einer Variable in caw/.env sein, etwa ADMIN_PASSWORD',
     'config.role.secrets': 'Rolle {name}: loginEnv und passwordEnv nötig',
     'config.role.noFields': 'Rolle {name}: Bei auth.type {type} hat eine Rolle keine Felder; {why}',
     'config.role.sessionFile': 'die Sitzung liegt je Ziel in {dir}/<ziel>/{name}.json',
@@ -89,7 +91,9 @@ export default {
     'config.app.notObject': 'App {name} muss ein Objekt sein, etwa { "dir": ".", "startUrl": "/" }',
     'config.app.dir': 'App {name}: dir muss der relative Pfad zum App-Ordner sein',
     'config.app.startUrl': 'App {name}: startUrl muss mit / beginnen',
+    'config.app.entry': 'App {name}: {key}[{index}] braucht {fields} (Pfade relativ, ohne ..)',
     'config.app.list': 'App {name}: {key} muss eine Liste sein',
+    'config.app.localBuild': 'App {name}: localBuild muss der relative Pfad zum Build-Ordner sein, z. B. "dist"',
 
     // config.mjs: Laden und Ziele
     'config.load.missing': '{file} fehlt in {root}. Einrichten mit: npx caw-ai init --url <adresse>',

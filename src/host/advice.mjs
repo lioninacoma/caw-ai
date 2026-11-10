@@ -2,8 +2,8 @@
 // nach dem Klick des Menschen etwas. Anwendungsseitige bringen einen Prompt und optional konkrete Aenderungen am Code mit; die schreibt
 // der Host nur auf Klick, denn die Sandbox liest das Projekt nur.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, posix, relative } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -85,7 +85,26 @@ const readChange = (change, spec, config, report) => {
 const MAX_EDITS = 10;
 const EDIT_LIMIT = 4000;
 // Testdateien, Laufordner und Abhaengigkeiten aendert eine Empfehlung fuer die Anwendung nie.
-const NOT_APP = new RegExp(`^(${PROJECT_DIR}|\\${RUN_DIR}|node_modules|\\.git|\\.claude)(/|$)`);
+const NOT_APP = new RegExp(`^(${PROJECT_DIR}|\\${RUN_DIR}|node_modules|\\.git|\\.claude)(/|$)`, 'i');
+// Ein Pfad, wie er im Projekt steht: normalisiert, ohne Punkt- oder Leersegmente und ohne, was Windows still umdeutet (Punkt oder
+// Leerzeichen am Ende, Datenstroeme mit ':', Kurznamen wie GIT~1). Sonst fuehrte ././.git oder .git. doch nach .git.
+const plainPath = (file) => posix.normalize(file) === file
+    && file.split('/').every((part) => part !== '' && part !== '.' && part !== '..' && !/[. ]$/.test(part) && !/[:*?"<>|]/.test(part) && !/~\d/.test(part));
+/** Wo die Datei wirklich liegt, relativ zum Projekt (Links aufgeloest), oder null, wenn ausserhalb. */
+const realInRoot = (root, path) => {
+    try {
+        const inside = relative(realpathSync.native(root), realpathSync.native(path)).replaceAll('\\', '/');
+        return inside === '' || inside.startsWith('..') || isAbsolute(inside) ? null : inside;
+    } catch {
+        return null;
+    }
+};
+/** Darf eine Empfehlung diese Datei aendern? Am Text wie am wirklichen Ort, damit auch ein Link nicht in .git oder caw/ fuehrt. */
+const appFile = (root, file) => {
+    if (NOT_APP.test(file)) return false;
+    const real = realInRoot(root, join(root, file));
+    return real !== null && !NOT_APP.test(real);
+};
 const lf = (text) => text.replaceAll('\r\n', '\n');
 const occurrences = (text, part) => text.split(part).length - 1;
 
@@ -102,7 +121,7 @@ const readEdits = (edits, root, report) => {
         const at = (message) => report(`edits[${index}]: ${message}`);
         if (!isObject(edit)) return at('Eine Änderung braucht file, find und replace.');
         const file = typeof edit.file === 'string' ? edit.file.replaceAll('\\', '/').replace(/^\.\//, '') : '';
-        if (file === '' || /^([/]|[A-Za-z]:)/.test(file) || file.split('/').includes('..')) return at('file muss ein Pfad relativ zum Projekt sein.');
+        if (file === '' || /^([/]|[A-Za-z]:)/.test(file) || !plainPath(file)) return at('file muss ein Pfad relativ zum Projekt sein.');
         if (NOT_APP.test(file)) return at(`${file} gehört nicht zur Anwendung.`);
         if (!isText(edit.find, EDIT_LIMIT) || typeof edit.replace !== 'string' || edit.replace.length > EDIT_LIMIT) return at(`find und replace sind Text bis ${EDIT_LIMIT} Zeichen, find nicht leer.`);
         if (edit.find === edit.replace) return at('find und replace sind gleich.');
@@ -111,6 +130,7 @@ const readEdits = (edits, root, report) => {
         const path = join(root, file);
         if (!contents.has(file)) {
             if (!existsSync(path)) return at(`${file} gibt es nicht.`);
+            if (!appFile(root, file)) return at(`${file} gehört nicht zur Anwendung.`);
             contents.set(file, lf(readFileSync(path, 'utf8')));
         }
         const text = contents.get(file);
@@ -129,6 +149,8 @@ const readEdits = (edits, root, report) => {
 export const applyEdits = (root, edits) => {
     const files = [];
     for (const { file, find, replace } of edits) {
+        // Zwischen Pruefen und Klick kann ein Link entstanden sein: noch einmal, unmittelbar vor dem Schreiben.
+        if (!plainPath(file) || !appFile(root, file)) throw new CawError('advice-invalid', t('run.advice.fileChanged', { file }));
         const path = join(root, file);
         const raw = readFileSync(path, 'utf8');
         const text = lf(raw);

@@ -370,3 +370,10 @@ test('Ziel fehlt: ähnlich benannte Elemente derselben Rolle werden genannt, un�
     assert.equal(explainText({ missing: true, similar: [{ role: 'button', name: 'Sichern' }] }), ' Es fehlt auf der Seite. Ähnlich: button „Sichern“. Wurde es umbenannt?');
     assert.equal(explainText({ missing: true }), ' Es fehlt auf der Seite.');
 });
+
+test('Einordnung: Konsolenfehler mit aufgeloester Quelle (Angulars ErrorHandler) ist ein klarer Fehler der Anwendung', () => {
+    const found = diagnose({ failed: failed(), failures: [{ type: 'console', text: 'ERROR Error: Absichtlich\n    at explode (https://a.example/main.js:1:2)', at: 'src/app/explode.ts:2:9' }] });
+    assert.deepEqual(Object.values(found).slice(0, 2), ['app', 'clear']);
+    assert.match(JSON.stringify(found), /explode\.ts:2:9/);
+    assert.doesNotMatch(JSON.stringify(found), /main\.js:1:2/, 'nur die erste Zeile der Meldung');
+});

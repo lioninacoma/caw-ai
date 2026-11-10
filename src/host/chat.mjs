@@ -2,6 +2,7 @@
 // bricht ab. Bewusst nicht in der Seite der Anwendung: Dort koennte es Schaltflaechen ueberdecken, in Snapshots und Aufzeichnung
 // geraten, und die Seite selbst koennte Claude Anweisungen unterschieben. Das Binding gibt es nur auf der Chat-Seite.
 
+import { randomBytes } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
 
 import { CawError } from '../shared/errors.mjs';
@@ -410,7 +411,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
 };
 
 /** Die Chat-Seite in der aktuellen Sprache. Texte fuer das Seiten-JS stehen in T. */
-const chatPage = () => `<!doctype html><html lang="${language()}"><head><meta charset="utf-8"><title>caw-ai · Chat</title><script>(()=>{addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;const theme=event.data.theme;if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme;else delete document.documentElement.dataset.theme;});try{parent.postMessage({caw:'theme-request'},'*');}catch{}
+const chatPage = (nonce = '') => `<!doctype html><html lang="${language()}"><head><meta charset="utf-8"><title>caw-ai · Chat</title><script>(()=>{addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;const theme=event.data.theme;if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme;else delete document.documentElement.dataset.theme;});try{parent.postMessage({caw:'theme-request'},'*');}catch{}
 // Wo die Linie unter dem Kopf liegt und wo darauf Platz ist, gleich hinter dem Titel, in schmalen Spalten mittig vor der Pill: Die Werkbank setzt den Raben dorthin. Der Kopf kann umbrechen, darum bei jeder Groessenaenderung.
 addEventListener('DOMContentLoaded',()=>{const head=document.querySelector('header');if(!head)return;const perch=()=>{try{const title=head.querySelector('h1'),text=document.createRange();if(title)text.selectNodeContents(title);const end=title?text.getBoundingClientRect().right:0,next=[...head.children].find((el)=>el!==title&&el.offsetWidth>0&&el.getBoundingClientRect().left>end);parent.postMessage({caw:'perch',y:head.offsetTop+head.clientHeight,x:title?Math.min(end+28,next?(end+next.getBoundingClientRect().left)/2:Infinity):null},'*');}catch{}};new ResizeObserver(perch).observe(head);new MutationObserver(perch).observe(head,{subtree:true,childList:true,characterData:true,attributes:true});perch();});})();${sourceTag}</script>${FAVICON}<style>
 ${FONT_FACES}${TOKENS}${PIXEL_CSS}
@@ -505,7 +506,7 @@ button{font:inherit;cursor:pointer;color:inherit;border-radius:0}
 <script>
 const T=${JSON.stringify(texts('chat.page.'))};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
-const send=(type,text,checkpoint)=>window.${BINDING}({type,text,checkpoint});
+const send=(type,text,checkpoint)=>window.${BINDING}({type,text,checkpoint,nonce:${JSON.stringify(nonce)}});
 const input=document.getElementById('input'),messages=document.getElementById('messages'),thinking=document.getElementById('thinking'),abort=document.getElementById('abort'),sendButton=document.getElementById('send'),mark=document.getElementById('mark');
 // Die Hoehe folgt dem Text, leer dem Platzhalter: Der bricht in einem schmalen Chat um und waere sonst abgeschnitten.
 // Eine Scrollleiste gibt es erst ab der Hoechsthoehe.
@@ -632,6 +633,8 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
     const quiet = (promise) => promise.catch(() => {});
     let picking = false;
     let onPicked = null;
+    // Kennung der zuletzt geschriebenen Chat-Seite, neu bei jedem show().
+    let nonce = null;
     let current = ['running', null];
     // Nach dem Lauf: { report: absoluter Pfad, shown: Pfad fuer Menschen, text, command }.
     let next = null;
@@ -679,7 +682,10 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
     };
     await chatWindow.exposeBinding(BINDING, (source, event) => {
         // In der Werkbank sieht jeder Frame das Binding, auch die Anwendung. Sie darf nie als Mensch sprechen.
-        if (bench !== null && source.frame !== doc()) return;
+        // Die Anwendung teilt sich den Ursprung mit der Werkbank und kann das iframe des Chats neu laden (srcdoc, location). Der Frame bleibt
+        // dann derselbe, das Binding auch. Nur die Seite, die der Host zuletzt geschrieben hat, kennt die Kennung; der Chat hat einen
+        // undurchsichtigen Ursprung, die Anwendung kann sie nicht lesen.
+        if (bench !== null && (source.frame !== doc() || event?.nonce !== nonce)) return;
         if (event?.type === 'message') {
             chat.human.message(event.text, { checkpoint: event.checkpoint === true });
             // Der Rabe nickt: angekommen.
@@ -695,7 +701,8 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
     /** Beim Entwickeln: Wer ein mit dem Fadenkreuz gewaehltes Element zusaetzlich bekommt (die Claude-Code-Sitzung). null: niemand. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
     const show = async () => {
-        await doc().setContent(chatPage());
+        nonce = randomBytes(16).toString('hex');
+        await doc().setContent(chatPage(nonce));
         await doc().evaluate((entries) => entries.forEach((entry) => window.addMessage(...entry)), transcript);
         if (next !== null) await doc().evaluate((info) => window.setNext(info), next);
     };
@@ -708,11 +715,12 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
     await render('running');
     // Die Werkbank wurde neu geladen: Verlauf und Stand kommen zurueck. Lief gerade der Test, ist er nicht mehr verlaesslich.
     // Beim Vorfuehren gehoert das Neuladen zum gezeigten Weg und landet als Hinweis in der Aufnahme.
-    bench.onReload?.(async () => {
+    bench.onReload?.(async ({ human = true } = {}) => {
         if (!chat.available()) return;
         await show();
         await render(...current);
-        if (current[0] === 'developing') return;
+        // Die Anwendung hat das oberste Fenster selbst navigiert: Das ist ihr Verhalten, der Lauf geht weiter.
+        if (!human || current[0] === 'developing') return;
         if (SHOWING_STATES.includes(current[0])) {
             chat.notice(t('chat.reload.showing'));
             return;

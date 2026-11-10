@@ -52,6 +52,8 @@ export default {
     'config.roles.notObject': 'roles must be an object with at least one role',
     'config.role.name': 'Role "{name}": only lowercase letters, digits, - and _',
     'config.role.notObject': 'Role {name} must be an object',
+    'config.role.unknownField': 'Role {name}: unknown field {key} (allowed: {allowed})',
+    'config.role.envName': 'Role {name}: {key} must be the name of a variable in caw/.env, e.g. ADMIN_PASSWORD',
     'config.role.secrets': 'Role {name}: needs loginEnv and passwordEnv',
     'config.role.noFields': 'Role {name}: with auth.type {type} a role has no fields; {why}',
     'config.role.sessionFile': 'the session is stored per target in {dir}/<target>/{name}.json',
@@ -89,7 +91,9 @@ export default {
     'config.app.notObject': 'App {name} must be an object, e.g. { "dir": ".", "startUrl": "/" }',
     'config.app.dir': 'App {name}: dir must be the relative path to the app folder',
     'config.app.startUrl': 'App {name}: startUrl must start with /',
+    'config.app.entry': 'App {name}: {key}[{index}] needs {fields} (relative paths, no ..)',
     'config.app.list': 'App {name}: {key} must be a list',
+    'config.app.localBuild': 'App {name}: localBuild must be the relative path to the build folder, e.g. "dist"',
 
     // config.mjs: Laden und Ziele
     'config.load.missing': '{file} is missing in {root}. Set up with: npx caw-ai init --url <address>',

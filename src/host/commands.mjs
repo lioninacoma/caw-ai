@@ -609,6 +609,12 @@ const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeo
 };
 
 /** Eine Zeile zu Beginn des Laufs: was der Lauf darf und warum, damit sich kein Modus still aus der Umgebung ergibt. */
+/** Aufnehmen und Beheben brauchen einen Menschen fuer Vorfuehrung, Plan und Entscheidungen. In CI ist keiner da: abweisen statt warten. */
+const requireHuman = (command, interactive) => {
+    const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
+    if (inCi) throw new CawError('usage', t('cli.ciNeedsHuman', { command }));
+};
+
 export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environments }) => {
     if (!withAgent) return t('cli.modeNoAgent', { environments });
     if (headless) return t('cli.modeHeadless');
@@ -641,6 +647,8 @@ export const run = async (root, args, { containerCommand, adviseCommand, talkCom
     // Lieber gleich abweisen als still ohne Empfehlung laufen: Wer --advise angibt, erwartet sie.
     if (withAdvice && !withAgent) throw new CawError('usage', t('cli.adviseAgentOnly', { environments: agentEnvironments(config), target }));
     if (withAdvice && !canFix) throw new CawError('usage', t('cli.adviseNeedsChat'));
+    // In CI wartet niemand: Eine Uebergabe hielte den Job bis zum Timeout des Runners offen.
+    if (inCi && (handover || until !== undefined)) throw new CawError('usage', t('cli.ciHandover', { option: until !== undefined ? '--until' : '--handover' }));
     ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config) }));
     const { runFlow } = await import('./flows.mjs');
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
@@ -678,7 +686,7 @@ export const contradicts = (spec, { role, app, also = [], readOnly = false }) =>
  * Testplan neu aufnehmen oder abloesen, immer mit Chat. `containerCommand` ersetzt Claude durch einen festen Ablauf, damit
  * sich der Weg durch Container, Kanal und Browser ohne Modell und Token pruefen laesst.
  */
-export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen } = {}) => {
+export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
     const { test, target, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent } = parseRunArgs('record', args);
     const config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
@@ -686,6 +694,7 @@ export const record = async (root, args, { containerCommand, adviseCommand, talk
     if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
     const checked = withRunningWatch(config, checkTest(spec, target, config));
     requireAgent(config, checked, target, t('cli.verbRecord'));
+    requireHuman('record', interactive);
 
     const { recordFlow } = await import('./flows.mjs');
     // Vor der Vorfuehrung: Scheitert Docker erst danach, waere die Arbeit des Menschen umsonst.
@@ -711,10 +720,11 @@ const playable = (assertPlayable, spec, target, step) => {
 };
 
 /** Genau diesen Schritt aendern, auch wenn er nicht scheitert. So bekommt ein von Hand geaenderter oder neuer Schritt seine Aufzeichnung. */
-export const fix = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen } = {}) => {
+export const fix = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
     const { test, step, target, timeoutMin, stepTimeoutSec, maxSteps, agent } = parseRunArgs('fix', args);
     const { config, spec, checked } = loadChecked(root, test, target);
     requireAgent(config, checked, target, t('cli.verbFix'));
+    requireHuman('fix', interactive);
     const position = spec.steps.findIndex(({ id }) => id === step);
     if (position === -1) throw new CawError('step-unknown', t('cli.fixStepUnknown', { test, step, file: `${TEST_DIR}/${test}.yaml` }));
     const { assertPlayable } = await import('./replay.mjs');

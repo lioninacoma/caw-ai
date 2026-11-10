@@ -53,6 +53,8 @@ CAW_LOGIN_USER=test-user@example.com
 CAW_PW_USER=geheim
 ```
 
+`caw/.env` wird gelesen wie bei dotenv: `NAME=Wert`, gern in Anführungszeichen; ein Kommentar hinter dem Wert braucht ein Leerzeichen vor `#` (`NAME=Wert # Notiz`). Ein `#` ohne Leerzeichen davor gehört zum Wert; Werte mit ` #` in Anführungszeichen setzen.
+
 `npx caw-ai init` schreibt dir so eine Config.
 
 ## environments
@@ -138,7 +140,8 @@ Pflicht. Meist eine App; Monorepos können mehrere nennen.
 |---|---|
 | `dir` | App-Ordner relativ zum Projekt, `.` für eine einzelne App. |
 | `startUrl` | Pfad, an dem Tests beginnen. Nur für Apps, in denen ein Test startet. |
-| `statics` | Lokaler Code: `[{ "name": "main.js", "path": "dist/main.js" }]` |
+| `localBuild` | Lokaler Code: der Build-Ordner relativ zum Projekt, z. B. `"dist"` oder `"dist/app/browser"`. Funktioniert mit normalen Builds mit Hash (Vite, Angular CLI, webpack). |
+| `statics` | Lokaler Code, einzelne Dateien: `[{ "name": "main.js", "path": "dist/main.js" }]` |
 | `redirects`, `constants` | Lokaler Code für Sencha-/ExtJS-Apps. |
 
 ## Alles Weitere
@@ -159,7 +162,7 @@ Pflicht. Meist eine App; Monorepos können mehrere nennen.
 | `maxSteps` | `100` | Aktionsbudget für Claude beim Aufnehmen und Reparieren. |
 | `readyTimeoutMs` | | Wie lange auf eine ruhige App gewartet wird. |
 | `lintCommand` | | Dein Prüfbefehl, etwa `npm run lint`. Claude nennt ihn bei Code-Vorschlägen. |
-| `assetUrlPattern` | | Regulärer Ausdruck für Requests, die App-Code laden; Gruppe 1 ist der Dateiname in `statics`/`redirects`/`constants`. |
+| `assetUrlPattern` | | Regulärer Ausdruck für Requests, die App-Code laden; Gruppe 1 ist der Dateiname in `statics`/`redirects`/`constants` oder der Pfad in `localBuild`. Ohne ihn nimmt `localBuild` den Pfad unterhalb der Umgebungs-URL. |
 | `sites` | | Dieselbe App für mehrere Mandanten: `["nord", "sued"]`, dann `urls` je Umgebung. |
 | `extends` | | Gemeinsame Vorgaben aus einer Datei, etwa `"./caw/presets/basis.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den Agenten `docker`. Sonst `image` aus `.devcontainer/devcontainer.json`. |

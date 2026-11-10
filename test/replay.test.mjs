@@ -661,3 +661,13 @@ test('Schrittliste: Jede Aktion der Aufzeichnung wird ein Punkt ihres Schritts, 
     assert.ok(!JSON.stringify(groups).includes('geheim'), 'kein eingegebener Wert');
     assert.deepEqual(stepGroups(steps, undefined).map(({ points }) => points.length), [0, 0, 0]);
 });
+
+test('Schwere: Ein vom Framework gefangener Fehler mit Stack in der Konsole zaehlt nach seinem Ursprung', () => {
+    const rules = { foreign: [/\/vendor\//], skip: /\/@angular\/|chunk-angular/ };
+    const console = { type: 'console', level: 'error', text: 'ERROR Error: x' };
+    const caller = 'https://a.example/chunk-angular.js';
+    const stackFrom = (url) => `ERROR Error: x\n    at f (${url}:1:5)\n    at g (${caller}:9:9)`;
+    assert.equal(classifyFailure(console, { url: caller, stack: stackFrom('https://a.example/vendor/widget.js') }, rules), 'warn', 'Ursprung in fremdem Code');
+    assert.equal(classifyFailure(console, { url: caller, stack: stackFrom('https://a.example/main.js') }, rules), 'fail');
+    assert.equal(classifyFailure(console, { url: 'https://a.example/vendor/widget.js' }, rules), 'warn', 'Ohne Stack zaehlt die Datei wie bisher');
+});

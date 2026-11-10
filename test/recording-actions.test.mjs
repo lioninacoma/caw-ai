@@ -71,3 +71,12 @@ test('textMatcher: fester Text nur ganz, Muster per RegExp', () => {
     assert.equal(known('Prüfsumme a#f#c kopiert'), true);
     assert.equal(known('Prüfsumme fehlt'), false);
 });
+
+test('Ziele in iframes: frame ist selbst ein Ziel, verschachtelt erlaubt, und überlebt das Schreiben', () => {
+    const [click] = actionsOf(recording('- click: {role: button, name: Bezahlen, frame: {tag: iframe, name: Karte, frame: {tag: iframe, name: Zahlung}}}'));
+    assert.deepEqual(click.target, { role: 'button', name: 'Bezahlen', frame: { tag: 'iframe', name: 'Karte', frame: { tag: 'iframe', name: 'Zahlung' } } });
+    assert.throws(() => actionsOf(recording('- click: {role: button, name: Bezahlen, frame: Zahlung}')), /Ziel/);
+    assert.throws(() => actionsOf(recording(`- click: {role: button, frame: {tag: iframe, name: ${'x'.repeat(81)}}}`)), /80 Zeichen/);
+    const spec = { id: 't', steps: [{ id: 'S1', recording: parseRecordings(recording('- click: {role: button, name: Bezahlen, frame: {tag: iframe, name: Zahlung}}')).byId.get('S1') }] };
+    assert.deepEqual(parseRecordings(renderRecordings(spec)).byId.get('S1').actions[0].target.frame, { tag: 'iframe', name: 'Zahlung' });
+});

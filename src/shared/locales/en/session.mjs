@@ -3,6 +3,8 @@ export default {
     // app-files
     'session.appFiles.hint': 'Start the app\'s watch in your session and wait until it has finished building.',
     'session.appFiles.missing': '{file} is missing. {hint}',
+    'session.appFiles.noBuild': 'The build folder {dir} is missing or contains no scripts. {hint}',
+    'session.appFiles.buildBelow': 'The build is one level further down: set "localBuild": "{path}".',
     'session.appFiles.unreadable': '{file} can\'t be read. {hint}',
     'session.appFiles.empty': '{file} lists no files. {hint}',
     'session.appFiles.stale': '{bootstrap} of {app} is out of date, {count} file(s) missing, e.g. {examples}. {hint}',
@@ -26,6 +28,7 @@ export default {
     'session.args.unexpected': 'Unexpected argument: {arg}',
     'session.args.unknownOption': '{command} has no option {flag}. Allowed: {allowed}',
     'session.args.agentChoice': '--agent expects {choices}.',
+    'session.args.testId': 'Invalid test name: {test}. Use letters, digits, _, - and . (no folders), e.g. login or order-2.',
     'session.args.testMissing': 'Test name is missing.',
     'session.args.fixStep': 'fix expects a step like S4.',
     'session.args.targetMissing': '--target <environment> is missing.',
@@ -39,6 +42,7 @@ export default {
     'session.claude.exit': 'Claude exited with code {code}, see claude.log.',
 
     // sandbox-config
+    'session.sandbox.badImage': 'The devcontainer image ({image}) is not a valid image name (letters, digits, . / : @ _ -).',
     'session.sandbox.noImage': 'The devcontainer config needs an "image"; caw-ai doesn\'t support "build". Build the image first and enter it here.',
 
     // browser-session

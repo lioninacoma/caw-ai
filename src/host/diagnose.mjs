@@ -4,6 +4,7 @@
 import { language, t } from '../shared/i18n.mjs';
 import { deviationText, isEffectCause } from './effects.mjs';
 import { JSON_PREFIX, neutralName, neutralPath, outcomeText } from './network-log.mjs';
+import { isCaughtScriptError } from '../shared/report.mjs';
 
 const QUICK_ABORT_MS = 1000;
 const QUICK_SHARE = 0.2;
@@ -87,7 +88,8 @@ export const selfAbort = (requests = [], baseline = []) => {
  */
 export const diagnose = ({ failed, broken = null, failures = [], requests = [], baseline, deviation = null, earlier = null }) => {
     const found = [];
-    const effectOnly = broken === null && isEffectCause(failed?.reason);
+    // Eine gescheiterte Pruefung meldet sich selbst als Abbruch (kind check): Das schliesst die Wirkung als einzigen Grund nicht aus.
+    const effectOnly = (broken === null || broken.kind === 'check') && isEffectCause(failed?.reason);
     const add = (side, strength, text) => found.push({ side, strength, text });
     // Die erste Aktion, die anders wirkt als in gesunden Laeufen: Die Anwendung reagiert anders, der Test hat sich nicht geaendert.
     // Laesst sie den Schritt scheitern, war das Signal in allen gesunden Laeufen stabil: dann eindeutig.
@@ -179,6 +181,8 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
 
     for (const failure of failures) {
         if (failure.type === 'pageerror') add('app', 'clear', t('config.diag.pageerror', { text: String(failure.text), at: failure.at ? t('config.diag.pageerrorAt', { at: String(failure.at) }) : '' }));
+        // Mit Quelle (Stack ueber Quellkarten aufgeloest) ist es ein gefangener Skriptfehler der Anwendung, etwa aus Angulars ErrorHandler.
+        else if (isCaughtScriptError(failure)) add('app', 'clear', t('config.diag.pageerror', { text: String(failure.text).split('\n')[0], at: t('config.diag.pageerrorAt', { at: String(failure.at) }) }));
         else if (failure.type === 'console') add('app', 'likely', t('config.diag.console', { text: String(failure.text) }));
         else if (failure.type === 'http' && !own.some((request) => `HTTP ${request.status}` === failure.text && sameRequest(request, failure.url))) {
             const status = Number(/\d+/.exec(failure.text ?? '')?.[0]);

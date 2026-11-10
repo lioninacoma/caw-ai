@@ -199,6 +199,7 @@ const checkAuth = (config, issues) => {
     if (typeof auth.path === 'string' && !auth.path.startsWith('/')) issues.push(t('config.auth.path'));
 };
 
+const ROLE_FIELDS = ['loginEnv', 'passwordEnv', 'totpEnv'];
 const checkRoles = (config, issues) => {
     const { type } = authOf(config);
     if (config.roles === undefined) {
@@ -217,6 +218,13 @@ const checkRoles = (config, issues) => {
         }
         const needsSecrets = type === 'form' || type === 'basic';
         if (needsSecrets && (!role.loginEnv || !role.passwordEnv)) issues.push(t('config.role.secrets', { name }));
+        if (needsSecrets) {
+            // Namen von Umgebungsvariablen in caw/.env; ein Tippfehler im Schluessel (passwortEnv) fiele sonst erst beim Anmelden auf.
+            for (const [key, value] of Object.entries(role)) {
+                if (!ROLE_FIELDS.includes(key)) issues.push(t('config.role.unknownField', { name, key, allowed: ROLE_FIELDS.join(', ') }));
+                else if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) issues.push(t('config.role.envName', { name, key }));
+            }
+        }
         if (!needsSecrets && Object.keys(role).length > 0) issues.push(t('config.role.noFields', { name, type, why: type === 'storageState' ? t('config.role.sessionFile', { dir: AUTH_DIR, name }) : t('config.role.noAuth') }));
     }
 };
@@ -302,7 +310,8 @@ export const validateConfig = (given, root = process.cwd()) => {
         }
         if (groups === 0) issues.push(t('config.assetUrlPattern.group'));
     }
-    const withEntries = Object.entries(isObject(config.apps) ? config.apps : {}).filter(([, app]) => localEntries(app).length > 0).map(([name]) => name);
+    // `localBuild` kommt ohne Muster aus: Dann ist der Name der Pfad der URL unterhalb der Umgebung.
+    const withEntries = Object.entries(isObject(config.apps) ? config.apps : {}).filter(([, app]) => namedEntries(app).length > 0).map(([name]) => name);
     if (config.assetUrlPattern === undefined && withEntries.length > 0) {
         issues.push(t('config.assetUrlPattern.missing', { apps: withEntries.join(', ') }));
     }
@@ -318,6 +327,12 @@ export const validateConfig = (given, root = process.cwd()) => {
         if (app.startUrl !== undefined && (typeof app.startUrl !== 'string' || !app.startUrl.startsWith('/'))) issues.push(t('config.app.startUrl', { name }));
         for (const key of ['redirects', 'constants', 'statics']) {
             if (app[key] !== undefined && !Array.isArray(app[key])) issues.push(t('config.app.list', { name, key }));
+            else (app[key] ?? []).forEach((entry, index) => {
+                if (!entryOk(key, entry)) issues.push(t('config.app.entry', { name, key, index, fields: ENTRY_FIELDS[key] }));
+            });
+        }
+        if (app.localBuild !== undefined && (typeof app.localBuild !== 'string' || app.localBuild === '' || /^([\\/]|[A-Za-z]:)/.test(app.localBuild) || app.localBuild.split(/[\\/]/).includes('..'))) {
+            issues.push(t('config.app.localBuild', { name }));
         }
     }
     return { ok: issues.length === 0, issues };
@@ -341,10 +356,33 @@ export const loadConfig = (root) => {
     return effectiveConfig(config, root).config;
 };
 
-const localEntries = (app) => [...(app?.redirects ?? []), ...(app?.constants ?? []), ...(app?.statics ?? [])];
+// Ein Pfad im Projekt: relativ, ohne `..`. Wie `dir` und `localBuild`.
+const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
+const ENTRY_FIELDS = { statics: 'name, path', constants: 'name, watchPath', redirects: 'name, target | app: true' };
+/** Ein Eintrag aus `statics`, `constants` oder `redirects`: sonst scheiterte erst der Lauf mit einem TypeError. */
+const entryOk = (key, entry) => {
+    if (!isObject(entry) || typeof entry.name !== 'string' || entry.name === '') return false;
+    if (key === 'statics') return relativePath(entry.path);
+    if (key === 'constants') return relativePath(entry.watchPath);
+    return entry.app === true || (typeof entry.target === 'string' && entry.target !== '');
+};
+const namedEntries = (app) => [...(app?.redirects ?? []), ...(app?.constants ?? []), ...(app?.statics ?? [])];
+const hasLocalBuild = (app) => typeof app?.localBuild === 'string' && app.localBuild !== '';
 
-/** Gibt es fuer diese Apps lokalen Code zum Einspielen? Dazu braucht es `assetUrlPattern` und mindestens einen Eintrag. */
-export const hasLocalCode = (config, appNames) => typeof config.assetUrlPattern === 'string' && appNames.some((name) => localEntries(config.apps?.[name]).length > 0);
+/**
+ * Gibt es fuer diese Apps lokalen Code zum Einspielen? Ein Build-Ordner (`localBuild`) reicht allein; einzelne Eintraege
+ * (`statics`, `redirects`, `constants`) brauchen dazu `assetUrlPattern`.
+ */
+export const hasLocalCode = (config, appNames) => appNames.some((name) => hasLocalBuild(config.apps?.[name])
+    || (typeof config.assetUrlPattern === 'string' && namedEntries(config.apps?.[name]).length > 0));
+
+/** Ohne `assetUrlPattern`: der Pfad unterhalb der Umgebungs-URL, etwa `assets/index-X.js` aus `https://host/app/assets/index-X.js`. */
+const defaultAssetPattern = (url) => {
+    // Wie Chrome die Adresse eines Requests schreibt: Host klein, ohne Standardport. Sonst passte das Muster nie, still.
+    const parsed = new URL(String(url));
+    const base = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
+    return `^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/([^?#]+)`;
+};
 
 /** Wie ein Ziel geschrieben wird: `umgebung`, mit Mandanten `mandant/umgebung`. */
 export const targetForm = (config) => (config.sites === undefined ? t('config.targetForm.plain') : t('config.targetForm.sites'));
@@ -429,6 +467,13 @@ export const buildDevlinkConfig = (config, resolved, appName, source, projectRoo
                 localPath: posix.join(projectRoot, entry.path),
                 active: true,
             })) : [],
+            builds: replace && hasLocalBuild(app) ? [{
+                uuid: uuidOf(`build:${app.localBuild}`),
+                localDir: posix.join(projectRoot, app.localBuild),
+                // Der Name ist der Pfad unterhalb der Umgebung; ein globales assetUrlPattern (etwa fuer Sencha-statics) gilt zusaetzlich.
+                urlPattern: defaultAssetPattern(resolved.url),
+                active: true,
+            }] : [],
         }],
     };
 };

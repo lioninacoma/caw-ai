@@ -258,10 +258,20 @@ export const DEFAULT_EFFECT_FAIL = ['controls', 'console'];
 /** Laesst diese Abweichung den Schritt scheitern? Nur gelernte Wirkung, und nur in den Listen aus `fail`. */
 export const failsStep = (deviation, fail = DEFAULT_EFFECT_FAIL) => deviation?.learned === true && deviation.lists.some((list) => fail.includes(list));
 
-/** So beginnt der Grund, wenn ein Schritt nur an seiner Wirkung scheitert: Die Pruefung selbst ist erfuellt. */
 /** Anfang der Begruendung, wenn nur die Wirkung abweicht. Erkannt wird er in jeder Sprache, auch in Laeufen einer anderen. */
 export const effectCause = () => t('run.effect.cause');
-export const isEffectCause = (reason) => Object.values(CATALOGS).some((catalog) => String(reason ?? '').startsWith(catalog['run.effect.cause']));
+// Nach Wiederholungen steht der Grund hinter "In allen 2 Versuchen gescheitert: " bzw. "Auch im 2. Versuch gescheitert: ". Es zaehlt
+// der Grund des letzten Versuchs; die davor stehen hinter ihm und zaehlen nicht.
+const RETRY_KEYS = ['session.replay.allTriesFailed', 'session.replay.tryFailed'];
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const RETRY_PREFIXES = Object.values(CATALOGS).flatMap((catalog) => RETRY_KEYS.map((key) => catalog[key]).filter((text) => typeof text === 'string'))
+    .map((text) => new RegExp(`^${escapeRegExp(text.split('{reason}')[0]).replace(escapeRegExp('{count}'), '\\d+')}`));
+export const isEffectCause = (reason) => {
+    const text = String(reason ?? '');
+    const bare = [text, ...RETRY_PREFIXES.filter((prefix) => prefix.test(text)).map((prefix) => text.replace(prefix, ''))];
+    return Object.values(CATALOGS).some((catalog) => typeof catalog['run.effect.cause'] === 'string'
+        && bare.some((candidate) => candidate.startsWith(catalog['run.effect.cause'])));
+};
 
 // Bedienelemente stehen als Aenderung in der Wirkung: "+ x" erscheint durch die Aktion, "- x" verschwindet. Fuer Menschen ausgeschrieben.
 // Die Zeile selbst kann aus einem Snapshot stammen ("- link \"x\":"): Spiegelstrich und Doppelpunkt am Ende gehoeren nicht zum Namen.

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="de">
+  <head><meta charset="UTF-8" /><title>Zahlung</title></head>
+  <body>
+    <form aria-label="Karte">
+      <label>Betrag <input id="betrag" /></label>
+      <button>Bezahlen</button>
+      <p role="status" id="status"></p>
+    </form>
+    <script>
+      document.querySelector('form').addEventListener('submit', (event) => {
+        event.preventDefault()
+        document.getElementById('status').textContent = `Zahlung über ${document.getElementById('betrag').value} € bestätigt`
+      })
+    </script>
+  </body>
+</html>

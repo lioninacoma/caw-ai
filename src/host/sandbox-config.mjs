@@ -53,6 +53,8 @@ export const projectImage = (base) => {
     if (typeof base.image !== 'string' || base.image === '') {
         throw new CawError('devcontainer-unsupported', t('session.sandbox.noImage'));
     }
+    // Wie sandboxImage: Das Image landet in FROM {{image}}. Ein Zeilenumbruch fuegte sonst eigene Zeilen ins Dockerfile ein.
+    if (!/^[\w./:@-]+$/.test(base.image)) throw new CawError('devcontainer-unsupported', t('session.sandbox.badImage', { image: JSON.stringify(base.image) }));
     return base.image;
 };
 

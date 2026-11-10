@@ -9,7 +9,10 @@
 // Schritte bleiben, die Schritte zeigen danach „Zustand verlassen“. Solange der Test laeuft, ist Neuladen gesperrt: Es wuerde den
 // Zustand fuer die folgenden Schritte verfaelschen. Laedt jemand die ganze Werkbank neu, baut der Host sie wieder auf.
 //
-// Die Anwendung erreicht nichts davon: anderer Origin, und die Bindings nehmen nur Aufrufe aus den eigenen Frames an.
+// Die Anwendung teilt den Origin mit der Werkbank (top.Ext & Co.), nicht mit dem Chat: Der liegt sandboxed in einem opaken Origin,
+// und der Host kennt ihn als den Frame, den die Werkbank beim Laden angelegt hat, nie ueber seinen Namen. Ein nachgebautes iframe
+// namens caw-chat spricht darum nicht als Mensch. Aktualisieren darf die Anwendung ausloesen (F5 in ihr meldet sich ohnehin), es
+// greift erst nach der Uebergabe.
 
 import { APP_FRAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, interceptDocuments, sourceTag } from './app-view.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
@@ -628,22 +631,27 @@ summarize();${sourceTag}</script></body></html>`;
  * @param hosts  Hosts, deren Dokumente sich einbetten lassen duerfen: die der Anwendung
  * @returns { page, view, show } `view` ist die Anwendung im iframe mit der Schnittstelle einer Seite
  */
-export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai' }) => {
+export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', rewrite }) => {
     const page = context.pages()[0];
     // Nur die Werkbank selbst darf speichern und aktualisieren, nicht die Anwendung im iframe und nicht der Chat. Die Werte prueft writePref.
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null };
         bench = holder;
         benches.set(page, holder);
         // Die Werkbank liegt auf der Adresse der Anwendung: Nur das Dokument des obersten Fensters beantwortet das Tool.
         // Einstellungen frisch je Auslieferung, damit ein Neuladen zeigt, was zuletzt gewaehlt war.
-        await interceptDocuments(context, page, hosts, { workbench: (url) => holder.html(url), request: context.request });
+        await interceptDocuments(context, page, hosts, { workbench: (url) => holder.html(url), request: context.request, rewrite });
         await context.addInitScript(FOCUS_SCRIPT);
         await context.addInitScript(RELOAD_SCRIPT);
         // Ein neues Dokument im obersten Fenster ist immer eine neu ausgelieferte Werkbank: F5, Knopf der Adressleiste oder die
         // Anwendung selbst (top.location, Formular mit target=_top). Sprung im Dokument (replaceState) zaehlt nicht.
-        page.on('domcontentloaded', () => { holder.rebuild?.(); });
+        // Der Chat dieses Dokuments: das zweite iframe der Werkbank (nach der Anwendung), angelegt vom Parser. Zu diesem Zeitpunkt hat
+        // die Anwendung noch kein Skript ausgefuehrt; was sie spaeter anlegt oder umbenennt, ist nie der Chat.
+        page.on('domcontentloaded', () => {
+            holder.chat = page.mainFrame().childFrames()[1] ?? null;
+            holder.rebuild?.();
+        });
         await page.exposeBinding(PREF_BINDING, ({ frame }, key, value) => {
             if (frame !== page.mainFrame()) return;
             try {
@@ -675,32 +683,51 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai' }
     let runningStep = null;
     const reloads = new Set();
     let rebuilding = null;
+    // Kommt waehrend des Wiederherstellens schon das naechste Dokument (zweimal F5, eine Weiterleitungskette per top.location), stellt
+    // ein zweiter Durchgang danach auch dieses her. Sonst bliebe dort der Platzhalter des Chats stehen, und niemand koennte antworten.
+    let again = false;
     bench.rebuild = () => {
-        rebuilding ??= (async () => {
-            try {
-                await page.waitForFunction(() => window.workbench !== undefined, null, { timeout: RELOADED_MS });
-                await page.waitForSelector(`iframe[name="${APP_FRAME}"]`, { timeout: RELOADED_MS });
-                if (shown.facts !== null) await call('facts', shown.facts);
-                if (shown.steps !== null) await call('steps', shown.steps);
-                for (const [id, [state, note]] of shown.states) await call('step', id, state, note);
-                for (const [group, id, state, opts] of shown.points.values()) await call('point', group, id, state, opts);
-                if (shown.url !== null) await call('url', shown.url);
-                if (shown.mood !== null) await call('mood', shown.mood);
-                if (shown.left !== null) await call('left', ...shown.left);
-                // Erst der Chat, dann wer sonst wissen muss, dass die Seite neu ist (etwa das Entwickeln).
-                for (const listener of [...reloads]) await Promise.resolve(listener()).catch(() => {});
-            } catch {
-                // Fenster zu oder Seite woanders hin: nichts mehr wiederherzustellen
-            } finally {
-                rebuilding = null;
-            }
+        if (rebuilding !== null) {
+            again = true;
+            return rebuilding;
+        }
+        rebuilding = (async () => {
+            do {
+                again = false;
+                await restore();
+            } while (again);
+            rebuilding = null;
         })();
         return rebuilding;
+    };
+    const restore = async () => {
+        try {
+            await page.waitForFunction(() => window.workbench !== undefined, null, { timeout: RELOADED_MS });
+            await page.waitForSelector(`iframe[name="${APP_FRAME}"]`, { timeout: RELOADED_MS });
+            if (shown.facts !== null) await call('facts', shown.facts);
+            if (shown.steps !== null) await call('steps', shown.steps);
+            for (const [id, [state, note]] of shown.states) await call('step', id, state, note);
+            for (const [group, id, state, opts] of shown.points.values()) await call('point', group, id, state, opts);
+            if (shown.url !== null) await call('url', shown.url);
+            if (shown.mood !== null) await call('mood', shown.mood);
+            if (shown.left !== null) await call('left', ...shown.left);
+            // Neu geladen hat der Mensch (F5, Knopf des Browsers) oder die Anwendung selbst (top.location, Formular mit target=_top).
+            // Nur das erste stoert einen laufenden Test; das zweite gehoert zum Verhalten der Anwendung.
+            // Unbekannt (das Dokument ist schon wieder weg, eine Kette von top.location): Der naechste Durchgang entscheidet; gibt es keinen,
+            // zaehlt es nicht als Mensch. Nur reload und back_forward macht ein Mensch.
+            const type = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.type ?? null).catch(() => null);
+            if (type === null && again) return;
+            const human = type === 'reload' || type === 'back_forward';
+            // Erst der Chat, dann wer sonst wissen muss, dass die Seite neu ist (etwa das Entwickeln).
+            for (const listener of [...reloads]) await Promise.resolve(listener({ human })).catch(() => {});
+        } catch {
+            // Fenster zu oder Seite woanders hin: nichts mehr wiederherzustellen
+        }
     };
     return {
         page,
         view,
-        chatFrame: () => page.frame({ name: CHAT_FRAME }),
+        chatFrame: () => bench.chat,
         facts: (items) => {
             shown.facts = items;
             return call('facts', items);
@@ -785,7 +812,10 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai' }
         },
         /** Wer Aktualisieren ausfuehrt; null: gesperrt, der Test laeuft. */
         onRefresh: (handler) => { bench.refresh = handler ?? null; },
-        /** Nach dem Neuladen der ganzen Werkbank, wenn Schritte und Zaehler wieder stehen. @returns zum Abmelden */
+        /**
+         * Nach dem Neuladen der ganzen Werkbank, wenn Schritte und Zaehler wieder stehen. Der Listener bekommt { human }: true bei
+         * F5 oder Zurueck des Menschen, false, wenn die Anwendung das oberste Fenster selbst navigiert hat. @returns zum Abmelden
+         */
         onReload: (listener) => {
             reloads.add(listener);
             return () => reloads.delete(listener);
