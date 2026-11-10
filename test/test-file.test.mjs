@@ -308,16 +308,11 @@ test('Zwei Dateien: Lernt das Tool dazu, ändert sich nur die Aufzeichnung', (t)
     assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung');
 });
 
-test('Zwei Dateien: Eine alte Einzeldatei wird gelesen und beim Schreiben aufgeteilt', (t) => {
-    const legacy = renderTest({ ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' })), knownMessages: ['Alt'] });
-    const root = testRoot(t, legacy);
-    const loaded = loadTest(root, 't');
-    assert.equal(loaded.steps[1].recording.after, 'S1');
-    const changed = { ...loaded, steps: [{ ...loaded.steps[0], recording: { ...loaded.steps[0].recording, check: 'neu()' } }, loaded.steps[1]] };
-    writeTest(root, changed, new Set(['S1']));
-    assert.doesNotMatch(readFileSync(testPath(root, 't'), 'utf8'), /recording|knownMessages/);
-    const back = loadTest(root, 't');
-    assert.deepEqual([back.steps[0].recording.check, back.steps[1].recording.after, back.knownMessages], ['neu()', 'S1', ['Alt']]);
+test('Zwei Dateien: Aufzeichnung und knownMessages in der Beschreibung sind ein Fehler; der Entwurf eines Laufs traegt beides', (t) => {
+    const single = renderTest({ ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' })), knownMessages: ['Alt'] });
+    assert.equal(parseTest(single).steps[1].recording.after, 'S1', 'Entwurf: eine Datei mit Aufzeichnung');
+    const root = testRoot(t, single);
+    assert.throws(() => loadTest(root, 't'), (error) => error.code === 'test-invalid' && /knownMessages schreibt das Tool in caw\/recordings/.test(error.message) && /recording schreibt das Tool/.test(error.message));
 });
 
 test('Zwei Dateien: Form der Aufzeichnung wird geprüft, verwaiste Aufzeichnungen sind ein Hinweis', (t) => {

@@ -1,15 +1,6 @@
 // Texte: config (en). Schluessel mit Praefix "config.".
 // Config-Pruefung, Bericht (report.md), Testdateien, Ablaufplan und Einschaetzung eines Fehlschlags.
 export default {
-    // config.mjs: alte Namen
-    'config.renamed.portals': 'portals no longer exists: environments go in environments, multiple sites in sites.',
-    'config.renamed.customPortals': 'customPortals no longer exists: the address goes in environments.<name>.url, with sites in environments.<name>.urls.',
-    'config.renamed.stages': 'stages is now environments, with the address in url or urls.',
-    'config.renamed.login': 'login is now in auth: { "type": "form", "path", "userSelector", "passwordSelector", "submitSelector", "signedInSelector" }.',
-    'config.renamed.authMarker': 'authMarker is now auth.signedInSelector.',
-    'config.renamed.preset': 'preset is now extends.',
-    'config.renamed.writableStages': 'writableStages no longer exists: set environments.<name>.writable.',
-    'config.renamed.ui': 'ui no longer exists: with chat the app always runs in the workbench, without chat in its own window.',
 
     // config.mjs: Fragment aus extends
     'config.fragment.path': 'extends "{spec}": the fragment must be in the project, e.g. "extends": "./caw/presets/basis.json".',
@@ -30,7 +21,6 @@ export default {
     'config.env.notObject': 'Environment {name} must be an object',
     'config.env.unknown': 'Environment {name}: {key} is not allowed there (allowed: url, urls, {flags}){hint}',
     'config.env.notBoolean': 'Environment {name}: {key} must be true or false',
-    'config.env.agentRenamed': 'Environment {name}: agent is now called claude. Write "claude": {value}; agent still works for now.',
     'config.env.urlsWithoutSites': 'Environment {name}: urls only works with sites; without sites the address goes in url',
     'config.env.url': 'Environment {name}: url {problem}',
     'config.env.urlWithSites': 'Environment {name}: with sites, each site\'s address goes in urls, not url',
@@ -220,6 +210,7 @@ export default {
     'config.test.recordingHeader': 'Written by caw-ai, belongs to {file}. Delete by hand if needed, never edit.',
     'config.test.file.object': 'The file must be an object with mutates and steps, plus app, role and targets where needed.',
     'config.test.unknown': 'Unknown field {key}.{hint}',
+    'config.test.recordingOnly': 'The tool writes {key} to caw/recordings, not to the description: remove it here.',
     'config.test.didYouMean': ' Did you mean {name}?',
     'config.test.targets': 'targets must be a non-empty list.',
     'config.test.mutates': 'mutates is missing: true if the test creates or changes data (runs only on environments with writable: true), false if it only reads.',

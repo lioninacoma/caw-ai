@@ -91,7 +91,7 @@ test('auth: speichert die Sitzung einer Rolle, nur bei storageState und nie auf 
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
     const write = (auth) => writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
-        environments: { local: { url: 'http://app.localhost:5173', agent: true }, live: { url: 'https://www.shop.example', production: true } },
+        environments: { local: { url: 'http://app.localhost:5173', claude: true }, live: { url: 'https://www.shop.example', production: true } },
         auth,
         apps: { web: { dir: '.', startUrl: '/' } },
         roles: { kunde: auth.type === 'form' ? { loginEnv: 'L', passwordEnv: 'P' } : {} },
@@ -328,11 +328,11 @@ test('init: explore ist Pflicht, fragt nach Adresse und Rollen, prüft jede Antw
     await assert.rejects(initAnswers(root, ['--from', 'fehlt.json'], { interactive: false }), /fehlt\.json ist nicht lesbar/);
 });
 
-test('validate: je Test und Ziel der Code, wo das Overlay ginge, TODO und alte Namen', (t) => {
+test('validate: je Test und Ziel der Code, wo das Overlay ginge, und TODO', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-validate-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
-        environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true, overlay: true } },
+        environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true, overlay: true } },
         auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
         apps: { web: { dir: '.', startUrl: '/', overlay: { build: 'dist' } } },
         roles: { tester: { loginEnv: 'A', passwordEnv: 'B' } },
@@ -351,7 +351,6 @@ test('validate: je Test und Ziel der Code, wo das Overlay ginge, TODO und alte N
     assert.match(out, /lesen \(local\): Dev-Server localhost:5173, dein aktueller Stand\n/);
     assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, Build dist\n/);
     assert.match(out, /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/);
-    assert.match(out, /Umgebung local: agent heißt jetzt claude/);
     assert.match(out, /und 1 Test\(s\) sind gültig/);
     // Build und Dev-Server an der App: Ein blosses --overlay verlangt die Wahl, validate nennt beide.
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));

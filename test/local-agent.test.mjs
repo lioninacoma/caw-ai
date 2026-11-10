@@ -146,7 +146,7 @@ test('Config: agent.sandbox, Standard lokal, in CI immer Docker', () => {
     assert.equal(agentSandbox({}, {}), 'local');
     assert.equal(agentSandbox({ agent: { sandbox: 'docker' } }, {}), 'docker');
     assert.equal(agentSandbox({ agent: { sandbox: 'local' } }, { CI: 'true' }), 'docker');
-    const base = { framework: 'web', environments: { local: { url: 'http://app.localhost:5173', agent: true } }, auth: { type: 'none' }, apps: { app: { path: '/' } } };
+    const base = { framework: 'web', environments: { local: { url: 'http://app.localhost:5173', claude: true } }, auth: { type: 'none' }, apps: { app: { path: '/' } } };
     const issues = (agent) => validateConfig({ ...base, agent }).issues.filter((issue) => issue.startsWith('agent')).join('\n');
     assert.equal(issues({ sandbox: 'docker' }), '');
     assert.match(issues({ sandbox: 'vm' }), /agent\.sandbox muss einer von local, docker/);

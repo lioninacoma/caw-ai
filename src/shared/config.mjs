@@ -23,9 +23,7 @@ import { didYouMean } from './suggest.mjs';
 
 export { CONFIG_FILE } from './names.mjs';
 
-// `claude` hiess frueher `agent`, wie das Objekt `agent` oben in der Config. Der alte Name gilt weiter, mit Hinweis.
 const ENVIRONMENT_FLAGS = ['claude', 'overlay', 'writable', 'production'];
-const OLD_ENVIRONMENT_FLAGS = ['agent'];
 // Eine Produktionsumgebung gibt es nur ausdruecklich, und dann ohne Claude, ohne lokalen Code und ohne Schreiben.
 // Auch als Bestandteil, etwa prod-de oder live_eu. Wer so eine Umgebung nicht als Produktion meint, sagt das mit "production": false.
 const PRODUCTION_NAME = /(^|[-_.])(prod|production|produktion|produktiv|prd|live)([-_.]|\d|$)/i;
@@ -71,10 +69,6 @@ export const browserLaunch = (config) => {
     if (typeof browser.executablePath === 'string' && browser.executablePath !== '') return { executablePath: browser.executablePath };
     return { channel: typeof browser.channel === 'string' ? browser.channel : 'chrome' };
 };
-// Alte Namen: kein Rueckfall, aber ein Hinweis auf den neuen (Text unter config.renamed.<name>).
-const RENAMED = Object.fromEntries(['portals', 'customPortals', 'stages', 'login', 'authMarker', 'preset', 'writableStages', 'ui']
-    .map((name) => [name, `config.renamed.${name}`]));
-
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const HOST = /^[a-z0-9.-]+$/i;
@@ -134,7 +128,7 @@ export const environmentDefs = (config) => Object.fromEntries(Object.entries(con
     const entry = raw ?? {};
     const urls = config.sites === undefined ? (entry.url === undefined ? {} : { '': entry.url }) : Object.fromEntries((config.sites ?? []).filter((site) => entry.urls?.[site] !== undefined).map((site) => [site, entry.urls[site]]));
     // Intern heisst die Faehigkeit weiter `agent`: Claude darf hier arbeiten.
-    return [name, { agent: entry.claude === true || entry.agent === true, overlay: entry.overlay === true, writable: entry.writable === true, production: entry.production === true, urls }];
+    return [name, { agent: entry.claude === true, overlay: entry.overlay === true, writable: entry.writable === true, production: entry.production === true, urls }];
 }));
 
 /** Umgebungen mit einer Faehigkeit, fuer Meldungen wie "nur auf dev". */
@@ -178,10 +172,9 @@ const checkEnvironments = (config, issues, notes) => {
             issues.push(t('config.env.notObject', { name }));
             continue;
         }
-        const unknown = Object.keys(raw).find((key) => !['url', 'urls', ...ENVIRONMENT_FLAGS, ...OLD_ENVIRONMENT_FLAGS].includes(key));
+        const unknown = Object.keys(raw).find((key) => !['url', 'urls', ...ENVIRONMENT_FLAGS].includes(key));
         if (unknown !== undefined) issues.push(t('config.env.unknown', { name, key: unknown, flags: ENVIRONMENT_FLAGS.join(', '), hint: hintFor(unknown, ['url', 'urls', ...ENVIRONMENT_FLAGS]) }));
-        if (raw.agent !== undefined) notes.push(t('config.env.agentRenamed', { name, value: String(raw.agent) }));
-        const notBoolean = [...ENVIRONMENT_FLAGS, ...OLD_ENVIRONMENT_FLAGS].find((key) => raw[key] !== undefined && typeof raw[key] !== 'boolean');
+        const notBoolean = ENVIRONMENT_FLAGS.find((key) => raw[key] !== undefined && typeof raw[key] !== 'boolean');
         if (notBoolean !== undefined) issues.push(t('config.env.notBoolean', { name, key: notBoolean }));
         if (sites === undefined) {
             if (raw.urls !== undefined) issues.push(t('config.env.urlsWithoutSites', { name }));
@@ -198,7 +191,7 @@ const checkEnvironments = (config, issues, notes) => {
         }
         if (PRODUCTION_EXACT.test(name) && raw.production !== true) issues.push(t('config.env.productionExact', { name }));
         else if (PRODUCTION_NAME.test(name) && raw.production === undefined) issues.push(t('config.env.productionLike', { name }));
-        if (raw.production === true && (raw.claude === true || raw.agent === true || raw.overlay === true || raw.writable === true)) issues.push(t('config.env.productionFlags', { name }));
+        if (raw.production === true && (raw.claude === true || raw.overlay === true || raw.writable === true)) issues.push(t('config.env.productionFlags', { name }));
     }
     for (const site of Array.isArray(sites) ? sites : []) {
         if (PRODUCTION_NAME.test(site)) issues.push(t('config.site.production', { site: String(site) }));
@@ -265,10 +258,9 @@ const checkRoles = (config, issues) => {
 export const validateConfig = (given, root = process.cwd()) => {
     if (!isObject(given)) return { ok: false, issues: [t('config.notObject')], notes: [] };
     const issues = [];
-    // Hinweise, die nichts verhindern: alte Namen, die noch gelten, und Einstellungen, die so nichts bewirken.
+    // Hinweise, die nichts verhindern: Einstellungen, die so nichts bewirken.
     const notes = [];
-    for (const [key, text] of Object.entries(RENAMED)) if (given[key] !== undefined) issues.push(t(text));
-    for (const key of Object.keys(given)) if (!TOP_FIELDS.includes(key) && RENAMED[key] === undefined) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
+    for (const key of Object.keys(given)) if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
     if (given.language !== undefined && !['de', 'en'].includes(given.language)) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
     const { config, issues: loaded } = effectiveConfig(given, root);
     issues.push(...loaded);
@@ -360,7 +352,7 @@ export const validateConfig = (given, root = process.cwd()) => {
         if (unknown !== undefined) issues.push(t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) }));
         if (app.overlay !== undefined) issues.push(...overlayIssues(name, app.overlay, extjs));
     }
-    if (issues.length === 0) notes.push(...localCodeNotes(config));
+    if (issues.length === 0) notes.push(...overlayNotes(config));
     return { ok: issues.length === 0, issues, notes };
 };
 
@@ -368,7 +360,7 @@ export const validateConfig = (given, root = process.cwd()) => {
  * Das Overlay geht nur, wenn Umgebung und App zusammenpassen: overlay an der Umgebung, eine Quelle an der App. Fehlt eine Seite, geht
  * --overlay nirgends; mit einer Adresse auf der Kommandozeile (--overlay http://…) braucht die App keine.
  */
-const localCodeNotes = (config) => {
+const overlayNotes = (config) => {
     const apps = Object.keys(config.apps ?? {});
     const environments = environmentsWith(config, 'overlay');
     const notes = [];
@@ -378,7 +370,7 @@ const localCodeNotes = (config) => {
     return notes;
 };
 
-/** Die Config wie loadConfig, dazu die Hinweise der Pruefung (alte Namen, Einstellungen ohne Wirkung). */
+/** Die Config wie loadConfig, dazu die Hinweise der Pruefung (Einstellungen ohne Wirkung). */
 export const loadConfigWithNotes = (root) => {
     let raw;
     try {

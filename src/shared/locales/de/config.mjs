@@ -1,15 +1,6 @@
 // Texte: config (de). Schluessel mit Praefix "config.".
 // Config-Pruefung, Bericht (report.md), Testdateien, Ablaufplan und Einschaetzung eines Fehlschlags.
 export default {
-    // config.mjs: alte Namen
-    'config.renamed.portals': 'portals gibt es nicht mehr: Umgebungen stehen in environments, mehrere Mandanten in sites.',
-    'config.renamed.customPortals': 'customPortals gibt es nicht mehr: Die Adresse steht in environments.<name>.url, bei Mandanten in environments.<name>.urls.',
-    'config.renamed.stages': 'stages heißt jetzt environments, mit der Adresse in url bzw. urls.',
-    'config.renamed.login': 'login steht jetzt in auth: { "type": "form", "path", "userSelector", "passwordSelector", "submitSelector", "signedInSelector" }.',
-    'config.renamed.authMarker': 'authMarker heißt jetzt auth.signedInSelector.',
-    'config.renamed.preset': 'preset heißt jetzt extends.',
-    'config.renamed.writableStages': 'writableStages gibt es nicht mehr: Setze environments.<name>.writable.',
-    'config.renamed.ui': 'ui gibt es nicht mehr: Mit Chat läuft die Anwendung immer in der Werkbank, ohne Chat im eigenen Fenster.',
 
     // config.mjs: Fragment aus extends
     'config.fragment.path': 'extends "{spec}": Das Fragment liegt im Projekt, etwa "extends": "./caw/presets/basis.json".',
@@ -30,7 +21,6 @@ export default {
     'config.env.notObject': 'Umgebung {name} muss ein Objekt sein',
     'config.env.unknown': 'Umgebung {name}: {key} gibt es dort nicht (erlaubt: url, urls, {flags}){hint}',
     'config.env.notBoolean': 'Umgebung {name}: {key} muss true oder false sein',
-    'config.env.agentRenamed': 'Umgebung {name}: agent heißt jetzt claude. Schreibe "claude": {value}; agent gilt vorerst weiter.',
     'config.env.urlsWithoutSites': 'Umgebung {name}: urls gibt es nur mit sites; ohne Mandanten steht die Adresse in url',
     'config.env.url': 'Umgebung {name}: url {problem}',
     'config.env.urlWithSites': 'Umgebung {name}: Mit sites steht die Adresse je Mandant in urls, nicht in url',
@@ -220,6 +210,7 @@ export default {
     'config.test.recordingHeader': 'Vom Tool geschrieben, gehört zu {file}. Von Hand nur löschen, nicht ändern.',
     'config.test.file.object': 'Die Datei muss ein Objekt mit mutates und steps sein, dazu bei Bedarf app, role und targets.',
     'config.test.unknown': 'Unbekanntes Feld {key}.{hint}',
+    'config.test.recordingOnly': '{key} schreibt das Tool in caw/recordings, nicht in die Beschreibung: Entferne es hier.',
     'config.test.didYouMean': ' Meintest du {name}?',
     'config.test.targets': 'targets muss eine nichtleere Liste sein.',
     'config.test.mutates': 'mutates fehlt: true, wenn der Test Daten anlegt oder ändert (läuft nur auf Umgebungen mit writable: true), false, wenn er nur liest.',

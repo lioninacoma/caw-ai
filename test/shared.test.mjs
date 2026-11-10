@@ -14,7 +14,7 @@ const fragmentDir = mkdtempSync(join(tmpdir(), 'caw-fragment-'));
 const FRAGMENT = join(fragmentDir, 'basis.json');
 writeFileSync(FRAGMENT, JSON.stringify({
     environments: {
-        dev: { urls: { nord: 'https://dev.nord.example', sued: 'https://dev.sued.example', west: 'https://dev.west.example' }, agent: true, overlay: true, writable: true },
+        dev: { urls: { nord: 'https://dev.nord.example', sued: 'https://dev.sued.example', west: 'https://dev.west.example' }, claude: true, overlay: true, writable: true },
         test: { urls: { nord: 'https://test.nord.example', sued: 'https://test.sued.example' }, writable: true },
         abnahme: { urls: { nord: 'https://abnahme.nord.example', sued: 'https://abnahme.sued.example' } },
     },
@@ -40,7 +40,7 @@ const multi = () => effectiveConfig(multiRaw()).config;
 // Der Normalfall: eine Anwendung, ein paar Umgebungen, flach.
 const simple = () => ({
     environments: {
-        local: { url: 'https://app.localhost:8443', agent: true, overlay: true, writable: true },
+        local: { url: 'https://app.localhost:8443', claude: true, overlay: true, writable: true },
         staging: { url: 'https://staging.shop.example' },
     },
     auth: { type: 'form', path: '/anmelden', userSelector: '#mail', passwordSelector: '#pw', submitSelector: 'button[type=submit]', signedInSelector: '#menu' },
@@ -61,16 +61,8 @@ test('gültige Configs: flach, mit Mandanten, ohne Anmeldung, mit gespeicherter 
     assert.deepEqual(validateConfig(twoFactor).issues, [], 'ein Einmalcode nach dem Passwort');
 });
 
-test('Config: alte Namen werden mit dem neuen genannt, kein Rückfall', () => {
-    assert.match(issues({ ...simple(), portals: ['x'] }), /portals gibt es nicht mehr/);
-    assert.match(issues({ ...simple(), customPortals: {} }), /environments\.<name>\.url/);
-    assert.match(issues({ ...simple(), stages: {} }), /stages heißt jetzt environments/);
-    assert.match(issues({ ...simple(), login: {} }), /login steht jetzt in auth/);
-    assert.match(issues({ ...simple(), authMarker: '#m' }), /auth\.signedInSelector/);
-    assert.match(issues({ ...simple(), preset: './x.json' }), /preset heißt jetzt extends/);
-    assert.match(issues({ ...simple(), writableStages: [] }), /writable/);
-    assert.match(issues({ ...simple(), ui: { embed: false } }), /ui gibt es nicht mehr/);
-    assert.match(issues({ ...simple(), gibtsnicht: 1 }), /Unbekanntes Feld: gibtsnicht/);
+test('Config: unbekannte Felder sind Fehler, auch Namen aus frueheren Fassungen', () => {
+    for (const key of ['portals', 'stages', 'login', 'preset', 'gibtsnicht']) assert.match(issues({ ...simple(), [key]: 1 }), new RegExp(`Unbekanntes Feld: ${key}`));
 });
 
 test('Config: Pflichtfelder, Anmeldung je Art, Fragment nur als Datei im Projekt', () => {
@@ -113,9 +105,9 @@ test('Umgebungen: Fähigkeiten aus der Config, Produktion nur ausdrücklich und 
     assert.equal(resolveTarget(simple(), 'local').agent, true);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
     assert.match(at({ prod: { url: 'https://www.shop.example' } }), /Produktion/);
-    assert.match(at({ live: { url: 'https://www.shop.example', production: true, agent: true } }), /Produktion: claude/);
+    assert.match(at({ live: { url: 'https://www.shop.example', production: true, claude: true } }), /Produktion: claude/);
     assert.equal(at({ live: { url: 'https://www.shop.example', production: true } }), '');
-    assert.match(at({ local: { url: 'http://app.localhost:5173', agent: 'ja' } }), /agent muss true oder false sein/);
+    assert.match(at({ local: { url: 'http://app.localhost:5173', claude: 'ja' } }), /claude muss true oder false sein/);
     assert.match(at({ local: { url: 'http://app.localhost:5173', stage: 'x' } }), /stage gibt es dort nicht/);
 });
 
@@ -228,7 +220,7 @@ test('Welcher Code läuft: ausgeliefert, außer --overlay; geht das Overlay nich
     assert.throws(() => checkTest({ ...spec, app: 'web' }, 'local', twoApps), /Unbekannte App: web \(Apps in caw\.config\.json: shop, admin\)/);
 });
 
-test('Config: Vorschläge bei Tippfehlern, claude statt agent, Hinweise auf Einstellungen ohne Wirkung', () => {
+test('Config: Vorschläge bei Tippfehlern, Hinweise auf Einstellungen ohne Wirkung', () => {
     assert.match(issues({ ...simple(), insecureTLS: true }), /Unbekanntes Feld: insecureTLS \(meintest du insecureTls\?\)/);
     assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', overlya: true } } }), /overlya gibt es dort nicht.*\(meintest du overlay\?\)/);
     assert.doesNotMatch(issues({ ...simple(), zzz: 1 }), /meintest/);
@@ -237,9 +229,8 @@ test('Config: Vorschläge bei Tippfehlern, claude statt agent, Hinweise auf Eins
     const claude = { ...simple(), environments: { local: { url: 'http://app.localhost:5173', claude: true, writable: true } } };
     assert.deepEqual(validateConfig(claude), { ok: true, issues: [], notes: [] });
     assert.equal(resolveTarget(claude, 'local').agent, true);
-    const old = validateConfig(simple());
-    assert.deepEqual(old.issues, [], 'agent gilt weiter');
-    assert.match(old.notes.join('\n'), /Umgebung local: agent heißt jetzt claude/);
+    // Kein alter Name mehr: agent an einer Umgebung ist ein Fehler wie jedes unbekannte Feld.
+    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', agent: true } } }), /Umgebung local: agent gibt es dort nicht/);
     const buildOnly = { ...claude, apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { build: 'dist' } } } };
     assert.match(validateConfig(buildOnly).notes.join('\n'), /App shop hat overlay, aber keine Umgebung hat "overlay": true/);
 });
@@ -325,14 +316,14 @@ test('browserHosts: Produktion nur, wenn der Lauf selbst darauf zielt', () => {
 
 test('Produktion: auch als Namensbestandteil erkannt, ausdrücklich false erlaubt', () => {
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
-    for (const name of ['prod-de', 'live_eu', 'prd2', 'produktiv-at']) assert.match(at({ [name]: { url: 'https://www.shop.example', agent: true } }), /sieht nach Produktion aus/, name);
-    assert.equal(at({ 'live-preview': { url: 'https://preview.shop.example', production: false, agent: true } }), '');
+    for (const name of ['prod-de', 'live_eu', 'prd2', 'produktiv-at']) assert.match(at({ [name]: { url: 'https://www.shop.example', claude: true } }), /sieht nach Produktion aus/, name);
+    assert.equal(at({ 'live-preview': { url: 'https://preview.shop.example', production: false, claude: true } }), '');
     assert.equal(at({ delivery: { url: 'https://d.shop.example' } }), '', 'kein Treffer mitten im Wort');
     assert.match(issues({ ...multiRaw(), sites: ['nord', 'live'] }), /Mandant live sieht nach Produktion aus/);
 });
 
 test('Produktion: die genauen Namen lassen sich nicht mit false umgehen', () => {
-    assert.match(issues({ ...simple(), environments: { ...simple().environments, prod: { url: 'https://www.shop.example', production: false, agent: true } } }), /dem Namen nach Produktion/);
+    assert.match(issues({ ...simple(), environments: { ...simple().environments, prod: { url: 'https://www.shop.example', production: false, claude: true } } }), /dem Namen nach Produktion/);
 });
 
 test('Config: kaputte Werte führen zu Meldungen, nicht zu Abstürzen', () => {

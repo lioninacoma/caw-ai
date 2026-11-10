@@ -77,7 +77,7 @@ test('parseRunArgs: mehrere Tests oder --all laufen ohne Chat, --until und --adv
 });
 
 test('chooseTarget: das einzige Ziel, für record/fix das einzige mit Claude, sonst die Auswahl', () => {
-    const config = { environments: { local: { url: 'http://localhost:1', agent: true }, dev: { url: 'https://dev.example', agent: true }, staging: { url: 'https://s.example' } } };
+    const config = { environments: { local: { url: 'http://localhost:1', claude: true }, dev: { url: 'https://dev.example', claude: true }, staging: { url: 'https://s.example' } } };
     const said = [];
     const log = (text) => said.push(text);
     assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { command: 'run', log }), 'dev');

@@ -1,6 +1,6 @@
 // Zwei Dateien je Test: Die Beschreibung (caw/tests/<id>.yaml) pflegt der Mensch, die Aufzeichnung (caw/recordings/<id>.yaml)
 // das Tool. Verbunden sind sie ueber die Schritt-ID und den Hash aus dem Text des Schritts; passt er nicht, ist die Aufzeichnung
-// des Schritts veraltet. Im Speicher ist der Test eine Einheit wie frueher, und eine alte Einzeldatei bleibt lesbar. Nur auf dem
+// des Schritts veraltet. Im Speicher ist der Test eine Einheit; als eine Datei steht er nur im Entwurf eines Laufs. Nur auf dem
 // Host: Die Sandbox hat das Paket yaml nicht und liest ihren Plan als Text.
 
 import { createHash } from 'node:crypto';
@@ -230,7 +230,7 @@ export const retryProblems = (steps) => steps.flatMap(({ id, retry }, position) 
 });
 
 /** Prueft die Schritte. Plan und Testdatei teilen das, nur die Aufzeichnung bleibt der Testdatei vorbehalten. */
-const readSteps = (raw, problems, lineOf, { allowRecording }) => {
+const readSteps = (raw, problems, lineOf, { allowRecording, description = false }) => {
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!Array.isArray(raw) || raw.length === 0) {
         report(['steps'], t('config.test.steps.list'));
@@ -256,6 +256,7 @@ const readSteps = (raw, problems, lineOf, { allowRecording }) => {
         if (!isText(step.expect)) report([...at, 'expect'], t('config.test.missing', { key: 'expect' }));
         if (step.note !== undefined && typeof step.note !== 'string') report([...at, 'note'], t('config.test.text', { key: 'note' }));
         if (step.retry !== undefined) checkRetry(step.retry, [...at, 'retry'], report);
+        if (description && step.recording !== undefined) report([...at, 'recording'], t('config.test.recordingOnly', { key: 'recording' }));
         const plain = {
             id: step.id,
             name: clean(step.name),
@@ -276,8 +277,12 @@ const invalid = (label, problems) => new CawError('test-invalid', problems.map((
 /** Die Punkte, an denen Urteil und Bericht gemessen werden: je Schritt genau einer. */
 export const withExpectations = (spec) => ({ ...spec, expectations: spec.steps.map(({ id, expect }) => ({ id, text: expect })) });
 
-/** Liest eine Testdatei und prueft ihre Form samt Zeilenangabe; alles vom Ziel Abhaengige macht `checkTest`. */
-export const parseTest = (text, label = t('config.test.label')) => {
+/**
+ * Liest eine Testdatei und prueft ihre Form samt Zeilenangabe; alles vom Ziel Abhaengige macht `checkTest`.
+ * @param description die Beschreibung in caw/tests: ohne Aufzeichnung und knownMessages, die stehen in caw/recordings. Sonst der
+ *                    Entwurf eines Laufs, eine Datei mit beidem.
+ */
+export const parseTest = (text, label = t('config.test.label'), { description = false } = {}) => {
     const { value, problems, lineOf } = readYaml(text);
     if (problems.length > 0) throw invalid(label, problems);
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
@@ -289,8 +294,9 @@ export const parseTest = (text, label = t('config.test.label')) => {
     if (typeof value.mutates !== 'boolean') report(['mutates'], t('config.test.mutates'));
     if (value.also !== undefined && (!Array.isArray(value.also) || !value.also.every(isText))) report(['also'], t('config.test.also'));
     if (value.notes !== undefined && value.notes !== null && typeof value.notes !== 'string') report(['notes'], t('config.test.text', { key: 'notes' }));
-    if (!knownMessagesOk(value.knownMessages)) report(['knownMessages'], t('config.test.knownMessages'));
-    const steps = readSteps(value.steps, problems, lineOf, { allowRecording: true });
+    if (description && value.knownMessages !== undefined) report(['knownMessages'], t('config.test.recordingOnly', { key: 'knownMessages' }));
+    else if (!knownMessagesOk(value.knownMessages)) report(['knownMessages'], t('config.test.knownMessages'));
+    const steps = readSteps(value.steps, problems, lineOf, { allowRecording: !description, description });
     if (problems.length === 0) problems.push(...retryProblems(steps));
     if (problems.length > 0) throw invalid(label, problems);
     return withExpectations({
@@ -371,7 +377,7 @@ const readRecordingFile = (root, id) => {
 export const loadTest = (root, id) => {
     const path = testPath(root, id);
     if (!existsSync(path)) throw new CawError('test-missing', t('config.test.notFound', { path: `${TEST_DIR}/${id}.yaml` }));
-    const parsed = parseTest(readFileSync(path, 'utf8'), `${TEST_DIR}/${id}.yaml`);
+    const parsed = parseTest(readFileSync(path, 'utf8'), `${TEST_DIR}/${id}.yaml`, { description: true });
     // Ohne id gilt der Dateiname; eine angegebene muss zu ihm passen.
     if (parsed.id !== undefined && parsed.id !== id) throw new CawError('test-invalid', t('config.test.idMismatch', { path: `${TEST_DIR}/${id}.yaml`, id: String(parsed.id) }));
     const spec = { ...parsed, id };
@@ -545,7 +551,7 @@ const compactRecording = (node) => {
 };
 
 // Mehrfach genutzte Ziele schreibt yaml sonst als Alias, und den weist parseTest ab.
-/** Ein Schritt; mit `withRecording` samt Aufzeichnung wie in der alten Einzeldatei und im Entwurf eines Laufs. */
+/** Ein Schritt; mit `withRecording` samt Aufzeichnung wie im Entwurf eines Laufs. */
 const stepNode = (doc, step, { withRecording = true } = {}) => {
     const { recording } = step;
     const node = doc.createNode({
@@ -650,7 +656,7 @@ const writeIfChanged = (path, text, raw) => {
 /**
  * Schreibt Beschreibung und Aufzeichnung. In der Beschreibung bleiben Kommentare und unberuehrte Schritte, wie sie sind; ein
  * Schritt aus `only` wird nur neu geschrieben, wenn sich sein Text geaendert hat. Lernt das Tool also Vergleichswerte oder
- * Wirkung, aendert sich nur die Aufzeichnung. Eine alte Einzeldatei wird dabei aufgeteilt.
+ * Wirkung, aendert sich nur die Aufzeichnung.
  * @param only die Schritte, die sich aendern; ohne Angabe wird der ganze Plan abgeloest
  * @param withNotes auch `notes` schreiben, wenn nur einzelne Schritte sich aendern
  * @returns die geaenderten Dateien relativ zum Projekt, durch Komma getrennt
@@ -659,7 +665,7 @@ export const writeTest = (root, spec, only, { withNotes = false } = {}) => {
     const path = testPath(root, spec.id);
     mkdirSync(join(root, TEST_DIR), { recursive: true });
     const changed = [];
-    // Was bisher galt: Daraus kommen die Aufzeichnungen der Schritte, die sich nicht aendern, auch aus einer alten Einzeldatei.
+    // Was bisher galt: Daraus kommen die Aufzeichnungen der Schritte, die sich nicht aendern.
     const before = existsSync(path) ? loadTest(root, spec.id) : null;
     if (before === null) {
         writeFileSync(path, renderDescription(spec));
@@ -674,9 +680,6 @@ export const writeTest = (root, spec, only, { withNotes = false } = {}) => {
             return step !== undefined && (node === undefined || !sameText(doc, node, step));
         }));
         setSteps(doc, spec, textChanged, { withRecording: false });
-        // Aus einer alten Einzeldatei: Die Aufzeichnung zieht in ihre eigene Datei.
-        for (const item of doc.get('steps', true)?.items ?? []) item.delete('recording');
-        doc.delete('knownMessages');
         if (only === undefined || withNotes) {
             if (spec.notes === '' || spec.notes === undefined) doc.delete('notes');
             else doc.set('notes', spec.notes);
