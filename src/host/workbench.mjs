@@ -360,7 +360,6 @@ const raven=(()=>{
   // Weniger Bewegung gilt sofort, auch wenn der Mensch es mitten im Lauf im System umstellt.
   let reduce=motion.matches,fed=${Number(prefs.fed) || 0};
   const IDLE={blink:[2.5,len('blink')],caw:[1,len('caw')],look:[.5,900],puff:[1.5,len('puff')],peck:[1.5,900],hop:[.3,520],doze:[0,3200],feed:[0,1000],wave:[0,960],joy:[0,len('joy')],nod:[0,700],sigh:[0,len('sigh')],confetti:[0,0]};
-  const AT_HOME=['blink','look','peck','puff'];
   // Er sagt nie Woerter: nur caw, ! und ?.
   const REACT={greet:[{name:'caw',text:'caw!'},'wave'],fail:[{name:'caw',text:'caw?!'},'sigh'],done:[{name:'caw',text:'caw!'},'home'],home:['wave','joy','confetti'],ask:[{name:'caw',text:'caw?'},'look'],aborted:['doze']};
   const layer=$('ravenLayer'),wrap=$('raven'),sprite=wrap.firstElementChild,say=$('ravenSay'),cloud=$('ravenCloud'),tile=$('tile'),toggle=$('still');
@@ -450,9 +449,9 @@ const raven=(()=>{
     if(name==='hop')hideSay();
   };
   const pickIdle=(now)=>{
-    const home=place.kind==='logo',waited=now-waitSince;
+    const waited=now-waitSince;
     // Die letzten zwei Aktionen kommen nicht gleich wieder, damit er abwechslungsreich bleibt.
-    const pool=Object.entries(IDLE).filter(([n])=>n!=='feed'&&!recent.includes(n)&&(!home||AT_HOME.includes(n))).map(([n,[w]])=>[n,n==='doze'?(waited>9000?1.5:0):w]);
+    const pool=Object.entries(IDLE).filter(([n])=>n!=='feed'&&!recent.includes(n)).map(([n,[w]])=>[n,n==='doze'?(waited>9000?1.5:0):w]);
     let r=Math.random()*pool.reduce((sum,[,w])=>sum+w,0),pick='blink';
     for(const [n,w] of pool)if((r-=w)<0){pick=n;break;}
     recent=[pick,...recent].slice(0,2);return pick;
@@ -461,15 +460,15 @@ const raven=(()=>{
     const from=anchor(place),to=anchor(want),target=want;
     hideSay();showCloud(false);act=null;queue=[];cheering=false;
     if(reduce){place=target;lastKey='';return;}
-    // Zwischen Schritten gezielt: ein, zwei Schritte ein Hopser, weiter ein flacher Flug geradewegs hin. Sonst (Logo, Chat)
-    // fliegt er nicht quer ueber die Anwendung, sondern an der naechsten Seite aus dem Fenster und an der Seite des Ziels
-    // wieder herein.
-    const steps=place.kind==='step'&&target.kind==='step',d=steps?Math.abs(target.i-place.i):0;
-    move={origin:place,from,to,target,start:now,steps,d,kind:steps?(d<=2?'hop':'glide'):'out',dir:to.x<from.x-2?1:-1};
+    // Zwischen Schritten gezielt: ein, zwei Schritte ein Hopser, weiter ein flacher Flug geradewegs hin; vom Logo zu den
+    // Schritten und zurueck ebenso geradewegs. Nur zum Chat und vom Chat weg fliegt er nicht quer ueber die Anwendung,
+    // sondern an der naechsten Seite aus dem Fenster und an der Seite des Ziels wieder herein.
+    const steps=place.kind==='step'&&target.kind==='step',d=steps?Math.abs(target.i-place.i):0,chat=place.kind==='chat'||target.kind==='chat';
+    move={origin:place,from,to,target,start:now,steps,d,kind:steps?(d<=2?'hop':'glide'):chat?'out':'glide',dir:to.x<from.x-2?1:-1};
     const side=(p)=>(p.x<innerWidth/2?-S*2:innerWidth+S*2);
     if(move.kind==='out'){move.exit={x:side(from),y:from.y-S*3};move.enter={x:side(to),y:to.y-S*3};
       const leg=(a,b)=>Math.min(900,Math.max(380,Math.hypot(b.x-a.x,b.y-a.y)*1.2));move.out=leg(from,move.exit);move.away=260;move.dur=move.out+move.away+leg(move.enter,to);}
-    else move.dur=move.kind==='hop'?420+80*(d-1):360+70*Math.min(d,8);
+    else move.dur=move.kind==='hop'?420+80*(d-1):steps?360+70*Math.min(d,8):Math.min(900,Math.max(420,Math.hypot(to.x-from.x,to.y-from.y)*1.1));
   };
   // Start und Ziel in jedem Bild neu messen: Scrollt die Schrittliste oder verschiebt sich der Chat waehrend des Flugs, fliegt er mit,
   // statt zur alten Stelle zu fliegen und dort zu springen.
@@ -505,9 +504,11 @@ const raven=(()=>{
       // Der erste Punkt nach dem Einflug: Er gruesst einmal.
       else if(!greeted&&place.kind==='step'){greeted=true;act=null;queue=REACT.greet.slice();}}
     showCloud(c==='fail');
-    if(!act){if(queue.length)startAct(queue.shift(),now);else if(!reduce&&now>nextIdle&&c!=='done')startAct(pickIdle(now),now);}
+    // Im Logo sitzt er still: keine Idle-Aktionen, kein Atmen; nur Reaktionen (Abbruch, Heimkehr) spielen dort.
+    const home=place.kind==='logo';
+    if(!act){if(queue.length)startAct(queue.shift(),now);else if(!reduce&&!home&&now>nextIdle&&c!=='done')startAct(pickIdle(now),now);}
     let lift=0;const a=act;
-    if(!a){if(c==='fail')pose('sad',-1);else play('idle',now);}
+    if(!a){if(c==='fail')pose('sad',-1);else if(home)pose('idle');else play('idle',now);}
     else{
       const t=now-a.start;
       // Einmal kurz zurueckblicken, nicht hin und her.

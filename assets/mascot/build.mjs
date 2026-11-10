@@ -2,7 +2,7 @@
 //
 //   npm run mascot                Vorschau nach assets/mascot/out/ (final.png, final-x6.png, gif/<clip>.gif)
 //   npm run mascot -- --watch     dasselbe bei jedem Speichern der .blend, von fixes.aseprite, mascot.json oder animate.py
-//   npm run mascot -- --install   zusaetzlich nach assets/mascot/raven-sheet.png und favicon-32.png, nur wenn alle Zellen da sind und die Credits stimmen
+//   npm run mascot -- --install   zusaetzlich nach assets/raven-sheet.png und assets/favicon-32.png (ersetzt den urspruenglichen Raben), nur wenn alle Zellen da sind und die Credits stimmen
 //   npm run mascot -- --import X  ein von Hand bereinigtes final.png (X) als Korrekturen nach fixes.aseprite uebernehmen
 //   npm run mascot -- --look P    Licht, Lichttoene und Kamerawinkel aus einem Pixor-Projekt (P, siehe out/mascot.pixor) uebernehmen
 //
@@ -244,14 +244,14 @@ const install = ({ spec, table, missing }) => {
     const { title, author, source, license } = spec.credits ?? {};
     if (![title, author, source, license].every(Boolean)) problems.push('credits in mascot.json unvollstaendig (title, author, source, license)');
     else if (!readFileSync(join(root, 'NOTICE.md'), 'utf8').includes(author)) {
-        problems.push(`NOTICE.md nennt ${author} nicht. Vorschlag:\n  - **Raven:** \`assets/mascot/raven-sheet.png\` and \`assets/mascot/favicon-32.png\` are rendered from "${title}" by ${author} (${source}), ${license}, posed, animated and converted to pixel art for caw-ai.`);
+        problems.push(`NOTICE.md nennt ${author} nicht. Vorschlag:\n  - **Raven:** \`assets/raven-sheet.png\` and \`assets/favicon-32.png\` are rendered from "${title}" by ${author} (${source}), ${license}, posed, animated and converted to pixel art for caw-ai.`);
     }
     if (problems.length > 0) throw new Error(`Nicht installiert:\n- ${problems.join('\n- ')}`);
     const sheet = readFileSync(join(out, 'final.png'));
-    writeFileSync(join(here, 'raven-sheet.png'), sheet);
-    writeFileSync(join(here, 'favicon-32.png'), encodePng(favicon(decodePng(sheet), table)));
+    writeFileSync(join(root, 'assets', 'raven-sheet.png'), sheet);
+    writeFileSync(join(root, 'assets', 'favicon-32.png'), encodePng(favicon(decodePng(sheet), table)));
     writeFileSync(join(root, 'src', 'host', 'raven-clips.mjs'), ravenClipsModule(table));
-    console.log('Installiert: assets/mascot/raven-sheet.png, assets/mascot/favicon-32.png, src/host/raven-clips.mjs');
+    console.log('Installiert: assets/raven-sheet.png, assets/favicon-32.png, src/host/raven-clips.mjs');
 };
 
 const once = () => {

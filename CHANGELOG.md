@@ -21,7 +21,6 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Workbench: "Your turn" in the header and a note in the terminal whenever the chat waits for you; "● Recording" while you demonstrate, with "Finish demo"; "Add checkpoint" explains itself.
 - Workbench: the adopt decision is a card ("Check run passed", one line per fact, warnings folded); "Discard draft" asks once more. After the decision the chat says what was saved and the window stays open for 15 s with "Close window".
 - Workbench: before a new window opens (Claude, check run), chat and terminal say so. Keyboard shortcuts are shown on the buttons they trigger.
-- Workbench: a new raven (pixel crow after "Crow_rig" by RazielNozac, CC BY) with clips for idle, blink, caw, joy, wave, nod, sad, sigh, puff, peck and doze; the favicon is the same crow.
 
 ### Changed
 - Exit code 4 ("needs recording") for a missing or outdated recording (`replay-missing`, `replay-stale`); before, it was 3 like a typo. CI scripts checking for 3 need adjusting.
@@ -31,7 +30,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - `--until` switches to the local build only where the app has local code, and says so in the `Code:` line.
 - Error output: the message first, then the short form for usage errors, then `(code: …, exit …)`; an unknown command gets a suggestion instead of the full help.
 - Wording: "local build" and "deployed" everywhere (German "lokaler Build" and "ausgelieferter Stand"); every regular end of a run is "End run", "Cancel" only aborts.
-- Workbench raven: flights between logo, steps and chat leave the screen at the nearest edge and come back in instead of crossing the middle; between steps it hops or glides straight to the next one. It glances back once instead of looking around, and idle moves come every 5–12 s.
+- Workbench raven: flights to and from the chat leave the screen at the nearest edge and come back in instead of crossing the middle; from the logo to the steps and back, and between steps, it hops or glides straight to the target. On the logo it sits still. It glances back once instead of looking around, and idle moves come every 5–12 s.
 - Workbench: the first Esc only asks before cancelling (a second Esc confirms); Esc while typing clears the field. Choices in the failure and decision cards are compact and the card scrolls into view. The steps panel unfolds on failure on narrow screens. The workbench's refresh button is disabled while a test runs.
 
 ### Fixed
@@ -83,7 +82,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - `CONTRIBUTING.md` and templates for issues and pull requests.
 
 ### Internal
-- `npm run mascot` (`assets/mascot/`): builds the raven sprite sheet from a rigged Blender model via Pixor, not part of the package.
+- `npm run mascot` (`assets/mascot/`): builds a pixel crow sprite sheet from a rigged Blender model via Pixor (work in progress, not used yet; `--install` would replace the raven). Not part of the package. The workbench raven now plays clips from a table (`src/host/raven-clips.mjs`).
 
 ## [0.1.0] - 2026-11-09
 

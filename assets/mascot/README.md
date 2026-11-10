@@ -1,6 +1,6 @@
 # Maskottchen-Pipeline
 
-Aus dem Krähen-Rig in Blender werden das Spritesheet der Werkbank (`assets/mascot/raven-sheet.png`) und seine Clip-Tabelle
+Aus dem Krähen-Rig in Blender werden das Spritesheet der Werkbank (`assets/raven-sheet.png`) und seine Clip-Tabelle
 (`src/host/raven-clips.mjs`):
 
 ```
@@ -24,7 +24,7 @@ Nichts davon kommt ins npm-Paket, `tools/` steht nicht in `files`.
 ```bash
 npm run mascot                # Vorschau nach assets/mascot/out/
 npm run mascot -- --watch     # baut neu, sobald crow.blend, fixes.aseprite, mascot.json, animate.py oder export.py sich ändern
-npm run mascot -- --install   # schreibt assets/mascot/raven-sheet.png
+npm run mascot -- --install   # schreibt assets/raven-sheet.png, assets/favicon-32.png und src/host/raven-clips.mjs
 npm run mascot -- --import X  # übernimmt ein von Hand bereinigtes final.png (X) als Korrekturen nach fixes.aseprite
 npm run mascot -- --look P    # übernimmt Licht, Lichttöne und Kamerawinkel aus einem Pixor-Projekt (P)
 npm run mascot -- --size 48   # Variante mit 48-px-Zellen nach out/size-48/ (mascot.json bleibt)
@@ -45,7 +45,7 @@ In `out/` liegen danach:
 
 Die Ausgabe nennt die Actions, was die Bereinigung geändert hat, die Frames je Clip und wie viele Pixel von Hand korrigiert wurden.
 
-`--install` schreibt `assets/mascot/raven-sheet.png` und `src/host/raven-clips.mjs` zusammen, aber nur, wenn alle Clips da sind, `credits` in `mascot.json` vollständig ist und `NOTICE.md` die Urheberin oder den Urheber nennt. Das Modell steht unter CC BY.
+`--install` schreibt `assets/raven-sheet.png`, `assets/favicon-32.png` und `src/host/raven-clips.mjs` zusammen und ersetzt damit den ursprünglichen Raben in der Werkbank, aber nur, wenn alle Clips da sind, `credits` in `mascot.json` vollständig ist und `NOTICE.md` die Urheberin oder den Urheber nennt. Das Modell steht unter CC BY.
 
 `MASCOT_BLEND=<Pfad>` probiert eine andere .blend aus, ohne `mascot.json` zu ändern.
 

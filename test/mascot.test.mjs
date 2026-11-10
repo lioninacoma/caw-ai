@@ -20,8 +20,8 @@ test('mascot: PNG hin und zurueck', () => {
     assert.deepEqual(back.data, image.data);
 });
 
-test('mascot: raven-clips.mjs passt zu assets/mascot/raven-sheet.png', () => {
-    const sheet = decodePng(readFileSync(new URL('../assets/mascot/raven-sheet.png', import.meta.url)));
+test('mascot: raven-clips.mjs passt zu assets/raven-sheet.png', () => {
+    const sheet = decodePng(readFileSync(new URL('../assets/raven-sheet.png', import.meta.url)));
     const { cell, width, height, clips } = RAVEN_CLIPS;
     // Das Sheet wird auf width x height CSS-Pixel gezogen, jede Zelle muss darin liegen.
     assert.equal(width / height, sheet.width / sheet.height);

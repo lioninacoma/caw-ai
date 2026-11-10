@@ -126,8 +126,8 @@ export const buildSheet = (pixorImage, pixorJson, spec) => {
     return { sheet, table, missing, dy: -oy, clipped, extent };
 };
 
-// Die Tabelle fuer die Werkbank, Seite an Seite mit assets/mascot/raven-sheet.png.
-export const ravenClipsModule = (table) => `// Erzeugt von assets/mascot (npm run mascot -- --install), passend zu assets/mascot/raven-sheet.png. Nicht von Hand aendern.
+// Die Tabelle fuer die Werkbank, Seite an Seite mit assets/raven-sheet.png.
+export const ravenClipsModule = (table) => `// Erzeugt von assets/mascot (npm run mascot -- --install), passend zu assets/raven-sheet.png. Nicht von Hand aendern.
 // Je Clip die Frames als [Spalte, Zeile, Millisekunden]; cell, width und height in CSS-Pixeln.
 export const RAVEN_CLIPS = ${JSON.stringify(table)};
 `;
