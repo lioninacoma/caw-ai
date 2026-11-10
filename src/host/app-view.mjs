@@ -63,6 +63,19 @@ export const postBody = (request) => {
 const HOP_HEADERS = new Set(['host', 'content-length', 'connection', 'cookie']);
 
 /**
+ * Wendet `rewrite` byte-treu an: Die Seite kommt als latin1-String (ein Zeichen je Byte) und geht so zurueck. So bleiben UTF-8,
+ * ISO-8859-1 und jede andere ASCII-kompatible Kodierung unversehrt, ohne die Kodierung der Seite zu kennen; die Tags selbst sind ASCII.
+ * UTF-16 (BOM) ist nicht ASCII-kompatibel und bleibt, wie es ist.
+ * @returns die neuen Bytes, oder genau `bytes`, wenn sich nichts aendert
+ */
+export const rewriteBytes = (bytes, rewrite, url) => {
+    if (bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff))) return bytes;
+    const text = bytes.toString('latin1');
+    const changed = rewrite(text, { url });
+    return changed === text ? bytes : Buffer.from(changed, 'latin1');
+};
+
+/**
  * Faengt die Dokumente der Hosts der Anwendung ab:
  * - das Dokument des obersten Fensters beantwortet `workbench(url)` mit der Werkbank, die Anwendung kommt in ihr iframe;
  * - ein POST des obersten Fensters (Formular mit target=_top) geht ueber den Request-Kontext des Browsers raus, gleiche Cookies;
@@ -71,7 +84,8 @@ const HOP_HEADERS = new Set(['host', 'content-length', 'connection', 'cookie']);
  * Ohne `workbench` (kein Mensch davor) bleibt das oberste Fenster die Anwendung; dann zaehlt nur `rewrite`.
  * @param workbench (url) => HTML der Werkbank mit der Anwendung unter url, oder undefined
  * @param request   der Request-Kontext des Browsers (context.request)
- * @param rewrite   (html) => html, optional: aendert jede HTML-Seite der Anwendung, etwa ohne Subresource Integrity bei lokalem Code
+ * @param rewrite   (html, { url }) => html, optional: aendert jede HTML-Seite der Anwendung, etwa beim lokalen Code. `html` ist ein
+ *                  Byte-String (latin1, siehe rewriteBytes): Die Seite bleibt in ihrer Kodierung, was nicht geaendert wird, bleibt Byte fuer Byte.
  */
 export const interceptDocuments = async (context, page, hosts, { workbench, request, rewrite }) => {
     const cdp = await context.newCDPSession(page);
@@ -136,10 +150,9 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
             let bytes = base64Encoded ? Buffer.from(body, 'base64') : Buffer.from(body);
             let sent = headers ?? original;
             if (rewriting) {
-                const text = bytes.toString('utf8');
-                const changed = rewrite(text);
-                if (changed !== text) {
-                    bytes = Buffer.from(changed);
+                const changed = rewriteBytes(bytes, rewrite, event.request.url);
+                if (changed !== bytes) {
+                    bytes = changed;
                     // Der Body ist schon entpackt und jetzt anders lang.
                     sent = sent.filter(({ name }) => !['content-length', 'content-encoding'].includes(name.toLowerCase()));
                 }
@@ -188,8 +201,7 @@ const rewriteOtherPages = (context, page, hosts, rewrite) => context.route((url)
         await route.fulfill({ response });
         return;
     }
-    const text = await response.text();
-    const changed = rewrite(text);
+    const changed = rewriteBytes(await response.body(), rewrite, request.url());
     const headers = Object.fromEntries(Object.entries(response.headers()).filter(([name]) => !['content-length', 'content-encoding'].includes(name.toLowerCase())));
     await route.fulfill({ response, headers, body: changed });
 });

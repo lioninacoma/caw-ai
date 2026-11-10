@@ -150,6 +150,27 @@ test('Lokaler Code: Auch Popups und neue Tabs der Anwendung bekommen ihr HTML oh
     assert.equal(await integrity(tab), null, 'ein neuer Tab');
 });
 
+test('Lokaler Code: Eine Seite in ISO-8859-1 behält ihre Umlaute, auch wenn sie umgeschrieben wird', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const server = createServer((request, response) => {
+        response.setHeader('content-type', 'text/html; charset=iso-8859-1');
+        response.end(Buffer.from('<h1 id="x">Grüße</h1><script integrity="sha384-alt" src="/a.js"></script>', 'latin1'));
+    });
+    await new Promise((ok) => { server.listen(0, '127.0.0.1', ok); });
+    t.after(() => server.close());
+    const url = `http://127.0.0.1:${server.address().port}/`;
+    const context = await browser.newContext();
+    t.after(() => context.close());
+    const page = await context.newPage();
+    await interceptDocuments(context, page, ['127.0.0.1'], { request: context.request, rewrite: withoutIntegrity });
+    await page.goto(url);
+    assert.equal(await page.locator('#x').textContent(), 'Grüße', 'die eigene Seite');
+    assert.equal(await page.evaluate(() => document.querySelector('script').getAttribute('integrity')), null);
+    const [popup] = await Promise.all([context.waitForEvent('page'), page.evaluate((address) => { window.open(address); }, url)]);
+    await popup.waitForLoadState();
+    assert.equal(await popup.locator('#x').textContent(), 'Grüße', 'ein Popup');
+});
+
 test('Chat: Esc leert erst das Feld, dann fragt es den Abbruch nur an, erst ein zweites Esc bricht ab', async (t) => {
     if (browser === null) return t.skip('kein Chrome');
     const { bench, aborts } = await open(t);

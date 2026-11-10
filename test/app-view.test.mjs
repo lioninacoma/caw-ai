@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 
-import { embeddableHeaders, frameView, fromWorkbenchSource, postBody, sourceTag } from '../src/host/app-view.mjs';
+import { embeddableHeaders, frameView, fromWorkbenchSource, postBody, rewriteBytes, sourceTag } from '../src/host/app-view.mjs';
 import { browserArgs, trackAgentPages } from '../src/host/browser-session.mjs';
 import { embedsApp } from '../src/host/run.mjs';
 
@@ -110,4 +110,18 @@ test('frameView: Neuladen und Navigation betreffen nur den Frame', async () => {
     attached = fresh;
     assert.equal(view.url(), 'https://portal.localhost:8443/neu');
     assert.equal(view.frame, fresh);
+});
+
+test('rewriteBytes: Die Seite bleibt Byte für Byte in ihrer Kodierung, nur der geänderte Teil ist neu', () => {
+    const swap = (html) => html.replace('a.js', 'b.js');
+    const latin1 = Buffer.from('<h1>Grüße</h1><script src="a.js"></script>', 'latin1');
+    assert.deepEqual(rewriteBytes(latin1, swap, 'http://x/'), Buffer.from('<h1>Grüße</h1><script src="b.js"></script>', 'latin1'));
+    const utf8 = Buffer.from('<h1>Grüße €</h1><script src="a.js"></script>', 'utf8');
+    assert.equal(rewriteBytes(utf8, swap, 'http://x/').toString('utf8'), '<h1>Grüße €</h1><script src="b.js"></script>');
+    assert.equal(rewriteBytes(utf8, (html) => html, 'http://x/'), utf8, 'unverändert: genau dieselben Bytes');
+    const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<script src="a.js">', 'utf16le')]);
+    assert.equal(rewriteBytes(utf16, swap, 'http://x/'), utf16, 'UTF-16 bleibt, wie es ist');
+    let seen = null;
+    rewriteBytes(utf8, (html, info) => { seen = info.url; return html; }, 'http://x/seite');
+    assert.equal(seen, 'http://x/seite', 'rewrite kennt die Adresse der Seite');
 });
