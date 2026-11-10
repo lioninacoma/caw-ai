@@ -10,12 +10,15 @@ import { staleSteps } from './test-file.mjs';
 
 // Beschriftungen als Getter: Die Sprache steht beim Import noch nicht fest. Kopien mit Spread entstehen erst zur Laufzeit.
 const button = (id, key, extra = {}) => ({ id, get label() { return t(key); }, ...extra });
-const ADOPT = button('adopt', 'run.button.adopt', { primary: true });
-const DISCARD = button('discard', 'run.button.discard');
+const ADOPT = { id: 'adopt', primary: true };
+/** Der Knopf nennt, wie viele Schritte der Testplan dann hat. */
+const adoptButton = (count, extra = {}) => ({ ...ADOPT, label: t('run.button.adopt', { count }), ...extra });
+// Verwerfen laesst sich nicht rueckgaengig machen: Es will ein zweites Mal geklickt werden, wie Abbrechen im Kopf des Chats.
+const DISCARD = { id: 'discard', get label() { return t('run.button.discardDraft'); }, get confirm() { return t('run.button.discardSure'); } };
 const FIX = button('fix', 'run.button.fix', { primary: true });
 const RERECORD = button('fix', 'run.button.rerecord', { primary: true });
 const RERUN = button('rerun', 'run.button.rerun', { primary: true });
-// Beendet regulaer: mit dem Ergebnis des Laufs. „Abbrechen“ im Kopf des Chats beendet dagegen sofort, als Fehler ohne Ergebnis.
+// Beendet regulaer („Lauf beenden“): mit dem Ergebnis des Laufs. „Abbrechen“ im Kopf des Chats beendet dagegen sofort, als Fehler ohne Ergebnis.
 const CLOSE = button('close', 'run.button.close');
 const ASK = button('ask', 'run.button.ask', { primary: true });
 // Nur die Wirkung weicht ab, die Pruefung ist erfuellt: Die gelernte Wirkung vergessen, ohne Claude und ohne Tokens.
@@ -203,6 +206,31 @@ const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole
     t('run.flow.decisionQuestion'),
 ].join(' ');
 
+/**
+ * Dieselbe Entscheidung als Karte: oben was uebernommen wuerde und was der Mensch vorher wissen muss, je ein Punkt; Warnungen,
+ * bekannte Meldungen und ueber die Position gewaehlte Aktionen zum Aufklappen.
+ */
+const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole = false } = {}) => {
+    const adopted = adoptedText(current, changes, whole);
+    const known = [...new Set([...fresh, ...changes.flatMap((change) => change.fresh)])];
+    const stale = staleSteps(current);
+    return {
+        title: t('run.flow.decisionTitle'),
+        facts: [
+            ...(adopted === '' ? [] : [adopted]),
+            ...changes.flatMap(({ expectChange }) => (expectChange === undefined ? [] : [t('run.flow.decisionExpect', { id: expectChange.id, after: expectChange.after, before: expectChange.before })])),
+            ...(stale.length === 0 ? [] : [t('run.flow.decisionStale', { ids: stale.map(({ id }) => id).join(', ') })]),
+        ],
+        ...(seen.length === 0 ? {} : { warn: t('run.flow.decisionSeen', { list: [...new Set(seen)].join('; ') }) }),
+        details: [
+            { title: t('run.flow.decisionWarningsTitle'), items: warnings.map(({ text }) => withoutDot(text)) },
+            { title: t('run.flow.decisionKnownTitle'), items: known },
+            { title: t('run.flow.decisionPositionalTitle'), items: positionalActions(current, whole ? undefined : new Set(changes.map(({ id }) => id))) },
+        ].filter(({ items }) => items.length > 0),
+        question: t('run.flow.decisionQuestion'),
+    };
+};
+
 const changeNote = (changes) => {
     if (changes.length === 0) return undefined;
     return changes.map(({ id, reason, rerecord, expectChange }) => `${t(rerecord ? 'run.flow.noteRerecorded' : 'run.flow.noteFixed', { id, reason: withoutDot(reason) })}${expectChange === undefined ? '' : t('run.flow.noteBefore', { before: expectChange.before })}`).join(' ');
@@ -273,12 +301,14 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 repair: { id, reason, ...(rerecord ? { rerecord } : {}), ...(diagnosis === undefined ? {} : { diagnosis, evidence }) },
                 conclude: async (concluded) => {
                     const { verdict, candidate, failed, chat, repairAdvice } = concluded;
-                    if (candidate !== undefined) return;
+                    // Als Naechstes prueft ein Lauf ohne Claude, in einem neuen Fenster.
+                    if (candidate !== undefined) return { next: 'check' };
                     // Hat Claude beim Beheben schon empfohlen, etwa eine Aenderung an der Anwendung, startet es dafuer nicht noch einmal.
                     offered = repairAdvice === undefined ? await takeAdvice(concluded) : await absorb(repairAdvice, chat);
-                    if (offered !== null) return;
+                    if (offered !== null) return { next: 'claude' };
                     if (failed) ({ next: offered } = await settle(concluded));
                     else await chat.choose('deciding', t('run.flow.noNewRecording', { id, reason: failureText(verdict) }), [ONLY_CLOSE]);
+                    return offered === null ? undefined : { next: 'claude' };
                 },
             });
             next = offered;
@@ -295,6 +325,8 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         let choice = null;
         let offered = null;
         let repairedHere = null;
+        // Die geschriebene Testdatei: Uebernommen wird gleich nach der Wahl, damit der Chat sie noch nennen kann.
+        let saved = null;
         const played = await execute({
             spec: current,
             replay: replayUpToStale(current),
@@ -302,17 +334,32 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
             conclude: async (concluded) => {
                 const { verdict, failed, chat } = concluded;
                 offered = await takeAdvice(concluded);
-                if (offered !== null) return;
+                if (offered !== null) return { next: 'claude' };
                 if (verdict.status === 'pass') {
                     // Bleibt nach dem Pruefdurchlauf ein Schritt veraltet, etwa der zweite von zwei angepassten, kommt er als Naechstes dran.
                     const [stale] = staleSteps(current);
                     const again = stale === undefined ? null : { id: 'rerecord-next', label: t('run.button.rerecordStep', { id: stale.id }), primary: true };
-                    choice = await chat.choose('deciding', decisionText(current, changes, seen, verdict.warnings, { fresh, whole }), again === null ? [ADOPT, DISCARD] : [again, { ...ADOPT, primary: false }, DISCARD]);
+                    const count = current.steps.length;
+                    const options = again === null ? [adoptButton(count), DISCARD] : [again, adoptButton(count, { primary: false }), DISCARD];
+                    choice = await chat.choose('deciding', decisionText(current, changes, seen, verdict.warnings, { fresh, whole }), options, decisionCard(current, changes, seen, verdict.warnings, { fresh, whole }));
                     if (choice === 'rerecord-next' && await fixer.open(chat, (message) => chat.choose('deciding', t('run.flow.cannotFix', { message }), [ONLY_CLOSE])) !== null) {
                         offered = { id: stale.id, reason: t('run.flow.stillStale'), rerecord: true };
+                        return { next: 'claude' };
                     }
-                } else if (failed) ({ next: offered, repaired: repairedHere } = await settle(concluded));
-                else await chat.choose('deciding', t('run.flow.checkFailed', { reason: failureText(verdict), findings: findingsText(verdict) }), [ONLY_CLOSE]);
+                    if (choice === ADOPT.id) {
+                        const only = whole ? undefined : new Set([...changes.map(({ id }) => id), ...advised]);
+                        saved = adopt(current, only, { withNotes: advisedNotes });
+                        return { outcome: t('run.flow.saved', { file: saved }) };
+                    }
+                    return { outcome: t('run.flow.discarded') };
+                }
+                if (failed) {
+                    ({ next: offered, repaired: repairedHere } = await settle(concluded));
+                    if (offered !== null) return { next: 'claude' };
+                    return repairedHere === null ? undefined : { next: 'check' };
+                }
+                await chat.choose('deciding', t('run.flow.checkFailed', { reason: failureText(verdict), findings: findingsText(verdict) }), [ONLY_CLOSE]);
+                return undefined;
             },
         });
         next = offered;
@@ -329,9 +376,8 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
             lostAdvice();
             return played.exitCode;
         }
-        if (choice === ADOPT.id) {
-            const only = whole ? undefined : new Set([...changes.map(({ id }) => id), ...advised]);
-            log(t('run.flow.planReplaced', { file: adopt(current, only, { withNotes: advisedNotes }) }));
+        if (choice === ADOPT.id && saved !== null) {
+            log(t('run.flow.planReplaced', { file: saved }));
             return played.exitCode;
         }
         log(t('run.flow.discarded'));
@@ -348,8 +394,10 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
     const recorded = await execute({
         sandbox,
         conclude: async ({ verdict, candidate, chat }) => {
-            if (candidate !== undefined) return;
+            // Die Aufnahme steht: Der Pruefdurchlauf kommt in einem neuen Fenster.
+            if (candidate !== undefined) return { next: 'check' };
             await chat.choose('deciding', t('run.flow.noRecording', { reason: failureText(verdict) }), [ONLY_CLOSE]);
+            return undefined;
         },
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
@@ -381,6 +429,12 @@ export const runFlow = async (options) => {
         for (const file of result.files) log(t('run.flow.adviceAdopted', { file }));
         noticeFiles(result.files, chat);
         return offer && result.stale.length > 0 ? fixer.offerChanged(result.stale[0], chat) : null;
+    };
+    /** Ob gleich ein neues Fenster kommt: fuer Claude (beheben), den Pruefdurchlauf oder einen neuen Testlauf. */
+    const windowAfter = () => {
+        if (rerun) return { next: 'run' };
+        if (repaired !== null) return { next: 'check' };
+        return target === null ? undefined : { next: 'claude' };
     };
     const played = await execute({
         spec,
@@ -469,7 +523,7 @@ export const runFlow = async (options) => {
                     return false;
                 };
                 const advised = advise ? await fixer.advise(concluded, current) : null;
-                if (await afterAdvice(advised)) return;
+                if (await afterAdvice(advised)) return windowAfter();
                 if (!failed) {
                     const filled = fillBaselines && concluded.baselines !== undefined ? ` ${baselineText(concluded.baselines)}` : '';
                     const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${filled}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
@@ -482,7 +536,7 @@ export const runFlow = async (options) => {
                 let settled = await fixer.settle(concluded, current, { canAsk: !advise });
                 if (settled.ask) {
                     await keep(settled.advice, chat, { offer: false });
-                    if (await afterAdvice(await fixer.advise(concluded, current))) return;
+                    if (await afterAdvice(await fixer.advise(concluded, current))) return windowAfter();
                     settled = await fixer.settle(concluded, current);
                 }
                 if (settled.forget !== undefined) {
@@ -493,6 +547,7 @@ export const runFlow = async (options) => {
                 const changed = await keep(settled.advice, chat, { offer: settled.target === null && settled.repaired === undefined });
                 if (settled.repaired?.candidate !== undefined) repaired = settled.repaired;
                 else target = settled.target ?? changed;
+                return windowAfter();
             },
         } : {}),
     });

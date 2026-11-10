@@ -166,6 +166,10 @@ grid-template-areas:"steps browser chat"}
 .pa-browser__dots i:nth-child(1){background:var(--browser-dot-1)}.pa-browser__dots i:nth-child(2){background:var(--browser-dot-2)}.pa-browser__dots i:nth-child(3){background:var(--browser-dot-3)}
 #url{flex:1;min-width:0;padding:5px 10px;background:var(--primary-deep);font:13px var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #browserState{font:500 11px var(--font-ui);letter-spacing:.06em;color:var(--primary-soft);white-space:nowrap}
+/* Beim Vorfuehren zaehlt jeder Klick: rot wie eine Aufnahme. Wartet der Chat auf den Menschen, sagt es auch die Leiste. */
+#browserState.rec,#browserState.ask{padding:3px 8px;background:var(--surface)}#browserState.rec{color:var(--fail-text)}#browserState.ask{color:var(--warn)}
+.px-pill--warn{color:var(--warn);background:var(--surface-2)}
+#reload:disabled{opacity:.5;cursor:not-allowed}
 #app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
 .drawer{flex:none;border-top:var(--frame-w) solid var(--frame);background:var(--surface)}
 .tabs{display:flex;gap:4px;padding:6px 10px}
@@ -230,7 +234,7 @@ filter:drop-shadow(1px 0 0 var(--raven-outline)) drop-shadow(-1px 0 0 var(--rave
 <ul class="pa-meta" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
 <div class="pa-tools"><span id="notice" role="status" hidden></span><label class="pa-check" title="${t('workbench.stillTitle')}"><input type="checkbox" id="still"${still ? ' checked' : ''}>${t('workbench.still')}</label>
 <button id="theme" class="px-btn" type="button" aria-label="${t('workbench.theme')}" title="${t('workbench.themeTitle')}"></button>
-<button id="reload" class="px-btn" type="button" title="${refreshTitle}">↻ ${t('workbench.refresh')}</button></div>
+<button id="reload" class="px-btn" type="button" disabled title="${t('workbench.page.refreshLockedTitle')}">↻ ${t('workbench.refresh')}</button></div>
 </header>
 <main class="pa-main">
 <section class="pa-steps pa-card px-frame" id="stepsCard" aria-label="${t('workbench.steps')}"><button class="pa-fold" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')}">${STEPS_CLOSE}</button><button class="pa-strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')}">${STEPS_OPEN}<span>${t('workbench.steps')} <span id="stripTally"></span></span></button><div class="pa-card__head"><span class="px-label">${t('workbench.steps')}</span><span class="px-label pa-muted" id="tally"></span></div>
@@ -279,10 +283,13 @@ for(const b of document.querySelectorAll('[data-tab]'))b.addEventListener('click
 $('drawerClose').addEventListener('click',()=>{if(state.tab!==null)select(state.tab);});
 const setCount=(name,value,bad)=>{for(const node of document.querySelectorAll('[data-count='+name+']')){node.textContent=value;node.classList.toggle('bad',bad===true);}};
 let aborted=false;
+// Was der Chat gerade will: ask aus der Stimmung, dazu sein Zustand (showing: der Mensch fuehrt vor).
+let asking=false,chatState=null;
+const stepsHintText=$('stepsHint').textContent;
 // Kopfzeile, Fortschritt und Zaehler folgen den Schritten: was laeuft, was gescheitert ist, wie viele bestanden sind.
 const summarize=()=>{
   const list=stepItems(),n=list.length,all=items();
-  $('stepsHint').hidden=all.length>0;
+  $('stepsHint').hidden=all.length>0;$('stepsHint').textContent=chatState==='showing'?T['workbench.page.stepsHintShowing']:stepsHintText;
   const count=(name)=>list.filter((li)=>li.dataset.state===name).length;
   const pass=count('pass');
   $('tally').textContent=$('stripTally').textContent=n===0?'':pass+' / '+n;
@@ -290,19 +297,24 @@ const summarize=()=>{
   list.forEach((li,i)=>{const s=li.dataset.state;segments.children[i].className=s==='pass'?'pass':s==='fail'?'fail':s==='running'?'run':'';});
   const failed=all.find((li)=>li.dataset.state==='fail'),running=list.find((li)=>li.dataset.state==='running')??all.find((li)=>li.dataset.state==='running');
   const [kind,text,browser]=aborted?['fail',T['workbench.page.aborted'],T['workbench.page.aborted']]:failed?['fail',fill('workbench.page.groupFailed',{id:groupTitle(failed)}),T['workbench.page.browserFailed']]:running?['run',fill('workbench.page.groupRunning',{id:groupTitle(running)}),T['workbench.page.browserRunning']]:n>0&&pass===n?['ok',T['workbench.page.allPassed'],T['workbench.page.browserPassed']]:pass>0?(document.body.classList.contains('left-state')?['',fill('workbench.page.left',{id:list.filter((li)=>li.dataset.state==='pass').at(-1).dataset.id}),T['workbench.page.browserReloaded']]:['ok',fill('workbench.page.reached',{id:list.filter((li)=>li.dataset.state==='pass').at(-1).dataset.id}),T['workbench.page.ready']]):n>0?['',T['workbench.page.ready'],T['workbench.page.ready']]:[null,'',''];
-  const pill=$('state');pill.classList.toggle('on',kind!==null);pill.className='px-pill'+(kind?' px-pill--'+kind:'')+(kind!==null?' on':'');pill.dataset.state=failed?'fail':running?'running':n>0&&pass===n?'pass':'';pill.textContent=text;
-  $('browserState').textContent=browser;
+  let [pillKind,pillText,browserText,tone]=[kind,text,browser,''];
+  // Wartet der Chat auf den Menschen, sagt das auch die Kopfzeile: Sonst stuende dort BEREIT, waehrend der Plan auf Freigabe wartet.
+  if(!aborted&&asking){pillKind='warn';pillText=T['workbench.page.yourTurn'];browserText=T['workbench.page.browserYourTurn'];tone='ask';}
+  if(!aborted&&chatState==='showing'){browserText=T['workbench.page.recording'];tone='rec';}
+  const pill=$('state');pill.className='px-pill'+(pillKind?' px-pill--'+pillKind:'')+(pillKind!==null?' on':'');pill.dataset.state=failed?'fail':running?'running':n>0&&pass===n?'pass':'';pill.textContent=pillText;
+  $('browserState').textContent=browserText;$('browserState').className=tone;
   raven.update();
 };
 // Aktualisieren entscheidet der Host: nach der Uebergabe die Seite ohne Cache neu laden, im laufenden Test gar nicht.
 let appUrl=$('app').src;$('url').textContent=appUrl;
-let refreshing=false,noticeTimer=0;
+let refreshing=false,noticeTimer=0,refreshOn=false;
+const REFRESH_TITLE=${JSON.stringify(refreshTitle)};
 const notice=(text)=>{const box=$('notice');box.textContent=text;box.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{box.hidden=true;},6000);};
 const refresh=async()=>{
   if(refreshing)return;refreshing=true;$('reload').disabled=true;$('browserState').textContent=T['workbench.page.reloading'];
   let done=false;try{done=(await window.${REFRESH_BINDING}?.())===true;}catch{}
   if(!done)notice(T['workbench.page.refreshLocked']);
-  refreshing=false;$('reload').disabled=false;summarize();
+  refreshing=false;$('reload').disabled=!refreshOn;summarize();
 };
 $('reload').addEventListener('click',refresh);$('logo').addEventListener('click',refresh);
 const isRefreshKey=(event)=>event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r');
@@ -328,8 +340,11 @@ const fold=(name,on,remember=true)=>{document.body.classList.toggle('fold-'+name
 const folded=(name)=>document.body.classList.contains('fold-'+name)&&innerWidth>=1000;
 // Ohne eigene Wahl startet die Schrittliste in schmalen Fenstern eingeklappt: Der Platz gehoert der Anwendung.
 let autoSteps=${prefs.steps === undefined ? 'true' : 'false'};
-const fitSteps=()=>{if(!autoSteps)return;const on=innerWidth<1500;document.body.classList.toggle('fold-steps',on);$('stepsFold').setAttribute('aria-expanded',String(!on));$('stepsStrip').setAttribute('aria-expanded',String(!on));};
+// Scheitert ein Schritt oder stehen die Schritte fest, klappt die Liste von selbst auf, aber nur, wenn sie auch von selbst zu war.
+let stepsWanted=false;
+const fitSteps=()=>{if(!autoSteps)return;const on=innerWidth<1500&&!stepsWanted;document.body.classList.toggle('fold-steps',on);$('stepsFold').setAttribute('aria-expanded',String(!on));$('stepsStrip').setAttribute('aria-expanded',String(!on));};
 fitSteps();addEventListener('resize',fitSteps);
+const showSteps=()=>{if(!autoSteps||stepsWanted)return;stepsWanted=true;fitSteps();raven.update();};
 $('stepsFold').addEventListener('click',()=>fold('steps',true));$('stepsStrip').addEventListener('click',()=>fold('steps',false));
 $('chatFold').addEventListener('click',()=>fold('chat',true));$('chatStrip').addEventListener('click',()=>fold('chat',false));
 
@@ -575,7 +590,7 @@ new ResizeObserver(follow).observe(track);
 window.workbench={
   facts:(entries)=>{$('facts').replaceChildren(...entries.map(([label,value])=>{const li=document.createElement('li');li.className='pa-chip';li.title=label+': '+value;const span=document.createElement('span');span.className='pa-chip__label';span.textContent=label;li.append(span,String(value));return li;}));},
   url:(url)=>{appUrl=url;$('url').textContent=url;$('url').title=url;},
-  steps:(groups)=>{aborted=false;raven.reset();$('steps').replaceChildren(...groups.map(makeGroup));summarize();},
+  steps:(groups)=>{aborted=false;raven.reset();$('steps').replaceChildren(...groups.map(makeGroup));if(groups.length>0)showSteps();summarize();},
   // Eine Gruppe dazu oder neu benannt, etwa „Fehler klären“, wenn Claude untersucht. Bestehende Punkte bleiben.
   group:(def)=>{const known=items().find((li)=>li.dataset.id===def.id);if(known){known.dataset.name=def.name;known.querySelector(':scope>.head .name').textContent=def.name;for(const point of def.points??[])if(!pointsOf(known).some((li)=>li.dataset.id===point.id))known.querySelector(':scope>.pts').append(makePoint(point));}else $('steps').append(makeGroup(def));summarize();},
   step:(id,stateName,note)=>{for(const li of items()){if(li.dataset.id===id){setState(li,stateName,note);
@@ -604,7 +619,11 @@ window.workbench={
     summarize();},
   panels:(data)=>{state.requests=data.requests;state.console=data.console;const fails=data.console.filter((c)=>c.severity==='fail').length;setCount('requests',data.requests.length);setCount('console',data.console.length,fails>0);const fresh=fails>seenFails;seenFails=fails;if(fresh&&state.tab===null)select('console');else render();},
   // Stimmung des Raben: wait (auf dem aktuellen Schritt), fail, done (Jubel, dann ins Logo), aborted (ins Logo, doesen), ask (zum Chat).
-  mood:(value)=>{if(value==='aborted')aborted=true;raven.mood(value);summarize();},
+  mood:(value)=>{if(value==='aborted')aborted=true;if(value==='ask')asking=true;else if(['wait','fail','done','aborted'].includes(value))asking=false;if(value==='fail')showSteps();raven.mood(value);summarize();},
+  // Der Zustand des Chats, etwa showing: Dann zeigt die Leiste der Anwendung, dass aufgenommen wird.
+  chatState:(value)=>{chatState=typeof value==='string'?value:null;summarize();},
+  // Aktualisieren geht nur, wenn der Host es erlaubt; sonst ist der Knopf gesperrt.
+  refreshable:(on)=>{refreshOn=on===true;$('reload').disabled=!refreshOn||refreshing;$('reload').title=refreshOn?REFRESH_TITLE:T['workbench.page.refreshLockedTitle'];},
   nod:()=>raven.nod(),
   // Nach dem Neuladen steht die Seite nicht mehr sicher auf dem Zustand des Laufs; „Zustand neu herstellen“ holt ihn zurueck.
   left:(on,text)=>{document.body.classList.toggle('left-state',on);const box=$('leftNote');box.hidden=!on;const title=document.createElement('strong');title.textContent=T['workbench.page.pageReloaded'];box.replaceChildren(title,text||'');summarize();},
@@ -676,7 +695,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
     const view = frameView(page, frame);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // Was der Host gezeigt hat, merkt er sich: Nach dem Neuladen der Werkbank stellt er es wieder her.
-    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null };
+    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null };
     // Wann ein Punkt zu laufen begann: Die Dauer misst der Host, so steht sie auch nach dem Neuladen der Werkbank.
     const started = new Map();
     // Der Schritt, der zuletzt anlief: Dort landen Claudes Aktionen beim Aufnehmen.
@@ -711,6 +730,8 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             if (shown.url !== null) await call('url', shown.url);
             if (shown.mood !== null) await call('mood', shown.mood);
             if (shown.left !== null) await call('left', ...shown.left);
+            if (shown.chatState !== null) await call('chatState', shown.chatState);
+            await call('refreshable', bench.refresh !== null);
             // Neu geladen hat der Mensch (F5, Knopf des Browsers) oder die Anwendung selbst (top.location, Formular mit target=_top).
             // Nur das erste stoert einen laufenden Test; das zweite gehoert zum Verhalten der Anwendung.
             // Unbekannt (das Dokument ist schon wieder weg, eine Kette von top.location): Der naechste Durchgang entscheidet; gibt es keinen,
@@ -803,6 +824,11 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             shown.mood = state;
             return call('mood', state);
         },
+        /** Der Zustand des Chats (running, showing, deciding ...): Kopfzeile und Leiste der Anwendung zeigen, was er vom Menschen will. */
+        chatState: (state) => {
+            shown.chatState = state;
+            return call('chatState', state);
+        },
         /** Eine Nachricht vom Menschen ist angekommen: Der Rabe nickt. */
         nod: () => call('nod'),
         /** Die Seite steht nicht mehr sicher auf dem Zustand des Laufs (true, mit Text) oder wieder darauf (false). */
@@ -811,7 +837,10 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             return call('left', on, text);
         },
         /** Wer Aktualisieren ausfuehrt; null: gesperrt, der Test laeuft. */
-        onRefresh: (handler) => { bench.refresh = handler ?? null; },
+        onRefresh: (handler) => {
+            bench.refresh = handler ?? null;
+            return call('refreshable', bench.refresh !== null);
+        },
         /**
          * Nach dem Neuladen der ganzen Werkbank, wenn Schritte und Zaehler wieder stehen. Der Listener bekommt { human }: true bei
          * F5 oder Zurueck des Menschen, false, wenn die Anwendung das oberste Fenster selbst navigiert hat. @returns zum Abmelden

@@ -25,16 +25,17 @@ const harness = ({ outcomes, answers = ['adopt'] }) => {
     const queue = [...outcomes];
     const wishes = [...answers];
     const notices = [];
-    const pick = (kind, text, options) => {
+    const said = [];
+    const pick = (kind, text, options, card) => {
         const ids = options.map(({ id }) => id);
-        questions.push({ kind, text, options: ids });
+        questions.push({ kind, text, options: ids, labels: options.map(({ label }) => label), card, confirm: options.map(({ confirm }) => confirm) });
         // Eine Nachricht steht als { message } in den Antworten und geht nur an discuss.
         const wish = wishes.find((candidate) => (typeof candidate === 'object' ? kind === 'discussing' : ids.includes(candidate)));
         if (wish !== undefined) wishes.splice(wishes.indexOf(wish), 1);
         return wish ?? ids.at(-1);
     };
     const chat = {
-        choose: async (kind, text, options) => pick(kind, text, options),
+        choose: async (kind, text, options, card) => pick(kind, text, options, card),
         discuss: async (text, options) => {
             const wish = pick('discussing', text, options);
             return typeof wish === 'object' ? wish : { choice: wish };
@@ -48,11 +49,13 @@ const harness = ({ outcomes, answers = ['adopt'] }) => {
         questions,
         progress,
         notices,
+        // Was conclude dem Lauf zurueckgibt: { next } oeffnet ein neues Fenster, { outcome } ist die letzte Zeile im Chat.
+        said,
         // `concluded` in einem Ergebnis geht nur an conclude, etwa talk oder repairHere.
         execute: async ({ conclude, ...call }) => {
             calls.push(call);
             const { concluded = {}, ...outcome } = queue.shift();
-            await conclude?.({ ...outcome, ...concluded, chat });
+            said.push(await conclude?.({ ...outcome, ...concluded, chat }));
             return outcome;
         },
         adopt: (draft, only) => {
@@ -77,6 +80,19 @@ test('Aufnahme: Verwerfen lässt alles, wie es ist', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, pass], answers: ['discard'] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.pass);
     assert.deepEqual(h.adopted, []);
+    assert.deepEqual(h.said, [{ next: 'check' }, { outcome: 'Verworfen. Der Testplan bleibt unverändert.' }]);
+});
+
+test('Aufnahme: Die Entscheidung ist eine Karte, Übernehmen nennt die Schritte und danach die Datei', async () => {
+    const h = harness({ outcomes: [{ ...pass, candidate: spec }, pass] });
+    await recordFlow({ sandbox: 's', ...h });
+    const [decision] = h.questions;
+    assert.equal(decision.card.title, 'Prüflauf bestanden');
+    assert.match(decision.card.facts[0], /ganze Testplan/);
+    assert.equal(decision.card.question, 'Soll das der neue Testplan werden?');
+    assert.deepEqual(decision.labels, [`Testplan übernehmen (${spec.steps.length} Schritte)`, 'Entwurf verwerfen']);
+    assert.deepEqual(decision.confirm, [undefined, 'Wirklich verwerfen?'], 'nur Verwerfen fragt nach');
+    assert.deepEqual(h.said.at(-1), { outcome: 'Gespeichert: caw/tests/t.yaml' });
 });
 
 test('Aufnahme: Fenster zu bei der Entscheidung heisst nicht übernehmen', async () => {
