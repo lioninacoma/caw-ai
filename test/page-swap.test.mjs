@@ -131,6 +131,20 @@ test('Overlay build: von mehreren Seiten die mit den meisten Treffern; webpack-L
     assert.equal(out, '<head><script defer src="/static/js/admin.NEW9f8e7d.js"></script></head>', 'admin.html; der Chunk im Asset-Ordner weicht, die alte Laufzeit auch');
 });
 
+test('Diagnose: SSR, nichts lokal und Skripte aus dem lokalen Asset-Ordner vom Server; der Bericht nennt das Overlay', async (t) => {
+    const overlay = await buildOverlay(t, viteFiles);
+    assert.deepEqual((({ ssr, local, swapped, mixed }) => ({ ssr, local, swapped, mixed }))(overlay.diagnose()), { ssr: null, local: 0, swapped: false, mixed: [] }, 'nichts geladen: nichts lokal');
+    await overlay.rewritePage(DEPLOYED.replace('</body>', '<script>window.__NUXT__={}</script></body>'), { url: `${ENV}/` });
+    assert.equal(overlay.diagnose().ssr, 'Nuxt');
+    overlay.served.local.set(`${ENV}/assets/index-NEW11111.js`, 'script');
+    overlay.served.server.set(`${ENV}/assets/legacy-OLD77777.js`, 'script');
+    overlay.served.server.set(`${ENV}/env.js`, 'script');
+    assert.deepEqual(overlay.diagnose().mixed, [`${ENV}/assets/legacy-OLD77777.js`], 'env.js im Wurzelordner ist kein Mischstand');
+    const { renderReport } = await import('../src/shared/report.mjs');
+    const report = renderReport({ status: 'pass', testId: 'smoke', target: 'staging', source: 'overlay', overlay: { label: 'dist', local: 3, server: 1, swapped: true } });
+    assert.match(report, /Getesteter Stand: lokaler Code über der Umgebung \(--overlay\)\nOverlay: dist; 3 Datei\(en\) lokal, 1 Skript\(e\)\/Stylesheet\(s\) vom Server; Seite getauscht: ja/);
+});
+
 test('Overlay dev: Tags aus dem HTML des Dev-Servers, Projektkopien und Fremdes bleiben', async (t) => {
     const root = project(t, { 'public/env.js': "window.ENV='lokal'" });
     const dev = createServer((request, response) => {

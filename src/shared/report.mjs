@@ -138,12 +138,13 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
     return lines;
 };
 
-export const renderReport = ({ status, reason, note, testId, target, source, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis }) => {
-    const stand = source === 'overlay' ? t('config.report.source.watch') : t('config.report.source.deployed');
+export const renderReport = ({ status, reason, note, testId, target, source, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis, overlay }) => {
+    const stand = source === 'overlay' ? t('config.report.source.overlay') : t('config.report.source.deployed');
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
         t('config.report.source', { source: stand }),
+        ...(overlay === undefined ? [] : [t('config.report.overlay', { label: String(overlay.label), local: String(overlay.local), server: String(overlay.server), swapped: t(overlay.swapped ? 'config.report.overlay.yes' : 'config.report.overlay.no') })]),
     ];
     if (reason !== undefined) lines.push('', t('config.report.reason', { reason: String(reason) }));
     if (note !== undefined) lines.push('', t('config.report.note', { note: String(note) }));

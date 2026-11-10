@@ -272,7 +272,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // Empfiehlt Claude beim Beheben und reicht danach sein Urteil ein, bleiben die Empfehlungen im Bericht.
     const writeResult = (outcome) => {
         // Geschwaerzt wie fuer Claude: Passwort der Rolle und geheim gemerkte Werte stehen nie in result.json oder report.md.
-        verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], warnings: session?.warnings?.() ?? [], ...adviceOf() }, session?.secrets?.() ?? []);
+        verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
     };

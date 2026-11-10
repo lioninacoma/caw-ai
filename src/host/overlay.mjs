@@ -397,6 +397,8 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
     const patterns = [defaultAssetPattern(checked.url), config.assetUrlPattern].filter((pattern) => typeof pattern === 'string');
     const namesOf = (url) => [...new Set(patterns.map((pattern) => deriveName(url, pattern)).filter((name) => name !== null))];
     const pages = [];
+    // Je URL, ob Skript oder Stylesheet aus dem lokalen Code kam oder vom Server (routeOverlay traegt ein).
+    const served = { local: new Map(), server: new Map() };
     return {
         apps,
         /**
@@ -453,6 +455,28 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
             return undefined;
         },
         devServers: apps.filter(({ kind }) => kind === 'dev').map(({ source }) => source.origin),
+        served,
+        /**
+         * Was nach dem Laden lief, fuer die Diagnose: nie still den ausgelieferten Stand testen.
+         * @returns { ssr, local, server, swapped, localBase, mixed: [urls], label }
+         */
+        diagnose: () => {
+            const folder = (url) => {
+                const parsed = new URL(url);
+                return { key: `${parsed.origin}${posix.dirname(parsed.pathname)}`, root: posix.dirname(parsed.pathname) === '/' };
+            };
+            // Der Wurzelordner zaehlt nicht: Dort liegen bei Angular alle Dateien, aber auch env.js, die die Umgebung setzt.
+            const localFolders = new Set([...served.local.keys()].map(folder).filter(({ root: top }) => !top).map(({ key }) => key));
+            return {
+                ssr: pages.find((page) => page.ssr !== null)?.ssr ?? null,
+                local: served.local.size,
+                server: served.server.size,
+                swapped: pages.some(({ swaps }) => swaps.some(({ removed }) => removed !== undefined)),
+                localBase: pages.some(({ swaps }) => swaps.some(({ skipped }) => skipped === 'local-base')),
+                mixed: [...served.server.keys()].filter((url) => localFolders.has(folder(url).key)),
+                label: apps.map(({ name, label }) => (apps.length > 1 ? `${name}: ${label}` : label)).join(', '),
+            };
+        },
         stop: stopAll,
     };
 };
@@ -481,10 +505,14 @@ export const routeOverlay = async (context, overlay, { onProblem = () => {} } = 
             await route.abort().catch(() => {});
             return;
         }
+        const type = request.resourceType();
+        const counted = type === 'script' || type === 'stylesheet';
         if (found === null) {
+            if (counted) overlay.served?.server.set(request.url(), type);
             await route.fallback();
             return;
         }
+        if (type !== 'document') overlay.served?.local.set(request.url(), type);
         await route.fulfill({ status: 200, contentType: found.contentType, headers: { 'content-type': found.contentType, 'cache-control': 'no-store' }, body: found.body });
     });
     // HMR: Das WebSocket der Seite geht an den Dev-Server, auch wenn es den Host der Umgebung nennt (Vite) oder den des Dev-Servers

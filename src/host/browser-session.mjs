@@ -851,6 +851,17 @@ export const openBrowserSession = async (spec) => {
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
         if (!ready.settled) throw new CawError('app-not-settled', t('session.browser.notSettled', { reason: ready.reason }));
         if (ready.lastSample?.appReady !== true) throw new CawError('app-not-loaded', t('session.browser.notLoaded', { url: startUrl, framework: framework.label }));
+        // Mit Overlay nie still den ausgelieferten Stand: SSR laesst sich nicht tauschen, und kam gar nichts aus dem lokalen Code, lief der
+        // Test gegen den Server. Einzelne Skripte aus dem lokalen Asset-Ordner vom Server: ein Mischstand, als Warnung.
+        let overlaySummary = null;
+        if (overlay !== null) {
+            const seen = overlay.diagnose();
+            if (seen.ssr !== null) throw new CawError('overlay-ssr', t('session.overlay.ssr', { framework: seen.ssr }));
+            if (seen.local === 0) throw new CawError('overlay-unused', t('session.overlay.unused', { source: seen.label, url: startUrl }));
+            if (seen.localBase) addWarning({ type: 'note', text: t('session.overlay.localBase') });
+            if (seen.mixed.length > 0) addWarning({ type: 'note', text: t('session.overlay.mixed', { count: seen.mixed.length, examples: seen.mixed.slice(0, 3).join(', ') }) });
+            overlaySummary = { label: seen.label, local: seen.local, server: seen.server, swapped: seen.swapped };
+        }
 
         // Die Werkbank zeigt Adresse, Requests und Konsole der Anwendung; einmal je Sekunde, solange sie offen ist.
         if (bench !== null) {
@@ -909,6 +920,8 @@ export const openBrowserSession = async (spec) => {
             /** Ein Wert, der ab jetzt wie das Passwort geschwaerzt wird, etwa aus `remember` mit `secret: true`. */
             hide: (value) => { if (typeof value === 'string' && !hidden.includes(value)) hidden.push(value); },
             warnings: () => warnings,
+            /** Mit Overlay: was nach dem ersten Laden aus dem lokalen Code kam (fuer den Bericht), sonst null. */
+            overlay: () => overlaySummary,
             /** Das Request-Protokoll: `mark()` vor einem Schritt, `since(mark)` danach. */
             network: { mark: () => network.mark(), since: (mark, end) => network.since(mark, end) },
             /** Konsole und Antworten fuer die Wirkung einer Aktion: `mark()` davor, `since(mark)` danach. */

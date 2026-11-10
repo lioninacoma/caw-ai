@@ -84,4 +84,7 @@ test('Overlay build im Browser: lokaler Stand trotz anderer Aufteilung, Nonce-CS
     assert.deepEqual(errors, []);
     assert.deepEqual(problems, []);
     assert.equal(overlay.pages.at(-1).swaps[0].inserted, 2, 'Einstieg und Preload; env.js nicht doppelt');
+    const seen = overlay.diagnose();
+    assert.deepEqual({ ssr: seen.ssr, local: seen.local, swapped: seen.swapped, mixed: seen.mixed, label: seen.label }, { ssr: null, local: 3, swapped: true, mixed: [], label: 'dist' });
+    assert.ok(seen.server >= 1, 'env.js vom Server');
 });
