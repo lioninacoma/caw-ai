@@ -99,7 +99,7 @@ npx caw-ai run smoke --target local
 | Let Claude explain failures right away | `caw-ai run <test> --target local --advise` |
 | Check config and tests | `caw-ai validate` |
 
-Exit codes: `0` pass, `1` fail, `2` environment error, `3` invalid input. All commands and options: [docs/commands.md](docs/commands.md).
+Exit codes: `0` pass, `1` fail, `2` environment error, `3` invalid input, `4` needs recording. All commands and options: [docs/commands.md](docs/commands.md).
 
 ### In CI
 

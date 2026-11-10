@@ -33,7 +33,7 @@ export default {
     // Kopfzeile
     'run.mode.record': 'Claude records',
     'run.mode.verify': 'Verify without Claude',
-    'run.mode.until': 'Reach state {until}',
+    'run.mode.until': 'Replay up to {until}, then the window stays open',
     'run.mode.replay': 'Replay without Claude',
     'run.mode.rerecord': 'Claude re-records {id}',
     'run.mode.repair': 'Claude fixes {id}',
@@ -80,7 +80,7 @@ export default {
     'run.finished.passed': 'Passed.',
     'run.finished.failed': 'Failed.',
     'run.handover.state': 'State {until} reached{local}. The Chrome window is yours now; closing it ends the run.',
-    'run.handover.local': ', with local code',
+    'run.handover.local': ', with the local build',
     'run.handover.window': 'Handover: the Chrome window is yours now. Closing it ends the run.',
     'run.develop.left': '{until} no longer guaranteed. Go back with "{restore}".',
     'run.develop.testEnd': 'End of test',

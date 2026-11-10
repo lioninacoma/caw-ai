@@ -129,7 +129,7 @@ A run with Claude, i.e. recording and fixing, does the following:
 5. **Test:** `claude -p` works through the plan; every browser command goes to the host as a file over the channel. The host checks the verdict.
 6. **Finish:** Claude ends immediately with the verdict (process or container). Report, trace and `floats.log` (clicks and, with `extjs`, the order of floating windows with timings, no content) are under `.caw/runs/<run>/`. The trace (`trace.zip`) contains page content, requests and cookies of the test account; don't share it. With `auth.type: basic` it records no snapshots, so the password from the Authorization header doesn't end up in it. Screenshots and `claude.log` are under `agent/`. The log is written continuously and shows Claude's text and commands with seconds since start; the same lines appear in the terminal. A closing summary after the verdict is not included. Terminal output is colored, the file has no color codes; `NO_COLOR=1` turns colors off. Chrome closes as well.
 
-Exit codes: `0` pass, `1` fail, `2` error (the environment is to blame), `3` input rejected.
+Exit codes: `0` pass, `1` fail, `2` error (the environment is to blame), `3` input rejected, `4` needs recording (`record` or `fix`).
 
 ### Error codes and remedies
 
@@ -212,7 +212,7 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 
 ## Test run: `run`
 
-Replays the recording without model, Docker or token. On environments with `agent` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with `--until` and `--handover`, stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 3 and names `record`. If a step is outdated, it ends with exit 3 and names `fix` for exactly that step.
+Replays the recording without model, Docker or token. On environments with `agent` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines (`--no-learn` turns that off), the last one what changed in the test files. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with `--until` and `--handover`, stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 4 and names `record`. If a step is outdated, it ends with exit 4 and names `fix` for exactly that step.
 
 - **Waiting:** There are no fixed pauses. A step waits until its target is visible and not covered. That covers load masks, overlays and dialogs within dialogs, since only the topmost dialog is clickable. `check` retries until it holds or the time limit expires.
 - **Time limits:** 30 seconds per step by default, changeable with `--step-timeout`, or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--timeout <minutes>` (default 60) and `--max-steps <n>` apply as for `record` and `fix`.
@@ -232,7 +232,7 @@ The tool replays the recording up to the passed `check` of `S4` and hands over t
 
 - **Local code:** Always on environments with `localCode`, even with `source: deployed`. You see changes with F5; the form state is gone afterwards. To get back, start the command again.
 - **Path fails:** You clarify the error in the chat and can have the step fixed. If you close the chat, the window still goes to you and the report names the error. The exit code remains the verdict.
-- **No recording:** exit 3, record first.
+- **No recording:** exit 4, record first.
 - **State after reload:** Whether a view keeps its state after F5 depends on the application.
 
 `--handover` also hands over the window after a full test run. It applies only to `run`.

@@ -99,7 +99,7 @@ npx caw-ai run smoke --target local
 | Fehler sofort von Claude erklären lassen | `caw-ai run <test> --target local --advise` |
 | Config und Tests prüfen | `caw-ai validate` |
 
-Exit-Codes: `0` bestanden, `1` fehlgeschlagen, `2` Fehler der Umgebung, `3` Eingabe abgewiesen. Alle Befehle und Optionen: [docs/commands.de.md](docs/commands.de.md).
+Exit-Codes: `0` bestanden, `1` fehlgeschlagen, `2` Fehler der Umgebung, `3` Eingabe abgewiesen, `4` Aufnahme nötig. Alle Befehle und Optionen: [docs/commands.de.md](docs/commands.de.md).
 
 ### In der CI
 

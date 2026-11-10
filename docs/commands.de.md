@@ -4,6 +4,8 @@
 
 Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw-ai <befehl>` (oder `pnpm exec`, `yarn`). `<env>` ist ein Name aus `environments` in `caw.config.json`, etwa `local`. Mit Mandanten (`sites`) heißt es `mandant/env`, etwa `nord/dev`.
 
+`--target` darf fehlen, wenn die Wahl klar ist: `run`, `record` und `fix` nehmen dann das einzige Ziel des Tests (bei `record` und `fix` das einzige davon, auf dem Claude arbeiten darf; bei `record` eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf). Das Terminal nennt die Wahl, etwa `› Ziel: local (einziges Ziel von create-ticket)`. Ist sie nicht eindeutig, bricht der Befehl ab und nennt die Auswahl: `--target fehlt: local, dev`.
+
 | Befehl | Was er tut | Claude? |
 |---|---|---|
 | [`init`](#init) | Projekt einrichten: App ansehen, Config, Skill und `.mcp.json` schreiben | nein |
@@ -11,13 +13,24 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw-ai <befehl>` (oder
 | [`skill`](#skill) | Skill für Claude Code und `.mcp.json` anlegen oder aktualisieren | nein |
 | [`doctor`](#doctor) | Rechner, Config, Zugangsdaten und Umgebungen prüfen | nein |
 | [`validate`](#validate) | Config und Tests offline prüfen | nein |
+| [`list`](#list) | Tests und Schritte mit Stand der Aufnahme auflisten | nein |
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen | ja |
-| [`run`](#run) | Einen Test abspielen | nur auf Wunsch |
+| [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
 | [`fix`](#fix) | Einen Schritt neu aufnehmen | ja |
 | [`auth`](#auth) | Von Hand anmelden und die Sitzung speichern (SSO) | nein |
 | [`mcp`](#mcp) | MCP-Server für deine eigene Claude-Code-Sitzung | – |
 
-`npx caw-ai help` zeigt dieselbe Übersicht im Terminal. `npx caw-ai --version` zeigt die Version.
+`npx caw-ai help` zeigt dieselbe Übersicht im Terminal. `npx caw-ai <befehl> --help` (oder `-h`, an beliebiger Stelle) zeigt nur diesen Befehl, `npx caw-ai help agent` die Befehle für den Agenten. `npx caw-ai --version` zeigt die Version.
+
+Bricht ein Befehl ab, steht im Terminal zuerst der Grund, bei einem ungültigen Aufruf dann die Kurzform des Befehls, zuletzt Code und Exit-Code:
+
+```
+✗ fix erwartet einen Schritt wie S4.
+  Aufruf: caw-ai fix <test> <S4> [--target <umgebung>]
+  (code: usage, exit 3)
+```
+
+Eine Option, die einen Wert braucht, nimmt nie die nächste Option als Wert: `--target --headless` bricht ab mit `--target braucht einen Wert, etwa --target local`.
 
 ## init
 
@@ -77,6 +90,17 @@ npx caw-ai validate
 
 Prüft `caw.config.json` und alle Dateien in `caw/tests/` ohne Browser und ohne Claude. Fehler nennen Datei und Zeile. Gut für CI und Pre-Commit-Hooks.
 
+## list
+
+```bash
+npx caw-ai list
+npx caw-ai list create-ticket
+```
+
+Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)`. Ohne Browser und ohne Claude.
+
+Einen Testnamen, den es nicht gibt, beantwortet caw-ai mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`). Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
+
 ## record
 
 ```bash
@@ -91,7 +115,7 @@ Nimmt den Testplan aus `caw/tests/create-ticket.yaml` auf, oder legt einen neuen
 4. caw-ai spielt die Aufzeichnung ohne Claude ab.
 5. Du wählst „Testplan übernehmen“. Erst dann werden Dateien geschrieben.
 
-Nur auf Umgebungen mit `"agent": true`.
+Nur auf Umgebungen, auf denen Claude arbeiten darf (`"agent": true`). Gibt es nur eine, darf `--target` fehlen.
 
 | Option | |
 |---|---|
@@ -110,21 +134,35 @@ Nur auf Umgebungen mit `"agent": true`.
 npx caw-ai run create-ticket --target local
 ```
 
-Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen mit `agent` steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
+Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen Claude arbeiten darf (`agent`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
+
+Mit Chat lernt der Lauf fehlende Vergleichswerte in `caw/recordings/<test>.yaml`. Am Ende sagt er, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `--until` bis zum Schritt vor dem Fehler. Den Bericht gibt es zusätzlich als `file://`-Link.
 
 | Option | |
 |---|---|
-| `--until <S4>` | Nach diesem Schritt anhalten und dir das Fenster übergeben, mit lokalem Code, wo erlaubt. |
+| `--until <S4>` | Nach S4 anhalten, das Fenster bleibt offen. Schließt `--handover` ein; mit lokalem Build, wenn die Umgebung ihn erlaubt. |
 | `--handover` | Fenster nach dem Lauf offen lassen. |
 | `--advise` | Bei Fehlern oder Warnungen erklärt Claude die Ursache ungefragt. Kostet Token. |
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
 | `--headless` | Kein Fenster, kein Chat. 1920×1080. |
+| `--no-learn` | Mit Chat, aber ohne gelernte Vergleichswerte: Die Testdatei ändert sich nur, wenn du im Chat etwas übernimmst. |
 | `--step-timeout <sekunden>` | Zeitgrenze je Schritt, Standard 30. |
 | `--timeout <minuten>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard 60. |
 | `--max-steps <n>` | Grenze für Claudes Aktionen beim Beheben. |
 | `--agent local\|docker\|session` | Wie bei `record`. |
 
 Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`; `--until` und `--handover` werden abgelehnt (Exit 3), denn niemand übernähme den Browser. `record` und `fix` brauchen einen Menschen und werden in CI ebenfalls abgelehnt. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
+
+### Mehrere Tests (CI)
+
+```bash
+npx caw-ai run --all --target dev --headless --report junit=caw-junit.xml
+npx caw-ai run create-ticket close-ticket --target dev
+```
+
+Spielt die Tests nacheinander ab, ohne Chat (`--advise`, `--handover` und `--until` werden abgelehnt). `--all` nimmt jeden Test, der das Ziel nennt. Ohne `--target` gilt das einzige Ziel der Tests. Ein Test, der nicht laufen kann (Aufnahme fehlt, Tippfehler), hält die anderen nicht auf. Am Ende zeigt eine Tabelle je Test `PASS`, `FAIL`, `ERROR`, `AUFNAHME NÖTIG` oder `ABGELEHNT`. Der Exit-Code ist der des schlimmsten Laufs, in dieser Reihenfolge: `2` error > `1` fail > `4` Aufnahme nötig > `3` abgelehnt > `0` pass.
+
+`--report junit=<datei>` schreibt die Tabelle zusätzlich als JUnit-XML (relativ zum Projektordner): `fail` als `<failure>`, alles andere, was nicht bestanden hat, als `<error>`.
 
 ## fix
 
@@ -157,7 +195,7 @@ Startet Claude Code über `.mcp.json`. Du rufst es nicht selbst auf. Deine Sitzu
 
 `snapshot`, `click`, `fill`, `type`, `press`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
 
-Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agenten während `record` und `fix` da; du brauchst sie nicht. `npx caw-ai help` listet ihre Argumente.
+Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agenten während `record` und `fix` da; du brauchst sie nicht. `npx caw-ai help agent` listet ihre Argumente.
 
 ## Exit-Codes
 
@@ -167,6 +205,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | `1` | fehlgeschlagen: Die App tut nicht, was der Test erwartet |
 | `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …), oder ein unerwarteter interner Fehler (der Stack steht in der Ausgabe) |
 | `3` | abgewiesen: Aufruf, Config oder Testdatei ungültig. Es lief nichts. |
+| `4` | Aufnahme nötig: Die Aufzeichnung fehlt (`record`) oder ein Schritt hat sich seit der Aufnahme geändert (`fix`). Es lief nichts. |
 
 ## Umgebungsvariablen
 
@@ -182,17 +221,17 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 
 ## Fehlercodes
 
-Bricht caw-ai ab, nennt es einen Code und den Grund.
+Bricht caw-ai ab, nennt es zuerst den Grund und danach den Code.
 
 | Code | Exit | Abhilfe |
 |---|---|---|
-| `usage` | 3 | `npx caw-ai help` |
+| `usage`, `unknown-command` | 3 | `npx caw-ai <befehl> --help` |
 | `config-missing` | 3 | `npx caw-ai init --url <adresse>` |
 | `config-invalid` | 3 | Das genannte Feld korrigieren, dann `doctor` |
 | `test-missing`, `test-invalid` | 3 | Testdatei anlegen oder korrigieren, dann `validate` |
-| `replay-missing` | 3 | Test mit `record` aufnehmen |
-| `replay-stale` | 3 | Ein Schritt hat sich seit der Aufnahme geändert: `fix <test> <schritt>` |
-| `step-unknown` | 3 | Eine Schritt-ID aus der Testdatei nehmen |
+| `replay-missing` | 4 | Test mit `record` aufnehmen |
+| `replay-stale` | 4 | Ein Schritt hat sich seit der Aufnahme geändert: `fix <test> <schritt>` |
+| `step-unknown` | 3 | Eine Schritt-ID aus der Testdatei nehmen (`list <test>`) |
 | `target-invalid`, `target-denied` | 3 | Eine Umgebung aus der Config nehmen; Produktion lässt sich nicht aufnehmen |
 | `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `agent` / `writable` an der Umgebung |
 | `auth-missing` | 3 | Datei unter `caw/.auth/` löschen und `auth` erneut ausführen |

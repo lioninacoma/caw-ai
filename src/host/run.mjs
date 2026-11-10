@@ -5,6 +5,7 @@ import { join, posix } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
+import { pathToFileURL } from 'node:url';
 
 import { colorEnabled } from '../shared/color.mjs';
 import { createUi } from '../shared/ui.mjs';
@@ -265,7 +266,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
     };
     const finishRun = () => {
-        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), elapsed: (Date.now() - startedAt) / 1000 });
+        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000 });
         // Fehlt die gespeicherte Anmeldung oder steht noch TODO in der Config, lief nichts: ein ungueltiger Aufruf (3), keine Umgebung (2).
         if (verdict.status === 'error' && NOTHING_RAN.has(verdict.code)) return EXIT.rejected;
         return EXIT[verdict.status];
@@ -1019,7 +1020,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         ui.heading(t('run.repairInPlace', { id: failed.id }));
         const { ended, found } = await claudeWork(box);
         const repaired = { verdict, exitCode: EXIT[verdict.status], ...found, ended };
-        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), elapsed: (Date.now() - startedAt) / 1000 });
+        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000 });
         verdict = before;
         return repaired;
     };

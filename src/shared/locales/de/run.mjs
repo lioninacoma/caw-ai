@@ -33,7 +33,7 @@ export default {
     // Kopfzeile
     'run.mode.record': 'Claude nimmt auf',
     'run.mode.verify': 'Prüfen ohne Claude',
-    'run.mode.until': 'Zustand {until} herstellen',
+    'run.mode.until': 'Bis {until} abspielen, danach bleibt das Fenster offen',
     'run.mode.replay': 'Abspielen ohne Claude',
     'run.mode.rerecord': 'Claude nimmt {id} neu auf',
     'run.mode.repair': 'Claude behebt {id}',
@@ -80,7 +80,7 @@ export default {
     'run.finished.passed': 'Bestanden.',
     'run.finished.failed': 'Nicht bestanden.',
     'run.handover.state': 'Zustand {until} ist hergestellt{local}. Das Chrome-Fenster gehört jetzt dir, Fenster schließen beendet den Lauf.',
-    'run.handover.local': ', mit lokalem Code',
+    'run.handover.local': ', mit lokalem Build',
     'run.handover.window': 'Übernahme: Das Chrome-Fenster gehört jetzt dir. Fenster schließen beendet den Lauf.',
     'run.develop.left': '{until} nicht mehr gesichert. Zurück mit „{restore}“.',
     'run.develop.testEnd': 'Testende',
