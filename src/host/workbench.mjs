@@ -359,9 +359,9 @@ const raven=(()=>{
   const CLIPS=${JSON.stringify(RAVEN_CLIPS.clips)},FEET=${RAVEN_CLIPS.feet ?? 0},SHIFT=${JSON.stringify(RAVEN_CLIPS.shift ?? {})},len=(n)=>CLIPS[n].reduce((s,f)=>s+f[2],0);
   // Weniger Bewegung gilt sofort, auch wenn der Mensch es mitten im Lauf im System umstellt.
   let reduce=motion.matches,fed=${Number(prefs.fed) || 0};
-  const IDLE={blink:[2.5,len('blink')],caw:[1,len('caw')],look:[.5,900],puff:[1.5,len('puff')],peck:[1.5,900],hop:[.3,520],doze:[0,3200],feed:[0,1000],wave:[0,960],joy:[0,len('joy')],nod:[0,700],sigh:[0,len('sigh')],confetti:[0,0]};
+  const IDLE={blink:[2.5,len('blink')],caw:[1,len('caw')],look:[.5,900],puff:[1.5,len('puff')],peck:[1.5,900],hop:[.3,520],doze:[0,3200],feed:[0,1000],joy:[0,len('joy')],nod:[0,700],sigh:[0,len('sigh')],confetti:[0,0]};
   // Er sagt nie Woerter: nur caw, ! und ?.
-  const REACT={greet:[{name:'caw',text:'caw!'},'wave'],fail:[{name:'caw',text:'caw?!'},'sigh'],done:[{name:'caw',text:'caw!'},'home'],home:['wave','joy','confetti'],ask:[{name:'caw',text:'caw?'},'look'],aborted:['doze']};
+  const REACT={greet:[{name:'caw',text:'caw!'}],fail:[{name:'caw',text:'caw?!'},'sigh'],done:[{name:'caw',text:'caw!'},'home'],home:['joy','confetti'],ask:[{name:'caw',text:'caw?'},'look'],aborted:['doze']};
   const layer=$('ravenLayer'),wrap=$('raven'),sprite=wrap.firstElementChild,say=$('ravenSay'),cloud=$('ravenCloud'),tile=$('tile'),toggle=$('still');
   const LOGO={kind:'logo'};
   let place=LOGO,want=LOGO,move=null,settle=0,act=null,queue=[],nextIdle=0,recent=[],waitSince=0,bubbleTill=0,lastKey='',x=0,y=0;
@@ -515,7 +515,7 @@ const raven=(()=>{
       if(a.name==='look'){pose('idle');if(t>200&&t<700)face(1);}
       else if(a.name==='feed'){if(t<240)pose('idle');else play('peck',t-240);}
       else if(a.name==='hop'){if(t>=80&&t<=440){pose('fly');lift=Math.sin(Math.PI*(t-80)/360)*S/3;}else pose('peck');}
-      // Einmal: blink, caw, puff, joy, sigh; im Kreis, solange die Handlung dauert: peck, doze, wave, nod.
+      // Einmal: blink, caw, puff, joy, sigh; im Kreis, solange die Handlung dauert: peck, doze, nod. Winken (wave) spielt die Werkbank nicht.
       else if(['blink','caw','puff','joy','sigh'].includes(a.name))play(a.name,t,false);
       else if(CLIPS[a.name])play(a.name,t);
       // Animationen nur ab und zu: zwischen zwei Handlungen sitzt er ein paar Sekunden ruhig da (idle atmet weiter).
