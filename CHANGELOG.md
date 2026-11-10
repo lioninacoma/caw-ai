@@ -27,11 +27,12 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Workbench: before a new window opens (Claude, check run), chat and terminal say so. Keyboard shortcuts are shown on the buttons they trigger.
 
 ### Changed
+- `examples/helpdesk` ships the recording of `create-ticket`: start the server and `run` it right away, no recording with Claude first.
 - Exit code 4 ("needs recording") for a missing or outdated recording (`replay-missing`, `replay-stale`).
 - Test files: `id`, `app`, `role` and `targets` may be left out: file name, the only app, the only role, all non-production environments.
 - Error output: the message first, then the short form for usage errors, then `(code: …, exit …)`; an unknown command gets a suggestion instead of the full help.
 - Wording: every regular end of a run is "End run", "Cancel" only aborts.
-- Workbench raven: flights to and from the chat leave the screen at the nearest edge and come back in instead of crossing the middle; from the logo to the steps and back, and between steps, it hops or glides straight to the target. On the logo it sits still. It glances back once instead of looking around, no longer waves when it arrives or comes home, and idle moves come every 5–12 s.
+- Workbench raven: flights to and from the chat leave the screen at the nearest edge and come back in instead of crossing the middle; from the logo to the steps and back, and between steps, it hops to the next step or flies straight to the target, flapping its wings. On the logo it sits still. It glances back once instead of looking around, no longer waves when it arrives or comes home, and idle moves come every 5–12 s.
 - Workbench: the first Esc only asks before cancelling (a second Esc confirms); Esc while typing clears the field. Choices in the failure and decision cards are compact and the card scrolls into view. The steps panel unfolds on failure on narrow screens. The workbench's refresh button is disabled while a test runs.
 
 ### Fixed

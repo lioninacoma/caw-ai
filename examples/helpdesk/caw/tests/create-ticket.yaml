@@ -1,4 +1,4 @@
-# Example test. Record it with: npx caw-ai record create-ticket --target local
+# Example test, recording included (caw/recordings/create-ticket.yaml). Replay it with: npx caw-ai run create-ticket --target local
 id: create-ticket
 app: web
 role: user

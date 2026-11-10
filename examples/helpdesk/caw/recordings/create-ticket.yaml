@@ -1,0 +1,250 @@
+# Written by caw-ai, belongs to caw/tests/create-ticket.yaml. Delete by hand if needed, never edit.
+
+test: create-ticket
+steps:
+  - id: S1
+    hash: 2d255369935b6066
+    recordedOn: local
+    recordedAt: 2026-11-10T12:00:00.000Z
+    actions:
+      - click: {role: link, name: Tickets, inside: {role: navigation, name: Main}}
+        path: /
+      - wait-ready: {}
+    check: location.pathname==='/tickets' && !!document.querySelector('table[aria-label="Tickets"] tbody tr')
+    network:
+      - {name: GET /api/tickets, status: 200, ms: 265, params: [q]}
+    effects:
+      runs: 1
+      actions:
+        - action: 1
+          controls:
+            - + input "Search tickets" empty
+            - + button "New ticket"
+            - + list "Tickets" rows
+          view:
+            - + - heading "Tickets" [level=#]
+            - + - searchbox "Search tickets"
+            - + - button "New ticket"
+            - '+ - table "Tickets":'
+            - "+ - rowgroup:"
+            - '+ - row "# Title Customer Priority Status":'
+            - + - columnheader "#"
+            - + - columnheader "Title"
+            - + - columnheader "Customer"
+            - + - columnheader "Priority"
+            - + - columnheader "Status"
+            - '+ - row "# CRM export times out Acme Corp Normal Open":'
+          requests:
+            - GET /api/tickets 200
+          responses:
+            - GET /api/tickets form ea5103f9e4
+  - id: S2
+    hash: 23b43d5acb2796dd
+    after: S1
+    recordedOn: local
+    recordedAt: 2026-11-10T12:00:00.000Z
+    actions:
+      - click: {role: button, name: New ticket}
+        path: /tickets
+      - wait-ready: {}
+      - fill: {role: textbox, name: Title, inside: {role: dialog, name: New ticket}}
+        value: Printer offline {{runTag}}
+        path: /tickets
+      - type: {role: combobox, name: Customer, inside: {role: dialog, name: New ticket}}
+        value: Acme
+        path: /tickets
+      - type: {role: combobox, name: Priority, inside: {role: dialog, name: New ticket}}
+        value: High
+        path: /tickets
+      - click: {role: button, name: Create ticket, inside: {role: dialog, name: New ticket}}
+        path: /tickets
+      - wait-ready: {}
+      - remember: {name: ticketnr, code: "(document.querySelector('[role=status]').textContent.match(/#([0-9]+)/)||[])[1]"}
+    check: "(()=>{const s=document.querySelector('[role=status]');if(!s||!/^Ticket #[0-9]+ created$/.test(s.textContent.trim()))return false;const n=s.textContent.match(/#([0-9]+)/)[1];return n==='{{ticketnr}}' && [...document.querySelectorAll('table[aria-label=\"Tickets\"] tbody tr')].some(r=>r.cells[0].textContent.trim()===n && r.cells[1].textContent.trim()==='Printer offline {{runTag}}');})()"
+    network:
+      - {name: GET /api/customers, status: 200, ms: 7, params: []}
+      - {name: POST /api/tickets, status: 201, ms: 268, params: [json.customer, json.description, json.priority, json.title]}
+      - {name: GET /api/tickets, status: 200, ms: 271, params: [q]}
+    effects:
+      runs: 1
+      actions:
+        - action: 1
+          controls:
+            - + input "Title" required,empty
+            - + select "Customer" required,empty
+            - + select "Priority" filled
+            - + textarea "Description" empty
+            - + button "Cancel"
+            - + button "Create ticket" disabled
+          view:
+            - '+ - dialog "New ticket":'
+            - + - heading "New ticket" [level=#]
+            - "+ - text: Title"
+            - + - textbox "Title"
+            - "+ - text: Customer"
+            - + - combobox "Customer"
+            - + - option "Choose…" [selected]
+            - + - option "Acme Corp"
+            - + - option "Globex"
+            - + - option "Initech"
+            - + - option "Umbrella"
+            - + - option "Stark Industries"
+          requests:
+            - GET /api/customers 200
+          responses:
+            - GET /api/customers form ce6558960f
+        - action: 3
+          controls:
+            - + input "Title" required,filled
+            - '- input "Title" required,empty'
+        - action: 4
+          controls:
+            - + select "Customer" required,filled
+            - + button "Create ticket"
+            - '- select "Customer" required,empty'
+            - '- button "Create ticket" disabled'
+          view:
+            - + - option "Choose…"
+            - + - option "Acme Corp" [selected]
+            - + - button "Create ticket"
+            - '- - option "Choose…" [selected]'
+            - '- - option "Acme Corp"'
+            - '- - button "Create ticket" [disabled]'
+        - action: 5
+          view:
+            - + - option "Normal"
+            - + - option "High" [selected]
+            - '- - option "Normal" [selected]'
+            - '- - option "High"'
+        - action: 6
+          controls:
+            - '- input "Title" required,filled'
+            - '- select "Customer" required,filled'
+            - '- select "Priority" filled'
+            - '- textarea "Description" empty'
+            - '- button "Cancel"'
+            - '- button "Create ticket"'
+          view:
+            - '+ - row "# Printer offline CAW-# Acme Corp High Open":'
+            - '+ - cell "Printer offline CAW-#":'
+            - '+ - link "Printer offline CAW-#":'
+            - '+ - status: "Ticket ## created"'
+            - '- - dialog "New ticket":'
+            - '- - heading "New ticket" [level=#]'
+            - "- - text: Title"
+            - '- - textbox "Title"'
+            - "- - text: Customer"
+            - '- - combobox "Customer"'
+            - '- - option "Choose…"'
+            - '- - option "Acme Corp" [selected]'
+          requests:
+            - POST /api/tickets 201
+            - GET /api/tickets 200
+          responses:
+            - POST /api/tickets form b0eee3ea5f
+            - GET /api/tickets form ea5103f9e4
+      basis: 2026-11-10T12:00:00.000Z
+  - id: S3
+    hash: 9e85c4b85e77a03b
+    after: S2
+    recordedOn: local
+    recordedAt: 2026-11-10T12:00:00.000Z
+    actions:
+      - fill: {role: searchbox, name: Search tickets}
+        value: "{{runTag}}"
+        path: /tickets
+      - wait-ready: {}
+    check: (()=>{const r=[...document.querySelectorAll('table[aria-label="Tickets"] tbody tr[data-id]')];return r.length===1 && r[0].cells[0].textContent.trim()==='{{ticketnr}}' && r[0].cells[3].textContent.trim()==='High' && r[0].cells[4].textContent.trim()==='Open';})()
+    network:
+      - {name: GET /api/tickets, status: 200, ms: 259, params: [q]}
+    effects:
+      runs: 1
+      actions:
+        - action: 1
+          controls:
+            - + input "Search tickets" filled
+            - '- input "Search tickets" empty'
+          view:
+            - '- - row "# CRM export times out Acme Corp Normal Open":'
+            - '- - cell "CRM export times out":'
+            - '- - link "CRM export times out":'
+            - '- - cell "Normal"'
+            - '- - row "# Add second monitor Stark Industries Low Done":'
+            - '- - cell "Add second monitor":'
+            - '- - link "Add second monitor":'
+            - '- - cell "Stark Industries"'
+            - '- - cell "Low"'
+            - '- - cell "Done"'
+            - '- - row "# Password reset mail not arriving Umbrella High In progress":'
+            - '- - cell "Password reset mail not arriving":'
+          requests:
+            - GET /api/tickets 200
+          responses:
+            - GET /api/tickets form ea5103f9e4
+      basis: 2026-11-10T12:00:00.000Z
+  - id: S4
+    hash: a0dbb888fc11a909
+    after: S3
+    recordedOn: local
+    recordedAt: 2026-11-10T12:00:00.000Z
+    actions:
+      - click: {role: link, name: "Printer offline {{runTag}}"}
+        path: /tickets
+      - wait-ready: {}
+      - type: {role: combobox, name: Change status}
+        value: In progress
+        path: /tickets/{{ticketnr}}
+      - click: {role: button, name: Save}
+        path: /tickets/{{ticketnr}}
+      - wait-ready: {}
+    check: location.pathname==='/tickets/{{ticketnr}}' && document.getElementById('status').textContent.trim()==='In progress'
+    network:
+      - {name: GET /api/tickets/:id, status: 200, ms: 264, params: []}
+      - {name: PATCH /api/tickets/:id, status: 200, ms: 264, params: [json.status]}
+    effects:
+      runs: 1
+      actions:
+        - action: 1
+          controls:
+            - + select "Change status" filled
+            - + button "Save"
+            - '- input "Search tickets" filled'
+            - '- button "New ticket"'
+            - '- list "Tickets" rows'
+          view:
+            - "+ - paragraph:"
+            - '+ - link "← All tickets":'
+            - + - heading "## Printer offline CAW-#" [level=#]
+            - '+ - text: "Customer: Acme Corp Priority: High Status:"'
+            - "+ - status: Open"
+            - "+ - text: Change status"
+            - + - combobox "Change status"
+            - + - option "Open" [selected]
+            - + - option "In progress"
+            - + - option "Done"
+            - + - button "Save"
+            - '- - heading "Tickets" [level=#]'
+          requests:
+            - GET /api/tickets/:id 200
+          responses:
+            - GET /api/tickets/:id form b0eee3ea5f
+        - action: 3
+          view:
+            - + - option "Open"
+            - + - option "In progress" [selected]
+            - '- - option "Open" [selected]'
+            - '- - option "In progress"'
+        - action: 4
+          view:
+            - "+ - status: In progress"
+            - "+ - status: Status updated"
+            - "- - status: Open"
+            - '- - status: "Ticket ## created"'
+          requests:
+            - PATCH /api/tickets/:id 200
+          responses:
+            - PATCH /api/tickets/:id form b0eee3ea5f
+      basis: 2026-11-10T12:00:00.000Z
+knownMessages:
+  - pattern: "^Ticket #+ created$"
+  - Status updated
