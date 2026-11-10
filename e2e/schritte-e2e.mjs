@@ -47,7 +47,7 @@ const report = (line) => {
     appendFileSync(results, `${line}\n`);
 };
 const tally = { ok: 0, fail: 0 };
-setTimeout(() => { report('FEHL Wachhund: Zeitlimit'); portal.kill(); process.exit(9); }, 900_000);
+setTimeout(() => { report('FEHL Wachhund: Zeitlimit'); portal.kill(); process.exit(9); }, 2_400_000);
 const verify = (name, ok, detail = '') => {
     tally[ok ? 'ok' : 'fail'] += 1;
     report(`${ok ? 'OK  ' : 'FEHL'} ${name} ${detail}`);
@@ -69,6 +69,11 @@ const approve = async (page) => {
 };
 // Beenden heisst je nach Lage „Ohne Beheben beenden“ oder „Lauf beenden“.
 const decide = (page, label) => page.locator('#choices button', { hasText: label === 'Schließen' ? /Ohne Beheben beenden|Lauf beenden/ : label }).click({ timeout: 90000 });
+// Wer einen Entwurf verwirft, bestaetigt das mit einem zweiten Klick („Wirklich verwerfen?“).
+const discard = async (page) => {
+    await decide(page, 'Entwurf verwerfen');
+    await page.locator('#choices button.sure').click({ timeout: 10000 });
+};
 // Alles laeuft in der Werkbank wie im echten Betrieb: Der Chat ist ein Frame neben der Anwendung im iframe. Fuer die Handler sieht
 // der Chat-Frame aus wie eine Seite, deren erste Seite im Kontext die Anwendung ist.
 /**
@@ -236,7 +241,7 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
             verify('Karte zeigt drei Schritte mit ID', await page.locator('.message.plan').nth(1).locator('.step').count() === 3 && (await page.locator('.message.plan').nth(1).locator('.sid').first().textContent()) === 'S1');
             verify('Karte zeigt die Hinweise', /Bleibe bei deinem/.test(await page.locator('.message.plan').nth(1).locator('.notes').textContent()));
             await shootThemes(page, join(here, 'schritt-plan-hell.png'), join(here, 'schritt-plan-dunkel.png'));
-            verify('Plan: grosser Knopf Plan freigeben, kein kleiner', await page.locator('#approve.big').isVisible() && (await page.locator('#approve').textContent()) === 'Plan freigeben' && !await page.locator('#toggle').isVisible());
+            verify('Plan: grosser Knopf Plan freigeben, kein kleiner', await page.locator('#approve.big').isVisible() && (await page.locator('#approve').evaluate((node) => node.firstChild.textContent)) === 'Plan freigeben' &&!await page.locator('#toggle').isVisible());
             await page.locator('#approve').click();
         }, async (page) => {
             await page.locator('#choices button.primary').waitFor({ timeout: 90000 });
@@ -370,8 +375,9 @@ ${finishOf(['S3'])}`;
             await shootThemes(page, join(here, 'schritt-aenderung-hell.png'), join(here, 'schritt-aenderung-dunkel.png'));
             await page.locator('#approve').click();
         }, async (page) => {
-            await page.locator('.message.question', { hasText: 'Geändertes Ergebnis in S3' }).waitFor({ timeout: 90000 });
-            await decide(page, 'Verwerfen');
+            // Die Entscheidung nach dem Pruefdurchlauf ist eine Karte.
+            await page.locator('.message.decision', { hasText: 'Geändertes Ergebnis in S3' }).waitFor({ timeout: 90000 });
+            await discard(page);
         });
         const code = await fix(fake, [ID, 'S3', ...opts], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
         verify('Drei Fenster: Abspielen, Aufnahme, Pruefung', await h.done() === 3);
@@ -752,7 +758,7 @@ $A say "Der Knopf Senden fehlt, MODE=$(grep -c '"mode": "talk"' /tmp/t.json)."
 $A chat > /tmp/c1.json
 $A say "Zweite Nachricht: $(grep -o 'Und jetzt' /tmp/c1.json | head -1)"
 $A chat > /tmp/c2.json; echo "ENDE=$(grep -c ended /tmp/c2.json)"`;
-        // Der Hinweis auf Token ist wieder an: Abbrechen laesst Claude aus, „Nicht mehr fragen“ startet ihn und merkt sich das.
+        // Der Hinweis auf Token ist wieder an: „Ohne Claude weiter“ laesst Claude aus, „Nicht mehr fragen“ startet ihn und merkt sich das.
         const prefsFile = join(process.env.CAW_AI_HOME, 'prefs.json');
         writeFileSync(prefsFile, JSON.stringify({ ...JSON.parse(readFileSync(prefsFile, 'utf8')), tokenNotice: 'on' }));
         let gate = '';
@@ -764,7 +770,7 @@ $A chat > /tmp/c2.json; echo "ENDE=$(grep -c ended /tmp/c2.json)"`;
             await page.locator('.message', { hasText: 'das kostet Token' }).first().waitFor({ timeout: 30000 });
             gate = (await page.locator('#choices button').allInnerTexts()).join('|');
             await shoot(page, 'token-hinweis');
-            await decide(page, 'Abbrechen');
+            await decide(page, 'Ohne Claude weiter');
             await stateOf(page, 'discussing');
             await page.locator('#input').fill('Warum?');
             await page.keyboard.press('Enter');
@@ -781,7 +787,7 @@ $A chat > /tmp/c2.json; echo "ENDE=$(grep -c ended /tmp/c2.json)"`;
         const logged = `{\n${talk}\n} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-gespraech.log"`;
         const code = await run(fake, [ID, ...short], { interactive: true, onChatOpen: h.onChatOpen, talkCommand: ['bash', '-c', logged] });
         verify('Ein Fenster, Exit 1', await h.done() === 1 && code === 1, String(code));
-        verify('Token-Hinweis: Weiter, Nicht mehr fragen, Abbrechen; danach gemerkt', gate === 'Weiter|Nicht mehr fragen|Abbrechen' && JSON.parse(readFileSync(prefsFile, 'utf8')).tokenNotice === 'off', gate);
+        verify('Token-Hinweis: Weiter, Nicht mehr fragen, Ohne Claude weiter; danach gemerkt', gate === 'Weiter|Nicht mehr fragen|Ohne Claude weiter' && JSON.parse(readFileSync(prefsFile, 'utf8')).tokenNotice === 'off', gate);
         const log = join(newestRun().dir, 'agent/claude-gespraech.log');
         const text = existsSync(log) ? readFileSync(log, 'utf8') : '';
         verify('Gespraechslog: lesend, Ende gemeldet', /KLICK-ABGELEHNT=1/.test(text) && /ENDE=1/.test(text) && /FRAGE=1/.test(text), text.slice(-400));
@@ -1043,8 +1049,8 @@ ${finishOf(['S1'])}`;
             await page.waitForTimeout(400);
             await page.locator('#toggle').click();
         }, approve, async (page) => {
-            await page.locator('.message.question', { hasText: 'harte Fehler' }).waitFor({ timeout: 90000 });
-            verify('Entscheidung nennt den Fehler', /ohne Stack.*Object/.test(await page.locator('.message.question').last().textContent()));
+            await page.locator('.message.decision', { hasText: 'harte Fehler' }).waitFor({ timeout: 90000 });
+            verify('Entscheidung nennt den Fehler', /ohne Stack.*Object/.test(await page.locator('.message.decision').last().textContent()));
             await decide(page, 'Testplan übernehmen');
         });
         const code = await record(fake, [ID, ...opts, '--role', 'kunde', '--app', 'bestellung'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
@@ -1156,7 +1162,7 @@ ${finishOf(['S2'])}`;
             const bench = chat.page();
             await stateOf(chat, 'developing');
             const labels = await chat.locator('#choices button').allTextContents();
-            verify('Knoepfe zum Entwickeln', ['Zustand neu herstellen', 'Beenden'].every((label) => labels.some((text) => text.includes(label))) && labels.length === 2, JSON.stringify(labels));
+            verify('Knoepfe zum Entwickeln', ['Zustand neu herstellen', 'Lauf beenden'].every((label) => labels.some((text) => text.includes(label))) && labels.length === 2, JSON.stringify(labels));
             verify('Fadenkreuz im Chat', await chat.locator('#pick').isVisible() && await chat.locator('#pick').isEnabled());
             verify('Kopfzeile: Aktualisieren, Animationen an', (await bench.locator('#reload').textContent()).includes('Aktualisieren') && !(await bench.locator('#still').isChecked()));
             await bench.waitForTimeout(1200);
@@ -1242,6 +1248,51 @@ ${finishOf(['S2'])}`;
         verify('Zweiter Lauf Exit 0', second === 0, String(second));
         verify('Zwei Fenster', await h.done() === 2);
         rmSync(selection, { force: true });
+    });
+
+    await scenario('4 Overlay dev: Sencha-Watch ueber dem Portal, nur mit --overlay, nie still der ausgelieferte Stand', async () => {
+        // Den Test nimmt A auf: allein mit `node schritte-e2e.mjs A4`.
+        restore();
+        const withOverlay = (extra) => {
+            const config = JSON.parse(readFileSync(mainConfig, 'utf8'));
+            const before = JSON.stringify(config.apps.bestellung.overlay);
+            config.apps.bestellung.overlay = { ...config.apps.bestellung.overlay, ...extra };
+            writeFileSync(mainConfig, JSON.stringify(config, null, 4));
+            return () => {
+                const now = JSON.parse(readFileSync(mainConfig, 'utf8'));
+                now.apps.bestellung.overlay = JSON.parse(before);
+                writeFileSync(mainConfig, JSON.stringify(now, null, 4));
+            };
+        };
+        const overlayLine = () => (newestRun().report.match(/Overlay: [^\n]*/) ?? [''])[0];
+        // Ohne Option: ausgeliefert, auch wenn eine Overlay-Config da ist.
+        verify('Ohne --overlay: Exit 0', await run(fake, [ID, ...short]) === 0);
+        verify('Ohne --overlay: keine Overlay-Zeile im Bericht', overlayLine() === '', overlayLine());
+        // Kein Watch und kein devCommand: Exit 2 mit dem Befehl, nie still der Server.
+        verify('Ohne Watch: Exit 2', await run(fake, [ID, ...short, '--overlay', 'dev']) === 2);
+        const missing = JSON.stringify(newestRun().result);
+        verify('Ohne Watch: Ergebnis nennt sencha app watch', /sencha app watch/.test(missing), missing.slice(0, 300));
+        // Mit devCommand startet caw den Watch selbst; ein Stellvertreter, denn bootstrap.json liegt schon bereit.
+        const marker = join(fake, '.caw/watch-stellvertreter.txt');
+        rmSync(marker, { force: true });
+        const undo = withOverlay({ devCommand: `node -e "require('fs').writeFileSync('.caw/watch-stellvertreter.txt', String(process.pid)); setInterval(() => {}, 1000)"` });
+        try {
+            const code = await run(fake, [ID, ...short, '--overlay', 'dev']);
+            verify('Mit devCommand: Exit 0', code === 0, String(code));
+            const line = overlayLine();
+            const local = Number((line.match(/(\d+) Datei\(en\) lokal/) ?? [0, 0])[1]);
+            verify('Bericht: Sencha-Watch, App-Statics und Paket lokal', /Sencha-Watch/.test(line) && local >= 2, line);
+            verify('Watch wurde gestartet', existsSync(marker));
+            // Danach beendet: Der Prozess des Stellvertreters lebt nicht mehr.
+            const pid = existsSync(marker) ? Number(readFileSync(marker, 'utf8')) : 0;
+            const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+            const until = Date.now() + 10000;
+            while (pid > 0 && alive() && Date.now() < until) await new Promise((ok) => { setTimeout(ok, 200); });
+            verify('Watch nach dem Lauf beendet', pid > 0 && !alive(), String(pid));
+        } finally {
+            undo();
+            rmSync(marker, { force: true });
+        }
     });
 } catch (error) {
     verify('Skript', false, error.stack);
