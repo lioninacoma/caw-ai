@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { localFileFor } from '../src/host/devlink-core.mjs';
+import { prepareOverlay } from '../src/host/overlay.mjs';
 import { isProjectCopy, isProjectCopyFile } from '../src/host/project-files.mjs';
 
 const project = (t, files, { git = false } = {}) => {
@@ -46,9 +46,9 @@ test('isProjectCopy: Ohne Git zaehlen node_modules, Punktordner und der Build-Or
     assert.equal(isProjectCopyFile(dir, join(dir, 'dist/main.js'), { skip }), false);
 });
 
-test('localFileFor: env.js aus public/ kommt vom Server, der kompilierte Einstieg aus dem Build', (t) => {
+test('Overlay: env.js aus public/ kommt vom Server, der kompilierte Einstieg aus dem Build', async (t) => {
     const dir = project(t, { 'public/env.js': "window.__ENV__='local'", 'dist/env.js': "window.__ENV__='local'", 'dist/index.html': '<script type="module" src="/assets/index-NEW11111.js"></script>', 'dist/assets/index-NEW11111.js': 'export{}' });
-    const config = { projects: [{ active: true, redirects: [], constants: [], statics: [], builds: [{ active: true, localDir: join(dir, 'dist'), projectDir: dir, urlPattern: '^https://app\\.example/([^?#]*)' }] }] };
-    assert.equal(localFileFor(config, 'https://app.example/env.js', 'script'), null);
-    assert.equal(localFileFor(config, 'https://app.example/assets/index-OLD99999.js', 'script').file, join(dir, 'dist', 'assets', 'index-NEW11111.js'));
+    const overlay = await prepareOverlay({ root: dir, config: { apps: { web: { dir: '.' } } }, checked: { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [] } } } });
+    assert.equal(await overlay.resolve('https://app.example/env.js', 'script'), null);
+    assert.equal((await overlay.resolve('https://app.example/assets/index-OLD99999.js', 'script')).file, join(dir, 'dist', 'assets', 'index-NEW11111.js'));
 });

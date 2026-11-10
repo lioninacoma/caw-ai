@@ -1,0 +1,5 @@
+{
+    // Wie in echten Apps: Sencha Cmd baut nach output.js.path.
+    "name": "bestellung",
+    "output": { "js": { "path": "bestellung.js" } }
+}

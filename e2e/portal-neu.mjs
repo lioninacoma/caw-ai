@@ -17,7 +17,7 @@ const appPage = `<!doctype html><title>Fake-Portal</title>
  data:{StoreManager:{lookup(){return null},each(){}},schema:{Schema:{}}},Ajax:{isLoading(){return false}},
  getVersion(){return{version:'6.5.3'}},apply(a,b){return Object.assign(a,b)},ns(){return{}},Loader:{setPath(){}}};</script>
 <script src="${repo('Fx/Static.js')}"></script>
-<script src="${repo('Fx/Model.js')}"></script>
+<script src="${repo('Fx/fx-model.js')}"></script>
 <body class="signed-in"><h1>Fake-Portal</h1>
 <button id=weiter onclick="document.getElementById('ziel').textContent='Ziel erreicht'">Weiter</button>
 <button id=kaputt onclick="console.error('absichtlicher Fehler')">Kaputt</button>

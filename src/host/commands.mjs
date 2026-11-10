@@ -13,7 +13,6 @@ import { closest } from '../shared/suggest.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { selectDocker } from './docker.mjs';
 import { frameworkOf } from './framework/index.mjs';
-import { processRunning } from './processes.mjs';
 import { DEFAULT_MAX_STEPS } from './step-budget.mjs';
 import { CLAUDE_TIMEOUT_MIN, optionValue, parseRunArgs, toWslPath } from './linux.mjs';
 import { EXPLORE_FILE, explore } from './explore.mjs';
@@ -371,15 +370,19 @@ export const validate = (root) => {
             for (const target of spec.targets) {
                 try {
                     const checked = checkTest(spec, target, config);
-                    // Wo das Overlay ginge, steht es dabei: Ohne --overlay laeuft trotzdem der ausgelieferte Stand.
-                    let overlay = null;
-                    try {
-                        overlay = describeCode(config, spec, checkTest(spec, target, config, { overlay: true }));
-                    } catch {
-                        overlay = null;
-                    }
+                    // Wo das Overlay ginge, steht es dabei: Ohne --overlay laeuft trotzdem der ausgelieferte Stand. Stehen Build und
+                    // Dev-Server an der App, verlangt ein blosses --overlay die Wahl; dann stehen beide da, mit ihrem Wert.
+                    const overlayWith = (flag) => {
+                        try {
+                            return describeCode(config, spec, checkTest(spec, target, config, { overlay: flag }));
+                        } catch {
+                            return null;
+                        }
+                    };
+                    const plain = overlayWith(true);
+                    const overlay = plain ?? (['build', 'dev'].map((flag) => overlayWith(flag)).filter((text) => text !== null).join(' | ') || null);
                     const code = describeCode(config, spec, checked);
-                    codeLines.push(t(overlay === null ? 'cli.validateCode' : 'cli.validateCodeOverlay', { id: spec.id, target, code, overlay }));
+                    codeLines.push(t(overlay === null ? 'cli.validateCode' : plain === null ? 'cli.validateCodeOverlayChoose' : 'cli.validateCodeOverlay', { id: spec.id, target, code, overlay }));
                 } catch (error) {
                     problems.push(`${file} (${target}): ${error.message}`);
                 }
@@ -456,18 +459,6 @@ const prepareSandbox = async (root, docker, config) => {
     writeFileSync(emptyFile, '');
     const containerRoot = toWslPath(root);
     return { docker, image, hostRoot: docker.hostPath(root), containerRoot, masks: maskArgs(root, containerRoot, docker.hostPath(emptyFile)) };
-};
-
-/** Abweisen, bevor irgendetwas Teures startet. */
-/**
- * Das Overlay braucht den Watch des Frameworks, sofern der Adapter einen kennt (Sencha). Laeuft er nicht, endet der Lauf hier mit dem
- * Befehl zum Starten, statt still einen veralteten Stand zu testen. Ob er laeuft, laesst sich nicht immer sehen (null): Dann zaehlt er.
- */
-export const requireRunningWatch = (config, checked, running = processRunning) => {
-    if (checked.source !== 'overlay') return checked;
-    const { watch } = frameworkOf(config);
-    if (watch === undefined || running(watch.command) !== false) return checked;
-    throw new CawError('watch-missing', t('cli.noWatch', { label: watch.label, start: watch.start }));
 };
 
 /** Gibt es nur eine Rolle bzw. App, braucht der neue Test kein Flag dafuer. */
@@ -571,7 +562,7 @@ const loadChecked = (root, id, given, command, { overlay } = {}) => {
     if (!existsSync(testPath(root, id))) throw testMissing(root, config, id, given);
     const spec = withDefaults(loadTest(root, id), config);
     const target = chooseTarget(config, spec, { target: given, command });
-    return { config, spec, target, checked: requireRunningWatch(config, checkTest(spec, target, config, { overlay })) };
+    return { config, spec, target, checked: checkTest(spec, target, config, { overlay }) };
 };
 
 /**
@@ -1036,7 +1027,7 @@ export const record = async (root, args, { containerCommand, adviseCommand, talk
     const target = chooseTarget(config, known, { target: given, command: 'record' });
     const spec = known ?? draftTest(root, config, { id: test, target, role, app, also, readOnly });
     if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
-    const checked = requireRunningWatch(config, checkTest(spec, target, config, { overlay }));
+    const checked = checkTest(spec, target, config, { overlay });
     requireAgent(config, checked, target, t('cli.verbRecord'));
     requireHuman('record', interactive);
 
@@ -1076,7 +1067,7 @@ export const open = async (root, args, deps = {}) => {
     const target = chooseTarget(config, null, { target: options.target, command: 'open' });
     // Der Lauf heisst wie die App: "Öffnen: shop auf dev".
     const spec = draftTest(root, config, { id: options.app ?? onlyKey(config.apps) ?? OPEN_ID, target, role: options.role, app: options.app, also: [], readOnly: true });
-    const checked = requireRunningWatch(config, checkTest(spec, target, config, { overlay: options.overlay }));
+    const checked = checkTest(spec, target, config, { overlay: options.overlay });
     requireHuman('open', deps.interactive);
     const run = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
     return (await runOne(root, run, deps, { config, spec, target, checked })).code;

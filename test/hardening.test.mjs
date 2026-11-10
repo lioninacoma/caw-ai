@@ -6,13 +6,12 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { createAgentHandler } from '../src/host/agent-commands.mjs';
-import { checkConstants } from '../src/host/app-files.mjs';
 import { hideSecrets } from '../src/host/demonstrate.mjs';
-import { localFileFor } from '../src/host/devlink-core.mjs';
 import { diagnose } from '../src/host/diagnose.mjs';
 import { isEffectCause } from '../src/host/effects.mjs';
 import { parseEnvFile, parseRunArgs } from '../src/host/linux.mjs';
 import { buildCheck, moduleAlias, scriptKind, servesBuild, withoutIntegrity } from '../src/host/local-build.mjs';
+import { prepareOverlay } from '../src/host/overlay.mjs';
 import { swapToken } from '../src/host/replay.mjs';
 import { isCaughtScriptError } from '../src/shared/report.mjs';
 
@@ -115,24 +114,29 @@ test('Build: Ein lazy Chunk, den nur der Einstieg nennt, bleibt er selbst, auch 
     assert.equal(resolveLocalBuild(dir, 'main-OLD33333.js').alias, 'main-NEW11111.js', 'ein alter Einstieg weicht dem aktuellen');
 });
 
-test('constants: fehlt eine Datei des Watch, sagt der Lauf welche', (t) => {
-    const dir = folder(t, { 'gen/const.js': '' });
-    assert.doesNotThrow(() => checkConstants(dir, [{ name: 'Const.js', watchPath: 'gen/const.js' }]));
-    assert.throws(() => checkConstants(dir, [{ name: 'X.js', watchPath: 'gen/x.js' }]), (error) => error.code === 'watch-missing' && /gen[\\/]x\.js/.test(error.message));
+test('overlay.statics: fehlt eine Datei, sagt der Lauf welche, vor dem Browser', async (t) => {
+    const root = folder(t, { 'gen/const.js': '' });
+    const config = { apps: { web: { dir: '.' } } };
+    const checked = (path) => ({ url: 'https://app.example', apps: { web: { kind: 'files', statics: [{ name: 'Const.js', path }] } } });
+    await prepareOverlay({ root, config, checked: checked('gen/const.js') });
+    await assert.rejects(prepareOverlay({ root, config, checked: checked('gen/x.js') }), (error) => error.code === 'overlay-not-ready' && /gen[\\/]x\.js/.test(error.message));
 });
 
-test('Build-Ordner: die genannten Einträge gehen vor, dann der Build bis auf den Hash', (t) => {
-    const dir = folder(t, { 'assets/index-NEW11111.js': 'x', 'assets/style-NEW11111.css': 'y' });
-    const config = {
-        activePortal: 'p', assetUrlPattern: '^https://app\\.example/([^?#]+)', authMarker: null,
-        portals: [{ uuid: 'p', name: 'test', url: 'https://app.example' }],
-        projects: [{ uuid: 'a', name: 'web', active: true, redirects: [], constants: [], statics: [{ uuid: 's', name: 'assets/index-OLD00000.js', localPath: '/fest/index.js', active: true }], builds: [{ uuid: 'b', localDir: dir, active: true }] }],
-    };
-    assert.equal(localFileFor(config, 'https://app.example/assets/index-OLD00000.js', 'script').file, '/fest/index.js');
-    assert.equal(localFileFor(config, 'https://app.example/assets/style-OLD00000.css', 'stylesheet').file, join(dir, 'assets/style-NEW11111.css'));
-    assert.equal(localFileFor(config, 'https://app.example/', 'document'), null);
-    assert.deepEqual(localFileFor(config, 'https://app.example/assets/style-OLD00000.css', 'fetch'), localFileFor(config, 'https://app.example/assets/style-OLD00000.css', 'stylesheet'));
-    assert.equal(localFileFor(config, 'https://app.example/assets/index-OLD00000.json', 'xhr'), null);
+test('Overlay: overlay.statics geht vor, dann der Build bis auf den Hash; Seiten und Daten nie', async (t) => {
+    const root = folder(t, { 'fest/index.js': 'fest' });
+    for (const [name, text] of [['dist/assets/index-NEW11111.js', 'x'], ['dist/assets/style-NEW11111.css', 'y']]) {
+        mkdirSync(join(root, name, '..'), { recursive: true });
+        writeFileSync(join(root, name), text);
+    }
+    const config = { apps: { web: { dir: '.' } } };
+    const checked = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [{ name: 'assets/index-OLD00000.js', path: 'fest/index.js' }] } } };
+    const overlay = await prepareOverlay({ root, config, checked });
+    assert.equal((await overlay.resolve('https://app.example/assets/index-OLD00000.js', 'script')).file, join(root, 'fest/index.js'));
+    assert.equal((await overlay.resolve('https://app.example/assets/style-OLD00000.css', 'stylesheet')).file, join(root, 'dist/assets/style-NEW11111.css'));
+    assert.equal(await overlay.resolve('https://app.example/', 'document'), null);
+    assert.equal((await overlay.resolve('https://app.example/assets/style-OLD00000.css', 'fetch')).file, join(root, 'dist/assets/style-NEW11111.css'));
+    assert.equal(await overlay.resolve('https://app.example/assets/index-OLD00000.json', 'xhr'), null);
+    assert.equal(overlay.fileFor('https://app.example/assets/style-OLD00000.css'), join(root, 'dist/assets/style-NEW11111.css'));
 });
 
 test('Fehler im Code der Anwendung, den sie selbst fängt und meldet: ein Request-Fehler zählt nicht dazu', () => {

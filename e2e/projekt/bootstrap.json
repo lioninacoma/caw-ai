@@ -1,1 +1,1 @@
-{"name":"App","loadOrder":[{"path":"node_modules/Pkg/a.js"}],"packages":{"Pkg":{"files":[0]}}}
+{"name":"bestellung","loadOrder":[{"path":"node_modules/fx-model/a.js"}],"packages":{"fx-model":{"files":[0]}}}

@@ -51,9 +51,9 @@ Auf dem Host (im Projektordner):`,
                                          darf{here}, steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort
                                          mit Claude
       [--until <S4>]                     Nach S4 anhalten, das Fenster bleibt offen (schließt --handover ein)
-      [--overlay [build|dev]]            Lokalen Code über die ausgelieferte Umgebung legen: lokaler Build oder Dev-Server
-                                         (Sencha: der Watch); ohne Wert die eine konfigurierte Quelle. Nur auf Umgebungen mit
-                                         overlay. Ohne die Option läuft immer der ausgelieferte Stand
+      [--overlay [build|dev|<url>]]      Lokalen Code über die ausgelieferte Umgebung legen: lokaler Build oder Dev-Server
+                                         (Sencha: der Watch) oder der Dev-Server unter <url>; ohne Wert die eine konfigurierte
+                                         Quelle. Nur auf Umgebungen mit overlay. Ohne die Option läuft immer der ausgelieferte Stand
       [--handover]                       Nach dem Lauf das Chrome-Fenster offen lassen und dir übergeben
       [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token; nur auf
                                          Umgebungen, auf denen Claude arbeiten darf
@@ -77,17 +77,17 @@ Auf dem Host (im Projektordner):`,
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch, wird er schreibend
       [--timeout <minuten>]              Zeitlimit für Claude, Standard 60
       [--agent local|docker|session]     wie bei run
-      [--overlay [build|dev]]            wie bei run
+      [--overlay [build|dev|<url>]]      wie bei run
       [--max-steps <n>]                  Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
       [--step-timeout <sekunden>]        Zeitlimit je Schritt im Prüfdurchlauf, Standard 30`,
     'cli.help.fix': `  fix <test> <S4> [--target <umgebung>]  Genau diesen Schritt ändern, immer mit Chat; nur auf Umgebungen, auf denen Claude
                                          arbeiten darf{here}
       [--timeout <minuten>] [--max-steps <n>] [--step-timeout <sekunden>] [--agent local|docker|session]
-      [--overlay [build|dev]]`,
+      [--overlay [build|dev|<url>]]`,
     'cli.help.open': `  open [--target <umgebung>]             Die Anwendung angemeldet öffnen, mit Werkbank und Chat, ohne Test: navigieren,
                                          ausprobieren, mit Claude entwickeln. Lernt nichts, schreibt keine Testdatei
       [--role <rolle>] [--app <app>]     Nicht nötig, wenn die Config nur eine hat
-      [--overlay [build|dev]]            wie bei run
+      [--overlay [build|dev|<url>]]      wie bei run
       [--agent local|docker|session] [--timeout <minuten>] [--max-steps <n>]`,
     'cli.help.here': ' (hier: {names})',
     'cli.help.footer': `<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Ohne --target nimmt caw-ai
@@ -186,6 +186,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.validateOk': '{config} und {count} Test(s) sind gültig.',
     'cli.validateCode': '{id} ({target}): {code}',
     'cli.validateCodeOverlay': '{id} ({target}): {code}; mit --overlay: {overlay}',
+    'cli.validateCodeOverlayChoose': '{id} ({target}): {code}; mit --overlay build bzw. dev: {overlay}',
     'cli.validateTodo': '{key} ist noch TODO: {what}',
     'cli.validateTodo.path': 'trage den Pfad der Anmeldeseite ein, etwa "/login"',
     'cli.validateTodo.userSelector': 'trage den CSS-Selektor des Benutzerfelds ein',
@@ -356,12 +357,14 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.uiCode': 'Code: {code}',
     'cli.code.deployed': 'ausgelieferter Stand',
     'cli.code.devServer': 'Dev-Server {host}, dein aktueller Stand',
-    'cli.code.deployedWhy': 'ausgelieferter Stand ({reason})',
-    'cli.code.local': 'Overlay, lokaler Build ({details})',
-    'cli.code.localFrom': 'Overlay, lokaler Build aus {details}',
-    'cli.code.built': '{dir}, gebaut {time}, {ago}',
-    'cli.code.entries': '{kinds} in {dir}',
-    'cli.code.stale': 'Der lokale Build ({dir}) ist älter als deine letzte Änderung ({file}, {ago}). Läuft der Build-Watch?',
+    'cli.code.overlay': 'Overlay, {details}',
+    'cli.code.build': 'Build {dir}',
+    'cli.code.built': 'Build {dir}, gebaut {time}, {ago}',
+    'cli.code.dev': 'Dev-Server {url}',
+    'cli.code.watch': 'Sencha-Watch in {dir}',
+    'cli.code.files': '{count} feste Datei(en) aus overlay.statics',
+    'cli.code.withStatics': '{text}, dazu {count} aus overlay.statics',
+    'cli.code.ofApp': '{text} (App {app})',
     'cli.code.agoNow': 'gerade eben',
     'cli.code.agoMinutes': 'vor {count} min',
     'cli.code.agoHours': 'vor {count} h',

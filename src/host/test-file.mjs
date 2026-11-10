@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
-import { allTargets, authOf, hasLocalCode, isLoopback, resolveTarget } from '../shared/config.mjs';
+import { allTargets, authOf, isLoopback, isServerUrl, resolveTarget } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -418,7 +418,7 @@ export const recordingHints = (root) => {
 /**
  * Darf dieser Test auf diesem Ziel laufen? Hier sitzt der Schreibschutz, deterministisch und vor jedem Browser. Dazu, welcher Code
  * laeuft: ohne --overlay immer der ausgelieferte.
- * @param overlay aus --overlay: true, 'build', 'dev' oder undefined
+ * @param overlay aus --overlay: true, 'build', 'dev', die Adresse eines Dev-Servers oder undefined
  */
 export const checkTest = (given, target, config, { overlay } = {}) => {
     const resolved = resolveTarget(config, target);
@@ -444,16 +444,55 @@ export const checkTest = (given, target, config, { overlay } = {}) => {
  * Welcher Code laeuft, an genau einer Stelle: der ausgelieferte, ausser jemand sagt --overlay. Nie still umgeschaltet, auch nicht
  * mit --until, in einer Testdatei oder weil ein Watch laeuft. Geht das Overlay nicht, ist das ein Aufruffehler mit dem Grund.
  * Ein Dev-Server auf dem eigenen Rechner (http auf localhost) liefert den lokalen Code selbst: Dort gibt es nichts zu ueberlagern.
- * @returns { source: 'deployed' } | { source: 'overlay', overlay: true | 'build' | 'dev' }
+ * @returns { source: 'deployed' } | { source: 'overlay', apps: { <app>: Quelle } }, Quelle siehe overlayChoice
  */
 const codeFor = (spec, resolved, config, overlay) => {
     if (overlay === undefined) return { source: 'deployed' };
     const { host, hostname, protocol } = new URL(resolved.url);
     if (protocol === 'http:' && isLoopback(hostname)) throw new CawError('usage', t('config.overlay.devServer', { environment: resolved.environment, host }));
     if (!resolved.overlay) throw new CawError('usage', t('config.overlay.environment', { environment: resolved.environment }));
-    const apps = [spec.app, ...(spec.also ?? [])];
-    if (!hasLocalCode(config, apps)) throw new CawError('usage', t('config.overlay.app', { app: apps.join(', '), key: `apps.${spec.app}.localBuild` }));
-    return { source: 'overlay', overlay };
+    const names = [spec.app, ...(spec.also ?? [])];
+    const url = isServerUrl(overlay) ? overlay : undefined;
+    if (url !== undefined && names.length > 1) throw new CawError('usage', t('config.overlay.urlApps', { apps: names.join(', ') }));
+    const apps = {};
+    for (const name of names) {
+        const choice = overlayChoice(config, name, url ?? overlay, { required: name === spec.app });
+        if (choice !== null) apps[name] = choice;
+    }
+    return { source: 'overlay', apps };
+};
+
+/**
+ * Die Quelle einer App fuer --overlay:
+ * - { kind: 'build', dir, command? }: Build-Ordner relativ zum Projekt
+ * - { kind: 'dev', url, command? }: Dev-Server
+ * - { kind: 'watch', command? }: Sencha-Watch (ExtJS), Quellen laut bootstrap.json im App-Ordner
+ * - { kind: 'files' }: nur overlay.statics
+ * Jede mit `statics`. Eine weitere App (also) ohne Quelle bleibt ausgeliefert (null); die App des Tests braucht eine.
+ */
+export const overlayChoice = (config, name, flag, { required = true } = {}) => {
+    const overlay = config.apps[name].overlay ?? {};
+    const statics = overlay.statics ?? [];
+    const command = (key) => (overlay[key] === undefined ? {} : { command: overlay[key] });
+    const url = isServerUrl(flag) ? flag : undefined;
+    if (config.framework === 'extjs') {
+        if (flag === 'build' || url !== undefined) throw new CawError('usage', t('config.overlay.extjsKind', { kind: url ?? flag }));
+        return { kind: 'watch', ...command('devCommand'), statics };
+    }
+    if (url !== undefined) return { kind: 'dev', url, ...command('devCommand'), statics };
+    const build = overlay.build === undefined ? null : { kind: 'build', dir: overlay.build, ...command('buildCommand'), statics };
+    const dev = overlay.dev === undefined ? null : { kind: 'dev', url: overlay.dev, ...command('devCommand'), statics };
+    if (flag === 'build' || flag === 'dev') {
+        const chosen = flag === 'build' ? build : dev;
+        if (chosen !== null) return chosen;
+        if (!required) return null;
+        const other = flag === 'build' ? 'dev' : 'build';
+        throw new CawError('usage', t('config.overlay.missing', { kind: flag, app: name, other: overlay[other] === undefined ? '' : t('config.overlay.missingOther', { other }) }));
+    }
+    if (build !== null && dev !== null) throw new CawError('usage', t('config.overlay.choose', { app: name, build: overlay.build, dev: overlay.dev }));
+    const only = build ?? dev ?? (statics.length > 0 ? { kind: 'files', statics } : null);
+    if (only === null && required) throw new CawError('usage', t('config.overlay.app', { app: name }));
+    return only;
 };
 
 /** Nur was den Schritt fachlich ausmacht. Aendert sich das von Hand, ist genau dieser Schritt veraltet. `retry` aendert den Weg nicht. */

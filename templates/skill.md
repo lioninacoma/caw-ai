@@ -62,7 +62,8 @@ du ergaenzt, was sich nur aus dem Code oder vom Menschen erfahren laesst:
    arbeitet Claude (`claude`), wo darf geschrieben werden (`writable`)? Welche Rollen, wie heissen die Variablen fuer die Zugangsdaten?
    Lokaler Code: Der Dev-Server auf dem eigenen Rechner ist einfach eine Umgebung (`local`), dort laeuft immer der eigene Stand. Nur wenn
    die App lokal nicht laeuft wie ausgeliefert (Portal, Shell, Backend nur auf Staging), gibt es das Overlay: `overlay: true` an der
-   Umgebung, `localBuild` (der Build-Ordner) an der App, und der Lauf braucht ausdruecklich `--overlay`. Ohne die Option laeuft immer
+   Umgebung, an der App `overlay.build` (Build-Ordner) oder `overlay.dev` (Dev-Server), und der Lauf braucht ausdruecklich `--overlay`;
+   ExtJS braucht nur `overlay: true`, `assetUrlPattern` und den Sencha-Watch. Ohne die Option laeuft immer
    der ausgelieferte Stand; `validate` nennt je Test und Ziel, wo `--overlay` ginge.
    Uebernimm Konsolenrauschen nur, wenn der Mensch es als bekannt bestaetigt. Nichts mit `confidence: likely` ohne Rueckfrage.
 5. **Schreiben:** Ergaenze die Config um das Geklaerte und ersetze jedes `TODO`. Zugangsdaten traegt nur der

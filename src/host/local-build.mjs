@@ -1,4 +1,4 @@
-// Lokaler Build-Ordner (`localBuild`): Dateien eines normalen, gehashten Builds (Vite, Angular CLI, webpack) statt der deployten.
+// Lokaler Build-Ordner (`overlay.build`): Dateien eines normalen, gehashten Builds (Vite, Angular CLI, webpack) statt der deployten.
 // Der Browser fordert nur die Einstiegsdateien unter deployten Namen an, etwa `assets/index-OLD.js` aus dem deployten index.html.
 // Sie werden auf die lokale Datei mit gleichem Namen bis auf den Hash abgebildet. Alles, was der lokale Einstieg nachlaedt, traegt
 // lokale Namen und liegt genau so im Ordner.

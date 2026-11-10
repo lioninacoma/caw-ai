@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { ago, describeCode, newestFile, staleBuildWarnings } from '../src/host/code-source.mjs';
+import { ago, describeCode, newestFile } from '../src/host/code-source.mjs';
+import { staleBuild } from '../src/host/overlay.mjs';
 import { createUi } from '../src/shared/ui.mjs';
 
 const at = (path, ms) => utimesSync(path, ms / 1000, ms / 1000);
@@ -28,28 +29,31 @@ const project = (t, { built, changed }) => {
     return root;
 };
 
-const CONFIG = { apps: { web: { dir: '.', startUrl: '/', localBuild: 'dist/local' } } };
+const CONFIG = { apps: { web: { dir: '.', startUrl: '/', overlay: { build: 'dist/local' } } } };
 const SPEC = { id: 'smoke', app: 'web', also: [] };
+const BUILD = { source: 'overlay', apps: { web: { kind: 'build', dir: 'dist/local', statics: [] } } };
 
-test('Code-Zeile: Overlay mit Zeitpunkt des Builds, sonst der ausgelieferte Stand; validate ohne Zeit', (t) => {
+test('Code-Zeile: Overlay nennt die Quelle, beim Build mit Zeitpunkt; sonst der ausgelieferte Stand; validate ohne Zeit', (t) => {
     const root = project(t, { built: NOW - 3 * MIN, changed: NOW - 10 * MIN });
-    const local = describeCode(CONFIG, SPEC, { source: 'overlay' }, { root, now: NOW });
-    assert.match(local, /^Overlay, lokaler Build \(dist\/local, gebaut \d\d:\d\d, vor 3 min\)$/);
-    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay' }), 'Overlay, lokaler Build aus dist/local');
+    assert.match(describeCode(CONFIG, SPEC, BUILD, { root, now: NOW }), /^Overlay, Build dist\/local, gebaut \d\d:\d\d, vor 3 min$/);
+    assert.equal(describeCode(CONFIG, SPEC, BUILD), 'Overlay, Build dist/local');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', apps: { web: { kind: 'dev', url: 'http://localhost:5174', statics: [] } } }), 'Overlay, Dev-Server http://localhost:5174');
+    const statics = [{ name: 'a.js', path: 'a.js' }];
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', apps: { web: { kind: 'watch', statics } } }), 'Overlay, Sencha-Watch in ., dazu 1 aus overlay.statics');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', apps: { web: { kind: 'files', statics } } }), 'Overlay, 1 feste Datei(en) aus overlay.statics');
+    const two = { apps: { web: { dir: 'web' }, admin: { dir: 'admin' } } };
+    assert.equal(describeCode(two, SPEC, { source: 'overlay', apps: { web: { kind: 'build', dir: 'web/dist' }, admin: { kind: 'dev', url: 'http://localhost:5200' } } }),
+        'Overlay, Build web/dist (App web); Dev-Server http://localhost:5200 (App admin)');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed' }), 'ausgelieferter Stand');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'http://localhost:5173' }), 'Dev-Server localhost:5173, dein aktueller Stand');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'https://shop.localhost:8443' }), 'ausgelieferter Stand', 'https auf *.localhost ist ein Build');
-    const statics = { assetUrlPattern: '/s/(.+)', apps: { web: { dir: 'apps/web', statics: [{ name: 'a.js', path: 'a.js' }] } } };
-    assert.equal(describeCode(statics, SPEC, { source: 'overlay' }), 'Overlay, lokaler Build aus statics in apps/web');
 });
 
-test('Veralteter Build: Warnung, wenn eine Quelle jünger ist als der Build, sonst nicht', (t) => {
+test('Veralteter Build: eine Quelle juenger als der Build, ohne Abhaengigkeiten, Caches, Testplaene und Doku', (t) => {
     const stale = project(t, { built: NOW - 30 * MIN, changed: NOW - 12 * MIN });
-    assert.deepEqual(staleBuildWarnings(stale, CONFIG, SPEC, { source: 'overlay' }, NOW),
-        ['Der lokale Build (dist/local) ist älter als deine letzte Änderung (src/x.tsx, vor 12 min). Läuft der Build-Watch?']);
-    assert.deepEqual(staleBuildWarnings(stale, CONFIG, SPEC, { source: 'deployed' }, NOW), [], 'ohne lokalen Code keine Warnung');
+    assert.deepEqual(staleBuild(join(stale, 'dist/local'), stale, stale, NOW), { file: 'src/x.tsx', ago: 'vor 12 min' });
     const fresh = project(t, { built: NOW - 3 * MIN, changed: NOW - 12 * MIN });
-    assert.deepEqual(staleBuildWarnings(fresh, CONFIG, SPEC, { source: 'overlay' }, NOW), []);
+    assert.equal(staleBuild(join(fresh, 'dist/local'), fresh, fresh, NOW), null);
 });
 
 test('newestFile: begrenzt den Weg, überspringt Ordner mit Punkt und Builds', (t) => {
@@ -70,6 +74,6 @@ test('Kopf eines Laufs: Die Code-Zeile steht auch ohne Terminal da', () => {
     createUi({ fancy: false, out: (text) => lines.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'staging', source: 'deployed', code: 'ausgelieferter Stand' });
     assert.deepEqual(lines, ['[caw-ai] Testlauf: smoke auf staging', '[caw-ai] Code: ausgelieferter Stand']);
     const fancy = [];
-    createUi({ fancy: true, out: (text) => fancy.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'local', source: 'overlay', code: 'Overlay, lokaler Build (dist)' });
-    assert.match(fancy.join('\n'), /Code: Overlay, lokaler Build \(dist\)/);
+    createUi({ fancy: true, out: (text) => fancy.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'local', source: 'overlay', code: 'Overlay, Build dist' });
+    assert.match(fancy.join('\n'), /Code: Overlay, Build dist/);
 });

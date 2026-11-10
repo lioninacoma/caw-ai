@@ -9,8 +9,9 @@
 // - `floats`: Reihenfolge schwebender Fenster mitschreiben; `stackSkip`: Dateien, die Fehler nur weiterreichen
 // - `messageSelectors`: Meldungen der Seite, solange die Config keine nennt
 // - `hints`: optional, Hinweise fuer Claude, wo im Quellcode zu suchen ist
-// - `watch`: optional, { label, command }: Woran der Watch des Frameworks als Prozess zu erkennen ist. Laeuft keiner, spielt
-//   caw-ai keinen lokalen Code ein und testet den deployten Stand. Ohne `watch` gilt lokaler Code wie konfiguriert.
+// - `watch`: optional, { label, command, start }: der Watch des Frameworks als Quelle des Overlays (--overlay), woran er als Prozess
+//   zu erkennen ist und wie er startet
+// - `overlay`: optional, mit `watch`: { createWatchSource(appDir), checkAppFiles(appDir, hint) }; was der Watch ersetzt
 // - `hydrates`: optional, true: Vor dem Ausfuellen der Anmeldung warten, bis `probe` appReady meldet (SSR-Hydration)
 // - `name`, `label`: fuer Config und Meldungen
 

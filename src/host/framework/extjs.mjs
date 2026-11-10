@@ -2,6 +2,8 @@
 // nur fuer einen Seitenstand, und ExtJS-Buttons haben oft keinen zugaenglichen Namen. Stabil ist die Komponente: xtype plus Text oder
 // Beschriftung, dazu das Teil-Element darin. Bereit ist die Seite, wenn kein Ext.Ajax-Request und kein Store mehr laedt.
 
+import { checkAppFiles, createWatchSource } from './extjs-overlay.mjs';
+
 /**
  * Laeuft im Browser, darf also nichts von aussen benutzen. `describe` beschreibt ein Element, `find` sucht es
  * wieder. Treffer zaehlen nur, wenn sie wirklich klickbar sind: sichtbar und nicht ueberdeckt. Damit warten
@@ -184,6 +186,9 @@ export const extjs = {
     floats: true,
     // Dateien des Frameworks reichen Fehler meist nur weiter: Die Herkunft ist der erste Eintrag ausserhalb.
     stackSkip: /\/ext-[\w-]*\.js/,
-    // Lokaler Code braucht den Sencha-Watch: Er haelt bootstrap.json und die Pakete aktuell. Ohne ihn gilt der deployte Stand.
+    // Das Overlay braucht den Sencha-Watch: Er haelt bootstrap.json und die Pakete aktuell. Laeuft er nicht und nennt die Config
+    // keinen devCommand, endet der Lauf mit dem Befehl zum Starten.
     watch: { label: 'Sencha-Watch', command: /\bapp["']?\s+["']?watch\b/i, start: 'sencha app watch' },
+    // Was ersetzt wird, leitet der Adapter aus app.json, package.json und bootstrap.json her (extjs-overlay.mjs).
+    overlay: { createWatchSource, checkAppFiles },
 };

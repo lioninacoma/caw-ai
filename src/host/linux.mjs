@@ -58,6 +58,8 @@ const VALUE_EXAMPLES = {
 export const AGENT_CHOICES = ['local', 'docker', 'session'];
 /** Woher das Overlay kommt: lokaler Build oder Dev-Server (Sencha: der Watch). Ohne Wert die eine konfigurierte Quelle. */
 export const OVERLAY_CHOICES = ['build', 'dev'];
+/** Ein Wert von --overlay: build, dev oder die Adresse eines Dev-Servers. */
+const overlayValue = (value) => OVERLAY_CHOICES.includes(value) || /^https?:\/\/[^\s/]+/i.test(value ?? '');
 // Der Mensch sitzt am Chat, das dauert laenger als ein Lauf ohne ihn.
 export const CLAUDE_TIMEOUT_MIN = 60;
 const STEP_ID = /^S[1-9]\d*$/;
@@ -105,10 +107,11 @@ export const parseRunArgs = (command, args) => {
         }
         const [flag, inline] = arg.split(/=(.*)/s);
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
-        // --overlay darf ohne Wert stehen: --overlay, --overlay build, --overlay=dev. Ein Test, der build heisst, braucht --overlay=…
+        // --overlay darf ohne Wert stehen: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. Ein Test, der
+        // build heisst, braucht --overlay=…
         if (flag === '--overlay') {
-            const value = inline ?? (OVERLAY_CHOICES.includes(rest[0]) ? rest.shift() : undefined);
-            if (value !== undefined && !OVERLAY_CHOICES.includes(value)) throw new CawError('usage', t('session.args.overlayChoice', { choices: OVERLAY_CHOICES.join(', ') }));
+            const value = inline ?? (overlayValue(rest[0]) ? rest.shift() : undefined);
+            if (value !== undefined && !overlayValue(value)) throw new CawError('usage', t('session.args.overlayChoice', { choices: OVERLAY_CHOICES.join(', ') }));
             options.overlay = value ?? true;
             continue;
         }

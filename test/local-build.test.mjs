@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { contentTypeOf, hasBuild, moduleAlias, resolveLocalBuild, sameButHash } from '../src/host/local-build.mjs';
+import { prepareOverlay, routeOverlay } from '../src/host/overlay.mjs';
 
 const build = (t, files) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-build-'));
@@ -14,6 +15,22 @@ const build = (t, files) => {
         writeFileSync(join(dir, name), text);
     }
     return dir;
+};
+
+/** Ein Projekt mit Build unter dist, das Overlay darueber und die Antwort der Route wie im Browser. */
+const overlayOf = async (t, files, { command } = {}) => {
+    const root = build(t, Object.fromEntries(Object.entries(files).map(([name, text]) => [`dist/${name}`, text])));
+    const checked = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [], ...(command === undefined ? {} : { command }) } } };
+    const overlay = await prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked });
+    let handler;
+    await routeOverlay({ route: async (match, handle) => { handler = handle; }, routeWebSocket: async () => { throw new Error('ohne Dev-Server kein WebSocket'); } }, overlay);
+    const answer = async (url, type = 'script') => {
+        let result = null;
+        const request = { url: () => url, resourceType: () => type };
+        await handler({ request: () => request, fulfill: async (response) => { result = { fulfill: response }; }, fallback: async () => { result = 'fallback'; }, abort: async () => { result = 'abort'; } });
+        return result;
+    };
+    return { root, overlay, answer };
 };
 
 test('Hash-Vergleich: Vite, Angular und webpack, aber nicht Namen, die nur ähnlich sind', () => {
@@ -81,39 +98,44 @@ test('contentTypeOf und hasBuild', (t) => {
     assert.equal(hasBuild(join(tmpdir(), 'caw-gibt-es-nicht')), false);
 });
 
-test('checkLocalBuild: ohne Build sagt der Lauf, welcher Ordner fehlt', async (t) => {
-    const { checkLocalBuild } = await import('../src/host/app-files.mjs');
-    const root = build(t, { 'dist/assets/index-A1B2C3D4.js': 'x' });
-    checkLocalBuild(root, 'dist');
-    checkLocalBuild(root, undefined);
-    assert.throws(() => checkLocalBuild(root, 'local'), (error) => error.code === 'watch-missing' && /local/.test(error.message));
+test('Overlay build: ohne Build, zu weit oben oder veraltet endet der Lauf vor dem Browser mit dem Grund', async (t) => {
+    const root = build(t, { 'src/x.js': 'x', 'dist/app/browser/index.html': 'x', 'dist/app/browser/main-A1B2C3D4.js': 'x' });
+    const config = { apps: { web: { dir: '.' } } };
+    const checked = (dir, command) => ({ url: 'https://app.example', apps: { web: { kind: 'build', dir, statics: [], ...(command === undefined ? {} : { command }) } } });
+    await assert.rejects(prepareOverlay({ root, config, checked: checked('local') }), (error) => error.code === 'overlay-not-ready' && /Im Build-Ordner local liegt kein Build/.test(error.message));
+    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist') }), (error) => /Setze "overlay": \{ "build": "dist\/app\/browser" \}/.test(error.message));
+    await prepareOverlay({ root, config, checked: checked('dist/app/browser') });
+    const past = Date.now() / 1000 - 600;
+    utimesSync(join(root, 'dist/app/browser/main-A1B2C3D4.js'), past, past);
+    utimesSync(join(root, 'dist/app/browser/index.html'), past, past);
+    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist/app/browser') }), (error) => /ist älter als deine letzte Änderung \(src\/x\.js/.test(error.message) && /overlay\.buildCommand/.test(error.message));
 });
 
-test('devlink: Build-Ordner liefert Dateien mit Typ und als Bytes, Seiten nie', async (t) => {
-    const { createInterceptionHandler, parseConfig } = await import('../src/host/devlink-core.mjs');
-    const dir = build(t, { 'assets/index-NEW11111.js': 'neu', 'assets/index-NEW11111.css': 'body{}' });
-    const config = {
-        activePortal: 'p', assetUrlPattern: '^https://app\\.example/([^?#]+)', authMarker: null,
-        portals: [{ uuid: 'p', name: 'test', url: 'https://app.example' }],
-        projects: [{ uuid: 'a', name: 'web', active: true, redirects: [], constants: [], statics: [], builds: [{ uuid: 'b', localDir: dir, active: true }] }],
-    };
-    assert.equal(parseConfig(config).ok, true);
-    assert.deepEqual(parseConfig(config).issues, []);
-    const handle = createInterceptionHandler({ config, portalUrl: 'https://app.example', onFailure: 'fail' }, { log: () => {} });
-    const answer = async (url, type = 'script') => {
-        let result = null;
-        const route = { fulfill: async (response) => { result = { fulfill: response }; }, continue: async () => { result = 'continue'; }, abort: async () => { result = 'abort'; } };
-        await handle(route, url, type);
-        return result;
-    };
+test('Overlay build: Ist der Build alt und steht buildCommand in der Config, baut caw selbst und prueft danach', async (t) => {
+    const root = build(t, { 'src/x.js': 'x', 'dist/main.js': 'alt' });
+    const past = Date.now() / 1000 - 600;
+    utimesSync(join(root, 'dist/main.js'), past, past);
+    const lines = [];
+    const config = { apps: { web: { dir: '.' } } };
+    const command = `node -e "require('fs').writeFileSync('dist/main.js','neu')"`;
+    await prepareOverlay({ root, config, checked: { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [], command } } }, info: (text) => lines.push(text) });
+    assert.match(lines.join('\n'), /Baue mit node -e/);
+    const failing = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [], command: 'node -e "process.exit(3)"' } } };
+    utimesSync(join(root, 'dist/main.js'), past, past);
+    await assert.rejects(prepareOverlay({ root, config, checked: failing }), (error) => error.code === 'overlay-not-ready' && /ist gescheitert/.test(error.message));
+});
+
+test('Overlay build: Dateien mit Typ und als Bytes, nie gecacht; Seiten, fremde Hosts und Unbekanntes vom Server', async (t) => {
+    const { answer } = await overlayOf(t, { 'assets/index-NEW11111.js': 'neu', 'assets/index-NEW11111.css': 'body{}' });
     const js = await answer('https://app.example/assets/index-OLD00000.js?v=1');
     assert.equal(js.fulfill.contentType, 'application/javascript');
+    assert.equal(js.fulfill.headers['cache-control'], 'no-store');
     assert.ok(Buffer.isBuffer(js.fulfill.body));
     assert.equal(js.fulfill.body.toString(), 'neu');
     assert.equal((await answer('https://app.example/assets/index-OLD00000.css', 'stylesheet')).fulfill.contentType, 'text/css');
-    assert.equal(await answer('https://app.example/assets/other-ABCD1234.js'), 'continue');
-    assert.equal(await answer('https://app.example/assets/index-OLD00000.js', 'document'), 'continue');
-    assert.equal(await answer('https://other.example/assets/index-OLD00000.js'), 'continue');
+    assert.equal(await answer('https://app.example/assets/other-ABCD1234.js'), 'fallback');
+    assert.equal(await answer('https://app.example/assets/index-OLD00000.js', 'document'), 'fallback');
+    assert.equal(await answer('https://other.example/assets/index-OLD00000.js'), 'fallback');
 });
 
 test('moduleAlias: ein ES-Modul unter deploytem Namen verweist auf das lokale, damit es nur einmal läuft', async (t) => {
@@ -124,19 +146,8 @@ test('moduleAlias: ein ES-Modul unter deploytem Namen verweist auf das lokale, d
     assert.doesNotMatch(moduleAlias('index-NEW.js', 'import{a}from"./x.js";const l="Set as default";export{a as b};'), /default/, '„as default“ in einem String ist kein Export');
     assert.match(moduleAlias('index-NEW.js', 'export default 1;'), /export \{ default \}/);
 
-    const { createInterceptionHandler } = await import('../src/host/devlink-core.mjs');
-    const dir = build(t, { 'assets/index-NEW11111.js': 'import"./vendor-AAAA1111.js";export{x as default};' });
-    const config = {
-        activePortal: 'p', assetUrlPattern: '^https://app\\.example/([^?#]+)', authMarker: null,
-        portals: [{ uuid: 'p', name: 'test', url: 'https://app.example' }],
-        projects: [{ uuid: 'a', name: 'web', active: true, redirects: [], constants: [], statics: [], builds: [{ uuid: 'b', localDir: dir, active: true }] }],
-    };
-    const handle = createInterceptionHandler({ config, portalUrl: 'https://app.example', onFailure: 'fail' }, { log: () => {} });
-    const bodyOf = async (url) => {
-        let body;
-        await handle({ fulfill: async (response) => { body = String(response.body); } }, url, 'script');
-        return body;
-    };
+    const { answer } = await overlayOf(t, { 'assets/index-NEW11111.js': 'import"./vendor-AAAA1111.js";export{x as default};' });
+    const bodyOf = async (url) => String((await answer(url)).fulfill.body);
     assert.match(await bodyOf('https://app.example/assets/index-OLD00000.js'), /^import "\.\/index-NEW11111\.js";/);
     assert.match(await bodyOf('https://app.example/assets/index-NEW11111.js'), /^import"\.\/vendor/, 'unter eigenem Namen der Inhalt');
 });

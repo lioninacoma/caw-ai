@@ -334,7 +334,7 @@ test('validate: je Test und Ziel der Code, wo das Overlay ginge, TODO und alte N
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
         environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true, overlay: true } },
         auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
-        apps: { web: { dir: '.', startUrl: '/', localBuild: 'dist' } },
+        apps: { web: { dir: '.', startUrl: '/', overlay: { build: 'dist' } } },
         roles: { tester: { loginEnv: 'A', passwordEnv: 'B' } },
     }));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
@@ -349,10 +349,22 @@ test('validate: je Test und Ziel der Code, wo das Overlay ginge, TODO und alte N
     }
     const out = chunks.join('');
     assert.match(out, /lesen \(local\): Dev-Server localhost:5173, dein aktueller Stand\n/);
-    assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, lokaler Build aus dist\n/);
+    assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, Build dist\n/);
     assert.match(out, /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/);
     assert.match(out, /Umgebung local: agent heißt jetzt claude/);
     assert.match(out, /und 1 Test\(s\) sind gültig/);
+    // Build und Dev-Server an der App: Ein blosses --overlay verlangt die Wahl, validate nennt beide.
+    const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
+    config.apps.web.overlay.dev = 'http://localhost:5173';
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
+    const again = [];
+    const write2 = t.mock.method(process.stdout, 'write', (chunk) => { again.push(String(chunk)); return true; });
+    try {
+        assert.equal(validate(root), 0);
+    } finally {
+        write2.mock.restore();
+    }
+    assert.match(again.join(''), /lesen \(dev\): ausgelieferter Stand; mit --overlay build bzw\. dev: Overlay, Build dist[^|\n]* \| Overlay, Dev-Server http:\/\/localhost:5173/);
 });
 
 test('run und record: TODO in der Anmeldung bricht vor Chrome und Claude ab', async () => {

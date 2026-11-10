@@ -14,9 +14,9 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { renderReport } from '../shared/report.mjs';
-import { checkAppFiles, checkConstants, checkLocalBuild, checkStatics } from './app-files.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
-import { describeCode, staleBuildWarnings } from './code-source.mjs';
+import { describeCode } from './code-source.mjs';
+import { prepareOverlay } from './overlay.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems } from './test-file.mjs';
 import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep } from './test-plan.mjs';
@@ -142,41 +142,47 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     const credentials = readCredentials(root, config, spec.role, checked.target);
     if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
     const app = config.apps[spec.app];
-    const appDir = join(root, app.dir);
-    const also = checked.source === 'overlay' ? spec.also ?? [] : [];
-    // bootstrap.json braucht nur, wer Sencha-Pakete umleitet (`redirects`); einzelne Dateien (`statics`) kommen ohne aus.
-    if (checked.source === 'overlay') {
-        for (const name of [spec.app, ...also]) {
-            if ((config.apps[name].redirects ?? []).length > 0) checkAppFiles(join(root, config.apps[name].dir));
-            checkStatics(root, config.apps[name].statics);
-            checkConstants(join(root, config.apps[name].dir), config.apps[name].constants);
-            checkLocalBuild(root, config.apps[name].localBuild);
-        }
-    }
+    // Die Quelle des Overlays muss bereit sein, bevor Chrome startet: sonst testete der Lauf still etwas anderes. Was caw dafuer startet
+    // (Dev-Server, Watch), endet mit der Sitzung.
+    const overlay = checked.source === 'overlay' ? await prepareOverlay({ root, config, checked, info: (text) => ui.info(text) }) : null;
     // Erst hier, denn validate soll auch ohne Browser-Code gehen.
     const { openBrowserSession } = await import('./browser-session.mjs');
     ui.info(t('run.openingChrome'));
-    return openBrowserSession({
-        config,
-        resolved: checked,
-        credentials,
-        hosts: browserHosts(config, checked),
-        startUrl: app.startUrl,
-        appDir,
-        extraApps: also.map((name) => ({ dir: join(root, config.apps[name].dir), devlinkConfig: buildDevlinkConfig(config, checked, name, 'overlay', root) })),
-        devlinkConfig: buildDevlinkConfig(config, checked, spec.app, checked.source, root),
-        devlinkConfigPath: join(runDir, 'devlink-config.json'),
-        tracePath: join(runDir, 'trace.zip'),
-        floatsLogPath: join(runDir, 'floats.log'),
-        consoleIgnore: config.consoleIgnore ?? [],
-        foreignCode: config.foreignCode ?? [],
-        readyTimeoutMs: config.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS,
-        headless,
-        embed: !headless && embedsApp(interactive),
-        title: `caw-ai · ${spec.id}`,
-        role: spec.role,
-        overlay: checked.source === 'overlay',
-    });
+    let session;
+    try {
+        session = await openBrowserSession({
+            config,
+            resolved: checked,
+            credentials,
+            hosts: browserHosts(config, checked),
+            startUrl: app.startUrl,
+            devlinkConfig: buildDevlinkConfig(config, checked, spec.app),
+            devlinkConfigPath: join(runDir, 'devlink-config.json'),
+            tracePath: join(runDir, 'trace.zip'),
+            floatsLogPath: join(runDir, 'floats.log'),
+            consoleIgnore: config.consoleIgnore ?? [],
+            foreignCode: config.foreignCode ?? [],
+            readyTimeoutMs: config.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS,
+            headless,
+            embed: !headless && embedsApp(interactive),
+            title: `caw-ai · ${spec.id}`,
+            role: spec.role,
+            overlay,
+        });
+    } catch (error) {
+        overlay?.stop();
+        throw error;
+    }
+    if (overlay === null) return session;
+    const close = session.close;
+    session.close = async (...args) => {
+        try {
+            return await close(...args);
+        } finally {
+            overlay.stop();
+        }
+    };
+    return session;
 };
 
 /** Was das Projekt schon an Wegen kennt. */
@@ -255,7 +261,6 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     else if (repair !== undefined) mode = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
     // Welcher Code laeuft, immer in einer Zeile, auch in CI: Ein still ausgelieferter Stand fiele sonst erst am Ergebnis auf.
     ui.header({ mode, test: spec.id, target, source: checked.source, code: describeCode(config, spec, checked, { root }), ...(replay === undefined ? { maxSteps } : {}) });
-    for (const warning of staleBuildWarnings(root, config, spec, checked)) ui.warn(warning);
 
     const reportBase = { testId: spec.id, target, source: checked.source, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
     let verdict = null;

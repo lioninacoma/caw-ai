@@ -35,7 +35,10 @@ test('parseRunArgs: --overlay mit und ohne Quelle bei run, record und fix; ohne 
     assert.equal(parseRunArgs('fix', ['smoke', 'S2', '--overlay=dev']).overlay, 'dev');
     assert.equal(parseRunArgs('record', ['smoke', '--overlay', 'dev', '--target', 'dev']).overlay, 'dev');
     assert.deepEqual(parseRunArgs('run', ['--overlay=build', 'build']).tests, ['build'], 'ein Test namens build mit --overlay=…');
-    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=local']), (error) => error.code === 'usage' && /--overlay erwartet nichts oder build, dev/.test(error.message));
+    assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'http://localhost:5174']).overlay, 'http://localhost:5174', 'die Adresse eines Dev-Servers');
+    assert.equal(parseRunArgs('run', ['--overlay=https://box.local:8443/', 'smoke']).overlay, 'https://box.local:8443/');
+    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=local']), (error) => error.code === 'usage' && /--overlay erwartet nichts, build, dev oder die Adresse eines Dev-Servers/.test(error.message));
+    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=localhost:5173']), (error) => error.code === 'usage', 'ohne http:// keine Adresse');
     assert.throws(() => parseRunArgs('run', ['smoke', '--code', 'local']), (error) => error.code === 'usage', '--code gibt es nicht mehr');
 });
 

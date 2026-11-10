@@ -11,18 +11,9 @@ import { chromium } from 'playwright-core';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { totp } from '../shared/totp.mjs';
-import {
-    createDecideDeps,
-    createDevlinkHost,
-    createInterceptionHandler,
-    createPlaywrightLauncher,
-    createWatchClient,
-    localFileFor,
-    isHardFailure,
-    parseConfig,
-} from './devlink-core.mjs';
-import { APP_FILES_BASE, createFileTransport } from './app-files.mjs';
+import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig } from './devlink-core.mjs';
 import { withoutIntegrity } from './local-build.mjs';
+import { fileVersion, routeOverlay } from './overlay.mjs';
 import { DEFAULT_MESSAGE_SELECTORS, authOf, browserLaunch, isLoopback } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
 import { responseLine } from './effects.mjs';
@@ -382,40 +373,6 @@ export const grantClipboard = (context, url) => context.grantPermissions(['clipb
 /** devlink verpackt jeden Fehler beim Start als „Chrome nicht startbar“. Der eigentliche Grund steht in `cause`. */
 export const unwrapLaunchError = (error) => (error?.cause instanceof CawError ? error.cause : error);
 
-const decideDepsFor = (appDir) => {
-    const watch = createWatchClient(createFileTransport(appDir), { baseUrl: APP_FILES_BASE });
-    return createDecideDeps({
-        getBootstrap: watch.getBootstrap,
-        readWatch: watch.readWatch,
-        fileReader: { readText: async (path) => readFileSync(path, 'utf8'), readBinary: async (path) => readFileSync(path) },
-        log: () => {},
-    });
-};
-
-/**
- * Lokaler Code einer weiteren App, etwa wenn der Weg vom Shop in das Backoffice fuehrt. Der devlink-Host
- * kennt nur ein Bootstrap, darum bekommt jede weitere App eine eigene Route fuer genau ihre Dateien. Spaeter
- * registrierte Routen laufen zuerst.
- */
-export const routeExtraApp = async (context, { dir, devlinkConfig }, portalUrl, mainConfig = null) => {
-    const handle = createInterceptionHandler({ config: devlinkConfig, portalUrl, onFailure: 'fail' }, decideDepsFor(dir));
-    // Spaeter registrierte Routen laufen zuerst: Was die Haupt-App selbst beantwortet, bleibt ihr, auch bei gleichen Namen bis auf den
-    // Hash (zwei Vite-Apps mit je einem assets/index-…js).
-    const ours = (url, resourceType) => localFileFor(devlinkConfig, url, resourceType) !== null
-        && (mainConfig === null || localFileFor(mainConfig, url, resourceType) === null);
-    await context.route(
-        (url) => ours(url.href, undefined),
-        async (route) => {
-            const request = route.request();
-            if (!ours(request.url(), request.resourceType())) {
-                await route.fallback();
-                return;
-            }
-            await handle(route, request.url(), request.resourceType());
-        },
-    );
-};
-
 const FLOATS_BINDING = '__cawFloats';
 const FLOATS_MAX_LINES = 5000;
 
@@ -552,9 +509,13 @@ export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
     };
 };
 
-/** Oeffnet Chrome, meldet an, spielt den lokalen Code ein und wartet, bis die App zur Ruhe kommt. */
+/**
+ * Oeffnet Chrome, meldet an, spielt den lokalen Code ein und wartet, bis die App zur Ruhe kommt.
+ * @param spec.overlay null oder das Ergebnis von prepareOverlay: dann beantwortet es die Code-Requests
+ */
 export const openBrowserSession = async (spec) => {
     const { config, devlinkConfig, resolved, credentials, consoleIgnore, foreignCode, hosts } = spec;
+    const overlay = spec.overlay ?? null;
     const parsed = parseConfig(devlinkConfig);
     if (!parsed.ok) throw new CawError('config-invalid', t('session.browser.devlinkRejected', { issues: JSON.stringify(parsed.issues) }));
 
@@ -626,7 +587,6 @@ export const openBrowserSession = async (spec) => {
         });
         host = createDevlinkHost(devlinkConfig, {
             launcher,
-            decideDeps: decideDepsFor(spec.appDir),
             now: () => Date.now(),
             sleep: (ms) => new Promise((ok) => { setTimeout(ok, ms); }),
         }, {
@@ -647,16 +607,18 @@ export const openBrowserSession = async (spec) => {
                     : t('session.browser.checkSelector');
                 throw new CawError(auth.type === 'storageState' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
             }
-            if (/unsatisfiable/.test(message)) throw new CawError('local-code', t('session.browser.localCode', { message: message.replace(/^devlink: [^—]*— /, '') }));
             throw error;
         });
-        for (const extra of spec.extraApps ?? []) await routeExtraApp(raw, extra, resolved.url, devlinkConfig);
+        // Scheitert eine Quelle mitten im Lauf (bootstrap.json kaputt, zwei Apps mit demselben Build-Namen), ist das ein Fehler des Laufs.
+        const failures = [];
+        if (overlay !== null) {
+            await routeOverlay(raw, overlay, { onProblem: (error, url) => failures.push({ type: 'overlay', text: String(error?.message ?? error), url }) });
+        }
         timing.code = Date.now();
         if (spec.floatsLogPath !== undefined && framework.floats) await logFloats(raw, spec.floatsLogPath);
 
         // Eigene Beobachtung statt des Gates im Host, denn nur so bleibt die URL eines fehlgeschlagenen
         // Requests erhalten und laesst sich gegen consoleIgnore pruefen.
-        const failures = [];
         let drained = 0;
         const warnings = [];
         const rules = { ignored: consoleIgnore.map((pattern) => new RegExp(pattern)), foreign: (foreignCode ?? []).map((pattern) => new RegExp(pattern)), skip: framework.stackSkip };
@@ -692,42 +654,33 @@ export const openBrowserSession = async (spec) => {
         };
         // Skriptfehler zeigen auf den Quellcode, wenn die Anwendung Quellkarten ausliefert. Geladen nur von Hosts der Sperre, ueber den
         // Request-Kontext des Browsers, also mit denselben Cookies und TLS-Regeln.
-        // Mit lokalem Code bekommt Chrome Skripte aus `statics` vom Projektordner. Skript und Quellkarte muessen dann von dort kommen,
-        // sonst passt die Karte des deployten Stands nicht zum Code, der den Fehler warf.
-        // Auch der lokale Code weiterer Apps (`also`), jeweils mit dem eigenen Muster; ihre Routen laufen vor der Haupt-App, also hier auch.
-        const localConfigs = [devlinkConfig, ...(spec.extraApps ?? []).map((extra) => extra.devlinkConfig)];
+        // Mit Overlay bekommt Chrome Skripte aus dem Projektordner. Skript und Quellkarte muessen dann von dort kommen, sonst passt die
+        // Karte des deployten Stands nicht zum Code, der den Fehler warf. Liefert ein Dev-Server den Code, holt der Request-Kontext die
+        // Karte: Er laeuft nicht ueber die Route, darum fragt fetchText das Overlay selbst.
         const readLocal = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : null);
         // Das Skript, wie Chrome es bekam (bei einem Alias unter deploytem Namen der lokale Inhalt, denn nur der wirft Fehler), und die Karte
         // neben der lokalen Datei. Eine fehlende Karte ist keine Einladung, die deployte zu nehmen.
-        const localText = (url) => {
-            for (const config of localConfigs) {
-                const found = localFileFor(config, url);
-                if (found?.file !== undefined) return readLocal(found.file);
-                const bare = url.replace(/[?#].*$/, '');
-                if (!bare.endsWith('.map')) continue;
-                const owner = localFileFor(config, bare.slice(0, -'.map'.length));
-                if (owner?.file !== undefined) return readLocal(`${owner.file}.map`);
+        const localText = async (url) => {
+            if (overlay === null) return undefined;
+            const file = overlay.fileFor(url);
+            if (file !== undefined) return readLocal(file);
+            const bare = url.replace(/[?#].*$/, '');
+            if (bare.endsWith('.map')) {
+                const owner = overlay.fileFor(bare.slice(0, -'.map'.length));
+                if (owner !== undefined) return readLocal(`${owner}.map`);
             }
-            return undefined;
+            const served = await overlay.resolve(url, bare.endsWith('.map') ? 'fetch' : 'script').catch(() => null);
+            return served === null ? undefined : Buffer.from(served.body).toString('utf8');
         };
         // Ein Watch baut neu, die Namen fester statics bleiben: Die Karte gilt nur, solange die lokale Datei dieselbe ist.
         const localVersion = (url) => {
-            for (const config of localConfigs) {
-                const found = localFileFor(config, url);
-                if (found?.file !== undefined) {
-                    try {
-                        return String(statSync(found.file).mtimeMs);
-                    } catch {
-                        return 'fehlt';
-                    }
-                }
-            }
-            return '';
+            const file = overlay?.fileFor(url);
+            return file === undefined ? '' : fileVersion(file);
         };
         const sourceMaps = createSourceMapper({
             version: localVersion,
             fetchText: async (url) => {
-                const local = localText(url);
+                const local = await localText(url);
                 if (local !== undefined) return local;
                 // undefined: keine Verbindung (Name nicht aufloesbar, Port zu); null: der Server antwortete, aber nicht mit 2xx.
                 // Keiner Weiterleitung folgen: `allowed` prueft nur die erste Adresse, und eine offene Weiterleitung auf einem erlaubten
@@ -870,11 +823,9 @@ export const openBrowserSession = async (spec) => {
         // host.start() bindet die Interception erst nach dem Laden der Startseite ein; erst diese
         // Navigation laedt die App also mit dem lokalen Code.
         let bench = null;
-        // Lokaler Code aus einem Build-Ordner hat andere Bytes als die Hashes in `integrity` der deployten Seite: Ohne die Attribute
-        // fuehrte Chrome kein eingespieltes Skript aus. Die Seite selbst bleibt die des Servers.
-        const builds = [devlinkConfig, ...(spec.extraApps ?? []).map((extra) => extra.devlinkConfig)]
-            .some(({ projects }) => projects.some(({ builds: list = [] }) => list.some(({ active }) => active)));
-        const rewrite = builds ? withoutIntegrity : undefined;
+        // Lokaler Code hat andere Bytes als die Hashes in `integrity` der deployten Seite: Ohne die Attribute fuehrte Chrome kein
+        // eingespieltes Skript aus. Die Seite selbst bleibt die des Servers.
+        const rewrite = overlay === null ? undefined : withoutIntegrity;
         const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
             // Einbetten nur fuer Dokumente der Anwendung selbst, nicht fuer weitere erlaubte Hosts wie einen Anmeldedienst.
@@ -885,7 +836,7 @@ export const openBrowserSession = async (spec) => {
             const points = [
                 { id: 'chrome', kind: t('session.prep.chrome'), label: t('session.prep.chromeStart'), ms: (timing.chrome ?? timing.start) - timing.start },
                 ...(signIn === null ? [] : [{ id: 'login', kind: signIn, label: spec.role === undefined ? '' : t('session.prep.asRole', { role: spec.role }), ms: (timing.login ?? timing.chrome) - (timing.chrome ?? timing.start) }]),
-                ...(spec.overlay === true ? [{ id: 'code', kind: t('session.prep.code'), label: t('session.prep.codeLocal'), ms: timing.code - (timing.login ?? timing.chrome ?? timing.start) }] : []),
+                ...(overlay !== null ? [{ id: 'code', kind: t('session.prep.code'), label: t('session.prep.codeLocal'), ms: timing.code - (timing.login ?? timing.chrome ?? timing.start) }] : []),
                 { id: 'load', kind: t('session.prep.load'), label: t('session.prep.app') },
             ];
             await bench.group({ id: PREP, name: t('session.prep.group'), kind: 'phase', points: points.map(({ id, kind, label }) => ({ id, kind, label })) });

@@ -345,11 +345,7 @@ export const validateConfig = (given, root = process.cwd()) => {
         }
         if (groups === 0) issues.push(t('config.assetUrlPattern.group'));
     }
-    // `localBuild` kommt ohne Muster aus: Dann ist der Name der Pfad der URL unterhalb der Umgebung.
-    const withEntries = Object.entries(isObject(config.apps) ? config.apps : {}).filter(([, app]) => namedEntries(app).length > 0).map(([name]) => name);
-    if (config.assetUrlPattern === undefined && withEntries.length > 0) {
-        issues.push(t('config.assetUrlPattern.missing', { apps: withEntries.join(', ') }));
-    }
+    const extjs = config.framework === 'extjs';
     for (const [name, app] of Object.entries(isObject(config.apps) ? config.apps : {})) {
         if (!isObject(app)) {
             issues.push(t('config.app.notObject', { name }));
@@ -360,36 +356,24 @@ export const validateConfig = (given, root = process.cwd()) => {
         }
         // Ohne startUrl: Die App wird nur unterwegs erreicht, etwa ueber eine Aufgabe.
         if (app.startUrl !== undefined && (typeof app.startUrl !== 'string' || !app.startUrl.startsWith('/'))) issues.push(t('config.app.startUrl', { name }));
-        for (const key of ['redirects', 'constants', 'statics']) {
-            if (app[key] !== undefined && !Array.isArray(app[key])) issues.push(t('config.app.list', { name, key }));
-            else (app[key] ?? []).forEach((entry, index) => {
-                if (entryOk(key, entry)) return;
-                const problems = entryProblems(key, entry);
-                issues.push(problems.length === 0
-                    ? t('config.app.entry', { name, key, index, fields: ENTRY_FIELDS[key] })
-                    : t('config.app.entryProblems', { name, key, index, problems: problems.join('; '), fields: ENTRY_FIELDS[key] }));
-            });
-        }
-        if (app.localBuild !== undefined && (typeof app.localBuild !== 'string' || app.localBuild === '' || /^([\\/]|[A-Za-z]:)/.test(app.localBuild) || app.localBuild.split(/[\\/]/).includes('..'))) {
-            issues.push(t('config.app.localBuild', { name }));
-        }
+        const unknown = Object.keys(app).find((key) => !APP_KEYS.includes(key));
+        if (unknown !== undefined) issues.push(t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) }));
+        if (app.overlay !== undefined) issues.push(...overlayIssues(name, app.overlay, extjs));
     }
     if (issues.length === 0) notes.push(...localCodeNotes(config));
     return { ok: issues.length === 0, issues, notes };
 };
 
 /**
- * Das Overlay geht nur, wenn Umgebung und App zusammenpassen: overlay an der Umgebung, localBuild (oder Eintraege) an der App.
- * Fehlt eine Seite, geht --overlay nirgends.
+ * Das Overlay geht nur, wenn Umgebung und App zusammenpassen: overlay an der Umgebung, eine Quelle an der App. Fehlt eine Seite, geht
+ * --overlay nirgends; mit einer Adresse auf der Kommandozeile (--overlay http://…) braucht die App keine.
  */
 const localCodeNotes = (config) => {
     const apps = Object.keys(config.apps ?? {});
-    const withCode = apps.filter((name) => hasLocalCode(config, [name]));
     const environments = environmentsWith(config, 'overlay');
     const notes = [];
-    if (withCode.length === 0) for (const name of environments) notes.push(t('config.note.localCodeNoApp', { name }));
     if (environments.length === 0) {
-        for (const name of apps.filter((app) => hasLocalBuild(config.apps[app]))) notes.push(t('config.note.localBuildNoEnv', { name }));
+        for (const name of apps.filter((app) => config.apps[app]?.overlay !== undefined)) notes.push(t('config.note.overlayNoEnv', { name }));
     }
     return notes;
 };
@@ -415,48 +399,47 @@ export const loadConfigWithNotes = (root) => {
 
 export const loadConfig = (root) => loadConfigWithNotes(root).config;
 
-// Ein Pfad im Projekt: relativ, ohne `..`. Wie `dir` und `localBuild`.
+// Ein Pfad im Projekt: relativ, ohne `..`. Wie `dir` und `overlay.build`.
 const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
-const ENTRY_FIELDS = { statics: 'name, path', constants: 'name, watchPath', redirects: 'name, target | app: true' };
-const ENTRY_KEYS = { statics: ['name', 'path'], constants: ['name', 'watchPath'], redirects: ['name', 'target', 'app'] };
-/** Was an einem Eintrag fehlt und was dort nichts zu suchen hat, mit Vorschlag; leer, wenn es kein Objekt ist. */
-const entryProblems = (key, entry) => {
-    if (!isObject(entry)) return [];
-    const allowed = ENTRY_KEYS[key];
-    const unknown = Object.keys(entry).filter((field) => !allowed.includes(field))
-        .map((field) => t('config.app.entryUnknown', { field, hint: hintFor(field, allowed) }));
-    const required = key === 'redirects' ? ['name', ...(entry.app === true ? [] : ['target'])] : allowed;
-    const missing = required.filter((field) => entry[field] === undefined || entry[field] === '').map((field) => t('config.app.entryMissing', { field }));
-    return [...missing, ...unknown];
+const APP_KEYS = ['dir', 'startUrl', 'overlay'];
+/** Die Adresse eines Servers: http(s), mit Host. Wie --overlay <url>. */
+export const isServerUrl = (value) => {
+    if (typeof value !== 'string' || !/^https?:\/\/[^\s/]+/i.test(value)) return false;
+    try {
+        return new URL(value).hostname !== '';
+    } catch {
+        return false;
+    }
 };
-/** Ein Eintrag aus `statics`, `constants` oder `redirects`: sonst scheiterte erst der Lauf mit einem TypeError. */
-const entryOk = (key, entry) => {
-    if (!isObject(entry) || typeof entry.name !== 'string' || entry.name === '') return false;
-    if (key === 'statics') return relativePath(entry.path);
-    if (key === 'constants') return relativePath(entry.watchPath);
-    return entry.app === true || (typeof entry.target === 'string' && entry.target !== '');
-};
-const namedEntries = (app) => [...(app?.redirects ?? []), ...(app?.constants ?? []), ...(app?.statics ?? [])];
-const hasLocalBuild = (app) => typeof app?.localBuild === 'string' && app.localBuild !== '';
+const OVERLAY_KEYS = ['build', 'dev', 'buildCommand', 'devCommand', 'statics'];
+const STATIC_KEYS = ['name', 'path'];
 
-/**
- * Gibt es fuer diese Apps lokalen Code zum Einspielen? Ein Build-Ordner (`localBuild`) reicht allein; einzelne Eintraege
- * (`statics`, `redirects`, `constants`) brauchen dazu `assetUrlPattern`.
- */
-export const hasLocalCode = (config, appNames) => appNames.some((name) => hasLocalBuild(config.apps?.[name])
-    || (typeof config.assetUrlPattern === 'string' && namedEntries(config.apps?.[name]).length > 0));
-
-/** Woher der lokale Code einer App kommt, fuer Meldungen: der Build-Ordner, sonst die Arten der Eintraege (statics, redirects, …). */
-export const localCodeOf = (config, name) => {
-    const app = config.apps?.[name];
-    if (hasLocalBuild(app)) return { localBuild: app.localBuild };
-    if (typeof config.assetUrlPattern !== 'string') return null;
-    const kinds = ['statics', 'redirects', 'constants'].filter((key) => (app?.[key] ?? []).length > 0);
-    return kinds.length === 0 ? null : { kinds };
+/** Die Fehler in `apps.<name>.overlay`. Bei ExtJS ist die Quelle der Sencha-Watch: kein build und kein dev-URL. */
+const overlayIssues = (name, overlay, extjs) => {
+    if (!isObject(overlay)) return [t('config.overlay.notObject', { name })];
+    const issues = [];
+    const unknown = Object.keys(overlay).find((key) => !OVERLAY_KEYS.includes(key));
+    if (unknown !== undefined) issues.push(t('config.overlay.unknown', { name, key: unknown, hint: hintFor(unknown, OVERLAY_KEYS) }));
+    if (overlay.build !== undefined && !relativePath(overlay.build)) issues.push(t('config.overlay.build', { name }));
+    if (overlay.dev !== undefined && !isServerUrl(overlay.dev)) issues.push(t('config.overlay.dev', { name }));
+    if (extjs && (overlay.build !== undefined || overlay.dev !== undefined || overlay.buildCommand !== undefined)) issues.push(t('config.overlay.extjs', { name }));
+    for (const key of ['buildCommand', 'devCommand']) {
+        if (overlay[key] !== undefined && (typeof overlay[key] !== 'string' || overlay[key].trim() === '')) issues.push(t('config.overlay.command', { name, key }));
+    }
+    if (overlay.buildCommand !== undefined && overlay.build === undefined) issues.push(t('config.overlay.commandWithout', { name, key: 'buildCommand', needs: 'build' }));
+    if (overlay.devCommand !== undefined && overlay.dev === undefined && !extjs) issues.push(t('config.overlay.commandWithout', { name, key: 'devCommand', needs: 'dev' }));
+    if (overlay.statics !== undefined && !Array.isArray(overlay.statics)) issues.push(t('config.overlay.statics', { name }));
+    else (overlay.statics ?? []).forEach((entry, index) => {
+        const extra = isObject(entry) ? Object.keys(entry).find((key) => !STATIC_KEYS.includes(key)) : undefined;
+        if (!isObject(entry) || typeof entry.name !== 'string' || entry.name === '' || !relativePath(entry.path) || extra !== undefined) {
+            issues.push(t('config.overlay.static', { name, index }));
+        }
+    });
+    return issues;
 };
 
 /** Ohne `assetUrlPattern`: der Pfad unterhalb der Umgebungs-URL, etwa `assets/index-X.js` aus `https://host/app/assets/index-X.js`. */
-const defaultAssetPattern = (url) => {
+export const defaultAssetPattern = (url) => {
     // Wie Chrome die Adresse eines Requests schreibt: Host klein, ohne Standardport. Sonst passte das Muster nie, still.
     const parsed = new URL(String(url));
     const base = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
@@ -511,10 +494,12 @@ const uuidOf = (seed) => {
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 };
 
-/** Baut aus Projekt-Config und Ziel die Config, die der devlink-Host erwartet. */
-export const buildDevlinkConfig = (config, resolved, appName, source, projectRoot) => {
+/**
+ * Baut aus Projekt-Config und Ziel die Config, die der devlink-Host erwartet: Umgebung, Startseite, Anmeldemerkmal. Den lokalen Code
+ * spielt er nicht ein, das macht das Overlay (src/host/overlay.mjs) mit einer eigenen Route.
+ */
+export const buildDevlinkConfig = (config, resolved, appName) => {
     const app = config.apps[appName];
-    const replace = source === 'overlay';
     const siteUuid = uuidOf(`portal:${resolved.target}`);
     const signedIn = authOf(config).signedInSelector;
     return {
@@ -527,33 +512,6 @@ export const buildDevlinkConfig = (config, resolved, appName, source, projectRoo
             name: appName,
             active: true,
             startUrl: app.startUrl,
-            redirects: replace ? (app.redirects ?? []).map((entry) => ({
-                uuid: uuidOf(`redirect:${entry.name}`),
-                name: entry.name,
-                app: entry.app === true,
-                target: entry.app === true ? null : entry.target,
-                active: true,
-            })) : [],
-            constants: replace ? (app.constants ?? []).map((entry) => ({
-                uuid: uuidOf(`constant:${entry.name}`),
-                name: entry.name,
-                watchPath: entry.watchPath,
-                active: true,
-            })) : [],
-            statics: replace ? (app.statics ?? []).map((entry) => ({
-                uuid: uuidOf(`static:${entry.name}`),
-                name: entry.name,
-                localPath: posix.join(projectRoot, entry.path),
-                active: true,
-            })) : [],
-            builds: replace && hasLocalBuild(app) ? [{
-                uuid: uuidOf(`build:${app.localBuild}`),
-                localDir: posix.join(projectRoot, app.localBuild),
-                projectDir: posix.join(projectRoot, app.dir ?? '.'),
-                // Der Name ist der Pfad unterhalb der Umgebung; ein globales assetUrlPattern (etwa fuer Sencha-statics) gilt zusaetzlich.
-                urlPattern: defaultAssetPattern(resolved.url),
-                active: true,
-            }] : [],
         }],
     };
 };

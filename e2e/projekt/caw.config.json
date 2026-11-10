@@ -37,18 +37,14 @@
         "bestellung": {
             "dir": ".",
             "startUrl": "/app",
-            "redirects": [
-                {
-                    "name": "Fx/Model.js",
-                    "target": "Pkg"
-                }
-            ],
-            "statics": [
-                {
-                    "name": "Fx/Static.js",
-                    "path": "static.js"
-                }
-            ]
+            "overlay": {
+                "statics": [
+                    {
+                        "name": "Fx/Static.js",
+                        "path": "static.js"
+                    }
+                ]
+            }
         }
     },
     "roles": {

@@ -1,10 +1,10 @@
-// Welcher Code laeuft, in einer Zeile fuer Terminal, CI-Log und validate, dazu die Warnung vor einem veralteten lokalen Build.
-// Entschieden wird es in checkTest (test-file.mjs); hier steht nur, wie es sich liest.
+// Welcher Code laeuft, in einer Zeile fuer Terminal, CI-Log und validate. Entschieden wird es in checkTest (test-file.mjs); hier steht
+// nur, wie es sich liest. Ob die Quelle bereit ist, prueft das Overlay vor dem Browser (overlay.mjs).
 
 import { readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 
-import { isLoopback, localCodeOf } from '../shared/config.mjs';
+import { isLoopback } from '../shared/config.mjs';
 import { language, t } from '../shared/i18n.mjs';
 
 // Ordner, die keine Quellen sind: Abhaengigkeiten, Builds und Caches gaengiger Werkzeuge. Ordner mit Punkt (.git, .angular,
@@ -63,14 +63,25 @@ export const ago = (ms) => {
 const clock = (ms) => new Date(ms).toLocaleTimeString(language() === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
 const slash = (path) => path.replaceAll('\\', '/').replace(/\/+$/, '');
 
-/** Die Apps des Tests, deren lokaler Code eingespielt wird, mit Herkunft. */
-const localSources = (config, spec) => [spec.app, ...(spec.also ?? [])]
-    .map((name) => ({ name, local: localCodeOf(config, name) }))
-    .filter(({ local }) => local !== null);
+/** Eine Quelle des Overlays in Worten, etwa "Build dist, gebaut 14:02, vor 3 min" oder "Dev-Server http://localhost:5173". */
+const describeChoice = (config, name, choice, { root, now }) => {
+    const many = Object.keys(config.apps ?? {}).length > 1;
+    const statics = (choice.statics ?? []).length;
+    let text;
+    if (choice.kind === 'build') {
+        const dir = slash(choice.dir);
+        const built = root === undefined ? null : newestFile(join(root, choice.dir), { skipNames: new Set(['node_modules']) });
+        text = built === null ? t('cli.code.build', { dir }) : t('cli.code.built', { dir, time: clock(built.mtimeMs), ago: ago(now - built.mtimeMs) });
+    } else if (choice.kind === 'dev') text = t('cli.code.dev', { url: choice.url });
+    else if (choice.kind === 'watch') text = t('cli.code.watch', { dir: slash(config.apps[name].dir) });
+    else text = t('cli.code.files', { count: statics });
+    if (choice.kind !== 'files' && statics > 0) text = t('cli.code.withStatics', { text, count: statics });
+    return many ? t('cli.code.ofApp', { text, app: name }) : text;
+};
 
 /**
  * Die Zeile "Code: …" ohne Praefix. Mit `root` nennt sie beim Build-Ordner, wann er gebaut wurde; validate laesst das weg.
- * @param checked Ergebnis von checkTest: source
+ * @param checked Ergebnis von checkTest: source, apps
  */
 export const describeCode = (config, spec, checked, { root, now = Date.now() } = {}) => {
     if (checked.source !== 'overlay') {
@@ -78,32 +89,6 @@ export const describeCode = (config, spec, checked, { root, now = Date.now() } =
         const url = checked.url === undefined ? null : new URL(checked.url);
         return url !== null && url.protocol === 'http:' && isLoopback(url.hostname) ? t('cli.code.devServer', { host: url.host }) : t('cli.code.deployed');
     }
-    const parts = localSources(config, spec).map(({ name, local }) => {
-        if (local.localBuild === undefined) return t('cli.code.entries', { kinds: local.kinds.join(', '), dir: slash(config.apps[name].dir) });
-        const dir = slash(local.localBuild);
-        if (root === undefined) return dir;
-        const built = newestFile(join(root, local.localBuild), { skipNames: new Set(['node_modules']) });
-        return built === null ? dir : t('cli.code.built', { dir, time: clock(built.mtimeMs), ago: ago(now - built.mtimeMs) });
-    });
-    const details = parts;
-    return root === undefined ? t('cli.code.localFrom', { details: details.join('; ') }) : t('cli.code.local', { details: details.join('; ') });
-};
-
-/**
- * Ist ein Build-Ordner aelter als die letzte Aenderung unter dem App-Ordner? Dann laeuft vermutlich kein Build-Watch, und der
- * Test prueft nicht, was gerade im Editor steht. Nur eine Warnung: Eine Aenderung an Doku oder Tests braucht keinen neuen Build.
- * @returns die Warnungen als Text, je App hoechstens eine
- */
-export const staleBuildWarnings = (root, config, spec, checked, now = Date.now()) => {
-    if (checked.source !== 'overlay') return [];
-    return localSources(config, spec).flatMap(({ name, local }) => {
-        if (local.localBuild === undefined) return [];
-        const buildDir = join(root, local.localBuild);
-        const built = newestFile(buildDir, { skipNames: new Set(['node_modules']) });
-        if (built === null) return [];
-        const appDir = join(root, config.apps[name].dir);
-        const changed = newestFile(appDir, { skip: [buildDir, join(root, 'caw')] });
-        if (changed === null || changed.mtimeMs <= built.mtimeMs) return [];
-        return [t('cli.code.stale', { dir: slash(local.localBuild), file: slash(relative(appDir, changed.path)), ago: ago(now - changed.mtimeMs) })];
-    });
+    const parts = Object.entries(checked.apps ?? {}).map(([name, choice]) => describeChoice(config, name, choice, { root, now }));
+    return t('cli.code.overlay', { details: parts.join('; ') });
 };
