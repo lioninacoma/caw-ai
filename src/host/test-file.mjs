@@ -9,19 +9,23 @@ import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
-import { authOf, hasLocalCode, resolveTarget } from '../shared/config.mjs';
+import { allTargets, authOf, hasLocalCode, isLoopback, resolveTarget } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
-import { RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
+import { didYouMean } from '../shared/suggest.mjs';
 import { EFFECT_LISTS } from './effects.mjs';
 import { TARGET_TEXT_MAX } from './framework/web.mjs';
 import { isPattern } from './patterns.mjs';
 
 export { RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
-const SOURCES = ['watch', 'deployed'];
+/** Welcher Code laeuft: `local` (Standard) spielt lokalen Code ein, wo Umgebung und App ihn haben; `deployed` nie. */
+const CODES = ['local', 'deployed'];
+// Der alte Name `source` gilt weiter, mit Hinweis: watch ist code: local, deployed bleibt deployed.
+const OLD_SOURCES = { watch: 'local', deployed: 'deployed' };
 const STEP_ID = /^S[1-9]\d*$/;
-const TOP_FIELDS = ['id', 'app', 'role', 'targets', 'source', 'mutates', 'also', 'notes', 'steps', 'knownMessages'];
+const TOP_FIELDS = ['id', 'app', 'role', 'targets', 'code', 'mutates', 'also', 'notes', 'steps', 'knownMessages'];
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
@@ -65,6 +69,11 @@ const ACTION_EXTRAS = { fill: ['value'], type: ['value'], upload: ['files'], dow
 const TEXT_LIMITED = ['name', 'own'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+/** Der Vorschlag zu einem unbekannten Feld als Zusatz, etwa " Meintest du targets?", sonst leer. */
+const hintFor = (key, allowed) => {
+    const name = didYouMean(key, allowed);
+    return name === undefined ? '' : t('config.test.didYouMean', { name });
+};
 const isText = (value) => typeof value === 'string' && value.trim() !== '';
 const clean = (text) => (text ?? '').replaceAll('\r\n', '\n').trim();
 
@@ -125,7 +134,7 @@ const readAction = (raw, report) => {
     const extras = { ...(raw.path === undefined ? {} : { path: raw.path }), ...(raw.timeoutMs === undefined ? {} : { timeoutMs: raw.timeoutMs }) };
     const allowed = new Set([name, 'path', 'timeoutMs', ...(ACTION_EXTRAS[name] ?? [])]);
     const foreign = Object.keys(raw).find((key) => !allowed.has(key));
-    if (foreign !== undefined) report(t('config.test.action.unknownField', { name, field: foreign }));
+    if (foreign !== undefined) report(t('config.test.action.unknownField', { name, field: foreign, hint: hintFor(foreign, [...allowed]) }));
     if (raw.path !== undefined && typeof raw.path !== 'string') report(t('config.test.action.path', { name }));
     if (raw.timeoutMs !== undefined && !(Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0)) report(t('config.test.action.timeout', { name }));
 
@@ -189,7 +198,7 @@ const readRecording = (raw, at, problems, lineOf) => {
         report(at, t('config.test.recording.object'));
         return undefined;
     }
-    for (const key of Object.keys(raw)) if (!RECORDING_FIELDS.includes(key)) report([...at, key], t('config.test.recording.unknown', { key }));
+    for (const key of Object.keys(raw)) if (!RECORDING_FIELDS.includes(key)) report([...at, key], t('config.test.recording.unknown', { key, hint: hintFor(key, RECORDING_FIELDS) }));
     for (const key of ['hash', 'recordedOn', 'recordedAt', 'check']) if (!isText(raw[key])) report([...at, key], t('config.test.recording.missing', { key }));
     if (raw.after !== undefined && !STEP_ID.test(String(raw.after))) report([...at, 'after'], t('config.test.recording.after'));
     if (raw.timeoutMs !== undefined && !(Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0)) report([...at, 'timeoutMs'], t('config.test.recording.timeout'));
@@ -208,7 +217,7 @@ const checkRetry = (raw, at, report) => {
         report(at, t('config.test.retry.object'));
         return;
     }
-    for (const key of Object.keys(raw)) if (!RETRY_FIELDS.includes(key)) report([...at, key], t('config.test.retry.unknown', { key }));
+    for (const key of Object.keys(raw)) if (!RETRY_FIELDS.includes(key)) report([...at, key], t('config.test.retry.unknown', { key, hint: hintFor(key, RETRY_FIELDS) }));
     if (!Number.isInteger(raw.times) || raw.times < 1 || raw.times > MAX_RETRY_TIMES) report([...at, 'times'], t('config.test.retry.times', { max: MAX_RETRY_TIMES }));
     if (raw.waitMs !== undefined && !(Number.isFinite(raw.waitMs) && raw.waitMs >= 0 && raw.waitMs <= MAX_RETRY_WAIT_MS)) report([...at, 'waitMs'], t('config.test.retry.wait', { max: MAX_RETRY_WAIT_MS }));
     if (raw.from !== undefined && !(typeof raw.from === 'string' && STEP_ID.test(raw.from))) report([...at, 'from'], t('config.test.retry.from'));
@@ -239,7 +248,7 @@ const readSteps = (raw, problems, lineOf, { allowRecording }) => {
             return {};
         }
         for (const key of Object.keys(step)) {
-            if (!STEP_FIELDS.includes(key)) report([...at, key], t('config.test.step.unknown', { key }));
+            if (!STEP_FIELDS.includes(key)) report([...at, key], t('config.test.step.unknown', { key, hint: hintFor(key, STEP_FIELDS) }));
         }
         if (typeof step.id !== 'string' || !STEP_ID.test(step.id)) report([...at, 'id'], t('config.test.step.id'));
         else if (seen.has(step.id)) report([...at, 'id'], t('config.test.duplicate', { id: step.id }));
@@ -277,13 +286,23 @@ export const parseTest = (text, label = t('config.test.label')) => {
     if (problems.length > 0) throw invalid(label, problems);
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!isObject(value)) throw invalid(label, [t('config.test.file.object')]);
-    for (const key of Object.keys(value)) if (!TOP_FIELDS.includes(key)) report([key], t('config.test.unknown', { key }));
-    for (const key of ['id', 'app']) if (!isText(value[key])) report([key], t('config.test.missing', { key }));
-    // Ohne Anmeldung (auth.type none) braucht ein Test keine Rolle; ob eine fehlt, prueft checkTest gegen die Config.
-    if (value.role !== undefined && !isText(value.role)) report(['role'], t('config.test.text', { key: 'role' }));
-    if (!Array.isArray(value.targets) || value.targets.length === 0 || !value.targets.every(isText)) report(['targets'], t('config.test.targets'));
-    const source = value.source ?? 'watch';
-    if (!SOURCES.includes(source)) report(['source'], t('config.test.source', { source: String(source), names: SOURCES.join(', ') }));
+    for (const key of Object.keys(value)) if (!TOP_FIELDS.includes(key) && key !== 'source') report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
+    // id, app, role und targets duerfen fehlen: Die Vorgaben kommen aus Dateiname und Config (withDefaults).
+    for (const key of ['id', 'app', 'role']) if (value[key] !== undefined && !isText(value[key])) report([key], t('config.test.text', { key }));
+    if (value.targets !== undefined && (!Array.isArray(value.targets) || value.targets.length === 0 || !value.targets.every(isText))) report(['targets'], t('config.test.targets'));
+    const notices = [];
+    let code = value.code;
+    if (value.source !== undefined) {
+        const renamed = OLD_SOURCES[value.source];
+        if (value.code !== undefined) report(['source'], t('config.test.sourceAndCode'));
+        else if (renamed === undefined) report(['source'], t('config.test.source', { source: String(value.source), names: Object.keys(OLD_SOURCES).join(', ') }));
+        else {
+            notices.push(t('config.test.sourceRenamed', { source: String(value.source), code: renamed }));
+            // source: watch war der Standard, er zaehlt nicht als ausdruecklich gesetzt.
+            code = renamed === 'local' ? undefined : renamed;
+        }
+    }
+    if (value.code !== undefined && !CODES.includes(value.code)) report(['code'], t('config.test.code', { code: String(value.code), names: CODES.join(', ') }));
     if (typeof value.mutates !== 'boolean') report(['mutates'], t('config.test.mutates'));
     if (value.also !== undefined && (!Array.isArray(value.also) || !value.also.every(isText))) report(['also'], t('config.test.also'));
     if (value.notes !== undefined && value.notes !== null && typeof value.notes !== 'string') report(['notes'], t('config.test.text', { key: 'notes' }));
@@ -292,11 +311,12 @@ export const parseTest = (text, label = t('config.test.label')) => {
     if (problems.length === 0) problems.push(...retryProblems(steps));
     if (problems.length > 0) throw invalid(label, problems);
     return withExpectations({
-        id: value.id,
-        app: value.app,
+        ...(value.id === undefined ? {} : { id: value.id }),
+        ...(value.app === undefined ? {} : { app: value.app }),
         ...(value.role === undefined ? {} : { role: value.role }),
-        targets: value.targets,
-        source,
+        ...(value.targets === undefined ? {} : { targets: value.targets }),
+        ...(code === undefined ? {} : { code }),
+        ...(notices.length === 0 ? {} : { notices }),
         mutates: value.mutates,
         also: value.also ?? [],
         notes: clean(value.notes),
@@ -370,11 +390,33 @@ const readRecordingFile = (root, id) => {
 export const loadTest = (root, id) => {
     const path = testPath(root, id);
     if (!existsSync(path)) throw new CawError('test-missing', t('config.test.notFound', { path: `${TEST_DIR}/${id}.yaml` }));
-    const spec = parseTest(readFileSync(path, 'utf8'), `${TEST_DIR}/${id}.yaml`);
-    if (spec.id !== id) throw new CawError('test-invalid', t('config.test.idMismatch', { path: `${TEST_DIR}/${id}.yaml`, id: String(spec.id) }));
+    const parsed = parseTest(readFileSync(path, 'utf8'), `${TEST_DIR}/${id}.yaml`);
+    // Ohne id gilt der Dateiname; eine angegebene muss zu ihm passen.
+    if (parsed.id !== undefined && parsed.id !== id) throw new CawError('test-invalid', t('config.test.idMismatch', { path: `${TEST_DIR}/${id}.yaml`, id: String(parsed.id) }));
+    const spec = { ...parsed, id };
     const recordings = readRecordingFile(root, id);
     return recordings === null ? spec : mergeRecordings(spec, recordings);
 };
+
+/** Der einzige Name in einer Liste der Config, sonst undefined. */
+const onlyKey = (map) => {
+    const keys = Object.keys(map ?? {});
+    return keys.length === 1 ? keys[0] : undefined;
+};
+
+/**
+ * Was der Test nicht nennt, gibt die Config vor: app und role, wenn es genau eine gibt (role nur mit Anmeldung), targets alle
+ * Ziele ausser Produktion. Was dann noch fehlt, meldet checkTest.
+ */
+export const withDefaults = (spec, config) => {
+    const app = spec.app ?? onlyKey(config.apps);
+    const role = spec.role ?? (authOf(config).type === 'none' ? undefined : onlyKey(config.roles));
+    const targets = spec.targets ?? allTargets(config).filter((target) => !resolveTarget(config, target).production);
+    return { ...spec, ...(app === undefined ? {} : { app }), ...(role === undefined ? {} : { role }), targets };
+};
+
+/** Die Namen einer Liste der Config fuer Meldungen, etwa "admin, tester". */
+const namesIn = (map) => Object.keys(map ?? {}).join(', ') || '–';
 
 /**
  * Hinweise zur Aufzeichnung, die kein Fehler sind: Aufzeichnungen ohne Schritt (geloescht oder umbenannt) und Aufzeichnungsdateien
@@ -396,25 +438,53 @@ export const recordingHints = (root) => {
  * Darf dieser Test auf diesem Ziel laufen? Hier sitzt der Schreibschutz, deterministisch und vor jedem Browser. Lokaler Code
  * wird nur auf Umgebungen mit localCode eingespielt; die anderen testen den deployten Stand.
  */
-export const checkTest = (spec, target, config) => {
+export const checkTest = (given, target, config, { code, until } = {}) => {
     const resolved = resolveTarget(config, target);
+    const spec = withDefaults(given, config);
     const bad = (message) => new CawError('test-invalid', message);
-    if (!spec.targets.includes(target)) throw bad(t('config.test.check.target', { target: String(target), id: String(spec.id), targets: spec.targets.join(', ') }));
-    if (config.apps[spec.app] === undefined) throw bad(t('config.test.check.app', { app: String(spec.app) }));
+    const file = `${TEST_DIR}/${spec.id}.yaml`;
+    if (!spec.targets.includes(target)) throw bad(t('config.test.check.target', { target: String(target), id: String(spec.id), targets: spec.targets.join(', ') || '–', file }));
+    if (spec.app === undefined) throw bad(t('config.test.check.appMissing', { id: String(spec.id), apps: namesIn(config.apps), config: CONFIG_FILE }));
+    if (config.apps[spec.app] === undefined) throw bad(t('config.test.check.app', { app: String(spec.app), apps: namesIn(config.apps), config: CONFIG_FILE }));
     if (config.apps[spec.app].startUrl === undefined) throw bad(t('config.test.check.startUrl', { app: String(spec.app) }));
     for (const name of spec.also ?? []) {
-        if (config.apps[name] === undefined) throw bad(t('config.test.check.also', { app: String(name) }));
+        if (config.apps[name] === undefined) throw bad(t('config.test.check.also', { app: String(name), apps: namesIn(config.apps), config: CONFIG_FILE }));
     }
-    if (spec.role === undefined && authOf(config).type !== 'none') throw bad(t('config.test.check.role', { id: String(spec.id), type: authOf(config).type }));
-    if (spec.role !== undefined && config.roles?.[spec.role] === undefined) throw bad(t('config.test.check.unknownRole', { role: String(spec.role) }));
+    if (spec.role === undefined && authOf(config).type !== 'none') throw bad(t('config.test.check.role', { id: String(spec.id), type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
+    if (spec.role !== undefined && config.roles?.[spec.role] === undefined) throw bad(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.mutates && !resolved.writable) {
         throw new CawError('write-protected', t('config.test.check.writeProtected', { id: String(spec.id), target: String(target), environment: resolved.environment }));
     }
-    return {
-        ...resolved,
-        mutates: spec.mutates,
-        source: spec.source === 'watch' && resolved.localCode && hasLocalCode(config, [spec.app, ...(spec.also ?? [])]) ? 'watch' : 'deployed',
-    };
+    return { ...resolved, mutates: spec.mutates, ...codeFor(spec, resolved, config, { code, until }) };
+};
+
+/**
+ * Welcher Code laeuft, und warum, an genau einer Stelle. Lokaler Code braucht beides: localCode an der Umgebung und lokalen Code
+ * (localBuild, statics, …) an einer App des Tests. Vorrang hat --code, dann --until (ein Zustand fuer die Entwicklung braucht den
+ * lokalen Code, wo es ihn gibt), dann `code` im Test.
+ * @param code  aus --code: local, deployed oder undefined
+ * @returns { source: 'watch' | 'deployed', sourceReason? } mit dem Grund als Text
+ */
+const codeFor = (spec, resolved, config, { code, until }) => {
+    const apps = [spec.app, ...(spec.also ?? [])];
+    const environmentHas = resolved.localCode;
+    const appsHave = hasLocalCode(config, apps);
+    // Ein Dev-Server auf dem eigenen Rechner liefert den lokalen Code selbst aus: Dort fehlt localCode nicht.
+    const { host, hostname } = new URL(resolved.url);
+    const noEnvironment = isLoopback(hostname) ? t('config.code.reason.devServer', { host }) : t('config.code.reason.environment', { environment: resolved.environment });
+    const noApp = t('config.code.reason.app', { app: apps.join(', ') });
+    if (code === 'deployed') return { source: 'deployed', sourceReason: t('config.code.reason.flag', { code }) };
+    if (code === 'local') {
+        if (!environmentHas) throw new CawError('usage', t('config.code.localUnavailable', { reason: t('config.code.reason.environment', { environment: resolved.environment }), key: `environments.${resolved.environment}.localCode` }));
+        if (!appsHave) throw new CawError('usage', t('config.code.localUnavailable', { reason: noApp, key: `apps.${spec.app}.localBuild` }));
+        return { source: 'watch', sourceReason: t('config.code.reason.flag', { code }) };
+    }
+    const possible = environmentHas && appsHave;
+    if (spec.code === 'deployed' && !(until !== undefined && possible)) return { source: 'deployed', sourceReason: t('config.code.reason.test') };
+    if (!environmentHas) return { source: 'deployed', sourceReason: noEnvironment };
+    if (!appsHave) return { source: 'deployed', sourceReason: noApp };
+    if (spec.code === 'deployed') return { source: 'watch', sourceReason: t('config.code.reason.until', { until }) };
+    return { source: 'watch' };
 };
 
 /** Nur was den Schritt fachlich ausmacht. Aendert sich das von Hand, ist genau dieser Schritt veraltet. `retry` aendert den Weg nicht. */
@@ -518,12 +588,14 @@ export const renderTest = (spec) => {
         app: spec.app,
         role: spec.role,
         targets: spec.targets,
-        source: spec.source,
+        // Nur wenn ausdruecklich anders als der Standard: Sonst klebte ein Stand am Test, den die Config laengst anders sieht.
+        ...(spec.code === 'deployed' ? { code: 'deployed' } : {}),
         mutates: spec.mutates,
         ...(spec.also?.length > 0 ? { also: spec.also } : {}),
         ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),
     });
-    doc.get('targets', true).flow = true;
+    const targets = doc.get('targets', true);
+    if (targets !== undefined) targets.flow = true;
     if (spec.also?.length > 0) doc.get('also', true).flow = true;
     setSteps(doc, spec);
     if (spec.knownMessages !== undefined) doc.set('knownMessages', spec.knownMessages);

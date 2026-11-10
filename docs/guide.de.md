@@ -64,9 +64,9 @@ Die Prüfung läuft vor allem anderen und bricht mit einer eigenen Meldung ab (E
 
 | Befehl | Was passiert | KI und Chat | Umgebung |
 |---|---|---|---|
-| `record <test> --target <umgebung>` | Testplan neu aufnehmen oder ablösen | immer | nur Umgebungen mit `agent` |
-| `run <test> --target <umgebung>` | Testlauf nach Plan, optional bis zu einem Schritt | Chat auf Umgebungen mit `agent` von Anfang an daneben; Claude erst nach deiner Nachricht, deinem Klick auf „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“, oder mit `--advise` | alle |
-| `fix <test> <S4> --target <umgebung>` | Genau diesen Schritt ändern. Hat er eine gültige Aufzeichnung, spielt `fix` zuerst bis zu ihm ab: Scheitert er, klärt der Chat die Ursache wie bei `run`, neu aufgenommen wird nur ein bestandener oder veralteter Schritt | immer | nur Umgebungen mit `agent` |
+| `record <test> --target <umgebung>` | Testplan neu aufnehmen oder ablösen | immer | nur Umgebungen mit `claude` |
+| `run <test> --target <umgebung>` | Testlauf nach Plan, optional bis zu einem Schritt | Chat auf Umgebungen mit `claude` von Anfang an daneben; Claude erst nach deiner Nachricht, deinem Klick auf „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“, oder mit `--advise` | alle |
+| `fix <test> <S4> --target <umgebung>` | Genau diesen Schritt ändern. Hat er eine gültige Aufzeichnung, spielt `fix` zuerst bis zu ihm ab: Scheitert er, klärt der Chat die Ursache wie bei `run`, neu aufgenommen wird nur ein bestandener oder veralteter Schritt | immer | nur Umgebungen mit `claude` |
 
 `<umgebung>` ist ein Name aus `environments`, etwa `local`. Mit Mandanten (`sites`) heißt das Ziel `mandant/umgebung`, etwa `nord/dev`.
 
@@ -137,7 +137,7 @@ Alle Fehlercodes mit Abhilfe: [Befehle › Fehlercodes](commands.de.md#fehlercod
 
 ## Testplan aufnehmen: `record`
 
-Rolle und App nennst du nur beim ersten Mal, die Metadaten schreibt das Tool (`targets: [<ziel>]`, `mutates: true`, `source: watch`, wenn es für die App lokalen Code gibt). Bei einer Neuaufnahme bleibt es erhalten. Claude Code bzw. Docker, Token und Image werden vorab geprüft, damit deine Vorführung nicht umsonst ist.
+Rolle und App nennst du nur beim ersten Mal, die Metadaten schreibt das Tool (`targets: [<ziel>]`, `mutates: true`, und `code: deployed` nur mit `--code deployed`). Bei einer Neuaufnahme bleibt es erhalten. Claude Code bzw. Docker, Token und Image werden vorab geprüft, damit deine Vorführung nicht umsonst ist.
 
 1. **Start.** Chrome und der Chat gehen auf, du bist angemeldet. Bei einem neuen Test führst du direkt vor. Bei einem bestehenden fragt der Chat zuerst: selbst vorführen oder Claude geht dem Testplan nach.
 2. **Ablaufplan.** Claude legt den Entwurf als Karte im Chat vor: je Testschritt ID, Titel, Aktion und ein erwartetes Ergebnis, dazu Hinweise mit Annahmen und offenen Fragen. Der Plan ist die spätere Testdatei ohne Aufzeichnung, YAML mit `notes` und `steps`. Metadaten oder Aufzeichnungen, die Claude dort einträgt, wirft das Tool weg. Du gibst frei oder schreibst, was anders sein soll, und Claude legt eine neue Fassung vor. Bis zur Freigabe weist der Host jede Aktion in der Anwendung als `plan-required` ab, Lesen geht.
@@ -206,13 +206,13 @@ Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard h
 
 **Grenzen:**
 
-- **Claude kann beim Suchen schreiben.** Eine Schreibsperre gibt es bewusst nicht: In vielen Anwendungen hängen Abschicken und Folgeschritte voneinander ab, und lesende und schreibende Requests sehen auf HTTP-Ebene oft gleich aus. Stattdessen gilt: Aufnahme nur auf Umgebungen mit `agent` und nur mit Testkonten, die Skill-Regel „nur eigene Datensätze“, die Freigabe des Plans, das Schrittbudget, und der Bericht listet unter „Schreibende Aufrufe“ jeden Aufruf außer GET, HEAD und OPTIONS und jeden mit einem Schlüssel aus `requestKeys`, ohne Parameterwerte. An- und Abmelden, Sitzung und Token (Pfade, die auf login, logout, session, token, auth, refresh, csrf u. Ä. enden) zählen nicht: Sie machen einen Test nicht schreibend.
+- **Claude kann beim Suchen schreiben.** Eine Schreibsperre gibt es bewusst nicht: In vielen Anwendungen hängen Abschicken und Folgeschritte voneinander ab, und lesende und schreibende Requests sehen auf HTTP-Ebene oft gleich aus. Stattdessen gilt: Aufnahme nur auf Umgebungen mit `claude` und nur mit Testkonten, die Skill-Regel „nur eigene Datensätze“, die Freigabe des Plans, das Schrittbudget, und der Bericht listet unter „Schreibende Aufrufe“ jeden Aufruf außer GET, HEAD und OPTIONS und jeden mit einem Schlüssel aus `requestKeys`, ohne Parameterwerte. An- und Abmelden, Sitzung und Token (Pfade, die auf login, logout, session, token, auth, refresh, csrf u. Ä. enden) zählen nicht: Sie machen einen Test nicht schreibend.
 - **Schrittbudget:** `--max-steps` (sonst `maxSteps` aus der Config, sonst 100) zählt `click`, `fill`, `type`, `press`, `goto` und `reload` von Claude, auch gescheiterte. Was du selbst vorführst, zählt nicht.
 - **Claude reagiert nicht sofort:** `claude -p` läuft ohne Eingabe, Nachricht und Pause greifen vor der nächsten Aktion. „Abbrechen“ wirkt sofort.
 
 ## Testlauf: `run`
 
-Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `agent` steht der Chat von Anfang an neben dem Fenster, außer in CI (Variable `CI` gesetzt), mit `--no-chat` oder `--headless`. Die erste Zeile im Terminal nennt den Modus und ob der Lauf Vergleichswerte lernt. Der Chat: Er zeigt jede Aktion (`S3 · 4/12 click …`) samt neuer Versuche, die Eingabe ist gesperrt. Besteht der Lauf, meldet der Chat das samt Warnungen und wartet nicht; er schließt mit dem Lauf oder bleibt bei `--until` und `--handover` neben dem übergebenen Fenster. Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben). Fehlt die Aufzeichnung ganz, endet es mit Exit 3 und nennt `record`. Ist ein Schritt veraltet, endet es mit Exit 3 und nennt `fix` für genau diesen Schritt.
+Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `claude` steht der Chat von Anfang an neben dem Fenster, außer in CI (Variable `CI` gesetzt), mit `--no-chat` oder `--headless`. Die erste Zeile im Terminal nennt den Modus und ob der Lauf Vergleichswerte lernt. Der Chat: Er zeigt jede Aktion (`S3 · 4/12 click …`) samt neuer Versuche, die Eingabe ist gesperrt. Besteht der Lauf, meldet der Chat das samt Warnungen und wartet nicht; er schließt mit dem Lauf oder bleibt bei `--until` und `--handover` neben dem übergebenen Fenster. Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben). Fehlt die Aufzeichnung ganz, endet es mit Exit 3 und nennt `record`. Ist ein Schritt veraltet, endet es mit Exit 3 und nennt `fix` für genau diesen Schritt.
 
 - **Warten:** Es gibt keine festen Pausen. Ein Schritt wartet, bis sein Ziel sichtbar und nicht überdeckt ist. Das deckt Lademasken, Overlays und Dialoge in Dialogen ab, denn nur der oberste Dialog ist klickbar. `check` wiederholt die Prüfung, bis sie stimmt oder das Zeitlimit abläuft.
 - **Zeitlimits:** Standard sind 30 Sekunden je Schritt, änderbar mit `--step-timeout` oder von Hand je Aktion mit `timeoutMs` und je Prüfung mit `recording.timeoutMs` in der Testdatei. Klärt oder behebt Claude aus dem Lauf heraus, gelten `--timeout <minuten>` (Standard 60) und `--max-steps <n>` wie bei `record` und `fix`.
@@ -230,7 +230,7 @@ caw-ai run <test> --target local --until S4
 
 Das Tool spielt die Aufzeichnung bis zum bestandenen `check` von `S4` ab und übergibt das Fenster. Spätere Schritte laufen nicht, sie dürfen also auch veraltet sein. Der Ablauf ist deterministisch, die Umgebung nicht: Das ist kein Snapshot. Der Weg läuft jedes Mal neu, mit neuen Daten, und weicht die Anwendung ab, scheitert der Schritt sichtbar.
 
-- **Lokaler Code:** Auf Umgebungen mit `localCode` immer, auch bei `source: deployed`. Änderungen siehst du mit F5, der Maskenzustand ist danach weg. Um wieder hinzukommen, startest du den Befehl neu.
+- **Lokaler Code:** Wo Umgebung und App ihn haben, auch bei `code: deployed`; die Zeile `Code:` sagt es (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)). Änderungen siehst du mit F5, der Maskenzustand ist danach weg. Um wieder hinzukommen, startest du den Befehl neu.
 - **Weg scheitert:** Du klärst den Fehler im Chat und kannst den Schritt beheben lassen. Schließt du ihn, geht das Fenster trotzdem an dich, der Bericht nennt den Fehler. Der Exit-Code bleibt das Urteil.
 - **Keine Aufzeichnung:** Exit 3, erst aufnehmen.
 - **Zustand nach Reload:** Ob eine Ansicht nach F5 im selben Zustand bleibt, hängt von der Anwendung ab.
@@ -249,7 +249,7 @@ Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“):
 
 ## Einen Schritt beheben
 
-Scheitert ein Schritt in `run` oder im Prüflauf von `record` und `fix`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Ohne Beheben beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `agent`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
+Scheitert ein Schritt in `run` oder im Prüflauf von `record` und `fix`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Ohne Beheben beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `claude`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
 
 - **Fragen:** Erst deine Nachricht startet Claude, im selben Browser und nur lesend wie bei den [Empfehlungen](#empfehlungen-zu-fehlern-und-warnungen). Es antwortet im Chat, nennt Ursache, Datei und Zeile und kann Empfehlungskarten geben. Jede weitere Nachricht geht ins selbe Gespräch, bis du einen Knopf drückst. Das Log steht in `agent/claude-gespraech.log`. Ohne Nachricht und ohne Klick fallen keine Token an.
 - **Im selben Browser beheben:** Ist vom gescheiterten Schritt noch nichts ausgeführt, scheiterte also seine erste Aktion ohne harten Fehler von außen, behebt Claude ihn direkt dort, ohne Vorlauf. Der Bericht des Testlaufs bleibt als `report-testlauf.md` erhalten. Sonst, etwa nach einer halben Aktionsfolge oder einer nicht erfüllten Prüfung, geht es wie unten mit Vorlauf in einem frischen Browser. Der Chat sagt vorher, welcher Weg es wird.
@@ -289,7 +289,7 @@ Scheitert ein Schritt, ordnet das Tool den Fehler ein, ohne Claude und ohne Toke
 
 Der stärkste Befund entscheidet, die übrigen stehen darunter. Ohne auffällige Belege bleibt es „unklar“. Die Einschätzung steht im Chat, als Abschnitt „Einschätzung“ in `report.md` samt Tabelle der Requests neben denen der Aufnahme, in `result.json` und im Auftrag an Claude (`diagnosis`, `evidence`). Claude liest dort zuerst und kann mit `network` die letzten Requests abrufen.
 
-Ohne `recording.network` sagt der Bericht das. Der Vergleich entsteht nie beim Aufnehmen oder Beheben: Unter Claudes Steuerung laufen auch Fehlklicks und Umwege, die aus der Aufzeichnung gestrichen werden, ihre Requests gehörten nicht zum Schritt. Er entsteht ohne Claude und Token im nächsten `run` mit Chat auf einer Umgebung mit `agent`, aus der bereinigten Aufzeichnung: Jeder bestandene Schritt ohne Vergleich bekommt ihn dann aus diesem Lauf, wenn er auf demselben Ziel aufgenommen wurde. Ebenso die Wirkung je Aktion. Der Chat und das Terminal nennen die Schritte, nur dieses Feld ändert sich in der Datei, der Hash bleibt unberührt. Vorhandene Werte überschreibt ein `run` nie, außer sie stammen aus der Zeit vor den Parameternamen (Einträge ohne `params`). Ohne Chat, etwa in CI, bleibt die Datei, wie sie ist.
+Ohne `recording.network` sagt der Bericht das. Der Vergleich entsteht nie beim Aufnehmen oder Beheben: Unter Claudes Steuerung laufen auch Fehlklicks und Umwege, die aus der Aufzeichnung gestrichen werden, ihre Requests gehörten nicht zum Schritt. Er entsteht ohne Claude und Token im nächsten `run` mit Chat auf einer Umgebung mit `claude`, aus der bereinigten Aufzeichnung: Jeder bestandene Schritt ohne Vergleich bekommt ihn dann aus diesem Lauf, wenn er auf demselben Ziel aufgenommen wurde. Ebenso die Wirkung je Aktion. Der Chat und das Terminal nennen die Schritte, nur dieses Feld ändert sich in der Datei, der Hash bleibt unberührt. Vorhandene Werte überschreibt ein `run` nie, außer sie stammen aus der Zeit vor den Parameternamen (Einträge ohne `params`). Ohne Chat, etwa in CI, bleibt die Datei, wie sie ist.
 
 ### Wirkung je Aktion
 
@@ -305,7 +305,7 @@ Jede Aktion (Klick, Eingabe, Taste) hat eine Wirkung auf der Seite. Das Tool mis
 
 Zahlen werden zu `#`, damit Bestellnummern und Daten nicht stören.
 
-**Lernen:** Ein bestandener `run` mit Chat auf einer Umgebung mit `agent` trägt die Wirkung ein. Die ersten zwei gesunden Läufe gleichen sich ab. Erhalten bleibt nur, was in beiden gleich war; die Konsole sammelt alles, was vorkam. Danach gilt die Wirkung als gelernt (`runs: 2`) und kein Lauf ändert sie mehr. Ein neu aufgenommener Schritt lernt neu.
+**Lernen:** Ein bestandener `run` mit Chat auf einer Umgebung mit `claude` trägt die Wirkung ein. Die ersten zwei gesunden Läufe gleichen sich ab. Erhalten bleibt nur, was in beiden gleich war; die Konsole sammelt alles, was vorkam. Danach gilt die Wirkung als gelernt (`runs: 2`) und kein Lauf ändert sie mehr. Ein neu aufgenommener Schritt lernt neu.
 
 **Vergleich:**
 - Fehlt beim Abspielen etwas aus der gelernten Wirkung, ist das eine Abweichung, ebenso eine neue Konsolenmeldung.
@@ -322,7 +322,7 @@ Ohne Fix-Parameter kostet nichts Token, solange du nicht schreibst oder klickst:
 | Lauf | Wann |
 |---|---|
 | `run` und „Ursache von Claude untersuchen lassen“ | Ein Schritt ist gescheitert, du klickst den Knopf im Chat. Lautet die Einschätzung „Anwendung“, ist er der Hauptknopf, sonst steht er neben „Schritt beheben“. Danach wie mit `--advise`: Karten, bei übernommener Änderung an der Anwendung „Erneut testen“ |
-| `run … --advise` | Ohne Klick: Ein Schritt scheitert, ein harter Fehler tritt auf oder es gibt Warnungen, auch in einem bestandenen Lauf. Für Läufe, deren Ergebnis du dir erst später ansiehst. Nur auf Umgebungen mit `agent` und mit Chat (nicht in CI), sonst Exit 3 |
+| `run … --advise` | Ohne Klick: Ein Schritt scheitert, ein harter Fehler tritt auf oder es gibt Warnungen, auch in einem bestandenen Lauf. Für Läufe, deren Ergebnis du dir erst später ansiehst. Nur auf Umgebungen mit `claude` und mit Chat (nicht in CI), sonst Exit 3 |
 | `fix <test> <S4>` und „Schritt beheben“ | Fehler oder Warnungen beim Beheben und im Prüflauf danach |
 | `record` | erst, wenn du im Prüflauf „Schritt beheben“ wählst |
 
@@ -350,10 +350,11 @@ Im Terminal zeigt das Tool Farben, Symbole und am Ende einen Ergebnisblock mit j
 
 ## Wie der lokale Code in die Anwendung kommt
 
+Wann lokaler Code läuft, was du für welchen Aufbau einträgst und wie `localBuild` und `statics` ausgeliefert werden: [Konfiguration › Lokalen Code testen](configuration.de.md#lokalen-code-testen). Dieser Abschnitt behandelt die Einträge für Sencha/ExtJS.
+
 Auf Umgebungen mit `localCode` beantwortet Chrome bestimmte Requests aus dem Projektordner statt vom Server. Welche, sagt `assetUrlPattern`: ein regulärer Ausdruck, dessen erste Gruppe den Namen der Datei liefert. Für diesen Namen sucht das Tool einen Eintrag der App:
 
-- **`localBuild`:** der Ordner, in den dein Build oder Build-Watch schreibt, z. B. `"localBuild": "dist"` (Vite) oder `"dist/app/browser"` (Angular CLI). Gebaut wird wie immer, mit Hash. Ein Request auf eine Datei, die dort liegt, bekommt diese Datei; ein Request auf eine Datei des deployten Builds, etwa `assets/index-Bx81.js` aus dem deployten `index.html`, bekommt die lokale Datei, die sich nur im Hash unterscheidet (`assets/index-Q7f2.js`). Alles, was der lokale Einstieg nachlädt, auch Lazy-Chunks, trägt lokale Namen und kommt ebenfalls aus dem Ordner. Seiten (`index.html`, Routen) kommen immer vom Server, damit bleiben seine Konfiguration, `<base href>` und CSP. JS, CSS, Quellkarten, Schriften und Bilder gehen mit ihrem Typ raus. Ohne `assetUrlPattern` ist der Name der Pfad unterhalb der Umgebungs-URL. Im Ordner muss vor dem Lauf ein Build liegen, sonst endet er mit `watch-missing`. Nicht für serverseitig gerenderte Apps (Next.js, Nuxt): Deren Server schreibt die deployten Dateinamen in jede Seite. Service Worker sind im Testbrowser gesperrt, ein gecachter deployter Build verdeckt den lokalen also nie.
-- **`statics`:** eine Datei, `{ "name": "main.js", "path": "dist/main.js" }`, für Anwendungen, die gebaute Dateien unter festen Namen laden, z. B. mit `"assetUrlPattern": "/static/js/([^?#]+)"`. Jede Datei, die sich ändert, muss genannt sein; eine nicht genannte kommt vom Server. Die Datei muss vor dem Lauf existieren, sonst endet er mit `watch-missing`.
+- **`localBuild`, `statics`:** ein Build-Ordner oder einzelne gebaute Dateien, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen).
 - **`redirects`:** ein Sencha-Paket oder die App selbst. Welche Quelldateien in welcher Reihenfolge dazugehören, steht in `bootstrap.json` im App-Ordner.
 - **`constants`:** eine Datei, die ein Watch neu schreibt (`watchPath`).
 

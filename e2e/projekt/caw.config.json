@@ -13,7 +13,7 @@
             "urls": {
                 "local": "https://portal.localhost:8443"
             },
-            "agent": true,
+            "claude": true,
             "localCode": true,
             "writable": true
         }

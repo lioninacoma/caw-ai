@@ -46,13 +46,13 @@ Testpläne kannst du in jeder Sprache schreiben, Claude liest sie so wie ein Tes
 
 | Feld | Pflicht | |
 |---|---|---|
-| `id` | ja | Wie der Dateiname. |
-| `app` | ja | App, in der der Test startet. |
-| `role` | mit Login | Rolle aus der Config. |
-| `targets` | ja | Umgebungen, auf denen der Test laufen darf. |
-| `mutates` | ja | `true`, wenn er schreibt. Solche Tests laufen nur auf `writable`-Umgebungen. |
+| `id` | nein | Standard ist der Dateiname; steht sie da, muss sie ihm entsprechen. |
+| `app` | wenn die Config mehrere Apps hat | App, in der der Test startet. Standard ist die einzige App der Config. |
+| `role` | mit Login, wenn die Config mehrere Rollen hat | Rolle aus der Config. Standard ist die einzige Rolle. |
+| `targets` | nein | Umgebungen, auf denen der Test laufen darf. Standard sind alle Umgebungen außer Produktion. |
+| `mutates` | ja | `true`, wenn er Daten anlegt oder ändert; solche Tests laufen nur auf Umgebungen mit `writable: true`. `false`, wenn er nur liest. |
 | `also` | nein | Weitere Apps, durch die der Ablauf geht, z. B. `[admin]`. Auch deren lokaler Code wird ausgeliefert. |
-| `source` | nein | `watch`: lokalen Code nutzen, wo die Umgebung es erlaubt. |
+| `code` | nein | `deployed`: immer den ausgelieferten Stand testen, auch wo ein lokaler Build eingespielt werden könnte. Standard `local`: der lokale Build, wo Umgebung und App einen haben, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). Früher `source: watch` / `source: deployed`; das gilt mit Hinweis weiter. |
 | `notes` | nein | Kontext für den ganzen Test. |
 | `steps` | ja | Siehe unten. |
 

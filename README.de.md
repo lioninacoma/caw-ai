@@ -126,7 +126,7 @@ Mit gesetztem `CI` gibt es keinen Chat, und Claude wird nicht gestartet. Lokal a
 ```json
 {
   "environments": {
-    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
   },
   "auth": { "type": "form", "path": "/login", "userSelector": "#email", "passwordSelector": "#password",
             "signedInSelector": "[data-testid=user-menu]" },

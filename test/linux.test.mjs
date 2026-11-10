@@ -26,6 +26,14 @@ test('claudeFailureReason benennt Token, Zeitlimit und Sonstiges', () => {
     assert.match(claudeFailureReason(7, 'irgendwas'), /Exit 7/);
 });
 
+test('parseRunArgs: --code local|deployed bei run, record und fix', () => {
+    assert.equal(parseRunArgs('run', ['smoke', '--target', 'dev', '--code', 'deployed']).code, 'deployed');
+    assert.equal(parseRunArgs('fix', ['smoke', 'S2', '--target', 'dev', '--code=local']).code, 'local');
+    assert.equal(parseRunArgs('record', ['smoke', '--target', 'dev', '--code', 'deployed']).code, 'deployed');
+    assert.equal(parseRunArgs('run', ['smoke', '--target', 'dev']).code, undefined);
+    assert.throws(() => parseRunArgs('run', ['smoke', '--target', 'dev', '--code', 'watch']), (error) => error.code === 'usage' && /--code erwartet local, deployed/.test(error.message));
+});
+
 test('parseRunArgs: Jeder Befehl kennt nur seine Optionen', () => {
     const base = ['smoke', '--target', 'shop/dev'];
     assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', target: 'shop/dev', handover: false, advise: false, headless: false, noChat: false, stepTimeoutSec: 30 });

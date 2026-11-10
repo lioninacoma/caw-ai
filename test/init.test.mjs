@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -13,8 +13,19 @@ test('init: besteht validate sofort, legt keinen Beispieltest an, die Zugangsdat
     t.mock.method(console, 'log', (text) => said.push(text));
     init(root);
     assert.equal(validate(root), 0);
-    assert.ok(!existsSync(join(root, 'caw', 'tests')), 'kein ungefragter Beispieltest');
-    assert.match(said.join('\n'), /den ersten Test aufnehmen: caw-ai record <test> --target local/);
+    assert.deepEqual(readdirSync(join(root, 'caw', 'tests')), ['.gitkeep'], 'kein ungefragter Beispieltest, aber der Ordner');
+    assert.match(readFileSync(join(root, 'caw', 'caw.md'), 'utf8'), /^# Notizen für Claude\n[\s\S]*\n- Beispiel:/);
+    assert.match(said.join('\n'), /den ersten Test aufnehmen: caw-ai record <test> --target local\. Ohne passende Selektoren erst caw-ai explore/);
+    // Lief explore eben, rät init nicht, es erst laufen zu lassen.
+    const explored = mkdtempSync(join(tmpdir(), 'caw-init-explored-'));
+    t.after(() => rmSync(explored, { recursive: true, force: true }));
+    said.length = 0;
+    init(explored, { explored: true, url: 'http://localhost:5173', login: {} });
+    assert.doesNotMatch(said.join('\n'), /explore --url/);
+    // Ein vorhandenes caw.md bleibt, wie es ist.
+    writeFileSync(join(explored, 'caw', 'caw.md'), 'eigen');
+    init(explored);
+    assert.equal(readFileSync(join(explored, 'caw', 'caw.md'), 'utf8'), 'eigen');
     const ignore = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/);
     assert.ok(ignore.includes('.caw/') && ignore.includes('caw/.env') && ignore.includes('caw/.auth/'));
     assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers['caw-ai'], { command: 'node', args: ['node_modules/caw-ai/bin/caw-ai.mjs', 'mcp'] });
@@ -205,7 +216,7 @@ test('init: erkennt das Framework, nimmt Antworten an, ohne Anmeldung keine Roll
     init(open, { url: 'http://shop.localhost:3000', auth: 'none' });
     const config = JSON.parse(readFileSync(join(open, 'caw.config.json'), 'utf8'));
     assert.equal(config.framework, 'vue');
-    assert.deepEqual(config.environments, { local: { url: 'http://shop.localhost:3000', agent: true, writable: true } });
+    assert.deepEqual(config.environments, { local: { url: 'http://shop.localhost:3000', claude: true, writable: true } });
     assert.equal(config.auth, undefined);
     assert.equal(validate(open), 0);
 
@@ -268,8 +279,13 @@ test('init: explore ist Pflicht, fragt nach Adresse und Rollen, prüft jede Antw
     const root = mkdtempSync(join(tmpdir(), 'caw-init-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
-    // Ohne Terminal und ohne --url: init nennt den Aufruf, statt eine Config mit Platzhaltern anzulegen.
-    await assert.rejects(initAnswers(root, [], { interactive: false }), /npx caw-ai init --url/);
+    // Ohne Terminal und ohne --url: die Vorlage, die Anmeldung bleibt TODO; --offline ebenso, auch mit Adresse und ohne explore.
+    assert.deepEqual(await initAnswers(root, [], { interactive: false }), { answers: { offline: true } });
+    assert.deepEqual(await initAnswers(root, ['--offline', '--url', 'http://localhost:3000', '--no-mcp'], { interactive: false, runExplore: async () => { throw new Error('kein explore'); } }),
+        { answers: { offline: true, url: 'http://localhost:3000', mcp: false } });
+    const offline = starterConfig({ offline: true });
+    assert.equal(offline.auth.passwordSelector, 'TODO');
+    assert.equal(offline.auth.submitSelector, undefined);
     await assert.rejects(initAnswers(root, ['--url', 'ftp://x'], { interactive: false }), /http:\/\/ oder https:\/\//);
 
     const explored = [];
@@ -310,6 +326,37 @@ test('init: explore ist Pflicht, fragt nach Adresse und Rollen, prüft jede Antw
     // Fenster geschlossen oder Abbruch in explore: init legt nichts an.
     assert.deepEqual(await initAnswers(root, ['--url', 'http://localhost:5173'], { interactive: false, runExplore: async () => 2 }), { code: 2 });
     await assert.rejects(initAnswers(root, ['--from', 'fehlt.json'], { interactive: false }), /fehlt\.json ist nicht lesbar/);
+});
+
+test('validate: je Test und Ziel der Code mit Grund, TODO, alte Namen und ein klebendes code: deployed als Hinweis', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-validate-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
+        environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true, localCode: true } },
+        auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
+        apps: { web: { dir: '.', startUrl: '/', localBuild: 'dist' } },
+        roles: { tester: { loginEnv: 'A', passwordEnv: 'B' } },
+    }));
+    mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
+    const steps = 'steps:\n  - id: S1\n    name: A\n    do: ""\n    expect: B\n';
+    writeFileSync(join(root, 'caw', 'tests', 'alt.yaml'), `mutates: false\nsource: deployed\n${steps}`);
+    writeFileSync(join(root, 'caw', 'tests', 'lesen.yaml'), `mutates: false\n${steps}`);
+    const chunks = [];
+    const write = t.mock.method(process.stdout, 'write', (chunk) => { chunks.push(String(chunk)); return true; });
+    try {
+        assert.equal(validate(root), 0);
+    } finally {
+        write.mock.restore();
+    }
+    const out = chunks.join('');
+    assert.match(out, /alt \(local\): ausgelieferter Stand \(der Test sagt code: deployed\)/);
+    assert.match(out, /lesen \(local\): ausgelieferter Stand \(Dev-Server auf localhost:5173, liefert deinen Code selbst aus\)/);
+    assert.match(out, /lesen \(dev\): lokaler Build aus dist\n/);
+    assert.match(out, /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/);
+    assert.match(out, /Umgebung local: agent heißt jetzt claude/);
+    assert.match(out, /alt\.yaml: source: deployed heißt jetzt code: deployed\./);
+    assert.match(out, /alt\.yaml: code: deployed, aber App web hat inzwischen lokalen Code/);
+    assert.match(out, /und 2 Test\(s\) sind gültig/);
 });
 
 test('run und record: TODO in der Anmeldung bricht vor Chrome und Claude ab', async () => {

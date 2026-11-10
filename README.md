@@ -126,7 +126,7 @@ With `CI` set there is no chat and Claude is not started. Record and fix locally
 ```json
 {
   "environments": {
-    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
   },
   "auth": { "type": "form", "path": "/login", "userSelector": "#email", "passwordSelector": "#password",
             "signedInSelector": "[data-testid=user-menu]" },

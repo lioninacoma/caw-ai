@@ -30,9 +30,10 @@ Opens the app in Chrome. Sign in once, then press Enter. caw-ai detects framewor
 - `caw.config.json`
 - `caw/.env.example` with the credential variables per role
 - `.claude/skills/caw-ai/SKILL.md` and a `caw-ai` entry in `.mcp.json`
+- `caw/tests/` for your test plans and `caw/caw.md` for notes Claude reads in every run
 - `.gitignore` entries for `caw/.env`, `.caw/` and `caw/.auth/`
 
-Anything it couldn't detect is set to `TODO`. `doctor` points you to it. Existing files are left alone.
+Anything it couldn't detect is set to `TODO`. `doctor` and `validate` point you to it. Existing files are left alone.
 
 | Option | |
 |---|---|
@@ -40,6 +41,7 @@ Anything it couldn't detect is set to `TODO`. `doctor` points you to it. Existin
 | `--yes` | Don't wait for you to sign in, ask no questions. Good for apps without login. |
 | `--from <file>` | Use an existing `explore` result instead of opening the app. If `caw/.explore.json` exists, `init` uses it automatically. |
 | `--no-mcp` | Don't touch `.mcp.json`. |
+| `--offline` | Don't open the app: write the template with `TODO` for the sign-in. Without a terminal and without `--url`, `init` does this by itself. |
 | `--insecure-tls` | Accept self-signed certificates (local environments only). |
 
 ## explore
@@ -77,6 +79,8 @@ npx caw-ai validate
 
 Checks `caw.config.json` and every file in `caw/tests/` without browser or Claude. Errors name file and line. Use it in CI and pre-commit hooks.
 
+Per test and target it prints which code runs there, e.g. `smoke (dev): local build from dist` or `smoke (staging): deployed (environment staging has no localCode)`. Notes that don't fail validation: `auth` values still `TODO`, old names such as `agent` or `source`, and settings without effect (see [Testing local code](configuration.md#testing-local-code)).
+
 ## record
 
 ```bash
@@ -91,7 +95,7 @@ Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test i
 4. caw-ai replays the recording without Claude.
 5. You choose "Adopt test plan". Only then are files written.
 
-Runs only on environments with `"agent": true`.
+Runs only on environments with `"claude": true`.
 
 | Option | |
 |---|---|
@@ -99,6 +103,7 @@ Runs only on environments with `"agent": true`.
 | `--app <app>` | First recording only. Not needed if the config has one app. |
 | `--also <app>` | First recording only: the flow continues in another app of the project. |
 | `--read-only` | First recording only: the test doesn't write data (`mutates: false`). |
+| `--code local\|deployed` | Which code runs, see [Testing local code](configuration.md#testing-local-code). With `deployed` a new test keeps `code: deployed`. |
 | `--agent local\|docker\|session` | Where Claude runs. Default: `agent.sandbox` from the config, else `local`. |
 | `--timeout <minutes>` | Time limit for Claude, default 60. |
 | `--max-steps <n>` | Limit on Claude's browser actions, default `maxSteps` or 100. |
@@ -110,11 +115,12 @@ Runs only on environments with `"agent": true`.
 npx caw-ai run create-ticket --target local
 ```
 
-Replays the recording. No Claude, no tokens. On environments with `agent` the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
+Replays the recording. No Claude, no tokens. On environments with `claude` the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
 
 | Option | |
 |---|---|
 | `--until <S4>` | Stop after this step and hand you the window, with local code where allowed. |
+| `--code local\|deployed` | Which code runs: the local build or the deployed version. Default: `code` in the test and the config, see [Testing local code](configuration.md#testing-local-code). `local` on an environment without `localCode` is rejected (exit 3). |
 | `--handover` | Leave the window open after the run. |
 | `--advise` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
 | `--no-chat` | Visible window, no chat, no Claude. Like CI. |
@@ -132,7 +138,7 @@ With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`; `--u
 npx caw-ai fix create-ticket S2 --target local
 ```
 
-Re-records exactly one step. Use it after you changed a step's text by hand, or added a new step at the end. Steps before it replay without Claude. The other steps stay untouched. Options: `--agent`, `--timeout`, `--max-steps`, `--step-timeout`.
+Re-records exactly one step. Use it after you changed a step's text by hand, or added a new step at the end. Steps before it replay without Claude. The other steps stay untouched. Options: `--agent`, `--code`, `--timeout`, `--max-steps`, `--step-timeout`.
 
 ## auth
 
@@ -194,7 +200,7 @@ When caw-ai stops, it prints a code and the reason.
 | `replay-stale` | 3 | A step changed since recording: `fix <test> <step>` |
 | `step-unknown` | 3 | Use a step ID from the test file |
 | `target-invalid`, `target-denied` | 3 | Use an environment from the config; production can't be recorded |
-| `write-protected` | 3 | Recording and writing tests need `agent` / `writable` on the environment |
+| `write-protected` | 3 | Recording and writing tests need `claude` / `writable` on the environment |
 | `auth-missing` | 3 | Delete the file under `caw/.auth/` and run `auth` again |
 | `credentials-missing` | 2 | Fill `caw/.env` from `caw/.env.example` |
 | `login-form-missing`, `login-failed` | 2 | Is the backend up? Are `auth` selectors and credentials right? |

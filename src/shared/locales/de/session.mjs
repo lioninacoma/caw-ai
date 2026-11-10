@@ -28,6 +28,7 @@ export default {
     'session.args.unexpected': 'Unerwartetes Argument: {arg}',
     'session.args.unknownOption': '{command} kennt die Option {flag} nicht. Erlaubt: {allowed}',
     'session.args.agentChoice': '--agent erwartet {choices}.',
+    'session.args.codeChoice': '--code erwartet {choices}.',
     'session.args.testId': 'Ungültiger Name des Tests: {test}. Erlaubt sind Buchstaben, Ziffern, _, - und . (ohne Ordner), etwa anmelden oder bestellung-2.',
     'session.args.testMissing': 'Name des Tests fehlt.',
     'session.args.fixStep': 'fix erwartet einen Schritt wie S4.',

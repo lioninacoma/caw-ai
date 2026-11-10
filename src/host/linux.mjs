@@ -40,16 +40,18 @@ export const parseEnvFile = (text) => {
     return env;
 };
 
-const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent'];
+const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--code'];
 const COMMAND_OPTIONS = {
     // --timeout und --max-steps gelten fuer Claude beim Klaeren, Empfehlen und Beheben; das Abspielen selbst begrenzt --step-timeout.
-    run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--step-timeout', '--timeout', '--max-steps', '--agent'],
+    run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--step-timeout', '--timeout', '--max-steps', '--agent', '--code'],
     record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
     fix: CLAUDE_OPTIONS,
 };
 const SWITCHES = new Set(['--handover', '--advise', '--headless', '--no-chat', '--read-only']);
 /** Wo Claude arbeitet: lokal gestartet, in Docker oder als die Claude-Code-Session des Entwicklers. */
 export const AGENT_CHOICES = ['local', 'docker', 'session'];
+/** Welcher Code laeuft: lokaler Build oder ausgelieferter Stand; ohne Angabe entscheiden Test und Config. */
+export const CODE_CHOICES = ['local', 'deployed'];
 // Der Mensch sitzt am Chat, das dauert laenger als ein Lauf ohne ihn.
 export const CLAUDE_TIMEOUT_MIN = 60;
 const STEP_ID = /^S[1-9]\d*$/;
@@ -88,6 +90,10 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--agent') {
             if (!AGENT_CHOICES.includes(value)) throw new CawError('usage', t('session.args.agentChoice', { choices: AGENT_CHOICES.join(', ') }));
             options.agent = value;
+        }
+        else if (flag === '--code') {
+            if (!CODE_CHOICES.includes(value)) throw new CawError('usage', t('session.args.codeChoice', { choices: CODE_CHOICES.join(', ') }));
+            options.code = value;
         }
         else options.timeoutMin = Number(value);
     }

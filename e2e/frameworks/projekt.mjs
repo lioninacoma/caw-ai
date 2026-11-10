@@ -19,7 +19,7 @@ export const writeProject = (root, { framework, url, build, local, embed = false
     const config = {
         language: 'de',
         framework,
-        environments: { test: { url, agent: true, writable: true, ...(local ? { localCode: true } : {}) } },
+        environments: { test: { url, claude: true, writable: true, ...(local ? { localCode: true } : {}) } },
         auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
         apps: { web: { dir: '.', startUrl: '/', ...(local?.statics ? { statics: local.statics } : {}), ...(local?.build ? { localBuild: local.build } : {}) } },
         roles: { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEnv: 'CAW_PW_TESTER' } },
@@ -31,7 +31,7 @@ export const writeProject = (root, { framework, url, build, local, embed = false
     mkdirSync(join(root, 'caw/recordings'), { recursive: true });
     writeFileSync(join(root, 'caw/.env'), 'CAW_LOGIN_TESTER=tester@example.com\nCAW_PW_TESTER=geheim\n');
     rmSync(join(root, 'caw/.auth'), { recursive: true, force: true });
-    writeTest(root, 'smoke', { source: local ? 'watch' : undefined }, [
+    writeTest(root, 'smoke', { code: local ? 'local' : undefined }, [
         {
             id: 'S1', name: 'Ticket anlegen', do: 'Lege ein Ticket "Monitor {{runTag}}" an.', expect: 'Das Ticket steht in der Liste, Build stimmt.',
             actions: [
@@ -79,9 +79,9 @@ const EMBED_STEP = {
 
 const renderTarget = (target) => `{${Object.entries(target).map(([key, value]) => `${key}: ${typeof value === 'object' ? renderTarget(value) : yamlString(value)}`).join(', ')}}`;
 
-const writeTest = (root, id, { source, mutates = true }, steps) => {
+const writeTest = (root, id, { code, mutates = true }, steps) => {
     const plan = [
-        `id: ${id}`, 'app: web', 'role: tester', 'targets: [test]', ...(source ? [`source: ${source}`] : []), `mutates: ${mutates}`, 'steps:',
+        `id: ${id}`, 'app: web', 'role: tester', 'targets: [test]', ...(code ? [`code: ${code}`] : []), `mutates: ${mutates}`, 'steps:',
         ...steps.flatMap((step) => [`  - id: ${step.id}`, `    name: ${yamlString(step.name)}`, `    do: ${yamlString(step.do)}`, `    expect: ${yamlString(step.expect)}`]),
     ];
     writeFileSync(join(root, 'caw/tests', `${id}.yaml`), `${plan.join('\n')}\n`);
