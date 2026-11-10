@@ -11,7 +11,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, posix, relative } from 'node:path';
 
 import { defaultAssetPattern } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
@@ -19,7 +19,8 @@ import { t } from '../shared/i18n.mjs';
 import { RUN_DIR } from '../shared/names.mjs';
 import { ago, newestFile } from './code-source.mjs';
 import { frameworkOf } from './framework/index.mjs';
-import { buildCheck, contentTypeOf, moduleAlias, resolveLocalBuild, scriptKind, servesBuild } from './local-build.mjs';
+import { buildCheck, contentTypeOf, localPages, moduleAlias, resolveLocalBuild, scriptKind, servesBuild, withoutIntegrity } from './local-build.mjs';
+import { baseOf, codeTags, ssrMarker, swapPage } from './page-swap.mjs';
 import { processRunning } from './processes.mjs';
 import { isProjectCopy, isProjectCopyFile } from './project-files.mjs';
 
@@ -150,14 +151,80 @@ const buildSource = ({ root, name, appDir, choice, info }) => {
             }
             return null;
         },
+        page: ({ base, deployed, namesOf }) => buildPage({ dir, appDir, base, deployed, namesOf }),
     };
+};
+
+/** Die lokale Datei, die ein Request auf url bekaeme (wie resolve: ueber die Namen aus dem Muster). */
+const routedFile = (dir, namesOf, url) => {
+    for (const name of namesOf(url)) {
+        const found = resolveLocalBuild(dir, name);
+        if (found !== null) return found.file;
+    }
+    return undefined;
+};
+
+/** Die lokale Datei zu einer URL, bei fremden Origins (CDN) und Pfaden ausserhalb des Musters ueber den Pfad. */
+const builtFile = (dir, namesOf, url) => {
+    const routed = routedFile(dir, namesOf, url);
+    if (routed !== undefined) return routed;
+    try {
+        return resolveLocalBuild(dir, decodeURIComponent(new URL(url).pathname).replace(/^\//, ''))?.file;
+    } catch {
+        return undefined;
+    }
+};
+
+const urlDir = (url) => posix.dirname(new URL(url).pathname);
+
+/**
+ * Was beim Build getauscht wird. Die lokale Seite ist die mit den meisten Treffern unter den ausgelieferten Tags (ein Build kann mehrere
+ * Seiten haben). Ein ausgelieferter Tag gehoert der App, wenn der Build seine Datei kennt und sie keine Projektkopie ist, oder wenn er
+ * im Asset-Ordner der lokalen Seite liegt; ein Inline-Skript, wenn es diesen Ordner nennt (webpack-Laufzeit mit publicPath).
+ * @returns { owned, local } | { issue } | null (keine passende Seite: kein Tausch, die Requests einzeln)
+ */
+const buildPage = ({ dir, appDir, base, deployed, namesOf }) => {
+    const served = new Map();
+    const fileOf = (url) => {
+        if (!served.has(url)) served.set(url, builtFile(dir, namesOf, url));
+        return served.get(url);
+    };
+    const copies = new Map();
+    const copy = (file) => {
+        if (!copies.has(file)) copies.set(file, isProjectCopyFile(appDir, file, { skip: [dir] }));
+        return copies.get(file);
+    };
+    let best = null;
+    for (const { text } of localPages(dir)) {
+        const tags = codeTags(text, base);
+        const files = new Set(tags.flatMap(({ urls }) => urls.map(fileOf)).filter((file) => file !== undefined && !copy(file)));
+        const hits = deployed.filter(({ urls }) => urls.some((url) => files.has(fileOf(url)))).length;
+        if (hits > 0 && (best === null || hits > best.hits)) best = { tags, hits };
+    }
+    if (best === null) return null;
+    // Zeigt ein lokaler Tag auf eine Datei, die der Build unter dieser Adresse nicht hat (anderer base-Pfad als die Umgebung), liefe die
+    // getauschte Seite ins Leere: dann nicht tauschen.
+    const loading = best.tags.filter(({ inline }) => !inline);
+    if (loading.some(({ urls }) => urls.some((url) => routedFile(dir, namesOf, url) === undefined))) return { issue: 'local-base' };
+    const local = best.tags.filter(({ inline, urls }) => inline || !urls.some((url) => copy(fileOf(url))));
+    const dirs = new Set(loading.flatMap(({ urls }) => urls.map(urlDir)).filter((path) => path !== '/'));
+    const owned = (tag) => {
+        if (tag.inline) return [...dirs].some((path) => tag.tag.includes(`${path}/`));
+        return tag.urls.some((url) => {
+            const file = fileOf(url);
+            return file === undefined ? dirs.has(urlDir(url)) : !copy(file);
+        });
+    };
+    const kept = new Set(deployed.filter((tag) => !owned(tag)).flatMap(({ urls }) => urls));
+    const keptInline = new Set(deployed.filter((tag) => tag.inline && !owned(tag)).map(({ tag }) => tag));
+    return { owned, local: local.filter(({ inline, tag, urls }) => (inline ? !keptInline.has(tag) : !urls.some((url) => kept.has(url)))) };
 };
 
 // Was beim Dev-Server Code ist: Skripte, Stile, Schriften, Bilder; per fetch nur Code (Vite laedt CSS als Modul mit ?import).
 const DEV_TYPES = new Set(['script', 'stylesheet', 'font', 'image', 'media']);
 const DEV_FETCHED = /\.(m?[jt]sx?|css|wasm|json)$|[?&](import|v=|t=)/;
 
-const devSource = ({ root, name, appDir, choice, info, fetchImpl = fetch }) => {
+const devSource = ({ root, name, appDir, choice, info, envUrl, fetchImpl = fetch }) => {
     const origin = new URL(choice.url).origin;
     let started = null;
     return {
@@ -193,6 +260,51 @@ const devSource = ({ root, name, appDir, choice, info, fetchImpl = fetch }) => {
             if (isProjectCopy(appDir, body)) return null;
             return { contentType: contentType || contentTypeOf(request.pathname), body };
         },
+        page: ({ url, base, deployed }) => devPage({ origin, appDir, envUrl, url, base, deployed, fetchImpl }),
+    };
+};
+
+/**
+ * Was beim Dev-Server getauscht wird. Die lokale Seite ist sein HTML unter demselben Pfad (Vite, webpack, Angular liefern es fuer jede
+ * Route). Ein ausgelieferter Tag gehoert der App, wenn er unter der Adresse der Umgebung liegt, die Dev-Seite ihn nicht selbst laedt
+ * und der Dev-Server darunter keine Projektkopie liefert (public/env.js setzt die Umgebung).
+ */
+const devPage = async ({ origin, appDir, envUrl, url, base, deployed, fetchImpl }) => {
+    const page = new URL(url);
+    let text;
+    try {
+        const response = await fetchImpl(`${origin}${page.pathname}${page.search}`, { headers: { accept: 'text/html' }, redirect: 'follow' });
+        if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') ?? '')) return null;
+        // Wie die ausgelieferte Seite ein Byte-String: Eingefuegt wird Byte fuer Byte.
+        text = Buffer.from(await response.arrayBuffer()).toString('latin1');
+    } catch {
+        return null;
+    }
+    const local = codeTags(text, base);
+    const localUrls = new Set(local.flatMap(({ urls }) => urls));
+    const scope = new URL(envUrl);
+    const scopePath = scope.pathname.endsWith('/') ? scope.pathname : `${scope.pathname}/`;
+    const inScope = (value) => {
+        const parsed = new URL(value);
+        return parsed.origin === page.origin && `${parsed.pathname}/`.startsWith(scopePath);
+    };
+    const candidates = [...new Set([...deployed.flatMap(({ urls }) => urls).filter(inScope), ...localUrls].filter((value) => new URL(value).origin === page.origin))];
+    const copies = new Map(await Promise.all(candidates.map(async (value) => {
+        const parsed = new URL(value);
+        try {
+            const response = await fetchImpl(`${origin}${parsed.pathname}${parsed.search}`, { redirect: 'manual' });
+            if (response.status !== 200 || /text\/html/i.test(response.headers.get('content-type') ?? '')) return [value, false];
+            return [value, isProjectCopy(appDir, Buffer.from(await response.arrayBuffer()))];
+        } catch {
+            return [value, false];
+        }
+    })));
+    const owned = (tag) => !tag.inline && tag.urls.length > 0 && tag.urls.every((value) => inScope(value) && !localUrls.has(value) && copies.get(value) !== true);
+    const deployedUrls = new Set(deployed.flatMap(({ urls }) => urls));
+    const keptInline = new Set(deployed.filter(({ inline }) => inline).map(({ tag }) => tag));
+    return {
+        owned,
+        local: local.filter(({ inline, tag, urls }) => (inline ? !keptInline.has(tag) : !urls.some((value) => deployedUrls.has(value) || copies.get(value) === true))),
     };
 };
 
@@ -273,7 +385,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
     try {
         for (const [name, choice] of Object.entries(checked.apps ?? {})) {
             const appDir = join(root, config.apps[name].dir);
-            const source = SOURCES[choice.kind]({ root, name, appDir, choice, config, info, ...deps });
+            const source = SOURCES[choice.kind]({ root, name, appDir, choice, config, info, envUrl: checked.url, ...deps });
             apps.push({ name, kind: choice.kind, label: source.label, source, statics: staticsOf(appDir, choice.statics ?? []) });
             await source.ready();
             apps.at(-1).statics.check();
@@ -284,8 +396,38 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
     }
     const patterns = [defaultAssetPattern(checked.url), config.assetUrlPattern].filter((pattern) => typeof pattern === 'string');
     const namesOf = (url) => [...new Set(patterns.map((pattern) => deriveName(url, pattern)).filter((name) => name !== null))];
+    const pages = [];
     return {
         apps,
+        /**
+         * Jede HTML-Seite der Anwendung (Byte-String, siehe rewriteBytes): die Code-Tags der App gegen die der lokalen Seite getauscht,
+         * dann ohne integrity. Ohne passende lokale Seite bleibt sie, wie sie ist; die Requests beantwortet dann resolve einzeln.
+         * Eine SSR-Seite wird nie getauscht. Was geschah, steht in pages (fuer die Diagnose).
+         */
+        rewritePage: async (html, { url }) => {
+            const ssr = ssrMarker(html);
+            const seen = { url, ssr, swaps: [] };
+            let out = html;
+            if (ssr === null) {
+                for (const app of apps) {
+                    if (app.source.page === undefined) continue;
+                    const base = baseOf(out, url);
+                    const deployed = codeTags(out, base);
+                    const plan = await app.source.page({ url, base, deployed, namesOf });
+                    if (plan === null || plan.issue !== undefined || !deployed.some(plan.owned)) {
+                        seen.swaps.push({ app: app.name, skipped: plan?.issue ?? 'no-match' });
+                        continue;
+                    }
+                    const swapped = swapPage(out, { base, owned: plan.owned, local: plan.local });
+                    out = swapped.html;
+                    seen.swaps.push({ app: app.name, removed: swapped.removed, inserted: swapped.inserted });
+                }
+            }
+            pages.push(seen);
+            if (pages.length > 50) pages.shift();
+            return withoutIntegrity(out);
+        },
+        pages,
         /** Die Antwort aus dem lokalen Code fuer einen Request, oder null: dann der Server. Die App des Tests zuerst. */
         resolve: async (url, type) => {
             if (type === 'document') return null;

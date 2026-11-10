@@ -68,10 +68,10 @@ const HOP_HEADERS = new Set(['host', 'content-length', 'connection', 'cookie']);
  * UTF-16 (BOM) ist nicht ASCII-kompatibel und bleibt, wie es ist.
  * @returns die neuen Bytes, oder genau `bytes`, wenn sich nichts aendert
  */
-export const rewriteBytes = (bytes, rewrite, url) => {
+export const rewriteBytes = async (bytes, rewrite, url) => {
     if (bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff))) return bytes;
     const text = bytes.toString('latin1');
-    const changed = rewrite(text, { url });
+    const changed = await rewrite(text, { url });
     return changed === text ? bytes : Buffer.from(changed, 'latin1');
 };
 
@@ -84,7 +84,7 @@ export const rewriteBytes = (bytes, rewrite, url) => {
  * Ohne `workbench` (kein Mensch davor) bleibt das oberste Fenster die Anwendung; dann zaehlt nur `rewrite`.
  * @param workbench (url) => HTML der Werkbank mit der Anwendung unter url, oder undefined
  * @param request   der Request-Kontext des Browsers (context.request)
- * @param rewrite   (html, { url }) => html, optional: aendert jede HTML-Seite der Anwendung, etwa beim lokalen Code. `html` ist ein
+ * @param rewrite   async (html, { url }) => html, optional: aendert jede HTML-Seite der Anwendung, etwa beim lokalen Code. `html` ist ein
  *                  Byte-String (latin1, siehe rewriteBytes): Die Seite bleibt in ihrer Kodierung, was nicht geaendert wird, bleibt Byte fuer Byte.
  */
 export const interceptDocuments = async (context, page, hosts, { workbench, request, rewrite }) => {
@@ -150,7 +150,7 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
             let bytes = base64Encoded ? Buffer.from(body, 'base64') : Buffer.from(body);
             let sent = headers ?? original;
             if (rewriting) {
-                const changed = rewriteBytes(bytes, rewrite, event.request.url);
+                const changed = await rewriteBytes(bytes, rewrite, event.request.url);
                 if (changed !== bytes) {
                     bytes = changed;
                     // Der Body ist schon entpackt und jetzt anders lang.
@@ -201,7 +201,7 @@ const rewriteOtherPages = (context, page, hosts, rewrite) => context.route((url)
         await route.fulfill({ response });
         return;
     }
-    const changed = rewriteBytes(await response.body(), rewrite, request.url());
+    const changed = await rewriteBytes(await response.body(), rewrite, request.url());
     const headers = Object.fromEntries(Object.entries(response.headers()).filter(([name]) => !['content-length', 'content-encoding'].includes(name.toLowerCase())));
     await route.fulfill({ response, headers, body: changed });
 });

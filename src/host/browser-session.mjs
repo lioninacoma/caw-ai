@@ -12,7 +12,6 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { totp } from '../shared/totp.mjs';
 import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig } from './devlink-core.mjs';
-import { withoutIntegrity } from './local-build.mjs';
 import { fileVersion, routeOverlay } from './overlay.mjs';
 import { DEFAULT_MESSAGE_SELECTORS, authOf, browserLaunch, isLoopback } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
@@ -823,9 +822,9 @@ export const openBrowserSession = async (spec) => {
         // host.start() bindet die Interception erst nach dem Laden der Startseite ein; erst diese
         // Navigation laedt die App also mit dem lokalen Code.
         let bench = null;
-        // Lokaler Code hat andere Bytes als die Hashes in `integrity` der deployten Seite: Ohne die Attribute fuehrte Chrome kein
-        // eingespieltes Skript aus. Die Seite selbst bleibt die des Servers.
-        const rewrite = overlay === null ? undefined : withoutIntegrity;
+        // Mit Overlay tauscht jede Seite der Anwendung die Code-Tags der App gegen die der lokalen Seite (rewritePage), ohne integrity:
+        // Lokaler Code hat andere Bytes. Der Rest der Seite bleibt der des Servers.
+        const rewrite = overlay === null ? undefined : overlay.rewritePage;
         const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
             // Einbetten nur fuer Dokumente der Anwendung selbst, nicht fuer weitere erlaubte Hosts wie einen Anmeldedienst.

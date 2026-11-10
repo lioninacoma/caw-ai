@@ -120,6 +120,9 @@ const textOf = (file) => {
 /** Die Seiten im Build-Ordner selbst (index.html, bei Angular mit SSR index.csr.html), als Text. */
 const pagesIn = (dir) => filesIn(dir).filter((file) => file.endsWith('.html')).map((file) => textOf(join(dir, file)));
 
+/** Die Seiten im Build-Ordner mit Namen, als Byte-String (latin1) wie die ausgelieferte Seite beim Umschreiben. */
+export const localPages = (dir) => filesIn(dir).filter((file) => file.endsWith('.html')).map((file) => ({ name: file, text: readFileSync(join(dir, file)).toString('latin1') }));
+
 // Ein Wert in einem Tag: nach Anfuehrungszeichen oder `=`, bis zu Anfuehrungszeichen, `?`, `#`, Leerraum, `>` oder Ende. Gefunden wird
 // er unter jedem Rest hinter einem `/` (`/assets/index-x.js` unter `assets/index-x.js` und `index-x.js`).
 const TAG_VALUE = /["'=]([^"'=?#\s>]+)(?=["'?#\s>]|$)/g;

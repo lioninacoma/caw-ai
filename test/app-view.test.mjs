@@ -112,16 +112,16 @@ test('frameView: Neuladen und Navigation betreffen nur den Frame', async () => {
     assert.equal(view.frame, fresh);
 });
 
-test('rewriteBytes: Die Seite bleibt Byte für Byte in ihrer Kodierung, nur der geänderte Teil ist neu', () => {
+test('rewriteBytes: Die Seite bleibt Byte für Byte in ihrer Kodierung, nur der geänderte Teil ist neu', async () => {
     const swap = (html) => html.replace('a.js', 'b.js');
     const latin1 = Buffer.from('<h1>Grüße</h1><script src="a.js"></script>', 'latin1');
-    assert.deepEqual(rewriteBytes(latin1, swap, 'http://x/'), Buffer.from('<h1>Grüße</h1><script src="b.js"></script>', 'latin1'));
+    assert.deepEqual(await rewriteBytes(latin1, swap, 'http://x/'), Buffer.from('<h1>Grüße</h1><script src="b.js"></script>', 'latin1'));
     const utf8 = Buffer.from('<h1>Grüße €</h1><script src="a.js"></script>', 'utf8');
-    assert.equal(rewriteBytes(utf8, swap, 'http://x/').toString('utf8'), '<h1>Grüße €</h1><script src="b.js"></script>');
-    assert.equal(rewriteBytes(utf8, (html) => html, 'http://x/'), utf8, 'unverändert: genau dieselben Bytes');
+    assert.equal((await rewriteBytes(utf8, swap, 'http://x/')).toString('utf8'), '<h1>Grüße €</h1><script src="b.js"></script>');
+    assert.equal(await rewriteBytes(utf8, (html) => html, 'http://x/'), utf8, 'unverändert: genau dieselben Bytes');
     const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<script src="a.js">', 'utf16le')]);
-    assert.equal(rewriteBytes(utf16, swap, 'http://x/'), utf16, 'UTF-16 bleibt, wie es ist');
+    assert.equal(await rewriteBytes(utf16, swap, 'http://x/'), utf16, 'UTF-16 bleibt, wie es ist');
     let seen = null;
-    rewriteBytes(utf8, (html, info) => { seen = info.url; return html; }, 'http://x/seite');
+    await rewriteBytes(utf8, (html, info) => { seen = info.url; return html; }, 'http://x/seite');
     assert.equal(seen, 'http://x/seite', 'rewrite kennt die Adresse der Seite');
 });
