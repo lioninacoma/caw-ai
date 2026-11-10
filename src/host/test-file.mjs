@@ -20,12 +20,8 @@ import { isPattern } from './patterns.mjs';
 
 export { RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
-/** Welcher Code laeuft: `local` (Standard) spielt lokalen Code ein, wo Umgebung und App ihn haben; `deployed` nie. */
-const CODES = ['local', 'deployed'];
-// Der alte Name `source` gilt weiter, mit Hinweis: watch ist code: local, deployed bleibt deployed.
-const OLD_SOURCES = { watch: 'local', deployed: 'deployed' };
 const STEP_ID = /^S[1-9]\d*$/;
-const TOP_FIELDS = ['id', 'app', 'role', 'targets', 'code', 'mutates', 'also', 'notes', 'steps', 'knownMessages'];
+const TOP_FIELDS = ['id', 'app', 'role', 'targets', 'mutates', 'also', 'notes', 'steps', 'knownMessages'];
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
@@ -286,23 +282,10 @@ export const parseTest = (text, label = t('config.test.label')) => {
     if (problems.length > 0) throw invalid(label, problems);
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!isObject(value)) throw invalid(label, [t('config.test.file.object')]);
-    for (const key of Object.keys(value)) if (!TOP_FIELDS.includes(key) && key !== 'source') report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
+    for (const key of Object.keys(value)) if (!TOP_FIELDS.includes(key)) report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
     // id, app, role und targets duerfen fehlen: Die Vorgaben kommen aus Dateiname und Config (withDefaults).
     for (const key of ['id', 'app', 'role']) if (value[key] !== undefined && !isText(value[key])) report([key], t('config.test.text', { key }));
     if (value.targets !== undefined && (!Array.isArray(value.targets) || value.targets.length === 0 || !value.targets.every(isText))) report(['targets'], t('config.test.targets'));
-    const notices = [];
-    let code = value.code;
-    if (value.source !== undefined) {
-        const renamed = OLD_SOURCES[value.source];
-        if (value.code !== undefined) report(['source'], t('config.test.sourceAndCode'));
-        else if (renamed === undefined) report(['source'], t('config.test.source', { source: String(value.source), names: Object.keys(OLD_SOURCES).join(', ') }));
-        else {
-            notices.push(t('config.test.sourceRenamed', { source: String(value.source), code: renamed }));
-            // source: watch war der Standard, er zaehlt nicht als ausdruecklich gesetzt.
-            code = renamed === 'local' ? undefined : renamed;
-        }
-    }
-    if (value.code !== undefined && !CODES.includes(value.code)) report(['code'], t('config.test.code', { code: String(value.code), names: CODES.join(', ') }));
     if (typeof value.mutates !== 'boolean') report(['mutates'], t('config.test.mutates'));
     if (value.also !== undefined && (!Array.isArray(value.also) || !value.also.every(isText))) report(['also'], t('config.test.also'));
     if (value.notes !== undefined && value.notes !== null && typeof value.notes !== 'string') report(['notes'], t('config.test.text', { key: 'notes' }));
@@ -315,8 +298,6 @@ export const parseTest = (text, label = t('config.test.label')) => {
         ...(value.app === undefined ? {} : { app: value.app }),
         ...(value.role === undefined ? {} : { role: value.role }),
         ...(value.targets === undefined ? {} : { targets: value.targets }),
-        ...(code === undefined ? {} : { code }),
-        ...(notices.length === 0 ? {} : { notices }),
         mutates: value.mutates,
         also: value.also ?? [],
         notes: clean(value.notes),
@@ -435,10 +416,11 @@ export const recordingHints = (root) => {
 };
 
 /**
- * Darf dieser Test auf diesem Ziel laufen? Hier sitzt der Schreibschutz, deterministisch und vor jedem Browser. Lokaler Code
- * wird nur auf Umgebungen mit localCode eingespielt; die anderen testen den deployten Stand.
+ * Darf dieser Test auf diesem Ziel laufen? Hier sitzt der Schreibschutz, deterministisch und vor jedem Browser. Dazu, welcher Code
+ * laeuft: ohne --overlay immer der ausgelieferte.
+ * @param overlay aus --overlay: true, 'build', 'dev' oder undefined
  */
-export const checkTest = (given, target, config, { code, until } = {}) => {
+export const checkTest = (given, target, config, { overlay } = {}) => {
     const resolved = resolveTarget(config, target);
     const spec = withDefaults(given, config);
     const bad = (message) => new CawError('test-invalid', message);
@@ -455,37 +437,23 @@ export const checkTest = (given, target, config, { code, until } = {}) => {
     if (spec.mutates && !resolved.writable) {
         throw new CawError('write-protected', t('config.test.check.writeProtected', { id: String(spec.id), target: String(target), environment: resolved.environment }));
     }
-    return { ...resolved, mutates: spec.mutates, ...codeFor(spec, resolved, config, { code, until }) };
+    return { ...resolved, mutates: spec.mutates, ...codeFor(spec, resolved, config, overlay) };
 };
 
 /**
- * Welcher Code laeuft, und warum, an genau einer Stelle. Lokaler Code braucht beides: localCode an der Umgebung und lokalen Code
- * (localBuild, statics, …) an einer App des Tests. Vorrang hat --code, dann --until (ein Zustand fuer die Entwicklung braucht den
- * lokalen Code, wo es ihn gibt), dann `code` im Test.
- * @param code  aus --code: local, deployed oder undefined
- * @returns { source: 'watch' | 'deployed', sourceReason? } mit dem Grund als Text
+ * Welcher Code laeuft, an genau einer Stelle: der ausgelieferte, ausser jemand sagt --overlay. Nie still umgeschaltet, auch nicht
+ * mit --until, in einer Testdatei oder weil ein Watch laeuft. Geht das Overlay nicht, ist das ein Aufruffehler mit dem Grund.
+ * Ein Dev-Server auf dem eigenen Rechner (http auf localhost) liefert den lokalen Code selbst: Dort gibt es nichts zu ueberlagern.
+ * @returns { source: 'deployed' } | { source: 'overlay', overlay: true | 'build' | 'dev' }
  */
-const codeFor = (spec, resolved, config, { code, until }) => {
-    const apps = [spec.app, ...(spec.also ?? [])];
-    const environmentHas = resolved.localCode;
-    const appsHave = hasLocalCode(config, apps);
-    // Ein Dev-Server auf dem eigenen Rechner (http auf localhost) liefert den lokalen Code selbst aus: Dort fehlt localCode nicht.
-    // Ein Build hinter https auf *.localhost ist dagegen ein ausgelieferter Stand wie jeder andere.
+const codeFor = (spec, resolved, config, overlay) => {
+    if (overlay === undefined) return { source: 'deployed' };
     const { host, hostname, protocol } = new URL(resolved.url);
-    const noEnvironment = protocol === 'http:' && isLoopback(hostname) ? t('config.code.reason.devServer', { host }) : t('config.code.reason.environment', { environment: resolved.environment });
-    const noApp = t('config.code.reason.app', { app: apps.join(', ') });
-    if (code === 'deployed') return { source: 'deployed', sourceReason: t('config.code.reason.flag', { code }) };
-    if (code === 'local') {
-        if (!environmentHas) throw new CawError('usage', t('config.code.localUnavailable', { reason: t('config.code.reason.environment', { environment: resolved.environment }), key: `environments.${resolved.environment}.localCode` }));
-        if (!appsHave) throw new CawError('usage', t('config.code.localUnavailable', { reason: noApp, key: `apps.${spec.app}.localBuild` }));
-        return { source: 'watch', sourceReason: t('config.code.reason.flag', { code }) };
-    }
-    const possible = environmentHas && appsHave;
-    if (spec.code === 'deployed' && !(until !== undefined && possible)) return { source: 'deployed', sourceReason: t('config.code.reason.test') };
-    if (!environmentHas) return { source: 'deployed', sourceReason: noEnvironment };
-    if (!appsHave) return { source: 'deployed', sourceReason: noApp };
-    if (spec.code === 'deployed') return { source: 'watch', sourceReason: t('config.code.reason.until', { until }) };
-    return { source: 'watch' };
+    if (protocol === 'http:' && isLoopback(hostname)) throw new CawError('usage', t('config.overlay.devServer', { environment: resolved.environment, host }));
+    if (!resolved.overlay) throw new CawError('usage', t('config.overlay.environment', { environment: resolved.environment }));
+    const apps = [spec.app, ...(spec.also ?? [])];
+    if (!hasLocalCode(config, apps)) throw new CawError('usage', t('config.overlay.app', { app: apps.join(', '), key: `apps.${spec.app}.localBuild` }));
+    return { source: 'overlay', overlay };
 };
 
 /** Nur was den Schritt fachlich ausmacht. Aendert sich das von Hand, ist genau dieser Schritt veraltet. `retry` aendert den Weg nicht. */
@@ -590,7 +558,6 @@ export const renderTest = (spec) => {
         role: spec.role,
         targets: spec.targets,
         // Nur wenn ausdruecklich anders als der Standard: Sonst klebte ein Stand am Test, den die Config laengst anders sieht.
-        ...(spec.code === 'deployed' ? { code: 'deployed' } : {}),
         mutates: spec.mutates,
         ...(spec.also?.length > 0 ? { also: spec.also } : {}),
         ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),

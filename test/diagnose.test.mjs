@@ -224,7 +224,7 @@ test('Testdatei: recording.network wird gelesen und geschrieben, der Hash bleibt
     const step = { id: 'S1', name: 'Laden', do: 'Lade', expect: 'Da' };
     const network = [{ name: FEES, status: 200, ms: 850, params: ['orderUUID'] }, { name: 'GET /a', status: 200, ms: 30, count: 3, params: [] }];
     const recording = { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', actions: [], check: 'true', network };
-    const spec = composeTest({ id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'watch', mutates: false, also: [] }, { steps: [{ ...step, recording }] });
+    const spec = composeTest({ id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'overlay', mutates: false, also: [] }, { steps: [{ ...step, recording }] });
     const text = renderTest(spec);
     assert.match(text, /network:\n\s+- \{name: POST \/o\/proxy connector=HTTP-X-Preise, status: 200, ms: 850, params: \[orderUUID\]\}/);
     const back = parseTest(text);

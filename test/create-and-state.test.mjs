@@ -179,9 +179,9 @@ test('Vorführung im Browser: Passwort bleibt in der Seite, Felder kommen vor de
 });
 
 test('Bericht: Schreibende Aufrufe stehen drin, Parameter nicht', () => {
-    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'watch', writes: [{ label: 'connector HTTP-X', count: 2 }] });
+    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay', writes: [{ label: 'connector HTTP-X', count: 2 }] });
     assert.match(report, /## Schreibende Aufrufe[\s\S]*connector HTTP-X \(2x\)/);
-    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'watch' }), /Schreibende/);
+    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay' }), /Schreibende/);
 });
 
 test('Vorführung: Neuladen ist ein Hinweis in der Aufnahme, Aktualisieren lädt nur die Seite', async (t) => {
@@ -290,7 +290,7 @@ test('Umwege: Streichen zeigt die Liste, kürzt und lässt kein doppeltes wait-r
 });
 
 test('Bericht: Gestrichene Schritte stehen drin', () => {
-    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'watch', dropped: ['3 click tab "Falsch"'] });
+    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay', dropped: ['3 click tab "Falsch"'] });
     assert.match(report, /## Aus der Aufzeichnung gestrichen[\s\S]*3 click tab "Falsch"/);
 });
 

@@ -77,7 +77,8 @@ export const sessionTools = ({ root, spawnRun, run }) => [
         name: 'caw_start',
         description: 'Startet einen caw-ai-Lauf im Hintergrund, mit dir als Agent (--agent session). command: run, record oder fix; args wie auf der '
             + 'Kommandozeile, etwa ["bestellung", "--target", "local"] oder ["bestellung", "S3", "--target", "local"] bei fix, '
-            + '["bestellung", "--target", "local", "--until", "S4"] fuer einen Zustand zum Entwickeln. Danach caw_status, bis der Lauf auf dich wartet.',
+            + '["bestellung", "--target", "local", "--until", "S4"] fuer einen Zustand zum Entwickeln. Lokalen Code ueber eine ausgelieferte Umgebung '
+            + 'legen nur, wenn der Mensch es will: ["bestellung", "--target", "dev", "--overlay"]. Danach caw_status, bis der Lauf auf dich wartet.',
         inputSchema: {
             type: 'object',
             properties: {

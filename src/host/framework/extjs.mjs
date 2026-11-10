@@ -185,5 +185,5 @@ export const extjs = {
     // Dateien des Frameworks reichen Fehler meist nur weiter: Die Herkunft ist der erste Eintrag ausserhalb.
     stackSkip: /\/ext-[\w-]*\.js/,
     // Lokaler Code braucht den Sencha-Watch: Er haelt bootstrap.json und die Pakete aktuell. Ohne ihn gilt der deployte Stand.
-    watch: { label: 'Sencha-Watch', command: /\bapp["']?\s+["']?watch\b/i },
+    watch: { label: 'Sencha-Watch', command: /\bapp["']?\s+["']?watch\b/i, start: 'sencha app watch' },
 };

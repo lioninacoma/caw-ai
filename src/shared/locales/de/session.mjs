@@ -29,7 +29,7 @@ export default {
     'session.args.unknownOption': '{command} kennt die Option {flag} nicht. Erlaubt: {allowed}',
     'session.args.valueMissing': '{flag} braucht einen Wert, etwa {flag} {example}',
     'session.args.agentChoice': '--agent erwartet {choices}.',
-    'session.args.codeChoice': '--code erwartet {choices}.',
+    'session.args.overlayChoice': '--overlay erwartet nichts oder {choices}.',
     'session.args.testId': 'Ungültiger Name des Tests: {test}. Erlaubt sind Buchstaben, Ziffern, _, - und . (ohne Ordner), etwa anmelden oder bestellung-2.',
     'session.args.testMissing': 'Name des Tests fehlt.',
     'session.args.allWithTests': '--all läuft alle Tests; nenne entweder Tests oder --all.',

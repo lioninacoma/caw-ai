@@ -86,9 +86,8 @@ test('Testdatei: Jede Formverletzung wird mit Zeile abgewiesen', () => {
         [YAML.replace('targets: [a/dev, a/test]', 'targets: []'), /targets/],
         [YAML.replace('targets: [a/dev, a/test]', 'target: [a/dev]'), /Unbekanntes Feld target\. Meintest du targets\?/],
         [YAML.replace('    expect: Da.', '    expected: Da.'), /Unbekanntes Feld expected im Schritt\. Meintest du expect\?/],
-        [YAML.replace('mutates: false', 'source: irgendwas\nmutates: false'), /source "irgendwas"/],
-        [YAML.replace('mutates: false', 'code: watch\nmutates: false'), /code "watch" gibt es nicht \(erlaubt: local, deployed\)/],
-        [YAML.replace('mutates: false', 'code: local\nsource: watch\nmutates: false'), /source und code zugleich/],
+        [YAML.replace('mutates: false', 'source: watch\nmutates: false'), /Unbekanntes Feld source/],
+        [YAML.replace('mutates: false', 'code: deployed\nmutates: false'), /Unbekanntes Feld code/],
         [YAML.replace('mutates: false\n', ''), /mutates fehlt: true, wenn der Test Daten anlegt oder ändert \(läuft nur auf Umgebungen mit writable: true\), false, wenn er nur liest\./],
         ['kein: [yaml', /Zeile/],
         ['- nur\n- liste\n', /Objekt/],
@@ -363,17 +362,9 @@ test('loadTest: Fehlende Datei und fremde id', (t) => {
     assert.throws(() => loadTest(root, 't'), (error) => error.code === 'test-invalid' && /anders/.test(error.message));
 });
 
-test('code: local ist der Standard, deployed bleibt stehen, source gilt mit Hinweis weiter', () => {
-    assert.equal(parseTest(YAML.replace('mutates: false', 'code: deployed\nmutates: false')).code, 'deployed');
-    assert.equal(parseTest(YAML.replace('mutates: false', 'code: local\nmutates: false')).code, 'local');
-    const old = parseTest(YAML.replace('mutates: false', 'source: watch\nmutates: false'));
-    assert.equal(old.code, undefined, 'source: watch war der Standard');
-    assert.deepEqual(old.notices, ['source: watch heißt jetzt code: local.']);
-    assert.equal(parseTest(YAML.replace('mutates: false', 'source: deployed\nmutates: false')).code, 'deployed');
-    // Geschrieben wird code nur, wenn es vom Standard abweicht.
+test('Welcher Code läuft, steht nie in der Testdatei: Das entscheidet der Aufruf (--overlay)', () => {
     assert.doesNotMatch(renderTest(composeTest(meta, { notes: '', steps: [plain('S1')] })), /code:|source:/);
-    assert.match(renderTest(composeTest({ ...meta, code: 'deployed' }, { notes: '', steps: [plain('S1')] })), /^code: deployed$/m);
-    assert.doesNotMatch(renderTest(composeTest({ ...meta, code: 'local' }, { notes: '', steps: [plain('S1')] })), /code:/);
+    assert.doesNotMatch(renderTest(composeTest({ ...meta, code: 'deployed' }, { notes: '', steps: [plain('S1')] })), /code:/);
 });
 
 test('loadTest: id, app, role und targets dürfen fehlen, eine angegebene id muss passen', (t) => {

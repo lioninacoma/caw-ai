@@ -40,7 +40,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         /** Kopf eines einzelnen Laufs: Was laeuft wo, und wer steuert. */
         /** `code` ist die Zeile "Code: …" (describeCode); sie steht immer da, auch ohne Terminal. */
         header: ({ mode, test, target, source, code, maxSteps }) => {
-            const codeLine = t('cli.uiCode', { code: code ?? (source === 'watch' ? t('cli.uiLocal') : t('cli.uiDeployed')) });
+            const codeLine = t('cli.uiCode', { code: code ?? (source === 'overlay' ? t('cli.uiLocal') : t('cli.uiDeployed')) });
             if (!fancy) {
                 out(`[caw-ai] ${mode}: ${test} ${t('cli.uiOn')} ${target}`);
                 out(`[caw-ai] ${safe(codeLine)}`);

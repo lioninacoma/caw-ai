@@ -328,18 +328,17 @@ test('init: explore ist Pflicht, fragt nach Adresse und Rollen, prüft jede Antw
     await assert.rejects(initAnswers(root, ['--from', 'fehlt.json'], { interactive: false }), /fehlt\.json ist nicht lesbar/);
 });
 
-test('validate: je Test und Ziel der Code mit Grund, TODO, alte Namen und ein klebendes code: deployed als Hinweis', (t) => {
+test('validate: je Test und Ziel der Code, wo das Overlay ginge, TODO und alte Namen', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-validate-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
-        environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true, localCode: true } },
+        environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true, overlay: true } },
         auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
         apps: { web: { dir: '.', startUrl: '/', localBuild: 'dist' } },
         roles: { tester: { loginEnv: 'A', passwordEnv: 'B' } },
     }));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
     const steps = 'steps:\n  - id: S1\n    name: A\n    do: ""\n    expect: B\n';
-    writeFileSync(join(root, 'caw', 'tests', 'alt.yaml'), `mutates: false\nsource: deployed\n${steps}`);
     writeFileSync(join(root, 'caw', 'tests', 'lesen.yaml'), `mutates: false\n${steps}`);
     const chunks = [];
     const write = t.mock.method(process.stdout, 'write', (chunk) => { chunks.push(String(chunk)); return true; });
@@ -349,14 +348,11 @@ test('validate: je Test und Ziel der Code mit Grund, TODO, alte Namen und ein kl
         write.mock.restore();
     }
     const out = chunks.join('');
-    assert.match(out, /alt \(local\): ausgelieferter Stand \(der Test sagt code: deployed\)/);
-    assert.match(out, /lesen \(local\): ausgelieferter Stand \(Dev-Server auf localhost:5173, liefert deinen Code selbst aus\)/);
-    assert.match(out, /lesen \(dev\): lokaler Build aus dist\n/);
+    assert.match(out, /lesen \(local\): ausgelieferter Stand\n/);
+    assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, lokaler Build aus dist\n/);
     assert.match(out, /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/);
     assert.match(out, /Umgebung local: agent heißt jetzt claude/);
-    assert.match(out, /alt\.yaml: source: deployed heißt jetzt code: deployed\./);
-    assert.match(out, /alt\.yaml: code: deployed, aber App web hat inzwischen lokalen Code/);
-    assert.match(out, /und 2 Test\(s\) sind gültig/);
+    assert.match(out, /und 1 Test\(s\) sind gültig/);
 });
 
 test('run und record: TODO in der Anmeldung bricht vor Chrome und Claude ab', async () => {

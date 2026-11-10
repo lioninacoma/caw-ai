@@ -55,6 +55,6 @@ test('gemeldeter Umgebungsfehler ergibt error und braucht einen Grund', () => {
 
 test('Report nennt Status, Punkte, Nachweise und Konsolenfehler', () => {
     const r = finish({ expectations: [ok('E1'), { ...ok('E2'), status: 'fail', note: 'leer' }] }, [{ type: 'pageerror', text: 'boom' }]);
-    const md = renderReport({ ...r, testId: 'smoke', target: 'shop/dev', source: 'watch', expectations: rb.expectations });
+    const md = renderReport({ ...r, testId: 'smoke', target: 'shop/dev', source: 'overlay', expectations: rb.expectations });
     for (const part of ['fail', 'smoke', 'shop/dev', 'E1', 'E2', 'leer', 'boom']) assert.ok(md.includes(part), part);
 });

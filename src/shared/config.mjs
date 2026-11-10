@@ -5,8 +5,9 @@
 //   "environments": { "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
 //                     "staging": { "url": "https://staging.example.com" } }
 //   Ziel: "local"
-// Ein lokaler Dev-Server liefert den lokalen Code schon selbst aus. localCode braucht nur eine entfernte Umgebung, in die der lokale
-// Build (apps.<name>.localBuild) eingespielt wird: "dev": { "url": "https://dev.example.com", "claude": true, "localCode": true }
+// Ein lokaler Dev-Server liefert den lokalen Code selbst aus: Das ist die Umgebung "local", ohne jede Option. Das Overlay legt lokalen
+// Code ueber eine ausgelieferte Umgebung (Portal, Shell, Backend nur auf Staging), nur mit --overlay und nur, wo die Umgebung es
+// erlaubt: "dev": { "url": "https://dev.example.com", "claude": true, "overlay": true }
 // Laeuft dieselbe Anwendung fuer mehrere Mandanten unter eigenen Adressen, nennt `sites` die Mandanten und jede Umgebung `urls`:
 //   "sites": ["nord", "sued"], "environments": { "dev": { "urls": { "nord": "https://…", "sued": "https://…" }, "claude": true } }
 //   Ziel: "nord/dev"
@@ -23,7 +24,7 @@ import { didYouMean } from './suggest.mjs';
 export { CONFIG_FILE } from './names.mjs';
 
 // `claude` hiess frueher `agent`, wie das Objekt `agent` oben in der Config. Der alte Name gilt weiter, mit Hinweis.
-const ENVIRONMENT_FLAGS = ['claude', 'localCode', 'writable', 'production'];
+const ENVIRONMENT_FLAGS = ['claude', 'overlay', 'writable', 'production'];
 const OLD_ENVIRONMENT_FLAGS = ['agent'];
 // Eine Produktionsumgebung gibt es nur ausdruecklich, und dann ohne Claude, ohne lokalen Code und ohne Schreiben.
 // Auch als Bestandteil, etwa prod-de oder live_eu. Wer so eine Umgebung nicht als Produktion meint, sagt das mit "production": false.
@@ -133,7 +134,7 @@ export const environmentDefs = (config) => Object.fromEntries(Object.entries(con
     const entry = raw ?? {};
     const urls = config.sites === undefined ? (entry.url === undefined ? {} : { '': entry.url }) : Object.fromEntries((config.sites ?? []).filter((site) => entry.urls?.[site] !== undefined).map((site) => [site, entry.urls[site]]));
     // Intern heisst die Faehigkeit weiter `agent`: Claude darf hier arbeiten.
-    return [name, { agent: entry.claude === true || entry.agent === true, localCode: entry.localCode === true, writable: entry.writable === true, production: entry.production === true, urls }];
+    return [name, { agent: entry.claude === true || entry.agent === true, overlay: entry.overlay === true, writable: entry.writable === true, production: entry.production === true, urls }];
 }));
 
 /** Umgebungen mit einer Faehigkeit, fuer Meldungen wie "nur auf dev". */
@@ -197,7 +198,7 @@ const checkEnvironments = (config, issues, notes) => {
         }
         if (PRODUCTION_EXACT.test(name) && raw.production !== true) issues.push(t('config.env.productionExact', { name }));
         else if (PRODUCTION_NAME.test(name) && raw.production === undefined) issues.push(t('config.env.productionLike', { name }));
-        if (raw.production === true && (raw.claude === true || raw.agent === true || raw.localCode === true || raw.writable === true)) issues.push(t('config.env.productionFlags', { name }));
+        if (raw.production === true && (raw.claude === true || raw.agent === true || raw.overlay === true || raw.writable === true)) issues.push(t('config.env.productionFlags', { name }));
     }
     for (const site of Array.isArray(sites) ? sites : []) {
         if (PRODUCTION_NAME.test(site)) issues.push(t('config.site.production', { site: String(site) }));
@@ -378,13 +379,13 @@ export const validateConfig = (given, root = process.cwd()) => {
 };
 
 /**
- * Lokaler Code wirkt nur, wenn Umgebung und App zusammenpassen: localCode an der Umgebung, localBuild (oder Eintraege) an der App.
- * Fehlt eine Seite, bewirkt die andere nichts, still.
+ * Das Overlay geht nur, wenn Umgebung und App zusammenpassen: overlay an der Umgebung, localBuild (oder Eintraege) an der App.
+ * Fehlt eine Seite, geht --overlay nirgends.
  */
 const localCodeNotes = (config) => {
     const apps = Object.keys(config.apps ?? {});
     const withCode = apps.filter((name) => hasLocalCode(config, [name]));
-    const environments = environmentsWith(config, 'localCode');
+    const environments = environmentsWith(config, 'overlay');
     const notes = [];
     if (withCode.length === 0) for (const name of environments) notes.push(t('config.note.localCodeNoApp', { name }));
     if (environments.length === 0) {
@@ -513,7 +514,7 @@ const uuidOf = (seed) => {
 /** Baut aus Projekt-Config und Ziel die Config, die der devlink-Host erwartet. */
 export const buildDevlinkConfig = (config, resolved, appName, source, projectRoot) => {
     const app = config.apps[appName];
-    const replace = source === 'watch';
+    const replace = source === 'overlay';
     const siteUuid = uuidOf(`portal:${resolved.target}`);
     const signedIn = authOf(config).signedInSelector;
     return {

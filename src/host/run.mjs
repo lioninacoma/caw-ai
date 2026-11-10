@@ -143,9 +143,9 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
     const app = config.apps[spec.app];
     const appDir = join(root, app.dir);
-    const also = checked.source === 'watch' ? spec.also ?? [] : [];
+    const also = checked.source === 'overlay' ? spec.also ?? [] : [];
     // bootstrap.json braucht nur, wer Sencha-Pakete umleitet (`redirects`); einzelne Dateien (`statics`) kommen ohne aus.
-    if (checked.source === 'watch') {
+    if (checked.source === 'overlay') {
         for (const name of [spec.app, ...also]) {
             if ((config.apps[name].redirects ?? []).length > 0) checkAppFiles(join(root, config.apps[name].dir));
             checkStatics(root, config.apps[name].statics);
@@ -163,7 +163,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         hosts: browserHosts(config, checked),
         startUrl: app.startUrl,
         appDir,
-        extraApps: also.map((name) => ({ dir: join(root, config.apps[name].dir), devlinkConfig: buildDevlinkConfig(config, checked, name, 'watch', root) })),
+        extraApps: also.map((name) => ({ dir: join(root, config.apps[name].dir), devlinkConfig: buildDevlinkConfig(config, checked, name, 'overlay', root) })),
         devlinkConfig: buildDevlinkConfig(config, checked, spec.app, checked.source, root),
         devlinkConfigPath: join(runDir, 'devlink-config.json'),
         tracePath: join(runDir, 'trace.zip'),
@@ -175,7 +175,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         embed: !headless && embedsApp(interactive),
         title: `caw-ai · ${spec.id}`,
         role: spec.role,
-        localCode: checked.localCode === true,
+        overlay: checked.source === 'overlay',
     });
 };
 
@@ -282,7 +282,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         [t('run.fact.test'), spec.id],
         [t('run.fact.target'), target],
         ...(spec.role ? [[t('run.fact.role'), spec.role]] : []),
-        [t('run.fact.code'), t(checked.source === 'watch' ? 'run.fact.local' : 'run.fact.deployed')],
+        [t('run.fact.code'), t(checked.source === 'overlay' ? 'run.fact.local' : 'run.fact.deployed')],
     ];
     // Jede Aktion der Aufzeichnung ist ein Punkt ihres Schritts. Ohne Aktion meldet das Abspielen einen neuen Versuch.
     const showAction = ({ owner, position, step, label }) => {
@@ -752,7 +752,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (developing) phase = replay?.until !== undefined && verdict.status === 'pass' ? t('run.phase.developIn', { until: replay.until }) : t('run.phase.develop');
             await session.workbench?.facts(factsOf(phase)).catch(() => {});
             if (replay?.until !== undefined && verdict.status === 'pass') {
-                ui.success(t('run.handover.state', { until: replay.until, local: checked.source === 'watch' ? t('run.handover.local') : '' }));
+                ui.success(t('run.handover.state', { until: replay.until, local: checked.source === 'overlay' ? t('run.handover.local') : '' }));
             } else {
                 ui.note(t('run.handover.window'));
             }

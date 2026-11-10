@@ -3,7 +3,6 @@ id: fx-schritte
 app: bestellung
 role: kunde
 targets: [local/dev]
-code: local
 mutates: true
 notes: Bleibe bei deinem Vorgang.
 steps:

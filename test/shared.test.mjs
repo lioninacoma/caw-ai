@@ -13,7 +13,7 @@ const fragmentDir = mkdtempSync(join(tmpdir(), 'caw-fragment-'));
 const FRAGMENT = join(fragmentDir, 'basis.json');
 writeFileSync(FRAGMENT, JSON.stringify({
     environments: {
-        dev: { urls: { nord: 'https://dev.nord.example', sued: 'https://dev.sued.example', west: 'https://dev.west.example' }, agent: true, localCode: true, writable: true },
+        dev: { urls: { nord: 'https://dev.nord.example', sued: 'https://dev.sued.example', west: 'https://dev.west.example' }, agent: true, overlay: true, writable: true },
         test: { urls: { nord: 'https://test.nord.example', sued: 'https://test.sued.example' }, writable: true },
         abnahme: { urls: { nord: 'https://abnahme.nord.example', sued: 'https://abnahme.sued.example' } },
     },
@@ -40,7 +40,7 @@ const multi = () => effectiveConfig(multiRaw()).config;
 // Der Normalfall: eine Anwendung, ein paar Umgebungen, flach.
 const simple = () => ({
     environments: {
-        local: { url: 'http://app.localhost:5173', agent: true, localCode: true, writable: true },
+        local: { url: 'https://app.localhost:8443', agent: true, overlay: true, writable: true },
         staging: { url: 'https://staging.shop.example' },
     },
     auth: { type: 'form', path: '/anmelden', userSelector: '#mail', passwordSelector: '#pw', submitSelector: 'button[type=submit]', signedInSelector: '#menu' },
@@ -109,7 +109,7 @@ test('Mandanten: Ziel mandant/umgebung, nur Mandanten aus sites', () => {
 test('Umgebungen: Fähigkeiten aus der Config, Produktion nur ausdrücklich und ohne Claude', () => {
     assert.deepEqual(environmentsWith(multi(), 'agent'), ['dev']);
     assert.deepEqual(environmentsWith(multi(), 'writable'), ['dev', 'test']);
-    assert.deepEqual(environmentsWith(simple(), 'localCode'), ['local']);
+    assert.deepEqual(environmentsWith(simple(), 'overlay'), ['local']);
     assert.equal(resolveTarget(simple(), 'local').agent, true);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
     assert.match(at({ prod: { url: 'https://www.shop.example' } }), /Produktion/);
@@ -153,11 +153,11 @@ test('consoleIgnore muss gültige reguläre Ausdrücke enthalten', () => {
 test('resolveTarget liefert Adresse und Fähigkeiten', () => {
     assert.deepEqual(resolveTarget(multi(), 'nord/test'), {
         target: 'nord/test', site: 'nord', environment: 'test',
-        url: 'https://test.nord.example', writable: true, agent: false, localCode: false, production: false,
+        url: 'https://test.nord.example', writable: true, agent: false, overlay: false, production: false,
     });
     assert.deepEqual(resolveTarget(simple(), 'staging'), {
         target: 'staging', environment: 'staging',
-        url: 'https://staging.shop.example', writable: false, agent: false, localCode: false, production: false,
+        url: 'https://staging.shop.example', writable: false, agent: false, overlay: false, production: false,
     });
     assert.equal(resolveTarget(multi(), 'sued/abnahme').writable, false);
 });
@@ -179,10 +179,11 @@ test('browserHosts nimmt nur Adressen der Mandanten aus sites und eigene Ausnahm
     assert.deepEqual(browserHosts(simple()), ['app.localhost', 'staging.shop.example']);
 });
 
-const SPEC = { id: 'smoke', app: 'antrag', role: 'kunde', targets: ['nord/dev', 'sued/test'], source: 'watch', mutates: false, also: [] };
+const SPEC = { id: 'smoke', app: 'antrag', role: 'kunde', targets: ['nord/dev', 'sued/test'], mutates: false, also: [] };
 
-test('checkTest: gültig, ohne lokalen Code wird deployed', () => {
-    assert.equal(checkTest(SPEC, 'nord/dev', multi()).source, 'watch');
+test('checkTest: gültig; ohne --overlay immer der ausgelieferte Stand, auch wo das Overlay ginge', () => {
+    assert.equal(checkTest(SPEC, 'nord/dev', multi()).source, 'deployed');
+    assert.equal(checkTest(SPEC, 'nord/dev', multi(), { overlay: true }).source, 'overlay');
     assert.equal(checkTest(SPEC, 'sued/test', multi()).source, 'deployed');
 });
 
@@ -196,26 +197,20 @@ test('checkTest: Rolle nur, wenn es eine Anmeldung gibt; mit genau einer Rolle g
     assert.throws(() => checkTest({ ...spec, role: 'chef' }, 'local', two), /Unbekannte Rolle: chef \(Rollen in caw\.config\.json: kaeufer, admin\)/);
 });
 
-test('Welcher Code läuft: eine Entscheidung mit Grund, Vorrang für --code und --until', () => {
+test('Welcher Code läuft: ausgeliefert, außer --overlay; geht das Overlay nicht, ein Aufruffehler mit Grund', () => {
     const own = { ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop', localBuild: 'dist' } } };
     const spec = { id: 'smoke', mutates: false, also: [] };
-    const pick = ({ source, sourceReason }) => ({ source, ...(sourceReason === undefined ? {} : { sourceReason }) });
     assert.deepEqual(withDefaults(spec, own), { ...spec, app: 'shop', role: 'kaeufer', targets: ['local', 'staging'] }, 'app, role und targets aus der Config');
-    assert.deepEqual(pick(checkTest(spec, 'local', own)), { source: 'watch' });
-    assert.deepEqual(pick(checkTest(spec, 'staging', own)), { source: 'deployed', sourceReason: 'Umgebung staging hat kein localCode' });
-    assert.deepEqual(pick(checkTest(spec, 'local', simple())), { source: 'deployed', sourceReason: 'App shop hat keinen lokalen Code (localBuild, statics, redirects oder constants)' });
-    // Ohne localCode: http auf localhost ist ein Dev-Server, https auf *.localhost ein ausgelieferter Build wie jeder andere.
-    const at = (url) => ({ ...own, environments: { box: { url, claude: true } } });
-    assert.match(checkTest(spec, 'box', at('http://localhost:5173')).sourceReason, /^Dev-Server auf localhost:5173/);
-    assert.equal(checkTest(spec, 'box', at('https://shop.localhost:8443')).sourceReason, 'Umgebung box hat kein localCode');
-    const deployed = { ...spec, code: 'deployed' };
-    assert.deepEqual(pick(checkTest(deployed, 'local', own)), { source: 'deployed', sourceReason: 'der Test sagt code: deployed' });
-    assert.deepEqual(pick(checkTest(deployed, 'local', own, { until: 'S2' })), { source: 'watch', sourceReason: '--until S2: Zustand für die Entwicklung' });
-    assert.deepEqual(pick(checkTest(deployed, 'staging', own, { until: 'S2' })), { source: 'deployed', sourceReason: 'der Test sagt code: deployed' }, '--until nur, wo es lokalen Code gibt');
-    assert.deepEqual(pick(checkTest(spec, 'local', own, { code: 'deployed' })), { source: 'deployed', sourceReason: '--code deployed' });
-    assert.deepEqual(pick(checkTest(deployed, 'local', own, { code: 'local' })), { source: 'watch', sourceReason: '--code local' });
-    assert.throws(() => checkTest(spec, 'staging', own, { code: 'local' }), (error) => error.code === 'usage' && /--code local geht hier nicht: Umgebung staging hat kein localCode\. Dafür braucht es environments\.staging\.localCode\./.test(error.message));
-    assert.throws(() => checkTest(spec, 'local', simple(), { code: 'local' }), (error) => error.code === 'usage' && /apps\.shop\.localBuild/.test(error.message));
+    assert.equal(checkTest(spec, 'local', own).source, 'deployed', 'nie still lokal');
+    assert.deepEqual([checkTest(spec, 'local', own, { overlay: true })].map(({ source, overlay }) => ({ source, overlay })), [{ source: 'overlay', overlay: true }]);
+    assert.equal(checkTest(spec, 'local', own, { overlay: 'build' }).overlay, 'build');
+    assert.throws(() => checkTest(spec, 'staging', own, { overlay: true }), (error) => error.code === 'usage' && /--overlay geht auf Umgebung staging nicht: Dafür braucht sie "overlay": true in environments\.staging\./.test(error.message));
+    assert.throws(() => checkTest(spec, 'local', simple(), { overlay: true }), (error) => error.code === 'usage' && /apps\.shop\.localBuild/.test(error.message));
+    // http auf localhost ist ein Dev-Server: Dort laeuft immer der eigene Stand, ein Overlay ergibt keinen Sinn. https auf *.localhost
+    // ist dagegen ein ausgelieferter Build wie jeder andere.
+    const at = (url) => ({ ...own, environments: { box: { url, claude: true, overlay: true } } });
+    assert.throws(() => checkTest(spec, 'box', at('http://localhost:5173'), { overlay: true }), (error) => error.code === 'usage' && /Umgebung box ist ein Dev-Server \(localhost:5173\)/.test(error.message));
+    assert.equal(checkTest(spec, 'box', at('https://shop.localhost:8443'), { overlay: true }).source, 'overlay');
     assert.throws(() => checkTest({ ...spec, targets: ['local'] }, 'staging', own), /Trage staging in targets in caw\/tests\/smoke\.yaml ein/);
     const twoApps = { ...own, apps: { ...own.apps, admin: { dir: 'admin', startUrl: '/' } } };
     assert.throws(() => checkTest(spec, 'local', twoApps), /smoke nennt keine app.*\(shop, admin\)/);
@@ -224,7 +219,7 @@ test('Welcher Code läuft: eine Entscheidung mit Grund, Vorrang für --code und 
 
 test('Config: Vorschläge bei Tippfehlern, claude statt agent, Hinweise auf Einstellungen ohne Wirkung', () => {
     assert.match(issues({ ...simple(), insecureTLS: true }), /Unbekanntes Feld: insecureTLS \(meintest du insecureTls\?\)/);
-    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', localcode: true } } }), /localcode gibt es dort nicht.*\(meintest du localCode\?\)/);
+    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', overlya: true } } }), /overlya gibt es dort nicht.*\(meintest du overlay\?\)/);
     assert.doesNotMatch(issues({ ...simple(), zzz: 1 }), /meintest/);
     assert.match(issues({ ...simple(), extraAllowedHosts: ['https://login.example.com/'] }), /"https:\/\/login\.example\.com\/" ist kein Hostname; gemeint ist wohl "login\.example\.com"/);
     assert.match(issues({ ...simple(), extraAllowedHosts: ['a b'] }), /"a b" ist kein Hostname, etwa/);
@@ -234,9 +229,9 @@ test('Config: Vorschläge bei Tippfehlern, claude statt agent, Hinweise auf Eins
     const old = validateConfig(simple());
     assert.deepEqual(old.issues, [], 'agent gilt weiter');
     assert.match(old.notes.join('\n'), /Umgebung local: agent heißt jetzt claude/);
-    assert.match(old.notes.join('\n'), /Umgebung local hat localCode, aber keine App hat lokalen Code/);
+    assert.match(old.notes.join('\n'), /Umgebung local hat overlay, aber keine App hat lokalen Code/);
     const buildOnly = { ...claude, apps: { shop: { dir: 'shop', startUrl: '/shop', localBuild: 'dist' } } };
-    assert.match(validateConfig(buildOnly).notes.join('\n'), /App shop hat localBuild, aber keine Umgebung hat localCode/);
+    assert.match(validateConfig(buildOnly).notes.join('\n'), /App shop hat localBuild, aber keine Umgebung hat overlay/);
 });
 
 test('Lokaler Code: Muster aus der Config, ohne Einträge oder Muster gibt es nur den deployten Stand', () => {
@@ -248,7 +243,7 @@ test('Lokaler Code: Muster aus der Config, ohne Einträge oder Muster gibt es nu
     assert.match(issues(withoutPattern), /shop nennen lokalen Code.*assetUrlPattern fehlt/);
     assert.match(issues({ ...own, assetUrlPattern: '/static/js/.+' }), /braucht eine Gruppe/);
     assert.match(issues({ ...own, assetUrlPattern: '(' }), /kein gültiger/);
-    const built = buildDevlinkConfig(own, resolveTarget(own, 'local'), 'shop', 'watch', '/p');
+    const built = buildDevlinkConfig(own, resolveTarget(own, 'local'), 'shop', 'overlay', '/p');
     assert.equal(built.assetUrlPattern, assetUrlPattern);
     assert.equal(built.authMarker, '#menu');
     assert.deepEqual(built.projects[0].redirects, []);
@@ -261,17 +256,17 @@ test('Lokaler Code: localBuild kommt ohne assetUrlPattern aus, der Name ist der 
     assert.deepEqual(validateConfig(own).issues, []);
     assert.equal(hasLocalCode(own, ['shop']), true);
     const { auth, roles, ...open } = own;
-    assert.equal(checkTest({ ...SPEC, app: 'shop', targets: ['local'], role: undefined }, 'local', open).source, 'watch');
+    assert.equal(checkTest({ ...SPEC, app: 'shop', targets: ['local'], role: undefined }, 'local', open, { overlay: true }).source, 'overlay');
     for (const bad of ['', '/abs', 'C:\\x', '../raus', 3]) {
         assert.match(issues({ ...own, apps: { shop: { dir: 'shop', localBuild: bad } } }), /localBuild/);
     }
     const resolved = resolveTarget(own, 'local');
-    const built = buildDevlinkConfig(own, resolved, 'shop', 'watch', '/p');
+    const built = buildDevlinkConfig(own, resolved, 'shop', 'overlay', '/p');
     assert.deepEqual(built.projects[0].builds.map(({ localDir, active }) => ({ localDir, active })), [{ localDir: '/p/dist/local', active: true }]);
     assert.equal(deriveRepoPath(`${resolved.url}/assets/index-X1Y2Z3W4.js?v=2`, built.projects[0].builds[0].urlPattern), 'assets/index-X1Y2Z3W4.js');
     assert.equal(deriveRepoPath('https://cdn.example/assets/index.js', built.projects[0].builds[0].urlPattern), null, 'nur die Umgebung');
     assert.deepEqual(buildDevlinkConfig(own, resolved, 'shop', 'deployed', '/p').projects[0].builds, []);
-    const withPattern = buildDevlinkConfig({ ...own, assetUrlPattern: '/static/(.+)' }, resolved, 'shop', 'watch', '/p');
+    const withPattern = buildDevlinkConfig({ ...own, assetUrlPattern: '/static/(.+)' }, resolved, 'shop', 'overlay', '/p');
     assert.equal(withPattern.assetUrlPattern, '/static/(.+)');
     assert.equal(withPattern.projects[0].builds[0].urlPattern, built.projects[0].builds[0].urlPattern, 'der Build behält sein eigenes Muster');
     assert.equal(built.assetUrlPattern, undefined, 'ohne globales Muster keins');
@@ -303,7 +298,7 @@ test('checkTest: mutates wird auf Umgebungen ohne writable abgewiesen', () => {
 });
 
 test('buildDevlinkConfig: Watch-Quelle ergibt Redirects, Statics mit absolutem Pfad', () => {
-    const cfg = buildDevlinkConfig(multi(), resolveTarget(multi(), 'nord/dev'), 'antrag', 'watch', '/workspaces/X');
+    const cfg = buildDevlinkConfig(multi(), resolveTarget(multi(), 'nord/dev'), 'antrag', 'overlay', '/workspaces/X');
     assert.equal(cfg.portals[0].url, 'https://dev.nord.example');
     assert.equal(cfg.activePortal, cfg.portals[0].uuid);
     const p = cfg.projects[0];

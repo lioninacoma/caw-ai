@@ -70,12 +70,10 @@ const localSources = (config, spec) => [spec.app, ...(spec.also ?? [])]
 
 /**
  * Die Zeile "Code: …" ohne Praefix. Mit `root` nennt sie beim Build-Ordner, wann er gebaut wurde; validate laesst das weg.
- * @param checked Ergebnis von checkTest: source und sourceReason
+ * @param checked Ergebnis von checkTest: source
  */
 export const describeCode = (config, spec, checked, { root, now = Date.now() } = {}) => {
-    if (checked.source !== 'watch') {
-        return checked.sourceReason === undefined ? t('cli.code.deployed') : t('cli.code.deployedWhy', { reason: checked.sourceReason });
-    }
+    if (checked.source !== 'overlay') return t('cli.code.deployed');
     const parts = localSources(config, spec).map(({ name, local }) => {
         if (local.localBuild === undefined) return t('cli.code.entries', { kinds: local.kinds.join(', '), dir: slash(config.apps[name].dir) });
         const dir = slash(local.localBuild);
@@ -83,7 +81,7 @@ export const describeCode = (config, spec, checked, { root, now = Date.now() } =
         const built = newestFile(join(root, local.localBuild), { skipNames: new Set(['node_modules']) });
         return built === null ? dir : t('cli.code.built', { dir, time: clock(built.mtimeMs), ago: ago(now - built.mtimeMs) });
     });
-    const details = [...parts, ...(checked.sourceReason === undefined ? [] : [checked.sourceReason])];
+    const details = parts;
     return root === undefined ? t('cli.code.localFrom', { details: details.join('; ') }) : t('cli.code.local', { details: details.join('; ') });
 };
 
@@ -93,7 +91,7 @@ export const describeCode = (config, spec, checked, { root, now = Date.now() } =
  * @returns die Warnungen als Text, je App hoechstens eine
  */
 export const staleBuildWarnings = (root, config, spec, checked, now = Date.now()) => {
-    if (checked.source !== 'watch') return [];
+    if (checked.source !== 'overlay') return [];
     return localSources(config, spec).flatMap(({ name, local }) => {
         if (local.localBuild === undefined) return [];
         const buildDir = join(root, local.localBuild);

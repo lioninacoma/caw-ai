@@ -14,7 +14,7 @@
                 "local": "https://portal.localhost:8443"
             },
             "claude": true,
-            "localCode": true,
+            "overlay": true,
             "writable": true
         }
     },

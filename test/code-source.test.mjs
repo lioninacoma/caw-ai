@@ -31,23 +31,23 @@ const project = (t, { built, changed }) => {
 const CONFIG = { apps: { web: { dir: '.', startUrl: '/', localBuild: 'dist/local' } } };
 const SPEC = { id: 'smoke', app: 'web', also: [] };
 
-test('Code-Zeile: lokaler Build mit Zeitpunkt, ausgelieferter Stand mit Grund, validate ohne Zeit', (t) => {
+test('Code-Zeile: Overlay mit Zeitpunkt des Builds, sonst der ausgelieferte Stand; validate ohne Zeit', (t) => {
     const root = project(t, { built: NOW - 3 * MIN, changed: NOW - 10 * MIN });
-    const local = describeCode(CONFIG, SPEC, { source: 'watch' }, { root, now: NOW });
-    assert.match(local, /^lokaler Build \(dist\/local, gebaut \d\d:\d\d, vor 3 min\)$/);
-    assert.equal(describeCode(CONFIG, SPEC, { source: 'watch', sourceReason: '--code local' }), 'lokaler Build aus dist/local; --code local');
-    assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', sourceReason: 'Umgebung staging hat kein localCode' }), 'ausgelieferter Stand (Umgebung staging hat kein localCode)');
+    const local = describeCode(CONFIG, SPEC, { source: 'overlay' }, { root, now: NOW });
+    assert.match(local, /^Overlay, lokaler Build \(dist\/local, gebaut \d\d:\d\d, vor 3 min\)$/);
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay' }), 'Overlay, lokaler Build aus dist/local');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed' }), 'ausgelieferter Stand');
     const statics = { assetUrlPattern: '/s/(.+)', apps: { web: { dir: 'apps/web', statics: [{ name: 'a.js', path: 'a.js' }] } } };
-    assert.equal(describeCode(statics, SPEC, { source: 'watch' }), 'lokaler Build aus statics in apps/web');
+    assert.equal(describeCode(statics, SPEC, { source: 'overlay' }), 'Overlay, lokaler Build aus statics in apps/web');
 });
 
 test('Veralteter Build: Warnung, wenn eine Quelle jünger ist als der Build, sonst nicht', (t) => {
     const stale = project(t, { built: NOW - 30 * MIN, changed: NOW - 12 * MIN });
-    assert.deepEqual(staleBuildWarnings(stale, CONFIG, SPEC, { source: 'watch' }, NOW),
-        ['Der lokale Build (dist/local) ist älter als deine letzte Änderung (src/x.tsx, vor 12 min). Läuft der Build-Watch? Sonst --code deployed.']);
+    assert.deepEqual(staleBuildWarnings(stale, CONFIG, SPEC, { source: 'overlay' }, NOW),
+        ['Der lokale Build (dist/local) ist älter als deine letzte Änderung (src/x.tsx, vor 12 min). Läuft der Build-Watch?']);
     assert.deepEqual(staleBuildWarnings(stale, CONFIG, SPEC, { source: 'deployed' }, NOW), [], 'ohne lokalen Code keine Warnung');
     const fresh = project(t, { built: NOW - 3 * MIN, changed: NOW - 12 * MIN });
-    assert.deepEqual(staleBuildWarnings(fresh, CONFIG, SPEC, { source: 'watch' }, NOW), []);
+    assert.deepEqual(staleBuildWarnings(fresh, CONFIG, SPEC, { source: 'overlay' }, NOW), []);
 });
 
 test('newestFile: begrenzt den Weg, überspringt Ordner mit Punkt und Builds', (t) => {
@@ -65,9 +65,9 @@ test('newestFile: begrenzt den Weg, überspringt Ordner mit Punkt und Builds', (
 
 test('Kopf eines Laufs: Die Code-Zeile steht auch ohne Terminal da', () => {
     const lines = [];
-    createUi({ fancy: false, out: (text) => lines.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'staging', source: 'deployed', code: 'ausgelieferter Stand (Umgebung staging hat kein localCode)' });
-    assert.deepEqual(lines, ['[caw-ai] Testlauf: smoke auf staging', '[caw-ai] Code: ausgelieferter Stand (Umgebung staging hat kein localCode)']);
+    createUi({ fancy: false, out: (text) => lines.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'staging', source: 'deployed', code: 'ausgelieferter Stand' });
+    assert.deepEqual(lines, ['[caw-ai] Testlauf: smoke auf staging', '[caw-ai] Code: ausgelieferter Stand']);
     const fancy = [];
-    createUi({ fancy: true, out: (text) => fancy.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'local', source: 'watch', code: 'lokaler Build (dist)' });
-    assert.match(fancy.join('\n'), /Code: lokaler Build \(dist\)/);
+    createUi({ fancy: true, out: (text) => fancy.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'local', source: 'overlay', code: 'Overlay, lokaler Build (dist)' });
+    assert.match(fancy.join('\n'), /Code: Overlay, lokaler Build \(dist\)/);
 });

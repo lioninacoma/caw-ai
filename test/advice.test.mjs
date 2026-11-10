@@ -14,7 +14,7 @@ const recorded = (id) => {
     const step = plain(id);
     return { ...step, recording: { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', actions: [], check: `check${id}()` } };
 };
-const meta = { id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'watch', mutates: true, also: [], notes: 'Alt.' };
+const meta = { id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'overlay', mutates: true, also: [], notes: 'Alt.' };
 const SPEC = composeTest(meta, { notes: 'Alt.', steps: [recorded('S1'), recorded('S2')] });
 const CONFIG = { consoleIgnore: ['bekannt'], foreignCode: [] };
 const item = (change, extra = {}) => ({ side: 'test', title: 'Titel', reason: 'Weil.', evidence: 'failure 1', change, ...extra });

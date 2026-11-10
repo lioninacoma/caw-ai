@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, hasLocalCode, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -368,17 +368,21 @@ export const validate = (root) => {
         try {
             // Beschreibung samt Aufzeichnung aus caw/recordings; eine fremde id meldet loadTest.
             const spec = withDefaults(loadTest(root, file.slice(0, -'.yaml'.length)), config);
-            hints.push(...(spec.notices ?? []).map((notice) => `${file}: ${notice}`));
             for (const target of spec.targets) {
                 try {
                     const checked = checkTest(spec, target, config);
-                    codeLines.push(t('cli.validateCode', { id: spec.id, target, code: describeCode(config, spec, checked) }));
+                    // Wo das Overlay ginge, steht es dabei: Ohne --overlay laeuft trotzdem der ausgelieferte Stand.
+                    let overlay = null;
+                    try {
+                        overlay = describeCode(config, spec, checkTest(spec, target, config, { overlay: true }));
+                    } catch {
+                        overlay = null;
+                    }
+                    const code = describeCode(config, spec, checked);
+                    codeLines.push(t(overlay === null ? 'cli.validateCode' : 'cli.validateCodeOverlay', { id: spec.id, target, code, overlay }));
                 } catch (error) {
                     problems.push(`${file} (${target}): ${error.message}`);
                 }
-            }
-            if (spec.code === 'deployed' && spec.app !== undefined && hasLocalCode(config, [spec.app, ...(spec.also ?? [])]) && environmentsWith(config, 'localCode').length > 0) {
-                hints.push(t('cli.validateCodeDeployed', { file, app: spec.app }));
             }
             const chain = brokenChain(spec);
             if (chain !== null) hints.push(t('cli.validateChain', { file, chain }));
@@ -456,19 +460,14 @@ const prepareSandbox = async (root, docker, config) => {
 
 /** Abweisen, bevor irgendetwas Teures startet. */
 /**
- * Lokaler Code nur, wenn der Watch des Frameworks laeuft (sofern der Adapter einen kennt). Sonst ersetzt caw-ai nichts und testet den
- * deployten Stand, damit ein veralteter oder halber Build keinen Fehler vortaeuscht.
+ * Das Overlay braucht den Watch des Frameworks, sofern der Adapter einen kennt (Sencha). Laeuft er nicht, endet der Lauf hier mit dem
+ * Befehl zum Starten, statt still einen veralteten Stand zu testen. Ob er laeuft, laesst sich nicht immer sehen (null): Dann zaehlt er.
  */
-export const withRunningWatch = (config, checked, running = processRunning, { code } = {}) => {
-    if (checked.source !== 'watch') return checked;
+export const requireRunningWatch = (config, checked, running = processRunning) => {
+    if (checked.source !== 'overlay') return checked;
     const { watch } = frameworkOf(config);
     if (watch === undefined || running(watch.command) !== false) return checked;
-    // Wer --code local sagt, bekommt den lokalen Code, auch ohne Watch; dann nur ein Hinweis.
-    if (code === 'local') {
-        ui.warn(t('cli.noWatchLocal', { label: watch.label }));
-        return checked;
-    }
-    return { ...checked, source: 'deployed', sourceReason: t('cli.noWatch', { label: watch.label }) };
+    throw new CawError('watch-missing', t('cli.noWatch', { label: watch.label, start: watch.start }));
 };
 
 /** Gibt es nur eine Rolle bzw. App, braucht der neue Test kein Flag dafuer. */
@@ -567,13 +566,12 @@ export const chooseTarget = (config, spec, { target, command, log = ui.info }) =
     return choices[0];
 };
 
-const loadChecked = (root, id, given, command, { code, until } = {}) => {
+const loadChecked = (root, id, given, command, { overlay } = {}) => {
     const config = loadConfig(root);
     if (!existsSync(testPath(root, id))) throw testMissing(root, config, id, given);
     const spec = withDefaults(loadTest(root, id), config);
-    for (const notice of spec.notices ?? []) ui.note(`${TEST_DIR}/${id}.yaml: ${notice}`);
     const target = chooseTarget(config, spec, { target: given, command });
-    return { config, spec, target, checked: withRunningWatch(config, checkTest(spec, target, config, { code, until }), processRunning, { code }) };
+    return { config, spec, target, checked: requireRunningWatch(config, checkTest(spec, target, config, { overlay })) };
 };
 
 /**
@@ -697,7 +695,7 @@ const openSandbox = async (root, { config, containerCommand, adviseCommand, talk
 };
 
 /** Ein Test im Entstehen. Die Metadaten stehen fest, bevor Claude startet: Rolle und Ziel entscheidet der Mensch. */
-const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp, also, readOnly = false, code }) => {
+const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp, also, readOnly = false }) => {
     const role = chosenRole ?? onlyKey(config.roles);
     const app = chosenApp ?? onlyKey(config.apps);
     if (role === undefined || app === undefined) {
@@ -712,8 +710,6 @@ const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp,
         app,
         role,
         targets: [target],
-        // Ohne Angabe gilt der Standard (lokaler Build, wo es ihn gibt); nur ein ausdrueckliches --code deployed bleibt im Test.
-        ...(code === 'deployed' ? { code } : {}),
         // Schreibend, ausser der Mensch sagt es anders; schreibt ein lesender Test doch, wird er beim Uebernehmen schreibend.
         mutates: !readOnly,
         also,
@@ -874,9 +870,8 @@ export const changeTracker = (root) => {
  * @returns { code, failed } mit dem gescheiterten Schritt ({ id, reason }), falls einer scheiterte
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, code: codeChoice, quiet = false } = options;
-    // Ein Zustand fuer die Entwicklung (--until) braucht den lokalen Build, wo es ihn gibt; das entscheidet checkTest mit Grund.
-    const { config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { code: codeChoice, until });
+    const { test, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, quiet = false } = options;
+    const { config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { overlay });
     if (until !== undefined && !spec.steps.some(({ id }) => id === until)) throw stepUnknown('cli.stepUnknown', spec, until);
     const { assertPlayable } = await import('./replay.mjs');
     assertPlayable(spec, target, until);
@@ -1033,14 +1028,14 @@ export const contradicts = (spec, { role, app, also = [], readOnly = false }) =>
  * sich der Weg durch Container, Kanal und Browser ohne Modell und Token pruefen laesst.
  */
 export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, code } = parseRunArgs('record', args);
+    const { test, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, overlay } = parseRunArgs('record', args);
     const config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
     const known = exists ? withDefaults(loadTest(root, test), config) : null;
     const target = chooseTarget(config, known, { target: given, command: 'record' });
-    const spec = known ?? draftTest(root, config, { id: test, target, role, app, also, readOnly, code });
+    const spec = known ?? draftTest(root, config, { id: test, target, role, app, also, readOnly });
     if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
-    const checked = withRunningWatch(config, checkTest(spec, target, config, { code }), processRunning, { code });
+    const checked = requireRunningWatch(config, checkTest(spec, target, config, { overlay }));
     requireAgent(config, checked, target, t('cli.verbRecord'));
     requireHuman('record', interactive);
 
@@ -1069,8 +1064,8 @@ const playable = (assertPlayable, spec, target, step) => {
 
 /** Genau diesen Schritt aendern, auch wenn er nicht scheitert. So bekommt ein von Hand geaenderter oder neuer Schritt seine Aufzeichnung. */
 export const fix = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, agent, code } = parseRunArgs('fix', args);
-    const { config, spec, target, checked } = loadChecked(root, test, given, 'fix', { code });
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, agent, overlay } = parseRunArgs('fix', args);
+    const { config, spec, target, checked } = loadChecked(root, test, given, 'fix', { overlay });
     requireAgent(config, checked, target, t('cli.verbFix'));
     requireHuman('fix', interactive);
     const position = spec.steps.findIndex(({ id }) => id === step);

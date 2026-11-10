@@ -26,12 +26,17 @@ test('claudeFailureReason benennt Token, Zeitlimit und Sonstiges', () => {
     assert.match(claudeFailureReason(7, 'irgendwas'), /Exit 7/);
 });
 
-test('parseRunArgs: --code local|deployed bei run, record und fix', () => {
-    assert.equal(parseRunArgs('run', ['smoke', '--target', 'dev', '--code', 'deployed']).code, 'deployed');
-    assert.equal(parseRunArgs('fix', ['smoke', 'S2', '--target', 'dev', '--code=local']).code, 'local');
-    assert.equal(parseRunArgs('record', ['smoke', '--target', 'dev', '--code', 'deployed']).code, 'deployed');
-    assert.equal(parseRunArgs('run', ['smoke', '--target', 'dev']).code, undefined);
-    assert.throws(() => parseRunArgs('run', ['smoke', '--target', 'dev', '--code', 'watch']), (error) => error.code === 'usage' && /--code erwartet local, deployed/.test(error.message));
+test('parseRunArgs: --overlay mit und ohne Quelle bei run, record und fix; ohne Option kein Overlay', () => {
+    assert.equal(parseRunArgs('run', ['smoke', '--target', 'dev']).overlay, undefined);
+    assert.equal(parseRunArgs('run', ['smoke', '--overlay']).overlay, true);
+    assert.equal(parseRunArgs('run', ['--overlay', 'smoke']).test, 'smoke', 'ein Testname ist keine Quelle');
+    assert.equal(parseRunArgs('run', ['--overlay', 'smoke']).overlay, true);
+    assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'build']).overlay, 'build');
+    assert.equal(parseRunArgs('fix', ['smoke', 'S2', '--overlay=dev']).overlay, 'dev');
+    assert.equal(parseRunArgs('record', ['smoke', '--overlay', 'dev', '--target', 'dev']).overlay, 'dev');
+    assert.deepEqual(parseRunArgs('run', ['--overlay=build', 'build']).tests, ['build'], 'ein Test namens build mit --overlay=…');
+    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=local']), (error) => error.code === 'usage' && /--overlay erwartet nichts oder build, dev/.test(error.message));
+    assert.throws(() => parseRunArgs('run', ['smoke', '--code', 'local']), (error) => error.code === 'usage', '--code gibt es nicht mehr');
 });
 
 test('parseRunArgs: Jeder Befehl kennt nur seine Optionen', () => {

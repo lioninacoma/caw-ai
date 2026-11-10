@@ -31,7 +31,6 @@ export const composeTest = (meta, { notes, steps }) => withExpectations({
     app: meta.app,
     role: meta.role,
     targets: meta.targets,
-    ...(meta.code === undefined ? {} : { code: meta.code }),
     mutates: meta.mutates,
     also: meta.also ?? [],
     notes,

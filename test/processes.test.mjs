@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { withRunningWatch } from '../src/host/commands.mjs';
+import { requireRunningWatch } from '../src/host/commands.mjs';
 import { extjs } from '../src/host/framework/extjs.mjs';
 import { commandLines, processRunning } from '../src/host/processes.mjs';
 
@@ -20,12 +20,12 @@ test('ExtJS: Der Sencha-Watch wird an der Befehlszeile erkannt, auch in Anführu
     for (const line of ['sencha app build', 'node watchapp.js', 'vite --watch']) assert.ok(!extjs.watch.command.test(line), line);
 });
 
-test('Lokaler Code nur mit laufendem Watch, sonst der deployte Stand; ohne Watch-Angabe wie konfiguriert', () => {
-    const local = { source: 'watch', url: 'https://p.example' };
-    assert.equal(withRunningWatch({ framework: 'extjs' }, local, () => false).source, 'deployed');
-    assert.equal(withRunningWatch({ framework: 'extjs' }, local, () => true).source, 'watch');
-    assert.equal(withRunningWatch({ framework: 'extjs' }, local, () => null).source, 'watch', 'unbekannt: wie konfiguriert');
-    assert.equal(withRunningWatch({ framework: 'react' }, local, () => false).source, 'watch', 'React: der Dev-Server ist der Watch');
+test('Overlay nur mit laufendem Watch: sonst Abbruch mit dem Startbefehl, nie still der ausgelieferte Stand', () => {
+    const overlay = { source: 'overlay', url: 'https://p.example' };
+    assert.throws(() => requireRunningWatch({ framework: 'extjs' }, overlay, () => false), (error) => error.code === 'watch-missing' && /sencha app watch/.test(error.message));
+    assert.equal(requireRunningWatch({ framework: 'extjs' }, overlay, () => true), overlay);
+    assert.equal(requireRunningWatch({ framework: 'extjs' }, overlay, () => null), overlay, 'unbekannt: zählt als laufend');
+    assert.equal(requireRunningWatch({ framework: 'react' }, overlay, () => false), overlay, 'React: kein Watch im Adapter');
     const deployed = { source: 'deployed' };
-    assert.equal(withRunningWatch({ framework: 'extjs' }, deployed, () => { throw new Error('nicht gefragt'); }), deployed);
+    assert.equal(requireRunningWatch({ framework: 'extjs' }, deployed, () => { throw new Error('nicht gefragt'); }), deployed);
 });

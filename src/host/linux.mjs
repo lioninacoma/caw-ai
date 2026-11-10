@@ -40,10 +40,10 @@ export const parseEnvFile = (text) => {
     return env;
 };
 
-const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--code'];
+const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--overlay'];
 const COMMAND_OPTIONS = {
     // --timeout und --max-steps gelten fuer Claude beim Klaeren, Empfehlen und Beheben; das Abspielen selbst begrenzt --step-timeout.
-    run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--code'],
+    run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay'],
     record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
     fix: CLAUDE_OPTIONS,
 };
@@ -55,8 +55,8 @@ const VALUE_EXAMPLES = {
 };
 /** Wo Claude arbeitet: lokal gestartet, in Docker oder als die Claude-Code-Session des Entwicklers. */
 export const AGENT_CHOICES = ['local', 'docker', 'session'];
-/** Welcher Code laeuft: lokaler Build oder ausgelieferter Stand; ohne Angabe entscheiden Test und Config. */
-export const CODE_CHOICES = ['local', 'deployed'];
+/** Woher das Overlay kommt: lokaler Build oder Dev-Server (Sencha: der Watch). Ohne Wert die eine konfigurierte Quelle. */
+export const OVERLAY_CHOICES = ['build', 'dev'];
 // Der Mensch sitzt am Chat, das dauert laenger als ein Lauf ohne ihn.
 export const CLAUDE_TIMEOUT_MIN = 60;
 const STEP_ID = /^S[1-9]\d*$/;
@@ -103,6 +103,13 @@ export const parseRunArgs = (command, args) => {
         }
         const [flag, inline] = arg.split(/=(.*)/s);
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
+        // --overlay darf ohne Wert stehen: --overlay, --overlay build, --overlay=dev. Ein Test, der build heisst, braucht --overlay=…
+        if (flag === '--overlay') {
+            const value = inline ?? (OVERLAY_CHOICES.includes(rest[0]) ? rest.shift() : undefined);
+            if (value !== undefined && !OVERLAY_CHOICES.includes(value)) throw new CawError('usage', t('session.args.overlayChoice', { choices: OVERLAY_CHOICES.join(', ') }));
+            options.overlay = value ?? true;
+            continue;
+        }
         const value = SWITCHES.has(flag) ? true : requireValue(flag, inline ?? rest.shift());
         if (flag === '--target') options.target = value;
         else if (flag === '--handover') options.handover = true;
@@ -126,10 +133,6 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--agent') {
             if (!AGENT_CHOICES.includes(value)) throw new CawError('usage', t('session.args.agentChoice', { choices: AGENT_CHOICES.join(', ') }));
             options.agent = value;
-        }
-        else if (flag === '--code') {
-            if (!CODE_CHOICES.includes(value)) throw new CawError('usage', t('session.args.codeChoice', { choices: CODE_CHOICES.join(', ') }));
-            options.code = value;
         }
         else options.timeoutMin = Number(value);
     }

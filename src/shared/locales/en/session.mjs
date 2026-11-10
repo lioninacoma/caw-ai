@@ -29,7 +29,7 @@ export default {
     'session.args.unknownOption': '{command} has no option {flag}. Allowed: {allowed}',
     'session.args.valueMissing': '{flag} needs a value, e.g. {flag} {example}',
     'session.args.agentChoice': '--agent expects {choices}.',
-    'session.args.codeChoice': '--code expects {choices}.',
+    'session.args.overlayChoice': '--overlay expects nothing or {choices}.',
     'session.args.testId': 'Invalid test name: {test}. Use letters, digits, _, - and . (no folders), e.g. login or order-2.',
     'session.args.testMissing': 'Test name is missing.',
     'session.args.allWithTests': '--all runs every test; name either tests or --all.',

@@ -50,9 +50,10 @@ Auf dem Host (im Projektordner):`,
     'cli.help.run': `  run <test> [--target <umgebung>]       Testlauf nach Plan, ohne Claude. Auf Umgebungen, auf denen Claude arbeiten
                                          darf{here}, steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort
                                          mit Claude
-      [--until <S4>]                     Nach S4 anhalten, das Fenster bleibt offen (schließt --handover ein; lokaler Build,
-                                         wenn die Umgebung ihn erlaubt)
-      [--code local|deployed]            Welcher Code läuft: lokaler Build oder ausgelieferter Stand; Standard aus Test und Config
+      [--until <S4>]                     Nach S4 anhalten, das Fenster bleibt offen (schließt --handover ein)
+      [--overlay [build|dev]]            Lokalen Code über die ausgelieferte Umgebung legen: lokaler Build oder Dev-Server
+                                         (Sencha: der Watch); ohne Wert die eine konfigurierte Quelle. Nur auf Umgebungen mit
+                                         overlay. Ohne die Option läuft immer der ausgelieferte Stand
       [--handover]                       Nach dem Lauf das Chrome-Fenster offen lassen und dir übergeben
       [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token; nur auf
                                          Umgebungen, auf denen Claude arbeiten darf
@@ -76,13 +77,13 @@ Auf dem Host (im Projektordner):`,
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch, wird er schreibend
       [--timeout <minuten>]              Zeitlimit für Claude, Standard 60
       [--agent local|docker|session]     wie bei run
-      [--code local|deployed]            wie bei run; deployed bleibt in einem neuen Test stehen (code: deployed)
+      [--overlay [build|dev]]            wie bei run
       [--max-steps <n>]                  Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
       [--step-timeout <sekunden>]        Zeitlimit je Schritt im Prüfdurchlauf, Standard 30`,
     'cli.help.fix': `  fix <test> <S4> [--target <umgebung>]  Genau diesen Schritt ändern, immer mit Chat; nur auf Umgebungen, auf denen Claude
                                          arbeiten darf{here}
       [--timeout <minuten>] [--max-steps <n>] [--step-timeout <sekunden>] [--agent local|docker|session]
-      [--code local|deployed]`,
+      [--overlay [build|dev]]`,
     'cli.help.here': ' (hier: {names})',
     'cli.help.footer': `<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Ohne --target nimmt caw-ai
 das einzige Ziel des Tests (bei record eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf).
@@ -178,7 +179,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.validateNotRecorded': '{file}: noch nicht aufgenommen.',
     'cli.validateOk': '{config} und {count} Test(s) sind gültig.',
     'cli.validateCode': '{id} ({target}): {code}',
-    'cli.validateCodeDeployed': '{file}: code: deployed, aber App {app} hat inzwischen lokalen Code. Ohne code testet er auf Umgebungen mit localCode den lokalen Build.',
+    'cli.validateCodeOverlay': '{id} ({target}): {code}; mit --overlay: {overlay}',
     'cli.validateTodo': '{key} ist noch TODO: {what}',
     'cli.validateTodo.path': 'trage den Pfad der Anmeldeseite ein, etwa "/login"',
     'cli.validateTodo.userSelector': 'trage den CSS-Selektor des Benutzerfelds ein',
@@ -207,8 +208,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     // commands.mjs: Sandbox, Lauf, Aufnahme, Beheben
     'cli.imageBuilding': 'Baue das Sandbox-Image (nur beim ersten Lauf und nach Tool-Änderungen) ...',
     'cli.imageBuildFailed': 'Das Sandbox-Image ließ sich nicht bauen (Exit {code}). Fehlt der Registry-Login für {image}?',
-    'cli.noWatch': 'kein {label} aktiv',
-    'cli.noWatchLocal': 'Kein {label} aktiv, mit --code local läuft trotzdem der lokale Stand: Er kann veraltet sein.',
+    'cli.noWatch': 'Kein {label} aktiv: Ohne ihn testete das Overlay einen veralteten Stand. Starte {start} im App-Ordner, oder lass --overlay weg.',
     'cli.testMissing': 'Test nicht gefunden: {file}.{suggestion} {known} Neu aufnehmen: {hint}',
     'cli.targetChosen': 'Ziel: {target} ({why})',
     'cli.targetWhyTest': 'einziges Ziel von {test}',
@@ -350,11 +350,11 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.uiCode': 'Code: {code}',
     'cli.code.deployed': 'ausgelieferter Stand',
     'cli.code.deployedWhy': 'ausgelieferter Stand ({reason})',
-    'cli.code.local': 'lokaler Build ({details})',
-    'cli.code.localFrom': 'lokaler Build aus {details}',
+    'cli.code.local': 'Overlay, lokaler Build ({details})',
+    'cli.code.localFrom': 'Overlay, lokaler Build aus {details}',
     'cli.code.built': '{dir}, gebaut {time}, {ago}',
     'cli.code.entries': '{kinds} in {dir}',
-    'cli.code.stale': 'Der lokale Build ({dir}) ist älter als deine letzte Änderung ({file}, {ago}). Läuft der Build-Watch? Sonst --code deployed.',
+    'cli.code.stale': 'Der lokale Build ({dir}) ist älter als deine letzte Änderung ({file}, {ago}). Läuft der Build-Watch?',
     'cli.code.agoNow': 'gerade eben',
     'cli.code.agoMinutes': 'vor {count} min',
     'cli.code.agoHours': 'vor {count} h',

@@ -139,7 +139,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 };
 
 export const renderReport = ({ status, reason, note, testId, target, source, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis }) => {
-    const stand = source === 'watch' ? t('config.report.source.watch') : t('config.report.source.deployed');
+    const stand = source === 'overlay' ? t('config.report.source.watch') : t('config.report.source.deployed');
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',

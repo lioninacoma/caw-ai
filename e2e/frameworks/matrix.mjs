@@ -56,9 +56,9 @@ const waitForFile = async (file, timeoutMs = 60_000) => {
 };
 
 /** Ein caw-ai-Lauf im Projekt, wie in CI. Liefert Exit-Code, Ausgabe und, falls geschrieben, result.json und report.md. */
-const cawRun = (root, test) => {
+const cawRun = (root, test, extra = []) => {
     rmSync(join(root, '.caw/runs'), { recursive: true, force: true });
-    const result = spawnSync(process.execPath, [bin, 'run', test, '--target', 'test', '--headless'], {
+    const result = spawnSync(process.execPath, [bin, 'run', test, '--target', 'test', '--headless', ...extra], {
         cwd: root, encoding: 'utf8', timeout: 180_000,
         env: { ...process.env, CI: '1', CAW_LANG: 'de', CAW_AI_HOME: join(here, '.caw-home'), NO_COLOR: '1' },
     });
@@ -211,9 +211,9 @@ for (const app of APPS) {
             await sleep(2000);
             await waitFor(`https://127.0.0.1:${app.deployPort}/login`);
             localProject();
-            const smoke = cawRun(root, 'smoke');
+            const smoke = cawRun(root, 'smoke', ['--overlay']);
             record(`${app.name}/${variant.label}-mit-watch`, 'smoke', passes, smoke);
-            const fail = cawRun(root, 'fehler');
+            const fail = cawRun(root, 'fehler', ['--overlay']);
             record(`${app.name}/${variant.label}-mit-watch`, 'fehler', failsInApp, fail, explodeSource(fail));
         });
 
@@ -224,7 +224,7 @@ for (const app of APPS) {
             rmSync(join(root, variant.dir.split('/')[0]), { recursive: true, force: true });
             await waitFor(`https://127.0.0.1:${app.deployPort}/login`);
             localProject();
-            const smoke = cawRun(root, 'smoke');
+            const smoke = cawRun(root, 'smoke', ['--overlay']);
             record(`${app.name}/${variant.label}-ohne-watch`, 'smoke', expectEnvError, smoke, envHint(smoke));
         });
     }

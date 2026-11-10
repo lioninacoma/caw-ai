@@ -885,7 +885,7 @@ export const openBrowserSession = async (spec) => {
             const points = [
                 { id: 'chrome', kind: t('session.prep.chrome'), label: t('session.prep.chromeStart'), ms: (timing.chrome ?? timing.start) - timing.start },
                 ...(signIn === null ? [] : [{ id: 'login', kind: signIn, label: spec.role === undefined ? '' : t('session.prep.asRole', { role: spec.role }), ms: (timing.login ?? timing.chrome) - (timing.chrome ?? timing.start) }]),
-                ...(spec.localCode === true ? [{ id: 'code', kind: t('session.prep.code'), label: t('session.prep.codeLocal'), ms: timing.code - (timing.login ?? timing.chrome ?? timing.start) }] : []),
+                ...(spec.overlay === true ? [{ id: 'code', kind: t('session.prep.code'), label: t('session.prep.codeLocal'), ms: timing.code - (timing.login ?? timing.chrome ?? timing.start) }] : []),
                 { id: 'load', kind: t('session.prep.load'), label: t('session.prep.app') },
             ];
             await bench.group({ id: PREP, name: t('session.prep.group'), kind: 'phase', points: points.map(({ id, kind, label }) => ({ id, kind, label })) });
