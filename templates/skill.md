@@ -27,7 +27,7 @@ Starte das Tool im Projektordner und berichte das Ergebnis samt Pfad zum Bericht
 Urteil. Es gibt drei Wege:
 
 - **Testen:** `npx caw-ai run <test> --target <umgebung>`. Laeuft ohne KI. Fehlt die
-  Aufzeichnung, endet es mit Exit 3 und nennt `record`; ist ein Schritt veraltet, nennt es `fix` fuer genau diesen Schritt. Scheitert ein
+  Aufzeichnung, endet es mit Exit 4 (Aufnahme noetig) und nennt `record`; ist ein Schritt veraltet, nennt es `fix` fuer genau diesen Schritt. Scheitert ein
   Schritt auf einer Umgebung mit Claude (in der Config `environments.<name>.claude: true`) und nicht in CI, bietet der Chat „Schritt beheben“ an. Erst eine Nachricht des Menschen, „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“ startet Claude.
   Mit `--advise` (nur auf solchen Umgebungen, nicht in CI) gibt Claude bei Fehlern oder Warnungen sofort Empfehlungen im Chat, auch in einem
   bestandenen Lauf. Das kostet Token, haenge es also nur an, wenn der Mensch das will.

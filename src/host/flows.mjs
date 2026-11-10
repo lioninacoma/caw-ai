@@ -413,6 +413,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * @param handover  der Mensch will das Fenster danach bekommen
  * @param fillBaselines bestandene Schritte ohne Vergleich der Requests bekommen ihn aus diesem Lauf, ohne Claude und Token
  * @param onPlayed  bekommt das Ergebnis des Abspielens, bevor es weitergeht
+ * @param hint      (failed, { canFix }) nach einem gescheiterten Schritt, wenn der Lauf damit endet
  */
 export const runFlow = async (options) => {
     const { spec, until, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, openSandbox, execute, adopt, log, hint } = options;
@@ -554,11 +555,11 @@ export const runFlow = async (options) => {
     options.onPlayed?.(played);
     if (fillBaselines && played.baselines !== undefined) {
         current = withBaselines(current, played.baselines);
-        log(t('run.flow.baselinesAdded', { ids: [...played.baselines.keys()].join(', '), file: adopt(current, new Set(played.baselines.keys())) }));
+        log(t('run.flow.baselinesAdded', { ids: [...played.baselines.keys()].join(', '), file: adopt(current, new Set(played.baselines.keys()), { learned: 'baselines' }) }));
     }
     if (fillBaselines && played.effects !== undefined) {
         current = withEffects(current, played.effects);
-        log(t('run.flow.effectsLearned', { ids: [...played.effects.keys()].join(', '), file: adopt(current, new Set(played.effects.keys())) }));
+        log(t('run.flow.effectsLearned', { ids: [...played.effects.keys()].join(', '), file: adopt(current, new Set(played.effects.keys()), { learned: 'effects' }) }));
     }
     if (rerun) {
         log(t('run.flow.rerunning'));
@@ -569,6 +570,7 @@ export const runFlow = async (options) => {
         return fixFlow({ ...shared, draft: carry(repaired.candidate, current, repaired.id), changes: [changeOf(repaired)], seenFailures: hardFailures(repaired.verdict) });
     }
     if (target !== null) return fixFlow({ ...shared, draft: current, target });
-    if (played.failed && !canFix) hint?.(played.failed);
+    // Nach jedem Fehlschlag die naechsten Aufrufe; ohne Chat auch, wo sich die Ursache klaeren laesst.
+    if (played.failed) hint?.(played.failed, { canFix });
     return played.exitCode;
 };

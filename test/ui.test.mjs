@@ -22,7 +22,7 @@ test('Ohne Terminal: schlichte Zeilen ohne Steuerzeichen und Symbole', () => {
     ui.step({ number: 3, total: 9, label: 'click', elapsed: 1.25 });
     ui.verdict(VERDICT, { report: 'r.md', elapsed: 2 });
     ui.fatal('usage', 'Falsch');
-    assert.deepEqual(lines, ['[caw-ai] Hallo', '[+1.3s] 3/9 click', '[caw-ai] r1 auf a/dev: fail', '[caw-ai] Bericht: r.md', '[caw-ai] usage: Falsch']);
+    assert.deepEqual(lines, ['[caw-ai] Hallo', '[+1.3s] 3/9 click', '[caw-ai] r1 auf a/dev: fail', '[caw-ai] Bericht: r.md', '[caw-ai] Falsch', '[caw-ai] (code: usage, exit ?)']);
 });
 
 test('Im Terminal: Ergebnisblock nennt jeden Punkt und den Grund eines Fehlschlags', () => {

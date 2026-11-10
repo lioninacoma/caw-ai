@@ -36,7 +36,7 @@ test('parseRunArgs: --code local|deployed bei run, record und fix', () => {
 
 test('parseRunArgs: Jeder Befehl kennt nur seine Optionen', () => {
     const base = ['smoke', '--target', 'shop/dev'];
-    assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', target: 'shop/dev', handover: false, advise: false, headless: false, noChat: false, stepTimeoutSec: 30 });
+    assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', handover: false, advise: false, headless: false, noChat: false, learn: true, all: false, stepTimeoutSec: 30 });
     assert.equal(parseRunArgs('run', [...base, '--advise']).advise, true);
     // Claude beim Klaeren und Beheben begrenzen, wie bei record und fix.
     assert.deepEqual((({ timeoutMin, maxSteps }) => [timeoutMin, maxSteps])(parseRunArgs('run', [...base, '--timeout', '5', '--max-steps=20'])), [5, 20]);
@@ -60,8 +60,9 @@ test('parseRunArgs: Jeder Befehl kennt nur seine Optionen', () => {
     const created = parseRunArgs('record', [...base, '--role', 'r', '--app', 'a', '--also', 'b', '--also=c', '--timeout', '5', '--max-steps=30']);
     assert.deepEqual([created.role, created.app, created.also, created.timeoutMin, created.maxSteps], ['r', 'a', ['b', 'c'], 5, 30]);
     assert.throws(() => parseRunArgs('run', ['--target', 'x']), /Name des Tests/);
-    assert.throws(() => parseRunArgs('run', ['smoke']), /--target/);
-    assert.throws(() => parseRunArgs('run', [...base, 'noch-einer']), /noch-einer/);
+    // Ohne --target waehlt der Befehl selbst, siehe chooseTarget.
+    assert.equal(parseRunArgs('run', ['smoke']).target, undefined);
+    assert.throws(() => parseRunArgs('record', [...base, 'noch-einer']), /noch-einer/);
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '0']), /--step-timeout/);
     assert.throws(() => parseRunArgs('run', [...base, '--until', 'E4']), /--until/);
     assert.throws(() => parseRunArgs('record', [...base, '--max-steps=0']), /--max-steps/);

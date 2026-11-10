@@ -131,7 +131,7 @@ Ein Lauf mit Claude, also beim Aufnehmen und Beheben, macht Folgendes:
 5. **Testen:** `claude -p` arbeitet den Plan ab, jeder Browserbefehl geht als Datei über den Kanal an den Host. Das Urteil prüft der Host.
 6. **Abschließen:** Mit dem Urteil endet Claude sofort (Prozess bzw. Container). Bericht, Trace und `floats.log` (Klicks und, bei `extjs`, die Reihenfolge der schwebenden Fenster mit Zeiten, ohne Inhalte) liegen unter `.caw/runs/<lauf>/`. Der Trace (`trace.zip`) enthält Seiteninhalte, Requests und Cookies des Testkontos; gib ihn nicht weiter. Bei `auth.type: basic` zeichnet er keine Snapshots auf, damit das Passwort aus dem Authorization-Header nicht darin landet, Screenshots und `claude.log` unter `agent/`. Das Log entsteht laufend und zeigt Claudes Text und Befehle mit den Sekunden seit dem Start; dieselben Zeilen laufen im Terminal mit. Eine Schlusszusammenfassung nach dem Urteil fehlt darin. Im Terminal ist die Ausgabe farbig, die Datei bleibt ohne Farbcodes; `NO_COLOR=1` schaltet Farben ab. Chrome verschwindet ebenfalls.
 
-Exit-Codes: `0` pass, `1` fail, `2` error (die Umgebung ist schuld), `3` Eingabe abgelehnt.
+Exit-Codes: `0` pass, `1` fail, `2` error (die Umgebung ist schuld), `3` Eingabe abgelehnt, `4` Aufnahme nötig (`record` oder `fix`).
 
 ### Fehlercodes
 
@@ -214,7 +214,7 @@ Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard h
 
 ## Testlauf: `run`
 
-Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `claude` steht der Chat von Anfang an neben dem Fenster, außer in CI (Variable `CI` gesetzt), mit `--no-chat` oder `--headless`. Die erste Zeile im Terminal nennt den Modus und ob der Lauf Vergleichswerte lernt. Der Chat: Er zeigt jede Aktion (`S3 · 4/12 click …`) samt neuer Versuche, die Eingabe ist gesperrt. Besteht der Lauf, meldet der Chat das samt Warnungen und wartet nicht; er schließt mit dem Lauf oder bleibt bei `--until` und `--handover` neben dem übergebenen Fenster. Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben). Fehlt die Aufzeichnung ganz, endet es mit Exit 3 und nennt `record`. Ist ein Schritt veraltet, endet es mit Exit 3 und nennt `fix` für genau diesen Schritt.
+Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `claude` steht der Chat von Anfang an neben dem Fenster, außer in CI (Variable `CI` gesetzt), mit `--no-chat` oder `--headless`. Die erste Zeile im Terminal nennt den Modus und ob der Lauf Vergleichswerte lernt (`--no-learn` schaltet das ab), die letzte, was sich an den Dateien des Tests geändert hat. Der Chat: Er zeigt jede Aktion (`S3 · 4/12 click …`) samt neuer Versuche, die Eingabe ist gesperrt. Besteht der Lauf, meldet der Chat das samt Warnungen und wartet nicht; er schließt mit dem Lauf oder bleibt bei `--until` und `--handover` neben dem übergebenen Fenster. Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben). Fehlt die Aufzeichnung ganz, endet es mit Exit 4 und nennt `record`. Ist ein Schritt veraltet, endet es mit Exit 4 und nennt `fix` für genau diesen Schritt.
 
 - **Warten:** Es gibt keine festen Pausen. Ein Schritt wartet, bis sein Ziel sichtbar und nicht überdeckt ist. Das deckt Lademasken, Overlays und Dialoge in Dialogen ab, denn nur der oberste Dialog ist klickbar. `check` wiederholt die Prüfung, bis sie stimmt oder das Zeitlimit abläuft.
 - **Zeitlimits:** Standard sind 30 Sekunden je Schritt, änderbar mit `--step-timeout` oder von Hand je Aktion mit `timeoutMs` und je Prüfung mit `recording.timeoutMs` in der Testdatei. Klärt oder behebt Claude aus dem Lauf heraus, gelten `--timeout <minuten>` (Standard 60) und `--max-steps <n>` wie bei `record` und `fix`.
@@ -234,7 +234,7 @@ Das Tool spielt die Aufzeichnung bis zum bestandenen `check` von `S4` ab und üb
 
 - **Lokaler Code:** Wo Umgebung und App ihn haben, auch bei `code: deployed`; die Zeile `Code:` sagt es (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)). Änderungen siehst du mit F5, der Maskenzustand ist danach weg. Um wieder hinzukommen, startest du den Befehl neu.
 - **Weg scheitert:** Du klärst den Fehler im Chat und kannst den Schritt beheben lassen. Schließt du ihn, geht das Fenster trotzdem an dich, der Bericht nennt den Fehler. Der Exit-Code bleibt das Urteil.
-- **Keine Aufzeichnung:** Exit 3, erst aufnehmen.
+- **Keine Aufzeichnung:** Exit 4, erst aufnehmen.
 - **Zustand nach Reload:** Ob eine Ansicht nach F5 im selben Zustand bleibt, hängt von der Anwendung ab.
 
 `--handover` übergibt das Fenster auch nach einem ganzen Testlauf. Es gilt nur für `run`.

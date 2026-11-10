@@ -10,6 +10,7 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { isLoopback } from '../shared/config.mjs';
+import { optionValue } from './linux.mjs';
 
 export const EXPLORE_FILE = 'caw/.explore.json';
 const MAX_MARKERS = 600;
@@ -234,8 +235,7 @@ const askEnter = async (text) => {
  * @param wait nur fuer Tests: ersetzt das Warten auf den Menschen
  */
 export const explore = async (root, args, { open = openExploreBrowser, wait = askEnter, detect, next = true } = {}) => {
-    const index = args.indexOf('--url');
-    const url = index === -1 ? undefined : args[index + 1];
+    const url = optionValue(args, '--url');
     if (url === undefined || !/^https?:\/\//.test(url)) throw new CawError('usage', t('cli.exploreUsage'));
     // --yes: ohne Mensch, etwa fuer Anwendungen ohne Anmeldung; dann wird nur die Seite angesehen.
     const unattended = args.includes('--yes') && wait === askEnter;

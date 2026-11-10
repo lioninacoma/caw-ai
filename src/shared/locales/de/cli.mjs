@@ -1,14 +1,14 @@
 // Texte: cli (de). Schluessel mit Praefix "cli.".
 export default {
-    // bin/caw-ai.mjs
-    'cli.usage': `caw-ai - KI-gesteuerte Integrationstests für Webanwendungen (Constrained Agentic Webtester)
+    // bin/caw-ai.mjs und help.mjs: Hilfe, je Befehl ein Block. caw-ai --help zeigt alle Blöcke, caw-ai <befehl> --help nur seinen.
+    'cli.help.intro': `caw-ai - KI-gesteuerte Integrationstests für Webanwendungen (Constrained Agentic Webtester)
 
 Erste Schritte (im Projektordner, die Anwendung läuft):
   1. npx caw-ai init --url http://localhost:5173      im Fenster anmelden, Enter: legt caw.config.json, caw/.env.example und
                                                       den Skill an; was TODO bleibt, selbst eintragen
   2. caw/.env.example nach caw/.env kopieren und Zugangsdaten eines Testkontos eintragen
   3. npx caw-ai doctor                                bis nichts mehr FEHLT
-  4. Einen Test beschreiben (siehe Testplan), dann record <test> --target local, danach run <test> --target local
+  4. Einen Test beschreiben (siehe Testplan), dann record <test>, danach run <test>
 
 Testplan caw/tests/<test>.yaml (je Schritt eine Aktion und genau ein prüfbares Ergebnis):
   id: akten-liste
@@ -23,42 +23,54 @@ Testplan caw/tests/<test>.yaml (je Schritt eine Aktion und genau ein prüfbares 
       expect: Die Liste „Alle Akten“ ist sichtbar.
   Die Aufzeichnung schreibt record nach caw/recordings/, von Hand bearbeitet wird nur der Testplan.
 
-Auf dem Host (im Projektordner):
-  skill                                  Nur den Skill für Claude Code (und .mcp.json) anlegen oder aktualisieren; danach
-                                         richtet Claude Code caw-ai mit dir ein („Richte caw-ai ein“)
-  explore --url <adresse>                Anwendung einmal öffnen, du meldest dich an; schlägt Framework, Anmeldung, Marke
+Auf dem Host (im Projektordner):`,
+    'cli.help.skill': `  skill                                  Nur den Skill für Claude Code (und .mcp.json) anlegen oder aktualisieren; danach
+                                         richtet Claude Code caw-ai mit dir ein („Richte caw-ai ein“)`,
+    'cli.help.explore': `  explore --url <adresse>                Anwendung einmal öffnen, du meldest dich an; schlägt Framework, Anmeldung, Marke
                                          für angemeldet, Startseite und Meldungen vor (caw/.explore.json), schreibt keine Config
       [--yes]                            ohne Anmeldung und ohne Rückfrage, nur die Seite ansehen
-      [--insecure-tls]                   selbstsignierte Zertifikate annehmen (nur lokale Umgebungen)
-  init [--url <adresse>]                 Einrichten: sieht die Anwendung an (du meldest dich im Fenster an), legt Config,
+      [--insecure-tls]                   selbstsignierte Zertifikate annehmen (nur lokale Umgebungen)`,
+    'cli.help.init': `  init [--url <adresse>]                 Einrichten: sieht die Anwendung an (du meldest dich im Fenster an), legt Config,
                                          Skill und .mcp.json an; ohne --url fragt es nach der Adresse
       [--yes]                            ohne Anmeldung und ohne Fragen
       [--from <datei>]                   ein vorhandenes Ergebnis von explore übernehmen
       [--no-mcp]                         ohne Eintrag in .mcp.json
       [--offline]                        ohne die Anwendung anzusehen: Vorlage mit TODO in der Anmeldung (auch ohne
-                                         Terminal und --url)
-  validate                               Config und Tests prüfen, ohne Browser und ohne Claude
-  doctor [--agent local|docker|session]  Node, Chrome, Claude Code (local) bzw. Docker und Token (docker), Zugangsdaten und
-                                         Umgebungen prüfen, mit nächstem Schritt
-  auth <rolle> --target <umgebung>       Bei auth.type storageState: einmal von Hand anmelden (etwa SSO), die Sitzung
-                                         landet in caw/.auth/<umgebung>/<rolle>.json
-  --version                              Version des Pakets
-  mcp                                    Werkzeuge für deine Claude-Code-Session (in .mcp.json eintragen): Läufe starten,
-                                         als Agent arbeiten (--agent session), gewähltes Element lesen
-  run <test> --target <umgebung>         Testlauf nach Plan, ohne Claude. Mit claude steht der Chat daneben: Scheitert ein Schritt,
-                                         klärst du ihn dort mit Claude und lässt ihn beheben
-      [--until <S4>]                     Bis zu diesem Schritt fahren und das Fenster übergeben, mit lokalem Code, wo erlaubt
+                                         Terminal und --url)`,
+    'cli.help.validate': '  validate                               Config und Tests prüfen, ohne Browser und ohne Claude',
+    'cli.help.list': `  list [<test>]                          Tests mit Zielen, Stand der Aufnahme (aufgenommen, veraltet, nicht aufgenommen) und
+                                         ob sie schreiben; mit <test> je Schritt eine Zeile`,
+    'cli.help.doctor': `  doctor [--agent local|docker|session]  Node, Chrome, Claude Code (local) bzw. Docker und Token (docker), Zugangsdaten und
+                                         Umgebungen prüfen, mit nächstem Schritt`,
+    'cli.help.auth': `  auth <rolle> --target <umgebung>       Bei auth.type storageState: einmal von Hand anmelden (etwa SSO), die Sitzung
+                                         landet in caw/.auth/<umgebung>/<rolle>.json`,
+    'cli.help.version': '  --version                              Version des Pakets',
+    'cli.help.mcp': `  mcp                                    Werkzeuge für deine Claude-Code-Session (in .mcp.json eintragen): Läufe starten,
+                                         als Agent arbeiten (--agent session), gewähltes Element lesen`,
+    'cli.help.run': `  run <test> [--target <umgebung>]       Testlauf nach Plan, ohne Claude. Auf Umgebungen, auf denen Claude arbeiten
+                                         darf{here}, steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort
+                                         mit Claude
+      [--until <S4>]                     Nach S4 anhalten, das Fenster bleibt offen (schließt --handover ein; lokaler Build,
+                                         wenn die Umgebung ihn erlaubt)
       [--code local|deployed]            Welcher Code läuft: lokaler Build oder ausgelieferter Stand; Standard aus Test und Config
-      [--handover]                       Danach das Chrome-Fenster dem Menschen überlassen
-      [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token, nur mit claude
+      [--handover]                       Nach dem Lauf das Chrome-Fenster offen lassen und dir übergeben
+      [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token; nur auf
+                                         Umgebungen, auf denen Claude arbeiten darf
       [--no-chat]                        Ohne Chat und ohne Claude, wie in CI
       [--headless]                       Ohne Fenster und ohne Chat
+      [--no-learn]                       Mit Chat, aber ohne gelernte Vergleichswerte: Die Testdatei ändert sich nur, wenn du
+                                         im Chat etwas übernimmst
       [--step-timeout <sekunden>]        Zeitlimit je Schritt, Standard 30
       [--timeout <minuten>]              Zeitlimit für Claude beim Klären und Beheben, Standard 60
       [--max-steps <n>]                  Grenze für Aktionen von Claude beim Beheben, sonst maxSteps aus der Config, sonst 100
       [--agent local|docker|session]     Wo Claude arbeitet; Standard aus agent.sandbox der Config (local). session: deine
                                          Claude-Code-Session übernimmt über caw-ai mcp, caw startet keinen Claude
-  record <test> --target <umgebung>      Testplan aufnehmen oder ablösen, immer mit Chat, nur mit claude
+  run <test> <test> … | --all            Mehrere Tests nacheinander, für CI: ohne Chat, am Ende eine Tabelle, Exit-Code des
+      [--target <umgebung>]              schlimmsten Laufs. --all nimmt jeden Test, der das Ziel nennt
+      [--headless]                       Ohne Fenster
+      [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML`,
+    'cli.help.record': `  record <test> [--target <umgebung>]    Testplan aufnehmen oder ablösen, immer mit Chat; nur auf Umgebungen, auf denen
+                                         Claude arbeiten darf{here}
       [--role <rolle> --app <app>]       Nur beim ersten Mal; entfällt, wenn die Config nur eine kennt
       [--also <app>]                     Nur beim ersten Mal: Der Weg führt in eine weitere App des Projekts
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch, wird er schreibend
@@ -66,12 +78,19 @@ Auf dem Host (im Projektordner):
       [--agent local|docker|session]     wie bei run
       [--code local|deployed]            wie bei run; deployed bleibt in einem neuen Test stehen (code: deployed)
       [--max-steps <n>]                  Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
-      [--step-timeout <sekunden>]        Zeitlimit je Schritt im Prüfdurchlauf, Standard 30
-  fix <test> <S4> --target <umgebung>    Genau diesen Schritt ändern, immer mit Chat, nur mit claude
+      [--step-timeout <sekunden>]        Zeitlimit je Schritt im Prüfdurchlauf, Standard 30`,
+    'cli.help.fix': `  fix <test> <S4> [--target <umgebung>]  Genau diesen Schritt ändern, immer mit Chat; nur auf Umgebungen, auf denen Claude
+                                         arbeiten darf{here}
       [--timeout <minuten>] [--max-steps <n>] [--step-timeout <sekunden>] [--agent local|docker|session]
-      [--code local|deployed]
+      [--code local|deployed]`,
+    'cli.help.here': ' (hier: {names})',
+    'cli.help.footer': `<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Ohne --target nimmt caw-ai
+das einzige Ziel des Tests (bei record eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf).
 
-Für den Agenten (Sandbox, lokal oder deine Session bei --agent session), steuert den Browser:
+Hilfe zu einem Befehl: caw-ai <befehl> --help. Befehle für den Agenten: caw-ai help agent.
+
+Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme nötig (record oder fix).`,
+    'cli.help.agent': `Für den Agenten (Sandbox, lokal oder deine Session bei --agent session), steuert den Browser:
   task                                   Auftrag des offenen Laufs anzeigen
   snapshot                               Seitenstruktur mit Referenzen (e1, e2, ...)
   url                                    Aktuelle URL
@@ -94,17 +113,24 @@ Für den Agenten (Sandbox, lokal oder deine Session bei --agent session), steuer
   say <text>                             Dem Menschen schreiben, wartet nicht auf Antwort
   recording                              Bisher aufgezeichnete Schritte nummeriert anzeigen
   finish --file <ergebnis.json>          Urteil einreichen; aufgezeichnet wird nur mit "omit"
-  advise --file <empfehlung.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte
-
-<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. "Mit claude" heißt: auf Umgebungen
-mit "claude": true.
-
-Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
+  advise --file <empfehlung.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
+    // Die Kurzform je Befehl, unter einem Aufruffehler.
+    'cli.synopsis.init': 'caw-ai init [--url <adresse>] [--yes] [--from <datei>] [--no-mcp] [--offline]',
+    'cli.synopsis.explore': 'caw-ai explore --url <adresse> [--yes] [--insecure-tls]',
+    'cli.synopsis.list': 'caw-ai list [<test>]',
+    'cli.synopsis.doctor': 'caw-ai doctor [--agent local|docker|session]',
+    'cli.synopsis.auth': 'caw-ai auth <rolle> --target <umgebung>',
+    'cli.synopsis.run': 'caw-ai run <test> [--target <umgebung>]  oder  caw-ai run <test> <test> … | --all [--target <umgebung>]',
+    'cli.synopsis.record': 'caw-ai record <test> [--target <umgebung>] [--role <rolle>] [--app <app>]',
+    'cli.synopsis.fix': 'caw-ai fix <test> <S4> [--target <umgebung>]',
+    'cli.usageLine': 'Aufruf: {synopsis}',
+    'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
     'cli.doctorUnknownArg': 'doctor kennt {arg} nicht. Erlaubt: --agent local|docker|session',
     'cli.doctorAgentValue': '--agent erwartet local, docker oder session.',
     'cli.mcpAgentOnly': 'mcp-agent startet nur für den Agenten eines Laufs.',
-    'cli.unknownCommand': 'Unbekannter Befehl: {command}',
+    'cli.unknownCommand': 'Unbekannter Befehl: {command}.{suggestion} Siehe caw-ai --help.',
+    'cli.didYouMean': ' Meintest du {name}?',
 
     // commands.mjs: explore-Datei, Config, Skill, init
     'cli.notExploreResult': 'Die Datei sieht nicht nach einem Ergebnis von caw-ai explore aus.',
@@ -161,12 +187,34 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
     'cli.validateTodo.codeSelector': 'trage den CSS-Selektor des Felds für den Einmalcode ein',
     'cli.validateTodo.signedInSelector': 'trage einen CSS-Selektor ein, den es nur angemeldet gibt, etwa das Benutzermenü',
 
+    // commands.mjs: list
+    'cli.listNone': 'Noch keine Tests in {dir}. Den ersten nimmt caw-ai record <test> auf.',
+    'cli.listHead': 'Test|Ziele|Aufnahme|Daten',
+    'cli.listRecorded': 'aufgenommen',
+    'cli.listStale': 'veraltet ({ids})',
+    'cli.listNotRecorded': 'nicht aufgenommen',
+    'cli.listInvalid': 'ungültig',
+    'cli.listWrites': 'schreibt',
+    'cli.listReadOnly': 'liest nur',
+    'cli.listStepRecorded': 'aufgenommen',
+    'cli.listStepStale': 'veraltet',
+    'cli.listStepNotRecorded': 'nicht aufgenommen',
+    'cli.listTestHead': '{test}: {app}, Rolle {role}, Ziele {targets}, {mutates}',
+    'cli.knownTests': 'Bekannte Tests: {tests}.',
+    'cli.noTests': 'In caw/tests gibt es noch keine Tests.',
+    'cli.knownSteps': 'Schritte: {steps}.',
+
     // commands.mjs: Sandbox, Lauf, Aufnahme, Beheben
     'cli.imageBuilding': 'Baue das Sandbox-Image (nur beim ersten Lauf und nach Tool-Änderungen) ...',
     'cli.imageBuildFailed': 'Das Sandbox-Image ließ sich nicht bauen (Exit {code}). Fehlt der Registry-Login für {image}?',
     'cli.noWatch': 'kein {label} aktiv',
     'cli.noWatchLocal': 'Kein {label} aktiv, mit --code local läuft trotzdem der lokale Stand: Er kann veraltet sein.',
-    'cli.testMissing': 'Test nicht gefunden: {file}. Neu aufnehmen: {hint}',
+    'cli.testMissing': 'Test nicht gefunden: {file}.{suggestion} {known} Neu aufnehmen: {hint}',
+    'cli.targetChosen': 'Ziel: {target} ({why})',
+    'cli.targetWhyTest': 'einziges Ziel von {test}',
+    'cli.targetWhyTestAgent': 'einziges Ziel von {test}, auf dem Claude arbeiten darf',
+    'cli.targetWhyAgent': 'einzige Umgebung, auf der Claude arbeiten darf',
+    'cli.targetWhyTests': 'einziges Ziel der Tests',
     'cli.noEnvironment': 'keiner Umgebung',
     'cli.verbRecord': 'Aufgenommen wird',
     'cli.verbFix': 'Behoben wird',
@@ -192,21 +240,42 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
     'cli.demoFailure': '{label}. Er steht an dieser Stelle in der Aufnahme.',
     'cli.demoNothingFollow': 'Nichts vorgeführt: Claude geht dem Testplan nach.',
     'cli.demoNothing': 'Noch nichts vorgeführt. Klick dich in der Anwendung durch den Ablauf, dann „Vorführung beenden“.',
-    'cli.modeNoAgent': 'Modus: ohne Chat, Claude läuft nur auf {environments}. Die Testdatei bleibt unverändert.',
+    'cli.modeNoAgent': 'Modus: ohne Chat, Claude darf nur auf {environments} arbeiten. Die Testdatei bleibt unverändert.',
     'cli.modeHeadless': 'Modus: ohne Fenster und ohne Chat (--headless). Die Testdatei bleibt unverändert.',
     'cli.modeNoChat': 'Modus: ohne Chat (--no-chat). Die Testdatei bleibt unverändert.',
     'cli.modeCi': 'Modus: ohne Chat, weil die Variable CI gesetzt ist. Die Testdatei bleibt unverändert.',
-    'cli.modeChat': 'Modus: mit Chat{advice}. Fehlende Vergleichswerte lernt der Lauf in {dir}.',
+    'cli.modeChat': 'Modus: mit Chat{advice}. Fehlende Vergleichswerte lernt der Lauf in {file} (abschalten mit --no-learn).',
+    'cli.modeChatNoLearn': 'Modus: mit Chat{advice}, ohne Lernen (--no-learn). Die Testdatei ändert sich nur, wenn du im Chat etwas übernimmst.',
     'cli.modeAdvice': ' und Empfehlungen von Claude (--advise, kostet Token)',
-    'cli.stepUnknown': '{test} hat keinen Schritt {step}.',
-    'cli.adviseAgentOnly': '--advise nur auf {environments}, nicht auf {target}.',
+    'cli.changed': 'Geändert: {files}',
+    'cli.changedWhat': '{file} ({what})',
+    'cli.changedBaselines': 'Vergleichswerte {ids}',
+    'cli.changedEffects': 'Wirkung {ids}',
+    'cli.changedSteps': 'Schritte {ids}',
+    'cli.changedPlan': 'Testplan',
+    'cli.unchanged': 'Testdatei unverändert.',
+    'cli.batchStart': '{count} Test(s) auf {target}, nacheinander und ohne Chat{headless}.',
+    'cli.batchWindow': ' (ohne Fenster mit --headless)',
+    'cli.batchNone': 'Kein Test nennt {target} in targets.',
+    'cli.batchHeading': ({ count, target }) => `Ergebnis: ${count} ${count === 1 ? 'Test' : 'Tests'} auf ${target}`,
+    'cli.batchStatus.pass': 'PASS',
+    'cli.batchStatus.fail': 'FAIL',
+    'cli.batchStatus.error': 'ERROR',
+    'cli.batchStatus.rejected': 'ABGELEHNT',
+    'cli.batchStatus.needsRecording': 'AUFNAHME NÖTIG',
+    'cli.batchAt': 'bei {step}',
+    'cli.junitWritten': 'JUnit-Bericht: {file}',
+    'cli.stepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps}',
+    'cli.adviseAgentOnly': '--advise nur auf Umgebungen, auf denen Claude arbeiten darf (hier: {environments}), nicht auf {target}.',
     'cli.ciHandover': '{option} übergibt den Browser an einen Menschen; in CI (Variable CI gesetzt) ist keiner da.',
     'cli.ciNeedsHuman': 'caw-ai {command} braucht einen Menschen im Chat (Vorführung, Plan, Entscheidungen); in CI (Variable CI gesetzt) ist keiner da.',
     'cli.adviseNeedsChat': '--advise braucht den Chat, in CI (Variable CI gesetzt) empfiehlt Claude nicht.',
     'cli.failedHintAgent': '{step} ist gescheitert. Ursache klären: caw-ai run {test} --target {target} im Terminal, der Chat zeigt die Einschätzung und lässt Claude suchen. Nur wenn sich die Anwendung gewollt geändert hat: caw-ai fix {test} {step} --target {target}',
-    'cli.failedHint': '{step} ist gescheitert. Die Ursache klärt ein Lauf mit Chat auf {environments}.',
+    'cli.failedHint': '{step} ist gescheitert. Ursache klären im Lauf mit Chat: caw-ai run {test} --target {target}',
+    'cli.failedHintNoAgent': '{step} ist gescheitert. Die Ursache klärt ein Lauf mit Chat, auf einer Umgebung, auf der Claude arbeiten darf (hier: {environments}).',
+    'cli.untilHint': 'Bis vor den Fehler: caw-ai run {test} --target {target} --until {step}',
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role, --app, --also und --read-only müssen zur Datei passen oder entfallen.',
-    'cli.fixStepUnknown': '{test} hat keinen Schritt {step}. Einen neuen Schritt trägst du zuerst in {file} ein.',
+    'cli.fixStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
     'cli.fixReplayFirst': 'Spiele zuerst bis {step} ab. Scheitert der Schritt, klärt der Chat die Ursache statt einer neuen Aufnahme.',
     'cli.fixPassed': '{step} besteht. Claude nimmt ihn jetzt neu auf.',
 
