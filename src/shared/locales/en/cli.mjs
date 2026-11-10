@@ -85,6 +85,11 @@ On the host (in the project folder):`,
                                          may work{here}
       [--timeout <minutes>] [--max-steps <n>] [--step-timeout <seconds>] [--agent local|docker|session]
       [--overlay [build|dev]]`,
+    'cli.help.open': `  open [--target <env>]                  Open the app signed in, with workbench and chat, without a test: navigate, try
+                                         things, develop with Claude. Learns nothing, writes no test file
+      [--role <role>] [--app <app>]      Not needed if the config has just one
+      [--overlay [build|dev]]            as for run
+      [--agent local|docker|session] [--timeout <minutes>] [--max-steps <n>]`,
     'cli.help.here': ' (here: {names})',
     'cli.help.footer': `<env>: a name from environments, e.g. local; with sites tenant/env, e.g. nord/dev. Without --target caw-ai takes the
 test's only target (for record of a new test the only environment where Claude may work).
@@ -125,6 +130,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.synopsis.run': 'caw-ai run <test> [--target <env>]  or  caw-ai run <test> <test> … | --all [--target <env>]',
     'cli.synopsis.record': 'caw-ai record <test> [--target <env>] [--role <role>] [--app <app>]',
     'cli.synopsis.fix': 'caw-ai fix <test> <S4> [--target <env>]',
+    'cli.synopsis.open': 'caw-ai open [--target <env>] [--role <role>] [--overlay]',
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': "Can't read {from}: {message}",
@@ -350,6 +356,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.uiDeployed': 'deployed',
     'cli.uiCode': 'Code: {code}',
     'cli.code.deployed': 'deployed',
+    'cli.code.devServer': 'dev server {host}, your current version',
     'cli.code.deployedWhy': 'deployed ({reason})',
     'cli.code.local': 'overlay, local build ({details})',
     'cli.code.localFrom': 'overlay, local build from {details}',

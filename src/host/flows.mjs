@@ -454,13 +454,15 @@ export const runFlow = async (options) => {
             develop: async ({ chat, talk, until: state, refresh, restore, onRefresh, onReload, toCode }) => {
                 let talker = null;
                 const at = state === undefined ? t('run.develop.atEnd') : t('run.develop.atState', { state });
-                let question = t('run.develop.intro', {
+                // open: keine Schritte, also nichts neu herzustellen; nur Aktualisieren und Fragen.
+                const opened = spec.steps.length === 0;
+                let question = opened ? t('run.develop.opened', { agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens') }) : t('run.develop.intro', {
                     start: state === undefined ? t('run.develop.runDone') : t('run.develop.stateReady', { state }),
                     at,
                     restore: RESTORE.label,
                     agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens'),
                 });
-                const options = [RESTORE, END_DEVELOP];
+                const options = opened ? [END_DEVELOP] : [RESTORE, END_DEVELOP];
                 // Laedt der Dev-Server gerade neu, scheitert das Neuladen: Das ist eine Meldung im Chat, kein Ende des Laufs.
                 const attempt = async (what, work) => {
                     try {
@@ -528,7 +530,8 @@ export const runFlow = async (options) => {
                 if (!failed) {
                     const filled = fillBaselines && concluded.baselines !== undefined ? ` ${baselineText(concluded.baselines)}` : '';
                     const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${filled}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
-                    // Ein bestandener Lauf wartet auf niemanden, auch nicht mit Warnungen.
+                    // Ein bestandener Lauf wartet auf niemanden, auch nicht mit Warnungen. open hat nichts bestanden: nur Funde nennen.
+                    if (spec.steps.length === 0 && advised === null && verdict.status === 'pass' && findingsText(verdict) === '') return;
                     if (advised === null && verdict.status === 'pass') chat.notice(summary);
                     else await chat.choose('deciding', summary, [ONLY_CLOSE]);
                     return;

@@ -84,3 +84,10 @@ test('parseRunArgs: Testläufe nutzen nie Claude, und die alten Wege gibt es nic
     assert.throws(() => parseRunArgs('record', [...base, '--handover']), /kennt die Option/);
     assert.throws(() => parseRunArgs('fix', ['smoke', 'S1', '--target', 'a/dev', '--role', 'r']), /kennt die Option/);
 });
+
+test('parseRunArgs: open ohne Test, mit Ziel, Rolle, App und Overlay', () => {
+    assert.deepEqual((({ target, role, app, overlay }) => ({ target, role, app, overlay }))(parseRunArgs('open', ['--target', 'dev', '--role', 'kunde', '--app', 'shop', '--overlay', 'build'])), { target: 'dev', role: 'kunde', app: 'shop', overlay: 'build' });
+    assert.equal(parseRunArgs('open', []).overlay, undefined);
+    assert.throws(() => parseRunArgs('open', ['smoke']), (error) => error.code === 'usage' && /smoke/.test(error.message), 'open nimmt keinen Test');
+    assert.throws(() => parseRunArgs('open', ['--until', 'S2']), (error) => error.code === 'usage', '--until gibt es bei open nicht');
+});

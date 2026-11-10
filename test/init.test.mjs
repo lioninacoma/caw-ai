@@ -348,7 +348,7 @@ test('validate: je Test und Ziel der Code, wo das Overlay ginge, TODO und alte N
         write.mock.restore();
     }
     const out = chunks.join('');
-    assert.match(out, /lesen \(local\): ausgelieferter Stand\n/);
+    assert.match(out, /lesen \(local\): Dev-Server localhost:5173, dein aktueller Stand\n/);
     assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, lokaler Build aus dist\n/);
     assert.match(out, /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/);
     assert.match(out, /Umgebung local: agent heißt jetzt claude/);

@@ -84,6 +84,11 @@ Auf dem Host (im Projektordner):`,
                                          arbeiten darf{here}
       [--timeout <minuten>] [--max-steps <n>] [--step-timeout <sekunden>] [--agent local|docker|session]
       [--overlay [build|dev]]`,
+    'cli.help.open': `  open [--target <umgebung>]             Die Anwendung angemeldet öffnen, mit Werkbank und Chat, ohne Test: navigieren,
+                                         ausprobieren, mit Claude entwickeln. Lernt nichts, schreibt keine Testdatei
+      [--role <rolle>] [--app <app>]     Nicht nötig, wenn die Config nur eine hat
+      [--overlay [build|dev]]            wie bei run
+      [--agent local|docker|session] [--timeout <minuten>] [--max-steps <n>]`,
     'cli.help.here': ' (hier: {names})',
     'cli.help.footer': `<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Ohne --target nimmt caw-ai
 das einzige Ziel des Tests (bei record eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf).
@@ -124,6 +129,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.synopsis.run': 'caw-ai run <test> [--target <umgebung>]  oder  caw-ai run <test> <test> … | --all [--target <umgebung>]',
     'cli.synopsis.record': 'caw-ai record <test> [--target <umgebung>] [--role <rolle>] [--app <app>]',
     'cli.synopsis.fix': 'caw-ai fix <test> <S4> [--target <umgebung>]',
+    'cli.synopsis.open': 'caw-ai open [--target <umgebung>] [--role <rolle>] [--overlay]',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
@@ -349,6 +355,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.uiDeployed': 'ausgelieferter Stand',
     'cli.uiCode': 'Code: {code}',
     'cli.code.deployed': 'ausgelieferter Stand',
+    'cli.code.devServer': 'Dev-Server {host}, dein aktueller Stand',
     'cli.code.deployedWhy': 'ausgelieferter Stand ({reason})',
     'cli.code.local': 'Overlay, lokaler Build ({details})',
     'cli.code.localFrom': 'Overlay, lokaler Build aus {details}',

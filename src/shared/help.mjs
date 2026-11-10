@@ -5,7 +5,7 @@ import { t } from './i18n.mjs';
 import { closest } from './suggest.mjs';
 
 /** Die Befehle auf dem Host, in der Reihenfolge der Hilfe. */
-export const HOST_COMMANDS = ['skill', 'explore', 'init', 'validate', 'list', 'doctor', 'auth', 'mcp', 'run', 'record', 'fix'];
+export const HOST_COMMANDS = ['skill', 'explore', 'init', 'validate', 'list', 'doctor', 'auth', 'mcp', 'run', 'record', 'fix', 'open'];
 /** Die Befehle fuer den Agenten; ihre Hilfe steht unter caw-ai help agent. */
 export const AGENT_COMMANDS = ['task', 'snapshot', 'url', 'click', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload', 'wait-ready', 'console', 'network', 'plan', 'ask-operator', 'remember', 'chat', 'say', 'recording', 'finish', 'advise'];
 const OTHER = ['help', '--help', '-h', '--version', '-v'];

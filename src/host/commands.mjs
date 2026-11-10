@@ -869,12 +869,13 @@ export const changeTracker = (root) => {
  * @param quiet im Stapel: ohne Zeile zum Modus, die nennt der Stapel einmal
  * @returns { code, failed } mit dem gescheiterten Schritt ({ id, reason }), falls einer scheiterte
  */
-const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
+const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
     const { test, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, quiet = false } = options;
-    const { config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { overlay });
+    const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay });
     if (until !== undefined && !spec.steps.some(({ id }) => id === until)) throw stepUnknown('cli.stepUnknown', spec, until);
     const { assertPlayable } = await import('./replay.mjs');
-    assertPlayable(spec, target, until);
+    // open hat keine Schritte: nichts abzuspielen, nur anmelden und uebergeben.
+    if (loaded === undefined) assertPlayable(spec, target, until);
     const withAgent = checked.agent;
     // Der Chat liegt in der Werkbank und braucht kein Terminal. Nur in CI wartet niemand auf ihn.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
@@ -1060,6 +1061,25 @@ const playable = (assertPlayable, spec, target, step) => {
     } catch {
         return false;
     }
+};
+
+/** Der Name, unter dem open laeuft: Bericht und Fenstertitel. Ein Test dieses Namens bleibt unberuehrt, open liest und schreibt keinen. */
+const OPEN_ID = 'open';
+
+/**
+ * Die Anwendung angemeldet oeffnen, ohne Test: Werkbank mit Chat, zum Navigieren und Entwickeln. Wie run --until, nur ohne Schritte
+ * davor; mit --overlay mit lokalem Code. Lernt nichts und schreibt keine Testdatei.
+ */
+export const open = async (root, args, deps = {}) => {
+    const options = parseRunArgs('open', args);
+    const config = loadConfig(root);
+    const target = chooseTarget(config, null, { target: options.target, command: 'open' });
+    // Der Lauf heisst wie die App: "Öffnen: shop auf dev".
+    const spec = draftTest(root, config, { id: options.app ?? onlyKey(config.apps) ?? OPEN_ID, target, role: options.role, app: options.app, also: [], readOnly: true });
+    const checked = requireRunningWatch(config, checkTest(spec, target, config, { overlay: options.overlay }));
+    requireHuman('open', deps.interactive);
+    const run = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
+    return (await runOne(root, run, deps, { config, spec, target, checked })).code;
 };
 
 /** Genau diesen Schritt aendern, auch wenn er nicht scheitert. So bekommt ein von Hand geaenderter oder neuer Schritt seine Aufzeichnung. */

@@ -46,6 +46,7 @@ const COMMAND_OPTIONS = {
     run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay'],
     record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
     fix: CLAUDE_OPTIONS,
+    open: ['--target', '--role', '--app', '--overlay', '--agent', '--timeout', '--max-steps'],
 };
 const SWITCHES = new Set(['--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--read-only']);
 /** Ein Beispielwert je Option, fuer die Meldung, wenn der Wert fehlt. */
@@ -95,6 +96,7 @@ export const parseRunArgs = (command, args) => {
     while (rest.length > 0) {
         const arg = rest.shift();
         if (!arg.startsWith('--')) {
+            if (command === 'open') throw new CawError('usage', t('session.args.unexpected', { arg }));
             if (command === 'run') options.tests.push(arg);
             if (options.test === undefined) options.test = arg;
             else if (command === 'fix' && options.step === undefined) options.step = arg;
@@ -137,8 +139,8 @@ export const parseRunArgs = (command, args) => {
         else options.timeoutMin = Number(value);
     }
     if (options.all && options.test !== undefined) throw new CawError('usage', t('session.args.allWithTests'));
-    if (options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
-    for (const test of command === 'run' ? options.tests : [options.test]) checkTestId(test);
+    if (command !== 'open' && options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
+    for (const test of command === 'run' ? options.tests : command === 'open' ? [] : [options.test]) checkTestId(test);
     if (command === 'fix' && !STEP_ID.test(options.step ?? '')) throw new CawError('usage', t('session.args.fixStep'));
     if (options.timeoutMin !== undefined && (!Number.isFinite(options.timeoutMin) || options.timeoutMin <= 0)) throw new CawError('usage', t('session.args.timeout'));
     if (!Number.isFinite(options.stepTimeoutSec) || options.stepTimeoutSec <= 0) throw new CawError('usage', t('session.args.stepTimeout'));

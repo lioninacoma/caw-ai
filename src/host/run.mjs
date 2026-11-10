@@ -250,6 +250,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     let mode = t('run.mode.record');
     if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) mode = t('run.mode.verify');
     else if (replay?.until !== undefined) mode = t('run.mode.until', { until: replay.until });
+    else if (replay !== undefined && replay.steps.length === 0) mode = t('run.mode.open');
     else if (replay !== undefined) mode = t('run.mode.replay');
     else if (repair !== undefined) mode = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
     // Welcher Code laeuft, immer in einer Zeile, auch in CI: Ein still ausgelieferter Stand fiele sonst erst am Ergebnis auf.
@@ -1047,7 +1048,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
 
     if (replay !== undefined) {
-        ui.info(t('run.replaying', { count: replay.steps.length, on: replay.recordedOn }));
+        if (replay.steps.length > 0) ui.info(t('run.replaying', { count: replay.steps.length, on: replay.recordedOn }));
         const started = Date.now();
         const play = playReplay({
             replay,

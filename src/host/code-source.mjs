@@ -4,7 +4,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { localCodeOf } from '../shared/config.mjs';
+import { isLoopback, localCodeOf } from '../shared/config.mjs';
 import { language, t } from '../shared/i18n.mjs';
 
 // Ordner, die keine Quellen sind: Abhaengigkeiten, Builds und Caches gaengiger Werkzeuge. Ordner mit Punkt (.git, .angular,
@@ -73,7 +73,11 @@ const localSources = (config, spec) => [spec.app, ...(spec.also ?? [])]
  * @param checked Ergebnis von checkTest: source
  */
 export const describeCode = (config, spec, checked, { root, now = Date.now() } = {}) => {
-    if (checked.source !== 'overlay') return t('cli.code.deployed');
+    if (checked.source !== 'overlay') {
+        // Ein Dev-Server auf dem eigenen Rechner ist kein ausgelieferter Stand: Dort laeuft, was im Editor steht.
+        const url = checked.url === undefined ? null : new URL(checked.url);
+        return url !== null && url.protocol === 'http:' && isLoopback(url.hostname) ? t('cli.code.devServer', { host: url.host }) : t('cli.code.deployed');
+    }
     const parts = localSources(config, spec).map(({ name, local }) => {
         if (local.localBuild === undefined) return t('cli.code.entries', { kinds: local.kinds.join(', '), dir: slash(config.apps[name].dir) });
         const dir = slash(local.localBuild);

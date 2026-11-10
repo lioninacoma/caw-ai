@@ -37,6 +37,8 @@ test('Code-Zeile: Overlay mit Zeitpunkt des Builds, sonst der ausgelieferte Stan
     assert.match(local, /^Overlay, lokaler Build \(dist\/local, gebaut \d\d:\d\d, vor 3 min\)$/);
     assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay' }), 'Overlay, lokaler Build aus dist/local');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed' }), 'ausgelieferter Stand');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'http://localhost:5173' }), 'Dev-Server localhost:5173, dein aktueller Stand');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'https://shop.localhost:8443' }), 'ausgelieferter Stand', 'https auf *.localhost ist ein Build');
     const statics = { assetUrlPattern: '/s/(.+)', apps: { web: { dir: 'apps/web', statics: [{ name: 'a.js', path: 'a.js' }] } } };
     assert.equal(describeCode(statics, SPEC, { source: 'overlay' }), 'Overlay, lokaler Build aus statics in apps/web');
 });

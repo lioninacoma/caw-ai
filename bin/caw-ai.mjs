@@ -70,6 +70,7 @@ const main = async ([command, ...args]) => {
         case 'run': return (await host()).run(root, args);
         case 'record': return (await host()).record(root, args);
         case 'fix': return (await host()).fix(root, args);
+        case 'open': return (await host()).open(root, args);
         case 'plan': return (await sandbox()).plan(option(args, '--file'));
         case 'sandbox-run': return (await sandbox()).sandboxRun({ root, runId: option(args, '--run-id'), timeoutMin: Number(option(args, '--timeout')), mode: args.includes('--develop') ? 'develop' : args.includes('--talk') ? 'talk' : args.includes('--advise') ? 'advise' : 'run' });
         case 'advise': return (await sandbox()).advise(option(args, '--file'));
