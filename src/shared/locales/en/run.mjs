@@ -44,7 +44,7 @@ export default {
     'run.fact.target': 'Environment',
     'run.fact.role': 'Role',
     'run.fact.code': 'Code',
-    'run.fact.local': 'local',
+    'run.fact.local': 'local build',
     'run.fact.deployed': 'deployed',
     'run.phase.develop': 'Develop',
     'run.phase.developIn': 'Develop in {until}',

@@ -14,7 +14,7 @@ const recorded = (id, actions = [], { after, check = `check${id}()` } = {}) => {
     const step = plain(id);
     return { ...step, recording: { hash: stepHash(step), ...(after === undefined ? {} : { after }), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', actions, check } };
 };
-const meta = { id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'watch', mutates: true, also: [], notes: '' };
+const meta = { id: 't', app: 'a', role: 'r', targets: ['a/dev'], mutates: true, also: [], notes: '' };
 const spec = (...steps) => composeTest(meta, { notes: '', steps });
 
 const YAML = `id: t
@@ -39,7 +39,7 @@ steps:
 
 test('Testdatei: Eine gültige Datei wird gelesen, Punkte sind die Schritte', () => {
     const parsed = parseTest(YAML);
-    assert.equal(parsed.source, 'watch');
+    assert.equal(parsed.code, undefined, 'ohne code gilt der Standard');
     assert.equal(parsed.mutates, false);
     assert.deepEqual(parsed.expectations, [{ id: 'S1', text: 'Da.' }, { id: 'S2', text: 'Auch da.' }]);
     assert.equal(parsed.steps[0].do, 'Tu was.\nUnd noch was.');
@@ -83,8 +83,13 @@ test('Testdatei: Jede Formverletzung wird mit Zeile abgewiesen', () => {
         [YAML.replace('- id: S2', '- id: S2\n    foo: bar'), /Unbekanntes Feld foo im Schritt/],
         [YAML.replace('    expect: Auch da.\n', ''), /expect fehlt/],
         [YAML.replace('    do: ""\n', ''), /do fehlt/],
-        [YAML.replace('source', 'x').replace('targets: [a/dev, a/test]', 'targets: []'), /targets/],
+        [YAML.replace('targets: [a/dev, a/test]', 'targets: []'), /targets/],
+        [YAML.replace('targets: [a/dev, a/test]', 'target: [a/dev]'), /Unbekanntes Feld target\. Meintest du targets\?/],
+        [YAML.replace('    expect: Da.', '    expected: Da.'), /Unbekanntes Feld expected im Schritt\. Meintest du expect\?/],
         [YAML.replace('mutates: false', 'source: irgendwas\nmutates: false'), /source "irgendwas"/],
+        [YAML.replace('mutates: false', 'code: watch\nmutates: false'), /code "watch" gibt es nicht \(erlaubt: local, deployed\)/],
+        [YAML.replace('mutates: false', 'code: local\nsource: watch\nmutates: false'), /source und code zugleich/],
+        [YAML.replace('mutates: false\n', ''), /mutates fehlt: true, wenn der Test Daten anlegt oder ändert \(läuft nur auf Umgebungen mit writable: true\), false, wenn er nur liest\./],
         ['kein: [yaml', /Zeile/],
         ['- nur\n- liste\n', /Objekt/],
         [YAML.replace('role: r', 'role: r\nrole: x'), /Zeile/],
@@ -356,4 +361,25 @@ test('loadTest: Fehlende Datei und fremde id', (t) => {
     const root = testRoot(t, YAML.replace('id: t', 'id: anders'));
     assert.throws(() => loadTest(root, 'gibtsnicht'), { code: 'test-missing' });
     assert.throws(() => loadTest(root, 't'), (error) => error.code === 'test-invalid' && /anders/.test(error.message));
+});
+
+test('code: local ist der Standard, deployed bleibt stehen, source gilt mit Hinweis weiter', () => {
+    assert.equal(parseTest(YAML.replace('mutates: false', 'code: deployed\nmutates: false')).code, 'deployed');
+    assert.equal(parseTest(YAML.replace('mutates: false', 'code: local\nmutates: false')).code, 'local');
+    const old = parseTest(YAML.replace('mutates: false', 'source: watch\nmutates: false'));
+    assert.equal(old.code, undefined, 'source: watch war der Standard');
+    assert.deepEqual(old.notices, ['source: watch heißt jetzt code: local.']);
+    assert.equal(parseTest(YAML.replace('mutates: false', 'source: deployed\nmutates: false')).code, 'deployed');
+    // Geschrieben wird code nur, wenn es vom Standard abweicht.
+    assert.doesNotMatch(renderTest(composeTest(meta, { notes: '', steps: [plain('S1')] })), /code:|source:/);
+    assert.match(renderTest(composeTest({ ...meta, code: 'deployed' }, { notes: '', steps: [plain('S1')] })), /^code: deployed$/m);
+    assert.doesNotMatch(renderTest(composeTest({ ...meta, code: 'local' }, { notes: '', steps: [plain('S1')] })), /code:/);
+});
+
+test('loadTest: id, app, role und targets dürfen fehlen, eine angegebene id muss passen', (t) => {
+    const root = testRoot(t, YAML.replace('id: t\n', '').replace('app: a\n', '').replace('role: r\n', '').replace('targets: [a/dev, a/test]\n', ''));
+    const loaded = loadTest(root, 't');
+    assert.equal(loaded.id, 't');
+    assert.equal(loaded.app, undefined);
+    assert.equal(loaded.targets, undefined);
 });

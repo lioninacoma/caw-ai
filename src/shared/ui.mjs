@@ -28,16 +28,20 @@ export const createUi = ({ fancy = colorEnabled(), out = console.log, err = cons
         fatal: (code, text) => err(fancy ? `${paint.red(`✗ ${code}:`)} ${safe(text)}` : `[caw-ai] ${code}: ${safe(text)}`),
 
         /** Kopf eines einzelnen Laufs: Was laeuft wo, und wer steuert. */
-        header: ({ mode, test, target, source, maxSteps }) => {
+        /** `code` ist die Zeile "Code: …" (describeCode); sie steht immer da, auch ohne Terminal. */
+        header: ({ mode, test, target, source, code, maxSteps }) => {
+            const codeLine = t('cli.uiCode', { code: code ?? (source === 'watch' ? t('cli.uiLocal') : t('cli.uiDeployed')) });
             if (!fancy) {
                 out(`[caw-ai] ${mode}: ${test} ${t('cli.uiOn')} ${target}`);
+                out(`[caw-ai] ${safe(codeLine)}`);
                 return;
             }
             out('');
             out(`${paint.magenta('◆')} ${paint.bold(safe(test))} ${paint.dim(t('cli.uiOn'))} ${safe(target)}`);
-            const details = [mode, source === 'watch' ? t('cli.uiLocal') : t('cli.uiDeployed')];
+            const details = [mode];
             if (maxSteps !== undefined) details.push(t('cli.uiMaxSteps', { count: maxSteps }));
             out(`  ${paint.dim(details.map(safe).join(' · '))}`);
+            out(`  ${paint.dim(safe(codeLine))}`);
         },
 
         step: ({ number, total, label, elapsed }) => {

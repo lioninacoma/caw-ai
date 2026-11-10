@@ -15,6 +15,7 @@ import { pollChannel } from '../shared/channel.mjs';
 import { renderReport } from '../shared/report.mjs';
 import { checkAppFiles, checkConstants, checkLocalBuild, checkStatics } from './app-files.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
+import { describeCode, staleBuildWarnings } from './code-source.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems } from './test-file.mjs';
 import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep } from './test-plan.mjs';
@@ -250,7 +251,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     else if (replay?.until !== undefined) mode = t('run.mode.until', { until: replay.until });
     else if (replay !== undefined) mode = t('run.mode.replay');
     else if (repair !== undefined) mode = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
-    ui.header({ mode, test: spec.id, target, source: checked.source, ...(replay === undefined ? { maxSteps } : {}) });
+    // Welcher Code laeuft, immer in einer Zeile, auch in CI: Ein still ausgelieferter Stand fiele sonst erst am Ergebnis auf.
+    ui.header({ mode, test: spec.id, target, source: checked.source, code: describeCode(config, spec, checked, { root }), ...(replay === undefined ? { maxSteps } : {}) });
+    for (const warning of staleBuildWarnings(root, config, spec, checked)) ui.warn(warning);
 
     const reportBase = { testId: spec.id, target, source: checked.source, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
     let verdict = null;
@@ -278,7 +281,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         [t('run.fact.test'), spec.id],
         [t('run.fact.target'), target],
         ...(spec.role ? [[t('run.fact.role'), spec.role]] : []),
-        ...(checked.localCode ? [[t('run.fact.code'), t(checked.source === 'watch' ? 'run.fact.local' : 'run.fact.deployed')]] : []),
+        [t('run.fact.code'), t(checked.source === 'watch' ? 'run.fact.local' : 'run.fact.deployed')],
     ];
     // Jede Aktion der Aufzeichnung ist ein Punkt ihres Schritts. Ohne Aktion meldet das Abspielen einen neuen Versuch.
     const showAction = ({ owner, position, step, label }) => {

@@ -2,11 +2,13 @@
 // keine Umgebung, kein Portal und keine Kunden.
 //
 // Der Normalfall ist flach: eine Anwendung, ein paar Umgebungen mit je einer Adresse.
-//   "environments": { "local": { "url": "http://app.localhost:5173", "agent": true, "localCode": true, "writable": true },
+//   "environments": { "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
 //                     "staging": { "url": "https://staging.example.com" } }
 //   Ziel: "local"
+// Ein lokaler Dev-Server liefert den lokalen Code schon selbst aus. localCode braucht nur eine entfernte Umgebung, in die der lokale
+// Build (apps.<name>.localBuild) eingespielt wird: "dev": { "url": "https://dev.example.com", "claude": true, "localCode": true }
 // Laeuft dieselbe Anwendung fuer mehrere Mandanten unter eigenen Adressen, nennt `sites` die Mandanten und jede Umgebung `urls`:
-//   "sites": ["nord", "sued"], "environments": { "dev": { "urls": { "nord": "https://…", "sued": "https://…" }, "agent": true } }
+//   "sites": ["nord", "sued"], "environments": { "dev": { "urls": { "nord": "https://…", "sued": "https://…" }, "claude": true } }
 //   Ziel: "nord/dev"
 
 import { createHash } from 'node:crypto';
@@ -16,10 +18,13 @@ import { isAbsolute, join, posix } from 'node:path';
 import { CawError } from './errors.mjs';
 import { t } from './i18n.mjs';
 import { CONFIG_FILE } from './names.mjs';
+import { didYouMean } from './suggest.mjs';
 
 export { CONFIG_FILE } from './names.mjs';
 
-const ENVIRONMENT_FLAGS = ['agent', 'localCode', 'writable', 'production'];
+// `claude` hiess frueher `agent`, wie das Objekt `agent` oben in der Config. Der alte Name gilt weiter, mit Hinweis.
+const ENVIRONMENT_FLAGS = ['claude', 'localCode', 'writable', 'production'];
+const OLD_ENVIRONMENT_FLAGS = ['agent'];
 // Eine Produktionsumgebung gibt es nur ausdruecklich, und dann ohne Claude, ohne lokalen Code und ohne Schreiben.
 // Auch als Bestandteil, etwa prod-de oder live_eu. Wer so eine Umgebung nicht als Produktion meint, sagt das mit "production": false.
 const PRODUCTION_NAME = /(^|[-_.])(prod|production|produktion|produktiv|prd|live)([-_.]|\d|$)/i;
@@ -71,6 +76,24 @@ const RENAMED = Object.fromEntries(['portals', 'customPortals', 'stages', 'login
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const HOST = /^[a-z0-9.-]+$/i;
+/** Der Host aus einer Adresse wie "https://login.example.com/" oder "login.example.com:443", sonst null. */
+const hostOf = (value) => {
+    if (typeof value !== 'string') return null;
+    try {
+        const { hostname } = new URL(/^[a-z][\w+.-]*:\/\//i.test(value) ? value : `https://${value}`);
+        return HOST.test(hostname) && hostname !== value ? hostname : null;
+    } catch {
+        return null;
+    }
+};
+
+/** Der Vorschlag zu einem unbekannten Feld als Zusatz, etwa " (meintest du insecureTls?)", sonst leer. */
+const hintFor = (key, allowed) => {
+    const name = didYouMean(key, allowed);
+    return name === undefined ? '' : t('config.didYouMean', { name });
+};
+
 /**
  * Liest das Fragment aus `extends` (`"extends": "./caw/presets/basis.json"`): Felder wie in der Config, ohne eigenes `extends`.
  * @returns das Fragment oder ein Text mit dem Problem
@@ -109,7 +132,8 @@ export const effectiveConfig = (config, root = process.cwd()) => {
 export const environmentDefs = (config) => Object.fromEntries(Object.entries(config.environments ?? {}).map(([name, raw]) => {
     const entry = raw ?? {};
     const urls = config.sites === undefined ? (entry.url === undefined ? {} : { '': entry.url }) : Object.fromEntries((config.sites ?? []).filter((site) => entry.urls?.[site] !== undefined).map((site) => [site, entry.urls[site]]));
-    return [name, { agent: entry.agent === true, localCode: entry.localCode === true, writable: entry.writable === true, production: entry.production === true, urls }];
+    // Intern heisst die Faehigkeit weiter `agent`: Claude darf hier arbeiten.
+    return [name, { agent: entry.claude === true || entry.agent === true, localCode: entry.localCode === true, writable: entry.writable === true, production: entry.production === true, urls }];
 }));
 
 /** Umgebungen mit einer Faehigkeit, fuer Meldungen wie "nur auf dev". */
@@ -138,7 +162,7 @@ const originProblem = (value) => {
 };
 
 
-const checkEnvironments = (config, issues) => {
+const checkEnvironments = (config, issues, notes) => {
     if (!isObject(config.environments) || Object.keys(config.environments).length === 0) {
         issues.push(t('config.env.missing'));
         return;
@@ -153,9 +177,10 @@ const checkEnvironments = (config, issues) => {
             issues.push(t('config.env.notObject', { name }));
             continue;
         }
-        const unknown = Object.keys(raw).find((key) => !['url', 'urls', ...ENVIRONMENT_FLAGS].includes(key));
-        if (unknown !== undefined) issues.push(t('config.env.unknown', { name, key: unknown, flags: ENVIRONMENT_FLAGS.join(', ') }));
-        const notBoolean = ENVIRONMENT_FLAGS.find((key) => raw[key] !== undefined && typeof raw[key] !== 'boolean');
+        const unknown = Object.keys(raw).find((key) => !['url', 'urls', ...ENVIRONMENT_FLAGS, ...OLD_ENVIRONMENT_FLAGS].includes(key));
+        if (unknown !== undefined) issues.push(t('config.env.unknown', { name, key: unknown, flags: ENVIRONMENT_FLAGS.join(', '), hint: hintFor(unknown, ['url', 'urls', ...ENVIRONMENT_FLAGS]) }));
+        if (raw.agent !== undefined) notes.push(t('config.env.agentRenamed', { name, value: String(raw.agent) }));
+        const notBoolean = [...ENVIRONMENT_FLAGS, ...OLD_ENVIRONMENT_FLAGS].find((key) => raw[key] !== undefined && typeof raw[key] !== 'boolean');
         if (notBoolean !== undefined) issues.push(t('config.env.notBoolean', { name, key: notBoolean }));
         if (sites === undefined) {
             if (raw.urls !== undefined) issues.push(t('config.env.urlsWithoutSites', { name }));
@@ -172,7 +197,7 @@ const checkEnvironments = (config, issues) => {
         }
         if (PRODUCTION_EXACT.test(name) && raw.production !== true) issues.push(t('config.env.productionExact', { name }));
         else if (PRODUCTION_NAME.test(name) && raw.production === undefined) issues.push(t('config.env.productionLike', { name }));
-        if (raw.production === true && (raw.agent === true || raw.localCode === true || raw.writable === true)) issues.push(t('config.env.productionFlags', { name }));
+        if (raw.production === true && (raw.claude === true || raw.agent === true || raw.localCode === true || raw.writable === true)) issues.push(t('config.env.productionFlags', { name }));
     }
     for (const site of Array.isArray(sites) ? sites : []) {
         if (PRODUCTION_NAME.test(site)) issues.push(t('config.site.production', { site: String(site) }));
@@ -191,7 +216,10 @@ const checkAuth = (config, issues) => {
         return;
     }
     const foreign = Object.keys(auth).find((key) => !AUTH_FIELDS[auth.type].includes(key) || typeof auth[key] !== 'string' || auth[key] === '');
-    if (foreign !== undefined) issues.push(t('config.auth.foreign', { type: auth.type, key: foreign, fields: AUTH_FIELDS[auth.type].join(', ') }));
+    if (foreign !== undefined) {
+        const hint = AUTH_FIELDS[auth.type].includes(foreign) ? '' : hintFor(foreign, AUTH_FIELDS[auth.type]);
+        issues.push(t('config.auth.foreign', { type: auth.type, key: foreign, fields: AUTH_FIELDS[auth.type].join(', '), hint }));
+    }
     if (auth.type === 'form') {
         const missing = ['path', 'userSelector', 'passwordSelector', 'signedInSelector'].filter((key) => typeof auth[key] !== 'string' || auth[key] === '');
         if (missing.length > 0) issues.push(t('config.auth.formMissing', { missing: missing.join(', ') }));
@@ -221,7 +249,7 @@ const checkRoles = (config, issues) => {
         if (needsSecrets) {
             // Namen von Umgebungsvariablen in caw/.env; ein Tippfehler im Schluessel (passwortEnv) fiele sonst erst beim Anmelden auf.
             for (const [key, value] of Object.entries(role)) {
-                if (!ROLE_FIELDS.includes(key)) issues.push(t('config.role.unknownField', { name, key, allowed: ROLE_FIELDS.join(', ') }));
+                if (!ROLE_FIELDS.includes(key)) issues.push(t('config.role.unknownField', { name, key, allowed: ROLE_FIELDS.join(', '), hint: hintFor(key, ROLE_FIELDS) }));
                 else if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) issues.push(t('config.role.envName', { name, key }));
             }
         }
@@ -234,16 +262,18 @@ const checkRoles = (config, issues) => {
  * @param given die Config wie in der Datei; das Fragment aus `extends` wird relativ zu `root` gelesen
  */
 export const validateConfig = (given, root = process.cwd()) => {
-    if (!isObject(given)) return { ok: false, issues: [t('config.notObject')] };
+    if (!isObject(given)) return { ok: false, issues: [t('config.notObject')], notes: [] };
     const issues = [];
+    // Hinweise, die nichts verhindern: alte Namen, die noch gelten, und Einstellungen, die so nichts bewirken.
+    const notes = [];
     for (const [key, text] of Object.entries(RENAMED)) if (given[key] !== undefined) issues.push(t(text));
-    for (const key of Object.keys(given)) if (!TOP_FIELDS.includes(key) && RENAMED[key] === undefined) issues.push(t('config.unknownField', { key }));
+    for (const key of Object.keys(given)) if (!TOP_FIELDS.includes(key) && RENAMED[key] === undefined) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
     if (given.language !== undefined && !['de', 'en'].includes(given.language)) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
     const { config, issues: loaded } = effectiveConfig(given, root);
     issues.push(...loaded);
     if (config.extends !== undefined && given.extends === undefined) issues.push(t('config.extendsOnlyProject'));
 
-    checkEnvironments(config, issues);
+    checkEnvironments(config, issues, notes);
     checkAuth(config, issues);
     checkRoles(config, issues);
     if (!isObject(config.apps) || Object.keys(config.apps).length === 0) issues.push(t('config.apps.missing'));
@@ -259,7 +289,7 @@ export const validateConfig = (given, root = process.cwd()) => {
         if (!isObject(config.agent)) issues.push(t('config.agent.notObject'));
         else {
             const unknown = Object.keys(config.agent).find((key) => key !== 'sandbox');
-            if (unknown !== undefined) issues.push(t('config.agent.unknown', { key: unknown }));
+            if (unknown !== undefined) issues.push(t('config.agent.unknown', { key: unknown, hint: hintFor(unknown, ['sandbox']) }));
             if (config.agent.sandbox !== undefined && !AGENT_SANDBOXES.includes(config.agent.sandbox)) issues.push(t('config.agent.sandbox', { names: AGENT_SANDBOXES.join(', ') }));
         }
     }
@@ -267,7 +297,7 @@ export const validateConfig = (given, root = process.cwd()) => {
         if (!isObject(config.browser)) issues.push(t('config.browser.notObject'));
         else {
             const unknown = Object.keys(config.browser).find((key) => !['channel', 'executablePath'].includes(key));
-            if (unknown !== undefined) issues.push(t('config.browser.unknown', { key: unknown }));
+            if (unknown !== undefined) issues.push(t('config.browser.unknown', { key: unknown, hint: hintFor(unknown, ['channel', 'executablePath']) }));
             if (config.browser.channel !== undefined && !BROWSER_CHANNELS.includes(config.browser.channel)) issues.push(t('config.browser.channel', { names: BROWSER_CHANNELS.join(', ') }));
             if (config.browser.executablePath !== undefined && (typeof config.browser.executablePath !== 'string' || !isAbsolute(config.browser.executablePath))) issues.push(t('config.browser.executablePath'));
             if (config.browser.channel !== undefined && config.browser.executablePath !== undefined) issues.push(t('config.browser.both'));
@@ -277,8 +307,12 @@ export const validateConfig = (given, root = process.cwd()) => {
     if (config.sandboxUser !== undefined && !/^[a-z_][a-z0-9_-]*$/.test(config.sandboxUser)) issues.push(t('config.sandboxUser'));
     if (config.maxSteps !== undefined && (!Number.isInteger(config.maxSteps) || config.maxSteps <= 0)) issues.push(t('config.maxSteps'));
     if (config.readyTimeoutMs !== undefined && (!Number.isInteger(config.readyTimeoutMs) || config.readyTimeoutMs <= 0)) issues.push(t('config.readyTimeoutMs'));
-    if (config.extraAllowedHosts !== undefined && !(Array.isArray(config.extraAllowedHosts) && config.extraAllowedHosts.every((host) => typeof host === 'string' && /^[a-z0-9.-]+$/i.test(host)))) {
-        issues.push(t('config.extraAllowedHosts'));
+    if (config.extraAllowedHosts !== undefined && !Array.isArray(config.extraAllowedHosts)) issues.push(t('config.extraAllowedHosts'));
+    else for (const value of config.extraAllowedHosts ?? []) {
+        if (typeof value === 'string' && HOST.test(value)) continue;
+        // Meist steht dort eine ganze Adresse: Dann den Host daraus nennen.
+        const host = hostOf(value);
+        issues.push(host === null ? t('config.extraAllowedHosts.entry', { value: JSON.stringify(value) }) : t('config.extraAllowedHosts.url', { value: JSON.stringify(value), host }));
     }
     for (const key of ['consoleIgnore', 'foreignCode']) {
         if (config[key] !== undefined && !(Array.isArray(config[key]) && config[key].every((pattern) => typeof pattern === 'string'))) {
@@ -328,17 +362,39 @@ export const validateConfig = (given, root = process.cwd()) => {
         for (const key of ['redirects', 'constants', 'statics']) {
             if (app[key] !== undefined && !Array.isArray(app[key])) issues.push(t('config.app.list', { name, key }));
             else (app[key] ?? []).forEach((entry, index) => {
-                if (!entryOk(key, entry)) issues.push(t('config.app.entry', { name, key, index, fields: ENTRY_FIELDS[key] }));
+                if (entryOk(key, entry)) return;
+                const problems = entryProblems(key, entry);
+                issues.push(problems.length === 0
+                    ? t('config.app.entry', { name, key, index, fields: ENTRY_FIELDS[key] })
+                    : t('config.app.entryProblems', { name, key, index, problems: problems.join('; '), fields: ENTRY_FIELDS[key] }));
             });
         }
         if (app.localBuild !== undefined && (typeof app.localBuild !== 'string' || app.localBuild === '' || /^([\\/]|[A-Za-z]:)/.test(app.localBuild) || app.localBuild.split(/[\\/]/).includes('..'))) {
             issues.push(t('config.app.localBuild', { name }));
         }
     }
-    return { ok: issues.length === 0, issues };
+    if (issues.length === 0) notes.push(...localCodeNotes(config));
+    return { ok: issues.length === 0, issues, notes };
 };
 
-export const loadConfig = (root) => {
+/**
+ * Lokaler Code wirkt nur, wenn Umgebung und App zusammenpassen: localCode an der Umgebung, localBuild (oder Eintraege) an der App.
+ * Fehlt eine Seite, bewirkt die andere nichts, still.
+ */
+const localCodeNotes = (config) => {
+    const apps = Object.keys(config.apps ?? {});
+    const withCode = apps.filter((name) => hasLocalCode(config, [name]));
+    const environments = environmentsWith(config, 'localCode');
+    const notes = [];
+    if (withCode.length === 0) for (const name of environments) notes.push(t('config.note.localCodeNoApp', { name }));
+    if (environments.length === 0) {
+        for (const name of apps.filter((app) => hasLocalBuild(config.apps[app]))) notes.push(t('config.note.localBuildNoEnv', { name }));
+    }
+    return notes;
+};
+
+/** Die Config wie loadConfig, dazu die Hinweise der Pruefung (alte Namen, Einstellungen ohne Wirkung). */
+export const loadConfigWithNotes = (root) => {
     let raw;
     try {
         raw = readFileSync(join(root, CONFIG_FILE), 'utf8');
@@ -351,14 +407,27 @@ export const loadConfig = (root) => {
     } catch (error) {
         throw new CawError('config-invalid', t('config.load.invalidJson', { file: CONFIG_FILE, error: error.message }));
     }
-    const { issues } = validateConfig(config, root);
+    const { issues, notes } = validateConfig(config, root);
     if (issues.length > 0) throw new CawError('config-invalid', `${CONFIG_FILE}:\n- ${issues.join('\n- ')}`);
-    return effectiveConfig(config, root).config;
+    return { config: effectiveConfig(config, root).config, notes };
 };
+
+export const loadConfig = (root) => loadConfigWithNotes(root).config;
 
 // Ein Pfad im Projekt: relativ, ohne `..`. Wie `dir` und `localBuild`.
 const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
 const ENTRY_FIELDS = { statics: 'name, path', constants: 'name, watchPath', redirects: 'name, target | app: true' };
+const ENTRY_KEYS = { statics: ['name', 'path'], constants: ['name', 'watchPath'], redirects: ['name', 'target', 'app'] };
+/** Was an einem Eintrag fehlt und was dort nichts zu suchen hat, mit Vorschlag; leer, wenn es kein Objekt ist. */
+const entryProblems = (key, entry) => {
+    if (!isObject(entry)) return [];
+    const allowed = ENTRY_KEYS[key];
+    const unknown = Object.keys(entry).filter((field) => !allowed.includes(field))
+        .map((field) => t('config.app.entryUnknown', { field, hint: hintFor(field, allowed) }));
+    const required = key === 'redirects' ? ['name', ...(entry.app === true ? [] : ['target'])] : allowed;
+    const missing = required.filter((field) => entry[field] === undefined || entry[field] === '').map((field) => t('config.app.entryMissing', { field }));
+    return [...missing, ...unknown];
+};
 /** Ein Eintrag aus `statics`, `constants` oder `redirects`: sonst scheiterte erst der Lauf mit einem TypeError. */
 const entryOk = (key, entry) => {
     if (!isObject(entry) || typeof entry.name !== 'string' || entry.name === '') return false;
@@ -375,6 +444,15 @@ const hasLocalBuild = (app) => typeof app?.localBuild === 'string' && app.localB
  */
 export const hasLocalCode = (config, appNames) => appNames.some((name) => hasLocalBuild(config.apps?.[name])
     || (typeof config.assetUrlPattern === 'string' && namedEntries(config.apps?.[name]).length > 0));
+
+/** Woher der lokale Code einer App kommt, fuer Meldungen: der Build-Ordner, sonst die Arten der Eintraege (statics, redirects, …). */
+export const localCodeOf = (config, name) => {
+    const app = config.apps?.[name];
+    if (hasLocalBuild(app)) return { localBuild: app.localBuild };
+    if (typeof config.assetUrlPattern !== 'string') return null;
+    const kinds = ['statics', 'redirects', 'constants'].filter((key) => (app?.[key] ?? []).length > 0);
+    return kinds.length === 0 ? null : { kinds };
+};
 
 /** Ohne `assetUrlPattern`: der Pfad unterhalb der Umgebungs-URL, etwa `assets/index-X.js` aus `https://host/app/assets/index-X.js`. */
 const defaultAssetPattern = (url) => {

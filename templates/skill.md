@@ -28,14 +28,14 @@ Urteil. Es gibt drei Wege:
 
 - **Testen:** `npx caw-ai run <test> --target <umgebung>`. Laeuft ohne KI. Fehlt die
   Aufzeichnung, endet es mit Exit 3 und nennt `record`; ist ein Schritt veraltet, nennt es `fix` fuer genau diesen Schritt. Scheitert ein
-  Schritt auf einer Umgebung mit Claude (in der Config `environments.<name>.agent: true`) und nicht in CI, bietet der Chat „Schritt beheben“ an. Erst eine Nachricht des Menschen, „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“ startet Claude.
+  Schritt auf einer Umgebung mit Claude (in der Config `environments.<name>.claude: true`) und nicht in CI, bietet der Chat „Schritt beheben“ an. Erst eine Nachricht des Menschen, „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“ startet Claude.
   Mit `--advise` (nur auf solchen Umgebungen, nicht in CI) gibt Claude bei Fehlern oder Warnungen sofort Empfehlungen im Chat, auch in einem
   bestandenen Lauf. Das kostet Token, haenge es also nur an, wenn der Mensch das will.
 - **Zustand herstellen** („bring mich dahin, wo der Warenkorb gefuellt ist“): Lies die Tests unter `caw/tests/` und
   suche den Schritt `S<n>`, dessen `expect` diesen Zustand beschreibt. Starte `run <test> --target <umgebung> --until S<n>` im
   Hintergrund, denn der Befehl endet erst, wenn der Mensch das Fenster schliesst. Sage dem Menschen, wenn der Zustand steht:
   Das Fenster gehoert dann ihm. `--handover` uebergibt auch nach einem ganzen Testlauf.
-- **Aufnehmen oder ersetzen** (auch wenn zu einem Zustand kein Test passt): `record <test> --target <umgebung>` (eine Umgebung mit `agent: true`), beim ersten
+- **Aufnehmen oder ersetzen** (auch wenn zu einem Zustand kein Test passt): `record <test> --target <umgebung>` (eine Umgebung mit `claude: true`), beim ersten
   Mal mit `--role <rolle> --app <app>` (entfaellt, wenn die Config nur eine Rolle bzw. App kennt) und `--also <app>`, falls der
   Weg in eine zweite App fuehrt. Frage nach Rolle und App, falls sie nicht klar sind. Starte es im Hintergrund: Der Mensch sitzt am Chat-Fenster, fuehrt vor, gibt den Plan frei und
   entscheidet am Ende. Der Lauf schreibt in der Anwendung und kostet Token, starte ihn also nur, wenn der Mensch das will.
@@ -52,13 +52,16 @@ du ergaenzt, was sich nur aus dem Code oder vom Menschen erfahren laesst:
 2. **Einrichten mit explore:** Bitte den Menschen, `npx caw-ai init --url <adresse>` in seinem eigenen Terminal auszufuehren (es braucht ein Terminal:
    Er meldet sich im Fenster mit einem Testkonto an, bestaetigt mit Enter und nennt die Rollen). http geht nur auf dem eigenen Rechner
    (`localhost`, `127.0.0.1`, `*.localhost`), etwa `http://localhost:5173`. Ohne Anmeldung geht es auch ohne ihn: `init --url <adresse> --yes`.
+   Ohne Terminal und ohne Anwendung: `init --offline` schreibt die Vorlage, die Anmeldung bleibt `TODO`.
    Ergebnis: `caw.config.json`, `caw/.env.example` und `caw/.explore.json` mit Framework, Anmeldeformular, Marke fuer „angemeldet“, Startseite,
    Meldungen und Konsolenrauschen, je mit `confidence`. Lies auch `notes`; was explore nicht fand, steht in der Config auf `TODO`.
 3. **Aus dem Code ergaenzen:** weitere Umgebungen (Staging, Test) aus Configs und Doku, Rollen aus Seed-Daten, Fixtures oder Rechte-Code,
    die wichtigsten Masken aus dem Router. Fachbegriffe und Eigenheiten (Datumsformate, langsame Dienste, bekannte Meldungen) gehoeren
    nach `caw/caw.md`.
 4. **Rueckfragen**, gebuendelt und mit Vorschlag: Welche Umgebung ist Produktion (die darf nie Ziel sein, `production: true`)? Auf welchen
-   arbeitet Claude (`agent`), wo darf geschrieben werden (`writable`)? Welche Rollen, wie heissen die Variablen fuer die Zugangsdaten?
+   arbeitet Claude (`claude`), wo darf geschrieben werden (`writable`)? Welche Rollen, wie heissen die Variablen fuer die Zugangsdaten?
+   Lokaler Code: Ein Dev-Server auf dem eigenen Rechner braucht nichts. Nur fuer eine entfernte Umgebung mit normalem Build (Vite,
+   Angular, webpack) `localCode: true` an der Umgebung und `localBuild` (der Build-Ordner) an der App; `validate` nennt je Test, welcher Code laeuft.
    Uebernimm Konsolenrauschen nur, wenn der Mensch es als bekannt bestaetigt. Nichts mit `confidence: likely` ohne Rueckfrage.
 5. **Schreiben:** Ergaenze die Config um das Geklaerte und ersetze jedes `TODO`. Zugangsdaten traegt nur der
    Mensch in `caw/.env` ein, du nennst nur die Namen.

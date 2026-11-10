@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, authOf, browserHosts, browserLaunch, environmentsWith, hasLocalCode, loadConfig, resolveTarget, sessionPath } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, authOf, browserHosts, browserLaunch, environmentsWith, hasLocalCode, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
-import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { selectDocker } from './docker.mjs';
 import { frameworkOf } from './framework/index.mjs';
@@ -17,7 +17,8 @@ import { DEFAULT_MAX_STEPS } from './step-budget.mjs';
 import { CLAUDE_TIMEOUT_MIN, parseRunArgs, toWslPath } from './linux.mjs';
 import { EXPLORE_FILE, explore } from './explore.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
-import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath, writeTest } from './test-file.mjs';
+import { describeCode } from './code-source.mjs';
+import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const SKILL_DIR = '.claude/skills/caw-ai';
 /** Eintrag fuer .mcp.json: ueber node statt npx, das geht auf allen Systemen gleich und braucht unter Windows kein cmd /c. */
@@ -171,15 +172,24 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
     const from = optionOf(args, '--from');
     let url = optionOf(args, '--url');
     let file = from;
+    if (url !== undefined && checkUrl(url) !== null) throw new CawError('usage', checkUrl(url));
+    // Ohne Anwendung: die Vorlage mit TODO in der Anmeldung. Auch ohne Terminal und ohne --url, statt abzubrechen.
+    const offline = args.includes('--offline') || (file === undefined && url === undefined && !interactive && !existsSync(join(root, EXPLORE_FILE)));
+    if (offline && from === undefined) {
+        if (!args.includes('--offline')) console.log(t('cli.initOfflineFallback'));
+        const answers = { ...(url === undefined ? {} : { url }), offline: true };
+        if (interactive) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
+        if (args.includes('--no-mcp')) answers.mcp = false;
+        return { answers };
+    }
     if (file === undefined && url === undefined && existsSync(join(root, EXPLORE_FILE))) {
         file = EXPLORE_FILE;
         console.log(t('cli.initUsesExplore', { file }));
     }
     if (file === undefined) {
         if (url === undefined) {
-            if (!interactive) throw new CawError('usage', t('cli.initNeedsUrl'));
             url = await askLine({ input, output }, t('cli.askUrl'), 'http://localhost:5173', checkUrl);
-        } else if (checkUrl(url) !== null) throw new CawError('usage', checkUrl(url));
+        }
         const passed = ['--yes', '--insecure-tls'].filter((flag) => args.includes(flag));
         const code = await runExplore(root, ['--url', url, ...passed], { next: false });
         if (code !== undefined && code !== EXIT.pass) return { code };
@@ -199,7 +209,7 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
 };
 
 /** Die erste Config aus den Antworten von `init`; ohne Antworten die Vorlage mit erkanntem Framework. */
-export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), appDir, url, auth = 'form', login = {}, explored = false, roles, startUrl, messageSelectors, consoleIgnore } = {}) => {
+export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), appDir, url, auth = 'form', login = {}, explored = false, offline = false, roles, startUrl, messageSelectors, consoleIgnore } = {}) => {
     if (!FRAMEWORK_NAMES.includes(framework)) throw new CawError('usage', t('cli.unknownFramework', { framework, names: FRAMEWORK_NAMES.join(', ') }));
     if (!['form', 'storageState', 'none'].includes(auth)) throw new CawError('usage', t('cli.initAuthUnknown', { auth }));
     const names = roles ?? [DEFAULT_ROLE];
@@ -225,7 +235,7 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
         for (const key of ['path', 'userSelector', 'passwordSelector', 'submitSelector', 'signedInSelector']) {
             if (typeof login[key] === 'string' && login[key] !== '') config.auth[key] = login[key];
             // Was explore nicht fand, ist kein Platzhalter, der echt aussieht: TODO meldet doctor, bis der Mensch es eintraegt.
-            else if (explored && key !== 'submitSelector') config.auth[key] = TODO;
+            else if ((explored || offline) && key !== 'submitSelector') config.auth[key] = TODO;
         }
     }
     if (typeof startUrl === 'string' && startUrl.startsWith('/')) config.apps.web.startUrl = startUrl;
@@ -300,6 +310,9 @@ export const init = (root, answers = {}) => {
         write(`${ENV_FILE}.example`, `${t('cli.envExampleHead')}\n${names.map((name) => `${name}=`).join('\n')}\n`);
     }
     write(`${SKILL_DIR}/SKILL.md`, template('skill.md'));
+    // Der Ordner fuer die Testplaene und die Notizen fuer Claude: So sieht man gleich, wohin was gehoert.
+    if (!existsSync(join(root, TEST_DIR))) write(`${TEST_DIR}/.gitkeep`, '');
+    write(CONTEXT_FILE, t('cli.contextTemplate'));
     if (answers.mcp !== false && addMcpEntry(root)) created.push('.mcp.json');
 
     const ignore = join(root, '.gitignore');
@@ -311,8 +324,9 @@ export const init = (root, answers = {}) => {
     }
     console.log(created.length > 0 ? t('cli.initCreated', { files: created.join(', ') }) : t('cli.initAlready'));
     const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
-    if (created.includes(CONFIG_FILE) && todo.length > 0) console.log(t('cli.initTodo', { keys: todo.join(', ') }));
-    if (created.includes(CONFIG_FILE)) console.log(t('cli.initNext', { target: Object.keys(config.environments)[0] }));
+    if (created.includes(CONFIG_FILE) && todo.length > 0) console.log(t(answers.offline ? 'cli.initTodoOffline' : 'cli.initTodo', { keys: todo.join(', ') }));
+    // Lief explore eben, waere der Rat, es erst laufen zu lassen, verwirrend.
+    if (created.includes(CONFIG_FILE)) console.log(`${t('cli.initNext', { target: Object.keys(config.environments)[0] })}${answers.explored ? '' : t('cli.initNextExplore')}`);
     return EXIT.pass;
 };
 
@@ -347,21 +361,28 @@ export const auth = async (root, args, { capture } = {}) => {
 
 /** Prueft Config und alle Tests gegen alle ihre Ziele, ohne Docker oder Netz. Veraltete Schritte sind kein Fehler, nur ein Hinweis. */
 export const validate = (root) => {
-    const config = loadConfig(root);
+    const { config, notes } = loadConfigWithNotes(root);
     const dir = join(root, TEST_DIR);
     const files = existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith('.yaml')) : [];
     const problems = [];
-    const hints = [];
+    const hints = [...notes, ...todoNotes(config)];
+    // Je Test und Ziel eine Zeile, welcher Code dort laeuft: So faellt ein stiller ausgelieferter Stand schon hier auf.
+    const codeLines = [];
     for (const file of files) {
         try {
             // Beschreibung samt Aufzeichnung aus caw/recordings; eine fremde id meldet loadTest.
-            const spec = loadTest(root, file.slice(0, -'.yaml'.length));
+            const spec = withDefaults(loadTest(root, file.slice(0, -'.yaml'.length)), config);
+            hints.push(...(spec.notices ?? []).map((notice) => `${file}: ${notice}`));
             for (const target of spec.targets) {
                 try {
-                    checkTest(spec, target, config);
+                    const checked = checkTest(spec, target, config);
+                    codeLines.push(t('cli.validateCode', { id: spec.id, target, code: describeCode(config, spec, checked) }));
                 } catch (error) {
                     problems.push(`${file} (${target}): ${error.message}`);
                 }
+            }
+            if (spec.code === 'deployed' && spec.app !== undefined && hasLocalCode(config, [spec.app, ...(spec.also ?? [])]) && environmentsWith(config, 'localCode').length > 0) {
+                hints.push(t('cli.validateCodeDeployed', { file, app: spec.app }));
             }
             const chain = brokenChain(spec);
             if (chain !== null) hints.push(t('cli.validateChain', { file, chain }));
@@ -378,10 +399,15 @@ export const validate = (root) => {
         problems.push(error.message);
     }
     if (problems.length > 0) throw new CawError('test-invalid', problems.join('\n'));
+    codeLines.forEach((line) => ui.info(line));
     hints.forEach((hint) => ui.note(hint));
     console.log(t('cli.validateOk', { config: CONFIG_FILE, count: files.length }));
     return EXIT.pass;
 };
+
+/** Je Wert der Anmeldung, der seit init noch TODO ist, ein Hinweis mit dem, was dort hingehoert. */
+const todoNotes = (config) => Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO)
+    .map(([key]) => t('cli.validateTodo', { key: `auth.${key}`, what: t(`cli.validateTodo.${key}`) }));
 
 /** Baut das Sandbox-Image, falls es zu Image, Benutzer und Tool-Stand noch keines gibt. */
 const ensureImage = async (docker, baseImage, user) => {
@@ -437,12 +463,16 @@ const prepareSandbox = async (root, docker, config) => {
  * Lokaler Code nur, wenn der Watch des Frameworks laeuft (sofern der Adapter einen kennt). Sonst ersetzt caw-ai nichts und testet den
  * deployten Stand, damit ein veralteter oder halber Build keinen Fehler vortaeuscht.
  */
-export const withRunningWatch = (config, checked, running = processRunning) => {
+export const withRunningWatch = (config, checked, running = processRunning, { code } = {}) => {
     if (checked.source !== 'watch') return checked;
     const { watch } = frameworkOf(config);
     if (watch === undefined || running(watch.command) !== false) return checked;
-    ui.note(t('cli.noWatch', { label: watch.label }));
-    return { ...checked, source: 'deployed' };
+    // Wer --code local sagt, bekommt den lokalen Code, auch ohne Watch; dann nur ein Hinweis.
+    if (code === 'local') {
+        ui.warn(t('cli.noWatchLocal', { label: watch.label }));
+        return checked;
+    }
+    return { ...checked, source: 'deployed', sourceReason: t('cli.noWatch', { label: watch.label }) };
 };
 
 /** Gibt es nur eine Rolle bzw. App, braucht der neue Test kein Flag dafuer. */
@@ -458,11 +488,12 @@ const recordHint = (config, id, target) => [
     ...(onlyKey(config.apps) === undefined ? [`--app <${Object.keys(config.apps ?? {}).join('|') || 'app'}>`] : []),
 ].join(' ');
 
-const loadChecked = (root, id, target) => {
+const loadChecked = (root, id, target, { code, until } = {}) => {
     const config = loadConfig(root);
     if (!existsSync(testPath(root, id))) throw new CawError('test-missing', t('cli.testMissing', { file: `${TEST_DIR}/${id}.yaml`, hint: recordHint(config, id, target) }));
-    const spec = loadTest(root, id);
-    return { config, spec, checked: withRunningWatch(config, checkTest(spec, target, config)) };
+    const spec = withDefaults(loadTest(root, id), config);
+    for (const notice of spec.notices ?? []) ui.note(`${TEST_DIR}/${id}.yaml: ${notice}`);
+    return { config, spec, checked: withRunningWatch(config, checkTest(spec, target, config, { code, until }), processRunning, { code }) };
 };
 
 /** Die Umgebungen, auf denen Claude arbeiten darf, als Text: "dev" oder "dev, local". */
@@ -470,7 +501,7 @@ const agentEnvironments = (config) => environmentsWith(config, 'agent').join(', 
 
 /** Claude arbeitet nur auf Umgebungen mit `agent`: Die anderen sollen scheitern, wenn etwas nicht passt. */
 const requireAgent = (config, checked, target, verb) => {
-    if (!checked.agent) throw new CawError('write-protected', t('cli.agentOnly', { verb, environments: agentEnvironments(config), target }));
+    if (!checked.agent) throw new CawError('write-protected', t('cli.agentOnly', { verb, environments: agentEnvironments(config), target, environment: checked.environment }));
 };
 
 /**
@@ -500,7 +531,7 @@ const openSandbox = async (root, { config, containerCommand, adviseCommand, talk
 };
 
 /** Ein Test im Entstehen. Die Metadaten stehen fest, bevor Claude startet: Rolle und Ziel entscheidet der Mensch. */
-const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp, also, readOnly = false }) => {
+const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp, also, readOnly = false, code }) => {
     const role = chosenRole ?? onlyKey(config.roles);
     const app = chosenApp ?? onlyKey(config.apps);
     if (role === undefined || app === undefined) {
@@ -508,15 +539,15 @@ const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp,
         throw new CawError('usage', t('cli.draftMissing', { id, missing: missing.join(t('cli.and')), hint: recordHint(config, id, target) }));
     }
     for (const name of [app, ...also]) {
-        if (config.apps[name] === undefined) throw new CawError('test-invalid', t('cli.unknownApp', { name }));
+        if (config.apps[name] === undefined) throw new CawError('test-invalid', t('cli.unknownApp', { name, apps: Object.keys(config.apps).join(', '), config: CONFIG_FILE }));
     }
     return {
         id,
         app,
         role,
         targets: [target],
-        // Gibt es lokalen Code zum Einspielen, testet der Test den lokalen Stand, sonst den deployten.
-        source: hasLocalCode(config, [app, ...also]) ? 'watch' : 'deployed',
+        // Ohne Angabe gilt der Standard (lokaler Build, wo es ihn gibt); nur ein ausdrueckliches --code deployed bleibt im Test.
+        ...(code === 'deployed' ? { code } : {}),
         // Schreibend, ausser der Mensch sagt es anders; schreibt ein lesender Test doch, wird er beim Uebernehmen schreibend.
         mutates: !readOnly,
         also,
@@ -642,14 +673,13 @@ export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environ
  * @param talkCommand   nur fuer Tests: ersetzt Claude im Gespraech
  */
 export const run = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, target, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, agent, timeoutMin, maxSteps } = parseRunArgs('run', args);
-    const { config, spec, checked: resolved } = loadChecked(root, test, target);
+    const { test, target, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, agent, timeoutMin, maxSteps, code } = parseRunArgs('run', args);
+    // Ein Zustand fuer die Entwicklung (--until) braucht den lokalen Code, wo es ihn gibt; das entscheidet checkTest mit Grund.
+    const { config, spec, checked } = loadChecked(root, test, target, { code, until });
     if (until !== undefined && !spec.steps.some(({ id }) => id === until)) throw new CawError('step-unknown', t('cli.stepUnknown', { test, step: until }));
     const { assertPlayable } = await import('./replay.mjs');
     assertPlayable(spec, target, until);
-    // Ein Zustand fuer die Entwicklung braucht den lokalen Code, wo es ihn gibt.
-    const checked = until !== undefined && resolved.localCode ? withRunningWatch(config, { ...resolved, source: 'watch' }) : resolved;
-    const withAgent = resolved.agent;
+    const withAgent = checked.agent;
     // Der Chat liegt in der Werkbank und braucht kein Terminal. Nur in CI wartet niemand auf ihn.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     const canFix = withAgent && !noChat && !inCi;
@@ -696,12 +726,12 @@ export const contradicts = (spec, { role, app, also = [], readOnly = false }) =>
  * sich der Weg durch Container, Kanal und Browser ohne Modell und Token pruefen laesst.
  */
 export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, target, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent } = parseRunArgs('record', args);
+    const { test, target, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, code } = parseRunArgs('record', args);
     const config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
-    const spec = exists ? loadTest(root, test) : draftTest(root, config, { id: test, target, role, app, also, readOnly });
+    const spec = exists ? withDefaults(loadTest(root, test), config) : draftTest(root, config, { id: test, target, role, app, also, readOnly, code });
     if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
-    const checked = withRunningWatch(config, checkTest(spec, target, config));
+    const checked = withRunningWatch(config, checkTest(spec, target, config, { code }), processRunning, { code });
     requireAgent(config, checked, target, t('cli.verbRecord'));
     requireHuman('record', interactive);
 
@@ -730,8 +760,8 @@ const playable = (assertPlayable, spec, target, step) => {
 
 /** Genau diesen Schritt aendern, auch wenn er nicht scheitert. So bekommt ein von Hand geaenderter oder neuer Schritt seine Aufzeichnung. */
 export const fix = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, step, target, timeoutMin, stepTimeoutSec, maxSteps, agent } = parseRunArgs('fix', args);
-    const { config, spec, checked } = loadChecked(root, test, target);
+    const { test, step, target, timeoutMin, stepTimeoutSec, maxSteps, agent, code } = parseRunArgs('fix', args);
+    const { config, spec, checked } = loadChecked(root, test, target, { code });
     requireAgent(config, checked, target, t('cli.verbFix'));
     requireHuman('fix', interactive);
     const position = spec.steps.findIndex(({ id }) => id === step);

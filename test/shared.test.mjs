@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { allTargets, browserHosts, buildDevlinkConfig, effectiveConfig, environmentsWith, hasLocalCode, resolveTarget, validateConfig } from '../src/shared/config.mjs';
-import { checkTest } from '../src/host/test-file.mjs';
+import { checkTest, withDefaults } from '../src/host/test-file.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 
 // Ein Fragment fuer `extends` liegt im Projekt; hier in einem eigenen Ordner, mit absolutem Pfad.
@@ -113,7 +113,7 @@ test('Umgebungen: Fähigkeiten aus der Config, Produktion nur ausdrücklich und 
     assert.equal(resolveTarget(simple(), 'local').agent, true);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
     assert.match(at({ prod: { url: 'https://www.shop.example' } }), /Produktion/);
-    assert.match(at({ live: { url: 'https://www.shop.example', production: true, agent: true } }), /Produktion: agent/);
+    assert.match(at({ live: { url: 'https://www.shop.example', production: true, agent: true } }), /Produktion: claude/);
     assert.equal(at({ live: { url: 'https://www.shop.example', production: true } }), '');
     assert.match(at({ local: { url: 'http://app.localhost:5173', agent: 'ja' } }), /agent muss true oder false sein/);
     assert.match(at({ local: { url: 'http://app.localhost:5173', stage: 'x' } }), /stage gibt es dort nicht/);
@@ -186,11 +186,53 @@ test('checkTest: gültig, ohne lokalen Code wird deployed', () => {
     assert.equal(checkTest(SPEC, 'sued/test', multi()).source, 'deployed');
 });
 
-test('checkTest: Rolle nur, wenn es eine Anmeldung gibt', () => {
+test('checkTest: Rolle nur, wenn es eine Anmeldung gibt; mit genau einer Rolle gilt sie', () => {
     const { auth, roles, ...open } = simple();
-    const spec = { id: 'offen', app: 'shop', targets: ['local'], source: 'watch', mutates: false, also: [] };
+    const spec = { id: 'offen', app: 'shop', targets: ['local'], mutates: false, also: [] };
     assert.equal(checkTest(spec, 'local', open).source, 'deployed');
-    assert.throws(() => checkTest(spec, 'local', simple()), /nennt keine role/);
+    assert.equal(withDefaults(spec, simple()).role, 'kaeufer');
+    const two = { ...simple(), roles: { kaeufer: { loginEnv: 'A', passwordEnv: 'B' }, admin: { loginEnv: 'C', passwordEnv: 'D' } } };
+    assert.throws(() => checkTest(spec, 'local', two), /nennt keine role.*Rollen in caw\.config\.json: kaeufer, admin/);
+    assert.throws(() => checkTest({ ...spec, role: 'chef' }, 'local', two), /Unbekannte Rolle: chef \(Rollen in caw\.config\.json: kaeufer, admin\)/);
+});
+
+test('Welcher Code läuft: eine Entscheidung mit Grund, Vorrang für --code und --until', () => {
+    const own = { ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop', localBuild: 'dist' } } };
+    const spec = { id: 'smoke', mutates: false, also: [] };
+    const pick = ({ source, sourceReason }) => ({ source, ...(sourceReason === undefined ? {} : { sourceReason }) });
+    assert.deepEqual(withDefaults(spec, own), { ...spec, app: 'shop', role: 'kaeufer', targets: ['local', 'staging'] }, 'app, role und targets aus der Config');
+    assert.deepEqual(pick(checkTest(spec, 'local', own)), { source: 'watch' });
+    assert.deepEqual(pick(checkTest(spec, 'staging', own)), { source: 'deployed', sourceReason: 'Umgebung staging hat kein localCode' });
+    assert.deepEqual(pick(checkTest(spec, 'local', simple())), { source: 'deployed', sourceReason: 'App shop hat keinen lokalen Code (localBuild, statics, redirects oder constants)' });
+    const deployed = { ...spec, code: 'deployed' };
+    assert.deepEqual(pick(checkTest(deployed, 'local', own)), { source: 'deployed', sourceReason: 'der Test sagt code: deployed' });
+    assert.deepEqual(pick(checkTest(deployed, 'local', own, { until: 'S2' })), { source: 'watch', sourceReason: '--until S2: Zustand für die Entwicklung' });
+    assert.deepEqual(pick(checkTest(deployed, 'staging', own, { until: 'S2' })), { source: 'deployed', sourceReason: 'der Test sagt code: deployed' }, '--until nur, wo es lokalen Code gibt');
+    assert.deepEqual(pick(checkTest(spec, 'local', own, { code: 'deployed' })), { source: 'deployed', sourceReason: '--code deployed' });
+    assert.deepEqual(pick(checkTest(deployed, 'local', own, { code: 'local' })), { source: 'watch', sourceReason: '--code local' });
+    assert.throws(() => checkTest(spec, 'staging', own, { code: 'local' }), (error) => error.code === 'usage' && /--code local geht hier nicht: Umgebung staging hat kein localCode\. Dafür braucht es environments\.staging\.localCode\./.test(error.message));
+    assert.throws(() => checkTest(spec, 'local', simple(), { code: 'local' }), (error) => error.code === 'usage' && /apps\.shop\.localBuild/.test(error.message));
+    assert.throws(() => checkTest({ ...spec, targets: ['local'] }, 'staging', own), /Trage staging in targets in caw\/tests\/smoke\.yaml ein/);
+    const twoApps = { ...own, apps: { ...own.apps, admin: { dir: 'admin', startUrl: '/' } } };
+    assert.throws(() => checkTest(spec, 'local', twoApps), /smoke nennt keine app.*\(shop, admin\)/);
+    assert.throws(() => checkTest({ ...spec, app: 'web' }, 'local', twoApps), /Unbekannte App: web \(Apps in caw\.config\.json: shop, admin\)/);
+});
+
+test('Config: Vorschläge bei Tippfehlern, claude statt agent, Hinweise auf Einstellungen ohne Wirkung', () => {
+    assert.match(issues({ ...simple(), insecureTLS: true }), /Unbekanntes Feld: insecureTLS \(meintest du insecureTls\?\)/);
+    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', localcode: true } } }), /localcode gibt es dort nicht.*\(meintest du localCode\?\)/);
+    assert.doesNotMatch(issues({ ...simple(), zzz: 1 }), /meintest/);
+    assert.match(issues({ ...simple(), extraAllowedHosts: ['https://login.example.com/'] }), /"https:\/\/login\.example\.com\/" ist kein Hostname; gemeint ist wohl "login\.example\.com"/);
+    assert.match(issues({ ...simple(), extraAllowedHosts: ['a b'] }), /"a b" ist kein Hostname, etwa/);
+    const claude = { ...simple(), environments: { local: { url: 'http://app.localhost:5173', claude: true, writable: true } } };
+    assert.deepEqual(validateConfig(claude), { ok: true, issues: [], notes: [] });
+    assert.equal(resolveTarget(claude, 'local').agent, true);
+    const old = validateConfig(simple());
+    assert.deepEqual(old.issues, [], 'agent gilt weiter');
+    assert.match(old.notes.join('\n'), /Umgebung local: agent heißt jetzt claude/);
+    assert.match(old.notes.join('\n'), /Umgebung local hat localCode, aber keine App hat lokalen Code/);
+    const buildOnly = { ...claude, apps: { shop: { dir: 'shop', startUrl: '/shop', localBuild: 'dist' } } };
+    assert.match(validateConfig(buildOnly).notes.join('\n'), /App shop hat localBuild, aber keine Umgebung hat localCode/);
 });
 
 test('Lokaler Code: Muster aus der Config, ohne Einträge oder Muster gibt es nur den deployten Stand', () => {
@@ -323,7 +365,8 @@ test('Config: browser wählt einen Chromium-Browser, Standard Chrome', async () 
 test('Config: Einträge in statics, constants und redirects und die Felder einer Rolle werden geprüft, nicht erst im Lauf', () => {
     const withApp = (app) => issues({ ...simple(), assetUrlPattern: '^https://[^/]+/(.+)$', apps: { shop: { dir: 'shop', ...app } } });
     assert.equal(withApp({ statics: [{ name: 'a.js', path: 'dist/a.js' }], constants: [{ name: 'c.js', watchPath: 'c.js' }], redirects: [{ name: 'App.js', app: true }, { name: 'M.js', target: 'Model' }] }), '');
-    assert.match(withApp({ statics: [{ name: 'x' }] }), /statics\[0\] braucht name, path/);
+    assert.match(withApp({ statics: [{ name: 'x' }] }), /statics\[0\]: path fehlt \(braucht name, path\)/);
+    assert.match(withApp({ statics: [{ name: 'x', paht: 'dist/x.js' }] }), /statics\[0\]: path fehlt; unbekanntes Feld paht \(meintest du path\?\)/);
     assert.match(withApp({ statics: [{ name: 'x', path: '../aussen.js' }] }), /statics\[0\]/);
     assert.match(withApp({ redirects: [null] }), /redirects\[0\] braucht name, target \| app: true/);
     assert.match(withApp({ constants: [5] }), /constants\[0\] braucht name, watchPath/);

@@ -35,6 +35,8 @@ Auf dem Host (im Projektordner):
       [--yes]                            ohne Anmeldung und ohne Fragen
       [--from <datei>]                   ein vorhandenes Ergebnis von explore übernehmen
       [--no-mcp]                         ohne Eintrag in .mcp.json
+      [--offline]                        ohne die Anwendung anzusehen: Vorlage mit TODO in der Anmeldung (auch ohne
+                                         Terminal und --url)
   validate                               Config und Tests prüfen, ohne Browser und ohne Claude
   doctor [--agent local|docker|session]  Node, Chrome, Claude Code (local) bzw. Docker und Token (docker), Zugangsdaten und
                                          Umgebungen prüfen, mit nächstem Schritt
@@ -43,11 +45,12 @@ Auf dem Host (im Projektordner):
   --version                              Version des Pakets
   mcp                                    Werkzeuge für deine Claude-Code-Session (in .mcp.json eintragen): Läufe starten,
                                          als Agent arbeiten (--agent session), gewähltes Element lesen
-  run <test> --target <umgebung>         Testlauf nach Plan, ohne Claude. Mit agent steht der Chat daneben: Scheitert ein Schritt,
+  run <test> --target <umgebung>         Testlauf nach Plan, ohne Claude. Mit claude steht der Chat daneben: Scheitert ein Schritt,
                                          klärst du ihn dort mit Claude und lässt ihn beheben
       [--until <S4>]                     Bis zu diesem Schritt fahren und das Fenster übergeben, mit lokalem Code, wo erlaubt
+      [--code local|deployed]            Welcher Code läuft: lokaler Build oder ausgelieferter Stand; Standard aus Test und Config
       [--handover]                       Danach das Chrome-Fenster dem Menschen überlassen
-      [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token, nur mit agent
+      [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token, nur mit claude
       [--no-chat]                        Ohne Chat und ohne Claude, wie in CI
       [--headless]                       Ohne Fenster und ohne Chat
       [--step-timeout <sekunden>]        Zeitlimit je Schritt, Standard 30
@@ -55,16 +58,18 @@ Auf dem Host (im Projektordner):
       [--max-steps <n>]                  Grenze für Aktionen von Claude beim Beheben, sonst maxSteps aus der Config, sonst 100
       [--agent local|docker|session]     Wo Claude arbeitet; Standard aus agent.sandbox der Config (local). session: deine
                                          Claude-Code-Session übernimmt über caw-ai mcp, caw startet keinen Claude
-  record <test> --target <umgebung>      Testplan aufnehmen oder ablösen, immer mit Chat, nur mit agent
+  record <test> --target <umgebung>      Testplan aufnehmen oder ablösen, immer mit Chat, nur mit claude
       [--role <rolle> --app <app>]       Nur beim ersten Mal; entfällt, wenn die Config nur eine kennt
       [--also <app>]                     Nur beim ersten Mal: Der Weg führt in eine weitere App des Projekts
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch, wird er schreibend
       [--timeout <minuten>]              Zeitlimit für Claude, Standard 60
       [--agent local|docker|session]     wie bei run
+      [--code local|deployed]            wie bei run; deployed bleibt in einem neuen Test stehen (code: deployed)
       [--max-steps <n>]                  Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
       [--step-timeout <sekunden>]        Zeitlimit je Schritt im Prüfdurchlauf, Standard 30
-  fix <test> <S4> --target <umgebung>    Genau diesen Schritt ändern, immer mit Chat, nur mit agent
+  fix <test> <S4> --target <umgebung>    Genau diesen Schritt ändern, immer mit Chat, nur mit claude
       [--timeout <minuten>] [--max-steps <n>] [--step-timeout <sekunden>] [--agent local|docker|session]
+      [--code local|deployed]
 
 Für den Agenten (Sandbox, lokal oder deine Session bei --agent session), steuert den Browser:
   task                                   Auftrag des offenen Laufs anzeigen
@@ -91,8 +96,8 @@ Für den Agenten (Sandbox, lokal oder deine Session bei --agent session), steuer
   finish --file <ergebnis.json>          Urteil einreichen; aufgezeichnet wird nur mit "omit"
   advise --file <empfehlung.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte
 
-<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. "Mit agent" heißt: auf Umgebungen
-mit "agent": true.
+<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. "Mit claude" heißt: auf Umgebungen
+mit "claude": true.
 
 Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
@@ -117,9 +122,13 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
     'cli.initUsesExplore': 'Nutze die Vorschläge aus {file}.',
     'cli.envExampleHead': '# Nach caw/.env kopieren (gitignored) und Testkonten mit wenig Rechten eintragen.\n# Der Agent sieht diese Datei nicht, steuert aber einen angemeldeten Browser: Keine persönlichen Konten verwenden.',
     'cli.initTodo': 'Noch einzutragen in caw.config.json: {keys} (explore fand sie nicht, siehe notes in caw/.explore.json).',
+    'cli.initTodoOffline': 'Noch einzutragen in caw.config.json: {keys}. Die Selektoren findet caw-ai explore --url <adresse>, sobald die Anwendung läuft.',
     'cli.doctorTodo': '{keys} steht noch auf TODO',
     'cli.doctorTodoNext': 'In caw.config.json den Selektor eintragen, etwa aus dem Quellcode der Anmeldeseite.',
-    'cli.initNext': 'Weiter: caw-ai doctor, dann den ersten Test aufnehmen: caw-ai record <test> --target {target}. Ohne passende Selektoren erst caw-ai explore --url <adresse>.',
+    'cli.initNext': 'Weiter: caw-ai doctor, dann den ersten Test aufnehmen: caw-ai record <test> --target {target}.',
+    'cli.initNextExplore': ' Ohne passende Selektoren erst caw-ai explore --url <adresse>.',
+    'cli.initOfflineFallback': 'Kein Terminal und keine --url: init schreibt die Vorlage, die Anmeldung bleibt TODO. Später: caw-ai explore --url <adresse>.',
+    'cli.contextTemplate': '# Notizen für Claude\n\nWas Claude in jedem Test wissen sollte, aber nicht im Code sieht. Keine personenbezogenen Daten.\n\n- Beispiel: Die Suche merkt sich die letzte Eingabe. Erst „Filter löschen“ klicken.\n',
 
     // commands.mjs: Dialog von init
     'cli.askUrl': 'Adresse der lokalen Umgebung',
@@ -142,16 +151,26 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
     'cli.validateChain': '{file}: {chain}, neu aufnehmen.',
     'cli.validateNotRecorded': '{file}: noch nicht aufgenommen.',
     'cli.validateOk': '{config} und {count} Test(s) sind gültig.',
+    'cli.validateCode': '{id} ({target}): {code}',
+    'cli.validateCodeDeployed': '{file}: code: deployed, aber App {app} hat inzwischen lokalen Code. Ohne code testet er auf Umgebungen mit localCode den lokalen Build.',
+    'cli.validateTodo': '{key} ist noch TODO: {what}',
+    'cli.validateTodo.path': 'trage den Pfad der Anmeldeseite ein, etwa "/login"',
+    'cli.validateTodo.userSelector': 'trage den CSS-Selektor des Benutzerfelds ein',
+    'cli.validateTodo.passwordSelector': 'trage den CSS-Selektor des Passwortfelds ein',
+    'cli.validateTodo.submitSelector': 'trage den CSS-Selektor des Anmeldeknopfs ein oder lass das Feld weg (dann sendet Enter)',
+    'cli.validateTodo.codeSelector': 'trage den CSS-Selektor des Felds für den Einmalcode ein',
+    'cli.validateTodo.signedInSelector': 'trage einen CSS-Selektor ein, den es nur angemeldet gibt, etwa das Benutzermenü',
 
     // commands.mjs: Sandbox, Lauf, Aufnahme, Beheben
     'cli.imageBuilding': 'Baue das Sandbox-Image (nur beim ersten Lauf und nach Tool-Änderungen) ...',
     'cli.imageBuildFailed': 'Das Sandbox-Image ließ sich nicht bauen (Exit {code}). Fehlt der Registry-Login für {image}?',
-    'cli.noWatch': 'Kein {label} aktiv: Getestet wird der deployte Stand, ohne lokalen Code.',
+    'cli.noWatch': 'kein {label} aktiv',
+    'cli.noWatchLocal': 'Kein {label} aktiv, mit --code local läuft trotzdem der lokale Stand: Er kann veraltet sein.',
     'cli.testMissing': 'Test nicht gefunden: {file}. Neu aufnehmen: {hint}',
     'cli.noEnvironment': 'keiner Umgebung',
     'cli.verbRecord': 'Aufgenommen wird',
     'cli.verbFix': 'Behoben wird',
-    'cli.agentOnly': '{verb} nur auf {environments}, nicht auf {target}.',
+    'cli.agentOnly': '{verb} braucht environments.{environment}.claude: true (zurzeit nur: {environments}).',
     'cli.agentNotInCi': '--agent {agent} geht nicht in CI (Variable CI gesetzt), dort läuft Claude nur in Docker.',
     'cli.sessionAgent': 'Claude arbeitet in deiner Claude-Code-Session: Sage ihr „übernimm den caw-Lauf“. Sie findet ihn über das Tool caw (caw-ai mcp) oder caw-ai <befehl>.',
     'cli.sessionLabel': 'deine Claude-Code-Session',
@@ -160,7 +179,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
     'cli.tokenMissing': '{hint} Erzeugen z. B. mit claude setup-token.',
     'cli.and': ' und ',
     'cli.draftMissing': 'Für den neuen Test {id} fehlt {missing}. Aufruf: {hint}',
-    'cli.unknownApp': 'Unbekannte App: {name}',
+    'cli.unknownApp': 'Unbekannte App: {name} (Apps in {config}: {apps})',
     'cli.choiceShow': 'Selbst vorführen',
     'cli.choiceFollow': 'Claude geht dem Testplan nach',
     'cli.choiceReuse': 'Letzte Vorführung verwenden ({time}, {count} Einträge)',
@@ -257,8 +276,20 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt.`,
 
     // ui.mjs
     'cli.uiOn': 'auf',
-    'cli.uiLocal': 'lokaler Stand',
-    'cli.uiDeployed': 'Stand der Adresse',
+    'cli.uiLocal': 'lokaler Build',
+    'cli.uiDeployed': 'ausgelieferter Stand',
+    'cli.uiCode': 'Code: {code}',
+    'cli.code.deployed': 'ausgelieferter Stand',
+    'cli.code.deployedWhy': 'ausgelieferter Stand ({reason})',
+    'cli.code.local': 'lokaler Build ({details})',
+    'cli.code.localFrom': 'lokaler Build aus {details}',
+    'cli.code.built': '{dir}, gebaut {time}, {ago}',
+    'cli.code.entries': '{kinds} in {dir}',
+    'cli.code.stale': 'Der lokale Build ({dir}) ist älter als deine letzte Änderung ({file}, {ago}). Läuft der Build-Watch? Sonst --code deployed.',
+    'cli.code.agoNow': 'gerade eben',
+    'cli.code.agoMinutes': 'vor {count} min',
+    'cli.code.agoHours': 'vor {count} h',
+    'cli.code.agoDays': 'vor {count} Tagen',
     'cli.uiMaxSteps': 'bis {count} Schritte',
     'cli.uiWarnings': '{count} Warnung(en) im Bericht.',
     'cli.uiReport': 'Bericht:',

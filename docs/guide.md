@@ -64,9 +64,9 @@ This check runs before anything else and aborts with its own message (exit 2):
 
 | Command | What happens | AI and chat | Environment |
 |---|---|---|---|
-| `record <test> --target <env>` | Record a new test plan or replace one | always | only environments with `agent` |
-| `run <test> --target <env>` | Test run by plan, optionally up to a step | On environments with `agent` the chat sits alongside from the start; Claude only after your message, your click on "Let Claude find the cause" or "Fix step", or with `--advise` | all |
-| `fix <test> <S4> --target <env>` | Change exactly this step. If it has a valid recording, `fix` first replays up to it: if it fails, the chat clarifies the cause as in `run`; only a passed or outdated step is re-recorded | always | only environments with `agent` |
+| `record <test> --target <env>` | Record a new test plan or replace one | always | only environments with `claude` |
+| `run <test> --target <env>` | Test run by plan, optionally up to a step | On environments with `claude` the chat sits alongside from the start; Claude only after your message, your click on "Let Claude find the cause" or "Fix step", or with `--advise` | all |
+| `fix <test> <S4> --target <env>` | Change exactly this step. If it has a valid recording, `fix` first replays up to it: if it fails, the chat clarifies the cause as in `run`; only a passed or outdated step is re-recorded | always | only environments with `claude` |
 
 `<env>` is a name from `environments`, e.g. `local`. With tenants (`sites`) the target is `tenant/env`, e.g. `nord/dev`.
 
@@ -139,7 +139,7 @@ All error codes with fixes: [Commands › Error codes](commands.md#error-codes).
 
 ## Recording a test plan: `record`
 
-You name role and app only the first time; the tool writes the metadata (`targets: [<target>]`, `mutates: true`, `source: watch` if the app has local code). A re-recording keeps it. Claude Code or Docker, token and image are checked up front so your demonstration isn't wasted.
+You name role and app only the first time; the tool writes the metadata (`targets: [<target>]`, `mutates: true`, and `code: deployed` only with `--code deployed`). A re-recording keeps it. Claude Code or Docker, token and image are checked up front so your demonstration isn't wasted.
 
 1. **Start.** Chrome and the chat open, you are signed in. For a new test you demonstrate right away. For an existing one the chat first asks: "Show it myself" or "Claude follows the test plan".
 2. **Plan.** Claude presents the draft as a card in the chat: per test step ID, title, action and one expected result, plus notes on assumptions and open questions. The plan is the future test file without recording: YAML with `notes` and `steps`. Metadata or recordings Claude puts there are discarded by the tool. You approve or write what should change, and Claude presents a new version. Until approval the host rejects every action in the application with `plan-required`; reading is allowed.
@@ -208,13 +208,13 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 
 **Limits:**
 
-- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `agent` and only with test accounts, the skill rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every call other than GET, HEAD and OPTIONS and every one with a key from `requestKeys`, without parameter values. Sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count: they don't make a test a writing one.
+- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `claude` and only with test accounts, the skill rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every call other than GET, HEAD and OPTIONS and every one with a key from `requestKeys`, without parameter values. Sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count: they don't make a test a writing one.
 - **Step budget:** `--max-steps` (else `maxSteps` from the config, else 100) counts Claude's `click`, `fill`, `type`, `press`, `goto` and `reload`, failed ones included. What you demonstrate yourself doesn't count.
 - **Claude doesn't react instantly:** `claude -p` runs without input; message and pause take effect before the next action. "Cancel" takes effect immediately.
 
 ## Test run: `run`
 
-Replays the recording without model, Docker or token. On environments with `agent` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with `--until` and `--handover`, stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 3 and names `record`. If a step is outdated, it ends with exit 3 and names `fix` for exactly that step.
+Replays the recording without model, Docker or token. On environments with `claude` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with `--until` and `--handover`, stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 3 and names `record`. If a step is outdated, it ends with exit 3 and names `fix` for exactly that step.
 
 - **Waiting:** There are no fixed pauses. A step waits until its target is visible and not covered. That covers load masks, overlays and dialogs within dialogs, since only the topmost dialog is clickable. `check` retries until it holds or the time limit expires.
 - **Time limits:** 30 seconds per step by default, changeable with `--step-timeout`, or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--timeout <minutes>` (default 60) and `--max-steps <n>` apply as for `record` and `fix`.
@@ -232,7 +232,7 @@ caw-ai run <test> --target local --until S4
 
 The tool replays the recording up to the passed `check` of `S4` and hands over the window. Later steps don't run, so they may be outdated. The sequence is deterministic, the environment isn't: this is not a snapshot. The path runs anew each time with new data, and if the application deviates, the step fails visibly.
 
-- **Local code:** Always on environments with `localCode`, even with `source: deployed`. You see changes with F5; the form state is gone afterwards. To get back, start the command again.
+- **Local code:** Wherever environment and app have it, even with `code: deployed`; the `Code:` line says so (see [Testing local code](configuration.md#testing-local-code)). You see changes with F5; the form state is gone afterwards. To get back, start the command again.
 - **Path fails:** You clarify the error in the chat and can have the step fixed. If you close the chat, the window still goes to you and the report names the error. The exit code remains the verdict.
 - **No recording:** exit 3, record first.
 - **State after reload:** Whether a view keeps its state after F5 depends on the application.
@@ -251,7 +251,7 @@ With chat, the chat stays open after handover (state "Develop"):
 
 ## Fixing a step
 
-If a step fails in `run` or in the check run of `record` and `fix`, replay stops and the browser stays in the failure state. The chat says "S4 failed: <reason>" with hard errors and warnings and unlocks input (state "Clarify failure"), plus "Fix step" and "End run". Below it is the tool's [assessment](#assessment-test-application-or-environment) with its findings. If it points to an application bug, "Fix step" becomes only the second button, with a note that an adjusted test would merely hide the bug. This exists only on environments with `agent`; in CI, with `--no-chat`/`--headless` and on other environments there is only the exit code and the report.
+If a step fails in `run` or in the check run of `record` and `fix`, replay stops and the browser stays in the failure state. The chat says "S4 failed: <reason>" with hard errors and warnings and unlocks input (state "Clarify failure"), plus "Fix step" and "End run". Below it is the tool's [assessment](#assessment-test-application-or-environment) with its findings. If it points to an application bug, "Fix step" becomes only the second button, with a note that an adjusted test would merely hide the bug. This exists only on environments with `claude`; in CI, with `--no-chat`/`--headless` and on other environments there is only the exit code and the report.
 
 - **Ask:** Only your message starts Claude, in the same browser and read-only as with [advice](#advice-on-errors-and-warnings). It answers in the chat, names cause, file and line, and can give advice cards. Each further message continues the same conversation until you press a button. The log is in `agent/claude-gespraech.log`. Without a message or click, no tokens are spent.
 - **Fix in the same browser:** If nothing of the failed step has run yet, i.e. its first action failed without a hard error from outside, Claude fixes it right there, without a lead-in. The test run's report is kept as `report-testlauf.md`. Otherwise, e.g. after half a sequence of actions or an unmet check, it proceeds as below with a lead-in in a fresh browser. The chat says beforehand which way it will be.
@@ -291,7 +291,7 @@ If a step fails, the tool classifies the failure without Claude and without toke
 
 The strongest finding decides; the others are listed below it. Without notable evidence it stays "unclear". The assessment appears in the chat, as the "Assessment" section in `report.md` with a table of requests next to the recorded ones, in `result.json` and in Claude's task (`diagnosis`, `evidence`). Claude reads it there first and can fetch the latest requests with `network`.
 
-Without `recording.network` the report says so. The baseline is never created while recording or fixing: under Claude's control misclicks and detours also run, which are dropped from the recording, and their requests didn't belong to the step. It is created without Claude and tokens in the next `run` with chat on an environment with `agent`, from the cleaned-up recording: every passed step without a baseline then gets one from this run, if it was recorded on the same target. The same goes for the effect per action. Chat and terminal name the steps; only this field changes in the file, the hash stays untouched. A `run` never overwrites existing values, unless they date from before parameter names (entries without `params`). Without chat, e.g. in CI, the file stays as it is.
+Without `recording.network` the report says so. The baseline is never created while recording or fixing: under Claude's control misclicks and detours also run, which are dropped from the recording, and their requests didn't belong to the step. It is created without Claude and tokens in the next `run` with chat on an environment with `claude`, from the cleaned-up recording: every passed step without a baseline then gets one from this run, if it was recorded on the same target. The same goes for the effect per action. Chat and terminal name the steps; only this field changes in the file, the hash stays untouched. A `run` never overwrites existing values, unless they date from before parameter names (entries without `params`). Without chat, e.g. in CI, the file stays as it is.
 
 ### Effect per action
 
@@ -307,7 +307,7 @@ Every action (click, input, key) has an effect on the page. The tool measures it
 
 Numbers become `#`, so order numbers and dates don't interfere.
 
-**Learning:** A passed `run` with chat on an environment with `agent` records the effect. The first two healthy runs are reconciled: only what was equal in both is kept; the console collects everything that occurred. The effect then counts as learned (`runs: 2`) and no run changes it any more. A newly recorded step learns anew.
+**Learning:** A passed `run` with chat on an environment with `claude` records the effect. The first two healthy runs are reconciled: only what was equal in both is kept; the console collects everything that occurred. The effect then counts as learned (`runs: 2`) and no run changes it any more. A newly recorded step learns anew.
 
 **Comparison:**
 - If something from the learned effect is missing during replay, that is a deviation, as is a new console message.
@@ -324,7 +324,7 @@ Without fix parameters nothing costs tokens as long as you don't write or click:
 | Run | When |
 |---|---|
 | `run` and "Let Claude find the cause" | A step failed and you click the button in the chat. If the assessment is "application", it is the main button, otherwise it sits next to "Fix step". Then as with `--advise`: cards, and "Test again" after an adopted application change |
-| `run … --advise` | Without a click: a step fails, a hard error occurs or there are warnings, even in a passed run. For runs whose result you only look at later. Only on environments with `agent` and with chat (not in CI), otherwise exit 3 |
+| `run … --advise` | Without a click: a step fails, a hard error occurs or there are warnings, even in a passed run. For runs whose result you only look at later. Only on environments with `claude` and with chat (not in CI), otherwise exit 3 |
 | `fix <test> <S4>` and "Fix step" | Errors or warnings while fixing and in the check run afterwards |
 | `record` | only once you choose "Fix step" in the check run |
 
@@ -351,10 +351,11 @@ In a terminal the tool shows colors, symbols and, at the end, a result block wit
 
 ## How local code gets into the application
 
+When local code runs, what to set for which setup, and how `localBuild` and `statics` are served: [Configuration › Testing local code](configuration.md#testing-local-code). This section covers the Sencha/ExtJS entries.
+
 On environments with `localCode`, Chrome answers certain requests from the project folder instead of the server. Which ones is set by `assetUrlPattern`: a regular expression whose first group yields the file name. For that name the tool looks for an entry of the app:
 
-- **`localBuild`:** the folder your build or build watch writes to, e.g. `"localBuild": "dist"` (Vite) or `"dist/app/browser"` (Angular CLI). Build as usual, with hashes. A request for a file that exists there gets that file; a request for a file of the deployed build, e.g. `assets/index-Bx81.js` from the deployed `index.html`, gets the local file that differs only in the hash (`assets/index-Q7f2.js`). Everything the local entry loads, lazy chunks included, has local names and comes from the folder too. Pages (`index.html`, routes) always come from the server, so its configuration, `<base href>` and CSP stay. JS, CSS, source maps, fonts and images are served with their type. Without `assetUrlPattern` the name is the path below the environment URL. The folder must contain a build before the run, otherwise it stops with `watch-missing`. Not for server-rendered apps (Next.js, Nuxt): their server writes the deployed file names into every page. Service workers are blocked in the test browser, so a cached deployed build never hides the local one.
-- **`statics`:** one file, `{ "name": "main.js", "path": "dist/main.js" }`, for apps that load built files under fixed names, e.g. with `"assetUrlPattern": "/static/js/([^?#]+)"`. Every file that changes must be listed; one not listed comes from the server. The file must exist before the run, otherwise it stops with `watch-missing`.
+- **`localBuild`, `statics`:** a build folder or single built files, see [Testing local code](configuration.md#testing-local-code).
 - **`redirects`:** a Sencha package or the app itself. Which source files belong to it, in which order, is in `bootstrap.json` in the app folder.
 - **`constants`:** a file rewritten by a watch (`watchPath`).
 

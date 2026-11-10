@@ -19,7 +19,7 @@ An app on a local dev server, no login:
 ```json
 {
   "environments": {
-    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
   },
   "apps": { "web": { "dir": ".", "startUrl": "/" } }
 }
@@ -31,7 +31,7 @@ With a login form:
 {
   "framework": "react",
   "environments": {
-    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
   },
   "auth": {
     "type": "form",
@@ -63,7 +63,8 @@ Required. One entry per place your app runs. The name is what you pass to `--tar
 
 ```json
 "environments": {
-  "local":   { "url": "http://localhost:5173", "agent": true, "localCode": true, "writable": true },
+  "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
+  "dev":     { "url": "https://dev.example.com", "claude": true, "localCode": true, "writable": true },
   "staging": { "url": "https://staging.example.com" },
   "prod":    { "url": "https://example.com", "production": true }
 }
@@ -72,13 +73,13 @@ Required. One entry per place your app runs. The name is what you pass to `--tar
 | Field | |
 |---|---|
 | `url` | Origin of the app. `https`, or `http` for `localhost`, `127.0.0.1` and `*.localhost`. |
-| `agent` | `true`: Claude may record, fix and investigate here. |
+| `claude` | `true`: Claude may record, fix and investigate here. Formerly `agent`, which still works; `validate` points it out. |
 | `writable` | `true`: tests with `mutates: true` may run here. |
-| `localCode` | `true`: serve app code from your project folder (see `assetUrlPattern`). |
-| `production` | Required for names like `prod` or `live`. Such an environment can't have `agent`, `localCode` or `writable`. |
+| `localCode` | `true`: serve your local build into this remote environment. Needs `localBuild` (or entries) on the app; not needed for a dev server on your machine. See [Testing local code](#testing-local-code). |
+| `production` | Required for names like `prod` or `live`. Such an environment can't have `claude`, `localCode` or `writable`. |
 | `urls` | Instead of `url` when you use `sites`: `{ "north": "https://north.example.com", … }`. |
 
-Anything not set to `true` is off. A run against `staging` above replays only, read-only tests only.
+Anything not set to `true` is off. A run against `staging` above replays only, read-only tests only, against the deployed version.
 
 ## auth
 
@@ -140,9 +141,58 @@ Required. Usually one app; monorepos can list several.
 |---|---|
 | `dir` | App folder relative to the project, `.` for a single app. |
 | `startUrl` | Path where tests start. Only needed for apps a test starts in. |
-| `localBuild` | Local code: the build folder relative to the project, e.g. `"dist"` or `"dist/app/browser"`. Works with normal hashed builds (Vite, Angular CLI, webpack). |
+| `localBuild` | Local code: the build folder relative to the project, e.g. `"dist"` or `"dist/app/browser"`. Works with normal hashed builds (Vite, Angular CLI, webpack). See [Testing local code](#testing-local-code). |
 | `statics` | Local code, single files: `[{ "name": "main.js", "path": "dist/main.js" }]` |
 | `redirects`, `constants` | Local code for Sencha/ExtJS apps. |
+
+## Testing local code
+
+Which code a run tests is decided in one place, and every run says it in its first lines, in CI too:
+
+```
+Code: local build (dist, built 14:02, 3 min ago)
+Code: deployed (environment staging has no localCode)
+```
+
+What to set depends on where your app runs:
+
+| Setup | What to set |
+|---|---|
+| Dev server on your machine (`http://localhost:5173`: Vite, `ng serve`, webpack dev server) | Nothing. The dev server already serves your code; `localCode` does nothing there. |
+| Remote environment (dev, test) and a normal hashed build (Vite, Angular CLI, webpack) | `"localCode": true` on the environment, `"localBuild": "dist"` on the app: the folder your build or build watch writes to. |
+| Remote environment, app loads built files under fixed names | `"localCode": true`, `statics` on the app and `assetUrlPattern`. |
+| ExtJS / Sencha | `"localCode": true`, `redirects` and/or `constants` on the app and `assetUrlPattern`; keep the Sencha watch running. |
+
+```json
+"environments": {
+  "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
+  "dev":   { "url": "https://dev.example.com", "claude": true, "localCode": true, "writable": true }
+},
+"apps": { "web": { "dir": ".", "startUrl": "/", "localBuild": "dist" } }
+```
+
+**Which code runs.** The first rule that applies wins:
+
+1. `--code local` or `--code deployed` on `run`, `fix` or `record`. `--code local` on an environment without `localCode`, or for an app without local code, is rejected (exit 3) and names the missing key.
+2. `--until`: a state for development uses the local build wherever environment and app have one, even with `code: deployed` in the test.
+3. `code: deployed` in the test ([Test files](test-files.md)).
+4. Otherwise the local build, if the environment has `localCode` and the test's app (or one in `also`) has `localBuild`, `statics`, `redirects` or `constants`. If not, the deployed version, and the `Code:` line says why.
+
+With ExtJS, if no Sencha watch is running, the run uses the deployed version and says so; with `--code local` it warns and uses the local code anyway.
+
+**Outdated build.** Before a run with `localBuild`, caw-ai compares the newest file in the build folder with the newest file in the app's `dir`. Not counted: `node_modules`, the build folder, folders starting with a dot (`.angular`, `.next`, …), common build folders (`dist`, `build`, `out`, `coverage`), `caw/` and Markdown files; at most 5000 files are looked at. If you changed code after the last build, the run warns and continues:
+
+```
+The local build (dist) is older than your last change (src/x.tsx, 12 min ago). Is the build watch running? Otherwise --code deployed.
+```
+
+**`validate`** prints the code per test and target, e.g. `smoke (dev): local build from dist`, and notes settings without effect: an environment with `localCode` while no app has local code, an app with `localBuild` while no environment has `localCode`, and a test with `code: deployed` whose app now has local code.
+
+**How the local build gets into the app.** On environments with `localCode`, Chrome answers certain requests from the project folder instead of the server:
+
+- **`localBuild`:** Build as usual, with hashes. A request for a file that exists in the folder gets that file; a request for a file of the deployed build, e.g. `assets/index-Bx81.js` from the deployed `index.html`, gets the local file that differs only in the hash (`assets/index-Q7f2.js`). Everything the local entry loads, lazy chunks included, has local names and comes from the folder too. Pages (`index.html`, routes) always come from the server, so its configuration, `<base href>` and CSP stay. JS, CSS, source maps, fonts and images are served with their type. Without `assetUrlPattern` the name is the path below the environment URL. The folder must contain a build before the run, otherwise it stops with `watch-missing`. Not for server-rendered apps (Next.js, Nuxt): their server writes the deployed file names into every page. Service workers are blocked in the test browser, so a cached deployed build never hides the local one.
+- **`statics`:** one file, `{ "name": "main.js", "path": "dist/main.js" }`, with e.g. `"assetUrlPattern": "/static/js/([^?#]+)"` (group 1 is the name). Every file that changes must be listed; one not listed comes from the server. The file must exist before the run, otherwise it stops with `watch-missing`.
+- **`redirects`, `constants`:** Sencha/ExtJS, see [Guide](guide.md#how-local-code-gets-into-the-application).
 
 ## Everything else
 

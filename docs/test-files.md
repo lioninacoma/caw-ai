@@ -44,13 +44,13 @@ steps:
 
 | Field | Required | |
 |---|---|---|
-| `id` | yes | Same as the file name. |
-| `app` | yes | App the test starts in. |
-| `role` | with login | Role from the config. |
-| `targets` | yes | Environments the test may run on. |
-| `mutates` | yes | `true` if it writes. Such tests only run on `writable` environments. |
+| `id` | no | Defaults to the file name; if given, it must match it. |
+| `app` | if the config has several apps | App the test starts in. Defaults to the only app in the config. |
+| `role` | with login, if the config has several roles | Role from the config. Defaults to the only role. |
+| `targets` | no | Environments the test may run on. Defaults to all environments except production. |
+| `mutates` | yes | `true` if it creates or changes data; such tests only run on environments with `writable: true`. `false` if it only reads. |
 | `also` | no | More apps the flow passes through, e.g. `[admin]`. Their local code is served too. |
-| `source` | no | `watch`: use local code where the environment allows it. |
+| `code` | no | `deployed`: always test the deployed version, even where a local build could be served. Default `local`: the local build where environment and app have one, see [Testing local code](configuration.md#testing-local-code). Formerly `source: watch` / `source: deployed`, which still works with a note. |
 | `notes` | no | Context for the whole test. |
 | `steps` | yes | See below. |
 

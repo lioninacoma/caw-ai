@@ -19,7 +19,7 @@ Eine App auf einem lokalen Dev-Server, ohne Anmeldung:
 ```json
 {
   "environments": {
-    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
   },
   "apps": { "web": { "dir": ".", "startUrl": "/" } }
 }
@@ -31,7 +31,7 @@ Mit Anmeldeformular:
 {
   "framework": "react",
   "environments": {
-    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
   },
   "auth": {
     "type": "form",
@@ -63,7 +63,8 @@ Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du a
 
 ```json
 "environments": {
-  "local":   { "url": "http://localhost:5173", "agent": true, "localCode": true, "writable": true },
+  "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
+  "dev":     { "url": "https://dev.example.com", "claude": true, "localCode": true, "writable": true },
   "staging": { "url": "https://staging.example.com" },
   "prod":    { "url": "https://example.com", "production": true }
 }
@@ -72,13 +73,13 @@ Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du a
 | Feld | |
 |---|---|
 | `url` | Origin der App. `https`, oder `http` für `localhost`, `127.0.0.1` und `*.localhost`. |
-| `agent` | `true`: Claude darf hier aufnehmen, reparieren und untersuchen. |
+| `claude` | `true`: Claude darf hier aufnehmen, reparieren und untersuchen. Früher `agent`; das gilt weiter, `validate` weist darauf hin. |
 | `writable` | `true`: Tests mit `mutates: true` dürfen hier laufen. |
-| `localCode` | `true`: App-Code aus deinem Projektordner ausliefern (siehe `assetUrlPattern`). |
-| `production` | Pflicht für Namen wie `prod` oder `live`. Eine solche Umgebung kann kein `agent`, `localCode` oder `writable` haben. |
+| `localCode` | `true`: deinen lokalen Build in diese entfernte Umgebung einspielen. Braucht `localBuild` (oder Einträge) an der App; für einen Dev-Server auf deinem Rechner unnötig. Siehe [Lokalen Code testen](#lokalen-code-testen). |
+| `production` | Pflicht für Namen wie `prod` oder `live`. Eine solche Umgebung kann kein `claude`, `localCode` oder `writable` haben. |
 | `urls` | Statt `url`, wenn du `sites` nutzt: `{ "nord": "https://nord.example.com", … }`. |
 
-Was nicht auf `true` steht, ist aus. Gegen `staging` oben läuft also nur Abspielen, und nur lesende Tests.
+Was nicht auf `true` steht, ist aus. Gegen `staging` oben läuft also nur Abspielen, nur lesende Tests, gegen den ausgelieferten Stand.
 
 ## auth
 
@@ -140,9 +141,58 @@ Pflicht. Meist eine App; Monorepos können mehrere nennen.
 |---|---|
 | `dir` | App-Ordner relativ zum Projekt, `.` für eine einzelne App. |
 | `startUrl` | Pfad, an dem Tests beginnen. Nur für Apps, in denen ein Test startet. |
-| `localBuild` | Lokaler Code: der Build-Ordner relativ zum Projekt, z. B. `"dist"` oder `"dist/app/browser"`. Funktioniert mit normalen Builds mit Hash (Vite, Angular CLI, webpack). |
+| `localBuild` | Lokaler Code: der Build-Ordner relativ zum Projekt, z. B. `"dist"` oder `"dist/app/browser"`. Funktioniert mit normalen Builds mit Hash (Vite, Angular CLI, webpack). Siehe [Lokalen Code testen](#lokalen-code-testen). |
 | `statics` | Lokaler Code, einzelne Dateien: `[{ "name": "main.js", "path": "dist/main.js" }]` |
 | `redirects`, `constants` | Lokaler Code für Sencha-/ExtJS-Apps. |
+
+## Lokalen Code testen
+
+Welchen Code ein Lauf testet, entscheidet eine Stelle, und jeder Lauf nennt es in seinen ersten Zeilen, auch in CI:
+
+```
+Code: lokaler Build (dist, gebaut 14:02, vor 3 min)
+Code: ausgelieferter Stand (Umgebung staging hat kein localCode)
+```
+
+Was du einträgst, hängt davon ab, wo deine App läuft:
+
+| Aufbau | Was eintragen |
+|---|---|
+| Dev-Server auf deinem Rechner (`http://localhost:5173`: Vite, `ng serve`, webpack-Dev-Server) | Nichts. Der Dev-Server liefert deinen Code schon aus; `localCode` bewirkt dort nichts. |
+| Entfernte Umgebung (dev, test) und ein normaler Build mit Hashes (Vite, Angular CLI, webpack) | `"localCode": true` an der Umgebung, `"localBuild": "dist"` an der App: der Ordner, in den dein Build oder Build-Watch schreibt. |
+| Entfernte Umgebung, die App lädt gebaute Dateien unter festen Namen | `"localCode": true`, `statics` an der App und `assetUrlPattern`. |
+| ExtJS / Sencha | `"localCode": true`, `redirects` und/oder `constants` an der App und `assetUrlPattern`; der Sencha-Watch läuft. |
+
+```json
+"environments": {
+  "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
+  "dev":   { "url": "https://dev.example.com", "claude": true, "localCode": true, "writable": true }
+},
+"apps": { "web": { "dir": ".", "startUrl": "/", "localBuild": "dist" } }
+```
+
+**Welcher Code läuft.** Die erste Regel, die passt, gilt:
+
+1. `--code local` oder `--code deployed` bei `run`, `fix` oder `record`. `--code local` auf einer Umgebung ohne `localCode` oder für eine App ohne lokalen Code wird abgelehnt (Exit 3), die Meldung nennt den fehlenden Schlüssel.
+2. `--until`: Ein Zustand für die Entwicklung nimmt den lokalen Build, wo Umgebung und App einen haben, auch bei `code: deployed` im Test.
+3. `code: deployed` im Test ([Testdateien](test-files.de.md)).
+4. Sonst der lokale Build, wenn die Umgebung `localCode` hat und die App des Tests (oder eine aus `also`) `localBuild`, `statics`, `redirects` oder `constants`. Wenn nicht, der ausgelieferte Stand, und die Zeile `Code:` sagt, warum.
+
+Bei ExtJS: Läuft kein Sencha-Watch, nimmt der Lauf den ausgelieferten Stand und sagt das; mit `--code local` warnt er und nimmt trotzdem den lokalen Code.
+
+**Veralteter Build.** Vor einem Lauf mit `localBuild` vergleicht caw-ai die jüngste Datei im Build-Ordner mit der jüngsten Datei unter `dir` der App. Nicht mit: `node_modules`, der Build-Ordner, Ordner mit Punkt (`.angular`, `.next`, …), übliche Build-Ordner (`dist`, `build`, `out`, `coverage`), `caw/` und Markdown-Dateien; angesehen werden höchstens 5000 Dateien. Hast du nach dem letzten Build Code geändert, warnt der Lauf und läuft weiter:
+
+```
+Der lokale Build (dist) ist älter als deine letzte Änderung (src/x.tsx, vor 12 min). Läuft der Build-Watch? Sonst --code deployed.
+```
+
+**`validate`** nennt den Code je Test und Ziel, etwa `smoke (dev): lokaler Build aus dist`, und weist auf Einstellungen ohne Wirkung hin: eine Umgebung mit `localCode`, während keine App lokalen Code hat, eine App mit `localBuild`, während keine Umgebung `localCode` hat, und einen Test mit `code: deployed`, dessen App inzwischen lokalen Code hat.
+
+**Wie der lokale Build in die App kommt.** Auf Umgebungen mit `localCode` beantwortet Chrome bestimmte Requests aus dem Projektordner statt vom Server:
+
+- **`localBuild`:** Gebaut wird wie immer, mit Hash. Ein Request auf eine Datei, die im Ordner liegt, bekommt diese Datei; ein Request auf eine Datei des deployten Builds, etwa `assets/index-Bx81.js` aus dem deployten `index.html`, bekommt die lokale Datei, die sich nur im Hash unterscheidet (`assets/index-Q7f2.js`). Alles, was der lokale Einstieg nachlädt, auch Lazy-Chunks, trägt lokale Namen und kommt ebenfalls aus dem Ordner. Seiten (`index.html`, Routen) kommen immer vom Server, damit bleiben seine Konfiguration, `<base href>` und CSP. JS, CSS, Quellkarten, Schriften und Bilder gehen mit ihrem Typ raus. Ohne `assetUrlPattern` ist der Name der Pfad unterhalb der Umgebungs-URL. Im Ordner muss vor dem Lauf ein Build liegen, sonst endet er mit `watch-missing`. Nicht für serverseitig gerenderte Apps (Next.js, Nuxt): Deren Server schreibt die deployten Dateinamen in jede Seite. Service Worker sind im Testbrowser gesperrt, ein gecachter deployter Build verdeckt den lokalen also nie.
+- **`statics`:** eine Datei, `{ "name": "main.js", "path": "dist/main.js" }`, mit etwa `"assetUrlPattern": "/static/js/([^?#]+)"` (die erste Gruppe ist der Name). Jede Datei, die sich ändert, muss genannt sein; eine nicht genannte kommt vom Server. Die Datei muss vor dem Lauf existieren, sonst endet er mit `watch-missing`.
+- **`redirects`, `constants`:** Sencha/ExtJS, siehe [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
 
 ## Alles Weitere
 

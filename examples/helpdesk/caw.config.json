@@ -4,7 +4,7 @@
     "environments": {
         "local": {
             "url": "http://localhost:4173",
-            "agent": true,
+            "claude": true,
             "writable": true
         }
     },
