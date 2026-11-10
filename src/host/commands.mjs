@@ -541,7 +541,13 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
     try {
         let windowClosed = false;
         session.closed.then(() => { windowClosed = true; });
-        chat = await openChat({ session, logPath: join(dir, 'chat.log'), onAbort: () => process.emit('SIGINT'), onOpen: conversation.onChatOpen, transcript: conversation.transcript });
+        chat = await openChat({ session, logPath: join(dir, 'chat.log'), onAbort: () => process.emit('SIGINT'), onOpen: conversation.onChatOpen, onWaiting: ui.note, transcript: conversation.transcript });
+        // Gleich geht dieses Fenster zu und Claude bekommt ein neues: Das sagen Chat und Terminal vorher.
+        const handOver = () => {
+            const line = t('run.newWindow', { what: t('run.newWindow.claude') });
+            chat.notice(line);
+            ui.note(line);
+        };
         // Ist die letzte Aufnahme nach der Vorfuehrung gescheitert (Anmeldung, Claude), muss der Mensch nicht noch einmal vorfuehren.
         const last = lastDemonstration(root, spec.id);
         const reuse = last === null ? null : { id: 'reuse', label: t('cli.choiceReuse', { time: new Date(last.at).toLocaleTimeString(language() === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' }), count: last.items.length }), primary: true };
@@ -554,6 +560,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
             else if (exists) question = t('cli.questionDescribed', { id: spec.id });
             const choice = await Promise.race([chat.choose('choosing', question, options), session.closed.then(() => null)]);
             if (choice === null) throw aborted();
+            if (choice === 'follow' || choice === 'reuse') handOver();
             if (choice === 'follow') return undefined;
             if (choice === 'reuse') return { items: last.items, dir: last.dir };
         }
@@ -564,11 +571,13 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
             if (!chat.available() || windowClosed) throw aborted();
             if (items.length > 0) {
                 writeFileSync(join(dir, 'vorfuehrung.json'), JSON.stringify(items, null, 2));
+                handOver();
                 return { items, dir };
             }
             // Nichts vorgefuehrt: Mit Testplan geht Claude ihm nach, sonst gibt es nichts, woraus Claude den Plan machen koennte.
             if (exists) {
                 ui.note(t('cli.demoNothingFollow'));
+                handOver();
                 return undefined;
             }
             chat.notice(t('cli.demoNothing'));

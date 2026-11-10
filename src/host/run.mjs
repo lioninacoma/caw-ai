@@ -39,6 +39,8 @@ const POLL_MS = 50;
 const AGENT_DIR = 'agent';
 const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
+// So lange bleibt das Fenster nach der letzten Entscheidung offen, mit Countdown, wenn der Mensch es nicht selbst schliesst.
+const LINGER_MS = 15000;
 const ADVICE_LOG = 'claude-empfehlung.log';
 const DRAFT_FILE = 'test-entwurf.yaml';
 // Aendert den Zustand der Seite oder belegt einen Punkt: Das geht erst nach der Freigabe des Plans.
@@ -306,7 +308,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // Der Chat steht immer neben dem Anwendungsfenster. Mit `lazy` oeffnet er sich erst, wenn etwas schiefgeht.
     let chat = null;
     const tokensOk = createTokenGate({ chat: () => chat });
-    const openConversation = () => openChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, transcript: conversation.transcript });
+    const openConversation = () => openChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, transcript: conversation.transcript });
     if (conversation !== undefined && conversation.lazy !== true) {
         try {
             chat = await openConversation();
@@ -590,7 +592,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         let agent = IDLE_AGENT;
         const finished = (async () => {
             // Erst der Hinweis auf Token; lehnt der Mensch ab, geht es ohne Claude weiter.
-            if (!await tokensOk()) {
+            if (!await tokensOk({ decline: t('run.tokens.withoutClaude') })) {
                 // Sofort vorbei: Eine Nachricht gleich nach dem Abbrechen braucht eine neue Sitzung, mit neuer Frage.
                 over = true;
                 chat.progress(t('run.tokens.declined'));
@@ -712,7 +714,12 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const talk = (options, question, element) => consult(options, found, { mode: 'talk', question, ...(element === undefined ? {} : { element }) });
         // Nur nach einem Testlauf, dessen gescheiterter Schritt noch nichts ausgefuehrt hat: Die Seite steht dann genau davor.
         const repairHere = replay !== undefined && played !== null && found.failed?.clean === true ? (options) => repairInPlace(options, found.failed) : undefined;
-        if (chat !== null && alive) await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere }), session.closed, aborted]);
+        // conclude sagt, wie es weitergeht: { next: 'claude' | 'check' | 'run' } oeffnet gleich ein neues Fenster, { outcome } ist das Ergebnis.
+        let after = {};
+        if (chat !== null && alive) {
+            const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere }), session.closed, aborted]);
+            if (said !== null && typeof said === 'object') after = said;
+        }
         const handing = handover?.({ verdict, ...found }) && alive;
         // Beim Entwickeln bleibt der Chat offen: Fragen an Claude, Element an Claude Code, Zustand neu herstellen.
         const developing = handing && develop !== undefined && chat !== null && chat.available();
@@ -722,8 +729,19 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const passed = results.filter((result) => result.status === 'pass').length;
             const text = results.length > 0 ? t('run.finished.steps', { passed, total: results.length }) : t(verdict.status === 'pass' ? 'run.finished.passed' : 'run.finished.failed');
             await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command: `caw-ai run ${spec.id}` });
+            // Das Fenster wechselt: Das sagen Chat und Terminal, bevor es zugeht.
+            if (after.next !== undefined) {
+                const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
+                chat.notice(line);
+                ui.note(line);
+            } else if (typeof after.outcome === 'string') chat.notice(after.outcome);
         }
         if (!developing) chat?.human.closed();
+        // Nach der letzten Entscheidung verschwindet das Fenster nicht einfach: Es bleibt kurz offen, der Mensch kann es selbst schliessen.
+        // Ohne Chat (CI, --no-chat, headless) wartet hier nichts.
+        if (!developing && !handing && after.next === undefined && chat !== null && alive && !headless && chat.linger !== undefined) {
+            await Promise.race([chat.linger(LINGER_MS), session.closed, aborted]);
+        }
         if (handing) {
             // Die Kopfzeile sagt, was jetzt gilt: Das Abspielen ist vorbei, der Mensch ist dran.
             let phase = t('run.phase.handedOver');
@@ -937,7 +955,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         };
         const stopPump = startPump(channelHandler);
         // Lehnt der Mensch den Hinweis auf Token ab, ist der Lauf abgebrochen, bevor Claude startet.
-        const willing = await tokensOk();
+        const willing = await tokensOk({ decline: t('run.tokens.cancelRun') });
         if (!willing) abortSignal();
         const agent = willing ? startAgent(box, containerCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin)], CLAUDE_LOG) : IDLE_AGENT;
         // Wie der Lauf endete; ausserhalb des try, das return unten braucht es.

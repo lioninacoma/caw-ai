@@ -26,7 +26,7 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` onl
 
 **Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (the raven flies into the logo and stays there, nothing moves any more), collapsed steps or chat, and light or dark. Without a choice the workbench follows the system; the sun/moon button pins light or dark.
 
-**Token notice:** Before Claude works (record, fix, investigate a failure, questions in the chat, `--advise`), the chat asks once per run: "Continue", "Don't ask again" or "Cancel". "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back.
+**Token notice:** Before Claude works (record, fix, investigate a failure, questions in the chat, `--advise`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back.
 
 **Try it** without a project of your own: `examples/notizen` in the repository, a small app with login and one test.
 
@@ -112,7 +112,9 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 - **Keep developing:** Local code stays injected until you close the window. F5 loads the current state from the project folder. There is no automatic reload.
 - **State:** F5 loses whatever existed only in the browser, such as open dialogs and unsaved input. "Restore state" in the chat or a new test run brings you back.
 - **End:** Closing the window ends the run. The exit code remains the verdict.
-- **Keyboard in the chat:** Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. "Approve plan" or "Done". Esc requests cancellation, a second Esc confirms it. New choice buttons get focus unless you are typing.
+- **Keyboard in the chat:** Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl+↵`. Esc first clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
+- **Your turn:** When the chat waits for you (plan, decision, clarifying a failure), "YOUR TURN" shows in the header and above the application, and the terminal prints once "Waiting for you in the Chrome window: …".
+- **After the run:** The outcome is the last line in the chat, e.g. "Saved: caw/tests/bestellung.yaml". The window stays open for 15 seconds with "Close window" and then closes itself. If a new window is about to open (for Claude or the check run), chat and terminal say so first.
 
 You can open your own tabs at any time, even during a run: only the application tab and its popups are controlled, and only their errors count. Clicking in the application tab while a run is working, however, affects the test.
 
@@ -144,7 +146,7 @@ You name role and app only the first time; the tool writes the metadata (`target
 3. **Execute.** Claude walks the path in a fresh browser. You can pause, write, mark elements and click. If the path changes fundamentally, Claude presents a new version. All actions since the last check belong to the plan's next step, so Claude must check in that order (`step-order`).
 4. **Clean up.** Claude goes through the actions on its own and states in the chat what will be dropped, without needing your approval. The tool itself removes screenshots and the first of two `fill`s on the same field.
 5. **Check run.** The tool replays the recording without Claude; the chat shows progress. If a step fails, the chat offers to fix it, even in the not-yet-adopted draft.
-6. **Replace.** The chat asks: "Adopt test plan" or "Discard". Only then is the test file written. If the check run doesn't pass, the old test plan stays untouched; plan (`plan.yaml`) and draft (`test-entwurf.yaml`) remain in the run folder. Nothing is committed automatically.
+6. **Replace.** The chat shows a "Check run passed" card with what would be adopted; warnings and actions picked by position can be expanded. Then "Adopt test plan (N steps)" or "Discard draft", which a second click confirms. Only then is the test file written. If the check run doesn't pass, the old test plan stays untouched; plan (`plan.yaml`) and draft (`test-entwurf.yaml`) remain in the run folder. Nothing is committed automatically.
 
 **Test data:** Runs with `mutates: true` leave data behind: one record each from Claude and from the check run, up to two more per fix. Whatever Claude dropped also happened in the application.
 
@@ -157,7 +159,7 @@ With chat, everything runs on one page, like Cypress:
 - **Center:** the application in an iframe with its address. Below it requests (name, outcome, duration) and console (errors and warnings); on a console error the panel opens by itself, "Collapse" closes it.
 - **Right:** the chat with Claude.
 - **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge. When the chat needs you, it opens by itself.
-- **Refresh:** The button, F5 (also inside the application) and a click on the logo reload the current page without cache after handover; chat and steps stay. While the test is running this is blocked: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
+- **Refresh:** The button, F5 (also inside the application) and a click on the logo reload the current page without cache after handover; chat and steps stay. While the test is running this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
 
 The workbench lives at the application's own address, on its origin. Many applications access the top window (`top.Ext`, `parent.config`, `top.location.href`) because they believe they are inside the portal. In the workbench this works the same:
 
@@ -182,7 +184,7 @@ The chat sits in an isolated iframe with its own origin (`sandbox` without `allo
 
 On the right of the workbench, even in a test run without Claude. The history carries over across the workbenches of demonstration, Claude and check run. Claude's log also appears there: text as messages, commands as expandable actions. The window is the only source of instructions; the application page can't reach the chat. The transcript is saved as `chat.log` in the run folder.
 
-- **Demonstrate:** Clicks, field changes and the keys Enter, Tab and Escape are captured. A message gives Claude context at this point of the path, "As checkpoint" sets a future step with a screenshot there, "Done" ends the demonstration. Password fields never leave the page. All other input goes to Claude and into the recording, so demonstrate with test data only.
+- **Demonstrate:** Clicks, field changes and the keys Enter, Tab and Escape are captured. A message gives Claude context at this point of the path, "Add checkpoint" sets a future step with a screenshot there; first type into the field what should be visible. "Finish demo" ends the demonstration. While it runs, "● RECORDING – your clicks count" shows above the application. Password fields never leave the page. All other input goes to Claude and into the recording, so demonstrate with test data only.
 - **Write a message:** Claude reads it before its next action, since until then the tool rejects every browser command. If Claude is thinking, this takes a moment.
 - **Pause:** Claude stops before its next action; the status in the window shows it. Then you can write and click in the application until you press "Continue". Your clicks go into the test, so only click once "Paused" is shown.
 - **Mark element:** During demonstration, plan, pause, question and failure clarification, "Element" picks the component you mean: the next click in the application does nothing there and isn't recorded; Esc cancels. The element is attached to your next message; Claude gets its description.
@@ -245,11 +247,11 @@ With chat, the chat stays open after handover (state "Develop"):
 - **Refresh** (button at the top, F5, click on the logo): reloads the current page without cache so your change shows immediately. Chat and steps stay. The test is already over at this point; its result doesn't change. The steps then show "left": the page is no longer guaranteed to be in that state.
 - **Restore state** (in the chat): reloads and replays the recording from the start up to the step, with new test data, exactly like any other run. The marker is then gone. If you reload the whole workbench via the browser, chat and steps come back and the page counts as left.
 - **Element to Claude Code:** With the crosshair button in the chat you click an element in the application (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw-ai stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
-- **End:** "End" or close the window.
+- **End:** "End run" or close the window.
 
 ## Fixing a step
 
-If a step fails in `run` or in the check run of `record` and `fix`, replay stops and the browser stays in the failure state. The chat says "S4 failed: <reason>" with hard errors and warnings and unlocks input (state "Clarify failure"), plus "Fix step" and "End without fixing". Below it is the tool's [assessment](#assessment-test-application-or-environment) with its findings. If it points to an application bug, "Fix step" becomes only the second button, with a note that an adjusted test would merely hide the bug. This exists only on environments with `agent`; in CI, with `--no-chat`/`--headless` and on other environments there is only the exit code and the report.
+If a step fails in `run` or in the check run of `record` and `fix`, replay stops and the browser stays in the failure state. The chat says "S4 failed: <reason>" with hard errors and warnings and unlocks input (state "Clarify failure"), plus "Fix step" and "End run". Below it is the tool's [assessment](#assessment-test-application-or-environment) with its findings. If it points to an application bug, "Fix step" becomes only the second button, with a note that an adjusted test would merely hide the bug. This exists only on environments with `agent`; in CI, with `--no-chat`/`--headless` and on other environments there is only the exit code and the report.
 
 - **Ask:** Only your message starts Claude, in the same browser and read-only as with [advice](#advice-on-errors-and-warnings). It answers in the chat, names cause, file and line, and can give advice cards. Each further message continues the same conversation until you press a button. The log is in `agent/claude-gespraech.log`. Without a message or click, no tokens are spent.
 - **Fix in the same browser:** If nothing of the failed step has run yet, i.e. its first action failed without a hard error from outside, Claude fixes it right there, without a lead-in. The test run's report is kept as `report-testlauf.md`. Otherwise, e.g. after half a sequence of actions or an unmet check, it proceeds as below with a lead-in in a fresh browser. The chat says beforehand which way it will be.
@@ -261,13 +263,13 @@ Only what Claude tells you with `say` appears as a message in the chat. Its othe
 1. **Prepare:** In a fresh browser S1 to S3 run without Claude; the chat shows progress. If a step before that already fails, that one is offered. Skipped when fixing in the same browser.
 2. **Cause, then plan:** Claude gets only this step: text, previous actions, check, reason, assessment with requests, plus `caw.md` and the `remember` values read so far. It first clarifies the cause, including in the source code, and states it in the chat. If the application is at fault, it doesn't change the test but gives advice with a concrete code change and reports `fail`. Otherwise it presents only this step as a card. A changed result is marked there, shown at the decision and listed in the report.
 3. **Execute:** Claude runs the step and cleans it up. If the result stays the same, the check must stay the same too, or `finish` rejects it. Likewise if a `remember` value needed by a later step disappears.
-4. **Check run:** The whole test runs without Claude in a fresh browser, up to any step that may still be outdated. If another step fails, the offer comes again. If it passes: "Adopt test plan" or "Discard".
+4. **Check run:** The whole test runs without Claude in a fresh browser, up to any step that may still be outdated. If another step fails, the offer comes again. If it passes: "Adopt test plan (N steps)" or "Discard draft".
 
 Only the fixed steps change in the file; comments and all other steps stay identical character for character. New messages Claude sees along the way count as known afterwards; the decision lists them so no application bug slips through unnoticed.
 
 - **Test data:** A fix costs up to two passes; writing steps before it create data accordingly. Tokens are spent only for this step. If a step fails after submitting, the record stays open; replay doesn't clean up.
 - **Without Claude:** If Claude Code (`local`) or Docker or token (`docker`) is missing, the chat names the reason and the run stays `fail`.
-- **Discard:** The test plan stays unchanged. A previously failed `run` ends with `fail`.
+- **Discard draft:** The test plan stays unchanged, after a confirmation ("Really discard?"). A previously failed `run` ends with `fail`.
 - **Insert, delete, reorder:** Add a new step by hand and record it with `fix`. A deleted or moved step requires `record`, because later steps may build on it.
 
 ## Assessment: test, application or environment

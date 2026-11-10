@@ -51,9 +51,12 @@ const open = async (t) => {
     await context.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
     const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'] });
     let aborts = 0;
-    const chat = await openChat({ session: { workbench: bench }, logPath: join(dir, `chat-${Date.now()}.log`), onAbort: () => { aborts += 1; } });
-    return { context, bench, chat, aborts: () => aborts };
+    const waiting = [];
+    const chat = await openChat({ session: { workbench: bench }, logPath: join(dir, `chat-${Date.now()}.log`), onAbort: () => { aborts += 1; }, onWaiting: (line) => waiting.push(line) });
+    return { context, bench, chat, aborts: () => aborts, waiting };
 };
+
+const pause = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
 
 test('Werkbank: Nur der eigene Chat spricht als Mensch, ein nachgebautes iframe namens caw-chat nicht', async (t) => {
     if (browser === null) return t.skip('kein Chrome');
@@ -145,4 +148,93 @@ test('Lokaler Code: Auch Popups und neue Tabs der Anwendung bekommen ihr HTML oh
     const tab = await context.newPage();
     await tab.goto(url);
     assert.equal(await integrity(tab), null, 'ein neuer Tab');
+});
+
+test('Chat: Esc leert erst das Feld, dann fragt es den Abbruch nur an, erst ein zweites Esc bricht ab', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench, aborts } = await open(t);
+    const frame = bench.chatFrame();
+    await frame.fill('#input', 'halb getippt');
+    await frame.focus('#input');
+    await bench.page.keyboard.press('Escape');
+    assert.equal(await frame.inputValue('#input'), '', 'das Feld ist leer');
+    assert.equal(await frame.evaluate(() => document.getElementById('abort').classList.contains('sure')), false, 'nichts angefragt');
+    await bench.page.keyboard.press('Escape');
+    assert.match(await frame.textContent('#abort'), /Wirklich abbrechen\? \(Esc\)/);
+    assert.equal(await frame.isVisible('#abortNo'), true, 'mit „Nein“');
+    await pause(300);
+    assert.equal(aborts(), 0, 'ein Esc bricht nicht ab');
+    await bench.page.keyboard.press('Escape');
+    assert.ok(await until(() => aborts() === 1), 'das zweite Esc bestätigt');
+});
+
+test('Chat: Die Entscheidung ist eine Karte, Verwerfen will ein zweites Mal geklickt werden', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench, chat, waiting } = await open(t);
+    const frame = bench.chatFrame();
+    const card = { title: 'Prüflauf bestanden', facts: ['Übernommen würde der ganze Testplan (2 Schritte).'], details: [{ title: 'Warnungen im Bericht', items: ['t.getKey'] }], question: 'Soll das der neue Testplan werden?' };
+    const options = [{ id: 'adopt', label: 'Testplan übernehmen (2 Schritte)', primary: true }, { id: 'discard', label: 'Entwurf verwerfen', confirm: 'Wirklich verwerfen?' }];
+    let answer;
+    const chosen = chat.choose('deciding', 'Text fürs Protokoll', options, card).then((id) => { answer = id; });
+    assert.ok(await until(() => frame.isVisible('.decision')), 'die Karte steht');
+    assert.equal(await frame.textContent('.decision strong'), 'Prüflauf bestanden');
+    assert.equal(await frame.locator('.decision > ul > li').count(), 1);
+    assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'Warnungen zum Aufklappen');
+    assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Der Testplan ändert sich erst mit deiner Wahl.'], 'einmal im Terminal');
+    // Kopfzeile und Leiste der Anwendung sagen es auch.
+    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'DU BIST DRAN'));
+    assert.equal(await bench.page.textContent('#browserState'), 'DU BIST DRAN');
+
+    const discard = frame.locator('#choices button', { hasText: 'Entwurf verwerfen' });
+    await discard.click();
+    assert.equal(await frame.locator('#choices button.sure').textContent(), 'Wirklich verwerfen?');
+    await frame.locator('#choices button.no').click();
+    await pause(200);
+    assert.equal(answer, undefined, '„Nein“ verwirft nichts');
+    await frame.locator('#choices button', { hasText: 'Entwurf verwerfen' }).click();
+    await frame.locator('#choices button.sure').click();
+    await chosen;
+    assert.equal(answer, 'discard');
+});
+
+test('Werkbank: Vorführen zeigt die Aufnahme, Aktualisieren ist gesperrt, bis der Host es erlaubt', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench, chat } = await open(t);
+    const frame = bench.chatFrame();
+    assert.equal(await bench.page.isDisabled('#reload'), true, 'gesperrt');
+    assert.equal(await bench.page.getAttribute('#reload', 'title'), 'Während der Test läuft gesperrt');
+    await bench.onRefresh(async () => {});
+    assert.equal(await bench.page.isDisabled('#reload'), false, 'erlaubt');
+    await bench.onRefresh(null);
+    assert.equal(await bench.page.isDisabled('#reload'), true, 'wieder gesperrt');
+
+    chat.enter('showing');
+    assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === '● AUFNAHME – deine Klicks zählen'));
+    assert.equal(await bench.page.textContent('#stepsHint'), 'Führe den Ablauf in der Anwendung vor.');
+    assert.match(await frame.textContent('#toggle'), /Vorführung beenden/);
+    assert.equal(await frame.textContent('#mark'), 'Als Prüfpunkt setzen');
+    assert.match(await frame.getAttribute('#input', 'placeholder'), /Als Prüfpunkt setzen/);
+    chat.progress('Klick: Weiter');
+    assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'die Aktionen sind offen');
+});
+
+test('Chat: Nach dem Lauf bleibt das Fenster offen, bis der Mensch schließt oder die Zeit um ist', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench, chat } = await open(t);
+    const frame = bench.chatFrame();
+    await chat.finished({ report: join(dir, 'x.md'), text: '2 von 2 Schritten bestanden.', command: 'caw-ai run t' });
+    chat.notice('Gespeichert: caw/tests/t.yaml');
+    chat.human.closed();
+    let done = false;
+    const lingering = chat.linger(60000).then(() => { done = true; });
+    assert.ok(await until(() => frame.isVisible('#closeWindow')));
+    assert.match(await frame.textContent('#closeWindow'), /Fenster schließen \((60|59)\)/);
+    assert.match(await frame.textContent('#messages'), /Gespeichert: caw\/tests\/t\.yaml/);
+    assert.equal(done, false);
+    await frame.click('#closeWindow');
+    await lingering;
+    assert.equal(done, true);
+    const start = Date.now();
+    await chat.linger(300);
+    assert.ok(Date.now() - start < 3000, 'ohne Klick nach Ablauf');
 });

@@ -26,7 +26,7 @@ In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` gre
 
 **Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw-ai je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (der Rabe fliegt ins Logo und bleibt dort, nichts bewegt sich mehr), eingeklappte Schritte oder Chat und hell oder dunkel. Ohne Wahl folgt die Werkbank dem System; der Knopf mit Sonne oder Mond legt hell bzw. dunkel fest.
 
-**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--advise`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder „Abbrechen“. „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder.
+**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--advise`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder.
 
 **Ausprobieren** ohne eigenes Projekt: `examples/notizen` im Repository, eine kleine App mit Anmeldung und einem Test.
 
@@ -112,7 +112,9 @@ Im Devcontainer selbst geht der Aufruf nicht, dort fehlt Chrome (und für den Ag
 - **Weiterentwickeln:** Der lokale Code bleibt eingespielt, bis du das Fenster schließt. F5 lädt den aktuellen Stand aus dem Projektordner. Einen automatischen Reload gibt es nicht.
 - **Zustand:** F5 verliert, was nur im Browser stand, etwa offene Dialoge und ungespeicherte Eingaben. Zurück dorthin bringt dich „Zustand neu herstellen“ im Chat oder ein neuer Testlauf.
 - **Ende:** Fenster schließen beendet den Lauf. Der Exit-Code bleibt das Urteil.
-- **Tastatur im Chat:** Strg+Enter (Cmd+Enter) löst den Hauptknopf aus, etwa „Freigeben“ oder „Fertig“. Esc fragt den Abbruch an, ein zweites Esc bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
+- **Tastatur im Chat:** Strg+Enter (Cmd+Enter) löst den Hauptknopf aus, etwa „Plan freigeben“ oder „Vorführung beenden“; der Knopf zeigt dazu `Strg+↵`. Esc leert zuerst das Eingabefeld, wenn du darin tippst. Sonst fragt Esc den Abbruch an („Wirklich abbrechen? (Esc)“ und „Nein“), erst ein zweites Esc innerhalb von 4 Sekunden bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
+- **Du bist dran:** Wartet der Chat auf dich (Plan, Entscheidung, Fehler klären), steht „DU BIST DRAN“ in der Kopfzeile und über der Anwendung, und das Terminal meldet einmal „Wartet im Chrome-Fenster auf dich: …“.
+- **Nach dem Lauf:** Das Ergebnis steht als letzte Zeile im Chat, etwa „Gespeichert: caw/tests/bestellung.yaml“. Das Fenster bleibt mit „Fenster schließen“ noch 15 Sekunden offen und schließt sich dann selbst. Öffnet sich gleich ein neues Fenster (für Claude oder den Prüflauf), sagen Chat und Terminal das vorher.
 
 Eigene Tabs kannst du jederzeit öffnen, auch während des Laufs: Gesteuert wird nur der Anwendungs-Tab samt Popups, und nur deren Fehler zählen. Klickst du dagegen im Anwendungs-Tab, während ein Lauf arbeitet, beeinflusst du den Test.
 
@@ -144,7 +146,7 @@ Rolle und App nennst du nur beim ersten Mal, die Metadaten schreibt das Tool (`t
 3. **Ausführen.** Claude geht den Weg in einem frischen Browser. Du kannst pausieren, schreiben, Elemente markieren und klicken. Ändert sich der Weg grundlegend, legt Claude eine neue Fassung vor. Alle Aktionen seit der letzten Prüfung gehören zum nächsten Schritt des Plans, deshalb muss Claude in dieser Reihenfolge prüfen (`step-order`).
 4. **Bereinigen.** Claude geht von sich aus die Aktionen durch und nennt im Chat, was wegfällt, ohne dass du freigeben musst. Screenshots und das erste von zwei `fill` aufs selbe Feld streicht das Tool selbst.
 5. **Prüflauf.** Das Tool spielt die Aufzeichnung ohne Claude ab, im Chat daneben siehst du den Fortschritt. Scheitert ein Schritt, bietet der Chat an, ihn zu beheben, auch im noch nicht übernommenen Entwurf.
-6. **Ablösen.** Der Chat fragt: „Testplan übernehmen“ oder „Verwerfen“. Erst dann wird die Testdatei geschrieben. Besteht der Prüflauf nicht, bleibt der alte Testplan unberührt, Plan (`plan.yaml`) und Entwurf (`test-entwurf.yaml`) liegen im Lauf-Ordner. Committet wird nichts automatisch.
+6. **Ablösen.** Der Chat zeigt eine Karte „Prüflauf bestanden“ mit dem, was übernommen würde; Warnungen und über die Position gewählte Aktionen lassen sich aufklappen. Dazu „Testplan übernehmen (N Schritte)“ oder „Entwurf verwerfen“, das ein zweiter Klick bestätigt. Erst dann wird die Testdatei geschrieben. Besteht der Prüflauf nicht, bleibt der alte Testplan unberührt, Plan (`plan.yaml`) und Entwurf (`test-entwurf.yaml`) liegen im Lauf-Ordner. Committet wird nichts automatisch.
 
 **Testdaten:** Läufe mit `mutates: true` hinterlassen Daten: je einen Datensatz von Claude und vom Prüflauf, je Beheben bis zu zwei weitere. Auch was Claude gestrichen hat, ist in der Anwendung passiert.
 
@@ -157,7 +159,7 @@ Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 - **Mitte:** die Anwendung in einem iframe mit ihrer Adresse. Darunter Requests (Name, Ausgang, Dauer) und Konsole (Fehler und Warnungen); bei einem Konsolenfehler klappt die Leiste von selbst auf, „Einklappen“ schließt sie.
 - **Rechts:** der Chat mit Claude.
 - **Einklappen:** Schritte und Chat klappen über den Knopf am Rand zu einer schmalen Leiste ein. Braucht der Chat dich, klappt er von selbst auf.
-- **Aktualisieren:** Der Knopf, F5 (auch in der Anwendung) und ein Klick aufs Logo laden nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, ist das gesperrt: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw-ai sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
+- **Aktualisieren:** Der Knopf, F5 (auch in der Anwendung) und ein Klick aufs Logo laden nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw-ai sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
 
 Die Werkbank liegt unter der Adresse der Anwendung selbst, auf ihrem Origin. Viele Anwendungen greifen auf das oberste Fenster zu (`top.Ext`, `parent.config`, `top.location.href`), weil sie sich im Portal dafür halten. In der Werkbank geht das genauso:
 
@@ -182,7 +184,7 @@ Der Chat liegt in einem abgeschotteten iframe mit eigenem Origin (`sandbox` ohne
 
 In der Werkbank rechts, auch in einem Testlauf ohne Claude. Der Verlauf wandert über die Werkbänke von Vorführung, Claude und Prüflauf mit. Dort läuft auch Claudes Log mit: Text als Nachricht, Befehle als aufklappbare Aktionen. Das Fenster ist die einzige Quelle für Anweisungen, die Seite der Anwendung erreicht den Chat nicht. Die Mitschrift liegt als `chat.log` im Lauf-Ordner.
 
-- **Vorführen:** Klicks, Feldänderungen und die Tasten Enter, Tab und Escape werden mitgeschnitten. Eine Nachricht gibt Claude Kontext an dieser Stelle des Wegs, „Als Prüfpunkt“ legt dort einen künftigen Schritt mit Screenshot fest, „Fertig“ beendet die Vorführung. Passwortfelder verlassen die Seite nie. Alle anderen Eingaben gehen an Claude und landen in der Aufzeichnung, führe also nur Testdaten vor.
+- **Vorführen:** Klicks, Feldänderungen und die Tasten Enter, Tab und Escape werden mitgeschnitten. Eine Nachricht gibt Claude Kontext an dieser Stelle des Wegs, „Als Prüfpunkt setzen“ legt dort einen künftigen Schritt mit Screenshot fest; tippe dafür zuerst ins Feld, was zu sehen sein soll. „Vorführung beenden“ beendet die Vorführung. Solange sie läuft, steht über der Anwendung „● AUFNAHME – deine Klicks zählen“. Passwortfelder verlassen die Seite nie. Alle anderen Eingaben gehen an Claude und landen in der Aufzeichnung, führe also nur Testdaten vor.
 - **Nachricht schreiben:** Claude liest sie vor der nächsten Aktion, denn solange lehnt das Tool jeden Browserbefehl ab. Denkt Claude gerade, dauert das etwas.
 - **Pause:** Claude hält vor der nächsten Aktion an, der Status im Fenster zeigt es. Danach kannst du schreiben und in der Anwendung klicken, bis du „Weiter“ drückst. Deine Klicks kommen in den Test, darum erst klicken, wenn „Pausiert“ dasteht.
 - **Element markieren:** In Vorführung, Plan, Pause, Rückfrage und beim Fehler klären wählt „Element“ das Bauteil, auf das du dich beziehst: Der nächste Klick in der Anwendung löst dort nichts aus und kommt nicht in die Aufzeichnung, Esc bricht ab. Das Element hängt an deiner nächsten Nachricht, Claude bekommt seine Beschreibung.
@@ -245,11 +247,11 @@ Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“):
 - **Aktualisieren** (Knopf oben, F5, Klick aufs Logo): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben. Der Test ist zu diesem Zeitpunkt schon vorbei, sein Ergebnis ändert sich nicht. Die Schritte zeigen danach „verlassen“: Die Seite steht nicht mehr sicher auf dem Zustand.
 - **Zustand neu herstellen** (im Chat): lädt neu und spielt die Aufzeichnung von vorn bis zum Schritt ab, mit neuen Testdaten, also genau wie jeder andere Lauf. Danach ist die Markierung weg. Lädst du die ganze Werkbank über den Browser neu, kommen Chat und Schritte wieder, die Seite gilt als verlassen.
 - **Element an Claude Code:** Mit dem Fadenkreuz-Knopf im Chat klickst du in der Anwendung auf ein Element (der Klick löst dort nichts aus, Esc bricht ab). Es hängt an deiner nächsten Frage im Chat, und caw-ai legt es mit Beschriftung, Komponente bzw. Quelle, Seite und Requests für deine Claude-Code-Session ab, abrufbar mit `caw_selection`.
-- **Ende:** „Beenden“ oder Fenster schließen.
+- **Ende:** „Lauf beenden“ oder Fenster schließen.
 
 ## Einen Schritt beheben
 
-Scheitert ein Schritt in `run` oder im Prüflauf von `record` und `fix`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Ohne Beheben beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `agent`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
+Scheitert ein Schritt in `run` oder im Prüflauf von `record` und `fix`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Lauf beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `agent`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
 
 - **Fragen:** Erst deine Nachricht startet Claude, im selben Browser und nur lesend wie bei den [Empfehlungen](#empfehlungen-zu-fehlern-und-warnungen). Es antwortet im Chat, nennt Ursache, Datei und Zeile und kann Empfehlungskarten geben. Jede weitere Nachricht geht ins selbe Gespräch, bis du einen Knopf drückst. Das Log steht in `agent/claude-gespraech.log`. Ohne Nachricht und ohne Klick fallen keine Token an.
 - **Im selben Browser beheben:** Ist vom gescheiterten Schritt noch nichts ausgeführt, scheiterte also seine erste Aktion ohne harten Fehler von außen, behebt Claude ihn direkt dort, ohne Vorlauf. Der Bericht des Testlaufs bleibt als `report-testlauf.md` erhalten. Sonst, etwa nach einer halben Aktionsfolge oder einer nicht erfüllten Prüfung, geht es wie unten mit Vorlauf in einem frischen Browser. Der Chat sagt vorher, welcher Weg es wird.
@@ -261,13 +263,13 @@ Im Chat erscheint als Nachricht nur, was Claude dir mit `say` sagt. Seine übrig
 1. **Vorbereiten:** In einem frischen Browser laufen S1 bis S3 ohne Claude, der Chat zeigt den Fortschritt. Scheitert schon davor ein Schritt, wird dieser angeboten. Beim Beheben im selben Browser entfällt das.
 2. **Ursache, dann Plan:** Claude bekommt nur diesen Schritt: Text, bisherige Aktionen, Prüfung, Grund, Einschätzung samt Requests, dazu `caw.md` und die bisher gelesenen `remember`-Werte. Zuerst klärt es die Ursache, auch im Quellcode, und sagt sie im Chat. Liegt es an der Anwendung, ändert es den Test nicht, sondern gibt eine Empfehlung mit konkreter Änderung am Code und meldet `fail`. Sonst legt es nur diesen Schritt als Karte vor. Ein geändertes Ergebnis ist dort markiert, erscheint bei der Entscheidung und steht im Bericht.
 3. **Ausführen:** Claude führt den Schritt aus und bereinigt ihn. Bleibt das Ergebnis gleich, muss auch die Prüfung gleich bleiben, sonst lehnt `finish` ab. Fällt ein `remember`-Wert weg, den ein späterer Schritt braucht, ebenso.
-4. **Prüflauf:** Der ganze Test läuft ohne Claude in einem frischen Browser, bis vor einen womöglich noch veralteten Schritt. Scheitert ein anderer Schritt, kommt wieder das Angebot. Besteht er: „Testplan übernehmen“ oder „Verwerfen“.
+4. **Prüflauf:** Der ganze Test läuft ohne Claude in einem frischen Browser, bis vor einen womöglich noch veralteten Schritt. Scheitert ein anderer Schritt, kommt wieder das Angebot. Besteht er: „Testplan übernehmen (N Schritte)“ oder „Entwurf verwerfen“.
 
 Nur die behobenen Schritte ändern sich in der Datei, Kommentare und alle anderen Schritte bleiben Zeichen für Zeichen gleich. Neue Meldungen, die Claude dabei sieht, zählen danach als bekannt; die Entscheidung nennt sie, damit kein Fehler der Anwendung unbemerkt durchrutscht.
 
 - **Testdaten:** Ein Beheben kostet bis zu zwei Durchläufe, schreibende Schritte davor legen entsprechend Daten an. Token fallen nur für diesen Schritt an. Scheitert ein Schritt nach dem Absenden, bleibt der Datensatz offen, das Abspielen räumt nicht auf.
 - **Ohne Claude:** Fehlt Claude Code (`local`) bzw. Docker oder Token (`docker`), nennt der Chat den Grund, der Lauf bleibt `fail`.
-- **Verwerfen:** Der Testplan bleibt unverändert. Ein zuvor gescheiterter `run` endet mit `fail`.
+- **Entwurf verwerfen:** Der Testplan bleibt unverändert, nach einer Rückfrage („Wirklich verwerfen?“). Ein zuvor gescheiterter `run` endet mit `fail`.
 - **Einfügen, Löschen, Umsortieren:** Einen neuen Schritt trägst du von Hand ein und nimmst ihn per `fix` auf. Ein gelöschter oder verschobener Schritt verlangt `record`, weil spätere Schritte auf ihm aufbauen können.
 
 ## Einschätzung: Test, Anwendung oder Umgebung

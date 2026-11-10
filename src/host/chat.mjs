@@ -16,7 +16,7 @@ const BINDING = '__cawChat';
 const MAX_TEXT = 4000;
 const MAX_ACTIVITY = 300;
 const TAIL_MS = 500;
-const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'plan', 'advice', 'failure']);
+const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'plan', 'advice', 'failure', 'decision']);
 // Der Mensch fuehrt vor: Neuladen ist dann Teil des Wegs, kein Bruch des Laufs.
 const SHOWING_STATES = ['showing', 'asking', 'paused'];
 const PICK_STATES = ['paused', 'asking', 'showing', 'planning', 'discussing', 'developing'];
@@ -255,9 +255,10 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         /**
          * Der Mensch waehlt per Knopf.
          * @param kind choosing oder deciding
+         * @param card die Entscheidung als Karte (title, facts, details); `question` steht dann nur im Protokoll
          * @returns die id der Moeglichkeit, null wenn das Fenster zugeht oder er abbricht
          */
-        choose: (kind, question, options) => {
+        choose: (kind, question, options, card) => {
             if (ended) return Promise.resolve(null);
             // Mitten im Gespraech (etwa der Hinweis auf Token, bevor Claude antwortet): danach steht das Gespraech wieder offen.
             const parked = TALK_KINDS.includes(choice?.kind) ? choice : null;
@@ -271,7 +272,8 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                         publish();
                     },
                 };
-                show('question', question);
+                if (card === undefined) show('question', question);
+                else show('decision', question, card);
                 publish();
             });
         },
@@ -428,7 +430,7 @@ h1{margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:500 1
 [data-state=handing] #pill,[data-state=verifying] #pill,[data-state=testing] #pill,[data-state=preparing] #pill{color:var(--muted)}
 [data-state=pausing] #pill,[data-state=paused] #pill{color:var(--muted);background:var(--surface-2)}
 [data-state=paused] #dot{width:8px;height:9px;margin-right:0;box-shadow:none;animation:none;background:linear-gradient(90deg,currentColor 0 3px,transparent 3px 5px,currentColor 5px 8px)}
-[data-state=discussing] #toggle,[data-state=developing] #toggle{display:none}[data-state=deciding] #abort,[data-state=discussing] #abort,[data-state=developing] #abort{display:none}
+[data-state=discussing] #toggle,[data-state=developing] #toggle{display:none}[data-state=deciding] #abort,[data-state=discussing] #abort,[data-state=developing] #abort,[data-state=closed] #abort{display:none}
 #abortNo{border:0;background:none;padding:4px 6px;font:500 11px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--text)}#abortNo:hover{background:var(--surface-2)}#abortNo[hidden]{display:none}
 #abort{white-space:nowrap;border:0;background:none;padding:4px 6px;font:500 11px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}#abort:hover{background:var(--surface-2);color:var(--text)}#abort.sure{color:var(--fail-text);box-shadow:${ring('2px', 'var(--fail)')}}#abort:disabled{color:var(--muted);cursor:default;background:none;box-shadow:none}
 main{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px}
@@ -444,7 +446,9 @@ footer{position:relative}#down{display:none;position:absolute;right:16px;top:6px
 .plan .notes{color:var(--muted);font-size:14px;margin-bottom:6px}.step{padding:9px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:600}.step .sid{flex:none;font:500 11px var(--font-ui);color:var(--primary-text)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--pending);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--fail-text)}.step .before{color:var(--muted);text-decoration:line-through}
 .failure{padding:12px 14px 13px;background:var(--fail-tint);box-shadow:0 -4px 0 var(--fail),0 2px 0 var(--fail-line),-2px 0 0 var(--fail-line),2px 0 0 var(--fail-line)}.failure strong{color:var(--fail-text)}.failure .reason{margin:0 0 9px;font-size:16px;line-height:1.4;overflow-wrap:anywhere}
 .failure .badge{display:inline-block;margin:0 0 9px;padding:3px 9px;font-size:14px;background:var(--surface);color:var(--muted);box-shadow:${ring('2px', 'currentColor')}}.failure .badge.app{color:var(--fail-text)}.failure .badge.environment{color:var(--warn)}.failure .badge.test{color:var(--primary-text)}
-.failure .warn,.advice .warn{margin:0 0 9px;padding:6px 9px;font-size:13.5px;color:var(--fail-text);background:var(--surface);box-shadow:inset 3px 0 0 var(--fail)}
+.decision{padding:12px 14px 13px;background:var(--surface);box-shadow:0 -4px 0 var(--ok),0 2px 0 var(--frame),-2px 0 0 var(--frame),2px 0 0 var(--frame),4px 4px 0 var(--shadow)}.decision strong{display:block;font:500 12px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ok-text);margin-bottom:6px}
+.decision ul{margin:0 0 8px;padding-left:18px;display:grid;gap:4px;font-size:14px;overflow-wrap:anywhere}.decision details{margin:0 0 6px}.decision summary{cursor:pointer;font-size:14px;font-weight:600}.decision details ul{margin:4px 0 0;color:var(--muted)}.decision .next{margin:6px 0 0;font-size:14px;font-weight:600}
+.failure .warn,.advice .warn,.decision .warn{margin:0 0 9px;padding:6px 9px;font-size:13.5px;color:var(--fail-text);background:var(--surface);box-shadow:inset 3px 0 0 var(--fail)}
 .failure details{margin:0 0 6px}.failure summary{cursor:pointer;font-size:14px;font-weight:600}.failure ul{margin:4px 0 0;padding-left:18px;display:grid;gap:4px;font-size:14px;color:var(--muted);overflow-wrap:anywhere}.failure .next{margin:6px 0 0;font-size:13px;color:var(--subtle)}
 .advice{box-shadow:0 -4px 0 var(--pending),0 2px 0 var(--frame),-2px 0 0 var(--frame),2px 0 0 var(--frame),4px 4px 0 var(--shadow)}.advice.app{box-shadow:0 -4px 0 var(--primary),0 2px 0 var(--frame),-2px 0 0 var(--frame),2px 0 0 var(--frame),4px 4px 0 var(--shadow)}.advice strong{color:var(--muted)}.advice.app strong{color:var(--primary-text)}
 .advice h2{margin:0 0 4px;font-size:16px;font-weight:600}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
@@ -465,9 +469,17 @@ footer{padding:0 16px 16px}
 [data-state=paused] #status,[data-state=asking] #status,[data-state=showing] #status,[data-state=planning] #status{color:var(--text)}
 #choices{display:none;flex-direction:column;gap:12px;padding:4px 4px 14px 2px}[data-state=choosing] #choices,[data-state=deciding] #choices,[data-state=reviewing] #choices,[data-state=discussing] #choices,[data-state=developing] #choices,[data-state=planning] #choices{display:flex}
 #choices button.big{min-height:58px;font-size:14px;letter-spacing:.06em;text-transform:uppercase}[data-state=planning] #toggle{display:none}
+/* Beim Fehler, bei Entscheidung und Empfehlung braucht die Karte den Platz: Knoepfe kompakt, die nachrangigen nebeneinander. */
+#choices .rest{display:flex;flex-wrap:wrap;gap:12px}#choices .rest button{flex:1 1 auto;min-width:96px}
+:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices{gap:6px;padding-bottom:10px}:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices .rest{gap:6px}
+:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices button{min-height:34px;padding:7px 10px}
+#choices button.sure{color:var(--fail-text);box-shadow:${ring('2px', 'var(--fail)')},4px 4px 0 var(--shadow)}#choices .no{flex:0 0 auto;min-width:0}
+kbd{display:inline-block;margin-left:6px;padding:0 4px;font:500 10px/16px var(--font-ui);letter-spacing:0;text-transform:none;opacity:.75;box-shadow:inset 0 0 0 1px currentColor}
 #next{display:none;margin:2px 2px 14px;padding:12px 14px;background:var(--surface-2);box-shadow:${ring('2px', 'var(--frame)')}}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
 #next strong{display:block;font:500 12px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}#next p{margin:0 0 10px;font-size:13px;color:var(--muted)}#next code{font:12px var(--font-mono);overflow-wrap:anywhere}#next .cmd{margin:12px 0 0}
-#report{min-height:40px;padding:9px 14px;font:500 12px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;border:0;background:var(--primary);color:var(--primary-ink);box-shadow:${ring('2px', 'var(--frame)')},4px 4px 0 var(--shadow)}#report:hover{background:var(--primary-hover)}#report:active{transform:translate(2px,2px);box-shadow:${ring('2px', 'var(--frame)')}}
+#next .acts{display:flex;flex-wrap:wrap;gap:10px}
+#report,#closeWindow{min-height:40px;padding:9px 14px;font:500 12px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;border:0;background:var(--primary);color:var(--primary-ink);box-shadow:${ring('2px', 'var(--frame)')},4px 4px 0 var(--shadow)}#report:hover,#closeWindow:hover{background:var(--primary-hover)}#report:active,#closeWindow:active{transform:translate(2px,2px);box-shadow:${ring('2px', 'var(--frame)')}}
+#closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--surface);color:var(--text)}#next:has(#closeWindow:not([hidden])) #report:hover{background:var(--surface-2)}
 #choices button{min-height:44px;padding:11px 14px;font:500 12px/1.3 var(--font-ui);letter-spacing:.04em;text-align:center;color:var(--text);background:var(--surface);border:0;box-shadow:${ring('2px', 'var(--frame)')},4px 4px 0 var(--shadow)}
 #choices button:hover{background:var(--surface-2)}#choices button:active{transform:translate(2px,2px);box-shadow:${ring('2px', 'var(--frame)')}}
 #choices button.primary{background:var(--primary);color:var(--primary-ink)}#choices button.primary:hover{background:var(--primary-hover)}
@@ -479,15 +491,17 @@ form:focus-within{box-shadow:${ring('2px', 'var(--primary-text)')}}
 .small{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;font:500 11px var(--font-ui);letter-spacing:.04em;background:var(--surface);border:0;box-shadow:${ring('2px', 'var(--frame)')}}
 .small:hover:enabled{background:var(--surface-2)}.small:disabled{opacity:.45;cursor:default}.small svg{width:14px;height:14px}
 #pick svg{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square}#pick.on{color:var(--primary-text);box-shadow:${ring('2px', 'var(--primary-text)')}}
-.left{display:flex;align-items:center;gap:10px}
+.left{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;min-width:0}
 textarea{display:block;width:100%;min-height:24px;max-height:160px;resize:none;border:0;outline:0;padding:0 2px;font:inherit;color:inherit;background:transparent;overflow-y:hidden;scrollbar-width:thin}textarea.full{overflow-y:auto}
 textarea::placeholder{color:var(--muted)}
-.row{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
 button{font:inherit;cursor:pointer;color:inherit;border-radius:0}
 [data-state=paused] #toggle,[data-state=asking] #toggle,[data-state=showing] #toggle,[data-state=planning] #toggle{background:var(--primary);color:var(--primary-ink)}
-#toggle svg{width:12px;height:12px;fill:currentColor}#toggle .play{display:none}
+#toggle{white-space:nowrap}#toggle svg{width:12px;height:12px;fill:currentColor}#toggle .play{display:none}
 [data-state=paused] #toggle .play,[data-state=asking] #toggle .play,[data-state=showing] #toggle .play,[data-state=planning] #toggle .play{display:block}
 [data-state=paused] #toggle .pause,[data-state=asking] #toggle .pause,[data-state=showing] #toggle .pause,[data-state=planning] #toggle .pause{display:none}
+/* Die Vorfuehrung endet mit Stopp wie eine Aufnahme, nicht mit Weiter. */
+#toggle .stop{display:none}[data-state=showing] #toggle .stop{display:block}[data-state=showing] #toggle .play{display:none}
 .actions{display:flex;align-items:center;gap:10px}#mark{display:none}[data-state=showing] #mark{display:inline-flex}
 #send{width:30px;padding:0;justify-content:center;background:var(--primary);color:var(--primary-ink)}#send:hover:enabled{background:var(--primary-hover)}#send svg{fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:square;stroke-linejoin:miter}
 :focus-visible{outline:3px dashed var(--primary-text);outline-offset:3px}textarea:focus-visible{outline:0}
@@ -500,9 +514,9 @@ button{font:inherit;cursor:pointer;color:inherit;border-radius:0}
 </style></head><body data-state="running">
 <header><h1>Chat<span class="who"> · Claude</span></h1><span id="pill"><span id="dot"></span><span id="label"></span></span><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
 <main id="messages" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><i></i><i></i><i></i></div></main>
-<footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><button id="report" type="button">${t('chat.page.openReport')}</button><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea>
-<div class="row"><div class="left"><button id="toggle" class="small" type="button"><svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/></svg><svg class="play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1h2v1h2v1h2v1h2v4H9v1H7v1H5v1H3z"/></svg><span id="toggleText"></span></button><button id="pick" class="small" type="button" disabled title="${t('chat.page.pickDisabled')}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>${t('chat.page.element')}</button></div>
-<div class="actions"><button id="mark" class="small" type="button" disabled>${t('chat.page.markCheckpoint')}</button><button id="send" class="small" type="submit" aria-label="${t('chat.page.send')}" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></form></footer>
+<footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea>
+<div class="row"><div class="left"><button id="toggle" class="small" type="button"><svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/></svg><svg class="play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1h2v1h2v1h2v1h2v4H9v1H7v1H5v1H3z"/></svg><svg class="stop" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8"/></svg><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button><button id="pick" class="small" type="button" disabled title="${t('chat.page.pickDisabled')}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>${t('chat.page.element')}</button></div>
+<div class="actions"><button id="mark" class="small" type="button" disabled title="${t('chat.page.markCheckpointTitle')}">${t('chat.page.markCheckpoint')}</button><button id="send" class="small" type="submit" aria-label="${t('chat.page.send')}" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></form></footer>
 <script>
 const T=${JSON.stringify(texts('chat.page.'))};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
@@ -539,11 +553,11 @@ abort.addEventListener('click',()=>{
 const down=document.getElementById('down');
 const atEnd=()=>messages.scrollHeight-messages.scrollTop-messages.clientHeight<80;
 let follow=true;
-// Eine Karte, die hoeher ist als der Chat (Fehler, Empfehlung, Plan), zeigt ihren Anfang, nicht ihr Ende: Sonst stuende nur der
-// untere Teil im Bild, sobald darunter die Knoepfe erscheinen. Der Anfang bleibt oben, bis eine neue Nachricht kommt.
+// Eine Karte (Fehler, Entscheidung, Empfehlung, Plan), die am Ende nicht ganz im Bild waere, zeigt ihren Anfang, nicht ihr Ende:
+// Sonst stuende nur der untere Teil im Bild, sobald darunter die Knoepfe erscheinen. Der Anfang bleibt oben, bis eine neue Nachricht kommt.
 let anchor=null;
 const offsetOf=(element)=>element.getBoundingClientRect().top-messages.getBoundingClientRect().top;
-const tall=()=>anchor!==null&&anchor.isConnected&&anchor.offsetHeight>messages.clientHeight-24;
+const tall=()=>anchor!==null&&anchor.isConnected&&offsetOf(anchor)+messages.scrollTop-8<messages.scrollHeight-messages.clientHeight-1;
 const pinned=()=>tall()&&Math.abs(offsetOf(anchor)-8)<16;
 const toEnd=()=>{if(tall())messages.scrollTop+=offsetOf(anchor)-8;else messages.scrollTop=messages.scrollHeight;down.classList.toggle('on',!atEnd());};
 messages.addEventListener('scroll',()=>{follow=atEnd()||pinned();down.classList.toggle('on',!atEnd());if(follow)down.classList.remove('new');});
@@ -551,11 +565,13 @@ down.addEventListener('click',()=>{follow=true;anchor=null;down.classList.remove
 const grown=()=>{if(follow)toEnd();else down.classList.add('on','new');};
 // Werden die Knoepfe darunter groesser oder kleiner, schrumpft der Chat: Mitscrollen gilt dann weiter.
 if(window.ResizeObserver)new ResizeObserver(()=>{if(follow)toEnd();}).observe(messages);
-const place=(element,top=false)=>{messages.insertBefore(element,thinking);anchor=top?element:null;grown();};
+// Eine neue Karte will entschieden werden: Sie kommt ins Bild, auch wenn der Mensch gerade weiter oben liest.
+const place=(element,top=false)=>{messages.insertBefore(element,thinking);anchor=top?element:null;if(top){follow=true;down.classList.remove('new');}grown();};
 let group=null;
 window.addMessage=(who,text,about)=>{
   if(who==='activity'){
-    if(group===null){const details=document.createElement('details');details.className='activity';details.setAttribute('aria-live','off');const summary=document.createElement('summary');const count=document.createElement('span');const latest=document.createElement('span');latest.className='latest';summary.append(count,latest);const list=document.createElement('ol');details.append(summary,list);group={details,count,latest,list,total:0};place(details);}
+    // Beim Vorfuehren zeigt die offene Liste, dass jeder Klick ankommt.
+    if(group===null){const details=document.createElement('details');details.className='activity';if(document.body.dataset.state==='showing')details.open=true;details.setAttribute('aria-live','off');const summary=document.createElement('summary');const count=document.createElement('span');const latest=document.createElement('span');latest.className='latest';summary.append(count,latest);const list=document.createElement('ol');details.append(summary,list);group={details,count,latest,list,total:0};place(details);}
     const item=document.createElement('li');item.textContent=text;group.list.append(item);group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.textContent=text;
     if(follow)toEnd();
     return;
@@ -579,6 +595,15 @@ window.addMessage=(who,text,about)=>{
     if(about.next)card.append(part('p','next',about.next));
     place(card,true);return;
   }
+  if(who==='decision'){
+    group=null;const card=document.createElement('div');card.className='message decision';const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
+    card.append(part('strong','',about.title));
+    if(about.facts&&about.facts.length>0){const ul=document.createElement('ul');for(const text of about.facts)ul.append(part('li','',text));card.append(ul);}
+    if(about.warn)card.append(part('div','warn',about.warn));
+    for(const section of about.details??[]){if(!section.items||section.items.length===0)continue;const details=document.createElement('details');details.append(part('summary','',section.title+' ('+section.items.length+')'));const ul=document.createElement('ul');for(const text of section.items)ul.append(part('li','',text));details.append(ul);card.append(details);}
+    if(about.question)card.append(part('p','next',about.question));
+    place(card,true);return;
+  }
   if(who==='advice'){
     group=null;const card=document.createElement('div');card.className='message advice '+about.side;const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
     card.append(part('strong','',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']),part('h2','',about.title));if(about.target)card.append(part('div','target',about.target));if(about.about)card.append(part('div','target',fill('chat.page.about',{about:about.about})));card.append(part('p','reason',about.reason));
@@ -599,20 +624,38 @@ const choices=document.getElementById('choices');
 let unlock=0;
 const lockChoices=(chosen)=>{for(const button of choices.querySelectorAll('button')){button.disabled=true;button.setAttribute('aria-disabled','true');}chosen.classList.add('busy');chosen.setAttribute('aria-busy','true');
   clearTimeout(unlock);const current=choices.firstElementChild;unlock=setTimeout(()=>{if(choices.firstElementChild!==current)return;for(const button of choices.querySelectorAll('button')){button.disabled=false;button.removeAttribute('aria-disabled');button.classList.remove('busy');button.removeAttribute('aria-busy');}},8000);};const hint=input.placeholder;
+// Der Knopf, den Strg+Enter ausloest, zeigt das auch.
+const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘↵':T['chat.page.ctrlEnter'];toggleButton.querySelector('.key').textContent=KEY;
 // Nach dem Lauf: Bericht und wie es weitergeht.
 window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T['chat.page.newRun'],code);}};
 document.getElementById('report').addEventListener('click',()=>send('report',document.documentElement.dataset.theme??''));
-window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=text;}input.placeholder=state==='planning'?T['chat.page.planPlaceholder']:hint;fit();
+// Nach der letzten Entscheidung bleibt das Fenster kurz offen: Der Mensch sieht das Ergebnis und schliesst selbst, sonst nach Ablauf.
+const closeWindow=document.getElementById('closeWindow');let lingerTimer=0;
+closeWindow.addEventListener('click',()=>{clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
+window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
+// Eine Wahl, die etwas verwirft, will ein zweites Mal geklickt werden, wie Abbrechen im Kopf.
+const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return false;choice.classList.add('sure');choice.textContent=option.confirm;const no=document.createElement('button');no.type='button';no.className='no';no.textContent=T['chat.page.no'];
+  let timer=0;const reset=()=>{clearTimeout(timer);choice.classList.remove('sure');choice.textContent=option.label;no.remove();};no.addEventListener('click',()=>{reset();choice.focus();});choice.after(no);timer=setTimeout(reset,4000);choice.disarm=()=>{clearTimeout(timer);no.remove();};return true;};
+const COMPACT=['discussing','deciding','reviewing'];
+window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=text;}input.placeholder=state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:hint;fit();
+if(state==='showing'&&group)group.details.open=true;
 const list=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
-choices.replaceChildren(...list.map((option)=>{const choice=document.createElement('button');choice.type='button';choice.textContent=option.label;if(option.primary)choice.className=option.big?'primary big':'primary';if(option.big)choice.id='approve';choice.addEventListener('click',()=>{if(choice.disabled)return;lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id);});return choice;}));
+const buttons=list.map((option)=>{const choice=document.createElement('button');choice.type='button';choice.textContent=option.label;if(option.primary)choice.className=option.big?'primary big':'primary';if(option.big){choice.id='approve';const key=document.createElement('kbd');key.setAttribute('aria-hidden','true');key.textContent=KEY;choice.append(key);}
+  choice.addEventListener('click',()=>{if(choice.disabled)return;if(option.confirm&&confirmFirst(choice,option))return;choice.disarm?.();lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id);});return choice;});
+// Kompakt: die Hauptwahl oben, alle anderen nebeneinander in einer Zeile.
+const primary=buttons.filter((choice)=>choice.classList.contains('primary')),rest=buttons.filter((choice)=>!choice.classList.contains('primary'));
+if(COMPACT.includes(state)&&rest.length>1){const row=document.createElement('div');row.className='rest';row.append(...rest);choices.replaceChildren(...primary,row);}else choices.replaceChildren(...buttons);
 // Neue Knoepfe bekommen den Fokus, damit Tastatur und Screenreader dort weitermachen; wer gerade tippt, behaelt das Feld.
-if(choices.firstElementChild&&document.activeElement!==input)(choices.querySelector('.primary')??choices.firstElementChild).focus({preventScroll:true});
+if(buttons.length>0&&document.activeElement!==input)(choices.querySelector('.primary')??choices.querySelector('button')).focus({preventScroll:true});
 const allowed=["paused","asking","showing","planning","discussing","developing"].includes(state);pick.disabled=!allowed;pick.title=allowed?T['chat.page.pickTitle']:T['chat.page.pickDisabled'];if(!allowed)window.setChip(null);document.getElementById('label').textContent=label;document.getElementById('toggleText').textContent=button;};
 input.focus();
-// Kurzbefehle: Strg+Enter (Cmd+Enter) loest den Hauptknopf aus, etwa Freigeben oder Fertig; Esc fragt den Abbruch an.
+// Kurzbefehle: Strg+Enter (Cmd+Enter) loest den Hauptknopf aus, etwa Freigeben oder Fertig. Esc leert zuerst das Feld, in dem
+// getippt wird; sonst fragt das erste Esc den Abbruch an, erst ein zweites innerhalb von 4 s bestaetigt ihn.
 document.addEventListener('keydown',(event)=>{
   if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&input.value.trim()===''){const main=document.getElementById('approve');if(main&&main.offsetParent!==null&&!main.disabled){event.preventDefault();main.click();}else if(toggleButton.offsetParent!==null&&!toggleButton.disabled){event.preventDefault();toggleButton.click();}}
-  else if(event.key==='Escape'&&abort.offsetParent!==null&&!abort.disabled&&!pick.classList.contains('on')){event.preventDefault();sure=true;abort.click();}
+  else if(event.key==='Escape'&&!pick.classList.contains('on')){
+    if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();return;}
+    if(abort.offsetParent!==null&&!abort.disabled){event.preventDefault();abort.click();}}
 });
 ${sourceTag}</script></body></html>`;
 
@@ -621,8 +664,9 @@ ${sourceTag}</script></body></html>`;
  * @param logPath     Mitschrift im Lauf-Ordner, ohne Claudes Log und Aktionen: Die stehen in claude.log
  * @param transcript  Der bisherige Verlauf, wandert mit: Vorfuehrung, Claude und Pruefdurchlauf sind getrennte Browser
  * @param onOpen      Nur fuer Tests: bekommt den Chat-Frame
+ * @param onWaiting   bekommt eine Zeile fuers Terminal, sobald der Chat auf den Menschen wartet: einmal je solchem Zustand
  */
-export const openChat = async ({ session, logPath, onAbort, onOpen, transcript = [] }) => {
+export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, transcript = [] }) => {
     // `doc()` ist das Dokument des Chats, der Frame in der Werkbank (nach einem Neuladen ein neuer); `chatWindow` die Werkbank drumherum.
     const bench = session.workbench ?? null;
     if (bench === null) throw new CawError('chat-failed', t('chat.error.noWorkbench'));
@@ -636,6 +680,10 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
     // Kennung der zuletzt geschriebenen Chat-Seite, neu bei jedem show().
     let nonce = null;
     let current = ['running', null];
+    // Der Zustand, fuer den das Terminal zuletzt gemeldet hat, dass das Fenster wartet.
+    let waitingFor = null;
+    // Der Mensch schliesst das Fenster nach dem Lauf selbst (linger).
+    let closeWanted = null;
     // Nach dem Lauf: { report: absoluter Pfad, shown: Pfad fuer Menschen, text, command }.
     let next = null;
     const openReport = async (theme) => {
@@ -657,7 +705,13 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
         status: (state, options) => {
             quiet(render(state, options));
             if (NEEDS_HUMAN.includes(state)) quiet(chatWindow.bringToFront());
+            // Wer im Terminal wartet, sieht dort, dass das Fenster auf ihn wartet. Erneutes Melden desselben Zustands zaehlt nicht.
+            if (NEEDS_HUMAN.includes(state) && state !== waitingFor) {
+                waitingFor = state;
+                onWaiting?.(t('chat.waiting', { status: status(state).text }));
+            } else if (!NEEDS_HUMAN.includes(state)) waitingFor = null;
             quiet(Promise.resolve(bench.mood?.(RAVEN_ASKS.includes(state) ? 'ask' : 'wait')));
+            quiet(Promise.resolve(bench.chatState?.(state)));
             if (picking && !PICK_STATES.includes(state)) quiet(cancelPick(session));
         },
         onAbort,
@@ -697,6 +751,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
         else if (event?.type === 'choose') chat.human.choose(event.text);
         else if (event?.type === 'abort') chat.human.abort();
         else if (event?.type === 'report' && next !== null) quiet(openReport(event.text));
+        else if (event?.type === 'close') closeWanted?.();
     });
     /** Beim Entwickeln: Wer ein mit dem Fadenkreuz gewaehltes Element zusaetzlich bekommt (die Claude-Code-Sitzung). null: niemand. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
@@ -710,6 +765,20 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, transcript =
     chat.finished = async (info) => {
         next = info;
         await quiet(doc().evaluate((value) => window.setNext(value), info));
+    };
+    /**
+     * Nach dem Lauf, nach finished und dem Schliessen des Gespraechs: Das Fenster bleibt mit „Fenster schließen“ und Countdown offen.
+     * @returns sobald der Mensch schliesst oder die Zeit um ist
+     */
+    chat.linger = async (ms) => {
+        const clicked = new Promise((resolve) => { closeWanted = resolve; });
+        let timer;
+        const elapsed = new Promise((resolve) => { timer = setTimeout(resolve, ms); });
+        await quiet(render('closed'));
+        await quiet(doc().evaluate((seconds) => window.linger(seconds), Math.round(ms / 1000)));
+        await Promise.race([clicked, elapsed]);
+        clearTimeout(timer);
+        closeWanted = null;
     };
     await show();
     await render('running');
