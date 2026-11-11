@@ -38,8 +38,8 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` onl
 |---|---|---|
 | `caw_doctor` | `doctor` as data: every check with next step, counts of blocking and optional ones | no |
 | `caw_init` | `init` without questions: `offline`, or `fromExplore` after `caw_explore`; `roles`, `noMcp`. Returns created files and TODO fields | no |
-| `caw_explore` | starts `explore` in the background (`login: true/false` or `yes`); `caw_status` then shows `caw/.explore.json` | no |
-| `caw_role` | `list` roles and whether a test user is set; `add` opens the sign-in window for you, you save the role there; `remove` | no |
+| `caw_explore` | runs `explore` (`login: true/false` or `yes`), waits until you are done in the window and returns the suggestions with the saved roles | no |
+| `caw_role` | `list` roles and whether a test user is set; `add` opens the sign-in window for you, you save the role there, the tool returns it; `remove` | no |
 | `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written | no |
 | `caw_validate` | `validate` as data: config findings, per test problems, hints and code per target | no |
 | `caw_list` | `list` as data: per test app, role, targets, writes, recording state per step | no |

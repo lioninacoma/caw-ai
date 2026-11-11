@@ -318,4 +318,9 @@ export default {
     'run.mcp.roleRemoved': 'Role {role} removed.',
     'run.mcp.roleStarted': 'role add started (pid {pid}): the sign-in window opens for the human. caw_role list then shows the role.',
     'run.plan.sessionReadOnly': 'Read-only test plan from your session, unchanged: Claude follows it without approval. You decide at the end whether it is adopted.',
+    'run.mcp.stillOpen': 'The window (pid {pid}) is still open after 20 minutes. caw_status shows the result once the human is done.',
+    'run.mcp.exploreDone': 'explore done. Roles saved by the human: {roles}. Next: caw_init with fromExplore.',
+    'run.mcp.endedWithout': 'explore ended without a result (window closed or an error). Last output: {tail}',
+    'run.mcp.roleDone': 'Test user saved for: {roles}.',
+    'run.mcp.roleNothing': 'No test user saved (window closed or an error). Last output: {tail}',
 };

@@ -38,8 +38,8 @@ In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` gre
 |---|---|---|
 | `caw_doctor` | `doctor` als Daten: jede Prüfung mit nächstem Schritt, Anzahl blockierender und optionaler | nein |
 | `caw_init` | `init` ohne Rückfragen: `offline`, oder `fromExplore` nach `caw_explore`; `roles`, `noMcp`. Liefert angelegte Dateien und TODO-Felder | nein |
-| `caw_explore` | startet `explore` im Hintergrund (`login: true/false` oder `yes`); danach zeigt `caw_status` `caw/.explore.json` | nein |
-| `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` öffnet dir das Anmeldefenster, dort speicherst du die Rolle; `remove` | nein |
+| `caw_explore` | führt `explore` aus (`login: true/false` oder `yes`), wartet, bis du im Fenster fertig bist, und liefert die Vorschläge mit den gespeicherten Rollen | nein |
+| `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` öffnet dir das Anmeldefenster, dort speicherst du die Rolle, das Tool liefert sie zurück; `remove` | nein |
 | `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben | nein |
 | `caw_validate` | `validate` als Daten: Config-Befunde, je Test Probleme, Hinweise und Code je Ziel | nein |
 | `caw_list` | `list` als Daten: je Test App, Rolle, Ziele, ob er schreibt, Aufnahmestand je Schritt | nein |

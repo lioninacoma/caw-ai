@@ -318,4 +318,9 @@ export default {
     'run.mcp.roleRemoved': 'Rolle {role} entfernt.',
     'run.mcp.roleStarted': 'role add gestartet (pid {pid}): Das Anmeldefenster öffnet sich beim Menschen. Danach zeigt caw_role list die Rolle.',
     'run.plan.sessionReadOnly': 'Lesender Testplan aus deiner Session, unverändert: Claude folgt ihm ohne Freigabe. Am Ende entscheidest du, ob er übernommen wird.',
+    'run.mcp.stillOpen': 'Das Fenster (pid {pid}) ist nach 20 Minuten noch offen. caw_status zeigt das Ergebnis, sobald der Mensch fertig ist.',
+    'run.mcp.exploreDone': 'explore fertig. Vom Menschen gespeicherte Rollen: {roles}. Weiter: caw_init mit fromExplore.',
+    'run.mcp.endedWithout': 'explore endete ohne Ergebnis (Fenster geschlossen oder Fehler). Letzte Ausgabe: {tail}',
+    'run.mcp.roleDone': 'Testnutzer gespeichert für: {roles}.',
+    'run.mcp.roleNothing': 'Kein Testnutzer gespeichert (Fenster geschlossen oder Fehler). Letzte Ausgabe: {tail}',
 };

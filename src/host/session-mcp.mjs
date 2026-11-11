@@ -71,6 +71,33 @@ const isAlive = (pid) => {
     }
 };
 
+/** How long caw_explore and caw_role wait for the human's window. */
+const WINDOW_WAIT_MS = 20 * 60 * 1000;
+
+/**
+ * Waits until a detached process has ended.
+ * @param waiting { alive, pollMs, timeoutMs } for tests
+ * @returns true when it ended, false on timeout
+ */
+const waitForExit = async (pid, { alive = isAlive, pollMs = 1000, timeoutMs = WINDOW_WAIT_MS } = {}) => {
+    const until = Date.now() + timeoutMs;
+    while (pid !== undefined && alive(pid)) {
+        if (Date.now() >= until) return false;
+        await new Promise((done) => { setTimeout(done, pollMs); });
+    }
+    return true;
+};
+
+/** The last lines of a detached command's output, without colour codes: why it ended without a result. */
+const logTail = (log, lines = 6) => {
+    try {
+        // eslint-disable-next-line no-control-regex
+        return readFileSync(log, 'utf8').replace(/\u001b\[[0-9;]*m/g, '').trim().split(/\r?\n/).slice(-lines).join('\n');
+    } catch {
+        return '';
+    }
+};
+
 /** The run last started with caw_start, as long as its process is alive; otherwise undefined. */
 export const runningRun = (root) => {
     const log = latestLog(root);
@@ -262,7 +289,7 @@ const textField = (input, field) => {
  * @param overlayPreconditions (root, config, { target, app }) -> { state, command?, appDir? }; default from overlay-check.mjs
  * @param writeConfig (root, patch, { dryRun }) -> { ok, issues, config }; default from config.mjs
  */
-export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), probes, overlayPreconditions, writeConfig } = {}) => [
+export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), probes, overlayPreconditions, writeConfig, windowWait = {} } = {}) => [
     {
         name: 'caw_start',
         description: 'Starts a caw-ai command in the background with you as the agent (--agent session); the window opens for the human. '
@@ -449,16 +476,17 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_explore',
-        description: 'Starts caw-ai explore in the background: a window opens for the human, who signs in and clicks "Done". Needs login (true/false: '
-            + 'does the app have a sign-in?) or yes (unattended, only the page is looked at). caw_status then shows the suggestions from caw/.explore.json; '
-            + 'caw_init with fromExplore takes them over. No tokens.',
+        description: 'Runs caw-ai explore: a window opens for the human, who signs in, picks the start page, clicks "Done" and names the role of '
+            + 'the test user. Needs login (true/false: does the app have a sign-in?) or yes (unattended, only the page is looked at). Waits until '
+            + 'the window is done (up to 20 minutes) and returns the suggestions from caw/.explore.json, including the saved roles; then call '
+            + 'caw_init with fromExplore. wait: false only starts it (caw_status shows the result later). No tokens.',
         inputSchema: {
             type: 'object',
-            properties: { url: { type: 'string' }, login: { type: 'boolean' }, yes: { type: 'boolean' }, insecureTls: { type: 'boolean' } },
+            properties: { url: { type: 'string' }, login: { type: 'boolean' }, yes: { type: 'boolean' }, insecureTls: { type: 'boolean' }, wait: { type: 'boolean' } },
             required: ['url'],
             additionalProperties: false,
         },
-        call: (input) => {
+        call: async (input) => {
             if (typeof input.url !== 'string' || !/^https?:\/\//.test(input.url)) throw new Error(t('run.mcp.urlInvalid'));
             if (input.login === undefined && input.yes !== true) throw new Error(t('run.mcp.exploreLogin'));
             const running = runningRun(root);
@@ -467,19 +495,31 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             if (input.login !== undefined) args.push(input.login ? '--login' : '--no-login');
             if (input.yes === true) args.push('--yes');
             if (input.insecureTls === true) args.push('--insecure-tls');
+            const startedAt = Date.now();
             const { log, pid } = spawnDetached({ root, command: 'explore', args, spawnRun });
-            return answer(t('run.mcp.exploreStarted', { pid, log }), { state: 'started', command: 'explore', args, pid, log: shown(root, log) });
+            const started = { command: 'explore', args, pid, log: shown(root, log) };
+            if (input.wait === false) return answer(t('run.mcp.exploreStarted', { pid, log }), { state: 'started', ...started });
+            const ended = await waitForExit(pid, windowWait);
+            if (!ended) return answer(t('run.mcp.stillOpen', { pid }), { state: 'running', ...started });
+            const file = join(root, 'caw', '.explore.json');
+            // Written by this run (file times may be coarser than the clock): its suggestions; otherwise the window was closed.
+            if ((mtime(file) ?? 0) >= startedAt - 2000) {
+                const explore = readJson(file);
+                return answer(t('run.mcp.exploreDone', { roles: (explore?.roles ?? []).join(', ') || '-' }), { state: 'done', ...started, explore });
+            }
+            return answer(t('run.mcp.endedWithout', { tail: logTail(log) }), { state: 'ended', ...started, tail: logTail(log) }, true);
         },
     },
     {
         name: 'caw_role',
         description: 'Roles and their test users. action list: per role whether a test user is set (never the values) and which tests use it. '
             + 'action add: opens a window on the sign-in page of target; the human signs in and saves the role (name prefilled), caw-ai writes '
-            + 'caw/.env and the config. You never ask for or see user names or passwords. action remove: a role no test uses. Derive role names '
+            + 'caw/.env and the config; waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the saved roles. '
+            + 'You never ask for or see user names or passwords. action remove: a role no test uses. Derive role names '
             + 'from the code (permissions, seed users). Not needed before record: a test whose role has no test user opens that window itself. No tokens.',
         inputSchema: {
             type: 'object',
-            properties: { action: { type: 'string', enum: ['list', 'add', 'remove'] }, name: { type: 'string' }, target: { type: 'string' } },
+            properties: { action: { type: 'string', enum: ['list', 'add', 'remove'] }, name: { type: 'string' }, target: { type: 'string' }, wait: { type: 'boolean' } },
             required: ['action'],
             additionalProperties: false,
         },
@@ -497,8 +537,16 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
             const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.target === undefined ? [] : ['--target', input.target])];
+            const before = new Set(roleOverview(root).roles.filter(({ testUser }) => testUser).map(({ name }) => name));
             const { log, pid } = spawnDetached({ root, command: 'role', args, spawnRun });
-            return answer(t('run.mcp.roleStarted', { pid }), { state: 'started', command: 'role', args, pid, log: shown(root, log) });
+            const started = { command: 'role', args, pid, log: shown(root, log) };
+            if (input.wait === false) return answer(t('run.mcp.roleStarted', { pid }), { state: 'started', ...started });
+            if (!await waitForExit(pid, windowWait)) return answer(t('run.mcp.stillOpen', { pid }), { state: 'running', ...started });
+            // The window is done: which roles got a test user now (never the values).
+            const overview = roleOverview(root);
+            const saved = overview.roles.filter(({ name, testUser }) => testUser && !before.has(name)).map(({ name }) => name);
+            if (saved.length === 0) return answer(t('run.mcp.roleNothing', { tail: logTail(log) }), { state: 'ended', ...started, saved, roles: overview.roles }, true);
+            return answer(t('run.mcp.roleDone', { roles: saved.join(', ') }), { state: 'done', ...started, saved, roles: overview.roles });
         },
     },
     {

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+import { saveTestUser } from '../src/host/test-users.mjs';
 import { sessionMcpHandler, startArgs } from '../src/host/session-mcp.mjs';
 import { initProject, listProject, validateProject } from '../src/host/project-data.mjs';
 
@@ -169,17 +170,61 @@ test('caw_explore: spawned detached with --login/--no-login or --yes, never asks
     const root = tempDir(t);
     const { call, spawned } = session(root);
     assert.equal((await call('caw_explore', { url: 'http://localhost:5173' })).isError, true, 'login or yes is required');
-    const started = await call('caw_explore', { url: 'http://localhost:5173', login: false, insecureTls: true });
+    const started = await call('caw_explore', { url: 'http://localhost:5173', login: false, insecureTls: true, wait: false });
     assert.match(started.content[0].text, /explore gestartet/);
     assert.deepEqual(spawned[0].args.slice(1), ['explore', '--url', 'http://localhost:5173', '--no-login', '--insecure-tls']);
     assert.equal(spawned[0].options.stdio[0], 'ignore');
     assert.equal(started.structuredContent.state, 'started');
 });
 
+test('caw_explore waits for the window and returns the suggestions with the saved roles', async (t) => {
+    const root = tempDir(t);
+    let polls = 0;
+    // The window is open for two polls; meanwhile explore writes its result.
+    const alive = () => {
+        polls += 1;
+        if (polls === 2) {
+            mkdirSync(join(root, 'caw'), { recursive: true });
+            writeFileSync(join(root, 'caw', '.explore.json'), JSON.stringify({ url: 'http://localhost:5173', framework: { value: 'react' }, roles: ['clerk'] }));
+        }
+        return polls < 3;
+    };
+    const { call } = session(root, { windowWait: { alive, pollMs: 1 } });
+    const done = await call('caw_explore', { url: 'http://localhost:5173', login: true });
+    assert.equal(done.structuredContent.state, 'done');
+    assert.deepEqual(done.structuredContent.explore.roles, ['clerk']);
+    assert.match(done.content[0].text, /clerk/);
+    // Closed without a result: an error with the last output; still open after the time limit: running.
+    const closed = await session(tempDir(t), { windowWait: { alive: () => false } }).call('caw_explore', { url: 'http://localhost:5173', login: true });
+    assert.equal(closed.isError, true);
+    assert.equal(closed.structuredContent.state, 'ended');
+    const open = await session(tempDir(t), { windowWait: { alive: () => true, pollMs: 1, timeoutMs: 5 } }).call('caw_explore', { url: 'http://localhost:5173', yes: true });
+    assert.equal(open.structuredContent.state, 'running');
+});
+
+test('caw_role add waits for the window and names the roles that got a test user', async (t) => {
+    const root = project(t);
+    let polls = 0;
+    const alive = () => {
+        polls += 1;
+        if (polls === 2) saveTestUser(root, { role: 'clerk', user: 'c', password: 'secret-value' });
+        return polls < 3;
+    };
+    const { call, spawned } = session(root, { windowWait: { alive, pollMs: 1 } });
+    const done = await call('caw_role', { action: 'add', name: 'clerk', target: 'local' });
+    assert.deepEqual(spawned.at(-1).args.slice(1), ['role', 'add', 'clerk', '--target', 'local']);
+    assert.equal(done.structuredContent.state, 'done');
+    assert.deepEqual(done.structuredContent.saved, ['clerk']);
+    assert.ok(!JSON.stringify(done).includes('secret-value'), 'never the values');
+    const nothing = await session(root, { windowWait: { alive: () => false } }).call('caw_role', { action: 'add', name: 'auditor' });
+    assert.equal(nothing.isError, true);
+    assert.deepEqual(nothing.structuredContent.saved, []);
+});
+
 test('caw_explore: its result shows up in caw_status once written', async (t) => {
     const root = tempDir(t);
     const { call } = session(root);
-    await call('caw_explore', { url: 'http://localhost:5173', yes: true });
+    await call('caw_explore', { url: 'http://localhost:5173', yes: true, wait: false });
     mkdirSync(join(root, 'caw'), { recursive: true });
     writeFileSync(join(root, 'caw', '.explore.json'), JSON.stringify({ url: 'http://localhost:5173', framework: { value: 'react' } }));
     const status = (await call('caw_status')).structuredContent;

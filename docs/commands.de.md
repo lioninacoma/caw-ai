@@ -266,8 +266,8 @@ Startet Claude Code über `.mcp.json`. Du rufst es nicht selbst auf. Deine Sitzu
 |---|---|---|
 | `caw_doctor` | `doctor` als Daten | nein |
 | `caw_init` | `init` ohne Rückfragen (`offline`, `fromExplore`, `roles`, `noMcp`) | nein |
-| `caw_explore` | `explore` im Hintergrund starten (`login` oder `yes`) | nein |
-| `caw_role` | Rollen als Daten (`list`), das Anmeldefenster für eine neue (`add`, `name`, `target`), `remove`; nie Benutzernamen oder Passwörter | nein |
+| `caw_explore` | `explore` ausführen (`login` oder `yes`) und auf das Fenster warten; liefert Vorschläge und gespeicherte Rollen (`wait: false` startet nur) | nein |
+| `caw_role` | Rollen als Daten (`list`), das Anmeldefenster für eine neue (`add`, `name`, `target`; wartet und liefert die gespeicherten Rollen), `remove`; nie Benutzernamen oder Passwörter | nein |
 | `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`) | nein |
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |

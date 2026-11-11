@@ -266,8 +266,8 @@ Started by Claude Code through `.mcp.json`. You don't call it yourself. It gives
 |---|---|---|
 | `caw_doctor` | `doctor` as data | no |
 | `caw_init` | `init` without questions (`offline`, `fromExplore`, `roles`, `noMcp`) | no |
-| `caw_explore` | Start `explore` in the background (`login` or `yes`) | no |
-| `caw_role` | Roles as data (`list`), the sign-in window for a new one (`add`, `name`, `target`), `remove`; never user names or passwords | no |
+| `caw_explore` | Run `explore` (`login` or `yes`) and wait for the window; returns the suggestions and saved roles (`wait: false` only starts it) | no |
+| `caw_role` | Roles as data (`list`), the sign-in window for a new one (`add`, `name`, `target`; waits and returns the saved roles), `remove`; never user names or passwords | no |
 | `caw_config` | Read the config, or change it validated (`patch`, `dryRun`) | no |
 | `caw_validate` | `validate` as data | no |
 | `caw_list` | `list` as data | no |

@@ -53,8 +53,8 @@ you add what can only be learned from the code or from the human:
 2. **Explore:** With the tools: `caw_explore` with `login: true` (or `yes` without a sign-in). Without them the human runs
    `npx caw-ai init --url <address>` in their terminal. A window opens: the human signs in with a test account, picks the start page and
    clicks Done; the card then asks for the role of that account and saves it as a test user in `caw/.env`, "+ Another role" for more
-   accounts. http only works on the own machine (`localhost`, `127.0.0.1`, `*.localhost`). Result in `caw/.explore.json` (via
-   `caw_status`): framework, login form, marker for "signed in", start page, messages, console noise, each with `confidence`, `notes`,
+   accounts. http only works on the own machine (`localhost`, `127.0.0.1`, `*.localhost`). `caw_explore` waits until the human is
+   done and returns the result (also in `caw/.explore.json`): framework, login form, marker for "signed in", start page, messages, console noise, each with `confidence`, `notes`,
    and `roles` saved by the human. Then `caw_init` with `fromExplore: true`.
 3. **Complete from the code:** further environments (staging, test) from configs and docs, role names from seed data, fixtures or
    permission code, the most important screens from the router. Domain terms and peculiarities (date formats, slow services, known
@@ -71,7 +71,7 @@ you add what can only be learned from the code or from the human:
      stale, ask the human to start `sencha app watch` in the app folder; never start it yourself.
    Ask only what you cannot decide from the code: an environment you cannot classify.
 5. **Test users:** never ask for user names or passwords and never write `caw/.env`. Roles come from the explore window; more with
-   `caw_role` (`add`, `name` from the code, `target`): the window opens and the human signs in and saves. `caw_role list` shows which
+   `caw_role` (`add`, `name` from the code, `target`): the window opens, the human signs in and saves, and the tool returns the saved roles. `caw_role list` shows which
    role still has no test user.
 6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw-ai doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
    the overlay check is green.
