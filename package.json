@@ -44,7 +44,7 @@
     "scripts": {
         "lint": "eslint .",
         "test": "node --import ./test/setup-de.mjs --test \"test/*.test.mjs\"",
-        "e2e": "node e2e/schritte-e2e.mjs",
+        "e2e": "node e2e/steps-e2e.mjs",
         "pack:check": "node scripts/pack-check.mjs",
         "prepack": "node scripts/pack-check.mjs"
     },

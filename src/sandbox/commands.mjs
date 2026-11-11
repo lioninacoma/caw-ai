@@ -51,8 +51,8 @@ export const finish = async (file) => {
         throw new CawError('finish-rejected', `Results file not readable: ${error.message}`);
     }
     const { status } = await sendCommand(join(agentDir(), CHANNEL_DIR), { action: 'finish', results });
-    // e2e/schritte-e2e.mjs matches this German line.
-    console.log(`Urteil angenommen: ${status}`);
+    // e2e/steps-e2e.mjs matches this line.
+    console.log(`Verdict accepted: ${status}`);
     return EXIT.pass;
 };
 

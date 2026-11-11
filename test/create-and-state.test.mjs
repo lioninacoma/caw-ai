@@ -474,7 +474,7 @@ test('Chat: a picked element attaches to the next message and is not lost withou
     assert.deepEqual(await chat.operator.nextLine(), { note: 'Ohne' });
     chat.attach(element);
     chat.human.toggle();
-    assert.deepEqual(await chat.operator.nextLine(), { note: 'Dieses Element meine ich.', element });
+    assert.deepEqual(await chat.operator.nextLine(), { note: 'This is the element I mean.', element });
     assert.equal(await chat.operator.nextLine(), '');
     chat.leave();
     chat.enter('showing');

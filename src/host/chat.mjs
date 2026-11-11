@@ -27,7 +27,7 @@ const TALK_KINDS = ['discussing', 'developing'];
 const NEEDS_HUMAN = ['choosing', 'planning', 'deciding', 'reviewing', 'discussing'];
 // Then the workbench's raven turns to the chat.
 const RAVEN_ASKS = [...NEEDS_HUMAN, 'asking', 'showing', 'developing'];
-const UNNAMED_ELEMENT_NOTE = 'Dieses Element meine ich.';
+const UNNAMED_ELEMENT_NOTE = 'This is the element I mean.';
 
 // Status line, pill and button per state. Fetched at runtime: the language is not known yet at import time.
 const STATES = ['running', 'pausing', 'paused', 'asking', 'showing', 'choosing', 'planning', 'handing', 'verifying', 'testing', 'discussing', 'preparing', 'deciding', 'advising', 'reviewing', 'developing', 'closed'];

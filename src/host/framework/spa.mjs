@@ -104,9 +104,9 @@ export const react = {
     hydrates: true,
     stackSkip: /\/(react-dom|react|scheduler)[\w.-]*\.js|\/node_modules\/\.vite\/deps\/(react|scheduler)|\/node_modules\/(react-dom|react|scheduler)\//,
     hints: [
-        'Requests stehen meist in Hooks (useEffect, React Query/SWR) oder einer api-Datei mit fetch/axios; der Request-Name aus dem Netzwerkprotokoll führt per Suche zur Stelle.',
-        '`component` im Ziel ist der Name der React-Komponente; die Datei heißt meist genauso.',
-        'Einen globalen Store wie Ext.getStore gibt es nicht: Prüfungen über sichtbaren Text, ARIA oder die Antworten im Netzwerkprotokoll.',
+        'Requests usually live in hooks (useEffect, React Query/SWR) or an api file using fetch/axios; searching for the request name from the network log leads to the spot.',
+        '`component` in the target is the name of the React component; the file is usually named the same.',
+        'There is no global store like Ext.getStore: check via visible text, ARIA or the responses in the network log.',
     ],
 };
 
@@ -119,9 +119,9 @@ export const vue = {
     hydrates: true,
     stackSkip: /\/(@vue|vue|vue-router|pinia)[\w./-]*\.js|\/node_modules\/\.vite\/deps\/(vue|@vue|pinia)|\/node_modules\/(@vue|vue|vue-router|pinia)\//,
     hints: [
-        'Requests stehen meist in Composables (use…), Pinia-Stores oder einer api-Datei; der Request-Name führt per Suche zur Stelle.',
-        '`source` im Ziel ist der Pfad der Single-File-Component, `component` ihr Name.',
-        'Prüfungen über sichtbaren Text, ARIA oder die Antworten im Netzwerkprotokoll; Pinia-Stores sind von außen nur im Dev-Build erreichbar.',
+        'Requests usually live in composables (use…), Pinia stores or an api file; searching for the request name leads to the spot.',
+        '`source` in the target is the path of the single-file component, `component` its name.',
+        'Check via visible text, ARIA or the responses in the network log; Pinia stores are reachable from outside only in a dev build.',
     ],
 };
 
@@ -134,9 +134,9 @@ export const angular = {
     hydrates: true,
     stackSkip: /\/(zone|polyfills)[\w.-]*\.js|\/@angular\/|\/node_modules\/\.vite\/deps\/(@angular|zone|rxjs)|\/node_modules\/(@angular|zone\.js|rxjs)\//,
     hints: [
-        'Requests stehen in Services mit HttpClient; der Request-Name führt per Suche zur Stelle, `component` im Ziel zur Komponente (Klasse …Component).',
-        'Ein abgebrochener Request kurz nach einem Routenwechsel gehört zum Router (das Tool wertet ihn nicht als Fehler); ohne Routenwechsel ist es oft ein unsubscribe oder takeUntil.',
-        'Prüfungen über sichtbaren Text, ARIA oder die Antworten im Netzwerkprotokoll.',
-        'Die Bereitschaft laut Zone.js gibt es nur mit Testability; eine Standalone-App (bootstrapApplication) bietet sie erst mit provideProtractorTestingSupport(), sonst zählt die DOM-Ruhe.',
+        'Requests live in services using HttpClient; searching for the request name leads to the spot, `component` in the target to the component (class …Component).',
+        'An aborted request right after a route change belongs to the router (the tool does not count it as a failure); without a route change it is often an unsubscribe or takeUntil.',
+        'Check via visible text, ARIA or the responses in the network log.',
+        'Readiness from Zone.js needs Testability; a standalone app (bootstrapApplication) only offers it with provideProtractorTestingSupport(), otherwise DOM quiet counts.',
     ],
 };
