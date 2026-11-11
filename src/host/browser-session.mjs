@@ -193,8 +193,9 @@ export const trackAgentPages = (first) => {
  * Meldet den Browser an, falls noetig. Die Zugangsdaten bleiben auf dem Host; der Trace startet erst
  * nach der Anmeldung, und keine Meldung enthaelt sie.
  */
-const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, framework }) => {
-    const page = context.pages()[0];
+// @param on die Seite fuer die Anmeldung; ohne Angabe der erste Tab (vor der Werkbank), beim erneuten Anmelden der Frame der Anwendung
+const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, framework, on }) => {
+    const page = on ?? context.pages()[0];
     const broken = watchBroken(page);
     // Nur die SPA-Adapter: Ihre Anmeldeseite ist meist Teil der App. `web` und `extjs` (Portal-Anmeldung ohne Ext) bleiben wie bisher.
     const originOf = (address) => { try { return new URL(address).origin; } catch { return null; } };
@@ -218,6 +219,54 @@ const ensureLoggedIn = async (context, { url, marker, login, password, totpSecre
     } finally {
         broken.stop();
     }
+};
+
+// Was eine Sitzung im Browser hinterlaesst, ausser Cookies (die gehen fuer alle Origins mit clearCookies).
+const SITE_DATA = 'local_storage,indexeddb,cache_storage,service_workers,websql,file_systems';
+
+/**
+ * Eine neue Sitzung im selben Fenster, wie ein neuer Lauf mit frischem Profil: Cookies aller Origins, dazu localStorage, IndexedDB,
+ * Cache Storage und Service Worker der Origins, die die Anwendung zeigt, und ihr sessionStorage. Nur die Schluessel der Werkbank
+ * (`caw-`) bleiben: Sie teilt sich mit der Anwendung den Origin, nicht deren Daten.
+ * @param context der Browser-Kontext
+ * @param view    die Anwendung (Seite oder Frame der Werkbank)
+ * @param base    die Adresse der Umgebung; ihr Origin wird immer geleert
+ */
+export const freshSession = async (context, view, base) => {
+    await context.clearCookies();
+    // Chrome leert mit dem Storage auch sessionStorage: Die Schluessel der Werkbank vorher sichern, danach zurueckschreiben.
+    const kept = await view.evaluate(() => {
+        try {
+            const own = Object.keys(sessionStorage).filter((key) => key.startsWith('caw-')).map((key) => [key, sessionStorage.getItem(key)]);
+            sessionStorage.clear();
+            return own;
+        } catch {
+            return [];
+        }
+    }).catch(() => []);
+    const origins = new Set([new URL(base).origin]);
+    for (const address of [view.url(), ...(view.frames?.() ?? []).map((frame) => frame.url())]) {
+        try {
+            const { origin, protocol } = new URL(address);
+            if (protocol === 'http:' || protocol === 'https:') origins.add(origin);
+        } catch {
+            // keine Adresse
+        }
+    }
+    const cdp = await context.newCDPSession(view.workbench ?? context.pages()[0]).catch(() => null);
+    try {
+        for (const origin of origins) await cdp?.send('Storage.clearDataForOrigin', { origin, storageTypes: SITE_DATA }).catch(() => {});
+    } finally {
+        await cdp?.detach().catch(() => {});
+    }
+    await view.evaluate((own) => {
+        try {
+            for (const [key, value] of own) sessionStorage.setItem(key, value);
+        } catch {
+            // ohne Zugriff
+        }
+    }, kept).catch(() => {});
+    return [...origins];
 };
 
 /**
@@ -654,6 +703,25 @@ export const openBrowserSession = async (spec) => {
         process.removeListener('unhandledRejection', ignoreClosedBrowser);
     };
 
+    // Wer gerade angemeldet ist: Beim Herstellen eines Zustands aus einem Test einer anderen Rolle wechselt das Konto.
+    let current = credentials;
+    // Alle Passwoerter dieser Sitzung bleiben geschwaerzt, auch nach einem Wechsel des Kontos.
+    const passwords = credentials?.password === undefined ? [] : [credentials.password];
+    const formLogin = (on) => ensureLoggedIn(raw, {
+        url: `${resolved.url}${auth.path}`,
+        marker: auth.signedInSelector,
+        login: current.login,
+        password: current.password,
+        totpSecret: current.totpSecret,
+        framework,
+        selectors: {
+            user: auth.userSelector,
+            password: auth.passwordSelector,
+            ...(auth.submitSelector === undefined ? {} : { submit: auth.submitSelector }),
+            ...(auth.codeSelector === undefined ? {} : { code: auth.codeSelector }),
+        },
+        ...(on === undefined ? {} : { on }),
+    });
     try {
         // Der Host startet den Browser erst nach seinem Preflight. Die Anmeldung haengt deshalb am Launcher.
         const launcher = createPlaywrightLauncher(async (dir) => {
@@ -667,22 +735,7 @@ export const openBrowserSession = async (spec) => {
             if (spec.embed === true) await raw.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
             if (auth.type === 'storageState') await applyStorageState(raw, credentials.storageState);
             // Ueber die eigene Anmeldeseite: So laedt die Anwendung nicht schon einmal vor dem Einspielen des lokalen Codes.
-            if (auth.type === 'form') {
-                await ensureLoggedIn(raw, {
-                    url: `${resolved.url}${auth.path}`,
-                    marker: auth.signedInSelector,
-                    login: credentials.login,
-                    password: credentials.password,
-                    totpSecret: credentials.totpSecret,
-                    framework,
-                    selectors: {
-                        user: auth.userSelector,
-                        password: auth.passwordSelector,
-                        ...(auth.submitSelector === undefined ? {} : { submit: auth.submitSelector }),
-                        ...(auth.codeSelector === undefined ? {} : { code: auth.codeSelector }),
-                    },
-                });
-            }
+            if (auth.type === 'form') await formLogin();
             timing.login = Date.now();
             return raw;
         });
@@ -1017,11 +1070,30 @@ export const openBrowserSession = async (spec) => {
                 await pages.main().goto(startUrl, { waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
+            /**
+             * Wie restart, aber in einer neuen Sitzung (freshSession: Cookies, Storage, Service Worker weg), neu angemeldet, dann die Startseite. So beginnt das Herstellen eines
+             * Zustands wie ein neuer Lauf, nicht in der Sitzung, die der letzte Zustand hinterlassen hat. Die Anmeldung laeuft im Frame
+             * der Anwendung, die Werkbank bleibt.
+             */
+            // @param as     Zugangsdaten einer anderen Rolle (aus readCredentials); ohne Angabe dasselbe Konto
+            // @param start  Startpfad einer anderen App; ohne Angabe die App dieser Sitzung
+            signInAgain: async ({ as, start } = {}) => {
+                if (as !== undefined && as !== null) {
+                    current = as;
+                    if (as.password !== undefined && !passwords.includes(as.password)) passwords.push(as.password);
+                }
+                for (const popup of pages.popups()) await popup.close().catch(() => {});
+                await freshSession(raw, pages.main(), resolved.url);
+                if (auth.type === 'storageState') await applyStorageState(raw, current.storageState);
+                if (auth.type === 'form') await formLogin(pages.main());
+                await pages.main().goto(start === undefined ? startUrl : `${resolved.url}${start}`, { waitUntil: 'load' });
+                return waitReady({ timeout: spec.readyTimeoutMs });
+            },
             /** Der Framework-Adapter: Ziele, Seitenzustand, Bereitschaft. */
             framework,
             failures: () => failures,
             /** Was nie als Text aus dem Browser gehen darf: das Passwort der Rolle und geheim gemerkte Werte. */
-            secrets: () => [...(credentials?.password === undefined ? [] : [credentials.password]), ...hidden],
+            secrets: () => [...passwords, ...hidden],
             /** Ein Wert, der ab jetzt wie das Passwort geschwaerzt wird, etwa aus `remember` mit `secret: true`. */
             hide: (value) => { if (typeof value === 'string' && !hidden.includes(value)) hidden.push(value); },
             warnings: () => warnings,

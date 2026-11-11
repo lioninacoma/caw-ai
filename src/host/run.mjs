@@ -52,6 +52,11 @@ const NEEDS_PLAN = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload', 
 const ADVISE_READS = new Set(['task', 'snapshot', 'url', 'eval', 'console', 'network', 'screenshot', 'say', 'advise']);
 // Im Gespraech kommt nur das Warten auf den Menschen dazu.
 const TALK_READS = new Set([...ADVISE_READS, 'chat']);
+// Beim Entwickeln gehoert dem Menschen das Fenster, und er kann Claude bitten, es zu bedienen: klicken, ausfuellen, einen Bug nachstellen.
+// Nur auf seine Bitte, siehe Skill; ein Test entsteht daraus nicht, `check` und `remember` gibt es hier nicht.
+const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
+/** Was Claude beim Empfehlen (advise), im Gespraech nach einem Fehler (talk) und beim Entwickeln (develop) am Browser darf. */
+export const consultAllowed = (mode) => (mode === 'develop' ? DEVELOP_ACTS : mode === 'talk' ? TALK_READS : ADVISE_READS);
 const TALK_LOG = 'claude-gespraech.log';
 // Beschriftungen als Getter: Die Sprache steht beim Import noch nicht fest.
 const ACCEPT = { id: 'accept', get label() { return t('run.button.accept'); }, primary: true };
@@ -461,7 +466,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 run: `Der Lauf ${runId} ist offen. Fuehre ihn durch und reiche das Ergebnis mit finish ein.`,
                 advise: `Im Lauf ${runId} sind Fehler oder Warnungen aufgetreten. Lies den Auftrag mit task und reiche deine Empfehlungen mit advise ein.`,
                 talk: `Im Lauf ${runId} ist ein Schritt gescheitert, und der Mensch fragt dich im Chat. Lies den Auftrag mit task, antworte mit say und warte mit chat auf ihn.`,
-                develop: `Im Lauf ${runId} entwickelt der Mensch im hergestellten Zustand. Lies den Auftrag mit task; die Seite kannst du lesen (snapshot, eval, console, network). Fragen aus dem Chat der Werkbank holst du mit chat, antworte dort mit say.`,
+                develop: `Im Lauf ${runId} entwickelt der Mensch im hergestellten Zustand. Lies den Auftrag mit task; die Seite kannst du lesen (snapshot, eval, console, network) und auf seine Bitte bedienen (click, fill, type, press, goto, reload). Fragen aus dem Chat der Werkbank holst du mit chat, antworte dort mit say.`,
             };
             const agent = announceSessionAgent({ root, runId, agentDir, mode, hint: hints[mode] });
             chat?.progress?.(t('run.waitingForSession'));
@@ -562,7 +567,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
      */
     const consult = ({ sandbox: box, spec: draft }, found, { mode, question, element, persist }) => {
         const talking = mode === 'talk' || mode === 'develop';
-        const allowed = talking ? TALK_READS : ADVISE_READS;
+        const allowed = consultAllowed(mode);
         const { result, review } = createReviewer(draft);
         const failed = found.failed ?? (mode === 'develop' ? restoreFailed : null);
         // Das Gespraech in Kurzform: Was hier vereinbart wird, muss ein spaeteres Beheben wissen, es startet einen neuen Claude.
@@ -742,7 +747,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // Die Schritte laufen neu, wie beim ersten Lauf: nicht mehr ausgegraut, schon waehrend sie laufen.
         await session.workbench?.left?.(false);
         for (const { id } of shownSpec.expectations) await session.workbench?.step(id, 'waiting');
-        await session.restart();
+        // Frisch angemeldet wie ein neuer Lauf: Sonst liefe der Test in der Sitzung los, die der vorige Zustand hinterlassen hat.
+        // Im Konto der Rolle des Tests und auf der Startseite seiner App, auch wenn der Lauf mit einer anderen begann.
+        chat?.progress(t('run.restore.signingIn', { role: shownSpec.role ?? '' }));
+        if (session.signInAgain === undefined) await session.restart();
+        else {
+            await session.signInAgain({
+                // Immer ausdruecklich: Nach einem Test einer anderen Rolle ist noch deren Konto angemeldet.
+                as: readCredentials(root, config, shownSpec.role, checked.target),
+                start: config.apps[shownSpec.app].startUrl,
+            });
+        }
         agentHandler = newAgentHandler({ ...run, expectations: shownSpec.expectations });
         const tag = newRunTag();
         const again = await playReplay({
@@ -899,10 +914,12 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     // Nach der Uebergabe (open, --until) zeigt die Werkbank nur die Anwendung im Vollbild; F8 holt die Werkbank zurueck.
                     await bench?.solo?.(true);
                     // F1: Zustaende aus allen Tests derselben Rolle, App und Umgebung. Ohne Schritt laeuft der Test bis zum letzten herstellbaren.
-                    let catalog = stateCatalog(root, config, { role: spec.role, app: spec.app, target });
+                    // Alle Tests dieser Umgebung, jeder im Konto seiner Rolle. Bei Basic-Auth haengt das Konto am Browser: nur die eigene Rolle.
+                    const scope = authOf(config).type === 'basic' ? { role: spec.role, target } : { target };
+                    let catalog = stateCatalog(root, config, scope);
                     await bench?.states?.(catalog);
                     afterSave = async (testId) => {
-                        catalog = stateCatalog(root, config, { role: spec.role, app: spec.app, target });
+                        catalog = stateCatalog(root, config, scope);
                         await bench?.states?.(catalog);
                         const until = chosen.replay?.until;
                         const fresh = chosen.spec.id === testId && until !== undefined ? loadStateTest(root, config, testId) : undefined;

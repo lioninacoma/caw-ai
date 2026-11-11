@@ -153,6 +153,7 @@ export default {
     'workbench.page.stateSteps': 'Schritte',
     'workbench.page.stateSearch': 'Test suchen',
     'workbench.page.stateAll': 'Alle Schritte (bis {id})',
+    'workbench.page.stateFootRole': ' Meldet sich vorher neu an als {role}.',
     'workbench.page.stateWrites': 'legt Daten an',
     'workbench.page.stateCount': '{count} Schritte',
     'workbench.page.stateHint': 'Wähle einen Test. Ohne Schritt läuft er bis zum letzten Schritt.',

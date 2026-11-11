@@ -24,7 +24,7 @@ In all three cases the browser is the actual boundary: Claude sees the applicati
 
 In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` only applies there if a run does need Claude, and then always as `docker`.
 
-**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (the raven flies into the logo and stays there, nothing moves any more), collapsed steps or chat, and light or dark. Without a choice the workbench follows the system; the sun/moon button pins light or dark.
+**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: the raven stops blinking, no spinner, no blinking cursor), collapsed steps or chat, and the theme (F7, see [Themes](../themes/README.md)).
 
 **Token notice:** Before Claude works (record, fix, investigate a failure, questions in the chat, `--advise`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back.
 
@@ -245,9 +245,14 @@ The tool replays the recording up to the passed `check` of `S4` and hands over t
 
 With chat, the chat stays open after handover (state "Develop"):
 
+The workbench starts in **App only** (F8 brings steps and chat back); the browser window stays as it is.
+
 - **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with the crosshair button. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
-- **Refresh** (button at the top, F5, click on the logo): reloads the current page without cache so your change shows immediately. Chat and steps stay. The test is already over at this point; its result doesn't change. The steps then show "left": the page is no longer guaranteed to be in that state.
-- **Restore state** (in the chat): reloads and replays the recording from the start up to the step, with new test data, exactly like any other run. The marker is then gone. If you reload the whole workbench via the browser, chat and steps come back and the page counts as left.
+- **Let Claude use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.
+- **Debug a bug:** Paste a bug ticket into the chat. Claude reproduces it in the reached state, looks at console, requests, component values and source, names the cause with file and line and proposes the fix as a change you apply with a click. Then reload or restore the state, and Claude checks whether the bug is gone.
+- **Refresh** (button at the top, F5, click on the logo): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
+- **Restore state** (in the chat): starts a new session (cookies and site storage cleared), signs in again and replays the recording up to the step, with new test data, exactly like any other run.
+- **Choose state (F1):** any test of this environment, of any role, and optionally the step to stop at. caw-ai restores it in the same window with the account of the test's role. If restoring fails, Claude in the chat knows why; it can also adjust the test, e.g. mark a cookie-banner click optional, and the change goes into the test file right away.
 - **Element to Claude Code:** With the crosshair button in the chat you click an element in the application (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw-ai stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
 - **End:** "End run" or close the window.
 

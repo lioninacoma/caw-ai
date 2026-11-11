@@ -193,7 +193,7 @@ Opens the app signed in, with workbench and chat, without a test: navigate, try 
 | `--overlay [build\|dev\|<url>]` | As for `run`. |
 | `--agent local\|docker\|session`, `--timeout <minutes>`, `--max-steps <n>` | As for `record`. |
 
-After the handover, **F1** in the workbench chooses a state: a test of the same role (and optionally the step to stop at). caw-ai plays it in the same window, without Claude.
+After the handover, **F1** in the workbench chooses a state: any test for this environment (and optionally the step to stop at). caw-ai starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
 
 If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
 

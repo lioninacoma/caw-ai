@@ -236,6 +236,8 @@ export const frameView = (page, first) => {
         const found = page.frame({ name: APP_FRAME });
         return found !== null && !found.isDetached() ? found : first;
     };
+    // on(load) meldet eine Huelle an: off braucht sie wieder.
+    const wrappers = new Map();
     const view = {
         isFrameView: true,
         workbench: page,
@@ -245,6 +247,7 @@ export const frameView = (page, first) => {
         locator: (...args) => current().locator(...args),
         getByRole: (...args) => current().getByRole(...args),
         $: (...args) => current().$(...args),
+        isVisible: (...args) => current().isVisible(...args),
         fill: (...args) => current().fill(...args),
         click: (...args) => current().click(...args),
         press: (...args) => current().press(...args),
@@ -302,10 +305,21 @@ export const frameView = (page, first) => {
         /** Ereignisse wie an einer Seite: popup und close von der Werkbank, Navigation nur die des Frames. */
         on: (event, listener) => {
             if (event === 'domcontentloaded' || event === 'load') {
-                page.on('framenavigated', (navigated) => {
+                const wrapped = (navigated) => {
                     if (navigated === current()) navigated.waitForLoadState(event).then(() => listener(view), () => {});
-                });
+                };
+                wrappers.set(listener, wrapped);
+                page.on('framenavigated', wrapped);
             } else page.on(event, listener);
+            return view;
+        },
+        // Wie an einer Seite abmelden; etwa die Anmeldung im Frame (Zustand herstellen) beobachtet Requests nur, solange sie laeuft.
+        off: (event, listener) => {
+            if (event === 'domcontentloaded' || event === 'load') {
+                const wrapped = wrappers.get(listener);
+                if (wrapped !== undefined) page.off('framenavigated', wrapped);
+                wrappers.delete(listener);
+            } else page.off(event, listener);
             return view;
         },
     };

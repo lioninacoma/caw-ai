@@ -12,7 +12,7 @@
 >
 > *Constrained*, weil der Agent Grenzen hat: Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten, und jede Aufnahme endet mit einem Plan, den du freigibst.
 
-![caw-ai spielt einen aufgenommenen Test einer kleinen Todo-App in Handybreite ohne KI ab: Der Rabe folgt jedem Schritt und landet dann mit einer Rückfrage auf dem Chat](docs/media/demo.webp)
+![caw-ai spielt einen aufgenommenen Test des Helpdesk-Beispiels ohne KI ab: Neben der App hakt die Werkbank Schritt für Schritt ab, danach meldet der Chat das Ergebnis](docs/media/demo.webp)
 
 Jeder Schritt beschreibt eine Aktion und das erwartete Ergebnis:
 
@@ -37,6 +37,7 @@ npx caw-ai run create-ticket --target local      # spielt die Aufzeichnung ab, o
 - Tests sind YAML-Dateien mit Schritten in normaler Sprache. Beim Aufnehmen führt Claude jeden Schritt in Chrome aus und speichert die Ziele über Rolle, Beschriftung und Text, nicht als CSS-Selektoren.
 - Das Abspielen nutzt nur die Aufzeichnung. Es ist deterministisch und verbraucht keine Token, lokal wie in der CI.
 - Schlägt ein Schritt fehl, zeigt der Chat neben der App die Ursache. `fix` nimmt nur diesen Schritt neu auf.
+- Nach einem Lauf gehört dir das Fenster: F1 stellt den Zustand jedes Tests in einer frischen Sitzung her, und Claude im Chat kann die Seite bedienen, ein eingefügtes Bugticket nachstellen und die Korrektur im Code vorschlagen.
 - Fehler werden als Test, Anwendung oder Umgebung eingeordnet, anhand von Requests, Konsolenausgaben und den Änderungen an der Seite bei der Aufnahme.
 - Claude steuert den Browser über einen festen Satz Befehle, erreicht nur die konfigurierten Hosts und bekommt keine Zugangsdaten.
 - Unterstützt: reine Web-Apps, React, Vue, Angular und ExtJS.

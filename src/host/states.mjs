@@ -5,8 +5,11 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { TEST_DIR } from '../shared/names.mjs';
+import { authOf } from '../shared/config.mjs';
 import { assertPlayable } from './replay.mjs';
 import { loadTest, staleSteps, withDefaults, withExpectations } from './test-file.mjs';
+
+const authType = (config) => authOf(config).type;
 
 /** Die Namen aller Tests im Projekt, sortiert. */
 const testIds = (root) => {
@@ -25,12 +28,16 @@ export const loadStateTest = (root, config, id) => {
 };
 
 /**
- * Die Tests, deren Zustaende sich hier herstellen lassen: gleiche Rolle, gleiche App, die Umgebung unter ihren Zielen.
- * @returns [{ id, name, mutates, steps: [{ id, name, ok, why }] }]; `why`: stale, missing oder after (nach einem gesperrten Schritt)
+ * Die Tests, deren Zustaende sich hier herstellen lassen: die Umgebung unter ihren Zielen, jede Rolle und App. Hergestellt wird mit
+ * frischer Anmeldung im Konto der Rolle des Tests. `role`/`app` schraenken ein, etwa bei Basic-Auth, wo das Konto am Browser haengt.
+ * @returns [{ id, name, role, app, mutates, steps: [{ id, name, ok, why }] }]; `why`: stale, missing oder after (nach einem gesperrten Schritt)
  */
 export const stateCatalog = (root, config, { role, app, target }) => testIds(root).flatMap((id) => {
     const spec = loadStateTest(root, config, id);
-    if (spec === undefined || spec.role !== role || spec.app !== app || !(spec.targets ?? []).includes(target)) return [];
+    if (spec === undefined || !(spec.targets ?? []).includes(target)) return [];
+    if ((role !== undefined && spec.role !== role) || (app !== undefined && spec.app !== app)) return [];
+    // Ohne Konto fuer die Rolle oder ohne die App in der Config laesst sich nichts herstellen.
+    if (config.apps?.[spec.app] === undefined || (spec.role !== undefined && config.roles?.[spec.role] === undefined && authType(config) !== 'none' && authType(config) !== 'storageState')) return [];
     const stale = new Set(staleSteps(spec).map((step) => step.id));
     let blocked = false;
     const steps = spec.steps.map((step) => {
@@ -49,7 +56,7 @@ export const stateCatalog = (root, config, { role, app, target }) => testIds(roo
         return { id: step.id, name: String(step.name ?? ''), ok: why === undefined, ...(why === undefined ? {} : { why }) };
     });
     if (!steps.some(({ ok }) => ok)) return [];
-    return [{ id, name: String(spec.name ?? ''), mutates: spec.mutates !== false, steps }];
+    return [{ id, name: String(spec.name ?? ''), role: String(spec.role ?? ''), app: String(spec.app ?? ''), mutates: spec.mutates !== false, steps }];
 });
 
 /** Steht der Schritt im Katalog und laesst sich herstellen? */

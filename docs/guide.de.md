@@ -24,7 +24,7 @@ In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die A
 
 In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
 
-**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw-ai je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (der Rabe fliegt ins Logo und bleibt dort, nichts bewegt sich mehr), eingeklappte Schritte oder Chat und hell oder dunkel. Ohne Wahl folgt die Werkbank dem System; der Knopf mit Sonne oder Mond legt hell bzw. dunkel fest.
+**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw-ai je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme (F7, siehe [Themes](../themes/README.de.md)).
 
 **Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--advise`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder.
 
@@ -245,9 +245,14 @@ Das Tool spielt die Aufzeichnung bis zum bestandenen `check` von `S4` ab und üb
 
 Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“):
 
+Die Werkbank startet in **Nur Anwendung** (F8 holt Schritte und Chat zurück); das Browserfenster bleibt, wie es ist.
+
 - **Fragen:** Du fragst Claude im Chat, gern zu einem Element, das du mit dem Fadenkreuz-Knopf in der App gewählt hast. Claude liest den Quellcode und antwortet. Code ändert es nie selbst, es schlägt geprüfte Änderungen vor: „Änderung übernehmen“ schreibt sie in deinen Projektordner, „Prompt kopieren“ gibt sie dir für deine eigene Session.
-- **Aktualisieren** (Knopf oben, F5, Klick aufs Logo): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben. Der Test ist zu diesem Zeitpunkt schon vorbei, sein Ergebnis ändert sich nicht. Die Schritte zeigen danach „verlassen“: Die Seite steht nicht mehr sicher auf dem Zustand.
-- **Zustand neu herstellen** (im Chat): lädt neu und spielt die Aufzeichnung von vorn bis zum Schritt ab, mit neuen Testdaten, also genau wie jeder andere Lauf. Danach ist die Markierung weg. Lädst du die ganze Werkbank über den Browser neu, kommen Chat und Schritte wieder, die Seite gilt als verlassen.
+- **Claude bedienen lassen:** Auf deine Bitte klickt Claude, füllt aus, drückt Tasten, navigiert oder lädt neu, etwa „klick den gewählten Button“. Vor allem, was Daten speichert oder löscht, fragt es nach.
+- **Bug untersuchen:** Füge ein Bugticket in den Chat ein. Claude stellt es im hergestellten Zustand nach, sieht sich Konsole, Requests, Werte der Komponenten und den Quellcode an, nennt die Ursache mit Datei und Zeile und schlägt die Korrektur als Änderung vor, die du per Klick übernimmst. Danach neu laden oder den Zustand neu herstellen, und Claude prüft, ob der Bug weg ist.
+- **Aktualisieren** (Knopf oben, F5, Klick aufs Logo): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben; der Test ist schon vorbei, sein Ergebnis ändert sich nicht.
+- **Zustand neu herstellen** (im Chat): beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet neu an und spielt die Aufzeichnung bis zum Schritt ab, mit neuen Testdaten, also genau wie jeder andere Lauf.
+- **Zustand wählen (F1):** ein beliebiger Test dieser Umgebung, jeder Rolle, optional mit dem Schritt, bis zu dem er läuft. caw-ai stellt ihn im selben Fenster mit dem Konto der Rolle des Tests her. Scheitert das Herstellen, weiß Claude im Chat warum; es kann den Test auch anpassen, etwa einen Klick auf einen Cookie-Banner optional machen, und die Änderung steht sofort in der Testdatei.
 - **Element an Claude Code:** Mit dem Fadenkreuz-Knopf im Chat klickst du in der Anwendung auf ein Element (der Klick löst dort nichts aus, Esc bricht ab). Es hängt an deiner nächsten Frage im Chat, und caw-ai legt es mit Beschriftung, Komponente bzw. Quelle, Seite und Requests für deine Claude-Code-Session ab, abrufbar mit `caw_selection`.
 - **Ende:** „Lauf beenden“ oder Fenster schließen.
 

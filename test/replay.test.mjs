@@ -698,3 +698,14 @@ test('Prüfung: Scheitert das Auswerten bis zum Zeitlimit, nennt die Meldung den
     const notYet = await play(async () => ({ pass: false, value: false }));
     assert.doesNotMatch(notYet.results.get('S1').note, /scheiterte/);
 });
+
+test('Claude am Browser: Beim Entwickeln darf es auf Bitte bedienen, beim Empfehlen und im Gespräch nach einem Fehler nur lesen', async () => {
+    const { consultAllowed } = await import('../src/host/run.mjs');
+    for (const action of ['click', 'fill', 'type', 'press', 'goto', 'reload']) {
+        assert.equal(consultAllowed('develop').has(action), true, action);
+        assert.equal(consultAllowed('talk').has(action), false, action);
+        assert.equal(consultAllowed('advise').has(action), false, action);
+    }
+    for (const action of ['check', 'remember', 'finish', 'upload', 'download']) assert.equal(consultAllowed('develop').has(action), false, action);
+    assert.equal(consultAllowed('develop').has('advise'), true);
+});

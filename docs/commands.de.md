@@ -193,7 +193,7 @@ npx caw-ai open --target dev --overlay
 | `--overlay [build\|dev\|<url>]` | Wie bei `run`. |
 | `--agent local\|docker\|session`, `--timeout <minuten>`, `--max-steps <n>` | Wie bei `record`. |
 
-Nach der Übergabe wählt **F1** in der Werkbank einen Zustand: einen Test derselben Rolle (und optional den Schritt, bis zu dem er läuft). caw-ai spielt ihn im selben Fenster ab, ohne Claude.
+Nach der Übergabe wählt **F1** in der Werkbank einen Zustand: einen beliebigen Test dieser Umgebung (und optional den Schritt, bis zu dem er läuft). caw-ai beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
 
 Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner, der schon weg ist), frag im Chat: Claude kann den Klick optional machen. Was du übernimmst, steht sofort in der Testdatei. Beim Aufnehmen geht das direkt mit `click <ziel> --optional`.
 

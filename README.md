@@ -12,7 +12,7 @@ English · [Deutsch](README.de.md)
 >
 > *Constrained* because the agent has limits: Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials, and every recording ends with a plan you approve.
 
-![caw-ai replays a recorded test of a small todo app at phone width, without AI: the raven follows each step, then lands on the chat with a question](docs/media/demo.webp)
+![caw-ai replays a recorded test of the helpdesk example without AI: the steps tick off one by one next to the app, then the chat reports the result](docs/media/demo.webp)
 
 Each step describes an action and the expected result:
 
@@ -37,6 +37,7 @@ npx caw-ai run create-ticket --target local      # replays the recording, withou
 - Tests are YAML files with steps in plain language. While recording, Claude performs each step in Chrome and stores the targets by role, label and text, not as CSS selectors.
 - A replay uses only the recording. It is deterministic and uses no tokens, locally and in CI.
 - If a step fails, the chat next to the app shows the cause. `fix` re-records only that step.
+- After a run the window is yours: F1 restores the state of any test in a fresh session, and Claude in the chat can use the page, reproduce a pasted bug ticket and propose the fix in your code.
 - Failures are classified as test, app or environment, based on requests, console output and the page changes seen during recording.
 - Claude controls the browser through a fixed set of commands, reaches only the configured hosts and does not get the credentials.
 - Supported: plain web apps, React, Vue, Angular and ExtJS.

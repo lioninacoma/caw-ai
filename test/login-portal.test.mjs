@@ -12,7 +12,8 @@ import { after, before, test } from 'node:test';
 import { chromium } from 'playwright-core';
 
 import { explore } from '../src/host/explore.mjs';
-import { loginSteps } from '../src/host/browser-session.mjs';
+import { freshSession, loginSteps, watchBroken } from '../src/host/browser-session.mjs';
+import { APP_FRAME, frameView } from '../src/host/app-view.mjs';
 
 const page = (body, signedIn) => `<!doctype html><html><head><title>Portal</title></head><body class="${signedIn ? 'signed-in' : 'signed-out'}">${body}</body></html>`;
 const loginForm = () => `<form method="post" action="/login"><input id="login_user" name="user" type="text"><input id="login_password" name="password" type="password">
@@ -36,6 +37,10 @@ before(async () => {
                 res.writeHead(302, { 'set-cookie': `session=${form.get('user')}; Path=/`, location: '/home' });
                 res.end();
             });
+            return;
+        }
+        if (req.url === '/bench') {
+            res.end('<!doctype html><title>Werkbank</title><iframe name="' + APP_FRAME + '" src="/home"></iframe>');
             return;
         }
         if (req.url === '/home' && signedIn) {
@@ -100,4 +105,29 @@ test('loginSteps: falsches Passwort und falsche Marke fallen nach Sekunden auf',
     await assert.rejects(loginSteps(tab, { url: `${base}/`, marker: 'body.signed-in', login: 'max', password: 'geheim', selectors: { ...selectors, submit: '#login_kmvu' } }), /submitSelector/);
     assert.ok(Date.now() - start < 10_000);
     await loginSteps(tab, { url: `${base}/`, marker: 'body.signed-in', login: 'max', password: 'geheim', selectors });
+});
+
+test('loginSteps im Frame der Werkbank: Nach dem Löschen der Cookies meldet das Herstellen eines Zustands neu an, die Werkbank bleibt', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const context = await browser.newContext();
+    t.after(() => context.close());
+    const tab = await context.newPage();
+    const selectors = { user: '#login_user', password: '#login_password' };
+    await loginSteps(tab, { url: `${base}/`, marker: 'body.signed-in', login: 'max', password: 'geheim', selectors });
+    await tab.goto(`${base}/bench`);
+    const frame = await (await tab.waitForSelector(`iframe[name="${APP_FRAME}"]`)).contentFrame();
+    await frame.waitForSelector('body.signed-in');
+    const view = frameView(tab, frame);
+    await view.evaluate(() => new Promise((ok) => { localStorage.setItem('filter', 'Wege'); sessionStorage.setItem('suche', 'alt'); sessionStorage.setItem('caw-bench-tab', 'console'); const open = indexedDB.open('app', 1); open.onupgradeneeded = () => open.result.createObjectStore('s'); open.onsuccess = () => { open.result.close(); ok(); }; }));
+    await freshSession(context, view, base);
+    await view.reload();
+    assert.deepEqual(await view.evaluate(async () => [localStorage.getItem('filter'), sessionStorage.getItem('suche'), sessionStorage.getItem('caw-bench-tab'), (await indexedDB.databases()).map(({ name }) => name)]), [null, null, 'console', []], 'neue Sitzung, nur der Reiter der Werkbank bleibt');
+    assert.equal(await view.$('body.signed-in'), null, 'ohne Cookies abgemeldet');
+    // Wie ensureLoggedIn: Requests beobachten und wieder abmelden, auch am Frame.
+    const broken = watchBroken(view);
+    await loginSteps(view, { url: `${base}/`, marker: 'body.signed-in', login: 'max', password: 'geheim', selectors });
+    broken.stop();
+    assert.notEqual(await view.$('body.signed-in'), null);
+    assert.equal(await tab.title(), 'Werkbank');
+    return undefined;
 });
