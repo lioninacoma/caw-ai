@@ -409,6 +409,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // The chat always sits next to the application window. With `lazy` it opens only when something goes wrong.
     let chat = null;
     const tokensOk = createTokenGate({ chat: () => chat });
+    // The developer's own Claude Code session is already running and paid for: no token notice for it.
+    const claudeMayStart = (box, options) => (box?.kind === 'session' ? true : tokensOk(options));
     const openConversation = () => openChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, transcript: conversation.transcript });
     if (conversation !== undefined && conversation.lazy !== true) {
         try {
@@ -711,7 +713,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         let agent = IDLE_AGENT;
         const finished = (async () => {
             // Token notice first; if the human declines, continue without Claude.
-            if (!await tokensOk({ decline: t('run.tokens.withoutClaude') })) {
+            if (!await claudeMayStart(box, { decline: t('run.tokens.withoutClaude') })) {
                 // Over at once: a message right after declining needs a new session, asking again.
                 over = true;
                 chat.progress(t('run.tokens.declined'));
@@ -1207,7 +1209,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         };
         const stopPump = startPump(channelHandler);
         // If the human declines the token notice, the run is aborted before Claude starts.
-        const willing = await tokensOk({ decline: t('run.tokens.cancelRun') });
+        const willing = await claudeMayStart(box, { decline: t('run.tokens.cancelRun') });
         if (!willing) abortSignal();
         const agent = willing ? startAgent(box, containerCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin)], CLAUDE_LOG) : IDLE_AGENT;
         // How the run ended; declared outside the try because the return below needs it.

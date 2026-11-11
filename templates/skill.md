@@ -94,14 +94,17 @@ its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.j
 4. **Setup and checks without tokens:** `caw_doctor`, `caw_validate`, `caw_list`, `caw_config` (`read`, or `patch` with `dryRun`;
    it writes only a valid config), `caw_init`, `caw_explore` (needs `login` or `yes`) and `caw_overlay_check`. Results come as JSON
    (`structuredContent`). `caw_start` takes typed fields (`command`, `test`, `target`, `step`, `until`, `overlay`, `headless`) and
-   `open`; with `overlay` it returns the watch command instead of starting when the watch is missing. `record`, `fix` and runs with
-   chat use tokens: start them only when the human asks. `caw_status` also returns the last run's result, step and artefacts.
-5. **Element questions:** If the human picks an element with the crosshair in the workbench while developing, `caw_selection` reads it including target, component
+   `open`; with `overlay` it returns the watch command instead of starting when the watch is missing. You are the agent: caw asks
+   neither about tokens nor who demonstrates. `caw_status` also returns the last run's result, step and artefacts.
+5. **Create tests yourself:** Write the test plan `caw/tests/<test>.yaml` (`id`, `app`, `role`, `targets`, `mutates`, `steps` with `id`,
+   `name`, `do`, `expect`; never a recording), check it with `caw_validate`, then `caw_start` with `command: record`: you follow the
+   plan, the human approves plan and result in the workbench. Without a plan file `record` starts with the human's demonstration.
+6. **Element questions:** If the human picks an element with the crosshair in the workbench while developing, `caw_selection` reads it including target, component
    or source file and the step's requests. With that you find the place in the code.
 
 As the agent in the run (tool `caw`) the rules below apply, including "Do not change any application code". Outside of that, as the human's
-session, you change application code only if they explicitly ask you to. Test plans and recordings under `caw/` are always written
-only by the tool. You pass files such as plan or verdict in the `file` field of the tool `caw`, not via paths like `/tmp` or
+session, you change application code only if they explicitly ask you to. Recordings under `caw/recordings/` are always written
+only by the tool; as the session you may write a new test plan (step 5), an existing one changes only through a run. You pass files such as plan or verdict in the `file` field of the tool `caw`, not via paths like `/tmp` or
 `$CAW_AGENT_DIR`; those do not exist in the session. After a change the human presses "Refresh" (or F5): The page reloads without cache with the new code, but then is no longer reliably at the state; "Restore state" in the chat replays the steps from the start.
 
 ## Flow in the sandbox

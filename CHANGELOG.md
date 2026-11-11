@@ -49,6 +49,7 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - `assetUrlPattern` takes a list of patterns for pages that load code from several sources (a path and a proxy parameter); `apps.<app>.overlay.assetUrlPattern` per app.
 - `doctor` shows bootstrap.json, the watch and the last overlay check per part for ExtJS overlay environments; `init` adds ExtJS overlay hints.
 - MCP: the Claude Code session can run every setup and check step: `caw_doctor`, `caw_init`, `caw_explore`, `caw_config`, `caw_validate`, `caw_list` and `caw_overlay_check`, none of them uses tokens. Tool results carry `structuredContent` next to a short text.
+- MCP: when the Claude Code session is the agent, `record` follows an existing test plan without the "who demonstrates" question, and caw shows no token notice. The session can write a new test plan itself and record it.
 - MCP: `caw_start` takes typed fields (`test`, `target`, `step`, `until`, `overlay`, `headless`) and `open`, checks the config first and returns the watch command instead of starting when an overlay needs a watch that is missing or stale. `caw_status` also returns the last run's result, last step and artefacts, explore suggestions and the latest overlay check.
 
 

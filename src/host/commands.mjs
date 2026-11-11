@@ -1093,7 +1093,9 @@ export const record = async (root, args, { containerCommand, adviseCommand, talk
     const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
     const previous = exists ? spec : undefined;
     const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen, previous });
-    const demonstration = await startRecording(root, config, spec, checked, { exists, conversation });
+    // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
+    // A new test without a plan still starts with the human's demonstration.
+    const demonstration = agent === 'session' && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
     return recordFlow({
         sandbox,
         execute: (options) => execute({ ...options, ...(options.replay === undefined && options.repair === undefined ? { demonstration } : {}) }),

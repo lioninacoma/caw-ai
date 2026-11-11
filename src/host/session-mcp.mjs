@@ -268,7 +268,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         description: 'Starts a caw-ai command in the background with you as the agent (--agent session); the window opens for the human. '
             + 'command: run, record, fix or open. Typed fields: test, target, step (fix, e.g. "S3"), until (run: a state to develop from, e.g. "S4"), '
             + 'overlay (true, "build", "dev" or a dev server URL: local code on a deployed environment, only if the human wants it), headless (run). '
-            + 'Or args as on the command line, not both. Tokens: record and fix always (you work as the agent); run and open only when the chat calls Claude. '
+            + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
+            + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
             + 'With overlay the watch is checked first: state watch-missing or watch-stale returns the command for the human instead of starting. '
             + 'Then call caw_status until the run waits for you.',
         inputSchema: {
