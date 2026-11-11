@@ -1,9 +1,9 @@
 import { createElement } from 'react'
-import '../bewertung.ts'
+import '../rating.ts'
 import { useEffect, useState } from 'react'
 import { explode } from '../explode.ts'
 
-type Ticket = { nr: number; title: string }
+type Ticket = { id: number; title: string }
 const BUILD = import.meta.env.VITE_BUILD ?? 'dev'
 
 export default function TicketsScreen() {
@@ -18,32 +18,32 @@ export default function TicketsScreen() {
     const ticket = await response.json()
     setOpen(false)
     setTitle('')
-    setStatus(`Ticket #${ticket.nr} angelegt`)
+    setStatus(`Ticket #${ticket.id} created`)
     await load()
   }
   return (
     <section aria-label="Tickets">
       <h1>Tickets</h1>
       <p data-testid="build">Build: {BUILD}</p>
-      <button onClick={() => setOpen(true)}>Neues Ticket</button>
-      <button onClick={() => explode('Absichtlicher Fehler')}>Fehler auslösen</button>
+      <button onClick={() => setOpen(true)}>New ticket</button>
+      <button onClick={() => explode('Intentional error')}>Trigger error</button>
       {status && <p role="status">{status}</p>}
-      {tickets === null ? <p role="progressbar" aria-label="Tickets laden" /> : (
-        <table aria-label="Ticketliste">
-          <thead><tr><th>Nr</th><th>Titel</th></tr></thead>
-          <tbody>{tickets.map((t) => <tr key={t.nr}><td>{t.nr}</td><td>{t.title}</td></tr>)}</tbody>
+      {tickets === null ? <p role="progressbar" aria-label="Loading tickets" /> : (
+        <table aria-label="Ticket list">
+          <thead><tr><th>No.</th><th>Title</th></tr></thead>
+          <tbody>{tickets.map((t) => <tr key={t.id}><td>{t.id}</td><td>{t.title}</td></tr>)}</tbody>
         </table>
       )}
       {open && (
-        <div role="dialog" aria-modal="true" aria-label="Neues Ticket">
-          <label htmlFor="title">Titel</label> <input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <button onClick={create}>Anlegen</button>
+        <div role="dialog" aria-modal="true" aria-label="New ticket">
+          <label htmlFor="title">Title</label> <input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <button onClick={create}>Create</button>
         </div>
       )}
-      <section aria-label="Zahlung">
-        <h2>Zahlung</h2>
-        <iframe title="Zahlung" src="/embed.html" style={{ width: 360, height: 140, border: '1px solid #ccc' }} />
-        {createElement('caw-bewertung')}
+      <section aria-label="Payment">
+        <h2>Payment</h2>
+        <iframe title="Payment" src="/embed.html" style={{ width: 360, height: 140, border: '1px solid #ccc' }} />
+        {createElement('caw-rating')}
       </section>
     </section>
   )

@@ -1,8 +1,8 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-// CAW_SPLIT=1: eine andere Aufteilung (React und Router je ein eigener Chunk), wie ein lokaler Stand nach einer Aenderung an der
-// Bundler-Einstellung. Mit dem Overlay muss die ausgelieferte Seite dann die Tags des lokalen Builds bekommen.
+// CAW_SPLIT=1: a different chunk split (React and the router each in a chunk of their own), like a local version after a change to
+// the bundler settings. With the overlay the deployed page must then get the tags of the local build.
 const split = process.env.CAW_SPLIT === '1'
 export default defineConfig({
   plugins: [react()],

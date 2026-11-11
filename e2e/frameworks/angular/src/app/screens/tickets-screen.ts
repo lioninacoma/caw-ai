@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { explode } from '../explode';
 
 declare const CAW_BUILD: string | undefined;
-type Ticket = { nr: number; title: string };
+type Ticket = { id: number; title: string };
 
 @Component({
   selector: 'app-tickets-screen',
@@ -11,19 +11,19 @@ type Ticket = { nr: number; title: string };
     <section aria-label="Tickets">
       <h1>Tickets</h1>
       <p data-testid="build">Build: {{ build }}</p>
-      <button (click)="open.set(true)">Neues Ticket</button>
-      <button (click)="fail()">Fehler auslösen</button>
+      <button (click)="open.set(true)">New ticket</button>
+      <button (click)="fail()">Trigger error</button>
       @if (status()) { <p role="status">{{ status() }}</p> }
       @if (tickets(); as list) {
-        <table aria-label="Ticketliste">
-          <thead><tr><th>Nr</th><th>Titel</th></tr></thead>
-          <tbody>@for (t of list; track t.nr) { <tr><td>{{ t.nr }}</td><td>{{ t.title }}</td></tr> }</tbody>
+        <table aria-label="Ticket list">
+          <thead><tr><th>No.</th><th>Title</th></tr></thead>
+          <tbody>@for (t of list; track t.id) { <tr><td>{{ t.id }}</td><td>{{ t.title }}</td></tr> }</tbody>
         </table>
-      } @else { <p role="progressbar" aria-label="Tickets laden"></p> }
+      } @else { <p role="progressbar" aria-label="Loading tickets"></p> }
       @if (open()) {
-        <div role="dialog" aria-modal="true" aria-label="Neues Ticket">
-          <label for="title">Titel</label> <input id="title" #title />
-          <button (click)="create(title.value)">Anlegen</button>
+        <div role="dialog" aria-modal="true" aria-label="New ticket">
+          <label for="title">Title</label> <input id="title" #title />
+          <button (click)="create(title.value)">Create</button>
         </div>
       }
     </section>
@@ -43,10 +43,10 @@ export class TicketsScreen implements OnInit {
   create(title: string) {
     this.http.post<Ticket>('/api/tickets', { title }).subscribe((ticket) => {
       this.open.set(false);
-      this.status.set(`Ticket #${ticket.nr} angelegt`);
+      this.status.set(`Ticket #${ticket.id} created`);
       this.load();
     });
   }
 
-  fail() { explode('Absichtlicher Fehler'); }
+  fail() { explode('Intentional error'); }
 }

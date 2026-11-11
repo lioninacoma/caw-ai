@@ -1,5 +1,5 @@
-// Schreibt caw-ai-Projektdateien in ein Framework-Testprojekt: Config, Testplaene und Aufzeichnungen von Hand, wie sie `record`
-// schreiben wuerde. So laeuft `caw-ai run` ohne Claude und ohne Token gegen jede Variante.
+// Writes caw-ai project files into a framework test project: config, test plans and recordings by hand, as `record` would write
+// them. So `caw-ai run` runs against every variant without Claude and without a token.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -8,16 +8,16 @@ import { stepHash } from '../../src/host/test-file.mjs';
 const yamlString = (value) => JSON.stringify(value);
 
 /**
- * @param root      Projektordner
+ * @param root      project folder
  * @param framework web | react | vue | angular
- * @param url       Adresse der Umgebung
- * @param build     erwarteter Text hinter "Build:" (dev, deployed, local)
- * @param embed     true: zusaetzlich S3 mit iframe und Web Component (nur react-vite hat beides)
- * @param overlay   App-Config fuer das Overlay ({ build, dev, buildCommand, devCommand }); dann darf die Umgebung es
+ * @param url       address of the environment
+ * @param build     expected text after "Build:" (dev, deployed, local)
+ * @param embed     true: additionally S3 with an iframe and a web component (only react-vite has both)
+ * @param overlay   app config for the overlay ({ build, dev, buildCommand, devCommand }); the environment then allows it
  */
 export const writeProject = (root, { framework, url, build, overlay, embed = false }) => {
     const config = {
-        language: 'de',
+        language: 'en',
         framework,
         environments: { test: { url, claude: true, writable: true, ...(overlay ? { overlay: true } : {}) } },
         auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
@@ -28,52 +28,52 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify(config, null, 4)}\n`);
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
     mkdirSync(join(root, 'caw/recordings'), { recursive: true });
-    writeFileSync(join(root, 'caw/.env'), 'CAW_LOGIN_TESTER=tester@example.com\nCAW_PW_TESTER=geheim\n');
+    writeFileSync(join(root, 'caw/.env'), 'CAW_LOGIN_TESTER=tester@example.com\nCAW_PW_TESTER=secret\n');
     rmSync(join(root, 'caw/.auth'), { recursive: true, force: true });
     writeTest(root, 'smoke', {}, [
         {
-            id: 'S1', name: 'Ticket anlegen', do: 'Lege ein Ticket "Monitor {{runTag}}" an.', expect: 'Das Ticket steht in der Liste, Build stimmt.',
+            id: 'S1', name: 'Create ticket', do: 'Create a ticket "Monitor {{runTag}}".', expect: 'The ticket is in the list, the build is right.',
             actions: [
-                { click: { role: 'button', name: 'Neues Ticket' }, path: '/' },
-                { fill: { role: 'textbox', name: 'Titel', inside: { role: 'dialog', name: 'Neues Ticket' } }, value: 'Monitor {{runTag}}', path: '/' },
-                { click: { role: 'button', name: 'Anlegen', inside: { role: 'dialog', name: 'Neues Ticket' } }, path: '/' },
+                { click: { role: 'button', name: 'New ticket' }, path: '/' },
+                { fill: { role: 'textbox', name: 'Title', inside: { role: 'dialog', name: 'New ticket' } }, value: 'Monitor {{runTag}}', path: '/' },
+                { click: { role: 'button', name: 'Create', inside: { role: 'dialog', name: 'New ticket' } }, path: '/' },
                 { 'wait-ready': {} },
             ],
-            check: `(()=>{const s=document.querySelector('[role=status]');const b=document.querySelector('[data-testid=build]');return !!s&&/^Ticket #\\d+ angelegt$/.test(s.textContent.trim())&&b.textContent.trim()==='Build: ${build}'&&[...document.querySelectorAll('table[aria-label=Ticketliste] tbody tr')].some(r=>r.cells[1].textContent.trim()==='Monitor {{runTag}}');})()`,
+            check: `(()=>{const s=document.querySelector('[role=status]');const b=document.querySelector('[data-testid=build]');return !!s&&/^Ticket #\\d+ created$/.test(s.textContent.trim())&&b.textContent.trim()==='Build: ${build}'&&[...document.querySelectorAll('table[aria-label="Ticket list"] tbody tr')].some(r=>r.cells[1].textContent.trim()==='Monitor {{runTag}}');})()`,
         },
         {
-            id: 'S2', name: 'Info oeffnen', do: 'Oeffne Info in der Navigation.', expect: 'Die Info-Seite ist zu sehen, mit demselben Build.',
+            id: 'S2', name: 'Open info', do: 'Open Info in the navigation.', expect: 'The info page shows, with the same build.',
             actions: [
-                { click: { role: 'link', name: 'Info', inside: { role: 'navigation', name: 'Hauptnavigation' } }, path: '/' },
+                { click: { role: 'link', name: 'Info', inside: { role: 'navigation', name: 'Main navigation' } }, path: '/' },
                 { 'wait-ready': {} },
             ],
-            // Die Info-Seite ist ein lazy Chunk: Mit lokalem Code muss auch er aus dem lokalen Build kommen.
+            // The info page is a lazy chunk: with local code it must come from the local build as well.
             check: `location.pathname==='/info'&&document.querySelector('h1')?.textContent.trim()==='Info'&&document.querySelector('[data-testid=build-info]')?.textContent.trim()==='Build: ${build}'`,
         },
         ...(embed ? [EMBED_STEP] : []),
     ]);
-    writeTest(root, 'fehler', { mutates: false }, [
+    writeTest(root, 'error', { mutates: false }, [
         {
-            id: 'S1', name: 'Fehler ausloesen', do: 'Klicke "Fehler auslösen".', expect: 'Nichts passiert.',
-            actions: [{ click: { role: 'button', name: 'Fehler auslösen' }, path: '/' }, { 'wait-ready': {} }],
+            id: 'S1', name: 'Trigger error', do: 'Click "Trigger error".', expect: 'Nothing happens.',
+            actions: [{ click: { role: 'button', name: 'Trigger error' }, path: '/' }, { 'wait-ready': {} }],
             check: 'true',
         },
     ]);
 };
 
-// Ein Feld und ein Knopf in einem iframe (Ziel mit `frame`) und in einer Web Component mit offenem Shadow Root.
-const PAYMENT = { tag: 'iframe', name: 'Zahlung' };
+// A field and a button in an iframe (target with `frame`) and in a web component with an open shadow root.
+const PAYMENT = { tag: 'iframe', name: 'Payment' };
 const EMBED_STEP = {
-    id: 'S3', name: 'Zahlen und bewerten', do: 'Zahle 12 Euro im Bereich Zahlung und bewerte mit "Gut".', expect: 'Zahlung und Bewertung sind bestätigt.',
+    id: 'S3', name: 'Pay and rate', do: 'Pay 12 euros in the Payment area and rate it "Good".', expect: 'Payment and rating are confirmed.',
     actions: [
-        { click: { role: 'link', name: 'Tickets', inside: { role: 'navigation', name: 'Hauptnavigation' } }, path: '/info' },
-        { fill: { role: 'textbox', name: 'Betrag', inside: { role: 'form', name: 'Karte' }, frame: PAYMENT }, value: '12', path: '/' },
-        { click: { role: 'button', name: 'Bezahlen', inside: { role: 'form', name: 'Karte' }, frame: PAYMENT }, path: '/' },
-        { fill: { role: 'textbox', name: 'Kommentar', inside: { role: 'group', name: 'Bewertung' } }, value: 'Gut', path: '/' },
-        { click: { role: 'button', name: 'Bewerten', inside: { role: 'group', name: 'Bewertung' } }, path: '/' },
+        { click: { role: 'link', name: 'Tickets', inside: { role: 'navigation', name: 'Main navigation' } }, path: '/info' },
+        { fill: { role: 'textbox', name: 'Amount', inside: { role: 'form', name: 'Card' }, frame: PAYMENT }, value: '12', path: '/' },
+        { click: { role: 'button', name: 'Pay', inside: { role: 'form', name: 'Card' }, frame: PAYMENT }, path: '/' },
+        { fill: { role: 'textbox', name: 'Comment', inside: { role: 'group', name: 'Rating' } }, value: 'Good', path: '/' },
+        { click: { role: 'button', name: 'Rate', inside: { role: 'group', name: 'Rating' } }, path: '/' },
         { 'wait-ready': {} },
     ],
-    check: `document.querySelector('iframe[title=Zahlung]')?.contentDocument?.querySelector('[role=status]')?.textContent.trim()==='Zahlung über 12 € bestätigt'&&document.querySelector('caw-bewertung')?.shadowRoot?.querySelector('[role=status]')?.textContent.trim()==='Danke für „Gut“'`,
+    check: `document.querySelector('iframe[title=Payment]')?.contentDocument?.querySelector('[role=status]')?.textContent.trim()==='Payment of 12 EUR confirmed'&&document.querySelector('caw-rating')?.shadowRoot?.querySelector('[role=status]')?.textContent.trim()==='Thanks for your rating: Good'`,
 };
 
 const renderTarget = (target) => `{${Object.entries(target).map(([key, value]) => `${key}: ${typeof value === 'object' ? renderTarget(value) : yamlString(value)}`).join(', ')}}`;
@@ -85,7 +85,7 @@ const writeTest = (root, id, { mutates = true }, steps) => {
     ];
     writeFileSync(join(root, 'caw/tests', `${id}.yaml`), `${plan.join('\n')}\n`);
     const recording = [
-        '# Von Hand fuer die Framework-Matrix geschrieben.', `test: ${id}`, 'steps:',
+        '# Written by hand for the framework matrix.', `test: ${id}`, 'steps:',
         ...steps.flatMap((step, index) => [
             `  - id: ${step.id}`,
             `    hash: ${stepHash(step)}`,

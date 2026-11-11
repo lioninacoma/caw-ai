@@ -10,7 +10,7 @@ onMounted(async () => {
 <template>
   <header>
     <span v-if="user" data-testid="user-menu">{{ user }}</span>
-    <nav aria-label="Hauptnavigation"><RouterLink to="/">Tickets</RouterLink> <RouterLink to="/info">Info</RouterLink></nav>
+    <nav aria-label="Main navigation"><RouterLink to="/">Tickets</RouterLink> <RouterLink to="/info">Info</RouterLink></nav>
   </header>
   <main><RouterView /></main>
 </template>

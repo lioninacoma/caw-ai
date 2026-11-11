@@ -1,7 +1,7 @@
-// "Deployter" Stand: gebaute Dateien plus API, wie ein Webserver mit SPA-Fallback. Ueber HTTPS auf einem Namen unter .localhost,
-// damit die Umgebung wie eine entfernte aussieht (nicht http://localhost).
+// "Deployed" version: built files plus the API, like a web server with an SPA fallback. Over HTTPS on a name under .localhost, so
+// that the environment looks like a remote one (not http://localhost).
 //   node serve.mjs <dir> <port> [--http] [--proxy http://127.0.0.1:3000]
-// Mit --proxy reicht er alles ausser /api an einen Node-Server weiter (next start, nuxt preview).
+// With --proxy it forwards everything except /api to a Node server (next start, nuxt preview).
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttp, request } from 'node:http';
 import { createServer as createHttps } from 'node:https';
@@ -32,7 +32,7 @@ const handler = async (req, res) => {
     if (!file.startsWith(normalize(dir))) { res.writeHead(403); res.end(); return; }
     if (!existsSync(file) || statSync(file).isDirectory()) {
         const html = join(file, 'index.html');
-        // Ordner mit index.html (vorgerenderte Seiten), sonst SPA-Fallback; Dateien mit Endung bleiben 404.
+        // Folder with index.html (prerendered pages), otherwise the SPA fallback; files with an extension stay 404.
         if (existsSync(html)) file = html;
         else if (extname(path) === '') file = join(dir, 'index.html');
         else { res.writeHead(404); res.end('404'); return; }
@@ -42,4 +42,4 @@ const handler = async (req, res) => {
 };
 
 const server = http ? createHttp(handler) : createHttps(readCert(), handler);
-server.listen(Number(portText), '127.0.0.1', () => console.log(`serve ${dir} auf ${portText}${http ? '' : ' (https)'}`));
+server.listen(Number(portText), '127.0.0.1', () => console.log(`serve ${dir} on ${portText}${http ? '' : ' (https)'}`));

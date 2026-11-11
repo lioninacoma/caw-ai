@@ -6,7 +6,8 @@ import globals from 'globals';
 
 export default [
     {
-        ignores: ['node_modules/', 'e2e/frameworks/', 'e2e/project/', 'examples/**/.caw/', '**/.caw/', 'e2e/.caw-home/'],
+        // e2e/frameworks: only the matrix scripts and shared/ are linted, not the test apps and what runs produce.
+        ignores: ['node_modules/', 'e2e/frameworks/*/', '!e2e/frameworks/shared/', 'e2e/frameworks/shared/.cert/', 'e2e/frameworks/.caw-home/', 'e2e/project/', 'examples/**/.caw/', '**/.caw/', 'e2e/.caw-home/'],
     },
     js.configs.recommended,
     n.configs['flat/recommended-module'],

@@ -6,10 +6,10 @@ import { Session } from '../session';
 @Component({
   selector: 'app-login-screen',
   template: `
-    <form aria-label="Anmeldung" (submit)="submit($event)">
-      <label for="email">E-Mail</label> <input id="email" name="email" type="email" />
-      <label for="password">Passwort</label> <input id="password" name="password" type="password" />
-      <button type="submit">Anmelden</button>
+    <form aria-label="Login" (submit)="submit($event)">
+      <label for="email">Email</label> <input id="email" name="email" type="email" />
+      <label for="password">Password</label> <input id="password" name="password" type="password" />
+      <button type="submit">Sign in</button>
       @if (error()) { <p role="alert">{{ error() }}</p> }
     </form>
   `,
@@ -26,7 +26,7 @@ export class LoginScreen {
     const field = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
     this.http.post<{ user: string }>('/api/login', { email: field('email'), password: field('password') }).subscribe({
       next: ({ user }) => { this.session.user.set(user); this.router.navigateByUrl('/'); },
-      error: () => this.error.set('Anmeldung fehlgeschlagen'),
+      error: () => this.error.set('Sign-in failed'),
     });
   }
 }

@@ -1,5 +1,5 @@
-// Selbstsigniertes Zertifikat fuer die "deployten" Server auf *.localhost. Wird beim ersten Start erzeugt und nie eingecheckt; die
-// Matrix laeuft mit insecureTls, jedes Zertifikat reicht.
+// Self-signed certificate for the "deployed" servers on *.localhost. Created on the first start and never checked in; the matrix
+// runs with insecureTls, any certificate will do.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -9,7 +9,7 @@ const folder = join(dirname(fileURLToPath(import.meta.url)), '.cert');
 const key = join(folder, 'key.pem');
 const cert = join(folder, 'cert.pem');
 
-/** Legt Schluessel und Zertifikat an, falls sie fehlen. Braucht openssl (unter Windows bringt Git for Windows es mit). */
+/** Creates key and certificate if they are missing. Needs openssl (on Windows, Git for Windows ships it). */
 export const ensureCert = () => {
     if (existsSync(key) && existsSync(cert)) return;
     mkdirSync(folder, { recursive: true });
@@ -18,7 +18,7 @@ export const ensureCert = () => {
         '-keyout', key, '-out', cert,
         '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,DNS:*.localhost',
     ], { encoding: 'utf8' });
-    if (result.status !== 0) throw new Error(`openssl fehlt oder scheitert: ${result.error?.message ?? result.stderr}`);
+    if (result.status !== 0) throw new Error(`openssl is missing or fails: ${result.error?.message ?? result.stderr}`);
 };
 
 export const readCert = () => {

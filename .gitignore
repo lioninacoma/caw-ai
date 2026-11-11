@@ -13,7 +13,7 @@ e2e/project/sub/
 e2e/project/caw/recordings/
 e2e/.caw-home/
 
-# Framework-Testprojekte (e2e/frameworks): Abhaengigkeiten, Builds, Laufdaten
+# Framework test projects (e2e/frameworks): dependencies, builds, run data
 e2e/frameworks/**/node_modules/
 e2e/frameworks/**/dist/
 e2e/frameworks/**/deploy/
