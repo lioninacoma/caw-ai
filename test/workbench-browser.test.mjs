@@ -239,6 +239,27 @@ test('workbench: demonstrating shows recording, refresh is locked until the host
     assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'the actions are open');
 });
 
+test('workbench: the raven is an easter egg; "animations off" stops the hearts instead of freezing them', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const page = bench.page;
+    const logo = page.locator('header.top [data-raven]');
+    const look = await logo.evaluate((node) => ({ cursor: getComputedStyle(node).cursor, tab: node.tabIndex }));
+    assert.deepEqual(look, { cursor: 'default', tab: -1 }, 'no hand cursor, not in the tab order');
+    await logo.hover();
+    assert.equal(await logo.evaluate((node) => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)', 'no frame on hover');
+    await logo.click();
+    const hearts = () => page.evaluate(() => [...document.querySelectorAll('.caw-heart')].map((node) => ({ shown: getComputedStyle(node).display !== 'none', size: getComputedStyle(node).fontSize })));
+    const flying = await hearts();
+    assert.ok(flying.length > 0 && flying.every(({ shown, size }) => shown && size === '14px'), 'small hearts rise');
+    await page.evaluate(() => document.body.classList.add('still'));
+    assert.ok((await hearts()).every(({ shown }) => !shown), 'animations off: hearts in flight disappear at once');
+    assert.ok(await until(async () => (await hearts()).length === 0, 4000), 'and are removed, not left frozen');
+    await logo.click();
+    assert.equal((await hearts()).length, 0, 'animations off: a click sends up no hearts');
+    await page.evaluate(() => document.body.classList.remove('still'));
+});
+
 test('workbench: the chip at the top right shows record, play and pause and survives a reload', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);

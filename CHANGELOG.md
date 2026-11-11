@@ -57,6 +57,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - The sprite assets: `assets/raven-sheet.png`, `assets/favicon-32.png` and the crow pipeline in `assets/mascot/` (`npm run mascot`). The favicon is now an SVG of the raven in the theme colours.
 
 ### Changed
+- The raven logo is an easter egg again: no hand cursor, no frame on hover, not in the tab order. Its hearts are smaller, and with "Animations off" (F10) none rise and those in flight disappear instead of freezing.
 - Code, names and comments are English; ESLint (`npm run lint`, recommended rules of ESLint and eslint-plugin-n) runs in CI. Messages and prompts for Claude are English.
 - More of the UI is localized: failure explanations (missing, hidden, covered), the app names in messages, the Sencha watch label, theme validation messages, the default header of `caw/caw.md` and the names of copied themes now follow the language. Claude's end-of-run log line reads "Claude finished after … s".
 - E2E files renamed: `e2e/steps-e2e.mjs`, `e2e/portal.mjs`, `e2e/watchdog.ps1` (summary `RESULT OK=… FAIL=…` in `<log>.result`).
