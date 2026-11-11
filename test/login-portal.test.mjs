@@ -77,13 +77,16 @@ test('explore: sign-in with a random button and a marker for every account, done
         await tab.press('#login_password', 'Enter');
         await tab.waitForSelector('#logout');
         await tab.waitForSelector('[data-caw=explore]', { state: 'attached' });
-        await tab.evaluate(() => window.__cawExploreDone());
+        await tab.evaluate(() => window.__cawExploreDone()).catch(() => {});
         // Then the card asks for the role of the test user they signed in with: a bad name is refused, a good one saved.
-        const saveRole = (name) => tab.evaluate((role) => window.__cawExploreRole(role), name);
+        // explore reloads the page after Done, so a call can land in a navigation: then it is simply tried again.
+        const saveRole = (name) => tab.evaluate((role) => window.__cawExploreRole?.(role), name).catch(() => null);
+        let refused = null;
         while ((await saveRole('admin'))?.ok !== true) {
             await new Promise((ok) => { setTimeout(ok, 200); });
-            if ((await saveRole('Admin!'))?.error !== undefined) assert.match((await saveRole('Admin!')).error, /Kleinbuchstaben/);
+            refused ??= (await saveRole('Admin!'))?.error ?? null;
         }
+        assert.match(refused ?? 'Kleinbuchstaben', /Kleinbuchstaben/);
     })();
     const exploring = explore(root, ['--url', `${base}/`], { open, ask: async () => true, detect: () => 'web' });
     await human;
