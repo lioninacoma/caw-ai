@@ -297,6 +297,8 @@ const statusData = (root, { waiting, running, log }) => {
 };
 
 const EMPTY = { type: 'object', properties: {}, additionalProperties: false };
+/** Longest `caw_status` wait in seconds: well below the MCP tool timeout of clients. */
+const MAX_STATUS_WAIT_S = 120;
 const textField = (input, field) => {
     if (typeof input[field] !== 'string' || input[field] === '' || input[field].startsWith('-')) throw new Error(t('run.mcp.fieldText', { field }));
     return input[field];
@@ -384,21 +386,37 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         name: 'caw_status',
         description: 'Shows whether a run is waiting for you as the agent (with its task) and the last lines of its output. As data: the last run '
             + '(result with status, code, reason, steps, failures, warnings; last step; artefacts such as report.md, trace and logs), explore '
-            + 'suggestions after caw_explore and the last overlay check.',
-        inputSchema: EMPTY,
-        call: () => {
-            const waiting = findSessionAgent(root);
-            const log = latestLog(root);
-            const tail = log === undefined ? '' : readFileSync(log, 'utf8').split(/\r?\n/).slice(-TAIL_LINES).join('\n').trim();
-            const running = waiting === undefined ? runningRun(root) : undefined;
-            const head = waiting === undefined
-                ? (running === undefined
-                    ? t(log === undefined ? 'run.mcp.noneWaiting' : 'run.mcp.ended')
-                    : t('run.mcp.busy', { pid: running.pid }))
-                : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Work according to the caw-ai skill, section "Flow in the sandbox", using the caw tool. ${DATA_NOTE}`;
-            const data = statusData(root, { waiting, running, log });
-            const result = data.result?.status === undefined ? '' : `\n${t('run.mcp.lastRun', { runId: data.runId, status: data.result.status })}`;
-            return { text: `${head}${result}${tail === '' ? '' : `\n\n${t('run.mcp.output', { log })}\n${tail}`}`, data };
+            + 'suggestions after caw_explore and the last overlay check. While a run is going, pass wait (seconds, up to 120): the call returns '
+            + 'as soon as the run needs you, ends or reports something new, instead of you asking again and again.',
+        inputSchema: { type: 'object', properties: { wait: { type: 'integer', minimum: 0, maximum: MAX_STATUS_WAIT_S } }, additionalProperties: false },
+        call: async (input = {}) => {
+            const status = () => {
+                const waiting = findSessionAgent(root);
+                const log = latestLog(root);
+                const lines = log === undefined ? [] : readFileSync(log, 'utf8').split(/\r?\n/);
+                const tail = lines.slice(-TAIL_LINES).join('\n').trim();
+                const running = waiting === undefined ? runningRun(root) : undefined;
+                const head = waiting === undefined
+                    ? (running === undefined
+                        ? t(log === undefined ? 'run.mcp.noneWaiting' : 'run.mcp.ended')
+                        : t('run.mcp.busy', { pid: running.pid }))
+                    : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Work according to the caw-ai skill, section "Flow in the sandbox", using the caw tool. ${DATA_NOTE}`;
+                const data = statusData(root, { waiting, running, log });
+                const result = data.result?.status === undefined ? '' : `\n${t('run.mcp.lastRun', { runId: data.runId, status: data.result.status })}`;
+                // What counts as a change for `wait`: the run state and result, and caw-ai's own last message (not every replay step).
+                const mark = JSON.stringify([data.state, data.runId, data.result?.status, lines.filter((line) => line.startsWith('[caw-ai]')).at(-1)]);
+                return { mark, text: `${head}${result}${tail === '' ? '' : `\n\n${t('run.mcp.output', { log })}\n${tail}`}`, data };
+            };
+            // wait: return as soon as something changes, at the latest after `wait` seconds; one call instead of many polls.
+            const seconds = Number.isInteger(input.wait) ? Math.min(Math.max(input.wait, 0), MAX_STATUS_WAIT_S) : 0;
+            const until = Date.now() + seconds * 1000;
+            let now = status();
+            const first = now.mark;
+            while (now.data.state === 'running' && now.mark === first && Date.now() < until) {
+                await new Promise((done) => { setTimeout(done, windowWait.pollMs ?? 1000); });
+                now = status();
+            }
+            return { text: now.text, data: now.data };
         },
     },
     {

@@ -407,3 +407,30 @@ test('caw_status: last run from last-run.json with result, last step and artefac
     assert.deepEqual(fallback.artefacts, ['.caw/runs/2026-11-11T13-00-00-000Z-bestellung-demonstration/failures.json']);
     assert.equal(fallback.result, undefined);
 });
+
+test('caw_status wait: returns on a new caw-ai message, not on replay steps; at the latest after wait seconds', async (t) => {
+    const root = project(t);
+    const { call } = session(root, { windowWait: { pollMs: 20 } });
+    mkdirSync(join(root, '.caw'), { recursive: true });
+    const log = join(root, '.caw', 'session-2026-11-11T12-00-00-000Z.log');
+    writeFileSync(log, '[caw-ai] Spiele die Aufzeichnung ab ...\n');
+    // A live process stands in for the run.
+    writeFileSync(`${log}.pid`, String(process.pid));
+
+    const started = Date.now();
+    setTimeout(() => writeFileSync(log, '[+1.0s] 2/16 click button "Save"\n', { flag: 'a' }), 100);
+    setTimeout(() => writeFileSync(log, '[caw-ai] bestellung auf local: fail\n', { flag: 'a' }), 400);
+    const changed = await call('caw_status', { wait: 10 });
+    const waited = Date.now() - started;
+    assert.ok(waited >= 380 && waited < 5000, `waited ${waited} ms`);
+    assert.match(changed.content[0].text, /bestellung auf local: fail/);
+    assert.equal(changed.structuredContent.state, 'running');
+
+    const quiet = Date.now();
+    await call('caw_status', { wait: 1 });
+    assert.ok(Date.now() - quiet >= 950, 'waits the full second without a change');
+
+    const instant = Date.now();
+    await call('caw_status');
+    assert.ok(Date.now() - instant < 500, 'without wait it answers at once');
+});

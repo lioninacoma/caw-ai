@@ -109,8 +109,10 @@ its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.j
 
 1. **Start:** `caw_start` with `command` `record`, `fix` or `run` and the arguments as above, e.g. `["order", "--target", "local"]`.
    Without the tools: `npx caw-ai record ... --agent session` in the background.
-2. **Wait:** `caw_status`, until the run waits for you. It names the task. With `run` it only waits once the human chooses
-   "Fix step" or a question to Claude in the chat.
+2. **Wait:** `caw_status` with `wait: 120`, again and again, until the run waits for you or ends. It returns early as soon as
+   something changes, so don't poll it without `wait` or read the log in between. It names the task. With `run` it only waits once
+   the human chooses "Fix step" or a question to Claude in the chat. While the window waits for the human's decision, say once
+   what they have to choose and keep waiting with `wait`.
 3. **Work** according to "Flow in the sandbox" and the following sections, with the tool `caw` (`args` like `caw-ai <command>`; for `plan`,
    `finish` and `advise` the content goes in `file`). Without the tools: `npx caw-ai <command>` in the project folder. The human sees plan,
    questions and decisions in the workbench chat and answers there.

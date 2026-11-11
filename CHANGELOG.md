@@ -46,6 +46,7 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - [Upgrading from 0.1.0](docs/upgrading.md).
 - Cost limits for Claude: `agent.model` and `agent.maxBudgetUsd` (or `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` for one run), passed to Claude Code as `--model` and `--max-budget-usd`. README section "Claude access and costs": which account for which use, and that caw-ai never handles logins.
 - ExtJS overlay with Sencha Cmd 7: packages whose `bootstrap.json` entry has no file list are found by their namespace path, and the app part includes `app.js` (`Ext.application`) and the other scripts from `app.json` `js`.
+- MCP `caw_status` takes `wait` (up to 120 s): it returns as soon as the run needs the session, ends or reports something new. The skill waits that way instead of polling, which saves turns and tokens while a run or the human's decision is pending.
 - `fill` on a select list picks the option with that value or label, while recording and on replay (before, Claude had to fall back to typing the first letters, which depends on the option order).
 - Test files: a step text with an unquoted ` #` followed by text (`expect: Toast "Added #12" shows`) is an error with its line number, because YAML would cut it off as a comment.
 - `readyIgnore` setting for areas that change by themselves (ticker, clock, permanent spinner); `browser.locale` and `browser.timezone` pin the test browser's language and time zone.
