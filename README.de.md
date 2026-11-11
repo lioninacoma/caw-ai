@@ -12,7 +12,7 @@
 >
 > *Constrained*, weil der Agent Grenzen hat: Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten, und jede Aufnahme endet mit einem Plan, den du freigibst.
 
-<img src="docs/media/demo.webp" width="720" alt="caw-ai nimmt einen Test des Errand-Beispiels auf: Claude legt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw-ai die Aufnahme ohne KI ab und der Plan wird übernommen">
+<img src="docs/media/demo.webp" width="100%" alt="caw-ai nimmt einen Test des Errand-Beispiels auf: Claude legt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw-ai die Aufnahme ohne KI ab und der Plan wird übernommen">
 
 Jeder Schritt beschreibt eine Aktion und das erwartete Ergebnis:
 
@@ -131,25 +131,25 @@ Das Fenster bleibt offen, angemeldet, im Zustand, den der Test erreicht hat. Von
 
 F1 listet jeden Test der Umgebung, für jede Rolle. Test und Schritt wählen; caw-ai meldet sich frisch mit dem Konto der Rolle an und spielt bis dorthin ab.
 
-<img src="docs/media/states.webp" width="720" alt="Der F1-Dialog „Zustand wählen“ zeigt den Test first-errand mit den Schritten S1 bis S4">
+<img src="docs/media/states.webp" width="100%" alt="Der F1-Dialog „Zustand wählen“ zeigt den Test first-errand mit den Schritten S1 bis S4">
 
 ### Entwickeln
 
 Ein Element in der App wählen und danach fragen. Claude liest deinen Quellcode und antwortet mit Datei und Zeile. Gegen deinen Dev-Server oder mit `--overlay` dein lokaler Code über einer deployten Umgebung; F5 lädt deine Änderung.
 
-<img src="docs/media/develop.webp" width="720" alt="Ein Element ist in der App gewählt; Claude erklärt im Chat mit server.mjs:134, warum „Add todo“ gesperrt ist">
+<img src="docs/media/develop.webp" width="100%" alt="Ein Element ist in der App gewählt; Claude erklärt im Chat mit server.mjs:134, warum „Add todo“ gesperrt ist">
 
 ### Bug mit Claude beheben
 
 Ein Bugticket in den Chat einfügen. Claude stellt es im erreichten Zustand nach, nennt die Ursache und schlägt die Korrektur als Änderung an deinem Code vor; „Änderung übernehmen“ schreibt sie.
 
-<img src="docs/media/bugfix.webp" width="720" alt="Claude stellt einen Fehler in der Suche nach und schlägt eine Änderung an server.mjs mit dem Knopf „Apply change“ vor">
+<img src="docs/media/bugfix.webp" width="100%" alt="Claude stellt einen Fehler in der Suche nach und schlägt eine Änderung an server.mjs mit dem Knopf „Apply change“ vor">
 
 ### Themes
 
 Drei eingebaute Themes oder ein eigenes: F7 öffnet den Editor für Farben, Glyphen, den Raben und den CRT-Look.
 
-<img src="docs/media/themes.webp" width="720" alt="Dieselbe Werkbank in den Themes nacht, bernstein und phosphor">
+<img src="docs/media/themes.webp" width="100%" alt="Dieselbe Werkbank in den Themes nacht, bernstein und phosphor">
 
 ## Konfiguration
 
