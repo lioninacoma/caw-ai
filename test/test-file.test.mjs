@@ -369,3 +369,17 @@ test('loadTest: id, app, role and targets may be missing, a given id must match'
     assert.equal(loaded.app, undefined);
     assert.equal(loaded.targets, undefined);
 });
+
+test('two files: locale and timezone of the recording browser round-trip; older recordings without them stay valid', (t) => {
+    const root = testRoot(t);
+    const withRegion = recorded('S1');
+    withRegion.recording = { ...withRegion.recording, locale: 'de-DE', timezone: 'Europe/Berlin' };
+    writeTest(root, spec(withRegion, recorded('S2', [], { after: 'S1' })));
+    const text = readFileSync(recordingPath(root, 't'), 'utf8');
+    assert.match(text, /recordedAt: .*\n {4}locale: de-DE\n {4}timezone: Europe\/Berlin\n/);
+    const loaded = loadTest(root, 't');
+    assert.equal(loaded.steps[0].recording.locale, 'de-DE');
+    assert.equal(loaded.steps[0].recording.timezone, 'Europe/Berlin');
+    assert.equal(loaded.steps[1].recording.locale, undefined, 'a step without the fields stays without them');
+    assert.throws(() => parseRecordings(text.replace('locale: de-DE', 'locale: 7')), /recording.locale muss ein Text sein/);
+});

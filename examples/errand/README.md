@@ -2,18 +2,32 @@
 
 A small todo app to try caw-ai on, mobile first: sign-in, a list with progress ring, filters and search, a "New todo" dialog with selects and a detail page where you move a todo to another day. No dependencies, data lives in memory, the API answers with a little latency.
 
-The test `first-errand` comes with its recording (`caw/recordings/first-errand.yaml`), so you can replay it right away, without Claude:
+The test `first-errand` comes with its recording (`caw/recordings/first-errand.yaml`), so you can replay it right away, without Claude. It runs from a clone of the caw-ai repository; run `npm ci` in the repository root once:
 
 ```bash
+npm ci                                             # in the repository root, once
 cd examples/errand
 node server.mjs                                    # http://localhost:4174, account demo / demo
 ```
 
-In a second terminal:
+In a second terminal, put the demo account into `caw/.env`. This line works in bash, PowerShell and cmd:
 
 ```bash
 cd examples/errand
-printf 'CAW_LOGIN_USER=demo\nCAW_PW_USER=demo\n' > caw/.env
+node -e "require('fs').writeFileSync('caw/.env', 'CAW_LOGIN_USER=demo\nCAW_PW_USER=demo\n')"
+```
+
+Or by shell:
+
+```bash
+printf 'CAW_LOGIN_USER=demo\nCAW_PW_USER=demo\n' > caw/.env                # bash, zsh
+Set-Content caw/.env "CAW_LOGIN_USER=demo`nCAW_PW_USER=demo"             # PowerShell
+(echo CAW_LOGIN_USER=demo& echo CAW_PW_USER=demo) > caw\.env             # cmd
+```
+
+Then run the test:
+
+```bash
 node ../../bin/caw-ai.mjs run first-errand --target local              # workbench window, chat next to the app
 node ../../bin/caw-ai.mjs run first-errand --target local --headless   # no window, result in the terminal
 ```

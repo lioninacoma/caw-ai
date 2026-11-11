@@ -18,7 +18,7 @@
 
 import { APP_FRAME, CHAT_FRAME_NAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, interceptDocuments, sourceTag } from './app-view.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
-import { readPrefs, writePref } from '../shared/prefs.mjs';
+import { readPrefs, writePagePref, writePref } from '../shared/prefs.mjs';
 import { LONG_NAME } from '../shared/raven.mjs';
 import { BUILTIN_THEMES, THEME_KEYS, activeTheme, deleteTheme, listThemes, loadTheme, readThemePackage, renameTheme, saveTheme } from '../shared/theme-package.mjs';
 import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, clientTheme, ravenLogo, themeAttr, themeCss, themeStyle } from './theme.mjs';
@@ -735,6 +735,10 @@ summarize();${sourceTag}</script></body></html>`;
 export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', rewrite }) => {
     const page = context.pages()[0];
     // Only the workbench itself may save and refresh, not the application in the iframe and not the chat. writePref validates the values.
+    // The frame check is a mitigation, not an isolation: the application shares the workbench's origin (it must, see forward()),
+    // so it or Claude's eval can call top.cawPref(...) or click the workbench's buttons and pass as the main frame. Hence the
+    // bindings themselves stay harmless: settings only cosmetic ones (writePagePref), a state picked with F1 only after the human
+    // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
         const holder = { refresh: null, rebuild: null, html: null, chat: null, fullscreen: null, state: null };
@@ -756,9 +760,9 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
         await page.exposeBinding(PREF_BINDING, ({ frame }, key, value) => {
             if (frame !== page.mainFrame()) return;
             try {
-                writePref(key, value);
+                writePagePref(key, value);
             } catch {
-                // unknown value or not writable: keeps for this run only
+                // unknown or non-cosmetic setting, or not writable: keeps for this run only
             }
         });
         // Themes: only the workbench itself. saveTheme validates what is saved (page schema: no css, no files).
@@ -771,7 +775,8 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
                 return { ok: false, error: String(error?.message ?? error).slice(0, 200) };
             }
         });
-        // Pick a state (F1): only the workbench itself. The host checks against its catalogue what may be reached.
+        // Pick a state (F1): only the workbench itself. The host checks against its catalogue what may be reached (onState) and asks
+        // the human in the chat before restoring (flows.mjs).
         await page.exposeBinding(STATE_BINDING, async ({ frame }, test, step) => {
             if (frame !== page.mainFrame() || holder.state === null || typeof test !== 'string') return;
             await holder.state(test, typeof step === 'string' ? step : undefined);
@@ -962,9 +967,17 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             shown.catalog = catalog;
             return call('states', catalog);
         },
-        /** Who reaches a state picked with F1: (test, step | undefined); null: off. */
+        /**
+         * Who reaches a state picked with F1: (test, step | undefined, { name, role, until }); null: off. Only tests and reachable
+         * steps from the catalogue get through, so the question in the chat never shows text from the page.
+         */
         onState: (handler) => {
-            bench.state = handler ?? null;
+            bench.state = typeof handler !== 'function' ? null : (test, step) => {
+                const entry = shown.catalog?.find(({ id }) => id === test);
+                const reachable = entry?.steps.filter(({ ok }) => ok) ?? [];
+                if (reachable.length === 0 || (step !== undefined && !reachable.some(({ id }) => id === step))) return undefined;
+                return handler(test, step, { name: entry.name, role: entry.role, until: step ?? reachable.at(-1).id });
+            };
         },
         /** Application only (F8) on or off, e.g. automatically after the hand-over for developing. The window stays as it is. */
         solo: async (on) => {

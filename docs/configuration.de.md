@@ -264,6 +264,7 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `extraAllowedHosts` | `[]` | Weitere Hosts, die Chrome erreichen darf, etwa Anmeldung oder CDN. Alles andere ist gesperrt. |
 | `insecureTls` | `false` | Selbstsignierte Zertifikate annehmen. |
 | `browser` | Chrome des Systems | `{ "channel": "msedge" }` oder `{ "executablePath": "/pfad/zu/chromium" }` |
+| `browser.locale`, `browser.timezone` | wie aufgezeichnet | Sprache und Zeitzone des Testbrowsers, z. B. `"de-DE"` und `"Europe/Berlin"`. Ohne sie nimmt eine Wiedergabe die Werte, die mit der Aufzeichnung gespeichert sind, eine Aufnahme (oder eine ältere Aufzeichnung) die des Rechners. Datum, Zahlen und Übersetzungen sehen dann auf jedem Rechner und CI-Runner gleich aus. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS-Selektoren für Fehlermeldungen ohne ARIA-Rolle. |
 | `consoleIgnore` | `[]` | Reguläre Ausdrücke für bekannte, harmlose Konsolenfehler. Eng halten. |
 | `foreignCode` | `[]` | Reguläre Ausdrücke für fremde Skripte, etwa `"/vendor/"`. Deren Fehler werden zu Warnungen. |
@@ -271,6 +272,7 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `effects.fail` | `["controls", "console"]` | Welche gelernten Wirkungen einen Schritt scheitern lassen, wenn sie sich ändern. `[]` macht alle zu Warnungen. |
 | `maxSteps` | `100` | Aktionsbudget für Claude beim Aufnehmen und Reparieren. |
 | `readyTimeoutMs` | | Wie lange auf eine ruhige App gewartet wird. |
+| `readyIgnore` | `[]` | CSS-Selektoren von Bereichen, die sich von selbst ändern, z. B. `["#ticker", ".clock", "footer [role=progressbar]"]`. Ihre DOM-Änderungen und Fortschrittsanzeigen zählen beim Warten auf eine ruhige Seite nicht. Spinner ohne Größe, versteckt oder außerhalb des sichtbaren Bereichs zählen nie. Wird eine Seite nie ruhig, sagt der Bericht das einmal je Schritt. |
 | `lintCommand` | | Dein Prüfbefehl, etwa `npm run lint`. Claude nennt ihn bei Code-Vorschlägen. |
 | `assetUrlPattern` | | Regulärer Ausdruck für Requests, die App-Code laden; Gruppe 1 ist der Name für `overlay.statics`, der Pfad in `overlay.build` oder der Build-Name einer ExtJS-App oder eines Pakets. Gilt mit `--overlay` zusätzlich zum Pfad unterhalb der Umgebungs-URL. |
 | `sites` | | Dieselbe App für mehrere Mandanten: `["nord", "sued"]`, dann `urls` je Umgebung. |

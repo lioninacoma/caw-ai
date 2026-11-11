@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { t } from '../src/shared/i18n.mjs';
 import { createUi } from '../src/shared/ui.mjs';
 import { loadTheme } from '../src/shared/theme-package.mjs';
 
@@ -25,7 +26,47 @@ test('without a terminal: plain lines without control characters and symbols', (
     ui.step({ number: 3, total: 9, label: 'click', elapsed: 1.25 });
     ui.verdict(VERDICT, { report: 'r.md', elapsed: 2 });
     ui.fatal('usage', 'Falsch');
-    assert.deepEqual(lines, ['[caw-ai] Hallo', '[+1.3s] 3/9 click', '[caw-ai] r1 auf a/dev: fail', '[caw-ai] Bericht: r.md', '[caw-ai] Falsch', '[caw-ai] (code: usage, exit ?)']);
+    assert.deepEqual(lines, ['[caw-ai] Hallo', '[+1.3s] 3/9 click', '[caw-ai] r1 auf a/dev: fail', '[caw-ai] E2: Liste leer', '[caw-ai] Bericht: r.md', '[caw-ai] Falsch', '[caw-ai] (code: usage, exit ?)']);
+});
+
+test('without a terminal (headless, CI): the reason of the failed step, never of a step not reached', () => {
+    const { lines, ui } = capture(false);
+    const long = `Schritt 4/19 (click button "Add todo"): ${'x'.repeat(400)}`;
+    ui.verdict({
+        ...VERDICT,
+        expectations: [{ id: 'S1', text: 'a' }, { id: 'S2', text: 'b' }],
+        results: [{ id: 'S1', status: 'fail', note: long }, { id: 'S2', status: 'fail', note: t('session.replay.notReachedBecause', { owner: 'S1' }) }],
+    }, { report: 'r.md', elapsed: 1 });
+    const reason = lines.find((line) => line.startsWith('[caw-ai] S1: '));
+    assert.ok(reason !== undefined && reason.length < 260 && reason.endsWith('…'), reason);
+    assert.ok(!lines.some((line) => line.includes('S2:')));
+    // Without a failed step: the first hard error.
+    const hard = capture(false);
+    hard.ui.verdict({ ...VERDICT, results: [{ id: 'E1', status: 'pass' }, { id: 'E2', status: 'pass' }], failures: [{ type: 'http', text: 'POST /api 500' }] }, { report: 'r.md', elapsed: 1 });
+    assert.ok(hard.lines.includes('[caw-ai] http: POST /api 500'), hard.lines.join('\n'));
+});
+
+test('an error names its code, also in the verdict line', () => {
+    for (const fancy of [false, true]) {
+        const { lines, ui } = capture(fancy);
+        ui.verdict({ status: 'error', code: 'unreachable', reason: 'http://localhost:4199 ist nicht erreichbar.', testId: 'r1', target: 'local' }, { report: 'r.md', elapsed: 1 });
+        assert.match(plain(lines.join('\n')), /ist nicht erreichbar\.\)? \(code: unreachable, exit 2\)/);
+    }
+    const { lines, ui } = capture(false);
+    ui.verdict({ status: 'error', code: 'config-invalid', reason: 'auth.path steht noch auf TODO', testId: 'r1', target: 'local' }, { report: 'r.md', elapsed: 1 });
+    assert.match(lines[0], /\(code: config-invalid, exit 3\)$/);
+});
+
+test('in a terminal: steps not reached count as open, not as failed', () => {
+    const { lines, ui } = capture(true);
+    ui.verdict({
+        ...VERDICT,
+        expectations: [{ id: 'S1', text: 'a' }, { id: 'S2', text: 'b' }],
+        results: [{ id: 'S1', status: 'fail', note: 'kaputt' }, { id: 'S2', status: 'fail', note: t('session.replay.notReachedBecause', { owner: 'S1' }) }],
+    }, { report: 'r.md', elapsed: 1 });
+    const text = plain(lines.join('\n'));
+    assert.match(text, /1 Fehler · 1 offen/);
+    assert.doesNotMatch(text, /Nicht erreicht/);
 });
 
 test('in a terminal: the verdict lists each expectation with its mark, the failure reason and the progress', () => {
@@ -88,4 +129,10 @@ test('in a terminal: marks and colours come from the theme', () => {
     // Truecolor from the bernstein palette (ok #ffb547) or its 256-colour approximation.
     // eslint-disable-next-line no-control-regex -- matches the ANSI colour code
     assert.match(lines[0], /\u001b\[38;(2;255;181;71|5;\d+)m/);
+});
+
+test('an error verdict never shows the code line of describeCode as error code', () => {
+    const { lines, ui } = capture(false);
+    ui.verdict({ status: 'error', code: 'Dev-Server localhost:4174, dein aktueller Stand', reason: 'weg', testId: 'r1', target: 'local' }, { report: 'r.md', elapsed: 1 });
+    assert.doesNotMatch(lines[0], /code:/);
 });

@@ -44,7 +44,7 @@ npx caw-ai run first-errand --target local      # replays the recording, without
 
 ## Prerequisites
 
-- Node 22+ and Google Chrome on Windows or Linux (macOS untested)
+- Node 22.4+ and Google Chrome on Windows or Linux (macOS untested)
 - [Claude Code](https://claude.com/claude-code), for recording and fixing only
 - Docker, only if Claude should run in a container (`--agent docker`)
 
@@ -59,7 +59,7 @@ npm i -D caw-ai
 Start your app, then:
 
 ```bash
-npx caw-ai init --url http://localhost:5173   # opens the app; sign in once, press Enter
+npx caw-ai init --url http://localhost:5173   # opens the app; sign in once, click Done
 cp caw/.env.example caw/.env                  # add a test account
 npx caw-ai doctor                             # lists what is still missing
 ```
@@ -169,10 +169,37 @@ Three built-in themes, or your own: F7 opens the editor for colors, glyphs, the 
 
 Login can be a form (with optional TOTP), HTTP Basic, or a stored session for SSO. See [docs/configuration.md](docs/configuration.md).
 
+## Data and privacy
+
+**When Claude runs** (`record`, `fix`, the chat, `--advise`), Claude Code sends to Anthropic what Claude works with: page contents (accessibility snapshots, `eval` results, screenshots), console and network summaries, the project source it reads and your chat messages. Your Claude Code account and its terms apply.
+
+**Masked or blocked:** caw-ai signs in itself; the role's password and values marked `secret: true` are replaced with `••••` before Claude sees text. `caw/.env`, `.env*`, `caw/.auth` and typical key files are blocked for Claude (Claude Code deny rules locally, hidden in the Docker container). Other secrets in project files Claude may read are not, and Claude sees everything the test user sees in the app: use test accounts and test data. Details: [Sandbox boundaries](docs/guide.md#sandbox-boundaries).
+
+**Replays** (`run` without chat, CI) send nothing to any AI.
+
+**No telemetry:** caw-ai itself reports nothing anywhere. Its own network traffic goes to your environments and `extraAllowedHosts`, plus package downloads when the Docker image is built; in the Docker sandbox, Claude Code reaches only the Anthropic API (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
+
+**Run data** stays on your machine in `.caw/runs/<run>/`: report, `result.json`, screenshots, Claude's logs and `trace.zip`. The trace contains page contents and network data including cookies; don't upload it or run folders publicly. `init` adds `.caw/` to `.gitignore`.
+
+## Status and roadmap
+
+Beta. Minor versions may break things before 1.0; the [changelog](CHANGELOG.md) lists each break with upgrade notes ([from 0.1.0](docs/upgrading.md)).
+
+Supported: Google Chrome or another Chromium-based browser (`browser` in the config), Windows and Linux, Node 22.4+. macOS is untested.
+
+Not yet, or not planned:
+
+- **Parallel runs and sharding:** tests run one after another.
+- **Firefox and WebKit:** Chromium only.
+- **Setup and teardown hooks for test data:** prepare data outside caw-ai, e.g. in a CI step, or as steps of the test.
+- **Network mocking:** tests run against the real backend of the environment.
+- **Visual diffs:** steps check content and state, not pixels.
+- **Other AI providers:** caw-ai works with Claude Code only. Recording, fixing and the chat need it; replays need no AI.
+
 ## FAQ
 
 **Does every run cost tokens?**
-No. Only `record`, `fix` and asking Claude in the chat do. Before Claude starts, the chat asks once per run; you can turn that notice off.
+No. Recording, `fix` and the chat use Claude tokens, billed through your Claude Code account; replays use none, locally and in CI. Before Claude starts, the chat asks once per run; you can turn that notice off. The run log shows the cost Claude Code reports.
 
 **Does Claude see my passwords?**
 No. caw-ai signs in itself before Claude starts. Claude can't read `caw/.env` and only drives the browser through fixed commands. Use test accounts anyway: Claude acts as that user.
@@ -192,6 +219,7 @@ It uses Playwright to drive your installed Chrome. You don't write Playwright co
 - [Configuration](docs/configuration.md): `caw.config.json`, login types, `caw/.env`, `caw/caw.md`
 - [Test files](docs/test-files.md): test plan and recording format, placeholders
 - [Guide](docs/guide.md): agents, workbench, chat, failure assessment, sandbox
+- [Upgrading from 0.1.0](docs/upgrading.md): renamed config keys, exit codes and files
 - [Themes](themes/README.md): built-in themes, own theme packages, `caw-ai theme`
 
 ## Contributing

@@ -89,6 +89,26 @@ export const classifyFailure = (observation, { url, stack } = {}, { ignored = []
 
 const cell = (text) => String(text ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ');
 
+/** Screenshots are in the run's agent/ folder, next to report.md: as a link that opens from the report. */
+export const SCREENSHOT_DIR = 'agent';
+const evidenceCell = (evidence) => {
+    if (evidence?.type === 'screenshot' && typeof evidence.value === 'string' && evidence.value !== '') {
+        return `screenshot: [${cell(evidence.value)}](${encodeURI(`${SCREENSHOT_DIR}/${evidence.value}`)})`;
+    }
+    return `${cell(evidence?.type)}: ${cell(evidence?.value)}`;
+};
+
+/**
+ * Was this step never reached because an earlier one failed? Playback marks it as fail with the note "Not reached because S1
+ * failed." (session.replay.notReachedBecause); `skipped: true` or status `skipped` say it directly.
+ */
+export const isSkipped = (item, results = []) => {
+    if (item?.skipped === true || item?.status === 'skipped') return true;
+    if (item?.status !== 'fail') return false;
+    const owner = results.find((candidate) => candidate.status === 'fail');
+    return owner !== undefined && owner !== item && item.note === t('session.replay.notReachedBecause', { owner: owner.id });
+};
+
 const DECISIONS = ['adopted', 'discarded', 'shown', 'open', 'applied'];
 const decisionLabel = (decision) => (DECISIONS.includes(decision) ? t(`config.report.decision.${decision}`) : decision);
 
@@ -138,12 +158,16 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
     return lines;
 };
 
-export const renderReport = ({ status, reason, note, testId, target, source, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis, overlay }) => {
+/** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
+export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
+
+export const renderReport = ({ status, reason, note, testId, target, source, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis, overlay }) => {
     const sourceLabel = source === 'overlay' ? t('config.report.source.overlay') : t('config.report.source.deployed');
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
-        t('config.report.source', { source: sourceLabel }),
+        // The same line the terminal prints (describeCode); older results only have source.
+        t('config.report.source', { source: typeof testedCode === 'string' && testedCode !== '' ? testedCode : sourceLabel }),
         ...(overlay === undefined ? [] : [t('config.report.overlay', { label: String(overlay.label), local: String(overlay.local), server: String(overlay.server), swapped: t(overlay.swapped ? 'config.report.overlay.yes' : 'config.report.overlay.no') })]),
     ];
     if (reason !== undefined) lines.push('', t('config.report.reason', { reason: String(reason) }));
@@ -152,7 +176,8 @@ export const renderReport = ({ status, reason, note, testId, target, source, exp
         lines.push('', t('config.report.results.header'), '|---|---|---|---|---|');
         for (const { id, text } of expectations) {
             const item = results.find((candidate) => candidate.id === id);
-            lines.push(`| ${id} | ${cell(text)} | ${item?.status ?? '-'} | ${cell(item?.evidence?.type)}: ${cell(item?.evidence?.value)} | ${cell(item?.note)} |`);
+            const skipped = item !== undefined && isSkipped(item, results);
+            lines.push(`| ${id} | ${cell(text)} | ${skipped ? 'skipped' : item?.status ?? '-'} | ${skipped ? '-' : evidenceCell(item?.evidence)} | ${cell(item?.note)} |`);
         }
     }
     if (diagnosis !== undefined) lines.push(...diagnosisLines(diagnosis));

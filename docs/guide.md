@@ -28,7 +28,7 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` onl
 
 **Token notice:** Before Claude works (record, fix, investigate a failure, questions in the chat, `--advise`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back.
 
-**Try it** without a project of your own: `examples/notizen` in the repository, a small app with login and one test.
+**Try it** without a project of your own: [`examples/errand`](../examples/errand) in the repository, a small app with login and one test.
 
 ### From your Claude Code session
 
@@ -132,7 +132,7 @@ A run with Claude, i.e. recording and fixing, does the following:
 3. **Open:** with `--overlay` get the source ready (dev server, build, Sencha watch), start Chrome, sign in, open the page; with `--overlay` check after the first load that local code arrived. Failures here yield `error` without spending tokens.
 4. **Start Claude:** With `local`, `claude -p` starts on your machine with the locked-down tools (see [Sandbox boundaries](#sandbox-boundaries)); with `session` the run waits for your session. With `docker` the container starts (`docker run --rm`): set the firewall, then the container drops all privileges. If the sandbox isn't provably sealed, Claude doesn't run.
 5. **Test:** `claude -p` works through the plan; every browser command goes to the host as a file over the channel. The host checks the verdict.
-6. **Finish:** Claude ends immediately with the verdict (process or container). Report, trace and `floats.log` (clicks and, with `extjs`, the order of floating windows with timings, no content) are under `.caw/runs/<run>/`. The trace (`trace.zip`) contains page content, requests and cookies of the test account; don't share it. With `auth.type: basic` it records no snapshots, so the password from the Authorization header doesn't end up in it. Screenshots and `claude.log` are under `agent/`. The log is written continuously and shows Claude's text and commands with seconds since start; the same lines appear in the terminal. A closing summary after the verdict is not included. Terminal output is colored, the file has no color codes; `NO_COLOR=1` turns colors off. Chrome closes as well.
+6. **Finish:** Claude ends immediately with the verdict (process or container). Report, trace and `floats.log` (clicks and, with `extjs`, the order of floating windows with timings, no content) are under `.caw/runs/<run>/`. The trace (`trace.zip`) contains page content, requests and cookies of the test account; don't share it. With `auth.type: basic` it records no snapshots, so the password from the Authorization header doesn't end up in it. Signing in again during a run (restoring a state) pauses the trace: the part before is kept as `trace-1.zip`, `trace-2.zip` …, and no sign-in form or request is in any of them. Screenshots and `claude.log` are under `agent/`. The log is written continuously and shows Claude's text and commands with seconds since start; the same lines appear in the terminal. A closing summary after the verdict is not included. Terminal output is colored, the file has no color codes; `NO_COLOR=1` turns colors off. Chrome closes as well.
 
 Exit codes: `0` pass, `1` fail, `2` error (the environment is to blame), `3` input rejected, `4` needs recording (`record` or `fix`).
 

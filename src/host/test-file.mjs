@@ -27,7 +27,8 @@ const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
 const MAX_RETRY_WAIT_MS = 300_000;
 const STEP_FIELDS = [...PLAN_STEP_FIELDS, 'recording'];
-const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'actions', 'check', 'timeoutMs', 'network', 'effects'];
+// `locale` and `timezone`: the recording browser's, pinned on replay. Older recordings lack them; the host's values apply then.
+const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'actions', 'check', 'timeoutMs', 'network', 'effects'];
 const EFFECT_FIELDS = new Set(['action', ...EFFECT_LISTS]);
 
 /** The learned effects: how many runs they were learned from, and per action number lists of lines without values. */
@@ -201,6 +202,7 @@ const readRecording = (raw, at, problems, lineOf) => {
     for (const key of Object.keys(raw)) if (!RECORDING_FIELDS.includes(key)) report([...at, key], t('config.test.recording.unknown', { key, hint: hintFor(key, RECORDING_FIELDS) }));
     for (const key of ['hash', 'recordedOn', 'recordedAt', 'check']) if (!isText(raw[key])) report([...at, key], t('config.test.recording.missing', { key }));
     if (raw.after !== undefined && !STEP_ID.test(String(raw.after))) report([...at, 'after'], t('config.test.recording.after'));
+    for (const key of ['locale', 'timezone']) if (raw[key] !== undefined && !isText(raw[key])) report([...at, key], t('session.recording.text', { key }));
     if (raw.timeoutMs !== undefined && !(Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0)) report([...at, 'timeoutMs'], t('config.test.recording.timeout'));
     if (raw.network !== undefined) checkNetwork(raw.network, [...at, 'network'], report);
     if (raw.effects !== undefined) checkEffects(raw.effects, [...at, 'effects'], report);
@@ -539,6 +541,8 @@ const recordingFields = (recording) => ({
     ...(recording.after === undefined ? {} : { after: recording.after }),
     recordedOn: recording.recordedOn,
     recordedAt: recording.recordedAt,
+    ...(recording.locale === undefined ? {} : { locale: recording.locale }),
+    ...(recording.timezone === undefined ? {} : { timezone: recording.timezone }),
     actions: recording.actions.map(writeAction),
     check: recording.check,
     ...(recording.timeoutMs === undefined ? {} : { timeoutMs: recording.timeoutMs }),

@@ -77,8 +77,9 @@ const withComponent = (hint) => new Function('element', 'options', `
 `);
 
 /** Readiness: `mounted` tells whether the framework has mounted the application; `stable` (optional) whether it has settled. */
-const probeWith = (mounted, stable = '() => true') => new Function('store', `
-    let busy = (${webBusy})({ domQuietMs: ${DOM_QUIET_MS} });
+const probeWith = (mounted, stable = '() => true') => new Function('given', `
+    const { store = null, ignore = [] } = given !== null && typeof given === 'object' ? given : { store: given };
+    let busy = (${webBusy})({ domQuietMs: ${DOM_QUIET_MS}, ignore });
     let ready = false;
     try { ready = document.readyState === 'complete' && (${mounted})(); } catch { ready = false; }
     try { if (ready && !(${stable})()) busy += 1; } catch { /* without an answer, DOM quiet applies */ }

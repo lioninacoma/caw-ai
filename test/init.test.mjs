@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { auth, init, record, run, starterConfig, validate } from '../src/host/commands.mjs';
+import { exitOf } from '../src/shared/errors.mjs';
 
 test('init: passes validate at once, creates no example test, credentials are git-ignored', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-init-'));
@@ -51,7 +52,8 @@ test('readCredentials: environment before caw/.env, session per target', async (
     const root = mkdtempSync(join(tmpdir(), 'caw-cred-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const form = { auth: { type: 'form' }, roles: { kunde: { loginEnv: 'CAW_LOGIN_KUNDE', passwordEnv: 'CAW_PW_KUNDE' } } };
-    assert.throws(() => readCredentials(root, form, 'kunde', 'local', {}), /CAW_LOGIN_KUNDE, CAW_PW_KUNDE fehlt/);
+    assert.throws(() => readCredentials(root, form, 'kunde', 'local', {}), /CAW_LOGIN_KUNDE, CAW_PW_KUNDE fehlen: als Umgebungsvariablen oder in caw\/\.env setzen/);
+    assert.throws(() => readCredentials(root, form, 'kunde', 'local', { CAW_LOGIN_KUNDE: 'x' }), /CAW_PW_KUNDE fehlt: als Umgebungsvariable oder/);
     mkdirSync(join(root, 'caw'), { recursive: true });
     writeFileSync(join(root, 'caw', '.env'), 'CAW_LOGIN_KUNDE=aus-datei\nCAW_PW_KUNDE=pw-datei\n');
     assert.deepEqual(readCredentials(root, form, 'kunde', 'local', {}), { login: 'aus-datei', password: 'pw-datei' });
@@ -132,10 +134,17 @@ test('doctor: names the next step per problem, optional items do not block, neve
     const root = mkdtempSync(join(tmpdir(), 'caw-doctor-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
-    const probes = { chrome: async () => {}, claude: () => '2.1.0', docker: async () => { throw new Error('Kein Docker gefunden'); }, reachable: async (url) => url.startsWith('http://') };
+    const probed = [];
+    const probes = { chrome: async () => {}, claude: () => '2.1.0', docker: async () => { throw new Error('Kein Docker gefunden'); }, reachable: async (url) => { probed.push(url); return url.startsWith('http://'); } };
     const missing = await doctorChecks(root, { env: {}, probes });
     assert.match(missing.find(({ ok }) => !ok).next, /caw-ai init/);
     init(root);
+    const initial = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
+    assert.deepEqual(Object.keys(initial.environments), ['local'], 'no placeholder environment from the template');
+    // A real address that does not answer, and a placeholder that is never probed.
+    initial.environments.staging = { url: 'https://staging.firma.intern' };
+    initial.environments.demo = { url: 'https://demo.example.com' };
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify(initial, null, 4));
     writeFileSync(join(root, 'caw', '.env'), 'CAW_LOGIN_TESTER=geheim-login\nCAW_PW_TESTER=geheim-pw\n');
     const lines = [];
     const ui = { success: (text) => lines.push(`ok ${text}`), note: (text) => lines.push(`opt ${text}`), warn: (text) => lines.push(`warn ${text}`) };
@@ -145,7 +154,9 @@ test('doctor: names the next step per problem, optional items do not block, neve
     assert.match(output, /ok OK +Claude Code 2\.1\.0 \(Claude läuft lokal, ohne Docker\)/);
     assert.doesNotMatch(output, /Docker gefunden|OAUTH_TOKEN/, 'locally neither Docker nor token count');
     assert.match(output, /ok OK +local: http:\/\/localhost:5173 antwortet/);
-    assert.match(output, /opt OPTIONAL +staging: https:\/\/staging.example.com antwortet nicht/);
+    assert.match(output, /opt OPTIONAL +staging: https:\/\/staging\.firma\.intern antwortet nicht/);
+    assert.match(output, /opt OPTIONAL +demo: https:\/\/demo\.example\.com ist ein Platzhalter\. Die echte Adresse/);
+    assert.ok(!probed.some((url) => url.includes('example.com')), 'placeholders are never probed');
     assert.match(output, /ok \d+ in Ordnung, 0 fehlen, \d+ optional offen\. Bereit\. Nächster Schritt: den ersten Test aufnehmen/);
     assert.equal(missing.find(({ ok }) => !ok).text, 'caw.config.json fehlt', 'without a double full stop');
     assert.doesNotMatch(output, /geheim/);
@@ -164,6 +175,16 @@ test('doctor: names the next step per problem, optional items do not block, neve
     writeFileSync(configPath, saved.replace(/"signedInSelector": "[^"]*"/, '"signedInSelector": "TODO"'));
     const todo = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => /TODO/.test(text));
     assert.ok(todo && !todo.ok && !todo.optional && /auth\.signedInSelector/.test(todo.text), JSON.stringify(todo));
+    // Also a TODO path is a gap, not an invalid config: one line naming every TODO field.
+    writeFileSync(configPath, saved.replace(/"path": "[^"]*"/, '"path": "TODO"').replace(/"userSelector": "[^"]*"/, '"userSelector": "TODO"'));
+    const checks = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes });
+    assert.ok(checks.some(({ ok, text }) => ok && /caw\.config\.json ist gültig/.test(text)));
+    assert.ok(checks.some(({ ok, text }) => !ok && text === 'auth.path, auth.userSelector stehen noch auf TODO'), JSON.stringify(checks));
+    // An invalid config: the first real finding, not just "caw.config.json:".
+    writeFileSync(configPath, saved.replace('"local": {', '"local": { "agent": true, "localCode": true,'));
+    const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
+    assert.equal(broken.text, 'caw.config.json: environments.local.agent heißt seit 0.2.0 claude, siehe docs/upgrading.md');
+    assert.equal(broken.next, 'caw-ai validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.
     const inCi = await doctorChecks(root, { env: { CI: 'true', CLAUDE_CODE_OAUTH_TOKEN: 'sk-geheim' }, nodeVersion: '22.4.0', probes });
@@ -250,7 +271,7 @@ test('skill: only skill and MCP entry, no config; updates an old skill', async (
     t.mock.method(console, 'log', (text) => said.push(text));
     assert.equal(installSkill(root), 0);
     const file = join(root, '.claude', 'skills', 'caw-ai', 'SKILL.md');
-    assert.match(readFileSync(file, 'utf8'), /### Projekt einrichten/);
+    assert.match(readFileSync(file, 'utf8'), /### Set up a project/);
     assert.ok(!existsSync(join(root, 'caw.config.json')), 'no config');
     assert.match(said.join('\n'), /Angelegt: .*SKILL\.md, \.mcp\.json\.\n.*Weiter in Claude Code: „Richte caw-ai ein“/);
     writeFileSync(file, 'old');
@@ -342,17 +363,28 @@ test('validate: code per test and target, where an overlay is possible, and TODO
     const chunks = [];
     const write = t.mock.method(process.stdout, 'write', (chunk) => { chunks.push(String(chunk)); return true; });
     try {
-        assert.equal(validate(root), 0);
+        // A login value still TODO: rejected like an invalid config (exit 3), never "valid".
+        assert.throws(() => validate(root), (error) => error.code === 'config-invalid' && exitOf(error.code) === 3
+            && /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/.test(error.message));
     } finally {
         write.mock.restore();
+    }
+    assert.doesNotMatch(chunks.join(''), /gültig/);
+    const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
+    config.auth.passwordSelector = '#p';
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
+    chunks.length = 0;
+    const write1 = t.mock.method(process.stdout, 'write', (chunk) => { chunks.push(String(chunk)); return true; });
+    try {
+        assert.equal(validate(root), 0);
+    } finally {
+        write1.mock.restore();
     }
     const out = chunks.join('');
     assert.match(out, /lesen \(local\): Dev-Server localhost:5173, dein aktueller Stand\n/);
     assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, Build dist\n/);
-    assert.match(out, /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/);
     assert.match(out, /und 1 Test\(s\) sind gültig/);
     // Build and dev server on the app: a bare --overlay requires a choice, validate names both.
-    const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
     config.apps.web.overlay.dev = 'http://localhost:5173';
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
     const again = [];

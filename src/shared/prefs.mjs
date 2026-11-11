@@ -46,3 +46,13 @@ export const writePref = (key, value, env = process.env) => {
     renameSync(temp, path);
     return next;
 };
+
+// What the workbench page may set: only how it looks. The page shares its origin with the tested application, so whatever the
+// page may set, the application (or code Claude runs there) may set too. tokenNotice (skip the token notice) is never among them.
+export const PAGE_PREFS = ['animations', 'steps', 'chat', 'theme'];
+
+/** writePref for a value from the workbench page: only cosmetic keys, everything else is rejected like an unknown key. */
+export const writePagePref = (key, value, env = process.env) => {
+    if (!PAGE_PREFS.includes(key)) throw new Error(`Setting ${key} cannot be changed from the page`);
+    return writePref(key, value, env);
+};

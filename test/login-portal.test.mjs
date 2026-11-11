@@ -9,11 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { chromium } from 'playwright-core';
 
 import { explore } from '../src/host/explore.mjs';
 import { freshSession, loginSteps, watchBroken } from '../src/host/browser-session.mjs';
 import { APP_FRAME, frameView } from '../src/host/app-view.mjs';
+import { launchChrome } from './chrome.mjs';
 
 const page = (body, signedIn) => `<!doctype html><html><head><title>Portal</title></head><body class="${signedIn ? 'signed-in' : 'signed-out'}">${body}</body></html>`;
 const loginForm = () => `<form method="post" action="/login"><input id="login_user" name="user" type="text"><input id="login_password" name="password" type="password">
@@ -52,7 +52,7 @@ before(async () => {
     });
     await new Promise((ok) => { server.listen(0, '127.0.0.1', ok); });
     base = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
+    browser = await launchChrome();
 });
 after(async () => {
     await browser?.close();

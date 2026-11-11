@@ -103,6 +103,26 @@ export function extjsTargets(element, { mode, target }) {
 
     if (mode === 'find') return matches(target)[target.index ?? 0] ?? null;
 
+    // Several matches of a target without `index`: where they are and the title of the window or panel around them.
+    if (mode === 'ambiguity') {
+        const all = matches(target);
+        const nearOf = (node) => {
+            for (let current = componentOf(node.parentElement); current !== null; current = componentOf(rootOf(current)?.parentElement ?? null)) {
+                const title = current.getTitle?.();
+                const text = clean(typeof title === 'string' ? title : title?.getText?.() ?? '');
+                if (text !== '') return text.slice(0, 60);
+            }
+            return '';
+        };
+        return {
+            count: all.length,
+            candidates: all.slice(0, 3).map((node, index) => {
+                const box = node.getBoundingClientRect();
+                return { index, x: box.left + box.width / 2 + window.scrollX, y: box.top + box.height / 2 + window.scrollY, near: nearOf(node) };
+            }),
+        };
+    }
+
     // Why a target is not clickable: is it missing, invisible, or covered by a floating window such as a message box?
     if (mode === 'explain') {
         const candidates = matches(target, true);
@@ -146,8 +166,10 @@ export function extjsTargets(element, { mode, target }) {
     delete head.part;
     delete head.own;
     const described = parent === null ? plain : { ...head, inside: { xtype: parent.xtype, ...named(parent) }, ...(part === undefined ? {} : { part }), ...(plain.own === undefined ? {} : { own: plain.own }) };
-    const index = matches(described).indexOf(element);
-    return index === -1 ? null : { ...described, ...(index === 0 ? {} : { index }) };
+    const all = matches(described);
+    const index = all.indexOf(element);
+    // With several matches even the first one gets its index: replay then knows the choice was deliberate (see `web`).
+    return index === -1 ? null : { ...described, ...(index === 0 && all.length === 1 ? {} : { index }) };
 }
 
 /**
@@ -177,7 +199,9 @@ export function extjsPageState({ marker, selectors }) {
  * Runs in the browser: open Ext.Ajax requests and loading stores; with `store` only that one (store id or ComponentQuery) with its count.
  * @returns { pendingAjax, loadingStores, counts, appReady }
  */
-export function extjsProbe(store) {
+export function extjsProbe(given) {
+    // { store, ignore } with `readyIgnore`: Ext readiness looks at requests and stores, not at the DOM, so `ignore` does not apply.
+    const store = given !== null && typeof given === 'object' ? given.store ?? null : given;
     const Ext = window.Ext;
     if (!(Ext && Ext.data && Ext.data.StoreManager)) return { pendingAjax: 0, loadingStores: 0, counts: null, appReady: false };
     const pendingAjax = Ext.Ajax?.isLoading?.() ? (Ext.Ajax.requests ? Object.keys(Ext.Ajax.requests).length : 1) : 0;

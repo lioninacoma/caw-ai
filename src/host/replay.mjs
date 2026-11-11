@@ -7,14 +7,14 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { isCaughtScriptError } from '../shared/report.mjs';
-import { CLICK_DELAY_MS, locatorFor } from './agent-commands.mjs';
+import { CLICK_DELAY_MS, codeText, locatorFor } from './agent-commands.mjs';
 import { patternLabel, textMatcher } from './patterns.mjs';
 import { redactDeep } from './secrets.mjs';
 import { selfAbort } from './diagnose.mjs';
-import { DATE_NAMES, fillDates, markDates } from './dates.mjs';
+import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
 import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
-import { describeElement, describeLocator, explainTarget, explainText, frameworkOf, readPageState, targetLabel, waitForTarget } from './framework/index.mjs';
+import { ambiguityText, describeElement, describeLocator, explainTarget, explainText, frameworkOf, readPageState, targetLabel, waitForTarget } from './framework/index.mjs';
 import { brokenChain, staleSteps, stepHash, withExpectations } from './test-file.mjs';
 
 const DESCRIBE_TIMEOUT_MS = 5000;
@@ -51,17 +51,27 @@ const finalError = (message, kind) => Object.assign(new Error(message), { final:
 
 /**
  * Makes every run distinguishable: Claude writes the tag into free text, so each run finds its own record again. Only digits
- * next to the fixed part, because numbers in messages are treated as equal.
+ * next to the fixed part, because numbers in messages are treated as equal. Milliseconds plus two random digits: two runs
+ * started in the same second (CI matrix, parallel jobs) still get different tags.
  */
-export const newRunTag = (now = new Date()) => `CAW-${now.toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`;
+export const newRunTag = (now = new Date(), random = Math.random) => `CAW-${now.toISOString().replace(/[^0-9]/g, '').slice(0, 17)}${String(Math.floor(random() * 100) % 100).padStart(2, '0')}`;
 const jsonText = (text) => JSON.stringify(String(text)).slice(1, -1);
-export const swapText = (value, from, to) => JSON.parse(JSON.stringify(value).replaceAll(jsonText(from), () => jsonText(to)));
+/** Fields holding JavaScript: a value put in there is escaped with codeText, so "O'Brien" stays one string literal. */
+const CODE_FIELDS = new Set(['code']);
+const hasCode = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).some((key) => CODE_FIELDS.has(key) && typeof value[key] === 'string');
+/** Replaces text in a value of any shape; in a step's `code` the replacement is escaped for a string literal. */
+export const swapText = (value, from, to) => {
+    const swap = (item) => JSON.parse(JSON.stringify(item).replaceAll(jsonText(from), () => jsonText(to)));
+    if (!hasCode(value)) return swap(value);
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, CODE_FIELDS.has(key) && typeof item === 'string' ? item.replaceAll(String(from), () => codeText(to)) : swap(item)]));
+};
 /** Replaces the run tag in both spellings with its placeholders. */
 export const tagRun = (value, runTag) => swapText(swapText(value, runTag, RUN_TAG_PLACEHOLDER), runTag.toLowerCase(), RUN_TAG_LOWER_PLACEHOLDER);
 /** Inserts the run tag into both placeholders. */
 export const fillRun = (value, runTag) => swapText(swapText(value, RUN_TAG_PLACEHOLDER, runTag), RUN_TAG_LOWER_PLACEHOLDER, runTag.toLowerCase());
 
-const TOKEN_FIELDS = ['value', 'code', 'url'];
+// `path`: the page an action ran on. With a remembered id in it (/todos/1045) the next run is on another page (/todos/1046).
+const TOKEN_FIELDS = ['value', 'code', 'url', 'path'];
 const TARGET_FIELDS = ['own', 'text', 'label', 'name'];
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -84,6 +94,18 @@ export const swapToken = (step, value, placeholder) => {
     };
     if (next.target !== null && typeof next.target === 'object') next.target = swapTarget(next.target);
     return next;
+};
+
+/**
+ * Is the page the recorded one? A placeholder segment ({{orderId}}, {{runTagLower}}, {{today}}) stands for any value: the
+ * filled path is compared first, this only keeps a value of another run from counting as the wrong page.
+ */
+export const samePath = (actual, recorded) => {
+    if (typeof actual !== 'string' || typeof recorded !== 'string') return false;
+    if (actual === recorded) return true;
+    if (!recorded.includes('{{')) return false;
+    const pattern = recorded.split(/\{\{[A-Za-z][A-Za-z0-9]*(?:[+-]\d{1,3})?\}\}/).map(escapeRegExp).join('[^/]+');
+    return new RegExp(`^${pattern}$`).test(actual);
 };
 
 const relativeUrl = (url, base) => {
@@ -314,9 +336,10 @@ export const missingRemembered = (spec) => {
  * Only a passed run that proves every step itself becomes repeatable.
  * @param spec   the approved plan
  * @param draft  when fixing, the whole test in which exactly this one step is replaced
+ * @param browser { locale, timezone } of the recording browser, stored with every step
  * @returns { problems, candidate, fresh }; `fresh` lists messages the recording did not know so far
  */
-export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, now = new Date() }) => {
+export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, browser = {}, now = new Date() }) => {
     const problems = [...recorder.problems];
     // All steps proven, only a hard failure on the way, e.g. in a dropped failed attempt: the check run without Claude settles that.
     const onlyHardFailures = outcome?.status === 'fail' && outcome.failures?.length > 0 && outcome.results.every(({ status }) => status === 'pass');
@@ -348,6 +371,9 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, 
                 ...(before === undefined ? {} : { after: before }),
                 recordedOn: target,
                 recordedAt: now.toISOString(),
+                // The browser's language and time zone: replay pins them, wherever it runs.
+                ...(typeof browser.locale === 'string' ? { locale: browser.locale } : {}),
+                ...(typeof browser.timezone === 'string' ? { timezone: browser.timezone } : {}),
                 actions,
                 check,
                 ...(timeoutMs === undefined ? {} : { timeoutMs }),
@@ -410,9 +436,25 @@ const withBasis = (spec, step, effects) => {
     return basis === undefined ? rest : { ...rest, basis };
 };
 
+/**
+ * Language and time zone the steps were recorded in, from the newest step that stores them; {} for recordings from before that.
+ * The browser of a replay gets them, so dates and numbers look as they did while recording.
+ */
+export const recordedBrowser = (steps) => {
+    const recording = steps.map((step) => step.recording).filter((entry) => entry?.locale !== undefined || entry?.timezone !== undefined).at(-1);
+    return recording === undefined ? {} : { ...(recording.locale === undefined ? {} : { locale: recording.locale }), ...(recording.timezone === undefined ? {} : { timezone: recording.timezone }) };
+};
+
+/**
+ * Recordings that store the language also store `index` for every target several elements matched. A target without index there
+ * must be unique on replay (`unique`); older recordings keep taking the first match.
+ */
+const markUnique = (recording) => recording.actions.map((action) => (recording.locale !== undefined && TARGETED.has(action.action) && action.target?.index === undefined ? { ...action, unique: true } : action));
+
 const flatten = (spec, steps, until) => ({
     test: spec.id,
     recordedOn: steps.at(-1)?.recording?.recordedOn,
+    browser: recordedBrowser(steps),
     ...(spec.knownMessages === undefined ? {} : { knownMessages: spec.knownMessages }),
     ...(until === undefined ? {} : { until }),
     retries: Object.fromEntries(steps.filter(({ retry }) => retry !== undefined).map(({ id, retry }) => [id, retry])),
@@ -421,7 +463,7 @@ const flatten = (spec, steps, until) => ({
     // Effects per action from healthy runs: they show the first action after which the app behaves differently.
     effects: Object.fromEntries(steps.filter((step) => currentEffects(spec, step) !== undefined).map((step) => [step.id, currentEffects(spec, step)])),
     steps: steps.flatMap(({ id, recording }) => [
-        ...recording.actions,
+        ...markUnique(recording),
         { action: 'check', id, code: recording.check, ...(recording.timeoutMs === undefined ? {} : { timeoutMs: recording.timeoutMs }) },
     ]),
 });
@@ -586,19 +628,27 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
 
     /** Why a target is missing: if the page itself is in a wrong state, there is nothing to fix in the step. */
-    const stateProblem = (state, step) => {
+    const stateProblem = (state, step, recorded) => {
         if (state === null) return t('session.replay.pageUnreadable');
         if (!state.appLoaded) return t('session.replay.appNotLoaded', { framework: (session.framework ?? frameworkOf()).label() });
         if (!state.signedIn) return LOST;
         if (state.loading) return t('session.replay.loadMask');
-        if (step.path !== undefined && state.path !== step.path) return t('session.replay.wrongPath', { actual: state.path, expected: step.path });
+        if (step.path !== undefined && state.path !== step.path && !samePath(state.path, recorded?.path)) return t('session.replay.wrongPath', { actual: state.path, expected: step.path });
         const message = unknownMessage(state);
         return message === undefined ? null : t('session.replay.unexpectedMessage', { message: shownMessage(message) });
     };
 
+    // Steps whose wait for a quiet page ran out: the report says so once per step instead of every action silently waiting.
+    const unsettled = new Set();
+    let activeOwner;
+    // Ambiguous targets of older recordings, each warned about once.
+    const guessed = new Set();
     const settle = async (timeoutMs) => {
         await session.page().waitForLoadState('load', { timeout: timeoutMs }).catch(() => {});
-        await session.waitReady({ timeout: timeoutMs }).catch(() => {});
+        const ready = await session.waitReady({ timeout: timeoutMs }).catch(() => null);
+        if (ready?.settled !== false || activeOwner === undefined || unsettled.has(activeOwner)) return;
+        unsettled.add(activeOwner);
+        session.warn?.({ type: 'note', text: t('session.replay.notSettled', { step: activeOwner, seconds: Math.round(timeoutMs / 1000) }) });
     };
 
     /** Files for upload, relative to the caw folder. Anything missing or outside aborts before anything is clicked. */
@@ -666,7 +716,17 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         }
         for (;;) {
             const remaining = Math.max(deadline - now(), 1);
-            const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: remaining, sleep, now });
+            // A target without index that several elements match: a recording that stores the index for ambiguous targets (`unique`)
+            // fails instead of guessing; an older one keeps taking the first, as before, with a warning.
+            const seen = {};
+            const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: remaining, sleep, now, unique: step.unique === true ? 'fail' : 'warn', report: seen });
+            if (seen.ambiguous !== undefined && element === null) {
+                throw finalError(t('session.replay.ambiguous', { target: targetLabel(step.target), count: seen.ambiguous.count, candidates: ambiguityText(seen.ambiguous) }), 'target');
+            }
+            if (seen.ambiguous !== undefined && !guessed.has(targetLabel(step.target))) {
+                guessed.add(targetLabel(step.target));
+                session.warn?.({ type: 'note', text: t('session.replay.ambiguousFirst', { target: targetLabel(step.target), count: seen.ambiguous.count, step: activeOwner ?? '?' }) });
+            }
             if (element === null) {
                 // Is the target missing, or is something on top of it? An open dialog with a message explains more than "missing".
                 const why = await explainTarget(session.framework ?? frameworkOf(), session.page(), step.target);
@@ -906,8 +966,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const recorded = replay.steps[index];
         const owner = ownerOf(index);
         const opensStep = index === starts.get(owner);
+        activeOwner = owner;
         const tagged = runTag === undefined ? recorded : fillRun(recorded, runTag);
-        const step = fillDates([...remembered].reduce((current, [placeholder, value]) => swapText(current, placeholder, value), tagged));
+        const step = fillDates([...remembered].reduce((current, [placeholder, value]) => swapText(current, placeholder, value), tagged), zonedNow(session.browser?.timezone));
         const problem = await externalProblem();
         if (problem !== null) {
             // At the start of a step the failure comes from the previous step; a new attempt here would not reach it.
@@ -948,7 +1009,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             // An error with its own classification, e.g. a download with the wrong name, already says what is going on.
             const sorted = error?.kind !== undefined;
             const locked = !sorted && TARGETED.has(step.action) && LOCKED.test(String(error?.message ?? ''));
-            const state = locked ? t('session.replay.locked') : (TARGETED.has(step.action) && !sorted ? stateProblem(await readState(), step) : null);
+            const state = locked ? t('session.replay.locked') : (TARGETED.has(step.action) && !sorted ? stateProblem(await readState(), step, recorded) : null);
             const kind = sorted ? error.kind : TARGETED.has(step.action) && state === null ? 'target' : 'state';
             const message = state === null ? firstLine(error) : `${firstLine(error)} ${state}`;
             const restart = await again(owner, message);

@@ -38,6 +38,13 @@ export const isAllowedUrl = (url, hosts) => {
     }
 };
 
+/**
+ * A value for inside a string literal in code, whichever quotes surround it: ' " ` and ${ cannot end the literal or start an
+ * expression, line breaks cannot break the line. For filling remembered values into a check's or remember's code (O'Brien).
+ */
+export const codeText = (value) => String(value).replace(/[\\'"`$]/g, '\\$&').replaceAll('\n', '\\n').replaceAll('\r', '\\r')
+    .replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
+
 /** A reference from the snapshot, or a CSS selector. */
 export const locatorFor = (page, target) => page.locator(ARIA_REF.test(target) ? `aria-ref=${target}` : target);
 
@@ -47,7 +54,7 @@ const OPTIONAL_WAIT_MS = 3000;
 const FOCUSING = new Set(['click', 'fill', 'type', 'press', 'upload', 'download']);
 
 /**
- * @param expand optional: fills placeholders of secret remembered values ({{iban}}) into fill/type values and into a check's code.
+ * @param expand optional: fills placeholders of secret remembered values ({{iban}}) into fill/type values; code with one is refused.
  *   Claude never sees them in plain text and works with the placeholder; only the host fills it in.
  */
 export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, expand = (value) => value, commandTimeoutMs = COMMAND_TIMEOUT_MS }) => {
@@ -140,19 +147,19 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         return secrets.length === 0 ? value : redactDeep(value, secrets);
     };
 
-    // Where a placeholder is filled: always in a fill/type value, in code only for a check, which then reports just pass or fail.
-    // Never in eval, remember or a URL: the value could come back transformed (split, encoded), slipping past redactDeep.
-    const expandable = (action, key) => key === 'value' || (key === 'code' && action === 'check');
+    // Where a placeholder is filled: only in a fill/type value. Never in code (check, eval, remember) and never in a URL: code
+    // runs in the page and can leave the value there (a global, the title, a request), where the next eval reads it transformed
+    // (split, encoded) past redactDeep. Code with a secret placeholder is refused, so Claude learns why instead of a silent miss.
+    const expanded = (key, value) => {
+        if ((key !== 'value' && key !== 'code') || typeof value !== 'string') return value;
+        const filled = expand(value);
+        if (filled !== value && key === 'code') throw usage(t('run.agent.secretInCode'));
+        return filled;
+    };
     const handle = async (given, { reveal = false } = {}) => {
         if (finished) throw new CawError('run-finished', t('run.agent.finished'));
-        let filled = false;
         const command = typeof given === 'object' && given !== null
-            ? Object.fromEntries(Object.entries(given).map(([key, value]) => {
-                if (!expandable(given.action, key) || typeof value !== 'string') return [key, value];
-                const expanded = expand(value);
-                if (key === 'code' && expanded !== value) filled = true;
-                return [key, expanded];
-            }))
+            ? Object.fromEntries(Object.entries(given).map(([key, value]) => [key, expanded(key, value)]))
             : given;
         if (typeof command !== 'object' || command === null || !Object.hasOwn(commands, command.action)) {
             throw new CawError('unknown-command', t('run.agent.unknownCommand', { action: String(command?.action) }));
@@ -167,7 +174,6 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
             const act = () => commands[command.action](command);
             const work = FOCUSING.has(command.action) && typeof view?.keepChatFocus === 'function' ? view.keepChatFocus(act) : act();
             const result = await Promise.race([work, limit]);
-            if (filled) return { id: result.id, pass: result.pass };
             return PAGE_TEXT.has(command.action) && !reveal ? await hideSecrets(result) : result;
         } finally {
             clearTimeout(timer);

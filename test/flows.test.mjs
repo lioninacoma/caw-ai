@@ -554,10 +554,12 @@ test('Developing: a pick with F1 restores the state, one after another with rest
     const chat = {
         develop: async () => {
             // The human picks a test without a step with F1, then one with a step; then ends.
-            await pick('anderer-test', undefined);
-            await pick('anderer-test', 'S1');
+            await pick('anderer-test', undefined, { role: 'sachbearbeiter', until: 'S3' });
+            await pick('anderer-test', 'S1', { role: 'sachbearbeiter', until: 'S1' });
             return { choice: 'end' };
         },
+        // The human confirms each pick in the chat.
+        choose: async (kind, question, options) => options[0].id,
         notice: (text) => notices.push(text),
         progress: () => {},
         onPicked: () => {},
@@ -576,4 +578,53 @@ test('Developing: a pick with F1 restores the state, one after another with rest
     assert.deepEqual(restored, [['anderer-test', undefined], ['anderer-test', 'S1']]);
     assert.deepEqual(notices, ['anderer-test Ende hergestellt', 'anderer-test S1 hergestellt']);
     assert.equal(pick, null, 'after developing, F1 is unsubscribed');
+});
+
+test('Developing: a state picked with F1 is restored only after the human confirms it in the chat', async () => {
+    const h = harness({ outcomes: [pass] });
+    await runFlow({ spec, until: 'S2', handover: true, canFix: true, openSandbox: async () => 'box', ...h });
+    const { develop } = h.calls[0];
+    let pick = null;
+    const restored = [];
+    const asked = [];
+    let answer = null;
+    const chat = {
+        develop: async () => {
+            // The pick may come from the application (same origin as the workbench): nothing happens until the chat answers.
+            const first = pick('anderer-test', undefined, { role: 'sachbearbeiter', until: 'S3' });
+            await new Promise((ok) => { setImmediate(ok); });
+            assert.deepEqual(restored, [], 'not before the answer');
+            // A second pick while the question is open is dropped, not queued.
+            await pick('dritter-test', 'S1', { role: 'antragsteller', until: 'S1' });
+            answer('cancel-restore');
+            await first;
+            const second = pick('anderer-test', 'S1', {});
+            answer('restore-picked');
+            await second;
+            return { choice: 'end' };
+        },
+        choose: (kind, question, options) => {
+            asked.push([kind, question, options.map(({ id, label }) => `${id}:${label}`)]);
+            return new Promise((ok) => { answer = ok; });
+        },
+        notice: () => {},
+        progress: () => {},
+        onPicked: () => {},
+    };
+    await develop({
+        chat,
+        talk: () => ({}),
+        until: 'S2',
+        refresh: async () => '',
+        restore: async () => '',
+        restoreTo: async (testId, step) => { restored.push([testId, step]); return ''; },
+        onPickState: (handler) => { pick = handler; },
+        onRefresh: () => {},
+        toCode: () => {},
+    });
+    assert.deepEqual(asked, [
+        ['deciding', 'anderer-test bis S3 als sachbearbeiter herstellen?', ['restore-picked:Herstellen', 'cancel-restore:Abbrechen']],
+        ['deciding', 'anderer-test bis S1 herstellen?', ['restore-picked:Herstellen', 'cancel-restore:Abbrechen']],
+    ]);
+    assert.deepEqual(restored, [['anderer-test', 'S1']], 'cancelled is not restored, confirmed is');
 });

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { prefsDir, readPrefs, writePref } from '../src/shared/prefs.mjs';
+import { PAGE_PREFS, prefsDir, readPrefs, writePagePref, writePref } from '../src/shared/prefs.mjs';
 import {
     activeTheme, contrast, deleteTheme, listThemes, loadTheme, projectThemeProblems, readThemePackage, renameTheme, saveTheme, setProjectTheme,
     themeWarnings, validateTheme,
@@ -100,4 +100,18 @@ test('theme: team default and warnings', () => {
     assert.ok(contrast('#e8e9f7', '#0f1026') > 4.5);
     const dim = { ...loadTheme('nacht'), colors: { ...loadTheme('nacht').colors, text: '#333333' }, marks: { ...loadTheme('nacht').marks, ok: '[OK]' } };
     assert.deepEqual(themeWarnings(dim).map(({ kind }) => kind), ['width', 'contrast', 'contrast']);
+});
+
+test('prefs: the workbench page sets only cosmetic keys, never tokenNotice', (t) => {
+    const { env } = home(t);
+    assert.deepEqual(PAGE_PREFS, ['animations', 'steps', 'chat', 'theme']);
+    writePagePref('animations', 'off', env);
+    writePagePref('steps', 'closed', env);
+    assert.throws(() => writePagePref('tokenNotice', 'off', env), /cannot be changed from the page/);
+    assert.throws(() => writePagePref('tokenNotice', null, env), /cannot be changed from the page/);
+    assert.throws(() => writePagePref('chat', 'gone', env), /Unknown setting/);
+    assert.deepEqual(readPrefs(env), { animations: 'off', steps: 'closed' });
+    // The host itself (token-gate) still may.
+    writePref('tokenNotice', 'off', env);
+    assert.equal(readPrefs(env).tokenNotice, 'off');
 });

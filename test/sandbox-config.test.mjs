@@ -121,3 +121,18 @@ test('maskArgs hides sessions, Git at any depth, .ENV, keys and build folders', 
     assert.doesNotMatch(args, /vendor\.git\.txt|sub2\.git/);
     assert.doesNotMatch(args, /customer\.json/, 'the folder suffices, the file inside is not masked separately');
 });
+
+test('maskArgs hides cloud, SSH and Docker credentials and further secret files', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-mask-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    for (const dir of ['.aws', 'home/.SSH', '.docker', 'docker', 'certs']) mkdirSync(join(root, dir), { recursive: true });
+    for (const file of ['.aws/credentials', 'home/.SSH/id_ed25519', '.docker/config.json', 'docker/config.json', 'certs/store.jks', 'certs/a.p12',
+        'prod.env', '.envrc', '.pypirc', '.yarnrc.yml', 'credentials.json', 'app.js']) writeFileSync(join(root, file), 'X=1');
+    const args = maskArgs(root, '/w', 'C:\\empty').join(' ');
+    assert.match(args, /--tmpfs \/w\/\.aws( |$)/);
+    assert.match(args, /--tmpfs \/w\/home\/\.SSH( |$)/);
+    for (const file of ['.docker/config.json', 'certs/store.jks', 'certs/a.p12', 'prod.env', '.envrc', '.pypirc', '.yarnrc.yml', 'credentials.json']) {
+        assert.ok(args.includes(`target=/w/${file},readonly`), file);
+    }
+    assert.ok(!args.includes('/w/docker/config.json') && !args.includes('app.js'), 'only Docker\'s own login folder, no code');
+});

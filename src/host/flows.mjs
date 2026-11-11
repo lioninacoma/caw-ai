@@ -29,6 +29,8 @@ const ONLY_CLOSE = button('close', 'run.button.onlyClose', { primary: true });
 // After the handover, while developing in the prepared state.
 const RESTORE = button('restore', 'run.button.restore', { primary: true });
 const END_DEVELOP = button('end', 'run.button.endDevelop');
+const RESTORE_PICKED = button('restore-picked', 'run.button.restorePicked', { primary: true });
+const CANCEL_RESTORE = button('cancel-restore', 'run.button.cancelRestore');
 
 const withoutDot = (text) => text.replace(/\.$/, '');
 
@@ -524,11 +526,26 @@ export const runFlow = async (options) => {
                 onRefresh?.(() => attempt(t('run.develop.refresh'), refresh));
                 // Reloading is part of developing (F5, hard reload with empty cache): no warning, the state is your working state.
                 const offReload = onReload?.(() => {});
-                // F1 in the workbench: pick a test (and optionally the step), caw-ai restores the state here.
-                onPickState?.((test, step) => serial(async () => {
-                    chat.progress(t('run.develop.restoringOther', { test, step: step ?? t('run.develop.allSteps') }));
-                    await attempt(RESTORE.label, () => restoreTo(test, step));
-                }));
+                // F1 in the workbench: pick a test (and optionally the step), caw-ai restores the state here once the human confirms
+                // in the chat. The workbench shares its origin with the application, so the pick alone may come from the application
+                // or from Claude's eval; the chat cannot be scripted by either. One question at a time, further picks meanwhile drop.
+                let confirming = false;
+                onPickState?.(async (test, step, { role, until: last } = {}) => {
+                    if (confirming) return;
+                    confirming = true;
+                    let answer;
+                    try {
+                        const about = { test, step: last ?? step ?? t('run.develop.allSteps'), role };
+                        answer = await chat.choose('deciding', t(role ? 'run.develop.confirmRestore' : 'run.develop.confirmRestoreNoRole', about), [RESTORE_PICKED, CANCEL_RESTORE]);
+                    } finally {
+                        confirming = false;
+                    }
+                    if (answer !== RESTORE_PICKED.id) return;
+                    await serial(async () => {
+                        chat.progress(t('run.develop.restoringOther', { test, step: step ?? t('run.develop.allSteps') }));
+                        await attempt(RESTORE.label, () => restoreTo(test, step));
+                    });
+                });
                 chat.onPicked?.((picked) => {
                     toCode(picked);
                     chat.notice(t('run.develop.picked', { label: picked.label }));

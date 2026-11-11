@@ -7,6 +7,7 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { AUTH_DIR } from '../shared/config.mjs';
 import { RUN_DIR } from '../shared/names.mjs';
+import { SECRET_DIRS, isSecretPath } from './secrets.mjs';
 
 export const templatePath = (name) => fileURLToPath(new URL(`../../templates/${name}`, import.meta.url));
 
@@ -71,17 +72,13 @@ const MASKED_DIRS = ['.claude', '.worktrees', RUN_DIR, AUTH_DIR];
 const MASKED_ANYWHERE = new Set(['.git']);
 // Not searched: large and without the project's own secrets.
 const SKIPPED_DIRS = new Set(['node_modules', '.pnpm-store', '.turbo', RUN_DIR]);
-// Windows is case-insensitive: .ENV is the same file as .env.
-const isSecretFile = (name) => {
-    const lower = name.toLowerCase();
-    if (/^\.env(\..+)?$/.test(lower)) return lower !== '.env.example';
-    return ['.npmrc', '.netrc', '.pgpass', '.git-credentials'].includes(lower) || /\.(pem|key|p12|pfx)$/.test(lower) || /^id_(rsa|ed25519|ecdsa|dsa)/.test(lower);
-};
+// At any depth, whole folders: cloud and SSH credentials (secrets.mjs). Secret files: isSecretPath, the same list as for advice.
+const MASKED_SECRET_DIRS = new Set(SECRET_DIRS);
 
 /**
  * What the agent must not see despite read-only access: Git data, local Claude configuration, earlier runs, saved sessions,
- * all .env files (test accounts included) and common key files. The host does the login. Docker needs existing
- * targets. Files are covered by an empty host file, because not every Docker way accepts /dev/null as a source.
+ * all .env files (test accounts included), common key and credential files, .aws and .ssh folders. The host does the login.
+ * Docker needs existing targets. Files are covered by an empty host file, because not every Docker way accepts /dev/null as a source.
  */
 export const maskArgs = (root, containerRoot, emptyFile) => {
     const hideFile = (target) => ['--mount', `type=bind,source=${emptyFile},target=${target},readonly`];
@@ -98,13 +95,13 @@ export const maskArgs = (root, containerRoot, emptyFile) => {
         for (const entry of readdirSync(join(root, relative), { withFileTypes: true })) {
             const child = relative === '' ? entry.name : `${relative}/${entry.name}`;
             if (masked.has(child)) continue;
-            if (MASKED_ANYWHERE.has(entry.name)) {
+            if (MASKED_ANYWHERE.has(entry.name) || (entry.isDirectory() && MASKED_SECRET_DIRS.has(entry.name.toLowerCase()))) {
                 args.push(...hide(child, entry.isDirectory()));
                 continue;
             }
             if (entry.isDirectory()) {
                 if (!SKIPPED_DIRS.has(entry.name)) walk(child);
-            } else if ((entry.isFile() || entry.isSymbolicLink()) && isSecretFile(entry.name)) {
+            } else if ((entry.isFile() || entry.isSymbolicLink()) && isSecretPath(child)) {
                 args.push(...hideFile(posix.join(containerRoot, child)));
             }
         }

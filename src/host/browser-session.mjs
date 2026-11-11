@@ -479,6 +479,78 @@ const quietProfile = (profileDir) => {
     }));
 };
 
+const validLocale = (value) => {
+    if (typeof value !== 'string' || value.trim() === '') return false;
+    try {
+        return Intl.getCanonicalLocales(value).length === 1;
+    } catch {
+        return false;
+    }
+};
+const validTimezone = (value) => {
+    if (typeof value !== 'string' || value.trim() === '') return false;
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone: value }).format(0);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Language and time zone of the browser: from the config (`browser.locale`, `browser.timezone`), else as recorded, else the
+ * host's. Recording on de-DE/Europe/Berlin and replaying on an en-US/UTC runner would otherwise change dates, numbers and texts.
+ * An invalid value is skipped in favour of the next source.
+ * @param recorded { locale, timezone } stored with the recording (recordedBrowser), {} for older recordings
+ */
+export const browserRegion = (config, recorded = {}, host = Intl.DateTimeFormat().resolvedOptions()) => {
+    const browser = config?.browser !== null && typeof config?.browser === 'object' ? config.browser : {};
+    return {
+        locale: [browser.locale, recorded?.locale, host.locale, 'en-US'].find(validLocale),
+        timezone: [browser.timezone, recorded?.timezone, host.timeZone, 'UTC'].find(validTimezone),
+    };
+};
+
+/** CSS selectors of areas that never count for readiness (config `readyIgnore`), ignoring anything that is not a selector text. */
+export const readyIgnoreOf = (config) => (Array.isArray(config?.readyIgnore) ? config.readyIgnore.filter((selector) => typeof selector === 'string' && selector.trim() !== '') : []);
+
+/**
+ * The trace of a run, in parts if needed: `pause` stops it around a sign-in and starts a new one afterwards. What came before is
+ * saved as trace-1.zip, trace-2.zip and so on next to trace.zip, which holds the last part. Playwright records network entries
+ * across chunks, so only a full stop keeps the typed password, the field values and the POST body of a sign-in out of every part.
+ * @param options for tracing.start
+ */
+export const createTrace = (context, { path, options }) => {
+    let running = false;
+    let parts = 0;
+    const partPath = () => (path.endsWith('.zip') ? `${path.slice(0, -'.zip'.length)}-${parts}.zip` : `${path}-${parts}`);
+    return {
+        start: async () => {
+            await context.tracing.start(options);
+            running = true;
+        },
+        stop: async () => {
+            if (!running) return;
+            running = false;
+            await context.tracing.stop({ path }).catch(() => {});
+        },
+        /** Runs `work` without tracing. */
+        pause: async (work) => {
+            if (!running) return work();
+            running = false;
+            parts += 1;
+            await context.tracing.stop({ path: partPath() }).catch(() => {});
+            try {
+                return await work();
+            } finally {
+                await context.tracing.start(options).then(() => { running = true; }, () => {});
+            }
+        },
+        /** How many earlier parts were saved. */
+        parts: () => parts,
+    };
+};
+
 // Without a window there is no maximising: forms get the width of a typical screen.
 const HEADLESS_VIEWPORT = { width: 1920, height: 1080 };
 
@@ -486,7 +558,7 @@ const HEADLESS_VIEWPORT = { width: 1920, height: 1080 };
  * @param headless    no visible window, in Chrome's new headless mode: same engine, same host block
  * @param insecureTls skip certificate checks, for internal environments with their own CA (config `insecureTls`)
  */
-const launchChrome = async (profileDir, hosts, { headless = false, insecureTls = false, embed = false, httpCredentials, launch = { channel: 'chrome' } } = {}) => {
+const launchChrome = async (profileDir, hosts, { headless = false, insecureTls = false, embed = false, httpCredentials, launch = { channel: 'chrome' }, region, ownSignals = false } = {}) => {
     quietProfile(profileDir);
     try {
         return await chromium.launchPersistentContext(profileDir, {
@@ -495,6 +567,11 @@ const launchChrome = async (profileDir, hosts, { headless = false, insecureTls =
             headless,
             // Ctrl+C ends the run with a verdict and cleanup. Playwright would otherwise exit immediately with code 130.
             handleSIGINT: false,
+            // A run handles SIGTERM and SIGHUP like Ctrl+C itself (run.mjs); Playwright would close the browser behind its back.
+            ...(ownSignals ? { handleSIGTERM: false, handleSIGHUP: false } : {}),
+            // Language and time zone of the recording, so dates, numbers and translations look the same on every machine.
+            ...(region?.locale === undefined ? {} : { locale: region.locale }),
+            ...(region?.timezone === undefined ? {} : { timezoneId: region.timezone }),
             viewport: headless ? HEADLESS_VIEWPORT : null,
             // No emulation: the page follows the system like in any Chrome. Otherwise Playwright pins it to light, and opening the
             // DevTools would drop that and switch everything to dark mode mid-run.
@@ -682,16 +759,16 @@ export const openBrowserSession = async (spec) => {
     writeFileSync(join(profileDir, PROFILE_OWNER), String(process.pid));
     let raw = null;
     let devlinkHost = null;
-    let traceRunning = false;
+    let trace = null;
+    // Language and time zone: config, else as recorded, else the host's.
+    const region = browserRegion(config, spec.recordedBrowser);
     let closedSignal;
     const closed = new Promise((ok) => { closedSignal = ok; });
     // How long preparation took: the workbench only appears afterwards and shows it as passed points.
     const timing = { start: Date.now(), chrome: null, login: null, code: null };
 
     const stopTrace = async () => {
-        if (!traceRunning) return;
-        traceRunning = false;
-        await raw.tracing.stop({ path: spec.tracePath }).catch(() => {});
+        await trace?.stop();
     };
     const ignoreClosedBrowser = (reason) => {
         if (!isBrowserClosedError(reason)) throw reason;
@@ -730,7 +807,7 @@ export const openBrowserSession = async (spec) => {
         // The devlink host only starts the browser after its preflight. That is why sign-in hangs off the launcher.
         const launcher = createPlaywrightLauncher(async (dir) => {
             const httpCredentials = auth.type === 'basic' ? { username: credentials.login, password: credentials.password, origin: new URL(resolved.url).origin } : undefined;
-            raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: config.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config) });
+            raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: config.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
             raw.on('close', closedSignal);
             await grantClipboard(raw, resolved.url);
             timing.chrome = Date.now();
@@ -978,8 +1055,9 @@ export const openBrowserSession = async (spec) => {
 
         // Snapshots put requests including headers into the trace; with basic auth the password would be in the Authorization header.
         // With the workbench a human is watching: continuous screenshots made the page noticeably sluggish (and the trace huge).
-        await raw.tracing.start({ screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' });
-        traceRunning = true;
+        // Every later sign-in (signInAgain) pauses it.
+        trace = createTrace(raw, { path: spec.tracePath, options: { screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' } });
+        await trace.start();
 
         // devlinkHost.start() only hooks in the interception after loading the start page; so this navigation is the first
         // to load the app with the local code.
@@ -1008,7 +1086,8 @@ export const openBrowserSession = async (spec) => {
             await raw.pages()[0].goto(startUrl, { waitUntil: 'load' });
         }
         // Quiet according to the framework adapter; for the neutral adapter also no open requests of the page.
-        const waitReady = (args = {}) => waitQuiet(framework, pages.current(), { ...args, pending: (page) => network.pending(page) });
+        const ignore = readyIgnoreOf(config);
+        const waitReady = (args = {}) => waitQuiet(framework, pages.current(), { ...args, ignore, pending: (page) => network.pending(page) });
         const ready = await waitReady({ timeout: spec.readyTimeoutMs });
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
         if (!ready.settled) throw new CawError('app-not-settled', t('session.browser.notSettled', { reason: ready.reason }));
@@ -1086,14 +1165,21 @@ export const openBrowserSession = async (spec) => {
                     if (as.password !== undefined && !passwords.includes(as.password)) passwords.push(as.password);
                 }
                 for (const popup of pages.popups()) await popup.close().catch(() => {});
-                await freshSession(raw, pages.main(), resolved.url);
-                if (auth.type === 'storageState') await applyStorageState(raw, signedInAs.storageState);
-                if (auth.type === 'form') await formLogin(pages.main());
+                const signIn = async () => {
+                    await freshSession(raw, pages.main(), resolved.url);
+                    if (auth.type === 'storageState') await applyStorageState(raw, signedInAs.storageState);
+                    if (auth.type === 'form') await formLogin(pages.main());
+                };
+                // The first sign-in happens before the trace starts; this one must not end up in it either.
+                if (auth.type === 'form') await trace.pause(signIn);
+                else await signIn();
                 await pages.main().goto(start === undefined ? startUrl : `${resolved.url}${start}`, { waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
             /** The framework adapter: targets, page state, readiness. */
             framework,
+            /** { locale, timezone } the browser runs with; stored with a recording. */
+            browser: region,
             failures: () => failures,
             /** What must never leave the browser as text: the role's password and values remembered as secret. */
             secrets: () => [...passwords, ...hidden],

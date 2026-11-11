@@ -72,7 +72,7 @@ Auf dem Host (im Projektordner):`,
       [--target <umgebung>]              schlimmsten Laufs. --all nimmt jeden Test, der das Ziel nennt
       [--headless]                       Ohne Fenster
       [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML`,
-    'cli.help.record': `  record <test> [--target <umgebung>]    Testplan aufnehmen oder ablösen, immer mit Chat; nur auf Umgebungen, auf denen
+    'cli.help.record': `  record <test> [--target <umgebung>]    Testplan aufnehmen oder Aufnahme ersetzen, immer mit Chat; nur auf Umgebungen, auf denen
                                          Claude arbeiten darf{here}
       [--role <rolle> --app <app>]       Nur beim ersten Mal; entfällt, wenn die Config nur eine kennt
       [--also <app>]                     Nur beim ersten Mal: Der Weg führt in eine weitere App des Projekts
@@ -157,10 +157,10 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.initNeedsUrl': 'Aufruf: npx caw-ai init --url <adresse>. init sieht sich die Anwendung zuerst an; du meldest dich im Fenster an.',
     'cli.initUsesExplore': 'Nutze die Vorschläge aus {file}.',
     'cli.envExampleHead': '# Nach caw/.env kopieren (gitignored) und Testkonten mit wenig Rechten eintragen.\n# Der Agent sieht diese Datei nicht, steuert aber einen angemeldeten Browser: Keine persönlichen Konten verwenden.',
-    'cli.initTodo': 'Noch einzutragen in caw.config.json: {keys} (explore fand sie nicht, siehe notes in caw/.explore.json).',
+    'cli.initTodo': 'Noch einzutragen in caw.config.json: {keys} (von explore nicht gefunden, siehe notes in caw/.explore.json).',
     'cli.initTodoOffline': 'Noch einzutragen in caw.config.json: {keys}. Die Selektoren findet caw-ai explore --url <adresse>, sobald die Anwendung läuft.',
-    'cli.doctorTodo': '{keys} steht noch auf TODO',
-    'cli.doctorTodoNext': 'In caw.config.json den Selektor eintragen, etwa aus dem Quellcode der Anmeldeseite.',
+    'cli.doctorTodo': ({ keys, count }) => `${keys} ${count > 1 ? 'stehen' : 'steht'} noch auf TODO`,
+    'cli.doctorTodoNext': 'In caw.config.json eintragen: path und Feld-Selektoren von der Anmeldeseite, signedInSelector von der Seite nach der Anmeldung. caw-ai explore --url <adresse> findet sie.',
     'cli.initNext': 'Weiter: caw-ai doctor, dann den ersten Test aufnehmen: caw-ai record <test> --target {target}.',
     'cli.initNextExplore': ' Ohne passende Selektoren erst caw-ai explore --url <adresse>.',
     'cli.initOfflineFallback': 'Kein Terminal und keine --url: init schreibt die Vorlage, die Anmeldung bleibt TODO. Später: caw-ai explore --url <adresse>.',
@@ -220,6 +220,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.imageBuildFailed': 'Das Sandbox-Image ließ sich nicht bauen (Exit {code}). Fehlt der Registry-Login für {image}?',
     'cli.noWatch': 'Kein {label} aktiv: Ohne ihn testete das Overlay einen veralteten Stand. Starte {start} im App-Ordner, oder lass --overlay weg.',
     'cli.testMissing': 'Test nicht gefunden: {file}.{suggestion} {known} Neu aufnehmen: {hint}',
+    'cli.testMissingNear': 'Test nicht gefunden: {file}. Meintest du {name}? {known} Einen neuen Test unter diesem Namen nimmt auf: {hint}',
     'cli.targetChosen': 'Ziel: {target} ({why})',
     'cli.targetWhyTest': 'einziges Ziel von {test}',
     'cli.targetWhyTestAgent': 'einziges Ziel von {test}, auf dem Claude arbeiten darf',
@@ -293,7 +294,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.doctorNodeOld': 'Node {version} ist zu alt',
     'cli.doctorNodeNext': 'Node {min} oder neuer installieren.',
     'cli.doctorConfigOk': '{file} ist gültig',
-    'cli.doctorConfigNextValidate': 'caw-ai validate zeigt alle Befunde.',
+    'cli.doctorConfigNextValidate': ({ count }) => (count > 1 ? `caw-ai validate zeigt alle ${count} Befunde.` : 'caw-ai validate zeigt alle Befunde.'),
     'cli.doctorConfigMissing': '{file} fehlt',
     'cli.doctorConfigNextInit': 'caw-ai init legt sie an.',
     'cli.doctorBrowserOk': 'Browser startet ({browser})',
@@ -321,6 +322,8 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.doctorReachOk': '{target}: {url} antwortet',
     'cli.doctorReachFail': '{target}: {url} antwortet nicht',
     'cli.doctorReachNext': 'VPN, Dev-Server oder Adresse in environments prüfen.',
+    'cli.doctorReachPlaceholder': '{target}: {url} ist ein Platzhalter',
+    'cli.doctorReachPlaceholderNext': 'Die echte Adresse in environments eintragen oder die Umgebung entfernen.',
     'cli.doctorMarkOk': 'OK        ',
     'cli.doctorMarkOptional': 'OPTIONAL  ',
     'cli.doctorMarkMissing': 'FEHLT     ',

@@ -8,12 +8,13 @@ import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { after, before, test } from 'node:test';
 
-import { chromium } from 'playwright-core';
 
 import { openChat } from '../src/host/chat.mjs';
 import { WORKBENCH_MARK_SCRIPT, interceptDocuments } from '../src/host/app-view.mjs';
 import { withoutIntegrity } from '../src/host/local-build.mjs';
 import { CHAT_FRAME, openWorkbench } from '../src/host/workbench.mjs';
+import { readPrefs } from '../src/shared/prefs.mjs';
+import { launchChrome } from './chrome.mjs';
 
 let browser = null;
 let server = null;
@@ -21,7 +22,7 @@ let base = '';
 const dir = mkdtempSync(join(tmpdir(), 'caw-bench-'));
 
 before(async () => {
-    browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
+    browser = await launchChrome();
     server = createServer((request, response) => {
         response.setHeader('content-type', 'text/html; charset=utf-8');
         response.end(`<h1>App ${request.url}</h1><button id="go">Weiter</button><label>Name <input id="feld"></label>`);
@@ -239,6 +240,27 @@ test('workbench: demonstrating shows recording, refresh is locked until the host
     assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'the actions are open');
 });
 
+test('workbench: the raven is an easter egg; "animations off" stops the hearts instead of freezing them', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const page = bench.page;
+    const logo = page.locator('header.top [data-raven]');
+    const look = await logo.evaluate((node) => ({ cursor: getComputedStyle(node).cursor, tab: node.tabIndex }));
+    assert.deepEqual(look, { cursor: 'default', tab: -1 }, 'no hand cursor, not in the tab order');
+    await logo.hover();
+    assert.equal(await logo.evaluate((node) => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)', 'no frame on hover');
+    await logo.click();
+    const hearts = () => page.evaluate(() => [...document.querySelectorAll('.caw-heart')].map((node) => ({ shown: getComputedStyle(node).display !== 'none', size: getComputedStyle(node).fontSize })));
+    const flying = await hearts();
+    assert.ok(flying.length > 0 && flying.every(({ shown, size }) => shown && size === '14px'), 'small hearts rise');
+    await page.evaluate(() => document.body.classList.add('still'));
+    assert.ok((await hearts()).every(({ shown }) => !shown), 'animations off: hearts in flight disappear at once');
+    assert.ok(await until(async () => (await hearts()).length === 0, 4000), 'and are removed, not left frozen');
+    await logo.click();
+    assert.equal((await hearts()).length, 0, 'animations off: a click sends up no hearts');
+    await page.evaluate(() => document.body.classList.remove('still'));
+});
+
 test('workbench: the chip at the top right shows record, play and pause and survives a reload', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
@@ -369,5 +391,30 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     // In solo view F1 sits in the narrow bar.
     await bench.solo(true);
     assert.equal(await page.isVisible('.soloBar [data-states]'), true);
+    return undefined;
+});
+
+test('workbench: the application reaches the bindings via top, but sets no tokenNotice and no unknown state', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    // The bindings write the real prefs.json: here into a temporary folder.
+    const home = mkdtempSync(join(tmpdir(), 'caw-bench-home-'));
+    const previous = process.env.CAW_AI_HOME;
+    process.env.CAW_AI_HOME = home;
+    t.after(() => {
+        if (previous === undefined) delete process.env.CAW_AI_HOME;
+        else process.env.CAW_AI_HOME = previous;
+        rmSync(home, { recursive: true, force: true });
+    });
+    const { bench } = await open(t);
+    const picked = [];
+    bench.onState(async (...args) => { picked.push(args); });
+    await bench.states([{ id: 'liste', name: '', role: 'sb', mutates: false, steps: [{ id: 'S1', name: 'Liste', ok: true }, { id: 'S2', name: 'X', ok: false, why: 'stale' }] }]);
+    // Same origin: the application calls the workbench's bindings through top, and they see the main frame as the caller.
+    await bench.view.evaluate(() => Promise.all([top.cawPref('tokenNotice', 'off'), top.cawPref('animations', 'off')]));
+    await bench.view.evaluate(() => Promise.all([top.cawState('unknown'), top.cawState('liste', 'S2'), top.cawState('liste', 'pretend text')]));
+    assert.deepEqual(readPrefs({ CAW_AI_HOME: home }), { animations: 'off' }, 'only the cosmetic key');
+    assert.deepEqual(picked, [], 'only reachable states from the catalogue');
+    await bench.view.evaluate(() => top.cawState('liste'));
+    assert.deepEqual(picked, [['liste', undefined, { name: '', role: 'sb', until: 'S1' }]], 'the host passes on what it knows itself');
     return undefined;
 });

@@ -26,7 +26,7 @@ test('local: read-only plus the caw tool, no shell, nothing is asked, secrets de
     assert.ok(!args.includes('--dangerously-skip-permissions'));
     assert.deepEqual(LOCAL_ALLOWED, ['Read(./**)', 'Grep(./**)', 'Glob(./**)', 'mcp__caw__caw'], 'read only inside the project');
     for (const tool of ['Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch']) assert.ok(!args.join(' ').includes(tool), tool);
-    for (const pattern of ['Read(.env)', 'Grep(caw/.auth/**)', 'Glob(.git/**)', 'Read(.caw/**)', 'Read(**/.npmrc)']) assert.ok(LOCAL_DENY.includes(pattern), pattern);
+    for (const pattern of ['Read(.env)', 'Grep(caw/.auth/**)', 'Glob(.git/**)', 'Read(.caw/**)', 'Read(**/.npmrc)', 'Read(**/.aws/**)', 'Grep(**/.ssh/**)', 'Read(**/*.env)', 'Glob(**/credentials.json)']) assert.ok(LOCAL_DENY.includes(pattern), pattern);
 });
 
 test('local: setup in the agent folder, the guide is the skill with a preamble', (t) => {
@@ -47,7 +47,7 @@ test('local: setup in the agent folder, the guide is the skill with a preamble',
     assert.deepEqual(Object.keys(carried.permissions), ['deny']);
     const guide = readFileSync(setup.systemPromptFile, 'utf8');
     assert.match(guide, /^You are running locally/);
-    assert.match(guide, /## Ablauf in der Sandbox/);
+    assert.match(guide, /## Flow in the sandbox/);
     assert.doesNotMatch(guide, /^---/m, 'without the skill frontmatter');
 });
 

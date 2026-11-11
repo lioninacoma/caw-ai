@@ -195,19 +195,24 @@ function cawRavenRows(raven, eye) {
         .replace('{beak}', `<span class="beak" style="color:var(--${part('beak', 'accent')})">${esc(raven.beak ?? '>')}</span>`)}</span>`).join('\n');
 }
 
-/** The logo as a button. `size` is the font size in px; a click sends up hearts. */
-export const ravenLogo = (theme = activeTheme(), { size = 22, label = 'caw' } = {}) => `<button class="raven" type="button" data-raven aria-label="${String(label).replaceAll('"', '&quot;')}" style="font-size:${Number(size)}px">${cawRavenRows(theme.raven, 'open')}</button>`;
+/**
+ * The logo. `size` is the font size in px. A click sends up hearts: an easter egg, so it does not look clickable (no hand cursor,
+ * no hover frame) and is not in the tab order.
+ */
+export const ravenLogo = (theme = activeTheme(), { size = 22, label = 'caw' } = {}) => `<button class="raven" type="button" tabindex="-1" data-raven aria-label="${String(label).replaceAll('"', '&quot;')}" style="font-size:${Number(size)}px">${cawRavenRows(theme.raven, 'open')}</button>`;
 
 /** Styles of the logo and the hearts. */
-export const RAVEN_CSS = `.raven{background:none;border:0;padding:2px 4px;margin:0;cursor:pointer;font:400 22px/1 var(--font-crt);white-space:pre;text-align:left;color:var(--frame)}
-.raven:hover{background:var(--pane-2)}
-.caw-heart{position:fixed;pointer-events:none;z-index:2147483646;white-space:pre;font:400 22px/1 var(--font-crt);color:var(--heart);text-shadow:0 0 var(--heart-glow,8px) var(--heart);animation:caw-rise var(--dur,1.4s) steps(var(--steps,9),end) forwards}
+export const RAVEN_CSS = `.raven{background:none;border:0;padding:2px 4px;margin:0;cursor:default;font:400 22px/1 var(--font-crt);white-space:pre;text-align:left;color:var(--frame)}
+.raven:focus,.raven:focus-visible{outline:none}
+.caw-heart{position:fixed;pointer-events:none;z-index:2147483646;white-space:pre;font:400 14px/1 var(--font-crt);color:var(--heart);text-shadow:0 0 var(--heart-glow,8px) var(--heart);animation:caw-rise var(--dur,1.4s) steps(var(--steps,9),end) forwards}
 @keyframes caw-rise{0%{transform:translate(0,0);opacity:1}70%{opacity:1}100%{transform:translate(var(--dx,0),var(--rise,-80px));opacity:0}}
-@media (prefers-reduced-motion:reduce){.caw-heart{animation-duration:.01s}}`;
+@media (prefers-reduced-motion:reduce){.caw-heart{display:none}}
+.still .caw-heart{display:none}`;
 
 /**
  * The logo script, runs in the page. Values from theme.raven: blinking (blink.ms, firstMs, pauseMs, double) and
- * click (pet.happyMs, pet.hearts). Reduced motion or `still()`: no blinking, hearts removed at once. The raven can be
+ * click (pet.happyMs, pet.hearts). Reduced motion or `still()`: no blinking and no hearts; hearts in flight disappear
+ * (they are hidden by CSS and removed when their time is up) instead of freezing. The raven can be
  * swapped later via setRaven (the theme dialog).
  * @param scope  document or shadow root with the [data-raven] buttons
  * @param layer  where the hearts go
@@ -244,7 +249,8 @@ function cawRaven(scope, layer, still, initial) {
         event.stopPropagation();
         const h = raven.pet?.hearts ?? {};
         const glyphs = Array.isArray(h.glyphs) && h.glyphs.length > 0 ? h.glyphs : ['♥'];
-        const count = Math.min(20, n(h.count, 6));
+        // Animations off or reduced motion: the raven still squints, but no hearts rise.
+        const count = reduce() ? 0 : Math.min(20, n(h.count, 6));
         const [lo, hi] = Array.isArray(h.durationMs) ? h.durationMs : [1100, 1800];
         const box = el.getBoundingClientRect();
         for (let i = 0; i < count; i += 1) {
@@ -262,7 +268,8 @@ function cawRaven(scope, layer, still, initial) {
             heart.style.animationDelay = `${i * n(h.staggerMs, 70)}ms`;
             layer.appendChild(heart);
             heart.addEventListener('animationend', () => heart.remove());
-            if (reduce()) setTimeout(() => heart.remove(), 0);
+            // Also without animationend: "animations off" stops the animation, the heart must not stay behind.
+            setTimeout(() => heart.remove(), Math.ceil(parseFloat(heart.style.getPropertyValue('--dur')) * 1000) + i * n(h.staggerMs, 70) + 100);
         }
         busy.add(el);
         draw(el, 'happy');

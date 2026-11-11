@@ -19,4 +19,4 @@ labels: bug
 - Command (e.g. `caw-ai run smoke --target local`):
 
 **Output or report**
-<!-- Terminal output or the relevant part of .caw/runs/<run>/report.md. Remove credentials and internal URLs. -->
+<!-- Terminal output or the relevant part of .caw/runs/<run>/report.md. Remove credentials and internal URLs. Do not attach trace.zip: it contains page contents and cookies. -->

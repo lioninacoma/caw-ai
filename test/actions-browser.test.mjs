@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { chromium } from 'playwright-core';
 
 import { grantClipboard } from '../src/host/browser-session.mjs';
 import { playReplay } from '../src/host/replay.mjs';
+import { launchChrome } from './chrome.mjs';
 
 const ORIGIN = 'https://caw.test';
 let browser = null;
@@ -16,7 +16,7 @@ let context = null;
 let page = null;
 let dir = null;
 before(async () => {
-    browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
+    browser = await launchChrome();
     context = await browser?.newContext({ acceptDownloads: true });
     page = await context?.newPage();
     // A page with a real origin: the clipboard only exists in a secure context.

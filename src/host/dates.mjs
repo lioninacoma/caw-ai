@@ -48,3 +48,20 @@ export const fillDates = (value, now = new Date()) => replaceIn(value, (text) =>
     const days = amount === undefined ? 0 : Number(amount) * (sign === '-' ? -1 : 1);
     return FORMATS[name](shifted(now, days));
 }));
+
+/**
+ * Now as a local date in another time zone: its year, month, day and time are the wall clock there. The browser runs in the
+ * pinned time zone of the recording; "today" has to be its today, not the host's, e.g. shortly after midnight on a UTC runner.
+ * Without a valid zone the host's now.
+ */
+export const zonedNow = (timeZone, now = new Date()) => {
+    if (typeof timeZone !== 'string' || timeZone === '') return now;
+    let parts;
+    try {
+        parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+            .formatToParts(now).map(({ type, value }) => [type, Number(value)]));
+    } catch {
+        return now;
+    }
+    return new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, now.getMilliseconds());
+};

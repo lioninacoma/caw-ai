@@ -5,16 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { chromium } from 'playwright-core';
 
-import { buildSuggestions, explore, keepStable, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
+import { buildSuggestions, explore, keepStable, startUrlOf, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
 import { answersFromExplore, starterConfig } from '../src/host/commands.mjs';
 import { validateConfig } from '../src/shared/config.mjs';
+import { launchChrome } from './chrome.mjs';
 
 let browser = null;
 let page = null;
 before(async () => {
-    browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
+    browser = await launchChrome();
     page = await browser?.newPage();
 });
 after(async () => { await browser?.close(); });
@@ -150,4 +150,18 @@ test('explore: flow with a fake browser writes only caw/.explore.json', async (t
     assert.equal(written.framework.value, 'vue');
     assert.ok(!existsSync(join(root, 'caw.config.json')), 'no config');
     await assert.rejects(explore(root, ['--url', 'ftp://x'], { wait: async () => {} }), /Aufruf: caw-ai explore/);
+});
+
+test('explore without signing in (--yes on an app with a login): the sign-in page is never the start page', () => {
+    const loginPage = { url: 'http://localhost:4174/login', login: { userSelector: '#user', passwordSelector: '#password', submitSelector: null }, markers: [], messages: [] };
+    // Nobody signed in: the page at the end is still the sign-in page.
+    const unattended = buildSuggestions({ url: 'http://localhost:4174', seen: { before: loginPage, loginPage, after: loginPage } });
+    assert.equal(unattended.startUrl, '/');
+    assert.equal(unattended.auth.path, '/login');
+    assert.equal(startUrlOf('http://localhost:4174/app/', loginPage), '/app/', 'the given address, if it is not the sign-in page');
+    assert.equal(startUrlOf('http://localhost:4174/login', loginPage), '/');
+    // Signed in: the page the human chose.
+    assert.equal(startUrlOf('http://localhost:4174', { url: 'http://localhost:4174/todos?day=1', login: null }), '/todos?day=1');
+    // init then writes "/" as startUrl.
+    assert.equal(starterConfig({ ...answersFromExplore(unattended), language: 'de' }).apps.web.startUrl, '/');
 });

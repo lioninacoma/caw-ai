@@ -2,9 +2,11 @@
 // `framework` in the config; `web` is the default and needs no framework knowledge. Everything else in the tool is neutral.
 //
 // An adapter is an object with:
-// - `targets(element, { mode, target })`: runs in the browser; `describe` returns a stable target, `find` the matching element
+// - `targets(element, { mode, target })`: runs in the browser; `describe` returns a stable target (with `index` as soon as several
+//   elements match), `find` the matching element, `ambiguity` { count, candidates } of all matches
 // - `pageState({ marker, selectors })`: runs in the browser; { appLoaded, signedIn, loading, path, messages }
-// - `probe(store)`: runs in the browser; { pendingAjax, loadingStores, counts, appReady }
+// - `probe(store)`: runs in the browser; { pendingAjax, loadingStores, counts, appReady }. With `readyIgnore` it gets { store, ignore }
+//   instead: CSS selectors of areas whose changes and progress indicators do not count (live ticker, clock, permanent spinner)
 // - `countNetwork`: open requests from the network log count while waiting
 // - `floats`: record the order of floating windows; `stackSkip`: files that only pass errors on
 // - `messageSelectors`: page messages, unless the config names some
@@ -32,6 +34,8 @@ const sleepMs = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 export const describeLocator = (framework, locator, options) => locator.evaluate(framework.targets, { mode: 'describe' }, options);
 
 const findExpression = (framework, target) => `(${framework.targets})(null, ${JSON.stringify({ mode: 'find', target })})`;
+// How many elements match a target without `index`, with the first three as { index, x, y, near }.
+const ambiguityExpression = (framework, target) => `(${framework.targets})(null, ${JSON.stringify({ mode: 'ambiguity', target })})`;
 
 // iframes: a target in a frame of the application carries the iframe element under `frame`, described in the document above,
 // with nested frames again under `frame`. The `web` adapter always describes and finds the iframe: a framework adapter like
@@ -89,20 +93,49 @@ export const describeElement = async (framework, page, element, options) => {
     return chain === null ? null : chain === undefined ? described : { ...described, frame: chain };
 };
 
-/** Waits until the target is clickable. Evaluation fails during navigation, which is expected. */
-export const waitForTarget = async (framework, page, target, { timeoutMs, pollMs = 150, sleep = sleepMs, now = Date.now } = {}) => {
+// How long a target may stay ambiguous before an action that requires a unique one gives up. Briefly two hits are normal, e.g.
+// while a dialog closes and the next one opens.
+const AMBIGUOUS_MS = 2000;
+
+/**
+ * Waits until the target is clickable. Evaluation fails during navigation, which is expected.
+ * @param unique  for a target without `index`: 'fail' waits for a single hit and returns null if several stay (`report.ambiguous`
+ *                then holds { count, candidates }); 'warn' takes the first hit and only notes the ambiguity in `report`
+ */
+export const waitForTarget = async (framework, page, target, { timeoutMs, pollMs = 150, sleep = sleepMs, now = Date.now, unique, report } = {}) => {
     const deadline = now() + timeoutMs;
     const { frame: frameTarget, ...own } = target;
+    const checkUnique = (unique === 'fail' || unique === 'warn') && own.index === undefined;
+    let ambiguousSince = null;
     for (;;) {
         const scope = await frameOf(page, frameTarget);
         const handle = scope === null ? null : await scope.evaluateHandle(findExpression(framework, own)).catch(() => null);
         const found = handle?.asElement() ?? null;
-        if (found !== null) return found;
-        await handle?.dispose().catch(() => {});
+        if (found !== null) {
+            const ambiguity = checkUnique ? await (async () => scope.evaluate(ambiguityExpression(framework, own)))().catch(() => null) : null;
+            const several = ambiguity !== null && typeof ambiguity === 'object' && ambiguity.count > 1;
+            if (report !== undefined) report.ambiguous = several ? ambiguity : undefined;
+            if (!several || unique === 'warn') return found;
+            await found.dispose().catch(() => {});
+            ambiguousSince ??= now();
+            if (now() - ambiguousSince >= AMBIGUOUS_MS) return null;
+        } else {
+            ambiguousSince = null;
+            if (report !== undefined) report.ambiguous = undefined;
+            await handle?.dispose().catch(() => {});
+        }
         if (now() >= deadline) return null;
         await sleep(pollMs);
     }
 };
+
+/** The candidates of an ambiguous target for a message: position on the page and the text around it, at most three. */
+export const ambiguityText = ({ count, candidates = [] }) => candidates.slice(0, 3).map(({ index, x, y, near }) => t('session.replay.ambiguousCandidate', {
+    number: index + 1,
+    x: Math.round(x ?? 0),
+    y: Math.round(y ?? 0),
+    near: typeof near === 'string' && near !== '' ? t('session.replay.ambiguousNear', { text: near }) : '',
+})).join('; ') + (count > 3 ? t('session.replay.ambiguousMore', { count: count - 3 }) : '');
 
 /**
  * Why a target was not clickable, if the adapter can tell: { missing } | { hidden } | { covered: { role|tag, name?, messages? } }.
@@ -179,15 +212,19 @@ const READY = { timeout: 15_000, quietMs: 250, pollMs: 100 };
  * Waits until the page is quiet: nothing loading according to the adapter, with `countNetwork` no open page request either, and
  * with `minCount` at least that many hits for `store`. Quiet means `quietMs` in a row.
  * @param pending  open requests of this page (only with `countNetwork`)
+ * @param ignore   CSS selectors (config `readyIgnore`): areas whose DOM changes and progress indicators do not count
  * @returns { settled, waitedMs, samples, reason, lastSample }
  */
-export const waitQuiet = async (framework, page, { store = null, minCount = null, timeout = READY.timeout, quietMs = READY.quietMs, pollMs = READY.pollMs, pending = () => 0, sleep = sleepMs, now = Date.now } = {}) => {
+export const waitQuiet = async (framework, page, { store = null, minCount = null, timeout = READY.timeout, quietMs = READY.quietMs, pollMs = READY.pollMs, pending = () => 0, ignore = [], sleep = sleepMs, now = Date.now } = {}) => {
     const start = now();
+    // Without selectors the probe gets the store alone, as always.
+    const selectors = Array.isArray(ignore) ? ignore.filter((selector) => typeof selector === 'string' && selector.trim() !== '') : [];
+    const argument = selectors.length === 0 ? store : { store, ignore: selectors };
     let samples = 0;
     let lastSample = null;
     let quietSince = null;
     for (;;) {
-        const sample = await page.evaluate(framework.probe, store).catch(() => null);
+        const sample = await page.evaluate(framework.probe, argument).catch(() => null);
         samples += 1;
         if (sample !== null) {
             lastSample = framework.countNetwork ? { ...sample, pendingAjax: sample.pendingAjax + pending(page) } : sample;
