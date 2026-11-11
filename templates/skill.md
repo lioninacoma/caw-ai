@@ -43,13 +43,32 @@ verdict. There are three ways:
 - **Change a step:** `fix <test> S<n> --target <environment>`, even if it does not fail, e.g. for a step changed by hand or newly
   added. This too with the human at the chat.
 
+### Local code
+
+Use the overlay (`--overlay`, `caw_start` with `overlay`) only when the human asks to test or develop their local code on an
+environment; otherwise runs use the deployed code. caw starts no process for it: the project's local code server must run.
+
+1. **Check:** `caw_overlay` with `action: status` (or `npx caw-ai overlay status --json`), with `target` and `app` as for the run.
+   - `ready`: start the run.
+   - `moved`: the server of this app runs at `foundUrl`. Set `apps.<app>.overlay.url` to it with `caw_config` and tell the human.
+   - `down`: ask the human "Start `<start>` in `<appDir>`?". On yes run it in your own session in the background (never through caw),
+     then poll `status` until `ready` (a Sencha watch needs a few minutes for its first build). Without `start` ask for the command.
+   - `wrong-app` (another app answers at `url`) or `stale` (the watch serves files that no longer exist): tell the human what
+     `message` says; do not start a second server on the same port.
+   - `not-overlay` or `no-app`: fix the config (`overlay: true` on the environment, the app) or tell the human.
+2. **Parts:** If the run or `caw_overlay` `check` reports parts that still come from the server (`incomplete`), run `caw_overlay`
+   with `action: apply` and check again.
+3. **Project rules win:** if the project forbids starting such processes (e.g. a `CLAUDE.md` saying the human starts the watch),
+   only name the command and wait for the human.
+
 ### Set up a project
 
 If there is no `caw.config.json` yet or the human wants to set up caw-ai ("set up caw"), proceed as follows. Detection happens without AI,
 you add what can only be learned from the code or from the human:
 
-1. **Clarify the address:** Read `package.json` (dev scripts, port), `.env.example`, Vite, Angular or Webpack config. If the dev server is not running,
-   ask the human to start it; do not start it yourself.
+1. **Clarify the address:** Take it from the environment: `package.json` (dev scripts, port), `.env.example`, Vite, Angular or
+   Webpack config, README, deployed environments named in configs and docs. Ask the human for a target URL only if none of that names
+   one.
 2. **Explore:** With the tools: `caw_explore` with `login: true` (or `yes` without a sign-in). Without them the human runs
    `npx caw-ai init --url <address>` in their terminal. A window opens: the human signs in with a test account, picks the start page and
    clicks Done; the card then asks for the role of that account and saves it as a test user in `caw/.env`, "+ Another role" for more
@@ -64,17 +83,21 @@ you add what can only be learned from the code or from the human:
      the code shows test data or seeds there. Anything named prod/live or with the public domain: `production: true`.
    - Console noise and messages with `confidence: certain` are adopted; `likely` ones go into the closing list, not into a question.
    - Local code: the dev server on the own machine is simply an environment (`local`). Only if the app does not run locally as
-     delivered (portal, shell, backend only on staging) set the overlay: `overlay: true` on that environment, on the app
-     `overlay.build` or `overlay.dev`; ExtJS needs only `overlay: true` and the running Sencha watch.
-   - ExtJS overlay: run `caw_overlay_check`. If parts still come from the server, run it again with `apply: true` and check once more;
-     several sources give several patterns. Only if a source stays unresolved, show the human its URLs. If the watch is missing or
-     stale, ask the human to start `sencha app watch` in the app folder; never start it yourself.
+     delivered (portal, shell, backend only on staging) prepare the overlay: `overlay: true` on that environment and on the app
+     `overlay.url` and `overlay.start`, both derived from the project:
+     - `url`: the local code server. Vite: `server.port` in `vite.config.*` (default 5173); Angular: `serve.options.port` in
+       `angular.json` (default 4200); Sencha: the watch server `http://localhost:1841/` (also the default when `url` is missing).
+     - `start`: the app's own start command from its `package.json` scripts (e.g. `pnpm run watch`, `npm run dev`) or its README,
+       as it is run in the app folder.
+     - Only a build folder without a server: `overlay.build` (and `start` = the build script).
+   - ExtJS overlay: if the server runs, `caw_overlay` with `action: check`. If parts still come from the server, `action: apply` and
+     check once more; several sources give several patterns. Only if a source stays unresolved, show the human its URLs.
    Ask only what you cannot decide from the code: an environment you cannot classify.
 5. **Test users:** never ask for user names or passwords and never write `caw/.env`. Roles come from the explore window; more with
    `caw_role` (`add`, `name` from the code, `target`): the window opens, the human signs in and saves, and the tool returns the saved roles. `caw_role list` shows which
    role still has no test user.
 6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw-ai doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
-   the overlay check is green.
+   and a running server the overlay check is green. List the overlay `url` and `start` you set under "how I set it up".
 7. **First test, then run it:** write a short read-only test (`caw/tests/<test>.yaml`: `id`, `app`, `role`, `targets`,
    `mutates: false`, `steps` with `id`, `name`, `do`, `expect`), e.g. "Sign in and see the start page", check it with `caw_validate`
    and record it with `caw_start` (`command: record`) as the agent in your session (below). Then show the closing list and the result.
@@ -92,9 +115,10 @@ its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.j
    `finish` and `advise` the content goes in `file`). Without the tools: `npx caw-ai <command>` in the project folder. The human sees plan,
    questions and decisions in the workbench chat and answers there.
 4. **Setup and checks without tokens:** `caw_doctor`, `caw_validate`, `caw_list`, `caw_config` (`read`, or `patch` with `dryRun`;
-   it writes only a valid config), `caw_init`, `caw_explore` (needs `login` or `yes`) and `caw_overlay_check`. Results come as JSON
-   (`structuredContent`). `caw_start` takes typed fields (`command`, `test`, `target`, `step`, `until`, `overlay`, `headless`) and
-   `open`; with `overlay` it returns the watch command instead of starting when the watch is missing. You are the agent: caw asks
+   it writes only a valid config), `caw_init`, `caw_explore` (needs `login` or `yes`) and `caw_overlay` (`status`, `check`, `apply`).
+   Results come as JSON (`structuredContent`). `caw_start` takes typed fields (`command`, `test`, `target`, `step`, `until`, `overlay`,
+   `headless`) and `open`; with `overlay` it checks the local code server first and, if it is not ready, returns `state`, `url`,
+   `start` and `appDir` instead of starting (then proceed as under "Local code"). You are the agent: caw asks
    neither about tokens nor who demonstrates. `caw_status` also returns the last run's result, step and artefacts.
 5. **Create tests yourself:** Write the test plan `caw/tests/<test>.yaml` (`id`, `app`, `role`, `targets`, `mutates`, `steps` with `id`,
    `name`, `do`, `expect`; never a recording), check it with `caw_validate`, then `caw_start` with `command: record`: you follow the

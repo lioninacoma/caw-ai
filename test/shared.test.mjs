@@ -238,17 +238,24 @@ test('which code runs: deployed unless --overlay; if the overlay is not possible
     const build = { kind: 'build', dir: 'dist', statics: [] };
     assert.deepEqual([checkTest(spec, 'local', own, { overlay: true })].map(({ source, apps }) => ({ source, apps })), [{ source: 'overlay', apps: { shop: build } }]);
     assert.deepEqual(checkTest(spec, 'local', own, { overlay: 'build' }).apps.shop, build);
-    assert.throws(() => checkTest(spec, 'local', own, { overlay: 'dev' }), (error) => error.code === 'usage' && /--overlay dev geht hier nicht: App shop hat kein overlay\.dev\. Sie hat overlay\.build: --overlay build\./.test(error.message));
+    assert.throws(() => checkTest(spec, 'local', own, { overlay: 'dev' }), (error) => error.code === 'usage' && /--overlay dev geht hier nicht: App shop hat kein overlay\.url\. Sie hat overlay\.build: --overlay build\./.test(error.message));
     assert.deepEqual(checkTest(spec, 'local', own, { overlay: 'http://localhost:5174' }).apps.shop, { kind: 'dev', url: 'http://localhost:5174', statics: [] }, 'a URL needs no config');
     const both = { ...own, apps: { shop: { ...own.apps.shop, overlay: { build: 'dist', dev: 'http://localhost:5173', devCommand: 'npm run dev' } } } };
     assert.throws(() => checkTest(spec, 'local', both, { overlay: true }), (error) => error.code === 'usage' && /wähle --overlay build oder --overlay dev/.test(error.message));
-    assert.deepEqual(checkTest(spec, 'local', both, { overlay: 'dev' }).apps.shop, { kind: 'dev', url: 'http://localhost:5173', command: 'npm run dev', statics: [] });
+    assert.deepEqual(checkTest(spec, 'local', both, { overlay: 'dev' }).apps.shop, { kind: 'dev', url: 'http://localhost:5173', start: 'npm run dev', statics: [] }, 'start is named, never run');
+    assert.deepEqual(checkTest(spec, 'local', both, { overlay: 'dev', start: true }).apps.shop, { kind: 'dev', url: 'http://localhost:5173', start: 'npm run dev', command: 'npm run dev', statics: [] }, 'with --start caw may run it');
+    const renamed = { ...own, apps: { shop: { ...own.apps.shop, overlay: { url: 'http://localhost:5173', start: 'npm run dev' } } } };
+    assert.deepEqual(checkTest(spec, 'local', renamed, { overlay: true }).apps.shop, { kind: 'dev', url: 'http://localhost:5173', start: 'npm run dev', statics: [] });
     const withAdmin = { ...both, apps: { ...both.apps, admin: { dir: 'admin', startUrl: '/' } } };
     assert.throws(() => checkTest({ ...spec, app: 'shop', also: ['admin'] }, 'local', withAdmin, { overlay: 'http://localhost:5174' }), (error) => error.code === 'usage' && /gilt für genau eine App, der Test hat shop, admin/.test(error.message));
     assert.deepEqual(Object.keys(checkTest({ ...spec, app: 'shop', also: ['admin'] }, 'local', withAdmin, { overlay: 'dev' }).apps), ['shop'], 'another app without a source stays deployed');
     assert.throws(() => checkTest(spec, 'local', simple(), { overlay: true }), (error) => error.code === 'usage' && /apps\.shop\.overlay\.build/.test(error.message));
     const extjs = { ...simple(), framework: 'extjs' };
-    assert.deepEqual(checkTest(spec, 'local', extjs, { overlay: true }).apps.shop, { kind: 'watch', statics: [] }, 'ExtJS: the watch, without config');
+    assert.deepEqual(checkTest(spec, 'local', extjs, { overlay: true }).apps.shop, { kind: 'watch', url: 'http://localhost:1841/', statics: [] }, 'ExtJS: the watch at its usual address, without config');
+    const extjsAt = { ...extjs, apps: { shop: { ...extjs.apps.shop, overlay: { url: 'http://localhost:1842/', start: 'npm run watch' } } } };
+    assert.deepEqual(checkTest(spec, 'local', extjsAt, { overlay: true }).apps.shop, { kind: 'watch', url: 'http://localhost:1842/', start: 'npm run watch', statics: [] });
+    assert.deepEqual(checkTest(spec, 'local', extjsAt, { overlay: 'http://localhost:52775/', start: true }).apps.shop,
+        { kind: 'watch', url: 'http://localhost:52775/', start: 'npm run watch', command: 'npm run watch', statics: [] }, '--overlay <url> overrides url for ExtJS too');
     assert.throws(() => checkTest(spec, 'local', extjs, { overlay: 'build' }), (error) => error.code === 'usage' && /--overlay build gibt es bei ExtJS nicht/.test(error.message));
     // http on localhost is a dev server: it always runs the own code, an overlay makes no sense. https on *.localhost,
     // however, is a deployed build like any other.
@@ -291,19 +298,33 @@ test('overlay config: pattern and statics; without a source on the app only the 
     assert.deepEqual(built.projects[0], { uuid: built.projects[0].uuid, name: 'shop', active: true, startUrl: '/shop' }, 'the overlay applies the local code');
 });
 
-test('overlay config: build, dev, commands and statics are checked up front, not during the run', () => {
+test('overlay config: url, start, build and statics (and the earlier names) are checked up front, not during the run', () => {
     const app = (overlay, framework) => issues({ ...simple(), ...(framework === undefined ? {} : { framework }), apps: { shop: { dir: 'shop', startUrl: '/shop', overlay } } });
-    assert.equal(app({ build: 'dist/app/browser', buildCommand: 'npm run build', dev: 'http://localhost:5173', devCommand: 'npm run dev', statics: [{ name: 'a.js', path: 'a.js' }] }), '');
+    assert.equal(app({ build: 'dist/app/browser', url: 'http://localhost:5173', start: 'npm run dev', statics: [{ name: 'a.js', path: 'a.js' }] }), '');
+    assert.equal(app({ build: 'dist/app/browser', buildCommand: 'npm run build', dev: 'http://localhost:5173', devCommand: 'npm run dev' }), '', 'the earlier names still work');
     for (const bad of ['', '/abs', 'C:\\x', '../raus', 3]) assert.match(app({ build: bad }), /overlay\.build muss der relative Pfad/);
-    for (const bad of ['localhost:5173', 'ftp://x', 5173]) assert.match(app({ dev: bad }), /overlay\.dev muss die Adresse des Dev-Servers sein/);
+    for (const bad of ['localhost:5173', 'ftp://x', 5173]) {
+        assert.match(app({ url: bad }), /overlay\.url muss die Adresse des lokalen Code-Servers sein/);
+        assert.match(app({ dev: bad }), /overlay\.dev muss die Adresse des lokalen Code-Servers sein/);
+    }
     assert.match(app({ buildCommand: 'npm run build' }), /overlay\.buildCommand braucht overlay\.build/);
+    assert.match(app({ start: 'npm run dev' }), /overlay\.start braucht overlay\.url/);
     assert.match(app({ dev: 'http://localhost:5173', devCommand: '' }), /overlay\.devCommand muss ein Befehl sein/);
+    assert.match(app({ url: 'http://localhost:5173', start: ' ' }), /overlay\.start muss ein Befehl sein/);
+    assert.match(app({ url: 'http://localhost:5173', dev: 'http://localhost:5174' }), /overlay\.dev und overlay\.url meinen dasselbe; behalte nur overlay\.url/);
+    assert.match(app({ url: 'http://localhost:5173', start: 'a', devCommand: 'b' }), /overlay\.devCommand und overlay\.start meinen dasselbe/);
+    const notes = (overlay) => validateConfig({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop', overlay } } }).notes.join('\n');
+    assert.match(notes({ dev: 'http://localhost:5173', devCommand: 'npm run dev' }), /App shop: overlay\.dev heißt jetzt overlay\.url; caw liest es wie bisher\.[\s\S]*overlay\.devCommand heißt jetzt overlay\.start/);
+    assert.doesNotMatch(notes({ url: 'http://localhost:5173', start: 'npm run dev' }), /heißt jetzt/);
     assert.match(app({ devServer: 'http://localhost:5173' }), /unbekanntes Feld overlay\.devServer/);
     assert.match(app({ statics: [{ name: 'x' }] }), /overlay\.statics\[0\] braucht name und path/);
     assert.match(app({ statics: [{ name: 'x', path: '../aussen.js' }] }), /overlay\.statics\[0\]/);
     assert.match(app({ statics: 'a.js' }), /overlay\.statics muss eine Liste sein/);
     assert.match(app('dist'), /overlay muss ein Objekt sein/);
     assert.equal(app({ devCommand: 'sencha app watch', statics: [{ name: 'C.js', path: 'c.js' }] }, 'extjs'), '', 'ExtJS: the watch needs no source');
+    assert.equal(app({ url: 'http://localhost:1841/', start: 'npm run watch' }, 'extjs'), '', 'ExtJS: the watch at its address, with its start command');
+    assert.equal(app({ start: 'npm run watch' }, 'extjs'), '', 'ExtJS: start without url, the watch at its usual address');
+    assert.match(app({ url: 'localhost:1841' }, 'extjs'), /overlay\.url muss die Adresse/);
     assert.match(app({ build: 'build' }, 'extjs'), /Bei ExtJS kommt der lokale Code vom Sencha-Watch/);
     assert.match(issues({ ...simple(), apps: { shop: { dir: 'shop', localBuild: 'dist' } } }), /App shop: unbekanntes Feld localBuild\. Eine App kennt dir, startUrl und overlay/);
 });

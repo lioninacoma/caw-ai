@@ -119,10 +119,13 @@ test('Overlay build: without a build, too far up or stale, the run ends before t
     const past = Date.now() / 1000 - 600;
     utimesSync(join(root, 'dist/app/browser/main-A1B2C3D4.js'), past, past);
     utimesSync(join(root, 'dist/app/browser/index.html'), past, past);
-    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist/app/browser') }), (error) => /ist älter als deine letzte Änderung \(src\/x\.js/.test(error.message) && /overlay\.buildCommand/.test(error.message));
+    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist/app/browser') }), (error) => /ist älter als deine letzte Änderung \(src\/x\.js/.test(error.message) && /apps\.web\.overlay\.start ein und starte mit --start/.test(error.message));
+    // overlay.start known, but no --start: caw names it and builds nothing.
+    const named = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist/app/browser', statics: [], start: 'npm run build' } } };
+    await assert.rejects(prepareOverlay({ root, config, checked: named }), (error) => error.code === 'overlay-not-ready' && /Baue neu mit npm run build oder starte den Lauf mit --start/.test(error.message));
 });
 
-test('Overlay build: if the build is stale and the config has buildCommand, caw builds itself and checks again', async (t) => {
+test('Overlay build: if the build is stale and the run has --start, caw builds with overlay.start itself and checks again', async (t) => {
     const root = build(t, { 'src/x.js': 'x', 'dist/main.js': 'alt' });
     const past = Date.now() / 1000 - 600;
     utimesSync(join(root, 'dist/main.js'), past, past);

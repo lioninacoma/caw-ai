@@ -40,15 +40,16 @@ export const parseEnvFile = (text) => {
     return env;
 };
 
-const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--overlay'];
+const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--overlay', '--start'];
 const COMMAND_OPTIONS = {
     // --timeout and --max-steps apply to Claude when clarifying, advising and fixing; playback itself is limited by --step-timeout.
-    run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay'],
+    run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay', '--start'],
     record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
     fix: CLAUDE_OPTIONS,
-    open: ['--target', '--role', '--app', '--overlay', '--agent', '--timeout', '--max-steps'],
+    open: ['--target', '--role', '--app', '--overlay', '--start', '--agent', '--timeout', '--max-steps'],
 };
-const SWITCHES = new Set(['--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--read-only']);
+// --start: caw may run overlay.start itself when the local code server is not ready (CI); otherwise it only names the command.
+const SWITCHES = new Set(['--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--read-only', '--start']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
     '--target': 'local', '--until': 'S4', '--role': 'admin', '--app': 'web', '--also': 'admin', '--agent': 'local', '--timeout': '60',
@@ -124,6 +125,7 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--no-learn') options.learn = false;
         else if (flag === '--all') options.all = true;
         else if (flag === '--read-only') options.readOnly = true;
+        else if (flag === '--start') options.start = true;
         else if (flag === '--max-steps') options.maxSteps = Number(value);
         else if (flag === '--until') options.until = value;
         else if (flag === '--role') options.role = value;
@@ -142,6 +144,7 @@ export const parseRunArgs = (command, args) => {
         else options.timeoutMin = Number(value);
     }
     if (options.all && options.test !== undefined) throw new CawError('usage', t('session.args.allWithTests'));
+    if (options.start && options.overlay === undefined) throw new CawError('usage', t('session.args.startWithoutOverlay'));
     if (command !== 'open' && options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
     for (const test of command === 'run' ? options.tests : command === 'open' ? [] : [options.test]) checkTestId(test);
     if (command === 'fix' && !STEP_ID.test(options.step ?? '')) throw new CawError('usage', t('session.args.fixStep'));

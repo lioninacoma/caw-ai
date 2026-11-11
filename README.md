@@ -6,11 +6,16 @@ English · [Deutsch](README.de.md)
 [![npm](https://img.shields.io/npm/v/caw-ai)](https://www.npmjs.com/package/caw-ai)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> **caw** – **c**onstrained **a**gentic **w**ebtester
+> `caw-ai` · *Context-Aware Workflows* · **Show it. Understand it. Replay it.**
+>
+> AI-powered E2E testing, workflow automation and application debugging.
 >
 > Describe a test in plain language, Claude walks it once in your real app, and from then on it replays without AI: fast, repeatable, token-free, with Claude back in the chat only when a step breaks.
->
-> *Constrained* because the agent has limits: Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials, and every recording ends with a plan you approve.
+
+- **Capture:** demonstrate a real user workflow in your app, or let Claude walk a plan you describe.
+- **Understand:** the AI interprets each action in its context: signed-in user, role, application state and goal, not just a click sequence.
+- **Replay:** reusable recordings, replayed with Playwright, without AI: deterministic and token-free, locally and in CI.
+- **Debug:** investigate and fix issues in the chat next to the running app.
 
 <img src="docs/media/demo.webp" width="100%" alt="caw-ai records a test of the Errand example: Claude proposes the test plan, works through it in the app and answers a question in the chat; then caw-ai replays the recording without AI and the plan is adopted">
 
@@ -39,7 +44,7 @@ npx caw-ai run first-errand --target local      # replays the recording, without
 - If a step fails, the chat next to the app shows the cause. `fix` re-records only that step.
 - After a run the window is yours: F1 restores the state of any test in a fresh session, and Claude in the chat can use the page, reproduce a pasted bug ticket and propose the fix in your code.
 - Failures are classified as test, app or environment, based on requests, console output and the page changes seen during recording.
-- Claude controls the browser through a fixed set of commands, reaches only the configured hosts and does not get the credentials.
+- **Limits by design:** Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials; you approve plans that write data and decide whether a recording is adopted.
 - Supported: plain web apps, React, Vue, Angular and ExtJS.
 
 ## Prerequisites

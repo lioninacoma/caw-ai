@@ -12,6 +12,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw-ai <befehl>` (oder
 | [`explore`](#explore) | App ansehen und Einstellungen vorschlagen, sonst nichts schreiben | nein |
 | [`skill`](#skill) | Skill für Claude Code und `.mcp.json` anlegen oder aktualisieren | nein |
 | [`doctor`](#doctor) | Rechner, Config, Zugangsdaten und Umgebungen prüfen | nein |
+| [`overlay status`](#overlay-status) | Ist der lokale Code-Server für `--overlay` bereit? | nein |
 | [`overlay check`](#overlay-check) | Prüfen, ob `--overlay` alles ersetzt, was es soll | nein |
 | [`validate`](#validate) | Config und Tests offline prüfen | nein |
 | [`list`](#list) | Tests und Schritte mit Stand der Aufnahme auflisten | nein |
@@ -88,7 +89,27 @@ npx caw-ai doctor --agent docker
 
 Prüft Node, Chrome, Claude Code (Agent `local`) oder Docker und Token (Agent `docker`), die Config, `TODO`-Werte, die Zugangsdaten je Rolle und ob jede Umgebung antwortet. Jede fehlgeschlagene Prüfung nennt den nächsten Schritt. Bei einer ungültigen Config zeigt es den ersten Befund, `validate` alle. Platzhalter-Adressen (`example.com`, `.test`, `.invalid`) meldet es, ohne sie anzufragen.
 
-Bei ExtJS und einer Umgebung mit `overlay: true` kommen je App optionale Zeilen dazu: `bootstrap.json` vorhanden und aktuell, der Sencha-Watch läuft, und je Teil (App, Paket) das Ergebnis des letzten `overlay check` mit Alter, sonst der Hinweis, einen zu starten. doctor startet den Watch nie.
+Bei ExtJS und einer Umgebung mit `overlay: true` kommen je App optionale Zeilen dazu: `bootstrap.json` vorhanden und aktuell, der lokale Code-Server (`lokaler Code unter http://localhost:1841/ liefert <app>`, `antwortet nicht` mit dem `start`-Befehl oder `läuft unter <gefunden>`, wenn der Watch einen anderen Port genommen hat), und je Teil (App, Paket) das Ergebnis des letzten `overlay check` mit Alter, sonst der Hinweis, einen zu starten. doctor startet nie etwas.
+
+## overlay status
+
+```bash
+npx caw-ai overlay status
+npx caw-ai overlay status --target dev --app web --json
+```
+
+Ist der lokale Code-Server der App bereit für `--overlay`? Ohne Browser, ohne Anmeldung, startet nichts. Es fragt `overlay.url` an; bei ExtJS prüft es, dass der Server der Watch *dieser* App ist (Name aus `app.json`, `bootstrap.json` mit Ladereihenfolge), und sucht sonst den Watch der App auf einem anderen Port.
+
+| Zustand | Bedeutung | Exit |
+|---|---|---|
+| `ready` | Der Server antwortet (ExtJS: liefert diese App). Ein Build-Ordner oder feste Dateien brauchen keinen Server und sind ebenfalls `ready`. | 0 |
+| `moved` | Der ExtJS-Watch läuft unter `foundUrl` statt unter `url` (Port war belegt). Läufe nutzen ihn; trage `url` nach. | 0 |
+| `down` | Unter `url` antwortet nichts. Die Ausgabe nennt `start` und den App-Ordner. | 2 |
+| `wrong-app` | Unter `url` antwortet eine andere App (oder kein Sencha-Watch). | 2 |
+| `stale` | Der Watch nennt in `bootstrap.json` Dateien, die er nicht ausliefert. | 2 |
+| `not-overlay`, `no-app` | Die Umgebung hat kein `"overlay": true`, oder die App ist unbekannt bzw. hat kein `app.json`. | 3 |
+
+`--json` gibt `{ state, framework, app, appDir, url, foundUrl?, start, message? }` als einzige Zeile auf stdout aus.
 
 ## overlay check
 
@@ -110,9 +131,9 @@ Ein Teil `ausgeliefert` heißt Mischstand: Die Seite lief teils mit deinem Code,
 
 `--apply` trägt die vorgeschlagenen Muster in `assetUrlPattern` in `caw.config.json` ein (nur fehlende; ein einzelner Text wird zur Liste), prüft die Datei vor dem Schreiben und prüft danach noch einmal. Eine Quelle ohne sicheres Muster wird als solche gemeldet; dann trägst du eins von Hand ein.
 
-Vor dem Browser prüft es die Voraussetzungen: Die Umgebung erlaubt das Overlay, der App-Ordner hat `app.json`, `bootstrap.json` ist aktuell und der Watch läuft. Ohne Watch hört es mit dem Befehl auf (`sencha app watch` im App-Ordner) und startet ihn nie selbst, außer die App hat `overlay.devCommand`.
+Vor dem Browser läuft `overlay status`. Ist der Server nicht bereit, hört es mit diesem Zustand, der Adresse und dem `start`-Befehl auf und startet nichts. Mit `--start` führt es `start` in diesem Fall im App-Ordner aus und beendet ihn danach (CI).
 
-`--target` ist ohne Angabe die einzige Umgebung mit `overlay: true`, `--app` und `--role` die einzige App und die erste Rolle. Das Ergebnis steht immer in `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, nach `--apply` auch `applied`). `--json` gibt es als einzige Zeile auf stdout aus. Exit 0 vollständig, 2 unvollständig oder Watch-Problem, 3 keine Overlay-Umgebung oder keine App.
+`--target` ist ohne Angabe die einzige Umgebung mit `overlay: true`, `--app` und `--role` die einzige App und die erste Rolle. Das Ergebnis steht immer in `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `url`, `start`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, nach `--apply` auch `applied`). `--json` gibt es als einzige Zeile auf stdout aus. Exit 0 vollständig, 2 unvollständig oder Server-Problem (`down`, `wrong-app`, `stale`), 3 keine Overlay-Umgebung oder keine App.
 
 ## validate
 
@@ -160,6 +181,7 @@ Nur auf Umgebungen, auf denen Claude arbeiten darf (`"claude": true`). Gibt es n
 | `--also <app>` | Nur beim ersten Aufnehmen: Der Ablauf geht in einer weiteren App des Projekts weiter. |
 | `--read-only` | Nur beim ersten Aufnehmen: Der Test schreibt keine Daten (`mutates: false`). |
 | `--overlay [build\|dev\|<url>]` | Lokalen Code über die ausgelieferte Umgebung legen, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). |
+| `--start` | Mit `--overlay`: `overlay.start` ausführen, wenn der lokale Code-Server nicht antwortet, und am Ende beenden (CI). Ohne die Option startet caw nichts und nennt den Befehl. |
 | `--agent local\|docker\|session` | Wo Claude läuft. Standard: `agent.sandbox` aus der Config, sonst `local`. |
 | `--timeout <minuten>` | Zeitgrenze für Claude, Standard 60. |
 | `--max-steps <n>` | Grenze für Claudes Browser-Aktionen, Standard `maxSteps` oder 100. |
@@ -178,7 +200,8 @@ Mit Chat lernt der Lauf fehlende Vergleichswerte in `caw/recordings/<test>.yaml`
 | Option | |
 |---|---|
 | `--until <S4>` | Nach S4 anhalten, das Fenster bleibt offen. Schließt `--handover` ein. Läuft wie jeder Lauf mit dem ausgelieferten Stand, außer du gibst `--overlay` an. |
-| `--overlay [build\|dev\|<url>]` | Lokalen Code über die ausgelieferte Umgebung legen: der Build-Ordner, der Dev-Server oder der Dev-Server unter `<url>`; ohne Wert die eine konfigurierte Quelle. Nur auf Umgebungen mit `"overlay": true`. Ohne die Option läuft immer der ausgelieferte Stand. Siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). |
+| `--overlay [build\|dev\|<url>]` | Lokalen Code über die ausgelieferte Umgebung legen: der Build-Ordner, der lokale Code-Server unter `overlay.url` (Dev-Server, Sencha-Watch) oder der Server unter `<url>`; ohne Wert die eine konfigurierte Quelle. Nur auf Umgebungen mit `"overlay": true`. Ohne die Option läuft immer der ausgelieferte Stand. Siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). |
+| `--start` | Wie bei `record`. |
 | `--handover` | Fenster nach dem Lauf offen lassen. |
 | `--advise` | Bei Fehlern oder Warnungen erklärt Claude die Ursache ungefragt. Kostet Token. |
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
@@ -208,7 +231,7 @@ Spielt die Tests nacheinander ab, ohne Chat (`--advise`, `--handover` und `--unt
 npx caw-ai fix create-ticket S2 --target local
 ```
 
-Nimmt genau einen Schritt neu auf. Für einen Schritt, dessen Text du von Hand geändert hast, oder einen neuen Schritt am Ende. Die Schritte davor laufen ohne Claude. Die übrigen Schritte bleiben unverändert. Optionen: `--agent`, `--overlay`, `--timeout`, `--max-steps`, `--step-timeout`.
+Nimmt genau einen Schritt neu auf. Für einen Schritt, dessen Text du von Hand geändert hast, oder einen neuen Schritt am Ende. Die Schritte davor laufen ohne Claude. Die übrigen Schritte bleiben unverändert. Optionen: `--agent`, `--overlay`, `--start`, `--timeout`, `--max-steps`, `--step-timeout`.
 
 ## open
 
@@ -221,7 +244,7 @@ npx caw-ai open --target dev --overlay
 | Option | |
 |---|---|
 | `--role <rolle>`, `--app <app>` | Nicht nötig, wenn die Config nur eine hat. |
-| `--overlay [build\|dev\|<url>]` | Wie bei `run`. |
+| `--overlay [build\|dev\|<url>]`, `--start` | Wie bei `run`. |
 | `--agent local\|docker\|session`, `--timeout <minuten>`, `--max-steps <n>` | Wie bei `record`. |
 
 Nach der Übergabe wählt **F1** in der Werkbank einen Zustand: einen beliebigen Test dieser Umgebung (und optional den Schritt, bis zu dem er läuft). caw-ai beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
@@ -271,8 +294,8 @@ Startet Claude Code über `.mcp.json`. Du rufst es nicht selbst auf. Deine Sitzu
 | `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`) | nein |
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |
-| `caw_overlay_check` | `overlay check` (`target`, `app`, `apply`), wartet auf das Ergebnis | nein |
-| `caw_start` | `run`, `record`, `fix` oder `open` mit `--agent session` starten (`test`, `target`, `step`, `until`, `overlay`, `headless` oder `args`) | nur deine Session |
+| `caw_overlay` | `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `target`, `app` | nein |
+| `caw_start` | `run`, `record`, `fix` oder `open` mit `--agent session` starten (`test`, `target`, `step`, `until`, `overlay`, `headless` oder `args`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `appDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start`: Die Session startet den Server selbst, nachdem sie dich gefragt hat | nur deine Session |
 | `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit dem Fadenkreuz in der Werkbank gewählt hast | nein |
@@ -328,12 +351,12 @@ Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und 
 | `target-unreachable`, `unreachable` | 2 | Dev-Server starten, Adresse prüfen |
 | `app-not-loaded`, `app-not-settled` | 2 | Seite von Hand öffnen, Konsole ansehen |
 | `browser-missing` | 2 | Google Chrome installieren oder `browser` in der Config setzen |
-| `overlay-not-ready` | 2 | Dev-Server starten oder bauen, oder `devCommand` / `buildCommand` an der App eintragen; die Meldung nennt den Befehl |
+| `overlay-not-ready` | 2 | Der lokale Code-Server unter `overlay.url` antwortet nicht, liefert eine andere App, oder der Build fehlt: den `start`-Befehl aus der Meldung im App-Ordner ausführen oder `--start` angeben |
 | `overlay-ssr` | 2 | Serverseitig gerenderte Seite: lokalen Code mit dem Dev-Server als Umgebung testen (`--target local`) |
 | `overlay-incomplete` | 2 | Teile kamen vom Server statt aus dem lokalen Code (Mischstand): das vorgeschlagene `assetUrlPattern` eintragen oder `overlay check --apply` |
 | `overlay-unused` | 2 | Nichts kam aus dem lokalen Code: Passen Build bzw. Dev-Server zur App, erfasst `assetUrlPattern` ihre Requests? |
 | `overlay-ambiguous` | 2 | ExtJS: einer App in `app.json` einen eigenen `output.js.path` geben |
-| `watch-missing`, `watch-stale` | 2 | Den Sencha-Watch starten (`sencha app watch`) oder `devCommand` eintragen |
+| `overlay-stale` | 2 | ExtJS: `bootstrap.json` des Watch nennt Dateien, die er nicht ausliefert. Warten, bis der Watch fertig gebaut hat, oder ihn neu starten |
 | `claude-missing` | 2 | Claude Code installieren und anmelden, oder `--agent docker` |
 | `token-missing` | 2 | `CLAUDE_CODE_OAUTH_TOKEN` setzen |
 | `docker-missing`, `docker-not-running`, `docker-wrong-mode` | 2 | Docker mit Linux-Containern starten, oder `--agent local` |

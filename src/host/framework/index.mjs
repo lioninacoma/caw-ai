@@ -11,10 +11,13 @@
 // - `floats`: record the order of floating windows; `stackSkip`: files that only pass errors on
 // - `messageSelectors`: page messages, unless the config names some
 // - `hints`: optional, hints for Claude where to look in the source code
-// - `watch`: optional, { label(), command, start }: the framework's watch as overlay source (--overlay), how to recognize its
-//   process and how to start it
-// - `overlay`: optional, with `watch`: { createWatchSource(appDir), checkAppFiles(appDir, hint), expected?(appDir) }; what the watch
-//   replaces. `expected` returns [{ label, kind, names }]: every part the overlay should replace, for the completeness check after
+// - `watch`: optional, { label(), command, start }: the framework's watch as overlay source (--overlay); `command` recognizes its
+//   process, only to find the port of a watch that runs elsewhere; `start` is the usual command, for messages
+// - `overlay`: optional, with `watch`: the watch's web server as overlay source:
+//   { defaultUrl, identify(base, appDir, fetch, hint), stale(base, appDir, bootstrap, fetch, hint), createWatchSource(base, appDir,
+//   fetch, hint), checkAppFiles(appDir, hint), expected?(appDir, bootstrap) }. `identify` proves the server at base serves this app:
+//   { state: ready, bootstrap } | { state: down } | { state: wrong-app | stale, message }; `stale` returns a message if sources are
+//   missing. `expected` returns [{ label, kind, names }]: every part the overlay should replace, for the completeness check after
 //   loading (a script request carrying one of the names that came from the server is a mixed state). Without it the check is skipped
 // - `hydrates`: optional, true: before filling in the login, wait until `probe` reports appReady (SSR hydration)
 // - `name`: for the config; `label()`: the localized name for messages (called at runtime, never at import)

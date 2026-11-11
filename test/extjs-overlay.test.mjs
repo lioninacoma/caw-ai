@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { appBuildNames, checkAppFiles, createWatchSource, expectedParts, parseSenchaJson, replaceable } from '../src/host/framework/extjs-overlay.mjs';
+import { appBuildNames, checkAppFiles, createWatchSource, expectedParts, identifyWatch, parseSenchaJson, replaceable, staleSources } from '../src/host/framework/extjs-overlay.mjs';
 import { deriveName, scriptNames, suggestAssetPatterns } from '../src/host/overlay.mjs';
 import { defaultAssetPattern } from '../src/shared/config.mjs';
+import { serveFolder } from './static-server.mjs';
 
 const write = (file, text) => {
     mkdirSync(join(file, '..'), { recursive: true });
@@ -64,43 +65,102 @@ test('A build name for both app and package is an error, not a choice', (t) => {
     assert.throws(() => replaceable(dir, checkAppFiles(dir)), (error) => error.code === 'overlay-ambiguous' && /bestellung-modell\.js/.test(error.message));
 });
 
-test('Watch source: name from the last path segment of the request, sources in load order, fresh from disk', (t) => {
+/** The watch's web server: serves the workspace (the folder above the app), the app's address is <server>/bestellung/. */
+const watchServer = async (t, dir) => {
+    const server = await serveFolder(join(dir, '..'));
+    t.after(() => server.close());
+    return { ...server, base: `${server.url}bestellung/` };
+};
+
+test('Watch source over HTTP: name from the last path segment, sources in load order (../ included), fresh per request', async (t) => {
     const dir = app(t);
-    const source = createWatchSource(dir);
-    const appCode = source.resolve('Bestellung/Bestellung.js');
+    const { base, requests } = await watchServer(t, dir);
+    const source = createWatchSource(base, dir);
+    const appCode = await source.resolve('Bestellung/Bestellung.js');
     assert.equal(appCode.kind, 'app');
     assert.equal(appCode.body, 'Ext.define("App.Application");\nExt.define("App.view.Main");\n');
-    assert.match(source.resolve('Bestellung/bestellung-modell.js').body, /Fx\.Model/);
-    assert.equal(source.resolve('Bestellung/ext.js'), null);
-    assert.equal(source.resolve('Bestellung/Anderes.js'), null);
+    assert.match((await source.resolve('Bestellung/bestellung-modell.js')).body, /Fx\.Model/);
+    assert.ok(requests.includes('/packages/bestellung-modell/src/Model.js'), 'a ../ path resolved against the address');
+    assert.equal(await source.resolve('Bestellung/ext.js'), null);
+    assert.equal(await source.resolve('Bestellung/Anderes.js'), null);
     writeFileSync(join(dir, 'app/view/Main.js'), 'Ext.define("App.view.Main2");');
-    assert.match(source.resolve('Bestellung/Bestellung.js').body, /Main2/);
+    assert.match((await source.resolve('Bestellung/Bestellung.js')).body, /Main2/);
     assert.deepEqual(source.replaced().sort(), ['Bestellung.js', 'bestellung-modell.js']);
+    assert.equal(requests.filter((path) => path.endsWith('/bootstrap.json')).length, 1, 'bootstrap.json once per page load');
+    source.refresh();
+    await source.resolve('Bestellung/Bestellung.js');
+    assert.equal(requests.filter((path) => path.endsWith('/bootstrap.json')).length, 2, 'and again after the next document');
+    assert.deepEqual(source.expected().map(({ label }) => label), ['Bestellung', 'bestellung-modell']);
 });
 
-test('Watch source: two requests from different folders with the same build name replace neither', (t) => {
-    const source = createWatchSource(app(t, { appJson: { name: 'B' } }));
-    assert.ok(source.resolve('Anerkennung/app.js'));
-    assert.throws(() => source.resolve('Zertifizierung/app.js'), (error) => error.code === 'overlay-ambiguous' && /Zertifizierung\/app\.js/.test(error.message));
+test('Watch source over HTTP: a source the watch does not serve (404) is overlay-stale; a server that is gone overlay-not-ready', async (t) => {
+    const dir = app(t);
+    const { base } = await watchServer(t, dir);
+    rmSync(join(dir, 'app/view/Main.js'));
+    await assert.rejects(createWatchSource(base, dir).resolve('Bestellung/Bestellung.js'), (error) => error.code === 'overlay-stale' && /app\/view\/Main\.js antwortet mit 404/.test(error.message));
+    await assert.rejects(createWatchSource('http://127.0.0.1:9/', dir, async () => { throw new TypeError('fetch failed'); }).resolve('Bestellung/Bestellung.js'), (error) => error.code === 'overlay-not-ready');
 });
 
-test('checkAppFiles: missing, unreadable, empty or stale bootstrap.json, with a hint about the watch', (t) => {
-    assert.throws(() => checkAppFiles(app(t, { bootstrap: null })), (error) => error.code === 'watch-missing' && /Watch/.test(error.message));
+test('Watch source: two requests from different folders with the same build name replace neither', async (t) => {
+    const dir = app(t, { appJson: { name: 'B' } });
+    const { base } = await watchServer(t, dir);
+    const source = createWatchSource(base, dir);
+    assert.ok(await source.resolve('Anerkennung/app.js'));
+    await assert.rejects(source.resolve('Zertifizierung/app.js'), (error) => error.code === 'overlay-ambiguous' && /Zertifizierung\/app\.js/.test(error.message));
+});
+
+test('identifyWatch: this app ready; another app, no Sencha server or no bootstrap.json is not; nothing listening is down', async (t) => {
+    const dir = app(t);
+    const { base } = await watchServer(t, dir);
+    const ready = await identifyWatch(base, dir);
+    assert.equal(ready.state, 'ready');
+    assert.equal(ready.bootstrap.loadOrder.length, 4);
+    const other = app(t, { appJson: { name: 'Zertifizierung' } });
+    const wrong = await identifyWatch(base, other);
+    assert.equal(wrong.state, 'wrong-app');
+    assert.match(wrong.message, /liefert die App Bestellung, nicht Zertifizierung/);
+    const root = await watchServer(t, dir);
+    const noApp = await identifyWatch(root.url, dir);
+    assert.equal(noApp.state, 'wrong-app', 'the workspace root has no app.json');
+    assert.match(noApp.message, /keine app\.json/);
+    rmSync(join(dir, 'bootstrap.json'));
+    const stale = await identifyWatch(base, dir);
+    assert.equal(stale.state, 'stale');
+    assert.match(stale.message, /bootstrap\.json fehlt/);
+    assert.deepEqual(await identifyWatch('http://127.0.0.1:9/', dir, async () => { throw new TypeError('fetch failed'); }), { state: 'down' });
+});
+
+test('staleSources: own sources missing on the server, never Ext JS itself', async (t) => {
+    const dir = app(t);
+    const { base } = await watchServer(t, dir);
+    const bootstrap = await (await fetch(`${base}bootstrap.json`)).json();
+    assert.equal(await staleSources(base, dir, bootstrap), null);
+    rmSync(join(dir, '../ext'), { recursive: true });
+    assert.equal(await staleSources(base, dir, bootstrap), null, 'Ext JS is not checked');
+    rmSync(join(dir, 'app/view/Main.js'));
+    assert.match(await staleSources(base, dir, bootstrap, fetch, 'HINWEIS'), /bootstrap\.json von bestellung ist veraltet, 1 Datei\(en\) fehlen, z\. B\. app\/view\/Main\.js\. HINWEIS/);
+});
+
+test('checkAppFiles (doctor, offline): missing, unreadable, empty or stale bootstrap.json on disk, with a hint about the watch', (t) => {
+    assert.throws(() => checkAppFiles(app(t, { bootstrap: null })), (error) => error.code === 'overlay-not-ready' && /Watch/.test(error.message));
     const dir = app(t);
     writeFileSync(join(dir, 'bootstrap.json'), '{ halb');
-    assert.throws(() => checkAppFiles(dir), (error) => error.code === 'watch-missing');
+    assert.throws(() => checkAppFiles(dir), (error) => error.code === 'overlay-not-ready');
     writeFileSync(join(dir, 'bootstrap.json'), '{"loadOrder":[]}');
-    assert.throws(() => checkAppFiles(dir), (error) => error.code === 'watch-missing');
+    assert.throws(() => checkAppFiles(dir), (error) => error.code === 'overlay-not-ready');
     writeFileSync(join(dir, 'bootstrap.json'), JSON.stringify({ loadOrder: [{ path: 'app/Application.js' }, { path: 'app/weg.js' }] }));
-    assert.throws(() => checkAppFiles(dir), (error) => error.code === 'watch-stale' && /app\/weg\.js/.test(error.message));
+    assert.throws(() => checkAppFiles(dir), (error) => error.code === 'overlay-stale' && /app\/weg\.js/.test(error.message));
 });
 
 test('Expected parts: app and packages, x.js and x-debug.js as one part, never Ext JS itself', (t) => {
-    assert.deepEqual(expectedParts(app(t)), [
+    const parts = [
         { label: 'Bestellung', kind: 'app', names: ['Bestellung.js'] },
         { label: 'bestellung-modell', kind: 'package', names: ['bestellung-modell.js', 'bestellung-modell-debug.js'] },
-    ]);
-    assert.throws(() => expectedParts(app(t, { bootstrap: null })), (error) => error.code === 'watch-missing');
+    ];
+    assert.deepEqual(expectedParts(app(t)), parts);
+    const dir = app(t);
+    assert.deepEqual(expectedParts(dir, checkAppFiles(dir)), parts, 'with the bootstrap.json from the server');
+    assert.throws(() => expectedParts(app(t, { bootstrap: null })), (error) => error.code === 'overlay-not-ready');
 });
 
 // The FA214 dev portal: the theme via a plain path (local through the default pattern), app and packages via the proxy (deployed).

@@ -18,6 +18,7 @@ import { EXPLORE_FILE, explore } from './explore.mjs';
 import { ensureTestUser } from './role-capture.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
+import { FRAMEWORKS } from './framework/index.mjs';
 import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const SKILL_DIR = '.claude/skills/caw-ai';
@@ -252,10 +253,10 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     }
     if (typeof startUrl === 'string' && startUrl.startsWith('/')) config.apps.web.startUrl = startUrl;
     if (typeof appDir === 'string' && appDir !== '') config.apps.web.dir = appDir;
-    // ExtJS: the Sencha watch is the overlay source, so the app gets an empty overlay entry and never a devCommand (caw must not
-    // start the watch on its own). No environment gets "overlay": true automatically: validate notes that --overlay works nowhere
-    // until a deployed environment allows it; caw-ai overlay check then confirms the setup.
-    if (framework === 'extjs') config.apps.web.overlay = {};
+    // ExtJS: the Sencha watch's web server is the overlay source, at its usual address; the start command (overlay.start) is the
+    // project's own and is added later (Claude reads it from package.json). No environment gets "overlay": true automatically:
+    // validate notes that --overlay works nowhere until a deployed environment allows it; caw-ai overlay status confirms the server.
+    if (framework === 'extjs') config.apps.web.overlay = { url: FRAMEWORKS.extjs.overlay.defaultUrl };
     if (Array.isArray(messageSelectors) && messageSelectors.length > 0) config.messageSelectors = messageSelectors;
     if (Array.isArray(consoleIgnore) && consoleIgnore.length > 0) config.consoleIgnore = consoleIgnore;
     return config;
@@ -613,12 +614,12 @@ export const chooseTarget = (config, spec, { target, command, log = ui.info }) =
     return choices[0];
 };
 
-const loadChecked = (root, id, given, command, { overlay } = {}) => {
+const loadChecked = (root, id, given, command, { overlay, start } = {}) => {
     const config = loadConfig(root);
     if (!existsSync(testPath(root, id))) throw testMissing(root, config, id, given);
     const spec = withDefaults(loadTest(root, id), config);
     const target = chooseTarget(config, spec, { target: given, command });
-    return { config, spec, target, checked: checkTest(spec, target, config, { overlay }) };
+    return { config, spec, target, checked: checkTest(spec, target, config, { overlay, start }) };
 };
 
 /**
@@ -919,8 +920,8 @@ export const changeTracker = (root) => {
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}, loaded = undefined) => {
-    const { test, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, quiet = false } = options;
-    let { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay });
+    const { test, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, start, quiet = false } = options;
+    let { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     if (until !== undefined && !spec.steps.some(({ id }) => id === until)) throw stepUnknown('cli.stepUnknown', spec, until);
     const { assertPlayable } = await import('./replay.mjs');
     // open has no steps: nothing to play back, just log in and hand over.
@@ -928,7 +929,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     // Only once the run could start, with a window and a person: a role without a test user gets one in a sign-in window.
     const attended = (interactive ?? (process.env.CI === undefined || process.env.CI === '')) && !headless;
     if (loaded === undefined && attended && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
-        ({ config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { overlay }));
+        ({ config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { overlay, start }));
     }
     const withAgent = checked.agent;
     // The chat lives in the workbench and needs no terminal. Only in CI nobody waits for it.
@@ -1085,7 +1086,7 @@ export const contradicts = (spec, { role, app, also = [], readOnly = false }) =>
  * the path through container, channel and browser can be tested without model or token.
  */
 export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}) => {
-    const { test, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, overlay } = parseRunArgs('record', args);
+    const { test, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, overlay, start } = parseRunArgs('record', args);
     let config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
     const known = exists ? withDefaults(loadTest(root, test), config) : null;
@@ -1095,7 +1096,7 @@ export const record = async (root, args, { containerCommand, adviseCommand, talk
     requireHuman('record', interactive);
     // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
     if (environmentDefs(config)[target]?.agent && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
-    const checked = checkTest(spec, target, config, { overlay });
+    const checked = checkTest(spec, target, config, { overlay, start });
     requireAgent(config, checked, target, t('cli.verbRecord'));
 
     const { recordFlow } = await import('./flows.mjs');
@@ -1138,15 +1139,15 @@ export const open = async (root, args, deps = {}) => {
     const spec = draftTest(root, config, { id: options.app ?? onlyKey(config.apps) ?? OPEN_ID, target, role: options.role, app: options.app, also: [], readOnly: true });
     requireHuman('open', deps.interactive);
     if (await ensureTestUser(root, config, { role: spec.role, target, test: spec.id, interactive: true, capture: deps.captureTestUsers })) config = loadConfig(root);
-    const checked = checkTest(spec, target, config, { overlay: options.overlay });
+    const checked = checkTest(spec, target, config, { overlay: options.overlay, start: options.start });
     const runOptions = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
     return (await runOne(root, runOptions, deps, { config, spec, target, checked })).code;
 };
 
 /** Changes exactly this step, even if it does not fail. That way a hand-edited or new step gets its recording. */
 export const fix = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, agent, overlay } = parseRunArgs('fix', args);
-    const { config, spec, target, checked } = loadChecked(root, test, given, 'fix', { overlay });
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, agent, overlay, start } = parseRunArgs('fix', args);
+    const { config, spec, target, checked } = loadChecked(root, test, given, 'fix', { overlay, start });
     requireAgent(config, checked, target, t('cli.verbFix'));
     requireHuman('fix', interactive);
     const position = spec.steps.findIndex(({ id }) => id === step);

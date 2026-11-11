@@ -2,12 +2,14 @@
 // environment; code requests are answered by the app's chosen source:
 // - build: a build folder (exact name or same name except for the hash)
 // - dev:   a dev server (Vite, webpack, Angular), plus its HMR WebSocket
-// - watch: the Sencha watch (ExtJS), sources per bootstrap.json; the details live in the ExtJS adapter
+// - watch: the Sencha watch's web server (ExtJS), sources per its bootstrap.json; the details live in the ExtJS adapter
 // - files: only overlay.statics
 // overlay.statics take precedence for every source. Project copies (public/env.js) always come from the server: the environment sets them.
 //
-// Before the browser starts, prepareOverlay checks that the source is ready. If not and the config names a command for it
-// (buildCommand, devCommand), caw runs it and says so; otherwise exit 2 with the command. The source never switches silently.
+// Before the browser starts, prepareOverlay checks that the source is ready: the server at overlay.url answers (for ExtJS: it is
+// the watch of this app), the build is there and current. caw starts nothing on its own: if the source is not ready the run ends
+// with exit 2 and the project's start command (overlay.start). Only with --start caw runs that command itself and stops it at the
+// end (CI). The source never switches silently; a Sencha watch found on another port is used and named.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -21,7 +23,7 @@ import { ago, newestFile } from './code-source.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { buildCheck, contentTypeOf, localPages, moduleAlias, resolveLocalBuild, scriptKind, servesBuild, withoutIntegrity } from './local-build.mjs';
 import { baseOf, codeTags, ssrMarker, swapPage } from './page-swap.mjs';
-import { processRunning } from './processes.mjs';
+import { listeningPorts, matchingPids } from './processes.mjs';
 import { isProjectCopy, isProjectCopyFile } from './project-files.mjs';
 
 const DEV_START_MS = 60_000;
@@ -243,6 +245,11 @@ export const staleBuild = (buildDir, appDir, root, now = Date.now()) => {
     return { file: relative(appDir, changed.path).replaceAll('\\', '/'), ago: ago(now - changed.mtimeMs) };
 };
 
+/** What to do when a source is not ready: start overlay.start, or name it first. */
+const startHint = (choice, name, appDir, root) => (choice.start === undefined
+    ? t('session.overlay.startUnknown', { app: name })
+    : t('session.overlay.startKnown', { start: choice.start, dir: relative(root, appDir).replaceAll('\\', '/') || '.' }));
+
 const buildSource = ({ root, name, appDir, choice, info }) => {
     const dir = join(root, choice.dir);
     const shown = choice.dir.replaceAll('\\', '/').replace(/\/+$/, '');
@@ -258,7 +265,10 @@ const buildSource = ({ root, name, appDir, choice, info }) => {
         ready: async () => {
             const before = problem();
             if (before === null) return;
-            if (choice.command === undefined) throw new CawError('overlay-not-ready', t('session.overlay.buildHint', { problem: before, app: name }));
+            if (choice.command === undefined) {
+                const hint = choice.start === undefined ? t('session.overlay.buildHintUnknown', { problem: before, app: name }) : t('session.overlay.buildHint', { problem: before, start: choice.start });
+                throw new CawError('overlay-not-ready', hint);
+            }
             info(t('session.overlay.building', { problem: before, command: choice.command }));
             const log = logFile(root, name, 'build');
             const result = spawnSync(choice.command, { cwd: appDir, shell: true, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
@@ -364,7 +374,7 @@ const devSource = ({ root, name, appDir, choice, info, envUrl, fetchImpl = fetch
         origin,
         ready: async () => {
             if (await probeServer(choice.url, fetchImpl)) return;
-            if (choice.command === undefined) throw new CawError('overlay-not-ready', t('session.overlay.devDown', { url: choice.url, app: name }));
+            if (choice.command === undefined) throw new CawError('overlay-not-ready', t('session.overlay.serverDown', { url: choice.url, next: startHint(choice, name, appDir, root) }));
             const log = logFile(root, name, 'dev-server');
             info(t('session.overlay.devStarting', { url: choice.url, command: choice.command }));
             started = startCommand(choice.command, appDir, log);
@@ -439,51 +449,104 @@ const devPage = async ({ origin, appDir, envUrl, url, base, deployed, fetchImpl 
     };
 };
 
-const watchSource = ({ root, name, appDir, choice, config, info, running = processRunning }) => {
-    const { watch, overlay } = frameworkOf(config);
-    const source = overlay.createWatchSource(appDir);
+/**
+ * Where else the server of this app runs, when it does not answer at url or another app's does: processes matching the adapter's
+ * watch command, the ports they listen on, each asked with identify. Only for adapters with a watch (Sencha picks a random port
+ * when 1841 is taken).
+ * @returns the found address (url with that port) or null
+ */
+export const discoverServer = async ({ url, appDir, adapter, fetchImpl = fetch, pids = matchingPids, ports = listeningPorts }) => {
+    if (adapter.watch?.command === undefined || adapter.overlay?.identify === undefined) return null;
+    const found = pids(adapter.watch.command);
+    if (found.length === 0) return null;
+    const configured = new URL(url);
+    for (const port of ports(found)) {
+        const candidate = new URL(configured.href);
+        candidate.hostname = 'localhost';
+        candidate.port = String(port);
+        if (candidate.href === configured.href) continue;
+        if ((await adapter.overlay.identify(candidate.href, appDir, fetchImpl)).state === 'ready') return candidate.href;
+    }
+    return null;
+};
+
+/**
+ * Is the local code server at url ready? Without an identify hook (dev servers) any HTTP answer counts. With one (ExtJS) it
+ * must be the watch of this app with a usable bootstrap.json and all own sources; if not, discover looks for it on another port.
+ * Never starts anything.
+ * @returns { state: 'ready' | 'down' | 'wrong-app' | 'stale' | 'moved', url?, bootstrap?, message? }; url only with moved
+ */
+export const serverState = async ({ url, appDir, adapter, hint, fetchImpl = fetch, discover = discoverServer }) => {
+    const identify = adapter.overlay?.identify;
+    if (identify === undefined) return { state: (await probeServer(url, fetchImpl)) ? 'ready' : 'down' };
+    const found = await identify(url, appDir, fetchImpl, hint);
+    if (found.state === 'ready') {
+        const stale = await adapter.overlay.stale?.(url, appDir, found.bootstrap, fetchImpl, hint) ?? null;
+        return stale === null ? found : { state: 'stale', message: stale };
+    }
+    if (found.state === 'stale') return found;
+    const moved = await discover({ url, appDir, adapter, fetchImpl });
+    return moved === null ? found : { state: 'moved', url: moved };
+};
+
+const watchSource = ({ root, name, appDir, choice, config, info, fetchImpl = fetch, discover = discoverServer }) => {
+    const adapter = frameworkOf(config);
+    const { watch, overlay } = adapter;
+    const hint = t('session.overlay.watchHint', { start: choice.start ?? watch.start });
+    let base = choice.url;
+    let source = overlay.createWatchSource(base, appDir, fetchImpl, hint);
     let started = null;
-    const hint = t('session.overlay.watchHint', { start: choice.command ?? watch.start });
-    return {
+    const use = (url) => {
+        base = url;
+        source = overlay.createWatchSource(base, appDir, fetchImpl, hint);
+    };
+    const self = {
         kind: 'watch',
-        label: watch.label(),
+        label: t('session.overlay.watchAt', { label: watch.label(), url: base }),
         ready: async () => {
-            const isRunning = () => running(watch.command) !== false;
-            if (isRunning()) {
-                overlay.checkAppFiles(appDir, hint);
+            const found = await serverState({ url: base, appDir, adapter, hint, fetchImpl, discover });
+            if (found.state === 'moved') {
+                info(t('session.overlay.moved', { label: watch.label(), url: base, found: found.url, app: name }));
+                use(found.url);
+                self.label = t('session.overlay.watchAt', { label: watch.label(), url: base });
+            }
+            if (found.state === 'ready' || found.state === 'moved') {
+                await source.load();
                 return;
             }
-            if (choice.command === undefined) throw new CawError('watch-missing', t('cli.noWatch', { label: watch.label(), start: watch.start }));
+            if (found.state === 'stale') throw new CawError('overlay-stale', found.message);
+            if (found.state === 'wrong-app' || choice.command === undefined) {
+                throw new CawError('overlay-not-ready', found.message ?? t('session.overlay.serverDown', { url: base, next: startHint(choice, name, appDir, root) }));
+            }
             const log = logFile(root, name, 'watch');
-            info(t('session.overlay.watchStarting', { label: watch.label(), command: choice.command }));
+            info(t('session.overlay.watchStarting', { label: watch.label(), url: base, command: choice.command }));
             started = startCommand(choice.command, appDir, log);
-            // We started the watch ourselves: it runs as long as its process lives (otherwise waitFor gives up).
-            const ok = () => {
-                try {
-                    overlay.checkAppFiles(appDir, hint);
-                    return true;
-                } catch {
-                    return false;
-                }
-            };
-            if (await waitFor(ok, WATCH_START_MS, { exited: started.exited })) return;
+            // We started the watch ourselves: it is ready once its server serves this app with all sources.
+            const ok = async () => (await serverState({ url: base, appDir, adapter, hint, fetchImpl, discover: async () => null })).state === 'ready';
+            if (await waitFor(ok, WATCH_START_MS, { exited: started.exited })) {
+                await source.load();
+                return;
+            }
             started.stop();
             started = null;
-            throw new CawError('watch-missing', t('session.overlay.watchStartFailed', { label: watch.label(), command: choice.command, seconds: WATCH_START_MS / 1000, log, tail: tail(log) }));
+            throw new CawError('overlay-not-ready', t('session.overlay.watchStartFailed', { label: watch.label(), url: base, command: choice.command, seconds: WATCH_START_MS / 1000, log, tail: tail(log) }));
         },
         stop: () => started?.stop(),
+        // A new page load: the watch may have rewritten bootstrap.json since.
+        document: () => source.refresh(),
         resolve: async ({ type, names }) => {
             if (type === 'document') return null;
             for (const requested of names) {
-                const found = source.resolve(requested);
+                const found = await source.resolve(requested);
                 if (found !== null) return { contentType: 'application/javascript', body: found.body };
             }
             return null;
         },
-        replaced: source.replaced,
+        replaced: () => source.replaced(),
         // What the watch should replace, for the completeness check; empty if the adapter does not say.
-        expected: () => overlay.expected?.(appDir) ?? [],
+        expected: () => source.expected?.() ?? [],
     };
+    return self;
 };
 
 const filesOnly = () => ({ kind: 'files', label: 'statics', ready: async () => {}, resolve: async () => null });
@@ -553,6 +616,8 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
             const patterns = [defaultAssetPattern(checked.url), ...assetPatterns(config, name)];
             apps.push({ name, kind: choice.kind, label: source.label, source, patterns, namesOf: namesWith(patterns), statics: staticsOf(appDir, choice.statics ?? []) });
             await source.ready();
+            // The label may name another address now (a watch found on another port).
+            apps.at(-1).label = source.label;
             apps.at(-1).statics.check();
         }
     } catch (error) {
@@ -596,7 +661,10 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
         pages,
         /** The response from local code for a request, or null for the server. The test's app comes first. */
         resolve: async (url, type) => {
-            if (type === 'document') return null;
+            if (type === 'document') {
+                for (const app of apps) app.source.document?.();
+                return null;
+            }
             for (const app of apps) {
                 const request = { url, type, names: app.namesOf(url) };
                 const found = app.statics.resolve(request) ?? await app.source.resolve(request);

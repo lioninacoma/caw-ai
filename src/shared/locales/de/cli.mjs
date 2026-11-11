@@ -1,7 +1,7 @@
 // Texts: cli (de). Keys prefixed with "cli.".
 export default {
     // bin/caw-ai.mjs and help.mjs: help, one block per command. caw-ai --help shows all blocks, caw-ai <command> --help only its own.
-    'cli.help.intro': `caw-ai - KI-gesteuerte Integrationstests für Webanwendungen (Constrained Agentic Webtester)
+    'cli.help.intro': `caw-ai - Context-Aware Workflows: KI-gestützte E2E-Tests, Workflow-Automatisierung und Fehlersuche in Webanwendungen
 
 Erste Schritte (im Projektordner, die Anwendung läuft):
   1. npx caw-ai init --url http://localhost:5173      im Fenster anmelden, „Fertig“: legt caw.config.json, caw/.env.example und
@@ -54,8 +54,11 @@ Auf dem Host (im Projektordner):`,
                                          mit Claude
       [--until <S4>]                     Nach S4 anhalten, das Fenster bleibt offen (schließt --handover ein)
       [--overlay [build|dev|<url>]]      Lokalen Code über die ausgelieferte Umgebung legen: lokaler Build oder Dev-Server
-                                         (Sencha: der Watch) oder der Dev-Server unter <url>; ohne Wert die eine konfigurierte
-                                         Quelle. Nur auf Umgebungen mit overlay. Ohne die Option läuft immer der ausgelieferte Stand
+                                         (Sencha: der Server des Watch) oder der Server unter <url>; ohne Wert die eine
+                                         konfigurierte Quelle. Nur auf Umgebungen mit overlay. Ohne die Option läuft immer der
+                                         ausgelieferte Stand
+      [--start]                          Mit --overlay: Antwortet der lokale Code-Server nicht, startet caw overlay.start und
+                                         beendet ihn am Ende (CI). Ohne die Option startet caw nichts und nennt den Befehl
       [--handover]                       Nach dem Lauf das Chrome-Fenster offen lassen und dir übergeben
       [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token; nur auf
                                          Umgebungen, auf denen Claude arbeiten darf
@@ -79,22 +82,26 @@ Auf dem Host (im Projektordner):`,
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch, wird er schreibend
       [--timeout <minuten>]              Zeitlimit für Claude, Standard 60
       [--agent local|docker|session]     wie bei run
-      [--overlay [build|dev|<url>]]      wie bei run
+      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]
       [--max-steps <n>]                  Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
       [--step-timeout <sekunden>]        Zeitlimit je Schritt im Prüfdurchlauf, Standard 30`,
     'cli.help.fix': `  fix <test> <S4> [--target <umgebung>]  Genau diesen Schritt ändern, immer mit Chat; nur auf Umgebungen, auf denen Claude
                                          arbeiten darf{here}
       [--timeout <minuten>] [--max-steps <n>] [--step-timeout <sekunden>] [--agent local|docker|session]
-      [--overlay [build|dev|<url>]]`,
+      [--overlay [build|dev|<url>]] [--start]`,
     'cli.help.open': `  open [--target <umgebung>]             Die Anwendung angemeldet öffnen, mit Werkbank und Chat, ohne Test: navigieren,
                                          ausprobieren, mit Claude entwickeln. Lernt nichts, schreibt keine Testdatei
       [--role <rolle>] [--app <app>]     Nicht nötig, wenn die Config nur eine hat
-      [--overlay [build|dev|<url>]]      wie bei run
+      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]
       [--agent local|docker|session] [--timeout <minuten>] [--max-steps <n>]`,
-    'cli.help.overlay': `  overlay check [--target <umgebung>]    Prüft ohne Token, ob das Overlay alles ersetzt, was es soll: lädt die App
+    'cli.help.overlay': `  overlay status [--target <umgebung>]   Ist der lokale Code-Server bereit (overlay.url)? Ohne Browser, startet nichts:
+                                         ready, moved (läuft auf anderem Port), down, wrong-app, stale
+      [--app <app>] [--json]             Nicht nötig, wenn die Config nur eine kennt; --json: der Status als eine JSON-Zeile
+  overlay check [--target <umgebung>]    Prüft ohne Token, ob das Overlay alles ersetzt, was es soll: lädt die App
                                          headless mit --overlay, je Teil lokal, ausgeliefert oder nicht geladen
       [--app <app>] [--role <rolle>]     Nicht nötig, wenn die Config nur eine kennt
       [--apply]                          Vorgeschlagene assetUrlPattern eintragen und erneut prüfen
+      [--start]                          overlay.start starten, wenn der Server nicht antwortet, danach beenden
       [--json]                           Ergebnis als eine JSON-Zeile (auch in .caw/overlay-check.json)`,
     'cli.help.here': ' (hier: {names})',
     'cli.help.footer': `<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Ohne --target nimmt caw-ai
@@ -224,7 +231,6 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     // commands.mjs: sandbox, run, record, fix
     'cli.imageBuilding': 'Baue das Sandbox-Image (nur beim ersten Lauf und nach Tool-Änderungen) ...',
     'cli.imageBuildFailed': 'Das Sandbox-Image ließ sich nicht bauen (Exit {code}). Fehlt der Registry-Login für {image}?',
-    'cli.noWatch': 'Kein {label} aktiv: Ohne ihn testete das Overlay einen veralteten Stand. Starte {start} im App-Ordner, oder lass --overlay weg.',
     'cli.testMissing': 'Test nicht gefunden: {file}.{suggestion} {known} Neu aufnehmen: {hint}',
     'cli.testMissingNear': 'Test nicht gefunden: {file}. Meintest du {name}? {known} Einen neuen Test unter diesem Namen nimmt auf: {hint}',
     'cli.targetChosen': 'Ziel: {target} ({why})',
@@ -331,13 +337,11 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.doctorReachPlaceholder': '{target}: {url} ist ein Platzhalter',
     'cli.doctorReachPlaceholderNext': 'Die echte Adresse in environments eintragen oder die Umgebung entfernen.',
     // overlay-check.mjs
-    'cli.overlayCheck.usage': 'overlay kennt nur check, nicht "{sub}".',
-    'cli.overlayCheck.unknownArg': 'overlay check kennt {arg} nicht. Erlaubt: --target <umgebung>, --app <app>, --role <rolle>, --apply, --json',
+    'cli.overlayCheck.usage': 'overlay kennt status und check, nicht "{sub}".',
+    'cli.overlayCheck.unknownArg': 'overlay {sub} kennt {arg} nicht. Erlaubt: {allowed}',
     'cli.overlayCheck.target': 'Welche Umgebung? Nimm --target, zur Wahl: {choices}',
     'cli.overlayCheck.noApp': 'Keine App "{app}" in caw.config.json. Nimm --app, zur Wahl: {apps}',
     'cli.overlayCheck.noAppJson': 'App {app}: In {dir} liegt keine app.json. Stimmt apps.{app}.dir?',
-    'cli.overlayCheck.watchMissing': 'Kein {label} aktiv. Starte {command} in {dir} und warte, bis er fertig gebaut hat; caw startet ihn nicht selbst.',
-    'cli.overlayCheck.watchHint': 'Starte {command} in {dir} und warte, bis er fertig gebaut hat.',
     'cli.overlayCheck.noExpected': 'Für {framework} gibt es keine erwartete Liste: Die Prüfung entfällt.',
     'cli.overlayCheck.noDiagnosis': 'Die Sitzung lieferte keine Diagnose des Overlays.',
     'cli.overlayCheck.head': 'Overlay-Prüfung auf {target}, App {app}',
@@ -351,12 +355,18 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.overlayCheck.complete': 'Vollständig: Alles Erwartete kam lokal.',
     'cli.overlayCheck.incomplete': 'Unvollständig: {count} Skript(e) kamen vom Server.',
     'cli.overlayCheck.incompleteApply': 'Unvollständig: {count} Skript(e) kamen vom Server. caw-ai overlay check --apply trägt die Muster ein.',
+    'cli.overlayStatus.ready': 'Lokaler Code für {app} ist bereit: {url}',
+    'cli.overlayStatus.readyNoServer': 'Lokaler Code für {app} ist bereit (kein Server nötig)',
+    'cli.overlayStatus.moved': 'Der lokale Code-Server von {app} läuft unter {found}, nicht unter {url}. caw nimmt ihn; trage {found} in apps.{app}.overlay.url ein.',
     'cli.doctorOverlayBootstrap': '{target}, App {app}: bootstrap.json passt',
     'cli.doctorOverlayBootstrapBad': '{target}, App {app}: {problem}',
-    'cli.doctorOverlayWatchOk': '{target}, App {app}: {label} läuft',
-    'cli.doctorOverlayWatchUnknown': '{target}, App {app}: ob {label} läuft, ließ sich nicht prüfen',
-    'cli.doctorOverlayWatchMissing': '{target}, App {app}: {label} läuft nicht',
-    'cli.doctorOverlayWatchNext': 'Starte {command} in {dir}; caw startet ihn nicht selbst.',
+    'cli.doctorOverlayServerOk': '{target}, App {app}: lokaler Code unter {url} liefert {app}',
+    'cli.doctorOverlayServerMoved': '{target}, App {app}: lokaler Code läuft unter {found}, nicht unter {url}',
+    'cli.doctorOverlayServerMovedNext': 'Trage {found} in apps.{app}.overlay.url ein.',
+    'cli.doctorOverlayServerDown': '{target}, App {app}: lokaler Code unter {url} antwortet nicht',
+    'cli.doctorOverlayServerBad': '{target}, App {app}: lokaler Code unter {url}: {problem}',
+    'cli.doctorOverlayStartNext': 'Starte {start} in {dir}; caw startet ihn nur mit --start.',
+    'cli.doctorOverlayStartUnknown': 'Trage den Startbefehl in apps.{app}.overlay.start ein.',
     'cli.doctorOverlayPart': '{target}, App {app}: {label} {status} (geprüft {ago})',
     'cli.doctorOverlayStatus.local': 'lokal',
     'cli.doctorOverlayStatus.deployed': 'ausgeliefert',
@@ -437,7 +447,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.code.build': 'Build {dir}',
     'cli.code.built': 'Build {dir}, gebaut {time}, {ago}',
     'cli.code.dev': 'Dev-Server {url}',
-    'cli.code.watch': 'Sencha-Watch in {dir}',
+    'cli.code.watch': 'Sencha-Watch {url}',
     'cli.code.files': '{count} feste Datei(en) aus overlay.statics',
     'cli.code.withStatics': '{text}, dazu {count} aus overlay.statics',
     'cli.code.ofApp': '{text} (App {app})',

@@ -42,6 +42,18 @@ test('parseRunArgs: --overlay with and without source for run, record and fix; n
     assert.throws(() => parseRunArgs('run', ['smoke', '--code', 'local']), (error) => error.code === 'usage', '--code no longer exists');
 });
 
+test('parseRunArgs: --start lets caw run overlay.start, only together with --overlay, for run, record, fix and open', () => {
+    assert.equal(parseRunArgs('run', ['smoke', '--overlay']).start, undefined, 'without --start caw starts nothing');
+    const run = parseRunArgs('run', ['smoke', '--overlay', '--start']);
+    assert.deepEqual([run.tests, run.overlay, run.start], [['smoke'], true, true], '--start is no overlay source');
+    assert.equal(parseRunArgs('run', ['--start', '--overlay', 'dev', 'smoke']).overlay, 'dev');
+    assert.equal(parseRunArgs('record', ['smoke', '--overlay', '--start', '--target', 'dev']).start, true);
+    assert.equal(parseRunArgs('fix', ['smoke', 'S2', '--overlay=build', '--start']).start, true);
+    assert.equal(parseRunArgs('open', ['--overlay', '--start']).start, true);
+    assert.throws(() => parseRunArgs('run', ['smoke', '--start']), (error) => error.code === 'usage' && /--start geht nur mit --overlay/.test(error.message));
+    assert.throws(() => parseRunArgs('open', ['--start']), (error) => error.code === 'usage');
+});
+
 test('parseRunArgs: each command only knows its own options', () => {
     const base = ['smoke', '--target', 'shop/dev'];
     assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', handover: false, advise: false, headless: false, noChat: false, learn: true, all: false, stepTimeoutSec: 30 });

@@ -9,12 +9,13 @@ import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
-import { allTargets, authOf, isLoopback, isServerUrl, resolveTarget } from '../shared/config.mjs';
+import { allTargets, authOf, isLoopback, isServerUrl, overlaySettings, resolveTarget } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 import { didYouMean } from '../shared/suggest.mjs';
 import { EFFECT_LISTS } from './effects.mjs';
+import { frameworkOf } from './framework/index.mjs';
 import { TARGET_TEXT_MAX } from './framework/web.mjs';
 import { isPattern } from './patterns.mjs';
 
@@ -431,8 +432,9 @@ export const recordingHints = (root) => {
  * May this test run on this target? Write protection lives here, deterministic and before any browser starts. Also decides
  * which code runs: without --overlay always the deployed code.
  * @param overlay from --overlay: true, 'build', 'dev', a dev server URL, or undefined
+ * @param start   from --start: caw may run overlay.start when the source is not ready
  */
-export const checkTest = (given, target, config, { overlay } = {}) => {
+export const checkTest = (given, target, config, { overlay, start = false } = {}) => {
     const resolved = resolveTarget(config, target);
     const spec = withDefaults(given, config);
     const bad = (message) => new CawError('test-invalid', message);
@@ -449,7 +451,7 @@ export const checkTest = (given, target, config, { overlay } = {}) => {
     if (spec.mutates && !resolved.writable) {
         throw new CawError('write-protected', t('config.test.check.writeProtected', { id: String(spec.id), target: String(target), environment: resolved.environment }));
     }
-    return { ...resolved, mutates: spec.mutates, ...codeFor(spec, resolved, config, overlay) };
+    return { ...resolved, mutates: spec.mutates, ...codeFor(spec, resolved, config, overlay, start) };
 };
 
 /**
@@ -458,7 +460,7 @@ export const checkTest = (given, target, config, { overlay } = {}) => {
  * A dev server on the local machine (http on localhost) already serves the local code, so there is nothing to overlay.
  * @returns { source: 'deployed' } | { source: 'overlay', apps: { <app>: source } }, see overlayChoice for source
  */
-const codeFor = (spec, resolved, config, overlay) => {
+const codeFor = (spec, resolved, config, overlay, start) => {
     if (overlay === undefined) return { source: 'deployed' };
     const { host, hostname, protocol } = new URL(resolved.url);
     if (protocol === 'http:' && isLoopback(hostname)) throw new CawError('usage', t('config.overlay.devServer', { environment: resolved.environment, host }));
@@ -468,7 +470,7 @@ const codeFor = (spec, resolved, config, overlay) => {
     if (url !== undefined && names.length > 1) throw new CawError('usage', t('config.overlay.urlApps', { apps: names.join(', ') }));
     const apps = {};
     for (const name of names) {
-        const choice = overlayChoice(config, name, url ?? overlay, { required: name === spec.app });
+        const choice = overlayChoice(config, name, url ?? overlay, { required: name === spec.app, start });
         if (choice !== null) apps[name] = choice;
     }
     return { source: 'overlay', apps };
@@ -476,32 +478,37 @@ const codeFor = (spec, resolved, config, overlay) => {
 
 /**
  * An app's source for --overlay:
- * - { kind: 'build', dir, command? }: build folder relative to the project
- * - { kind: 'dev', url, command? }: dev server
- * - { kind: 'watch', command? }: Sencha watch (ExtJS), sources per bootstrap.json in the app folder
+ * - { kind: 'build', dir }: build folder relative to the project
+ * - { kind: 'dev', url }: dev server
+ * - { kind: 'watch', url }: the Sencha watch's web server (ExtJS), sources per its bootstrap.json
  * - { kind: 'files' }: overlay.statics only
- * Each with `statics`. An additional app (also) without a source stays deployed (null); the test's app needs one.
+ * Each with `statics`, and with `start` (the project's command, overlay.start) if the config names one. `command` is set only with
+ * --start: then caw runs it when the source is not ready; otherwise caw starts nothing and names `start`.
+ * An additional app (also) without a source stays deployed (null); the test's app needs one.
  */
-export const overlayChoice = (config, name, flag, { required = true } = {}) => {
-    const overlay = config.apps[name].overlay ?? {};
+export const overlayChoice = (config, name, flag, { required = true, start = false } = {}) => {
+    const raw = config.apps[name].overlay ?? {};
+    const overlay = overlaySettings(raw);
     const statics = overlay.statics ?? [];
-    const command = (key) => (overlay[key] === undefined ? {} : { command: overlay[key] });
+    const command = (value) => (value === undefined ? {} : { start: value, ...(start ? { command: value } : {}) });
     const url = isServerUrl(flag) ? flag : undefined;
-    if (config.framework === 'extjs') {
-        if (flag === 'build' || url !== undefined) throw new CawError('usage', t('config.overlay.extjsKind', { kind: url ?? flag }));
-        return { kind: 'watch', ...command('devCommand'), statics };
+    const adapter = frameworkOf(config);
+    if (adapter.overlay?.defaultUrl !== undefined) {
+        if (flag === 'build') throw new CawError('usage', t('config.overlay.extjsKind', { kind: flag }));
+        return { kind: 'watch', url: url ?? overlay.url ?? adapter.overlay.defaultUrl, ...command(overlay.start), statics };
     }
-    if (url !== undefined) return { kind: 'dev', url, ...command('devCommand'), statics };
-    const build = overlay.build === undefined ? null : { kind: 'build', dir: overlay.build, ...command('buildCommand'), statics };
-    const dev = overlay.dev === undefined ? null : { kind: 'dev', url: overlay.dev, ...command('devCommand'), statics };
+    if (url !== undefined) return { kind: 'dev', url, ...command(overlay.start), statics };
+    // An old config with buildCommand and devCommand keeps both: the build one for the build, the other for the server.
+    const build = overlay.build === undefined ? null : { kind: 'build', dir: overlay.build, ...command(raw.start ?? raw.buildCommand ?? raw.devCommand), statics };
+    const dev = overlay.url === undefined ? null : { kind: 'dev', url: overlay.url, ...command(overlay.start), statics };
     if (flag === 'build' || flag === 'dev') {
         const chosen = flag === 'build' ? build : dev;
         if (chosen !== null) return chosen;
         if (!required) return null;
-        const other = flag === 'build' ? 'dev' : 'build';
-        throw new CawError('usage', t('config.overlay.missing', { kind: flag, app: name, other: overlay[other] === undefined ? '' : t('config.overlay.missingOther', { other }) }));
+        const [key, other, otherKey] = flag === 'build' ? ['build', 'dev', 'url'] : ['url', 'build', 'build'];
+        throw new CawError('usage', t('config.overlay.missing', { kind: flag, key, app: name, other: overlay[otherKey] === undefined ? '' : t('config.overlay.missingOther', { other, key: otherKey }) }));
     }
-    if (build !== null && dev !== null) throw new CawError('usage', t('config.overlay.choose', { app: name, build: overlay.build, dev: overlay.dev }));
+    if (build !== null && dev !== null) throw new CawError('usage', t('config.overlay.choose', { app: name, build: overlay.build, dev: overlay.url }));
     const only = build ?? dev ?? (statics.length > 0 ? { kind: 'files', statics } : null);
     if (only === null && required) throw new CawError('usage', t('config.overlay.app', { app: name }));
     return only;

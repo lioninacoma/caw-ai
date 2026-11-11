@@ -181,7 +181,7 @@ test('caw-ai mcp: start a run with --agent session, status, selection, caw only 
     const handler = sessionMcpHandler({ root, spawnRun, run: async (args, env) => { calls.push({ args, env }); return { code: 0, out: 'ok' }; } });
     const call = async (name, args) => (await handler({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })).result;
     const list = await handler({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_explore', 'caw_role', 'caw_overlay_check', 'caw']);
+    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_explore', 'caw_role', 'caw_overlay', 'caw']);
     assert.ok(list.result.tools.every((tool) => tool.call === undefined && tool.inputSchema !== undefined));
 
     assert.match((await call('caw_status', {})).content[0].text, /Kein Lauf wartet/);

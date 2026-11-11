@@ -10,6 +10,7 @@ import { after, before, test } from 'node:test';
 import { interceptDocuments } from '../src/host/app-view.mjs';
 import { incompleteText, prepareOverlay, routeOverlay } from '../src/host/overlay.mjs';
 import { launchChrome } from './chrome.mjs';
+import { serveFolder } from './static-server.mjs';
 
 let browser;
 let server;
@@ -129,8 +130,12 @@ test('Overlay watch in the browser: app and package via a proxy parameter are a 
     await new Promise((resolve) => { portal.listen(0, '127.0.0.1', resolve); });
     t.after(() => portal.close());
     const portalUrl = `http://127.0.0.1:${portal.address().port}`;
+    // The Sencha watch's web server: the workspace over HTTP, the app below /app/.
+    const watch = await serveFolder(project);
+    t.after(() => watch.close());
     const open = async (config) => {
-        const overlay = await prepareOverlay({ root: project, config: { framework: 'extjs', apps: { web: { dir: 'app' } }, ...config }, checked: { url: portalUrl, apps: { web: { kind: 'watch', statics: [] } } }, deps: { running: () => true } });
+        const checked = { url: portalUrl, apps: { web: { kind: 'watch', url: `${watch.url}app/`, statics: [] } } };
+        const overlay = await prepareOverlay({ root: project, config: { framework: 'extjs', apps: { web: { dir: 'app' } }, ...config }, checked, deps: { discover: async () => null } });
         const context = await browser.newContext();
         t.after(() => context.close());
         await routeOverlay(context, overlay);

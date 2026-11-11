@@ -1,7 +1,7 @@
 {
     "name": "caw-ai",
     "version": "0.3.0",
-    "description": "caw-ai, the Constrained Agentic Webtester: AI-driven integration tests for web apps, Claude behind a fixed set of browser commands, locally or in Docker",
+    "description": "caw-ai, Context-Aware Workflows: AI-powered E2E testing, workflow automation and application debugging for web apps. Show it, understand it, replay it without AI.",
     "keywords": [
         "testing",
         "integration-testing",
@@ -10,7 +10,9 @@
         "ai",
         "playwright",
         "chrome",
-        "web-testing"
+        "web-testing",
+        "workflow",
+        "context-aware"
     ],
     "author": "Frederick Schubert",
     "homepage": "https://github.com/lioninacoma/caw-ai#readme",

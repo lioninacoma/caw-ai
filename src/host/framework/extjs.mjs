@@ -3,7 +3,7 @@
 // part element inside it. The page is ready when no Ext.Ajax request and no store is loading.
 
 import { t } from '../../shared/i18n.mjs';
-import { checkAppFiles, createWatchSource, expectedParts } from './extjs-overlay.mjs';
+import { checkAppFiles, createWatchSource, expectedParts, identifyWatch, staleSources } from './extjs-overlay.mjs';
 
 /**
  * Runs in the browser, so it must not use anything from outside. `describe` describes an element, `find` finds it
@@ -230,9 +230,9 @@ export const extjs = {
     floats: true,
     // Framework files mostly just pass errors on: the origin is the first entry outside them.
     stackSkip: /\/ext-[\w-]*\.js/,
-    // The overlay needs the Sencha watch: it keeps bootstrap.json and the packages up to date. If it is not running and the config
-    // names no devCommand, the run ends with the command to start it.
+    // The overlay source is the Sencha watch's web server (port 1841, a random one if that is taken). The command pattern is only
+    // used to find the port of a watch that moved; whether the watch is ready is asked of its server, never of the process list.
     watch: { label: () => t('session.overlay.senchaWatch'), command: /\bapp["']?\s+["']?watch\b/i, start: 'sencha app watch' },
     // The adapter derives what gets replaced from app.json, package.json and bootstrap.json (extjs-overlay.mjs).
-    overlay: { createWatchSource, checkAppFiles, expected: expectedParts },
+    overlay: { defaultUrl: 'http://localhost:1841/', identify: identifyWatch, stale: staleSources, createWatchSource, checkAppFiles, expected: expectedParts },
 };

@@ -6,11 +6,16 @@
 [![npm](https://img.shields.io/npm/v/caw-ai)](https://www.npmjs.com/package/caw-ai)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> **caw** – **c**onstrained **a**gentic **w**ebtester
+> `caw-ai` · *Context-Aware Workflows* · **Show it. Understand it. Replay it.**
+>
+> KI-gestützte E2E-Tests, Workflow-Automatisierung und Fehlersuche in Anwendungen.
 >
 > Du beschreibst einen Test in normaler Sprache, Claude geht ihn einmal in deiner echten App durch, und danach läuft er ohne KI: schnell, reproduzierbar, ohne Token, und Claude kommt nur in den Chat zurück, wenn ein Schritt bricht.
->
-> *Constrained*, weil der Agent Grenzen hat: Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten, und jede Aufnahme endet mit einem Plan, den du freigibst.
+
+- **Capture:** Du führst einen echten Ablauf in deiner App vor, oder Claude geht einen Plan durch, den du beschreibst.
+- **Understand:** Die KI deutet jede Aktion in ihrem Kontext: angemeldeter Nutzer, Rolle, Zustand der Anwendung und Ziel, nicht nur eine Klickfolge.
+- **Replay:** Wiederverwendbare Aufzeichnungen, abgespielt mit Playwright, ohne KI: deterministisch und ohne Token, lokal wie in der CI.
+- **Debug:** Fehler im Chat neben der laufenden App untersuchen und beheben.
 
 <img src="docs/media/demo.webp" width="100%" alt="caw-ai nimmt einen Test des Errand-Beispiels auf: Claude legt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw-ai die Aufnahme ohne KI ab und der Plan wird übernommen">
 
@@ -39,7 +44,7 @@ npx caw-ai run first-errand --target local      # spielt die Aufzeichnung ab, oh
 - Schlägt ein Schritt fehl, zeigt der Chat neben der App die Ursache. `fix` nimmt nur diesen Schritt neu auf.
 - Nach einem Lauf gehört dir das Fenster: F1 stellt den Zustand jedes Tests in einer frischen Sitzung her, und Claude im Chat kann die Seite bedienen, ein eingefügtes Bugticket nachstellen und die Korrektur im Code vorschlagen.
 - Fehler werden als Test, Anwendung oder Umgebung eingeordnet, anhand von Requests, Konsolenausgaben und den Änderungen an der Seite bei der Aufnahme.
-- Claude steuert den Browser über einen festen Satz Befehle, erreicht nur die konfigurierten Hosts und bekommt keine Zugangsdaten.
+- **Grenzen mit Absicht:** Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten; Pläne, die Daten schreiben, gibst du frei, und du entscheidest, ob eine Aufzeichnung übernommen wird.
 - Unterstützt: reine Web-Apps, React, Vue, Angular und ExtJS.
 
 ## Voraussetzungen

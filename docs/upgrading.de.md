@@ -57,7 +57,7 @@ Nachher, mit Build-Ordner:
     "startUrl": "/",
     "overlay": {
       "build": "dist",
-      "buildCommand": "npm run build"
+      "start": "npm run build"
     }
   }
 }
@@ -67,14 +67,29 @@ Oder mit Dev-Server:
 
 ```json
 "overlay": {
-  "dev": "http://localhost:5173",
-  "devCommand": "npm run dev -- --port 5173 --strictPort"
+  "url": "http://localhost:5173",
+  "start": "npm run dev"
 }
 ```
 
 Dateien mit festem Namen, die nicht zum Build gehören, bleiben als `overlay.statics`: `"overlay": { "statics": [{ "name": "Fx/Static.js", "path": "static.js" }] }`.
 
-**ExtJS:** `redirects` und `constants` haben keinen Ersatz. Mit `"framework": "extjs"` ist der Sencha-Watch die Quelle; caw-ai liest die Build-Namen von App und Paketen aus `app.json`, `.sencha/app/*.properties` und `bootstrap.json`. Lösche beide Schlüssel. Behalte vorhandene `statics` unter `overlay` und setze `"devCommand": "sencha app watch"`, wenn caw-ai den Watch starten soll.
+**ExtJS:** `redirects` und `constants` haben keinen Ersatz. Mit `"framework": "extjs"` ist der Webserver des Sencha-Watch die Quelle (`overlay.url`, standardmäßig `http://localhost:1841/`); caw-ai liest die Build-Namen von App und Paketen aus `app.json`, `.sencha/app/*.properties` und der `bootstrap.json` des Watch. Lösche beide Schlüssel. Behalte vorhandene `statics` unter `overlay` und setze `"start"` auf deinen Watch-Befehl (etwa `"sencha app watch"`).
+
+### Overlay: ein Modell, `url` und `start`
+
+Falls du eine Vorabversion von 0.3.0 mit `overlay.dev`, `devCommand` oder `buildCommand` genutzt hast:
+
+| Vorher | Jetzt |
+|---|---|
+| `overlay.dev` | `overlay.url` |
+| `overlay.devCommand`, `overlay.buildCommand` | `overlay.start` |
+| caw startete `devCommand` oder baute mit `buildCommand`, wenn nötig | caw startet nichts; der Lauf endet mit Exit 2 (`overlay-not-ready`) und nennt `start`. Mit `--start` geht es wie vorher (CI). |
+| ExtJS: Quellen von der Platte im App-Ordner; „läuft“ hieß: irgendein Prozess `sencha app watch` | ExtJS: Quellen per HTTP vom Watch unter `overlay.url` (Standard `http://localhost:1841/`), geprüft als Watch *dieser* App; ein Watch auf einem zufälligen Port wird gefunden und genutzt |
+| Fehlercodes `watch-missing`, `watch-stale` | `overlay-not-ready`, `overlay-stale` |
+| MCP-Werkzeug `caw_overlay_check` | `caw_overlay` mit `action: status`, `check` oder `apply` |
+
+Die alten Namen gelten weiter, `validate` weist auf jeden hin (`overlay.dev heißt jetzt overlay.url`); alter und neuer Name zugleich sind ein Fehler. CI-Skripte, die sich darauf verlassen haben, dass caw Dev-Server oder Watch startet, ergänzen `--start`. `npx caw-ai overlay status` zeigt, ob der Server bereit ist.
 
 **`assetUrlPattern`:** Gruppe 1 nennt jetzt einen Eintrag aus `overlay.statics`, einen Pfad in `overlay.build` oder den Build-Namen einer ExtJS-App oder eines Pakets.
 

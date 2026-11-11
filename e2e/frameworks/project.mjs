@@ -13,7 +13,7 @@ const yamlString = (value) => JSON.stringify(value);
  * @param url       address of the environment
  * @param build     expected text after "Build:" (dev, deployed, local)
  * @param embed     true: additionally S3 with an iframe and a web component (only react-vite has both)
- * @param overlay   app config for the overlay ({ build, dev, buildCommand, devCommand }); the environment then allows it
+ * @param overlay   app config for the overlay ({ build, url, start }); the environment then allows it
  */
 export const writeProject = (root, { framework, url, build, overlay, embed = false }) => {
     const config = {

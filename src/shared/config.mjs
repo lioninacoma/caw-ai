@@ -403,6 +403,7 @@ export const validateConfig = (given, root = process.cwd()) => {
             issues.push(oldKeyHint(OLD_APP, unknown, `apps.${name}.${unknown}`, (place) => `apps.${name}.${place}`) ?? t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) }));
         }
         if (app.overlay !== undefined) issues.push(...overlayIssues(name, app.overlay, extjs));
+        notes.push(...overlayRenamed(name, app.overlay));
     }
     if (issues.length === 0) notes.push(...overlayNotes(config));
     // Gaps from init: not wrong, but nothing that signs in can run until they are filled in.
@@ -510,7 +511,19 @@ export const isServerUrl = (value) => {
         return false;
     }
 };
-const OVERLAY_KEYS = ['build', 'dev', 'buildCommand', 'devCommand', 'statics', 'assetUrlPattern'];
+const OVERLAY_KEYS = ['url', 'start', 'build', 'statics', 'assetUrlPattern', 'dev', 'devCommand', 'buildCommand'];
+// Earlier names, still read: dev is the address (url), devCommand and buildCommand the start command (start).
+const OVERLAY_ALIASES = [['dev', 'url'], ['devCommand', 'start'], ['buildCommand', 'start']];
+
+/** apps.<app>.overlay with the earlier names resolved: { url, start, build, statics, assetUrlPattern }. */
+export const overlaySettings = (overlay = {}) => {
+    const settings = { ...overlay };
+    for (const key of ['dev', 'devCommand', 'buildCommand']) delete settings[key];
+    settings.url = overlay.url ?? overlay.dev;
+    settings.start = overlay.start ?? overlay.devCommand ?? overlay.buildCommand;
+    for (const key of Object.keys(settings)) if (settings[key] === undefined) delete settings[key];
+    return settings;
+};
 
 /** assetUrlPattern as a list: one pattern or several, one per asset source (plain path, proxy parameter, CDN). */
 export const patternList = (value) => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.filter((pattern) => typeof pattern === 'string') : []);
@@ -535,20 +548,23 @@ const assetPatternIssues = (key, value) => {
 };
 const STATIC_KEYS = ['name', 'path'];
 
-/** The errors in `apps.<name>.overlay`. With ExtJS the source is the Sencha watch: no build and no dev URL. */
+/** The errors in `apps.<name>.overlay`. With ExtJS the source is the Sencha watch at overlay.url: no build. */
 const overlayIssues = (name, overlay, extjs) => {
     if (!isObject(overlay)) return [t('config.overlay.notObject', { name })];
     const issues = [];
     const unknown = Object.keys(overlay).find((key) => !OVERLAY_KEYS.includes(key));
     if (unknown !== undefined) issues.push(t('config.overlay.unknown', { name, key: unknown, hint: hintFor(unknown, OVERLAY_KEYS) }));
     if (overlay.build !== undefined && !relativePath(overlay.build)) issues.push(t('config.overlay.build', { name }));
-    if (overlay.dev !== undefined && !isServerUrl(overlay.dev)) issues.push(t('config.overlay.dev', { name }));
-    if (extjs && (overlay.build !== undefined || overlay.dev !== undefined || overlay.buildCommand !== undefined)) issues.push(t('config.overlay.extjs', { name }));
-    for (const key of ['buildCommand', 'devCommand']) {
+    for (const key of ['url', 'dev']) if (overlay[key] !== undefined && !isServerUrl(overlay[key])) issues.push(t('config.overlay.dev', { name, key }));
+    for (const [old, now] of OVERLAY_ALIASES) if (overlay[old] !== undefined && overlay[now] !== undefined) issues.push(t('config.overlay.both', { name, old, now }));
+    if (extjs && (overlay.build !== undefined || overlay.buildCommand !== undefined)) issues.push(t('config.overlay.extjs', { name }));
+    for (const key of ['start', 'buildCommand', 'devCommand']) {
         if (overlay[key] !== undefined && (typeof overlay[key] !== 'string' || overlay[key].trim() === '')) issues.push(t('config.overlay.command', { name, key }));
     }
+    const server = overlay.url !== undefined || overlay.dev !== undefined;
     if (overlay.buildCommand !== undefined && overlay.build === undefined) issues.push(t('config.overlay.commandWithout', { name, key: 'buildCommand', needs: 'build' }));
-    if (overlay.devCommand !== undefined && overlay.dev === undefined && !extjs) issues.push(t('config.overlay.commandWithout', { name, key: 'devCommand', needs: 'dev' }));
+    if (overlay.devCommand !== undefined && !server && !extjs) issues.push(t('config.overlay.commandWithout', { name, key: 'devCommand', needs: 'url' }));
+    if (overlay.start !== undefined && !server && overlay.build === undefined && !extjs) issues.push(t('config.overlay.commandWithout', { name, key: 'start', needs: 'url' }));
     if (overlay.assetUrlPattern !== undefined) issues.push(...assetPatternIssues(`apps.${name}.overlay.assetUrlPattern`, overlay.assetUrlPattern));
     if (overlay.statics !== undefined && !Array.isArray(overlay.statics)) issues.push(t('config.overlay.statics', { name }));
     else (overlay.statics ?? []).forEach((entry, index) => {
@@ -559,6 +575,10 @@ const overlayIssues = (name, overlay, extjs) => {
     });
     return issues;
 };
+
+/** Earlier overlay names still in use: read as before, with a note naming the new one. */
+const overlayRenamed = (name, overlay) => (isObject(overlay) ? OVERLAY_ALIASES.filter(([old, now]) => overlay[old] !== undefined && overlay[now] === undefined)
+    .map(([old, now]) => t('config.note.overlayRenamed', { name, old, now })) : []);
 
 /** Without `assetUrlPattern`: the path below the environment URL, e.g. `assets/index-X.js` from `https://host/app/assets/index-X.js`. */
 export const defaultAssetPattern = (url) => {

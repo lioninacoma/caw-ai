@@ -404,42 +404,64 @@ test('run and record: TODO in the login aborts before Chrome and Claude', async 
         (error) => error.code === 'config-invalid' && /auth\.signedInSelector steht noch auf TODO/.test(error.message));
 });
 
-test('init for ExtJS: an empty overlay entry, no devCommand, no environment with overlay', () => {
+test('init for ExtJS: the overlay entry names the watch at its usual address, no start command, no environment with overlay', () => {
     const config = starterConfig({ framework: 'extjs', appDir: 'apps/Bestellung', url: 'https://dev.firma.intern', auth: 'none' });
-    assert.deepEqual(config.apps.web.overlay, {});
+    assert.deepEqual(config.apps.web.overlay, { url: 'http://localhost:1841/' });
     assert.ok(Object.values(config.environments).every((environment) => environment.overlay === undefined));
     assert.equal(starterConfig({ framework: 'react' }).apps.web.overlay, undefined);
 });
 
-test('doctor: overlay lines for ExtJS (bootstrap.json, watch, last overlay check), all optional', async (t) => {
+test('doctor: overlay lines for ExtJS (bootstrap.json, local code server, last overlay check), all optional', async (t) => {
     const { doctorChecks } = await import('../src/host/doctor.mjs');
+    const { serveFolder } = await import('./static-server.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-doctor-overlay-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const config = {
         framework: 'extjs',
         environments: { dev: { url: 'https://dev.firma.intern', overlay: true } },
-        apps: { web: { dir: 'app', startUrl: '/' } },
+        apps: { web: { dir: 'app', startUrl: '/', overlay: { url: 'http://localhost:1841/', start: 'npm run watch' } } },
     };
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
     mkdirSync(join(root, 'app', 'app'), { recursive: true });
     writeFileSync(join(root, 'app', 'app.json'), '{ "name": "Bestellung" }');
     writeFileSync(join(root, 'app', 'app', 'Main.js'), '');
-    const probes = { chrome: async () => {}, claude: () => '2.1.0', reachable: async () => true, watch: () => false };
-    const overlayLines = (checks) => checks.filter(({ text }) => /^dev, App web/.test(text));
-    let lines = overlayLines(await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes }));
+    const asked = [];
+    let state = { state: 'down', url: 'http://localhost:1841/' };
+    const overlay = async (dir, options) => {
+        asked.push(options);
+        return state;
+    };
+    const probes = { chrome: async () => {}, claude: () => '2.1.0', reachable: async () => true, overlay };
+    const overlayLines = async (given = probes) => (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes: given })).filter(({ text }) => /^dev, App web/.test(text));
+    let lines = await overlayLines();
+    assert.deepEqual(asked, [{ target: 'dev', app: 'web' }]);
     assert.ok(lines.every(({ optional }) => optional), JSON.stringify(lines));
     assert.match(lines[0].text, /bootstrap\.json fehlt/);
-    assert.match(lines[0].next, /Starte sencha app watch in app; caw startet ihn nicht selbst/);
-    assert.equal(lines[1].text, 'dev, App web: Sencha-Watch läuft nicht');
+    assert.equal(lines[0].next, 'Starte npm run watch in app; caw startet ihn nur mit --start.');
+    assert.equal(lines[1].text, 'dev, App web: lokaler Code unter http://localhost:1841/ antwortet nicht');
     assert.equal(lines[2].next, 'caw-ai overlay check --target dev');
+    state = { state: 'moved', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/' };
+    lines = await overlayLines();
+    assert.equal(lines[1].text, 'dev, App web: lokaler Code läuft unter http://localhost:52775/, nicht unter http://localhost:1841/');
+    assert.equal(lines[1].next, 'Trage http://localhost:52775/ in apps.web.overlay.url ein.');
+    state = { state: 'wrong-app', url: 'http://localhost:1841/', message: 'http://localhost:1841/ liefert die App Andere, nicht Bestellung.\nmehr' };
+    lines = await overlayLines();
+    assert.equal(lines[1].text, 'dev, App web: lokaler Code unter http://localhost:1841/: http://localhost:1841/ liefert die App Andere, nicht Bestellung');
+    assert.ok(!lines[1].ok);
+
+    // Without the probe: the real status, asked of the server at overlay.url (a folder served like the watch serves it).
     writeFileSync(join(root, 'app', 'bootstrap.json'), JSON.stringify({ loadOrder: [{ path: 'app/Main.js' }] }));
+    const server = await serveFolder(join(root, 'app'));
+    t.after(() => server.close());
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify({ ...config, apps: { web: { ...config.apps.web, overlay: { url: server.url } } } }));
     mkdirSync(join(root, '.caw'));
     const parts = [{ label: 'Bestellung', kind: 'app', names: ['Bestellung.js'], status: 'local' }, { label: 'modell', kind: 'package', names: ['modell.js'], status: 'deployed' }];
     writeFileSync(join(root, '.caw', 'overlay-check.json'), JSON.stringify({ at: new Date(Date.now() - 5 * 60_000).toISOString(), target: 'dev', app: 'web', state: 'incomplete', parts }));
-    lines = overlayLines(await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes: { ...probes, watch: () => true } }));
+    const real = { ...probes, overlay: undefined };
+    lines = await overlayLines(real);
     assert.deepEqual(lines.map(({ ok, text }) => [ok, text]), [
         [true, 'dev, App web: bootstrap.json passt'],
-        [true, 'dev, App web: Sencha-Watch läuft'],
+        [true, `dev, App web: lokaler Code unter ${server.url} liefert web`],
         [true, 'dev, App web: Bestellung lokal (geprüft vor 5 min)'],
         [false, 'dev, App web: modell ausgeliefert (geprüft vor 5 min)'],
     ]);

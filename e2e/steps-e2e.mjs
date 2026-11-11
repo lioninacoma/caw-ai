@@ -1,8 +1,13 @@
 // Test steps in real Chrome: the script stands in for Claude in the container and for the human at the chat.
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import { serveFolder } from '../test/static-server.mjs';
+
 // Runs without `interactive: true` behave like CI: no chat. The chat is no longer tied to the terminal.
 process.env.CI ??= '1';
 // The checks read the German texts; child processes inherit the language.
@@ -59,6 +64,13 @@ const scenario = async (name, body) => {
     await body();
 };
 const ID = 'fx-schritte';
+/** A TCP port nothing listens on right now. */
+const freePort = () => new Promise((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+        const { port } = server.address();
+        server.close(() => resolve(port));
+    });
+});
 const file = join(fake, 'caw/tests', `${ID}.yaml`);
 const opts = ['--target', 'local/dev', '--timeout', '3', '--step-timeout', '5'];
 const short = ['--target', 'local/dev', '--step-timeout', '4'];
@@ -1250,7 +1262,7 @@ ${finishOf(['S2'])}`;
         rmSync(selection, { force: true });
     });
 
-    await scenario('4 Overlay dev: Sencha watch over the portal, only with --overlay, never silently the deployed build', async () => {
+    await scenario('4 Overlay: the Sencha watch\'s server (overlay.url) over the portal, only with --overlay, never silently the deployed build', async () => {
         // Scenario A records the test: run alone with `node steps-e2e.mjs A4`.
         restore();
         const withOverlay = (extra) => {
@@ -1268,39 +1280,70 @@ ${finishOf(['S2'])}`;
         // Without the option: deployed, even if an overlay config exists.
         verify('Without --overlay: Exit 0', await run(fake, [ID, ...short]) === 0);
         verify('Without --overlay: no overlay line in the report', overlayLine() === '', overlayLine());
-        // No watch and no devCommand: exit 2 with the command, never silently the server.
-        verify('Without watch: Exit 2', await run(fake, [ID, ...short, '--overlay', 'dev']) === 2);
-        const missing = JSON.stringify(newestRun().result);
-        verify('Without watch: result names sencha app watch', /sencha app watch/.test(missing), missing.slice(0, 300));
-        // With devCommand caw starts the watch itself; a stand-in, since bootstrap.json is already in place.
+        // The local code server is a stand-in for the Sencha watch: e2e/fake-watch.mjs serves the app folder over HTTP on a free
+        // port, given as overlay.url. Nothing depends on a real Sencha watch on this machine (another project's watch on 1841 is
+        // never this app's: its app.json names another app).
+        const port = await freePort();
+        const url = `http://127.0.0.1:${port}/`;
         const marker = join(fake, '.caw/watch-proxy.txt');
+        const start = `node ../fake-watch.mjs ${port} .caw/watch-proxy.txt`;
+        // Nothing listens there: exit 2 overlay-not-ready naming the address and the start command; caw starts nothing itself.
         rmSync(marker, { force: true });
-        const undo = withOverlay({ devCommand: `node -e "require('fs').writeFileSync('.caw/watch-proxy.txt', String(process.pid)); setInterval(() => {}, 1000)"` });
+        const undoDown = withOverlay({ url, start });
         try {
-            const code = await run(fake, [ID, ...short, '--overlay', 'dev']);
-            verify('With devCommand: Exit 0', code === 0, String(code));
+            verify('Server down: Exit 2', await run(fake, [ID, ...short, '--overlay']) === 2);
+            const { result } = newestRun();
+            verify('Server down: overlay-not-ready with address and start command',
+                result.code === 'overlay-not-ready' && (result.reason ?? '').includes(url) && (result.reason ?? '').includes(start), JSON.stringify(result).slice(0, 400));
+            verify('Server down: caw started nothing without --start', !existsSync(marker));
+        } finally {
+            undoDown();
+        }
+        // Another app's watch at the address: not this app's code, exit 2, never silently its code or the deployed build.
+        const other = mkdtempSync(join(tmpdir(), 'caw-e2e-other-watch-'));
+        writeFileSync(join(other, 'app.json'), JSON.stringify({ name: 'andere' }));
+        writeFileSync(join(other, 'bootstrap.json'), JSON.stringify({ loadOrder: [{ path: 'app.json' }] }));
+        const otherWatch = await serveFolder(other);
+        const undoOther = withOverlay({ url: otherWatch.url, start });
+        try {
+            verify('Another app at the address: Exit 2', await run(fake, [ID, ...short, '--overlay']) === 2);
+            const { result } = newestRun();
+            verify('Another app at the address: overlay-not-ready naming the other app',
+                result.code === 'overlay-not-ready' && /liefert die App andere, nicht bestellung/.test(result.reason ?? ''), JSON.stringify(result).slice(0, 400));
+        } finally {
+            undoOther();
+            await otherWatch.close();
+            rmSync(other, { recursive: true, force: true });
+        }
+        // With --start caw runs overlay.start itself (CI), waits until the server serves this app and stops it at the end.
+        rmSync(marker, { force: true });
+        const undo = withOverlay({ url, start });
+        try {
+            const code = await run(fake, [ID, ...short, '--overlay', '--start']);
+            verify('With --start: Exit 0', code === 0, String(code));
             const line = overlayLine();
             const local = Number((line.match(/(\d+) Datei\(en\) lokal/) ?? [0, 0])[1]);
-            verify('Report: Sencha watch, app statics and package local', /Sencha-Watch/.test(line) && local >= 2, line);
-            verify('Watch was started', existsSync(marker));
+            verify('Report: Sencha watch at its address, app statics and package local', line.includes(`Sencha-Watch ${url}`) && local >= 2, line);
+            verify('Local code server was started', existsSync(marker));
             // Stopped afterwards: the stand-in process is no longer alive.
             const pid = existsSync(marker) ? Number(readFileSync(marker, 'utf8')) : 0;
             const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
             const until = Date.now() + 10000;
             while (pid > 0 && alive() && Date.now() < until) await new Promise((ok) => { setTimeout(ok, 200); });
-            verify('Watch stopped after the run', pid > 0 && !alive(), String(pid));
+            verify('Local code server stopped after the run', pid > 0 && !alive(), String(pid));
         } finally {
             undo();
             rmSync(marker, { force: true });
         }
         // Without assetUrlPattern the package comes through the DataProxy from the server: a mixed state, exit 2 with the pattern.
-        const undoWatch = withOverlay({ devCommand: 'node -e "setInterval(() => {}, 1000)"' });
+        const watch = await serveFolder(fake);
+        const undoWatch = withOverlay({ url: watch.url });
         const config = JSON.parse(readFileSync(mainConfig, 'utf8'));
         const pattern = config.assetUrlPattern;
         delete config.assetUrlPattern;
         writeFileSync(mainConfig, JSON.stringify(config, null, 4));
         try {
-            const code = await run(fake, [ID, ...short, '--overlay', 'dev']);
+            const code = await run(fake, [ID, ...short, '--overlay']);
             verify('Without assetUrlPattern: Exit 2', code === 2, String(code));
             const { result } = newestRun();
             verify('Without assetUrlPattern: overlay-incomplete', result.code === 'overlay-incomplete', JSON.stringify(result).slice(0, 300));
@@ -1311,6 +1354,7 @@ ${finishOf(['S2'])}`;
             restored.assetUrlPattern = pattern;
             writeFileSync(mainConfig, JSON.stringify(restored, null, 4));
             undoWatch();
+            await watch.close();
         }
     });
 } catch (error) {

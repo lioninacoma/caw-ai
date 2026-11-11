@@ -1,8 +1,9 @@
 // Framework matrix: React (Vite and webpack), Vue, Angular (zoneless and Zone.js), Next.js and Nuxt. Per variant: the dev server as
 // the environment (dev), the production build behind HTTPS (deployed) and the overlay over the deployed version: without the option
 // it stays the deployed version despite a running watch (no-option), --overlay build with a different chunk split (React, webpack),
-// caw builds itself (buildCommand), exit 2 without a build or with a stale build, --overlay dev with devCommand, exit 2 without a dev
-// server, and for Next and Nuxt exit 2 because of SSR.
+// caw builds itself with overlay.start and --start, exit 2 without a build or with a stale build, --overlay dev --start with
+// overlay.url and overlay.start, exit 2 without a dev server (caw starts nothing without --start), and for Next and Nuxt exit 2
+// because of SSR.
 // Claude is never started: the recordings are written by hand in project.mjs.
 //   node e2e/frameworks/matrix.mjs [filter]       e.g. "react" or "angular-zone/dev"
 // Requires: npm install in every project, Chrome. Results in e2e/frameworks/result/.
@@ -206,16 +207,17 @@ for (const app of APPS) {
         });
 
         await scenario(`${app.name}/overlay-build-command`, async () => {
-            // No local build: with buildCommand caw builds once itself; without it the run ends with exit 2, as with a stale build.
+            // No local build: with overlay.start and --start caw builds once itself; without them the run ends with exit 2, as with a
+            // stale build.
             await serveDeployed();
             rmSync(join(root, localDir.split('/')[0]), { recursive: true, force: true });
             writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'local', overlay: overlay() });
             const missing = cawRun(root, 'smoke', ['--overlay', 'build']);
-            record(`${app.name}/build-missing`, 'smoke', expectEnvError(/holds no build|buildCommand/), missing, envHint(missing));
-            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'local', overlay: overlay({ buildCommand: commandOf(buildOnce) }) });
-            const built = cawRun(root, 'smoke', ['--overlay', 'build'], buildOnce[2]);
+            record(`${app.name}/build-missing`, 'smoke', expectEnvError(/holds no build|overlay\.start/), missing, envHint(missing));
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'local', overlay: overlay({ start: commandOf(buildOnce) }) });
+            const built = cawRun(root, 'smoke', ['--overlay', 'build', '--start'], buildOnce[2]);
             record(`${app.name}/overlay-build-command`, 'smoke', (run) => passes(run) && /Building with/.test(run.output), built);
-            // A source changed after the build, without buildCommand: the build is stale.
+            // A source changed after the build, without overlay.start: the build is stale.
             const source = ['src/main.tsx', 'src/main.ts', 'index.html'].map((file) => join(root, file)).find(existsSync);
             const now = new Date();
             utimesSync(source, now, now);
@@ -225,16 +227,16 @@ for (const app of APPS) {
         });
 
         await scenario(`${app.name}/overlay-dev`, async () => {
-            // The dev server as the source over the deployed environment: caw starts it with devCommand and stops it at the end.
+            // The dev server as the source over the deployed environment: with --start caw runs overlay.start and stops it at the end.
             await serveDeployed();
             const dev = `http://localhost:${app.devPort}`;
-            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'dev', overlay: { dev, devCommand: commandOf(app.dev) } });
-            const smoke = cawRun(root, 'smoke', ['--overlay', 'dev']);
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'dev', overlay: { url: dev, start: commandOf(app.dev) } });
+            const smoke = cawRun(root, 'smoke', ['--overlay', 'dev', '--start']);
             record(`${app.name}/overlay-dev`, 'smoke', (run) => passes(run) && /starting/.test(run.output), smoke, swapped(smoke));
-            // Afterwards it no longer runs, and without devCommand the run ends with exit 2.
-            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'dev', overlay: { dev } });
+            // Afterwards it no longer runs, and without --start the run ends with exit 2 naming overlay.start; caw starts nothing.
+            writeProject(root, { framework: app.framework, embed: app.embed === true, url: deployedUrl, build: 'dev', overlay: { url: dev, start: commandOf(app.dev) } });
             const down = cawRun(root, 'smoke', ['--overlay', 'dev']);
-            record(`${app.name}/dev-server-down`, 'smoke', expectEnvError(/doesn't answer/), down, envHint(down));
+            record(`${app.name}/dev-server-down`, 'smoke', expectEnvError(/doesn't answer[\s\S]*--start/), down, envHint(down));
         });
     }
 
@@ -248,7 +250,7 @@ for (const app of APPS) {
             await waitFor(`https://127.0.0.1:${app.deployPort}/login`);
             start(`${app.name}-dev`, root, ...app.dev);
             if (!await waitFor(`http://127.0.0.1:${app.devPort}/login`, 180_000)) throw new Error('dev server does not come up');
-            writeProject(root, { framework: app.framework, url: deployedUrl, build: 'dev', overlay: { dev: `http://127.0.0.1:${app.devPort}` } });
+            writeProject(root, { framework: app.framework, url: deployedUrl, build: 'dev', overlay: { url: `http://127.0.0.1:${app.devPort}` } });
             const run = cawRun(root, 'smoke', ['--overlay', 'dev']);
             record(`${app.name}/overlay-ssr`, 'smoke', expectEnvError(/server-side rendered/), run, envHint(run));
         });

@@ -43,13 +43,13 @@ In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` gre
 | `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben | nein |
 | `caw_validate` | `validate` als Daten: Config-Befunde, je Test Probleme, Hinweise und Code je Ziel | nein |
 | `caw_list` | `list` als Daten: je Test App, Rolle, Ziele, ob er schreibt, Aufnahmestand je Schritt | nein |
-| `caw_overlay_check` | `overlay check` (optional `apply`), wartet bis zu 3 Minuten und liefert das Ergebnis | nein |
-| `caw_start` | startet `run`, `record`, `fix` oder `open` mit `--agent session`: Felder `test`, `target`, `step`, `until`, `overlay`, `headless` (oder `args`). Mit `overlay` und ohne laufenden Watch kommt der Befehl für dich zurück, statt zu starten | nur deine Session |
+| `caw_overlay` | `action: status`: Ist der lokale Code-Server bereit (`ready`, `moved`, `down`, `wrong-app`, `stale`), mit `url`, `start` und `appDir`, schnell und ohne Browser; `check` und `apply`: `overlay check` (mit `--apply`), wartet bis zu 3 Minuten | nein |
+| `caw_start` | startet `run`, `record`, `fix` oder `open` mit `--agent session`: Felder `test`, `target`, `step`, `until`, `overlay`, `headless` (oder `args`). Mit `overlay` prüft es zuerst den lokalen Code-Server: Ist er nicht bereit, kommen `state`, `url`, `start` und `appDir` zurück, statt zu starten; die Session fragt dich, startet `start` im Hintergrund und fragt `caw_overlay` status ab. Auf einem anderen Port (`moved`) startet es gegen die gefundene URL | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet, die letzten Zeilen der Ausgabe (`.caw/session-*.log`) und als Daten der letzte Lauf: Ergebnis, letzter Schritt, Artefakte (Bericht, Trace, Logs) | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …), wie im Skill beschrieben | im Lauf |
 | `caw_selection` | das Element, das du beim Entwickeln in der Werkbank mit dem Fadenkreuz gewählt hast | nein |
 
-Die Daten-Werkzeuge liefern einen kurzen Text und dasselbe Ergebnis als `structuredContent` (JSON). Keins schreibt auf den MCP-Kanal oder fragt auf stdin; `explore`, `overlay check` und Läufe laufen als eigene Prozesse.
+Die Daten-Werkzeuge liefern einen kurzen Text und dasselbe Ergebnis als `structuredContent` (JSON). Keins schreibt auf den MCP-Kanal oder fragt auf stdin; `explore`, `overlay check` und Läufe laufen als eigene Prozesse. caw startet deinen lokalen Code-Server nie aus der Session; das macht Claude in seiner eigenen Session, nachdem es dich gefragt hat, außer die Regeln deines Projekts (etwa `CLAUDE.md`) sagen etwas anderes.
 
 Du schreibst also in deiner Session „nimm einen Test für die Bestellung auf“ oder „bring mich zu S4 von bestellung“, und der Skill erledigt den Rest. Startest du den Lauf selbst im Terminal mit `--agent session`, zeigt der Chat, dass er auf die Session wartet; schreib ihr dann „übernimm den caw-Lauf“ (sie findet ihn mit `caw_status`).
 
@@ -139,7 +139,7 @@ Ein Lauf mit Claude, also beim Aufnehmen und Beheben, macht Folgendes:
 
 1. **Abweisen, was nicht laufen darf:** Config, Testdatei, Ziel und Schreibschutz werden geprüft. Beim Agenten `local` dazu, ob Claude Code da ist.
 2. **Image** (nur `docker`): Einmal bauen, aus dem Image des Projekts plus Claude und dem Container-Teil des Tools. Neu gebaut wird nur nach Änderungen daran.
-3. **Öffnen:** mit `--overlay` die Quelle bereitmachen (Dev-Server, Build, Sencha-Watch), Chrome starten, anmelden, Seite öffnen; mit `--overlay` nach dem ersten Laden prüfen, ob lokaler Code ankam. Fehler hier ergeben `error`, ohne dass Tokens anfallen.
+3. **Öffnen:** mit `--overlay` die Quelle prüfen (lokaler Code-Server unter `overlay.url`, Build, Sencha-Watch; gestartet nur mit `--start`), Chrome starten, anmelden, Seite öffnen; mit `--overlay` nach dem ersten Laden prüfen, ob lokaler Code ankam. Fehler hier ergeben `error`, ohne dass Tokens anfallen.
 4. **Claude starten:** Bei `local` startet `claude -p` auf deinem Rechner mit den gesperrten Werkzeugen (siehe [Sandbox-Grenzen](#sandbox-grenzen)), bei `session` wartet der Lauf auf deine Session. Bei `docker` startet der Container (`docker run --rm`): Firewall setzen, danach gibt der Container alle Rechte ab. Ist die Sandbox nicht nachweislich dicht, läuft Claude nicht.
 5. **Testen:** `claude -p` arbeitet den Plan ab, jeder Browserbefehl geht als Datei über den Kanal an den Host. Das Urteil prüft der Host.
 6. **Abschließen:** Mit dem Urteil endet Claude sofort (Prozess bzw. Container). Bericht, Trace und `floats.log` (Klicks und, bei `extjs`, die Reihenfolge der schwebenden Fenster mit Zeiten, ohne Inhalte) liegen unter `.caw/runs/<lauf>/`. Der Trace (`trace.zip`) enthält Seiteninhalte, Requests und Cookies des Testkontos; gib ihn nicht weiter. Bei `auth.type: basic` zeichnet er keine Snapshots auf, damit das Passwort aus dem Authorization-Header nicht darin landet. Eine erneute Anmeldung im Lauf (Zustand herstellen) unterbricht den Trace: Der Teil davor bleibt als `trace-1.zip`, `trace-2.zip` …, und in keinem steht ein Anmeldeformular oder -Request; Screenshots und `claude.log` unter `agent/`. Das Log entsteht laufend und zeigt Claudes Text und Befehle mit den Sekunden seit dem Start; dieselben Zeilen laufen im Terminal mit. Eine Schlusszusammenfassung nach dem Urteil fehlt darin. Im Terminal ist die Ausgabe farbig, die Datei bleibt ohne Farbcodes; `NO_COLOR=1` schaltet Farben ab. Chrome verschwindet ebenfalls.
@@ -370,9 +370,11 @@ Im Terminal zeigt das Tool Farben, Symbole und am Ende einen Ergebnisblock mit j
 
 ## Wie der lokale Code in die Anwendung kommt
 
-Wann lokaler Code läuft, was du einträgst und wie Build-Ordner und Dev-Server in die Seite kommen: [Konfiguration › Lokalen Code testen](configuration.de.md#lokalen-code-testen). Dieser Abschnitt behandelt ExtJS (Sencha).
+Wann lokaler Code läuft, was du einträgst und wie Build-Ordner und Dev-Server in die Seite kommen: [Konfiguration › Lokalen Code testen](configuration.de.md#lokalen-code-testen). Dieser Abschnitt behandelt das gemeinsame Modell, ExtJS (Sencha) und die Reihenfolge beim Einrichten.
 
-Mit `"framework": "extjs"` nimmt `--overlay` (oder `--overlay dev`) den lokalen Code vom Sencha-Watch. Die ExtJS-App wird in einer ausgelieferten Seite unter ihren Build-Namen geladen; caw beantwortet diese Requests mit den Quellen, die `bootstrap.json` im App-Ordner nennt, in ihrer Reihenfolge. Die App braucht keinen Eintrag `overlay`; optional sind `statics` und `devCommand`. `--overlay build` und `--overlay <adresse>` werden abgelehnt (Exit 3).
+Für jedes Framework gilt dasselbe Modell: Der **lokale Code-Server** deines Projekts läuft unter `overlay.url`, gestartet mit dem eigenen Befehl deines Projekts `overlay.start`. caw startet nichts selbst (nur mit `--start`, für CI); es prüft den Server, nimmt den Code von dort und nennt `start`, wenn er nicht läuft.
+
+Mit `"framework": "extjs"` nimmt `--overlay` (oder `--overlay dev`) den lokalen Code vom Webserver des Sencha-Watch, `overlay.url`, standardmäßig `http://localhost:1841/`. `--overlay http://localhost:1842/` ersetzt ihn für einen Lauf. Die ExtJS-App wird in einer ausgelieferten Seite unter ihren Build-Namen geladen; caw beantwortet diese Requests mit den Quellen, die `bootstrap.json` des Watch nennt, in ihrer Reihenfolge. Optional an der App: `start` (etwa `"pnpm run watch"`) und `statics`. `--overlay build` wird abgelehnt (Exit 3).
 
 **Build-Namen.** caw leitet sie ab, wie Sencha Cmd baut:
 
@@ -381,16 +383,24 @@ Mit `"framework": "extjs"` nimmt `--overlay` (oder `--overlay dev`) den lokalen 
 
 Ein Request passt über den letzten Teil seines Pfads; der Ordner davor ist der Ablageort im Portal. Der Name kommt aus dem Pfad unterhalb der Umgebungs-URL oder aus Gruppe 1 von `assetUrlPattern`. Pakete des Frameworks (`ext/`, `node_modules/@sencha/`) werden nie ersetzt, Ext JS selbst kommt also immer vom Server. Passt ein Name zu zwei Teilen oder lädt die Seite zwei Dateien mit demselben Build-Namen, endet der Lauf mit Exit 2 (`overlay-ambiguous`) und nennt beide; gib einer App einen eigenen `output.js.path`.
 
-**Der Watch.** Der Sencha-Watch schreibt `bootstrap.json` in den App-Ordner. Der Host liest sie und die Quellen direkt aus dem Projektordner, bei jedem Request neu, ohne Netz zum Watch.
+**Der Watch.** caw liest `bootstrap.json` und jede Quelle, die sie nennt, per HTTP vom Watch unter `url` (Pfade mit `../` relativ dazu aufgelöst), `bootstrap.json` einmal je Laden der Seite. Die Build-Namen kommen weiter aus `app.json` und `.sencha/app/*.properties` im Projektordner. Der Watch darf also laufen, wo sein Port erreichbar ist, etwa in einem Devcontainer mit weitergeleitetem Port.
 
-- **Kein Watch aktiv:** Mit `devCommand` (etwa `"sencha app watch"`) startet caw ihn im App-Ordner, wartet bis zu 180 s, bis `bootstrap.json` zu den Dateien passt, schreibt die Ausgabe nach `.caw/<app>-watch.log` und beendet ihn am Ende. Ohne `devCommand` endet der Lauf mit Exit 2 (`watch-missing`) und nennt den Befehl.
+- **Der Watch dieser App:** Vor dem Browser fragt caw `<url>app.json` und `<url>bootstrap.json` an. Der Name muss zum lokalen `app.json` passen, die Ladereihenfolge darf nicht leer sein. Der Watch eines anderen Projekts auf demselben Port ist `wrong-app` (Exit 2, `overlay-not-ready`) und wird nie still verwendet.
+- **Zufälliger Port:** War 1841 belegt, nimmt der Sencha-Watch einen anderen Port. caw sieht sich die laufenden Watch-Prozesse an, fragt ihre offenen Ports ab und nimmt den, der diese App ausliefert (`moved`), mit dem Hinweis, `apps.<app>.overlay.url` anzupassen.
+- **Kein Watch aktiv:** Exit 2 (`overlay-not-ready`) mit `start` und App-Ordner. Mit `--start` führt caw `start` im App-Ordner aus, wartet bis zu 180 s, bis der Watch diese App ausliefert, schreibt die Ausgabe nach `.caw/<app>-watch.log` und beendet ihn am Ende.
 - **Geänderte Dateien kommen beim nächsten Laden an.** Neue Klassen stehen erst in `bootstrap.json`, wenn der Watch gebaut hat.
-- **`bootstrap.json` fehlt, ist leer oder nennt Dateien, die es nicht mehr gibt:** Exit 2 (`watch-missing`, `watch-stale`).
-- **`node_modules` muss im Projektordner liegen.** Liegt es in einem benannten Volume des Devcontainers, sieht der Host es nicht und meldet `watch-stale`.
+- **`bootstrap.json` fehlt, ist leer oder nennt eine Datei, die der Watch nicht ausliefert:** Exit 2 (`overlay-stale`). Warten, bis der Watch gebaut hat, oder ihn neu starten.
 
 **Vollständigkeit.** Nach dem ersten Laden vergleicht caw die Skript-Requests der Seite mit den Teilen aus `bootstrap.json` (App und eigene Pakete). Einen Teil erkennt es an seinem Dateinamen irgendwo in der URL, im Pfad oder in einem Parameterwert wie `/o/FormProxyServlet?url=…/Root/…/x.js`, unabhängig von `assetUrlPattern`. Kam ein Teil vom Server, endet der Lauf mit Exit 2 (`overlay-incomplete`): Die Seite liefe teils mit deinem Code, teils mit dem ausgelieferten, und das zeigt sich als Fehler fern der Ursache (`$jscomp is not defined`, ein kaputtes Grid). Die Meldung nennt die Teile, bis zu fünf URLs und das `assetUrlPattern`, das sie abfängt. Ein Teil, der nie angefragt wurde, ist nur ein Hinweis: Vielleicht lädt die App ihn später.
 
-Das Overlay für ExtJS richtest du in dieser Reihenfolge ein: `sencha app watch` selbst im App-Ordner starten, dann `npx caw-ai overlay check`, bis es vollständig meldet (`--apply` trägt vorgeschlagene Muster ein). `doctor` zeigt Watch, `bootstrap.json` und die letzte Prüfung je Teil.
+Das Overlay richtest du in dieser Reihenfolge ein:
+
+1. `overlay.url` und `overlay.start` an der App eintragen (`init` schreibt bei ExtJS den Standard `http://localhost:1841/`; der Skill leitet beides aus `vite.config`, `angular.json`, den Skripten in `package.json` oder der README ab).
+2. Den Server selbst mit `start` im App-Ordner starten oder deine Claude-Code-Session das tun lassen (sie fragt vorher und startet ihn im Hintergrund).
+3. `npx caw-ai overlay status`, bis es `ready` meldet (`moved`: `url` auf die genannte Adresse setzen).
+4. `npx caw-ai overlay check`, bis es vollständig meldet (`--apply` trägt vorgeschlagene Muster ein).
+
+`doctor` zeigt Server, `bootstrap.json` und die letzte Prüfung je Teil.
 
 ## Framework: `web`, `react`, `vue`, `angular` oder `extjs`
 

@@ -141,7 +141,7 @@ Pflicht. Meist eine App; Monorepos können mehrere nennen.
 |---|---|
 | `dir` | App-Ordner relativ zum Projekt, `.` für eine einzelne App. |
 | `startUrl` | Pfad, an dem Tests beginnen. Nur für Apps, in denen ein Test startet. |
-| `overlay` | Woher `--overlay` den lokalen Code der App nimmt: Build-Ordner, Dev-Server, die Befehle für beide, feste Dateien. Siehe [Lokalen Code testen](#lokalen-code-testen). |
+| `overlay` | Woher `--overlay` den lokalen Code der App nimmt: lokaler Code-Server (`url`) und sein Startbefehl (`start`), Build-Ordner, feste Dateien. Siehe [Lokalen Code testen](#lokalen-code-testen). |
 
 ## Lokalen Code testen
 
@@ -157,6 +157,7 @@ Code: ausgelieferter Stand
 Code: Dev-Server localhost:5173, dein aktueller Stand
 Code: Overlay, Build dist, gebaut 14:02, vor 3 min
 Code: Overlay, Dev-Server http://localhost:5173
+Code: Overlay, Sencha-Watch http://localhost:1841/
 ```
 
 ### Dein Dev-Server als Umgebung
@@ -175,7 +176,7 @@ Gegen deinen lokalen Dev-Server testest du ohne Option. Der Dev-Server ist eine 
 
 Für Apps, die nur in einer ausgelieferten Umgebung funktionieren, etwa in einem Portal oder einer Shell, oder mit einem Backend, das es nur auf Staging gibt. Seite, API, Cookies und Anmeldung bleiben die der Umgebung; nur der Code der App kommt von deinem Rechner.
 
-Dafür braucht die Umgebung `"overlay": true` und die App eine Quelle:
+Dafür braucht die Umgebung `"overlay": true` und die App eine Quelle. Ein Modell für jedes Framework: der **lokale Code-Server** deines Projekts unter `url`, gestartet mit dem eigenen Befehl deines Projekts `start`:
 
 ```json
 "environments": {
@@ -186,10 +187,8 @@ Dafür braucht die Umgebung `"overlay": true` und die App eine Quelle:
     "dir": ".",
     "startUrl": "/",
     "overlay": {
-      "build": "dist",
-      "dev": "http://localhost:5173",
-      "buildCommand": "npm run build",
-      "devCommand": "npm run dev -- --port 5173 --strictPort",
+      "url": "http://localhost:5173",
+      "start": "npm run dev",
       "statics": [{ "name": "Fx/Static.js", "path": "static.js" }]
     }
   }
@@ -198,37 +197,36 @@ Dafür braucht die Umgebung `"overlay": true` und die App eine Quelle:
 
 | Feld in `overlay` | |
 |---|---|
-| `build` | Build-Ordner relativ zum Projekt, z. B. `"dist"` oder `"dist/app/browser"`. |
-| `dev` | Adresse des Dev-Servers, z. B. `"http://localhost:5173"`. |
-| `buildCommand` | Einmaliger Build, etwa `"npm run build"`, kein `--watch`. Braucht `build`. |
-| `devCommand` | Startet den Dev-Server, etwa `"npm run dev -- --port 5173 --strictPort"`. Braucht `dev`. |
+| `url` | Adresse des lokalen Code-Servers: Dev-Server (Vite, `ng serve`, webpack) oder Sencha-Watch, z. B. `"http://localhost:5173"`. Standard bei ExtJS: `"http://localhost:1841/"`. |
+| `start` | Der Befehl deines Projekts, der den Server startet oder baut, ausgeführt im App-Ordner, z. B. `"npm run dev"`, `"pnpm run watch"`, `"npm run build"`. caw nennt ihn, wenn der Server nicht läuft; ausführen tut es ihn nur mit `--start`. |
+| `build` | Build-Ordner relativ zum Projekt, z. B. `"dist"` oder `"dist/app/browser"`, für Apps ohne Server: caw liefert ihn selbst aus. Nicht bei ExtJS. |
 | `statics` | Feste Namen, bei jedem Laden frisch von der Platte: `name` ist der Name im Request, `path` die Datei relativ zum App-Ordner. Für jedes Framework und jede Quelle. |
 | `assetUrlPattern` | Weitere Muster nur für diese App, zusätzlich zum `assetUrlPattern` oben: für eine App, deren Dateien von anderswo kommen. Text oder Liste. |
 
-Unbekannte Felder sind ein Fehler. Von `build` und `dev` reicht eins.
+Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins. Frühere Namen gelten weiter, `validate` gibt einen Hinweis: `dev` ist `url`, `devCommand` und `buildCommand` sind `start`. Alter und neuer Name zugleich sind ein Fehler.
 
 | Aufruf | Quelle |
 |---|---|
-| `--overlay` | Die eine konfigurierte Quelle. Hat die App `build` und `dev`, bricht der Aufruf ab (Exit 3) und lässt dich wählen. |
-| `--overlay build` | Der Build-Ordner. |
-| `--overlay dev` | Der Dev-Server. |
-| `--overlay http://localhost:5174` | Der Dev-Server unter dieser Adresse. Geht vor der Config, braucht kein `overlay` an der App. Nur für einen Test mit einer App (mit `also` Exit 3), nicht bei ExtJS (Exit 3). |
+| `--overlay` | Die eine konfigurierte Quelle. Hat die App `build` und `url`, bricht der Aufruf ab (Exit 3) und lässt dich wählen. |
+| `--overlay build` | Der Build-Ordner. Nicht bei ExtJS. |
+| `--overlay dev` | Der Server unter `url`. |
+| `--overlay http://localhost:5174` | Der Server unter dieser Adresse. Geht vor `url`, braucht kein `overlay` an der App. Nur für einen Test mit einer App (mit `also` Exit 3). |
 
 `--overlay` gibt es bei `run`, `record`, `fix` und `open`. Abgelehnt wird es (Exit 3) mit Grund auf einer Umgebung ohne `"overlay": true`, auf einer Umgebung, die selbst ein Dev-Server auf deinem Rechner ist, und für eine App ohne Quelle. Apps aus `also` nehmen ihre eigene Quelle; ohne eine bleiben sie ausgeliefert.
 
-**caw startet und baut selbst**, wie `webServer` bei Playwright. Bevor Chrome startet:
+**caw startet nichts selbst.** Bevor Chrome startet, prüft es die Quelle:
 
-- **Dev-Server** antwortet nicht: Mit `devCommand` startet caw ihn im App-Ordner und wartet bis zu 60 s. Die Ausgabe steht in `.caw/<app>-dev-server.log`. Am Ende des Laufs beendet caw den ganzen Prozessbaum; bei `open` und `--until`, wenn du das Fenster schließt.
-- **Build** fehlt oder ist älter als die jüngste Quelldatei der App: Mit `buildCommand` baut caw einmal im App-Ordner (Ausgabe in `.caw/<app>-build.log`) und prüft erneut. Nicht als Quelle zählen: `node_modules`, der Build-Ordner, Ordner mit Punkt, übliche Build-Ordner (`dist`, `build`, `out`, `coverage`, …), `caw/`, Markdown-Dateien und `caw.config.json`; angesehen werden höchstens 5000 Dateien.
-- Sonst endet der Lauf mit Exit 2, dem Grund und dem Befehl, der es behebt.
+- **Server** unter `url` antwortet nicht: Exit 2 (`overlay-not-ready`) mit Adresse und `start`: `Der lokale Code-Server http://localhost:5173 antwortet nicht. Starte npm run dev in . oder starte den Lauf mit --start …`. Starte ihn selbst oder lass Claude ihn in seiner Session starten (es fragt vorher).
+- **Build** fehlt oder ist älter als die jüngste Quelldatei der App: Exit 2 mit `start`. Nicht als Quelle zählen: `node_modules`, der Build-Ordner, Ordner mit Punkt, übliche Build-Ordner (`dist`, `build`, `out`, `coverage`, …), `caw/`, Markdown-Dateien und `caw.config.json`; angesehen werden höchstens 5000 Dateien.
+- `npx caw-ai overlay status` zeigt dasselbe ohne Browser: `ready`, `moved`, `down`, `wrong-app` oder `stale`.
 
-caw nennt jede Aktion, etwa `Der Dev-Server http://localhost:5173 läuft nicht, starte npm run dev -- --port 5173 --strictPort …`. Die Quelle wechselt nie: Ein gescheiterter Build weicht nicht auf den Dev-Server oder den ausgelieferten Stand aus.
+**`--start`** (bei `run`, `record`, `fix`, `open` und `overlay check`, nur zusammen mit `--overlay`) ist für CI und Skripte, wie `webServer` bei Playwright: caw führt `start` im App-Ordner aus, wenn der Server nicht antwortet, wartet bis zu 60 s (Sencha-Watch: 180 s, bis er diese App ausliefert), schreibt die Ausgabe nach `.caw/<app>-dev-server.log` oder `.caw/<app>-watch.log` und beendet am Ende des Laufs den ganzen Prozessbaum; bei `open` und `--until`, wenn du das Fenster schließt. Mit `build` führt es `start` einmal aus (`.caw/<app>-build.log`) und prüft erneut. Die Quelle wechselt nie: Ein gescheiterter Build weicht nicht auf den Dev-Server oder den ausgelieferten Stand aus.
 
 **Wie der lokale Code in die Seite kommt:**
 
-- **Seiten:** Jede HTML-Seite der App kommt vom Server. caw tauscht darin die Code-Tags der App gegen die der lokalen Seite: bei `build` die Seite im Build-Ordner mit den meisten Treffern, bei `dev` das HTML des Dev-Servers unter demselben Pfad. Die neuen Tags stehen an der Stelle der alten und tragen die CSP-Nonce der Seite; `integrity` fällt weg. Inline-Skripte, Projektkopien (etwa `public/env.js`: Die Umgebung setzt sie, sie bleibt vom Server) und Skripte fremder Origins bleiben. Kein Tausch auf Seiten ohne Tags der App (Anmeldeseite), auf serverseitig gerenderten Seiten und wenn der Build einen anderen Basispfad hat (eine Warnung sagt es); dann kommen nur einzelne Requests aus dem lokalen Code.
+- **Seiten:** Jede HTML-Seite der App kommt vom Server. caw tauscht darin die Code-Tags der App gegen die der lokalen Seite: bei `build` die Seite im Build-Ordner mit den meisten Treffern, bei `url` das HTML des Dev-Servers unter demselben Pfad. Die neuen Tags stehen an der Stelle der alten und tragen die CSP-Nonce der Seite; `integrity` fällt weg. Inline-Skripte, Projektkopien (etwa `public/env.js`: Die Umgebung setzt sie, sie bleibt vom Server) und Skripte fremder Origins bleiben. Kein Tausch auf Seiten ohne Tags der App (Anmeldeseite), auf serverseitig gerenderten Seiten und wenn der Build einen anderen Basispfad hat (eine Warnung sagt es); dann kommen nur einzelne Requests aus dem lokalen Code.
 - **Requests bei `build`:** die Datei selbst oder die mit gleichem Namen bis auf den Hash. Ein Hash ist `name[-.]hash.endung` mit 6 bis 64 Zeichen aus `[A-Za-z0-9_-]`, darunter eine Ziffer oder ein Großbuchstabe. Seine Länge darf sich ändern (`assets/index-Bx81.js` → `assets/index-Q7f2kL9a.js`), und ein fester Name und einer mit Hash gelten als dieselbe Datei (`main.js` ↔ `main-A1B2C3D4.js`).
-- **Requests bei `dev`:** Code-Requests (Skripte, Stile, Schriften, Bilder, Module) gehen an den Dev-Server. Sein HMR-WebSocket wird durchgereicht, Hot Reload geht also auch in der ausgelieferten Seite.
+- **Requests bei `url`:** Code-Requests (Skripte, Stile, Schriften, Bilder, Module) gehen an den Dev-Server. Sein HMR-WebSocket wird durchgereicht, Hot Reload geht also auch in der ausgelieferten Seite.
 - **`statics`** werden zuerst beantwortet, bei jeder Quelle.
 - Alles Lokale geht mit `cache-control: no-store` raus; Service Worker sind im Testbrowser gesperrt. Der Name eines Requests ist sein Pfad unterhalb der Umgebungs-URL oder Gruppe 1 von `assetUrlPattern`.
 
@@ -245,7 +243,7 @@ caw nennt jede Aktion, etwa `Der Dev-Server http://localhost:5173 läuft nicht, 
 
 `report.md` nennt, was geschah: `Overlay: dist; 14 Datei(en) lokal, 2 Skript(e)/Stylesheet(s) vom Server; Seite getauscht: ja`.
 
-**ExtJS:** Mit `"framework": "extjs"` kommt der lokale Code vom Sencha-Watch. Die App braucht keinen Eintrag `overlay`, optional `statics` und `devCommand` (etwa `"sencha app watch"`, dann startet caw den Watch). `build`, `dev` und `buildCommand` sind dort Fehler; nimm `--overlay` oder `--overlay dev`. Einzelheiten: [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
+**ExtJS:** Mit `"framework": "extjs"` kommt der lokale Code vom Webserver des Sencha-Watch, standardmäßig `http://localhost:1841/`. `init` schreibt `"overlay": { "url": "http://localhost:1841/" }`; ergänze `start` mit dem Watch-Befehl deines Projekts (etwa `"pnpm run watch"` oder `"sencha app watch"`), optional `statics`. caw prüft, dass der Server unter `url` *diese* App ausliefert (Name aus `app.json`, `bootstrap.json` mit Ladereihenfolge). War der Port belegt, nimmt der Watch einen zufälligen: caw findet ihn unter den laufenden Watch-Prozessen, nutzt ihn und sagt dir, dass du `url` anpassen sollst. `build` und `buildCommand` sind dort Fehler. Einzelheiten: [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
 
 **Mehrere Quellen für Skripte.** Eine Seite kann ihren Code von mehr als einer Stelle laden. caw benennt jeden Request über den Pfad unterhalb der Umgebungs-URL und über jedes `assetUrlPattern`; der erste Name, den eine Quelle kennt, gilt. `assetUrlPattern` ist ein Text oder eine Liste, ein Muster je Quelle, Gruppe 1 der Dateiname. Ein Portal wie bei FA214 lädt das Theme über einen normalen Pfad (deckt der Standard ab) und App und Pakete über ein Proxy-Servlet:
 
@@ -256,7 +254,7 @@ caw nennt jede Aktion, etwa `Der Dev-Server http://localhost:5173 läuft nicht, 
 ]
 ```
 
-Von Hand schreiben musst du sie nicht: `npx caw-ai overlay check` lädt die App einmal, zeigt je Teil, ob er lokal oder ausgeliefert kam, und schlägt je fehlender Quelle ein Muster vor; `--apply` trägt sie ein. Das Overlay für ExtJS ist eingerichtet, wenn `overlay check` vollständig meldet. caw startet den Sencha-Watch nie selbst, außer die App hat `devCommand`.
+Von Hand schreiben musst du sie nicht: `npx caw-ai overlay check` lädt die App einmal, zeigt je Teil, ob er lokal oder ausgeliefert kam, und schlägt je fehlender Quelle ein Muster vor; `--apply` trägt sie ein. Das Overlay für ExtJS ist eingerichtet, wenn `overlay check` vollständig meldet. caw startet den Sencha-Watch nie selbst, nur mit `--start`.
 
 **`validate`** nennt den Code je Test und Ziel und wo `--overlay` ginge:
 

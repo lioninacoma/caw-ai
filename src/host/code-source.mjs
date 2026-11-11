@@ -73,7 +73,7 @@ const describeChoice = (config, name, choice, { root, now }) => {
         const built = root === undefined ? null : newestFile(join(root, choice.dir), { skipNames: new Set(['node_modules']) });
         text = built === null ? t('cli.code.build', { dir }) : t('cli.code.built', { dir, time: clock(built.mtimeMs), ago: ago(now - built.mtimeMs) });
     } else if (choice.kind === 'dev') text = t('cli.code.dev', { url: choice.url });
-    else if (choice.kind === 'watch') text = t('cli.code.watch', { dir: slash(config.apps[name].dir) });
+    else if (choice.kind === 'watch') text = t('cli.code.watch', { url: choice.url });
     else text = t('cli.code.files', { count: statics });
     if (choice.kind !== 'files' && statics > 0) text = t('cli.code.withStatics', { text, count: statics });
     return severalApps ? t('cli.code.ofApp', { text, app: name }) : text;
