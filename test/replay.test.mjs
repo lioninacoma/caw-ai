@@ -709,3 +709,11 @@ test('Claude at the browser: while developing it may operate on request, while a
     for (const action of ['check', 'remember', 'finish', 'upload', 'download']) assert.equal(consultAllowed('develop').has(action), false, action);
     assert.equal(consultAllowed('develop').has('advise'), true);
 });
+
+test('workbench chip: recording shows REC, replaying PLAY, open without steps PAUSE right away', async () => {
+    const { transportOf } = await import('../src/host/run.mjs');
+    assert.equal(transportOf(undefined), 'record', 'record, fix and rerecord replay nothing');
+    assert.equal(transportOf({ steps: [{ id: 'S1' }] }), 'play', 'run and check run');
+    assert.equal(transportOf({ steps: [{ id: 'S1' }], until: 'S1' }), 'play', '--until replays first');
+    assert.equal(transportOf({ steps: [] }), 'pause', 'open hands over at once');
+});

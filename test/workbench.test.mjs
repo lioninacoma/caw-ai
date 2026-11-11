@@ -17,6 +17,14 @@ test('workbench: without an own choice the step list collapses in narrow windows
     assert.match(workbenchHtml({ appUrl: 'about:blank', title: 't', prefs: { steps: 'closed' } }), /<body class="[^"]*fold-steps/);
 });
 
+test('workbench: the chip at the top right (REC, PLAY, PAUSE) is there but off without a run; recording pulses only without F10', () => {
+    const html = workbenchHtml({ appUrl: 'about:blank', title: 't', themes: [] });
+    assert.match(html, /<span id="transport" class="px-pill glow" role="img"><i><\/i><span><\/span><\/span><\/div><\/header>/, 'right of the pill');
+    assert.match(html, /#transport\{display:none;/, 'no chip without a run');
+    for (const [kind, color] of [['record', 'fail'], ['play', 'ok'], ['pause', 'warn']]) assert.ok(html.includes(`#transport[data-kind=${kind}]{--tc:var(--${color})}`), `${kind} in the theme colour`);
+    assert.match(html, /\.still \*,\.still \*::before,\.still \*::after\{animation:none!important/, 'F10 also stops the recording pulse');
+});
+
 test('workbench: the theme is embedded without css and cannot end a <script>', () => {
     const theme = { ...loadTheme('nacht'), css: 'body{x:1}', label: '</script><b>' };
     const html = workbenchHtml({ appUrl: 'about:blank', title: 't', theme, themes: [] });

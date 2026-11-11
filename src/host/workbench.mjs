@@ -275,13 +275,22 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 @media (max-width:859px){
 .panes{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "chat" "browser"}
 .pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh}.tools{margin-left:0}.tfields{grid-template-columns:minmax(0,1fr)}}
+/* Record, play, pause: a chip at the top right next to the status pill. The glyphs are drawn in CSS, the pixel font has no clean
+   circle, triangle or pause bars. Record pulses gently; F10 (.still) stops it. */
+#transport{display:none;color:var(--tc)}#transport.on{display:inline-flex}
+#transport[data-kind=record]{--tc:var(--fail)}#transport[data-kind=play]{--tc:var(--ok)}#transport[data-kind=pause]{--tc:var(--warn)}
+#transport i{flex:none;display:inline-block;width:12px;height:12px;background:var(--tc)}
+#transport[data-kind=record] i{clip-path:polygon(25% 0,75% 0,75% 12.5%,87.5% 12.5%,87.5% 25%,100% 25%,100% 75%,87.5% 75%,87.5% 87.5%,75% 87.5%,75% 100%,25% 100%,25% 87.5%,12.5% 87.5%,12.5% 75%,0 75%,0 25%,12.5% 25%,12.5% 12.5%,25% 12.5%);animation:caw-rec 1.6s steps(2,jump-none) infinite alternate}
+#transport[data-kind=play] i{clip-path:polygon(0 0,100% 50%,0 100%)}
+#transport[data-kind=pause] i{background:linear-gradient(90deg,var(--tc) 0 36%,transparent 36% 64%,var(--tc) 64%)}
+@keyframes caw-rec{from{opacity:1}to{opacity:.35}}
 .still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>${themeStyle(theme)}</head><body class="${classes}"><div class="pa crt-case"><div class="crt" id="bench">
 <div class="soloBar">${ravenLogo(theme, { size: 11, label: 'caw' })}<span id="soloTag" hidden>${esc(t('workbench.handedOver'))}</span><span id="soloState"></span><span id="soloUrl"></span><button class="solo-btn" type="button" data-states hidden><b>F1</b>${t('workbench.stateTitle')}</button><button class="solo-btn" type="button" data-solo><b>F8</b>${t('workbench.bench')}</button></div>
 <header class="top">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="id"><b class="glow">caw-ai <span class="cmd" id="cmd"></span> <span id="testName">${esc(test)}</span></b><span>${LONG_NAME}</span></div>
 <ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
-<div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinf" aria-hidden="true" hidden></span><span id="state" class="px-pill glow" role="status"></span></div></header>
+<div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinf" aria-hidden="true" hidden></span><span id="state" class="px-pill glow" role="status"></span><span id="transport" class="px-pill glow" role="img"><i></i><span></span></span></div></header>
 <main class="panes">
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${lg(t('workbench.steps'))}<button class="fold" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')} (F4)">◂</button><button class="strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')} (F4)"><b>▸</b>${t('workbench.steps').toUpperCase()} <span id="stripTally"></span></button>
 <div class="gauge" id="gauge" aria-hidden="true"></div><span id="tally" hidden></span><p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track" class="readable"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
@@ -362,6 +371,8 @@ for(const b of document.querySelectorAll('[data-tabkey]'))b.addEventListener('cl
 $('drawerClose').addEventListener('click',()=>{if(state.tab!==null)select(state.tab);});
 const setCount=(name,value,bad)=>{for(const node of document.querySelectorAll('[data-count='+name+']')){node.textContent=(bad===true?str(TH.bullets?.fail,'✖')+' ':'')+value;node.classList.toggle('bad',bad===true);}};
 let aborted=false;
+// What the run does, for the chip at the top right: record, play, pause or null (no chip). Set by the host.
+let transport=null;
 // What the chat currently wants: ask from the mood, plus its state (showing: the human is demonstrating).
 let asking=false,chatState=null;
 const stepsHintText=$('stepsHint').textContent;
@@ -396,6 +407,11 @@ const summarize=()=>{
   $('stateSpin').hidden=!(claudeWorks||cawWorks);$('stateSpin').classList.toggle('px-pill--claude',claudeWorks);
   $('browserState').textContent=browserText;$('browserState').className=tone;
   $('soloState').textContent=text;$('soloTag').hidden=!refreshOn;
+  // Record or play comes from the host; pausing (F9), cancelling and the handover show pause.
+  const mode=transport===null?null:aborted||chatState==='paused'||chatState==='pausing'||refreshOn?'pause':transport;
+  const chip=$('transport'),name=mode===null?'':mode[0].toUpperCase()+mode.slice(1);chip.classList.toggle('on',mode!==null);chip.dataset.kind=mode??'';
+  chip.querySelector('span').textContent=mode===null?'':T['workbench.page.transport'+name];
+  const word=mode===null?'':T['workbench.page.transport'+name+'Title'];chip.setAttribute('aria-label',word);chip.title=word;
 };
 // The host decides on refresh: after the hand-over reload the page without cache, during a running test not at all.
 let appUrl=$('app').src;$('url').textContent=$('soloUrl').textContent=appUrl;
@@ -683,6 +699,8 @@ window.workbench={
   chatState:(value)=>{chatState=typeof value==='string'?value:null;summarize();},
   // Application only, set by the host: automatically after the hand-over, again after a reload.
   solo:(on)=>showSolo(on===true),
+  // Record (Claude records or fixes), play (replay, check run, restoring a state) or pause; anything else hides the chip.
+  transport:(value)=>{transport=['record','play','pause'].includes(value)?value:null;summarize();},
   // The tests from which a state can be reached here; empty hides F1.
   states:(list)=>{STATES=Array.isArray(list)?list.filter((test)=>Array.isArray(test?.steps)&&test.steps.some((step)=>step.ok)):[];for(const b of document.querySelectorAll('[data-states]'))b.hidden=STATES.length===0;if(!stateDlg.hidden)renderStates();},
   // Refresh only works if the host allows it; otherwise the button is locked.
@@ -779,7 +797,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
     const view = frameView(page, frame);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // The host remembers what it has shown and restores it after a workbench reload.
-    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, solo: false, catalog: null };
+    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, catalog: null };
     // The host remembers solo view so it comes back after a workbench reload. The browser window stays untouched.
     bench.fullscreen = async (on) => {
         shown.solo = on;
@@ -819,6 +837,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             if (shown.mood !== null) await call('mood', shown.mood);
             if (shown.left !== null) await call('left', ...shown.left);
             if (shown.chatState !== null) await call('chatState', shown.chatState);
+            if (shown.transport !== null) await call('transport', shown.transport);
             // Solo view survives the reload; the window is still in that mode anyway.
             if (shown.solo) await call('solo', true);
             if (shown.catalog !== null) await call('states', shown.catalog);
@@ -920,6 +939,11 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
         chatState: (state) => {
             shown.chatState = state;
             return call('chatState', state);
+        },
+        /** The chip at the top right: 'record', 'play', 'pause' or null. Pausing (F9), cancelling and the handover show pause on their own. */
+        transport: (kind) => {
+            shown.transport = kind;
+            return call('transport', kind);
         },
         /** A message from the human arrived: the raven nods. */
         nod: () => call('nod'),

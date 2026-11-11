@@ -55,6 +55,11 @@ const TALK_READS = new Set([...ADVISE_READS, 'chat']);
 // While developing the window belongs to the human, who can ask Claude to operate it: click, fill, reproduce a bug.
 // Only on request (see skill); no test results from it, so there is no `check` or `remember` here.
 const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
+/**
+ * The chip at the top right of the workbench for a run: record while Claude records or fixes (no replay), play while replaying
+ * (run, check run, --until, restoring a state), pause for open: it replays nothing and hands over at once.
+ */
+export const transportOf = (replay) => (replay === undefined ? 'record' : replay.steps.length === 0 ? 'pause' : 'play');
 /** What Claude may do in the browser while advising, talking after a failure, or developing. */
 export const consultAllowed = (mode) => (mode === 'develop' ? DEVELOP_ACTS : mode === 'talk' ? TALK_READS : ADVISE_READS);
 const TALK_LOG = 'claude-gespraech.log';
@@ -337,6 +342,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         await session.workbench?.facts(factsOf(modeLabel));
+        await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
     } catch (error) {
         if (!(error instanceof CawError)) throw error;
@@ -868,6 +874,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 ui.note(line);
             } else if (typeof after.outcome === 'string') chat.notice(after.outcome);
         }
+        // The run is over: the chip at the top right shows pause.
+        await session.workbench?.transport?.('pause').catch(() => {});
         if (!developing) chat?.human.closed();
         // After the last decision the window does not just vanish: it stays open briefly, the human can close it.
         // Without a chat (CI, --no-chat, headless) nothing waits here.
@@ -879,6 +887,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             let phase = t('run.phase.handedOver');
             if (developing) phase = replay?.until !== undefined && verdict.status === 'pass' ? t('run.phase.developIn', { until: replay.until }) : t('run.phase.develop');
             await session.workbench?.facts(factsOf(phase)).catch(() => {});
+            await session.workbench?.transport?.('pause').catch(() => {});
             if (replay?.until !== undefined && verdict.status === 'pass') {
                 ui.success(t('run.handover.state', { until: replay.until, local: checked.source === 'overlay' ? t('run.handover.local') : '' }));
             } else {
