@@ -135,3 +135,16 @@ test('record: a test plan with a new role opens the sign-in window first, then t
     assert.equal(asked.needed, true);
     assert.deepEqual(loadConfig(root).roles.clerk, roleEnvNames('clerk'));
 });
+
+test('sessionFollowsOwnPlan: only the session, only read-only, only the plan it wrote', async () => {
+    const { sessionFollowsOwnPlan } = await import('../src/host/test-plan.mjs');
+    const steps = [{ id: 'S1', name: 'Open', do: 'Open the list.', expect: 'The list is visible.' }];
+    const previous = { mutates: false, steps };
+    const same = { mutates: false, steps: steps.map((step) => ({ ...step })) };
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: same }), true);
+    assert.equal(sessionFollowsOwnPlan({ agent: 'local', previous, proposed: same }), false, 'own Claude: card as always');
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous: undefined, proposed: same }), false, 'new test from a demonstration');
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous: { ...previous, mutates: true }, proposed: { ...same, mutates: true } }), false, 'writing test');
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { mutates: false, steps: [{ ...steps[0], expect: 'Something else.' }] } }), false, 'changed plan');
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { mutates: false, steps: [...steps, { id: 'S2', name: 'x', do: 'y', expect: 'z' }] } }), false, 'added step');
+});

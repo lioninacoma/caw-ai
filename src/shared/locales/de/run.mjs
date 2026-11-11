@@ -317,4 +317,5 @@ export default {
     'run.mcp.roleName': 'name: Kleinbuchstaben, Ziffern und Bindestriche, beginnt mit einem Buchstaben; remove braucht ihn.',
     'run.mcp.roleRemoved': 'Rolle {role} entfernt.',
     'run.mcp.roleStarted': 'role add gestartet (pid {pid}): Das Anmeldefenster öffnet sich beim Menschen. Danach zeigt caw_role list die Rolle.',
+    'run.plan.sessionReadOnly': 'Lesender Testplan aus deiner Session, unverändert: Claude folgt ihm ohne Freigabe. Am Ende entscheidest du, ob er übernommen wird.',
 };

@@ -98,7 +98,9 @@ its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.j
    neither about tokens nor who demonstrates. `caw_status` also returns the last run's result, step and artefacts.
 5. **Create tests yourself:** Write the test plan `caw/tests/<test>.yaml` (`id`, `app`, `role`, `targets`, `mutates`, `steps` with `id`,
    `name`, `do`, `expect`; never a recording), check it with `caw_validate`, then `caw_start` with `command: record`: you follow the
-   plan, the human approves plan and result in the workbench. Without a plan file `record` starts with the human's demonstration.
+   plan. Submit it unchanged with `plan`: a read-only plan (`mutates: false`) you wrote needs no approval, the human only decides at the
+   end whether the proven test is adopted; a writing or changed plan gets the approval card. Without a plan file `record` starts with
+   the human's demonstration.
    A test may use a new role: if it has no test user yet, `record` first opens the sign-in window, the human saves the role there,
    and the recording goes on. `caw_validate` reports the unknown role before; that is expected.
 6. **Element questions:** If the human picks an element with the crosshair in the workbench while developing, `caw_selection` reads it including target, component

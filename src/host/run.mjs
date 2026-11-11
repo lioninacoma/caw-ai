@@ -19,7 +19,7 @@ import { describeCode } from './code-source.mjs';
 import { prepareOverlay } from './overlay.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
-import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep } from './test-plan.mjs';
+import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan } from './test-plan.mjs';
 import { codeText, createAgentHandler } from './agent-commands.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
@@ -1077,7 +1077,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // Same plan as in the test file: the human already adopted it, nothing to approve. The human can still write.
             const unchanged = repairing !== undefined && samePlanStep(steps[0], repairing);
             if (unchanged) chat.notice(t(repair.rerecord ? 'run.plan.unchangedRerecord' : 'run.plan.unchangedRepair', { id: repair.id }));
-            const answer = unchanged ? { approved: true } : await chat.plan(planView(composed, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, previous: repairing }));
+            // A read-only test the developer's own session wrote and now follows unchanged: no approval up front. The human still
+            // decides at the end whether the proven test is adopted; a changed or writing plan gets the card as always.
+            const ownReadOnly = repairing === undefined && plan === null && sessionFollowsOwnPlan({ agent: box?.kind, previous, proposed: composed });
+            if (ownReadOnly) chat.notice(t('run.plan.sessionReadOnly'));
+            const answer = unchanged || ownReadOnly ? { approved: true } : await chat.plan(planView(composed, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, previous: repairing }));
             if (!answer.approved) return answer;
             const redo = plan === null ? [] : invalidatedChecks(plan, composed, recorder);
             plan = composed;

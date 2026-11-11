@@ -45,6 +45,14 @@ export const replaceStep = (spec, step) => withExpectations({ ...spec, steps: sp
 export const samePlanStep = (a, b) => ['id', 'name', 'do', 'expect', 'note'].every((key) => (a[key] ?? '') === (b[key] ?? ''))
     && JSON.stringify(a.retry ?? null) === JSON.stringify(b.retry ?? null);
 
+/**
+ * Does the developer's own Claude Code session follow a read-only test plan it wrote, unchanged? Then the plan needs no approval
+ * up front; adopting the proven test still does.
+ */
+export const sessionFollowsOwnPlan = ({ agent, previous, proposed }) => agent === 'session' && previous !== undefined
+    && previous.mutates === false && proposed.mutates === false && proposed.steps.length === previous.steps.length
+    && proposed.steps.every((step, index) => samePlanStep(step, previous.steps[index]));
+
 /** What the plan card in the chat shows: plan fields only. */
 export const planView = ({ notes, steps }, { repairing = false, rerecord = false, previous } = {}) => ({
     repairing,

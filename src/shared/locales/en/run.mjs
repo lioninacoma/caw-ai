@@ -317,4 +317,5 @@ export default {
     'run.mcp.roleName': 'name: lowercase letters, digits and hyphens, starting with a letter; remove needs it.',
     'run.mcp.roleRemoved': 'Role {role} removed.',
     'run.mcp.roleStarted': 'role add started (pid {pid}): the sign-in window opens for the human. caw_role list then shows the role.',
+    'run.plan.sessionReadOnly': 'Read-only test plan from your session, unchanged: Claude follows it without approval. You decide at the end whether it is adopted.',
 };
