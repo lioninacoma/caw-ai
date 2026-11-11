@@ -44,8 +44,8 @@ const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
 // How long the window stays open after the last decision, with a countdown, unless the human closes it.
 const LINGER_MS = 15000;
-const ADVICE_LOG = 'claude-empfehlung.log';
-const DRAFT_FILE = 'test-entwurf.yaml';
+const ADVICE_LOG = 'claude-advice.log';
+const DRAFT_FILE = 'test-draft.yaml';
 // Changes the page state or proves a step: only allowed once the plan is approved.
 const NEEDS_PLAN = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember']);
 // While advising Claude only reads: the page should stay as the run left it.
@@ -62,7 +62,7 @@ const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'fill', 'type', 'press', '
 export const transportOf = (replay) => (replay === undefined ? 'record' : replay.steps.length === 0 ? 'pause' : 'play');
 /** What Claude may do in the browser while advising, talking after a failure, or developing. */
 export const consultAllowed = (mode) => (mode === 'develop' ? DEVELOP_ACTS : mode === 'talk' ? TALK_READS : ADVISE_READS);
-const TALK_LOG = 'claude-gespraech.log';
+const TALK_LOG = 'claude-talk.log';
 // Labels as getters: the language is not known yet at import time.
 const ACCEPT = { id: 'accept', get label() { return t('run.button.accept'); }, primary: true };
 const REJECT = { id: 'discard', get label() { return t('run.button.discard'); } };
@@ -1213,12 +1213,12 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
     /**
      * Repairs the failed step where the test run stopped: without replaying the steps before, with the values the replay
-     * read. The test run's report is kept as `report-testlauf.md`.
+     * read. The test run's report is kept as `report-test-run.md`.
      * @returns { verdict, exitCode, candidate, fresh, expectChange } of the repair
      */
     const repairInPlace = async ({ sandbox: box, reason, agreed, failures }, failed) => {
         const before = verdict;
-        if (existsSync(join(runDir, 'report.md'))) copyFileSync(join(runDir, 'report.md'), join(runDir, 'report-testlauf.md'));
+        if (existsSync(join(runDir, 'report.md'))) copyFileSync(join(runDir, 'report.md'), join(runDir, 'report-test-run.md'));
         repair = { id: failed.id, reason, agreed, failures, ...(failed.diagnosis === undefined ? {} : { diagnosis: failed.diagnosis, evidence: failed.evidence }) };
         repairing = givenSpec.steps.find(({ id }) => id === failed.id);
         spec = { ...givenSpec, steps: [repairing], expectations: givenSpec.expectations.filter(({ id }) => id === failed.id) };

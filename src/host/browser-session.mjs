@@ -789,7 +789,7 @@ export const openBrowserSession = async (spec) => {
             if (known === undefined) warnings.push({ ...entry, count: 1 });
             else known.count += 1;
         };
-        // Messages from workbench and chat: the console names no frame but the file; their scripts are called caw-werkbank.js.
+        // Messages from workbench and chat: the console names no frame but the file; their scripts are called caw-workbench.js.
         const workbenchOrigin = spec.embed === true;
         // For a script error, what counts is where it was thrown: the first stack line after the message.
         const thrownAt = (stack) => (typeof stack === 'string' ? stack.split('\n').find((line) => /^\s+at /.test(line)) ?? '' : '');

@@ -10,4 +10,4 @@ export const CONTEXT_FILE = `${PROJECT_DIR}/caw.md`;
 /** Run folder: reports, screenshots, exchange with the sandbox. Not checked in. */
 export const RUN_DIR = '.caw';
 /** The element last selected in the workbench for the human's own Claude Code session, under RUN_DIR. */
-export const SELECTION_FILE = 'auswahl.json';
+export const SELECTION_FILE = 'selection.json';

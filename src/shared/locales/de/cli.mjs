@@ -120,8 +120,8 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
   chat                                   Nachrichten lesen, wartet während einer Pause und im Gespräch auf den Menschen
   say <text>                             Dem Menschen schreiben, wartet nicht auf Antwort
   recording                              Bisher aufgezeichnete Schritte nummeriert anzeigen
-  finish --file <ergebnis.json>          Urteil einreichen; aufgezeichnet wird nur mit "omit"
-  advise --file <empfehlung.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
+  finish --file <result.json>          Urteil einreichen; aufgezeichnet wird nur mit "omit"
+  advise --file <advice.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
     // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw-ai init [--url <adresse>] [--yes] [--from <datei>] [--no-mcp] [--offline]',
     'cli.synopsis.explore': 'caw-ai explore --url <adresse> [--login | --no-login] [--yes] [--insecure-tls]',

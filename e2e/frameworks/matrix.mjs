@@ -2,21 +2,21 @@
 // Umgebung (dev), der Produktions-Build hinter HTTPS (deployt) und das Overlay ueber dem deployten Stand: ohne Option bleibt er es
 // trotz laufendem Watch (e2e-ohne-option), --overlay build mit anderer Aufteilung (React, webpack), caw baut selbst (buildCommand),
 // Exit 2 ohne Build oder mit altem Build, --overlay dev mit devCommand, Exit 2 ohne Dev-Server, bei Next und Nuxt Exit 2 wegen SSR.
-// Claude wird nie gestartet: Aufzeichnungen stehen von Hand in projekt.mjs.
+// Claude wird nie gestartet: Aufzeichnungen stehen von Hand in project.mjs.
 //   node e2e/frameworks/matrix.mjs [filter]       z. B. "react" oder "angular-zone/dev"
-// Voraussetzungen: npm install in jedem Projekt, Chrome. Ergebnis in e2e/frameworks/ergebnis/.
+// Voraussetzungen: npm install in jedem Projekt, Chrome. Ergebnis in e2e/frameworks/result/.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { hasBuild } from '../../src/host/local-build.mjs';
-import { writeProject } from './projekt.mjs';
+import { writeProject } from './project.mjs';
 import { ensureCert } from './shared/cert.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bin = join(here, '../../bin/caw-ai.mjs');
-const out = join(here, 'ergebnis');
+const out = join(here, 'result');
 mkdirSync(out, { recursive: true });
 const filter = process.argv[2];
 const sleep = (ms) => new Promise((ok) => { setTimeout(ok, ms); });

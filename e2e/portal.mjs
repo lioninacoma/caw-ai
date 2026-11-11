@@ -28,7 +28,7 @@ const appPage = `<!doctype html><title>Fake-Portal</title>
 // The application code lives in the project: an accepted change takes effect on the next load.
 const appCode = () => {
     try {
-        return `<script>${readFileSync('preise.js', 'utf8')}</script>`;
+        return `<script>${readFileSync('prices.js', 'utf8')}</script>`;
     } catch {
         return '';
     }

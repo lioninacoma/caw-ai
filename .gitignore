@@ -6,11 +6,11 @@ caw/.auth/
 e2e/*.log
 e2e/*.log.*
 e2e/*.png
-e2e/projekt/.caw/
-e2e/projekt/tmp/
-e2e/projekt/caw/.env
-e2e/projekt/sub/
-e2e/projekt/caw/recordings/
+e2e/project/.caw/
+e2e/project/tmp/
+e2e/project/caw/.env
+e2e/project/sub/
+e2e/project/caw/recordings/
 e2e/.caw-home/
 
 # Framework-Testprojekte (e2e/frameworks): Abhaengigkeiten, Builds, Laufdaten
@@ -28,6 +28,6 @@ e2e/frameworks/*/caw.config.json
 e2e/frameworks/**/next-env.d.ts
 e2e/frameworks/*.log
 e2e/frameworks/.caw-home/
-e2e/frameworks/ergebnis/
+e2e/frameworks/result/
 e2e/frameworks/shared/.cert/
 

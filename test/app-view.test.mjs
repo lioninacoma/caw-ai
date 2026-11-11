@@ -7,9 +7,9 @@ import { browserArgs, trackAgentPages } from '../src/host/browser-session.mjs';
 import { embedsApp } from '../src/host/run.mjs';
 
 test('Workbench scripts carry their own name: their messages never count for the application', () => {
-    assert.match(sourceTag, /sourceURL=caw-werkbank\.js/);
-    assert.ok(fromWorkbenchSource('caw-werkbank.js'));
-    assert.ok(fromWorkbenchSource('    at refresh (caw-werkbank.js:12:3)'));
+    assert.match(sourceTag, /sourceURL=caw-workbench\.js/);
+    assert.ok(fromWorkbenchSource('caw-workbench.js'));
+    assert.ok(fromWorkbenchSource('    at refresh (caw-workbench.js:12:3)'));
     assert.ok(fromWorkbenchSource('about:srcdoc'));
     assert.ok(!fromWorkbenchSource('https://portal.example/app.js'));
     assert.ok(!fromWorkbenchSource(undefined));

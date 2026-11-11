@@ -18,7 +18,7 @@ export const APP_FRAME = 'caw-app';
 export const CHAT_FRAME_NAME = 'caw-chat';
 
 /** Name under which workbench and chat scripts appear in console and stacks, so their messages never count for the application. */
-export const WORKBENCH_SOURCE = 'caw-werkbank.js';
+export const WORKBENCH_SOURCE = 'caw-workbench.js';
 export const sourceTag = `\n//# sourceURL=${WORKBENCH_SOURCE}\n`;
 
 /** Runs in the browser: is this document the workbench itself? Tool scripts that run in every frame skip it. */

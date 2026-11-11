@@ -1,6 +1,6 @@
 # Framework-Matrix
 
-Testprojekte, mit denen geprüft wird, ob caw-ai mit den großen Frameworks funktioniert: lokal am Dev-Server, deployt als Produktions-Build und mit lokalem Code, mit laufendem Build-Watch und ohne. Claude wird nie gestartet. Die Aufzeichnungen schreibt `projekt.mjs` von Hand, so wie `record` sie schreiben würde; `caw-ai run` spielt sie ab.
+Testprojekte, mit denen geprüft wird, ob caw-ai mit den großen Frameworks funktioniert: lokal am Dev-Server, deployt als Produktions-Build und mit lokalem Code, mit laufendem Build-Watch und ohne. Claude wird nie gestartet. Die Aufzeichnungen schreibt `project.mjs` von Hand, so wie `record` sie schreiben würde; `caw-ai run` spielt sie ab.
 
 | Projekt | Framework | caw-ai-Adapter |
 |---|---|---|
@@ -35,4 +35,4 @@ node matrix.mjs            # alles, etwa 10 Minuten
 node matrix.mjs nuxt       # nur Szenarien, deren Name "nuxt" enthält
 ```
 
-Braucht Node 22.12+, Chrome und `openssl` (unter Windows aus Git for Windows): Das selbstsignierte Zertifikat für `*.localhost` entsteht beim ersten Lauf in `shared/.cert/` und wird nie eingecheckt. Ergebnisse, Logs der Server und je Lauf Ausgabe und `report.md` landen in `ergebnis/`, die Zusammenfassung in `ergebnis/matrix.json`.
+Braucht Node 22.12+, Chrome und `openssl` (unter Windows aus Git for Windows): Das selbstsignierte Zertifikat für `*.localhost` entsteht beim ersten Lauf in `shared/.cert/` und wird nie eingecheckt. Ergebnisse, Logs der Server und je Lauf Ausgabe und `report.md` landen in `result/`, die Zusammenfassung in `result/matrix.json`.

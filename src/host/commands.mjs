@@ -42,9 +42,9 @@ const REUSE_MS = 24 * 60 * 60 * 1000;
 export const lastDemonstration = (root, id, now = Date.now()) => {
     const runs = join(root, RUN_DIR, 'runs');
     if (!existsSync(runs)) return null;
-    const suffix = `-${id}-vorfuehrung`;
+    const suffix = `-${id}-demonstration`;
     for (const name of readdirSync(runs).filter((entry) => entry.endsWith(suffix)).sort().reverse()) {
-        const file = join(runs, name, 'vorfuehrung.json');
+        const file = join(runs, name, 'demonstration.json');
         if (!existsSync(file)) continue;
         const at = Date.parse(name.slice(0, -suffix.length).replace(/T(\d\d)-(\d\d)-(\d\d)-(\d+)Z$/, 'T$1:$2:$3.$4Z'));
         if (!Number.isFinite(at) || now - at > REUSE_MS) return null;
@@ -719,7 +719,7 @@ const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp,
  */
 const startRecording = async (root, config, spec, checked, { exists, conversation }) => {
     const [{ openRunSession }, { openChat }, { demonstrate, feedLabel, itemLabel }] = await Promise.all([import('./run.mjs'), import('./chat.mjs'), import('./demonstrate.mjs')]);
-    const dir = join(root, RUN_DIR, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${spec.id}-vorfuehrung`);
+    const dir = join(root, RUN_DIR, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${spec.id}-demonstration`);
     mkdirSync(dir, { recursive: true });
     const session = await openRunSession({ root, config, spec, checked, runDir: dir, interactive: true });
     let chat = null;
@@ -756,7 +756,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
             const items = await demonstrate({ session, operator: chat.operator, ui, dir, onItem: (item) => { const line = feedLabel(item); if (line !== null) chat.progress(t('cli.demoRecorded', { line })); }, onFailure: (item) => chat.notice(t('cli.demoFailure', { label: itemLabel(item) })) });
             if (!chat.available() || windowClosed) throw aborted();
             if (items.length > 0) {
-                writeFileSync(join(dir, 'vorfuehrung.json'), JSON.stringify(items, null, 2));
+                writeFileSync(join(dir, 'demonstration.json'), JSON.stringify(items, null, 2));
                 handOver();
                 return { items, dir };
             }

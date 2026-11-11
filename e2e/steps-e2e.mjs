@@ -19,7 +19,7 @@ const quietTokens = () => {
 quietTokens();
 
 const here = dirname(fileURLToPath(import.meta.url));
-const fake = join(here, 'projekt');
+const fake = join(here, 'project');
 const tool = join(here, '../src/host');
 const { run, record, fix } = await import(pathToFileURL(`${tool}/commands.mjs`).href);
 const { loadTest, parseTest, renderTest, stepHash, writeTest } = await import(pathToFileURL(`${tool}/test-file.mjs`).href);
@@ -240,7 +240,7 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
             await stateOf(page, 'planning');
             verify('Card shows three steps with ID', await page.locator('.message.plan').nth(1).locator('.step').count() === 3 && (await page.locator('.message.plan').nth(1).locator('.sid').first().textContent()) === 'S1');
             verify('Card shows the notes', /Stay with your/.test(await page.locator('.message.plan').nth(1).locator('.notes').textContent()));
-            await shootThemes(page, join(here, 'schritt-plan-hell.png'), join(here, 'schritt-plan-dunkel.png'));
+            await shootThemes(page, join(here, 'step-plan-light.png'), join(here, 'step-plan-dark.png'));
             verify('Plan: big button Plan freigeben, no small one', await page.locator('#approve.big').isVisible() && (await page.locator('#approve').evaluate((node) => node.firstChild.textContent)) === 'Plan freigeben' &&!await page.locator('#toggle').isVisible());
             await page.locator('#approve').click();
         }, async (page) => {
@@ -297,7 +297,7 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
             verify('Input open', await page.locator('#form').isVisible());
             verify('Partial actions: path with lead-in run', /frischen Browser/.test(await page.locator('.message.question').last().textContent()));
             await page.waitForTimeout(300);
-            await shootThemes(page, join(here, 'schritt-angebot-hell.png'), join(here, 'schritt-angebot-dunkel.png'));
+            await shootThemes(page, join(here, 'step-offer-light.png'), join(here, 'step-offer-dark.png'));
             await decide(page, 'Close');
         });
         const code = await run(fake, [ID, ...short], { interactive: true, docker, onChatOpen: h.onChatOpen });
@@ -372,7 +372,7 @@ ${finishOf(['S3'])}`;
             await stateOf(page, 'planning');
             const card = page.locator('.message.plan').last();
             verify('Changed result marked, old one struck through', await card.locator('.changed').count() === 1 && /ist fertig/.test(await card.locator('.before').textContent()));
-            await shootThemes(page, join(here, 'schritt-aenderung-hell.png'), join(here, 'schritt-aenderung-dunkel.png'));
+            await shootThemes(page, join(here, 'step-change-light.png'), join(here, 'step-change-dark.png'));
             await page.locator('#approve').click();
         }, async (page) => {
             // The decision after the check run is a card.
@@ -550,7 +550,7 @@ sleep 60`;
         // With the workbench the chat is a frame: the screenshot shows the whole workbench.
         const page = typeof chat.page === 'function' ? chat.page() : chat;
         await page.waitForTimeout(300);
-        await shootThemes(page, join(here, `${name}-hell.png`), join(here, `${name}-dunkel.png`));
+        await shootThemes(page, join(here, `${name}-light.png`), join(here, `${name}-dark.png`));
     };
     const withS4 = (step, check, retry = '') => {
         const text = `  - id: S4\n    name: ${step.name}\n    do: ""\n    expect: ${step.expect}\n${retry}    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: local/dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
@@ -571,7 +571,7 @@ sleep 60`;
             const [a, c] = await Promise.all([box('caw-app'), box('caw-chat')]);
             verify('Application and chat side by side in the workbench', a !== null && c !== null && (c.x + c.width <= a.x + 8 || a.x + a.width <= c.x + 8), JSON.stringify({ a, c }));
             verify('No advice card', await page.locator('.message.advice').count() === 0);
-            await shoot(page, 'nebeneinander');
+            await shoot(page, 'side-by-side');
             await decide(page, 'Close');
         });
         const code = await run(fake, [ID, ...short], { interactive: true, docker, onChatOpen: h.onChatOpen, adviseCommand: ['bash', '-c', 'echo MUST NOT RUN'] });
@@ -610,7 +610,7 @@ $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\
         const h = humans(async (page) => {
             await stateOf(page, 'reviewing');
             verify('First card shows retry before and after', /Wiederholung/.test(await card(page, 0).textContent()) && /Second attempt/.test(await card(page, 0).textContent()));
-            await shoot(page, 'empfehlung-test');
+            await shoot(page, 'advice-test');
             await decide(page, 'Übernehmen');
             await card(page, 1).waitFor({ timeout: 30000 });
             await decide(page, 'Verwerfen');
@@ -624,7 +624,7 @@ $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\
             await page.waitForTimeout(300);
             const copied = await card(page, 4).locator('button.copy').textContent();
             verify('Copy reports back', /Kopiert|Markiert/.test(copied), copied);
-            await shoot(page, 'empfehlung-app');
+            await shoot(page, 'advice-app');
             await decide(page, 'Weiter');
             await page.locator('.message.question', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
             await decide(page, 'Close');
@@ -642,7 +642,7 @@ $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\
             verify('Project context caw.md extended', /## E2E\r?\n- The Senden button may be renamed\./.test(readFileSync(knowledgePath, 'utf8')));
             const { report, dir } = newestRun();
             verify('Report with decisions and prompt', /## Empfehlungen/.test(report) && /Second attempt \(übernommen\)/.test(report) && /Add a note \(verworfen\)/.test(report) && /Rename it back/.test(report), report.slice(report.indexOf('## Empfehlungen')));
-            verify('Own log', existsSync(join(dir, 'agent/claude-empfehlung.log')) || true);
+            verify('Own log', existsSync(join(dir, 'agent/claude-advice.log')) || true);
         } finally {
             back.forEach((undo) => undo());
             restore();
@@ -714,7 +714,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         const h = humans(async (page) => {
             await stateOf(page, 'testing');
             verify('Input blocked in the test run', !await page.locator('#form').isVisible());
-            await shoot(page, 'testlauf');
+            await shoot(page, 'test-run');
             await page.locator('.message.question', { hasText: 'Der Lauf hat bestanden' }).waitFor({ timeout: 60000 });
             verify('Progress with a single total', /S3 · \d+\/\d+ /.test(await page.locator('details.activity').last().textContent()) && !/\d+\/\d+\/\d+/.test(await page.locator('details.activity').last().textContent()));
             await stateOf(page, 'developing');
@@ -738,7 +738,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
                 await stateOf(page, 'developing');
                 const german = await bench.evaluate(() => /[äöüß]|\b(und|nicht|Schritt|Lauf)\b/i.test(document.querySelector('header')?.innerText ?? ''));
                 verify('Header without German', !german);
-                await shootThemes(page, join(here, 'englisch-hell.png'), join(here, 'englisch-dunkel.png'));
+                await shootThemes(page, join(here, 'english-light.png'), join(here, 'english-dark.png'));
                 process.emit('SIGINT');
             });
             const code = await run(fake, [ID, ...short, '--handover'], { interactive: true, onChatOpen: h.onChatOpen });
@@ -764,12 +764,12 @@ $A chat > /tmp/c2.json; echo "END=$(grep -c ended /tmp/c2.json)"`;
         let gate = '';
         const h = humans(async (page) => {
             await stateOf(page, 'discussing');
-            await shoot(page, 'klaeren');
+            await shoot(page, 'clarify');
             await page.locator('#input').fill('Why?');
             await page.keyboard.press('Enter');
             await page.locator('.message', { hasText: 'das kostet Token' }).first().waitFor({ timeout: 30000 });
             gate = (await page.locator('#choices button').allInnerTexts()).join('|');
-            await shoot(page, 'token-hinweis');
+            await shoot(page, 'token-notice');
             await decide(page, 'Ohne Claude weiter');
             await stateOf(page, 'discussing');
             await page.locator('#input').fill('Why?');
@@ -784,11 +784,11 @@ $A chat > /tmp/c2.json; echo "END=$(grep -c ended /tmp/c2.json)"`;
             await decide(page, 'Close');
         });
         // The real sandbox-run writes the log itself; the script replaces it and writes where the chat reads along.
-        const logged = `{\n${talk}\n} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-gespraech.log"`;
+        const logged = `{\n${talk}\n} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-talk.log"`;
         const code = await run(fake, [ID, ...short], { interactive: true, onChatOpen: h.onChatOpen, talkCommand: ['bash', '-c', logged] });
         verify('One window, Exit 1', await h.done() === 1 && code === 1, String(code));
         verify('Token notice: Weiter, Nicht mehr fragen, Ohne Claude weiter; remembered afterwards', gate === 'Weiter|Nicht mehr fragen|Ohne Claude weiter' && JSON.parse(readFileSync(prefsFile, 'utf8')).tokenNotice === 'off', gate);
-        const log = join(newestRun().dir, 'agent/claude-gespraech.log');
+        const log = join(newestRun().dir, 'agent/claude-talk.log');
         const text = existsSync(log) ? readFileSync(log, 'utf8') : '';
         verify('Conversation log: read only, end reported', /CLICK-REJECTED=1/.test(text) && /END=1/.test(text) && /QUESTION=1/.test(text), text.slice(-400));
         verify('File unchanged except comparison values', noNet(read()) === noNet(broken));
@@ -823,7 +823,7 @@ ${finishOf(['S3'])}`;
         verify('No lead-in run: S2 sends only in the test run and in the check run', hitCount('Speichern') - saved === 2, String(hitCount('Speichern') - saved));
         // S1 and S2 passed in the test run and got their comparison, otherwise they stay the same.
         verify('S3 new, S1 and S2 the same except comparison values', !/Verschwunden/.test(read()) && noNet(stepText(read(), 'S1')) === noNet(stepText(broken, 'S1')) && noNet(stepText(read(), 'S2')) === noNet(stepText(broken, 'S2')));
-        verify('Report of the test run stays', runDirs().filter((name) => !before.has(name)).some((name) => existsSync(join(fake, '.caw/runs', name, 'report-testlauf.md'))));
+        verify('Report of the test run stays', runDirs().filter((name) => !before.has(name)).some((name) => existsSync(join(fake, '.caw/runs', name, 'report-test-run.md'))));
         verify('run passes afterwards', await run(fake, [ID, ...short]) === 0);
         restore();
     });
@@ -849,7 +849,7 @@ ${finishOf(['S3'])}`;
         const { dir } = newestRun();
         const shots = (base) => readdirSync(base, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? shots(join(base, entry.name)) : [entry.name]));
         verify('Exit 1, no chat', code === 1 && await h.done() === 0, String(code));
-        verify('Screenshot of the failure', shots(dir).some((name) => name.startsWith('fehler-schritt-')), shots(dir).join(' '));
+        verify('Screenshot of the failure', shots(dir).some((name) => name.startsWith('failure-step-')), shots(dir).join(' '));
         const error = await run(fake, [ID, ...short, '--headless', '--until', 'S2'], { interactive: true }).then(() => null, (failure) => failure);
         verify('--headless --until rejected', error?.code === 'usage', error?.message);
         restore();
@@ -867,7 +867,7 @@ ${finishOf(['S3'])}`;
             verify('Scrolled up: button shown', await page.locator('#down').isVisible());
             await page.evaluate(() => window.addMessage('claude', 'New, while scrolled up'));
             verify('Stays up, button marks new content', await gap() > 200 && await page.locator('#down.new').count() === 1);
-            await shoot(page, 'runter');
+            await shoot(page, 'scroll-down');
             await page.locator('#down').click();
             await page.waitForTimeout(800);
             verify('Button scrolls to the end and disappears', await gap() < 5 && !await page.locator('#down').isVisible(), String(await gap()));
@@ -882,8 +882,8 @@ ${finishOf(['S3'])}`;
         restore();
     });
 
-    // A step that loads prices. The application code lives in preise.js in the project; the fake portal serves it.
-    const appFile = join(fake, 'preise.js');
+    // A step that loads prices. The application code lives in prices.js in the project; the fake portal serves it.
+    const appFile = join(fake, 'prices.js');
     const PRICES_LOADED = "document.getElementById('preis').textContent==='geladen'";
     const FEES = 'GET /o/DataProxy connector=HTTP-X-Preise';
     const pricesScript = (ms) => `// Laedt die Preise der Bestellung.\nwindow.ladePreise = function () {\n    location.hash = 'preise-' + Date.now();\n    const controller = new AbortController();\n    setTimeout(() => controller.abort(), ${ms});\n    fetch('/o/DataProxy?connector=HTTP-X-Preise', { signal: controller.signal })\n        .then(() => { document.getElementById('preis').textContent = 'geladen'; })\n        .catch(() => {});\n};\n`;
@@ -952,7 +952,7 @@ $A chat > /dev/null`;
             verify('Chat: assessment application, clear', /Einschätzung: Fehler der Anwendung \(eindeutig\)/.test(text), text);
             verify('Chat: finding with duration and recording', /HTTP-X-Preise wurde nach \d+ ms abgebrochen, ohne Seitenwechsel, bei der Aufnahme 200/.test(text));
             verify('Chat: warning, Schritt beheben not the primary button', /nur verdecken/.test(text) && await page.locator('#choices button.primary', { hasText: 'Schritt beheben' }).count() === 0 && await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
-            await shoot(page, 'einschaetzung');
+            await shoot(page, 'assessment');
             await page.locator('#input').fill('What causes it?');
             await page.keyboard.press('Enter');
             const said = page.locator('.message.claude', { hasText: 'APP=' });
@@ -971,13 +971,13 @@ $A chat > /dev/null`;
         await ensureFees();
         writeFileSync(appFile, pricesScript(1));
         const before = new Set(runDirs());
-        const bad = JSON.stringify({ items: [{ about: 'S4', side: 'app', title: 'x', evidence: 'e', reason: 'r', prompt: 'p', edits: [{ file: 'preise.js', find: 'does not exist', replace: 'y' }] }] });
+        const bad = JSON.stringify({ items: [{ about: 'S4', side: 'app', title: 'x', evidence: 'e', reason: 'r', prompt: 'p', edits: [{ file: 'prices.js', find: 'does not exist', replace: 'y' }] }] });
         const advice = JSON.stringify({ items: [{
             about: 'S4', side: 'app', title: 'Loading timeout too short',
-            evidence: `request ${FEES} aborted after 1 ms; preise.js:5`,
+            evidence: `request ${FEES} aborted after 1 ms; prices.js:5`,
             reason: 'The application aborts the request itself after 1 ms.',
-            prompt: 'In preise.js ladePreise aborts after 1 ms. Set the timeout to 40 s and check with caw-ai run fx-schritte.',
-            edits: [{ file: 'preise.js', find: 'setTimeout(() => controller.abort(), 1);', replace: 'setTimeout(() => controller.abort(), 40000);', why: 'Timeout as for the other calls' }],
+            prompt: 'In prices.js ladePreise aborts after 1 ms. Set the timeout to 40 s and check with caw-ai run fx-schritte.',
+            edits: [{ file: 'prices.js', find: 'setTimeout(() => controller.abort(), 1);', replace: 'setTimeout(() => controller.abort(), 40000);', why: 'Timeout as for the other calls' }],
         }] });
         const agent = `A=caw-ai
 {
@@ -989,17 +989,17 @@ ${advice}
 EOF
 $A advise --file /tmp/a.json > /dev/null; echo "ADVISE Exit=$?"
 echo '{"expectations":[{"id":"S4","status":"fail","note":"Application error","evidence":{"type":"eval","value":"aborted"}}]}' > /tmp/e.json; $A finish --file /tmp/e.json; echo "FINISH Exit=$?"
-} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-beheben.log"`;
+} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-fix.log"`;
         const h = humans(async (page) => {
             await stateOf(page, 'discussing');
             await decide(page, 'Schritt beheben');
         }, async (page) => {
             await card(page, 0).waitFor({ timeout: 120000 });
             const text = await card(page, 0).textContent();
-            verify('Card: file with line, diff, evidence', /preise\.js:5/.test(text) && /controller\.abort\(\), 1\)/.test(text) && /40000/.test(text) && /aborted after 1 ms/.test(text), text);
+            verify('Card: file with line, diff, evidence', /prices\.js:5/.test(text) && /controller\.abort\(\), 1\)/.test(text) && /40000/.test(text) && /aborted after 1 ms/.test(text), text);
             verify('Card: Änderung übernehmen is the primary button', (await page.locator('#choices button.primary').textContent()) === 'Änderung übernehmen');
             verify('Nothing written yet', readFileSync(appFile, 'utf8').includes('abort(), 1);'));
-            await shoot(page, 'empfehlung-code');
+            await shoot(page, 'advice-code');
             await decide(page, 'Änderung übernehmen');
             await closeOut(page);
         });
@@ -1007,7 +1007,7 @@ echo '{"expectations":[{"id":"S4","status":"fail","note":"Application error","ev
         verify('Two windows, Exit 1', await h.done() === 2 && code === 1, String(code));
         verify('Code changed, rest the same', readFileSync(appFile, 'utf8') === pricesScript(40000));
         verify('Test file unchanged except comparison values', noNet(read()) === noNet(withFees));
-        const logs = runDirs().filter((name) => !before.has(name)).map((name) => join(fake, '.caw/runs', name, 'agent/claude-beheben.log')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('\n');
+        const logs = runDirs().filter((name) => !before.has(name)).map((name) => join(fake, '.caw/runs', name, 'agent/claude-fix.log')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('\n');
         verify('Repair saw the assessment, wrong location rejected, fail without plan', /REPAIR-APP=[1-9]/.test(logs) && /EDIT-REJECTED=1/.test(logs) && /ADVISE Exit=0/.test(logs) && /FINISH Exit=0/.test(logs) && /Verdict accepted: fail/.test(logs), logs.slice(-600));
         const reports = runDirs().filter((name) => !before.has(name)).map((name) => join(fake, '.caw/runs', name, 'report.md')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('\n');
         verify('Report: applied to the code, with diff', /Loading timeout too short \(in den Code übernommen\)/.test(reports) && /```diff/.test(reports));
@@ -1124,7 +1124,7 @@ ${finishOf(['S2'])}`;
             });
             await bench.waitForTimeout(500);
             verify('Chat off limits for the application (DOM and binding)', chatReach === 'dom-blocked|binding-blocked' && await chat.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1, chatReach);
-            await shoot(chat, 'werkbank-gescheitert');
+            await shoot(chat, 'workbench-failed');
             await decide(chat, 'Schritt beheben');
         }, async (chat) => {
             const bench = workbenchOf(chat);
@@ -1135,7 +1135,7 @@ ${finishOf(['S2'])}`;
             await chat.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
             const states = await chat.page().locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
             verify('Check run: steps passed', states.every((state) => state === 'pass'), JSON.stringify(states));
-            await shoot(chat, 'werkbank-behoben');
+            await shoot(chat, 'workbench-fixed');
             await decide(chat, 'Testplan übernehmen');
         });
         try {
@@ -1150,7 +1150,7 @@ ${finishOf(['S2'])}`;
         }
     });
     await scenario('2 Developing in a state: crosshair to Claude Code, reload without state, restore the state, workbench reloaded, collapse, animations off', async () => {
-        const selection = join(fake, '.caw/auswahl.json');
+        const selection = join(fake, '.caw/selection.json');
         const prefs = join(process.env.CAW_AI_HOME, 'prefs.json');
         const pref = () => (existsSync(prefs) ? JSON.parse(readFileSync(prefs, 'utf8')) : {});
         rmSync(selection, { force: true });
@@ -1168,7 +1168,7 @@ ${finishOf(['S2'])}`;
             await bench.waitForTimeout(1200);
             const raven = await bench.evaluate(() => { const r = document.getElementById('raven')?.getBoundingClientRect(); const c = document.querySelector('iframe[name=caw-chat]')?.getBoundingClientRect(); return r && c ? { x: r.x, cx: c.x } : null; });
             verify('Raven flies to the chat', raven !== null && raven.x >= raven.cx - 40, JSON.stringify(raven));
-            await shoot(chat, 'entwickeln');
+            await shoot(chat, 'develop');
             // Crosshair: the element is attached to the next question and is ready for the Claude Code session at once.
             await chat.locator('#pick').click();
             await bench.waitForTimeout(500);
@@ -1187,7 +1187,7 @@ ${finishOf(['S2'])}`;
             await bench.locator('#stepsFold').click();
             await bench.waitForTimeout(400);
             verify('Collapsed and remembered', await bench.locator('#chatStrip').isVisible() && await bench.locator('#stepsStrip').isVisible() && pref().chat === 'closed' && pref().steps === 'closed', JSON.stringify(pref()));
-            await shoot(chat, 'eingeklappt');
+            await shoot(chat, 'collapsed');
             await bench.locator('#chatStrip').click();
             await bench.locator('#stepsStrip').click();
             await bench.waitForTimeout(400);
@@ -1198,7 +1198,7 @@ ${finishOf(['S2'])}`;
             const kept = await chat.locator('.message', { hasText: '“ liegt für deine Claude-Code-Sitzung bereit' }).count();
             const states = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
             verify('F5: page reloaded, workbench stays, state marked as left', kept === 1 && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 1, JSON.stringify(states));
-            await shoot(chat, 'verlassen');
+            await shoot(chat, 'left');
             // Restore the state: the raven only hops forward, the marker disappears.
             await bench.evaluate(() => {
                 window.__flight = [];
@@ -1273,9 +1273,9 @@ ${finishOf(['S2'])}`;
         const missing = JSON.stringify(newestRun().result);
         verify('Without watch: result names sencha app watch', /sencha app watch/.test(missing), missing.slice(0, 300));
         // With devCommand caw starts the watch itself; a stand-in, since bootstrap.json is already in place.
-        const marker = join(fake, '.caw/watch-stellvertreter.txt');
+        const marker = join(fake, '.caw/watch-proxy.txt');
         rmSync(marker, { force: true });
-        const undo = withOverlay({ devCommand: `node -e "require('fs').writeFileSync('.caw/watch-stellvertreter.txt', String(process.pid)); setInterval(() => {}, 1000)"` });
+        const undo = withOverlay({ devCommand: `node -e "require('fs').writeFileSync('.caw/watch-proxy.txt', String(process.pid)); setInterval(() => {}, 1000)"` });
         try {
             const code = await run(fake, [ID, ...short, '--overlay', 'dev']);
             verify('With devCommand: Exit 0', code === 0, String(code));

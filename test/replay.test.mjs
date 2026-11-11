@@ -340,7 +340,7 @@ test('Playback: target never appears, abort with step, screenshot and no further
     const { broken } = await play([{ action: 'click', target: NEXT_BUTTON }, { action: 'reload' }], session, async (command) => { seen.push(command); return 'ok'; });
     assert.equal(broken.number, '1/2');
     assert.match(broken.message, /Weiter.*nicht klickbar/);
-    assert.equal(broken.screenshot, 'fehler-schritt-1.png');
+    assert.equal(broken.screenshot, 'failure-step-1.png');
     assert.deepEqual(seen.map(({ action }) => action), ['screenshot']);
 });
 

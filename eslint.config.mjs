@@ -6,7 +6,7 @@ import globals from 'globals';
 
 export default [
     {
-        ignores: ['node_modules/', 'e2e/frameworks/', 'e2e/projekt/', 'examples/**/.caw/', '**/.caw/', 'e2e/.caw-home/'],
+        ignores: ['node_modules/', 'e2e/frameworks/', 'e2e/project/', 'examples/**/.caw/', '**/.caw/', 'e2e/.caw-home/'],
     },
     js.configs.recommended,
     n.configs['flat/recommended-module'],
