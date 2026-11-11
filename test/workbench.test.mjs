@@ -17,6 +17,14 @@ test('Werkbank: Ohne eigene Wahl klappt die Schrittliste in schmalen Fenstern ei
     assert.match(workbenchHtml({ appUrl: 'about:blank', title: 't', prefs: { steps: 'closed' } }), /<body class="[^"]*fold-steps/);
 });
 
+test('Werkbank: Der Chip oben rechts (REC, PLAY, PAUSE) ist da, aber ohne Lauf aus; die Aufnahme pulsiert nur ohne F10', () => {
+    const html = workbenchHtml({ appUrl: 'about:blank', title: 't', themes: [] });
+    assert.match(html, /<span id="transport" class="px-pill glow" role="img"><i><\/i><span><\/span><\/span><\/div><\/header>/, 'rechts neben der Pill');
+    assert.match(html, /#transport\{display:none;/, 'ohne Lauf kein Chip');
+    for (const [kind, color] of [['record', 'fail'], ['play', 'ok'], ['pause', 'warn']]) assert.ok(html.includes(`#transport[data-kind=${kind}]{--tc:var(--${color})}`), `${kind} in Theme-Farbe`);
+    assert.match(html, /\.still \*,\.still \*::before,\.still \*::after\{animation:none!important/, 'F10 haelt auch die Aufnahme still');
+});
+
 test('Werkbank: Das Theme kommt eingebettet, ohne css, und kann kein <script> beenden', () => {
     const theme = { ...loadTheme('nacht'), css: 'body{x:1}', label: '</script><b>' };
     const html = workbenchHtml({ appUrl: 'about:blank', title: 't', theme, themes: [] });

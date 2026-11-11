@@ -239,6 +239,40 @@ test('Werkbank: Vorführen zeigt die Aufnahme, Aktualisieren ist gesperrt, bis d
     assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'die Aktionen sind offen');
 });
 
+test('Werkbank: Der Chip oben rechts zeigt Aufnahme, Wiedergabe und Pause und bleibt nach dem Neuladen', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench } = await open(t);
+    const page = bench.page;
+    const chip = () => page.evaluate(() => {
+        const node = document.getElementById('transport');
+        return { on: node.classList.contains('on'), kind: node.dataset.kind, text: node.textContent, label: node.getAttribute('aria-label'), pulse: getComputedStyle(node.querySelector('i')).animationName };
+    });
+    assert.equal((await chip()).on, false, 'ohne Lauf kein Chip');
+    await bench.transport('record');
+    assert.deepEqual(await chip(), { on: true, kind: 'record', text: 'REC', label: 'Aufnahme', pulse: 'caw-rec' });
+    await page.evaluate(() => document.body.classList.add('still'));
+    assert.equal((await chip()).pulse, 'none', 'Animationen aus: kein Pulsieren');
+    await page.evaluate(() => document.body.classList.remove('still'));
+    await bench.chatState('paused');
+    assert.deepEqual(await chip(), { on: true, kind: 'pause', text: 'PAUSE', label: 'Pausiert', pulse: 'none' }, 'F9');
+    await bench.chatState('running');
+    assert.equal((await chip()).kind, 'record', 'weiter aufnehmen');
+    await bench.transport('play');
+    assert.deepEqual(await chip(), { on: true, kind: 'play', text: 'PLAY', label: 'Wiedergabe', pulse: 'none' });
+    await bench.mood('aborted');
+    assert.equal((await chip()).kind, 'pause', 'abgebrochen');
+    await bench.mood('wait');
+    assert.equal((await chip()).kind, 'play');
+    await bench.onRefresh(async () => {});
+    assert.equal((await chip()).kind, 'pause', 'übergeben');
+    await bench.onRefresh(null);
+    // Reloading the whole workbench (here by the app itself) brings the chip back.
+    await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/weiter`);
+    assert.ok(await until(async () => (await chip().catch(() => ({}))).kind === 'play'), 'nach dem Neuladen wieder PLAY');
+    await bench.transport(null);
+    assert.equal((await chip()).on, false);
+});
+
 test('Chat: Nach dem Lauf bleibt das Fenster offen, bis der Mensch schließt oder die Zeit um ist', async (t) => {
     if (browser === null) return t.skip('kein Chrome');
     const { bench, chat } = await open(t);
