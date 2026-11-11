@@ -1195,7 +1195,7 @@ ${finishOf(['S2'])}`;
             await bench.waitForTimeout(500);
             await appOf(bench).locator('#ziel').click();
             await chat.locator('#chip.on').waitFor({ timeout: 20000 });
-            await chat.locator('.message', { hasText: '“ liegt für deine Claude-Code-Sitzung bereit' }).waitFor({ timeout: 20000 });
+            await chat.locator('.message', { hasText: '“ hängt an deiner nächsten Frage hier im Chat' }).waitFor({ timeout: 20000 });
             const picked = existsSync(selection) ? JSON.parse(readFileSync(selection, 'utf8')) : null;
             verify('Selection for the session', picked?.test === ID && picked?.until === 'S2' && typeof picked?.element?.label === 'string', JSON.stringify(picked)?.slice(0, 200));
             // Requests and console: open, then closed again via the button.
@@ -1215,7 +1215,7 @@ ${finishOf(['S2'])}`;
             verify('Expanded again', await bench.locator('#chat').isVisible() && await bench.locator('#steps').isVisible() && pref().chat === 'open' && pref().steps === 'open', JSON.stringify(pref()));
             // F5 in the application: only the page reloads, chat and steps stay. After the handover reloading is part of the work:
             // no "left" note, no greyed-out steps, no chat message.
-            const PICKED = '“ liegt für deine Claude-Code-Sitzung bereit';
+            const PICKED = '“ hängt an deiner nächsten Frage hier im Chat';
             const messages = await chat.locator('.message').count();
             await appOf(bench).evaluate(() => { window.__cawBeforeReload = true; });
             await appOf(bench).locator('body').press('F5');
