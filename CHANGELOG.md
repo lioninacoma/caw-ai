@@ -49,11 +49,17 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - `assetUrlPattern` takes a list of patterns for pages that load code from several sources (a path and a proxy parameter); `apps.<app>.overlay.assetUrlPattern` per app.
 - `doctor` shows bootstrap.json, the watch and the last overlay check per part for ExtJS overlay environments; `init` adds ExtJS overlay hints.
 - MCP: the Claude Code session can run every setup and check step: `caw_doctor`, `caw_init`, `caw_explore`, `caw_config`, `caw_validate`, `caw_list` and `caw_overlay_check`, none of them uses tokens. Tool results carry `structuredContent` next to a short text.
+- Test users as roles, entered only in the window: after signing in during `explore` the card asks for the role and saves user name and password to `caw/.env` (and `.gitignore`); "+ Another role" takes the next account. `init` takes the roles from there. The values never reach Claude, the terminal or `caw/.explore.json`.
+- `caw-ai role [list|add|remove]` and the MCP tool `caw_role`: manage roles in an existing project; `add` opens the sign-in window.
+- When `record`, `run` or `open` needs a role without a test user (also a new role in a test plan), the sign-in window opens first and the run goes on after saving. In CI and with `--headless` it still ends with `credentials-missing`.
+- The skill sets up a project from one prompt: Claude decides environment flags, adopts certain findings, applies and re-checks overlay patterns itself, and lists its decisions at the end instead of asking.
 - MCP: when the Claude Code session is the agent, `record` follows an existing test plan without the "who demonstrates" question, and caw shows no token notice. The session can write a new test plan itself and record it.
 - MCP: `caw_start` takes typed fields (`test`, `target`, `step`, `until`, `overlay`, `headless`) and `open`, checks the config first and returns the watch command instead of starting when an overlay needs a watch that is missing or stale. `caw_status` also returns the last run's result, last step and artefacts, explore suggestions and the latest overlay check.
 
 
 ### Changed
+- README: the first sentence says what caw-ai does differently.
+- Workbench chat: the rule in the chat header runs through to the buttons; no stray dot when the chat is narrow.
 - An ExtJS overlay run where expected parts still came from the server ends with exit 2 (`overlay-incomplete`), naming the parts, server URLs and a suggested `assetUrlPattern`. Before, only a run where nothing came from local code failed.
 - IBM Plex Mono now ships as IBM's own unmodified files (`builtin:ibm-plex-mono-400.woff2`, `-500.woff2`); the old `builtin:ibm-plex-mono-latin-*-normal.woff2` names still work.
 - New look ("console") for workbench, chat, report, the `explore` card and the terminal: VT323 for headings, IBM Plex Mono for text. Without a terminal the plain `[caw-ai]` lines stay.

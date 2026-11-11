@@ -8,7 +8,7 @@ English · [Deutsch](README.de.md)
 
 > **caw** – **c**onstrained **a**gentic **w**ebtester
 >
-> Integration tests for web apps, written in plain language. Claude records each test once; replays run without AI.
+> Describe a test in plain language, Claude walks it once in your real app, and from then on it replays without AI: fast, repeatable, token-free, with Claude back in the chat only when a step breaks.
 >
 > *Constrained* because the agent has limits: Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials, and every recording ends with a plan you approve.
 

@@ -313,4 +313,8 @@ export default {
     'run.effect.cause': 'Die Prüfung ist erfüllt, aber die Anwendung reagiert anders als in gesunden Läufen.',
     'run.button.rerecordStep': '{id} neu aufnehmen',
     'run.flow.stillStale': 'Plan angepasst',
+    'run.mcp.roleList': '{count} Rolle(n).',
+    'run.mcp.roleName': 'name: Kleinbuchstaben, Ziffern und Bindestriche, beginnt mit einem Buchstaben; remove braucht ihn.',
+    'run.mcp.roleRemoved': 'Rolle {role} entfernt.',
+    'run.mcp.roleStarted': 'role add gestartet (pid {pid}): Das Anmeldefenster öffnet sich beim Menschen. Danach zeigt caw_role list die Rolle.',
 };

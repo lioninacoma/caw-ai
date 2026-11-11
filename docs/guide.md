@@ -39,11 +39,12 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` onl
 | `caw_doctor` | `doctor` as data: every check with next step, counts of blocking and optional ones | no |
 | `caw_init` | `init` without questions: `offline`, or `fromExplore` after `caw_explore`; `roles`, `noMcp`. Returns created files and TODO fields | no |
 | `caw_explore` | starts `explore` in the background (`login: true/false` or `yes`); `caw_status` then shows `caw/.explore.json` | no |
+| `caw_role` | `list` roles and whether a test user is set; `add` opens the sign-in window for you, you save the role there; `remove` | no |
 | `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written | no |
 | `caw_validate` | `validate` as data: config findings, per test problems, hints and code per target | no |
 | `caw_list` | `list` as data: per test app, role, targets, writes, recording state per step | no |
 | `caw_overlay_check` | `overlay check` (optionally `apply`), waits up to 3 minutes and returns the result | no |
-| `caw_start` | starts `run`, `record`, `fix` or `open` with `--agent session`: fields `test`, `target`, `step`, `until`, `overlay`, `headless` (or `args`). With `overlay` and no running watch it returns the command for you instead of starting | `record`, `fix`: yes; `run`, `open`: only when the chat calls Claude |
+| `caw_start` | starts `run`, `record`, `fix` or `open` with `--agent session`: fields `test`, `target`, `step`, `until`, `overlay`, `headless` (or `args`). With `overlay` and no running watch it returns the command for you instead of starting | none beyond your session |
 | `caw_status` | whether a run is waiting for the session, the last lines of output (`.caw/session-*.log`), and as data the last run: result, last step, artefacts (report, trace, logs) | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …), as described in the skill | as part of the run |
 | `caw_selection` | the element you picked with the crosshair in the workbench while developing | no |

@@ -50,34 +50,34 @@ you add what can only be learned from the code or from the human:
 
 1. **Clarify the address:** Read `package.json` (dev scripts, port), `.env.example`, Vite, Angular or Webpack config. If the dev server is not running,
    ask the human to start it; do not start it yourself.
-2. **Set up with explore:** Ask the human to run `npx caw-ai init --url <address>` in their own terminal (it needs a terminal:
-   They log in in the window with a test account, confirm with Enter and name the roles). http only works on the own machine
-   (`localhost`, `127.0.0.1`, `*.localhost`), e.g. `http://localhost:5173`. Without login it also works without them: `init --url <address> --yes`.
-   Without a terminal and without an application: `init --offline` writes the template, the login stays `TODO`.
-   Result: `caw.config.json`, `caw/.env.example` and `caw/.explore.json` with framework, login form, marker for "logged in", start page,
-   messages and console noise, each with `confidence`. Also read `notes`; what explore did not find is `TODO` in the config.
-3. **Complete from the code:** further environments (staging, test) from configs and docs, roles from seed data, fixtures or permission code,
-   the most important screens from the router. Domain terms and peculiarities (date formats, slow services, known messages) belong
-   in `caw/caw.md`.
-4. **Questions**, bundled and with a proposal: Which environment is production (it must never be a target, `production: true`)? On which ones
-   does Claude work (`claude`), where may it write (`writable`)? Which roles, what are the variables for the credentials called?
-   Local code: The dev server on the own machine is simply an environment (`local`); the own state always runs there. Only if
-   the app does not run locally as delivered (portal, shell, backend only on staging) is there the overlay: `overlay: true` on the
-   environment, on the app `overlay.build` (build folder) or `overlay.dev` (dev server), and the run explicitly needs `--overlay`;
-   ExtJS only needs `overlay: true`, `assetUrlPattern` and the Sencha watch. Without the option the delivered state
-   always runs; `validate` names per test and target where `--overlay` would work.
-   ExtJS overlay setup is only done when `npx caw-ai overlay check --target <environment>` (or `caw_overlay_check`) is green:
-   every expected part (app, packages, theme) comes from the watch. If a part still comes from the server, the check names the
-   server URLs and suggests an `assetUrlPattern`; apply it with `--apply` (or `apply: true`) after the human agrees, then check again.
-   Pages can load parts from several sources (a path and a proxy parameter); `assetUrlPattern` then holds one pattern per source.
-   If the check reports the watch missing or stale, ask the human to start `sencha app watch` in the app folder; never start it yourself.
-   Only adopt console noise if the human confirms it as known. Nothing with `confidence: likely` without asking.
-5. **Write:** Add what was clarified to the config and replace every `TODO`. Only the
-   human enters credentials in `caw/.env`; you only name the names.
-6. **Check:** `npx caw-ai doctor` and `npx caw-ai validate` (or `caw_doctor`, `caw_validate`), until nothing is MISSING any more; with an ExtJS overlay also the overlay check from step 4.
-7. **First tests:** Propose one to three short tests (per file `id`, `app`, `role`, `targets`, `mutates` and `steps` with `id`, `name`, `do`, `expect`; example in `npx caw-ai help`),
-   e.g. "Log in and see the start page" and the most important read path. Recording happens with the human: `record <test> --target <environment>`,
-   or you record, as the agent in your session (below).
+2. **Explore:** With the tools: `caw_explore` with `login: true` (or `yes` without a sign-in). Without them the human runs
+   `npx caw-ai init --url <address>` in their terminal. A window opens: the human signs in with a test account, picks the start page and
+   clicks Done; the card then asks for the role of that account and saves it as a test user in `caw/.env`, "+ Another role" for more
+   accounts. http only works on the own machine (`localhost`, `127.0.0.1`, `*.localhost`). Result in `caw/.explore.json` (via
+   `caw_status`): framework, login form, marker for "signed in", start page, messages, console noise, each with `confidence`, `notes`,
+   and `roles` saved by the human. Then `caw_init` with `fromExplore: true`.
+3. **Complete from the code:** further environments (staging, test) from configs and docs, role names from seed data, fixtures or
+   permission code, the most important screens from the router. Domain terms and peculiarities (date formats, slow services, known
+   messages) belong in `caw/caw.md`.
+4. **Decide, don't ask.** Set these yourself with `caw_config` (`patch`) and list them at the end as "how I set it up":
+   - An environment on the own machine: `claude: true`, `writable: true`. dev/test/staging: `claude: true`, `writable: true` only if
+     the code shows test data or seeds there. Anything named prod/live or with the public domain: `production: true`.
+   - Console noise and messages with `confidence: certain` are adopted; `likely` ones go into the closing list, not into a question.
+   - Local code: the dev server on the own machine is simply an environment (`local`). Only if the app does not run locally as
+     delivered (portal, shell, backend only on staging) set the overlay: `overlay: true` on that environment, on the app
+     `overlay.build` or `overlay.dev`; ExtJS needs only `overlay: true` and the running Sencha watch.
+   - ExtJS overlay: run `caw_overlay_check`. If parts still come from the server, run it again with `apply: true` and check once more;
+     several sources give several patterns. Only if a source stays unresolved, show the human its URLs. If the watch is missing or
+     stale, ask the human to start `sencha app watch` in the app folder; never start it yourself.
+   Ask only what you cannot decide from the code: an environment you cannot classify.
+5. **Test users:** never ask for user names or passwords and never write `caw/.env`. Roles come from the explore window; more with
+   `caw_role` (`add`, `name` from the code, `target`): the window opens and the human signs in and saves. `caw_role list` shows which
+   role still has no test user.
+6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw-ai doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
+   the overlay check is green.
+7. **First test, then run it:** write a short read-only test (`caw/tests/<test>.yaml`: `id`, `app`, `role`, `targets`,
+   `mutates: false`, `steps` with `id`, `name`, `do`, `expect`), e.g. "Sign in and see the start page", check it with `caw_validate`
+   and record it with `caw_start` (`command: record`) as the agent in your session (below). Then show the closing list and the result.
 
 ### As the agent in your session
 
@@ -99,6 +99,8 @@ its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.j
 5. **Create tests yourself:** Write the test plan `caw/tests/<test>.yaml` (`id`, `app`, `role`, `targets`, `mutates`, `steps` with `id`,
    `name`, `do`, `expect`; never a recording), check it with `caw_validate`, then `caw_start` with `command: record`: you follow the
    plan, the human approves plan and result in the workbench. Without a plan file `record` starts with the human's demonstration.
+   A test may use a new role: if it has no test user yet, `record` first opens the sign-in window, the human saves the role there,
+   and the recording goes on. `caw_validate` reports the unknown role before; that is expected.
 6. **Element questions:** If the human picks an element with the crosshair in the workbench while developing, `caw_selection` reads it including target, component
    or source file and the step's requests. With that you find the place in the code.
 

@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { askYesNo, createUi } from '../shared/ui.mjs';
-import { DONE_BINDING, PHASE_BINDING, PHASE_EVENT, exploreCardScript } from './explore-card.mjs';
+import { DONE_BINDING, PHASE_BINDING, exploreCardScript } from './explore-card.mjs';
+import { HUMAN_MS, freshSession, installCapture, roleRounds, roleTexts, sendPhase, waitForSignIn } from './role-capture.mjs';
 import { isLoopback } from '../shared/config.mjs';
 import { optionValue } from './linux.mjs';
 
@@ -273,27 +274,25 @@ const openExploreBrowser = async ({ url, insecureTls, launch }) => {
 /** The texts of the card in the window; step numbers as in the terminal. */
 const cardTexts = (withLogin) => ({
     title: 'CAW-AI EXPLORE',
-    steps: { signin: `1 ${t('cli.exploreStepSignIn')}`.toUpperCase(), start: `${withLogin ? 2 : 1} ${t('cli.exploreStepStart')}`.toUpperCase() },
+    steps: {
+        signin: `1 ${t('cli.exploreStepSignIn')}`.toUpperCase(),
+        start: `${withLogin ? 2 : 1} ${t('cli.exploreStepStart')}`.toUpperCase(),
+        role: `3 ${t('cli.roleStep')}`.toUpperCase(),
+    },
     text: {
         wait: t('cli.exploreCardWait'),
         signin: t('cli.exploreCardSignIn'),
         start: t('cli.exploreCardStart'),
         reading: t('cli.exploreCardReading'),
         done: t('cli.exploreCardDone'),
+        role: t('cli.roleCardRole'),
+        saved: t('cli.roleCardSaved'),
     },
     page: t('cli.exploreCardPage'),
     button: t('cli.exploreDoneButton').toUpperCase(),
     saved: t('cli.exploreCardSaved'),
+    role: roleTexts(),
 });
-
-/** Is a visible password field present, and has the page finished loading? */
-const formState = () => ({
-    form: [...document.querySelectorAll('input[type=password]')].some((el) => el.getBoundingClientRect().width > 0),
-    loaded: document.readyState === 'complete',
-});
-
-const POLL_MS = 500;
-const HUMAN_MS = 30 * 60 * 1000;
 
 /**
  * @param open for tests only: replaces the browser ({ page, consoleErrors, foreignHosts, close })
@@ -355,13 +354,15 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
     let phase = 'wait';
     const setPhase = async (value) => {
         phase = value;
-        // eslint-disable-next-line n/no-unsupported-features/node-builtins -- runs in the browser page, not in Node
-        await browser.page.evaluate(([name, detail]) => window.dispatchEvent(new CustomEvent(name, { detail })), [PHASE_EVENT, value]).catch(() => {});
+        await sendPhase(browser.page, value);
     };
+    // The test user the human signs in with: only in this process, saved to caw/.env when the human names a role for it.
+    let capture = null;
     if (!unattended && wait === undefined) {
         const context = browser.page.context?.();
         await context?.exposeBinding(DONE_BINDING, () => pressDone('done')).catch(() => {});
         await context?.exposeBinding(PHASE_BINDING, () => phase).catch(() => {});
+        if (withLogin === true && context !== undefined) capture = await installCapture(context).catch(() => null);
         await context?.addInitScript({ content: exploreCardScript(cardTexts(withLogin === true)) }).catch(() => {});
     }
     const human = wait === undefined ? Promise.race([done, closed]) : wait().then(() => 'done');
@@ -391,21 +392,9 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
                 ui.info(t('cli.exploreSignIn'));
                 const signingIn = ui.pending(t('cli.exploreWaitingSignIn'));
                 // Signed in: a password field was there and is gone, the page has finished loading. No Enter needed.
-                let sawForm = before?.login !== null && before?.login !== undefined;
-                let stop = false;
-                const signedIn = (async () => {
-                    const start = Date.now();
-                    while (!stop && Date.now() - start < HUMAN_MS) {
-                        const state = await browser.page.evaluate(formState).catch(() => null);
-                        if (state === null && browser.page.isClosed?.()) return 'closed';
-                        if (state?.form) sawForm = true;
-                        else if (sawForm && state?.loaded) return 'signed-in';
-                        await new Promise((ok) => { setTimeout(ok, POLL_MS); });
-                    }
-                    return 'timeout';
-                })();
-                const first = await Promise.race([signedIn, human]);
-                stop = true;
+                const signedIn = waitForSignIn(browser.page, { sawForm: before?.login !== null && before?.login !== undefined, until: HUMAN_MS });
+                const first = await Promise.race([signedIn.result, human]);
+                signedIn.stop();
                 if (first === 'closed') {
                     signingIn.fail(t('cli.exploreClosed'));
                     return EXIT.rejected;
@@ -437,8 +426,6 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
             detected: (detect ?? detectFramework)(root),
         });
         if (withLogin && loginPage === null && browser.foreignHosts.size === 0) suggestion.notes.unshift(t('cli.exploreLoginNotFound'));
-        mkdirSync(join(root, 'caw'), { recursive: true });
-        writeFileSync(join(root, EXPLORE_FILE), `${JSON.stringify(suggestion, null, 2)}\n`);
         // Uncertain findings (likely) as a warning in the box, certain ones as checked.
         const sure = (confidence) => (confidence === 'likely' ? 'warn' : 'ok');
         ui.box(t('cli.exploreStepResult'), summaryLines(suggestion).map((text, index) => ({
@@ -446,6 +433,14 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
             status: index === 0 ? sure(suggestion.framework.confidence) : index === 1 ? sure(suggestion.auth.confidence) : 'ok',
         })));
         for (const note of suggestion.notes) ui.note(note);
+        // The test user the human signed in with: they name a role in the window, caw-ai writes caw/.env; then maybe more accounts.
+        if (capture?.credentials !== null && capture?.credentials !== undefined) {
+            ui.info(t('cli.exploreRoleStep'));
+            const roles = await roleRounds({ root, page: browser.page, capture, setPhase, signOut: freshSession(browser.page, loginPage?.url ?? url), closed });
+            if (roles.length > 0) suggestion.roles = roles;
+        }
+        mkdirSync(join(root, 'caw'), { recursive: true });
+        writeFileSync(join(root, EXPLORE_FILE), `${JSON.stringify(suggestion, null, 2)}\n`);
         if (next) ui.info(t('cli.exploreNext', { file: EXPLORE_FILE }));
         return EXIT.pass;
     } finally {

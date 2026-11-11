@@ -11,6 +11,7 @@ import { after, before, test } from 'node:test';
 
 
 import { explore } from '../src/host/explore.mjs';
+import { answersFromExplore } from '../src/host/commands.mjs';
 import { freshSession, loginSteps, watchBroken } from '../src/host/browser-session.mjs';
 import { APP_FRAME, frameView } from '../src/host/app-view.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -77,11 +78,32 @@ test('explore: sign-in with a random button and a marker for every account, done
         await tab.waitForSelector('#logout');
         await tab.waitForSelector('[data-caw=explore]', { state: 'attached' });
         await tab.evaluate(() => window.__cawExploreDone());
+        // Then the card asks for the role of the test user they signed in with: a bad name is refused, a good one saved.
+        const saveRole = (name) => tab.evaluate((role) => window.__cawExploreRole(role), name);
+        while ((await saveRole('admin'))?.ok !== true) {
+            await new Promise((ok) => { setTimeout(ok, 200); });
+            if ((await saveRole('Admin!'))?.error !== undefined) assert.match((await saveRole('Admin!')).error, /Kleinbuchstaben/);
+        }
     })();
-    const code = await explore(root, ['--url', `${base}/`], { open, ask: async () => true, detect: () => 'web' });
+    const exploring = explore(root, ['--url', `${base}/`], { open, ask: async () => true, detect: () => 'web' });
     await human;
+    // "Finish" on the saved card ends explore; until the card is there the click has nothing to answer.
+    let code;
+    exploring.then((value) => { code = value; });
+    while (code === undefined) {
+        await tab.evaluate(() => window.__cawExploreNext('finish')).catch(() => {});
+        await new Promise((ok) => { setTimeout(ok, 200); });
+    }
     assert.equal(code, 0);
-    const suggestion = JSON.parse(readFileSync(join(root, 'caw/.explore.json'), 'utf8'));
+    const env = readFileSync(join(root, 'caw/.env'), 'utf8');
+    assert.match(env, /^CAW_LOGIN_ADMIN=admin$/m);
+    assert.match(env, /^CAW_PW_ADMIN=secret$/m);
+    assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /^caw\/\.env$/m);
+    const raw = readFileSync(join(root, 'caw/.explore.json'), 'utf8');
+    assert.ok(!raw.includes('secret'), 'the password never reaches the explore result');
+    const suggestion = JSON.parse(raw);
+    assert.deepEqual(suggestion.roles, ['admin']);
+    assert.deepEqual(answersFromExplore(suggestion).roles, ['admin']);
     assert.equal(suggestion.auth.type, 'form');
     assert.equal(suggestion.auth.userSelector, '#login_user');
     assert.equal(suggestion.auth.submitSelector, undefined, 'suffix changes, Enter submits');

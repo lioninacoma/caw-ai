@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentDefs, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -15,6 +15,7 @@ import { selectDocker } from './docker.mjs';
 import { DEFAULT_MAX_STEPS } from './step-budget.mjs';
 import { CLAUDE_TIMEOUT_MIN, optionValue, parseRunArgs, toWslPath } from './linux.mjs';
 import { EXPLORE_FILE, explore } from './explore.mjs';
+import { ensureTestUser } from './role-capture.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
 import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
@@ -138,6 +139,8 @@ export const answersFromExplore = (suggestion) => {
         ...(suggestion.startUrl === undefined ? {} : { startUrl: suggestion.startUrl }),
         ...(suggestion.messageSelectors === undefined ? {} : { messageSelectors: suggestion.messageSelectors }),
         ...(suggestion.consoleIgnore === undefined ? {} : { consoleIgnore: suggestion.consoleIgnore }),
+        // Roles the human saved test users for in the explore window.
+        ...(Array.isArray(suggestion.roles) && suggestion.roles.length > 0 ? { roles: suggestion.roles } : {}),
     };
 };
 
@@ -211,8 +214,8 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
         throw new CawError('usage', t('cli.fromUnreadable', { from: file, message: error.message }));
     }
     const answers = answersFromExplore(suggestion);
-    // explore does not know roles: ask in the terminal, otherwise use a neutral default.
-    if (interactive && answers.auth !== 'none') answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
+    // Roles come from the test users saved in the explore window; otherwise ask in the terminal or use a neutral default.
+    if (interactive && answers.auth !== 'none' && answers.roles === undefined) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
     if (args.includes('--no-mcp')) answers.mcp = false;
     return { answers };
 };
@@ -915,13 +918,18 @@ export const changeTracker = (root) => {
  * @param quiet in a batch: no mode line, the batch prints it once
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
-const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
+const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}, loaded = undefined) => {
     const { test, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, quiet = false } = options;
-    const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay });
+    let { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay });
     if (until !== undefined && !spec.steps.some(({ id }) => id === until)) throw stepUnknown('cli.stepUnknown', spec, until);
     const { assertPlayable } = await import('./replay.mjs');
     // open has no steps: nothing to play back, just log in and hand over.
     if (loaded === undefined) assertPlayable(spec, target, until);
+    // Only once the run could start, with a window and a person: a role without a test user gets one in a sign-in window.
+    const attended = (interactive ?? (process.env.CI === undefined || process.env.CI === '')) && !headless;
+    if (loaded === undefined && attended && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
+        ({ config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { overlay }));
+    }
     const withAgent = checked.agent;
     // The chat lives in the workbench and needs no terminal. Only in CI nobody waits for it.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
@@ -1076,17 +1084,19 @@ export const contradicts = (spec, { role, app, also = [], readOnly = false }) =>
  * Records a new test plan or replaces one, always with chat. `containerCommand` replaces Claude with a scripted flow so
  * the path through container, channel and browser can be tested without model or token.
  */
-export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
+export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}) => {
     const { test, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, overlay } = parseRunArgs('record', args);
-    const config = loadConfig(root);
+    let config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
     const known = exists ? withDefaults(loadTest(root, test), config) : null;
     const target = chooseTarget(config, known, { target: given, command: 'record' });
     const spec = known ?? draftTest(root, config, { id: test, target, role, app, also, readOnly });
     if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
+    requireHuman('record', interactive);
+    // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
+    if (environmentDefs(config)[target]?.agent && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
     const checked = checkTest(spec, target, config, { overlay });
     requireAgent(config, checked, target, t('cli.verbRecord'));
-    requireHuman('record', interactive);
 
     const { recordFlow } = await import('./flows.mjs');
     // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
@@ -1122,12 +1132,13 @@ const OPEN_ID = 'open';
  */
 export const open = async (root, args, deps = {}) => {
     const options = parseRunArgs('open', args);
-    const config = loadConfig(root);
+    let config = loadConfig(root);
     const target = chooseTarget(config, null, { target: options.target, command: 'open' });
     // The run is named after the app, e.g. in the window title.
     const spec = draftTest(root, config, { id: options.app ?? onlyKey(config.apps) ?? OPEN_ID, target, role: options.role, app: options.app, also: [], readOnly: true });
-    const checked = checkTest(spec, target, config, { overlay: options.overlay });
     requireHuman('open', deps.interactive);
+    if (await ensureTestUser(root, config, { role: spec.role, target, test: spec.id, interactive: true, capture: deps.captureTestUsers })) config = loadConfig(root);
+    const checked = checkTest(spec, target, config, { overlay: options.overlay });
     const runOptions = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
     return (await runOne(root, runOptions, deps, { config, spec, target, checked })).code;
 };

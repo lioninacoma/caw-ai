@@ -472,6 +472,36 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         },
     },
     {
+        name: 'caw_role',
+        description: 'Roles and their test users. action list: per role whether a test user is set (never the values) and which tests use it. '
+            + 'action add: opens a window on the sign-in page of target; the human signs in and saves the role (name prefilled), caw-ai writes '
+            + 'caw/.env and the config. You never ask for or see user names or passwords. action remove: a role no test uses. Derive role names '
+            + 'from the code (permissions, seed users). Not needed before record: a test whose role has no test user opens that window itself. No tokens.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['list', 'add', 'remove'] }, name: { type: 'string' }, target: { type: 'string' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        call: async (input) => {
+            const { roleOverview, removeRole } = await import('./role-command.mjs');
+            if (input.action === 'list') {
+                const data = roleOverview(root);
+                return answer(t('run.mcp.roleList', { count: data.roles.length }), data);
+            }
+            if (input.name === undefined ? input.action === 'remove' : !/^[a-z][a-z0-9-]{0,31}$/.test(input.name)) throw new Error(t('run.mcp.roleName'));
+            if (input.action === 'remove') {
+                const data = removeRole(root, input.name);
+                return answer(t('run.mcp.roleRemoved', { role: input.name }), { state: 'removed', ...data });
+            }
+            const running = runningRun(root);
+            if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
+            const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.target === undefined ? [] : ['--target', input.target])];
+            const { log, pid } = spawnDetached({ root, command: 'role', args, spawnRun });
+            return answer(t('run.mcp.roleStarted', { pid }), { state: 'started', command: 'role', args, pid, log: shown(root, log) });
+        },
+    },
+    {
         name: 'caw_overlay_check',
         description: 'caw-ai overlay check: opens the app headless with the overlay and reports per part whether local or deployed code loaded, '
             + 'with a suggested assetUrlPattern; apply: true writes the suggestion into the config. Waits up to 3 minutes. If the watch is missing '

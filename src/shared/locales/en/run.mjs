@@ -313,4 +313,8 @@ export default {
     'run.effect.cause': 'The check passed, but the app reacts differently than in healthy runs.',
     'run.button.rerecordStep': 'Re-record {id}',
     'run.flow.stillStale': 'plan changed',
+    'run.mcp.roleList': '{count} role(s).',
+    'run.mcp.roleName': 'name: lowercase letters, digits and hyphens, starting with a letter; remove needs it.',
+    'run.mcp.roleRemoved': 'Role {role} removed.',
+    'run.mcp.roleStarted': 'role add started (pid {pid}): the sign-in window opens for the human. caw_role list then shows the role.',
 };

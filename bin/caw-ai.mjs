@@ -69,6 +69,7 @@ const main = async ([command, ...args]) => {
             return doctor(root, { ui: createUi(), agent });
         }
         case 'overlay': return (await import('../src/host/overlay-check.mjs')).overlayCommand(root, args);
+        case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);
         case 'run': return (await host()).run(root, args);
         case 'record': return (await host()).record(root, args);
         case 'fix': return (await host()).fix(root, args);

@@ -69,6 +69,8 @@ Like `init`, but only writes suggestions to `caw/.explore.json`: framework, logi
 
 Options: `--yes`, `--insecure-tls` (as for `init`); `--login` or `--no-login` answer the sign-in question for scripts.
 
+With a sign-in, the card then asks for the role of the account you used and saves it as a test user (see [role](#role)); `init` takes the roles from there.
+
 ## skill
 
 ```bash
@@ -234,6 +236,18 @@ npx caw-ai auth user --target dev
 
 For `auth.type: storageState` (SSO, OAuth, MFA). Opens Chrome on the login. Sign in by hand. As soon as `signedInSelector` shows up, caw-ai stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
 
+## role
+
+```bash
+npx caw-ai role                          # roles, whether a test user is set (never the values), tests per role
+npx caw-ai role add clerk --target dev   # window on the sign-in page: sign in, save the role
+npx caw-ai role remove clerk             # only if no test uses it
+```
+
+A role is a test user. `role add` opens the sign-in page of the environment. You sign in with the test account; the card names the role (prefilled, editable) and **Save** writes user name and password to `caw/.env`, the role with its variable names to `caw.config.json` and `caw/.env` to `.gitignore`. **+ Another role** signs out and takes the next account. The values go from the page straight to the file: not to Claude, not to the terminal, not into `caw/.explore.json`.
+
+`explore` and `init` end the same way: after **Done** the card asks for the role of the account you signed in with. When `record`, `run` or `open` needs a role without a test user, the window opens first and the run goes on after **Save**; in CI and with `--headless` it ends with `credentials-missing`. For `auth.type: storageState` use `auth`.
+
 ## theme
 
 ```bash
@@ -253,11 +267,12 @@ Started by Claude Code through `.mcp.json`. You don't call it yourself. It gives
 | `caw_doctor` | `doctor` as data | no |
 | `caw_init` | `init` without questions (`offline`, `fromExplore`, `roles`, `noMcp`) | no |
 | `caw_explore` | Start `explore` in the background (`login` or `yes`) | no |
+| `caw_role` | Roles as data (`list`), the sign-in window for a new one (`add`, `name`, `target`), `remove`; never user names or passwords | no |
 | `caw_config` | Read the config, or change it validated (`patch`, `dryRun`) | no |
 | `caw_validate` | `validate` as data | no |
 | `caw_list` | `list` as data | no |
 | `caw_overlay_check` | `overlay check` (`target`, `app`, `apply`), waits for the result | no |
-| `caw_start` | Start `run`, `record`, `fix` or `open` with `--agent session` (`test`, `target`, `step`, `until`, `overlay`, `headless`, or `args`) | `record`, `fix`; `run`/`open` only via the chat |
+| `caw_start` | Start `run`, `record`, `fix` or `open` with `--agent session` (`test`, `target`, `step`, `until`, `overlay`, `headless`, or `args`) | none beyond your session |
 | `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with the crosshair in the workbench | no |

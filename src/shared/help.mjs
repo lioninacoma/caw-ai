@@ -7,7 +7,7 @@ import { colorEnabled, nightPainter } from './color.mjs';
 import { ravenBanner } from './raven.mjs';
 
 /** The host commands, in help order. */
-export const HOST_COMMANDS = ['skill', 'explore', 'init', 'validate', 'list', 'doctor', 'overlay', 'auth', 'theme', 'mcp', 'run', 'record', 'fix', 'open'];
+export const HOST_COMMANDS = ['skill', 'explore', 'init', 'validate', 'list', 'doctor', 'overlay', 'auth', 'role', 'theme', 'mcp', 'run', 'record', 'fix', 'open'];
 /** The agent commands; their help is under caw-ai help agent. */
 export const AGENT_COMMANDS = ['task', 'snapshot', 'url', 'click', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload', 'wait-ready', 'console', 'network', 'plan', 'ask-operator', 'remember', 'chat', 'say', 'recording', 'finish', 'advise'];
 const OTHER = ['help', '--help', '-h', '--version', '-v'];

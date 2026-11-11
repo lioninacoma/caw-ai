@@ -39,11 +39,12 @@ In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` gre
 | `caw_doctor` | `doctor` als Daten: jede Prüfung mit nächstem Schritt, Anzahl blockierender und optionaler | nein |
 | `caw_init` | `init` ohne Rückfragen: `offline`, oder `fromExplore` nach `caw_explore`; `roles`, `noMcp`. Liefert angelegte Dateien und TODO-Felder | nein |
 | `caw_explore` | startet `explore` im Hintergrund (`login: true/false` oder `yes`); danach zeigt `caw_status` `caw/.explore.json` | nein |
+| `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` öffnet dir das Anmeldefenster, dort speicherst du die Rolle; `remove` | nein |
 | `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben | nein |
 | `caw_validate` | `validate` als Daten: Config-Befunde, je Test Probleme, Hinweise und Code je Ziel | nein |
 | `caw_list` | `list` als Daten: je Test App, Rolle, Ziele, ob er schreibt, Aufnahmestand je Schritt | nein |
 | `caw_overlay_check` | `overlay check` (optional `apply`), wartet bis zu 3 Minuten und liefert das Ergebnis | nein |
-| `caw_start` | startet `run`, `record`, `fix` oder `open` mit `--agent session`: Felder `test`, `target`, `step`, `until`, `overlay`, `headless` (oder `args`). Mit `overlay` und ohne laufenden Watch kommt der Befehl für dich zurück, statt zu starten | `record`, `fix`: ja; `run`, `open`: nur wenn der Chat Claude ruft |
+| `caw_start` | startet `run`, `record`, `fix` oder `open` mit `--agent session`: Felder `test`, `target`, `step`, `until`, `overlay`, `headless` (oder `args`). Mit `overlay` und ohne laufenden Watch kommt der Befehl für dich zurück, statt zu starten | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet, die letzten Zeilen der Ausgabe (`.caw/session-*.log`) und als Daten der letzte Lauf: Ergebnis, letzter Schritt, Artefakte (Bericht, Trace, Logs) | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …), wie im Skill beschrieben | im Lauf |
 | `caw_selection` | das Element, das du beim Entwickeln in der Werkbank mit dem Fadenkreuz gewählt hast | nein |

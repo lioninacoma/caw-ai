@@ -45,7 +45,7 @@ export default [
     {
         // Functions that Playwright runs inside the page (evaluate, addInitScript) or that end up in page scripts via toString().
         files: [
-            'src/host/framework/*.mjs', 'src/host/demonstrate.mjs', 'src/host/explore.mjs', 'src/host/browser-session.mjs',
+            'src/host/framework/*.mjs', 'src/host/demonstrate.mjs', 'src/host/explore.mjs', 'src/host/role-capture.mjs', 'src/host/browser-session.mjs',
             'src/host/chat.mjs', 'src/host/app-view.mjs', 'src/host/effects.mjs', 'src/host/theme.mjs', 'src/host/workbench.mjs',
             'test/*-browser.test.mjs', 'test/login-portal.test.mjs', 'e2e/*.mjs',
         ],

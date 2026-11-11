@@ -10,8 +10,17 @@ import { GLYPH_CSS, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, fontFaces, ravenLogo,
 export const DONE_BINDING = '__cawExploreDone';
 export const PHASE_BINDING = '__cawExplorePhase';
 export const PHASE_EVENT = 'caw-explore-phase';
-/** Card phases: wait (page loading), signin, start (with button), reading, done. */
-export const PHASES = ['wait', 'signin', 'start', 'reading', 'done'];
+/** Saves the signed-in test user under the role typed in the card: (role) -> { ok, error? }. */
+export const ROLE_BINDING = '__cawExploreRole';
+/** After saving: 'more' (sign in as another test user) or 'finish'. */
+export const NEXT_BINDING = '__cawExploreNext';
+/** The credentials the page reads before the sign-in goes out; only the host keeps them. */
+export const CREDENTIALS_BINDING = '__cawExploreCredentials';
+/**
+ * Card phases: wait (page loading), signin, start (with button), reading, done; role (name the test user, save) and saved
+ * (another role or finish). The host sends a phase as a name or as { phase, user, role }.
+ */
+export const PHASES = ['wait', 'signin', 'start', 'reading', 'done', 'role', 'saved'];
 
 const css = (theme) => `:host{all:initial;${themeVars(theme)}}
 .card{position:fixed;right:20px;bottom:20px;z-index:2147483647;width:350px;background:var(--pane);color:var(--text);
@@ -32,7 +41,13 @@ const css = (theme) => `:host{all:initial;${themeVars(theme)}}
 .btn{display:block;width:100%;font:400 24px/1 var(--font-crt);letter-spacing:.06em;border:0;border-radius:0;cursor:pointer;padding:8px 14px;color:var(--ink);background:var(--accent);box-shadow:4px 4px 0 rgba(0,0,0,.5)}
 .btn:hover:enabled{filter:brightness(1.08)}.btn:active:enabled{transform:translate(2px,2px);box-shadow:none}
 .btn:disabled{cursor:default;background:var(--ok)}
-.btn:focus-visible{outline:2px dashed var(--info);outline-offset:3px}
+.btn:focus-visible,.btn2:focus-visible{outline:2px dashed var(--info);outline-offset:3px}
+.btn2{display:block;width:100%;font:400 20px/1 var(--font-crt);letter-spacing:.06em;border:0;border-radius:0;cursor:pointer;padding:6px 14px;color:var(--text);background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}
+.btn2:hover{color:var(--accent)}
+.role{display:flex;gap:8px;align-items:center;padding:6px 8px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}
+.role b{font:400 17px/1 var(--font-crt);color:var(--muted)}
+.role input{flex:1;min-width:0;font:13px/1.3 var(--font-ui);color:var(--text);background:transparent;border:0;outline:0;padding:2px 0}
+.err{margin:0;color:var(--fail)}
 .dots::after{content:"";animation:dots 1.2s steps(4) infinite}
 @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
 @media (prefers-reduced-motion:reduce){.dots::after{animation:none}}
@@ -42,7 +57,8 @@ ${GLYPH_CSS}`;
 
 /**
  * The script for addInitScript.
- * @param texts { title, steps: { signin, start }, text: { wait, signin, start, reading, done }, page, button, saved }
+ * @param texts { title, steps: { signin, start, role }, text: { wait, signin, start, reading, done, role, saved }, page, button, saved,
+ *              role: { label, save, more, finish } }; {user} and {role} in the texts are filled in
  * @param theme the resolved theme; defaults to the active one
  */
 export const exploreCardScript = (texts, theme = activeTheme()) => {
@@ -74,7 +90,9 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
         const root = host.attachShadow({ mode: 'closed' });
         root.innerHTML = '<style>' + ${JSON.stringify(css(theme))} + '</style>' + ${JSON.stringify(themeStyle(theme))}
             + '<div class="card" data-phase="wait"><div class="head">' + ${JSON.stringify(ravenLogo(theme, { size: 16 }))} + '<span class="title"></span><span class="step"></span><span class="toggle">–</span></div>'
-            + '<div class="body"><p class="text"><span class="mk"></span><span class="say"></span></p><div class="where"><b></b><code></code></div><button type="button" class="btn"></button></div></div>';
+            + '<div class="body"><p class="text"><span class="mk"></span><span class="say"></span></p><div class="where"><b></b><code></code></div>'
+            + '<label class="role"><b></b><input type="text" spellcheck="false" autocomplete="off" maxlength="32"></label><p class="err"></p>'
+            + '<button type="button" class="btn"></button><button type="button" class="btn2"></button></div></div>';
         const $ = (selector) => root.querySelector(selector);
         const card = $('.card');
         $('.title').textContent = T.title;
@@ -87,12 +105,28 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
             $('.toggle').textContent = card.classList.contains('min') ? '+' : '–';
         });
         const button = $('.btn');
-        button.textContent = '[ ' + T.button + ' ]';
+        const second = $('.btn2');
+        const input = $('.role input');
+        const err = $('.err');
+        $('.role b').textContent = T.role?.label ?? '';
+        let current = 'wait';
+        const label = () => '[ ' + (current === 'role' ? T.role.save : current === 'saved' ? T.role.finish : T.button) + ' ]';
+        const save = async () => {
+            button.disabled = true;
+            err.textContent = '';
+            const result = await window.${ROLE_BINDING}?.(input.value.trim().toLowerCase()).catch(() => null);
+            button.disabled = false;
+            if (result?.ok !== true) err.textContent = result?.error ?? '';
+        };
         button.addEventListener('click', () => {
+            if (current === 'role') { save(); return; }
+            if (current === 'saved') { button.disabled = true; window.${NEXT_BINDING}?.('finish'); return; }
             button.disabled = true;
             button.textContent = L.ok + ' ' + T.saved;
             window.${DONE_BINDING}?.();
         });
+        second.addEventListener('click', () => { second.disabled = true; window.${NEXT_BINDING}?.('more'); });
+        input.addEventListener('keydown', (event) => { if (event.key === 'Enter') save(); });
         // The spinner in the marker while waiting or reading.
         let spin = 0, frame = 0;
         const mark = (kind) => {
@@ -104,18 +138,29 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
             draw();
             if (!matchMedia('(prefers-reduced-motion: reduce)').matches) spin = setInterval(draw, L.ms);
         };
-        const render = (phase) => {
+        const render = (detail) => {
+            const phase = typeof detail === 'string' ? detail : detail?.phase;
             if (!${JSON.stringify(PHASES)}.includes(phase)) return;
+            const fill = (text) => String(text ?? '').replaceAll('{user}', detail?.user ?? '').replaceAll('{role}', detail?.role ?? '');
+            // A new round (another test user) starts with fresh buttons.
+            if (phase !== current && (phase === 'role' || phase === 'saved' || phase === 'signin')) { button.disabled = false; second.disabled = false; }
+            current = phase;
             card.dataset.phase = phase;
             const step = T.steps[phase] ?? (phase === 'reading' ? T.steps.start : undefined);
             $('.step').textContent = step === undefined ? '' : '[' + step + ']';
             $('.step').hidden = step === undefined;
             const say = $('.say');
-            say.textContent = T.text[phase];
+            say.textContent = fill(T.text[phase]);
             say.classList.toggle('dots', phase === 'wait' || phase === 'reading');
-            mark(phase === 'wait' || phase === 'reading' ? 'spin' : phase === 'done' ? 'ok' : 'info');
+            mark(phase === 'wait' || phase === 'reading' ? 'spin' : phase === 'done' || phase === 'saved' ? 'ok' : 'info');
             $('.where').hidden = phase !== 'start';
-            button.hidden = phase !== 'start' && !button.disabled;
+            $('.role').hidden = phase !== 'role';
+            err.textContent = '';
+            if (phase === 'role') { input.value = detail?.role ?? ''; setTimeout(() => { input.focus(); input.select(); }, 0); }
+            second.hidden = phase !== 'saved';
+            if (phase === 'saved') second.textContent = '[ ' + T.role.more + ' ]';
+            if (phase === 'role' || phase === 'saved' || (phase === 'start' && !button.disabled)) button.textContent = label();
+            button.hidden = !['start', 'role', 'saved'].includes(phase) && !(phase === 'reading' && button.disabled) && !(phase === 'done' && button.disabled);
         };
         // Shorten long paths at the front: the end tells where you are.
         const path = () => {

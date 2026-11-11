@@ -8,7 +8,7 @@
 
 > **caw** – **c**onstrained **a**gentic **w**ebtester
 >
-> Integrationstests für Web-Apps, in normaler Sprache geschrieben. Claude nimmt jeden Test einmal auf, abgespielt wird ohne KI.
+> Du beschreibst einen Test in normaler Sprache, Claude geht ihn einmal in deiner echten App durch, und danach läuft er ohne KI: schnell, reproduzierbar, ohne Token, und Claude kommt nur in den Chat zurück, wenn ein Schritt bricht.
 >
 > *Constrained*, weil der Agent Grenzen hat: Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten, und jede Aufnahme endet mit einem Plan, den du freigibst.
 
