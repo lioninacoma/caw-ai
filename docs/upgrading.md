@@ -74,7 +74,7 @@ Or with a dev server:
 
 Files with a fixed name that are not part of the build stay as `overlay.statics`: `"overlay": { "statics": [{ "name": "Fx/Static.js", "path": "static.js" }] }`.
 
-**ExtJS:** `redirects` and `constants` have no replacement. With `"framework": "extjs"` the web server of the Sencha watch is the source (`overlay.url`, default `http://localhost:1841/`); caw-ai reads the build names of app and packages from `app.json`, `.sencha/app/*.properties` and the watch's `bootstrap.json`. Delete both keys. Keep `statics` under `overlay` if you had any, and set `"start"` to your watch command (e.g. `"sencha app watch"`).
+**ExtJS:** `redirects` and `constants` have no replacement. With `"framework": "extjs"` the web server of the Sencha watch is the source (`overlay.url`, default `http://localhost:1841/`); caw-ai reads the build names of app and packages from `app.json`, `.sencha/app/*.properties` and the watch's `bootstrap.json`. Delete both keys. Keep `statics` under `overlay` if you had any, and set `"start"` to your watch command (e.g. `"sencha app watch"`). A `statics` `path` is relative to the app folder: if the app has its own folder and the file sits in a neighbouring package, lead there with `..` (e.g. `../../packages/Model/resources/Const.js`); it has to stay inside the workspace (see [Configuration](configuration.md)).
 
 ### Overlay: one model, `url` and `start`
 

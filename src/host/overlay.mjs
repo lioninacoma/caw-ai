@@ -12,7 +12,7 @@
 // end (CI). The source never switches silently; a Sencha watch found on another port is used and named.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix, relative } from 'node:path';
 
 import { assetPatterns, defaultAssetPattern } from '../shared/config.mjs';
@@ -25,6 +25,7 @@ import { buildCheck, contentTypeOf, localPages, moduleAlias, resolveLocalBuild, 
 import { baseOf, codeTags, ssrMarker, swapPage } from './page-swap.mjs';
 import { listeningPorts, matchingPids } from './processes.mjs';
 import { isProjectCopy, isProjectCopyFile } from './project-files.mjs';
+import { staticFile } from './static-files.mjs';
 
 const DEV_START_MS = 60_000;
 const WATCH_START_MS = 180_000;
@@ -553,12 +554,22 @@ const filesOnly = () => ({ kind: 'files', label: 'statics', ready: async () => {
 
 const SOURCES = { build: buildSource, dev: devSource, watch: watchSource, files: filesOnly };
 
-/** overlay.statics: fixed names, file relative to the app folder, read fresh from disk on every load. */
-const staticsOf = (appDir, statics) => {
-    const byName = new Map(statics.map((entry) => [entry.name, join(appDir, entry.path)]));
+/**
+ * overlay.statics: fixed names, file relative to the app folder, read fresh from disk on every load. The path may leave the app
+ * folder (a neighbouring package), but not the workspace (static-files.mjs); `check` resolves and checks every file before the browser.
+ */
+const staticsOf = (root, appDir, statics) => {
+    const byName = new Map();
     return {
+        entries: statics,
         check: () => {
-            for (const file of byName.values()) if (!existsSync(file)) throw new CawError('overlay-not-ready', t('session.overlay.staticMissing', { file }));
+            for (const { name, path } of statics) {
+                const found = staticFile(root, appDir, path);
+                if (found.state === 'outside') throw new CawError('config-invalid', t('session.overlay.staticOutside', { path, boundary: found.boundary }));
+                if (found.state === 'secret') throw new CawError('config-invalid', t('session.overlay.staticSecret', { path }));
+                if (found.state === 'missing') throw new CawError('overlay-not-ready', t('session.overlay.staticMissing', { file: found.file }));
+                byName.set(name, found.file);
+            }
         },
         resolve: ({ type, names }) => {
             if (type === 'document') return null;
@@ -570,6 +581,18 @@ const staticsOf = (appDir, statics) => {
         },
     };
 };
+
+
+/**
+ * Per overlay.statics entry what the page got: local (served from the file), deployed (a script with that name came from the
+ * server: the asset pattern does not yield the name) or not-loaded.
+ */
+const staticsServed = (apps, served) => apps.flatMap((app) => app.statics.entries.map(({ name, path }) => {
+    const named = (url) => app.namesOf(url).includes(name);
+    if ([...served.local.keys()].some(named)) return { app: app.name, name, path, status: 'local' };
+    const fromServer = [...served.server.keys()].some((url) => named(url) || decoded(url).split(/[?&#=]/).some((part) => part.endsWith(`/${name}`)));
+    return { app: app.name, name, path, status: fromServer ? 'deployed' : 'not-loaded' };
+}));
 
 const namesWith = (patterns) => (url) => [...new Set(patterns.map((pattern) => deriveName(url, pattern)).filter((name) => name !== null))];
 
@@ -614,7 +637,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
             const source = SOURCES[choice.kind]({ root, name, appDir, choice, config, info, envUrl: checked.url, ...deps });
             // The default pattern, the top-level list, then the app's own: the first name a source can resolve wins.
             const patterns = [defaultAssetPattern(checked.url), ...assetPatterns(config, name)];
-            apps.push({ name, kind: choice.kind, label: source.label, source, patterns, namesOf: namesWith(patterns), statics: staticsOf(appDir, choice.statics ?? []) });
+            apps.push({ name, kind: choice.kind, label: source.label, source, patterns, namesOf: namesWith(patterns), statics: staticsOf(root, appDir, choice.statics ?? []) });
             await source.ready();
             // The label may name another address now (a watch found on another port).
             apps.at(-1).label = source.label;
@@ -710,6 +733,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
                 localBase: pages.some(({ swaps }) => swaps.some(({ skipped }) => skipped === 'local-base')),
                 mixed: [...served.server.keys()].filter((url) => localFolders.has(folder(url).key)),
                 label: apps.map(({ name, label }) => (apps.length > 1 ? `${name}: ${label}` : label)).join(', '),
+                statics: staticsServed(apps, served),
                 ...completeness({ apps, served, patterns: allPatterns }),
             };
         },

@@ -56,6 +56,9 @@ environment; otherwise runs use the deployed code. caw starts no process for it:
    - `wrong-app` (another app answers at `url`) or `stale` (the watch serves files that no longer exist): tell the human what
      `message` says; do not start a second server on the same port.
    - `not-overlay` or `no-app`: fix the config (`overlay: true` on the environment, the app) or tell the human.
+   - `static-missing` or `static-invalid`: an `overlay.statics` entry (listed in `statics` with its `state`) points to a missing file,
+     leads outside the workspace or to a secret file. A `path` is relative to the app folder and may lead into a neighbouring package
+     with `..`; fix it with `caw_config` or tell the human.
 2. **Parts:** If the run or `caw_overlay` `check` reports parts that still come from the server (`incomplete`), run `caw_overlay`
    with `action: apply` and check again.
 3. **Project rules win:** if the project forbids starting such processes (e.g. a `CLAUDE.md` saying the human starts the watch),

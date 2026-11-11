@@ -521,6 +521,8 @@ export const writeConfig = (root, patch, { dryRun = false } = {}) => {
 
 // A path inside the project: relative, without `..`. Like `dir` and `overlay.build`.
 const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
+/** An overlay.statics path: relative, may leave the app folder with .. (a neighbouring package); the workspace bound is checked at run time. */
+const staticPath = (value) => typeof value === 'string' && value.trim() !== '' && !/^([\\/]|[A-Za-z]:)/.test(value);
 const APP_KEYS = ['dir', 'startUrl', 'overlay'];
 /** A server address: http(s), with host. Like --overlay <url>. */
 export const isServerUrl = (value) => {
@@ -589,7 +591,7 @@ const overlayIssues = (name, overlay, extjs) => {
     if (overlay.statics !== undefined && !Array.isArray(overlay.statics)) issues.push(t('config.overlay.statics', { name }));
     else (overlay.statics ?? []).forEach((entry, index) => {
         const extra = isObject(entry) ? Object.keys(entry).find((key) => !STATIC_KEYS.includes(key)) : undefined;
-        if (!isObject(entry) || typeof entry.name !== 'string' || entry.name === '' || !relativePath(entry.path) || extra !== undefined) {
+        if (!isObject(entry) || typeof entry.name !== 'string' || entry.name === '' || !staticPath(entry.path) || extra !== undefined) {
             issues.push(t('config.overlay.static', { name, index }));
         }
     });

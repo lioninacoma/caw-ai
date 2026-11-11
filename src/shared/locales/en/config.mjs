@@ -129,7 +129,7 @@ export default {
     'config.overlay.commandWithout': 'App {name}: overlay.{key} needs overlay.{needs}',
     'config.overlay.both': 'App {name}: overlay.{old} and overlay.{now} mean the same; keep only overlay.{now}',
     'config.overlay.statics': 'App {name}: overlay.statics must be a list, e.g. [{ "name": "Fx/Static.js", "path": "static.js" }]',
-    'config.overlay.static': 'App {name}: overlay.statics[{index}] needs name and path (relative to the app folder, no ..), nothing else',
+    'config.overlay.static': 'App {name}: overlay.statics[{index}] needs name and path, nothing else. path is relative to the app folder and may leave it with .. (e.g. a neighbouring package), but must stay inside the project or its workspace; no absolute path',
     'config.note.overlayNoEnv': 'App {name} has overlay, but no environment has "overlay": true: --overlay works nowhere.',
     'config.note.overlayRenamed': 'App {name}: overlay.{old} is now overlay.{now}; caw reads it as before.',
 

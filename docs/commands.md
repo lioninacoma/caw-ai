@@ -110,8 +110,10 @@ Is the local code server of the app ready for `--overlay`? No browser, no sign-i
 | `wrong-app` | Another app (or no Sencha watch) answers at `url`. | 2 |
 | `stale` | The watch lists files in `bootstrap.json` it doesn't serve. | 2 |
 | `not-overlay`, `no-app` | The environment has no `"overlay": true`, or the app is unknown or has no `app.json`. | 3 |
+| `static-missing` | A file from `overlay.statics` is missing. | 2 |
+| `static-invalid` | A `overlay.statics` path leads outside the workspace, or to a secret file. | 3 |
 
-`--json` prints `{ state, framework, app, appDir, url, foundUrl?, start, message? }` as the only line on stdout.
+`--json` prints `{ state, framework, app, appDir, url, foundUrl?, start, statics?, message? }` as the only line on stdout; `statics` lists each entry with `name`, `path` and `state` (`ok`, `missing`, `outside`, `secret`).
 
 ## overlay check
 
@@ -135,7 +137,7 @@ A part that came `deployed` means a mixed version: the page ran partly on your c
 
 Before the browser it runs `overlay status`. If the server isn't ready it stops with that state, the address and the `start` command, and starts nothing. `--start` runs `start` in the app folder in that case and stops it afterwards (CI).
 
-`--target` defaults to the only environment with `overlay: true`; `--app` and `--role` to the only app and the first role. The result always goes to `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `url`, `start`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, after `--apply` also `applied`). `--json` prints it as the only line on stdout. Exit 0 complete, 2 incomplete or server problem (`down`, `wrong-app`, `stale`), 3 no overlay environment or no app.
+`--target` defaults to the only environment with `overlay: true`; `--app` and `--role` to the only app and the first role. The result always goes to `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `url`, `start`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, with `overlay.statics` also `statics` with `status` `local`, `deployed` or `not-loaded` per entry, after `--apply` also `applied`). A static that came from the server makes the check `incomplete`. `--json` prints it as the only line on stdout. Exit 0 complete, 2 incomplete or server problem (`down`, `wrong-app`, `stale`), 3 no overlay environment or no app.
 
 ## validate
 

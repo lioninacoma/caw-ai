@@ -606,7 +606,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         name: 'caw_overlay',
         description: 'The local code for --overlay. action status (fast, no browser): is the local code server (dev server, Sencha watch) of the app '
             + 'ready at overlay.url? state ready, moved (runs at foundUrl: patch overlay.url via caw_config), down, wrong-app (another app answers), '
-            + 'stale, not-overlay or no-app, with url, start (the project\'s start command) and appDir. On down ask the human whether to start it, '
+            + 'stale, not-overlay, no-app, static-missing or static-invalid (an overlay.statics file is missing, outside the workspace or secret; '
+            + 'statics lists each entry with its state), with url, start (the project\'s start command) and appDir. On down ask the human whether to start it, '
             + 'then run start in appDir in your own session in the background and poll status until ready; caw itself starts nothing. '
             + 'action check: opens the app headless with the overlay and reports per part whether local or deployed code loaded, with suggested '
             + 'assetUrlPattern; action apply: the same and writes the suggestions into the config. check and apply wait up to 3 minutes. No tokens.',

@@ -318,7 +318,9 @@ test('overlay config: url, start, build and statics (and the earlier names) are 
     assert.doesNotMatch(notes({ url: 'http://localhost:5173', start: 'npm run dev' }), /heißt jetzt/);
     assert.match(app({ devServer: 'http://localhost:5173' }), /unbekanntes Feld overlay\.devServer/);
     assert.match(app({ statics: [{ name: 'x' }] }), /overlay\.statics\[0\] braucht name und path/);
-    assert.match(app({ statics: [{ name: 'x', path: '../aussen.js' }] }), /overlay\.statics\[0\]/);
+    // .. leaves the app folder (a neighbouring package); whether it stays inside the workspace is checked at run time (static-files).
+    assert.equal(app({ statics: [{ name: 'x', path: '../../packages/m/c.js' }] }), '');
+    assert.match(app({ statics: [{ name: 'x', path: 'C:/aussen.js' }] }), /overlay\.statics\[0\]/);
     assert.match(app({ statics: 'a.js' }), /overlay\.statics muss eine Liste sein/);
     assert.match(app('dist'), /overlay muss ein Objekt sein/);
     assert.equal(app({ devCommand: 'sencha app watch', statics: [{ name: 'C.js', path: 'c.js' }] }, 'extjs'), '', 'ExtJS: the watch needs no source');

@@ -23,6 +23,8 @@ export default {
     'session.overlay.otherApp': '{url} liefert die App {served}, nicht {app}: Das ist der {label} eines anderen Projekts. Trage in apps.{app}.overlay.url die Adresse des Watch von {app} ein.',
     'session.overlay.sourceMissing': '{url} antwortet mit {status}: bootstrap.json nennt eine Datei, die der Watch nicht liefert. {hint}',
     'session.overlay.staticMissing': '{file} aus overlay.statics fehlt.',
+    'session.overlay.staticOutside': 'overlay.statics: {path} führt aus dem Workspace {boundary} heraus (Symlinks aufgelöst). caw liefert nur Dateien aus dem Projekt oder seinem Workspace aus.',
+    'session.overlay.staticSecret': 'overlay.statics: {path} ist eine geheime Datei (.env, Schlüssel, Zugangsdaten). caw liefert sie nie aus.',
     'session.overlay.ambiguousName': 'Der Build-Name {file} passt zu {first} und zu {second}: caw ersetzt keinen. Gib einer App in app.json einen eigenen output.js.path.',
     'session.overlay.ambiguousPath': 'Die Seite lädt {first} und {second}, beide unter dem Build-Namen {file}: caw ersetzt keinen. Setze output.js.path in der app.json auf einen eindeutigen Namen.',
     'session.overlay.ssr': 'Die Seite ist serverseitig gerendert ({framework}): Ihr Code lässt sich nicht über die ausgelieferte Umgebung legen, die Hydration liefe gegen das Markup des Servers. Teste lokalen Code hier mit dem Dev-Server als Umgebung (--target local).',

@@ -23,6 +23,8 @@ export default {
     'session.overlay.otherApp': '{url} serves the app {served}, not {app}: that is the {label} of another project. Set apps.{app}.overlay.url to the address of the watch of {app}.',
     'session.overlay.sourceMissing': '{url} answers {status}: bootstrap.json names a file the watch doesn\'t serve. {hint}',
     'session.overlay.staticMissing': '{file} from overlay.statics is missing.',
+    'session.overlay.staticOutside': 'overlay.statics: {path} leads outside the workspace {boundary} (symlinks resolved). caw only serves files from inside the project or its workspace.',
+    'session.overlay.staticSecret': 'overlay.statics: {path} is a secret file (.env, keys, credentials). caw never serves it.',
     'session.overlay.ambiguousName': 'The build name {file} matches {first} and {second}: caw replaces neither. Give one app its own output.js.path in app.json.',
     'session.overlay.ambiguousPath': 'The page loads {first} and {second}, both under the build name {file}: caw replaces neither. Set output.js.path in app.json to a unique name.',
     'session.overlay.ssr': 'The page is server-side rendered ({framework}): its code cannot be laid over the deployed environment, hydration would run against the markup from the server. Test local code here with the dev server as the environment (--target local).',

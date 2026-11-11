@@ -16,6 +16,7 @@ import { RUN_DIR } from '../shared/names.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { serverState } from './overlay.mjs';
+import { staticFile } from './static-files.mjs';
 import { checkTest, overlayChoice } from './test-file.mjs';
 
 /** The result file under .caw. */
@@ -73,9 +74,20 @@ export const overlayStatus = async (root, { target, app, config: given, deps = {
         if (!(error instanceof CawError)) throw error;
         return { state: 'not-overlay', ...base, message: error.message };
     }
+    const statics = (choice.statics ?? []).map(({ name: staticName, path }) => {
+        const found = staticFile(root, join(root, appDir), path);
+        return { name: staticName, path, state: found.state, ...(found.state === 'outside' ? { boundary: found.boundary } : {}) };
+    });
+    const broken = statics.find(({ state }) => state !== 'ok');
+    if (broken !== undefined) {
+        const message = broken.state === 'missing' ? t('session.overlay.staticMissing', { file: broken.path })
+            : t(broken.state === 'secret' ? 'session.overlay.staticSecret' : 'session.overlay.staticOutside', broken);
+        return { state: broken.state === 'missing' ? 'static-missing' : 'static-invalid', ...base, url: choice.url ?? null, statics, message };
+    }
+    const withStatics = statics.length === 0 ? {} : { statics };
     // A build folder or fixed files need no server: the run checks them itself.
-    if (choice.url === undefined) return { state: 'ready', ...base, url: null };
-    const status = { ...base, url: choice.url };
+    if (choice.url === undefined) return { state: 'ready', ...base, url: null, ...withStatics };
+    const status = { ...base, url: choice.url, ...withStatics };
     const adapter = frameworkOf(config);
     const dir = join(root, appDir);
     if (adapter.overlay?.identify !== undefined && !existsSync(join(dir, 'app.json'))) {
@@ -153,7 +165,10 @@ export const overlayCheck = async (root, { target, app, role, apply = false, sta
     }
     if (seen === null) return save(root, { ...base, state: 'error', ...EMPTY(), message: t('cli.overlayCheck.noDiagnosis'), runDir: relativeRun, ...server });
     const { parts, missed, notLoaded, suggestions, unresolved } = seen;
-    const result = { ...base, state: missed.length > 0 ? 'incomplete' : 'complete', parts, missed, notLoaded, suggestions, unresolved, runDir: relativeRun, ...server, ...(loadProblem === undefined ? {} : { message: loadProblem }) };
+    const statics = seen.statics ?? [];
+    // A static that came from the server is a mixed state like a missed part.
+    const state = missed.length > 0 || statics.some(({ status: served }) => served === 'deployed') ? 'incomplete' : 'complete';
+    const result = { ...base, state, parts, missed, notLoaded, suggestions, unresolved, ...(statics.length === 0 ? {} : { statics }), runDir: relativeRun, ...server, ...(loadProblem === undefined ? {} : { message: loadProblem }) };
     if (!apply || suggestions.length === 0) return save(root, result);
     // Only the missing patterns, appended: a single string becomes a list, what is there stays first.
     const current = patternList(config.assetUrlPattern);
@@ -168,14 +183,14 @@ export const overlayCheck = async (root, { target, app, role, apply = false, sta
 /** Exit code of status: 0 ready (also on another port), 3 config (no overlay, no app), 2 the server (down, wrong app, stale). */
 export const overlayStatusExit = ({ state }) => {
     if (state === 'ready' || state === 'moved') return EXIT.pass;
-    if (state === 'not-overlay' || state === 'no-app') return EXIT.rejected;
+    if (state === 'not-overlay' || state === 'no-app' || state === 'static-invalid') return EXIT.rejected;
     return EXIT.error;
 };
 
 /** Exit code of check: 0 complete (or nothing to compare), 3 config (no overlay, no app), 2 everything else (mixed, server, error). */
 export const overlayCheckExit = ({ state }) => {
     if (state === 'complete' || state === 'no-expected') return EXIT.pass;
-    if (state === 'not-overlay' || state === 'no-app') return EXIT.rejected;
+    if (state === 'not-overlay' || state === 'no-app' || state === 'static-invalid') return EXIT.rejected;
     return EXIT.error;
 };
 
@@ -190,6 +205,7 @@ const printStart = (result, ui) => {
 export const printOverlayStatus = (result, ui) => {
     if (result.state === 'ready') ui.success(result.url === null ? t('cli.overlayStatus.readyNoServer', { app: result.app }) : t('cli.overlayStatus.ready', { app: result.app, url: result.url }));
     else ui.warn(result.message);
+    for (const entry of result.statics ?? []) ui[entry.state === 'ok' ? 'info' : 'warn'](t(`cli.overlayStatus.static.${entry.state}`, entry));
     printStart(result, ui);
 };
 
@@ -199,6 +215,7 @@ const STATUS = { local: 'success', deployed: 'warn', 'not-loaded': 'note' };
 export const printOverlayCheck = (result, ui) => {
     ui.info(t('cli.overlayCheck.head', { target: result.target, app: result.app ?? '–' }));
     for (const { label, kind, status } of result.parts) ui[STATUS[status]](t(`cli.overlayCheck.part.${status}`, { label, kind }));
+    for (const entry of result.statics ?? []) ui[STATUS[entry.status]](t(`cli.overlayCheck.static.${entry.status}`, entry));
     for (const { source, pattern, urls } of result.suggestions) ui.info(t('cli.overlayCheck.suggestion', { source, pattern: JSON.stringify(pattern), count: urls.length }));
     for (const { source, urls } of result.unresolved) ui.note(t('cli.overlayCheck.unresolved', { source, urls: urls.slice(0, 3).join(', ') }));
     if (result.applied !== undefined && result.applied.length > 0) ui.success(t('cli.overlayCheck.applied', { count: result.applied.length }));

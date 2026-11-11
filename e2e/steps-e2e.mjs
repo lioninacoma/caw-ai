@@ -1360,6 +1360,60 @@ ${finishOf(['S2'])}`;
             await watch.close();
         }
     });
+    await scenario('5 overlay.statics from a neighbouring package: served fresh from disk in the same run, outside the workspace refused', async () => {
+        restore();
+        quietTokens();
+        // e2e/ becomes the workspace of e2e/project for this scenario; e2e/fx-shared is the neighbouring package.
+        const marker = join(here, 'pnpm-workspace.yaml');
+        const shared = join(here, 'fx-shared');
+        const sharedFile = join(shared, 'Static.js');
+        const before = JSON.parse(readFileSync(mainConfig, 'utf8')).apps.bestellung.overlay;
+        // ExtJS: the local code server is a stand-in watch serving the project, never a real watch on 1841 (another project's).
+        const watch = await serveFolder(fake);
+        const setStatic = (path) => {
+            const now = JSON.parse(readFileSync(mainConfig, 'utf8'));
+            now.apps.bestellung.overlay = { ...before, url: watch.url, statics: [{ name: 'Fx/Static.js', path }] };
+            writeFileSync(mainConfig, JSON.stringify(now, null, 4));
+        };
+        mkdirSync(shared, { recursive: true });
+        writeFileSync(marker, "packages:\n  - 'project'\n");
+        writeFileSync(sharedFile, "window.STAND='NACHBAR-1';");
+        const appOf = (bench) => bench.frames().find((frame) => frame.name() === 'caw-app');
+        const stand = (bench) => appOf(bench)?.evaluate(() => window.STAND).catch(() => undefined);
+        try {
+            setStatic('../fx-shared/Static.js');
+            const h = humans(async (chat) => {
+                const bench = chat.page();
+                await benchBack(chat);
+                await stateOf(chat, 'developing');
+                const first = await stand(bench);
+                writeFileSync(sharedFile, "window.STAND='NACHBAR-2';");
+                await appOf(bench).locator('body').press('F5');
+                let second;
+                const until = Date.now() + 30000;
+                while (Date.now() < until && (second = await stand(bench)) !== 'NACHBAR-2') await bench.waitForTimeout(300);
+                verify('Neighbour static: the page got the file from the neighbouring package', first === 'NACHBAR-1', String(first));
+                verify('Neighbour static: a change on disk arrives with F5, no restart', second === 'NACHBAR-2', String(second));
+                await decide(chat, 'Beenden');
+            });
+            const code = await run(fake, [ID, ...short, '--overlay', '--until', 'S2'], { interactive: true, onChatOpen: h.onChatOpen });
+            verify('Neighbour static: Exit 0', code === 0, String(code));
+            verify('Neighbour static: one window', await h.done() === 1);
+            // Two levels up from e2e/project is the repository folder's parent: outside the workspace, refused before the browser.
+            setStatic('../../outside/Static.js');
+            verify('Outside the workspace: Exit 3', await run(fake, [ID, ...short, '--overlay']) === 3);
+            const { result } = newestRun();
+            verify('Outside the workspace: config-invalid naming the workspace',
+                result.code === 'config-invalid' && (result.reason ?? '').includes('Workspace'), JSON.stringify(result).slice(0, 400));
+        } finally {
+            const now = JSON.parse(readFileSync(mainConfig, 'utf8'));
+            now.apps.bestellung.overlay = before;
+            writeFileSync(mainConfig, JSON.stringify(now, null, 4));
+            rmSync(marker, { force: true });
+            rmSync(shared, { recursive: true, force: true });
+            await watch.close();
+        }
+    });
 } catch (error) {
     verify('Script', false, error.stack);
 } finally {
