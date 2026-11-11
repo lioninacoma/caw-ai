@@ -73,6 +73,7 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 
 
 ### Fixed
+- The `.mcp.json` entry from `init` and `skill` points to caw-ai where it is installed, also in a parent folder (monorepo with hoisted `node_modules`).
 - Actions of Claude and of replay no longer take focus from the chat; looking for a target no longer scrolls the app.
 - **Fix step** after a recording keeps what you and Claude agreed on (e.g. an allowed console error).
 - React apps that hydrate the whole document (Next.js App Router, React Router framework mode, Remix) count as loaded instead of ending with `app-not-loaded`; Angular SSR counts as loaded only after hydration.

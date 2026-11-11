@@ -2,7 +2,7 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
@@ -22,6 +22,19 @@ import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath,
 const SKILL_DIR = '.claude/skills/caw-ai';
 /** Entry for .mcp.json: node instead of npx works the same on every system and needs no cmd /c on Windows. */
 export const MCP_ENTRY = { command: 'node', args: ['node_modules/caw-ai/bin/caw-ai.mjs', 'mcp'] };
+/**
+ * The MCP entry for a project folder. In a monorepo caw-ai is often installed in a parent folder (hoisted): the path then
+ * points there, relative to the project folder, where Claude Code starts the server.
+ */
+export const mcpEntry = (root) => {
+    for (let dir = resolve(root); ; dir = dirname(dir)) {
+        if (existsSync(join(dir, 'node_modules', 'caw-ai', 'bin', 'caw-ai.mjs'))) {
+            const path = relative(root, join(dir, 'node_modules', 'caw-ai', 'bin', 'caw-ai.mjs')).split(sep).join('/');
+            return { ...MCP_ENTRY, args: [path, 'mcp'] };
+        }
+        if (dirname(dir) === dir) return MCP_ENTRY;
+    }
+};
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
 // Only what the container runs. Browser code and devlink stay out.
 const TOOL_PARTS = ['bin', 'src/sandbox', 'src/shared', 'package.json'];
@@ -262,7 +275,7 @@ const addMcpEntry = (root) => {
         return false;
     }
     if (mcp.mcpServers?.['caw-ai'] !== undefined) return false;
-    mcp.mcpServers = { ...(mcp.mcpServers ?? {}), 'caw-ai': MCP_ENTRY };
+    mcp.mcpServers = { ...(mcp.mcpServers ?? {}), 'caw-ai': mcpEntry(root) };
     writeFileSync(mcpFile, `${JSON.stringify(mcp, null, 2)}\n`);
     return true;
 };

@@ -9,7 +9,7 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { describeCode } from './code-source.mjs';
-import { MCP_ENTRY, answersFromExplore, detectApp, starterConfig } from './commands.mjs';
+import { answersFromExplore, detectApp, mcpEntry, starterConfig } from './commands.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
 import { templatePath } from './sandbox-config.mjs';
 import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
@@ -170,7 +170,7 @@ const ensureMcpEntry = (root) => {
     }
     if (mcp === null || typeof mcp !== 'object') return 'invalid';
     if (mcp.mcpServers?.['caw-ai'] !== undefined) return 'present';
-    mcp.mcpServers = { ...(mcp.mcpServers ?? {}), 'caw-ai': MCP_ENTRY };
+    mcp.mcpServers = { ...(mcp.mcpServers ?? {}), 'caw-ai': mcpEntry(root) };
     writeFileSync(file, `${JSON.stringify(mcp, null, 2)}\n`);
     return 'created';
 };
