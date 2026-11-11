@@ -1,20 +1,20 @@
-// Uebersetzt den Stack eines Skriptfehlers ueber Quellkarten in Dateien des Quellcodes: aus `main.3f9a.js:1:48211` wird
-// `src/app/orders.service.ts:42:7`. Gilt fuer jedes Framework und jeden Bundler (Vite, webpack, Angular CLI, esbuild), weil nur das
-// Format der Quellkarte (Version 3) zaehlt. Ohne Quellkarte bleibt die Zeile, wie sie ist; das Tool scheitert nie daran.
+// Translates the stack of a script error into source files via source maps: `main.3f9a.js:1:48211` becomes
+// `src/app/orders.service.ts:42:7`. Works for any framework and bundler (Vite, webpack, Angular CLI, esbuild), since only the
+// source map format (version 3) matters. Without a source map the line stays as it is; the tool never fails on that.
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const DIGIT = new Map([...B64].map((char, index) => [char, index]));
 const MAX_MAP_BYTES = 30 * 1024 * 1024;
 const FRAME = /(https?:\/\/[^\s)]+?):(\d+):(\d+)/;
 
-/** Base64-VLQ eines Segments, etwa "AAgBC", in Zahlen. */
+/** Decodes the Base64 VLQ of a segment, e.g. "AAgBC", into numbers. */
 export const decodeVlq = (text) => {
     const values = [];
     let value = 0;
     let shift = 0;
     for (const char of text) {
         const digit = DIGIT.get(char);
-        if (digit === undefined) throw new Error(`kein Base64-Zeichen: ${char}`);
+        if (digit === undefined) throw new Error(`not a Base64 character: ${char}`);
         value += (digit & 31) << shift;
         if (digit & 32) {
             shift += 5;
@@ -28,8 +28,8 @@ export const decodeVlq = (text) => {
 };
 
 /**
- * Die Zuordnungen einer Quellkarte, je erzeugter Zeile die Segmente [Spalte, Quelle, Zeile, Spalte], alle ab 0.
- * Segmente ohne Quelle (nur eine Spalte) fallen weg.
+ * The mappings of a source map: per generated line the segments [column, source, line, column], all 0-based.
+ * Segments without a source (just a column) are dropped.
  */
 export const parseMappings = (mappings) => {
     const lines = [];
@@ -54,17 +54,17 @@ export const parseMappings = (mappings) => {
     return lines;
 };
 
-/**
- * Wo eine Stelle im erzeugten Code herkommt: das letzte Segment der Zeile, das nicht hinter der Spalte beginnt.
- * @param line, column wie im Stack, ab 1
- * @returns { source, line, column } ab 1, oder null
- */
-/** `sourceRoot` vor der Quelle, wie Browser es tun: mit genau einem / dazwischen, ausser die Quelle ist selbst absolut. */
+/** Prefixes `sourceRoot` to the source like browsers do: with exactly one / between, unless the source is absolute itself. */
 export const withRoot = (root, source) => {
     if (typeof root !== 'string' || root === '' || /^[a-z][\w+.-]*:/i.test(source) || source.startsWith('/')) return source;
     return `${root.endsWith('/') ? root : `${root}/`}${source}`;
 };
 
+/**
+ * Where a position in generated code comes from: the last segment of the line that does not start after the column.
+ * @param line, column as in the stack, 1-based
+ * @returns { source, line, column } 1-based, or null
+ */
 export const originalPosition = (map, lines, line, column) => {
     const segments = lines[line - 1] ?? [];
     let best = null;
@@ -79,39 +79,39 @@ export const originalPosition = (map, lines, line, column) => {
 };
 
 /**
- * Der Pfad einer Quelle, wie ein Mensch ihn im Projekt sucht. Bundler schreiben Praefixe davor: `webpack://name/./src/a.ts`,
- * `/@fs/C:/…`, `ng://`, oder eine absolute URL des Dev-Servers.
+ * The path of a source as a human would look for it in the project. Bundlers add prefixes: `webpack://name/./src/a.ts`,
+ * `/@fs/C:/…`, `ng://`, or an absolute dev server URL.
  */
 export const sourcePath = (source, mapUrl) => {
     const bundler = /^(webpack|ng|vite|rollup):\/\//.test(source);
     let path = source.replace(/^webpack:\/\/[^/]*\//, '').replace(/^(ng|vite|rollup):\/\/\/?/, '');
-    // Relativ zur Quellkarte nur, was keine Bundler-Adresse ist: `../src/a.ts` neben `assets/index.js.map`.
+    // Only non-bundler addresses are relative to the source map: `../src/a.ts` next to `assets/index.js.map`.
     if (!bundler && (!/^[a-z]+:/i.test(path) || /^https?:/i.test(path))) {
         try {
             path = new URL(path, mapUrl).pathname;
         } catch {
-            // Bleibt, wie es ist.
+            // keep it as it is
         }
     }
-    // `file:///C:/…` (Turbopack) wie `/@fs/C:/…` (Vite): ein absoluter Pfad auf dem Rechner des Dev-Servers.
+    // `file:///C:/…` (Turbopack) like `/@fs/C:/…` (Vite): an absolute path on the dev server's machine.
     return decodeURIComponent(path).replace(/^file:\/\//, '').replace(/^\/@fs\//, '').replace(/^\/+/, '').replace(/^(\.\/)+/, '').replace(/[?#].*$/, '');
 };
 
 const stripQuery = (url) => url.replace(/[?#].*$/, '');
 
 /**
- * Quellkarten aus der Anwendung laden und Stacks uebersetzen. Geladen wird nur vom Origin des Skripts selbst und nur, was `allowed`
- * zulaesst: Die Seite kann eine Quellkarte ueberall hin zeigen lassen, der Host folgt dem nicht.
- * @param fetchText (url) => Promise<string|null>, z. B. ueber den Request-Kontext des Browsers (gleiche Cookies, gleiche TLS-Regeln)
- * @param allowed   (url) => boolean, etwa die Host-Sperre
- * @param version   (url) => string, der Stand eines Skripts (etwa die mtime der lokalen Datei); ein neuer Stand laedt die Karte neu
+ * Loads source maps from the application and translates stacks. Maps load only from the script's own origin and only if `allowed`
+ * permits: the page may point a source map anywhere, the host does not follow.
+ * @param fetchText (url) => Promise<string|null>, e.g. via the browser's request context (same cookies, same TLS rules)
+ * @param allowed   (url) => boolean, e.g. the host block
+ * @param version   (url) => string, the state of a script (e.g. the mtime of the local file); a new state reloads the map
  */
 export const createSourceMapper = ({ fetchText, allowed = () => true, version = () => '' }) => {
     const cache = new Map();
     const load = async (scriptUrl) => {
         const script = await fetchText(scriptUrl);
         if (typeof script !== 'string') return null;
-        // Der letzte Kommentar zaehlt; eine Inline-Karte (Vite im Dev-Modus) ist oft Megabytes lang, darum nicht nur das Dateiende.
+        // The last comment wins; an inline map (Vite in dev mode) is often megabytes long, so search the whole file, not just its end.
         const at = script.lastIndexOf('sourceMappingURL=');
         const comment = at === -1 || !/[#@] $/.test(script.slice(at - 2, at)) ? undefined : script.slice(at + 'sourceMappingURL='.length).match(/^\S+/)?.[0];
         let text;
@@ -129,7 +129,7 @@ export const createSourceMapper = ({ fetchText, allowed = () => true, version = 
         if (typeof text !== 'string' || text.length > MAX_MAP_BYTES) return null;
         const map = JSON.parse(text);
         if (map.version !== 3) return null;
-        // Index-Karte (Turbopack, also `next dev`): Teilkarten mit Versatz statt einer Karte fuer die ganze Datei.
+        // Index map (Turbopack, i.e. `next dev`): sections with offsets instead of one map for the whole file.
         if (Array.isArray(map.sections)) {
             const sections = map.sections
                 .filter((section) => typeof section?.map?.mappings === 'string' && Number.isInteger(section.offset?.line) && Number.isInteger(section.offset?.column))
@@ -139,14 +139,14 @@ export const createSourceMapper = ({ fetchText, allowed = () => true, version = 
         if (typeof map.mappings !== 'string') return null;
         return { sections: [{ line: 0, column: 0, map, lines: parseMappings(map.mappings) }], mapUrl };
     };
-    /** Die Stelle in der Quelle; bei einer Index-Karte in der letzten Teilkarte, die vor der Stelle beginnt. */
+    /** The position in the source; for an index map, in the last section starting before the position. */
     const positionIn = ({ sections }, line, column) => {
         const section = sections.filter((entry) => entry.line < line - 1 || (entry.line === line - 1 && entry.column <= column - 1)).at(-1);
         if (section === undefined) return null;
         const inner = line - section.line;
         return originalPosition(section.map, section.lines, inner, inner === 1 ? column - section.column : column);
     };
-    // Je Skript und Stand: `version` aendert sich, wenn ein Watch die lokale Datei neu schreibt; dann gilt die Karte von vorher nicht mehr.
+    // Per script and state: `version` changes when a watch rewrites the local file, which invalidates the previous map.
     const mapFor = (scriptUrl) => {
         const key = `${scriptUrl}
 ${version(scriptUrl)}`;
@@ -154,7 +154,7 @@ ${version(scriptUrl)}`;
         return cache.get(key);
     };
 
-    /** Eine Zeile des Stacks: `src/a.ts:12:5` mit Quellkarte, sonst die URL mit Zeile und Spalte. */
+    /** One stack line: `src/a.ts:12:5` with a source map, otherwise the URL with line and column. */
     const frame = async (line) => {
         const found = line.match(FRAME);
         if (found === null) return null;
@@ -168,9 +168,9 @@ ${version(scriptUrl)}`;
 
     return {
         /**
-         * Die Zeilen eines Stacks, uebersetzt. `skip` (regulaerer Ausdruck) kennzeichnet Dateien, die Fehler nur weiterreichen,
-         * etwa das Framework selbst; gegen den uebersetzten Pfad und gegen die URL geprueft.
-         * @returns { at, stack } `at` ist die erste eigene Stelle, `stack` bis zu `max` Zeilen
+         * The lines of a stack, translated. `skip` (a regular expression) marks files that only pass errors on, such as the
+         * framework itself; checked against the translated path and the URL.
+         * @returns { at, stack } `at` is the first own position, `stack` up to `max` lines
          */
         translate: async (stack, { skip = null, max = 8 } = {}) => {
             const lines = (stack ?? '').split('\n').filter((line) => line.trim().startsWith('at ')).slice(0, 40);

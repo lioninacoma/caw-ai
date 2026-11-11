@@ -1,20 +1,20 @@
-// Texte: config (de). Schluessel mit Praefix "config.".
-// Config-Pruefung, Bericht (report.md), Testdateien, Ablaufplan und Einschaetzung eines Fehlschlags.
+// Texts: config (de). Keys prefixed with "config.".
+// Config validation, report (report.md), test files, test plan and assessment of a failure.
 export default {
 
-    // config.mjs: Fragment aus extends
+    // config.mjs: fragment from extends
     'config.fragment.path': 'extends "{spec}": Das Fragment liegt im Projekt, etwa "extends": "./caw/presets/basis.json".',
     'config.fragment.unreadable': 'extends {spec} lässt sich nicht lesen: {error}',
     'config.fragment.notObject': 'extends {spec} muss ein Objekt sein.',
     'config.fragment.nested': 'extends {spec}: Ein Fragment erweitert kein weiteres.',
 
-    // config.mjs: Adressen
+    // config.mjs: URLs
     'config.origin.invalid': '"{value}" ist keine Adresse, etwa "https://staging.example.com"',
     'config.origin.http': '"{value}": http nur auf dem eigenen Rechner (localhost, 127.0.0.1 oder ein Name unter .localhost); sonst https',
     'config.origin.protocol': '"{value}" ist kein https-Origin',
     'config.origin.path': '"{value}": nur der Origin, ohne Pfad und ohne / am Ende ({origin}); der Pfad gehört in apps.<name>.startUrl',
 
-    // config.mjs: Umgebungen und Mandanten
+    // config.mjs: targets and tenants
     'config.env.missing': 'environments fehlt, etwa { "local": { "url": "http://localhost:5173", "claude": true, "writable": true } }',
     'config.sites.invalid': 'sites muss eine Liste von Namen sein (Kleinbuchstaben, Ziffern, - und _), etwa ["nord", "sued"]',
     'config.env.name': 'Umgebung "{name}": nur Kleinbuchstaben, Ziffern, - und _',
@@ -33,7 +33,7 @@ export default {
     'config.site.production': 'Mandant {site} sieht nach Produktion aus. Mandanten sind Kunden, nicht Umgebungen: Produktion gehört in environments mit "production": true.',
     'config.site.noUrl': 'Mandant {site} hat in keiner Umgebung eine Adresse',
 
-    // config.mjs: Anmeldung und Rollen
+    // config.mjs: login and roles
     'config.auth.type': 'auth.type muss einer von {types} sein',
     'config.auth.foreign': 'auth ({type}): {key} gibt es dort nicht oder ist kein Text (erlaubt: {fields}){hint}',
     'config.auth.formMissing': 'auth (form) braucht {missing}',
@@ -50,7 +50,7 @@ export default {
     'config.role.sessionFile': 'die Sitzung liegt je Ziel in {dir}/<ziel>/{name}.json',
     'config.role.noAuth': 'es gibt keine Anmeldung',
 
-    // config.mjs: uebrige Felder
+    // config.mjs: other fields
     'config.notObject': 'Die Config muss ein JSON-Objekt sein, etwa { "environments": { … }, "apps": { … } }',
     'config.unknownField': 'Unbekanntes Feld: {key}{hint}',
     'config.didYouMean': ' (meintest du {name}?)',
@@ -60,6 +60,26 @@ export default {
     'config.messageSelectors': 'messageSelectors muss eine Liste von CSS-Selektoren sein',
     'config.insecureTls': 'insecureTls muss true oder false sein',
     'config.theme': 'theme.{key} passt nicht: base ist nacht, bernstein oder phosphor, colors nur mit den 13 Grundfarben als #rrggbb',
+    'config.theme.schema.noShape': 'passt zu keiner Form',
+    'config.theme.schema.ambiguous': 'mehrdeutig',
+    'config.theme.schema.const': 'muss {value} sein',
+    'config.theme.schema.enum': 'erlaubt: {values}',
+    'config.theme.schema.notObject': 'kein Objekt',
+    'config.theme.schema.required': '{key} fehlt',
+    'config.theme.schema.badKey': 'Schlüssel {key} ungültig',
+    'config.theme.schema.unknown': 'unbekannt: {key}',
+    'config.theme.schema.notList': 'keine Liste',
+    'config.theme.schema.atLeast': 'mindestens {n}',
+    'config.theme.schema.atMost': 'höchstens {n}',
+    'config.theme.schema.notText': 'kein Text',
+    'config.theme.schema.maxLength': 'höchstens {n} Zeichen',
+    'config.theme.schema.pattern': 'Form passt nicht',
+    'config.theme.schema.notInteger': 'keine ganze Zahl',
+    'config.theme.schema.notNumber': 'keine Zahl',
+    'config.theme.schema.notBoolean': 'nicht true oder false',
+    'config.theme.cssOnlyInPackage': 'theme.css: nur als Datei im Paket',
+    'config.theme.fontFilesOnlyInPackage': 'theme.fonts: Schriftdateien nur im Paket',
+    'config.theme.baseMissing': 'theme.base fehlt',
     'config.framework': 'framework muss einer von {names} sein',
     'config.text': '{key} muss Text sein',
     'config.agent.notObject': 'agent muss ein Objekt sein, etwa { "sandbox": "docker" }',
@@ -97,7 +117,7 @@ export default {
     'config.overlay.static': 'App {name}: overlay.statics[{index}] braucht name und path (relativ zum App-Ordner, ohne ..), sonst nichts',
     'config.note.overlayNoEnv': 'App {name} hat overlay, aber keine Umgebung hat "overlay": true: --overlay geht nirgends.',
 
-    // config.mjs: Laden und Ziele
+    // config.mjs: loading and targets
     'config.load.missing': '{file} fehlt in {root}. Einrichten mit: npx caw-ai init --url <adresse>',
     'config.load.invalidJson': '{file} ist kein gültiges JSON: {error}',
     'config.targetForm.plain': 'umgebung',
@@ -108,7 +128,7 @@ export default {
     'config.target.site': 'Mandant "{site}" steht nicht in sites ({sites}).',
     'config.target.siteUrl': 'Mandant "{site}" hat in der Umgebung "{environment}" keine Adresse.',
 
-    // report.mjs: Einreichen des Ergebnisses
+    // report.mjs: submitting the result
     'config.finish.evidenceMissing': '{id}: Nachweis fehlt. Erwartet: {"type":"eval"|"screenshot","value":"..."}.',
     'config.finish.screenshotMissing': '{id}: Screenshot {value} existiert nicht im Lauf-Ordner.',
     'config.finish.reason': 'Umgebungsfehler brauchen einen Grund (reason).',

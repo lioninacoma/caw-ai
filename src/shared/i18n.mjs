@@ -1,11 +1,11 @@
-// Sprache der Oberflaeche: Deutsch oder Englisch. Werkbank, Chat, CLI, Fehlermeldungen und Bericht holen ihre Texte ueber t().
-// Die Prompts an Claude bleiben einsprachig; Claude antwortet in der Sprache des Projekts.
+// UI language: German or English. Workbench, chat, CLI, error messages and report get their texts via t().
+// Prompts to Claude stay in one language; Claude answers in the project's language.
 //
-// Reihenfolge: CAW_LANG, dann "language" in caw.config.json, dann LC_ALL / LC_MESSAGES / LANG / LANGUAGE, dann die Sprache des
-// Systems (Intl), sonst Englisch.
+// Order: CAW_LANG, then "language" in caw.config.json, then LC_ALL / LC_MESSAGES / LANG / LANGUAGE, then the system language
+// (Intl), else English.
 //
-// Regel fuer Module: t() nie auf oberster Ebene eines Moduls aufrufen, denn beim Import steht die Sprache noch nicht fest.
-// Texte gehoeren in Funktionen oder werden beim Gebrauch geholt.
+// Rule for modules: never call t() at module top level, because the language is not known yet at import time.
+// Texts belong inside functions or are fetched when used.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,7 +21,7 @@ const pick = (value) => {
     return LANGUAGES.includes(code) ? code : null;
 };
 
-/** Die Sprache aus Umgebung, Config und System; root: Projektordner mit caw.config.json, falls bekannt. */
+/** The language from environment, config and system; root: project folder with caw.config.json, if known. */
 export const detectLanguage = ({ root, env = process.env, system = () => Intl.DateTimeFormat().resolvedOptions().locale } = {}) => {
     const forced = pick(env.CAW_LANG);
     if (forced !== null) return forced;
@@ -30,7 +30,7 @@ export const detectLanguage = ({ root, env = process.env, system = () => Intl.Da
             const configured = pick(JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8')).language);
             if (configured !== null) return configured;
         } catch {
-            // Keine oder kaputte Config: Das meldet loadConfig spaeter selbst.
+            // Missing or broken config: loadConfig reports that itself later.
         }
     }
     for (const name of ['LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE']) {
@@ -44,13 +44,13 @@ export const detectLanguage = ({ root, env = process.env, system = () => Intl.Da
     }
 };
 
-/** Legt die Sprache fest; unbekannte Werte fallen auf Englisch. */
+/** Sets the language; unknown values fall back to English. */
 export const setLanguage = (value) => {
     current = pick(value) ?? FALLBACK;
     return current;
 };
 
-/** Die aktuelle Sprache; ohne setLanguage ermittelt aus Umgebung und System. */
+/** The current language; without setLanguage it is detected from environment and system. */
 export const language = () => {
     if (current === null) current = detectLanguage();
     return current;
@@ -59,8 +59,8 @@ export const language = () => {
 const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (whole, name) => (vars[name] === undefined ? whole : String(vars[name])));
 
 /**
- * Der Text zu key in der aktuellen Sprache. Katalogeintraege sind Zeichenketten mit {platzhaltern} oder Funktionen (vars) => text,
- * etwa fuer Mehrzahl. Fehlt er in der Sprache, gilt Englisch, dann Deutsch, dann der Schluessel selbst.
+ * The text for key in the current language. Catalogue entries are strings with {placeholders} or functions (vars) => text,
+ * e.g. for plurals. Missing in the language: English, then German, then the key itself.
  */
 export const t = (key, vars = {}) => {
     const entry = CATALOGS[language()]?.[key] ?? CATALOGS.en?.[key] ?? CATALOGS.de?.[key];
@@ -68,7 +68,7 @@ export const t = (key, vars = {}) => {
     return typeof entry === 'function' ? entry(vars) : fill(entry, vars);
 };
 
-/** Alle Texte mit diesem Praefix als flaches Objekt, fuer Seiten-JS im Browser (Werkbank, Chat). Nur Zeichenketten. */
+/** All texts with this prefix as a flat object, for page scripts in the browser (workbench, chat). Strings only. */
 export const texts = (prefix) => {
     const out = {};
     for (const catalog of [CATALOGS.de, CATALOGS.en, CATALOGS[language()]]) {

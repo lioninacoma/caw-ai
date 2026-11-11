@@ -1,4 +1,4 @@
-// Texte: session (de). Schluessel mit Praefix "session.".
+// Texts: session (de). Keys prefixed with "session.".
 export default {
     // app-files
     'session.overlay.buildMissing': 'Im Build-Ordner {dir} liegt kein Build.',
@@ -42,7 +42,7 @@ export default {
     'session.local.label': 'Claude lokal (ohne Docker)',
     'session.local.claudeMissing': 'Claude Code (claude) ist nicht im PATH. Installieren: https://claude.com/claude-code, danach einmal claude starten und anmelden. Oder in der Config agent.sandbox: "docker".',
 
-    // linux: Argumente und warum Claude endete
+    // linux: arguments and why Claude ended
     'session.args.unexpected': 'Unerwartetes Argument: {arg}',
     'session.args.unknownOption': '{command} kennt die Option {flag} nicht. Erlaubt: {allowed}',
     'session.args.valueMissing': '{flag} braucht einen Wert, etwa {flag} {example}',
@@ -96,7 +96,7 @@ export default {
     'session.browser.notSettled': 'Die App kam nicht zur Ruhe: {reason}',
     'session.browser.notLoaded': 'Auf {url} ist {framework} nicht geladen.',
 
-    // browser-session: Gruppe Vorbereitung in der Werkbank
+    // browser-session: preparation group in the workbench
     'session.prep.group': 'Vorbereitung',
     'session.prep.chrome': 'Chrome',
     'session.prep.chromeStart': 'starten',
@@ -108,7 +108,7 @@ export default {
     'session.prep.load': 'Laden',
     'session.prep.app': 'Anwendung',
 
-    // replay: Punkte der Schrittliste
+    // replay: step list items
     'session.point.click': 'Klick',
     'session.point.type': 'Eingabe',
     'session.point.press': 'Taste',
@@ -123,7 +123,7 @@ export default {
     'session.point.upload': 'Hochladen',
     'session.point.download': 'Download',
 
-    // replay: Aufnahme und Abspielen
+    // replay: recording and replay
     'session.replay.unstableTarget': '{action} {target}: Das Ziel lässt sich nicht stabil beschreiben.',
     'session.replay.endedWith': 'Der Lauf endete mit {status}.',
     'session.replay.noVerdict': 'keinem Urteil',
@@ -173,4 +173,16 @@ export default {
     'session.replay.notReached': 'nicht erreicht',
     'session.replay.notReachedBecause': 'Nicht erreicht, weil {owner} gescheitert ist.',
     'session.point.quoted': '„{text}“',
+    // framework adapters
+    'session.app.web': 'die Anwendung',
+    'session.app.react': 'die React-Anwendung',
+    'session.app.vue': 'die Vue-Anwendung',
+    'session.app.angular': 'die Angular-Anwendung',
+    'session.overlay.senchaWatch': 'Sencha-Watch',
+    'session.explain.frameMissing': ' Der Frame {frame} fehlt auf der Seite.',
+    'session.explain.missing': ' Es fehlt auf der Seite.',
+    'session.explain.similar': ' Ähnlich: {names}. Wurde es umbenannt?',
+    'session.explain.hidden': ' Es ist da, aber unsichtbar.',
+    'session.explain.covered': ' Es ist da, aber verdeckt von {by}.',
+    'session.explain.coveredSays': ' Es ist da, aber verdeckt von {by}, der meldet: {messages}{end}',
 };

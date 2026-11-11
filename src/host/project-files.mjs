@@ -1,23 +1,23 @@
-// Projektkopien: Dateien, die ein Build unveraendert aus dem Projekt uebernimmt (Vite und CRA `public/`, Angular `src/assets`,
-// CopyWebpackPlugin). Ein Deployment ersetzt sie oft je Umgebung, etwa `env.js` oder `config.js` mit Adressen und Schaltern. Aus dem
-// lokalen Build kaemen sie mit den Werten fuer die Entwicklung, und der Test liefe gegen Staging mit lokaler Konfiguration.
-// Erkannt wird das ohne Ordnernamen: Kompilierter Code gleicht nie Byte fuer Byte einer Quelldatei, eine Kopie schon.
+// Project copies: files a build takes over unchanged from the project (Vite and CRA `public/`, Angular `src/assets`,
+// CopyWebpackPlugin). A deployment often replaces them per environment, e.g. `env.js` or `config.js` with URLs and switches. Served
+// from the local build they would carry development values, and the test would run against staging with local configuration.
+// Detected without folder names: compiled code never equals a source file byte for byte, a copy does.
 
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
-// Je Projektordner die Quelldateien nach Groesse. Kurz gueltig: Ein Lauf fragt je Request, das Projekt aendert sich in Sekunden kaum.
+// Source files by size, per project folder. Short-lived: a run asks per request, the project hardly changes within seconds.
 const FRESH_MS = 10_000;
 const indexes = new Map();
 
-/** Die Dateien des Projekts laut Git: versioniert oder neu, aber nicht ignoriert (`dist`, `deploy`, `node_modules` zaehlen nicht). */
+/** The project files according to Git: tracked or new, but not ignored (`dist`, `deploy`, `node_modules` do not count). */
 const gitFiles = (dir) => {
     const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, windowsHide: true });
     return out.toString('utf8').split('\0').filter((path) => path !== '').map((path) => join(dir, path));
 };
 
-/** Ohne Git: der Ordner ohne `node_modules`, Punktordner und die Build-Ordner. */
+/** Without Git: the folder minus `node_modules`, dot folders and the build folders. */
 const walkFiles = (dir, skip) => {
     const files = [];
     const queue = [dir];
@@ -50,7 +50,7 @@ const indexOf = (projectDir, skip) => {
     } catch {
         files = walkFiles(projectDir, skip);
     }
-    // Was in einem Build-Ordner liegt, ist nie Quelle, auch wenn Git ihn nicht ignoriert.
+    // Anything in a build folder is never a source, even if Git does not ignore it.
     const inBuild = (file) => skip.some((folder) => !relative(folder, file).startsWith('..'));
     const bySize = new Map();
     for (const file of files) {
@@ -70,10 +70,10 @@ const indexOf = (projectDir, skip) => {
 };
 
 /**
- * Ist `bytes` eine unveraenderte Kopie einer Quelldatei des Projekts?
- * @param projectDir der App-Ordner
- * @param bytes      Inhalt der Antwort aus dem lokalen Code
- * @param skip       absolute Pfade, die nie Quelle sind (der Build-Ordner selbst)
+ * Is `bytes` an unchanged copy of a project source file?
+ * @param projectDir the app folder
+ * @param bytes      response body from the local code
+ * @param skip       absolute paths that are never sources (the build folder itself)
  */
 export const isProjectCopy = (projectDir, bytes, { skip = [] } = {}) => {
     if (typeof projectDir !== 'string' || projectDir === '' || bytes.length === 0) return false;
@@ -87,7 +87,7 @@ export const isProjectCopy = (projectDir, bytes, { skip = [] } = {}) => {
     });
 };
 
-/** Wie isProjectCopy, fuer eine Datei: gelesen wird sie nur, wenn eine Quelldatei gleich gross ist. */
+/** Like isProjectCopy, for a file: it is only read when a source file has the same size. */
 export const isProjectCopyFile = (projectDir, file, { skip = [] } = {}) => {
     if (typeof projectDir !== 'string' || projectDir === '') return false;
     let size;

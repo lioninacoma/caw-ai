@@ -6,23 +6,23 @@ import { test } from 'node:test';
 
 import { auth, init, record, run, starterConfig, validate } from '../src/host/commands.mjs';
 
-test('init: besteht validate sofort, legt keinen Beispieltest an, die Zugangsdaten sind ignoriert', (t) => {
+test('init: passes validate at once, creates no example test, credentials are git-ignored', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-init-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const said = [];
     t.mock.method(console, 'log', (text) => said.push(text));
     init(root);
     assert.equal(validate(root), 0);
-    assert.deepEqual(readdirSync(join(root, 'caw', 'tests')), ['.gitkeep'], 'kein ungefragter Beispieltest, aber der Ordner');
+    assert.deepEqual(readdirSync(join(root, 'caw', 'tests')), ['.gitkeep'], 'no unrequested example test, but the folder');
     assert.match(readFileSync(join(root, 'caw', 'caw.md'), 'utf8'), /^# Notizen für Claude\n[\s\S]*\n- Beispiel:/);
     assert.match(said.join('\n'), /den ersten Test aufnehmen: caw-ai record <test> --target local\. Ohne passende Selektoren erst caw-ai explore/);
-    // Lief explore eben, rät init nicht, es erst laufen zu lassen.
+    // If explore just ran, init does not advise running it first.
     const explored = mkdtempSync(join(tmpdir(), 'caw-init-explored-'));
     t.after(() => rmSync(explored, { recursive: true, force: true }));
     said.length = 0;
     init(explored, { explored: true, url: 'http://localhost:5173', login: {} });
     assert.doesNotMatch(said.join('\n'), /explore --url/);
-    // Ein vorhandenes caw.md bleibt, wie es ist.
+    // An existing caw.md stays as it is.
     writeFileSync(join(explored, 'caw', 'caw.md'), 'eigen');
     init(explored);
     assert.equal(readFileSync(join(explored, 'caw', 'caw.md'), 'utf8'), 'eigen');
@@ -31,7 +31,7 @@ test('init: besteht validate sofort, legt keinen Beispieltest an, die Zugangsdat
     assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers['caw-ai'], { command: 'node', args: ['node_modules/caw-ai/bin/caw-ai.mjs', 'mcp'] });
 });
 
-test('init: ergänzt eine vorhandene .mcp.json, lässt sie sonst stehen, ohne mcp gar nicht', (t) => {
+test('init: extends an existing .mcp.json, leaves the rest alone, and skips it without mcp', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-init-mcp-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
@@ -45,7 +45,7 @@ test('init: ergänzt eine vorhandene .mcp.json, lässt sie sonst stehen, ohne mc
     assert.throws(() => readFileSync(join(other, '.mcp.json')), /ENOENT/);
 });
 
-test('readCredentials: Umgebung vor caw/.env, Sitzung je Ziel', async (t) => {
+test('readCredentials: environment before caw/.env, session per target', async (t) => {
     const { readCredentials } = await import('../src/host/run.mjs');
     const { sessionPath } = await import('../src/shared/config.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-cred-'));
@@ -62,10 +62,10 @@ test('readCredentials: Umgebung vor caw/.env, Sitzung je Ziel', async (t) => {
     mkdirSync(join(root, 'caw', '.auth', 'staging'), { recursive: true });
     writeFileSync(join(root, sessionPath('staging', 'kunde')), '{}');
     assert.equal(readCredentials(root, stored, 'kunde', 'staging', {}).storageState, join(root, 'caw', '.auth', 'staging', 'kunde.json'));
-    assert.throws(() => readCredentials(root, stored, 'kunde', 'local', {}), /auf local/, 'Sitzung eines anderen Ziels zählt nicht');
+    assert.throws(() => readCredentials(root, stored, 'kunde', 'local', {}), /auf local/, 'another target\'s session does not count');
 });
 
-test('readCredentials: eine Rolle mit totpEnv liefert ihr TOTP-Geheimnis, fehlt es, wird es genannt', async (t) => {
+test('readCredentials: a role with totpEnv yields its TOTP secret, and names it when missing', async (t) => {
     const { readCredentials } = await import('../src/host/run.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-cred-totp-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -75,7 +75,7 @@ test('readCredentials: eine Rolle mit totpEnv liefert ihr TOTP-Geheimnis, fehlt 
     assert.deepEqual(readCredentials(root, form, 'admin', 'local', { ...env, CAW_TOTP_ADMIN: 'GEZDGNBV' }), { login: 'a', password: 'p', totpSecret: 'GEZDGNBV' });
 });
 
-test('runMode nennt den Modus samt Grund, kein Modus ergibt sich still aus der Umgebung', async () => {
+test('runMode names the mode and the reason, no mode follows silently from the environment', async () => {
     const { runMode } = await import('../src/host/commands.mjs');
     const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'dev' };
     assert.match(runMode(base), /mit Chat\. Fehlende Vergleichswerte lernt/);
@@ -86,15 +86,15 @@ test('runMode nennt den Modus samt Grund, kein Modus ergibt sich still aus der U
     assert.match(runMode({ ...base, withAgent: false }), /nur auf dev/);
 });
 
-test('auth: speichert die Sitzung einer Rolle, nur bei storageState und nie auf Produktion', async (t) => {
+test('auth: saves a role\'s session, only with storageState and never on production', async (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-auth-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
-    const write = (auth) => writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
+    const write = (authConfig) => writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
         environments: { local: { url: 'http://app.localhost:5173', claude: true }, live: { url: 'https://www.shop.example', production: true } },
-        auth,
+        auth: authConfig,
         apps: { web: { dir: '.', startUrl: '/' } },
-        roles: { kunde: auth.type === 'form' ? { loginEnv: 'L', passwordEnv: 'P' } : {} },
+        roles: { kunde: authConfig.type === 'form' ? { loginEnv: 'L', passwordEnv: 'P' } : {} },
     }));
     write({ type: 'storageState', path: '/sso', signedInSelector: '#menu' });
     const calls = [];
@@ -106,8 +106,8 @@ test('auth: speichert die Sitzung einer Rolle, nur bei storageState und nie auf 
     assert.equal(calls[0].url, 'http://app.localhost:5173/sso');
     assert.equal(calls[0].signedInSelector, '#menu');
     assert.equal(calls[0].file, join(root, 'caw', '.auth', 'local', 'kunde.json'));
-    assert.deepEqual(calls[0].hosts, ['app.localhost'], 'Produktion nie in der Host-Sperre eines anderen Ziels');
-    assert.equal(await auth(root, ['kunde', '--target', 'local'], { capture: async () => false }), 2, 'Fenster geschlossen: nichts gespeichert');
+    assert.deepEqual(calls[0].hosts, ['app.localhost'], 'production never in another target\'s host lock');
+    assert.equal(await auth(root, ['kunde', '--target', 'local'], { capture: async () => false }), 2, 'window closed: nothing saved');
     await assert.rejects(auth(root, ['kunde', '--target', 'live'], { capture }), /Produktion/);
     await assert.rejects(auth(root, ['gast', '--target', 'local'], { capture }), /Rolle gast/);
     await assert.rejects(auth(root, ['kunde'], { capture }), /Aufruf/);
@@ -116,19 +116,18 @@ test('auth: speichert die Sitzung einer Rolle, nur bei storageState und nie auf 
     assert.equal(calls.length, 1);
 });
 
-test('sandboxBase: Image aus der Config, aus dem Devcontainer, sonst Node', async (t) => {
+test('sandboxBase: image from the config, from the devcontainer, otherwise Node', async (t) => {
     const { DEFAULT_SANDBOX_IMAGE, sandboxBase } = await import('../src/host/commands.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-image-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     assert.deepEqual(sandboxBase(root, {}), { image: DEFAULT_SANDBOX_IMAGE, user: 'node' });
-    assert.deepEqual(sandboxBase(root, { sandboxImage: 'eigen:1' }), { image: 'eigen:1', user: 'devuser' });
-    const { mkdirSync } = await import('node:fs');
+    assert.deepEqual(sandboxBase(root, { sandboxImage: 'own:1' }), { image: 'own:1', user: 'devuser' });
     mkdirSync(join(root, '.devcontainer'));
-    writeFileSync(join(root, '.devcontainer', 'devcontainer.json'), '{ // Kommentar\n "image": "dev:2" }');
-    assert.deepEqual(sandboxBase(root, { sandboxUser: 'ich' }), { image: 'dev:2', user: 'ich' });
+    writeFileSync(join(root, '.devcontainer', 'devcontainer.json'), '{ // comment\n "image": "dev:2" }');
+    assert.deepEqual(sandboxBase(root, { sandboxUser: 'me' }), { image: 'dev:2', user: 'me' });
 });
 
-test('doctor: nennt je Problem den nächsten Schritt, Optionales hält nicht auf, nie Werte', async (t) => {
+test('doctor: names the next step per problem, optional items do not block, never values', async (t) => {
     const { doctor, doctorChecks } = await import('../src/host/doctor.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-doctor-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -141,36 +140,36 @@ test('doctor: nennt je Problem den nächsten Schritt, Optionales hält nicht auf
     const lines = [];
     const ui = { success: (text) => lines.push(`ok ${text}`), note: (text) => lines.push(`opt ${text}`), warn: (text) => lines.push(`warn ${text}`) };
     assert.equal(await doctor(root, { ui, env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-geheim' }, nodeVersion: '22.4.0', probes }), 0);
-    const text = lines.join('\n');
-    assert.match(text, /ok OK +Rolle tester: Zugangsdaten gesetzt/);
-    assert.match(text, /ok OK +Claude Code 2\.1\.0 \(Claude läuft lokal, ohne Docker\)/);
-    assert.doesNotMatch(text, /Docker gefunden|OAUTH_TOKEN/, 'lokal zählen weder Docker noch Token');
-    assert.match(text, /ok OK +local: http:\/\/localhost:5173 antwortet/);
-    assert.match(text, /opt OPTIONAL +staging: https:\/\/staging.example.com antwortet nicht/);
-    assert.match(text, /ok \d+ in Ordnung, 0 fehlen, \d+ optional offen\. Bereit\. Nächster Schritt: den ersten Test aufnehmen/);
-    assert.equal(missing.find(({ ok }) => !ok).text, 'caw.config.json fehlt', 'ohne doppelten Punkt');
-    assert.doesNotMatch(text, /geheim/);
+    const output = lines.join('\n');
+    assert.match(output, /ok OK +Rolle tester: Zugangsdaten gesetzt/);
+    assert.match(output, /ok OK +Claude Code 2\.1\.0 \(Claude läuft lokal, ohne Docker\)/);
+    assert.doesNotMatch(output, /Docker gefunden|OAUTH_TOKEN/, 'locally neither Docker nor token count');
+    assert.match(output, /ok OK +local: http:\/\/localhost:5173 antwortet/);
+    assert.match(output, /opt OPTIONAL +staging: https:\/\/staging.example.com antwortet nicht/);
+    assert.match(output, /ok \d+ in Ordnung, 0 fehlen, \d+ optional offen\. Bereit\. Nächster Schritt: den ersten Test aufnehmen/);
+    assert.equal(missing.find(({ ok }) => !ok).text, 'caw.config.json fehlt', 'without a double full stop');
+    assert.doesNotMatch(output, /geheim/);
     lines.length = 0;
-    assert.equal(await doctor(root, { ui, env: {}, nodeVersion: '20.1.0', probes }), 2, 'zu altes Node hält auf');
+    assert.equal(await doctor(root, { ui, env: {}, nodeVersion: '20.1.0', probes }), 2, 'too old Node blocks');
     assert.match(lines.join('\n'), /warn FEHLT +Node 20.1.0 ist zu alt/);
     assert.match(lines.join('\n'), /warn .*1 fehlt.*Erst die mit FEHLT beheben/);
-    writeFileSync(join(root, '.gitignore'), '# Laeufe\n/.caw\n**/caw/.auth/\n.env\n');
+    writeFileSync(join(root, '.gitignore'), '# runs\n/.caw\n**/caw/.auth/\n.env\n');
     const loose = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes });
-    assert.ok(loose.find(({ text }) => text.startsWith('.gitignore')).ok, 'gitignore locker verglichen');
+    assert.ok(loose.find(({ text }) => text.startsWith('.gitignore')).ok, 'gitignore compared loosely');
     const withoutClaude = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes: { ...probes, claude: () => undefined } });
     assert.match(withoutClaude.find(({ text }) => /claude/.test(text)).next, /agent\.sandbox "docker"/);
-    // Ein Selektor, den explore nicht fand, steht auf TODO: doctor haelt auf, bis er eingetragen ist.
+    // A selector explore did not find is TODO: doctor blocks until it is filled in.
     const configPath = join(root, 'caw.config.json');
     const saved = readFileSync(configPath, 'utf8');
     writeFileSync(configPath, saved.replace(/"signedInSelector": "[^"]*"/, '"signedInSelector": "TODO"'));
     const todo = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => /TODO/.test(text));
     assert.ok(todo && !todo.ok && !todo.optional && /auth\.signedInSelector/.test(todo.text), JSON.stringify(todo));
     writeFileSync(configPath, saved);
-    // In CI immer Docker: Dann zaehlen Docker und Token.
+    // Always Docker in CI: then Docker and token count.
     const inCi = await doctorChecks(root, { env: { CI: 'true', CLAUDE_CODE_OAUTH_TOKEN: 'sk-geheim' }, nodeVersion: '22.4.0', probes });
     assert.ok(inCi.some(({ text, optional }) => optional && /Kein Docker gefunden/.test(text)));
     assert.ok(inCi.some(({ ok, text }) => ok && /CLAUDE_CODE_OAUTH_TOKEN ist gesetzt/.test(text)));
-    // --agent waehlt wie bei run: docker prueft Docker und Token, session nur den Eintrag in .mcp.json.
+    // --agent chooses as for run: docker checks Docker and token, session only the entry in .mcp.json.
     const docker = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'docker' });
     assert.ok(docker.some(({ text }) => /CLAUDE_CODE_OAUTH_TOKEN fehlt/.test(text)));
     assert.ok(!docker.some(({ text }) => /Claude Code 2/.test(text)));
@@ -181,8 +180,8 @@ test('doctor: nennt je Problem den nächsten Schritt, Optionales hält nicht auf
     assert.ok((await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' })).find(({ text }) => /mcp\.json/.test(text)).ok);
 });
 
-test('init: erkennt das Framework, nimmt Antworten an, ohne Anmeldung keine Rolle', async (t) => {
-    const { detectFramework, starterConfig } = await import('../src/host/commands.mjs');
+test('init: detects the framework, takes answers, no role without login', async (t) => {
+    const { detectFramework } = await import('../src/host/commands.mjs');
     t.mock.method(console, 'log', () => {});
     const project = (pkg) => {
         const root = mkdtempSync(join(tmpdir(), 'caw-detect-'));
@@ -195,7 +194,7 @@ test('init: erkennt das Framework, nimmt Antworten an, ohne Anmeldung keine Roll
     assert.equal(detectFramework(project({ devDependencies: { vue: '3' } })), 'vue');
     assert.equal(detectFramework(project({ dependencies: { ext: '6.5.3' } })), 'extjs');
     assert.equal(detectFramework(project()), 'web');
-    // Repo mit Backend und frontend/ (ohne Framework im Wurzelordner, etwa nur caw-ai): Ordner und Framework kommen von dort.
+    // Repo with backend and frontend/ (no framework in the root, e.g. only caw-ai): folder and framework come from there.
     const { detectApp } = await import('../src/host/commands.mjs');
     const polyglot = project({ devDependencies: { 'caw-ai': '0.1.0' } });
     for (const [dir, pkg] of [['frontend', { dependencies: { react: '19' } }], ['node_modules/x', { dependencies: { vue: '3' } }], ['backend', {}]]) {
@@ -226,7 +225,7 @@ test('init: erkennt das Framework, nimmt Antworten an, ohne Anmeldung keine Roll
     assert.equal(validate(sso), 0);
 });
 
-test('Fehlender Test: Der Hinweis zum Aufnehmen nennt nur Flags, die die Config nicht eindeutig vorgibt', async (t) => {
+test('missing test: the record hint only names flags the config does not determine', async (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-hint-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
@@ -243,7 +242,7 @@ test('Fehlender Test: Der Hinweis zum Aufnehmen nennt nur Flags, die die Config 
     await assert.rejects(record(root, ['neu', '--target', target]), (error) => error.code === 'usage' && /fehlt --role\. Aufruf: caw-ai record neu/.test(error.message));
 });
 
-test('skill: nur Skill und MCP-Eintrag, ohne Config; bringt einen alten Skill auf den Stand', async (t) => {
+test('skill: only skill and MCP entry, no config; updates an old skill', async (t) => {
     const { installSkill } = await import('../src/host/commands.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-skill-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -252,19 +251,19 @@ test('skill: nur Skill und MCP-Eintrag, ohne Config; bringt einen alten Skill au
     assert.equal(installSkill(root), 0);
     const file = join(root, '.claude', 'skills', 'caw-ai', 'SKILL.md');
     assert.match(readFileSync(file, 'utf8'), /### Projekt einrichten/);
-    assert.ok(!existsSync(join(root, 'caw.config.json')), 'keine Config');
+    assert.ok(!existsSync(join(root, 'caw.config.json')), 'no config');
     assert.match(said.join('\n'), /Angelegt: .*SKILL\.md, \.mcp\.json\.\n.*Weiter in Claude Code: „Richte caw-ai ein“/);
-    writeFileSync(file, 'alt');
+    writeFileSync(file, 'old');
     said.length = 0;
     installSkill(root);
     assert.match(said[0], /Aktualisiert:.*SKILL\.md\.$/);
-    assert.notEqual(readFileSync(file, 'utf8'), 'alt');
+    assert.notEqual(readFileSync(file, 'utf8'), 'old');
 });
 
-test('record: Angaben zu einem schon beschriebenen Test dürfen passen, nur Widersprüche brechen ab', async () => {
+test('record: options for an already described test may match, only contradictions abort', async () => {
     const { contradicts } = await import('../src/host/commands.mjs');
     const spec = { role: 'nutzer', app: 'web', also: [], mutates: false };
-    assert.equal(contradicts(spec, { readOnly: true }), false, 'wie im npm-Skript, das Claude anlegte');
+    assert.equal(contradicts(spec, { readOnly: true }), false, 'as in the npm script Claude created');
     assert.equal(contradicts(spec, { role: 'nutzer', app: 'web' }), false);
     assert.equal(contradicts(spec, {}), false);
     assert.equal(contradicts(spec, { role: 'admin' }), true);
@@ -273,15 +272,15 @@ test('record: Angaben zu einem schon beschriebenen Test dürfen passen, nur Wide
     assert.equal(contradicts({ ...spec, mutates: true }, { readOnly: true }), true);
 });
 
-test('init: explore ist Pflicht, fragt nach Adresse und Rollen, prüft jede Antwort sofort', async (t) => {
+test('init: explore is required, asks for address and roles, checks every answer at once', async (t) => {
     const { PassThrough } = await import('node:stream');
     const { initAnswers } = await import('../src/host/commands.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-init-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
-    // Ohne Terminal und ohne --url: die Vorlage, die Anmeldung bleibt TODO; --offline ebenso, auch mit Adresse und ohne explore.
+    // Without a terminal and --url: the template, login stays TODO; --offline likewise, also with an address and without explore.
     assert.deepEqual(await initAnswers(root, [], { interactive: false }), { answers: { offline: true } });
-    assert.deepEqual(await initAnswers(root, ['--offline', '--url', 'http://localhost:3000', '--no-mcp'], { interactive: false, runExplore: async () => { throw new Error('kein explore'); } }),
+    assert.deepEqual(await initAnswers(root, ['--offline', '--url', 'http://localhost:3000', '--no-mcp'], { interactive: false, runExplore: async () => { throw new Error('no explore'); } }),
         { answers: { offline: true, url: 'http://localhost:3000', mcp: false } });
     const offline = starterConfig({ offline: true });
     assert.equal(offline.auth.passwordSelector, 'TODO');
@@ -301,7 +300,7 @@ test('init: explore ist Pflicht, fragt nach Adresse und Rollen, prüft jede Antw
     output.on('data', (chunk) => { shown += chunk; });
     const asked = initAnswers(root, ['--insecure-tls'], { interactive: true, runExplore, input, output });
     for (const line of ['ftp://x', '', 'Admin', 'admin, sach-bearbeiter']) {
-        await new Promise((ok) => { setTimeout(ok, 20); });
+        await new Promise((resolveTick) => { setTimeout(resolveTick, 20); });
         input.write(`${line}\n`);
     }
     const { answers } = await asked;
@@ -312,23 +311,23 @@ test('init: explore ist Pflicht, fragt nach Adresse und Rollen, prüft jede Antw
     assert.match(shown, /„Admin“: nur Kleinbuchstaben/);
     init(root, answers);
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
-    assert.equal(config.auth.signedInSelector, 'TODO', 'was explore nicht fand');
+    assert.equal(config.auth.signedInSelector, 'TODO', 'what explore did not find');
     assert.deepEqual(config.roles['sach-bearbeiter'], { loginEnv: 'CAW_LOGIN_SACH_BEARBEITER', passwordEnv: 'CAW_PW_SACH_BEARBEITER' });
     assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /^# Nach caw\/\.env kopieren[^\n]*\n# [^\n]*\nCAW_LOGIN_ADMIN=\nCAW_PW_ADMIN=\nCAW_LOGIN_SACH_BEARBEITER=\nCAW_PW_SACH_BEARBEITER=\n$/);
     assert.ok(existsSync(join(root, '.claude', 'skills', 'caw-ai', 'SKILL.md')));
 
-    // Lief explore schon, nimmt init das Ergebnis ohne Fragen; die Rolle ist dann neutral.
-    const again = await initAnswers(root, [], { interactive: false, runExplore: async () => { throw new Error('kein zweites explore'); } });
+    // If explore already ran, init takes its result without asking; the role is then neutral.
+    const again = await initAnswers(root, [], { interactive: false, runExplore: async () => { throw new Error('no second explore'); } });
     assert.equal(again.answers.roles, undefined);
     assert.deepEqual(Object.keys(starterConfig(again.answers).roles), ['tester']);
     assert.equal(again.answers.mcp, undefined);
     assert.equal((await initAnswers(root, ['--no-mcp'], { interactive: false })).answers.mcp, false);
-    // Fenster geschlossen oder Abbruch in explore: init legt nichts an.
+    // Window closed or explore aborted: init creates nothing.
     assert.deepEqual(await initAnswers(root, ['--url', 'http://localhost:5173'], { interactive: false, runExplore: async () => 2 }), { code: 2 });
     await assert.rejects(initAnswers(root, ['--from', 'fehlt.json'], { interactive: false }), /fehlt\.json ist nicht lesbar/);
 });
 
-test('validate: je Test und Ziel der Code, wo das Overlay ginge, und TODO', (t) => {
+test('validate: code per test and target, where an overlay is possible, and TODO', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-validate-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
@@ -352,7 +351,7 @@ test('validate: je Test und Ziel der Code, wo das Overlay ginge, und TODO', (t) 
     assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, Build dist\n/);
     assert.match(out, /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/);
     assert.match(out, /und 1 Test\(s\) sind gültig/);
-    // Build und Dev-Server an der App: Ein blosses --overlay verlangt die Wahl, validate nennt beide.
+    // Build and dev server on the app: a bare --overlay requires a choice, validate names both.
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
     config.apps.web.overlay.dev = 'http://localhost:5173';
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
@@ -366,7 +365,7 @@ test('validate: je Test und Ziel der Code, wo das Overlay ginge, und TODO', (t) 
     assert.match(again.join(''), /lesen \(dev\): ausgelieferter Stand; mit --overlay build bzw\. dev: Overlay, Build dist[^|\n]* \| Overlay, Dev-Server http:\/\/localhost:5173/);
 });
 
-test('run und record: TODO in der Anmeldung bricht vor Chrome und Claude ab', async () => {
+test('run and record: TODO in the login aborts before Chrome and Claude', async () => {
     const { openRunSession } = await import('../src/host/run.mjs');
     const config = { auth: { type: 'form', path: '/', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'TODO' }, roles: { tester: {} }, apps: {} };
     await assert.rejects(openRunSession({ root: tmpdir(), config, spec: { role: 'tester' }, checked: { target: 'local', url: 'http://localhost:1' } }),

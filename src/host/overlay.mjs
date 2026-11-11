@@ -1,13 +1,13 @@
-// Das Overlay: lokaler Code ueber einer ausgelieferten Umgebung, nur mit --overlay. Seite, API, Cookies und Anmeldung bleiben von der
-// Umgebung; Code-Requests beantwortet die gewaehlte Quelle der App:
-// - build: ein Build-Ordner (exakt oder gleicher Name bis auf den Hash)
-// - dev:   ein Dev-Server (Vite, webpack, Angular), dazu sein HMR-WebSocket
-// - watch: der Sencha-Watch (ExtJS), Quellen laut bootstrap.json; Wissen darueber im ExtJS-Adapter
-// - files: nur overlay.statics
-// overlay.statics gilt bei jeder Quelle zuerst. Projektkopien (public/env.js) kommen immer vom Server: Die Umgebung setzt sie.
+// The overlay: local code on top of a deployed environment, only with --overlay. Page, API, cookies and login stay with the
+// environment; code requests are answered by the app's chosen source:
+// - build: a build folder (exact name or same name except for the hash)
+// - dev:   a dev server (Vite, webpack, Angular), plus its HMR WebSocket
+// - watch: the Sencha watch (ExtJS), sources per bootstrap.json; the details live in the ExtJS adapter
+// - files: only overlay.statics
+// overlay.statics take precedence for every source. Project copies (public/env.js) always come from the server: the environment sets them.
 //
-// Vor dem Browser prueft prepareOverlay, ob die Quelle bereit ist. Ist sie es nicht und nennt die Config den Befehl dafuer
-// (buildCommand, devCommand), startet caw ihn und sagt das; sonst Exit 2 mit dem Befehl. Die Quelle wechselt nie still.
+// Before the browser starts, prepareOverlay checks that the source is ready. If not and the config names a command for it
+// (buildCommand, devCommand), caw runs it and says so; otherwise exit 2 with the command. The source never switches silently.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -30,7 +30,7 @@ const POLL_MS = 500;
 const PROBE_MS = 2_000;
 const LOG_TAIL = 15;
 
-// Welche Namen ein Request traegt: die erste Gruppe eines Musters, Trenner zusammengefasst, ohne fuehrenden Schraegstrich.
+// The name a request carries: the first group of a pattern, repeated slashes collapsed, without leading slash.
 const compiled = new Map();
 export const deriveName = (url, pattern) => {
     if (typeof pattern !== 'string' || pattern === '') return null;
@@ -49,7 +49,7 @@ const tail = (file) => {
     }
 };
 
-const sleep = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 const waitFor = async (check, timeoutMs, { exited = () => false } = {}) => {
     const until = Date.now() + timeoutMs;
@@ -61,7 +61,7 @@ const waitFor = async (check, timeoutMs, { exited = () => false } = {}) => {
     return check();
 };
 
-/** Ein Befehl der Config im App-Ordner, im Hintergrund; seine Ausgabe in log. stop() beendet ihn samt Kindern (npm -> vite). */
+/** Runs a config command in the app folder in the background, output to log. stop() ends it with its children (npm -> vite). */
 export const startCommand = (command, cwd, log, spawnImpl = spawn) => {
     mkdirSync(join(log, '..'), { recursive: true });
     const out = openSync(log, 'w');
@@ -72,7 +72,7 @@ export const startCommand = (command, cwd, log, spawnImpl = spawn) => {
         closeSync(out);
     }
     let exited = false;
-    // Endet caw ohne Aufraeumen (process.exit, Absturz), bleibt kein Dev-Server stehen.
+    // If caw ends without cleanup (process.exit, crash), no dev server is left running.
     const stop = () => {
         process.removeListener('exit', stop);
         if (exited || child.pid === undefined) return;
@@ -80,7 +80,7 @@ export const startCommand = (command, cwd, log, spawnImpl = spawn) => {
             if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
             else process.kill(-child.pid, 'SIGTERM');
         } catch {
-            // schon beendet
+            // already gone
         }
     };
     process.once('exit', stop);
@@ -89,7 +89,7 @@ export const startCommand = (command, cwd, log, spawnImpl = spawn) => {
     return { exited: () => exited, stop };
 };
 
-/** Antwortet ein Server unter der Adresse? Jede HTTP-Antwort zaehlt, auch 404: Dann laeuft er. */
+/** Does a server answer at the address? Any HTTP response counts, even 404: then it is running. */
 export const probeServer = async (url, fetchImpl = fetch) => {
     try {
         await fetchImpl(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(PROBE_MS) });
@@ -101,9 +101,9 @@ export const probeServer = async (url, fetchImpl = fetch) => {
 
 const logFile = (root, app, what) => join(root, RUN_DIR, `${app}-${what}.log`);
 
-// ---- Quellen ------------------------------------------------------------------------------------------------------------------
+// ---- Sources ------------------------------------------------------------------------------------------------------------------
 
-/** Ist der Build aelter als die letzte Aenderung unter dem App-Ordner? @returns null oder { file, ago } */
+/** Is the build older than the last change below the app folder? @returns null or { file, ago } */
 export const staleBuild = (buildDir, appDir, root, now = Date.now()) => {
     const built = newestFile(buildDir, { skipNames: new Set(['node_modules']) });
     if (built === null) return null;
@@ -142,10 +142,10 @@ const buildSource = ({ root, name, appDir, choice, info }) => {
                 if (!servesBuild(type, requested)) continue;
                 const found = resolveLocalBuild(dir, requested);
                 if (found === null) continue;
-                // Eine unveraenderte Kopie aus dem Projekt (public/env.js) setzt die Umgebung: Sie kommt vom Server.
+                // An unchanged copy from the project (public/env.js) is set by the environment: it comes from the server.
                 if (found.alias === undefined && isProjectCopyFile(appDir, found.file, { skip: [dir] })) continue;
                 const raw = readFileSync(found.file);
-                // Unter dem deployten Namen eines ES-Moduls nur ein Verweis auf das lokale, sonst liefe es zweimal.
+                // Under the deployed name of an ES module only a re-export of the local one, otherwise it would run twice.
                 const body = found.alias === undefined ? raw : moduleAlias(found.alias, raw.toString('utf8'), scriptKind(dir, found.alias)) ?? raw;
                 return { contentType: found.contentType, body, file: found.file };
             }
@@ -155,7 +155,7 @@ const buildSource = ({ root, name, appDir, choice, info }) => {
     };
 };
 
-/** Die lokale Datei, die ein Request auf url bekaeme (wie resolve: ueber die Namen aus dem Muster). */
+/** The local file a request for url would get (like resolve: via the names from the pattern). */
 const routedFile = (dir, namesOf, url) => {
     for (const name of namesOf(url)) {
         const found = resolveLocalBuild(dir, name);
@@ -164,7 +164,7 @@ const routedFile = (dir, namesOf, url) => {
     return undefined;
 };
 
-/** Die lokale Datei zu einer URL, bei fremden Origins (CDN) und Pfaden ausserhalb des Musters ueber den Pfad. */
+/** The local file for a URL; for foreign origins (CDN) and paths outside the pattern via the path. */
 const builtFile = (dir, namesOf, url) => {
     const routed = routedFile(dir, namesOf, url);
     if (routed !== undefined) return routed;
@@ -178,10 +178,10 @@ const builtFile = (dir, namesOf, url) => {
 const urlDir = (url) => posix.dirname(new URL(url).pathname);
 
 /**
- * Was beim Build getauscht wird. Die lokale Seite ist die mit den meisten Treffern unter den ausgelieferten Tags (ein Build kann mehrere
- * Seiten haben). Ein ausgelieferter Tag gehoert der App, wenn der Build seine Datei kennt und sie keine Projektkopie ist, oder wenn er
- * im Asset-Ordner der lokalen Seite liegt; ein Inline-Skript, wenn es diesen Ordner nennt (webpack-Laufzeit mit publicPath).
- * @returns { owned, local } | { issue } | null (keine passende Seite: kein Tausch, die Requests einzeln)
+ * What gets swapped for a build. The local page is the one with the most hits among the deployed tags (a build may have several
+ * pages). A deployed tag belongs to the app if the build knows its file and it is no project copy, or if it lies in the asset
+ * folder of the local page; an inline script if it names that folder (webpack runtime with publicPath).
+ * @returns { owned, local } | { issue } | null (no matching page: no swap, requests are answered one by one)
  */
 const buildPage = ({ dir, appDir, base, deployed, namesOf }) => {
     const served = new Map();
@@ -202,8 +202,8 @@ const buildPage = ({ dir, appDir, base, deployed, namesOf }) => {
         if (hits > 0 && (best === null || hits > best.hits)) best = { tags, hits };
     }
     if (best === null) return null;
-    // Zeigt ein lokaler Tag auf eine Datei, die der Build unter dieser Adresse nicht hat (anderer base-Pfad als die Umgebung), liefe die
-    // getauschte Seite ins Leere: dann nicht tauschen.
+    // If a local tag points to a file the build does not have at that address (base path differs from the environment), the
+    // swapped page would break: then do not swap.
     const loading = best.tags.filter(({ inline }) => !inline);
     if (loading.some(({ urls }) => urls.some((url) => routedFile(dir, namesOf, url) === undefined))) return { issue: 'local-base' };
     const local = best.tags.filter(({ inline, urls }) => inline || !urls.some((url) => copy(fileOf(url))));
@@ -220,7 +220,7 @@ const buildPage = ({ dir, appDir, base, deployed, namesOf }) => {
     return { owned, local: local.filter(({ inline, tag, urls }) => (inline ? !keptInline.has(tag) : !urls.some((url) => kept.has(url)))) };
 };
 
-// Was beim Dev-Server Code ist: Skripte, Stile, Schriften, Bilder; per fetch nur Code (Vite laedt CSS als Modul mit ?import).
+// What counts as code for a dev server: scripts, styles, fonts, images; via fetch only code (Vite loads CSS as a module with ?import).
 const DEV_TYPES = new Set(['script', 'stylesheet', 'font', 'image', 'media']);
 const DEV_FETCHED = /\.(m?[jt]sx?|css|wasm|json)$|[?&](import|v=|t=)/;
 
@@ -265,9 +265,9 @@ const devSource = ({ root, name, appDir, choice, info, envUrl, fetchImpl = fetch
 };
 
 /**
- * Was beim Dev-Server getauscht wird. Die lokale Seite ist sein HTML unter demselben Pfad (Vite, webpack, Angular liefern es fuer jede
- * Route). Ein ausgelieferter Tag gehoert der App, wenn er unter der Adresse der Umgebung liegt, die Dev-Seite ihn nicht selbst laedt
- * und der Dev-Server darunter keine Projektkopie liefert (public/env.js setzt die Umgebung).
+ * What gets swapped for a dev server. The local page is its HTML at the same path (Vite, webpack, Angular serve it for every
+ * route). A deployed tag belongs to the app if it lies below the environment URL, the dev page does not load it itself, and the
+ * dev server does not serve a project copy under it (public/env.js is set by the environment).
  */
 const devPage = async ({ origin, appDir, envUrl, url, base, deployed, fetchImpl }) => {
     const page = new URL(url);
@@ -275,7 +275,7 @@ const devPage = async ({ origin, appDir, envUrl, url, base, deployed, fetchImpl 
     try {
         const response = await fetchImpl(`${origin}${page.pathname}${page.search}`, { headers: { accept: 'text/html' }, redirect: 'follow' });
         if (response.status !== 200 || !/text\/html/i.test(response.headers.get('content-type') ?? '')) return null;
-        // Wie die ausgelieferte Seite ein Byte-String: Eingefuegt wird Byte fuer Byte.
+        // A byte string like the deployed page: insertion happens byte for byte.
         text = Buffer.from(await response.arrayBuffer()).toString('latin1');
     } catch {
         return null;
@@ -315,18 +315,18 @@ const watchSource = ({ root, name, appDir, choice, config, info, running = proce
     const hint = t('session.overlay.watchHint', { start: choice.command ?? watch.start });
     return {
         kind: 'watch',
-        label: watch.label,
+        label: watch.label(),
         ready: async () => {
             const isRunning = () => running(watch.command) !== false;
             if (isRunning()) {
                 overlay.checkAppFiles(appDir, hint);
                 return;
             }
-            if (choice.command === undefined) throw new CawError('watch-missing', t('cli.noWatch', { label: watch.label, start: watch.start }));
+            if (choice.command === undefined) throw new CawError('watch-missing', t('cli.noWatch', { label: watch.label(), start: watch.start }));
             const log = logFile(root, name, 'watch');
-            info(t('session.overlay.watchStarting', { label: watch.label, command: choice.command }));
+            info(t('session.overlay.watchStarting', { label: watch.label(), command: choice.command }));
             started = startCommand(choice.command, appDir, log);
-            // Den Watch haben wir selbst gestartet: Er laeuft, solange sein Prozess lebt (waitFor bricht sonst ab).
+            // We started the watch ourselves: it runs as long as its process lives (otherwise waitFor gives up).
             const ok = () => {
                 try {
                     overlay.checkAppFiles(appDir, hint);
@@ -338,7 +338,7 @@ const watchSource = ({ root, name, appDir, choice, config, info, running = proce
             if (await waitFor(ok, WATCH_START_MS, { exited: started.exited })) return;
             started.stop();
             started = null;
-            throw new CawError('watch-missing', t('session.overlay.watchStartFailed', { label: watch.label, command: choice.command, seconds: WATCH_START_MS / 1000, log, tail: tail(log) }));
+            throw new CawError('watch-missing', t('session.overlay.watchStartFailed', { label: watch.label(), command: choice.command, seconds: WATCH_START_MS / 1000, log, tail: tail(log) }));
         },
         stop: () => started?.stop(),
         resolve: async ({ type, names }) => {
@@ -357,7 +357,7 @@ const filesOnly = () => ({ kind: 'files', label: 'statics', ready: async () => {
 
 const SOURCES = { build: buildSource, dev: devSource, watch: watchSource, files: filesOnly };
 
-/** overlay.statics: feste Namen, Datei relativ zum App-Ordner, bei jedem Laden frisch von der Platte. */
+/** overlay.statics: fixed names, file relative to the app folder, read fresh from disk on every load. */
 const staticsOf = (appDir, statics) => {
     const byName = new Map(statics.map((entry) => [entry.name, join(appDir, entry.path)]));
     return {
@@ -376,7 +376,7 @@ const staticsOf = (appDir, statics) => {
 };
 
 /**
- * Prueft und startet die Quellen aller Apps des Laufs mit Overlay (checked.apps aus checkTest), vor dem Browser.
+ * Checks and starts the sources of all overlay apps of the run (checked.apps from checkTest), before the browser.
  * @returns { apps: [{ name, kind, label, source, statics }], resolve, fileFor, devServers, stop }
  */
 export const prepareOverlay = async ({ root, config, checked, info = () => {}, deps = {} }) => {
@@ -397,14 +397,14 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
     const patterns = [defaultAssetPattern(checked.url), config.assetUrlPattern].filter((pattern) => typeof pattern === 'string');
     const namesOf = (url) => [...new Set(patterns.map((pattern) => deriveName(url, pattern)).filter((name) => name !== null))];
     const pages = [];
-    // Je URL, ob Skript oder Stylesheet aus dem lokalen Code kam oder vom Server (routeOverlay traegt ein).
+    // Per URL, whether a script or stylesheet came from local code or from the server (filled in by routeOverlay).
     const served = { local: new Map(), server: new Map() };
     return {
         apps,
         /**
-         * Jede HTML-Seite der Anwendung (Byte-String, siehe rewriteBytes): die Code-Tags der App gegen die der lokalen Seite getauscht,
-         * dann ohne integrity. Ohne passende lokale Seite bleibt sie, wie sie ist; die Requests beantwortet dann resolve einzeln.
-         * Eine SSR-Seite wird nie getauscht. Was geschah, steht in pages (fuer die Diagnose).
+         * Every HTML page of the application (byte string, see rewriteBytes): the app's code tags swapped for those of the local
+         * page, then without integrity. Without a matching local page it stays as is; resolve then answers requests one by one.
+         * An SSR page is never swapped. What happened is recorded in pages (for the diagnosis).
          */
         rewritePage: async (html, { url }) => {
             const ssr = ssrMarker(html);
@@ -430,7 +430,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
             return withoutIntegrity(out);
         },
         pages,
-        /** Die Antwort aus dem lokalen Code fuer einen Request, oder null: dann der Server. Die App des Tests zuerst. */
+        /** The response from local code for a request, or null for the server. The test's app comes first. */
         resolve: async (url, type) => {
             if (type === 'document') return null;
             const request = { url, type, names: namesOf(url) };
@@ -440,7 +440,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
             }
             return null;
         },
-        /** Die lokale Datei hinter einer URL (Build, statics), fuer Quellkarten; sonst undefined. */
+        /** The local file behind a URL (build, statics), for source maps; otherwise undefined. */
         fileFor: (url) => {
             const request = { url, type: undefined, names: namesOf(url) };
             for (const app of apps) {
@@ -457,7 +457,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
         devServers: apps.filter(({ kind }) => kind === 'dev').map(({ source }) => source.origin),
         served,
         /**
-         * Was nach dem Laden lief, fuer die Diagnose: nie still den ausgelieferten Stand testen.
+         * What ran after loading, for the diagnosis: never silently test the deployed state.
          * @returns { ssr, local, server, swapped, localBase, mixed: [urls], label }
          */
         diagnose: () => {
@@ -465,7 +465,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
                 const parsed = new URL(url);
                 return { key: `${parsed.origin}${posix.dirname(parsed.pathname)}`, root: posix.dirname(parsed.pathname) === '/' };
             };
-            // Der Wurzelordner zaehlt nicht: Dort liegen bei Angular alle Dateien, aber auch env.js, die die Umgebung setzt.
+            // The root folder does not count: Angular puts all files there, but also env.js, which the environment sets.
             const localFolders = new Set([...served.local.keys()].map(folder).filter(({ root: top }) => !top).map(({ key }) => key));
             return {
                 ssr: pages.find((page) => page.ssr !== null)?.ssr ?? null,
@@ -481,18 +481,18 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
     };
 };
 
-/** Seit wann gibt es die Datei? Fuer Quellkarten: Ein Watch baut neu, die Karte gilt nur fuer dieselbe Datei. */
+/** The file's version (mtime), for source maps: a watch rebuilds, and a map is only valid for the same file. */
 export const fileVersion = (file) => {
     try {
         return String(statSync(file).mtimeMs);
     } catch {
-        return 'fehlt';
+        return 'missing';
     }
 };
 
 /**
- * Leitet die Code-Requests der Seite an das Overlay. Spaeter registrierte Routen laufen zuerst; was das Overlay nicht kennt, geht
- * weiter (fallback). Scheitert eine Quelle, bricht der Request ab, und onProblem erfaehrt den Grund: Nie still der ausgelieferte Stand.
+ * Routes the page's code requests to the overlay. Routes registered later run first; what the overlay does not know falls through
+ * (fallback). If a source fails, the request is aborted and onProblem gets the reason: never silently the deployed state.
  */
 export const routeOverlay = async (context, overlay, { onProblem = () => {} } = {}) => {
     await context.route(() => true, async (route) => {
@@ -515,23 +515,24 @@ export const routeOverlay = async (context, overlay, { onProblem = () => {} } = 
         if (type !== 'document') overlay.served?.local.set(request.url(), type);
         await route.fulfill({ status: 200, contentType: found.contentType, headers: { 'content-type': found.contentType, 'cache-control': 'no-store' }, body: found.body });
     });
-    // HMR: Das WebSocket der Seite geht an den Dev-Server, auch wenn es den Host der Umgebung nennt (Vite) oder den des Dev-Servers
-    // (webpack-dev-server baut ihn ein). connectToServer() verbindet nur zur Original-URL, darum bruecken wir selbst.
+    // HMR: the page's WebSocket goes to the dev server, whether it names the environment host (Vite) or the dev server host
+    // (built in by webpack-dev-server). connectToServer() only connects to the original URL, so we bridge it ourselves.
     const [devOrigin] = overlay.devServers;
     if (devOrigin === undefined) return;
     const devHost = new URL(devOrigin).host;
     await context.routeWebSocket(() => true, (ws) => bridgeWebSocket(ws, devOrigin, devHost));
 };
 
-/** Ein WebSocket der Seite zum Dev-Server. Andere Sockets (die der Anwendung) gehen unveraendert an ihr Ziel. */
-// Codes, die nur der Browser meldet (1005 ohne Code, 1006 abgebrochen), darf niemand selbst senden.
+// Codes only the browser reports (1005 no code, 1006 aborted) must not be sent by anyone.
 const closeCode = (code) => (code === undefined || code === 1005 || code === 1006 ? 1000 : code);
 
+/** Bridges a page WebSocket to the dev server. Other sockets (the application's own) go unchanged to their target. */
+// eslint-disable-next-line n/no-unsupported-features/node-builtins -- the global WebSocket is stable from Node 22.4; only dev-server HMR uses it
 export const bridgeWebSocket = (ws, devOrigin, devHost, WebSocketImpl = WebSocket) => {
     const requested = new URL(ws.url());
-    // Vite (auch Angular ab 17) meldet sich mit dem Protokoll vite-hmr; webpack-dev-server nennt seinen eigenen Host. Ein anderes
-    // Socket kann trotzdem dem Dev-Server gehoeren (webpack-dev-server mit webSocketURL auto: Host der Seite, Pfad /ws): Es versucht
-    // zuerst ihn unter demselben Pfad; nimmt er den Handshake nicht an, geht es unveraendert an sein Ziel.
+    // Vite (also Angular 17+) uses the vite-hmr protocol; webpack-dev-server names its own host. Another socket may still belong to
+    // the dev server (webpack-dev-server with webSocketURL auto: page host, path /ws): try the dev server at the same path first;
+    // if it rejects the handshake, the socket goes unchanged to its target.
     const sure = requested.host === devHost || ws.protocols().includes('vite-hmr');
     const target = `${devOrigin.replace(/^http/, 'ws')}${requested.pathname}${requested.search}`;
     const queue = [];
@@ -545,7 +546,7 @@ export const bridgeWebSocket = (ws, devOrigin, devHost, WebSocketImpl = WebSocke
         for (const message of queue.splice(0)) original.send(message);
         ws.onClose((code, reason) => { original.close({ code: closeCode(code), reason }).catch(() => {}); });
     };
-    // Der Dev-Server prueft den Origin (webpack-dev-server): Er bekommt seinen eigenen.
+    // The dev server checks the origin (webpack-dev-server): give it its own.
     const server = new WebSocketImpl(target, { protocols: ws.protocols(), headers: { origin: devOrigin } });
     server.binaryType = 'arraybuffer';
     let opened = false;

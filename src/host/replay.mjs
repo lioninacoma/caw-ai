@@ -1,5 +1,5 @@
-// Einmal von Claude ausfuehren lassen, danach schnell und ohne Modell wiederholen. Aufgezeichnet wird nur auf
-// dem Host. Abgespielt wird ueber denselben Handler wie beim Agenten, es gelten also dieselben Grenzen.
+// Let Claude run a test once, then repeat it quickly without a model. Recording happens on the host only. Playback goes
+// through the same handler as the agent, so the same limits apply.
 
 import { existsSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
@@ -21,21 +21,21 @@ const DESCRIBE_TIMEOUT_MS = 5000;
 const CHECK_POLL_MS = 250;
 const DEFAULT_RETRY_WAIT_MS = 10_000;
 const TARGETED = new Set(['click', 'fill', 'type', 'upload', 'download']);
-// So lange darf ein wiederholter Klick auf sein Ziel warten, bevor ein Dialog darueber ihn ueberspringen laesst.
+// How long a repeated click may wait for its target before a dialog on top makes it skip.
 const REPEAT_CLICK_MS = 1500;
-// So lange wartet ein optionaler Klick (etwa ein Cookie-Banner) auf sein Ziel; kommt es nicht, faellt er weg.
+// How long an optional click (e.g. a cookie banner) waits for its target; if it does not appear, the click is dropped.
 const OPTIONAL_CLICK_MS = 3000;
 const CHANGES_PAGE = new Set(['click', 'press', 'goto', 'reload']);
 const EFFECT_ACTIONS = new Set(['click', 'fill', 'type', 'press', 'upload', 'download']);
-// So viel einer Meldung steht in Grund und Bericht. Verglichen wird immer der ganze Text.
+// How much of a message goes into reasons and reports. Comparisons always use the full text.
 const MESSAGE_SHOWN = 300;
 const EFFECT_SETTLE_MS = 5000;
-// So lange misst das Tool die Bedienelemente nach, bevor eine Abweichung zaehlt: Ein langsames Backend baut die Maske spaeter fertig.
+// How long controls are re-measured before a deviation counts: a slow backend finishes building the form later.
 const EFFECT_REMEASURE_MS = 10_000;
 const EFFECT_REMEASURE_POLL_MS = 500;
 export const RUN_TAG_PLACEHOLDER = '{{runTag}}';
-// Viele Anwendungen bilden aus einem Namen eine Adresse oder einen Schluessel in Kleinbuchstaben ("Akte CAW-1" wird zu
-// /akten/akte-caw-1). Diese Form der Kennung bekommt einen eigenen Platzhalter, sonst stuende sie fest in der Aufzeichnung.
+// Many apps derive a lowercase address or key from a name ("Akte CAW-1" becomes /akten/akte-caw-1). This form of the tag
+// gets its own placeholder, otherwise it would be hard-coded in the recording.
 export const RUN_TAG_LOWER_PLACEHOLDER = '{{runTagLower}}';
 const RUN_TAG_NAMES = new Set(['runTag', 'runTagLower']);
 
@@ -44,21 +44,21 @@ const sleepMs = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
 const firstLine = (error) => String(error?.message ?? error).split('\n')[0];
 const shownMessage = (text) => (text.length <= MESSAGE_SHOWN ? text : `${text.slice(0, MESSAGE_SHOWN)}…`);
 /**
- * Ein Fehler, den ein neuer Versuch innerhalb der Aktion nicht behebt, etwa ein Download mit falschem Namen: Ein zweiter Klick
- * luede ein zweites Mal. `kind` ordnet ihn fuer den Abbruch ein, ohne ihn gilt der uebliche Blick auf die Seite.
+ * An error that a new attempt within the action will not fix, e.g. a download with the wrong name: a second click would
+ * download again. `kind` classifies it for the abort; without it the usual look at the page applies.
  */
 const finalError = (message, kind) => Object.assign(new Error(message), { final: true, ...(kind === undefined ? {} : { kind }) });
 
 /**
- * Macht jeden Lauf unterscheidbar: Claude schreibt die Kennung in Freitexte, und jeder Lauf findet so seinen eigenen
- * Datensatz wieder. Nur Ziffern neben dem festen Teil, denn Zahlen in Meldungen gelten als gleich.
+ * Makes every run distinguishable: Claude writes the tag into free text, so each run finds its own record again. Only digits
+ * next to the fixed part, because numbers in messages are treated as equal.
  */
 export const newRunTag = (now = new Date()) => `CAW-${now.toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`;
 const jsonText = (text) => JSON.stringify(String(text)).slice(1, -1);
 export const swapText = (value, from, to) => JSON.parse(JSON.stringify(value).replaceAll(jsonText(from), () => jsonText(to)));
-/** Ersetzt die Kennung des Laufs in beiden Schreibweisen durch ihre Platzhalter. */
+/** Replaces the run tag in both spellings with its placeholders. */
 export const tagRun = (value, runTag) => swapText(swapText(value, runTag, RUN_TAG_PLACEHOLDER), runTag.toLowerCase(), RUN_TAG_LOWER_PLACEHOLDER);
-/** Setzt die Kennung des Laufs in beide Platzhalter ein. */
+/** Inserts the run tag into both placeholders. */
 export const fillRun = (value, runTag) => swapText(swapText(value, RUN_TAG_PLACEHOLDER, runTag), RUN_TAG_LOWER_PLACEHOLDER, runTag.toLowerCase());
 
 const TOKEN_FIELDS = ['value', 'code', 'url'];
@@ -66,15 +66,15 @@ const TARGET_FIELDS = ['own', 'text', 'label', 'name'];
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Ersetzt einen gemerkten Wert durch seinen Platzhalter, nur als ganzes Token und nur in Eingaben, Pruefungen, Adressen und den
- * sichtbaren Texten eines Ziels. Eine Nummer 2026 trifft so weder das Datum 07.11.2026 noch VG-2026 oder einen Selektor.
+ * Replaces a remembered value with its placeholder, only as a whole token and only in inputs, checks, URLs and the visible
+ * texts of a target. A number 2026 thus matches neither the date 07.11.2026 nor VG-2026 nor a selector.
  */
 export const swapToken = (step, value, placeholder) => {
     const pattern = new RegExp(`(?<![\\p{L}\\p{N}._-])${escapeRegExp(value)}(?![\\p{L}\\p{N}_-]|\\.[\\p{L}\\p{N}])`, 'gu');
     const swap = (text) => (typeof text === 'string' ? text.replace(pattern, () => placeholder) : text);
     const next = { ...step };
     for (const key of TOKEN_FIELDS) if (key in next) next[key] = swap(next[key]);
-    // Auch das iframe darueber: Ein Frame mit Bestellnummer im Titel braucht beim naechsten Lauf die neue.
+    // Also the enclosing iframe: a frame with an order number in its title needs the new one on the next run.
     const swapTarget = (given) => {
         const target = { ...given };
         for (const key of TARGET_FIELDS) if (key in target) target[key] = swap(target[key]);
@@ -91,7 +91,7 @@ const relativeUrl = (url, base) => {
     return parsed.origin === new URL(base).origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
 };
 
-/** Mit `page` auch in iframes: Liegt das Element in einem Frame der Anwendung, traegt das Ziel `frame`. */
+/** With `page` also inside iframes: if the element is in a frame of the app, the target carries `frame`. */
 export const describeSafely = async (locator, framework = frameworkOf(), page = undefined) => {
     try {
         if (typeof page?.mainFrame !== 'function' || typeof locator.elementHandle !== 'function') return await describeLocator(framework, locator, { timeout: DESCRIBE_TIMEOUT_MS });
@@ -107,20 +107,20 @@ export const describeSafely = async (locator, framework = frameworkOf(), page = 
 };
 
 /**
- * Schneidet mit, was den Lauf wirklich vorangebracht hat: erfolgreiche Schritte, keine Fehlversuche und nichts
- * Lesendes. Das Ziel wird vor der Aktion bestimmt, denn danach ist das Element oft schon weg.
+ * Records what actually moved the run forward: successful steps, no failed attempts and nothing read-only. The target is
+ * resolved before the action, because afterwards the element is often gone.
  */
 export const createRecorder = ({ handler, session, base, authMarker, runTag, remembered = new Map(), now = () => new Date() }) => {
     const steps = [];
     const problems = [];
-    // Meldungen gehoeren zu der Aktion, nach der sie sichtbar waren, und fallen mit ihr weg, wenn sie gestrichen wird. Sonst galte
-    // etwa ein Validierungsdialog aus einem Fehlklick fuer immer als bekannt. Was vor der ersten Aktion sichtbar ist, bleibt.
+    // Messages belong to the action after which they were visible and are dropped with it. Otherwise e.g. a validation dialog
+    // from a misclick would count as known forever. What is visible before the first action stays.
     const initial = new Set();
     const seenAfter = [];
-    // Gemerkte Werte, lange zuerst, falls einer im anderen steckt. Vorab gemerkte stammen aus den Schritten davor.
+    // Remembered values, longest first in case one contains another. Pre-remembered ones come from earlier steps.
     const placeholders = new Map([...remembered].map(([placeholder, value]) => [value, placeholder]));
     const keep = (step) => {
-        // Zwei wait-ready hintereinander werden eins: das gezieltere Warten und das laengere Zeitlimit bleiben.
+        // Two consecutive wait-ready become one: the more specific wait and the longer timeout win.
         const previous = steps.at(-1);
         if (step.action === 'wait-ready' && previous?.action === 'wait-ready') {
             const timeoutMs = Math.max(previous.timeoutMs ?? 0, step.timeoutMs ?? 0);
@@ -130,9 +130,9 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
         steps.push(step);
         seenAfter.push(new Set());
     };
-    // Danach Daten nahe an heute: Sie gelten relativ, sonst scheiterte der Test am naechsten Tag.
-    // Gemerkte Werte zuerst und nur als ganze Tokens: Enthaelt einer die Laufkennung, etwa "Bestellung CAW-1", ginge er sonst verloren.
-    // Danach die Laufkennung, eindeutig und ueberall.
+    // Remembered values first and only as whole tokens: if one contains the run tag, e.g. "Bestellung CAW-1", it would be lost
+    // otherwise. Then the run tag, unique and everywhere. Then dates close to today: they become relative, otherwise the test
+    // would fail the next day.
     const add = (step) => {
         const named = [...placeholders].sort(([a], [b]) => b.length - a.length).reduce((current, [value, placeholder]) => swapToken(current, value, placeholder), step);
         const tagged = runTag === undefined ? named : tagRun(named, runTag);
@@ -145,19 +145,19 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
             return {};
         }
     };
-    // Vergleichswerte (Requests, Wirkung) entstehen hier nicht: Unter Claudes Steuerung laufen auch Fehlklicks und Umwege, die
-    // aus der Aufzeichnung gestrichen werden. Der erste gesunde `run` der bereinigten Aufzeichnung traegt sie ein.
+    // Baselines (requests, effects) are not created here: under Claude's control there are misclicks and detours that get
+    // dropped from the recording. The first healthy `run` of the cleaned recording fills them in.
     return {
         steps,
         problems,
         get messages() {
             return new Set([...initial, ...seenAfter.flatMap((seen) => [...seen])]);
         },
-        /** Schritte, die der Mensch im laufenden Browser vorgefuehrt hat. */
+        /** Steps the human demonstrated in the live browser. */
         addSteps: (shown) => shown.forEach(add),
-        /** Die nummerierte Liste, aus der der Agent seine Umwege benennt. */
+        /** The numbered list from which the agent names its detours. */
         list: () => steps.map((step, index) => `${index + 1} ${stepLabel(step)}`),
-        /** Vergisst die Pruefungen dieser Schritte; ihre Aktionen gehoeren dann zur naechsten Pruefung. */
+        /** Forgets the checks of these steps; their actions then belong to the next check. */
         forgetChecks: (ids) => {
             for (let index = steps.length - 1; index >= 0; index -= 1) {
                 if (steps[index].action !== 'check' || !ids.has(steps[index].id)) continue;
@@ -166,7 +166,7 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                 for (const message of seen) (index === 0 ? initial : seenAfter[index - 1]).add(message);
             }
         },
-        /** Streicht Schritte. Danach stehen womoeglich zwei wait-ready hintereinander, einer reicht. */
+        /** Drops steps. Afterwards two wait-ready may follow each other; one is enough. */
         drop: (numbers) => {
             const kept = steps.map((step, index) => [step, seenAfter[index]]).filter((_pair, index) => !numbers.includes(index + 1));
             steps.length = 0;
@@ -177,9 +177,9 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
             }
         },
         handler: async (command) => {
-            // Was vor dem Befehl sichtbar ist, gehoert zum Ablauf: Zwischen zwei Befehlen hatte die Seite Zeit zu reagieren.
+            // What is visible before the command belongs to the flow: between two commands the page had time to react.
             const state = await readPageState(session.framework ?? frameworkOf(), session.page(), authMarker, session.messageSelectors).catch(() => null);
-            // Statushinweise auch: Ein Banner, das immer steht, soll nicht in jedem Lauf als neu warnen.
+            // Status notes too: a banner that is always there should not warn as new on every run.
             for (const message of [...(state?.messages ?? []), ...(state?.notes ?? [])]) (steps.length === 0 ? initial : seenAfter.at(-1)).add(message);
             const target = TARGETED.has(command?.action) && typeof command.target === 'string'
                 ? await describeSafely(locatorFor(session.page(), command.target), session.framework, session.page())
@@ -196,7 +196,7 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                 case 'click':
                 case 'fill':
                 case 'type':
-                    // Ein optionaler Klick ohne Ziel hat nichts getan: nichts aufzuzeichnen.
+                    // An optional click without a target did nothing: nothing to record.
                     if (value === 'absent') break;
                     if (target === null) problems.push(t('session.replay.unstableTarget', { action: command.action, target: command.target }));
                     else add({ action: command.action, target, ...path, ...(command.value === undefined ? {} : { value: command.value }), ...(command.action === 'click' && command.optional === true ? { optional: true } : {}) });
@@ -206,7 +206,7 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                 case 'reload': add({ action: 'reload' }); break;
                 case 'screenshot': add({ action: 'screenshot', name: command.name }); break;
                 case 'wait-ready':
-                    // Ein eigenes Zeitlimit gilt auch beim Abspielen: Brauchte die Seite bei der Aufnahme laenger, braucht sie das wieder.
+                    // A custom timeout also applies on playback: if the page needed longer while recording, it will again.
                     if (value?.settled) add({ action: 'wait-ready', ...(command.store === undefined ? {} : { store: command.store }), ...(command.minCount === undefined ? {} : { minCount: command.minCount }), ...(Number.isFinite(command.timeout) ? { timeoutMs: command.timeout } : {}) });
                     break;
                 case 'check':
@@ -224,34 +224,34 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
 };
 
 /**
- * Liest `omit` aus dem Urteil: [12, "14-16"]. Pruefungen sind der Massstab und lassen sich nie streichen. Auch
- * Zahlen und Laengen sind begrenzt, denn die Angabe kommt vom Agenten.
- * @returns die Nummern, aufsteigend
+ * Reads `omit` from the verdict: [12, "14-16"]. Checks are the yardstick and can never be dropped. Numbers and lengths
+ * are bounded too, since the input comes from the agent.
+ * @returns the numbers, ascending
  */
 export const dropNumbers = (steps, wanted) => {
     if (wanted === undefined) return [];
     const reject = (message) => new CawError('finish-rejected', `omit: ${message}`);
-    if (!Array.isArray(wanted)) throw reject('Erwartet wird eine Liste wie [12, "14-16"].');
+    if (!Array.isArray(wanted)) throw reject('Expected a list like [12, "14-16"].');
     const numbers = new Set();
     for (const entry of wanted) {
         const match = /^(\d+)(?:-(\d+))?$/.exec(String(entry));
-        if (match === null) throw reject(`"${String(entry).slice(0, 40)}" ist keine Nummer.`);
+        if (match === null) throw reject(`"${String(entry).slice(0, 40)}" is not a number.`);
         const from = Number(match[1]);
         const to = Number(match[2] ?? match[1]);
-        if (from < 1 || to > steps.length || from > to) throw reject(`${String(entry).slice(0, 40)} liegt außerhalb von 1 bis ${steps.length}.`);
+        if (from < 1 || to > steps.length || from > to) throw reject(`${String(entry).slice(0, 40)} is outside 1 to ${steps.length}.`);
         for (let number = from; number <= to; number += 1) numbers.add(number);
     }
     for (const number of numbers) {
-        if (steps[number - 1].action === 'check') throw reject(`Schritt ${number} ist eine Prüfung (${steps[number - 1].id}), die bleibt.`);
-        if (steps[number - 1].action === 'remember') throw reject(`Schritt ${number} merkt sich ${steps[number - 1].name}, das bleibt.`);
+        if (steps[number - 1].action === 'check') throw reject(`Step ${number} is a check (${steps[number - 1].id}) and stays.`);
+        if (steps[number - 1].action === 'remember') throw reject(`Step ${number} remembers ${steps[number - 1].name} and stays.`);
     }
     return [...numbers].sort((a, b) => a - b);
 };
 
 /**
- * Was das Tool selbst bereinigt, zusaetzlich zu Claudes `omit`: Screenshots belegen nur den Lauf, und vom zweimal gefuellten
- * Feld zaehlt der letzte Wert. Ein wait-ready dazwischen aendert daran nichts.
- * @returns die Nummern, aufsteigend
+ * What the tool cleans up itself, in addition to Claude's `omit`: screenshots only document the run, and of a field filled
+ * twice only the last value counts. A wait-ready in between changes nothing.
+ * @returns the numbers, ascending
  */
 export const tidyNumbers = (steps, omitted = []) => {
     const remaining = steps.map((step, index) => ({ step, number: index + 1 })).filter(({ number }) => !omitted.includes(number));
@@ -266,8 +266,8 @@ export const tidyNumbers = (steps, omitted = []) => {
 };
 
 /**
- * Was nach der letzten Pruefung noch steht, gehoert zu keinem Schritt.
- * @returns die Nummern, aufsteigend
+ * Whatever remains after the last check belongs to no step.
+ * @returns the numbers, ascending
  */
 export const trailingNumbers = (steps, omitted = []) => {
     const remaining = steps.map((step, index) => ({ step, number: index + 1 })).filter(({ number }) => !omitted.includes(number));
@@ -275,7 +275,7 @@ export const trailingNumbers = (steps, omitted = []) => {
     return remaining.slice(last + 1).map(({ number }) => number);
 };
 
-/** Alle Aktionen seit der letzten Pruefung gehoeren zum Schritt dieser Pruefung. Prueft Claude nach, zaehlt die letzte. */
+/** All actions since the last check belong to that check's step. If Claude checks again, the last one counts. */
 export const groupSteps = (steps) => {
     const groups = new Map();
     let pending = [];
@@ -296,29 +296,29 @@ export const groupSteps = (steps) => {
 const PLACEHOLDER = /\{\{([A-Za-z][A-Za-z0-9]*)\}\}/g;
 const usedNames = (value) => [...JSON.stringify(value).matchAll(PLACEHOLDER)].map(([, name]) => name).filter((name) => !RUN_TAG_NAMES.has(name) && !DATE_NAMES.has(name));
 
-/** Jeder Schritt muss seine Platzhalter aus einem Schritt davor oder aus sich selbst kennen, sonst scheitert er erst beim Abspielen. */
+/** Every step must know its placeholders from an earlier step or itself, otherwise it only fails on playback. */
 export const missingRemembered = (spec) => {
     const known = new Set();
     const problems = [];
     for (const { id, recording } of spec.steps) {
         for (const action of recording?.actions ?? []) {
             if (action.action === 'remember') known.add(action.name);
-            else for (const name of usedNames(action)) if (!known.has(name)) problems.push(`${id} braucht {{${name}}}, das davor kein Schritt merkt.`);
+            else for (const name of usedNames(action)) if (!known.has(name)) problems.push(`${id} needs {{${name}}}, which no earlier step remembers.`);
         }
-        for (const name of usedNames(recording?.check ?? '')) if (!known.has(name)) problems.push(`${id} braucht {{${name}}}, das davor kein Schritt merkt.`);
+        for (const name of usedNames(recording?.check ?? '')) if (!known.has(name)) problems.push(`${id} needs {{${name}}}, which no earlier step remembers.`);
     }
     return [...new Set(problems)];
 };
 
 /**
- * Nur ein bestandener Lauf, der jeden Schritt selbst belegt, wird wiederholbar.
- * @param spec   der freigegebene Plan
- * @param draft  beim Beheben der ganze Test, darin wird genau dieser eine Schritt ersetzt
- * @returns { problems, candidate, fresh }, `fresh` nennt Meldungen, die die Aufzeichnung bisher nicht kannte
+ * Only a passed run that proves every step itself becomes repeatable.
+ * @param spec   the approved plan
+ * @param draft  when fixing, the whole test in which exactly this one step is replaced
+ * @returns { problems, candidate, fresh }; `fresh` lists messages the recording did not know so far
  */
 export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, now = new Date() }) => {
     const problems = [...recorder.problems];
-    // Alle Schritte belegt, nur ein harter Fehler unterwegs, etwa in einem gestrichenen Fehlversuch: Das klaert der Pruefdurchlauf ohne Claude.
+    // All steps proven, only a hard failure on the way, e.g. in a dropped failed attempt: the check run without Claude settles that.
     const onlyHardFailures = outcome?.status === 'fail' && outcome.failures?.length > 0 && outcome.results.every(({ status }) => status === 'pass');
     if (outcome?.status !== 'pass' && !onlyHardFailures) problems.push(t('session.replay.endedWith', { status: outcome?.status ?? t('session.replay.noVerdict') }));
     const { groups, trailing } = groupSteps(recorder.steps);
@@ -330,15 +330,15 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, 
     if (problems.length > 0) return { problems };
 
     const order = (draft ?? spec).steps.map(({ id }) => id);
-    // Von Hand Gesetztes ueberlebt das Beheben (draft) wie das Neuaufnehmen eines bestehenden Tests (previous): Claude kennt es nicht.
+    // Manual settings survive fixing (draft) as well as re-recording an existing test (previous): Claude does not know them.
     const prior = draft ?? previous;
-    // Ein von Hand als geheim markierter Wert bleibt geheim, auch wenn Claude den Schritt neu aufnimmt.
+    // A value manually marked secret stays secret, even if Claude re-records the step.
     const secret = new Set((prior?.steps ?? []).flatMap(({ recording }) => recording?.actions ?? []).filter(({ action, secret: hidden }) => action === 'remember' && hidden === true).map(({ name }) => name));
     const recorded = spec.steps.map((step) => {
         const before = order[order.indexOf(step.id) - 1];
         const { check } = groups.get(step.id);
         const actions = groups.get(step.id).actions.map((action) => (action.action === 'remember' && secret.has(action.name) ? { ...action, secret: true } : action));
-        // Ein von Hand gesetztes Zeitlimit der Pruefung, solange der Schritt dasselbe Ergebnis erwartet.
+        // A manually set check timeout, as long as the step expects the same result.
         const old = prior?.steps.find(({ id }) => id === step.id);
         const timeoutMs = old !== undefined && (old.expect ?? '') === (step.expect ?? '') ? old.recording?.timeoutMs : undefined;
         return {
@@ -355,8 +355,8 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, 
         };
     });
     const messages = recorder.messages ?? new Set();
-    // Muster von Hand bleiben, hinter den festen Texten; was ein Muster schon deckt, kommt nicht als fester Text dazu.
-    // Beim Neuaufnehmen nur die Muster: Feste Texte von damals bringt die neue Aufnahme selbst mit, soweit sie noch erscheinen.
+    // Manual patterns stay, after the fixed texts; what a pattern already covers is not added as fixed text.
+    // On re-recording only the patterns: the new recording brings the old fixed texts itself, as far as they still appear.
     const given = draft?.knownMessages ?? (previous?.knownMessages ?? []).filter((entry) => typeof entry !== 'string');
     const known = textMatcher(given);
     const fresh = [...messages].filter((message) => !known(message)).sort();
@@ -371,17 +371,17 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, 
 };
 
 /**
- * Ein Ziel ueber seine Position: nur ueber sie, oder als zweiter oder spaeterer von mehreren gleichen Treffern. Bei einem Treffer mehr
- * oder anderer Sortierung trifft es ein anderes Element, und eine allgemeine Pruefung besteht trotzdem.
+ * A target chosen by position: only by it, or as the second or later of several equal matches. With one more match or a
+ * different order it hits another element, and a generic check still passes.
  */
 const POSITION_FREE = ['text', 'label', 'own', 'name', 'testid', 'inside', 'id', 'itemId', 'reference'];
 export const isPositional = (target) => target?.index !== undefined && (target.index > 0 || POSITION_FREE.every((key) => target[key] === undefined));
 
-/** Aktionen der genannten Schritte, deren Ziel nur ueber die Position gewaehlt ist, etwa ['S2 click button']. */
+/** Actions of the given steps whose target is chosen only by position, e.g. ['S2 click button']. */
 export const positionalActions = (spec, ids) => spec.steps.filter(({ id }) => ids === undefined || ids.has(id)).flatMap(({ id, recording }) => (recording?.actions ?? [])
     .filter(({ target }) => isPositional(target)).map((action) => `${id} ${stepLabel(action)}`));
 
-/** Prueft, bevor ein Browser aufgeht: Veraltetes nennt den Befehl, der es behebt. */
+/** Checks before a browser opens: anything stale names the command that fixes it. */
 export const assertPlayable = (spec, target, until) => {
     if (spec.steps.every(({ recording }) => recording === undefined)) {
         throw new CawError('replay-missing', t('session.replay.missing', { id: spec.id, target }));
@@ -395,8 +395,8 @@ export const assertPlayable = (spec, target, until) => {
 };
 
 /**
- * Gelernte Wirkung gilt nur fuer den Zustand, in dem sie gelernt wurde: `basis` ist der Aufnahmezeitpunkt des Schritts davor. Wird
- * ein frueherer Schritt behoben, startet der naechste womoeglich in einem anderen Zustand, und seine Wirkung wird neu gelernt.
+ * Learned effects only apply to the state in which they were learned: `basis` is the recording time of the previous step. If
+ * an earlier step is fixed, the next one may start in a different state, and its effects are learned anew.
  */
 const basisOf = (spec, step) => spec.steps[spec.steps.findIndex(({ id }) => id === step.id) - 1]?.recording?.recordedAt;
 const currentEffects = (spec, step) => {
@@ -405,7 +405,8 @@ const currentEffects = (spec, step) => {
 };
 const withBasis = (spec, step, effects) => {
     const basis = basisOf(spec, step);
-    const { basis: _old, ...rest } = effects;
+    const rest = { ...effects };
+    delete rest.basis;
     return basis === undefined ? rest : { ...rest, basis };
 };
 
@@ -415,9 +416,9 @@ const flatten = (spec, steps, until) => ({
     ...(spec.knownMessages === undefined ? {} : { knownMessages: spec.knownMessages }),
     ...(until === undefined ? {} : { until }),
     retries: Object.fromEntries(steps.filter(({ retry }) => retry !== undefined).map(({ id, retry }) => [id, retry])),
-    // Vergleich aus der Aufnahme: Er zeigt, ob ein neuer Versuch ueberhaupt etwas aendern kann.
+    // Baseline from the recording: it shows whether a new attempt can change anything at all.
     baselines: Object.fromEntries(steps.filter(({ recording }) => recording?.network !== undefined).map(({ id, recording }) => [id, recording.network])),
-    // Wirkung je Aktion aus gesunden Laeufen: Sie zeigt die erste Aktion, nach der sich die Anwendung anders verhaelt.
+    // Effects per action from healthy runs: they show the first action after which the app behaves differently.
     effects: Object.fromEntries(steps.filter((step) => currentEffects(spec, step) !== undefined).map((step) => [step.id, currentEffects(spec, step)])),
     steps: steps.flatMap(({ id, recording }) => [
         ...recording.actions,
@@ -425,12 +426,12 @@ const flatten = (spec, steps, until) => ({
     ]),
 });
 
-/** Die Aktionen aller Schritte in einer Reihe, so wie sie abgespielt werden. */
+/** The actions of all steps in one row, as they are played back. */
 export const replayOf = (spec) => flatten(spec, spec.steps);
 
 /**
- * Das Stueck der Aufzeichnung bis zu einem Zustand. Danach passiert nichts mehr, auch kein Schreibzugriff.
- * `until` markiert das Ergebnis: Spaetere Schritte zaehlen nicht zum Lauf.
+ * The part of the recording up to a state. Nothing happens after it, not even a write.
+ * `until` marks the result: later steps do not count for the run.
  */
 export const cutReplay = (spec, until) => {
     const end = spec.steps.findIndex(({ id }) => id === until);
@@ -438,13 +439,13 @@ export const cutReplay = (spec, until) => {
     return flatten(spec, spec.steps.slice(0, end + 1), until);
 };
 
-/** Was vor einem Schritt laufen muss, um ihn zu beheben. */
+/** What has to run before a step in order to fix it. */
 export const replayBefore = (spec, id) => {
     const end = spec.steps.findIndex((step) => step.id === id);
     return flatten(spec, spec.steps.slice(0, end));
 };
 
-/** Der Pruefdurchlauf: bis vor den ersten Schritt, der noch veraltet ist. Er wird ohnehin als Naechstes behoben. */
+/** The check run: up to the first step that is still stale. That one gets fixed next anyway. */
 export const replayUpToStale = (spec) => {
     const [stale] = staleSteps(spec);
     const end = stale === undefined ? spec.steps.length : spec.steps.findIndex(({ id }) => id === stale.id);
@@ -468,16 +469,16 @@ export const stepLabel = (step) => {
     }
 };
 
-/** Wie die Werkbank ein Element nennt: sein Text in Anfuehrungszeichen, sonst Rolle oder Tag. */
+/** How the workbench names an element: its text in quotes, otherwise role or tag. */
 const shownTarget = (target = {}) => {
     const shown = target.text ?? target.label ?? target.name ?? target.own;
     return shown === undefined ? targetLabel(target) : t('session.point.quoted', { text: patternLabel(shown) });
 };
 
 /**
- * Eine Aktion der Aufzeichnung als Punkt der Schrittliste: Art und kurze Beschreibung. Eingegebene Werte stehen nie darin,
- * es koennte ein Passwort sein.
- * @param expects  Erwartung je Schritt-ID, fuer den Text einer Pruefung
+ * An action of the recording as a point in the step list: kind and short description. Entered values never appear,
+ * they could be a password.
+ * @param expects  expectation per step ID, for the text of a check
  * @returns { kind, label }
  */
 export const stepPoint = (step, expects = new Map()) => {
@@ -499,15 +500,15 @@ export const stepPoint = (step, expects = new Map()) => {
 };
 
 /**
- * Die Schritte als Gruppen der Werkbank, je Aktion der Aufzeichnung ein Punkt mit der Position als ID (`a<position>`).
- * Schritte ohne Aktion in der Aufzeichnung (noch nicht aufgenommen) bleiben ohne Punkte.
+ * The steps as workbench groups, one point per recorded action with its position as ID (`a<position>`).
+ * Steps without recorded actions (not recorded yet) have no points.
  */
 export const stepGroups = (steps, replay) => {
     const expects = new Map(steps.map(({ id, expect }) => [id, expect]));
     const points = new Map(steps.map(({ id }) => [id, []]));
     let owner = null;
     (replay?.steps ?? []).forEach((step, index) => {
-        // Wie beim Abspielen: Eine Aktion gehoert zur naechsten Pruefung, was nach der letzten kommt, zur letzten.
+        // As on playback: an action belongs to the next check; what comes after the last one belongs to the last.
         owner = replay.steps.slice(index).find(({ action }) => action === 'check')?.id ?? owner;
         points.get(owner)?.push({ id: `a${index + 1}`, ...stepPoint(step, expects) });
     });
@@ -515,31 +516,32 @@ export const stepGroups = (steps, replay) => {
 };
 
 /**
- * Spielt eine Aufzeichnung ab. Feste Pausen gibt es nicht: Jeder Schritt wartet auf seine Bedingung, bis sein
- * Zeitlimit ablaeuft. Auch das Urteil geht durch den Handler, harte Konsolenfehler zaehlen also wie beim Agenten.
+ * Plays back a recording. There are no fixed pauses: every step waits for its condition until its timeout expires.
+ * The verdict also goes through the handler, so hard console errors count as they do for the agent.
+ *
+ * @param filesDir  the project's caw folder: files for upload live there, e.g. caw/fixtures/.
  */
-/** @param filesDir  der caw-Ordner des Projekts: Dort liegen die Dateien fuer upload, etwa caw/fixtures/. */
 export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL }) => {
-    // Wirkung je Aktion: was dieser Lauf sah (letzter Versuch) und die erste Abweichung von der gelernten je Schritt.
+    // Effects per action: what this run saw (last attempt) and the first deviation from the learned effects per step.
     const measure = session.trail === undefined ? null : createEffects({ session });
     const observed = new Map();
     const deviations = new Map();
-    // Schritte, die nur als Vorlauf eines neuen Versuchs liefen: Ihre Wirkung wird weder verglichen noch gelernt.
+    // Steps that only ran as warm-up for a new attempt: their effects are neither compared nor learned.
     const warmup = new Set();
-    // Schritte mit neuem Versuch, je Schritt die scheiternde Abweichung des letzten Versuchs, und die, die zweimal gleich abwichen.
+    // Steps with a new attempt; the failing deviation key of the last attempt per step; and those that deviated the same twice.
     const retried = new Set();
-    // Je Schritt die wiederholten Klicks, die uebersprungen wurden, weil der erste schon einen Dialog geoeffnet hatte.
+    // Per step the repeated clicks that were skipped because the first one had already opened a dialog.
     const repeatSkipped = new Map();
     const effectKeys = new Map();
     const repeated = new Set();
     const results = new Map();
-    // Was die Versuche davor gestoppt hat, je Schritt. Es bleibt im Bericht sichtbar, auch wenn ein spaeterer Versuch besteht.
+    // What stopped the earlier attempts, per step. It stays visible in the report even if a later attempt passes.
     const history = new Map();
-    /** Der Grund samt der Versuche davor. Gleiche Gruende stehen nur einmal da, lange Pruefausdruecke sonst mehrfach. */
-    // Schritte, deren retry nicht lief, weil ein neuer Versuch nichts aendern kann, mit dem Grund.
+    // Steps whose retry did not run because a new attempt cannot change anything, with the reason.
     const skipped = new Map();
-    // Je Schritt der Selbstabbruch des letzten Versuchs: Erst wenn er sich wiederholt, lohnt kein weiterer Versuch.
+    // Per step the self-abort of the last attempt: only if it repeats is another attempt pointless.
     const aborts = new Map();
+    /** The reason together with the earlier attempts. Equal reasons appear only once, otherwise long check expressions repeat. */
     const withTries = (id, reason) => {
         const tried = history.get(id);
         const why = skipped.has(id) ? ` ${skipped.get(id)}` : '';
@@ -548,10 +550,10 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (others.length === 0) return t('session.replay.allTriesFailed', { count: tried.length + 1, reason, why });
         return t('session.replay.tryFailed', { count: tried.length + 1, reason, others: others.join('; '), why });
     };
-    // Der reine Grund je gescheiterter Pruefung, ohne die Versuche davor: Nur er geht in die Geschichte.
+    // The bare reason per failed check, without earlier attempts: only that goes into the history.
     const causes = new Map();
     const known = replay.knownMessages === undefined ? null : textMatcher(replay.knownMessages);
-    // Unbekannte Statushinweise lassen nichts scheitern, sie kommen je nach Tempo. Der Bericht nennt jeden einmal als Warnung.
+    // Unknown status notes fail nothing, they come and go with timing. The report lists each once as a warning.
     const noted = new Set();
     const readState = async () => {
         const state = await readPageState(session.framework ?? frameworkOf(), session.page(), authMarker, session.messageSelectors).catch(() => null);
@@ -564,7 +566,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
     const unknownMessage = (state) => (known === null ? undefined : state?.messages.find((message) => !known(message)));
 
-    /** Harter Fehler oder fremde Meldung: Der Test schlaegt fehl, egal ob der naechste Schritt noch ginge. */
+    /** Hard failure or unexpected message: the test fails, whether or not the next step would still work. */
     const externalProblem = async () => {
         const [failure] = session.failures?.() ?? [];
         if (failure !== undefined) return t('session.replay.hardFailure', { type: failure.type, text: failure.text });
@@ -573,8 +575,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
 
     /**
-     * Bei jedem Scheitern, nicht nur bei fehlendem Ziel: Eine abgelaufene Sitzung zeigt sich meist als nicht erfuellte Pruefung,
-     * als 401, 500 oder HTML statt JSON. Der Satz im Grund laesst die Einordnung die Folgen der Anmeldung zuschreiben.
+     * On every failure, not only a missing target: an expired session usually shows as an unmet check, as 401, 500 or HTML
+     * instead of JSON. The sentence in the reason lets the classification attribute the consequences to the sign-in.
      */
     const LOST = t('session.replay.signInLost');
     const withSignIn = async (message) => {
@@ -583,10 +585,10 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         return state !== null && state.signedIn === false ? `${message} ${LOST}` : message;
     };
 
-    /** Warum ein Ziel fehlt: Ist die Seite selbst in einem falschen Zustand, gibt es nichts nachzubessern. */
+    /** Why a target is missing: if the page itself is in a wrong state, there is nothing to fix in the step. */
     const stateProblem = (state, step) => {
         if (state === null) return t('session.replay.pageUnreadable');
-        if (!state.appLoaded) return t('session.replay.appNotLoaded', { framework: (session.framework ?? frameworkOf()).label });
+        if (!state.appLoaded) return t('session.replay.appNotLoaded', { framework: (session.framework ?? frameworkOf()).label() });
         if (!state.signedIn) return LOST;
         if (state.loading) return t('session.replay.loadMask');
         if (step.path !== undefined && state.path !== step.path) return t('session.replay.wrongPath', { actual: state.path, expected: step.path });
@@ -599,26 +601,26 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         await session.waitReady({ timeout: timeoutMs }).catch(() => {});
     };
 
-    /** Dateien fuer upload, relativ zum caw-Ordner. Was fehlt oder ausserhalb liegt, bricht ab, bevor etwas angeklickt wird. */
+    /** Files for upload, relative to the caw folder. Anything missing or outside aborts before anything is clicked. */
     const uploadFiles = (files) => files.map((file) => {
         const path = resolve(filesDir ?? '', file);
         const inside = filesDir !== undefined && !relative(filesDir, path).startsWith('..') && !isAbsolute(relative(filesDir, path));
         if (!inside || !existsSync(path)) throw finalError(t('session.replay.uploadMissing', { file }), 'state');
         return path;
     });
-    // Die Seite, deren Ereignisse zum Element gehoeren: In der Werkbank ist die Anwendung ein Frame, die Ereignisse kommen von der Seite.
+    // The page whose events belong to the element: in the workbench the app is a frame, the events come from the page.
     const pageOf = async (element) => {
         const frame = typeof element.ownerFrame === 'function' ? await element.ownerFrame().catch(() => null) : null;
         return frame?.page() ?? session.page();
     };
-    /** Ein Dateifeld bekommt die Dateien direkt. Ein Knopf davor oeffnet beim Klick die Dateiauswahl, sie bekommt sie dann. */
+    /** A file input gets the files directly. A button in front opens the file chooser on click, which then gets them. */
     const upload = async (element, step, files, remaining) => {
-        if (await element.evaluate((node) => node instanceof HTMLInputElement && node.type === 'file')) {
+        if (await element.evaluate((node) => node instanceof globalThis.HTMLInputElement && node.type === 'file')) {
             await element.setInputFiles(files, { timeout: remaining });
             return;
         }
         const chooser = (await pageOf(element)).waitForEvent('filechooser', { timeout: remaining }).catch(() => null);
-        // Nicht erst auf den Klick warten: Unter Windows kehrt er mitunter erst zurueck, wenn die Dateiauswahl bedient ist.
+        // Do not wait for the click first: on Windows it sometimes only returns once the file chooser has been handled.
         const clicked = element.click({ timeout: remaining, delay: CLICK_DELAY_MS }).then(() => null, (error) => error);
         const picker = await Promise.race([chooser, clicked.then((error) => (error === null ? chooser : null))]);
         if (picker === null) {
@@ -627,10 +629,10 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             throw finalError(t('session.replay.noChooser', { target: targetLabel(step.target) }));
         }
         await picker.setFiles(files, { timeout: remaining });
-        // Die Dateien sind gesetzt; ein Klick, der danach noch haengt, aendert daran nichts.
+        // The files are set; a click still hanging afterwards changes nothing.
         await clicked;
     };
-    /** Der Klick startet einen Download: Sein Name passt zum Muster, und die Datei ist nicht leer. */
+    /** The click starts a download: its name matches the pattern and the file is not empty. */
     const download = async (element, step, remaining) => {
         const started = (await pageOf(element)).waitForEvent('download', { timeout: remaining }).catch(() => null);
         await element.click({ timeout: remaining, delay: CLICK_DELAY_MS });
@@ -645,10 +647,10 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
 
     /**
-     * @param previous die Aktion davor: Ist es derselbe Klick auf dasselbe Ziel und liegt jetzt ein Dialog darueber, hat der erste
-     *                 Klick schon gewirkt (etwa „Abbrechen“ oeffnet die Rueckfrage). Der zweite wird dann uebersprungen, statt bis
-     *                 zum Zeitlimit zu warten; ob der Schritt stimmt, sagt seine Pruefung.
-     * @returns 'skipped' oder undefined
+     * @param previous the action before: if it is the same click on the same target and a dialog now lies on top, the first
+     *                 click already took effect (e.g. "Cancel" opens the confirmation). The second is then skipped instead
+     *                 of waiting for the timeout; whether the step is right is up to its check.
+     * @returns 'skipped', 'absent' or undefined
      */
     const act = async (step, timeoutMs, previous) => {
         const deadline = now() + timeoutMs;
@@ -657,7 +659,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: Math.min(timeoutMs, REPEAT_CLICK_MS), sleep, now });
             if (element === null && (await explainTarget(session.framework ?? frameworkOf(), session.page(), step.target))?.covered !== undefined) return 'skipped';
         }
-        // Optional, etwa der Cookie-Banner beim ersten Besuch: Ist das Ziel nicht da, gibt es nichts zu tun ('absent').
+        // Optional, e.g. the cookie banner on the first visit: if the target is not there, there is nothing to do ('absent').
         if (step.optional === true) {
             const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: Math.min(timeoutMs, OPTIONAL_CLICK_MS), sleep, now });
             if (element === null) return 'absent';
@@ -666,7 +668,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             const remaining = Math.max(deadline - now(), 1);
             const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: remaining, sleep, now });
             if (element === null) {
-                // Fehlt das Ziel, oder liegt etwas darueber? Ein offener Dialog mit Meldung erklaert mehr als "fehlt".
+                // Is the target missing, or is something on top of it? An open dialog with a message explains more than "missing".
                 const why = await explainTarget(session.framework ?? frameworkOf(), session.page(), step.target);
                 const error = new Error(t('session.replay.notClickable', { target: targetLabel(step.target), seconds: Math.round(timeoutMs / 1000), why: explainText(why) }));
                 if (why !== null) error.blocker = why;
@@ -680,12 +682,12 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                     else if (step.action === 'download') await download(element, step, remaining);
                     else await element.type(step.value, { timeout: remaining });
                 };
-                // Tippt der Mensch gerade im Chat, bekommt er den Fokus nach der Aktion zurueck (siehe frameView).
+                // If the human is typing in the chat, they get the focus back after the action (see frameView).
                 const view = session.page();
                 await (typeof view?.keepChatFocus === 'function' ? view.keepChatFocus(perform) : perform());
                 return;
             } catch (error) {
-                // ExtJS baut Elemente um. Solange Zeit bleibt, wird das Ziel neu gesucht.
+                // ExtJS rebuilds elements. As long as time remains, the target is looked up again.
                 if (error.final || now() >= deadline) throw error;
                 await sleep(CHECK_POLL_MS);
             }
@@ -703,7 +705,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 failedWith = null;
                 if (pass) break;
             } catch (error) {
-                // Waehrend eines Seitenwechsels ist z. B. Ext kurz undefiniert.
+                // During a page change e.g. Ext is briefly undefined.
                 last = firstLine(error);
                 failedWith = last;
             }
@@ -729,7 +731,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         });
     };
 
-    /** Der Wert stammt aus diesem Lauf. Er erscheint womoeglich erst kurz nach dem Schritt davor, darum wiederholen. */
+    /** The value comes from this run. It may only appear shortly after the previous step, hence the retries. */
     const remembered = new Map();
     const hidden = [];
     const mask = (value) => (hidden.length === 0 ? value : redactDeep(value, hidden));
@@ -740,7 +742,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 const command = { action: 'remember', name: step.name, code: step.code };
                 const { name, value } = await (step.secret === true && handler.reveal !== undefined ? handler.reveal(command) : handler(command));
                 remembered.set(`{{${name}}}`, value);
-                // Geheim: Ab jetzt steht der Wert weder im Protokoll noch im Bericht, und die Sitzung schwaerzt ihn wie das Passwort der Rolle.
+                // Secret: from now on the value appears neither in the log nor in the report, and the session redacts it like the role password.
                 if (step.secret === true) {
                     hidden.push(value);
                     session.hide?.(value);
@@ -772,16 +774,16 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     let broken = null;
     const stop = async (position, label, kind, given, blocker) => {
         const message = await withSignIn(given);
-        // Aktionen gehoeren zur naechsten Pruefung, also nennt das auch der Abbruch.
+        // Actions belong to the next check, so the abort names that one too.
         const owner = ownerOf(position - 1);
-        // Sauber: Von diesem Schritt ist noch nichts ausgefuehrt, die Seite steht also genau davor. Ein Fehler von aussen kann sie veraendert haben.
+        // Clean: nothing of this step has run yet, so the page is right before it. An external failure may have changed it.
         const clean = kind !== 'external' && position - 1 === starts.get(owner);
         broken = { number: `${position}/${replay.steps.length}`, step: owner, label, kind, message, clean, ...(blocker === undefined ? {} : { blocker }) };
         const name = `fehler-schritt-${position}.png`;
         await handler({ action: 'screenshot', name }).then(() => { broken.screenshot = name; }, () => {});
     };
 
-    // Wo jeder Schritt in der flachen Liste beginnt und wie viele harte Fehler es da schon gab.
+    // Where each step starts in the flat list.
     const starts = new Map();
     let segment = 0;
     replay.steps.forEach(({ action, id }, index) => {
@@ -791,11 +793,11 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     });
     const marks = new Map();
     const netMarks = new Map();
-    // Wie viele schreibende Requests es zu Beginn jedes Schritts schon gab: Ein neuer Versuch nach einem Schreiben legte doppelt an.
+    // How many write requests there were at the start of each step: a new attempt after a write would create things twice.
     const writeMarks = new Map();
     const writeCount = () => (session.writes?.() ?? []).reduce((sum, { count }) => sum + count, 0);
 
-    /** Haelt die Wirkung fest und vergleicht sie mit der gelernten. Ein neuer Versuch ersetzt, was der alte sah. */
+    /** Records the effect and compares it with the learned one. A new attempt replaces what the old one saw. */
     const noteEffect = (owner, number, effect, label) => {
         if (!observed.has(owner)) observed.set(owner, new Map());
         observed.get(owner).set(number, effect);
@@ -804,9 +806,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const change = effectChange(learned.actions.find(({ action }) => action === number) ?? {}, effect);
         if (change !== null) deviations.set(owner, { step: owner, number, label, learned: learned.runs >= LEARN_RUNS, ...change });
     };
-    // Die Aktion, deren Wirkung noch gemessen wird.
+    // The action whose effect is still being measured.
     let pending = null;
-    /** Wuerden fehlende oder neue Bedienelemente den Schritt scheitern lassen? Nur das kann sich durch Warten noch aendern. */
+    /** Would missing or new controls fail the step? Only that can still change by waiting. */
     const controlsFail = (owner, number, effect) => {
         const learned = replay.effects?.[owner];
         if (learned === undefined || learned.runs < LEARN_RUNS || deviations.has(owner) || !effectFail.includes('controls')) return false;
@@ -819,7 +821,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         pending = null;
         await session.waitReady({ timeout: EFFECT_SETTLE_MS }).catch(() => {});
         let effect = await measure.after().catch(() => null);
-        // Nachmessen wie bei einer Pruefung, bevor die naechste Aktion laeuft. Gesunde Laeufe kostet das nichts.
+        // Re-measure like a check before the next action runs. Healthy runs pay nothing for this.
         const deadline = now() + Math.min(stepTimeoutMs, EFFECT_REMEASURE_MS);
         while (effect !== null && controlsFail(owner, number, effect) && now() < deadline) {
             await sleep(EFFECT_REMEASURE_POLL_MS);
@@ -830,16 +832,16 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
 
     /**
-     * Neuer Versuch: warten, neu laden, ab dem genannten Schritt noch einmal. Harte Fehler seit dessen Beginn gehoeren zum
-     * gescheiterten Versuch; sie fallen aus dem Urteil, ihr Text bleibt in der Notiz des Schritts.
-     * @returns wo es weitergeht, null wenn kein Versuch mehr uebrig ist
+     * New attempt: wait, reload, run again from the given step. Hard failures since its start belong to the failed attempt;
+     * they drop out of the verdict, their text stays in the step's note.
+     * @returns where to continue, null if no attempt is left
      */
     const again = async (owner, reason) => {
         const retry = replay.retries?.[owner];
         const tried = history.get(owner) ?? [];
         if (retry === undefined || tried.length >= retry.times) return null;
         const from = retry.from ?? owner;
-        // Schon geschrieben seit Beginn des Versuchs: Ein neuer Versuch schickte dasselbe noch einmal, mit derselben Laufkennung.
+        // Already written since the attempt started: a new attempt would send the same again, with the same run tag.
         const written = writeMarks.has(from) ? writeCount() - writeMarks.get(from) : 0;
         if (written > 0) {
             skipped.set(owner, t('session.replay.skipWritten', { from, count: written }));
@@ -848,7 +850,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             log({ position: starts.get(owner) + 1, number: `${starts.get(owner) + 1}/${replay.steps.length}`, owner, label: t('session.replay.skipWrittenLog', { owner, from }) });
             return null;
         }
-        // Bricht die Anwendung selbst ab und tat sie das schon im Versuch davor, kommt beim Neuladen dasselbe heraus.
+        // If the app aborts by itself and already did so in the previous attempt, reloading yields the same.
         const abort = netMarks.has(owner) ? selfAbort(session.network.since(netMarks.get(owner).from), replay.baselines?.[owner]) : null;
         const pointless = abort !== null && aborts.get(owner) === abort ? abort : null;
         if (abort !== null) aborts.set(owner, abort);
@@ -859,7 +861,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             log({ position: starts.get(owner) + 1, number: `${starts.get(owner) + 1}/${replay.steps.length}`, owner, label: t('session.replay.skipAbortLog', { owner }) });
             return null;
         }
-        // Dieselbe Abweichung wie im Versuch davor: Die Anwendung reagiert verlaesslich anders, ein weiterer Versuch aendert nichts.
+        // Same deviation as in the previous attempt: the app reliably reacts differently, another attempt changes nothing.
         if (isEffectCause(reason) && repeated.has(owner)) {
             pending = null;
             skipped.set(owner, t('session.replay.skipEffect'));
@@ -877,21 +879,21 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             results.delete(id);
             observed.delete(id);
             deviations.delete(id);
-            // Nur Vorlauf fuer den wiederholten Schritt: Der Versuch davor hat die Anwendung schon veraendert, etwa eine Aufgabe
-            // geoeffnet. Seine Wirkung weicht dann zu Recht ab und zaehlt nicht.
+            // Only warm-up for the retried step: the previous attempt already changed the app, e.g. opened a task.
+            // Its effects then rightly deviate and do not count.
             if (id !== owner) warmup.add(id);
         });
         log({ position: start + 1, number: `${start + 1}/${replay.steps.length}`, owner, label: t('session.replay.retryLog', { owner, count: tried.length + 2, total: retry.times + 1, from }) });
         await sleep(retry.waitMs ?? DEFAULT_RETRY_WAIT_MS);
         await handler({ action: 'reload' }).catch(() => {});
-        // Bis zum Neuladen gehoert alles zum alten Versuch, auch ein Fehler, den die alte Seite noch beim Entladen wirft. Was die neue
-        // Seite beim Start wirft, bleibt: Es ist ein Befund dieses Versuchs und verschwindet nicht mit einem bestandenen Lauf.
+        // Up to the reload everything belongs to the old attempt, including an error the old page throws while unloading. What
+        // the new page throws on start stays: it is a finding of this attempt and does not vanish with a passed run.
         const cut = session.failures?.().length ?? 0;
         await settle(stepTimeoutMs);
         const dropFrom = marks.get(from) ?? marks.get(owner) ?? 0;
-        // Ein Skriptfehler verschwindet mit dem neuen Versuch aus dem Urteil, aber nicht aus dem Bericht: Er kann ein seltener Fehler der Anwendung sein.
-        // Dazu Konsolenfehler mit Quelle: vom Framework gefangene Skriptfehler (diagnose zaehlt sie wie `pageerror`).
-        for (const failure of (session.failures?.() ?? []).slice(dropFrom, cut).filter((failure) => failure.type === 'pageerror' || isCaughtScriptError(failure))) {
+        // A script error disappears from the verdict with the new attempt, but not from the report: it may be a rare app bug.
+        // Also console errors with a source: script errors caught by the framework (diagnose counts them like `pageerror`).
+        for (const failure of (session.failures?.() ?? []).slice(dropFrom, cut).filter((entry) => entry.type === 'pageerror' || isCaughtScriptError(entry))) {
             session.warn?.({ type: 'retry', text: t('session.replay.hiddenScriptError', { owner, count: tried.length + 1, text: failure.text }) });
         }
         session.retractFailures?.(dropFrom, cut);
@@ -908,7 +910,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const step = fillDates([...remembered].reduce((current, [placeholder, value]) => swapText(current, placeholder, value), tagged));
         const problem = await externalProblem();
         if (problem !== null) {
-            // Am Anfang eines Schritts stammt der Fehler aus dem Schritt davor, ein neuer Versuch hier wuerde ihn nicht treffen.
+            // At the start of a step the failure comes from the previous step; a new attempt here would not reach it.
             const restart = opensStep ? null : await again(owner, problem);
             if (restart !== null) {
                 index = restart;
@@ -923,9 +925,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             if (session.network !== undefined) netMarks.set(owner, { from: session.network.mark() });
         }
         log({ position, number: `${position}/${replay.steps.length}`, step: mask(step), owner, label: mask(stepLabel(step)) });
-        // Wirkung einer Aktion: von davor bis zur naechsten Aktion oder Pruefung, also samt dem Warten danach. Ein Fehler beim
-        // Messen aendert nichts am Lauf.
-        // Vor einer Pruefung wird erst danach gemessen: Manches laedt erst, waehrend sie wartet, und so zaehlt der Zustand, den sie sieht.
+        // Effect of an action: from before it up to the next action or check, including the wait afterwards. A measuring
+        // error does not affect the run.
+        // Before a check, measure only after it: some things load while it waits, so the state it sees is what counts.
         if (step.action !== 'wait-ready' && step.action !== 'screenshot' && step.action !== 'check') await settleEffect();
         if (measure !== null && EFFECT_ACTIONS.has(step.action)) {
             await measure.before().catch(() => {});
@@ -938,12 +940,12 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 if (EFFECT_ACTIONS.has(step.action)) pending = null;
             }
         } catch (error) {
-            // Ist die Aktion selbst gescheitert, hat sie nichts bewirkt, das sich vergleichen liesse. Das Warten danach schon.
+            // If the action itself failed, it caused nothing to compare. The wait after it did.
             if (EFFECT_ACTIONS.has(step.action)) pending = null;
             else await settleEffect();
-            // Playwright wartet auf ein freigegebenes Ziel und nennt das nur im Protokoll unter der ersten Zeile. Ein gesperrtes Ziel
-            // ist ein Zustand der Anwendung, kein veralteter Schritt, und auch keine Lademaske, selbst wenn daneben ein Fortschritt laeuft.
-            // Ein Fehler mit eigener Einordnung, etwa ein Download mit falschem Namen, sagt schon, was los ist.
+            // Playwright waits for an enabled target and only says so in the log below the first line. A locked target is a
+            // state of the app, not a stale step, and not a load mask either, even if a progress indicator runs next to it.
+            // An error with its own classification, e.g. a download with the wrong name, already says what is going on.
             const sorted = error?.kind !== undefined;
             const locked = !sorted && TARGETED.has(step.action) && LOCKED.test(String(error?.message ?? ''));
             const state = locked ? t('session.replay.locked') : (TARGETED.has(step.action) && !sorted ? stateProblem(await readState(), step) : null);
@@ -959,7 +961,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         }
         if (step.action === 'check') {
             await settleEffect();
-            // Was nach der Messung noch im Schritt kam, war nur langsamer und fehlt nicht.
+            // Whatever came within the step after the measurement was just slower and is not missing.
             if (deviations.has(step.id) && netMarks.has(step.id)) {
                 const answered = session.network.since(netMarks.get(step.id).from)
                     .filter(({ outcome }) => outcome === 'ok' || outcome === 'http').map(({ name, status }) => `${name} ${status}`);
@@ -967,14 +969,14 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 if (rest === null) deviations.delete(step.id);
                 else deviations.set(step.id, rest);
             }
-            // Bestanden, aber die Anwendung reagierte anders als in gesunden Laeufen, und zwar in einem verlaesslichen Signal.
+            // Passed, but the app reacted differently than in healthy runs, in a reliable signal.
             const deviation = deviations.get(step.id);
-            // Nach einer Wiederholung ist der Zustand nicht mehr der eines gesunden Laufs, etwa eine schon uebernommene Aufgabe: Dann
-            // scheitert nur noch der wiederholte Schritt selbst an seiner Wirkung, spaetere warnen nur.
+            // After a retry the state is no longer that of a healthy run, e.g. a task already taken over: then only the retried
+            // step itself fails on its effects, later ones only warn.
             const comparable = !warmup.has(step.id) && (retried.size === 0 || retried.has(step.id));
             if (results.get(step.id)?.status === 'pass' && comparable && failsStep(deviation, effectFail)) {
                 deviation.fails = true;
-                // Gleich wie im Versuch davor, gemessen an dem, woran der Schritt scheitert: Ein weiterer Versuch aendert nichts.
+                // Same as in the previous attempt, measured by what fails the step: another attempt changes nothing.
                 const key = JSON.stringify(effectFail.flatMap((list) => (list === 'console' ? deviation.extra : deviation.byList?.[list] ?? [])));
                 if (effectKeys.get(step.id) === key) repeated.add(step.id);
                 effectKeys.set(step.id, key);
@@ -990,14 +992,14 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 index = restart;
                 continue;
             }
-            // Ein harter Fehler, waehrend die Pruefung wartete: Er gehoert zu diesem Schritt, nicht zum naechsten, der ihn nur fande.
+            // A hard failure while the check waited: it belongs to this step, not to the next one that would merely find it.
             if (failure !== null && result.status === 'pass') {
                 results.set(step.id, { ...result, status: 'fail', note: withTries(step.id, failure) });
                 await stop(position, stepLabel(step), 'external', withTries(step.id, failure));
                 break;
             }
-            // Gescheiterte Pruefung ohne Versuch: Weiter liefe der Test auf einem Zustand, der schon falsch ist, samt schreibender
-            // Schritte, und spaetere Fehler fielen auf diesen Schritt zurueck.
+            // Failed check without retry: continuing would run the test on an already wrong state, including write steps,
+            // and later failures would be blamed on this step.
             if (result.status === 'fail') {
                 await stop(position, stepLabel(step), 'check', result.note);
                 break;
@@ -1009,10 +1011,10 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const problem = await externalProblem();
         if (problem !== null) await stop(replay.steps.length, t('session.replay.end'), 'external', problem);
     }
-    // Je Schritt die Requests seines letzten Versuchs, Belege fuer die Einordnung eines Fehlers.
+    // Per step the requests of its last attempt, evidence for classifying a failure.
     const requests = new Map([...netMarks].map(([id, { from, end }]) => [id, session.network.since(from, end)]));
     await settleEffect();
-    // Ein bestandener Schritt, der anders wirkt als gelernt: Drift, bevor eine Pruefung reisst. Gelernte Wirkung zaehlt, die im Lernen nicht.
+    // A passed step that acts differently than learned: drift before a check breaks. Learned effects count, those still being learned do not.
     for (const id of warmup) {
         observed.delete(id);
         deviations.delete(id);
@@ -1020,15 +1022,15 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     for (const [id, deviation] of deviations) {
         if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', text: deviationText(deviation) });
     }
-    // Geheime Werte bleiben fuer den Lauf in `remembered`; in Ergebnis und Abbruch, also im Bericht, stehen sie geschwaerzt.
+    // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
     return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried };
 };
 
 /**
- * Vergleichswerte, die einer Aufzeichnung noch fehlen: Ein bestandener Schritt zeigt, welche Requests ein gesunder Lauf macht.
- * Nur auf dem Ziel, auf dem der Schritt aufgenommen wurde, sonst passen die Dauern nicht. Was schon da ist, bleibt; nur Werte
- * aus der Zeit vor den Parameternamen werden ersetzt.
- * @returns Map Schritt -> recording.network
+ * Baselines a recording still lacks: a passed step shows which requests a healthy run makes.
+ * Only on the target the step was recorded on, otherwise the durations do not match. What exists stays; only values
+ * from before parameter names were recorded get replaced.
+ * @returns Map step -> recording.network
  */
 export const missingBaselines = ({ spec, results, requests, target }) => {
     const found = new Map();
@@ -1043,9 +1045,9 @@ export const missingBaselines = ({ spec, results, requests, target }) => {
 };
 
 /**
- * Gelernte Wirkung je Aktion aus bestandenen Schritten, nur auf dem Ziel der Aufnahme. Nach LEARN_RUNS gesunden Laeufen steht
- * sie fest. Ein Schritt mit Abweichung lernt nicht: Sonst verschwaende ein Fehler aus dem Vergleich, statt aufzufallen.
- * @returns Map Schritt -> recording.effects
+ * Learned effects per action from passed steps, only on the recording target. After LEARN_RUNS healthy runs they are
+ * fixed. A step with a deviation does not learn: otherwise a bug would vanish from the comparison instead of standing out.
+ * @returns Map step -> recording.effects
  */
 export const learnedEffects = ({ spec, results, effects, deviations, target, prune = false, fail = DEFAULT_EFFECT_FAIL }) => {
     const found = new Map();
@@ -1053,8 +1055,8 @@ export const learnedEffects = ({ spec, results, effects, deviations, target, pru
         const { recording } = step;
         if (recording === undefined || recording.recordedOn !== target || results.get(step.id)?.status !== 'pass') continue;
         const deviation = deviations?.get(step.id);
-        // `prune`: Der ganze Lauf bestand ohne Wiederholung. Wich ein Schritt dann nur in Listen ausserhalb von `fail` ab, ist das
-        // Rauschen, und es faellt aus dem Gelernten.
+        // `prune`: the whole run passed without retries. If a step then deviated only in lists outside `fail`, that is
+        // noise and drops out of what was learned.
         if (deviation?.learned) {
             const pruned = prune ? pruneEffects(currentEffects(spec, step), deviation, fail) : null;
             if (pruned !== null) found.set(step.id, withBasis(spec, step, pruned));
@@ -1067,33 +1069,34 @@ export const learnedEffects = ({ spec, results, effects, deviations, target, pru
     return found;
 };
 
-/** Traegt gelernte Wirkungen ein. Der Hash bleibt. */
+/** Adds learned effects. The hash stays. */
 export const withEffects = (spec, effects) => ({
     ...spec,
     steps: spec.steps.map((step) => (effects.has(step.id) && step.recording !== undefined ? { ...step, recording: { ...step.recording, effects: effects.get(step.id) } } : step)),
 });
 
-/** Vergisst die gelernte Wirkung eines Schritts: Die naechsten gesunden Laeufe lernen sie neu. Der Hash bleibt. */
+/** Forgets the learned effects of a step: the next healthy runs learn them anew. The hash stays. */
 export const withoutEffects = (spec, id) => ({
     ...spec,
     steps: spec.steps.map((step) => {
         if (step.id !== id || step.recording?.effects === undefined) return step;
-        const { effects, ...recording } = step.recording;
+        const recording = { ...step.recording };
+        delete recording.effects;
         return { ...step, recording };
     }),
 });
 
-/** Traegt Vergleichswerte in die Aufzeichnungen ein. Der Hash bleibt, `network` zaehlt nicht dazu. */
+/** Adds baselines to the recordings. The hash stays; `network` is not part of it. */
 export const withBaselines = (spec, baselines) => ({
     ...spec,
     steps: spec.steps.map((step) => (baselines.has(step.id) && step.recording !== undefined ? { ...step, recording: { ...step.recording, network: baselines.get(step.id) } } : step)),
 });
 
 /**
- * Der erste gescheiterte Schritt und warum. Harte Fehler und fremde Meldungen sehen nach der Anwendung aus, nicht nach einem
- * veralteten Schritt; beheben darf der Mensch trotzdem, er entscheidet.
- * @returns { id, reason, suspect, clean } oder null, wenn alles bestanden hat; `clean`: Der Browser steht genau vor dem Schritt,
- *          beheben geht dort ohne Vorlauf. Nach einer gescheiterten Pruefung lief das Abspielen weiter, dann nie.
+ * The first failed step and why. Hard failures and unexpected messages look like the app, not like a stale step; the
+ * human may still fix it, it is their call.
+ * @returns { id, reason, suspect, clean } or null if everything passed; `clean`: the browser is right before the step,
+ *          fixing works there without a warm-up. After a failed check playback continued, so never then.
  */
 export const failedStep = ({ results, broken, expectations, failures = [] }) => {
     const failed = expectations.find(({ id }) => results.get(id)?.status === 'fail');
@@ -1102,13 +1105,13 @@ export const failedStep = ({ results, broken, expectations, failures = [] }) => 
     return broken === null ? null : { id: broken.step, reason: `${broken.label}: ${broken.message}`, suspect, clean: broken.clean === true && failures.length === 0 };
 };
 
-/** Baut aus dem Abspielen das Ergebnis fuer `finish`: Was nicht erreicht wurde, ist fail, nie stillschweigend pass. */
+/** Builds the result for `finish` from playback: what was not reached is fail, never silently pass. */
 export const replayVerdict = ({ results, broken, expectations }) => {
     const note = broken === null ? t('session.replay.noCheck') : t('session.replay.brokenAt', { number: broken.number, label: broken.label, message: broken.message });
     const evidence = broken?.screenshot === undefined ? { type: 'eval', value: t('session.replay.notReached') } : { type: 'screenshot', value: broken.screenshot };
     const owner = broken?.step;
     const items = expectations.map(({ id }) => results.get(id) ?? { id, status: 'fail', evidence, note: id === owner || owner === undefined ? note : t('session.replay.notReachedBecause', { owner }) });
-    // Auch wenn alle Punkte schon belegt waren: Ein spaeterer Abbruch darf nicht als pass enden.
+    // Even if all points were already proven: a later abort must not end as pass.
     if (broken !== null && items.length > 0 && items.every(({ status }) => status === 'pass')) {
         items[items.length - 1] = { ...items.at(-1), status: 'fail', note };
     }

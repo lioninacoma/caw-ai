@@ -1,8 +1,8 @@
-// Die Karte von `explore` im Browserfenster, im Stil der Werkbank aus dem aktiven Theme: Fenster mit Rahmen und leichten
-// Rasterzeilen, im Kopf der ASCII-Rabe (blinzelt, Klick = Herzen), Titel, Schritt und Einklappen. Auf der Startseite der Knopf
-// „Fertig“, der „Enter im Terminal“ ersetzt.
-// Im geschlossenen Shadow DOM: Die Seite gestaltet sie nicht um, und surveyPage sieht sie nicht (der Wirt traegt nur data-caw).
-// Die Phase kommt vom Host, nach jedem Seitenwechsel neu ueber eine Bindung, dazwischen per Ereignis.
+// The `explore` card in the browser window, styled like the workbench from the active theme: framed window with faint scan lines,
+// the ASCII raven in the header (blinks, click = hearts), title, step and collapse. On the start step it shows the "Done" button,
+// which replaces "Enter in the terminal".
+// Lives in a closed shadow DOM: the page cannot restyle it, and surveyPage does not see it (the host element only carries data-caw).
+// The phase comes from the host: after every navigation via a binding, in between via an event.
 
 import { activeTheme } from '../shared/theme-package.mjs';
 import { GLYPH_CSS, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, fontFaces, ravenLogo, themeStyle, themeVars } from './theme.mjs';
@@ -10,7 +10,7 @@ import { GLYPH_CSS, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, fontFaces, ravenLogo,
 export const DONE_BINDING = '__cawExploreDone';
 export const PHASE_BINDING = '__cawExplorePhase';
 export const PHASE_EVENT = 'caw-explore-phase';
-/** Phasen der Karte: wait (Seite laedt), signin, start (mit Knopf), reading, done. */
+/** Card phases: wait (page loading), signin, start (with button), reading, done. */
 export const PHASES = ['wait', 'signin', 'start', 'reading', 'done'];
 
 const css = (theme) => `:host{all:initial;${themeVars(theme)}}
@@ -41,9 +41,9 @@ ${RAVEN_CSS}
 ${GLYPH_CSS}`;
 
 /**
- * Das Skript fuer addInitScript.
+ * The script for addInitScript.
  * @param texts { title, steps: { signin, start }, text: { wait, signin, start, reading, done }, page, button, saved }
- * @param theme das aufgeloeste Theme; ohne: das aktive
+ * @param theme the resolved theme; defaults to the active one
  */
 export const exploreCardScript = (texts, theme = activeTheme()) => {
     const frames = Array.isArray(theme.spinner?.frames) && theme.spinner.frames.length > 0 ? theme.spinner.frames : ['▖'];
@@ -62,7 +62,7 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
     ${GLYPH_SCRIPT}
     const mount = () => {
         if (document.querySelector('[data-caw=explore]') !== null) return;
-        // Schriften gehoeren ins Dokument: Im Shadow DOM greift @font-face nicht.
+        // Fonts belong in the document: @font-face does not work inside a shadow DOM.
         if (document.querySelector('style[data-caw-font]') === null) {
             const fonts = document.createElement('style');
             fonts.setAttribute('data-caw-font', '');
@@ -81,7 +81,7 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
         $('.where b').textContent = T.page;
         const still = () => false;
         cawRaven(root, root, still, L.raven);
-        // Einklappen, falls die Karte etwas auf der Seite verdeckt. Der Rabe gehoert nicht dazu.
+        // Collapse, in case the card covers something on the page. The raven is not part of it.
         $('.head').addEventListener('click', () => {
             card.classList.toggle('min');
             $('.toggle').textContent = card.classList.contains('min') ? '+' : '–';
@@ -93,7 +93,7 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
             button.textContent = L.ok + ' ' + T.saved;
             window.${DONE_BINDING}?.();
         });
-        // Der Spinner in der Marke, solange gewartet oder gelesen wird.
+        // The spinner in the marker while waiting or reading.
         let spin = 0, frame = 0;
         const mark = (kind) => {
             clearInterval(spin);
@@ -117,7 +117,7 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
             $('.where').hidden = phase !== 'start';
             button.hidden = phase !== 'start' && !button.disabled;
         };
-        // Lange Pfade vorn kuerzen: Das Ende sagt, wo man ist.
+        // Shorten long paths at the front: the end tells where you are.
         const path = () => {
             const full = location.pathname + location.search.replace(/[?&](token|code|session)[^&]*/gi, '') + location.hash;
             $('.where code').textContent = full.length > 36 ? '…' + full.slice(-35) : full;

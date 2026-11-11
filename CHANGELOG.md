@@ -57,6 +57,9 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - The sprite assets: `assets/raven-sheet.png`, `assets/favicon-32.png` and the crow pipeline in `assets/mascot/` (`npm run mascot`). The favicon is now an SVG of the raven in the theme colours.
 
 ### Changed
+- Code, names and comments are English; ESLint (`npm run lint`, recommended rules of ESLint and eslint-plugin-n) runs in CI. Messages and prompts for Claude are English.
+- More of the UI is localized: failure explanations (missing, hidden, covered), the app names in messages, the Sencha watch label, theme validation messages, the default header of `caw/caw.md` and the names of copied themes now follow the language. Claude's end-of-run log line reads "Claude finished after … s".
+- E2E files renamed: `e2e/steps-e2e.mjs`, `e2e/portal.mjs`, `e2e/watchdog.ps1` (summary `RESULT OK=… FAIL=…` in `<log>.result`).
 - `examples/helpdesk` ships the recording of `create-ticket`: start the server and `run` it right away, no recording with Claude first.
 - Exit code 4 ("needs recording") for a missing or outdated recording (`replay-missing`, `replay-stale`).
 - Test files: `id`, `app`, `role` and `targets` may be left out: file name, the only app, the only role, all non-production environments.

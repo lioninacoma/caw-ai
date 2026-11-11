@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Egress-Allowlist der Sandbox, angelehnt an das Referenzskript von anthropics/claude-code.
-# Default deny fuer IPv4 und IPv6; erlaubt sind Loopback und HTTPS zu den Hosts aus CAW_ALLOWED_HOSTS.
-# Die IPs werden beim Start aufgeloest (Momentaufnahme) und in /etc/hosts eingetragen. Danach ist auch DNS zu:
-# Ueber Anfragen an den Resolver liessen sich sonst Daten in Hostnamen nach draussen tragen.
+# Egress allowlist of the sandbox, based on the reference script from anthropics/claude-code.
+# Default deny for IPv4 and IPv6; allowed are loopback and HTTPS to the hosts in CAW_ALLOWED_HOSTS.
+# The IPs are resolved at start (snapshot) and written to /etc/hosts. After that DNS is closed too:
+# otherwise resolver queries could smuggle data out in host names.
 set -euo pipefail
 
 REQUIRED_HOST=api.anthropic.com
 
-# Erst aufloesen, solange DNS noch offen ist; Hosts, die nicht aufloesbar sind, nur melden.
+# Resolve first, while DNS is still open; only report hosts that cannot be resolved.
 declare -A ips=()
 hosts_lines=""
 for host in ${CAW_ALLOWED_HOSTS:?}; do
     resolved="$(getent ahostsv4 "$host" | awk '{print $1}' | grep -E '^[0-9.]+$' | sort -u || true)"
     if [ -z "$resolved" ]; then
-        echo "[caw-firewall] nicht aufloesbar: $host" >&2
+        echo "[caw-firewall] cannot resolve: $host" >&2
         if [ "$host" = "$REQUIRED_HOST" ]; then exit 1; fi
         continue
     fi
@@ -24,14 +24,14 @@ for host in ${CAW_ALLOWED_HOSTS:?}; do
 done
 printf '%s' "$hosts_lines" >> /etc/hosts
 
-# Nur die Filter-Tabelle anfassen: Docker leitet seinen DNS-Resolver ueber die NAT-Tabelle um.
+# Only touch the filter table: Docker redirects its DNS resolver through the NAT table.
 iptables -F OUTPUT
 iptables -F INPUT
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT DROP
 iptables -A INPUT -i lo -j ACCEPT
-# Dockers eingebauter Resolver (127.0.0.11) liegt auf Loopback und fragt draussen weiter: vor der Loopback-Freigabe sperren.
+# Docker's embedded resolver (127.0.0.11) sits on loopback and forwards outside: block it before allowing loopback.
 iptables -A OUTPUT -d 127.0.0.11 -j REJECT --reject-with icmp-admin-prohibited
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -46,11 +46,11 @@ ip6tables -F INPUT 2>/dev/null || true
 ip6tables -A OUTPUT -o lo -j ACCEPT 2>/dev/null || true
 ip6tables -A INPUT -i lo -j ACCEPT 2>/dev/null || true
 if ! ip6tables -P OUTPUT DROP 2>/dev/null || ! ip6tables -P INPUT DROP 2>/dev/null; then
-    # Ohne funktionierenden IPv6-Filter gilt die Sandbox nur, wenn IPv6 aus ist.
+    # Without a working IPv6 filter the sandbox only holds if IPv6 is off.
     if ip -6 route show default 2>/dev/null | grep -q .; then
-        echo '[caw-firewall] IPv6 aktiv, aber nicht filterbar. Abbruch.' >&2
+        echo '[caw-firewall] IPv6 active but cannot be filtered. Aborting.' >&2
         exit 1
     fi
 fi
 
-echo "[caw-firewall] aktiv: ${#ips[@]} IPs erlaubt."
+echo "[caw-firewall] active: ${#ips[@]} IPs allowed."

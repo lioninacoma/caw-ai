@@ -1,14 +1,14 @@
-// Browser auf dem Host: Start mit Anmeldung, Readiness und Konsolen-Gate. Den lokalen Code spielt das Overlay ein (overlay.mjs).
+// Browser on the host: start with login, readiness and console gate. The overlay injects the local code (overlay.mjs).
 // host/console-gate
-var ABORT_CODE = "net::ERR_ABORTED";
-var isHardFailure = (obs, opts = {}) => {
+const ABORT_CODE = "net::ERR_ABORTED";
+const isHardFailure = (obs, opts = {}) => {
   const strict = opts.strict ?? false;
   if (obs.text.includes(ABORT_CODE) && !strict) return false;
   if (obs.type === "pageerror" || obs.type === "requestfailed") return true;
   if (obs.type === "console") return obs.level === "error";
   return false;
 };
-var createConsoleGate = (opts = {}) => {
+const createConsoleGate = (opts = {}) => {
   const failures = [];
   return {
     observe(obs) {
@@ -22,42 +22,42 @@ var createConsoleGate = (opts = {}) => {
 
 // host/identity
 import { resolve } from "node:path";
-var WINDOWS_DRIVE = /^([A-Za-z]):/;
-var ABSOLUTE = /^([A-Za-z]:|\\\\|\/)/;
-var normalizePath = (input) => {
+const WINDOWS_DRIVE = /^([A-Za-z]):/;
+const ABSOLUTE = /^([A-Za-z]:|\\\\|\/)/;
+const normalizePath = (input) => {
   const absolute = ABSOLUTE.test(input) ? input : resolve(input);
   const slashed = absolute.replace(/\\/g, "/");
   const lowerDrive = slashed.replace(WINDOWS_DRIVE, (_, letter) => `${letter.toLowerCase()}:`);
   const withoutTrailing = lowerDrive.replace(/\/+$/, "");
   return withoutTrailing.length > 0 ? withoutTrailing : "/";
 };
-var computeIdentity = (parts) => ({
+const computeIdentity = (parts) => ({
   profileDir: normalizePath(parts.profileDir),
   configPath: normalizePath(parts.configPath),
   portalUuid: parts.portalUuid
 });
 
 // host/readiness
-var READINESS_DEFAULTS = {
+const READINESS_DEFAULTS = {
   timeout: 15e3,
   quietMs: 250,
   pollMs: 100,
   store: null,
   minCount: null
 };
-var resolveReadinessOptions = (opts = {}) => ({
+const resolveReadinessOptions = (opts = {}) => ({
   timeout: opts.timeout ?? READINESS_DEFAULTS.timeout,
   quietMs: opts.quietMs ?? READINESS_DEFAULTS.quietMs,
   pollMs: opts.pollMs ?? READINESS_DEFAULTS.pollMs,
   store: opts.store ?? READINESS_DEFAULTS.store,
   minCount: opts.minCount ?? READINESS_DEFAULTS.minCount
 });
-var isQuiet = (sample, minCount) => {
+const isQuiet = (sample, minCount) => {
   if (sample.pendingAjax !== 0 || sample.loadingStores !== 0) return false;
   if (minCount === null) return true;
   return sample.counts !== null && sample.counts >= minCount;
 };
-var buildProbeExpression = (store = null) => {
+const buildProbeExpression = (store = null) => {
   const storeLiteral = JSON.stringify(store ?? null);
   return `(() => {
   const Ext = window.Ext;
@@ -89,7 +89,7 @@ var buildProbeExpression = (store = null) => {
   return { pendingAjax, loadingStores, counts, extReady };
 })()`;
 };
-var waitForQuiet = async (deps, opts = {}) => {
+const waitForQuiet = async (deps, opts = {}) => {
   const { timeout, quietMs, pollMs, minCount } = resolveReadinessOptions(opts);
   const start = deps.now();
   let samples = 0;
@@ -122,15 +122,15 @@ var waitForQuiet = async (deps, opts = {}) => {
 };
 
 // host/host
-var AUTH_POLL_ATTEMPTS = 20;
-var AUTH_POLL_INTERVAL_MS = 500;
-// Auch in offenen Shadow Roots, wie die Anmeldung (Playwright) und der Seitenzustand (webPageState) das Merkmal suchen.
-var buildAuthMarkerExpression = (marker) => `(() => {
+const AUTH_POLL_ATTEMPTS = 20;
+const AUTH_POLL_INTERVAL_MS = 500;
+// Also searches open shadow roots, the same way login (Playwright) and the page state (webPageState) look for the marker.
+const buildAuthMarkerExpression = (marker) => `(() => {
   const marker = ${JSON.stringify(marker)};
   const deep = (root) => root.querySelector(marker) !== null || [...root.querySelectorAll("*")].some((host) => host.shadowRoot && deep(host.shadowRoot));
   return deep(document);
 })()`;
-var createDevlinkHost = (config, deps, options) => {
+const createDevlinkHost = (config, deps, options) => {
   const gate = createConsoleGate();
   const activePortal = config.portals.find((portal) => portal.uuid === config.activePortal);
   const activePortalUrl = activePortal?.url ?? "";
@@ -145,8 +145,8 @@ var createDevlinkHost = (config, deps, options) => {
   const pollAuthMarker = async (activePage) => {
     const expression = buildAuthMarkerExpression(authMarker);
     for (let attempt = 1; attempt <= AUTH_POLL_ATTEMPTS; attempt += 1) {
-      // Leitet die Startseite per Skript weiter (abgelaufene Sitzung zum Anmeldedienst, / auf /app/), geht der Kontext verloren:
-      // Das heisst nur "noch nicht da", weiter pruefen.
+      // A script redirect on the start page (expired session to the login service, / to /app/) destroys the context:
+      // that only means "not there yet", keep checking.
       const present = await activePage.evaluate(expression).catch(() => false);
       if (present) return;
       if (attempt < AUTH_POLL_ATTEMPTS) await deps.sleep(AUTH_POLL_INTERVAL_MS);
@@ -218,7 +218,7 @@ var createDevlinkHost = (config, deps, options) => {
 
 // host/playwright-adapter
 import { chromium } from "playwright-core";
-var wrapPage = (page) => ({
+const wrapPage = (page) => ({
   goto: async (url) => {
     await page.goto(url);
   },
@@ -230,7 +230,7 @@ var wrapPage = (page) => ({
     await page.screenshot({ path: opts.path });
   }
 });
-var wrapContext = (context) => ({
+const wrapContext = (context) => ({
   on: (event, listener) => {
     if (event === "console") {
       context.on(
@@ -260,7 +260,7 @@ var wrapContext = (context) => ({
   },
   close: () => context.close()
 });
-var createPlaywrightLauncher = (launchPersistentContext = (userDataDir, options) => chromium.launchPersistentContext(userDataDir, options)) => ({
+const createPlaywrightLauncher = (launchPersistentContext = (userDataDir, options) => chromium.launchPersistentContext(userDataDir, options)) => ({
   launch: async (opts) => {
     const channel = opts.channel ?? "chrome";
     const options = { channel };
@@ -270,38 +270,38 @@ var createPlaywrightLauncher = (launchPersistentContext = (userDataDir, options)
     let context;
     try {
       context = await launchPersistentContext(opts.profileDir, options);
-    } catch (error2) {
+    } catch (launchError) {
       if (opts.executablePath === void 0) {
         throw new Error(
           `Could not launch the host's Chrome via channel '${channel}'. Install Chrome, or set LaunchOptions.executablePath to a Chrome/Chromium binary as the escape hatch.`,
-          { cause: error2 }
+          { cause: launchError }
         );
       }
-      throw error2;
+      throw launchError;
     }
     return wrapContext(context);
   }
 });
 
 // config/parse
-var ROOT_FIELDS = ["activePortal", "assetUrlPattern", "authMarker", "chromeProfileDir", "portals", "projects"];
-var PORTAL_FIELDS = ["uuid", "name", "url"];
-var PROJECT_FIELDS = ["uuid", "name", "active", "startUrl"];
-var report = (into, path, code, severity, detail) => {
+const ROOT_FIELDS = ["activePortal", "assetUrlPattern", "authMarker", "chromeProfileDir", "portals", "projects"];
+const PORTAL_FIELDS = ["uuid", "name", "url"];
+const PROJECT_FIELDS = ["uuid", "name", "active", "startUrl"];
+const report = (into, path, code, severity, detail) => {
   into.issues.push(
     detail === void 0 ? { path, code, severity } : { path, code, severity, detail }
   );
 };
-var error = (into, path, code, detail) => report(into, path, code, "error", detail);
-var warn = (into, path, code, detail) => report(into, path, code, "warning", detail);
-var isRecord4 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var isArray = (value) => Array.isArray(value);
-var reportUnknownFields = (into, node, path, known) => {
+const error = (into, path, code, detail) => report(into, path, code, "error", detail);
+const warn = (into, path, code, detail) => report(into, path, code, "warning", detail);
+const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const isArray = (value) => Array.isArray(value);
+const reportUnknownFields = (into, node, path, known) => {
   for (const key of Object.keys(node)) {
     if (!known.includes(key)) warn(into, [...path, key], "unknown-field", key);
   }
 };
-var requiredString = (into, node, path, key) => {
+const requiredString = (into, node, path, key) => {
   const value = node[key];
   if (value === void 0) {
     error(into, [...path, key], "missing-field", key);
@@ -313,7 +313,7 @@ var requiredString = (into, node, path, key) => {
   }
   return value;
 };
-var optionalString = (into, node, path, key) => {
+const optionalString = (into, node, path, key) => {
   const value = node[key];
   if (value === void 0) return void 0;
   if (typeof value !== "string") {
@@ -322,7 +322,7 @@ var optionalString = (into, node, path, key) => {
   }
   return value;
 };
-var requiredNullableString = (into, node, path, key) => {
+const requiredNullableString = (into, node, path, key) => {
   const value = node[key];
   if (value === void 0) {
     error(into, [...path, key], "missing-field", key);
@@ -334,7 +334,7 @@ var requiredNullableString = (into, node, path, key) => {
   }
   return value;
 };
-var requiredBoolean = (into, node, path, key) => {
+const requiredBoolean = (into, node, path, key) => {
   const value = node[key];
   if (value === void 0) {
     error(into, [...path, key], "missing-field", key);
@@ -346,7 +346,7 @@ var requiredBoolean = (into, node, path, key) => {
   }
   return value;
 };
-var requiredArray = (into, node, path, key) => {
+const requiredArray = (into, node, path, key) => {
   const value = node[key];
   if (value === void 0) {
     error(into, [...path, key], "missing-field", key);
@@ -358,14 +358,14 @@ var requiredArray = (into, node, path, key) => {
   }
   return value;
 };
-var readUuid =(into, node, path) => {
+const readUuid = (into, node, path) => {
   const uuid = requiredString(into, node, path, "uuid");
   if (uuid === void 0) return void 0;
   if (into.uuids.has(uuid)) warn(into, [...path, "uuid"], "duplicate-uuid", uuid);
   else into.uuids.add(uuid);
   return uuid;
 };
-var readName = (into, node, path) => {
+const readName = (into, node, path) => {
   const name = requiredString(into, node, path, "name");
   if (name === void 0) return void 0;
   if (name.trim().length === 0) {
@@ -374,13 +374,13 @@ var readName = (into, node, path) => {
   }
   return name;
 };
-var reportDuplicateName = (into, seen, name, path, code) => {
+const reportDuplicateName = (into, seen, name, path, code) => {
   if (seen.has(name)) error(into, [...path, "name"], code, name);
   else seen.add(name);
 };
-var ORIGIN_FORM = /^[a-z][a-z0-9+.-]*:\/\/[^/\\?#\s]+$/i;
-var parsePortal = (into, raw, path, seenNames) => {
-  if (!isRecord4(raw)) {
+const ORIGIN_FORM = /^[a-z][a-z0-9+.-]*:\/\/[^/\\?#\s]+$/i;
+const parsePortal = (into, raw, path, seenNames) => {
+  if (!isRecord(raw)) {
     error(into, path, "not-an-object");
     return void 0;
   }
@@ -395,8 +395,8 @@ var parsePortal = (into, raw, path, seenNames) => {
   if (uuid === void 0 || name === void 0 || url === void 0) return void 0;
   return { uuid, name, url };
 };
-var parseProject = (into, raw, path, seenNames) => {
-  if (!isRecord4(raw)) {
+const parseProject = (into, raw, path, seenNames) => {
+  if (!isRecord(raw)) {
     error(into, path, "not-an-object");
     return void 0;
   }
@@ -419,7 +419,7 @@ var parseProject = (into, raw, path, seenNames) => {
 };
 function parseConfig(raw) {
   const into = { issues: [], uuids: /* @__PURE__ */ new Set() };
-  if (!isRecord4(raw)) {
+  if (!isRecord(raw)) {
     error(into, [], "not-an-object");
     return { ok: false, issues: into.issues };
   }

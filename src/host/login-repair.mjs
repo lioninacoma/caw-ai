@@ -1,6 +1,6 @@
-// Scheitert die Anmeldung, schlaegt Claude einen korrigierten auth-Block vor. Grundlage sind nur Belege von der Seite (loginEvidence):
-// Treffer der Selektoren, stabile Felder, Knoepfe und Klassen, ohne Werte und ohne Texte des Kontos. Claude bekommt keine Werkzeuge,
-// nur diese Belege; geschrieben wird erst nach Ja des Menschen. Nur wo ohnehin Token erlaubt sind (mit Chat, Umgebung mit claude).
+// When sign-in fails, Claude proposes a corrected auth block. It only sees evidence from the page (loginEvidence): selector hits,
+// stable fields, buttons and classes, without field values or account texts. Claude gets no tools, only this evidence; nothing is
+// written until the human says yes. Only where tokens are allowed anyway (with chat, environment with claude).
 
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -17,8 +17,8 @@ const ui = createUi();
 const ANSWER_MS = 120_000;
 const FIELDS = ['path', 'userSelector', 'passwordSelector', 'submitSelector', 'codeSelector', 'signedInSelector'];
 
-/** Ist das ein Fehler, bei dem ein anderer auth-Block helfen kann? */
-export const isLoginFailure = (error) => ['login-failed', 'login-form-missing'].includes(error?.code) && error.evidence != null;
+/** Is this an error a different auth block can fix? */
+export const isLoginFailure = (error) => ['login-failed', 'login-form-missing'].includes(error?.code) && error.evidence !== null && error.evidence !== undefined;
 
 export const repairPrompt = ({ auth, message, evidence }) => `A browser test tool failed to sign in to a web application.
 Propose a corrected "auth" block for its config. Generic rules, no knowledge about any product:
@@ -42,7 +42,7 @@ Answer with exactly one JSON object and nothing else:
 {"auth": { ...the full corrected auth block... }, "why": "one or two short sentences in ${language() === 'de' ? 'German' : 'English'}"}
 If the evidence does not allow a confident fix, answer {"auth": null, "why": "..."}.`;
 
-/** Das erste JSON-Objekt in Claudes Antwort, auch in einem Codeblock. */
+/** The first JSON object in Claude's answer, also inside a code block. */
 export const parseAnswer = (text) => {
     const start = String(text).indexOf('{');
     const end = String(text).lastIndexOf('}');
@@ -55,7 +55,7 @@ export const parseAnswer = (text) => {
     }
 };
 
-/** Nur bekannte Felder, nur Text; der Typ bleibt, wie er ist. */
+/** Only known fields, only strings; the type stays as it is. */
 export const cleanAuth = (current, proposed) => {
     if (typeof proposed !== 'object' || proposed === null) return null;
     const next = { type: current.type };
@@ -67,11 +67,11 @@ export const cleanAuth = (current, proposed) => {
 };
 
 const runClaude = (prompt, { bin = resolveClaude(), cwd }) => new Promise((ok) => {
-    if (bin == null) {
+    if (bin === null || bin === undefined) {
         ok(null);
         return;
     }
-    // Keine Werkzeuge, keine Einstellungen des Projekts: nur die Belege im Prompt.
+    // No tools, no project settings: only the evidence in the prompt.
     const args = [...bin.args, '-p', '--tools', '', '--permission-mode', 'dontAsk', '--setting-sources', '', '--settings', JSON.stringify(connectionSettings()), '--output-format', 'json'];
     const child = spawn(bin.file, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let out = '';
@@ -91,13 +91,13 @@ const runClaude = (prompt, { bin = resolveClaude(), cwd }) => new Promise((ok) =
 
 const askYes = (question) => askYesNo(question, { fallback: false });
 
-/** Die Aenderung je Feld als Zeilen fuer ui.box: Feld, alt, neu. */
+/** The change per field as lines for ui.box: field, old, new. */
 const diffLines = (before, after) => FIELDS.filter((key) => before[key] !== after[key])
     .flatMap((key) => [{ status: 'info', text: key }, { status: 'removed', text: before[key] ?? '—' }, { status: 'added', text: after[key] ?? '—' }]);
 
 /**
- * Fragt Claude, zeigt den Vorschlag und schreibt ihn nach Ja in caw.config.json.
- * @returns true, wenn die Config geaendert wurde
+ * Asks Claude, shows the proposal and writes it to caw.config.json after a yes.
+ * @returns true if the config was changed
  */
 export const offerAuthRepair = async ({ root, config, error, ask = askYes, claude = runClaude }) => {
     const auth = authOf(config);

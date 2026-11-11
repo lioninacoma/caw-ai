@@ -8,6 +8,7 @@ const capture = (fancy, theme) => {
     const lines = [];
     return { lines, ui: createUi({ fancy, theme, out: (text) => lines.push(text), err: (text) => lines.push(text) }) };
 };
+// eslint-disable-next-line no-control-regex -- strips ANSI colour codes
 const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
 const VERDICT = {
     status: 'fail',
@@ -18,7 +19,7 @@ const VERDICT = {
     failures: [],
 };
 
-test('Ohne Terminal: schlichte Zeilen ohne Steuerzeichen und Symbole', () => {
+test('without a terminal: plain lines without control characters and symbols', () => {
     const { lines, ui } = capture(false);
     ui.info('Hallo');
     ui.step({ number: 3, total: 9, label: 'click', elapsed: 1.25 });
@@ -27,7 +28,7 @@ test('Ohne Terminal: schlichte Zeilen ohne Steuerzeichen und Symbole', () => {
     assert.deepEqual(lines, ['[caw-ai] Hallo', '[+1.3s] 3/9 click', '[caw-ai] r1 auf a/dev: fail', '[caw-ai] Bericht: r.md', '[caw-ai] Falsch', '[caw-ai] (code: usage, exit ?)']);
 });
 
-test('Im Terminal: Ergebnis nennt jeden Punkt mit Marke, den Grund eines Fehlschlags und den Fortschritt', () => {
+test('in a terminal: the verdict lists each expectation with its mark, the failure reason and the progress', () => {
     const { lines, ui } = capture(true);
     ui.verdict(VERDICT, { report: 'r.md', elapsed: 2 });
     const text = plain(lines.join('\n'));
@@ -39,7 +40,7 @@ test('Im Terminal: Ergebnis nennt jeden Punkt mit Marke, den Grund eines Fehlsch
     assert.match(text, /Bericht: r\.md/);
 });
 
-test('Im Terminal: Zu viele Fehler werden gekürzt, der Bericht hat alle', () => {
+test('in a terminal: too many failures are truncated, the report has them all', () => {
     const { lines, ui } = capture(true);
     const failures = Array.from({ length: 7 }, (_, index) => ({ type: 'http', text: `F${index}` }));
     ui.verdict({ ...VERDICT, failures }, { report: 'r.md', elapsed: 1 });
@@ -47,7 +48,7 @@ test('Im Terminal: Zu viele Fehler werden gekürzt, der Bericht hat alle', () =>
     assert.match(lines.join('\n'), /und 2 weitere/);
 });
 
-test('Texte aus dem Portal können das Terminal nicht steuern', () => {
+test('texts from the portal cannot control the terminal', () => {
     for (const fancy of [true, false]) {
         const { lines, ui } = capture(fancy);
         ui.info('a\u001b[2Jb');
@@ -57,13 +58,13 @@ test('Texte aus dem Portal können das Terminal nicht steuern', () => {
     }
 });
 
-test('Status ohne Einzelpunkte: error mit Grund', () => {
+test('status without expectations: error with a reason', () => {
     const { lines, ui } = capture(true);
     ui.verdict({ status: 'error', reason: 'Portal weg', testId: 'r1', target: 'a/dev' }, { report: 'r.md', elapsed: 1 });
     assert.match(plain(lines.join('\n')), /── ERROR · r1[\s\S]*\[ WARN \] Portal weg/);
 });
 
-test('Im Terminal: Abschnitt als Linie, Ergebnis im Kasten mit Marken, alle Kastenzeilen gleich breit', () => {
+test('in a terminal: section as a rule, result in a box with marks, all box rows equally wide', () => {
     const { lines, ui } = capture(true);
     ui.section(1, 'Anmelden');
     ui.box('Ergebnis', [{ status: 'ok', text: 'Framework: extjs' }, { status: 'warn', text: 'Startseite fehlt' }, { status: 'info', text: 'auth.submitSelector' },
@@ -79,11 +80,12 @@ test('Im Terminal: Abschnitt als Linie, Ergebnis im Kasten mit Marken, alle Kast
     assert.equal(new Set(boxed.map((row) => [...row].length)).size, 1, boxed.join('\n'));
 });
 
-test('Im Terminal: Marken und Farben kommen aus dem Theme', () => {
+test('in a terminal: marks and colours come from the theme', () => {
     const base = loadTheme('bernstein');
     const { lines, ui } = capture(true, { ...base, marks: { ...base.marks, ok: '[ PASS ]' } });
     ui.success('fertig');
     assert.match(plain(lines[0]), /\[ PASS \] fertig/);
-    // Truecolor aus der Bernstein-Palette (ok #ffb547) oder deren 256er-Naeherung.
+    // Truecolor from the bernstein palette (ok #ffb547) or its 256-colour approximation.
+    // eslint-disable-next-line no-control-regex -- matches the ANSI colour code
     assert.match(lines[0], /\u001b\[38;(2;255;181;71|5;\d+)m/);
 });

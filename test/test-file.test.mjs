@@ -8,8 +8,8 @@ import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, 
 import { brokenChain, loadTest, parsePlan, parseRecordings, parseTest, recordingHints, recordingPath, renderPlan, renderTest, staleSteps, stepHash, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
 
-const WEITER = { xtype: 'app_actionButton', text: 'Weiter', part: 'button.x-button-el' };
-const plain = (id, extra = {}) => ({ id, name: `Schritt ${id}`, do: `Tu ${id}`, expect: `${id} ist da`, ...extra });
+const NEXT = { xtype: 'app_actionButton', text: 'Next', part: 'button.x-button-el' };
+const plain = (id, extra = {}) => ({ id, name: `Step ${id}`, do: `Do ${id}`, expect: `${id} is there`, ...extra });
 const recorded = (id, actions = [], { after, check = `check${id}()` } = {}) => {
     const step = plain(id);
     return { ...step, recording: { hash: stepHash(step), ...(after === undefined ? {} : { after }), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', actions, check } };
@@ -22,33 +22,33 @@ app: a
 role: r
 targets: [a/dev, a/test]
 mutates: false
-# Kommentar des Menschen
+# Human comment
 steps:
   - id: S1
-    name: Erster
+    name: First
     do: |
-      Tu was.
-      Und noch was.
-    expect: Da.
+      Do something.
+      And something else.
+    expect: There.
   - id: S2
-    name: Zweiter
+    name: Second
     do: ""
-    expect: Auch da.
-    note: Nur Prüfung.
+    expect: Also there.
+    note: Check only.
 `;
 
-test('Testdatei: Eine gültige Datei wird gelesen, Punkte sind die Schritte', () => {
+test('test file: a valid file is read, the expectations are the steps', () => {
     const parsed = parseTest(YAML);
-    assert.equal(parsed.code, undefined, 'ohne code gilt der Standard');
+    assert.equal(parsed.code, undefined, 'without code the default applies');
     assert.equal(parsed.mutates, false);
-    assert.deepEqual(parsed.expectations, [{ id: 'S1', text: 'Da.' }, { id: 'S2', text: 'Auch da.' }]);
-    assert.equal(parsed.steps[0].do, 'Tu was.\nUnd noch was.');
+    assert.deepEqual(parsed.expectations, [{ id: 'S1', text: 'There.' }, { id: 'S2', text: 'Also there.' }]);
+    assert.equal(parsed.steps[0].do, 'Do something.\nAnd something else.');
     assert.equal(parsed.steps[1].do, '');
     assert.equal(parseTest(YAML.replaceAll('\n', '\r\n')).steps.length, 2);
 });
 
-test('retry: Wird gelesen, geschrieben und zählt nicht zum Hash', () => {
-    const withRetry = YAML.replace('    note: Nur Prüfung.\n', '    note: Nur Prüfung.\n    retry: {times: 2, waitMs: 5000, from: S1}\n');
+test('retry: read, written, and not part of the hash', () => {
+    const withRetry = YAML.replace('    note: Check only.\n', '    note: Check only.\n    retry: {times: 2, waitMs: 5000, from: S1}\n');
     const parsed = parseTest(withRetry);
     assert.deepEqual(parsed.steps[1].retry, { times: 2, waitMs: 5000, from: 'S1' });
     assert.equal(stepHash(parsed.steps[1]), stepHash({ ...parsed.steps[1], retry: undefined }));
@@ -58,7 +58,7 @@ test('retry: Wird gelesen, geschrieben und zählt nicht zum Hash', () => {
     assert.deepEqual(replayOf(spec({ ...recorded('S1'), retry: { times: 1 } }, recorded('S2'))).retries, { S1: { times: 1 } });
 });
 
-test('retry: Falsche Angaben werden abgewiesen', () => {
+test('retry: invalid values are rejected', () => {
     for (const [value, pattern] of [
         ['{waitMs: 5}', /times/],
         ['{times: 0}', /times/],
@@ -68,50 +68,50 @@ test('retry: Falsche Angaben werden abgewiesen', () => {
         ['{times: 1, from: S9}', /retry\.from S9/],
         ['3', /retry muss/],
     ]) {
-        assert.throws(() => parseTest(YAML.replace('    note: Nur Prüfung.\n', `    note: Nur Prüfung.\n    retry: ${value}\n`)), pattern, value);
+        assert.throws(() => parseTest(YAML.replace('    note: Check only.\n', `    note: Check only.\n    retry: ${value}\n`)), pattern, value);
     }
-    const later = YAML.replace('    expect: Da.\n', '    expect: Da.\n    retry: {times: 1, from: S2}\n');
+    const later = YAML.replace('    expect: There.\n', '    expect: There.\n    retry: {times: 1, from: S2}\n');
     assert.throws(() => parseTest(later), /retry\.from S2/);
 });
 
-test('Testdatei: Jede Formverletzung wird mit Zeile abgewiesen', () => {
+test('test file: every shape violation is rejected with its line', () => {
     const cases = [
-        [YAML.replace('mutates: false', 'mutates: vielleicht'), /Zeile 5: mutates/],
+        [YAML.replace('mutates: false', 'mutates: maybe'), /Zeile 5: mutates/],
         [YAML.replace('app: a', 'app: a\nextra: 1'), /Zeile 3: Unbekanntes Feld extra/],
         [YAML.replace('- id: S2', '- id: S1'), /S1 ist doppelt/],
         [YAML.replace('- id: S2', '- id: 2'), /ID muss wie S1/],
         [YAML.replace('- id: S2', '- id: S2\n    foo: bar'), /Unbekanntes Feld foo im Schritt/],
-        [YAML.replace('    expect: Auch da.\n', ''), /expect fehlt/],
+        [YAML.replace('    expect: Also there.\n', ''), /expect fehlt/],
         [YAML.replace('    do: ""\n', ''), /do fehlt/],
         [YAML.replace('targets: [a/dev, a/test]', 'targets: []'), /targets/],
         [YAML.replace('targets: [a/dev, a/test]', 'target: [a/dev]'), /Unbekanntes Feld target\. Meintest du targets\?/],
-        [YAML.replace('    expect: Da.', '    expected: Da.'), /Unbekanntes Feld expected im Schritt\. Meintest du expect\?/],
+        [YAML.replace('    expect: There.', '    expected: There.'), /Unbekanntes Feld expected im Schritt\. Meintest du expect\?/],
         [YAML.replace('mutates: false', 'source: watch\nmutates: false'), /Unbekanntes Feld source/],
         [YAML.replace('mutates: false', 'code: deployed\nmutates: false'), /Unbekanntes Feld code/],
         [YAML.replace('mutates: false\n', ''), /mutates fehlt: true, wenn der Test Daten anlegt oder ändert \(läuft nur auf Umgebungen mit writable: true\), false, wenn er nur liest\./],
-        ['kein: [yaml', /Zeile/],
-        ['- nur\n- liste\n', /Objekt/],
+        ['not: [yaml', /Zeile/],
+        ['- just\n- a list\n', /Objekt/],
         [YAML.replace('role: r', 'role: r\nrole: x'), /Zeile/],
         [YAML.replace('app: a', 'app: !!js/function x'), /Zeile/],
-        [`${YAML}---\nid: zweites\n`, /Zeile/],
-        [YAML.replace('expect: Da.', 'expect: &m Da.').replace('expect: Auch da.', 'expect: *m'), /Aliase/],
+        [`${YAML}---\nid: second\n`, /Zeile/],
+        [YAML.replace('expect: There.', 'expect: &m There.').replace('expect: Also there.', 'expect: *m'), /Aliase/],
     ];
     for (const [text, reason] of cases) assert.throws(() => parseTest(text, 'x.yaml'), (error) => error.code === 'test-invalid' && reason.test(error.message), String(reason));
 });
 
-test('Testdatei: Aufzeichnung wird streng gelesen', () => {
+test('test file: recordings are read strictly', () => {
     const withActions = (actions) => renderTest(spec(recorded('S1', actions)));
     const round = parseTest(withActions([
         { action: 'wait-ready' },
-        { action: 'click', target: WEITER, path: '/a' },
-        { action: 'fill', target: { ...WEITER, inside: { xtype: 'p' } }, value: '' },
+        { action: 'click', target: NEXT, path: '/a' },
+        { action: 'fill', target: { ...NEXT, inside: { xtype: 'p' } }, value: '' },
         { action: 'press', key: 'Tab' },
         { action: 'goto', url: 'https://x/', denied: true },
         { action: 'reload' },
         { action: 'remember', name: 'nr', code: 'x()' },
         { action: 'screenshot', name: 'a.png' },
     ]));
-    assert.deepEqual(round.steps[0].recording.actions[1], { action: 'click', target: WEITER, path: '/a' });
+    assert.deepEqual(round.steps[0].recording.actions[1], { action: 'click', target: NEXT, path: '/a' });
     assert.equal(round.steps[0].recording.actions[2].value, '');
     assert.equal(round.steps[0].recording.actions[3].key, 'Tab');
     assert.equal(round.steps[0].recording.actions[4].denied, true);
@@ -120,51 +120,51 @@ test('Testdatei: Aufzeichnung wird streng gelesen', () => {
     const bad = renderTest(spec(recorded('S1', [{ action: 'reload' }])));
     assert.throws(() => parseTest(bad.replace('reload: {}', 'cdp: {}')), /genau eine/);
     assert.throws(() => parseTest(bad.replace('check: checkS1()', '')), /recording.check/);
-    assert.throws(() => parseTest(bad.replace('reload: {}', 'click: nur-text')), /Ziel/);
-    assert.throws(() => parseTest(bad.replace('recordedOn:', 'fremd: 1\n      recordedOn:')), /Unbekanntes Feld fremd/);
+    assert.throws(() => parseTest(bad.replace('reload: {}', 'click: text-only')), /Ziel/);
+    assert.throws(() => parseTest(bad.replace('recordedOn:', 'foreign: 1\n      recordedOn:')), /Unbekanntes Feld foreign/);
 });
 
-test('Plan: Claude kann keine Aufzeichnung und keine Metadaten setzen', () => {
-    const { plan, problems } = parsePlan(`id: anders\nrole: admin\nnotes: Hinweis\nsteps:\n  - id: S1\n    name: A\n    do: b\n    expect: c\n    recording: { hash: x, actions: [], check: "true" }\n`);
+test('plan: Claude cannot set recordings or metadata', () => {
+    const { plan, problems } = parsePlan(`id: other\nrole: admin\nnotes: Note\nsteps:\n  - id: S1\n    name: A\n    do: b\n    expect: c\n    recording: { hash: x, actions: [], check: "true" }\n`);
     assert.deepEqual(problems, []);
-    assert.equal(plan.notes, 'Hinweis');
+    assert.equal(plan.notes, 'Note');
     assert.deepEqual(plan.steps, [{ id: 'S1', name: 'A', do: 'b', expect: 'c' }]);
     const composed = composeTest(meta, plan);
     assert.equal(composed.role, 'r');
     assert.equal(composed.steps[0].recording, undefined);
-    assert.match(readPlan('steps:\n  - id: S1\n    name: A\n    do: b\n    expect: arzt@example.org\n').problems.join(' '), /E-Mail/);
+    assert.match(readPlan('steps:\n  - id: S1\n    name: A\n    do: b\n    expect: doctor@example.org\n').problems.join(' '), /E-Mail/);
     assert.match(readPlan('steps: []\n').problems.join(' '), /nichtleere/);
     assert.match(readPlan('steps:\n  - id: S1\n    name: A\n    expect: c\n').problems.join(' '), /Zeile 2: do fehlt/);
     assert.equal(parseTest(renderTest(composed)).steps[0].name, 'A');
     assert.deepEqual(parsePlan(renderPlan(composed)).plan.steps, composed.steps);
 });
 
-test('Plankarte: Nur Plan-Felder, ein geändertes Ergebnis ist markiert', () => {
+test('plan card: plan fields only, a changed expectation is marked', () => {
     const before = recorded('S1');
-    const view = planView({ notes: 'n', steps: [{ ...plain('S1'), expect: 'Anders' }] }, { repairing: true, previous: before });
-    assert.deepEqual(view.steps[0], { id: 'S1', name: 'Schritt S1', do: 'Tu S1', expect: 'Anders', previousExpect: 'S1 ist da' });
+    const view = planView({ notes: 'n', steps: [{ ...plain('S1'), expect: 'Different' }] }, { repairing: true, previous: before });
+    assert.deepEqual(view.steps[0], { id: 'S1', name: 'Step S1', do: 'Do S1', expect: 'Different', previousExpect: 'S1 is there' });
     assert.equal(view.notes, '');
     assert.equal(planView({ notes: 'n', steps: [plain('S1')] }, { repairing: true, previous: before }).steps[0].previousExpect, undefined);
     assert.equal(planView({ notes: 'n', steps: [plain('S1')] }).notes, 'n');
 });
 
-test('Hash: Je Schritt, Metadaten und Aufzeichnung zählen nicht', () => {
+test('hash: per step, metadata and recording do not count', () => {
     const step = plain('S1');
-    assert.equal(stepHash(step), stepHash({ ...step, expect: `${step.expect}\n` }), 'Block oder einzeilig ist egal');
-    for (const field of ['name', 'do', 'expect', 'note']) assert.notEqual(stepHash(step), stepHash({ ...step, [field]: 'anders' }), field);
-    const changed = spec(recorded('S1'), { ...recorded('S2'), do: 'von Hand geändert' }, recorded('S3'));
+    assert.equal(stepHash(step), stepHash({ ...step, expect: `${step.expect}\n` }), 'block or single line makes no difference');
+    for (const field of ['name', 'do', 'expect', 'note']) assert.notEqual(stepHash(step), stepHash({ ...step, [field]: 'different' }), field);
+    const changed = spec(recorded('S1'), { ...recorded('S2'), do: 'changed by hand' }, recorded('S3'));
     assert.deepEqual(staleSteps(changed).map(({ id }) => id), ['S2']);
     assert.deepEqual(staleSteps(spec(plain('S1'))).map(({ why }) => why), ['hat keine Aufzeichnung']);
 });
 
-test('Veraltet: --until davor läuft, der ganze Lauf nennt fix', () => {
-    const changed = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }), { ...recorded('S3', [], { after: 'S2' }), do: 'neu' });
+test('stale: --until before it runs, the full run suggests fix', () => {
+    const changed = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }), { ...recorded('S3', [], { after: 'S2' }), do: 'new' });
     assertPlayable(changed, 'a/dev', 'S2');
     assert.throws(() => assertPlayable(changed, 'a/dev'), (error) => error.code === 'replay-stale' && /fix t S3 --target a\/dev/.test(error.message));
     assert.throws(() => assertPlayable(spec(plain('S1')), 'a/dev'), (error) => error.code === 'replay-missing' && /record t/.test(error.message));
 });
 
-test('Gelöschte oder verschobene Schritte verlangen eine Neuaufnahme, eingefügte nicht', () => {
+test('deleted or moved steps require re-recording, inserted ones do not', () => {
     const [s1, s2, s3] = [recorded('S1'), recorded('S2', [], { after: 'S1' }), recorded('S3', [], { after: 'S2' })];
     assert.equal(brokenChain(spec(s1, s2, s3)), null);
     assert.match(brokenChain(spec(s1, s3)), /S3 baut auf S2/);
@@ -173,8 +173,8 @@ test('Gelöschte oder verschobene Schritte verlangen eine Neuaufnahme, eingefüg
     assert.throws(() => assertPlayable(spec(s1, s3), 'a/dev'), (error) => error.code === 'replay-stale' && /record t/.test(error.message));
 });
 
-test('Abspielform: Aktionen und Prüfung in Reihe, Schnitt je Schritt', () => {
-    const click = { action: 'click', target: WEITER };
+test('replay form: actions and check in sequence, cut per step', () => {
+    const click = { action: 'click', target: NEXT };
     const whole = spec(recorded('S1', [click]), recorded('S2', [{ action: 'reload' }], { after: 'S1' }), recorded('S3', [], { after: 'S2' }));
     assert.deepEqual(replayOf(whole).steps.map(({ action, id }) => id ?? action), ['click', 'S1', 'reload', 'S2', 'S3']);
     const cut = cutReplay(whole, 'S2');
@@ -183,13 +183,13 @@ test('Abspielform: Aktionen und Prüfung in Reihe, Schnitt je Schritt', () => {
     assert.throws(() => cutReplay(whole, 'S9'), { code: 'step-unknown' });
     assert.deepEqual(replayBefore(whole, 'S2').steps.map(({ action, id }) => id ?? action), ['click', 'S1']);
     assert.deepEqual(replayBefore(whole, 'S1').steps, []);
-    const partly = spec(recorded('S1', [click]), { ...recorded('S2', [], { after: 'S1' }), do: 'neu' });
+    const partly = spec(recorded('S1', [click]), { ...recorded('S2', [], { after: 'S1' }), do: 'new' });
     assert.equal(replayUpToStale(partly).until, 'S1');
     assert.equal(replayUpToStale(whole).until, undefined);
 });
 
-test('Gruppierung: Aktionen gehören zur nächsten Prüfung, nachgeprüfte Schritte bleiben einer', () => {
-    const click = { action: 'click', target: WEITER };
+test('grouping: actions belong to the next check, re-checked steps stay one step', () => {
+    const click = { action: 'click', target: NEXT };
     const { groups, trailing } = groupSteps([
         click,
         { action: 'check', id: 'S1', code: 'a' },
@@ -203,47 +203,47 @@ test('Gruppierung: Aktionen gehören zur nächsten Prüfung, nachgeprüfte Schri
     assert.deepEqual(groups.get('S2'), { actions: [{ action: 'reload' }, { action: 'press', key: 'Tab' }], check: 'c' });
     assert.deepEqual(trailing, [{ action: 'wait-ready' }]);
     assert.deepEqual(trailingNumbers([click, { action: 'check', id: 'S1', code: 'a' }, { action: 'reload' }]), [3]);
-    assert.deepEqual(trailingNumbers([click, { action: 'reload' }]), [1, 2], 'Ohne Prüfung gehört alles zu keinem Schritt');
+    assert.deepEqual(trailingNumbers([click, { action: 'reload' }]), [1, 2], 'without a check nothing belongs to a step');
 });
 
-test('buildReplay: Aufnahme ergibt je Schritt eine Aufzeichnung', () => {
-    const recorder = { problems: [], messages: new Set(['Ja Nein']), steps: [{ action: 'reload' }, { action: 'check', id: 'S1', code: 'a' }, { action: 'check', id: 'S2', code: 'b' }] };
+test('buildReplay: recording yields one recording per step', () => {
+    const recorder = { problems: [], messages: new Set(['Yes No']), steps: [{ action: 'reload' }, { action: 'check', id: 'S1', code: 'a' }, { action: 'check', id: 'S2', code: 'b' }] };
     const plan = spec(plain('S1'), plain('S2'));
     const { candidate } = buildReplay({ recorder, outcome: { status: 'pass' }, spec: plan, target: 'a/dev', now: new Date(0) });
     assert.deepEqual(candidate.steps[0].recording, { hash: stepHash(plan.steps[0]), recordedOn: 'a/dev', recordedAt: '1970-01-01T00:00:00.000Z', actions: [{ action: 'reload' }], check: 'a' });
     assert.equal(candidate.steps[1].recording.after, 'S1');
-    assert.deepEqual(candidate.knownMessages, ['Ja Nein']);
+    assert.deepEqual(candidate.knownMessages, ['Yes No']);
     assert.match(buildReplay({ recorder, outcome: { status: 'fail' }, spec: plan, target: 'x' }).problems[0], /fail/);
     assert.match(buildReplay({ recorder: { ...recorder, steps: recorder.steps.slice(0, 2) }, outcome: { status: 'pass' }, spec: plan, target: 'x' }).problems[0], /S2/);
     assert.match(buildReplay({ recorder: { ...recorder, steps: [...recorder.steps, { action: 'reload' }] }, outcome: { status: 'pass' }, spec: plan, target: 'x' }).problems[0], /Nach der letzten Prüfung/);
-    assert.match(buildReplay({ recorder: { ...recorder, problems: ['kaputt'] }, outcome: { status: 'pass' }, spec: plan, target: 'x' }).problems[0], /kaputt/);
+    assert.match(buildReplay({ recorder: { ...recorder, problems: ['broken'] }, outcome: { status: 'pass' }, spec: plan, target: 'x' }).problems[0], /broken/);
 });
 
-test('buildReplay beim Beheben: Nur dieser Schritt ändert sich, neue Meldungen werden genannt', () => {
-    const draft = { ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' }), recorded('S3', [], { after: 'S2' })), knownMessages: ['Alt'] };
-    const changed = { ...plain('S2'), do: 'anders' };
-    const recorder = { problems: [], messages: new Set(['Neu']), steps: [{ action: 'reload' }, { action: 'check', id: 'S2', code: 'neu' }] };
+test('buildReplay when fixing: only this step changes, new messages are reported', () => {
+    const draft = { ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' }), recorded('S3', [], { after: 'S2' })), knownMessages: ['Known'] };
+    const changed = { ...plain('S2'), do: 'different' };
+    const recorder = { problems: [], messages: new Set(['New']), steps: [{ action: 'reload' }, { action: 'check', id: 'S2', code: 'new' }] };
     const { candidate, fresh } = buildReplay({ recorder, outcome: { status: 'pass' }, spec: spec(changed), draft, target: 'a/dev' });
     assert.equal(candidate.steps[0], draft.steps[0]);
     assert.equal(candidate.steps[2], draft.steps[2]);
-    assert.equal(candidate.steps[1].do, 'anders');
+    assert.equal(candidate.steps[1].do, 'different');
     assert.equal(candidate.steps[1].recording.after, 'S1');
     assert.equal(candidate.steps[1].recording.hash, stepHash(changed));
-    assert.deepEqual(fresh, ['Neu']);
-    assert.deepEqual(candidate.knownMessages, ['Alt', 'Neu']);
+    assert.deepEqual(fresh, ['New']);
+    assert.deepEqual(candidate.knownMessages, ['Known', 'New']);
     assert.deepEqual(staleSteps(candidate), []);
 });
 
-test('remember: Ein später gebrauchter Wert darf beim Beheben nicht wegfallen', () => {
-    const merkt = recorded('S1', [{ action: 'remember', name: 'nr', code: 'x()' }]);
-    const nutzt = recorded('S2', [{ action: 'fill', target: WEITER, value: '{{nr}}' }], { after: 'S1', check: "x === '{{nr}} {{runTag}}'" });
-    const draft = spec(merkt, nutzt);
+test('remember: a value needed later must not be lost when fixing', () => {
+    const remembers = recorded('S1', [{ action: 'remember', name: 'nr', code: 'x()' }]);
+    const uses = recorded('S2', [{ action: 'fill', target: NEXT, value: '{{nr}}' }], { after: 'S1', check: "x === '{{nr}} {{runTag}}'" });
+    const draft = spec(remembers, uses);
     assert.deepEqual(missingRemembered(draft), []);
-    assert.match(missingRemembered(spec(recorded('S1'), nutzt))[0], /S2 braucht \{\{nr\}\}/);
+    assert.match(missingRemembered(spec(recorded('S1'), uses))[0], /S2 needs \{\{nr\}\}/);
     const recorder = { problems: [], steps: [{ action: 'reload' }, { action: 'check', id: 'S1', code: 'a' }] };
     const built = buildReplay({ recorder, outcome: { status: 'pass' }, spec: spec(plain('S1')), draft, target: 'a/dev' });
     assert.equal(built.candidate, undefined);
-    assert.match(built.problems[0], /S2 braucht \{\{nr\}\}/);
+    assert.match(built.problems[0], /S2 needs \{\{nr\}\}/);
 });
 
 const testRoot = (t, text) => {
@@ -254,49 +254,49 @@ const testRoot = (t, text) => {
     return root;
 };
 
-test('Schreiben: Nur der behobene Schritt ändert sich, Kommentare und andere Schritte bleiben', (t) => {
-    const original = `# Kopf vom Menschen
+test('writing: only the fixed step changes, comments and other steps stay', (t) => {
+    const original = `# Header by the human
 id: t
 app: a
 role: r
 targets: [a/dev]
 mutates: true
 notes: |
-  Bleibt.
+  Stays.
 
 steps:
-  # Über dem ersten
+  # Above the first
   - id: S1
-    name:   Erster   # krumm eingerückt
+    name:   First   # oddly indented
     do: ""
-    expect: Da.
-  # Über dem zweiten
+    expect: There.
+  # Above the second
   - id: S2
-    name: Zweiter
-    do: alt
-    expect: Auch da.
+    name: Second
+    do: old
+    expect: Also there.
 `;
     const root = testRoot(t, original);
     const loaded = loadTest(root, 't');
-    const fixed = { ...loaded.steps[1], do: 'neu', recording: { hash: 'h', after: 'S1', recordedOn: 'a/dev', recordedAt: 'z', actions: [{ action: 'click', target: WEITER, path: '/a' }, { action: 'fill', target: WEITER, value: '' }], check: 'x()' } };
-    const relative = writeTest(root, { ...replaceStep(loaded, fixed), knownMessages: ['Ja Nein'] }, new Set(['S2']));
+    const fixed = { ...loaded.steps[1], do: 'new', recording: { hash: 'h', after: 'S1', recordedOn: 'a/dev', recordedAt: 'z', actions: [{ action: 'click', target: NEXT, path: '/a' }, { action: 'fill', target: NEXT, value: '' }], check: 'x()' } };
+    const relative = writeTest(root, { ...replaceStep(loaded, fixed), knownMessages: ['Yes No'] }, new Set(['S2']));
     assert.equal(relative, 'caw/tests/t.yaml, caw/recordings/t.yaml');
     const text = readFileSync(testPath(root, 't'), 'utf8');
-    assert.ok(text.startsWith('# Kopf vom Menschen\n'));
-    assert.match(text, /# Über dem ersten/);
-    assert.match(text, /# krumm eingerückt/);
-    assert.match(text, /# Über dem zweiten\n {2}- id: S2/);
-    assert.match(text, /Bleibt\./);
-    assert.doesNotMatch(text, /recording|knownMessages/, 'Die Beschreibung bleibt ohne Aufzeichnung');
-    assert.match(readFileSync(recordingPath(root, 't'), 'utf8'), /click: \{/, 'Ziele stehen in einer Zeile');
+    assert.ok(text.startsWith('# Header by the human\n'));
+    assert.match(text, /# Above the first/);
+    assert.match(text, /# oddly indented/);
+    assert.match(text, /# Above the second\n {2}- id: S2/);
+    assert.match(text, /Stays\./);
+    assert.doesNotMatch(text, /recording|knownMessages/, 'the description stays without recordings');
+    assert.match(readFileSync(recordingPath(root, 't'), 'utf8'), /click: \{/, 'targets are on one line');
     const read = loadTest(root, 't');
     assert.equal(read.steps[0].recording, undefined);
-    assert.equal(read.steps[1].do, 'neu');
+    assert.equal(read.steps[1].do, 'new');
     assert.equal(read.steps[1].recording.actions[1].value, '');
-    assert.deepEqual(read.knownMessages, ['Ja Nein']);
+    assert.deepEqual(read.knownMessages, ['Yes No']);
 });
 
-test('Zwei Dateien: Lernt das Tool dazu, ändert sich nur die Aufzeichnung', (t) => {
+test('two files: when the tool learns, only the recording changes', (t) => {
     const root = testRoot(t);
     const whole = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }));
     writeTest(root, whole);
@@ -308,40 +308,40 @@ test('Zwei Dateien: Lernt das Tool dazu, ändert sich nur die Aufzeichnung', (t)
     assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung');
 });
 
-test('Zwei Dateien: Aufzeichnung und knownMessages in der Beschreibung sind ein Fehler; der Entwurf eines Laufs traegt beides', (t) => {
-    const single = renderTest({ ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' })), knownMessages: ['Alt'] });
-    assert.equal(parseTest(single).steps[1].recording.after, 'S1', 'Entwurf: eine Datei mit Aufzeichnung');
+test('two files: recordings and knownMessages in the description are an error; a run draft carries both', (t) => {
+    const single = renderTest({ ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' })), knownMessages: ['Old'] });
+    assert.equal(parseTest(single).steps[1].recording.after, 'S1', 'draft: one file with recordings');
     const root = testRoot(t, single);
     assert.throws(() => loadTest(root, 't'), (error) => error.code === 'test-invalid' && /knownMessages schreibt das Tool in caw\/recordings/.test(error.message) && /recording schreibt das Tool/.test(error.message));
 });
 
-test('Zwei Dateien: Form der Aufzeichnung wird geprüft, verwaiste Aufzeichnungen sind ein Hinweis', (t) => {
+test('two files: the recording shape is checked, orphaned recordings are a hint', (t) => {
     const root = testRoot(t);
     writeTest(root, spec(recorded('S1'), recorded('S2', [], { after: 'S1' })));
     const text = readFileSync(recordingPath(root, 't'), 'utf8');
-    assert.throws(() => parseRecordings(text.replace('test: t', 'fremd: 1')), /test und steps/);
-    assert.throws(() => parseRecordings(text.replace('check:', 'fremd: 1\n    check:')), /Unbekanntes Feld fremd/);
-    writeFileSync(recordingPath(root, 't'), text.replace('test: t', 'test: anders'));
-    assert.throws(() => loadTest(root, 't'), /gehört zu "anders"/);
+    assert.throws(() => parseRecordings(text.replace('test: t', 'foreign: 1')), /test und steps/);
+    assert.throws(() => parseRecordings(text.replace('check:', 'foreign: 1\n    check:')), /Unbekanntes Feld foreign/);
+    writeFileSync(recordingPath(root, 't'), text.replace('test: t', 'test: other'));
+    assert.throws(() => loadTest(root, 't'), /gehört zu "other"/);
     writeFileSync(recordingPath(root, 't'), text);
     writeFileSync(testPath(root, 't'), readFileSync(testPath(root, 't'), 'utf8').replace(/ {2}- id: S2[\s\S]*$/, ''));
-    writeFileSync(recordingPath(root, 'weg'), text.replace('test: t', 'test: weg'));
-    assert.deepEqual(recordingHints(root), ['caw/recordings/t.yaml: S2 steht nicht mehr in der Beschreibung.', 'caw/recordings/weg.yaml: Es gibt keine Beschreibung caw/tests/weg.yaml.']);
+    writeFileSync(recordingPath(root, 'unused'), text.replace('test: t', 'test: unused'));
+    assert.deepEqual(recordingHints(root), ['caw/recordings/t.yaml: S2 steht nicht mehr in der Beschreibung.', 'caw/recordings/unused.yaml: Es gibt keine Beschreibung caw/tests/unused.yaml.']);
 });
 
-test('Schreiben: Neuaufnahme löst alle Schritte ab, Kopf und Metadaten bleiben, Zeilenenden auch', (t) => {
-    const root = testRoot(t, `# Kopf\nid: t\napp: a\nrole: r\ntargets: [a/dev]\nmutates: true\nnotes: alt\nsteps:\n  - id: S1\n    name: Alt\n    do: ""\n    expect: Alt.\n  - id: S2\n    name: Weg\n    do: ""\n    expect: Weg.\n`.replaceAll('\n', '\r\n'));
+test('writing: re-recording replaces all steps, header and metadata stay, line endings too', (t) => {
+    const root = testRoot(t, `# Header\nid: t\napp: a\nrole: r\ntargets: [a/dev]\nmutates: true\nnotes: old\nsteps:\n  - id: S1\n    name: Old\n    do: ""\n    expect: Old.\n  - id: S2\n    name: Gone\n    do: ""\n    expect: Gone.\n`.replaceAll('\n', '\r\n'));
     const loaded = loadTest(root, 't');
-    writeTest(root, { ...loaded, notes: 'neu', steps: [recorded('S1')], expectations: [] });
+    writeTest(root, { ...loaded, notes: 'new', steps: [recorded('S1')], expectations: [] });
     const raw = readFileSync(testPath(root, 't'), 'utf8');
     assert.ok(raw.includes('\r\n'));
-    assert.ok(raw.startsWith('# Kopf'));
+    assert.ok(raw.startsWith('# Header'));
     const read = parseTest(raw);
-    assert.equal(read.notes, 'neu');
+    assert.equal(read.notes, 'new');
     assert.deepEqual(read.steps.map(({ id }) => id), ['S1']);
 });
 
-test('Schreiben: Neue Datei ist lesbar, ein eingefügter Schritt landet an seiner Stelle', (t) => {
+test('writing: a new file is readable, an inserted step lands at its position', (t) => {
     const root = testRoot(t);
     const whole = { ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' })), knownMessages: [] };
     writeTest(root, whole);
@@ -351,18 +351,18 @@ test('Schreiben: Neue Datei ist lesbar, ein eingefügter Schritt landet an seine
     assert.deepEqual(loadTest(root, 't').steps.map(({ id }) => id), ['S1', 'S3', 'S2']);
 });
 
-test('loadTest: Fehlende Datei und fremde id', (t) => {
-    const root = testRoot(t, YAML.replace('id: t', 'id: anders'));
-    assert.throws(() => loadTest(root, 'gibtsnicht'), { code: 'test-missing' });
-    assert.throws(() => loadTest(root, 't'), (error) => error.code === 'test-invalid' && /anders/.test(error.message));
+test('loadTest: missing file and mismatched id', (t) => {
+    const root = testRoot(t, YAML.replace('id: t', 'id: other'));
+    assert.throws(() => loadTest(root, 'missing'), { code: 'test-missing' });
+    assert.throws(() => loadTest(root, 't'), (error) => error.code === 'test-invalid' && /other/.test(error.message));
 });
 
-test('Welcher Code läuft, steht nie in der Testdatei: Das entscheidet der Aufruf (--overlay)', () => {
+test('which code runs is never stored in the test file: the invocation decides (--overlay)', () => {
     assert.doesNotMatch(renderTest(composeTest(meta, { notes: '', steps: [plain('S1')] })), /code:|source:/);
     assert.doesNotMatch(renderTest(composeTest({ ...meta, code: 'deployed' }, { notes: '', steps: [plain('S1')] })), /code:/);
 });
 
-test('loadTest: id, app, role und targets dürfen fehlen, eine angegebene id muss passen', (t) => {
+test('loadTest: id, app, role and targets may be missing, a given id must match', (t) => {
     const root = testRoot(t, YAML.replace('id: t\n', '').replace('app: a\n', '').replace('role: r\n', '').replace('targets: [a/dev, a/test]\n', ''));
     const loaded = loadTest(root, 't');
     assert.equal(loaded.id, 't');

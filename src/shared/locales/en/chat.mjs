@@ -1,4 +1,4 @@
-// Texte: chat (en). Schluessel mit Praefix "chat.".
+// Texts: chat (en). Keys prefixed with "chat.".
 export default {
     'chat.status.running.text': 'Claude is working. Pause before you click in the app.',
     'chat.status.running.label': 'Claude working',

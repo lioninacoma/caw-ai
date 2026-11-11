@@ -10,6 +10,7 @@ You need Node 22+ and Google Chrome. Claude Code is only needed to record or fix
 git clone https://github.com/lioninacoma/caw-ai.git
 cd caw-ai
 npm ci
+npm run lint          # ESLint (recommended rules of ESLint and eslint-plugin-n)
 npm test              # unit tests, no browser, no tokens
 npm run pack:check    # what `npm pack` would ship
 ```
@@ -40,7 +41,8 @@ npx caw-ai doctor
 ## Pull requests
 
 - Keep a PR to one topic. Open an issue first for larger changes.
-- Add or update unit tests. `npm test` and `npm run pack:check` must pass; CI runs both on Linux and Windows.
+- Add or update unit tests. `npm run lint`, `npm test` and `npm run pack:check` must pass; CI runs them on Linux and Windows.
+- Code, names and comments are in English. UI texts live in `src/shared/locales/` (de and en).
 - User-facing text goes into both `src/shared/locales/en` and `src/shared/locales/de`. Keep it short.
 - Add a line under `[Unreleased]` in `CHANGELOG.md`.
 - caw-ai stays framework-independent. Framework specifics belong in `src/host/framework/`.

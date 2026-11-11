@@ -1,4 +1,4 @@
-// Abspielen der von Hand geschriebenen Aktionen: upload, download, geheimes remember, Muster in knownMessages.
+// Playback of hand-written actions: upload, download, secret remember, patterns in knownMessages.
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +15,7 @@ const clock = () => {
     return { now: () => time, sleep: async (ms) => { time += ms; } };
 };
 
-/** Seite mit einem Element; `fileInput` sagt, ob es selbst das Dateifeld ist. Ereignisse liefert `events`. */
+/** Page with one element; `fileInput` says whether it is the file input itself. `events` provides the events. */
 const sessionWith = ({ fileInput = false, events = {}, state = healthy, hidden } = {}) => {
     const calls = [];
     const element = {
@@ -47,7 +47,7 @@ const cawDir = (t) => {
     return dir;
 };
 
-test('upload: Ein Dateifeld bekommt die Dateien direkt, Pfade relativ zum caw-Ordner', async (t) => {
+test('upload: a file input gets the files directly, paths relative to the caw folder', async (t) => {
     const dir = cawDir(t);
     const { calls, session } = sessionWith({ fileInput: true });
     const { broken } = await play([{ action: 'upload', target: { role: 'textbox', name: 'Datei' }, files: ['fixtures/brief.pdf'] }], session, { filesDir: dir });
@@ -55,7 +55,7 @@ test('upload: Ein Dateifeld bekommt die Dateien direkt, Pfade relativ zum caw-Or
     assert.deepEqual(calls, [['setInputFiles', [join(dir, 'fixtures', 'brief.pdf')]]]);
 });
 
-test('upload: Hinter einem Knopf öffnet der Klick die Dateiauswahl, sie bekommt die Dateien', async (t) => {
+test('upload: behind a button the click opens the file chooser, which gets the files', async (t) => {
     const dir = cawDir(t);
     const chosen = [];
     const { calls, session } = sessionWith({ events: { filechooser: () => ({ setFiles: async (files) => { chosen.push(files); } }) } });
@@ -66,7 +66,7 @@ test('upload: Hinter einem Knopf öffnet der Klick die Dateiauswahl, sie bekommt
     assert.equal(stepLabel({ action: 'upload', target: BUTTON, files: ['fixtures/brief.pdf'] }), 'upload button "Dateien wählen" fixtures/brief.pdf');
 });
 
-test('upload: Eine fehlende Datei oder eine ausserhalb des caw-Ordners bricht ab, ohne zu klicken', async (t) => {
+test('upload: a missing file or one outside the caw folder aborts without clicking', async (t) => {
     const dir = cawDir(t);
     for (const file of ['fixtures/fehlt.pdf', '../ausserhalb.pdf']) {
         const { calls, session } = sessionWith({ events: { filechooser: () => ({ setFiles: async () => {} }) } });
@@ -82,7 +82,7 @@ const downloadOf = (name, content) => (dir) => () => {
     return { suggestedFilename: () => name, path: async () => path, delete: async () => {} };
 };
 
-test('download: Der Klick startet einen Download mit passendem Namen und Inhalt', async (t) => {
+test('download: the click starts a download with a matching name and content', async (t) => {
     const dir = cawDir(t);
     const { calls, session } = sessionWith({ events: { download: downloadOf('akte-7.zip', 'PK')(dir) } });
     const { broken } = await play([{ action: 'download', target: { role: 'button', name: 'Exportieren' }, file: '^akte-\\d+\\.zip$' }], session);
@@ -90,7 +90,7 @@ test('download: Der Klick startet einen Download mit passendem Namen und Inhalt'
     assert.deepEqual(calls.map(([name]) => name), ['waitForEvent', 'click']);
 });
 
-test('download: Falscher Name, leere Datei oder kein Download lassen den Schritt scheitern, ohne zweiten Klick', async (t) => {
+test('download: wrong name, empty file or no download fail the step, without a second click', async (t) => {
     const dir = cawDir(t);
     const step = { action: 'download', target: { role: 'button', name: 'Exportieren' }, file: '^akte-\\d+\\.zip$' };
     const cases = [
@@ -103,11 +103,11 @@ test('download: Falscher Name, leere Datei oder kein Download lassen den Schritt
         const { broken } = await play([step, { action: 'check', id: 'S1', code: 'x' }], session, { handler: async () => ({ pass: true, value: true }) });
         assert.equal(broken.kind, 'check');
         assert.match(broken.message, reason);
-        assert.equal(calls.filter(([name]) => name === 'click').length, 1, 'ein Download startet nur einmal');
+        assert.equal(calls.filter(([name]) => name === 'click').length, 1, 'a download starts only once');
     }
 });
 
-test('remember mit secret: Der Wert steht weder im Protokoll noch im Ergebnis, die Sitzung schwärzt ihn auch', async () => {
+test('remember with secret: the value appears neither in the log nor in the result, and the session redacts it too', async () => {
     const hidden = [];
     const { session } = sessionWith({ hidden });
     const labels = [];
@@ -123,13 +123,13 @@ test('remember mit secret: Der Wert steht weder im Protokoll noch im Ergebnis, d
     ];
     const { results, broken, remembered } = await play(steps, session, { handler, log: (entry) => labels.push(entry.label) });
     assert.deepEqual(hidden, ['Geheim-1234']);
-    assert.equal(remembered.get('{{pw}}'), 'Geheim-1234', 'der Wert selbst bleibt für den Lauf');
+    assert.equal(remembered.get('{{pw}}'), 'Geheim-1234', 'the value itself stays for the run');
     const shown = JSON.stringify({ labels, result: results.get('S1'), broken });
     assert.doesNotMatch(shown, /Geheim-1234/);
     assert.match(shown, /••••/);
 });
 
-test('knownMessages: Ein Muster deckt einen Dialog mit wechselndem Inhalt; eine lange unbekannte Meldung wird nur für die Anzeige gekürzt', async () => {
+test('knownMessages: a pattern covers a dialog with changing content; a long unknown message is only shortened for display', async () => {
     const steps = [{ action: 'reload' }, { action: 'check', id: 'S1', code: 'x' }];
     const handler = async ({ action }) => (action === 'check' ? { pass: true, value: true } : 'ok');
     const checksum = { ...healthy, messages: ['Prüfsumme a#f#c kopiert'] };
@@ -138,11 +138,11 @@ test('knownMessages: Ein Muster deckt einen Dialog mit wechselndem Inhalt; eine 
     const long = `Unbekannt ${'sehr lang '.repeat(60)}Ende`;
     const unknown = await play(steps, sessionWith({ state: { ...healthy, messages: [long] } }).session, { handler, knownMessages: [{ pattern: '^Prüfsumme' }] });
     assert.equal(unknown.broken.kind, 'external');
-    assert.ok(unknown.broken.message.length < long.length, 'gekürzt angezeigt');
+    assert.ok(unknown.broken.message.length < long.length, 'shown shortened');
     assert.match(unknown.broken.message, /…/);
 });
 
-test('buildReplay: Muster bleiben in knownMessages, was ein Muster schon deckt, kommt nicht dazu', () => {
+test('buildReplay: patterns stay in knownMessages, what a pattern already covers is not added', () => {
     const recorder = { problems: [], steps: [{ action: 'check', id: 'S1', code: 'true' }], messages: new Set(['Prüfsumme a#f kopiert', 'Neu']) };
     const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }] };
     const draft = { ...spec, knownMessages: ['Alt', { pattern: '^Prüfsumme' }] };
@@ -151,7 +151,7 @@ test('buildReplay: Muster bleiben in knownMessages, was ein Muster schon deckt, 
     assert.deepEqual(candidate.knownMessages, ['Alt', 'Neu', { pattern: '^Prüfsumme' }]);
 });
 
-test('buildReplay: Ein von Hand als geheim markiertes remember bleibt geheim, wenn Claude den Schritt neu aufnimmt', () => {
+test('buildReplay: a remember manually marked secret stays secret when Claude re-records the step', () => {
     const recorder = { problems: [], steps: [{ action: 'remember', name: 'pw', code: 'neu' }, { action: 'check', id: 'S1', code: 'true' }], messages: new Set() };
     const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }] };
     const draft = { ...spec, steps: [{ ...spec.steps[0], recording: { actions: [{ action: 'remember', name: 'pw', code: 'alt', secret: true }] } }] };
@@ -159,11 +159,11 @@ test('buildReplay: Ein von Hand als geheim markiertes remember bleibt geheim, we
     assert.deepEqual(candidate.steps[0].recording.actions[0], { action: 'remember', name: 'pw', code: 'neu', secret: true });
 });
 
-test('targetLabel: Ein Muster erscheint als /Ausdruck/', () => {
+test('targetLabel: a pattern appears as /expression/', () => {
     assert.equal(targetLabel({ role: 'button', name: { pattern: '^Prüfen' } }), 'button "/^Prüfen/"');
 });
 
-test('buildReplay: Neu aufgenommen behält ein bestehender Test seine Muster, geheime Werte und Zeitlimits, nicht seine alten festen Texte', () => {
+test('buildReplay: when re-recorded, an existing test keeps its patterns, secret values and timeouts, not its old fixed texts', () => {
     const recorder = { problems: [], steps: [{ action: 'remember', name: 'pw', code: 'neu' }, { action: 'check', id: 'S1', code: 'true' }, { action: 'check', id: 'S2', code: 'true' }], messages: new Set(['Prüfsumme 12 kopiert']) };
     const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }, { id: 'S2', name: 'd', do: 'e', expect: 'anders' }] };
     const previous = {
@@ -175,8 +175,8 @@ test('buildReplay: Neu aufgenommen behält ein bestehender Test seine Muster, ge
         ],
     };
     const { candidate } = buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, previous, target: 'local' });
-    assert.deepEqual(candidate.knownMessages, [{ pattern: '^Prüfsumme \\S+ kopiert$' }], 'das Muster deckt die neue Meldung, der alte feste Text fällt weg');
+    assert.deepEqual(candidate.knownMessages, [{ pattern: '^Prüfsumme \\S+ kopiert$' }], 'the pattern covers the new message, the old fixed text is dropped');
     assert.equal(candidate.steps[0].recording.actions[0].secret, true);
     assert.equal(candidate.steps[0].recording.timeoutMs, 20000);
-    assert.equal(candidate.steps[1].recording.timeoutMs, undefined, 'ein geändertes Ergebnis prüft neu, ohne das alte Zeitlimit');
+    assert.equal(candidate.steps[1].recording.timeoutMs, undefined, 'a changed result is checked anew, without the old timeout');
 });

@@ -1,13 +1,13 @@
-// Bevor Claude arbeitet, sagt der Chat einmal je Lauf, dass das Token kostet. „Nicht mehr fragen“ merkt sich das in den
-// persoenlichen Einstellungen (prefs.json, nie im Projekt): tokenNotice off.
+// Before Claude works, the chat says once per run that this costs tokens. "Don't ask again" stores that in the
+// personal settings (prefs.json, never in the project): tokenNotice off.
 
 import { t } from '../shared/i18n.mjs';
 import { readPrefs, writePref } from '../shared/prefs.mjs';
 
 /**
- * @param chat  () => der aktuelle Chat oder null; ohne Chat (CI, --no-chat) gibt es nichts zu fragen
- * @returns async ({ decline }) => true, wenn Claude starten darf. `decline` beschriftet die Ablehnung: Sie heisst, was sie bewirkt
- *          (ohne Claude weiter oder den Lauf abbrechen).
+ * @param chat  () => the current chat or null; without a chat (CI, --no-chat) there is nothing to ask
+ * @returns async ({ decline }) => true if Claude may start. `decline` labels the refusal button with what it does
+ *          (continue without Claude, or cancel the run).
  */
 export const createTokenGate = ({ chat, prefs = readPrefs, save = (value) => writePref('tokenNotice', value) }) => {
     let agreed = false;
@@ -28,5 +28,5 @@ export const createTokenGate = ({ chat, prefs = readPrefs, save = (value) => wri
     };
 };
 
-/** Statt Claude, wenn der Mensch ablehnt: endet nie von selbst, haelt nichts an. */
+/** Stands in for Claude when the human declines: never ends on its own, stops nothing. */
 export const IDLE_AGENT = { ended: new Promise(() => {}), stopTail: () => {}, stop: async () => {}, log: () => '' };

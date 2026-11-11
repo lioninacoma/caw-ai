@@ -1,6 +1,6 @@
-// Der Chat in der Werkbank, links neben der Anwendung im iframe: Claude fragt und berichtet, der Mensch antwortet, pausiert oder
-// bricht ab. Bewusst nicht in der Seite der Anwendung: Dort koennte es Schaltflaechen ueberdecken, in Snapshots und Aufzeichnung
-// geraten, und die Seite selbst koennte Claude Anweisungen unterschieben. Das Binding gibt es nur auf der Chat-Seite.
+// The chat in the workbench, left of the application iframe: Claude asks and reports, the human answers, pauses or
+// aborts. Deliberately not inside the application page: there it could cover buttons, end up in snapshots and recordings,
+// and the page itself could slip instructions to Claude. The binding only exists on the chat page.
 
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -18,20 +18,20 @@ const MAX_TEXT = 4000;
 const MAX_ACTIVITY = 300;
 const TAIL_MS = 500;
 const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'plan', 'advice', 'failure', 'decision']);
-// Der Mensch fuehrt vor: Neuladen ist dann Teil des Wegs, kein Bruch des Laufs.
+// The human is demonstrating: a reload is then part of the path, not a break of the run.
 const SHOWING_STATES = ['showing', 'asking', 'paused'];
 const PICK_STATES = ['paused', 'asking', 'showing', 'planning', 'discussing', 'developing'];
-// Gespraeche mit offener Eingabe: Eine Nachricht geht samt gewaehltem Element an den Ablauf.
+// Conversations with open input: a message goes to the flow together with the picked element.
 const TALK_KINDS = ['discussing', 'developing'];
-// Hier muss der Mensch etwas tun, das Fenster darf also nicht hinter der Anwendung liegen.
+// The human has to act here, so the window must not stay behind the application.
 const NEEDS_HUMAN = ['choosing', 'planning', 'deciding', 'reviewing', 'discussing'];
-// Dann fliegt der Rabe der Werkbank zum Chat.
+// Then the workbench's raven turns to the chat.
 const RAVEN_ASKS = [...NEEDS_HUMAN, 'asking', 'showing', 'developing'];
-const UNNAMED_ELEMENT_NOTE = 'Dieses Element meine ich.';
+const UNNAMED_ELEMENT_NOTE = 'This is the element I mean.';
 
-// Zustandszeile, Pill und Knopf je Zustand. Zur Laufzeit geholt: Beim Import steht die Sprache noch nicht fest.
+// Status line, pill and button per state. Fetched at runtime: the language is not known yet at import time.
 const STATES = ['running', 'pausing', 'paused', 'asking', 'showing', 'choosing', 'planning', 'handing', 'verifying', 'testing', 'discussing', 'preparing', 'deciding', 'advising', 'reviewing', 'developing', 'closed'];
-const status = (state) => {
+const statusTexts = (state) => {
     const part = (name) => {
         const key = `chat.status.${state}.${name}`;
         const text = t(key);
@@ -41,16 +41,16 @@ const status = (state) => {
 };
 
 /**
- * Eine Zeile aus claude.log: Text wird zur Nachricht, Befehle werden zu Aktionen. Was das Gespraech selbst ausmacht, steht
- * schon im Chat und faellt hier weg.
- * @returns { kind: 'text' | 'activity', text } oder null
+ * A line from claude.log: text becomes a message, commands become actions. What makes up the conversation itself is
+ * already in the chat and is dropped here.
+ * @returns { kind: 'text' | 'activity', text } or null
  */
 export const parseClaudeLog = (line) => {
     const match = /^\[\+[\d.]+s\] (> )?(.*)$/.exec(line);
     if (match === null || match[2].trim() === '') return null;
-    // Das Ende meldet das Tool selbst, mit Ergebnis statt Dauer.
-    if (match[1] === undefined && match[2].startsWith('Claude beendet nach')) return null;
-    // Freier Text sind Claudes Notizen an sich selbst. An den Menschen richtet es sich nur mit say.
+    // The tool reports the end itself, with the result instead of the duration.
+    if (match[1] === undefined && match[2].startsWith('Claude finished after')) return null;
+    // Free text is Claude's notes to itself. It addresses the human only via say.
     if (match[1] === undefined) return { kind: 'text', text: match[2].replaceAll(' ⏎ ', ' ').slice(0, MAX_ACTIVITY) };
     const text = readableCommand(match[2]).replace(/^Bash: /, '').replace(/(^|[\s;&|(])caw-ai /g, '$1').replaceAll(' ⏎ ', '; ').trim();
     if (/^(say|chat|plan)\b/.test(text) && !/[;&|]/.test(text)) return null;
@@ -58,8 +58,8 @@ export const parseClaudeLog = (line) => {
 };
 
 /**
- * Der lokale Agent ruft caw ueber MCP auf; im Log steht dann `mcp__caw__caw: {"args":["click","button \"Senden\""]}`. Der Mensch
- * soll denselben Befehl lesen wie beim Agenten in Docker: `click button "Senden"`. Andere Werkzeuge ohne ihre interne Vorsilbe.
+ * The local agent calls caw via MCP; the log then reads `mcp__caw__caw: {"args":["click","button \"Senden\""]}`. The human
+ * should read the same command as with the agent in Docker: `click button "Senden"`. Other tools without their internal prefix.
  */
 const readableCommand = (text) => {
     const call = /^mcp__[\w-]+__caw: (\{.*)$/.exec(text);
@@ -69,7 +69,7 @@ const readableCommand = (text) => {
         const { args } = JSON.parse(call[1]);
         if (Array.isArray(args)) return shown(args);
     } catch {
-        // Im Log abgeschnitten: die vollstaendigen Texte lesen, der letzte endet mit „…“.
+        // Truncated in the log: read the complete texts, the last one ends with "…".
     }
     const body = call[1].replace(/^\{"args":\[/, '');
     const parts = [...body.matchAll(/"((?:[^"\\]|\\.)*)("|$)/g)].map(([, value, end]) => {
@@ -80,9 +80,9 @@ const readableCommand = (text) => {
 };
 
 /**
- * Liest neue vollstaendige Zeilen einer wachsenden Datei.
- * @param read Liefert den ganzen Text, leer solange es die Datei nicht gibt
- * @returns stop: liest ein letztes Mal und beendet das Mitlesen
+ * Reads new complete lines of a growing file.
+ * @param read returns the whole text, empty while the file does not exist
+ * @returns stop: reads one last time and stops following
  */
 export const tailLines = (read, onLine, intervalMs = TAIL_MS) => {
     let done = 0;
@@ -102,10 +102,10 @@ export const tailLines = (read, onLine, intervalMs = TAIL_MS) => {
 };
 
 /**
- * Der Zustand des Gespraechs, ohne Browser.
- * @param show    zeigt einen Eintrag an: ('human' | 'checkpoint' | 'claude' | 'question' | 'activity', text, Beschriftung des Elements)
- * @param status  zeigt den Zustand an, siehe STATUS; dazu die Wahlmoeglichkeiten, wenn der Mensch entscheiden soll
- * @param onAbort der Mensch bricht den ganzen Lauf ab
+ * The conversation state, without a browser.
+ * @param show    shows an entry: ('human' | 'checkpoint' | 'claude' | 'question' | 'activity', text, element label)
+ * @param status  shows the state, see STATES; plus the options when the human has to decide
+ * @param onAbort the human aborts the whole run
  */
 export const createChat = ({ show = () => {}, status = () => {}, onAbort = () => {} } = {}) => {
     const unread = [];
@@ -119,9 +119,9 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
     let element = null;
     let planAnswer = null;
     let choice = null;
-    // Gespraech, das warten muss, bis eine offene Frage (etwa der Hinweis auf Token) beantwortet ist.
+    // A conversation that must wait until an open question (e.g. the token notice) is answered.
     let queued = null;
-    // Claude arbeitet gerade nicht, der Lauf aber schon: verifying oder preparing.
+    // Claude is idle but the run is not: verifying or preparing.
     let background = null;
 
     const state = () => {
@@ -133,7 +133,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         return paused ? 'pausing' : 'running';
     };
     const publish = () => status(state(), choice?.options);
-    /** Beendet ein Warten auf den Menschen. */
+    /** Ends a wait for the human. */
     const answerPlan = (answer) => {
         const resolve = planAnswer;
         planAnswer = null;
@@ -150,7 +150,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
             publish();
         }
     };
-    /** Ein Gespraech oeffnen; steht gerade eine andere Frage offen, geht sie vor und das Gespraech kommt danach. */
+    /** Opens a conversation; if another question is open, it goes first and the conversation follows. */
     const offer = (next) => {
         if (choice !== null && !TALK_KINDS.includes(choice.kind)) queued = next;
         else choice = next;
@@ -166,14 +166,14 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
     };
     const claudeText = (who, raw) => {
         const text = String(raw ?? '').trim().slice(0, MAX_TEXT);
-        if (text === '') throw new CawError('usage', 'Der Text fehlt.');
+        if (text === '') throw new CawError('usage', 'The text is missing.');
         if (!ended) show(who, text);
         return 'ok';
     };
 
     return {
         human: {
-            /** Ein Pruefpunkt entsteht nur beim Vorfuehren und nur auf ausdruecklichen Wunsch, alles andere ist Kontext. */
+            /** A checkpoint only arises while demonstrating and only on explicit request; everything else is context. */
             message: (raw, { checkpoint = false } = {}) => {
                 const text = String(raw ?? '').trim().slice(0, MAX_TEXT);
                 if (text === '' || ended) return;
@@ -190,9 +190,9 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                 } else if (capturing === null) unread.push(text);
                 else deliver(isCheckpoint ? { checkpoint: text, ...about } : { note: text, ...about });
             },
-            /** Die Schaltflaeche: haelt an, hebt die Anfrage auf oder gibt nach der Eingabe an Claude zurueck. */
+            /** The toggle button: pauses, resumes, or hands back to Claude after input. */
             toggle: () => {
-                // Auch ein ignorierter Klick bekommt einen Zustand zurueck: Der Knopf ist bis dahin gesperrt.
+                // An ignored click also gets a state back: the button stays locked until then.
                 if (ended || choice !== null || (background !== null && capturing === null)) {
                     publish();
                     return;
@@ -201,10 +201,10 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                     show('human', t('chat.planApproved'));
                     answerPlan({ approved: true });
                 } else if (capturing !== null) {
-                    // Ein markiertes Element ohne Text darf nicht verloren gehen.
+                    // A picked element without text must not get lost.
                     if (element !== null) deliver({ note: UNNAMED_ELEMENT_NOTE, element });
                     element = null;
-                    // Ende der Vorfuehrung: Bis zum naechsten Abschnitt gibt es hier nichts mehr zu klicken.
+                    // End of the demonstration: nothing to click here until the next section.
                     if (capturing === 'showing') {
                         capturing = null;
                         background = 'handing';
@@ -213,7 +213,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                 } else paused = !paused;
                 publish();
             },
-            /** Eine der angebotenen Moeglichkeiten. Fremde Werte zaehlen nicht. */
+            /** One of the offered options. Unknown values are ignored. */
             choose: (id) => {
                 const option = choice?.options.find((candidate) => candidate.id === id);
                 if (option === undefined) return;
@@ -236,14 +236,14 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
             },
         },
         say: (raw) => claudeText('claude', raw),
-        /** Eine Mitteilung des Tools, ohne dass der Mensch etwas tun muss. */
+        /** A message from the tool that needs no action from the human. */
         notice: (text) => {
             if (!ended) show('question', text);
         },
         ask: (raw) => claudeText('question', raw),
         /**
-         * Legt den Plan vor und wartet: { approved: true } oder { approved: false, feedback }.
-         * @param view { repairing, notes, steps } aus planView; im Protokoll steht er als Text
+         * Presents the plan and waits: { approved: true } or { approved: false, feedback }.
+         * @param view { repairing, notes, steps } from planView; logged as text
          */
         plan: (view) => {
             if (ended) return Promise.resolve({ approved: false, feedback: null });
@@ -254,14 +254,14 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
             });
         },
         /**
-         * Der Mensch waehlt per Knopf.
-         * @param kind choosing oder deciding
-         * @param card die Entscheidung als Karte (title, facts, details); `question` steht dann nur im Protokoll
-         * @returns die id der Moeglichkeit, null wenn das Fenster zugeht oder er abbricht
+         * The human picks by button.
+         * @param kind choosing or deciding
+         * @param card the decision as a card (title, facts, details); `question` then only goes to the log
+         * @returns the option id, null if the window closes or the human aborts
          */
         choose: (kind, question, options, card) => {
             if (ended) return Promise.resolve(null);
-            // Mitten im Gespraech (etwa der Hinweis auf Token, bevor Claude antwortet): danach steht das Gespraech wieder offen.
+            // In the middle of a conversation (e.g. the token notice before Claude answers): the conversation reopens afterwards.
             const parked = TALK_KINDS.includes(choice?.kind) ? choice : null;
             return new Promise((resolve) => {
                 choice = {
@@ -279,13 +279,13 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
             });
         },
         /**
-         * Eine Empfehlung als Karte, der Mensch entscheidet per Knopf.
-         * @param view aus adviceView; im Protokoll steht sie als Titel
-         * @returns die id der Moeglichkeit, null wenn das Fenster zugeht
+         * An advice as a card; the human decides by button.
+         * @param view from adviceView; logged as its title
+         * @returns the option id, null if the window closes
          */
         advice: (view, options) => {
             if (ended) return Promise.resolve(null);
-            // Mitten im Gespraech: Die Karte kommt dazwischen, danach steht das Gespraech wieder offen.
+            // In the middle of a conversation: the card comes in between, then the conversation reopens.
             const parked = TALK_KINDS.includes(choice?.kind) ? choice : null;
             return new Promise((resolve) => {
                 choice = {
@@ -297,29 +297,29 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                         publish();
                     },
                 };
-                show('advice', `${view.side === 'app' ? 'Anwendung' : 'Test'}: ${view.title}`, view);
+                show('advice', `${view.side === 'app' ? 'Application' : 'Test'}: ${view.title}`, view);
                 publish();
             });
         },
         /**
-         * Nach einem Fehler: Der Mensch schreibt oder waehlt. Bleibt offen, waehrend Claude antwortet.
-         * @param question ohne Angabe erscheint keine neue Frage, das Gespraech geht weiter
-         * @param card     der Fehler als Karte; `question` steht dann nur im Protokoll
-         * @returns { choice } mit der id, { message } mit seinem Text, null wenn das Fenster zugeht
+         * After a failure: the human writes or picks. Stays open while Claude answers.
+         * @param question if omitted, no new question appears and the conversation continues
+         * @param card     the failure as a card; `question` then only goes to the log
+         * @returns { choice } with the id, { message } with the text, null if the window closes
          */
         discuss: (question, options, card) => {
             if (ended) return Promise.resolve(null);
             return new Promise((resolve) => {
                 offer({ kind: 'discussing', options, resolve: (answer) => resolve(typeof answer === 'string' ? { choice: answer } : answer) });
-                // Der Testlauf ist vorbei: Zwischen zwei Antworten zeigt der Chat nicht mehr, dass er laeuft.
+                // The test run is over: between two answers the chat no longer shows it as running.
                 if (background === 'testing') background = null;
                 if (question !== undefined) show(card === undefined ? 'question' : 'failure', question, card);
                 publish();
             });
         },
         /**
-         * Nach der Uebergabe: Der Mensch entwickelt im hergestellten Zustand. Wie discuss, nur ohne Fehler und ohne Fokuswechsel.
-         * @returns { choice } mit der id, { message, element? } mit seinem Text, null wenn das Fenster zugeht
+         * After the hand-over: the human develops in the prepared state. Like discuss, but without a failure and without a focus change.
+         * @returns { choice } with the id, { message, element? } with the text, null if the window closes
          */
         develop: (question, options) => {
             if (ended) return Promise.resolve(null);
@@ -330,28 +330,28 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                 publish();
             });
         },
-        /** Das gewaehlte Element, ohne Nachricht, etwa fuer die eigene Claude-Code-Session. Danach ist es weg. */
+        /** The picked element without a message, e.g. for the human's own Claude Code session. Cleared afterwards. */
         takeElement: () => {
             const picked = element;
             element = null;
             return picked;
         },
-        /** Der Test laeuft ohne Claude, der Chat schaut nur zu. */
+        /** The test runs without Claude; the chat only watches. */
         testing: () => {
             background = 'testing';
             publish();
         },
-        /** Claude untersucht im Browser des Laufs. false: fertig. */
+        /** Claude investigates in the run's browser. false: done. */
         advising: (active = true) => {
             background = active ? 'advising' : null;
             publish();
         },
-        /** Ab jetzt laeuft der Pruefdurchlauf ohne Claude. */
+        /** From now on the verification run goes without Claude. */
         verifying: () => {
             background = 'verifying';
             publish();
         },
-        /** Die Schritte vor dem zu behebenden laufen ohne Claude. false gibt an ihn ab. */
+        /** The steps before the one to fix run without Claude. false hands over to Claude. */
         preparing: (active = true) => {
             background = active ? 'preparing' : null;
             publish();
@@ -359,15 +359,15 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         progress: (text) => {
             if (!ended) show('activity', text);
         },
-        /** Eine Zeile aus Claudes Log: Nur zum Mitlesen, sie aendert am Gespraech nichts. */
+        /** A line from Claude's log: for reading along only, it does not change the conversation. */
         logLine: (line) => {
             const entry = parseClaudeLog(line);
             if (entry === null || ended) return;
             show('activity', entry.text);
         },
-        /** Vor jedem Browserbefehl: Solange der Mensch etwas zu sagen hat, passiert nichts mehr in der Anwendung. */
+        /** Before every browser command: while the human has something to say, nothing more happens in the application. */
         gate: () => {
-            if (paused || unread.length > 0) throw new CawError('human-message', 'Der Mensch hat sich im Chat gemeldet. Rufe caw-ai chat auf, bevor du weitermachst.');
+            if (paused || unread.length > 0) throw new CawError('human-message', 'The human has written in the chat. Call caw-ai chat before you continue.');
         },
         canPick: () => !ended && (capturing !== null || planAnswer !== null || TALK_KINDS.includes(choice?.kind)),
         attach: (picked) => { element = picked; },
@@ -375,7 +375,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         takeUnread: () => unread.splice(0),
         paused: () => paused,
         available: () => !ended,
-        /** Ab hier zaehlen Klicks in der Anwendung: Claude wartet, seine Klicks sind also nicht dabei. */
+        /** From here on clicks in the application count: Claude is waiting, so its own clicks are not included. */
         enter: (kind) => {
             capturing = kind;
             if (background === 'handing') background = null;
@@ -390,7 +390,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
             paused = false;
             publish();
         },
-        /** Fuer demonstrate: Text ist ein Pruefpunkt, { note } ein Hinweis, leer heisst fertig. Eine Antwort auf eine Frage beendet das Warten gleich. */
+        /** For demonstrate: text is a checkpoint, { note } a hint, empty means done. An answer to a question ends the wait at once. */
         operator: {
             available: () => !ended,
             nextLine: ({ signal } = {}) => {
@@ -413,18 +413,17 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
     };
 };
 
-/** Die Chat-Seite in der aktuellen Sprache. Texte fuer das Seiten-JS stehen in T. */
-/** Die Chat-Seite; exportiert fuer Vorschau und Tests. */
+/** The chat page in the current language; texts for the page script are in T. Exported for preview and tests. */
 export const chatPage = (nonce = '', theme = activeTheme()) => `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw-ai · Chat</title><script>(()=>{${APPLY_THEME_SCRIPT}
-// Das Theme kommt von der Werkbank: Der Chat liegt abgeschottet in einem eigenen Origin. Farben nur ueber cawApplyTheme (prueft
-// selbst), Zeichen und Prompts nur als Text (cawThemeText weiter unten).
+// The theme comes from the workbench: the chat is isolated in its own origin. Colours only via cawApplyTheme (validates
+// itself), glyphs and prompts only as text (cawThemeText below).
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;cawApplyTheme(document.documentElement,event.data.theme);window.cawThemeText?.(event.data.theme);});try{parent.postMessage({caw:'theme-request'},'*');}catch{}})();${sourceTag}</script>${FAVICON}<style>
 ${themeCss(theme)}${CONSOLE_CSS}
 *,*::before,*::after{box-sizing:border-box}html,body{height:100%}
 body{margin:0;display:flex;flex-direction:column;background:var(--pane);color:var(--text);font:var(--fs-body)/1.5 var(--font-body)}
 header{display:flex;align-items:center;gap:10px;padding:8px 12px 7px;border-bottom:2px solid var(--line)}
 h1{margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:400 19px/1 var(--font-crt);color:var(--faint);white-space:nowrap}h1 .name{color:var(--claude)}#abort,#abortNo{flex:none}
-/* Schmaler Chat: Abbrechen hat Vorrang vor dem Namen. Den Zustand (Claude arbeitet …) zeigt nur die Pill im Kopf der Werkbank. */
+/* Narrow chat: abort takes precedence over the name. The state (Claude working …) is shown only by the pill in the workbench header. */
 @media (max-width:440px){h1 .name{display:none}}
 [data-state=discussing] #toggle,[data-state=developing] #toggle{display:none}[data-state=deciding] #abort,[data-state=discussing] #abort,[data-state=developing] #abort,[data-state=closed] #abort{display:none}
 #abortNo,#abort{white-space:nowrap;border:0;background:none;padding:3px 7px;font:400 19px/1 var(--font-crt);color:var(--muted)}
@@ -433,13 +432,13 @@ h1{margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:400 1
 main{flex:1;overflow-y:auto;padding:12px 12px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-color:var(--line) var(--pane)}
 footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px;width:32px;height:32px;place-items:center;padding:0;background:var(--screen);border:0;box-shadow:inset 0 0 0 2px var(--frame);color:var(--text)}#down.on{display:grid}footer:has(#down.on) #status{min-height:44px;padding-right:44px}#down:hover{background:var(--pane-2)}#down svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:square;stroke-linejoin:miter}#down.new::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;background:var(--info)}
 .message{white-space:pre-wrap;overflow-wrap:anywhere}
-/* Wer spricht, steht wie in einer Konsole davor: claude> und du>. */
-/* Prompts, Marken und Zeichen setzt das Seiten-JS als Text aus dem Theme (data-who, data-mark, data-bullet, data-tree). */
+/* The speaker is shown in front like in a console: claude> and du>. */
+/* Prompts, marks and glyphs are set by the page script as text from the theme (data-who, data-mark, data-bullet, data-tree). */
 .who{display:block;font:400 19px/1.1 var(--font-crt);white-space:pre}.who.c{color:var(--claude)}.who.h{color:var(--human)}.who .cp{color:var(--muted);margin-left:8px}
 .about{display:block;font:11.5px/1.4 var(--font-mono);color:var(--muted);margin-bottom:2px;overflow-wrap:anywhere}
 .about .tr,.bl{color:var(--faint);margin-right:6px}.bl{color:var(--ok)}
 .mk{font:400 18px/1 var(--font-crt);white-space:pre;margin-right:8px}
-/* Karten: Fenster im Fenster, die Kopfzeile in VT323 mit der Marke davor. */
+/* Cards: windows within the window, the header line in VT323 with the mark in front. */
 .question,.plan,.advice,.failure,.decision{padding:10px 12px 11px;background:var(--pane-2);border:2px solid var(--line);white-space:normal}
 .question{border-color:var(--info)}.question>.who .mk{color:var(--info)}
 .plan strong,.advice strong,.failure strong,.decision strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:6px;text-shadow:0 0 8px var(--glow);white-space:pre-wrap}
@@ -456,7 +455,7 @@ footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px
 .advice h2{margin:0 0 4px;font-size:15px;font-weight:500}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
 .advice pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--screen);padding:8px 10px;font:12px/1.45 var(--font-mono);box-shadow:inset 0 0 0 2px var(--line)}.advice pre.del{text-decoration:line-through;color:var(--muted);margin-bottom:6px}
 .advice .copy{margin-top:8px;padding:5px 10px;font:400 18px/1 var(--font-crt);color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}.advice .copy:hover{background:var(--line)}
-/* Aktionen leise: ■ click … */
+/* Actions muted: ■ click … */
 details.activity{font-size:12.5px;color:var(--muted)}
 details.activity summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;padding:1px 0;user-select:none;font:12.5px var(--font-mono)}
 details.activity summary::-webkit-details-marker{display:none}
@@ -472,7 +471,7 @@ footer{padding:0 10px 10px}
 [data-state=paused] #status,[data-state=asking] #status,[data-state=showing] #status,[data-state=planning] #status{color:var(--text)}
 #choices{display:none;flex-direction:column;gap:10px;padding:4px 4px 12px 2px}[data-state=choosing] #choices,[data-state=deciding] #choices,[data-state=reviewing] #choices,[data-state=discussing] #choices,[data-state=developing] #choices,[data-state=planning] #choices{display:flex}
 #choices button.big{min-height:46px;font-size:24px}[data-state=planning] #toggle{display:none}
-/* Beim Fehler, bei Entscheidung und Empfehlung braucht die Karte den Platz: Knoepfe kompakt, die nachrangigen nebeneinander. */
+/* For failure, decision and advice the card needs the space: compact buttons, secondary ones side by side. */
 #choices .rest{display:flex;flex-wrap:wrap;gap:10px}#choices .rest button{flex:1 1 auto;min-width:96px}
 :is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices{gap:6px;padding-bottom:10px}:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices .rest{gap:6px}
 :is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices button{min-height:32px;padding:5px 10px}
@@ -488,8 +487,8 @@ kbd{display:inline-block;margin-left:8px;padding:0 4px;font:400 15px/1.1 var(--f
 #choices button.primary{background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#choices button.primary:hover{filter:brightness(1.08)}
 #choices button:disabled{cursor:progress;opacity:.55;transform:none}#choices button.busy{opacity:1}
 [data-state=handing] form,[data-state=choosing] form,[data-state=deciding] form,[data-state=reviewing] form,[data-state=verifying] form,[data-state=testing] form,[data-state=preparing] form,[data-state=advising] form{display:none}
-/* Die Eingabe als Prompt: du> mit blinkendem Block, nur solange das Feld den Fokus hat und leer ist. Ohne Fokus kein Cursor und ein
-   gedaempftes du>: Sonst sieht es aus, als ginge Tippen in den Chat, waehrend die Tasten in der Anwendung landen. */
+/* The input as a prompt: du> with a blinking block, only while the field has focus and is empty. Without focus no cursor and a
+   muted du>: otherwise it looks as if typing goes to the chat while the keys land in the application. */
 form{margin:2px;padding:8px 10px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}
 form:focus-within{box-shadow:inset 0 0 0 2px var(--human)}
 .prompt{display:flex;align-items:flex-start;gap:8px}.prompt .p{flex:none;font:400 20px/1.15 var(--font-crt);color:var(--muted)}
@@ -511,14 +510,14 @@ button{font:inherit;cursor:pointer;color:inherit;border-radius:0}
 #toggle{white-space:nowrap}#toggle svg{fill:currentColor}#toggle .play{display:none}
 [data-state=paused] #toggle .play,[data-state=asking] #toggle .play,[data-state=showing] #toggle .play,[data-state=planning] #toggle .play{display:block}
 [data-state=paused] #toggle .pause,[data-state=asking] #toggle .pause,[data-state=showing] #toggle .pause,[data-state=planning] #toggle .pause{display:none}
-/* Die Vorfuehrung endet mit Stopp wie eine Aufnahme, nicht mit Weiter. */
+/* The demonstration ends with stop like a recording, not with continue. */
 #toggle .stop{display:none}[data-state=showing] #toggle .stop{display:block}[data-state=showing] #toggle .play{display:none}
 .actions{display:flex;align-items:center;gap:10px}#mark{display:none}[data-state=showing] #mark{display:inline-flex}
 #send{width:30px;padding:0;justify-content:center;background:var(--human);color:var(--ink);box-shadow:none}#send:hover:enabled{filter:brightness(1.08);box-shadow:none}#send svg{fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:square;stroke-linejoin:miter}
 textarea:focus-visible{outline:0}
 [data-state=closed] form,.stopping form,.stopping #choices{opacity:.55;pointer-events:none}
-/* Der Spinner aus dem Theme: Das Seiten-JS schreibt das aktuelle Bild in data-f, CSS zeigt es nur als Text. Blockzeichen zeichnet
-   es statt dessen ueber data-q (GLYPH_CSS), ohne Ersatzschrift. */
+/* The theme's spinner: the page script writes the current frame to data-f, CSS shows it only as text. Block characters are
+   drawn via data-q instead (GLYPH_CSS), without a fallback font. */
 .loader,[data-state=handing] #status::before,#toggle.busy::before,#choices button.busy::before{content:attr(data-f);display:inline-block;flex:none;margin-right:8px;color:var(--info)}
 [data-state=handing] #status.qbp[data-q]::before,#toggle.busy.qbp[data-q]::before,#choices button.busy.qbp[data-q]::before{content:"";width:1ch;height:1em;vertical-align:-.15em}
 #toggle.busy svg{display:none!important}#toggle.busy{cursor:progress}
@@ -532,7 +531,7 @@ textarea:focus-visible{outline:0}
 <script>
 ${GLYPH_SCRIPT}
 const T=${JSON.stringify(texts('chat.page.'))};
-// Zeichen und Prompts des Themes. Nur Text: per textContent gesetzt, nie als HTML oder CSS. Neue kommen mit der Nachricht der Werkbank.
+// The theme's glyphs and prompts. Text only: set via textContent, never as HTML or CSS. New ones arrive with the workbench's message.
 let TH=${JSON.stringify(clientTheme(theme)).replaceAll('<', '\\u003c')};
 const glyph=(value,fallback)=>typeof value==='string'&&value.length>0&&value.length<=64?value:fallback;
 const frames=()=>{const list=TH?.spinner?.frames;return Array.isArray(list)&&list.length>0?list.slice(0,16).map((frame)=>glyph(frame,'▖')):['▖','▘','▝','▗'];};
@@ -540,10 +539,10 @@ const prompt=(who)=>glyph(TH?.prompt?.[who],who==='claude'?'claude>':'>');
 const markOf=(kind,frame)=>glyph(TH?.marks?.[kind],'['+kind+']').split('{spinner}').join(frame??frames()[0]);
 const bulletOf=(kind)=>glyph(TH?.bullets?.[kind],'▸');
 const treeOf=(kind)=>glyph(TH?.tree?.[kind],kind==='end'?'└':'├');
-const ruleTitle=(title)=>{const line=glyph(TH?.rule?.line,'─');return glyph(TH?.rule?.format,'{line}{line} {title}').split('{title}').join(title).split('{line}').join(line).replace(/\s*$/,'');};
+const ruleTitle=(title)=>{const line=glyph(TH?.rule?.line,'─');return glyph(TH?.rule?.format,'{line}{line} {title}').split('{title}').join(title).split('{line}').join(line).replace(/\\s*$/,'');};
 const marker=(cls,text,data)=>{const span=document.createElement('span');span.className=cls;span.textContent=text;for(const [key,value] of Object.entries(data??{}))span.dataset[key]=value;return span;};
 const whoLine=(who,extra)=>{const line=marker('who '+(who==='claude'?'c':'h'),'');line.append(marker('',prompt(who),{who}));if(extra)line.append(extra);return line;};
-// Alles, was aus dem Theme kommt, neu schreiben: nach einer neuen Nachricht der Werkbank.
+// Rewrite everything that comes from the theme: after a new message from the workbench.
 const paintTheme=()=>{
   for(const node of document.querySelectorAll('[data-who]'))node.textContent=prompt(node.dataset.who);
   for(const node of document.querySelectorAll('[data-mark]'))node.textContent=markOf(node.dataset.mark);
@@ -555,7 +554,7 @@ const paintTheme=()=>{
   const cursor=Number(TH?.prompt?.cursorMs);document.documentElement.style.setProperty('--cursor-ms',(Number.isFinite(cursor)&&cursor>=200&&cursor<=5000?Math.round(cursor):1000)+'ms');
   spin();
 };
-// Spinner: ein Takt fuer alle; bei weniger Bewegung steht das erste Bild.
+// Spinner: one clock for all; with reduced motion the first frame stays.
 let spinTimer=0,spinIndex=0;
 const spinFrame=()=>{const list=frames(),frame=list[spinIndex%list.length],q=cawGlyphQ(frame);for(const node of document.querySelectorAll('[data-spin]'))node.replaceChildren(cawGlyph(frame));
   for(const node of document.querySelectorAll('#status,#toggle,#choices button')){node.classList.toggle('qbp',q!==null);if(q===null){delete node.dataset.q;node.dataset.f=frame;}else{node.dataset.q=q;node.dataset.f='';}}};
@@ -564,8 +563,8 @@ window.cawThemeText=(theme)=>{if(theme&&typeof theme==='object'){TH=theme;paintT
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
 const send=(type,text,checkpoint)=>window.${BINDING}({type,text,checkpoint,nonce:${JSON.stringify(nonce)}});
 const input=document.getElementById('input'),messages=document.getElementById('messages'),thinking=document.getElementById('thinking'),abort=document.getElementById('abort'),sendButton=document.getElementById('send'),mark=document.getElementById('mark');
-// Die Hoehe folgt dem Text, leer dem Platzhalter: Der bricht in einem schmalen Chat um und waere sonst abgeschnitten.
-// Eine Scrollleiste gibt es erst ab der Hoechsthoehe.
+// The height follows the text, or the placeholder when empty: it wraps in a narrow chat and would be cut off otherwise.
+// A scrollbar only appears at the maximum height.
 const fit=()=>{input.style.height='auto';let height=input.scrollHeight;if(input.value===''&&input.placeholder){input.value=input.placeholder;height=input.scrollHeight;input.value='';}
   input.style.height=height+'px';input.classList.toggle('full',height>=160);sendButton.disabled=mark.disabled=input.value.trim()==='';};
 addEventListener('resize',fit);
@@ -577,9 +576,9 @@ input.addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!event.shiftK
 const toggleButton=document.getElementById('toggle');
 const PASS_KEYS=['F1','F2','F3','F4','F6','F7','F8','F10'];
 toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');document.getElementById('toggleText').textContent=T['chat.page.wait'];send('toggle');});
-// F5 im Chat laedt nicht die Werkbank neu, sondern aktualisiert wie dort: Anwendung neu, Zustand wieder hergestellt.
+// F5 in the chat does not reload the workbench but refreshes like there: application reloaded, state restored.
 addEventListener('keydown',(event)=>{if(event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}
-  // Die F-Tasten der Werkbank gelten auch hier: Der Chat reicht sie weiter. F9 und Esc behandelt er selbst, F11 und F12 bleiben beim Browser.
+  // The workbench's F keys apply here too: the chat passes them on. It handles F9 and Esc itself, F11 and F12 stay with the browser.
   else if(PASS_KEYS.includes(event.key)&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();parent.postMessage({caw:'key',key:event.key},'*');}
   else if(event.key==='F9'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();pauseKey();}});
 const pick=document.getElementById('pick'),chip=document.getElementById('chip'),statusBox=document.getElementById('status');let statusText='';
@@ -594,13 +593,13 @@ abort.addEventListener('click',()=>{
   if(stopping)return;
   if(sure){stopping=true;clearTimeout(unsure);abortNo.hidden=true;document.body.classList.remove('arming');abort.disabled=true;document.body.classList.add('stopping');abort.classList.remove('sure');abort.textContent=T['chat.page.aborting'];statusText=T['chat.page.abortingStatus'];statusBox.textContent=statusText;send('abort');return;}
   sure=true;abort.classList.add('sure');abort.textContent=T['chat.page.abortSure'];abortNo.hidden=false;document.body.classList.add('arming');unsure=setTimeout(unarm,4000);});
-// Mitscrollen, solange der Mensch nicht selbst nach oben gescrollt hat. Gemessen wird beim Scrollen, nicht beim Einfuegen:
-// Kommt viel auf einmal, etwa der Verlauf in einem neuen Fenster, stuende ein Scrollen sonst noch aus.
+// Follow the end as long as the human has not scrolled up. Measured on scroll, not on insert:
+// when a lot arrives at once, e.g. the history in a new window, a scroll would otherwise still be pending.
 const down=document.getElementById('down');
 const atEnd=()=>messages.scrollHeight-messages.scrollTop-messages.clientHeight<80;
 let follow=true;
-// Eine Karte (Fehler, Entscheidung, Empfehlung, Plan), die am Ende nicht ganz im Bild waere, zeigt ihren Anfang, nicht ihr Ende:
-// Sonst stuende nur der untere Teil im Bild, sobald darunter die Knoepfe erscheinen. Der Anfang bleibt oben, bis eine neue Nachricht kommt.
+// A card (failure, decision, advice, plan) that would not fit at the end shows its start, not its end:
+// otherwise only its lower part would be visible once the buttons appear below. The start stays on top until a new message arrives.
 let anchor=null;
 const offsetOf=(element)=>element.getBoundingClientRect().top-messages.getBoundingClientRect().top;
 const tall=()=>anchor!==null&&anchor.isConnected&&offsetOf(anchor)+messages.scrollTop-8<messages.scrollHeight-messages.clientHeight-1;
@@ -609,14 +608,14 @@ const toEnd=()=>{if(tall())messages.scrollTop+=offsetOf(anchor)-8;else messages.
 messages.addEventListener('scroll',()=>{follow=atEnd()||pinned();down.classList.toggle('on',!atEnd());if(follow)down.classList.remove('new');});
 down.addEventListener('click',()=>{follow=true;anchor=null;down.classList.remove('on','new');toEnd();});
 const grown=()=>{if(follow)toEnd();else down.classList.add('on','new');};
-// Werden die Knoepfe darunter groesser oder kleiner, schrumpft der Chat: Mitscrollen gilt dann weiter.
+// If the buttons below grow or shrink, the chat area resizes: following continues.
 if(window.ResizeObserver)new ResizeObserver(()=>{if(follow)toEnd();}).observe(messages);
-// Eine neue Karte will entschieden werden: Sie kommt ins Bild, auch wenn der Mensch gerade weiter oben liest.
+// A new card needs a decision: it scrolls into view even if the human is reading further up.
 const place=(element,top=false)=>{messages.insertBefore(element,thinking);anchor=top?element:null;if(top){follow=true;down.classList.remove('new');}grown();};
 let group=null;
 window.addMessage=(who,text,about)=>{
   if(who==='activity'){
-    // Beim Vorfuehren zeigt die offene Liste, dass jeder Klick ankommt.
+    // While demonstrating, the open list shows that every click arrives.
     if(group===null){const details=document.createElement('details');details.className='activity';if(document.body.dataset.state==='showing')details.open=true;details.setAttribute('aria-live','off');const summary=document.createElement('summary');const count=document.createElement('span');const latest=document.createElement('span');latest.className='latest';summary.append(count,latest);const list=document.createElement('ol');details.append(summary,list);group={details,count,latest,list,total:0};place(details);}
     const item=document.createElement('li');item.append(marker('bl',bulletOf('ok'),{bullet:'ok'}),text);group.list.append(item);group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.replaceChildren(marker('bl',bulletOf('ok'),{bullet:'ok'}),text);
     if(follow)toEnd();
@@ -669,21 +668,21 @@ window.addMessage=(who,text,about)=>{
   if(about){const ref=document.createElement('span');ref.className='about';ref.append(marker('tr',treeOf('end'),{tree:'end'}),about);item.append(ref);}item.append(text);place(item);
 };
 const choices=document.getElementById('choices');
-// Nach einem Klick sind alle Knoepfe gesperrt, der gewaehlte zeigt, dass es weitergeht: kein Doppelklick, keine zweite Wahl.
-// Kommen keine neuen Knoepfe (die Wahl war schon ueberholt), gibt die Sperre sie nach 8 s wieder frei.
+// After a click all buttons are locked and the chosen one shows progress: no double click, no second choice.
+// If no new buttons arrive (the choice was already outdated), the lock releases them after 8 s.
 let unlock=0;
 const lockChoices=(chosen)=>{for(const button of choices.querySelectorAll('button')){button.disabled=true;button.setAttribute('aria-disabled','true');}chosen.classList.add('busy');chosen.setAttribute('aria-busy','true');
   clearTimeout(unlock);const current=choices.firstElementChild;unlock=setTimeout(()=>{if(choices.firstElementChild!==current)return;for(const button of choices.querySelectorAll('button')){button.disabled=false;button.removeAttribute('aria-disabled');button.classList.remove('busy');button.removeAttribute('aria-busy');}},8000);};const hint=input.placeholder;
-// Der Knopf, den Strg+Enter ausloest, zeigt das auch.
+// The button that Ctrl+Enter triggers shows it too.
 const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘↵':T['chat.page.ctrlEnter'];toggleButton.querySelector('.key').textContent=KEY;
-// Nach dem Lauf: Bericht und wie es weitergeht.
+// After the run: report and what comes next.
 window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T['chat.page.newRun'],code);}};
 document.getElementById('report').addEventListener('click',()=>send('report',''));
-// Nach der letzten Entscheidung bleibt das Fenster kurz offen: Der Mensch sieht das Ergebnis und schliesst selbst, sonst nach Ablauf.
+// After the last decision the window stays open briefly: the human sees the result and closes it, otherwise it closes on timeout.
 const closeWindow=document.getElementById('closeWindow');let lingerTimer=0;
 closeWindow.addEventListener('click',()=>{clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
 window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
-// Eine Wahl, die etwas verwirft, will ein zweites Mal geklickt werden, wie Abbrechen im Kopf.
+// A choice that discards something needs a second click, like abort in the header.
 const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return false;choice.classList.add('sure');choice.textContent=option.confirm;const no=document.createElement('button');no.type='button';no.className='no';no.textContent=T['chat.page.no'];
   let timer=0;const reset=()=>{clearTimeout(timer);choice.classList.remove('sure');choice.textContent=option.label;no.remove();};no.addEventListener('click',()=>{reset();choice.focus();});choice.after(no);timer=setTimeout(reset,4000);choice.disarm=()=>{clearTimeout(timer);no.remove();};return true;};
 const COMPACT=['discussing','deciding','reviewing'];
@@ -692,24 +691,24 @@ if(state==='showing'&&group)group.details.open=true;
 const list=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
 const buttons=list.map((option)=>{const choice=document.createElement('button');choice.type='button';choice.textContent=option.label;if(option.primary)choice.className=option.big?'primary big':'primary';if(option.big){choice.id='approve';const key=document.createElement('kbd');key.setAttribute('aria-hidden','true');key.textContent=KEY;choice.append(key);}
   choice.addEventListener('click',()=>{if(choice.disabled)return;if(option.confirm&&confirmFirst(choice,option))return;choice.disarm?.();lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id);});return choice;});
-// Kompakt: die Hauptwahl oben, alle anderen nebeneinander in einer Zeile.
+// Compact: the main choice on top, all others side by side in one row.
 const primary=buttons.filter((choice)=>choice.classList.contains('primary')),rest=buttons.filter((choice)=>!choice.classList.contains('primary'));
 if(COMPACT.includes(state)&&rest.length>1){const row=document.createElement('div');row.className='rest';row.append(...rest);choices.replaceChildren(...primary,row);}else choices.replaceChildren(...buttons);
-// Neue Knoepfe bekommen den Fokus, damit Tastatur und Screenreader dort weitermachen; wer gerade tippt, behaelt das Feld.
+// New buttons get focus so keyboard and screen reader continue there; someone typing keeps the field.
 if(buttons.length>0&&document.activeElement!==input)(choices.querySelector('.primary')??choices.querySelector('button')).focus({preventScroll:true});
 const allowed=["paused","asking","showing","planning","discussing","developing"].includes(state);pick.disabled=!allowed;pick.title=allowed?T['chat.page.pickTitle']:T['chat.page.pickDisabled'];if(!allowed)window.setChip(null);document.getElementById('toggleText').textContent=button;};
 input.focus();
-// Kurzbefehle: Strg+Enter (Cmd+Enter) loest den Hauptknopf aus, etwa Freigeben oder Fertig. Esc leert zuerst das Feld, in dem
-// getippt wird; sonst fragt das erste Esc den Abbruch an, erst ein zweites innerhalb von 4 s bestaetigt ihn.
+// Shortcuts: Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. approve or done. Esc first clears the field being typed in;
+// otherwise the first Esc asks to abort and only a second one within 4 s confirms it.
 document.addEventListener('keydown',(event)=>{
   if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&input.value.trim()===''){const main=document.getElementById('approve');if(main&&main.offsetParent!==null&&!main.disabled){event.preventDefault();main.click();}else if(toggleButton.offsetParent!==null&&!toggleButton.disabled){event.preventDefault();toggleButton.click();}}
   else if(event.key==='Escape'&&!pick.classList.contains('on')){
     if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();return;}
     if(abort.offsetParent!==null&&!abort.disabled){event.preventDefault();abort.click();}}
 });
-// Pause per F9: wie der Knopf, wenn er gerade da ist.
+// Pause via F9: like the button, if it is currently shown.
 function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)toggleButton.click();}
-// F9 und Esc aus der Werkbank: nur von ihr, nur diese zwei.
+// F9 and Esc from the workbench: only from it, only these two.
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();
   else if(event.data.key==='Escape'&&!pick.classList.contains('on')&&abort.offsetParent!==null&&!abort.disabled)abort.click();});
@@ -717,14 +716,14 @@ paintTheme();
 ${sourceTag}</script></body></html>`;
 
 /**
- * Verbindet den Chat-Frame der Werkbank mit dem Gespraech. Einen Chat ohne Werkbank gibt es nicht.
- * @param logPath     Mitschrift im Lauf-Ordner, ohne Claudes Log und Aktionen: Die stehen in claude.log
- * @param transcript  Der bisherige Verlauf, wandert mit: Vorfuehrung, Claude und Pruefdurchlauf sind getrennte Browser
- * @param onOpen      Nur fuer Tests: bekommt den Chat-Frame
- * @param onWaiting   bekommt eine Zeile fuers Terminal, sobald der Chat auf den Menschen wartet: einmal je solchem Zustand
+ * Connects the workbench's chat frame to the conversation. There is no chat without a workbench.
+ * @param logPath     transcript in the run folder, without Claude's log and actions: those are in claude.log
+ * @param transcript  the history so far, carried along: demonstration, Claude and verification run are separate browsers
+ * @param onOpen      tests only: receives the chat frame
+ * @param onWaiting   receives a line for the terminal once the chat waits for the human: once per such state
  */
 export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, transcript = [] }) => {
-    // `doc()` ist das Dokument des Chats, der Frame in der Werkbank (nach einem Neuladen ein neuer); `chatWindow` die Werkbank drumherum.
+    // `doc()` is the chat document, the frame in the workbench (a new one after a reload); `chatWindow` is the surrounding workbench.
     const bench = session.workbench ?? null;
     if (bench === null) throw new CawError('chat-failed', t('chat.error.noWorkbench'));
     if (bench.chatOpen) throw new CawError('chat-failed', t('chat.error.alreadyOpen'));
@@ -734,14 +733,14 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     const quiet = (promise) => promise.catch(() => {});
     let picking = false;
     let onPicked = null;
-    // Kennung der zuletzt geschriebenen Chat-Seite, neu bei jedem show().
+    // Token of the chat page written last, new on every show().
     let nonce = null;
     let current = ['running', null];
-    // Der Zustand, fuer den das Terminal zuletzt gemeldet hat, dass das Fenster wartet.
+    // The state for which the terminal last reported that the window is waiting.
     let waitingFor = null;
-    // Der Mensch schliesst das Fenster nach dem Lauf selbst (linger).
+    // The human closes the window after the run (linger).
     let closeWanted = null;
-    // Nach dem Lauf: { report: absoluter Pfad, shown: Pfad fuer Menschen, text, command }.
+    // After the run: { report: absolute path, shown: path for humans, text, command }.
     let next = null;
     const openReport = async () => {
         const page = await chatWindow.context().newPage();
@@ -750,7 +749,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     };
     const render = (state, options) => {
         current = [state, options ?? null];
-        const { text, label, button } = status(state);
+        const { text, label, button } = statusTexts(state);
         return doc().evaluate((args) => window.setStatus(...args), [state, text, label, button, options ?? null]);
     };
     const chat = createChat({
@@ -762,10 +761,10 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         status: (state, options) => {
             quiet(render(state, options));
             if (NEEDS_HUMAN.includes(state)) quiet(chatWindow.bringToFront());
-            // Wer im Terminal wartet, sieht dort, dass das Fenster auf ihn wartet. Erneutes Melden desselben Zustands zaehlt nicht.
+            // Whoever waits in the terminal sees there that the window is waiting. Repeating the same state does not count.
             if (NEEDS_HUMAN.includes(state) && state !== waitingFor) {
                 waitingFor = state;
-                onWaiting?.(t('chat.waiting', { status: status(state).text }));
+                onWaiting?.(t('chat.waiting', { status: statusTexts(state).text }));
             } else if (!NEEDS_HUMAN.includes(state)) waitingFor = null;
             quiet(Promise.resolve(bench.mood?.(RAVEN_ASKS.includes(state) ? 'ask' : 'wait')));
             quiet(Promise.resolve(bench.chatState?.(state)));
@@ -792,14 +791,14 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         await chatWindow.bringToFront();
     };
     await chatWindow.exposeBinding(BINDING, (source, event) => {
-        // In der Werkbank sieht jeder Frame das Binding, auch die Anwendung. Sie darf nie als Mensch sprechen.
-        // Die Anwendung teilt sich den Ursprung mit der Werkbank und kann das iframe des Chats neu laden (srcdoc, location). Der Frame bleibt
-        // dann derselbe, das Binding auch. Nur die Seite, die der Host zuletzt geschrieben hat, kennt die Kennung; der Chat hat einen
-        // undurchsichtigen Ursprung, die Anwendung kann sie nicht lesen.
+        // In the workbench every frame sees the binding, including the application. It must never speak as the human.
+        // The application shares the origin with the workbench and can reload the chat iframe (srcdoc, location). The frame
+        // then stays the same, and so does the binding. Only the page the host wrote last knows the token; the chat has an
+        // opaque origin, so the application cannot read it.
         if (bench !== null && (source.frame !== doc() || event?.nonce !== nonce)) return;
         if (event?.type === 'message') {
             chat.human.message(event.text, { checkpoint: event.checkpoint === true });
-            // Der Rabe nickt: angekommen.
+            // The raven nods: received.
             if (String(event.text ?? '').trim() !== '') bench.nod?.().catch?.(() => {});
             quiet(doc().evaluate(() => window.setChip(null)));
         } else if (event?.type === 'pick') quiet(pick());
@@ -810,7 +809,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();
     });
-    /** Beim Entwickeln: Wer ein mit dem Fadenkreuz gewaehltes Element zusaetzlich bekommt (die Claude-Code-Sitzung). null: niemand. */
+    /** While developing: who additionally receives an element picked with the crosshair (the Claude Code session). null: nobody. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
     const show = async () => {
         nonce = randomBytes(16).toString('hex');
@@ -818,14 +817,14 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         await doc().evaluate((entries) => entries.forEach((entry) => window.addMessage(...entry)), transcript);
         if (next !== null) await doc().evaluate((info) => window.setNext(info), next);
     };
-    /** Der Lauf ist vorbei: Die Karte zeigt den Bericht und den Befehl fuer einen neuen Lauf. */
+    /** The run is over: the card shows the report and the command for a new run. */
     chat.finished = async (info) => {
         next = info;
         await quiet(doc().evaluate((value) => window.setNext(value), info));
     };
     /**
-     * Nach dem Lauf, nach finished und dem Schliessen des Gespraechs: Das Fenster bleibt mit „Fenster schließen“ und Countdown offen.
-     * @returns sobald der Mensch schliesst oder die Zeit um ist
+     * After the run, after finished and closing the conversation: the window stays open with "close window" and a countdown.
+     * @returns once the human closes it or the time is up
      */
     chat.linger = async (ms) => {
         const clicked = new Promise((resolve) => { closeWanted = resolve; });
@@ -839,13 +838,13 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     };
     await show();
     await render('running');
-    // Die Werkbank wurde neu geladen: Verlauf und Stand kommen zurueck. Lief gerade der Test, ist er nicht mehr verlaesslich.
-    // Beim Vorfuehren gehoert das Neuladen zum gezeigten Weg und landet als Hinweis in der Aufnahme.
+    // The workbench was reloaded: history and state come back. If the test was running, it is no longer reliable.
+    // While demonstrating, the reload is part of the shown path and ends up as a hint in the recording.
     bench.onReload?.(async ({ human = true } = {}) => {
         if (!chat.available()) return;
         await show();
         await render(...current);
-        // Die Anwendung hat das oberste Fenster selbst navigiert: Das ist ihr Verhalten, der Lauf geht weiter.
+        // The application navigated the top window itself: that is its behaviour, the run continues.
         if (!human || current[0] === 'developing') return;
         if (SHOWING_STATES.includes(current[0])) {
             chat.notice(t('chat.reload.showing'));
@@ -854,7 +853,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         chat.notice(t('chat.reload.testing'));
         chat.human.abort();
     });
-    // Ohne den Chat gibt es keine Freigabe und keine Entscheidung mehr. Wer ihn schliesst, bricht ab.
+    // Without the chat there is no approval and no decision. Closing it aborts.
     chatWindow.on('close', () => {
         if (!chat.available()) return;
         chat.human.closed();

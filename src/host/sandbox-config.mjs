@@ -10,7 +10,7 @@ import { RUN_DIR } from '../shared/names.mjs';
 
 export const templatePath = (name) => fileURLToPath(new URL(`../../templates/${name}`, import.meta.url));
 
-/** Devcontainer-Dateien sind JSONC: Kommentare und nachgestellte Kommata, aber nie innerhalb von Strings. */
+/** Devcontainer files are JSONC: comments and trailing commas, but never inside strings. */
 export const parseJsonc = (text) => {
     const skipTrivia = (from) => {
         let i = from;
@@ -48,12 +48,12 @@ export const parseJsonc = (text) => {
     return JSON.parse(out);
 };
 
-/** Aus der Devcontainer-Config zaehlt nur das Image, damit die Sandbox dieselben Werkzeuge hat. */
+/** Only the image counts from the devcontainer config, so the sandbox has the same tools. */
 export const projectImage = (base) => {
     if (typeof base.image !== 'string' || base.image === '') {
         throw new CawError('devcontainer-unsupported', t('session.sandbox.noImage'));
     }
-    // Wie sandboxImage: Das Image landet in FROM {{image}}. Ein Zeilenumbruch fuegte sonst eigene Zeilen ins Dockerfile ein.
+    // As in sandboxImage: the image ends up in FROM {{image}}. A line break would otherwise inject lines into the Dockerfile.
     if (!/^[\w./:@-]+$/.test(base.image)) throw new CawError('devcontainer-unsupported', t('session.sandbox.badImage', { image: JSON.stringify(base.image) }));
     return base.image;
 };
@@ -62,16 +62,16 @@ export const renderDockerfile = ({ image, user }) => readFileSync(templatePath('
     .replaceAll('{{image}}', image)
     .replaceAll('{{user}}', user);
 
-/** Der Container spricht nur mit der Anthropic-API. Anwendung und Browser liegen auf dem Host. */
+/** The container only talks to the Anthropic API. Application and browser live on the host. */
 export const CONTAINER_HOSTS = ['api.anthropic.com'];
 
-// Am Wurzelordner: Claude-Konfiguration, Worktrees, fruehere Laeufe und gespeicherte Sitzungen (Cookies des Testkontos).
+// At the root: Claude configuration, worktrees, earlier runs and saved sessions (cookies of the test account).
 const MASKED_DIRS = ['.claude', '.worktrees', RUN_DIR, AUTH_DIR];
-// In jeder Tiefe: Git-Daten (Ordner oder Datei bei Submodulen und Worktrees), dort koennen Zugangsdaten in Remotes stehen.
+// At any depth: Git data (folder, or file for submodules and worktrees); remotes may contain credentials.
 const MASKED_ANYWHERE = new Set(['.git']);
-// Nicht durchsucht: gross und ohne eigene Geheimnisse des Projekts.
+// Not searched: large and without the project's own secrets.
 const SKIPPED_DIRS = new Set(['node_modules', '.pnpm-store', '.turbo', RUN_DIR]);
-// Windows unterscheidet keine Gross- und Kleinschreibung: .ENV ist dieselbe Datei wie .env.
+// Windows is case-insensitive: .ENV is the same file as .env.
 const isSecretFile = (name) => {
     const lower = name.toLowerCase();
     if (/^\.env(\..+)?$/.test(lower)) return lower !== '.env.example';
@@ -79,9 +79,9 @@ const isSecretFile = (name) => {
 };
 
 /**
- * Was der Agent trotz Read-only nicht sehen soll: Git-Daten, lokale Claude-Konfiguration, fruehere Laeufe, gespeicherte Sitzungen,
- * alle .env-Dateien (auch die Testkonten) und uebliche Schluesseldateien. Die Anmeldung macht der Host. Docker braucht vorhandene
- * Ziele. Dateien verdeckt eine leere Datei vom Host, denn /dev/null als Quelle versteht nicht jeder Docker-Weg.
+ * What the agent must not see despite read-only access: Git data, local Claude configuration, earlier runs, saved sessions,
+ * all .env files (test accounts included) and common key files. The host does the login. Docker needs existing
+ * targets. Files are covered by an empty host file, because not every Docker way accepts /dev/null as a source.
  */
 export const maskArgs = (root, containerRoot, emptyFile) => {
     const hideFile = (target) => ['--mount', `type=bind,source=${emptyFile},target=${target},readonly`];
@@ -113,15 +113,15 @@ export const maskArgs = (root, containerRoot, emptyFile) => {
     return args;
 };
 
-/** `host*` ist die Quelle aus Sicht von Docker, `container*` das Ziel. Beschreibbar ist nur der Agent-Ordner dieses Laufs. */
+/** `host*` is the source as Docker sees it, `container*` the target. Only this run's agent folder is writable. */
 export const sandboxRunArgs = ({ hostRoot, containerRoot, image, masks, name, hostAgentDir, containerAgentDir, command, color = false }) => [
     'run', '--rm', '--init', '--name', name,
-    // NET_ADMIN braucht nur die Firewall beim Start; der Einstiegspunkt gibt danach alle Rechte ab.
+    // Only the firewall needs NET_ADMIN at start; the entrypoint drops all capabilities afterwards.
     '--cap-add=NET_ADMIN', '--cap-add=NET_RAW', '--security-opt=no-new-privileges',
     '-e', 'CLAUDE_CODE_OAUTH_TOKEN',
     '-e', `CAW_ALLOWED_HOSTS=${CONTAINER_HOSTS.join(' ')}`,
     '-e', `CAW_AGENT_DIR=${containerAgentDir}`,
-    // Der Container hat kein Terminal und kann selbst nicht sehen, ob Farbe moeglich ist.
+    // The container has no terminal and cannot tell by itself whether colour is possible.
     ...(color ? ['-e', 'CAW_COLOR=1'] : []),
     '--mount', `type=bind,source=${hostRoot},target=${containerRoot},readonly`,
     ...masks,
@@ -135,7 +135,7 @@ const filesBelow = (path) => (statSync(path).isDirectory()
     ? readdirSync(path).sort().flatMap((name) => filesBelow(join(path, name)))
     : [path]);
 
-/** Neu gebaut wird nur, wenn sich Image oder Tool aendern. Zeilenenden zaehlen nicht: WSL und Windows teilen sich das Image. */
+/** Rebuild only when the image or the tool changes. Line endings do not count: WSL and Windows share the image. */
 export const toolFingerprint = (dir, parts, image) => {
     const hash = createHash('sha256').update(image);
     for (const file of parts.flatMap((part) => filesBelow(join(dir, part)))) {

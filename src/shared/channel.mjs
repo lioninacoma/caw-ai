@@ -1,5 +1,5 @@
-// Einzige Verbindung zwischen Container und Browser: Befehle als Dateien in einem geteilten Ordner.
-// Der Container bekommt so weder Netz zum Host noch CDP. Alles aus dem Ordner ist nicht vertrauenswuerdig.
+// The only link between container and browser: commands as files in a shared folder.
+// That way the container gets neither network access to the host nor CDP. Everything in the folder is untrusted.
 
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,9 +12,9 @@ const MAX_COMMAND_BYTES = 1024 * 1024;
 const RENAME_RETRIES = 10;
 const CLIENT_POLL_MS = 30;
 
-const sleep = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
+const sleep = (ms) => new Promise((resolveSleep) => { setTimeout(resolveSleep, ms); });
 
-/** Windows-Virenscanner halten frische Dateien kurz fest, darum einige Versuche. */
+/** Windows virus scanners briefly lock fresh files, hence a few retries. */
 const renameWithRetry = async (from, to) => {
     for (let attempt = 0; ; attempt += 1) {
         try {
@@ -27,21 +27,21 @@ const renameWithRetry = async (from, to) => {
     }
 };
 
-/** Neu anlegen statt ueberschreiben: Eine vorbereitete Verknuepfung im Ordner darf nie Schreibziel werden. */
+/** Create instead of overwrite: a planted link in the folder must never become a write target. */
 const writeAtomic = async (dir, name, content) => {
     const temporary = join(dir, `tmp-${randomBytes(6).toString('hex')}`);
     writeFileSync(temporary, content, { flag: 'wx' });
     await renameWithRetry(temporary, join(dir, name));
 };
 
-/** Containerseite: schickt einen Befehl und wartet auf die Antwort. */
+/** Container side: sends a command and waits for the answer. */
 export const sendCommand = async (dir, command, { timeoutMs = 360_000 } = {}) => {
     const id = randomBytes(8).toString('hex');
     await writeAtomic(dir, `cmd-${id}.json`, JSON.stringify(command));
     const responseFile = join(dir, `res-${id}.json`);
     const started = Date.now();
     while (!existsSync(responseFile)) {
-        if (Date.now() - started > timeoutMs) throw new CawError('no-session', 'Der Browser antwortet nicht.');
+        if (Date.now() - started > timeoutMs) throw new CawError('no-session', 'The browser does not respond.');
         await sleep(CLIENT_POLL_MS);
     }
     const answer = JSON.parse(readFileSync(responseFile, 'utf8'));
@@ -52,19 +52,19 @@ export const sendCommand = async (dir, command, { timeoutMs = 360_000 } = {}) =>
 
 const readCommand = (file) => {
     const stat = lstatSync(file);
-    if (!stat.isFile() || stat.size > MAX_COMMAND_BYTES) throw new CawError('command-invalid', 'Kein gültiger Befehl.');
+    if (!stat.isFile() || stat.size > MAX_COMMAND_BYTES) throw new CawError('command-invalid', 'Invalid command.');
     try {
         return JSON.parse(readFileSync(file, 'utf8'));
     } catch {
-        // Bewusst ohne Details: Die Meldung von JSON.parse zitiert den Dateiinhalt.
-        throw new CawError('command-invalid', 'Kein gültiger Befehl.');
+        // Deliberately without details: the JSON.parse message quotes the file content.
+        throw new CawError('command-invalid', 'Invalid command.');
     }
 };
 
 /**
- * Hostseite: arbeitet alle wartenden Befehle der Reihe nach ab. Was der Container im Ordner anlegt, darf
- * den Host nie aus dem Tritt bringen: Einen in WSL angelegten Link darf Windows z. B. nicht einmal
- * ansehen oder loeschen. Solche Eintraege merkt sich `ignored`, sie werden nur einmal beantwortet.
+ * Host side: processes all pending commands in order. Whatever the container creates in the folder must
+ * never trip up the host: Windows may not even stat or delete a link created in WSL, for example.
+ * Such entries are remembered in `ignored` and answered only once.
  */
 export const pollChannel = async (dir, handler, ignored = new Set()) => {
     mkdirSync(dir, { recursive: true });

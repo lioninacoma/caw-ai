@@ -1,10 +1,10 @@
-// Text oder Muster: Wo sich ein Inhalt in jedem Lauf aendert (Pruefsumme, Uhrzeit, ein Zaehler im Namen eines Knopfs), steht statt des
-// festen Texts `{pattern: "<regulaerer Ausdruck>"}`. Das Muster gilt wie bei consoleIgnore ohne Flags und muss nicht den ganzen Text
-// treffen; wer das will, setzt ^ und $.
+// Text or pattern: where content changes on every run (checksum, time, a counter in a button label), a test states
+// `{pattern: "<regular expression>"}` instead of the fixed text. As with consoleIgnore, the pattern takes no flags and need not
+// match the whole text; use ^ and $ for that.
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Ein Muster in der Form `{pattern: "..."}`, ohne weitere Felder, mit einem gueltigen Ausdruck. */
+/** A pattern of the form `{pattern: "..."}`, with no other fields and a valid expression. */
 export const isPattern = (value) => {
     if (!isObject(value) || Object.keys(value).length !== 1 || typeof value.pattern !== 'string' || value.pattern === '') return false;
     try {
@@ -15,10 +15,10 @@ export const isPattern = (value) => {
     }
 };
 
-/** Die Kurzform fuer Meldungen: /Ausdruck/. */
+/** Short form for messages: /expression/. */
 export const patternLabel = (value) => (isPattern(value) ? `/${value.pattern}/` : String(value));
 
-/** Trifft ein Text einen der Eintraege? Feste Texte zaehlen nur ganz, Muster per RegExp. */
+/** Does a text match one of the entries? Fixed texts must match exactly, patterns via RegExp. */
 export const textMatcher = (entries = []) => {
     const fixed = new Set(entries.filter((entry) => typeof entry === 'string'));
     const patterns = entries.filter(isPattern).map(({ pattern }) => new RegExp(pattern));

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 import { detectLanguage, language, setLanguage, t } from '../src/shared/i18n.mjs';
 
-test('detectLanguage: CAW_LANG, dann Config, dann LANG, dann System, sonst Englisch', () => {
+test('detectLanguage: CAW_LANG, then config, then LANG, then system, else English', () => {
     const root = mkdtempSync(join(tmpdir(), 'caw-i18n-'));
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({ language: 'de' }));
     assert.equal(detectLanguage({ env: { CAW_LANG: 'en' }, root }), 'en');
@@ -17,7 +17,7 @@ test('detectLanguage: CAW_LANG, dann Config, dann LANG, dann System, sonst Engli
     assert.equal(detectLanguage({ env: {}, system: () => { throw new Error('x'); } }), 'en');
 });
 
-test('t: Platzhalter, unbekannter Schluessel bleibt stehen, setLanguage faellt auf Englisch', () => {
+test('t: placeholders, an unknown key is returned as is, setLanguage falls back to English', () => {
     const before = language();
     assert.equal(setLanguage('fr'), 'en');
     assert.equal(t('gibt.es.nicht', { a: 1 }), 'gibt.es.nicht');

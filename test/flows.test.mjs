@@ -16,7 +16,7 @@ const failing = (id = 'S2', extra = {}) => ({ exitCode: EXIT.fail, verdict: { st
 const nothing = { exitCode: EXIT.fail, verdict: { status: 'fail', reason: 'kaputt.' } };
 const repaired = (extra = {}) => ({ ...pass, candidate: { ...spec, repaired: true }, fresh: [], ...extra });
 
-/** Spielt die Ablaeufe ohne Browser durch: Jede Antwort kommt der Reihe nach, der Mensch waehlt der Reihe nach aus `answers`. */
+/** Runs the flows without a browser: outcomes come in order, the human picks in order from `answers`. */
 const harness = ({ outcomes, answers = ['adopt'] }) => {
     const calls = [];
     const adopted = [];
@@ -29,7 +29,7 @@ const harness = ({ outcomes, answers = ['adopt'] }) => {
     const pick = (kind, text, options, card) => {
         const ids = options.map(({ id }) => id);
         questions.push({ kind, text, options: ids, labels: options.map(({ label }) => label), card, confirm: options.map(({ confirm }) => confirm) });
-        // Eine Nachricht steht als { message } in den Antworten und geht nur an discuss.
+        // A message appears as { message } in the answers and only goes to discuss.
         const wish = wishes.find((candidate) => (typeof candidate === 'object' ? kind === 'discussing' : ids.includes(candidate)));
         if (wish !== undefined) wishes.splice(wishes.indexOf(wish), 1);
         return wish ?? ids.at(-1);
@@ -49,9 +49,9 @@ const harness = ({ outcomes, answers = ['adopt'] }) => {
         questions,
         progress,
         notices,
-        // Was conclude dem Lauf zurueckgibt: { next } oeffnet ein neues Fenster, { outcome } ist die letzte Zeile im Chat.
+        // What conclude returns to the run: { next } opens a new window, { outcome } is the last line in the chat.
         said,
-        // `concluded` in einem Ergebnis geht nur an conclude, etwa talk oder repairHere.
+        // `concluded` in an outcome only goes to conclude, e.g. talk or repairHere.
         execute: async ({ conclude, ...call }) => {
             calls.push(call);
             const { concluded = {}, ...outcome } = queue.shift();
@@ -66,7 +66,7 @@ const harness = ({ outcomes, answers = ['adopt'] }) => {
     };
 };
 
-test('Aufnahme: Bestanden und übernommen schreibt den ganzen Plan', async () => {
+test('Recording: passed and adopted writes the whole plan', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, pass] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.pass);
     assert.equal(h.calls[0].sandbox, 's');
@@ -76,14 +76,14 @@ test('Aufnahme: Bestanden und übernommen schreibt den ganzen Plan', async () =>
     assert.deepEqual(h.questions.map(({ kind, options }) => [kind, options]), [['deciding', ['adopt', 'discard']]]);
 });
 
-test('Aufnahme: Verwerfen lässt alles, wie es ist', async () => {
+test('Recording: discarding leaves everything as it is', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, pass], answers: ['discard'] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.pass);
     assert.deepEqual(h.adopted, []);
     assert.deepEqual(h.said, [{ next: 'check' }, { outcome: 'Verworfen. Der Testplan bleibt unverändert.' }]);
 });
 
-test('Aufnahme: Die Entscheidung ist eine Karte, Übernehmen nennt die Schritte und danach die Datei', async () => {
+test('Recording: the decision is a card; adopt names the steps and then the file', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, pass] });
     await recordFlow({ sandbox: 's', ...h });
     const [decision] = h.questions;
@@ -91,11 +91,11 @@ test('Aufnahme: Die Entscheidung ist eine Karte, Übernehmen nennt die Schritte 
     assert.match(decision.card.facts[0], /ganze Testplan/);
     assert.equal(decision.card.question, 'Soll das der neue Testplan werden?');
     assert.deepEqual(decision.labels, [`Testplan übernehmen (${spec.steps.length} Schritte)`, 'Entwurf verwerfen']);
-    assert.deepEqual(decision.confirm, [undefined, 'Wirklich verwerfen?'], 'nur Verwerfen fragt nach');
+    assert.deepEqual(decision.confirm, [undefined, 'Wirklich verwerfen?'], 'only discard asks for confirmation');
     assert.deepEqual(h.said.at(-1), { outcome: 'Gespeichert: caw/tests/t.yaml' });
 });
 
-test('Aufnahme: Fenster zu bei der Entscheidung heisst nicht übernehmen', async () => {
+test('Recording: closing the window at the decision means not adopting', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, pass] });
     const execute = async ({ conclude, ...call }) => {
         const next = await h.execute(call);
@@ -106,7 +106,7 @@ test('Aufnahme: Fenster zu bei der Entscheidung heisst nicht übernehmen', async
     assert.deepEqual(h.adopted, []);
 });
 
-test('Aufnahme: Claude liefert nichts, Grund steht im Chat, kein Prüfdurchlauf', async () => {
+test('Recording: Claude delivers nothing, the reason is in the chat, no check run', async () => {
     const h = harness({ outcomes: [nothing] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.fail);
     assert.equal(h.calls.length, 1);
@@ -115,19 +115,19 @@ test('Aufnahme: Claude liefert nichts, Grund steht im Chat, kein Prüfdurchlauf'
     assert.deepEqual(h.questions[0].options, ['close']);
 });
 
-test('Aufnahme: Scheitert der Prüfdurchlauf, wird genau der Schritt angeboten, auch auf dem Entwurf', async () => {
+test('Recording: if the check run fails, exactly that step is offered, also on the draft', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, failing('S2'), repaired(), pass], answers: ['fix', 'adopt'] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.pass);
     assert.match(h.questions[0].text, /^S2 ist gescheitert: weg\. Beheben beginnt in einem frischen Browser mit den Schritten davor\.$/);
     assert.deepEqual(h.questions[0].options, ['fix', 'close']);
     assert.equal(h.questions[0].kind, 'discussing');
     assert.deepEqual(h.calls[2].repair, { id: 'S2', reason: 'weg.' });
-    assert.equal(h.calls[2].spec, spec, 'Repariert wird der Entwurf');
-    assert.equal(h.adopted[0].only, undefined, 'Ein Entwurf wird als Ganzes übernommen');
+    assert.equal(h.calls[2].spec, spec, 'the draft is repaired');
+    assert.equal(h.adopted[0].only, undefined, 'a draft is adopted as a whole');
     assert.equal(h.adopted[0].draft.repaired, true);
 });
 
-test('Aufnahme: Derselbe Fehler nach dem Beheben wird benannt, Beenden ist dann der Hauptweg', async () => {
+test('Recording: the same failure after fixing is named, closing is then the main path', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, failing('S2'), repaired(), failing('S2')], answers: ['fix', 'close'] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.fail);
     assert.doesNotMatch(h.questions[0].text, /derselbe Fehler/);
@@ -136,13 +136,13 @@ test('Aufnahme: Derselbe Fehler nach dem Beheben wird benannt, Beenden ist dann 
     assert.deepEqual(h.adopted, []);
 });
 
-test('Aufnahme: Schliessen beim Angebot lässt den Testplan unverändert', async () => {
+test('Recording: closing at the offer leaves the test plan unchanged', async () => {
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, failing('S2')], answers: ['close'] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.fail);
     assert.deepEqual(h.adopted, []);
 });
 
-test('Beheben: Nur dieser Schritt wird geschrieben, im Prüfdurchlauf gescheitert wird der andere angeboten', async () => {
+test('Fix: only this step is written; if another fails in the check run, that one is offered', async () => {
     const h = harness({ outcomes: [repaired(), failing('S1'), repaired(), pass], answers: ['fix', 'adopt'] });
     assert.equal(await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Grund' }, sandbox: 's', ...h }), EXIT.pass);
     assert.deepEqual(h.calls.filter(({ repair }) => repair).map(({ repair }) => repair.id), ['S2', 'S1']);
@@ -150,21 +150,21 @@ test('Beheben: Nur dieser Schritt wird geschrieben, im Prüfdurchlauf gescheiter
     assert.match(h.calls[1].note, /S2 wurde behoben, Anlass: Grund/);
 });
 
-test('Beheben: Scheitert ein Schritt davor, wird der angeboten', async () => {
+test('Fix: if a step before fails, that one is offered', async () => {
     const h = harness({ outcomes: [failing('S1'), repaired(), pass], answers: ['fix', 'adopt'] });
     assert.equal(await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Grund' }, sandbox: 's', ...h }), EXIT.pass);
     assert.equal(h.calls[1].repair.id, 'S1');
     assert.deepEqual([...h.adopted[0].only], ['S1']);
 });
 
-test('Beheben: Claude schafft es nicht, der Testplan bleibt', async () => {
+test('Fix: Claude does not make it, the test plan stays', async () => {
     const h = harness({ outcomes: [nothing] });
     assert.equal(await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Grund' }, sandbox: 's', ...h }), EXIT.fail);
     assert.match(h.questions[0].text, /Für S2 ist keine neue Aufzeichnung entstanden/);
     assert.deepEqual(h.adopted, []);
 });
 
-test('Beheben: Entscheidung nennt geändertes Ergebnis, neue Meldungen und was noch veraltet ist', async () => {
+test('Fix: the decision names a changed result, new messages and what is still stale', async () => {
     const stale = { ...spec, steps: [spec.steps[0], { ...spec.steps[1], do: 'von Hand' }] };
     const h = harness({
         outcomes: [{ ...pass, candidate: stale, fresh: ['Sicher?'], expectChange: { id: 'S1', before: 'alt', after: 'neu' } }, pass],
@@ -178,9 +178,9 @@ test('Beheben: Entscheidung nennt geändertes Ergebnis, neue Meldungen und was n
     assert.match(h.calls[1].note, /Erwartet vorher: alt/);
 });
 
-test('Testlauf: Bestanden meldet der offene Chat nur, ohne Docker, ohne Warten, und das Fenster geht wie gewünscht', async () => {
+test('Test run: a pass is only announced in the open chat, without Docker, without waiting, and the window goes as requested', async () => {
     const h = harness({ outcomes: [{ ...pass, verdict: { status: 'pass', warnings: [{ text: 't.getKey.', origin: 'x.js' }] } }] });
-    const openSandbox = async () => assert.fail('Claude wird nicht gebraucht');
+    const openSandbox = async () => assert.fail('Claude is not needed');
     assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox, ...h }), EXIT.pass);
     assert.deepEqual(h.questions, []);
     assert.deepEqual(h.notices, ['Der Lauf hat bestanden. Warnungen: t.getKey (x.js).']);
@@ -189,11 +189,11 @@ test('Testlauf: Bestanden meldet der offene Chat nur, ohne Docker, ohne Warten, 
     assert.equal(h.calls[0].replay.until, undefined);
 });
 
-test('Testlauf: Ein grüner Lauf trägt fehlende Vergleichswerte ein, ohne Claude; ohne Chat bleibt die Datei', async () => {
+test('Test run: a green run fills in missing baselines without Claude; without a chat the file stays', async () => {
     const network = [{ name: 'GET /a', status: 200, ms: 40 }];
     const baselines = new Map([['S1', network]]);
     const h = harness({ outcomes: [{ ...pass, baselines }] });
-    assert.equal(await runFlow({ spec, handover: false, canFix: true, fillBaselines: true, openSandbox: async () => assert.fail('kein Claude'), ...h }), EXIT.pass);
+    assert.equal(await runFlow({ spec, handover: false, canFix: true, fillBaselines: true, openSandbox: async () => assert.fail('no Claude'), ...h }), EXIT.pass);
     assert.match(h.notices[0], /^Der Lauf hat bestanden\. Vergleichswerte für S1 aufgezeichnet/);
     assert.equal(h.adopted.length, 1);
     assert.deepEqual([...h.adopted[0].only], ['S1']);
@@ -206,7 +206,7 @@ test('Testlauf: Ein grüner Lauf trägt fehlende Vergleichswerte ein, ohne Claud
     assert.deepEqual(quiet.adopted, []);
 });
 
-test('Neu aufnehmen: Ein nicht gescheiterter Schritt heisst so auf der Karte, im Auftrag und im Prüfdurchlauf', async () => {
+test('Re-record: a step that did not fail is called that on the card, in the task and in the check run', async () => {
     const h = harness({ outcomes: [repaired(), pass] });
     await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Wunsch', rerecord: true }, sandbox: 's', ...h });
     assert.equal(h.calls[0].repair.rerecord, true);
@@ -221,17 +221,17 @@ test('Neu aufnehmen: Ein nicht gescheiterter Schritt heisst so auf der Karte, im
     assert.equal(samePlanStep({ ...step, note: '' }, step), true);
 });
 
-test('Testlauf: Nach einer Änderung an der Anwendung gibt es Erneut testen statt Schritt beheben', async () => {
+test('Test run: after a change to the app there is "test again" instead of "fix step"', async () => {
     const advice = { spec, touched: [], stale: [], files: ['src/app.js'], notes: false };
     const h = harness({ outcomes: [{ ...failing('S2'), concluded: { flawed: true, advise: async () => advice } }, pass], answers: ['rerun'] });
     const code = await runFlow({ spec, handover: true, canFix: true, advise: true, openSandbox: async () => 's', ...h });
     assert.equal(code, EXIT.pass);
-    assert.equal(h.calls.length, 2, 'Ein zweiter Lauf mit der geänderten Anwendung');
-    assert.equal(h.calls[0].handover(), false, 'Das Fenster geht erst nach dem neuen Lauf an den Menschen');
-    assert.deepEqual(h.questions.map(({ options }) => options), [['rerun', 'close']], 'Kein Schritt beheben');
+    assert.equal(h.calls.length, 2, 'a second run with the changed app');
+    assert.equal(h.calls[0].handover(), false, 'the window only goes to the human after the new run');
+    assert.deepEqual(h.questions.map(({ options }) => options), [['rerun', 'close']], 'no fix step');
     assert.match(h.questions[0].text, /die Änderung an der Anwendung \(src\/app\.js\) ist übernommen/);
 
-    // Nur die Config übernommen, die Änderung am Code abgelehnt: Dann sagt der Chat genau das.
+    // Only the config adopted, the code change rejected: then the chat says exactly that.
     const onlyConfig = harness({ outcomes: [{ ...failing('S2'), concluded: { flawed: true, advise: async () => ({ ...advice, files: ['caw.config.json'] }) } }], answers: ['close'] });
     await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', ...onlyConfig });
     assert.match(onlyConfig.questions[0].text, /die Änderung an caw\.config\.json ist übernommen, die Anwendung ist unverändert/);
@@ -242,36 +242,36 @@ test('Testlauf: Nach einer Änderung an der Anwendung gibt es Erneut testen stat
     assert.equal(closed.calls.length, 1);
 });
 
-test('Testlauf: Ohne --advise sucht Claude die Ursache auf Klick, bei einem Fehler der Anwendung als Hauptknopf', async () => {
+test('Test run: without --advise Claude looks for the cause on click, as the main button for an app failure', async () => {
     const advice = { spec, touched: [], stale: [], files: ['src/app.js'], notes: false };
     let advised = 0;
     const app = { side: 'app', text: 'Einschätzung: Fehler der Anwendung (eindeutig).', findings: ['HTTP 500.'] };
     const concluded = { flawed: true, advise: async () => { advised += 1; return advice; } };
     const h = harness({ outcomes: [{ ...failing('S2', { diagnosis: app }), concluded }, pass], answers: ['ask', 'rerun'] });
     assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...h }), EXIT.pass);
-    assert.equal(advised, 1, 'Claude erst nach dem Klick');
+    assert.equal(advised, 1, 'Claude only after the click');
     assert.deepEqual(h.questions.map(({ options }) => options), [['ask', 'fix', 'close'], ['rerun', 'close']]);
     assert.equal(h.calls.length, 2);
 
-    // Ohne Einschaetzung "Anwendung" bleibt Beheben vorn, Fragen geht trotzdem.
+    // Without the "app" assessment, fix stays first; asking still works.
     const other = harness({ outcomes: [failing('S2')], answers: ['close'] });
     await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...other });
     assert.deepEqual(other.questions[0].options, ['fix', 'ask', 'close']);
 
-    // Mit --advise hat Claude schon empfohlen: kein zweites Mal fragen.
+    // With --advise Claude already advised: do not ask a second time.
     const fixed = harness({ outcomes: [{ ...failing('S2', { diagnosis: app }), concluded: { flawed: true, advise: async () => null } }], answers: ['close'] });
     await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', ...fixed });
     assert.deepEqual(fixed.questions[0].options, ['fix', 'close']);
 });
 
-test('Testlauf: Bis zu einem Schritt', async () => {
+test('Test run: up to a step', async () => {
     const h = harness({ outcomes: [pass] });
     await runFlow({ spec, until: 'S1', handover: true, canFix: true, openSandbox: async () => 's', ...h });
     assert.equal(h.calls[0].replay.until, 'S1');
     assert.deepEqual(h.calls[0].replay.steps.map(({ action }) => action), ['reload', 'check']);
 });
 
-test('Testlauf: Schritt gescheitert, ohne Klick startet nichts', async () => {
+test('Test run: step failed, nothing starts without a click', async () => {
     const h = harness({ outcomes: [failing('S2')], answers: ['close'] });
     let opened = 0;
     assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => { opened += 1; return 's'; }, ...h }), EXIT.fail);
@@ -279,7 +279,7 @@ test('Testlauf: Schritt gescheitert, ohne Klick startet nichts', async () => {
     assert.equal(h.calls.length, 1);
 });
 
-test('Testlauf: Klick auf Beheben öffnet erst dann die Sandbox und übergibt das Fenster nicht', async () => {
+test('Test run: clicking fix only then opens the sandbox and does not hand over the window', async () => {
     const h = harness({ outcomes: [failing('S2'), repaired(), pass], answers: ['fix', 'adopt'] });
     let opened = 0;
     assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox: async () => { opened += 1; return 's'; }, ...h }), EXIT.pass);
@@ -289,38 +289,38 @@ test('Testlauf: Klick auf Beheben öffnet erst dann die Sandbox und übergibt da
     assert.equal(h.calls[0].handover(), false);
 });
 
-test('Testlauf: Beheben und dann Verwerfen endet mit dem ursprünglichen Fehlschlag', async () => {
+test('Test run: fix and then discard ends with the original failure', async () => {
     const h = harness({ outcomes: [failing('S2'), repaired(), pass], answers: ['fix', 'discard'] });
     assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...h }), EXIT.fail);
     assert.deepEqual(h.adopted, []);
 });
 
-test('Testlauf: Harter Fehler bekommt das Angebot mit Hinweis auf die Anwendung', async () => {
+test('Test run: a hard failure gets the offer with a hint at the app', async () => {
     const h = harness({ outcomes: [failing('S2', { suspect: true })], answers: ['close'] });
     await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...h });
     assert.match(h.questions[0].text, /Fehler der Anwendung/);
     assert.deepEqual(h.questions[0].options, ['fix', 'ask', 'close']);
 });
 
-test('Testlauf: Ohne Docker oder Token bleibt der Fehlschlag, der Grund steht im Chat', async () => {
+test('Test run: without Docker or token the failure stays, the reason is in the chat', async () => {
     const h = harness({ outcomes: [failing('S2')], answers: ['fix'] });
     const openSandbox = async () => { throw new CawError('token-missing', 'kein Token'); };
     assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox, ...h }), EXIT.fail);
     assert.match(h.questions[1].text, /Beheben geht gerade nicht: kein Token/);
     assert.equal(h.calls.length, 1);
-    assert.equal(h.calls[0].handover(), true, 'Ohne Beheben bekommt der Mensch sein Fenster');
+    assert.equal(h.calls[0].handover(), true, 'without a fix the human gets their window');
 });
 
-test('Testlauf ohne Terminal oder auf höherer Stufe: Kein Angebot, kein Chat, nur der Hinweis', async () => {
+test('Test run without terminal or on a higher stage: no offer, no chat, only the hint', async () => {
     const h = harness({ outcomes: [failing('S2')] });
     const hints = [];
-    assert.equal(await runFlow({ spec, handover: false, canFix: false, openSandbox: async () => assert.fail('nie'), hint: (failed) => hints.push(failed.id), ...h }), EXIT.fail);
+    assert.equal(await runFlow({ spec, handover: false, canFix: false, openSandbox: async () => assert.fail('never'), hint: (failed) => hints.push(failed.id), ...h }), EXIT.fail);
     assert.equal(h.calls[0].testing, undefined);
     assert.deepEqual(h.questions, []);
     assert.deepEqual(hints, ['S2']);
 });
 
-test('Testlauf: Erst die Nachricht startet Claude, weitere gehen ins selbe Gespräch, Schliessen beendet es', async () => {
+test('Test run: only the message starts Claude, further ones go into the same conversation, closing ends it', async () => {
     const talked = [];
     const talk = ({ sandbox }, message) => {
         talked.push(['start', sandbox, message]);
@@ -331,27 +331,27 @@ test('Testlauf: Erst die Nachricht startet Claude, weitere gehen ins selbe Gespr
     assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => { opened += 1; return 's'; }, ...h }), EXIT.fail);
     assert.deepEqual(talked, [['start', 's', 'Warum?'], ['send', 'Und jetzt?'], ['end']]);
     assert.equal(opened, 1);
-    // Den Weg zu Claude zeigt der Knopf, Schreiben geht weiterhin.
+    // The button shows the way to Claude; typing still works.
     assert.doesNotMatch(h.questions[0].text, /Du kannst Claude auch erst fragen/);
     assert.deepEqual(h.questions[0].options, ['fix', 'ask', 'close']);
     assert.deepEqual(h.questions.map(({ kind }) => kind), ['discussing', 'discussing', 'discussing']);
     assert.equal(h.calls.length, 1);
 });
 
-test('Testlauf: Ein sauberer Schritt wird im selben Browser behoben, danach nur noch der Prüfdurchlauf', async () => {
+test('Test run: a clean step is fixed in the same browser, then only the check run follows', async () => {
     const asked = [];
     const repairHere = async (given) => { asked.push(given); return repaired(); };
     const h = harness({ outcomes: [{ ...failing('S2'), concluded: { repairHere } }, pass], answers: ['fix', 'adopt'] });
     assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...h }), EXIT.pass);
     assert.match(h.questions[0].text, /im selben Browser, ohne die Schritte davor/);
     assert.deepEqual(asked, [{ sandbox: 's', reason: 'weg.' }]);
-    assert.equal(h.calls.length, 2, 'Kein zweiter Lauf mit Vorlauf');
+    assert.equal(h.calls.length, 2, 'no second run with warm-up');
     assert.equal(h.calls[1].repair, undefined);
     assert.match(h.calls[1].note, /S2 wurde behoben, Anlass: weg/);
     assert.deepEqual([...h.adopted[0].only], ['S2']);
 });
 
-test('Entwickeln im Zustand mit der Claude-Code-Session als Agent: Sie ist sofort da, nicht erst nach der ersten Frage', async () => {
+test('Developing in a state with the Claude Code session as agent: it is there right away, not only after the first question', async () => {
     const h = harness({ outcomes: [pass] });
     let opened = 0;
     await runFlow({ spec, until: 'S2', handover: true, canFix: true, sessionAgent: true, openSandbox: async () => { opened += 1; return 'box'; }, ...h });
@@ -379,14 +379,14 @@ test('Entwickeln im Zustand mit der Claude-Code-Session als Agent: Sie ist sofor
     assert.doesNotMatch(intro[0], /kosten Token/);
 });
 
-test('Entwickeln im Zustand: Aktualisieren ohne Zustand, Zustand neu herstellen, Fadenkreuz an Claude Code, Fragen an Claude', async () => {
+test('Developing in a state: refresh without state, restore state, crosshair to Claude Code, questions to Claude', async () => {
     const h = harness({ outcomes: [pass] });
     let opened = 0;
     await runFlow({ spec, until: 'S2', handover: true, canFix: true, openSandbox: async () => { opened += 1; return 'box'; }, ...h });
     const { develop } = h.calls[0];
     assert.equal(typeof develop, 'function');
     const element = { label: 'button "Senden"', target: { role: 'button' } };
-    let refresher = 'nie gesetzt';
+    let refresher = 'never set';
     let reloaded = null;
     let picked = null;
     let refreshed = 0;
@@ -404,7 +404,7 @@ test('Entwickeln im Zustand: Aktualisieren ohne Zustand, Zustand neu herstellen,
         develop: async (question, options) => {
             shown.push({ question, options: options.map(({ id }) => id) });
             if (shown.length === 1) {
-                // Der Mensch drueckt F5, waehlt ein Element mit dem Fadenkreuz, laedt dann die ganze Werkbank neu.
+                // The human presses F5, picks an element with the crosshair, then reloads the whole workbench.
                 await refresher();
                 picked(element);
                 await reloaded();
@@ -427,26 +427,26 @@ test('Entwickeln im Zustand: Aktualisieren ohne Zustand, Zustand neu herstellen,
         refresh: async () => { refreshed += 1; return ''; },
         restore: async () => 'Zustand S2 ist neu hergestellt',
         onRefresh: (handler) => { refresher = handler; },
-        onReload: (listener) => { reloaded = listener; return () => { reloaded = 'abgemeldet'; }; },
+        onReload: (listener) => { reloaded = listener; return () => { reloaded = 'unsubscribed'; }; },
         toCode: (value) => handed.push(value),
     });
     assert.match(shown[0].question, /^Zustand S2 steht\. .*Aktualisieren.*Zustand neu herstellen.*Fadenkreuz.*kosten Token/);
     assert.deepEqual(shown[0].options, ['restore', 'end']);
-    assert.equal(shown[1].question, undefined, 'die Einleitung kommt nur einmal');
-    assert.equal(refreshed, 1, 'Aktualisieren lädt nur die Seite neu, ohne Meldung');
-    assert.deepEqual(handed, [element], 'das Fadenkreuz gibt das Element sofort an Claude Code');
+    assert.equal(shown[1].question, undefined, 'the introduction comes only once');
+    assert.equal(refreshed, 1, 'refresh only reloads the page, without a message');
+    assert.deepEqual(handed, [element], 'the crosshair hands the element to Claude Code right away');
     assert.match(notices[0], /„button "Senden"“ liegt für deine Claude-Code-Sitzung bereit/);
-    assert.ok(!notices.some((text) => /neu geladen|nicht mehr gesichert/.test(text)), 'Neuladen der Werkbank warnt beim Entwickeln nicht');
+    assert.ok(!notices.some((text) => /neu geladen|nicht mehr gesichert/.test(text)), 'reloading the workbench does not warn while developing');
     assert.equal(notices[1], 'Zustand S2 ist neu hergestellt');
     assert.deepEqual(sent[0], { question: 'Warum ist der deaktiviert?', about: element, sandbox: 'box' });
     assert.deepEqual(sent[1], { text: 'Und jetzt?', about: undefined });
-    assert.equal(opened, 1, 'Claude erst bei der ersten Frage');
-    assert.equal(ended, 1, 'Beenden beendet auch das Gespräch');
-    assert.equal(refresher, null, 'nach dem Entwickeln ist Aktualisieren wieder gesperrt');
-    assert.equal(reloaded, 'abgemeldet');
+    assert.equal(opened, 1, 'Claude only on the first question');
+    assert.equal(ended, 1, 'ending also ends the conversation');
+    assert.equal(refresher, null, 'after developing, refresh is locked again');
+    assert.equal(reloaded, 'unsubscribed');
     assert.equal(picked, null);
 
-    // Dev-Server startet gerade neu: Zustand neu herstellen scheitert, der Chat meldet es, Entwickeln geht weiter; Fenster zu beendet Claude.
+    // The dev server is restarting: restoring fails, the chat reports it, developing continues; closing the window ends Claude.
     const later = [{ choice: 'restore' }, { message: 'Hallo' }, null];
     const said = [];
     let stopped = 0;
@@ -459,15 +459,15 @@ test('Entwickeln im Zustand: Aktualisieren ohne Zustand, Zustand neu herstellen,
         toCode: () => {},
     });
     assert.match(said[0], /^Zustand neu herstellen ging nicht: net::ERR_CONNECTION_REFUSED at http:\/\/app\.localhost:5173\/\. Läuft der Dev-Server/);
-    assert.equal(stopped, 1, 'Fenster zu beendet ein laufendes Gespräch');
+    assert.equal(stopped, 1, 'closing the window ends a running conversation');
 });
 
-test('Testlauf: Weicht nur die Wirkung ab, vergisst „Neue Wirkung übernehmen“ sie ohne Claude, sonst gibt es den Knopf nicht', async () => {
+test('Test run: if only the effects deviate, "forget effect" forgets them without Claude; otherwise there is no such button', async () => {
     const effects = { controls: ['button "Neu"'] };
     const learned = { ...spec, steps: spec.steps.map((step) => ({ ...step, recording: { ...step.recording, effects } })) };
     const reason = 'Die Prüfung ist erfüllt, aber die Anwendung reagiert anders als in gesunden Läufen. Aktion 1 click: fehlt button "Neu".';
     const h = harness({ outcomes: [failing('S2', { reason })], answers: ['forget-effect'] });
-    assert.equal(await runFlow({ spec: learned, handover: false, canFix: true, openSandbox: async () => assert.fail('kein Claude'), ...h }), EXIT.fail);
+    assert.equal(await runFlow({ spec: learned, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude'), ...h }), EXIT.fail);
     assert.equal(h.questions[0].options[0], 'forget-effect');
     assert.equal(h.adopted.length, 1);
     assert.deepEqual([...h.adopted[0].only], ['S2']);
@@ -481,7 +481,7 @@ test('Testlauf: Weicht nur die Wirkung ab, vergisst „Neue Wirkung übernehmen�
     assert.equal(other.questions[0].options.includes('forget-effect'), false);
 });
 
-test('Bleibt nach dem Prüfdurchlauf ein Schritt veraltet, bietet die Entscheidung ihn zum Neu-Aufnehmen an', async () => {
+test('If a step is still stale after the check run, the decision offers to re-record it', async () => {
     const stale = { ...spec, steps: [spec.steps[0], { ...spec.steps[1], expect: 'S2 anders' }] };
     const h = harness({ outcomes: [pass, repaired(), pass], answers: ['rerecord-next', 'adopt'] });
     await fixFlow({ draft: stale, sandbox: 's', ...h });
@@ -492,21 +492,21 @@ test('Bleibt nach dem Prüfdurchlauf ein Schritt veraltet, bietet die Entscheidu
     assert.equal(h.adopted.length, 1);
 });
 
-test('Prüflauf: Nur Skriptfehler lassen sich mit einem Klick ignorieren, dann prüft ein neuer Lauf ohne Claude', async () => {
+test('Check run: only script errors can be ignored with one click, then a new run checks without Claude', async () => {
     let ignored = 0;
-    const ignore = () => { ignored += 1; return ['t\.getKey is not a function']; };
+    const ignore = () => { ignored += 1; return ['t.getKey is not a function']; };
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, { ...failing('S2'), concluded: { ignore } }, pass], answers: ['ignore-errors', 'adopt'] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.pass);
-    assert.deepEqual(h.questions[0].options, ['ignore-errors', 'fix', 'close'], 'Ignorieren vorn, Beheben bleibt');
+    assert.deepEqual(h.questions[0].options, ['ignore-errors', 'fix', 'close'], 'ignore first, fix stays');
     assert.equal(ignored, 1);
-    assert.equal(h.calls.length, 3, 'Aufnahme, Prüflauf, noch ein Prüflauf, kein Claude');
+    assert.equal(h.calls.length, 3, 'recording, check run, another check run, no Claude');
     assert.equal(h.calls[2].repair, undefined);
-    assert.ok(h.notices.some((text) => text.includes('consoleIgnore eingetragen: t\.getKey')), JSON.stringify(h.notices));
+    assert.ok(h.notices.some((text) => text.includes('consoleIgnore eingetragen: t.getKey')), JSON.stringify(h.notices));
     assert.ok(h.notices.some((text) => /Prüflauf ohne Claude startet/.test(text)));
     assert.deepEqual(h.said[1], { next: 'check' });
 });
 
-test('Prüflauf: Alle Schritte bestanden, aber Skriptfehler: ignorieren statt Sackgasse', async () => {
+test('Check run: all steps passed but script errors: ignore instead of a dead end', async () => {
     const ignore = () => ['x'];
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, { ...nothing, concluded: { ignore } }, pass], answers: ['ignore-errors', 'adopt'] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.pass);
@@ -514,7 +514,7 @@ test('Prüflauf: Alle Schritte bestanden, aber Skriptfehler: ignorieren statt Sa
     assert.equal(h.calls.length, 3);
 });
 
-test('Prüflauf: Übernimmt der Mensch im Gespräch eine Ignorier-Empfehlung, die alle Fehler erlaubt, geht es ohne „Schritt beheben“ weiter', async () => {
+test('Check run: if the human adopts an ignore advice in the conversation that allows all failures, it continues without "fix step"', async () => {
     let notify;
     const talker = {
         over: () => false,
@@ -524,14 +524,14 @@ test('Prüflauf: Übernimmt der Mensch im Gespräch eine Ignorier-Empfehlung, di
         end: async () => null,
     };
     const talk = () => {
-        // Claude empfiehlt, der Mensch übernimmt: Die Config erlaubt jetzt alles.
+        // Claude advises, the human adopts: the config now allows everything.
         setTimeout(() => notify(), 10);
         return talker;
     };
     let allowed = false;
     const cleared = () => allowed;
     const h = harness({ outcomes: [{ ...pass, candidate: spec }, { ...failing('S2'), concluded: { talk, cleared } }, pass], answers: [{ message: 'setze t.getKey auf ignore' }, 'adopt'] });
-    // Nach der ersten Nachricht wartet der Chat; die Antwort danach kommt nie, die Config-Aenderung beendet das Warten.
+    // After the first message the chat waits; the next answer never comes, the config change ends the wait.
     const discuss = h.execute;
     let asked = 0;
     const execute = async ({ conclude, ...call }) => discuss({ ...call, conclude: conclude === undefined ? undefined : (concluded) => conclude({
@@ -539,22 +539,21 @@ test('Prüflauf: Übernimmt der Mensch im Gespräch eine Ignorier-Empfehlung, di
         chat: { ...concluded.chat, discuss: async (...args) => { asked += 1; if (asked === 1) return concluded.chat.discuss(...args); allowed = true; return new Promise(() => {}); } },
     }) });
     assert.equal(await recordFlow({ sandbox: 's', ...h, execute, openSandbox: async () => 's' }), EXIT.pass);
-    assert.equal(h.calls.length, 3, 'Aufnahme, Prüflauf, neuer Prüflauf ohne Beheben');
+    assert.equal(h.calls.length, 3, 'recording, check run, new check run without a fix');
     assert.equal(h.calls[2].repair, undefined);
     assert.ok(h.notices.some((text) => /Prüflauf ohne Claude startet/.test(text)));
 });
 
-test('Entwickeln: Eine Wahl mit F1 stellt den Zustand her, nacheinander mit „Zustand neu herstellen“', async () => {
+test('Developing: a pick with F1 restores the state, one after another with restore', async () => {
     const h = harness({ outcomes: [pass] });
     await runFlow({ spec, until: 'S2', handover: true, canFix: true, openSandbox: async () => 'box', ...h });
     const { develop } = h.calls[0];
     let pick = null;
     const restored = [];
     const notices = [];
-    let release;
     const chat = {
         develop: async () => {
-            // Der Mensch waehlt mit F1 einen Test ohne Schritt, dann einen mit Schritt; dann beendet er.
+            // The human picks a test without a step with F1, then one with a step; then ends.
             await pick('anderer-test', undefined);
             await pick('anderer-test', 'S1');
             return { choice: 'end' };
@@ -569,13 +568,12 @@ test('Entwickeln: Eine Wahl mit F1 stellt den Zustand her, nacheinander mit „Z
         until: 'S2',
         refresh: async () => '',
         restore: async () => '',
-        restoreTo: async (test, step) => { restored.push([test, step]); return `${test} ${step ?? 'Ende'} hergestellt`; },
+        restoreTo: async (testId, step) => { restored.push([testId, step]); return `${testId} ${step ?? 'Ende'} hergestellt`; },
         onPickState: (handler) => { pick = handler; },
         onRefresh: () => {},
         toCode: () => {},
     });
     assert.deepEqual(restored, [['anderer-test', undefined], ['anderer-test', 'S1']]);
     assert.deepEqual(notices, ['anderer-test Ende hergestellt', 'anderer-test S1 hergestellt']);
-    assert.equal(pick, null, 'nach dem Entwickeln ist F1 abgemeldet');
-    void release;
+    assert.equal(pick, null, 'after developing, F1 is unsubscribed');
 });

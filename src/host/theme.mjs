@@ -1,14 +1,14 @@
-// Das Aussehen von caw-ai, gemeinsam fuer Werkbank, Chat, Bericht und Explore-Karte: Richtung „Konsole“, aus dem aktiven
-// Theme-Paket (src/shared/theme-package.mjs, themes/<name>/theme.json).
+// The look of caw-ai, shared by workbench, chat, report and explore map: a "console" style from the active theme package
+// (src/shared/theme-package.mjs, themes/<name>/theme.json).
 //
-// - Farben: 13 Grundfarben als CSS-Variablen, alles Weitere per color-mix daraus. Gesetzt nur als Variablen, nie in Regeln
-//   hineingebaut: Eigene Themes kommen auch aus der Werkbank.
-// - Schrift: display (Ueberschriften, Legenden, Marken, F-Tasten, Logo) und text (Lesetext) aus dem Paket, als data-URL in die
-//   Seite: Der Testbrowser sperrt fremde Hosts, und der Chat hat keinen eigenen Origin.
-// - CRT nur auf Gehaeuse, Hintergrund und Ueberschriften; Rasterzeilen und Vignette liegen unter dem Inhalt. Lesetext und die
-//   getestete Anwendung bleiben scharf, die Anwendung ohne jeden Filter.
-// - Logo ist ueberall der ASCII-Rabe des Themes. Er blinzelt ab und an; ein Klick laesst ihn die Augen zukneifen und Herzen aufsteigen.
-// - theme.css des Pakets kommt nur von der Platte und steht nach den eigenen Regeln.
+// - Colours: 13 base colours as CSS variables, everything else derived via color-mix. Set only as variables, never baked
+//   into rules: custom themes can also come from the workbench.
+// - Fonts: display (headings, legends, marks, F keys, logo) and text (body) from the package, inlined as data URLs:
+//   the test browser blocks foreign hosts, and the chat has no origin of its own.
+// - CRT only on case, background and headings; scanlines and vignette sit beneath the content. Body text and the
+//   application under test stay sharp, the application without any filter.
+// - The logo is the theme's ASCII raven everywhere. It blinks now and then; a click makes it squint and send up hearts.
+// - The package's theme.css only comes from disk and is placed after the own rules.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,7 +26,7 @@ const dataUrl = (location, type) => {
 const fontList = (entry) => (Array.isArray(entry) ? entry : entry === undefined ? [] : [entry]);
 const FAMILY = /^[A-Za-z0-9 -]{1,48}$/;
 
-/** Die Schriften des Themes als @font-face; Dateien aus assets/fonts (builtin:) oder aus fonts/ im Paket. */
+/** The theme's fonts as @font-face; files from assets/fonts (builtin:) or from fonts/ in the package. */
 export const fontFaces = (theme = activeTheme()) => [...fontList(theme.fonts?.display), ...fontList(theme.fonts?.text)].map((font) => {
     if (typeof font?.file !== 'string' || !FAMILY.test(font.family ?? '')) return '';
     const dir = themeDir(theme.name);
@@ -37,7 +37,7 @@ export const fontFaces = (theme = activeTheme()) => [...fontList(theme.fonts?.di
     return src === null ? '' : `@font-face{font-family:"${font.family}";src:url(${src}) format("woff2");font-weight:${weight};font-style:normal;font-display:block}`;
 }).join('');
 
-/** Alter Name: die Schriften des aktiven Themes. */
+/** Old name: the active theme's fonts. */
 export const FONT_FACES = fontFaces();
 
 const family = (entry, fallback) => {
@@ -47,17 +47,17 @@ const family = (entry, fallback) => {
 const num = (value, fallback, max) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : fallback);
 const hex = (value, fallback) => (typeof value === 'string' && HEX.test(value) ? value : fallback);
 
-/** Die Grundfarben eines Themes als Deklarationen. Nur bekannte Schluessel, nur #rrggbb. */
+/** A theme's base colours as declarations. Known keys only, #rrggbb only. */
 export const colorVars = (colors) => THEME_KEYS.filter((key) => typeof colors?.[key] === 'string' && HEX.test(colors[key])).map((key) => `--${key}:${colors[key]}`).join(';');
 
-/** Die CRT-Werte als Deklarationen, alle geprueft. */
+/** The CRT values as declarations, all validated. */
 export const crtVars = (crt = {}) => [
     `--scan-color:${hex(crt.scanlines?.color, '#ffffff')}`, `--scan-alpha:${num(crt.scanlines?.alpha, 0.035, 1)}`,
     `--vignette:${num(crt.vignette, 0.45, 1)}`, `--heading-glow:${num(crt.headingGlowPx, 8, 24)}px`,
     `--text-glow:${num(crt.textGlow?.px, 0, 8)}px`, `--text-glow-alpha:${num(crt.textGlow?.alpha, 0, 1) * 100}%`,
 ].join(';');
 
-// Abgeleitet aus den Grundfarben. Dazu die Namen, die Seiten aus der Zeit vor dem Redesign noch nutzen.
+// Derived from the base colours, plus the names that pages from before the redesign still use.
 const DERIVED = `--page:color-mix(in srgb,var(--screen) 55%,#000);
 --case:color-mix(in srgb,var(--frame) 24%,var(--screen));--case-hi:color-mix(in srgb,var(--frame) 42%,var(--screen));
 --pane-2:color-mix(in srgb,var(--frame) 16%,var(--pane));--line:color-mix(in srgb,var(--frame) 55%,var(--pane));
@@ -75,12 +75,12 @@ const SIZES = `--fs-label:12px;--fs-meta:11px;--fs-small:13px;--fs-body:14px;--f
 --gap-page:16px;--gap-card:14px;--pad-card:16px 12px 10px;--frame-w:2px;--frame-w-sm:2px`;
 
 /**
- * Schriften, Farben, CRT-Werte und Abstaende als CSS. Immer dunkel; einfarbige Themes setzen data-mono auf <html> (themeAttr).
- * @param theme aufgeloestes Theme; ohne: das aktive
+ * Fonts, colours, CRT values and spacing as CSS. Always dark; monochrome themes set data-mono on <html> (themeAttr).
+ * @param theme resolved theme; default: the active one
  */
 export const themeCss = (theme = activeTheme()) => `${fontFaces(theme)}:root{${themeVars(theme)}}`;
 
-/** Die Deklarationen allein, ohne Selektor und ohne Schriften: fuer ein Shadow-Root (:host), etwa die Explore-Karte. */
+/** The declarations alone, without selector and fonts: for a shadow root (:host), e.g. the explore map. */
 export const themeVars = (theme = activeTheme()) => {
     const display = family(theme.fonts?.display, 'ui-monospace,Consolas,monospace');
     const text = family(theme.fonts?.text, 'ui-monospace,Consolas,monospace');
@@ -88,29 +88,31 @@ export const themeVars = (theme = activeTheme()) => {
 --font-crt:${display};--font-ui:${text};--font-deco:var(--font-crt);--font-body:var(--font-ui);--font-mono:var(--font-ui);${SIZES}`;
 };
 
-/** Das Attribut fuer <html>: data-mono bei einfarbigen Themes. */
+/** The attribute for <html>: data-mono for monochrome themes. */
 export const themeAttr = (theme = activeTheme()) => (theme.mono ? ' data-mono="on"' : '');
 
-/** theme.css des Pakets, als <style> nach den eigenen Regeln einzubinden; leer ohne. `</` wird entschaerft. */
+/** The package's theme.css as <style>, to include after the own rules; empty without one. `</` is escaped. */
 export const themeStyle = (theme = activeTheme()) => (theme.css ? `<style data-caw-theme-css>${theme.css.replaceAll('</', '<\\/')}</style>` : '');
 
 /**
- * Das Theme fuer eine Seite: alles ausser css und Dateien. Die Seite setzt Farben nur als Variablen und Texte nur als textContent.
+ * The theme for a page: everything except css and files. The page sets colours only as variables and texts only as textContent.
  */
 export const clientTheme = (theme = activeTheme()) => {
-    const { css: _css, pkg, fonts: _fonts, ...rest } = theme;
+    const { pkg, ...rest } = theme;
+    delete rest.css;
+    delete rest.fonts;
     return { ...rest, pkg: pkg === undefined ? undefined : { ...pkg, css: undefined } };
 };
 
-/** Pixelrahmen als vier harte Schatten, je Seite einer. */
+/** Pixel frame as four hard shadows, one per side. */
 export const ring = (width, color) => {
     const minus = width.startsWith('var(') ? `calc(${width} * -1)` : `-${width}`;
     return `0 ${minus} 0 ${color},0 ${width} 0 ${color},${minus} 0 0 ${color},${width} 0 0 ${color}`;
 };
 
-// Blockzeichen (Viertelbloecke und halbe Bloecke) hat VT323 nicht. Statt einer Ersatzschrift zeichnet die Seite sie als Element:
-// je Viertel ein Verlauf in currentColor, gewaehlt ueber data-q (oben links, oben rechts, unten links, unten rechts).
-// Alle anderen Zeichen bleiben Text; ein Theme mit Frames wie |/-\ bekommt weiter Text. Das Terminal bleibt bei Zeichen.
+// VT323 lacks block characters (quarter and half blocks). Instead of a fallback font the page draws them as elements:
+// one currentColor gradient per quarter, selected via data-q (top left, top right, bottom left, bottom right).
+// All other characters stay text; a theme with frames like |/-\ keeps getting text. The terminal keeps the characters.
 export const BLOCK_GLYPHS = {
     '▘': '1000', '▝': '0100', '▖': '0010', '▗': '0001', '▚': '1001', '▞': '0110', '▙': '1011', '▛': '1110', '▜': '1101', '▟': '0111',
     '▀': '1100', '▄': '0011', '▌': '1010', '▐': '0101', '█': '1111',
@@ -119,7 +121,7 @@ const QUARTER_AT = ['0 0', '100% 0', '0 100%', '100% 100%'];
 const quarters = (pattern) => [...pattern].map((bit, index) => (bit === '1' ? QUARTER_AT[index] : null)).filter(Boolean);
 
 /**
- * Aussehen der gezeichneten Blockzeichen: .qb als Element, .qbp[data-q]::before fuer Seiten, die das Bild im Pseudo-Element zeigen.
+ * Styles for the drawn block characters: .qb as element, .qbp[data-q]::before for pages that show it in a pseudo-element.
  */
 export const GLYPH_CSS = `.qb{display:inline-block;width:1ch;height:1em;vertical-align:-.15em;background-repeat:no-repeat}
 ${[...new Set(Object.values(BLOCK_GLYPHS))].map((pattern) => {
@@ -128,8 +130,8 @@ ${[...new Set(Object.values(BLOCK_GLYPHS))].map((pattern) => {
     }).join('\n')}`;
 
 /**
- * Ein Zeichen fuer die Seite: Blockzeichen als <span class="qb" data-q>, alles andere als Text. Als Funktion fuer die Seite.
- * cawGlyphQ(char) gibt nur das Muster (oder null), fuer Pseudo-Elemente.
+ * A character for the page: block characters as <span class="qb" data-q>, everything else as text. Runs in the page.
+ * cawGlyphQ(char) returns only the pattern (or null), for pseudo-elements.
  */
 function cawGlyph(char) {
     const q = cawGlyphQ(char);
@@ -141,12 +143,12 @@ function cawGlyph(char) {
     return span;
 }
 
-/** Das Glyph-Skript zum Einbetten: definiert cawGlyphQ(char) und cawGlyph(char). */
+/** The glyph script to embed: defines cawGlyphQ(char) and cawGlyph(char). */
 export const GLYPH_SCRIPT = `const cawGlyphQ=(char)=>(${JSON.stringify(BLOCK_GLYPHS)})[char]??null;\n${cawGlyph.toString()}`;
 
 /**
- * Die Bausteine der Konsole: Gehaeuse (.crt-case), Bildschirm mit Rasterzeilen (.crt), Fenster mit Legende (.win, .lg),
- * Statusmarken (.tag-*), Abschnitte (.sec), Knoepfe, Pills, Fortschritt, Leuchten (.glow, .readable). Keine Rundungen.
+ * The console building blocks: case (.crt-case), screen with scanlines (.crt), window with legend (.win, .lg),
+ * status marks (.tag-*), sections (.sec), buttons, pills, progress, glow (.glow, .readable). No rounded corners.
  */
 export const CONSOLE_CSS = `.crt-case{background:var(--case);box-shadow:inset 0 2px 0 var(--case-hi),inset 0 -4px 0 rgba(0,0,0,.35)}
 .crt{position:relative;background:var(--screen);isolation:isolate}
@@ -168,20 +170,20 @@ background:repeating-linear-gradient(0deg,var(--scan) 0 1px,transparent 1px 3px)
 .px-pill{display:inline-flex;align-items:center;gap:8px;font:400 20px/1 var(--font-crt);padding:4px 10px;color:var(--muted);box-shadow:inset 0 0 0 2px currentColor;white-space:nowrap}
 .px-pill--fail{color:var(--fail)}.px-pill--ok{color:var(--ok)}.px-pill--run{color:var(--info)}.px-pill--warn{color:var(--warn)}
 .gauge{font:400 20px/1.1 var(--font-crt);white-space:pre}
-/* Die Spinner-Zelle ist genau ein Zeichen der Markenschrift breit: [  ▖   ] bleibt so breit wie [  OK  ]. */
+/* The spinner cell is exactly one mark-font character wide: [  ▖   ] stays as wide as [  OK  ]. */
 .spinf{display:inline-block;width:1ch;text-align:center;white-space:nowrap}
 :focus-visible{outline:2px dashed var(--info);outline-offset:3px}
 ${GLYPH_CSS}`;
 
-/** Der Hintergrund einer ganzen Seite. */
+/** The background of a whole page. */
 export const PAGE_BG = 'background:var(--page)';
 
-/** Alter Name der Bausteine, fuer Seiten, die sie schon einbinden. */
+/** Old name of the building blocks, for pages that already include them. */
 export const PIXEL_CSS = CONSOLE_CSS;
 
 /**
- * Die Zeilen des Raben als HTML, Farben ueber Variablen der Teile (body, eye, beak). Alles maskiert.
- * @param eye  welches Auge: open, shut, happy
+ * The raven's lines as HTML, coloured via the parts' variables (body, eye, beak). Everything escaped.
+ * @param eye  which eye: open, shut, happy
  */
 function cawRavenRows(raven, eye) {
     const esc = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -193,10 +195,10 @@ function cawRavenRows(raven, eye) {
         .replace('{beak}', `<span class="beak" style="color:var(--${part('beak', 'accent')})">${esc(raven.beak ?? '>')}</span>`)}</span>`).join('\n');
 }
 
-/** Das Logo als Knopf. `size` ist die Schriftgroesse in px; ein Klick laesst Herzen aufsteigen. */
+/** The logo as a button. `size` is the font size in px; a click sends up hearts. */
 export const ravenLogo = (theme = activeTheme(), { size = 22, label = 'caw' } = {}) => `<button class="raven" type="button" data-raven aria-label="${String(label).replaceAll('"', '&quot;')}" style="font-size:${Number(size)}px">${cawRavenRows(theme.raven, 'open')}</button>`;
 
-/** Aussehen des Logos und der Herzen. */
+/** Styles of the logo and the hearts. */
 export const RAVEN_CSS = `.raven{background:none;border:0;padding:2px 4px;margin:0;cursor:pointer;font:400 22px/1 var(--font-crt);white-space:pre;text-align:left;color:var(--frame)}
 .raven:hover{background:var(--pane-2)}
 .caw-heart{position:fixed;pointer-events:none;z-index:2147483646;white-space:pre;font:400 22px/1 var(--font-crt);color:var(--heart);text-shadow:0 0 var(--heart-glow,8px) var(--heart);animation:caw-rise var(--dur,1.4s) steps(var(--steps,9),end) forwards}
@@ -204,13 +206,13 @@ export const RAVEN_CSS = `.raven{background:none;border:0;padding:2px 4px;margin
 @media (prefers-reduced-motion:reduce){.caw-heart{animation-duration:.01s}}`;
 
 /**
- * Das Skript des Logos, als Funktion fuer die Seite. Werte aus theme.raven: Blinzeln (blink.ms, firstMs, pauseMs, double) und
- * Klick (pet.happyMs, pet.hearts). Weniger Bewegung oder `still()`: kein Blinzeln, Herzen sofort weg. `raven` laesst sich
- * spaeter tauschen: el.cawRaven = neues raven-Objekt (der Theme-Dialog).
- * @param scope  Dokument oder Shadow-Root mit den [data-raven]-Knoepfen
- * @param layer  wohin die Herzen kommen
- * @param still  () => true, solange „Animationen aus“ gilt
- * @returns { setRaven(raven) } fuer einen Wechsel des Themes
+ * The logo script, runs in the page. Values from theme.raven: blinking (blink.ms, firstMs, pauseMs, double) and
+ * click (pet.happyMs, pet.hearts). Reduced motion or `still()`: no blinking, hearts removed at once. The raven can be
+ * swapped later via setRaven (the theme dialog).
+ * @param scope  document or shadow root with the [data-raven] buttons
+ * @param layer  where the hearts go
+ * @param still  () => true while "animations off" applies
+ * @returns { setRaven(raven) } for a theme change
  */
 function cawRaven(scope, layer, still, initial) {
     let raven = initial;
@@ -277,35 +279,35 @@ function cawRaven(scope, layer, still, initial) {
     };
 }
 
-/** Das Logo-Skript zum Einbetten: definiert cawRavenRows(raven, eye) und cawRaven(scope, layer, still, raven). */
+/** The logo script to embed: defines cawRavenRows(raven, eye) and cawRaven(scope, layer, still, raven). */
 export const RAVEN_SCRIPT = `${cawRavenRows.toString()}\n${cawRaven.toString()}`;
 
 /**
- * Setzt Farben und CRT-Werte eines Themes auf ein Element, als Funktion fuer Seiten, die das Theme per Nachricht bekommen
- * (Chat, Theme-Dialog). Prueft selbst: nur bekannte Schluessel, nur #rrggbb, Zahlen in Grenzen.
+ * Sets a theme's colours and CRT values on an element; runs in pages that receive the theme by message
+ * (chat, theme dialog). Validates on its own: known keys only, #rrggbb only, numbers within bounds.
  */
 function cawApplyTheme(root, theme) {
     const keys = ['screen', 'pane', 'frame', 'text', 'muted', 'accent', 'ok', 'warn', 'fail', 'info', 'claude', 'human', 'heart'];
-    const hex = (value) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
-    const num = (value, max) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max;
+    const isHex = (value) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+    const inRange = (value, max) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max;
     if (!theme || typeof theme !== 'object') return;
-    for (const key of keys) if (hex(theme.colors?.[key])) root.style.setProperty(`--${key}`, theme.colors[key]);
+    for (const key of keys) if (isHex(theme.colors?.[key])) root.style.setProperty(`--${key}`, theme.colors[key]);
     const crt = theme.crt ?? {};
-    if (hex(crt.scanlines?.color)) root.style.setProperty('--scan-color', crt.scanlines.color);
-    if (num(crt.scanlines?.alpha, 1)) root.style.setProperty('--scan-alpha', String(crt.scanlines.alpha));
-    if (num(crt.vignette, 1)) root.style.setProperty('--vignette', String(crt.vignette));
-    if (num(crt.headingGlowPx, 24)) root.style.setProperty('--heading-glow', `${crt.headingGlowPx}px`);
-    if (num(crt.textGlow?.px, 8)) root.style.setProperty('--text-glow', `${crt.textGlow.px}px`);
-    if (num(crt.textGlow?.alpha, 1)) root.style.setProperty('--text-glow-alpha', `${crt.textGlow.alpha * 100}%`);
+    if (isHex(crt.scanlines?.color)) root.style.setProperty('--scan-color', crt.scanlines.color);
+    if (inRange(crt.scanlines?.alpha, 1)) root.style.setProperty('--scan-alpha', String(crt.scanlines.alpha));
+    if (inRange(crt.vignette, 1)) root.style.setProperty('--vignette', String(crt.vignette));
+    if (inRange(crt.headingGlowPx, 24)) root.style.setProperty('--heading-glow', `${crt.headingGlowPx}px`);
+    if (inRange(crt.textGlow?.px, 8)) root.style.setProperty('--text-glow', `${crt.textGlow.px}px`);
+    if (inRange(crt.textGlow?.alpha, 1)) root.style.setProperty('--text-glow-alpha', `${crt.textGlow.alpha * 100}%`);
     if (theme.mono === true) root.dataset.mono = 'on';
     else delete root.dataset.mono;
 }
 
-/** Das Theme-Skript zum Einbetten: definiert cawApplyTheme(root, theme). */
+/** The theme script to embed: defines cawApplyTheme(root, theme). */
 export const APPLY_THEME_SCRIPT = cawApplyTheme.toString();
 
 /**
- * Das Favicon: der Kopf des Raben „(•>“ auf dem Bildschirm des Themes, als SVG. Ohne Datei, die Farben sind geprueft.
+ * The favicon: the raven's head "(•>" on the theme's screen colour, as SVG. No file; the colours are validated.
  */
 export const favicon = (theme = activeTheme()) => {
     const color = (key, fallback) => hex(theme.colors?.[key], fallback);
@@ -317,5 +319,5 @@ export const favicon = (theme = activeTheme()) => {
     return `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(svg)}">`;
 };
 
-/** Das Favicon des aktiven Themes beim Laden des Moduls. */
+/** The active theme's favicon at module load. */
 export const FAVICON = favicon();

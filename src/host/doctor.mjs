@@ -1,5 +1,5 @@
-// `caw-ai doctor`: prueft, ob das Projekt laufen kann, und nennt je Problem den naechsten Schritt. Liest keine Werte von Geheimnissen:
-// Vom Token und von den Zugangsdaten zaehlt nur, ob sie gesetzt sind.
+// `caw-ai doctor`: checks whether the project can run and names the next step for each problem. Never reads secret values:
+// for the token and credentials only their presence counts.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,10 +18,10 @@ const browserName = (config) => {
 const MIN_NODE = 22;
 
 /**
- * Die einzelnen Pruefungen. Jede liefert { ok, text, next?, optional? }; `optional` heisst: nur fuer Laeufe mit Claude noetig.
- * @param probes nur fuer Tests: ersetzt Chrome, Docker und Netz
+ * The individual checks. Each yields { ok, text, next?, optional? }; `optional` means: only needed for runs with Claude.
+ * @param probes tests only: replaces Chrome, Docker and network
+ * @param agent where Claude should run (local, docker, session), otherwise from the config as for run
  */
-/** @param agent wo Claude laufen soll (local, docker, session), sonst aus der Config wie bei run */
 export const doctorChecks = async (root, { env = process.env, nodeVersion = process.versions.node, probes = {}, agent } = {}) => {
     const results = [];
     const add = (entry) => results.push(entry);
@@ -54,16 +54,16 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
         add({ ok: false, text: t('cli.doctorBrowserFail', { browser: browserName(config), error: String(error?.message ?? error).split('\n')[0] }), next: t('cli.doctorBrowserNext') });
     }
 
-    // Claude braucht es nur fuer record, fix und den Chat; lokal reicht Claude Code, in Docker kommen Docker und Token dazu.
+    // Claude is only needed for record, fix and the chat; locally Claude Code suffices, Docker also needs Docker and the token.
     const sandbox = agent ?? agentSandbox(config ?? {}, env);
     if (sandbox === 'session') {
-        // Die eigene Claude-Code-Session uebernimmt ueber caw-ai mcp: Dafuer braucht es nur den Eintrag in .mcp.json.
+        // The developer's own Claude Code session takes over via caw-ai mcp: that only needs the entry in .mcp.json.
         const mcp = join(root, '.mcp.json');
         let listed = false;
         try {
             listed = existsSync(mcp) && JSON.parse(readFileSync(mcp, 'utf8'))?.mcpServers?.['caw-ai'] !== undefined;
         } catch {
-            // Kaputte .mcp.json: zaehlt wie ein fehlender Eintrag.
+            // A broken .mcp.json counts as a missing entry.
         }
         add(listed
             ? { ok: true, optional: true, text: t('cli.doctorSessionOk') }
@@ -86,7 +86,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
             : { ok: false, optional: true, text: t('cli.doctorTokenMissing'), next: t('cli.doctorTokenNext') });
     }
 
-    // Locker verglichen: "/.caw", ".caw/" und "**/.caw/" meinen dasselbe; Kommentare und Negationen zaehlen nicht.
+    // Loose comparison: "/.caw", ".caw/" and "**/.caw/" mean the same; comments and negations do not count.
     const normalize = (line) => line.trim().replace(/^(\*\*\/|\/)/, '').replace(/\/(\*\*?)?$/, '');
     const ignore = existsSync(join(root, '.gitignore'))
         ? readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/).filter((line) => !/^\s*(#|!)/.test(line)).map(normalize)
@@ -122,7 +122,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     const reach = probes.reachable ?? (async (url) => (await import('./run.mjs')).reachable(url));
     for (const target of allTargets(config)) {
         const { url, production } = resolveTarget(config, target);
-        // Produktion fragt das Tool nicht an, auch nicht zur Probe.
+        // The tool never contacts production, not even to probe it.
         if (production) continue;
         add(await reach(url)
             ? { ok: true, optional: true, text: t('cli.doctorReachOk', { target, url }) }
@@ -131,11 +131,11 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     return results;
 };
 
-/** Gibt die Pruefungen aus. Exit 0, wenn alles Noetige stimmt; fehlt nur Optionales, ebenfalls 0. */
+/** Prints the checks. Exit 0 when everything required is fine, also when only optional items are missing. */
 export const doctor = async (root, options = {}) => {
     const { ui } = options;
     const results = await doctorChecks(root, options);
-    // Die Marke steht im Text, damit auch die schlichte Ausgabe ohne Symbole und Farben lesbar bleibt.
+    // The mark is part of the text so plain output without symbols and colours stays readable.
     for (const { ok, optional, text, next } of results) {
         if (ok) ui.success(`${t('cli.doctorMarkOk')}${text}`);
         else if (optional) ui.note(`${t('cli.doctorMarkOptional')}${text}. ${next}`);
@@ -144,8 +144,8 @@ export const doctor = async (root, options = {}) => {
     const blocking = results.filter(({ ok, optional }) => !ok && !optional).length;
     const optionalMissing = results.filter(({ ok, optional }) => !ok && optional).length;
     const summary = t('cli.doctorSummary', { ok: results.length - blocking - optionalMissing, blocking, optional: optionalMissing });
-    // Der naechste Schritt haengt davon ab, ob es schon aufgenommene Tests gibt: Ein nur beschriebener (wie das Beispiel aus init)
-    // laesst sich noch nicht abspielen, zuerst aufnehmen.
+    // The next step depends on whether recorded tests exist: a merely described one (like the example from init)
+    // cannot be played back yet and must be recorded first.
     const dir = join(root, RECORDING_DIR);
     const tests = existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith('.yaml')) : [];
     const ready = tests.length === 0 ? t('cli.doctorReadyFirst') : t('cli.doctorReady');

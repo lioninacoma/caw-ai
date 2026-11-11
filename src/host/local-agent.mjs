@@ -1,5 +1,5 @@
-// Claude ohne Container: derselbe Ablauf wie in der Sandbox, nur als Prozess auf dem Host. Die Grenze ziehen hier die Werkzeuge
-// (nur Lesen und das Tool caw, siehe localClaudeArgs), nicht Docker. Gewaehlt mit agent.sandbox, Standard "local".
+// Claude without a container: the same flow as in the sandbox, just as a process on the host. The boundary here is the tool set
+// (read-only plus the caw tool, see localClaudeArgs), not Docker. Chosen with agent.sandbox, default "local".
 
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -12,13 +12,13 @@ import { t } from '../shared/i18n.mjs';
 
 const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
 
-/** Der lokale Weg als Gegenstueck zu prepareSandbox: Er braucht weder Image noch Token, nur Claude Code im PATH. */
+/** The local counterpart to prepareSandbox: needs neither image nor token, only Claude Code on the PATH. */
 export const localBox = () => ({ kind: 'local', label: t('session.local.label') });
 
-/** Ist Claude Code installiert? Die Anmeldung prueft Claude Code selbst beim Start, caw liest keine Zugangsdaten. */
+/** Is Claude Code installed? Claude Code checks its login itself on start; caw reads no credentials. */
 export const claudeVersion = (run = spawnSync, bin = resolveClaude()) => {
-    // Derselbe Start wie spaeter im Lauf, ohne Shell: Was doctor findet, startet auch.
-    if (bin == null) return undefined;
+    // Same launch as later in the run, without a shell: what doctor finds also starts.
+    if (bin === null || bin === undefined) return undefined;
     const result = run(bin.file, [...bin.args, '--version'], { encoding: 'utf8', windowsHide: true });
     if (result.error !== undefined || result.status !== 0) return undefined;
     return String(result.stdout).trim().split(/\s+/)[0] || undefined;
@@ -30,10 +30,10 @@ export const requireClaude = (run = spawnSync, bin = resolveClaude()) => {
     return version;
 };
 
-/** Ein Befehl wie im Container: `caw-ai ...` wird zu diesem Paket, damit es nicht global installiert sein muss. */
+/** A command as in the container: `caw-ai ...` maps to this package so it need not be installed globally. */
 export const localCommand = (command) => (command[0] === 'caw-ai' ? [process.execPath, BIN, ...command.slice(1)] : command);
 
-/** Kleine Starter fuer `caw-ai` im PATH des Agenten, fuer feste Ablaeufe (E2E), die wie im Container `caw-ai` rufen. */
+/** Small `caw-ai` launchers on the agent's PATH, for fixed flows (E2E) that call `caw-ai` as in the container. */
 const writeShims = (dir) => {
     const bin = join(dir, '.bin');
     mkdirSync(bin, { recursive: true });
@@ -54,7 +54,7 @@ export const localAgentEnv = (agentDir, { color = false, env = process.env } = {
     };
 };
 
-/** Beendet den Agenten samt Claude und Werkzeug-Server. */
+/** Ends the agent along with Claude and the tool server. */
 const killTree = (child) => {
     if (child.exitCode !== null || child.pid === undefined) return;
     if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
@@ -68,15 +68,15 @@ const killTree = (child) => {
 };
 
 /**
- * Startet den Agenten eines Laufs auf dem Host.
+ * Starts a run's agent on the host.
  * @returns { ended: Promise<{ code }>, stop }
  */
 export const startLocalAgent = ({ command, agentDir, root, color = false }) => {
     const [file, ...args] = localCommand(command);
     const child = spawn(file, args, { cwd: root, env: localAgentEnv(agentDir, { color }), stdio: ['ignore', 'inherit', 'inherit'], detached: process.platform !== 'win32' });
-    const ended = new Promise((ok) => {
-        child.on('error', () => ok({ code: 127 }));
-        child.on('close', (code) => ok({ code: code ?? 1 }));
+    const ended = new Promise((resolveEnded) => {
+        child.on('error', () => resolveEnded({ code: 127 }));
+        child.on('close', (code) => resolveEnded({ code: code ?? 1 }));
     });
     return {
         ended,

@@ -1,4 +1,4 @@
-// Texte: session (en). Schluessel mit Praefix "session.".
+// Texts: session (en). Keys prefixed with "session.".
 export default {
     // app-files
     'session.overlay.buildMissing': 'The build folder {dir} holds no build.',
@@ -42,7 +42,7 @@ export default {
     'session.local.label': 'Claude local (no Docker)',
     'session.local.claudeMissing': 'Claude Code (claude) is not in PATH. Install: https://claude.com/claude-code, then start claude once and sign in. Or set agent.sandbox: "docker" in the config.',
 
-    // linux: Argumente und warum Claude endete
+    // linux: arguments and why Claude ended
     'session.args.unexpected': 'Unexpected argument: {arg}',
     'session.args.unknownOption': '{command} has no option {flag}. Allowed: {allowed}',
     'session.args.valueMissing': '{flag} needs a value, e.g. {flag} {example}',
@@ -96,7 +96,7 @@ export default {
     'session.browser.notSettled': 'The app didn\'t settle: {reason}',
     'session.browser.notLoaded': '{framework} is not loaded on {url}.',
 
-    // browser-session: Gruppe Vorbereitung in der Werkbank
+    // browser-session: preparation group in the workbench
     'session.prep.group': 'Preparation',
     'session.prep.chrome': 'Chrome',
     'session.prep.chromeStart': 'start',
@@ -108,7 +108,7 @@ export default {
     'session.prep.load': 'Load',
     'session.prep.app': 'app',
 
-    // replay: Punkte der Schrittliste
+    // replay: step list items
     'session.point.click': 'Click',
     'session.point.type': 'Input',
     'session.point.press': 'Key',
@@ -123,7 +123,7 @@ export default {
     'session.point.upload': 'Upload',
     'session.point.download': 'Download',
 
-    // replay: Aufnahme und Abspielen
+    // replay: recording and replay
     'session.replay.unstableTarget': '{action} {target}: the target can\'t be described reliably.',
     'session.replay.endedWith': 'The run ended with {status}.',
     'session.replay.noVerdict': 'no verdict',
@@ -173,4 +173,16 @@ export default {
     'session.replay.notReached': 'not reached',
     'session.replay.notReachedBecause': 'Not reached because {owner} failed.',
     'session.point.quoted': '“{text}”',
+    // framework adapters
+    'session.app.web': 'the app',
+    'session.app.react': 'the React app',
+    'session.app.vue': 'the Vue app',
+    'session.app.angular': 'the Angular app',
+    'session.overlay.senchaWatch': 'Sencha watch',
+    'session.explain.frameMissing': ' The frame {frame} is missing on the page.',
+    'session.explain.missing': ' It is missing on the page.',
+    'session.explain.similar': ' Similar: {names}. Was it renamed?',
+    'session.explain.hidden': ' It is there but invisible.',
+    'session.explain.covered': ' It is there but covered by {by}.',
+    'session.explain.coveredSays': ' It is there but covered by {by}, which says: {messages}{end}',
 };

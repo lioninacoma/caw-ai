@@ -1,4 +1,4 @@
-// Von Hand geschriebene Aktionen der Aufzeichnung: upload, download, ein geheimes remember, Muster in Zielnamen und knownMessages.
+// Hand-written recording actions: upload, download, a secret remember, patterns in target names and knownMessages.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -17,7 +17,7 @@ ${actions.split('\n').map((line) => `      ${line}`).join('\n')}
 ${extra}`;
 const actionsOf = (text) => parseRecordings(text).byId.get('S1').actions;
 
-test('upload: Ziel und Dateien relativ zum caw-Ordner, nichts ausserhalb', () => {
+test('upload: target and files relative to the caw folder, nothing outside', () => {
     const [upload] = actionsOf(recording('- upload: {role: button, name: Dateien wählen}\n  files: [fixtures/brief.pdf, fixtures/scan.png]'));
     assert.deepEqual(upload, { action: 'upload', target: { role: 'button', name: 'Dateien wählen' }, files: ['fixtures/brief.pdf', 'fixtures/scan.png'] });
     for (const files of ['[]', '[../geheim.txt]', '[/etc/passwd]', '["C:/x.pdf"]', '[fixtures/../../x]', '"fixtures/a.pdf"']) {
@@ -26,7 +26,7 @@ test('upload: Ziel und Dateien relativ zum caw-Ordner, nichts ausserhalb', () =>
     assert.throws(() => actionsOf(recording('- upload: {role: button, name: Hochladen}')), /upload: files/);
 });
 
-test('download: Ziel und Muster des Dateinamens, das Muster muss gültig sein', () => {
+test('download: target and file name pattern; the pattern must be valid', () => {
     const [download] = actionsOf(recording('- download: {role: button, name: Exportieren}\n  file: "^akte-.*\\\\.zip$"'));
     assert.deepEqual(download, { action: 'download', target: { role: 'button', name: 'Exportieren' }, file: '^akte-.*\\.zip$' });
     assert.throws(() => actionsOf(recording('- download: {role: button, name: Exportieren}')), /download: file/);
@@ -34,14 +34,14 @@ test('download: Ziel und Muster des Dateinamens, das Muster muss gültig sein', 
     assert.throws(() => actionsOf(recording('- click: {role: button, name: Exportieren}\n  file: x')), /unbekanntes Feld file/);
 });
 
-test('remember: secret: true markiert den Wert als geheim, anderes nicht', () => {
+test('remember: secret: true marks the value as secret, nothing else does', () => {
     const [remember] = actionsOf(recording('- remember: {name: davPassword, code: "1234abcd", secret: true}'));
     assert.deepEqual(remember, { action: 'remember', name: 'davPassword', code: '1234abcd', secret: true });
     assert.equal(actionsOf(recording('- remember: {name: nr, code: "1234"}'))[0].secret, undefined);
     assert.throws(() => actionsOf(recording('- remember: {name: nr, code: "1234", secret: ja}')), /remember/);
 });
 
-test('Ziele: Name als Muster, auch im Bereich; ein ungültiges Muster und ein Name über 80 Zeichen sind Fehler mit Grund', () => {
+test('Targets: name as pattern, also in the area; an invalid pattern and a name over 80 characters are errors with a reason', () => {
     const [click] = actionsOf(recording('- click: {role: button, name: {pattern: "^Prüfen( \\\\d+)?$"}, inside: {role: toolbar, name: {pattern: "^Dokumente"}}}'));
     assert.deepEqual(click.target, { role: 'button', name: { pattern: '^Prüfen( \\d+)?$' }, inside: { role: 'toolbar', name: { pattern: '^Dokumente' } } });
     assert.throws(() => actionsOf(recording('- click: {role: button, name: {pattern: "(["}}')), /Ziel/);
@@ -50,7 +50,7 @@ test('Ziele: Name als Muster, auch im Bereich; ein ungültiges Muster und ein Na
     assert.throws(() => actionsOf(recording(`- click: {role: button, name: ${long}}`)), /80 Zeichen.*pattern/);
 });
 
-test('knownMessages: feste Texte und Muster, ungültige Muster werden abgelehnt, das Schreiben behält sie', () => {
+test('knownMessages: fixed texts and patterns, invalid patterns are rejected, writing keeps them', () => {
     const parsed = parseRecordings(recording('- wait-ready: {}', 'knownMessages:\n  - Gespeichert\n  - {pattern: "^Prüfsumme \\\\S+ kopiert$"}\n'));
     assert.deepEqual(parsed.knownMessages, ['Gespeichert', { pattern: '^Prüfsumme \\S+ kopiert$' }]);
     assert.throws(() => parseRecordings(recording('- wait-ready: {}', 'knownMessages:\n  - {pattern: "(["}\n')), /knownMessages/);
@@ -64,7 +64,7 @@ test('knownMessages: feste Texte und Muster, ungültige Muster werden abgelehnt,
     assert.equal(again.byId.get('S1').actions[2].secret, true);
 });
 
-test('textMatcher: fester Text nur ganz, Muster per RegExp', () => {
+test('textMatcher: fixed text only as a whole, patterns via RegExp', () => {
     const known = textMatcher(['Gespeichert', { pattern: '^Prüfsumme \\S+ kopiert$' }]);
     assert.equal(known('Gespeichert'), true);
     assert.equal(known('Gespeichert.'), false);
@@ -72,7 +72,7 @@ test('textMatcher: fester Text nur ganz, Muster per RegExp', () => {
     assert.equal(known('Prüfsumme fehlt'), false);
 });
 
-test('Ziele in iframes: frame ist selbst ein Ziel, verschachtelt erlaubt, und überlebt das Schreiben', () => {
+test('Targets in iframes: frame is a target itself, nesting allowed, and survives writing', () => {
     const [click] = actionsOf(recording('- click: {role: button, name: Bezahlen, frame: {tag: iframe, name: Karte, frame: {tag: iframe, name: Zahlung}}}'));
     assert.deepEqual(click.target, { role: 'button', name: 'Bezahlen', frame: { tag: 'iframe', name: 'Karte', frame: { tag: 'iframe', name: 'Zahlung' } } });
     assert.throws(() => actionsOf(recording('- click: {role: button, name: Bezahlen, frame: Zahlung}')), /Ziel/);

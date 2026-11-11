@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Setzt die Firewall als root und gibt danach alle Rechte endgueltig ab. Scheitert die Firewall, laeuft nichts.
+# Sets up the firewall as root, then drops all privileges for good. If the firewall fails, nothing runs.
 set -euo pipefail
 /usr/local/bin/caw-init-firewall
 exec setpriv --reuid={{user}} --regid={{user}} --init-groups --inh-caps=-all --bounding-set=-all --no-new-privs \

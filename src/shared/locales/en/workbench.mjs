@@ -1,4 +1,4 @@
-// Texte: workbench (en). Schluessel mit Praefix "workbench.".
+// Texts: workbench (en). Keys prefixed with "workbench.".
 export default {
     'workbench.refreshTitle': 'Reload the page without cache (F5). Only after the handover.',
     'workbench.refresh': 'Refresh',
@@ -30,6 +30,8 @@ export default {
     'workbench.chat': 'Chat',
     'workbench.chatPlaceholder': 'The chat appears here<br>once there is something to decide.',
 
+    'workbench.page.themeNameOwn': 'my-{base}',
+    'workbench.page.themeNameCopy': '{name}-copy',
     'workbench.page.waiting': 'open',
     'workbench.page.running': 'running',
     'workbench.page.pass': 'passed',

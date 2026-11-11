@@ -1,6 +1,6 @@
-// Vorschlaege bei Tippfehlern: "Meintest du list?" fuer lsit, create-tiket oder s4; insecureTls fuer insecureTLS, targets fuer target.
+// Suggestions for typos: "Did you mean list?" for lsit, create-tiket or s4; insecureTls for insecureTLS, targets for target.
 
-/** Editierabstand nach Damerau-Levenshtein (eine Vertauschung zaehlt einfach), ohne Unterschied von Gross und Klein. */
+/** Damerau-Levenshtein edit distance (a transposition counts once), case-insensitive. */
 export const editDistance = (left, right) => {
     const a = String(left).toLowerCase();
     const b = String(right).toLowerCase();
@@ -17,9 +17,9 @@ export const editDistance = (left, right) => {
 };
 
 /**
- * Der naechste Kandidat, wenn er nah genug und eindeutig ist; sonst undefined. Nah genug: hoechstens ein Drittel der Laenge
- * abweichend, mindestens aber ein Zeichen. Mehrere gleich nahe Kandidaten (S7 bei S1 bis S6) ergeben keinen Vorschlag.
- * Fuer Namen, die der Mensch eintippt: Tests, Schritte, Befehle.
+ * The closest candidate if it is close enough and unique, else undefined. Close enough: at most a third of the length
+ * differs, but at least one character. Several equally close candidates (S7 with S1 to S6) give no suggestion.
+ * For names the human types: tests, steps, commands.
  */
 export const closest = (word, candidates) => {
     const limit = Math.max(1, Math.floor(String(word).length / 3));
@@ -31,9 +31,9 @@ export const closest = (word, candidates) => {
 };
 
 /**
- * Das erlaubte Feld, das einem unbekannten Feld am naechsten liegt: gleich bis auf Gross- und Kleinschreibung oder hoechstens zwei
- * Zeichen anders, bei sehr kurzen Namen eins. Fuer Felder in Config und Testdateien.
- * @returns der Name oder undefined
+ * The allowed field closest to an unknown field: equal ignoring case, or at most two characters off (one for very
+ * short names). For fields in config and test files.
+ * @returns the name or undefined
  */
 export const didYouMean = (key, allowed) => {
     const text = String(key);

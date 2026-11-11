@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { claudeArgs, claudeEnv } from '../src/sandbox/commands.mjs';
 
-test('Sandbox: Claude darf so lange auf den Menschen warten wie der Lauf dauert, ohne Hintergrund', () => {
+test('Sandbox: Claude may wait for the human as long as the run lasts, without background tasks', () => {
     const env = claudeEnv(30, { PATH: '/bin', BASH_DEFAULT_TIMEOUT_MS: '1' });
     assert.equal(env.PATH, '/bin');
     assert.equal(env.BASH_DEFAULT_TIMEOUT_MS, String(30 * 60 * 1000));

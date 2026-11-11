@@ -1,5 +1,5 @@
-// Docker erreicht das Tool auf zwei Wegen: direkt (docker.exe unter Windows, docker unter Linux) oder ueber
-// WSL. Alles andere im Tool kennt nur dieses kleine Objekt.
+// The tool reaches Docker in two ways: directly (docker.exe on Windows, docker on Linux) or through
+// WSL. The rest of the tool only knows this small object.
 
 import { spawn } from 'node:child_process';
 
@@ -10,7 +10,7 @@ import { shellJoin, toWslPath } from './linux.mjs';
 const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN';
 const COMMAND_NOT_FOUND = 127;
 
-/** WSL uebernimmt Windows-Variablen nur, wenn WSLENV sie nennt. So darf das Token auf beiden Seiten gesetzt sein. */
+/** WSL only takes over Windows variables listed in WSLENV. This way the token may be set on either side. */
 export const wslEnv = (env) => ({
     ...env,
     WSLENV: [env.WSLENV, TOKEN].filter(Boolean).join(':'),
@@ -43,13 +43,13 @@ export const wslDocker = {
     get startHint() { return t('session.docker.wslStartHint'); },
     run: (args, options) => exec('wsl.exe', ['-e', 'bash', '-lc', `docker ${shellJoin(args)}`], { ...options, env: wslEnv(process.env) }),
     hostPath: toWslPath,
-    // wsl.exe gibt es auf fast jedem Windows, auch ohne Distribution. Dann fehlt Docker, es steht nicht bloss still.
+    // wsl.exe exists on almost every Windows, even without a distribution. Then Docker is missing, not just stopped.
     reachable: async () => (await exec('wsl.exe', ['-e', 'bash', '-lc', 'true'], { capture: true })).code === 0,
     hasToken: async () => (await exec('wsl.exe', ['-e', 'bash', '-lc', `[ -n "\${${TOKEN}:-}" ]`], { capture: true, env: wslEnv(process.env) })).code === 0,
     get tokenHint() { return t('session.docker.wslTokenHint', { token: TOKEN }); },
 };
 
-/** Was laesst sich versuchen, in dieser Reihenfolge. `CAW_DOCKER` legt den Weg fest, wenn beide da sind. */
+/** What to try, in this order. `CAW_DOCKER` picks the way when both exist. */
 export const dockerCandidates = ({ platform = process.platform, env = process.env } = {}) => {
     if (platform !== 'win32') return [nativeDocker];
     const choice = env.CAW_DOCKER;
@@ -59,7 +59,7 @@ export const dockerCandidates = ({ platform = process.platform, env = process.en
     return [nativeDocker, wslDocker];
 };
 
-/** Fragt den Dienst selbst: Dass der Befehl existiert, sagt nichts darueber, ob er laeuft. */
+/** Asks the daemon itself: the command existing says nothing about whether it runs. */
 const probe = async (docker) => {
     const { code, stdout } = await docker.run(['version', '--format', '{{.Server.Os}}'], { capture: true });
     if (code === COMMAND_NOT_FOUND) return 'missing';
@@ -67,7 +67,7 @@ const probe = async (docker) => {
     return stdout.replaceAll('\0', '').trim() === 'linux' ? 'ready' : 'wrong-os';
 };
 
-/** Nimmt den ersten Weg, dessen Dienst laeuft, und sagt sonst genau, was fehlt. */
+/** Takes the first way whose daemon runs, otherwise says exactly what is missing. */
 export const selectDocker = async (candidates = dockerCandidates()) => {
     const states = [];
     for (const docker of candidates) {

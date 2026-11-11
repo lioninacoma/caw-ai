@@ -1,4 +1,4 @@
-// Ein kompletter Lauf: Browser auf dem Host oeffnen, Container starten, dessen Befehle ausfuehren, Bericht schreiben.
+// A complete run: open the browser on the host, start the container, execute its commands, write the report.
 
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
@@ -42,46 +42,46 @@ const POLL_MS = 50;
 const AGENT_DIR = 'agent';
 const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
-// So lange bleibt das Fenster nach der letzten Entscheidung offen, mit Countdown, wenn der Mensch es nicht selbst schliesst.
+// How long the window stays open after the last decision, with a countdown, unless the human closes it.
 const LINGER_MS = 15000;
 const ADVICE_LOG = 'claude-empfehlung.log';
 const DRAFT_FILE = 'test-entwurf.yaml';
-// Aendert den Zustand der Seite oder belegt einen Punkt: Das geht erst nach der Freigabe des Plans.
+// Changes the page state or proves a step: only allowed once the plan is approved.
 const NEEDS_PLAN = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember']);
-// Beim Empfehlen liest Claude nur: Die Seite soll bleiben, wie der Lauf sie hinterlassen hat.
+// While advising Claude only reads: the page should stay as the run left it.
 const ADVISE_READS = new Set(['task', 'snapshot', 'url', 'eval', 'console', 'network', 'screenshot', 'say', 'advise']);
-// Im Gespraech kommt nur das Warten auf den Menschen dazu.
+// A conversation only adds waiting for the human.
 const TALK_READS = new Set([...ADVISE_READS, 'chat']);
-// Beim Entwickeln gehoert dem Menschen das Fenster, und er kann Claude bitten, es zu bedienen: klicken, ausfuellen, einen Bug nachstellen.
-// Nur auf seine Bitte, siehe Skill; ein Test entsteht daraus nicht, `check` und `remember` gibt es hier nicht.
+// While developing the window belongs to the human, who can ask Claude to operate it: click, fill, reproduce a bug.
+// Only on request (see skill); no test results from it, so there is no `check` or `remember` here.
 const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
-/** Was Claude beim Empfehlen (advise), im Gespraech nach einem Fehler (talk) und beim Entwickeln (develop) am Browser darf. */
 /**
  * The chip at the top right of the workbench for a run: record while Claude records or fixes (no replay), play while replaying
  * (run, check run, --until, restoring a state), pause for open: it replays nothing and hands over at once.
  */
 export const transportOf = (replay) => (replay === undefined ? 'record' : replay.steps.length === 0 ? 'pause' : 'play');
+/** What Claude may do in the browser while advising, talking after a failure, or developing. */
 export const consultAllowed = (mode) => (mode === 'develop' ? DEVELOP_ACTS : mode === 'talk' ? TALK_READS : ADVISE_READS);
 const TALK_LOG = 'claude-gespraech.log';
-// Beschriftungen als Getter: Die Sprache steht beim Import noch nicht fest.
+// Labels as getters: the language is not known yet at import time.
 const ACCEPT = { id: 'accept', get label() { return t('run.button.accept'); }, primary: true };
 const REJECT = { id: 'discard', get label() { return t('run.button.discard'); } };
 const NEXT = { id: 'next', get label() { return t('run.button.next'); }, primary: true };
-// Nur auf Klick: schreibt die vorgeschlagene Aenderung in den Code der Anwendung, committet wird nie.
+// Only on click: writes the proposed change into the application code; never commits.
 const APPLY = { id: 'apply', get label() { return t('run.button.apply'); }, primary: true };
 
 const color = colorEnabled();
 const ui = createUi();
 const sleep = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
-/** Fehler vor dem Lauf, die an Aufruf oder Config liegen: Exit 3 wie in der Doku, nicht 2. */
+/** Errors before the run caused by the invocation or config: exit 3 as documented, not 2. */
 const NOTHING_RAN = new Set(['auth-missing', 'config-invalid']);
 
-/** Erreichbarkeit der Umgebung: Jede HTTP-Antwort zaehlt. Zertifikate prueft hier niemand. */
+/** Whether the target is reachable: any HTTP response counts. Certificates are not checked here. */
 export const reachable = (url) => new Promise((ok) => {
-    // localhost und Namen unter .localhost auf 127.0.0.1, so wie fuer Chrome: Node unter Windows kennt .localhost nicht und loest
-    // localhost oft zuerst nach ::1 auf, wo der Dev-Server nicht lauscht.
+    // localhost and *.localhost resolve to 127.0.0.1, as for Chrome: Node on Windows does not know .localhost and often
+    // resolves localhost to ::1 first, where the dev server is not listening.
     const loopback = isLoopback(new URL(url).hostname) ? { lookup: (_host, options, done) => (options?.all ? done(null, [{ address: '127.0.0.1', family: 4 }]) : done(null, '127.0.0.1', 4)) } : {};
-    // http gibt es nur auf dem eigenen Rechner, etwa fuer einen lokalen Dev-Server; die Config laesst es sonst nicht zu.
+    // http only exists on the local machine, e.g. for a local dev server; the config allows it nowhere else.
     const request = new URL(url).protocol === 'http:' ? httpRequest : httpsRequest;
     const req = request(url, { method: 'HEAD', rejectUnauthorized: false, timeout: 15_000, ...loopback }, (res) => {
         res.resume();
@@ -93,8 +93,8 @@ export const reachable = (url) => new Promise((ok) => {
 });
 
 /**
- * Was die Anmeldung einer Rolle braucht: bei `form` und `basic` Name und Passwort, zuerst aus der Umgebung des Prozesses
- * (CI-Secrets), sonst aus caw/.env; bei `storageState` die gespeicherte Sitzung des Ziels; ohne Anmeldung nichts.
+ * What signing in as a role needs: for `form` and `basic` login and password, from the process environment first
+ * (CI secrets), otherwise from caw/.env; for `storageState` the saved session of the target; without sign-in nothing.
  */
 export const readCredentials = (root, config, roleName, target, env = process.env) => {
     const auth = authOf(config);
@@ -113,7 +113,7 @@ export const readCredentials = (root, config, roleName, target, env = process.en
     return { login: value(role.loginEnv), password: value(role.passwordEnv), ...(role.totpEnv === undefined ? {} : { totpSecret: value(role.totpEnv) }) };
 };
 
-/** Die Logdatei gehoert dem Container: nur eine echte Datei lesen, keine Verknuepfung. */
+/** The log file belongs to the container: only read a regular file, never a link. */
 const readAgentLog = (file) => {
     try {
         return lstatSync(file).isFile() ? readFileSync(file, 'utf8') : '';
@@ -122,14 +122,14 @@ const readAgentLog = (file) => {
     }
 };
 
-/** Claudes Arbeit ausserhalb der Schritte: eine Gruppe je Lauf, benannt nach dem, was er gerade tut. */
+/** Claude's work outside the steps: one group per run, named after what it is doing. */
 const CLAUDE_GROUP = 'claude';
 const CLAUDE_GROUPS = ['advise', 'talk', 'develop'];
 const claudeGroup = (mode) => (CLAUDE_GROUPS.includes(mode) ? t(`run.group.${mode}`) : undefined);
-/** Ein Punkt bleibt eine Zeile, wenn es geht: Den ganzen Befehl zeigt der Chat. */
+/** Keep a point to one line where possible; the chat shows the full command. */
 const shortActivity = (text) => (text.length > 70 ? `${text.slice(0, 69)}…` : text);
 
-/** Die Gruppe nach dem letzten Schritt eines Testlaufs: Wirkung vergleichen, Vergleichswerte lernen (nur bei Bedarf), Bericht. */
+/** The group after the last step of a test run: compare effects, learn baselines (only if needed), report. */
 const END = 'end';
 const endGroup = () => ({
     id: END,
@@ -139,8 +139,8 @@ const endGroup = () => ({
 });
 
 /**
- * Harte Fehler eines Laufs, die nach der aktuellen Config erlaubt oder fremd waeren: Text, Adresse, Stelle oder Stack trifft ein Muster
- * aus consoleIgnore oder foreignCode. So zaehlt eine Entscheidung des Menschen auch fuer die Einordnung, die vor ihr entstand.
+ * Hard failures of a run that the current config would allow or mark as foreign: text, URL, location or stack matches a
+ * consoleIgnore or foreignCode pattern. This way a human decision also applies to a classification made before it.
  */
 export const allowedNow = (failures, config) => {
     const patterns = [...(config.consoleIgnore ?? []), ...(config.foreignCode ?? [])].map((pattern) => new RegExp(pattern));
@@ -150,34 +150,36 @@ export const allowedNow = (failures, config) => {
 };
 
 /**
- * Das Muster fuer consoleIgnore zu einem Skriptfehler: seine erste Zeile ohne den Fehlertyp davor, als woertlicher Ausdruck.
- * Aus "TypeError: t.getKey is not a function" wird "t\.getKey is not a function".
+ * The consoleIgnore pattern for a script error: its first line without the leading error type, as a literal regex.
+ * "TypeError: t.getKey is not a function" becomes "t\.getKey is not a function".
  */
 export const ignorePattern = (failure) => String(failure.text ?? '').split('\n')[0].replace(/^\s*[A-Za-z]*Error:\s*/, '').trim()
     .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Bestehen die harten Fehler nur aus Skriptfehlern (keine HTTP-Fehler), die sich als Muster ignorieren lassen? */
+/** Are the hard failures all script errors (no HTTP errors) that can be ignored by a pattern? */
 export const ignorableFailures = (failures) => failures.length > 0 && failures.every((failure) => failure.type !== 'http' && ignorePattern(failure) !== '');
 
-/** Chrome angemeldet und mit lokalem Code oeffnen. Fehler der Umgebung kommen als CawError. */
 /**
- * Mit Chat laeuft die Anwendung immer in der Werkbank (ein Fenster mit Schritten, Chat und Requests), ohne Chat im eigenen Fenster.
- * Die Werkbank liegt auf der Adresse der Anwendung selbst, das geht unter jeder Adresse.
+ * With a chat the application always runs in the workbench (one window with steps, chat and requests), without one in its
+ * own window. The workbench lives on the application's own origin, so this works under any URL.
  */
 export const embedsApp = (interactive) => interactive === true;
 
-/** @param interactive mit Chat, also mit einem Menschen davor */
+/**
+ * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
+ * @param interactive with a chat, i.e. with a human in front of it
+ */
 export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false }) => {
-    // Was explore nicht fand und noch niemand eintrug: Ohne das scheitert schon die Anmeldung, also vor Chrome und Claude abbrechen.
+    // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
     const credentials = readCredentials(root, config, spec.role, checked.target);
     if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
     const app = config.apps[spec.app];
-    // Die Quelle des Overlays muss bereit sein, bevor Chrome startet: sonst testete der Lauf still etwas anderes. Was caw dafuer startet
-    // (Dev-Server, Watch), endet mit der Sitzung.
+    // The overlay source must be ready before Chrome starts, otherwise the run would silently test something else. Whatever
+    // caw starts for it (dev server, watch) ends with the session.
     const overlay = checked.source === 'overlay' ? await prepareOverlay({ root, config, checked, info: (text) => ui.info(text) }) : null;
-    // Erst hier, denn validate soll auch ohne Browser-Code gehen.
+    // Imported only here so that validate works without the browser code.
     const { openBrowserSession } = await import('./browser-session.mjs');
     ui.info(t('run.openingChrome'));
     let session;
@@ -205,7 +207,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         overlay?.stop();
         const { isLoginFailure, offerAuthRepair } = await import('./login-repair.mjs');
         if (isLoginFailure(error)) {
-            // Token nur, wo ohnehin Claude laeuft: mit Chat und auf einer Umgebung mit claude. Sonst nur der Weg dahin.
+            // Spend tokens only where Claude runs anyway: with a chat and on a target with claude. Otherwise just point the way.
             if (interactive && checked.agent) await offerAuthRepair({ root, config, error }).catch(() => false);
             else error.message = `${error.message} ${t('repair.hint')}`;
         }
@@ -223,7 +225,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     return session;
 };
 
-/** Was das Projekt schon an Wegen kennt. */
+/** The other tests the project already has. */
 const knownTests = (root, ownId) => {
     const dir = join(root, TEST_DIR);
     if (!existsSync(dir)) return [];
@@ -231,9 +233,9 @@ const knownTests = (root, ownId) => {
 };
 
 /**
- * Eine neue Planfassung macht Pruefungen ungueltig: die eines entfernten Schritts und, ab dem ersten geaenderten Schritt, alle
- * spaeteren, denn die Aufzeichnung ist eine Reihe. Sonst bekaeme ein umformulierter Schritt die Pruefung der alten Erwartung.
- * @returns die IDs, deren Pruefung neu noetig ist
+ * A new plan version invalidates checks: those of removed steps and, from the first changed step on, all later ones, since
+ * the recording is a sequence. Otherwise a reworded step would keep the check of its old expectation.
+ * @returns the ids that need to be checked again
  */
 export const invalidatedChecks = (before, after, recorder) => {
     const previous = new Map(before.steps.map((step) => [step.id, step]));
@@ -245,13 +247,13 @@ export const invalidatedChecks = (before, after, recorder) => {
     return [...removed, ...later].filter((id) => checked.has(id));
 };
 
-/** Die Felder, die der Agent von einem Schritt sehen soll. */
+/** The fields of a step the agent gets to see. */
 const planStep = ({ id, name, do: action, expect, note, retry }) => ({ id, name, do: action, expect, ...(note === undefined ? {} : { note }), ...(retry === undefined ? {} : { retry }) });
 const rememberedIn = (steps) => steps.flatMap(({ recording }) => recording?.actions ?? []).filter(({ action }) => action === 'remember').map(({ name, code }) => ({ name, code }));
 
 /**
- * Projektkontext aus caw/caw.md, wie CLAUDE.md fuer die Tests: Eigenheiten der Anwendungen, relevante Infos. Zaehlt nicht zum
- * Schritt-Hash, Aenderungen entwerten also keine Aufzeichnung.
+ * Project context from caw/caw.md, like CLAUDE.md for the tests: application quirks, relevant info. Not part of the step
+ * hash, so editing it does not invalidate recordings.
  */
 export const readContext = (root) => {
     const file = join(root, CONTEXT_FILE);
@@ -261,22 +263,22 @@ export const readContext = (root) => {
 };
 
 /**
- * @param sandbox  Ergebnis von prepareSandbox
+ * @param sandbox  result of prepareSandbox
  * @param options  spec, target, checked, timeoutMin, containerCommand, note;
- *                 `handover` entscheidet anhand des Ergebnisses, ob das Fenster an den Menschen geht;
- *                 mit `replay` und `stepTimeoutMs` laeuft statt des Containers die Aufzeichnung, sonst arbeitet Claude;
- *                 `repair` { id, reason } laesst ihn nur diesen Schritt beheben, die Schritte davor laufen vorab ohne ihn;
- *                 `previous` nennt ihm beim Aufnehmen den alten Testplan, `demonstration` die Vorfuehrung; `maxSteps` begrenzt seine Aktionen;
- *                 `conversation` { transcript, onChatOpen, lazy, alsoOnWarnings } oeffnet den Chat, mit `lazy` erst, wenn ein Schritt
- *                 gescheitert ist, mit `alsoOnWarnings` auch bei Fehlern und Warnungen eines sonst bestandenen Laufs;
- *                 `conclude` laeuft bei noch offenem Chat und bekommt `advise`, das Claude Empfehlungen geben laesst;
- *                 `adviseCommand` ersetzt dafuer Claude, wie `containerCommand` beim Aufnehmen
+ *                 `handover` decides from the result whether the window is handed to the human;
+ *                 with `replay` and `stepTimeoutMs` the recording plays instead of the container, otherwise Claude works;
+ *                 `repair` { id, reason } has Claude fix only that step, the steps before it are replayed first without him;
+ *                 when recording, `previous` gives Claude the old test plan, `demonstration` the demonstration; `maxSteps` caps its actions;
+ *                 `conversation` { transcript, onChatOpen, lazy, alsoOnWarnings } opens the chat; with `lazy` only once a step
+ *                 failed, with `alsoOnWarnings` also for failures and warnings of an otherwise passed run;
+ *                 `conclude` runs while the chat is still open and gets `advise`, which lets Claude give advice;
+ *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
  * @returns { exitCode, verdict, failed, candidate, fresh, expectChange }
  */
 export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxSteps, demonstration, previous, conversation, conclude, develop, headless = false }) => {
-    // Veraenderlich: Beim Beheben im selben Browser wird aus dem Testlauf ein Lauf, der genau diesen Schritt behebt.
+    // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
-    // Mit --until zaehlen nur die Schritte auf dem Weg dorthin, beim Beheben nur dieser eine, und ein Plan im Entstehen hat noch keine.
+    // With --until only the steps on the way there count, when repairing only that one, and a plan being created has none yet.
     const reached = replay?.until === undefined ? null : new Set(replay.steps.filter(({ action }) => action === 'check').map(({ id }) => id));
     let spec = givenSpec;
     if (reached !== null) spec = { ...givenSpec, expectations: givenSpec.expectations.filter(({ id }) => reached.has(id)) };
@@ -291,32 +293,32 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     mkdirSync(channel, { recursive: true });
 
     const startedAt = Date.now();
-    let mode = t('run.mode.record');
-    if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) mode = t('run.mode.verify');
-    else if (replay?.until !== undefined) mode = t('run.mode.until', { until: replay.until });
-    else if (replay !== undefined && replay.steps.length === 0) mode = t('run.mode.open');
-    else if (replay !== undefined) mode = t('run.mode.replay');
-    else if (repair !== undefined) mode = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
-    // Welcher Code laeuft, immer in einer Zeile, auch in CI: Ein still ausgelieferter Stand fiele sonst erst am Ergebnis auf.
-    ui.header({ mode, test: spec.id, target, source: checked.source, code: describeCode(config, spec, checked, { root }), ...(replay === undefined ? { maxSteps } : {}) });
+    let modeLabel = t('run.mode.record');
+    if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) modeLabel = t('run.mode.verify');
+    else if (replay?.until !== undefined) modeLabel = t('run.mode.until', { until: replay.until });
+    else if (replay !== undefined && replay.steps.length === 0) modeLabel = t('run.mode.open');
+    else if (replay !== undefined) modeLabel = t('run.mode.replay');
+    else if (repair !== undefined) modeLabel = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
+    // Which code runs, always on one line, also in CI: otherwise a silently deployed version would only show in the result.
+    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: describeCode(config, spec, checked, { root }), ...(replay === undefined ? { maxSteps } : {}) });
 
     const reportBase = { testId: spec.id, target, source: checked.source, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
     let verdict = null;
     let session;
-    // Alle Empfehlungen dieses Laufs, auch aus mehreren Sitzungen: Der Bericht nennt sie zusammen.
+    // All advice of this run, also across several sessions: the report lists them together.
     const decided = [];
     const adviceNotes = [];
     const adviceOf = () => (decided.length === 0 && adviceNotes.length === 0 ? {} : { advice: { items: decided, ...(adviceNotes.length === 0 ? {} : { note: adviceNotes.join(' ') }) } });
-    // Empfiehlt Claude beim Beheben und reicht danach sein Urteil ein, bleiben die Empfehlungen im Bericht.
+    // If Claude gives advice while repairing and then submits a verdict, the advice stays in the report.
     const writeResult = (outcome) => {
-        // Geschwaerzt wie fuer Claude: Passwort der Rolle und geheim gemerkte Werte stehen nie in result.json oder report.md.
+        // Redacted as for Claude: the role password and secret remembered values never end up in result.json or report.md.
         verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
     };
     const finishRun = () => {
         ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000 });
-        // Fehlt die gespeicherte Anmeldung oder steht noch TODO in der Config, lief nichts: ein ungueltiger Aufruf (3), keine Umgebung (2).
+        // Missing saved sign-in or a TODO left in the config means nothing ran: an invalid invocation (3), not the environment (2).
         if (verdict.status === 'error' && NOTHING_RAN.has(verdict.code)) return EXIT.rejected;
         return EXIT[verdict.status];
     };
@@ -328,7 +330,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         ...(spec.role ? [[t('run.fact.role'), spec.role]] : []),
         [t('run.fact.code'), t(checked.source === 'overlay' ? 'run.fact.local' : 'run.fact.deployed')],
     ];
-    // Jede Aktion der Aufzeichnung ist ein Punkt ihres Schritts. Ohne Aktion meldet das Abspielen einen neuen Versuch.
+    // Every recorded action is a point of its step. Without an action, the replay reports a new attempt.
     const showAction = ({ owner, position, step, label }) => {
         const bench = session?.workbench;
         if (bench === undefined || bench === null) return;
@@ -338,8 +340,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
     try {
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined });
-        // Eindeutige Namen: „Ziel“ hiesse sonst auch das Element eines Schritts, „Stand“ auch die Aufzeichnung.
-        await session.workbench?.facts(factsOf(mode));
+        // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
+        await session.workbench?.facts(factsOf(modeLabel));
         await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
     } catch (error) {
@@ -350,11 +352,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
 
     let abortSignal;
     const aborted = new Promise((ok) => { abortSignal = ok; });
-    // Der Rabe der Werkbank fliegt bei Abbruch ins Logo.
+    // On abort the workbench raven flies into the logo.
     aborted.then(() => session.workbench?.mood?.('aborted')).catch(() => {});
     process.once('SIGINT', abortSignal);
 
-    // Der Chat steht immer neben dem Anwendungsfenster. Mit `lazy` oeffnet er sich erst, wenn etwas schiefgeht.
+    // The chat always sits next to the application window. With `lazy` it opens only when something goes wrong.
     let chat = null;
     const tokensOk = createTokenGate({ chat: () => chat });
     const openConversation = () => openChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, transcript: conversation.transcript });
@@ -379,7 +381,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const context = readContext(root);
     const run = {
         runId,
-        // Sprache des Projekts: In ihr spricht Claude mit dem Menschen und schreibt Schritte und Erwartungen.
+        // Project language: Claude talks to the human and writes steps and expectations in it.
         language: language(),
         target,
         source: checked.source,
@@ -402,14 +404,16 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }),
         ...(demonstration === undefined ? {} : { demonstration: demonstration.items }),
     };
-    // Gemerkte Werte des Laufs, Platzhalter -> Wert. Geheime sieht Claude nur als Platzhalter; der Handler setzt sie ein.
+    // Remembered values of the run, placeholder -> value. Claude sees secret ones only as placeholders; the handler fills them in.
     let remembered = new Map();
     const isSecret = (value) => (session.secrets?.() ?? []).includes(value);
     const openRemembered = () => [...remembered].filter(([, value]) => !isSecret(value));
     const fillSecrets = (text) => [...remembered].filter(([, value]) => isSecret(value)).reduce((current, [placeholder, real]) => current.split(placeholder).join(real), text);
     let verdictGiven;
-    /** Je Urteil ein eigener Handler: Nach `finish` nimmt er nichts mehr an, beim Beheben im selben Browser kommt ein zweites Urteil. */
-    // @param task ein anderer Auftrag, etwa beim Herstellen eines mit F1 gewaehlten Tests: Dessen Pruefungen gehoeren zu seinen Schritten.
+    /**
+     * One handler per verdict: after `finish` it accepts nothing more; repairing in the same browser brings a second verdict.
+     * @param task another task, e.g. when restoring a test picked with F1: its checks belong to its own steps
+     */
     const newAgentHandler = (task = run) => {
         let verdictSignal;
         verdictGiven = new Promise((ok) => { verdictSignal = ok; });
@@ -423,28 +427,28 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         });
     };
     let agentHandler = newAgentHandler();
-    // Was das Abspielen gelesen hat; beim Beheben im selben Browser braucht Claude diese Werte.
+    // What the replay read; Claude needs these values when repairing in the same browser.
     let played = null;
 
-    /** Arbeitet die Befehle aus dem Container ab, bis die Rueckgabe sie anhaelt. */
+    /** Processes the commands from the container until the returned stop function halts it. */
     const startPump = (handler) => {
         let pumping = true;
         const ignored = new Set();
         const loop = (async () => {
             while (pumping) {
-                // Der Ordner gehoert dem Container. Was hier scheitert, darf den Lauf nicht abstuerzen lassen,
-                // sonst blieben Browser und Container zurueck; im schlimmsten Fall endet er ohne Urteil.
+                // The folder belongs to the container. A failure here must not crash the run, or browser and container
+                // would be left behind; at worst the run ends without a verdict.
                 await pollChannel(channel, handler, ignored).catch((error) => ui.warn(t('run.channelError', { message: error.message }), console.error));
                 await sleep(POLL_MS);
             }
         })();
-        // Wartet der Kanal gerade auf den Menschen, loest ihn erst das Schliessen des Browsers. Darauf nicht warten.
+        // If the channel is waiting for the human, only closing the browser releases it. Do not wait for that.
         return () => { pumping = false; return Promise.race([loop, sleep(1000)]); };
     };
-    /** Startet den Agenten fuer diesen Lauf, lokal oder im Container. Sein Log laeuft im Chat mit, als reiner Text: Die Datei gehoert dem Agenten. */
+    /** Starts the agent for this run, locally or in the container. Its log is echoed in the chat as plain text; the file belongs to the agent. */
     const startAgent = (box, agentCommand, logName, mode = 'run') => {
         const log = () => readAgentLog(join(agentDir, logName));
-        // Was Claude tut, steht auch in der Schrittliste: beim Aufnehmen unter dem laufenden Schritt, sonst in einer eigenen Gruppe.
+        // What Claude does also shows in the step list: when recording under the running step, otherwise in its own group.
         const bench = session?.workbench ?? null;
         const own = claudeGroup(mode);
         if (bench !== null && own !== undefined) bench.group({ id: CLAUDE_GROUP, name: own, kind: 'phase' });
@@ -469,10 +473,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         };
         if (box.kind === 'session') {
             const hints = {
-                run: `Der Lauf ${runId} ist offen. Fuehre ihn durch und reiche das Ergebnis mit finish ein.`,
-                advise: `Im Lauf ${runId} sind Fehler oder Warnungen aufgetreten. Lies den Auftrag mit task und reiche deine Empfehlungen mit advise ein.`,
-                talk: `Im Lauf ${runId} ist ein Schritt gescheitert, und der Mensch fragt dich im Chat. Lies den Auftrag mit task, antworte mit say und warte mit chat auf ihn.`,
-                develop: `Im Lauf ${runId} entwickelt der Mensch im hergestellten Zustand. Lies den Auftrag mit task; die Seite kannst du lesen (snapshot, eval, console, network) und auf seine Bitte bedienen (click, fill, type, press, goto, reload). Fragen aus dem Chat der Werkbank holst du mit chat, antworte dort mit say.`,
+                run: `Run ${runId} is open. Carry it out and submit the result with finish.`,
+                advise: `Run ${runId} had failures or warnings. Read the task with task and submit your advice with advise.`,
+                talk: `In run ${runId} a step failed, and the human is asking you in the chat. Read the task with task, answer with say and wait for the human with chat.`,
+                develop: `In run ${runId} the human is developing in the restored state. Read the task with task; you can read the page (snapshot, eval, console, network) and operate it on request (click, fill, type, press, goto, reload). Fetch questions from the workbench chat with chat and answer there with say.`,
             };
             const agent = announceSessionAgent({ root, runId, agentDir, mode, hint: hints[mode] });
             chat?.progress?.(t('run.waitingForSession'));
@@ -514,7 +518,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         };
     };
 
-    /** Bericht und Ergebnis um die Empfehlungen ergaenzen. Der Urteilsspruch bleibt, wie er war. */
+    /** Adds the advice to report and result. The verdict itself stays as it was. */
     const writeAdvice = () => {
         if (decided.length === 0 && adviceNotes.length === 0) return;
         verdict = { ...verdict, ...adviceOf() };
@@ -522,18 +526,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
     };
     /**
-     * Claude untersucht im Browser dieses Laufs, nur lesend. Mit `advise` reicht es Empfehlungen ein, der Mensch entscheidet je Karte.
-     * Knowledge und Config aendern sich sofort, Aenderungen am Test nur im zurueckgegebenen Test: Ob er in die Datei geht, entscheidet der Ablauf.
-     * @param box      Sandbox
-     * @param draft    der ganze Test, auf den sich die Empfehlungen beziehen
-     * @param mode     advise: einmal empfehlen, dann ist Schluss; talk: Gespraech mit dem Menschen, bis `end`
-     * @param question beim Gespraech die erste Nachricht des Menschen
-     * @returns { finished, send, end }: `finished` liefert { spec, touched, stale, notes, files }, `stale` nennt { id, title } der
-     *          Schritte, die neu aufgenommen werden muessen; `send` gibt Claude eine weitere Nachricht, `end` beendet das Gespraech
-     */
-    /**
-     * Empfehlungen als Karten vorlegen und je Entscheidung anwenden: Knowledge, Config und Code sofort, der Test nur im Ergebnis.
-     * @returns { result, review(items) }; `result` sammelt { spec, touched, stale, notes, files }
+     * Presents advice as cards and applies each decision: knowledge, config and code at once, the test only in the result.
+     * @returns { result, review(items) }; `result` collects { spec, touched, stale, notes, files }
      */
     const createReviewer = (draft) => {
         const result = { spec: draft, touched: [], stale: [], notes: false, files: [] };
@@ -551,7 +545,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 } else if (decision === 'adopted' && changesFiles(item)) {
                     const file = applyToFiles(root, item.change);
                     if (!result.files.includes(file)) result.files.push(file);
-                    // Gilt sofort, auch fuer den naechsten Pruefdurchlauf dieses Befehls: Er liest die Config nicht neu.
+                    // Applies at once, also to the next verification run of this command: it does not reread the config.
                     if (item.change.kind === 'config') config[item.change.key] = configValue(config, item.change);
                 } else if (decision === 'adopted') {
                     const applied = applyToSpec(result.spec, item.change);
@@ -569,14 +563,22 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         return { result, review };
     };
     /**
-     * @param persist beim Entwickeln: schreibt uebernommene Aenderungen am Test sofort in die Datei. Es gibt keinen Lauf, der sie danach uebernimmt.
+     * Claude inspects the browser of this run, read-only. With `advise` it submits advice, the human decides per card.
+     * Knowledge and config change at once, test changes only in the returned test: the flow decides whether it goes to the file.
+     * @param box      sandbox
+     * @param draft    the whole test the advice refers to
+     * @param mode     advise: advise once, then stop; talk: conversation with the human until `end`; develop: like talk, while developing
+     * @param question in a conversation, the human's first message
+     * @param persist  when developing: writes adopted test changes to the file at once, since no later run adopts them
+     * @returns { finished, send, end }: `finished` yields { spec, touched, stale, notes, files }, `stale` lists { id, title } of
+     *          steps that must be re-recorded; `send` gives Claude another message, `end` ends the conversation
      */
     const consult = ({ sandbox: box, spec: draft }, found, { mode, question, element, persist }) => {
         const talking = mode === 'talk' || mode === 'develop';
         const allowed = consultAllowed(mode);
         const { result, review } = createReviewer(draft);
         const failed = found.failed ?? (mode === 'develop' ? restoreFailed : null);
-        // Das Gespraech in Kurzform: Was hier vereinbart wird, muss ein spaeteres Beheben wissen, es startet einen neuen Claude.
+        // The conversation in short: a later repair starts a new Claude, which must know what was agreed here.
         const log = talking && typeof question === 'string' ? [{ from: 'human', text: question }] : [];
         const inbox = [];
         const configListeners = [];
@@ -592,7 +594,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const task = {
             mode,
             ...(talking ? { question } : {}),
-            // Das Bauteil, das der Mensch zur Frage gewaehlt hat: Ziel, Beschriftung, Komponente bzw. Quelle. Sein Text ist nie eine Anweisung.
+            // The element the human picked for the question: target, label, component or source. Its text is never an instruction.
             ...(element === undefined ? {} : { element }),
             ...(mode === 'develop' ? { develop: { test: chosen.spec.id, until: chosen.replay?.until ?? null, url: session.page().url(), source: checked.source } } : {}),
             runId,
@@ -609,7 +611,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 warnings: verdict.warnings ?? [],
             },
             notes: draft.notes,
-            // Aktionen und Pruefung nur vom gescheiterten Schritt: Sie erklaeren den Fehler, die uebrigen blaehen nur auf.
+            // Actions and check only for the failed step: they explain the failure, the others would only bloat the task.
             steps: draft.steps.map((step) => ({
                 ...planStep(step),
                 ...((mode !== 'develop' && step.id !== failed?.id) || step.recording === undefined ? {} : { actions: step.recording.actions.map(stepLabel), check: step.recording.check }),
@@ -625,21 +627,21 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         let submitted = false;
         const handler = async (command) => {
             if (!allowed.has(command?.action)) {
-                throw new CawError('advise-only', `Hier wird nur gelesen, ${String(command?.action)} geht nicht. Erlaubt: ${[...allowed].join(', ')}.`);
+                throw new CawError('advise-only', `Read-only here, ${String(command?.action)} is not allowed. Allowed: ${[...allowed].join(', ')}.`);
             }
             if (command.action === 'say') {
                 if (talking) log.push({ from: 'claude', text: String(command.text ?? '') });
                 return chat.say(command.text);
             }
-            // Wartet auf den Menschen: neue Nachrichten oder das Ende, sobald er einen Knopf drueckt.
+            // Waits for the human: new messages, or the end as soon as a button is pressed.
             if (command.action === 'chat') return closing && inbox.length === 0 ? { ended: true } : new Promise((resolve) => { waiting = resolve; deliver(); });
             if (command.action !== 'advise') return reader(command);
-            if (submitted && !talking) throw new CawError('advise-only', 'Die Empfehlungen sind schon eingereicht.');
+            if (submitted && !talking) throw new CawError('advise-only', 'The advice has already been submitted.');
             const items = readAdvice(command.advice, result.spec, config, { root, diagnosis: failed?.diagnosis });
             submitted = true;
             try {
                 const decisions = await review(items, talking ? log : undefined);
-                // Eine uebernommene Aenderung an der Config (etwa ein Fehler ignoriert): Wer darauf wartet, prueft, ob damit alles erlaubt ist.
+                // An adopted config change (e.g. an ignored error): listeners check whether everything is allowed now.
                 if (items.some((item, index) => item.change?.kind === 'config' && decisions[index]?.decision === 'adopted')) {
                     for (const notify of configListeners.splice(0)) notify();
                 }
@@ -658,9 +660,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             : adviseCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin ?? CLAUDE_TIMEOUT_MIN), '--advise'];
         let agent = IDLE_AGENT;
         const finished = (async () => {
-            // Erst der Hinweis auf Token; lehnt der Mensch ab, geht es ohne Claude weiter.
+            // Token notice first; if the human declines, continue without Claude.
             if (!await tokensOk({ decline: t('run.tokens.withoutClaude') })) {
-                // Sofort vorbei: Eine Nachricht gleich nach dem Abbrechen braucht eine neue Sitzung, mit neuer Frage.
+                // Over at once: a message right after declining needs a new session, asking again.
                 over = true;
                 chat.progress(t('run.tokens.declined'));
                 if (!talking) chat.advising(false);
@@ -671,7 +673,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             let adviceNote;
             try {
                 const ended = await Promise.race([done.then(() => 'done'), agent.ended, session.closed.then(() => 'browser-closed'), aborted.then(() => 'aborted')]);
-                // Im Gespraech hat Claude das Ende eben erst erfahren: kurz Zeit lassen, die letzte Antwort abzuholen und sauber aufzuhoeren.
+                // In a conversation Claude has only just learned of the end: give it a moment to fetch the last answer and stop cleanly.
                 if (ended === 'done' && talking) await Promise.race([agent.ended, new Promise((ok) => { setTimeout(ok, 3000).unref?.(); })]);
                 agent.stopTail();
                 if (ended !== 'done') {
@@ -696,11 +698,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         })();
         return {
             finished,
-            /** Claude ist fertig, von sich aus oder weil der Lauf endete: Eine neue Nachricht braucht eine neue Sitzung. */
+            /** Claude is done, on its own or because the run ended: a new message needs a new session. */
             over: () => over,
-            /** Das Gespraech bis jetzt: { from: human | claude | decision, text } */
+            /** The conversation so far: { from: human | claude | decision, text } */
             log: () => [...log],
-            /** Erfuellt sich, sobald der Mensch eine Aenderung an der Config uebernimmt. */
+            /** Resolves as soon as the human adopts a config change. */
             configChanged: () => new Promise((resolve) => { configListeners.push(resolve); }),
             send: (message, picked) => {
                 log.push({ from: 'human', text: String(message) });
@@ -717,49 +719,49 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
     const adviseRun = (options, found) => consult(options, found, { mode: 'advise' }).finished;
 
-    /** Laedt die App mit dem aktuellen Code neu; der Zustand der Seite geht dabei meist verloren. */
+    /** Reloads the app with the current code; the page state is usually lost. */
     const reloadApp = async () => {
         const ready = await session.restart();
         return ready.settled ? t('run.reloaded') : t('run.reloadedUnsettled', { reason: ready.reason });
     };
-    /**
-     * Spielt die Schritte bis zum Zustand erneut ab, im selben Fenster mit dem aktuellen Code und einer neuen runTag: Was der Lauf
-     * vorher angelegt hat, bleibt, ein neuer Datensatz kommt dazu.
-     */
-    // Welcher Zustand gerade gilt: der des Laufs, nach einer Wahl mit F1 der gewaehlte. „Zustand neu herstellen“ stellt ihn wieder her.
+    // The current state: the run's, or after picking with F1 the picked one. "Restore state" restores it.
     let chosen = { spec, replay };
+    /**
+     * Replays the steps up to the state again, in the same window with the current code and a new runTag: what the run
+     * created before stays, a new record is added.
+     */
     const restoreState = async () => restoreWith(chosen);
     /**
-     * Ein anderer Zustand, gewaehlt mit F1 in der Werkbank: ein Test derselben Rolle, App und Umgebung bis zu einem Schritt.
-     * Die Schrittliste zeigt danach diesen Test.
+     * Another state, picked with F1 in the workbench: a test of the same role, app and target up to a step.
+     * The step list then shows that test.
      */
     const choose = (other, until) => {
         const end = other.steps.findIndex(({ id }) => id === until);
-        const reached = { ...other, steps: other.steps.slice(0, end + 1), expectations: other.expectations.slice(0, end + 1) };
-        chosen = { spec: reached, replay: cutReplay(other, until) };
+        const cut = { ...other, steps: other.steps.slice(0, end + 1), expectations: other.expectations.slice(0, end + 1) };
+        chosen = { spec: cut, replay: cutReplay(other, until) };
     };
     const restoreOther = async (other, until) => {
         choose(other, until);
         await session.workbench?.steps(stepGroups(chosen.spec.steps, chosen.replay));
         return restoreWith(chosen);
     };
-    // Woran das letzte Herstellen gescheitert ist, mit Belegen wie im Lauf; null, wenn es geklappt hat. Geht beim Entwickeln an Claude.
+    // Why the last restore failed, with evidence as in a run; null if it worked. Passed to Claude when developing.
     let restoreFailed = null;
     const restoreWith = async ({ spec: shownSpec, replay: plan }) => {
         if (plan === undefined) return t('run.restore.noRecording');
         restoreFailed = null;
-        // Wie ein frischer Lauf: alle Schritte offen, der Rabe huepft von S1 aus vorwaerts statt quer ueber alte Ergebnisse.
+        // Like a fresh run: all steps open, the raven hops forward from S1 instead of across old results.
         await session.workbench?.mood?.('wait');
-        // Die Schritte laufen neu, wie beim ersten Lauf: nicht mehr ausgegraut, schon waehrend sie laufen.
+        // The steps run again as in the first run: no longer greyed out, already while they run.
         await session.workbench?.left?.(false);
         for (const { id } of shownSpec.expectations) await session.workbench?.step(id, 'waiting');
-        // Frisch angemeldet wie ein neuer Lauf: Sonst liefe der Test in der Sitzung los, die der vorige Zustand hinterlassen hat.
-        // Im Konto der Rolle des Tests und auf der Startseite seiner App, auch wenn der Lauf mit einer anderen begann.
+        // Signed in fresh like a new run, otherwise the test would start in the session the previous state left behind.
+        // With the account of the test's role and on its app's start page, even if the run began with another one.
         chat?.progress(t('run.restore.signingIn', { role: shownSpec.role ?? '' }));
         if (session.signInAgain === undefined) await session.restart();
         else {
             await session.signInAgain({
-                // Immer ausdruecklich: Nach einem Test einer anderen Rolle ist noch deren Konto angemeldet.
+                // Always explicit: after a test of another role, that role's account is still signed in.
                 as: readCredentials(root, config, shownSpec.role, checked.target),
                 start: config.apps[shownSpec.app].startUrl,
             });
@@ -784,8 +786,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         if (failed !== null) {
             const requests = again.requests?.get(failed.id) ?? [];
             const broken = again.broken?.step === failed.id ? again.broken : null;
-            const previous = shownSpec.steps[shownSpec.steps.findIndex(({ id }) => id === failed.id) - 1]?.id;
-            const earlier = previous === undefined ? null : { id: previous, requests: again.requests?.get(previous) ?? [] };
+            const previousId = shownSpec.steps[shownSpec.steps.findIndex(({ id }) => id === failed.id) - 1]?.id;
+            const earlier = previousId === undefined ? null : { id: previousId, requests: again.requests?.get(previousId) ?? [] };
             const baseline = shownSpec.steps.find(({ id }) => id === failed.id)?.recording?.network;
             const hide = (value) => redactDeep(value, session.secrets?.() ?? []);
             restoreFailed = {
@@ -800,14 +802,14 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const status = again.results?.get(id)?.status;
             await session.workbench?.step(id, id === failed?.id ? 'fail' : status === 'pass' ? 'pass' : 'skipped');
         }
-        // Danach ist wieder der Mensch dran: Der Rabe fliegt zum Chat, beim Fehler bleibt er auf dem Schritt.
+        // Then it is the human's turn again: the raven flies to the chat, on failure it stays on the step.
         await session.workbench?.mood?.(failed === null ? 'ask' : 'fail');
         const until = plan.until === undefined ? t('run.restore.atEnd') : shownSpec === spec ? plan.until : `${shownSpec.id} ${plan.until}`;
         return failed === null
             ? t('run.restore.done', { until, tag })
             : t('run.restore.failed', { id: failed.id, reason: failed.reason.replace(/\.$/, '') });
     };
-    /** Das gewaehlte Element samt Seite und letzten Requests fuer die eigene Claude-Code-Session (Tool caw_selection). */
+    /** The picked element with page and recent requests, for the human's own Claude Code session (tool caw_selection). */
     const handToCode = (element) => {
         const recent = session.network === undefined ? [] : session.network.since(Math.max(0, session.network.mark() - 20));
         const selection = { at: new Date().toISOString(), runId, test: chosen.spec.id, target, until: chosen.replay?.until ?? null, url: session.page().url(), source: checked.source, element, requests: recent };
@@ -815,10 +817,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         return selection;
     };
 
-    /** Ende fuer alle Wege: Trace sichern, Urteil ausgeben, bei Bedarf das Fenster uebergeben. */
+    /** Common end: save the trace, print the verdict, hand over the window if needed. */
     const closeRun = async (ended, found = {}) => {
         await session.stopTrace();
-        // Der Bericht steht schon: writeResult schreibt ihn mit dem Urteil.
+        // The report already exists: writeResult writes it together with the verdict.
         await session.workbench?.point(END, 'report', ended === 'verdict' ? 'pass' : 'waiting');
         const exitCode = finishRun();
         const alive = ended !== 'browser-closed' && ended !== 'aborted';
@@ -833,10 +835,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }
         const advise = (options) => adviseRun(options, found);
         const talk = (options, question, element) => consult(options, found, { mode: 'talk', question, ...(element === undefined ? {} : { element }) });
-        // Nur nach einem Testlauf, dessen gescheiterter Schritt noch nichts ausgefuehrt hat: Die Seite steht dann genau davor.
+        // Only after a test run whose failed step has not executed anything yet: the page is then right before it.
         const repairHere = replay !== undefined && played !== null && found.failed?.clean === true ? (options) => repairInPlace(options, found.failed) : undefined;
-        // Harte Fehler, die nur Skriptfehler sind: Der Mensch kann sie mit einem Klick ignorieren, ohne Claude. Danach und nach einer
-        // uebernommenen Empfehlung zeigt `cleared`, ob die Config jetzt alle erlaubt; dann genuegt ein neuer Pruefdurchlauf.
+        // Hard failures that are only script errors: the human can ignore them with one click, without Claude. After that, or
+        // after adopted advice, `cleared` tells whether the config now allows all of them; then a new verification run suffices.
         const hard = verdict.failures ?? [];
         const ignore = ignorableFailures(hard) ? () => {
             const added = [];
@@ -850,22 +852,22 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             return added;
         } : undefined;
         const cleared = () => hard.length > 0 && allowedNow(hard, config).length === hard.length;
-        // conclude sagt, wie es weitergeht: { next: 'claude' | 'check' | 'run' } oeffnet gleich ein neues Fenster, { outcome } ist das Ergebnis.
+        // conclude says what comes next: { next: 'claude' | 'check' | 'run' } opens a new window right away, { outcome } is the result.
         let after = {};
         if (chat !== null && alive) {
             const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere, ignore, cleared }), session.closed, aborted]);
             if (said !== null && typeof said === 'object') after = said;
         }
         const handing = handover?.({ verdict, ...found }) && alive;
-        // Beim Entwickeln bleibt der Chat offen: Fragen an Claude, Element an Claude Code, Zustand neu herstellen.
+        // When developing the chat stays open: questions to Claude, element to Claude Code, restore state.
         const developing = handing && develop !== undefined && chat !== null && chat.available();
         if (!developing && chat !== null && alive) {
-            // Die Karte im Chat: kurz das Ergebnis, der Bericht, der Befehl fuer einen neuen Lauf.
+            // The card in the chat: short result, the report, the command for a new run.
             const results = verdict.results ?? [];
             const passed = results.filter((result) => result.status === 'pass').length;
             const text = results.length > 0 ? t('run.finished.steps', { passed, total: results.length }) : t(verdict.status === 'pass' ? 'run.finished.passed' : 'run.finished.failed');
             await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command: `caw-ai run ${spec.id}` });
-            // Das Fenster wechselt: Das sagen Chat und Terminal, bevor es zugeht.
+            // The window changes: chat and terminal say so before it closes.
             if (after.next !== undefined) {
                 const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
                 chat.notice(line);
@@ -875,13 +877,13 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // The run is over: the chip at the top right shows pause.
         await session.workbench?.transport?.('pause').catch(() => {});
         if (!developing) chat?.human.closed();
-        // Nach der letzten Entscheidung verschwindet das Fenster nicht einfach: Es bleibt kurz offen, der Mensch kann es selbst schliessen.
-        // Ohne Chat (CI, --no-chat, headless) wartet hier nichts.
+        // After the last decision the window does not just vanish: it stays open briefly, the human can close it.
+        // Without a chat (CI, --no-chat, headless) nothing waits here.
         if (!developing && !handing && after.next === undefined && chat !== null && alive && !headless && chat.linger !== undefined) {
             await Promise.race([chat.linger(LINGER_MS), session.closed, aborted]);
         }
         if (handing) {
-            // Die Kopfzeile sagt, was jetzt gilt: Das Abspielen ist vorbei, der Mensch ist dran.
+            // The header says what applies now: the replay is over, it is the human's turn.
             let phase = t('run.phase.handedOver');
             if (developing) phase = replay?.until !== undefined && verdict.status === 'pass' ? t('run.phase.developIn', { until: replay.until }) : t('run.phase.develop');
             await session.workbench?.facts(factsOf(phase)).catch(() => {});
@@ -892,7 +894,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 ui.note(t('run.handover.window'));
             }
             if (developing) {
-                // Nach dem Schreiben eines Tests: F1 und „Zustand neu herstellen“ sehen ihn so, wie er jetzt in der Datei steht.
+                // After writing a test: F1 and "restore state" see it as it now is in the file.
                 let afterSave = async () => {};
                 const persist = async (result) => {
                     const file = writeTest(root, result.spec, new Set(result.touched), { withNotes: result.notes });
@@ -902,16 +904,16 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     result.notes = false;
                     await afterSave(result.spec.id);
                 };
-                // Claude bekommt den ganzen Test des Zustands, wie er in der Datei steht (nach F1 der gewaehlte), nicht nur die Schritte bis hier:
-                // So kann es auch im Entwickeln einen Schritt aendern, etwa einen Klick optional machen, der den Zustand nicht mehr herstellt.
+                // Claude gets the whole test of the state as it is in the file (after F1 the picked one), not just the steps up to here,
+                // so it can change a step while developing, e.g. make a click optional that no longer restores the state.
                 const ask = (options, question, element) => {
                     const full = chosen.spec.steps.length === 0 ? undefined : loadStateTest(root, config, chosen.spec.id);
                     return consult({ ...options, spec: full ?? options.spec }, {}, { mode: 'develop', question, persist, ...(element === undefined ? {} : { element }) });
                 };
                 try {
                     const bench = session.workbench;
-                    // Aktualisieren laedt die aktuelle Seite ohne Cache, wie F5 beim Entwickeln. Nach der Uebergabe ist Neuladen Arbeit,
-                    // kein Stoerfall: Die Schritte bleiben, wie sie sind, ohne „verlassen“ und ohne Warnung.
+                    // Refresh reloads the current page without cache, like F5 while developing. After the handover reloading is work,
+                    // not an incident: the steps stay as they are, without "left" and without a warning.
                     const refresh = async () => {
                         await session.reloadPage();
                         return '';
@@ -920,10 +922,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                         if (!human) return;
                         await listener();
                     });
-                    // Nach der Uebergabe (open, --until) zeigt die Werkbank nur die Anwendung im Vollbild; F8 holt die Werkbank zurueck.
+                    // After the handover (open, --until) the workbench shows only the application full-screen; F8 brings the workbench back.
                     await bench?.solo?.(true);
-                    // F1: Zustaende aus allen Tests derselben Rolle, App und Umgebung. Ohne Schritt laeuft der Test bis zum letzten herstellbaren.
-                    // Alle Tests dieser Umgebung, jeder im Konto seiner Rolle. Bei Basic-Auth haengt das Konto am Browser: nur die eigene Rolle.
+                    // F1: states from all tests of this target, each in its role's account. Without a step the test runs to the last
+                    // restorable one. With basic auth the account is tied to the browser: only the own role.
                     const scope = authOf(config).type === 'basic' ? { role: spec.role, target } : { target };
                     let catalog = stateCatalog(root, config, scope);
                     await bench?.states?.(catalog);
@@ -961,35 +963,35 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
 
     /**
-     * Claude arbeitet im Container: aufnehmen oder einen Schritt beheben. Beim Beheben im selben Browser laeuft das nach einem
-     * Testlauf, der Browser steht dann schon vor dem Schritt.
-     * @returns { ended, found } fuer closeRun
+     * Claude works in the container: record, or repair a step. When repairing in the same browser this runs after a test run,
+     * with the browser already right before the step.
+     * @returns { ended, found } for closeRun
      */
     const claudeWork = async (box) => {
         verdict = null;
-        // Fuer Claude: geheime Werte bleiben Platzhalter, die der Handler beim Ausfuehren fuellt (fillSecrets).
+        // For Claude: secret values stay placeholders that the handler fills in on execution (fillSecrets).
         const fillIn = (value) => fillDates(openRemembered().reduce((current, [placeholder, real]) => swapText(current, placeholder, real), fillRun(value, runTag)));
         if (repairing !== undefined) {
             const position = givenSpec.steps.indexOf(repairing);
             run.repair = {
                 reason: repair.reason,
-                // Der Schritt ist nicht gescheitert: Es gibt keinen Fehler zu suchen, nur neu aufzunehmen.
+                // The step did not fail: there is no error to look for, it only needs re-recording.
                 ...(repair.rerecord ? { rerecord: true } : {}),
                 actions: repairing.recording?.actions.map(stepLabel) ?? [],
                 ...(repairing.recording === undefined ? {} : { check: fillIn(repairing.recording.check) }),
                 remembered: [...remembered].map(([placeholder, value]) => ({ name: placeholder.slice(2, -2), ...(isSecret(value) ? { secret: true, value: placeholder } : { value }) })),
                 before: givenSpec.steps.slice(0, position).map(({ id, name }) => ({ id, name })),
                 after: givenSpec.steps.slice(position + 1).map(({ id, name, expect }) => ({ id, name, expect })),
-                // Die Einordnung des Testlaufs: Claude prueft sie zuerst, bevor es den Schritt anpasst. Hat der Mensch die harten Fehler
-                // inzwischen erlaubt (consoleIgnore, foreignCode), traegt sie nicht mehr: dann statt ihrer `resolved`.
+                // The test run's classification: Claude checks it first, before adapting the step. If the human has since allowed
+                // the hard failures (consoleIgnore, foreignCode), it no longer holds: then `resolved` replaces it.
                 ...(() => {
                     const allowed = allowedNow(repair.failures ?? [], config);
                     if (allowed.length > 0 && allowed.length === (repair.failures ?? []).length) {
-                        return { resolved: `Die harten Fehler des Testlaufs sind nach Entscheidung des Menschen erlaubt und zaehlen nur noch als Warnung: ${allowed.map(({ text }) => String(text).split('\n')[0]).join('; ')}. Sie sind kein Grund fuer fail. Pruefe den Schritt an seinem expect.` };
+                        return { resolved: `The human decided to allow the hard failures of the test run; they only count as warnings now: ${allowed.map(({ text }) => String(text).split('\n')[0]).join('; ')}. They are no reason for fail. Check the step against its expect.` };
                     }
                     return repair.diagnosis === undefined ? {} : { diagnosis: repair.diagnosis, evidence: repair.evidence };
                 })(),
-                // Was der Mensch vor dem Beheben im Chat gesagt und entschieden hat: Das gilt, ein neuer Claude weiss es sonst nicht.
+                // What the human said and decided in the chat before the repair: it applies, and a new Claude would not know it otherwise.
                 ...((repair.agreed ?? []).length === 0 ? {} : { agreed: repair.agreed }),
                 ...(repairing.recording?.network === undefined ? {} : { recordedNetwork: repairing.recording.network }),
             };
@@ -999,20 +1001,20 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const budget = withStepBudget(agentHandler, maxSteps ?? Number.POSITIVE_INFINITY);
         let recorder = null;
         let plan = null;
-        /** Der Plan ist die spaetere Testdatei. Erst die Freigabe des Menschen macht ihn zum Massstab des Laufs. */
+        /** The plan becomes the test file. Only the human's approval makes it the yardstick of the run. */
         const proposePlan = async ({ text }) => {
-            if (typeof text !== 'string' || text.trim() === '') throw new CawError('plan-invalid', 'Der Plan ist leer.');
+            if (typeof text !== 'string' || text.trim() === '') throw new CawError('plan-invalid', 'The plan is empty.');
             const { problems, plan: parsed } = readPlan(text);
             if (problems.length > 0) throw new CawError('plan-invalid', problems.join(' '));
             if (repairing !== undefined && (parsed.steps.length !== 1 || parsed.steps[0].id !== repair.id)) {
-                throw new CawError('plan-invalid', `Beim Beheben enthält der Plan genau den Schritt ${repair.id}.`);
+                throw new CawError('plan-invalid', `When repairing, the plan contains exactly step ${repair.id}.`);
             }
-            // Ein von Hand gesetztes retry ueberlebt das Beheben, auch wenn Claude es nicht wiederholt.
+            // A manually set retry survives the repair even if Claude does not repeat it.
             const steps = repairing?.retry === undefined ? parsed.steps : parsed.steps.map((step) => ({ retry: repairing.retry, ...step }));
             const retryIssues = retryProblems(repairing === undefined ? steps : replaceStep(givenSpec, steps[0]).steps);
             if (retryIssues.length > 0) throw new CawError('plan-invalid', retryIssues.join(' '));
             const composed = repairing === undefined ? composeTest(givenSpec, parsed) : { ...spec, steps, expectations: steps.map(({ id, expect }) => ({ id, text: expect })) };
-            // Gleicher Plan wie in der Testdatei: Den hat der Mensch schon uebernommen, es gibt nichts freizugeben. Er kann trotzdem schreiben.
+            // Same plan as in the test file: the human already adopted it, nothing to approve. The human can still write.
             const unchanged = repairing !== undefined && samePlanStep(steps[0], repairing);
             if (unchanged) chat.notice(t(repair.rerecord ? 'run.plan.unchangedRerecord' : 'run.plan.unchangedRepair', { id: repair.id }));
             const answer = unchanged ? { approved: true } : await chat.plan(planView(composed, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, previous: repairing }));
@@ -1030,50 +1032,50 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             return {
                 approved: true,
                 invalidated: redo,
-                note: `Die Prüfungen von ${redo.join(', ')} gelten nicht mehr, weil sich der Plan ab dort geändert hat. Führe den Weg so, dass du diese Schritte erneut prüfst, und streiche überholte Aktionen mit omit.`,
+                note: `The checks of ${redo.join(', ')} no longer apply because the plan changed from there on. Walk the path so that you check these steps again, and drop outdated actions with omit.`,
             };
         };
-        /** Das Urteil gilt dem freigegebenen Plan, und jeder bestandene Schritt muss darin vorkommen. */
+        /** The verdict refers to the approved plan, and every passed step must be in it. */
         const checkAgainstPlan = (results) => {
-            // Liegt es an der Anwendung, meldet Claude beim Beheben nur fail: Das aendert nichts am Test und braucht keinen Plan.
+            // If the application is at fault, Claude only reports fail when repairing: that changes nothing in the test and needs no plan.
             const onlyFail = Array.isArray(results.expectations) && results.expectations.length > 0 && results.expectations.every(({ status }) => status === 'fail');
             if (plan === null && repairing !== undefined && onlyFail) return;
-            if (plan === null) throw new CawError('plan-required', `Es gibt noch keinen freigegebenen Plan. Lege ihn mit caw-ai plan --file <${PLAN_FILE}> vor.`);
+            if (plan === null) throw new CawError('plan-required', `There is no approved plan yet. Submit it with caw-ai plan --file <${PLAN_FILE}>.`);
             const known = new Set(spec.expectations.map(({ id }) => id));
             const { groups } = groupSteps(recorder.steps);
             const failed = new Set((results.expectations ?? []).filter(({ status }) => status === 'fail').map(({ id }) => id));
-            // Ein Schritt, der als fail eingereicht wird, kann kein bestandenes check haben: Auch das ist ein Ergebnis.
+            // A step submitted as fail cannot have a passed check: that is a result too.
             const missing = [...known].filter((id) => !groups.has(id) && !failed.has(id));
-            if (missing.length > 0) throw new CawError('finish-rejected', `Ohne bestandenes check: ${missing.join(', ')}.`);
+            if (missing.length > 0) throw new CawError('finish-rejected', `Without a passed check: ${missing.join(', ')}.`);
             if (repairing === undefined || failed.size > 0) return;
             const same = plan.steps[0].expect === repairing.expect;
             if (same && repairing.recording !== undefined && groups.get(repair.id).check !== repairing.recording.check) {
-                throw new CawError('finish-rejected', `Das erwartete Ergebnis von ${repair.id} ist unverändert, also muss auch die Prüfung gleich bleiben: ${fillIn(repairing.recording.check)}. Soll sie sich ändern, lege einen Plan mit geändertem expect vor.`);
+                throw new CawError('finish-rejected', `The expected result of ${repair.id} is unchanged, so the check must stay the same too: ${fillIn(repairing.recording.check)}. To change it, submit a plan with a changed expect.`);
             }
             const lost = missingRemembered(replaceStep(givenSpec, { ...plan.steps[0], recording: { actions: groups.get(repair.id).actions, check: groups.get(repair.id).check } }));
             if (lost.length > 0) throw new CawError('finish-rejected', lost.join(' '));
         };
-        /** Aktionen seit der letzten Pruefung gehoeren zum naechsten Schritt. Deshalb muss die Reihenfolge stimmen. */
+        /** Actions since the last check belong to the next step, so the order must be right. */
         const checkOrder = ({ id }) => {
             const ids = spec.expectations.map((expectation) => expectation.id);
-            if (!ids.includes(id)) throw new CawError('step-unknown', `${id} steht nicht im Plan. Lege eine neue Fassung vor, wenn der Schritt dazugehört.`);
+            if (!ids.includes(id)) throw new CawError('step-unknown', `${id} is not in the plan. Submit a new version if the step belongs in it.`);
             const passed = recorder.steps.filter(({ action }) => action === 'check').map((step) => step.id);
             const open = ids.find((candidate) => !passed.includes(candidate));
-            if (id !== open && id !== passed.at(-1)) throw new CawError('step-order', `Als Nächstes ist ${open} an der Reihe, nicht ${id}. Alle Aktionen seit der letzten Prüfung gehören zum nächsten Schritt.`);
+            if (id !== open && id !== passed.at(-1)) throw new CawError('step-order', `Next up is ${open}, not ${id}. All actions since the last check belong to the next step.`);
         };
         const handler = async (command) => {
             if (command?.action === 'finish' && command.results?.status !== 'error') checkAgainstPlan(command.results ?? {});
             return budget.handler(command);
         };
         recorder = createRecorder({ handler, session, base: checked.url, authMarker: authOf(config).signedInSelector, runTag, remembered });
-        /** Der Mensch zeigt im selben Browser, was Claude nicht findet. Das Budget zaehlt nur Claudes eigene Schritte. */
+        /** The human shows in the same browser what Claude cannot find. The budget only counts Claude's own steps. */
         const askOperator = async ({ question }) => {
             ui.heading(t('run.ask.heading', { question: String(question ?? '').slice(0, 500) }));
             ui.note(t('run.ask.show'));
             chat.ask(question);
             return captureHuman('asking');
         };
-        /** Was der Mensch jetzt im Browser tut, kommt in den Test, und Claude bekommt es als Antwort. */
+        /** What the human now does in the browser goes into the test, and Claude gets it as the answer. */
         const captureHuman = async (kind) => {
             chat.enter(kind);
             try {
@@ -1086,25 +1088,25 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 chat.leave();
             }
         };
-        /** Erst jetzt wartet Claude wirklich: Vorher waeren seine eigenen Klicks mitgeschnitten worden. */
+        /** Only now is Claude really waiting: before, its own clicks would have been recorded. */
         const readChat = async () => {
             const messages = chat.takeUnread();
             return chat.paused() ? { messages, ...await captureHuman('paused') } : { messages };
         };
-        /** Umwege fallen erst weg, wenn das Urteil angenommen ist: Ein abgelehntes finish darf Claude wiederholen. */
+        /** Detours are dropped only once the verdict is accepted: Claude may retry a rejected finish. */
         const finishAndDrop = async (command) => {
-            // Ohne diesen Zwang bleiben Fehlklicks im Test: Nur ein bestandener Lauf wird zur Aufzeichnung.
+            // Without this requirement misclicks would stay in the test: only a passed run becomes a recording.
             const items = command.results?.expectations;
             const allPassed = Array.isArray(items) && items.every(({ status }) => status === 'pass');
             if (allPassed && command.results.omit === undefined) {
-                throw new CawError('finish-rejected', `Prüfe die Aktionen auf Fehlklicks und Umwege und nenne sie mit "omit", auch wenn es keine gibt ("omit": []):\n${recorder.list().join('\n')}`);
+                throw new CawError('finish-rejected', `Check the actions for misclicks and detours and list them with "omit", even if there are none ("omit": []):\n${recorder.list().join('\n')}`);
             }
             const omitted = dropNumbers(recorder.steps, command.results?.omit);
             const dropped = [...omitted, ...tidyNumbers(recorder.steps, omitted)];
             if (allPassed) {
                 const trailing = trailingNumbers(recorder.steps, dropped);
                 const stray = trailing.filter((number) => recorder.steps[number - 1].action !== 'wait-ready');
-                if (stray.length > 0) throw new CawError('finish-rejected', `Nach der letzten Prüfung stehen noch Aktionen (${stray.join(', ')}). Streiche sie mit "omit" oder prüfe den Schritt danach erneut.`);
+                if (stray.length > 0) throw new CawError('finish-rejected', `There are still actions after the last check (${stray.join(', ')}). Drop them with "omit" or check the step again afterwards.`);
                 dropped.push(...trailing);
             }
             const numbers = [...new Set(dropped)].sort((a, b) => a - b);
@@ -1123,35 +1125,35 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (command?.action === 'chat') return readChat();
             if (command?.action !== 'task') chat.gate();
             if (command?.action === 'plan') return proposePlan(command);
-            if (plan === null && NEEDS_PLAN.has(command?.action)) throw new CawError('plan-required', `Lege zuerst den Ablaufplan vor: caw-ai plan --file <${PLAN_FILE}>. Lesen geht auch ohne, zum Beispiel snapshot und eval.`);
+            if (plan === null && NEEDS_PLAN.has(command?.action)) throw new CawError('plan-required', `Submit the plan first: caw-ai plan --file <${PLAN_FILE}>. Reading works without it, e.g. snapshot and eval.`);
             if (command?.action === 'check') checkOrder(command);
             if (command?.action === 'ask-operator') return askOperator(command);
             if (command?.action === 'recording') return recorder.list();
             if (command?.action === 'finish') return finishAndDrop(command);
-            // Beim Beheben darf Claude eine Ursache in der Anwendung als Empfehlung vorlegen, statt den Test anzupassen.
+            // When repairing, Claude may submit a cause in the application as advice instead of adapting the test.
             if (command?.action === 'advise' && repairing !== undefined) {
                 repairReviewer ??= createReviewer(givenSpec);
-                // Die Einordnung, wie Claude sie bekam: ohne die, die eine Entscheidung des Menschen aufgehoben hat.
+                // The classification as Claude got it: without the one a human decision has lifted.
                 return repairReviewer.review(readAdvice(command.advice, repairReviewer.result.spec, config, { root, diagnosis: run.repair?.diagnosis }));
             }
-            // Beim Aufnehmen nur Config und Projektkontext: Erklaert der Mensch einen Fehler fuer unbedenklich, gilt das schon fuer den
-            // Pruefdurchlauf danach. Den Testplan aendert die Aufnahme selbst.
+            // When recording only config and project context: if the human declares an error harmless, that already applies to the
+            // verification run afterwards. The recording itself changes the test plan.
             if (command?.action === 'advise') {
                 repairReviewer ??= createReviewer(givenSpec ?? { id: spec?.id ?? 'neu', steps: [] });
                 const items = readAdvice(command.advice, repairReviewer.result.spec, config, { root });
-                if (!items.every(changesFiles)) throw new CawError('advice-invalid', 'Beim Aufnehmen gehen nur Empfehlungen mit change.kind config oder context. Den Testplan aenderst du mit der Aufnahme selbst.');
+                if (!items.every(changesFiles)) throw new CawError('advice-invalid', 'When recording, only advice with change.kind config or context is allowed. You change the test plan through the recording itself.');
                 return repairReviewer.review(items);
             }
             return recorder.handler(command);
         };
         const stopPump = startPump(channelHandler);
-        // Lehnt der Mensch den Hinweis auf Token ab, ist der Lauf abgebrochen, bevor Claude startet.
+        // If the human declines the token notice, the run is aborted before Claude starts.
         const willing = await tokensOk({ decline: t('run.tokens.cancelRun') });
         if (!willing) abortSignal();
         const agent = willing ? startAgent(box, containerCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin)], CLAUDE_LOG) : IDLE_AGENT;
-        // Wie der Lauf endete; ausserhalb des try, das return unten braucht es.
+        // How the run ended; declared outside the try because the return below needs it.
         let ended;
-        // Auch bei einem unerwarteten Fehler: Claude und sein Container laufen sonst weiter, bis ihr Zeitlimit greift.
+        // Also on an unexpected error: otherwise Claude and its container keep running until their time limit.
         try {
             if (willing) ui.info(t('run.agentWorking'));
             ended = await Promise.race([
@@ -1161,7 +1163,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 aborted.then(() => 'aborted'),
             ]);
             agent.stopTail();
-            // Mit dem Urteil ist der Lauf fertig. Auf Claudes Schlusszusammenfassung wartet niemand.
+            // The run is done with the verdict. Nobody waits for Claude's closing summary.
             if (verdict === null) {
                 if (ended === 'browser-closed' || ended === 'aborted') {
                     writeInterrupted(ended);
@@ -1185,7 +1187,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
 
         const built = buildReplay({ recorder, outcome: verdict, spec, target, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(creating && previous !== undefined ? { previous } : {}) });
         let { candidate } = built;
-        // Als lesend angelegt, aber geschrieben: Dann ist der Test schreibend, sonst liefe er auf Umgebungen ohne writable.
+        // Created as read-only but it wrote: then the test mutates, otherwise it would run on targets without writable.
         const written = verdict?.writes ?? [];
         if (candidate !== undefined && !candidate.mutates && written.length > 0) {
             candidate = { ...candidate, mutates: true };
@@ -1193,7 +1195,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }
         if (candidate === undefined) {
             ui.warn(t('run.noRecording', { problems: built.problems.join(' ') }));
-            // Ein Lauf, der keine Aufzeichnung ergibt, hat sein Ziel verfehlt, auch wenn alle Punkte stimmen.
+            // A run that yields no recording missed its goal, even if all checks passed.
             if (verdict?.status === 'pass') writeResult({ ...verdict, status: 'fail', reason: built.problems.join(' ') });
         } else {
             writeFileSync(join(runDir, DRAFT_FILE), renderTest(candidate));
@@ -1210,9 +1212,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         };
     };
     /**
-     * Behebt den gescheiterten Schritt dort, wo der Testlauf stehen geblieben ist: ohne Vorlauf, mit den Werten, die das
-     * Abspielen gelesen hat. Der Bericht des Testlaufs bleibt als `report-testlauf.md`.
-     * @returns { verdict, exitCode, candidate, fresh, expectChange } des Behebens
+     * Repairs the failed step where the test run stopped: without replaying the steps before, with the values the replay
+     * read. The test run's report is kept as `report-testlauf.md`.
+     * @returns { verdict, exitCode, candidate, fresh, expectChange } of the repair
      */
     const repairInPlace = async ({ sandbox: box, reason, agreed, failures }, failed) => {
         const before = verdict;
@@ -1246,7 +1248,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             stepTimeoutMs,
             filesDir: join(root, PROJECT_DIR),
             runTag,
-            // Das Terminal setzt die Gesamtzahl selbst dazu, der Chat bekommt sie fertig.
+            // The terminal adds the total itself, the chat gets the finished label.
             log: (entry) => {
                 const { position, number, owner, label } = entry;
                 ui.step({ number: position, total: replay.steps.length, label, elapsed: (Date.now() - started) / 1000 });
@@ -1255,7 +1257,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             },
         });
         const ended = await Promise.race([
-            play.then((played) => played),
+            play,
             session.closed.then(() => 'browser-closed'),
             aborted.then(() => 'aborted'),
         ]);
@@ -1272,19 +1274,19 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             await session.workbench?.step(id, id === failed?.id || (status !== undefined && status !== 'pass') ? 'fail' : status === 'pass' ? 'pass' : 'skipped');
         }
         if (failed !== null) {
-            // Test, Anwendung oder Umgebung: Belege aus dem Browser und der Vergleich mit der Aufnahme des Schritts.
+            // Test, application or environment: evidence from the browser and the comparison with the step's recording.
             const requests = ended.requests?.get(failed.id) ?? [];
             const baseline = givenSpec.steps.find(({ id }) => id === failed.id)?.recording?.network;
-            // Ein Abbruch spaeter im Lauf sagt nichts ueber diesen Schritt: Seine Pruefung ist gescheitert, seine Aktionen sind gelaufen.
+            // A break later in the run says nothing about this step: its check failed, its actions ran.
             const broken = ended.broken?.step === failed.id ? ended.broken : null;
-            // Die erste abweichende Wirkung, im Schritt selbst oder davor: Dort hat sich die Anwendung zuerst anders verhalten.
+            // The first deviating effect, in the step itself or before: that is where the application first behaved differently.
             const upTo = givenSpec.steps.slice(0, givenSpec.steps.findIndex(({ id }) => id === failed.id) + 1).map(({ id }) => id);
             const deviation = ended.deviations?.get(failed.id) ?? upTo.map((id) => ended.deviations?.get(id)).find((found) => found !== undefined) ?? null;
-            // Der Schritt davor: Seine Pruefung kann bestanden haben, obwohl dort schon etwas abgelehnt wurde.
-            const previous = upTo.at(-2);
-            const earlier = previous === undefined ? null : { id: previous, requests: ended.requests?.get(previous) ?? [] };
-            // Geschwaerzt wie das Urteil: Meldungen der Seite und Belege koennen geheim gemerkte Werte enthalten, und beides geht in den
-            // Bericht und beim Beheben an Claude.
+            // The step before: its check may have passed although something was already rejected there.
+            const previousId = upTo.at(-2);
+            const earlier = previousId === undefined ? null : { id: previousId, requests: ended.requests?.get(previousId) ?? [] };
+            // Redacted like the verdict: page messages and evidence may contain secret remembered values, and both go into the
+            // report and, when repairing, to Claude.
             const hide = (value) => redactDeep(value, session.secrets?.() ?? []);
             failed.diagnosis = hide(diagnose({ failed, broken, failures: session.failures(), requests, baseline, deviation, earlier }));
             const effect = deviation === null ? {} : { effect: hide(deviation) };
@@ -1295,7 +1297,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
         }
         const baselines = missingBaselines({ spec: givenSpec, results: ended.results, requests: ended.requests, target });
-        // Bereinigt wird nur aus einem ganz gesunden Lauf: Scheitert spaeter etwas, kann die Abweichung davor der erste Hinweis sein.
+        // Prune only from a fully healthy run: if something fails later, an earlier deviation may be the first clue.
         const effects = learnedEffects({
             spec: givenSpec,
             results: ended.results,
@@ -1311,7 +1313,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }) });
     }
 
-    // Beheben beginnt vor dem Schritt: Ein halb ausgefuehrter Schritt ergaebe eine unvollstaendige Aufzeichnung.
+    // Repair starts before the step: a half-executed step would yield an incomplete recording.
     if (repair !== undefined) {
         const before = replayBefore(givenSpec, repair.id);
         if (before.steps.length > 0) {
@@ -1321,7 +1323,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const ended = await Promise.race([
                 playReplay({
                     replay: before,
-                    // Eigener Handler: Dessen Punkte sind die Schritte davor, nicht der eine, den Claude behebt.
+                    // Separate handler: its checks are the steps before, not the one Claude repairs.
                     handler: createAgentHandler({
                         session,
                         run: { expectations },

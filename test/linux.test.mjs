@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { toWslPath, shellQuote, parseEnvFile, parseRunArgs, claudeFailureReason } from '../src/host/linux.mjs';
 
-test('toWslPath rechnet Windows-Pfade um und lässt Linux-Pfade stehen', () => {
+test('toWslPath converts Windows paths and leaves Linux paths alone', () => {
     assert.equal(toWslPath('C:\\Users\\Foo Bar\\App'), '/mnt/c/Users/Foo Bar/App');
     assert.equal(toWslPath('D:/x/y'), '/mnt/d/x/y');
     assert.equal(toWslPath('/home/u/x'), '/home/u/x');
@@ -11,42 +11,42 @@ test('toWslPath rechnet Windows-Pfade um und lässt Linux-Pfade stehen', () => {
     assert.equal(toWslPath('\\\\wsl$\\Ubuntu\\home\\u\\x'), '/home/u/x');
 });
 
-test('shellQuote schützt Sonderzeichen', () => {
+test('shellQuote protects special characters', () => {
     assert.equal(shellQuote("a b'c"), "'a b'\\''c'");
     assert.equal(shellQuote('$(rm -rf /)'), "'$(rm -rf /)'");
 });
 
-test('parseEnvFile liest Werte mit und ohne Quotes und ignoriert Kommentare', () => {
+test('parseEnvFile reads values with and without quotes and ignores comments', () => {
     assert.deepEqual(parseEnvFile('# c\nA=1\nB="x y"\nC=\'z\'\r\n\nexport D=4\n'), { A: '1', B: 'x y', C: 'z', D: '4' });
 });
 
-test('claudeFailureReason benennt Token, Zeitlimit und Sonstiges', () => {
+test('claudeFailureReason names token, time limit and other causes', () => {
     assert.match(claudeFailureReason(1, 'Failed to authenticate. API Error: 401 Invalid bearer token'), /CLAUDE_CODE_OAUTH_TOKEN/);
     assert.match(claudeFailureReason(124, ''), /--timeout/);
-    assert.match(claudeFailureReason(7, 'irgendwas'), /Exit 7/);
+    assert.match(claudeFailureReason(7, 'whatever'), /Exit 7/);
 });
 
-test('parseRunArgs: --overlay mit und ohne Quelle bei run, record und fix; ohne Option kein Overlay', () => {
+test('parseRunArgs: --overlay with and without source for run, record and fix; no option means no overlay', () => {
     assert.equal(parseRunArgs('run', ['smoke', '--target', 'dev']).overlay, undefined);
     assert.equal(parseRunArgs('run', ['smoke', '--overlay']).overlay, true);
-    assert.equal(parseRunArgs('run', ['--overlay', 'smoke']).test, 'smoke', 'ein Testname ist keine Quelle');
+    assert.equal(parseRunArgs('run', ['--overlay', 'smoke']).test, 'smoke', 'a test name is not a source');
     assert.equal(parseRunArgs('run', ['--overlay', 'smoke']).overlay, true);
     assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'build']).overlay, 'build');
     assert.equal(parseRunArgs('fix', ['smoke', 'S2', '--overlay=dev']).overlay, 'dev');
     assert.equal(parseRunArgs('record', ['smoke', '--overlay', 'dev', '--target', 'dev']).overlay, 'dev');
-    assert.deepEqual(parseRunArgs('run', ['--overlay=build', 'build']).tests, ['build'], 'ein Test namens build mit --overlay=…');
-    assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'http://localhost:5174']).overlay, 'http://localhost:5174', 'die Adresse eines Dev-Servers');
+    assert.deepEqual(parseRunArgs('run', ['--overlay=build', 'build']).tests, ['build'], 'a test named build with --overlay=…');
+    assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'http://localhost:5174']).overlay, 'http://localhost:5174', 'the address of a dev server');
     assert.equal(parseRunArgs('run', ['--overlay=https://box.local:8443/', 'smoke']).overlay, 'https://box.local:8443/');
     assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=local']), (error) => error.code === 'usage' && /--overlay erwartet nichts, build, dev oder die Adresse eines Dev-Servers/.test(error.message));
-    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=localhost:5173']), (error) => error.code === 'usage', 'ohne http:// keine Adresse');
-    assert.throws(() => parseRunArgs('run', ['smoke', '--code', 'local']), (error) => error.code === 'usage', '--code gibt es nicht mehr');
+    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=localhost:5173']), (error) => error.code === 'usage', 'no address without http://');
+    assert.throws(() => parseRunArgs('run', ['smoke', '--code', 'local']), (error) => error.code === 'usage', '--code no longer exists');
 });
 
-test('parseRunArgs: Jeder Befehl kennt nur seine Optionen', () => {
+test('parseRunArgs: each command only knows its own options', () => {
     const base = ['smoke', '--target', 'shop/dev'];
     assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', handover: false, advise: false, headless: false, noChat: false, learn: true, all: false, stepTimeoutSec: 30 });
     assert.equal(parseRunArgs('run', [...base, '--advise']).advise, true);
-    // Claude beim Klaeren und Beheben begrenzen, wie bei record und fix.
+    // Limit Claude when clarifying and fixing, as for record and fix.
     assert.deepEqual((({ timeoutMin, maxSteps }) => [timeoutMin, maxSteps])(parseRunArgs('run', [...base, '--timeout', '5', '--max-steps=20'])), [5, 20]);
     assert.throws(() => parseRunArgs('run', [...base, '--max-steps', '0']), /--max-steps muss/);
     assert.equal(parseRunArgs('record', [...base, '--read-only']).readOnly, true);
@@ -68,16 +68,16 @@ test('parseRunArgs: Jeder Befehl kennt nur seine Optionen', () => {
     const created = parseRunArgs('record', [...base, '--role', 'r', '--app', 'a', '--also', 'b', '--also=c', '--timeout', '5', '--max-steps=30']);
     assert.deepEqual([created.role, created.app, created.also, created.timeoutMin, created.maxSteps], ['r', 'a', ['b', 'c'], 5, 30]);
     assert.throws(() => parseRunArgs('run', ['--target', 'x']), /Name des Tests/);
-    // Ohne --target waehlt der Befehl selbst, siehe chooseTarget.
+    // Without --target the command chooses, see chooseTarget.
     assert.equal(parseRunArgs('run', ['smoke']).target, undefined);
-    assert.throws(() => parseRunArgs('record', [...base, 'noch-einer']), /noch-einer/);
+    assert.throws(() => parseRunArgs('record', [...base, 'one-more']), /one-more/);
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '0']), /--step-timeout/);
     assert.throws(() => parseRunArgs('run', [...base, '--until', 'E4']), /--until/);
     assert.throws(() => parseRunArgs('record', [...base, '--max-steps=0']), /--max-steps/);
     assert.throws(() => parseRunArgs('record', [...base, '--timeout', 'x']), /--timeout/);
 });
 
-test('parseRunArgs: Testläufe nutzen nie Claude, und die alten Wege gibt es nicht mehr', () => {
+test('parseRunArgs: test runs never use Claude, and the old options are gone', () => {
     const base = ['smoke', '--target', 'shop/dev'];
     for (const old of ['--record', '--heal', '--show', '--chat', '--accept', '--foo']) {
         for (const command of ['run', 'record']) assert.throws(() => parseRunArgs(command, [...base, old]), /kennt die Option/);
@@ -88,9 +88,9 @@ test('parseRunArgs: Testläufe nutzen nie Claude, und die alten Wege gibt es nic
     assert.throws(() => parseRunArgs('fix', ['smoke', 'S1', '--target', 'a/dev', '--role', 'r']), /kennt die Option/);
 });
 
-test('parseRunArgs: open ohne Test, mit Ziel, Rolle, App und Overlay', () => {
-    assert.deepEqual((({ target, role, app, overlay }) => ({ target, role, app, overlay }))(parseRunArgs('open', ['--target', 'dev', '--role', 'kunde', '--app', 'shop', '--overlay', 'build'])), { target: 'dev', role: 'kunde', app: 'shop', overlay: 'build' });
+test('parseRunArgs: open without a test, with target, role, app and overlay', () => {
+    assert.deepEqual((({ target, role, app, overlay }) => ({ target, role, app, overlay }))(parseRunArgs('open', ['--target', 'dev', '--role', 'customer', '--app', 'shop', '--overlay', 'build'])), { target: 'dev', role: 'customer', app: 'shop', overlay: 'build' });
     assert.equal(parseRunArgs('open', []).overlay, undefined);
-    assert.throws(() => parseRunArgs('open', ['smoke']), (error) => error.code === 'usage' && /smoke/.test(error.message), 'open nimmt keinen Test');
-    assert.throws(() => parseRunArgs('open', ['--until', 'S2']), (error) => error.code === 'usage', '--until gibt es bei open nicht');
+    assert.throws(() => parseRunArgs('open', ['smoke']), (error) => error.code === 'usage' && /smoke/.test(error.message), 'open takes no test');
+    assert.throws(() => parseRunArgs('open', ['--until', 'S2']), (error) => error.code === 'usage', 'open has no --until');
 });

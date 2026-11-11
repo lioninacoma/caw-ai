@@ -1,4 +1,4 @@
-// Alle Kataloge, je Sprache aus Bereichen zusammengesetzt. Jeder Bereich hat eigene Dateien, Schluessel tragen den Bereich als Praefix.
+// All catalogues, each language assembled from areas. Each area has its own files; keys carry the area as prefix.
 import de_cli from './de/cli.mjs';
 import de_config from './de/config.mjs';
 import de_session from './de/session.mjs';

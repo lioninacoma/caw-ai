@@ -1,5 +1,5 @@
-// Der Browser laeuft sichtbar auf dem Host, damit ein Mensch dieselbe Seite uebernehmen kann. Die Grenze
-// setzen die Flags: Chrome erreicht nur die erlaubten Hosts. Ein CDP-Port wird nie geoeffnet.
+// The browser runs visibly on the host so a human can take over the same page. The flags set the boundary:
+// Chrome only reaches the allowed hosts. A CDP port is never opened.
 
 import { classifyFailure, stackOrigin } from '../shared/report.mjs';
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -21,51 +21,51 @@ import { createSourceMapper } from './source-maps.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
 import { PREP, openWorkbench } from './workbench.mjs';
 
-/** Zugriff aus dem iframe auf das oberste Fenster, das in der Werkbank einen anderen Origin hat. */
+/** Access from the iframe to the top window, which has a different origin in the workbench. */
 export const CROSS_ORIGIN_TOP = /Blocked a frame with origin .* from accessing a cross-origin frame/;
-export const EMBED_HINT = '(Die Anwendung greift auf das oberste Fenster zu. Das ist die Werkbank, und sie liegt gerade auf einer anderen Adresse als die Anwendung, etwa nach einer Weiterleitung: Der Browser blockt den Zugriff, die Aktion bricht ab. Ohne Werkbank (--no-chat) tritt das nicht auf.)';
+export const EMBED_HINT = '(The application accesses the top window. That is the workbench, and it is currently on a different address than the application, e.g. after a redirect: the browser blocks the access and the action aborts. This does not happen without the workbench (--no-chat).)';
 
 const LOGIN_TIMEOUT_MS = 30_000;
-// So lange wartet die Anmeldung hoechstens auf Netzruhe und darauf, dass das Framework die Seite uebernommen hat. Eine Anmeldeseite
-// ausserhalb der App (etwa eines Identity Providers) haengt das Framework nie ein; dann geht es danach trotzdem weiter.
+// Upper bound for sign-in to wait for network idle and for the framework to take over the page. A sign-in page outside the app
+// (e.g. an identity provider) never mounts the framework; sign-in carries on after this anyway.
 const LOGIN_HYDRATE_MS = 10_000;
 const LOGIN_MOUNT_MS = 5_000;
-// So lange darf die Anwendung fuer die Antwort auf einen Einmalcode brauchen; steht danach das Codefeld noch da, hat sie ihn abgelehnt.
+// How long the application may take to answer a one-time code; if the code field is still there afterwards, it was rejected.
 const CODE_ANSWER_MS = 10_000;
-// Ein TOTP-Code gilt 30 s. Der neue Code kommt kurz nach Beginn des naechsten Fensters, falls die Uhren etwas abweichen.
+// A TOTP code is valid for 30 s. The new code is sent shortly after the next window starts, in case the clocks differ slightly.
 const TOTP_WINDOW_MS = 30_000;
 const NEXT_WINDOW_MARGIN_MS = 1000;
-// Nach dem Absenden: Steht das Formular so lange ruhig wieder da (Seite geladen, kein Request offen), hat die Anwendung abgelehnt.
+// After submitting: if the form sits there quietly this long (page loaded, no request open), the application rejected the sign-in.
 const LOGIN_REJECT_QUIET_MS = 3000;
-// Ist das Formular weg, die Seite fertig und ruhig, aber die Marke fehlt: so lange Gnade fuer spaet rendernde Seiten, dann gilt sie als falsch.
+// Form gone, page done and quiet, but the marker is missing: grace period for late-rendering pages before the marker counts as wrong.
 const LOGIN_MARKER_QUIET_MS = 5000;
-// Nach dem Laden: So lange darf ein Formular noch erscheinen (gerendert vom Framework), bevor der Selektor als falsch gilt.
+// After loading: how long a form may still appear (rendered by the framework) before the selector counts as wrong.
 const LOGIN_FORM_MS = 8000;
 const LOGIN_POLL_MS = 250;
-// Ein Request, der laenger offen ist, zaehlt nicht mehr als Arbeit der Anmeldung (Long-Polling, Stream).
+// A request open longer than this no longer counts as sign-in work (long polling, streams).
 const LOGIN_STALE_REQUEST_MS = 10_000;
 const sleepMs = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
-/** Antworten, die offen bleiben, solange die Seite lebt: Server-Sent Events und Zeilen-JSON. */
+/** Responses that stay open as long as the page lives: server-sent events and line-delimited JSON. */
 export const STREAM_TYPE = /text\/event-stream|application\/(x-)?ndjson|application\/stream\+json|application\/jsonl/i;
 const PROFILE_PREFIX = 'caw-profile-';
 const PROFILE_OWNER = 'caw-owner';
 const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
 
-// localhost und 127.0.0.1 sind derselbe Rechner: Ein Dev-Server unter dem einen Namen oeffnet seinen HMR-Socket oft unter dem anderen
-// (webpack-dev-server mit host 127.0.0.1). Beide frei zu geben erweitert die Grenze nicht, localhost zeigt ohnehin auf 127.0.0.1.
+// localhost and 127.0.0.1 are the same machine: a dev server under one name often opens its HMR socket under the other
+// (webpack-dev-server with host 127.0.0.1). Allowing both does not widen the boundary, localhost points to 127.0.0.1 anyway.
 const LOOPBACK_PAIR = ['localhost', '127.0.0.1'];
 const withLoopbackPair = (hosts) => (hosts.some((host) => LOOPBACK_PAIR.includes(host)) ? [...new Set([...hosts, ...LOOPBACK_PAIR])] : hosts);
 
 /**
- * Die Netzgrenze des Browsers. `--no-proxy-server` gehoert dazu: Ueber einen Proxy loest Chrome Namen
- * nicht selbst auf, die Regeln griffen dann nicht. WebRTC ginge sonst per UDP an ihnen vorbei.
+ * The browser's network boundary. `--no-proxy-server` is part of it: through a proxy Chrome does not resolve names
+ * itself, so the rules would not apply. WebRTC would otherwise bypass them via UDP.
  */
 export const browserArgs = (allowed) => {
     const hosts = withLoopbackPair(allowed);
     return [
-        // localhost und Namen unter .localhost sind Loopback (RFC 6761); fest auf 127.0.0.1, so wie ein Dev-Server meist lauscht.
-        // Mit einer Ausnahme in den Regeln fragte Chrome sonst das System, und Windows kennt .localhost nicht. Auch eine IP-Adresse trifft
-        // `MAP *`: 127.0.0.1 braucht darum, wenn erlaubt, eine Ausnahme wie jeder andere Host.
+        // localhost and names under .localhost are loopback (RFC 6761); pinned to 127.0.0.1, where a dev server usually listens.
+        // With an EXCLUDE rule Chrome would ask the system instead, and Windows does not know .localhost. An IP address also matches
+        // `MAP *`: so 127.0.0.1, when allowed, needs an exception like any other host.
         `--host-resolver-rules=${[
             ...hosts.filter((host) => isLoopback(host) && host !== '127.0.0.1').map((host) => `MAP ${host} 127.0.0.1`),
             'MAP * ~NOTFOUND',
@@ -77,8 +77,8 @@ export const browserArgs = (allowed) => {
 };
 
 /**
- * Loescht das Profil. Unter Windows halten Chrome-Prozesse Dateien noch kurz nach dem Schliessen fest,
- * darum mehrere Versuche. Scheitert es endgueltig, darf das den Lauf nicht mehr kippen: Das Urteil steht.
+ * Deletes the profile. On Windows, Chrome processes keep files locked briefly after closing, hence several attempts.
+ * If it fails for good, that must not change the run's outcome: the verdict stands.
  */
 export const removeProfile = async (dir, { remove = rmSync, attempts = 20, delayMs = 500 } = {}) => {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -86,7 +86,7 @@ export const removeProfile = async (dir, { remove = rmSync, attempts = 20, delay
             remove(dir, { recursive: true, force: true });
             return true;
         } catch {
-            if (attempt < attempts) await new Promise((ok) => { setTimeout(ok, delayMs); });
+            if (attempt < attempts) await sleepMs(delayMs);
         }
     }
     return false;
@@ -102,9 +102,9 @@ const isAliveProcess = (pid) => {
 };
 
 /**
- * Raeumt Profile frueherer Laeufe weg, die nicht geloescht werden konnten, etwa nach einem Abbruch. Sie enthalten
- * Login-Cookies des Testkontos. Eine laufende Sitzung bleibt unberuehrt: Jedes Profil nennt seinen Prozess. Ohne
- * diesen Eintrag stammt es von einer aelteren Tool-Version und zaehlt erst nach einem Tag als verwaist.
+ * Cleans up profiles of earlier runs that could not be deleted, e.g. after an abort. They contain the test account's
+ * login cookies. A running session is left alone: every profile names its process. Without that entry it comes from an
+ * older tool version and only counts as orphaned after a day.
  */
 export const sweepStaleProfiles = ({ dir = tmpdir(), isAlive = isAliveProcess, remove = rmSync, now = Date.now } = {}) => {
     let removed = 0;
@@ -127,24 +127,24 @@ export const sweepStaleProfiles = ({ dir = tmpdir(), isAlive = isAliveProcess, r
                     removed += 1;
                 }
             } catch {
-                // Noch belegt: Der naechste Lauf versucht es wieder.
+                // Still locked: the next run tries again.
             }
         }
     }
     return removed;
 };
 
-/** Schliesst ein Mensch das Fenster, koennen laufende Requests des Einspielens noch scheitern. Nur das ist harmlos. */
+/** When a human closes the window, pending overlay requests may still fail. Only that is harmless. */
 export const isBrowserClosedError = (reason) => /has been closed|Target closed|browser has disconnected/i.test(String(reason?.message ?? reason));
 
 /**
- * Welche Tabs zum Test gehoeren: der Anwendungs-Tab und seine Popups. Das Fenster ist sichtbar, ein Mensch
- * kann also jederzeit eigene Tabs oeffnen. Die bekommen weder Befehle des Agenten, noch zaehlen ihre Fehler.
+ * Which tabs belong to the test: the application tab and its popups. The window is visible, so a human can open
+ * their own tabs at any time. Those get no agent commands, and their errors do not count.
  */
 export const trackAgentPages = (first) => {
     const owned = new Set();
     const open = [];
-    // Mit Werkbank: Die Anwendung ist ein Frame darin (`view`). Werkbank und Chat gehoeren nicht zum Test.
+    // With the workbench: the application is a frame inside it (`view`). Workbench and chat are not part of the test.
     let workbench = null;
     let view = null;
     const add = (page) => {
@@ -163,12 +163,12 @@ export const trackAgentPages = (first) => {
     };
     return {
         current: () => open.at(-1) ?? view ?? first,
-        /** Die Anwendung selbst, nie ein Popup: der erste Tab bzw. das iframe der Werkbank. */
+        /** The application itself, never a popup: the first tab or the workbench iframe. */
         main: () => view ?? first,
-        /** Die offenen Popups der Anwendung, neuestes zuletzt. */
+        /** The application's open popups, newest last. */
         popups: () => open.filter((page) => page !== (view ?? first)),
         owns: (page) => owned.has(page),
-        /** Die Anwendung laeuft ab jetzt im iframe der Werkbank `page`. */
+        /** From now on the application runs in the iframe of workbench `page`. */
         embed: (page, frameView) => {
             workbench = page;
             view = frameView;
@@ -177,8 +177,8 @@ export const trackAgentPages = (first) => {
             if (at !== -1) open[at] = view;
         },
         /**
-         * Wozu gehoert ein Frame? Die Seite, bei der Werkbank die Anwendung, oder `false` fuer Werkbank und Chat selbst.
-         * Ohne Frame (Worker) null: lieber mitzaehlen als einen Fehler der Anwendung verschlucken.
+         * What does a frame belong to? The page, with the workbench the application, or `false` for workbench and chat themselves.
+         * Without a frame (workers) null: better to count it than to swallow an application error.
          */
         pageOf: (frame) => {
             if (frame === null || frame === undefined) return null;
@@ -190,16 +190,16 @@ export const trackAgentPages = (first) => {
 };
 
 /**
- * Meldet den Browser an, falls noetig. Die Zugangsdaten bleiben auf dem Host; der Trace startet erst
- * nach der Anmeldung, und keine Meldung enthaelt sie.
+ * Signs the browser in if needed. Credentials stay on the host; the trace only starts after sign-in, and no message
+ * contains them.
+ * @param on the page to sign in on; defaults to the first tab (before the workbench), when signing in again the application frame
  */
-// @param on die Seite fuer die Anmeldung; ohne Angabe der erste Tab (vor der Werkbank), beim erneuten Anmelden der Frame der Anwendung
 const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, framework, on }) => {
     const page = on ?? context.pages()[0];
     const broken = watchBroken(page);
-    // Nur die SPA-Adapter: Ihre Anmeldeseite ist meist Teil der App. `web` und `extjs` (Portal-Anmeldung ohne Ext) bleiben wie bisher.
+    // Only the SPA adapters: their sign-in page is usually part of the app. `web` and `extjs` (portal sign-in without Ext) skip this.
     const originOf = (address) => { try { return new URL(address).origin; } catch { return null; } };
-    // Eine fremde Anmeldeseite (Keycloak, Entra) hat kein Framework der App: Dort zu warten kostete nur LOGIN_MOUNT_MS.
+    // A foreign sign-in page (Keycloak, Entra) has no app framework: waiting there would just cost LOGIN_MOUNT_MS.
     const ready = framework?.hydrates === true ? async (current) => {
         if (originOf(current.url()) !== originOf(url)) return;
         const deadline = Date.now() + LOGIN_MOUNT_MS;
@@ -221,20 +221,21 @@ const ensureLoggedIn = async (context, { url, marker, login, password, totpSecre
     }
 };
 
-// Was eine Sitzung im Browser hinterlaesst, ausser Cookies (die gehen fuer alle Origins mit clearCookies).
+// What a session leaves in the browser besides cookies (those go for all origins with clearCookies).
 const SITE_DATA = 'local_storage,indexeddb,cache_storage,service_workers,websql,file_systems';
 
 /**
- * Eine neue Sitzung im selben Fenster, wie ein neuer Lauf mit frischem Profil: Cookies aller Origins, dazu localStorage, IndexedDB,
- * Cache Storage und Service Worker der Origins, die die Anwendung zeigt, und ihr sessionStorage. Nur die Schluessel der Werkbank
- * (`caw-`) bleiben: Sie teilt sich mit der Anwendung den Origin, nicht deren Daten.
- * @param context der Browser-Kontext
- * @param view    die Anwendung (Seite oder Frame der Werkbank)
- * @param base    die Adresse der Umgebung; ihr Origin wird immer geleert
+ * A new session in the same window, like a new run with a fresh profile: cookies of all origins, plus localStorage, IndexedDB,
+ * Cache Storage and service workers of the origins the application shows, and its sessionStorage. Only the workbench keys
+ * (`caw-`) stay: the workbench shares the origin with the application, not its data.
+ * @param context the browser context
+ * @param view    the application (page or workbench frame)
+ * @param base    the environment address; its origin is always cleared
  */
 export const freshSession = async (context, view, base) => {
     await context.clearCookies();
-    // Chrome leert mit dem Storage auch sessionStorage: Die Schluessel der Werkbank vorher sichern, danach zurueckschreiben.
+    // Chrome also clears sessionStorage along with the storage: save the workbench keys first, write them back afterwards.
+    /* eslint-disable n/no-unsupported-features/node-builtins -- sessionStorage here is the browser's, inside page.evaluate */
     const kept = await view.evaluate(() => {
         try {
             const own = Object.keys(sessionStorage).filter((key) => key.startsWith('caw-')).map((key) => [key, sessionStorage.getItem(key)]);
@@ -244,13 +245,14 @@ export const freshSession = async (context, view, base) => {
             return [];
         }
     }).catch(() => []);
+    /* eslint-enable n/no-unsupported-features/node-builtins */
     const origins = new Set([new URL(base).origin]);
     for (const address of [view.url(), ...(view.frames?.() ?? []).map((frame) => frame.url())]) {
         try {
             const { origin, protocol } = new URL(address);
             if (protocol === 'http:' || protocol === 'https:') origins.add(origin);
         } catch {
-            // keine Adresse
+            // not an address
         }
     }
     const cdp = await context.newCDPSession(view.workbench ?? context.pages()[0]).catch(() => null);
@@ -261,17 +263,18 @@ export const freshSession = async (context, view, base) => {
     }
     await view.evaluate((own) => {
         try {
+            // eslint-disable-next-line n/no-unsupported-features/node-builtins -- runs in the browser page
             for (const [key, value] of own) sessionStorage.setItem(key, value);
         } catch {
-            // ohne Zugriff
+            // no access
         }
     }, kept).catch(() => {});
     return [...origins];
 };
 
 /**
- * Was beim Anmelden am Netz scheitert: Ohne Backend findet sonst nur „keine Anmeldemaske“ statt. Nur Methode und Pfad,
- * Parameter koennten Anmeldedaten enthalten.
+ * What fails on the network during sign-in: without a backend the only symptom would otherwise be "no sign-in form". Method and
+ * path only, parameters could contain credentials.
  */
 export const watchBroken = (page, limit = 3) => {
     const seen = [];
@@ -296,9 +299,9 @@ export const watchBroken = (page, limit = 3) => {
     };
 };
 
-// Verlangt die Anwendung nach dem Passwort einen Einmalcode (`codeSelector`), traegt ihn die Rolle mit ihrem TOTP-Geheimnis ein.
-// Ein Code gilt nur einmal: Hat sich dasselbe Konto im selben 30-s-Fenster schon angemeldet, etwa im Test davor, lehnt die Anwendung
-// ihn ab. Dann genau ein neuer Versuch mit dem Code des naechsten Fensters; scheitert auch er, meldet loginSteps die Anmeldung als gescheitert.
+// If the application asks for a one-time code after the password (`codeSelector`), the role enters it from its TOTP secret.
+// A code is only valid once: if the same account already signed in within the same 30 s window, e.g. in the previous test, the
+// application rejects it. Then exactly one retry with the next window's code; if that fails too, loginSteps reports the sign-in as failed.
 const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep }) => {
     if (selectors.code === undefined) return;
     const next = await Promise.race([
@@ -314,7 +317,7 @@ const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep })
         return at;
     };
     const sentAt = await submit();
-    const codeStays = async () => await page.$(marker) === null && await page.isVisible(selectors.code).catch(() => false);
+    const codeStays = async () => (await page.$(marker)) === null && page.isVisible(selectors.code).catch(() => false);
     const accepted = await page.waitForSelector(marker, { timeout: CODE_ANSWER_MS }).then(() => true, () => false);
     if (accepted || !await codeStays()) return;
     const nextWindow = (Math.floor(sentAt / TOTP_WINDOW_MS) + 1) * TOTP_WINDOW_MS;
@@ -322,7 +325,7 @@ const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep })
     if (await codeStays()) await submit();
 };
 
-/** Offene Requests der Seite (Dokumente, XHR, fetch), damit „ruhig“ nicht mitten in einer langsamen Antwort gilt. */
+/** Open requests of the page (documents, XHR, fetch), so "quiet" does not apply in the middle of a slow response. */
 const trackRequests = (page, now) => {
     if (typeof page.on !== 'function') return { open: () => 0, stop: () => {} };
     const open = new Map();
@@ -343,9 +346,9 @@ const trackRequests = (page, now) => {
 };
 
 /**
- * Wartet nach dem Absenden auf das Ergebnis, ohne die volle Zeitgrenze abzusitzen: Marke da, Formular steht ruhig wieder da
- * (abgelehnt), oder Seite fertig und ruhig ohne Formular und ohne Marke (Marke falsch). Ruhig heisst: Adresse, Ladezustand und
- * Formular unveraendert, kein Request offen.
+ * Waits for the outcome after submitting without sitting out the full timeout: marker present, form quietly back (rejected),
+ * or page done and quiet with neither form nor marker (wrong marker). Quiet means: address, load state and form unchanged,
+ * no request open.
  * @returns 'signed-in' | 'form' | 'no-marker' | 'timeout'
  */
 export const waitForLoginOutcome = async (page, { marker, selectors, now = Date.now, sleep = sleepMs, requests = { open: () => 0 } }) => {
@@ -370,8 +373,8 @@ export const waitForLoginOutcome = async (page, { marker, selectors, now = Date.
 };
 
 /**
- * Was auf der Seite stand, als die Anmeldung scheiterte: wie oft jeder Selektor der Config trifft, und was explore dort fuer stabil
- * hielte (Felder, Knoepfe, Klassen an html/body). Ohne Werte von Feldern, ohne Parameter der Adresse. Grundlage fuer Claudes Vorschlag.
+ * What was on the page when sign-in failed: how often each config selector matches, and what explore would consider stable there
+ * (fields, buttons, classes on html/body). No field values, no address parameters. The basis for Claude's proposal.
  */
 export const loginEvidence = async (page, selectors) => {
     try {
@@ -388,7 +391,7 @@ export const loginEvidence = async (page, selectors) => {
             hits,
             login: survey?.login ?? null,
             stateClasses: survey?.stateClasses ?? [],
-            // Ohne Texte: Ein Benutzermenue zeigt oft den Namen des Kontos.
+            // No texts: a user menu often shows the account name.
             markers: (survey?.markers ?? []).slice(0, 120).map(({ selector, tag, role }) => ({ selector, tag, role })),
         };
     } catch {
@@ -398,17 +401,17 @@ export const loginEvidence = async (page, selectors) => {
 
 export const loginSteps = async (page, { url, marker, login, password, totpSecret, selectors, ready, now = Date.now, sleep = sleepMs }) => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    // Erst die Seite fertig laden, dann nur noch kurz auf ein Formular warten, das das Framework rendert: Ein falscher Selektor
-    // faellt so nach Sekunden auf, nicht nach der vollen Zeitgrenze.
+    // Load the page fully first, then only wait briefly for a form rendered by the framework: a wrong selector shows up
+    // after seconds, not after the full timeout.
     await page.waitForLoadState('load', { timeout: LOGIN_TIMEOUT_MS }).catch(() => {});
     await page.waitForSelector(`${marker}, ${selectors.user}`, { timeout: LOGIN_FORM_MS }).catch(() => {
         throw new CawError('login-form-missing', t('session.browser.loginFormMissing', { marker, url }));
     });
     if (await page.$(marker) !== null) return;
-    // Vor dem Laden ist das Formular oft zwar da, schickt aber noch nicht ab: Enter ginge ins Leere.
+    // Before load the form is often there but does not submit yet: Enter would go nowhere.
     await page.waitForLoadState('load', { timeout: LOGIN_TIMEOUT_MS }).catch(() => {});
-    // Serverseitig gerendert (Nuxt, Next.js, Angular SSR) steht das Formular schon da, bevor das Framework es uebernimmt. Wer
-    // vorher ausfuellt, verliert die Werte bei der Hydration, oder Enter schickt das Formular nativ ab (GET, Felder in der URL).
+    // Server-side rendered (Nuxt, Next.js, Angular SSR), the form is there before the framework takes over. Filling it earlier
+    // loses the values on hydration, or Enter submits the form natively (GET, fields in the URL).
     if (ready !== undefined) {
         await page.waitForLoadState('networkidle', { timeout: LOGIN_HYDRATE_MS }).catch(() => {});
         await ready(page);
@@ -417,7 +420,7 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
     if (await page.$(selectors.password) === null) {
         throw new CawError('login-failed', t('session.browser.selectorMissing', { key: 'passwordSelector', selector: selectors.password }));
     }
-    // Ein Knopf, den es nicht gibt, hinge sonst bis zur Zeitgrenze des Klicks.
+    // A missing button would otherwise hang until the click timeout.
     if (selectors.submit !== undefined && await page.$(selectors.submit) === null) {
         throw new CawError('login-failed', t('session.browser.selectorMissing', { key: 'submitSelector', selector: selectors.submit }));
     }
@@ -429,13 +432,13 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
         else await page.click(selectors.submit);
         await secondFactor(page, { marker, totpSecret, selectors, now, sleep });
         let outcome = await waitForLoginOutcome(page, { marker, selectors, now, sleep, requests });
-        // Ein kaltes Portal leitet weiter, rendert aber die Seite danach nicht rechtzeitig fertig: einmal neu laden, dann gilt es.
+        // A cold portal redirects but does not finish rendering the next page in time: reload once, then the result counts.
         if (outcome === 'no-marker' || outcome === 'timeout') {
             await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
             outcome = await waitForLoginOutcome(page, { marker, selectors, now, sleep, requests });
         }
         if (outcome === 'signed-in') return;
-        // Nur der Pfad: Parameter koennten Daten aus der Anmeldung enthalten.
+        // Path only: parameters could contain sign-in data.
         const path = new URL(page.url()).pathname;
         if (outcome === 'form') throw new CawError('login-failed', t('session.browser.loginRejected', { url, path }));
         throw new CawError('login-failed', t('session.browser.loginFailed', { url, marker, path }));
@@ -445,8 +448,8 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
 };
 
 /**
- * Eine gespeicherte Sitzung (`auth.type: storageState`, aufgenommen mit `caw-ai auth`): Cookies in den Kontext, localStorage und
- * sessionStorage per Skript vor jedem Laden, nur fuer die Origins aus der Datei. Danach gilt dieselbe Pruefung wie nach einer Anmeldung.
+ * A saved session (`auth.type: storageState`, recorded with `caw-ai auth`): cookies into the context, localStorage and
+ * sessionStorage via a script before every load, only for the origins in the file. Then the same check applies as after a sign-in.
  */
 const applyStorageState = async (context, path) => {
     let state;
@@ -465,7 +468,7 @@ const applyStorageState = async (context, path) => {
     await context.addInitScript({ content: script });
 };
 
-/** Ohne Passwortmanager: Die Frage „Passwort speichern?“ stoert jeden Lauf, und das Testpasswort soll nicht im Profil landen. */
+/** No password manager: the "Save password?" prompt disturbs every run, and the test password must not end up in the profile. */
 const quietProfile = (profileDir) => {
     mkdirSync(join(profileDir, 'Default'), { recursive: true });
     writeFileSync(join(profileDir, 'Default', 'Preferences'), JSON.stringify({
@@ -476,37 +479,37 @@ const quietProfile = (profileDir) => {
     }));
 };
 
-// Ohne Fenster gibt es kein Maximieren: Masken bekommen die Breite eines ueblichen Bildschirms.
+// Without a window there is no maximising: forms get the width of a typical screen.
 const HEADLESS_VIEWPORT = { width: 1920, height: 1080 };
 
 /**
- * @param headless    ohne sichtbares Fenster, im neuen Headless-Modus von Chrome: dieselbe Engine, dieselbe Host-Sperre
- * @param insecureTls Zertifikate nicht pruefen, fuer interne Umgebungen mit eigener CA (Config `insecureTls`)
+ * @param headless    no visible window, in Chrome's new headless mode: same engine, same host block
+ * @param insecureTls skip certificate checks, for internal environments with their own CA (config `insecureTls`)
  */
 const launchChrome = async (profileDir, hosts, { headless = false, insecureTls = false, embed = false, httpCredentials, launch = { channel: 'chrome' } } = {}) => {
     quietProfile(profileDir);
     try {
         return await chromium.launchPersistentContext(profileDir, {
-            // Chrome des Systems, oder was die Config unter browser nennt (Edge, ein fester Pfad).
+            // The system Chrome, or whatever the config names under browser (Edge, a fixed path).
             ...launch,
             headless,
-            // Strg+C beendet den Lauf mit Urteil und Aufraeumen. Playwright wuerde sonst sofort mit Exit 130 aussteigen.
+            // Ctrl+C ends the run with a verdict and cleanup. Playwright would otherwise exit immediately with code 130.
             handleSIGINT: false,
             viewport: headless ? HEADLESS_VIEWPORT : null,
-            // Keine Emulation: Die Seite folgt dem System wie in jedem Chrome. Sonst stellte Playwright sie fest auf hell, und mit
-            // den DevTools fiele das weg und alles sprang mitten im Lauf in den dunklen Modus.
+            // No emulation: the page follows the system like in any Chrome. Otherwise Playwright pins it to light, and opening the
+            // DevTools would drop that and switch everything to dark mode mid-run.
             colorScheme: null,
-            // Nur auf Wunsch: Interne Umgebungen nutzen oft Zertifikate, die Chrome nicht kennt; die Host-Sperre begrenzt die Ziele.
+            // Opt-in only: internal environments often use certificates Chrome does not know; the host block limits the targets.
             ignoreHTTPSErrors: insecureTls,
-            // Fuer die Aktion download: Playwright legt Downloads in einen eigenen Ordner, der mit dem Browser verschwindet; der Agent
-            // kommt nie daran, und die Aktion loescht ihre Datei gleich nach der Pruefung.
+            // For the download action: Playwright stores downloads in its own folder that disappears with the browser; the agent
+            // never gets to it, and the action deletes its file right after the check.
             acceptDownloads: true,
             serviceWorkers: 'block',
-            // HTTP-Basic-Anmeldung nur fuer den Origin der Umgebung, nie fuer andere Hosts.
+            // HTTP basic auth only for the environment's origin, never for other hosts.
             ...(httpCredentials === undefined ? {} : { httpCredentials }),
-            // Maximiert statt Vollbild: Masken bekommen die ganze Breite, und bei der Uebergabe bleiben Tabs und Adressleiste da.
-            // Mit Werkbank: Die liefert Playwright aus, Chrome haelt sie fuer oeffentlich und sperrte sonst die Anwendung im internen Netz im iframe.
-            // --test-type: Ohne ihn zeigt Chrome ueber der Werkbank eine Warnleiste zu --host-resolver-rules (so macht es auch chromedriver).
+            // Maximised instead of fullscreen: forms get the full width, and on handover tabs and address bar stay visible.
+            // With the workbench: Playwright serves it, Chrome considers it public and would otherwise block the intranet application in the iframe.
+            // --test-type: without it Chrome shows a warning bar about --host-resolver-rules above the workbench (chromedriver does the same).
             args: [...(headless ? [] : ['--start-maximized', '--test-type']), ...browserArgs(hosts), ...(embed ? ['--disable-features=LocalNetworkAccessChecks'] : [])],
         });
     } catch (error) {
@@ -515,20 +518,20 @@ const launchChrome = async (profileDir, hosts, { headless = false, insecureTls =
 };
 
 /**
- * Die Zwischenablage fuer den Origin der Umgebung, lesen und schreiben: So kann eine Pruefung `navigator.clipboard.readText()`
- * aufrufen, etwa nach einem Knopf „Kopieren“. Andere Origins bekommen sie nicht.
+ * Clipboard read and write for the environment's origin, so a check can call `navigator.clipboard.readText()`, e.g. after a
+ * "Copy" button. Other origins do not get it.
  */
 export const grantClipboard = (context, url) => context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(url).origin });
 
-/** devlink verpackt jeden Fehler beim Start als „Chrome nicht startbar“. Der eigentliche Grund steht in `cause`. */
+/** devlink wraps every launch error as "Chrome could not be started". The real reason is in `cause`. */
 export const unwrapLaunchError = (error) => (error?.cause instanceof CawError ? error.cause : error);
 
 const FLOATS_BINDING = '__cawFloats';
 const FLOATS_MAX_LINES = 5000;
 
-/** Laeuft im Browser. Schreibt jede Aenderung der Fenster-Reihenfolge mit: Das Letzte in der Liste liegt oben. */
+/** Runs in the browser. Logs every change in the order of floating windows: the last in the list is on top. */
 export function watchFloatsInPage(binding) {
-    // Nur das Dokument der Anwendung: oben, oder mit Werkbank direkt darunter. Nie die Werkbank oder ihr Chat.
+    // Only the application's document: the top one, or with the workbench directly below it. Never the workbench or its chat.
     if (window.__cawFloatsOn || window.__cawWorkbench === true || location.href === 'about:srcdoc') return;
     if (window !== window.top && window.parent !== window.top) return;
     window.__cawFloatsOn = true;
@@ -546,7 +549,7 @@ export function watchFloatsInPage(binding) {
         }
         const report = () => {
             const order = [...root.children].filter((node) => getComputedStyle(node).display !== 'none').map((node) => node.id).join(' < ');
-            if (order !== last) send(`reihenfolge ${order}`);
+            if (order !== last) send(`order ${order}`);
             last = order;
         };
         new MutationObserver(report).observe(root, { childList: true, attributes: true, attributeFilter: ['class', 'style'], subtree: false });
@@ -555,11 +558,11 @@ export function watchFloatsInPage(binding) {
     start();
 }
 
-/** Nur Komponenten-Ids und Zeiten, keine Inhalte. Die Seite kann das Binding rufen, darum wird jede Zeile begrenzt. */
+/** Only component ids and times, no content. The page can call the binding, so every line is limited. */
 const logFloats = async (context, path) => {
     let lines = 0;
     await context.exposeBinding(FLOATS_BINDING, ({ page }, text) => {
-        // Leere Seiten gehoeren nicht zur Anwendung.
+        // Blank pages do not belong to the application.
         if (lines >= FLOATS_MAX_LINES || page.url() === 'about:blank') return;
         lines += 1;
         appendFileSync(path, `${String(text).replace(/[^\x20-\x7e]/g, '?').slice(0, 500)}\n`);
@@ -570,14 +573,14 @@ const logFloats = async (context, path) => {
 };
 
 /**
- * An- und Abmelden, Sitzung und Token: Das schreibt keine Fachdaten. Ein Test „falsches Passwort“ bleibt so lesend, und der
- * Bericht nennt nur, was die Anwendung wirklich geaendert haben kann.
+ * Sign-in and sign-out, sessions and tokens: these write no business data. A "wrong password" test thus stays read-only, and the
+ * report only lists what the application may really have changed.
  */
 const AUTH_PATH = /(^|[/_.-])(log-?in|log-?out|sign-?in|sign-?out|sessions?|tokens?|refresh|auth|authenticate|anmelden|abmelden|csrf)$/i;
 
 /**
- * Was der Lauf geschrieben haben kann, fuer den Bericht: jeder Aufruf ausser GET, HEAD und OPTIONS mit Pfad, dazu jeder Aufruf
- * mit einem Parameter aus `requestKeys` (etwa `action`), denn dort sehen lesende und schreibende gleich aus. Nie Inhalte.
+ * What the run may have written, for the report: every call except GET, HEAD and OPTIONS with its path, plus every call with a
+ * parameter from `requestKeys` (e.g. `action`), since reading and writing calls look the same there. Never content.
  */
 export const writeLabel = ({ method, url }, keys = []) => {
     const parsed = new URL(url);
@@ -589,11 +592,11 @@ export const writeLabel = ({ method, url }, keys = []) => {
 };
 
 /**
- * Fuer `auth.type: storageState`: Chrome oeffnet die Anmeldung, der Mensch meldet sich an (etwa per SSO), das Tool speichert die
- * Sitzung, sobald `signedInSelector` erscheint: Cookies, localStorage und den sessionStorage der Seite, auf der die Anmeldung
- * endete (Playwright speichert ihn nicht mit). Die Datei enthaelt Anmeldedaten des Testkontos: unter Unix nur fuer den eigenen
- * Nutzer lesbar, unter Windows gelten die Rechte des Projektordners.
- * @returns true, wenn gespeichert; false, wenn der Mensch das Fenster vorher schloss
+ * For `auth.type: storageState`: Chrome opens the sign-in, the human signs in (e.g. via SSO), and the tool saves the session as
+ * soon as `signedInSelector` appears: cookies, localStorage and the sessionStorage of the page where sign-in ended (Playwright
+ * does not save that). The file contains the test account's credentials: on Unix readable only by the own user, on Windows the
+ * project folder's permissions apply.
+ * @returns true if saved; false if the human closed the window first
  */
 export const captureSession = async ({ url, signedInSelector, hosts, insecureTls = false, file, timeoutMs = 10 * 60 * 1000, launch }) => {
     sweepStaleProfiles();
@@ -608,6 +611,7 @@ export const captureSession = async ({ url, signedInSelector, hosts, insecureTls
         if (!await Promise.race([signedIn, closed])) return false;
         const state = await context.storageState();
         const origin = new URL(page.url()).origin;
+        // eslint-disable-next-line n/no-unsupported-features/node-builtins -- runs in the browser page
         const sessionItems = await page.evaluate(() => Object.entries(window.sessionStorage).map(([name, value]) => ({ name, value }))).catch(() => []);
         if (sessionItems.length > 0) {
             const own = state.origins.find((entry) => entry.origin === origin);
@@ -629,8 +633,8 @@ export const captureSession = async ({ url, signedInSelector, hosts, insecureTls
 };
 
 /**
- * Fuer `caw-ai explore`: ein Fenster nur fuer den Host der Adresse, ohne Anmeldung durch das Tool. Sammelt Konsolenfehler und die
- * Hosts, die eine Seite oeffnen wollte und die gesperrt blieben (etwa ein SSO-Dienst).
+ * For `caw-ai explore`: a window for the address's host only, without sign-in by the tool. Collects console errors and the
+ * hosts a page tried to open that stayed blocked (e.g. an SSO service).
  */
 export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
     sweepStaleProfiles();
@@ -660,28 +664,28 @@ export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
 };
 
 /**
- * Oeffnet Chrome, meldet an, spielt den lokalen Code ein und wartet, bis die App zur Ruhe kommt.
- * @param spec.overlay null oder das Ergebnis von prepareOverlay: dann beantwortet es die Code-Requests
+ * Opens Chrome, signs in, injects the local code and waits until the app settles.
+ * @param spec.overlay null or the result of prepareOverlay, which then answers the code requests
  */
 export const openBrowserSession = async (spec) => {
     const { config, devlinkConfig, resolved, credentials, consoleIgnore, foreignCode, hosts } = spec;
     const overlay = spec.overlay ?? null;
-    const parsed = parseConfig(devlinkConfig);
-    if (!parsed.ok) throw new CawError('config-invalid', t('session.browser.devlinkRejected', { issues: JSON.stringify(parsed.issues) }));
+    const checkedDevlink = parseConfig(devlinkConfig);
+    if (!checkedDevlink.ok) throw new CawError('config-invalid', t('session.browser.devlinkRejected', { issues: JSON.stringify(checkedDevlink.issues) }));
 
     const startUrl = `${resolved.url}${spec.startUrl}`;
     const auth = authOf(config);
     const framework = frameworkOf(config);
     sweepStaleProfiles();
-    // Jeder Lauf bekommt ein frisches Profil, es enthaelt am Ende die Login-Cookies des Testnutzers.
+    // Every run gets a fresh profile; at the end it contains the test user's login cookies.
     const profileDir = mkdtempSync(join(tmpdir(), PROFILE_PREFIX));
     writeFileSync(join(profileDir, PROFILE_OWNER), String(process.pid));
     let raw = null;
-    let host = null;
+    let devlinkHost = null;
     let traceRunning = false;
     let closedSignal;
     const closed = new Promise((ok) => { closedSignal = ok; });
-    // Wie lange die Vorbereitung dauerte: Die Werkbank steht erst danach und zeigt sie als bestandene Punkte.
+    // How long preparation took: the workbench only appears afterwards and shows it as passed points.
     const timing = { start: Date.now(), chrome: null, login: null, code: null };
 
     const stopTrace = async () => {
@@ -695,7 +699,7 @@ export const openBrowserSession = async (spec) => {
     process.on('unhandledRejection', ignoreClosedBrowser);
     const close = async () => {
         await stopTrace();
-        await host?.stop().catch(() => {});
+        await devlinkHost?.stop().catch(() => {});
         await raw?.close().catch(() => {});
         if (!await removeProfile(profileDir)) {
             console.error(t('session.browser.profileNotDeleted', { dir: profileDir }));
@@ -703,16 +707,16 @@ export const openBrowserSession = async (spec) => {
         process.removeListener('unhandledRejection', ignoreClosedBrowser);
     };
 
-    // Wer gerade angemeldet ist: Beim Herstellen eines Zustands aus einem Test einer anderen Rolle wechselt das Konto.
-    let current = credentials;
-    // Alle Passwoerter dieser Sitzung bleiben geschwaerzt, auch nach einem Wechsel des Kontos.
+    // Who is signed in right now: restoring a state from a test of another role switches the account.
+    let signedInAs = credentials;
+    // All passwords of this session stay redacted, even after switching accounts.
     const passwords = credentials?.password === undefined ? [] : [credentials.password];
     const formLogin = (on) => ensureLoggedIn(raw, {
         url: `${resolved.url}${auth.path}`,
         marker: auth.signedInSelector,
-        login: current.login,
-        password: current.password,
-        totpSecret: current.totpSecret,
+        login: signedInAs.login,
+        password: signedInAs.password,
+        totpSecret: signedInAs.totpSecret,
         framework,
         selectors: {
             user: auth.userSelector,
@@ -723,37 +727,37 @@ export const openBrowserSession = async (spec) => {
         ...(on === undefined ? {} : { on }),
     });
     try {
-        // Der Host startet den Browser erst nach seinem Preflight. Die Anmeldung haengt deshalb am Launcher.
+        // The devlink host only starts the browser after its preflight. That is why sign-in hangs off the launcher.
         const launcher = createPlaywrightLauncher(async (dir) => {
             const httpCredentials = auth.type === 'basic' ? { username: credentials.login, password: credentials.password, origin: new URL(resolved.url).origin } : undefined;
             raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: config.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config) });
             raw.on('close', closedSignal);
             await grantClipboard(raw, resolved.url);
             timing.chrome = Date.now();
-            // Mit Werkbank: Nur ihr Tab, nicht Popups der Anwendung (window.open, target=_blank), in denen der Mensch auch vorfuehrt.
-            // Skripte des Kontexts laufen vor denen des Tabs; darum pruefen sie die Markierung erst beim Ereignis.
+            // With the workbench: only its tab, not the application's popups (window.open, target=_blank), where the human demonstrates too.
+            // Context scripts run before tab scripts; that is why they check the mark only when the event fires.
             if (spec.embed === true) await raw.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
             if (auth.type === 'storageState') await applyStorageState(raw, credentials.storageState);
-            // Ueber die eigene Anmeldeseite: So laedt die Anwendung nicht schon einmal vor dem Einspielen des lokalen Codes.
+            // Via the app's own sign-in page, so the application does not load once before the local code is injected.
             if (auth.type === 'form') await formLogin();
             timing.login = Date.now();
             return raw;
         });
-        host = createDevlinkHost(devlinkConfig, {
+        devlinkHost = createDevlinkHost(devlinkConfig, {
             launcher,
             now: () => Date.now(),
-            sleep: (ms) => new Promise((ok) => { setTimeout(ok, ms); }),
+            sleep: sleepMs,
         }, {
             profileDir,
             configPath: spec.devlinkConfigPath,
-            // Ein Verifikationslauf darf bei Substitutionsfehlern nicht still den deployten Code testen.
+            // A verification run must not silently test the deployed code on substitution errors.
             onFailure: 'fail',
-            // Ohne Merkmal (keine Anmeldung, oder Basic ohne) prueft der Host nichts.
+            // Without a marker (no sign-in, or basic auth without one) the host checks nothing.
             authMarker: auth.signedInSelector ?? '',
         });
-        // Der Host prueft das Merkmal auf der Startseite der Umgebung, bevor lokaler Code eingespielt wird. Seine Meldungen sind
-        // allgemein gehalten; hier werden sie zu einem Hinweis, was im Projekt zu tun ist.
-        await host.start().catch(async (error) => {
+        // The host checks the marker on the environment's start page before local code is injected. Its messages are generic;
+        // here they become a hint about what to do in the project.
+        await devlinkHost.start().catch(async (error) => {
             const message = String(error?.message ?? '');
             if (/not signed in/.test(message)) {
                 const next = auth.type === 'storageState'
@@ -766,7 +770,7 @@ export const openBrowserSession = async (spec) => {
             }
             throw error;
         });
-        // Scheitert eine Quelle mitten im Lauf (bootstrap.json kaputt, zwei Apps mit demselben Build-Namen), ist das ein Fehler des Laufs.
+        // If a source fails mid-run (broken bootstrap.json, two apps with the same build name), that is a failure of the run.
         const failures = [];
         if (overlay !== null) {
             await routeOverlay(raw, overlay, { onProblem: (error, url) => failures.push({ type: 'overlay', text: String(error?.message ?? error), url }) });
@@ -774,8 +778,8 @@ export const openBrowserSession = async (spec) => {
         timing.code = Date.now();
         if (spec.floatsLogPath !== undefined && framework.floats) await logFloats(raw, spec.floatsLogPath);
 
-        // Eigene Beobachtung statt des Gates im Host, denn nur so bleibt die URL eines fehlgeschlagenen
-        // Requests erhalten und laesst sich gegen consoleIgnore pruefen.
+        // Own observation instead of the host's gate: only this way the URL of a failed request is kept and can be
+        // checked against consoleIgnore.
         let drained = 0;
         const warnings = [];
         const rules = { ignored: consoleIgnore.map((pattern) => new RegExp(pattern)), foreign: (foreignCode ?? []).map((pattern) => new RegExp(pattern)), skip: framework.stackSkip };
@@ -785,17 +789,17 @@ export const openBrowserSession = async (spec) => {
             if (known === undefined) warnings.push({ ...entry, count: 1 });
             else known.count += 1;
         };
-        // Meldungen der Werkbank und des Chats: Die Konsole nennt keinen Frame, wohl aber die Datei; ihre Skripte heissen caw-werkbank.js.
+        // Messages from workbench and chat: the console names no frame but the file; their scripts are called caw-werkbank.js.
         const workbenchOrigin = spec.embed === true;
-        // Beim Skriptfehler zaehlt, wo er geworfen wurde: die erste Zeile des Stacks nach der Meldung.
+        // For a script error, what counts is where it was thrown: the first stack line after the message.
         const thrownAt = (stack) => (typeof stack === 'string' ? stack.split('\n').find((line) => /^\s+at /.test(line)) ?? '' : '');
         const fromWorkbench = (url, stack) => workbenchOrigin && (fromWorkbenchSource(url) || fromWorkbenchSource(thrownAt(stack)));
         const observe = (page, observation, url, stack) => {
-            // Ohne Seite, z. B. bei Workern: lieber mitzaehlen als einen Fehler der Anwendung verschlucken.
+            // No page, e.g. for workers: better to count it than to swallow an application error.
             if (page === false || (page !== null && !pages.owns(page)) || fromWorkbench(url, stack)) return;
             if (observation.type !== 'http' && !isHardFailure(observation)) return;
-            // Eingebettet ist das oberste Fenster die Werkbank: Greift die Seite darauf zu (window.top, parent), blockt der Browser. Das
-            // bricht die Aktion der Anwendung ab und ist darum ein echter Fehler; die Erklaerung sagt, dass es an der Einbettung liegt.
+            // When embedded, the top window is the workbench: if the page accesses it (window.top, parent), the browser blocks it. That
+            // aborts the application's action and is therefore a real failure; the hint explains that embedding is the cause.
             if (workbenchOrigin && CROSS_ORIGIN_TOP.test(observation.text)) {
                 observation = { ...observation, text: `${observation.text} ${EMBED_HINT}` };
             }
@@ -809,14 +813,14 @@ export const openBrowserSession = async (spec) => {
             failures.push(entry);
             return entry;
         };
-        // Skriptfehler zeigen auf den Quellcode, wenn die Anwendung Quellkarten ausliefert. Geladen nur von Hosts der Sperre, ueber den
-        // Request-Kontext des Browsers, also mit denselben Cookies und TLS-Regeln.
-        // Mit Overlay bekommt Chrome Skripte aus dem Projektordner. Skript und Quellkarte muessen dann von dort kommen, sonst passt die
-        // Karte des deployten Stands nicht zum Code, der den Fehler warf. Liefert ein Dev-Server den Code, holt der Request-Kontext die
-        // Karte: Er laeuft nicht ueber die Route, darum fragt fetchText das Overlay selbst.
+        // Script errors point to the source code if the application serves source maps. Loaded only from allowed hosts, via the
+        // browser's request context, i.e. with the same cookies and TLS rules.
+        // With an overlay, Chrome gets scripts from the project folder. Script and source map must then come from there, otherwise the
+        // deployed map does not match the code that threw. If a dev server serves the code, the request context fetches the map:
+        // it does not go through the route, so fetchText asks the overlay itself.
         const readLocal = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : null);
-        // Das Skript, wie Chrome es bekam (bei einem Alias unter deploytem Namen der lokale Inhalt, denn nur der wirft Fehler), und die Karte
-        // neben der lokalen Datei. Eine fehlende Karte ist keine Einladung, die deployte zu nehmen.
+        // The script as Chrome received it (for an alias under a deployed name the local content, since only that throws), and the map
+        // next to the local file. A missing map is no invitation to take the deployed one.
         const localText = async (url) => {
             if (overlay === null) return undefined;
             const file = overlay.fileFor(url);
@@ -829,7 +833,7 @@ export const openBrowserSession = async (spec) => {
             const served = await overlay.resolve(url, bare.endsWith('.map') ? 'fetch' : 'script').catch(() => null);
             return served === null ? undefined : Buffer.from(served.body).toString('utf8');
         };
-        // Ein Watch baut neu, die Namen fester statics bleiben: Die Karte gilt nur, solange die lokale Datei dieselbe ist.
+        // A watch rebuilds while names of fixed statics stay: the map is only valid as long as the local file is unchanged.
         const localVersion = (url) => {
             const file = overlay?.fileFor(url);
             return file === undefined ? '' : fileVersion(file);
@@ -839,26 +843,26 @@ export const openBrowserSession = async (spec) => {
             fetchText: async (url) => {
                 const local = await localText(url);
                 if (local !== undefined) return local;
-                // undefined: keine Verbindung (Name nicht aufloesbar, Port zu); null: der Server antwortete, aber nicht mit 2xx.
-                // Keiner Weiterleitung folgen: `allowed` prueft nur die erste Adresse, und eine offene Weiterleitung auf einem erlaubten
-                // Host (Anmeldedienste haben oft eine) fuehrte sonst einen Request vom Host-Rechner an eine beliebige Adresse.
+                // undefined: no connection (name not resolvable, port closed); null: the server answered, but not with 2xx.
+                // Follow no redirects: `allowed` only checks the first address, and an open redirect on an allowed host (sign-in
+                // services often have one) would otherwise send a request from the host machine to an arbitrary address.
                 const get = async (target, options = {}) => {
                     const response = await raw.request.get(target, { timeout: 5000, maxRetries: 0, maxRedirects: 0, ...options }).catch(() => undefined);
                     if (response === undefined) return undefined;
                     return response.ok() ? response.text() : null;
                 };
                 const first = await get(url);
-                const parsed = new URL(url);
-                // Ein 404 fuer eine Karte, die es nicht gibt, ist eine Antwort; nur ohne Verbindung lohnt der zweite Weg.
-                if (first !== undefined || !isLoopback(parsed.hostname) || parsed.hostname === '127.0.0.1') return first ?? null;
-                // Der Request-Kontext loest Namen in Node auf, nicht ueber --host-resolver-rules: Unter Windows kennt Node `.localhost`
-                // nicht, und `localhost` wird oft zu ::1, wo der Server nicht lauscht. Darum wie fuer Chrome ueber 127.0.0.1, mit dem
-                // Namen im Host-Header und den Cookies, die der Browser dorthin schickte.
-                const host = parsed.host;
+                const target = new URL(url);
+                // A 404 for a map that does not exist is an answer; the second route is only worth it without a connection.
+                if (first !== undefined || !isLoopback(target.hostname) || target.hostname === '127.0.0.1') return first ?? null;
+                // The request context resolves names in Node, not via --host-resolver-rules: on Windows Node does not know `.localhost`,
+                // and `localhost` often becomes ::1, where the server does not listen. So, as for Chrome, go via 127.0.0.1, with the
+                // name in the Host header and the cookies the browser sent there.
+                const hostHeader = target.host;
                 const cookie = (await raw.cookies(url).catch(() => [])).map(({ name, value }) => `${name}=${value}`).join('; ');
-                parsed.hostname = '127.0.0.1';
-                // Das Zertifikat nennt den Namen, nicht 127.0.0.1: Fuer diesen Umweg auf den eigenen Rechner zaehlt es nicht.
-                return (await get(parsed.href, { headers: { host, ...(cookie === '' ? {} : { cookie }) }, ignoreHTTPSErrors: true })) ?? null;
+                target.hostname = '127.0.0.1';
+                // The certificate names the host name, not 127.0.0.1: it does not count for this detour to the local machine.
+                return (await get(target.href, { headers: { host: hostHeader, ...(cookie === '' ? {} : { cookie }) }, ignoreHTTPSErrors: true })) ?? null;
             },
             allowed: (url) => hosts.includes(new URL(url).hostname),
         });
@@ -869,12 +873,12 @@ export const openBrowserSession = async (spec) => {
                 return null;
             }
         };
-        // Chrome meldet gescheiterte Requests zusaetzlich als Konsolenfehler. Die erfassen `response` und `requestfailed` schon, mit URL
-        // und den Regeln fuer statische Dateien; doppelt gezaehlt machte jeder 404 eines Bildes und jeder fachliche 4xx den Lauf hart.
+        // Chrome also reports failed requests as console errors. `response` and `requestfailed` already capture them, with URL and
+        // the rules for static files; counted twice, every 404 of an image and every business 4xx would fail the run hard.
         const networkEcho = (message) => /^Failed to load resource:/.test(message.text());
-        // Frameworks fangen Fehler oft selbst und schreiben sie samt Stack in die Konsole, statt sie fliegen zu lassen: Angular ueber
-        // seinen ErrorHandler ("ERROR Error: …"), Vue im Produktions-Build, React nach einer Error Boundary. Dann zeigt der Stack wie
-        // beim Skriptfehler auf die Quelle.
+        // Frameworks often catch errors themselves and log them with stack to the console instead of throwing: Angular via its
+        // ErrorHandler ("ERROR Error: …"), Vue in production builds, React after an error boundary. Then the stack points to the
+        // source just like for a script error.
         const stackIn = (text) => (/\n\s+at .*https?:\/\//.test(text) ? text : undefined);
         raw.on('console', (message) => {
             if (networkEcho(message)) return;
@@ -890,8 +894,8 @@ export const openBrowserSession = async (spec) => {
         });
         raw.on('weberror', (webError) => {
             const error = webError.error();
-            // Ohne Stack steht sonst nur "Object" im Bericht, und das sagt nichts.
-            const text = error?.stack ? String(error) : `Nicht abgefangener Fehler ohne Stack, oft ein abgelehnter Promise: ${String(error)}`;
+            // Without a stack the report would just say "Object", which tells nothing.
+            const text = error?.stack ? String(error) : `Uncaught error without stack, often a rejected promise: ${String(error)}`;
             const entry = observe(webError.page(), { type: 'pageerror', text }, undefined, error?.stack || undefined);
             if (entry !== null && entry !== undefined && error?.stack) {
                 sourceMaps.translate(error.stack, { skip: framework.stackSkip }).then(({ at, stack }) => {
@@ -907,13 +911,13 @@ export const openBrowserSession = async (spec) => {
 
         const writes = new Map();
         const hidden = [];
-        // Belege fuer die Einordnung eines Fehlers: nur Anfragen der Anwendung selbst, keine Seiten, Skripte oder Bilder.
+        // Evidence for classifying a failure: only the application's own requests, no pages, scripts or images.
         const network = createNetworkLog();
         const asked = (request) => ['xhr', 'fetch'].includes(request.resourceType());
         const watchNavigation = (page) => {
             page.on('domcontentloaded', () => network.replaced(page));
-            // Playwright meldet auch Wechsel im selben Dokument (History-API, Hash), also die Routen einer Single-Page-App. Zaehlt
-            // nur der oberste Frame der Anwendung: der Hauptframe, in der Werkbank das iframe der Anwendung.
+            // Playwright also reports same-document changes (History API, hash), i.e. single-page app routes. Only the application's
+            // top frame counts: the main frame, or in the workbench the application iframe.
             page.on('framenavigated', (frame) => {
                 const owner = pages.pageOf(frame);
                 if (owner === null || owner === false) return;
@@ -927,7 +931,7 @@ export const openBrowserSession = async (spec) => {
             if (page === false || (page !== null && !pages.owns(page))) return;
             const label = writeLabel({ method: request.method(), url: request.url() }, config.requestKeys ?? []);
             if (label !== null) writes.set(label, (writes.get(label) ?? 0) + 1);
-            // Ein Seitenwechsel beginnt mit der Anfrage des Hauptframes, vor jedem Abbruch, den er ausloest. Hash-Wechsel stellen keine.
+            // A navigation starts with the main frame's request, before any abort it causes. Hash changes make no request.
             if (page !== null && request.isNavigationRequest() && request.frame() === page.mainFrame()) network.navigating(page);
             if (asked(request)) {
                 const keys = config.requestKeys ?? [];
@@ -935,9 +939,9 @@ export const openBrowserSession = async (spec) => {
                 network.started(request, { name: requestName({ method: request.method(), url: request.url() }, keys), page, params });
             }
         });
-        // Fertig erst mit dem Inhalt, nicht schon mit den Kopfzeilen: Sonst zaehlt das Warten einen Request als erledigt, dessen
-        // Antwort die Anwendung noch gar nicht verarbeiten konnte.
-        // Kopfzeilen: Ein Stream endet erst mit der Seite, und mancher Proxy meldet nie ein Ende. Danach zaehlt das Warten nur noch kurz.
+        // Done only with the body, not with the headers: otherwise waiting would count a request as finished whose response the
+        // application could not process yet.
+        // Headers: a stream only ends with the page, and some proxies never report an end. After them, waiting only counts briefly.
         raw.on('response', (response) => {
             network.answered(response.request(), response.status(), STREAM_TYPE.test(response.headers()['content-type'] ?? ''));
         });
@@ -945,14 +949,14 @@ export const openBrowserSession = async (spec) => {
             request.response().then((response) => { if (response !== null) network.finished(request, response.status()); }, () => {});
         });
 
-        // Spur fuer die Wirkung einer Aktion: Konsole und Form der JSON-Antworten, ohne Werte.
+        // Trail for an action's effect: console and shape of JSON responses, without values.
         const trail = [];
         raw.on('console', (message) => {
             const page = message.page();
             const url = message.location().url;
             if ((page !== null && !pages.owns(page)) || fromWorkbench(url)) return;
-            // Nur Fehler, und nur, was nicht erlaubt oder fremd ist: Sonst liesse ein seltenes Log, eine zeitabhaengige Warnung von Chrome
-            // oder eine erlaubte Seitenmeldung den Schritt als Fehler der Anwendung scheitern.
+            // Only errors, and only those not ignored or foreign: otherwise a rare log, a timing-dependent Chrome warning or an
+            // allowed page message would fail the step as an application error.
             if (message.type() !== 'error' || networkEcho(message)) return;
             if (rules.ignored.some((pattern) => pattern.test(message.text()) || (url && pattern.test(url)))) return;
             if (url && rules.foreign.some((pattern) => pattern.test(url))) return;
@@ -963,7 +967,7 @@ export const openBrowserSession = async (spec) => {
             const page = pageOfRequest(request);
             if (!asked(request) || page === false || (page !== null && !pages.owns(page))) return;
             if (!/json|javascript|text\/plain/i.test(response.headers()['content-type'] ?? '')) return;
-            // Der Platz in der Spur steht sofort fest, der Inhalt kommt nach.
+            // The position in the trail is fixed right away, the content follows.
             const entry = { kind: 'response', line: null };
             trail.push(entry);
             response.text().then((body) => {
@@ -972,20 +976,20 @@ export const openBrowserSession = async (spec) => {
         });
         raw.on('requestfailed', (request) => network.failed(request, request.failure()?.errorText ?? ''));
 
-        // Snapshots tragen die Requests samt Headern in den Trace; bei basic stuende das Passwort im Authorization-Header.
-        // Mit Werkbank sitzt ein Mensch davor: Der laufende Bildmitschnitt machte die Seite spuerbar zaeh (und den Trace riesig).
+        // Snapshots put requests including headers into the trace; with basic auth the password would be in the Authorization header.
+        // With the workbench a human is watching: continuous screenshots made the page noticeably sluggish (and the trace huge).
         await raw.tracing.start({ screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' });
         traceRunning = true;
 
-        // host.start() bindet die Interception erst nach dem Laden der Startseite ein; erst diese
-        // Navigation laedt die App also mit dem lokalen Code.
+        // devlinkHost.start() only hooks in the interception after loading the start page; so this navigation is the first
+        // to load the app with the local code.
         let bench = null;
-        // Mit Overlay tauscht jede Seite der Anwendung die Code-Tags der App gegen die der lokalen Seite (rewritePage), ohne integrity:
-        // Lokaler Code hat andere Bytes. Der Rest der Seite bleibt der des Servers.
+        // With an overlay, every application page swaps the app's code tags for those of the local page (rewritePage), without
+        // integrity: local code has different bytes. The rest of the page stays the server's.
         const rewrite = overlay === null ? undefined : overlay.rewritePage;
         const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
-            // Einbetten nur fuer Dokumente der Anwendung selbst, nicht fuer weitere erlaubte Hosts wie einen Anmeldedienst.
+            // Embed only documents of the application itself, not further allowed hosts such as a sign-in service.
             bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw-ai', rewrite });
             pages.embed(bench.page, bench.view);
             bench.view.on('domcontentloaded', () => network.replaced(bench.view));
@@ -1003,14 +1007,14 @@ export const openBrowserSession = async (spec) => {
             if (rewrite !== undefined) await interceptDocuments(raw, raw.pages()[0], appHosts, { request: raw.request, rewrite });
             await raw.pages()[0].goto(startUrl, { waitUntil: 'load' });
         }
-        // Ruhe laut Framework-Adapter, beim neutralen Adapter auch ohne offene Requests der Seite.
+        // Quiet according to the framework adapter; for the neutral adapter also no open requests of the page.
         const waitReady = (args = {}) => waitQuiet(framework, pages.current(), { ...args, pending: (page) => network.pending(page) });
         const ready = await waitReady({ timeout: spec.readyTimeoutMs });
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
         if (!ready.settled) throw new CawError('app-not-settled', t('session.browser.notSettled', { reason: ready.reason }));
-        if (ready.lastSample?.appReady !== true) throw new CawError('app-not-loaded', t('session.browser.notLoaded', { url: startUrl, framework: framework.label }));
-        // Mit Overlay nie still den ausgelieferten Stand: SSR laesst sich nicht tauschen, und kam gar nichts aus dem lokalen Code, lief der
-        // Test gegen den Server. Einzelne Skripte aus dem lokalen Asset-Ordner vom Server: ein Mischstand, als Warnung.
+        if (ready.lastSample?.appReady !== true) throw new CawError('app-not-loaded', t('session.browser.notLoaded', { url: startUrl, framework: framework.label() }));
+        // With an overlay, never silently test the deployed version: SSR cannot be swapped, and if nothing came from the local code the
+        // test ran against the server. Single scripts from the local asset folder served by the server: a mixed state, as a warning.
         let overlaySummary = null;
         if (overlay !== null) {
             const seen = overlay.diagnose();
@@ -1021,15 +1025,14 @@ export const openBrowserSession = async (spec) => {
             overlaySummary = { label: seen.label, local: seen.local, server: seen.server, swapped: seen.swapped };
         }
 
-        // Die Werkbank zeigt Adresse, Requests und Konsole der Anwendung; einmal je Sekunde, solange sie offen ist.
+        // The workbench shows the application's address, requests and console; once per second while it is open.
         if (bench !== null) {
             const pump = setInterval(() => {
                 if (bench.page.isClosed()) {
                     clearInterval(pump);
                     return;
                 }
-                const current = pages.current();
-                bench.url(current.url());
+                bench.url(pages.current().url());
                 bench.panels({
                     requests: network.since(0).map((request) => ({ name: request.name, outcome: request.outcome, result: outcomeText(request), ms: request.ms })),
                     console: [...failures.map(({ type, text, url }) => ({ severity: 'fail', text: `${type}: ${text}${url ? ` (${url})` : ''}` })), ...warnings.map(({ type, text, count }) => ({ severity: 'warn', text: `${type}: ${text}${count > 1 ? ` (${count}x)` : ''}` }))],
@@ -1041,20 +1044,20 @@ export const openBrowserSession = async (spec) => {
 
         return {
             writes: () => [...writes].sort(([a], [b]) => a.localeCompare(b)).map(([label, count]) => ({ label, count })),
-            // Nur fuers Mitschneiden einer Vorfuehrung, der Agent kommt ueber den Kanal nie daran.
+            // Only for recording a demonstration; the agent never gets at it through the channel.
             context: raw,
             ownsPage: (page) => pages.owns(page),
-            /** Gehoert der Frame zur Anwendung? Nie Werkbank oder Chat, nie Tabs des Menschen. */
+            /** Does the frame belong to the application? Never workbench or chat, never the human's tabs. */
             ownsFrame: (frame) => {
                 const page = pages.pageOf(frame);
                 return page !== false && page !== null && pages.owns(page);
             },
-            /** Die Werkbank (Schritte, Chat, Requests), wenn die Anwendung eingebettet laeuft, sonst null. */
+            /** The workbench (steps, chat, requests) if the application runs embedded, otherwise null. */
             workbench: bench,
-            /** Der Anwendungs-Tab oder sein neuestes offenes Popup, nie ein Tab des Menschen. */
+            /** The application tab or its newest open popup, never a tab of the human. */
             page: () => pages.current(),
             waitReady,
-            /** Die aktuelle Seite neu laden wie F5 mit leerem Cache, damit geaenderter Code sicher ankommt; Fehler meldet waitReady. */
+            /** Reloads the current page like F5 with an empty cache so changed code surely arrives; waitReady reports errors. */
             reloadPage: async () => {
                 const cdp = await raw.newCDPSession(bench?.page ?? raw.pages()[0]).catch(() => null);
                 await cdp?.send('Network.clearBrowserCache').catch(() => {});
@@ -1062,54 +1065,54 @@ export const openBrowserSession = async (spec) => {
                 await pages.current().reload({ waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
-            /** Zurueck auf die Startseite der App, mit frischem Code, und warten, bis sie bereit ist. */
-            // Die Anwendung selbst, nicht ihr neuestes Popup: Sonst luede die Startseite im Popup, ausserhalb der Werkbank. Offene Popups
-            // gehoeren zum verlassenen Zustand und gehen zu.
+            /** Back to the app's start page with fresh code, and wait until it is ready. */
+            // The application itself, not its newest popup: otherwise the start page would load in the popup, outside the workbench.
+            // Open popups belong to the abandoned state and get closed.
             restart: async () => {
                 for (const popup of pages.popups()) await popup.close().catch(() => {});
                 await pages.main().goto(startUrl, { waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
             /**
-             * Wie restart, aber in einer neuen Sitzung (freshSession: Cookies, Storage, Service Worker weg), neu angemeldet, dann die Startseite. So beginnt das Herstellen eines
-             * Zustands wie ein neuer Lauf, nicht in der Sitzung, die der letzte Zustand hinterlassen hat. Die Anmeldung laeuft im Frame
-             * der Anwendung, die Werkbank bleibt.
+             * Like restart, but in a new session (freshSession: cookies, storage, service workers gone), signed in again, then the
+             * start page. So restoring a state begins like a new run, not in the session the last state left behind. Sign-in runs in
+             * the application frame, the workbench stays.
+             * @param as     credentials of another role (from readCredentials); defaults to the same account
+             * @param start  start path of another app; defaults to this session's app
              */
-            // @param as     Zugangsdaten einer anderen Rolle (aus readCredentials); ohne Angabe dasselbe Konto
-            // @param start  Startpfad einer anderen App; ohne Angabe die App dieser Sitzung
             signInAgain: async ({ as, start } = {}) => {
                 if (as !== undefined && as !== null) {
-                    current = as;
+                    signedInAs = as;
                     if (as.password !== undefined && !passwords.includes(as.password)) passwords.push(as.password);
                 }
                 for (const popup of pages.popups()) await popup.close().catch(() => {});
                 await freshSession(raw, pages.main(), resolved.url);
-                if (auth.type === 'storageState') await applyStorageState(raw, current.storageState);
+                if (auth.type === 'storageState') await applyStorageState(raw, signedInAs.storageState);
                 if (auth.type === 'form') await formLogin(pages.main());
                 await pages.main().goto(start === undefined ? startUrl : `${resolved.url}${start}`, { waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
-            /** Der Framework-Adapter: Ziele, Seitenzustand, Bereitschaft. */
+            /** The framework adapter: targets, page state, readiness. */
             framework,
             failures: () => failures,
-            /** Was nie als Text aus dem Browser gehen darf: das Passwort der Rolle und geheim gemerkte Werte. */
+            /** What must never leave the browser as text: the role's password and values remembered as secret. */
             secrets: () => [...passwords, ...hidden],
-            /** Ein Wert, der ab jetzt wie das Passwort geschwaerzt wird, etwa aus `remember` mit `secret: true`. */
+            /** A value redacted like the password from now on, e.g. from `remember` with `secret: true`. */
             hide: (value) => { if (typeof value === 'string' && !hidden.includes(value)) hidden.push(value); },
             warnings: () => warnings,
-            /** Mit Overlay: was nach dem ersten Laden aus dem lokalen Code kam (fuer den Bericht), sonst null. */
+            /** With an overlay: what came from the local code after the first load (for the report), otherwise null. */
             overlay: () => overlaySummary,
-            /** Das Request-Protokoll: `mark()` vor einem Schritt, `since(mark)` danach. */
+            /** The request log: `mark()` before a step, `since(mark)` after it. */
             network: { mark: () => network.mark(), since: (mark, end) => network.since(mark, end) },
-            /** Konsole und Antworten fuer die Wirkung einer Aktion: `mark()` davor, `since(mark)` danach. */
+            /** Console and responses for an action's effect: `mark()` before, `since(mark)` after. */
             trail: { mark: () => trail.length, since: (mark) => trail.slice(mark).filter(({ line }) => line !== null) },
-            /** Eine Warnung, die nicht aus dem Browser kommt, etwa eine abweichende Wirkung in einem bestandenen Lauf. */
+            /** A warning that does not come from the browser, e.g. a deviating effect in a passed run. */
             warn: (entry) => addWarning(entry),
-            /** CSS-Selektoren der Meldungen auf der Seite, aus der Config. */
+            /** CSS selectors of messages on the page, from the config. */
             messageSelectors: config.messageSelectors ?? framework.messageSelectors ?? DEFAULT_MESSAGE_SELECTORS,
             /**
-             * Nimmt die Fehler von `from` bis vor `to` zurueck: Sie gehoeren zu einem Versuch, den `retry` wiederholt. Was danach kam,
-             * etwa ein Skriptfehler der neu geladenen Seite, bleibt.
+             * Retracts the failures from `from` up to before `to`: they belong to an attempt that `retry` repeats. What came after,
+             * e.g. a script error of the reloaded page, stays.
              */
             retractFailures: (from, to = failures.length) => {
                 const end = Math.min(Math.max(to, from), failures.length);

@@ -1,7 +1,7 @@
 import { CawError } from './errors.mjs';
 import { t } from './i18n.mjs';
 
-/** Art einer Warnung, wie der Mensch sie liest (Text unter config.report.warning.<art>). Unbekannte Arten stehen mit ihrem Schluessel da. */
+/** Warning type as the human reads it (text under config.report.warning.<type>). Unknown types are shown by their key. */
 const WARNING_TYPES = ['console', 'pageerror', 'requestfailed', 'http', 'retry', 'effect', 'note'];
 const warningLabel = (type) => (WARNING_TYPES.includes(type) ? t(`config.report.warning.${type}`) : type);
 
@@ -19,8 +19,8 @@ const checkEvidence = (item, fileExists) => {
 };
 
 /**
- * Bewertet das, was der Agent am Ende einreicht. Ohne vollstaendige Belege gibt es kein Ergebnis, und
- * harte Konsolenfehler bestimmen den Status unabhaengig vom Urteil des Agenten.
+ * Evaluates what the agent submits at the end. Without complete evidence there is no result, and
+ * hard console errors decide the status regardless of the agent's verdict.
  */
 export const evaluateFinish = ({ expectations, results, failures, fileExists }) => {
     if (results.status === 'error') {
@@ -44,7 +44,7 @@ export const evaluateFinish = ({ expectations, results, failures, fileExists }) 
     return { status: passed ? 'pass' : 'fail', results: items, failures };
 };
 
-/** Bekannte Meldungen darf consoleIgnore erlauben. HTTP-Status ab 500 bleiben immer hart, auch wenn ein Muster passt. */
+/** consoleIgnore may allow known messages. HTTP status 500+ always stays hard, even if a pattern matches. */
 export const isAllowedFailure = (observation, url, patterns) => {
     if (observation.type === 'http') return false;
     const haystack = `${observation.text} ${url ?? ''}`;
@@ -54,8 +54,8 @@ export const isAllowedFailure = (observation, url, patterns) => {
 const STATIC_FILE = /\.(png|jpe?g|gif|svg|ico|webp|css|woff2?|ttf|eot|map)$/i;
 
 /**
- * Die Datei, in der ein Fehler entstand: der oberste Stack-Eintrag ausserhalb der Dateien in `skip`, etwa des Frameworks, das fast
- * immer nur weiterreicht.
+ * The file where an error originated: the topmost stack entry outside the files in `skip`, e.g. the framework's, which
+ * almost always just passes errors on.
  */
 export const stackOrigin = (stack, skip = null) => (stack ?? '').split('\n')
     .filter((line) => line.trim().startsWith('at '))
@@ -71,18 +71,18 @@ const isStaticFile = (url) => {
 };
 
 /**
- * Wie schwer wiegt ein harter Konsolenfehler? Nur was sicher fremd oder nebensaechlich ist, wird zur Warnung. Alles Unbekannte, auch
- * ein Fehler ohne Stack, bleibt ein Fehler: Macht fremder Code wirklich etwas kaputt, scheitert ohnehin die Pruefung des Schritts.
+ * How serious is a hard console error? Only what is surely foreign or minor becomes a warning. Anything unknown, even
+ * an error without a stack, stays an error: if foreign code really breaks something, the step's check fails anyway.
  * @param details { url, stack }
- * @param rules   { ignored, foreign, skip } reguläre Ausdruecke; `skip`: Dateien, die Fehler nur weiterreichen (vom Framework-Adapter)
- * @returns 'ignore', 'warn' oder 'fail'
+ * @param rules   { ignored, foreign, skip } regular expressions; `skip`: files that only pass errors on (from the framework adapter)
+ * @returns 'ignore', 'warn' or 'fail'
  */
 export const classifyFailure = (observation, { url, stack } = {}, { ignored = [], foreign = [], skip = null } = {}) => {
     if (observation.type === 'http') return 'fail';
     if (isAllowedFailure(observation, url, ignored)) return 'ignore';
     if (observation.type === 'requestfailed') return isStaticFile(url) ? 'warn' : 'fail';
-    // Ein Konsolenfehler mit Stack (vom Framework gefangen) zaehlt wie ein Skriptfehler nach seinem Ursprung, nicht nach der Datei,
-    // die console.error rief: Das ist fast immer das Framework.
+    // A console error with a stack (caught by the framework) counts like a script error by its origin, not by the file
+    // that called console.error: that is almost always the framework.
     const origin = observation.type === 'pageerror' ? stackOrigin(stack, skip) : (stack === undefined ? url : stackOrigin(stack, skip) ?? url);
     return origin !== undefined && foreign.some((pattern) => pattern.test(origin)) ? 'warn' : 'fail';
 };
@@ -92,7 +92,7 @@ const cell = (text) => String(text ?? '').replaceAll('|', '\\|').replaceAll('\n'
 const DECISIONS = ['adopted', 'discarded', 'shown', 'open', 'applied'];
 const decisionLabel = (decision) => (DECISIONS.includes(decision) ? t(`config.report.decision.${decision}`) : decision);
 
-/** Empfehlungen von Claude samt Entscheidung. Der Prompt einer Anwendungsempfehlung steht hier, damit er den Chat ueberdauert. */
+/** Claude's advice with its decision. The prompt of an application advice is kept here so it outlives the chat. */
 const adviceLines = ({ items, note: adviceNote }) => {
     const lines = ['', `## ${t('config.report.advice')}`, ''];
     if (adviceNote !== undefined) lines.push(adviceNote, '');
@@ -120,7 +120,7 @@ const adviceLines = ({ items, note: adviceNote }) => {
 const OUTCOMES = { ok: (request) => String(request.status), http: (request) => `HTTP ${request.status}`, aborted: (request) => (request.routed ? t('config.report.outcome.abortedRoute') : request.navigated ? t('config.report.outcome.abortedPage') : t('config.report.outcome.aborted')), failed: (request) => t('config.report.outcome.failed', { error: String(request.error) }), open: () => t('config.report.outcome.open') };
 const duration = (ms) => (ms === undefined ? '-' : `${Math.round(ms)} ms`);
 
-/** Woran der Schritt gescheitert ist, mit den Requests des Schritts neben denen der Aufnahme. */
+/** Why the step failed, with the step's requests next to those of the recording. */
 const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) => {
     const lines = ['', `## ${t('config.report.diagnosis')}`, '', `${step}: ${text}`, ''];
     for (const finding of findings) lines.push(`- ${finding}`);
@@ -139,11 +139,11 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 };
 
 export const renderReport = ({ status, reason, note, testId, target, source, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis, overlay }) => {
-    const stand = source === 'overlay' ? t('config.report.source.overlay') : t('config.report.source.deployed');
+    const sourceLabel = source === 'overlay' ? t('config.report.source.overlay') : t('config.report.source.deployed');
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
-        t('config.report.source', { source: stand }),
+        t('config.report.source', { source: sourceLabel }),
         ...(overlay === undefined ? [] : [t('config.report.overlay', { label: String(overlay.label), local: String(overlay.local), server: String(overlay.server), swapped: t(overlay.swapped ? 'config.report.overlay.yes' : 'config.report.overlay.no') })]),
     ];
     if (reason !== undefined) lines.push('', t('config.report.reason', { reason: String(reason) }));
@@ -176,13 +176,13 @@ export const renderReport = ({ status, reason, note, testId, target, source, exp
     return `${lines.join('\n')}\n`;
 };
 
-// Fehler eines Requests, die die Anwendung nur protokolliert (axios, Angulars HttpClient, fetch): Ihr Stack zeigt in die Bibliothek,
-// die Ursache ist der Request, nicht das Skript.
+// Request errors the application merely logs (axios, Angular's HttpClient, fetch): their stack points into the library,
+// the cause is the request, not the script.
 const REQUEST_ERROR = /\b(AxiosError|HttpErrorResponse|Http failure response|Request failed with status code|Failed to fetch|NetworkError|ERR_NETWORK|ERR_BAD_(REQUEST|RESPONSE))\b/i;
 
 /**
- * Ein Konsolenfehler, den das Framework gefangen hat und der auf eigenen Code zeigt (Angulars ErrorHandler, Vue, Error Boundary): So
- * klar wie ein Skriptfehler. Nicht, wenn die Quelle in einer Bibliothek liegt oder der Text ein protokollierter Request-Fehler ist.
+ * A console error caught by the framework that points to own code (Angular's ErrorHandler, Vue, error boundary): as
+ * clear as a script error. Not if the source is in a library or the text is a logged request error.
  */
 export const isCaughtScriptError = (failure) => failure?.type === 'console' && typeof failure.at === 'string' && failure.at !== ''
     && !/(^|\/)node_modules\//.test(failure.at) && !REQUEST_ERROR.test(String(failure.text ?? '').split('\n')[0]);

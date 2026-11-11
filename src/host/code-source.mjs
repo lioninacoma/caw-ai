@@ -1,5 +1,5 @@
-// Welcher Code laeuft, in einer Zeile fuer Terminal, CI-Log und validate. Entschieden wird es in checkTest (test-file.mjs); hier steht
-// nur, wie es sich liest. Ob die Quelle bereit ist, prueft das Overlay vor dem Browser (overlay.mjs).
+// Which code runs, in one line for terminal, CI log and validate. The decision is made in checkTest (test-file.mjs); this file
+// only phrases it. Whether the source is ready is checked by the overlay before the browser starts (overlay.mjs).
 
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,16 +7,16 @@ import { join } from 'node:path';
 import { isLoopback } from '../shared/config.mjs';
 import { language, t } from '../shared/i18n.mjs';
 
-// Ordner, die keine Quellen sind: Abhaengigkeiten, Builds und Caches gaengiger Werkzeuge. Ordner mit Punkt (.git, .angular,
-// .next, .svelte-kit) fallen ohnehin weg.
+// Folders that are not sources: dependencies, builds and caches of common tools. Dot folders (.git, .angular, .next,
+// .svelte-kit) are skipped anyway.
 const NOT_SOURCES = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'target', 'vendor', 'bower_components']);
-// Dateien, deren Aenderung keinen neuen Build verlangt: Doku und die Config von caw-ai.
+// Files whose change needs no new build: docs and the caw-ai config.
 const NOT_CODE = /(\.md|^caw\.config\.json)$/i;
 const normalized = (path) => join(path).replace(/[\\/]+$/, '');
-/** Genug, um einen typischen App-Ordner abzulaufen, und billig genug fuer jeden Lauf. */
+/** Enough to walk a typical app folder, cheap enough for every run. */
 export const MAX_FILES = 5000;
 
-/** Die juengste Datei unter einem Ordner, ohne die ausgenommenen Ordner. @returns { path, mtimeMs } oder null */
+/** The newest file below a folder, excluding the skipped folders. @returns { path, mtimeMs } or null */
 export const newestFile = (dir, { skip = [], skipNames = NOT_SOURCES, max = MAX_FILES } = {}) => {
     const skipped = new Set(skip.map(normalized));
     let newest = null;
@@ -43,14 +43,14 @@ export const newestFile = (dir, { skip = [], skipNames = NOT_SOURCES, max = MAX_
                 const { mtimeMs } = statSync(path);
                 if (newest === null || mtimeMs > newest.mtimeMs) newest = { path, mtimeMs };
             } catch {
-                // Datei waehrend des Laufens verschwunden: zaehlt nicht
+                // file vanished during the walk: ignore it
             }
         }
     }
     return newest;
 };
 
-/** "vor 3 min", "vor 2 h", "vor 2 Tagen": grob genug fuer eine Zeile. */
+/** "3 min ago", "2 h ago", "2 days ago": rough enough for one line. */
 export const ago = (ms) => {
     const minutes = Math.max(0, Math.floor(ms / 60_000));
     if (minutes < 1) return t('cli.code.agoNow');
@@ -63,9 +63,9 @@ export const ago = (ms) => {
 const clock = (ms) => new Date(ms).toLocaleTimeString(language() === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
 const slash = (path) => path.replaceAll('\\', '/').replace(/\/+$/, '');
 
-/** Eine Quelle des Overlays in Worten, etwa "Build dist, gebaut 14:02, vor 3 min" oder "Dev-Server http://localhost:5173". */
+/** One overlay source in words, e.g. "build dist, built 14:02, 3 min ago" or "dev server http://localhost:5173". */
 const describeChoice = (config, name, choice, { root, now }) => {
-    const many = Object.keys(config.apps ?? {}).length > 1;
+    const severalApps = Object.keys(config.apps ?? {}).length > 1;
     const statics = (choice.statics ?? []).length;
     let text;
     if (choice.kind === 'build') {
@@ -76,16 +76,16 @@ const describeChoice = (config, name, choice, { root, now }) => {
     else if (choice.kind === 'watch') text = t('cli.code.watch', { dir: slash(config.apps[name].dir) });
     else text = t('cli.code.files', { count: statics });
     if (choice.kind !== 'files' && statics > 0) text = t('cli.code.withStatics', { text, count: statics });
-    return many ? t('cli.code.ofApp', { text, app: name }) : text;
+    return severalApps ? t('cli.code.ofApp', { text, app: name }) : text;
 };
 
 /**
- * Die Zeile "Code: …" ohne Praefix. Mit `root` nennt sie beim Build-Ordner, wann er gebaut wurde; validate laesst das weg.
- * @param checked Ergebnis von checkTest: source, apps
+ * The "Code: …" line without its prefix. With `root`, a build folder line says when it was built; validate omits that.
+ * @param checked result of checkTest: source, apps
  */
 export const describeCode = (config, spec, checked, { root, now = Date.now() } = {}) => {
     if (checked.source !== 'overlay') {
-        // Ein Dev-Server auf dem eigenen Rechner ist kein ausgelieferter Stand: Dort laeuft, was im Editor steht.
+        // A dev server on this machine is not a deployed state: it runs whatever is in the editor.
         const url = checked.url === undefined ? null : new URL(checked.url);
         return url !== null && url.protocol === 'http:' && isLoopback(url.hostname) ? t('cli.code.devServer', { host: url.host }) : t('cli.code.deployed');
     }

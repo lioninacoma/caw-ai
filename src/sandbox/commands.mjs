@@ -1,5 +1,5 @@
-// Die Befehle im Container: duenne Clients. Browser, Anmeldung und Urteil liegen auf dem Host,
-// erreichbar nur ueber den Dateikanal. Hier gibt es weder Zugangsdaten noch Netz zur Anwendung.
+// The commands in the container: thin clients. Browser, login and verdict live on the host,
+// reachable only through the file channel. There are no credentials and no network to the application here.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as dns } from 'node:dns';
@@ -20,16 +20,16 @@ import { colorLine, formatClaudeLine, stampLine } from './claude-log.mjs';
 const CHANNEL_DIR = '.channel';
 const HUMAN_TIMEOUT_MS = 60 * 60 * 1000;
 
-/** Der Agent-Ordner: in Sandbox und lokalem Agenten aus der Umgebung, fuer die eigene Session aus der Marke des wartenden Laufs. */
+/** The agent folder: from the environment in the sandbox and for the local agent, from the waiting run's marker for the developer session. */
 const agentDir = () => {
     const dir = process.env.CAW_AGENT_DIR;
     if (process.env.CAW_SANDBOX === '1' && dir) return dir;
     const waiting = findSessionAgent(process.env.INIT_CWD ?? process.cwd());
     if (waiting !== undefined) return waiting.agentDir;
-    throw new CawError('not-in-sandbox', 'Kein Lauf wartet auf einen Agenten. In deiner Session: caw-ai record <test> --target <umgebung> --agent session starten (im Hintergrund), dann diese Befehle.');
+    throw new CawError('not-in-sandbox', 'No run is waiting for an agent. In your session: start caw-ai record <test> --target <environment> --agent session (in the background), then use these commands.');
 };
 
-/** Reicht einen Befehl an den Browser auf dem Host und gibt die Antwort aus. */
+/** Passes a command to the browser on the host and prints the answer. */
 export const browserCommand = async (command, options) => {
     const value = await sendCommand(join(agentDir(), CHANNEL_DIR), command, options);
     console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
@@ -42,119 +42,120 @@ export const waitReady = async (args) => {
     return result.settled ? EXIT.pass : EXIT.fail;
 };
 
-/** Reicht das Urteil ein. Unvollstaendige Ergebnisse lehnt der Host ab, sodass der Agent nachbessern muss. */
+/** Submits the verdict. The host rejects incomplete results, so the agent has to improve them. */
 export const finish = async (file) => {
     let results;
     try {
         results = JSON.parse(readFileSync(file, 'utf8'));
     } catch (error) {
-        throw new CawError('finish-rejected', `Ergebnisdatei nicht lesbar: ${error.message}`);
+        throw new CawError('finish-rejected', `Results file not readable: ${error.message}`);
     }
     const { status } = await sendCommand(join(agentDir(), CHANNEL_DIR), { action: 'finish', results });
-    console.log(`Urteil angenommen: ${status}`);
+    // e2e/steps-e2e.mjs matches this line.
+    console.log(`Verdict accepted: ${status}`);
     return EXIT.pass;
 };
 
-/** Legt den Ablaufplan im Chat vor und wartet auf den Menschen. Der Text steht im Befehl: Nur so sieht er genau, was der Agent einreicht. */
+/** Shows the plan in the chat and waits for the human. The text travels in the command, so the human sees exactly what the agent submits. */
 export const plan = async (file) => {
     let text;
     try {
         text = readFileSync(file, 'utf8');
     } catch (error) {
-        throw new CawError('plan-invalid', `Plandatei nicht lesbar: ${error.message}`);
+        throw new CawError('plan-invalid', `Plan file not readable: ${error.message}`);
     }
     console.log(JSON.stringify(await sendCommand(join(agentDir(), CHANNEL_DIR), { action: 'plan', text }, { timeoutMs: HUMAN_TIMEOUT_MS }), null, 2));
     return EXIT.pass;
 };
 
-/** Reicht Empfehlungen ein. Der Mensch entscheidet je Karte, die Antwort nennt seine Entscheidungen. */
+/** Submits advice. The human decides per card; the answer lists the decisions. */
 export const advise = async (file) => {
     let advice;
     try {
         advice = JSON.parse(readFileSync(file, 'utf8'));
     } catch (error) {
-        throw new CawError('advice-invalid', `Empfehlungsdatei nicht lesbar: ${error.message}`);
+        throw new CawError('advice-invalid', `Advice file not readable: ${error.message}`);
     }
     console.log(JSON.stringify(await sendCommand(join(agentDir(), CHANNEL_DIR), { action: 'advise', advice }, { timeoutMs: HUMAN_TIMEOUT_MS }), null, 2));
     return EXIT.pass;
 };
 
-const canConnect = (host) => new Promise((ok) => {
-    const req = httpsRequest({ host, method: 'HEAD', timeout: 6000, rejectUnauthorized: false }, (res) => { res.resume(); ok(true); });
-    req.on('timeout', () => { req.destroy(); ok(false); });
-    req.on('error', () => ok(false));
+const canConnect = (host) => new Promise((resolveConnect) => {
+    const req = httpsRequest({ host, method: 'HEAD', timeout: 6000, rejectUnauthorized: false }, (res) => { res.resume(); resolveConnect(true); });
+    req.on('timeout', () => { req.destroy(); resolveConnect(false); });
+    req.on('error', () => resolveConnect(false));
     req.end();
 });
 
-/** Der Agent startet nur, wenn die Sandbox nachweislich dicht ist. */
+/** The agent only starts once the sandbox is proven to be sealed. */
 export const firewallCheck = async ({ print = (value) => console.log(JSON.stringify(value, null, 2)) } = {}) => {
     const checks = {
         anthropicReachable: await canConnect('api.anthropic.com'),
         externalBlocked: !await canConnect('example.com'),
-        // Direkt an den Resolver, an /etc/hosts vorbei: Kommt eine Antwort, liessen sich Daten in DNS-Namen hinaustragen.
+        // Straight to the resolver, bypassing /etc/hosts: any answer means data could leak out in DNS names.
         dnsBlocked: await new dns.Resolver({ timeout: 3000, tries: 1 }).resolve4('example.com').then(() => false, () => true),
         sudoBlocked: spawnSync('sudo', ['-n', 'iptables', '-L'], { stdio: 'ignore' }).status !== 0,
     };
     print(checks);
-    if (!Object.values(checks).every(Boolean)) throw new CawError('sandbox-open', `Die Sandbox ist nicht dicht: ${JSON.stringify(checks)}`);
+    if (!Object.values(checks).every(Boolean)) throw new CawError('sandbox-open', `The sandbox is not sealed: ${JSON.stringify(checks)}`);
     return EXIT.pass;
 };
 
-// Je Art ein eigenes Log: Das der Aufnahme bleibt, auch wenn danach noch empfohlen oder geklaert wird.
+// One log per mode: the recording's log survives later advice or clarification.
 const MODES = {
-    run: { log: 'claude.log', prompt: (runId) => `/caw-ai Der Lauf ${runId} ist offen. Fuehre ihn durch und reiche das Ergebnis mit finish ein.` },
-    advise: { log: 'claude-empfehlung.log', prompt: (runId) => `/caw-ai Im Lauf ${runId} sind Fehler oder Warnungen aufgetreten. Lies den Auftrag mit task und reiche deine Empfehlungen mit advise ein.` },
-    talk: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai Im Lauf ${runId} ist ein Schritt gescheitert, und der Mensch fragt dich im Chat. Lies den Auftrag mit task, antworte mit say und warte mit chat auf ihn.` },
-    develop: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai Im Lauf ${runId} entwickelt der Mensch im hergestellten Zustand und fragt dich im Chat, etwa nach einem Bug. Lies den Auftrag mit task, antworte mit say und warte mit chat auf ihn.` },
+    run: { log: 'claude.log', prompt: (runId) => `/caw-ai Run ${runId} is open. Carry it out and submit the result with finish.` },
+    advise: { log: 'claude-empfehlung.log', prompt: (runId) => `/caw-ai Run ${runId} had errors or warnings. Read the assignment with task and submit your advice with advise.` },
+    talk: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai In run ${runId} a step failed, and the human is asking you in the chat. Read the assignment with task, answer with say and wait for them with chat.` },
+    develop: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai In run ${runId} the human is developing in the prepared state and asks you in the chat, e.g. about a bug. Read the assignment with task, answer with say and wait for them with chat.` },
 };
 
 /**
- * Umgebung fuer Claude im Container. `plan`, `ask-operator` und `chat` warten auf den Menschen, oft laenger als die
- * 2 Minuten, nach denen Claude Code einen Bash-Aufruf sonst in den Hintergrund schiebt. Danach beendet `claude -p` den Zug
- * und damit den Lauf, waehrend der Mensch noch liest. Deshalb: Bash darf so lange laufen wie der ganze Lauf, Hintergrund aus.
+ * Environment for Claude in the container. `plan`, `ask-operator` and `chat` wait for the human, often longer than the
+ * 2 minutes after which Claude Code would move a Bash call to the background. `claude -p` would then end the turn,
+ * and with it the run, while the human is still reading. So Bash may run as long as the whole run, and background tasks are off.
  */
 export const claudeEnv = (timeoutMin, env = process.env) => {
     const ms = String(timeoutMin * 60 * 1000);
     return { ...env, BASH_DEFAULT_TIMEOUT_MS: ms, BASH_MAX_TIMEOUT_MS: ms, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' };
 };
 
-/** Aufruf von Claude im Container: alle Rechte, aber nur dort. Ohne Werkzeuge, die auf spaeter vertroesten. */
+/** Claude's invocation in the container: all permissions, but only there. Without tools that defer work to later. */
 export const claudeArgs = (prompt) => ['-p', prompt, '--dangerously-skip-permissions', '--disallowedTools', 'Monitor,ScheduleWakeup', '--output-format', 'stream-json', '--verbose'];
 
 const SKILL_FILE = fileURLToPath(new URL('../../templates/skill.md', import.meta.url));
 const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
-// Lesen ja, Shell, Schreiben und Netz nie. Der Browser kommt nur ueber das Tool caw.
+// Reading yes; shell, writing and network never. The browser is reachable only through the caw tool.
 export const LOCAL_TOOLS = ['Read', 'Grep', 'Glob'];
-// Nur im Projektordner (Arbeitsordner von Claude): Ohne Pfad duerften Read, Grep und Glob den ganzen Rechner lesen, etwa ~/.ssh.
+// Only in the project folder (Claude's working directory): without a path Read, Grep and Glob could read the whole machine, e.g. ~/.ssh.
 export const LOCAL_ALLOWED = [...LOCAL_TOOLS.map((tool) => `${tool}(./**)`), 'mcp__caw__caw'];
-// Dieselben Geheimnisse wie im Container verdeckt (maskArgs), hier als Leseverbot.
+// The same secrets as masked in the container (maskArgs), here as read denials.
 export const LOCAL_DENY = ['.env', '.env.*', '**/.env', '**/.env.*', '.git/**', '**/.git/**', '.claude/**', '.worktrees/**', '.caw/**', 'caw/.auth/**',
     '**/.npmrc', '**/.netrc', '**/.pgpass', '**/.git-credentials', '**/*.pem', '**/*.key', '**/*.p12', '**/*.pfx', '**/id_rsa*', '**/id_dsa*', '**/id_ed25519*', '**/id_ecdsa*']
     .flatMap((pattern) => LOCAL_TOOLS.map((tool) => `${tool}(${pattern})`));
-// Vorweg zum Skill: Lokal gibt es keine Shell, die Befehle laufen ueber ein Tool.
-export const LOCAL_PREAMBLE = `Du laeufst lokal, nicht im Container. Du hast keine Shell und kannst keine Dateien schreiben. Jeder Befehl
-\`caw-ai <befehl> ...\` aus der folgenden Anleitung ist ein Aufruf des Tools mcp__caw__caw mit args, etwa args ["snapshot"] oder
-["click", "e12"]. Wo die Anleitung eine Datei schreibt und --file nennt (plan, finish, advise), gibst du ihren Inhalt in file mit.
-Den Quellcode liest du mit Read, Grep und Glob. Lies keine Dateien ausserhalb des Projekts.
+// Prepended to the skill: locally there is no shell, the commands go through a tool.
+export const LOCAL_PREAMBLE = `You are running locally, not in the container. You have no shell and cannot write files. Every command
+\`caw-ai <befehl> ...\` in the following guide is a call of the tool mcp__caw__caw with args, e.g. args ["snapshot"] or
+["click", "e12"]. Where the guide writes a file and passes --file (plan, finish, advise), pass its content in file instead.
+Read the source code with Read, Grep and Glob. Do not read files outside the project.
 
 `;
 
-/** Aufruf von Claude ohne Container: nur die Werkzeuge oben, alles andere lehnt Claude Code ab, ohne zu fragen. */
+/** Claude's invocation without a container: only the tools above; Claude Code denies everything else without asking. */
 export const localClaudeArgs = (prompt, { mcpConfig, settings, systemPromptFile }) => [
     '-p', prompt,
     '--tools', LOCAL_TOOLS.join(','),
     '--allowedTools', LOCAL_ALLOWED.join(','),
     '--permission-mode', 'dontAsk',
     '--strict-mcp-config', '--mcp-config', mcpConfig,
-    // Keine Einstellungen des Nutzers oder des Projekts: Deren allow-Regeln (etwa "Read" oder "Read(//**)") und additionalDirectories
-    // genehmigte dontAsk sonst still, und Claude laese ~/.ssh. Was der Aufruf davon braucht, traegt writeLocalSetup herueber.
+    // No user or project settings: dontAsk would silently grant their allow rules (e.g. "Read" or "Read(//**)") and
+    // additionalDirectories, and Claude could read ~/.ssh. What the call needs from them, writeLocalSetup carries over.
     '--setting-sources', '',
     '--settings', settings,
     '--append-system-prompt-file', systemPromptFile,
     '--output-format', 'stream-json', '--verbose',
 ];
 
-// Aus den Einstellungen des Nutzers nur, was die Verbindung zu Claude braucht (Proxy, Bedrock, Schluessel-Helfer, Modell), keine Rechte.
+// From the user's settings only what the connection to Claude needs (proxy, Bedrock, key helper, model), no permissions.
 const CONNECTION_KEYS = ['env', 'apiKeyHelper', 'awsAuthRefresh', 'awsCredentialExport', 'model'];
 export const connectionSettings = (env = process.env) => {
     const file = join(env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json');
@@ -166,7 +167,7 @@ export const connectionSettings = (env = process.env) => {
     }
 };
 
-/** Die Dateien, die der lokale Aufruf braucht: MCP-Server, Leseverbote und die Anleitung. Alles im Agent-Ordner dieses Laufs. */
+/** The files the local invocation needs: MCP server, read denials and the guide. All in this run's agent folder. */
 export const writeLocalSetup = (dir, env = process.env) => {
     const mcpConfig = join(dir, 'mcp.json');
     const settings = join(dir, 'settings.json');
@@ -178,8 +179,8 @@ export const writeLocalSetup = (dir, env = process.env) => {
 };
 
 /**
- * Hauptprozess des Containers: pruefen, dann Claude den offenen Lauf bearbeiten lassen.
- * @param mode run (aufnehmen, beheben), advise (nur empfehlen) oder talk (mit dem Menschen klaeren)
+ * Main process of the container: check, then let Claude work on the open run.
+ * @param mode run (record, fix), advise (advice only), talk (clarify with the human) or develop (help while the human develops)
  */
 export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
     const dir = agentDir();
@@ -188,7 +189,7 @@ export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
     let claude;
     let timer;
     if (local) {
-        // Ohne Container gibt es keine Firewall zu pruefen; die Grenze ziehen die Werkzeuge. Den Skill liefert die Anleitung, nicht /caw-ai.
+        // Without a container there is no firewall to check; the tool set is the boundary. The guide provides the skill, not /caw-ai.
         const prompt = promptFor(runId).replace(/^\/caw-ai /, '');
         const env = { ...claudeEnv(timeoutMin), MCP_TOOL_TIMEOUT: String(timeoutMin * 60 * 1000) };
         const bin = resolveClaude() ?? { file: 'claude', args: [] };
@@ -208,15 +209,15 @@ export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
             process.stdout.write(colorLine(stamped, paint));
         }
     };
-    const drained = [claude.stdout, claude.stderr].map((stream) => new Promise((ok) => {
-        createInterface({ input: stream }).on('line', write).on('close', ok);
+    const drained = [claude.stdout, claude.stderr].map((stream) => new Promise((resolveDrained) => {
+        createInterface({ input: stream }).on('line', write).on('close', resolveDrained);
     }));
-    const code = await new Promise((ok) => {
+    const code = await new Promise((resolveCode) => {
         claude.on('error', (error) => {
-            if (local && error.code === 'ENOENT') process.stdout.write('Claude Code (claude) ist nicht im PATH. Installieren: https://claude.com/claude-code\n');
-            ok(1);
+            if (local && error.code === 'ENOENT') process.stdout.write('Claude Code (claude) is not on the PATH. Install it: https://claude.com/claude-code\n');
+            resolveCode(1);
         });
-        claude.on('close', (status) => ok(status ?? 1));
+        claude.on('close', (status) => resolveCode(status ?? 1));
     });
     clearTimeout(timer);
     await Promise.all(drained);

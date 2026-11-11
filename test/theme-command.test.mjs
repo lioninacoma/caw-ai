@@ -21,7 +21,7 @@ const setup = (t) => {
     return { home, root, lines, run: (args) => themeCommand(root, args, { ui, env: { CAW_AI_HOME: home } }) };
 };
 
-test('theme: listet eingebaute und eigene, markiert das aktive, use waehlt', (t) => {
+test('theme: lists built-in and own themes, marks the active one, use selects', (t) => {
     const { home, lines, run } = setup(t);
     mkdirSync(join(home, 'themes', 'hafen'), { recursive: true });
     writeFileSync(join(home, 'themes', 'hafen', 'theme.json'), JSON.stringify({ themeApi: 1, name: 'hafen', base: 'nacht', colors: { frame: '#3f8f8a' } }));
@@ -30,11 +30,11 @@ test('theme: listet eingebaute und eigene, markiert das aktive, use waehlt', (t)
     assert.match(lines.join('\n'), /hafen +hafen · eigenes, auf nacht/);
     assert.equal(run(['use', 'hafen']), EXIT.pass);
     assert.equal(readPrefs({ CAW_AI_HOME: home }).theme, 'hafen');
-    assert.throws(() => run(['use', 'gibtsnicht']), /gibt es nicht\. Vorhanden: nacht, bernstein, phosphor, hafen/);
-    assert.throws(() => run(['weg']), /Aufruf: caw-ai theme/);
+    assert.throws(() => run(['use', 'nonexistent']), /gibt es nicht\. Vorhanden: nacht, bernstein, phosphor, hafen/);
+    assert.throws(() => run(['bogus']), /Aufruf: caw-ai theme/);
 });
 
-test('theme check: Schema, Kontrast, Markenbreite, Schriften', (t) => {
+test('theme check: schema, contrast, mark width, fonts', (t) => {
     const { home, lines, run } = setup(t);
     assert.equal(run(['check', 'nacht']), EXIT.pass);
     assert.match(lines.join('\n'), /Schema passt[\s\S]*in Ordnung/);
@@ -44,7 +44,7 @@ test('theme check: Schema, Kontrast, Markenbreite, Schriften', (t) => {
         fonts: { display: { family: 'Pixel', file: 'fonts/pixel.woff2' } },
     }));
     lines.length = 0;
-    assert.equal(run(['check', 'grau']), EXIT.error, 'fehlende Schrift');
+    assert.equal(run(['check', 'grau']), EXIT.error, 'missing font');
     const text = lines.join('\n');
     assert.match(text, /unterschiedlich breit/);
     assert.match(text, /Kontrast text\/screen nur/);

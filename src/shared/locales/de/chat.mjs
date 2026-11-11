@@ -1,5 +1,5 @@
-// Texte: chat (de). Schluessel mit Praefix "chat.".
-// chat.status.*: Zustandszeile, Pill und Knopf je Zustand. chat.page.*: Texte der Chat-Seite, auch fuer ihr Seiten-JS.
+// Texts: chat (de). Keys prefixed with "chat.".
+// chat.status.*: status line, pill and button per state. chat.page.*: texts of the chat page, also for its page script.
 export default {
     'chat.status.running.text': 'Claude arbeitet. Pausiere, bevor du in der Anwendung klickst.',
     'chat.status.running.label': 'Claude arbeitet',

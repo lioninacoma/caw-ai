@@ -1,23 +1,23 @@
-// Themes als Pakete: ein Ordner mit theme.json (themeApi 1, siehe themes/theme.schema.json), optional theme.css und fonts/.
-// Eingebaut: caw-ai/themes/<name>/. Eigene: <prefsDir>/themes/<name>/, sie nennen ein eingebautes als base und listen nur
-// Abweichungen; Fehlendes oder Kaputtes kommt aus base.
+// Themes as packages: a folder with theme.json (themeApi 1, see themes/theme.schema.json), optionally theme.css and fonts/.
+// Built-in: caw-ai/themes/<name>/. Custom: <prefsDir>/themes/<name>/; they name a built-in theme as base and list only the
+// differences; anything missing or broken comes from base.
 //
-// Welches gilt, das Letzte gewinnt: nacht, optionaler Team-Standard in caw.config.json ({ "theme": { "base", "colors" } }),
+// Which one applies, last wins: nacht, optional team default in caw.config.json ({ "theme": { "base", "colors" } }),
 // prefs.json ("theme": "<name>").
 //
-// Gespeichert werden kann auch aus der Werkbank. Darum prueft saveTheme das ganze Objekt gegen das Schema, ohne css und ohne
-// fonts.file: theme.css und Schriften kommen nur von der Platte. Farben setzen die Seiten nur als CSS-Variablen.
+// The workbench can save themes too. So saveTheme checks the whole object against the schema, without css and without
+// fonts.file: theme.css and fonts only come from disk. Pages set colours only as CSS variables.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { language } from './i18n.mjs';
+import { language, t } from './i18n.mjs';
 import { prefsDir, readPrefs } from './prefs.mjs';
 
 const TOOL_THEMES = new URL('../../themes/', import.meta.url);
 const SCHEMA = JSON.parse(readFileSync(new URL('theme.schema.json', TOOL_THEMES), 'utf8'));
 
-/** Die Grundfarben in der Reihenfolge des Theme-Dialogs. */
+/** The base colours in the order of the theme dialog. */
 export const THEME_KEYS = ['screen', 'pane', 'frame', 'text', 'muted', 'accent', 'ok', 'warn', 'fail', 'info', 'claude', 'human', 'heart'];
 export const BUILTIN_THEMES = ['nacht', 'bernstein', 'phosphor'];
 export const DEFAULT_THEME = 'nacht';
@@ -26,63 +26,63 @@ export const HEX = /^#[0-9a-f]{6}$/i;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-// Ein kleiner Pruefer fuer genau die Teile von JSON Schema, die theme.schema.json nutzt.
+// A small validator for exactly the parts of JSON Schema that theme.schema.json uses.
 const check = (schema, value, path, problems) => {
     if (schema.$ref !== undefined) return check(schema.$ref.split('/').slice(1).reduce((node, key) => node[key], SCHEMA), value, path, problems);
     if (schema.oneOf !== undefined) {
         const passing = schema.oneOf.filter((option) => check(option, value, path, []) === 0);
-        if (passing.length !== 1) problems.push(`${path}: ${passing.length === 0 ? 'passt zu keiner Form' : 'mehrdeutig'}`);
+        if (passing.length !== 1) problems.push(`${path}: ${t(passing.length === 0 ? 'config.theme.schema.noShape' : 'config.theme.schema.ambiguous')}`);
         return problems.length;
     }
     const before = problems.length;
     const fail = (why) => problems.push(`${path}: ${why}`);
-    if (schema.const !== undefined && value !== schema.const) fail(`muss ${JSON.stringify(schema.const)} sein`);
-    if (schema.enum !== undefined && !schema.enum.includes(value)) fail(`erlaubt: ${schema.enum.join(', ')}`);
+    if (schema.const !== undefined && value !== schema.const) fail(t('config.theme.schema.const', { value: JSON.stringify(schema.const) }));
+    if (schema.enum !== undefined && !schema.enum.includes(value)) fail(t('config.theme.schema.enum', { values: schema.enum.join(', ') }));
     const type = schema.type;
     if (type === 'object') {
-        if (!isObject(value)) return fail('kein Objekt'), problems.length;
-        for (const key of schema.required ?? []) if (!Object.hasOwn(value, key)) fail(`${key} fehlt`);
+        if (!isObject(value)) return fail(t('config.theme.schema.notObject')), problems.length;
+        for (const key of schema.required ?? []) if (!Object.hasOwn(value, key)) fail(t('config.theme.schema.required', { key }));
         for (const [key, entry] of Object.entries(value)) {
-            if (schema.propertyNames?.pattern !== undefined && !new RegExp(schema.propertyNames.pattern).test(key)) fail(`Schluessel ${key} ungueltig`);
+            if (schema.propertyNames?.pattern !== undefined && !new RegExp(schema.propertyNames.pattern).test(key)) fail(t('config.theme.schema.badKey', { key }));
             const own = schema.properties?.[key];
             if (own !== undefined) check(own, entry, `${path}.${key}`, problems);
-            else if (schema.additionalProperties === false) fail(`unbekannt: ${key}`);
+            else if (schema.additionalProperties === false) fail(t('config.theme.schema.unknown', { key }));
             else if (isObject(schema.additionalProperties)) check(schema.additionalProperties, entry, `${path}.${key}`, problems);
         }
     } else if (type === 'array') {
-        if (!Array.isArray(value)) return fail('keine Liste'), problems.length;
-        if (schema.minItems !== undefined && value.length < schema.minItems) fail(`mindestens ${schema.minItems}`);
-        if (schema.maxItems !== undefined && value.length > schema.maxItems) fail(`hoechstens ${schema.maxItems}`);
+        if (!Array.isArray(value)) return fail(t('config.theme.schema.notList')), problems.length;
+        if (schema.minItems !== undefined && value.length < schema.minItems) fail(t('config.theme.schema.atLeast', { n: schema.minItems }));
+        if (schema.maxItems !== undefined && value.length > schema.maxItems) fail(t('config.theme.schema.atMost', { n: schema.maxItems }));
         if (schema.items !== undefined) value.forEach((entry, index) => check(schema.items, entry, `${path}[${index}]`, problems));
     } else if (type === 'string') {
-        if (typeof value !== 'string') return fail('kein Text'), problems.length;
-        if (schema.maxLength !== undefined && [...value].length > schema.maxLength) fail(`hoechstens ${schema.maxLength} Zeichen`);
-        if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(value)) fail('Form passt nicht');
+        if (typeof value !== 'string') return fail(t('config.theme.schema.notText')), problems.length;
+        if (schema.maxLength !== undefined && [...value].length > schema.maxLength) fail(t('config.theme.schema.maxLength', { n: schema.maxLength }));
+        if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(value)) fail(t('config.theme.schema.pattern'));
     } else if (type === 'number' || type === 'integer') {
-        if (typeof value !== 'number' || !Number.isFinite(value) || (type === 'integer' && !Number.isInteger(value))) return fail(type === 'integer' ? 'keine ganze Zahl' : 'keine Zahl'), problems.length;
-        if (schema.minimum !== undefined && value < schema.minimum) fail(`mindestens ${schema.minimum}`);
-        if (schema.maximum !== undefined && value > schema.maximum) fail(`hoechstens ${schema.maximum}`);
-    } else if (type === 'boolean' && typeof value !== 'boolean') fail('nicht true oder false');
+        if (typeof value !== 'number' || !Number.isFinite(value) || (type === 'integer' && !Number.isInteger(value))) return fail(t(type === 'integer' ? 'config.theme.schema.notInteger' : 'config.theme.schema.notNumber')), problems.length;
+        if (schema.minimum !== undefined && value < schema.minimum) fail(t('config.theme.schema.atLeast', { n: schema.minimum }));
+        if (schema.maximum !== undefined && value > schema.maximum) fail(t('config.theme.schema.atMost', { n: schema.maximum }));
+    } else if (type === 'boolean' && typeof value !== 'boolean') fail(t('config.theme.schema.notBoolean'));
     return problems.length - before;
 };
 
 /**
- * Was an einem Paket falsch ist, als Liste lesbarer Zeilen; leer, wenn es passt.
- * @param fromPage  aus der Werkbank: dann weder css noch fonts.file, und base ist Pflicht
+ * What is wrong with a package, as a list of readable lines; empty if it is fine.
+ * @param fromPage  from the workbench: then neither css nor fonts.file, and base is required
  */
 export const validateTheme = (pkg, { fromPage = false } = {}) => {
     const problems = [];
     check(SCHEMA, pkg, 'theme', problems);
     if (fromPage && isObject(pkg)) {
-        if (pkg.css !== undefined) problems.push('theme.css: nur als Datei im Paket');
+        if (pkg.css !== undefined) problems.push(t('config.theme.cssOnlyInPackage'));
         const fonts = Object.values(isObject(pkg.fonts) ? pkg.fonts : {}).flatMap((entry) => (Array.isArray(entry) ? entry : [entry]));
-        if (fonts.some((font) => isObject(font) && font.file !== undefined)) problems.push('theme.fonts: Schriftdateien nur im Paket');
-        if (pkg.base === undefined) problems.push('theme.base fehlt');
+        if (fonts.some((font) => isObject(font) && font.file !== undefined)) problems.push(t('config.theme.fontFilesOnlyInPackage'));
+        if (pkg.base === undefined) problems.push(t('config.theme.baseMissing'));
     }
     return problems;
 };
 
-/** Der Team-Standard in caw.config.json: { base, colors }. Probleme als Liste { key }. */
+/** The team default in caw.config.json: { base, colors }. Problems as a list of { key }. */
 export const projectThemeProblems = (value) => {
     if (!isObject(value)) return [{ key: 'theme' }];
     return Object.entries(value).flatMap(([key, entry]) => {
@@ -100,7 +100,7 @@ const merge = (base, own) => {
     return out;
 };
 
-// Ein Text oder einer je Sprache.
+// A text, or one per language.
 const local = (value) => (isObject(value) ? value[language()] ?? value.en ?? Object.values(value)[0] : value);
 const LOCAL = { marks: ['ok', 'warn', 'fail', 'run', 'open', 'ask'], bullets: ['ok', 'warn', 'fail', 'run', 'info', 'pause'], prompt: ['claude', 'human'] };
 
@@ -115,7 +115,7 @@ const readJson = (path) => {
 const ownDir = (env) => join(prefsDir(env), 'themes');
 const builtin = (name) => readJson(new URL(`${name}/theme.json`, TOOL_THEMES));
 
-/** Das gespeicherte Paket eines Namens, eingebaut oder eigen; kaputt oder fremd ergibt undefined. */
+/** The stored package for a name, built-in or custom; broken or foreign yields undefined. */
 export const readThemePackage = (name, env = process.env) => {
     if (!THEME_NAME.test(String(name))) return undefined;
     if (BUILTIN_THEMES.includes(name)) return builtin(name);
@@ -123,7 +123,7 @@ export const readThemePackage = (name, env = process.env) => {
     return pkg !== undefined && pkg.name === name && BUILTIN_THEMES.includes(pkg.base) && validateTheme(pkg).length === 0 ? pkg : undefined;
 };
 
-/** Die Dateien eines Pakets: der Ordner, aus dem theme.css und fonts/ kommen. */
+/** A package's files: the folder theme.css and fonts/ come from. */
 export const themeDir = (name, env = process.env) => (BUILTIN_THEMES.includes(name) ? new URL(`${name}/`, TOOL_THEMES) : join(ownDir(env), name));
 
 const readCss = (name, file, env) => {
@@ -137,8 +137,8 @@ const readCss = (name, file, env) => {
 };
 
 /**
- * Ein Paket aufgeloest: base darunter, Texte in der aktuellen Sprache, theme.css gelesen.
- * @param extra  zuletzt darueber, etwa die Farben des Team-Standards
+ * A resolved package: base underneath, texts in the current language, theme.css read.
+ * @param extra  merged on top last, e.g. the team default's colours
  */
 export const resolvePackage = (pkg, { env = process.env, extra } = {}) => {
     const base = BUILTIN_THEMES.includes(pkg?.base) ? builtin(pkg.base) : builtin(DEFAULT_THEME);
@@ -153,19 +153,19 @@ export const resolvePackage = (pkg, { env = process.env, extra } = {}) => {
     return theme;
 };
 
-/** Ein Theme nach Namen, aufgeloest; undefined, wenn es keines gibt. */
+/** A theme by name, resolved; undefined if there is none. */
 export const loadTheme = (name, env = process.env) => {
     const pkg = readThemePackage(name, env);
     return pkg === undefined ? undefined : resolvePackage(pkg, { env });
 };
 
-// Der Team-Standard aus caw.config.json, gesetzt beim Laden der Config.
+// The team default from caw.config.json, set when the config is loaded.
 let project;
 export const setProjectTheme = (value) => {
     project = value;
 };
 
-/** Das Theme, das gerade gilt: nacht, dann Team-Standard, dann die eigene Wahl aus prefs.json. */
+/** The theme in effect: nacht, then team default, then the own choice from prefs.json. */
 export const activeTheme = (env = process.env) => {
     const chosen = readPrefs(env).theme;
     const own = chosen === undefined ? undefined : readThemePackage(chosen, env);
@@ -177,13 +177,13 @@ export const activeTheme = (env = process.env) => {
     return resolvePackage(builtin(DEFAULT_THEME), { env });
 };
 
-/** Alle Themes: erst die eingebauten, dann die eigenen, die sich lesen lassen. */
+/** All themes: built-in first, then the readable custom ones. */
 export const listThemes = (env = process.env) => {
     let own = [];
     try {
         own = readdirSync(ownDir(env)).filter((name) => !BUILTIN_THEMES.includes(name) && readThemePackage(name, env) !== undefined).sort();
     } catch {
-        // Kein Ordner: keine eigenen Themes.
+        // No folder: no custom themes.
     }
     return [...BUILTIN_THEMES, ...own].map((name) => {
         const pkg = readThemePackage(name, env);
@@ -197,37 +197,37 @@ const writeJson = (path, value) => {
     renameSync(temp, path);
 };
 
-/** Speichert ein eigenes Theme, etwa aus der Werkbank. Prueft wie fuer die Seite; eingebaute Namen sind vergeben. */
+/** Saves a custom theme, e.g. from the workbench. Validates as for the page; built-in names are taken. */
 export const saveTheme = (pkg, env = process.env) => {
     const problems = validateTheme(pkg, { fromPage: true });
-    if (problems.length > 0) throw new Error(`Theme ungueltig: ${problems.slice(0, 5).join('; ')}`);
-    if (BUILTIN_THEMES.includes(pkg.name)) throw new Error(`${pkg.name} ist eingebaut`);
+    if (problems.length > 0) throw new Error(`Invalid theme: ${problems.slice(0, 5).join('; ')}`);
+    if (BUILTIN_THEMES.includes(pkg.name)) throw new Error(`${pkg.name} is built in`);
     const dir = join(ownDir(env), pkg.name);
     mkdirSync(dir, { recursive: true });
-    // Ein vorhandenes css aus dem Paket bleibt: Die Seite darf es weder setzen noch loeschen.
+    // An existing css in the package is kept: the page may neither set nor delete it.
     const before = readJson(join(dir, 'theme.json'));
     const keep = isObject(before) && typeof before.css === 'string' ? { css: before.css } : {};
     const fonts = isObject(before?.fonts) ? { fonts: before.fonts } : {};
     writeJson(join(dir, 'theme.json'), { ...pkg, ...fonts, ...keep });
 };
 
-/** Loescht ein eigenes Theme samt Ordner. Eingebaute lassen sich nicht loeschen. */
+/** Deletes a custom theme and its folder. Built-in themes cannot be deleted. */
 export const deleteTheme = (name, env = process.env) => {
-    if (!THEME_NAME.test(String(name)) || BUILTIN_THEMES.includes(name)) throw new Error(`${name} laesst sich nicht loeschen`);
+    if (!THEME_NAME.test(String(name)) || BUILTIN_THEMES.includes(name)) throw new Error(`${name} cannot be deleted`);
     rmSync(join(ownDir(env), name), { recursive: true, force: true });
 };
 
-/** Benennt ein eigenes Theme um: Ordner und name im Paket. */
+/** Renames a custom theme: folder and name in the package. */
 export const renameTheme = (from, to, env = process.env) => {
-    if (!THEME_NAME.test(String(from)) || BUILTIN_THEMES.includes(from)) throw new Error(`${from} laesst sich nicht umbenennen`);
-    if (!THEME_NAME.test(String(to)) || BUILTIN_THEMES.includes(to) || existsSync(join(ownDir(env), to))) throw new Error(`${to} ist vergeben oder ungueltig`);
+    if (!THEME_NAME.test(String(from)) || BUILTIN_THEMES.includes(from)) throw new Error(`${from} cannot be renamed`);
+    if (!THEME_NAME.test(String(to)) || BUILTIN_THEMES.includes(to) || existsSync(join(ownDir(env), to))) throw new Error(`${to} is taken or invalid`);
     const pkg = readJson(join(ownDir(env), from, 'theme.json'));
-    if (!isObject(pkg)) throw new Error(`${from} gibt es nicht`);
+    if (!isObject(pkg)) throw new Error(`${from} does not exist`);
     renameSync(join(ownDir(env), from), join(ownDir(env), to));
     writeJson(join(ownDir(env), to, 'theme.json'), { ...pkg, name: to });
 };
 
-/** Kontrast nach WCAG zwischen zwei #rrggbb. */
+/** WCAG contrast between two #rrggbb colours. */
 export const contrast = (one, two) => {
     const lum = (hex) => {
         const [r, g, b] = hex.slice(1).match(/../g).map((part) => {
@@ -240,7 +240,7 @@ export const contrast = (one, two) => {
     return (a + 0.05) / (b + 0.05);
 };
 
-/** Hinweise zu einem aufgeloesten Theme, die nichts sperren: Marken unterschiedlich breit, Kontrast unter 4,5:1. */
+/** Non-blocking hints for a resolved theme: marks of different widths, contrast below 4.5:1. */
 export const themeWarnings = (theme) => {
     const warnings = [];
     const widths = new Set(Object.values(theme.marks ?? {}).map((mark) => [...String(mark).replace('{spinner}', theme.spinner?.frames?.[0] ?? ' ')].length));
@@ -252,7 +252,7 @@ export const themeWarnings = (theme) => {
     return warnings;
 };
 
-/** Fehlen Schriftdateien eines Pakets? Liste der fehlenden. */
+/** A package's missing font files. */
 export const missingFonts = (theme, env = process.env) => {
     const fonts = Object.values(theme.fonts ?? {}).flatMap((entry) => (Array.isArray(entry) ? entry : [entry])).filter((font) => typeof font?.file === 'string');
     return fonts.map((font) => font.file).filter((file) => {

@@ -1,44 +1,45 @@
-// Die Naht zum Framework der getesteten Anwendung: Ziele beschreiben und wiederfinden, Seitenzustand, Bereitschaft. Gewaehlt ueber
-// `framework` in der Config; `web` ist der Standard und kommt ohne Wissen ueber ein Framework aus. Alles andere im Tool ist neutral.
+// The seam to the framework of the application under test: describing and finding targets, page state, readiness. Chosen via
+// `framework` in the config; `web` is the default and needs no framework knowledge. Everything else in the tool is neutral.
 //
-// Ein Adapter ist ein Objekt mit:
-// - `targets(element, { mode, target })`: laeuft im Browser; `describe` liefert ein stabiles Ziel, `find` das Element dazu
-// - `pageState({ marker, selectors })`: laeuft im Browser; { appLoaded, signedIn, loading, path, messages }
-// - `probe(store)`: laeuft im Browser; { pendingAjax, loadingStores, counts, appReady }
-// - `countNetwork`: offene Requests aus dem Netzwerkprotokoll zaehlen beim Warten mit
-// - `floats`: Reihenfolge schwebender Fenster mitschreiben; `stackSkip`: Dateien, die Fehler nur weiterreichen
-// - `messageSelectors`: Meldungen der Seite, solange die Config keine nennt
-// - `hints`: optional, Hinweise fuer Claude, wo im Quellcode zu suchen ist
-// - `watch`: optional, { label, command, start }: der Watch des Frameworks als Quelle des Overlays (--overlay), woran er als Prozess
-//   zu erkennen ist und wie er startet
-// - `overlay`: optional, mit `watch`: { createWatchSource(appDir), checkAppFiles(appDir, hint) }; was der Watch ersetzt
-// - `hydrates`: optional, true: Vor dem Ausfuellen der Anmeldung warten, bis `probe` appReady meldet (SSR-Hydration)
-// - `name`, `label`: fuer Config und Meldungen
+// An adapter is an object with:
+// - `targets(element, { mode, target })`: runs in the browser; `describe` returns a stable target, `find` the matching element
+// - `pageState({ marker, selectors })`: runs in the browser; { appLoaded, signedIn, loading, path, messages }
+// - `probe(store)`: runs in the browser; { pendingAjax, loadingStores, counts, appReady }
+// - `countNetwork`: open requests from the network log count while waiting
+// - `floats`: record the order of floating windows; `stackSkip`: files that only pass errors on
+// - `messageSelectors`: page messages, unless the config names some
+// - `hints`: optional, hints for Claude where to look in the source code
+// - `watch`: optional, { label(), command, start }: the framework's watch as overlay source (--overlay), how to recognize its
+//   process and how to start it
+// - `overlay`: optional, with `watch`: { createWatchSource(appDir), checkAppFiles(appDir, hint) }; what the watch replaces
+// - `hydrates`: optional, true: before filling in the login, wait until `probe` reports appReady (SSR hydration)
+// - `name`: for the config; `label()`: the localized name for messages (called at runtime, never at import)
 
 import { extjs } from './extjs.mjs';
 import { angular, react, vue } from './spa.mjs';
 import { web, webTargets } from './web.mjs';
 import { patternLabel } from '../patterns.mjs';
+import { t } from '../../shared/i18n.mjs';
 
 export const FRAMEWORKS = { web, extjs, react, vue, angular };
 export const DEFAULT_FRAMEWORK = 'web';
 
 export const frameworkOf = (config) => FRAMEWORKS[config?.framework ?? DEFAULT_FRAMEWORK] ?? web;
 
-const sleepMs = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
+const sleepMs = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
-/** Beschreibt das Element hinter einem Locator als stabiles Ziel, oder null. */
+/** Describes the element behind a locator as a stable target, or null. */
 export const describeLocator = (framework, locator, options) => locator.evaluate(framework.targets, { mode: 'describe' }, options);
 
 const findExpression = (framework, target) => `(${framework.targets})(null, ${JSON.stringify({ mode: 'find', target })})`;
 
-// iframes: Ein Ziel in einem Frame der Anwendung traegt unter `frame` das iframe-Element, beschrieben im Dokument darueber, bei
-// verschachtelten Frames wieder mit `frame`. Das iframe beschreibt und findet immer der Adapter `web`: Ein Framework-Adapter wie
-// ExtJS kennt es nicht als Komponente.
+// iframes: a target in a frame of the application carries the iframe element under `frame`, described in the document above,
+// with nested frames again under `frame`. The `web` adapter always describes and finds the iframe: a framework adapter like
+// ExtJS does not know it as a component.
 
 /**
- * Der Frame zu einer `frame`-Angabe: das iframe im Dokument darueber suchen, dann sein Inhalt. Ohne Angabe die Seite selbst; null,
- * solange das iframe fehlt oder noch nichts geladen hat.
+ * The frame for a `frame` entry: find the iframe in the document above, then its content. Without an entry the page itself; null
+ * while the iframe is missing or has not loaded anything yet.
  */
 export const frameOf = async (page, frameTarget) => {
     if (frameTarget === undefined) return page;
@@ -57,8 +58,8 @@ export const frameOf = async (page, frameTarget) => {
 };
 
 /**
- * Die `frame`-Angabe fuer ein Element in `frame`: die iframes vom Frame bis zur Anwendung, jeweils im Dokument darueber beschrieben.
- * undefined im Hauptframe der Anwendung; null, wenn ein iframe sich nicht beschreiben laesst oder der Frame nicht zur Anwendung gehoert.
+ * The `frame` entry for an element in `frame`: the iframes from that frame up to the application, each described in the document
+ * above. undefined in the main frame; null if an iframe cannot be described or the frame does not belong to the application.
  */
 export const frameTargetOf = async (page, frame) => {
     const top = page.mainFrame();
@@ -78,7 +79,7 @@ export const frameTargetOf = async (page, frame) => {
     return chain;
 };
 
-/** Beschreibt ein Element samt Frame: das Ziel wie `describeLocator`, aus einem iframe mit `frame`. null, wenn es nicht geht. */
+/** Describes an element with its frame: the target as in `describeLocator`, from an iframe with `frame`. null if that fails. */
 export const describeElement = async (framework, page, element, options) => {
     const described = await element.evaluate(framework.targets, { mode: 'describe' }, options);
     if (described === null || described === undefined) return null;
@@ -88,7 +89,7 @@ export const describeElement = async (framework, page, element, options) => {
     return chain === null ? null : chain === undefined ? described : { ...described, frame: chain };
 };
 
-/** Wartet, bis das Ziel klickbar ist. Waehrend eines Seitenwechsels scheitert die Auswertung, das ist normal. */
+/** Waits until the target is clickable. Evaluation fails during navigation, which is expected. */
 export const waitForTarget = async (framework, page, target, { timeoutMs, pollMs = 150, sleep = sleepMs, now = Date.now } = {}) => {
     const deadline = now() + timeoutMs;
     const { frame: frameTarget, ...own } = target;
@@ -104,8 +105,8 @@ export const waitForTarget = async (framework, page, target, { timeoutMs, pollMs
 };
 
 /**
- * Warum ein Ziel nicht klickbar war, falls der Adapter es sagen kann: { missing } | { hidden } | { covered: { role|tag, name?, messages? } }.
- * Adapter ohne diese Auskunft liefern null.
+ * Why a target was not clickable, if the adapter can tell: { missing } | { hidden } | { covered: { role|tag, name?, messages? } }.
+ * Adapters without that information return null.
  */
 export const explainTarget = async (framework, page, target) => {
     const { frame: frameTarget, ...own } = target;
@@ -131,8 +132,8 @@ const editDistance = (a, b) => {
 const words = (text) => new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 2));
 
 /**
- * Die Namen, die dem gesuchten am naechsten kommen: kleine Tippdistanz oder ein gemeinsames Wort. Hilft bei umbenannten
- * Knoepfen ("Speichern" zu "Sichern", "Akte anlegen" zu "Neue Akte anlegen"). Hoechstens zwei, die besten zuerst.
+ * The names closest to the wanted one: small edit distance or a shared word. Helps with renamed buttons ("Speichern" to
+ * "Sichern", "Akte anlegen" to "Neue Akte anlegen"). At most two, best first.
  */
 export const closestNames = (wanted, names) => {
     if (typeof wanted !== 'string' || wanted.trim() === '') return [];
@@ -146,22 +147,27 @@ export const closestNames = (wanted, names) => {
     }).filter(({ score }) => score <= 0.4).sort((a, b) => a.score - b.score).slice(0, 2).map(({ name }) => name);
 };
 
-/** Der Satz dazu fuer Meldung und Bericht, oder ''. */
+/** The matching sentence for message and report, or ''. */
 export const explainText = (why) => {
     if (why === null || why === undefined) return '';
-    if (why.frameMissing) return ` Der Frame ${why.frameMissing} fehlt auf der Seite.`;
-    if (why.missing) return ` Es fehlt auf der Seite.${(why.similar ?? []).length === 0 ? '' : ` Ähnlich: ${why.similar.map(({ role, name }) => `${role} „${name}“`).join(', ')}. Wurde es umbenannt?`}`;
-    if (why.hidden) return ' Es ist da, aber unsichtbar.';
+    if (why.frameMissing) return t('session.explain.frameMissing', { frame: why.frameMissing });
+    if (why.missing) {
+        const similar = (why.similar ?? []).map(({ role, name }) => `${role} ${t('session.point.quoted', { text: name })}`);
+        return t('session.explain.missing') + (similar.length === 0 ? '' : t('session.explain.similar', { names: similar.join(', ') }));
+    }
+    if (why.hidden) return t('session.explain.hidden');
     const { role, tag, name, messages = [] } = why.covered;
-    const by = `${role ?? tag}${name === undefined ? '' : ` „${name}“`}`;
-    return ` Es ist da, aber verdeckt von ${by}${messages.length === 0 ? '.' : `, der meldet: „${messages.join('“, „')}“${/[.!?]$/.test(messages.at(-1)) ? '' : '.'}`}`;
+    const by = `${role ?? tag}${name === undefined ? '' : ` ${t('session.point.quoted', { text: name })}`}`;
+    if (messages.length === 0) return t('session.explain.covered', { by });
+    const said = messages.map((text) => t('session.point.quoted', { text })).join(', ');
+    return t('session.explain.coveredSays', { by, messages: said, end: /[.!?]$/.test(messages.at(-1)) ? '' : '.' });
 };
 
-export const DEFAULT_SELECTORS =['[role=alert]', '[role=alertdialog]'];
+export const DEFAULT_SELECTORS = ['[role=alert]', '[role=alertdialog]'];
 
 export const readPageState = async (framework, page, marker, selectors = DEFAULT_SELECTORS) => page.evaluate(framework.pageState, { marker, selectors });
 
-/** Kurzform fuer Meldungen, z. B. actionbutton "Weiter" oder button "Senden". */
+/** Short form for messages, e.g. actionbutton "Weiter" or button "Senden". */
 export const targetLabel = ({ xtype, role, tag, text, label, name, own, testid, part, component }) => {
     const shown = text ?? label ?? name ?? own ?? (testid === undefined ? undefined : `#${testid}`);
     return `${xtype ?? role ?? part ?? tag ?? 'Element'}${shown === undefined ? '' : ` "${patternLabel(shown)}"`}${component === undefined ? '' : ` in <${component}>`}`;
@@ -170,9 +176,9 @@ export const targetLabel = ({ xtype, role, tag, text, label, name, own, testid, 
 const READY = { timeout: 15_000, quietMs: 250, pollMs: 100 };
 
 /**
- * Wartet, bis die Seite ruhig ist: nichts laedt laut Adapter, bei `countNetwork` auch kein offener Request der Seite, und mit
- * `minCount` mindestens so viele Treffer fuer `store`. Ruhig heisst: `quietMs` am Stueck.
- * @param pending  offene Requests dieser Seite (nur bei `countNetwork`)
+ * Waits until the page is quiet: nothing loading according to the adapter, with `countNetwork` no open page request either, and
+ * with `minCount` at least that many hits for `store`. Quiet means `quietMs` in a row.
+ * @param pending  open requests of this page (only with `countNetwork`)
  * @returns { settled, waitedMs, samples, reason, lastSample }
  */
 export const waitQuiet = async (framework, page, { store = null, minCount = null, timeout = READY.timeout, quietMs = READY.quietMs, pollMs = READY.pollMs, pending = () => 0, sleep = sleepMs, now = Date.now } = {}) => {
