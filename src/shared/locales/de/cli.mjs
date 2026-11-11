@@ -116,7 +116,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
   snapshot                               Seitenstruktur mit Referenzen (e1, e2, ...)
   url                                    Aktuelle URL
   click <ziel> [--optional]              Ziel: Referenz oder Selektor; --optional: fehlt es, nichts tun
-  fill <ziel> <text>                     Feld setzen
+  fill <ziel> <text>                     Feld setzen; Auswahlliste: die Option mit diesem Wert oder Text
   type <ziel> <text>                     Zeichenweise tippen
   press <taste>                          Taste drücken, z. B. Enter
   eval <ausdruck>                        JavaScript in der Seite auswerten

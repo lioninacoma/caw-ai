@@ -7,7 +7,7 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { isCaughtScriptError } from '../shared/report.mjs';
-import { CLICK_DELAY_MS, codeText, locatorFor } from './agent-commands.mjs';
+import { CLICK_DELAY_MS, codeText, fillField, locatorFor } from './agent-commands.mjs';
 import { patternLabel, textMatcher } from './patterns.mjs';
 import { redactDeep } from './secrets.mjs';
 import { selfAbort } from './diagnose.mjs';
@@ -737,7 +737,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             try {
                 const perform = async () => {
                     if (step.action === 'click') await element.click({ timeout: remaining, delay: CLICK_DELAY_MS });
-                    else if (step.action === 'fill') await element.fill(step.value, { timeout: remaining });
+                    else if (step.action === 'fill') await fillField(element, step.value, { timeout: remaining });
                     else if (step.action === 'upload') await upload(element, step, files, remaining);
                     else if (step.action === 'download') await download(element, step, remaining);
                     else await element.type(step.value, { timeout: remaining });

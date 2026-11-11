@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
 
+import { fillField } from '../src/host/agent-commands.mjs';
 import { grantClipboard } from '../src/host/browser-session.mjs';
 import { playReplay } from '../src/host/replay.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -43,6 +44,23 @@ const play = (steps) => playReplay({
     // Generous: on slow Windows CI machines the first click with a file chooser takes several seconds.
     stepTimeoutMs: 10000,
     filesDir: dir,
+});
+
+test('fill on a select picks the option by value, otherwise by label, in recording and replay', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    await page.goto(`${ORIGIN}/`);
+    await page.setContent('<label>Tag <select id="tag"><option value="">-</option><option value="work">#work</option><option value="home">#home</option></select></label>'
+        + '<select id="when"><option>Today</option><option>Tomorrow</option></select><input id="title">');
+    await fillField(page.locator('#tag'), 'home', { timeout: 5000 });
+    await fillField(page.locator('#when'), 'Tomorrow', { timeout: 5000 });
+    await fillField(page.locator('#title'), 'Milk', { timeout: 5000 });
+    assert.deepEqual(await page.evaluate(() => ['#tag', '#when', '#title'].map((id) => document.querySelector(id).value)), ['home', 'Tomorrow', 'Milk']);
+
+    await page.evaluate(() => { document.querySelector('#tag').value = ''; });
+    const { broken } = await play([{ action: 'fill', target: { role: 'combobox', name: 'Tag' }, value: '#work' }]);
+    assert.equal(broken, null);
+    assert.equal(await page.evaluate(() => document.querySelector('#tag').value), 'work');
+    return undefined;
 });
 
 test('upload: a hidden file input behind a button gets the file via the file chooser', async (t) => {

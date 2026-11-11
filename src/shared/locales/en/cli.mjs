@@ -116,7 +116,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
   snapshot                               Page structure with references (e1, e2, ...)
   url                                    Current URL
   click <target> [--optional]            Target: reference or selector; --optional: skip if absent
-  fill <target> <text>                   Set a field
+  fill <target> <text>                   Set a field; a select list: the option with this value or label
   type <target> <text>                   Type character by character
   press <key>                            Press a key, e.g. Enter
   eval <expression>                      Evaluate JavaScript in the page

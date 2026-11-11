@@ -156,7 +156,9 @@ and `/tmp` are writable. You reach the application only through these commands, 
    the page and could act). Reading with `snapshot`, `url`, `console` and `network` works before that.
 3. **Drive the flow:** `snapshot` shows the page with references (`[ref=e12]`, in the workbench e.g. `[ref=f3e12]`; take them
    as they appear). Then `click e12`,
-   `fill e12 "Text"`, `type e12 "Text"` (character by character, in case a field reacts to keys), `press Enter`,
+   `fill e12 "Text"` (on a select list it picks the option with that value or label, e.g. `fill e12 "Tomorrow"`; never set
+   options by typing their first letters, that breaks when the options change), `type e12 "Text"` (character by character, in
+   case a field reacts to keys), `press Enter`,
    `url`,`reload`, `goto <url>`. Instead of a reference a CSS selector also works. Prefer real clicks and
    input, as a human would do them. `click e12 --optional` for something that does not come every time, e.g. a
    cookie banner: If the target is not there after 3 s, nothing happens, and replaying skips the click as well.

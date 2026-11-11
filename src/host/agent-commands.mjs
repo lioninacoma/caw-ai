@@ -48,6 +48,21 @@ export const codeText = (value) => String(value).replace(/[\\'"`$]/g, '\\$&').re
 /** A reference from the snapshot, or a CSS selector. */
 export const locatorFor = (page, target) => page.locator(ARIA_REF.test(target) ? `aria-ref=${target}` : target);
 
+/**
+ * Sets a field to `value`. A <select> cannot be filled: there the value picks the option by its value, otherwise by its label,
+ * so `fill <select> "home"` works the same in recording and replay, independent of the option order.
+ * @param element a Playwright Locator or ElementHandle
+ */
+export const fillField = async (element, value, { timeout }) => {
+    const isSelect = await Promise.resolve().then(() => element.evaluate((node) => node.tagName === 'SELECT')).catch(() => false);
+    if (!isSelect) {
+        await element.fill(value, { timeout });
+        return;
+    }
+    const byValue = await element.evaluate((node, wanted) => [...node.options].some((option) => option.value === wanted), value);
+    await element.selectOption(byValue ? { value } : { label: value }, { timeout });
+};
+
 // How long an optional click waits for its target.
 const OPTIONAL_WAIT_MS = 3000;
 // These commands move focus into the application.
@@ -76,7 +91,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         // Empty is allowed: it clears a field regardless of its content. Clicking a clear button fails when the field is empty.
         fill: async (command) => {
             if (typeof command.value !== 'string') throw usage(t('run.agent.missing', { field: 'value' }));
-            await locate(command).fill(command.value, { timeout: ACTION_TIMEOUT_MS });
+            await fillField(locate(command), command.value, { timeout: ACTION_TIMEOUT_MS });
             return 'ok';
         },
         type: async (command) => { await locate(command).pressSequentially(text(command, 'value'), { timeout: ACTION_TIMEOUT_MS }); return 'ok'; },
