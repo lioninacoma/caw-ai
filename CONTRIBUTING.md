@@ -21,7 +21,7 @@ npm i -D ../caw-ai    # or pnpm add -D link:../caw-ai
 npx caw-ai doctor
 ```
 
-`examples/helpdesk` is a small app with a recorded test you can replay right away (`run create-ticket --target local`).
+`examples/errand` is a small todo app with a recorded test you can replay right away (`run first-errand --target local`).
 
 ## Layout
 

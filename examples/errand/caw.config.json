@@ -3,7 +3,7 @@
     "framework": "web",
     "environments": {
         "local": {
-            "url": "http://localhost:4173",
+            "url": "http://localhost:4174",
             "claude": true,
             "writable": true
         }

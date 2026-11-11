@@ -12,24 +12,24 @@
 >
 > *Constrained*, weil der Agent Grenzen hat: Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten, und jede Aufnahme endet mit einem Plan, den du freigibst.
 
-![caw-ai nimmt einen Test des Helpdesk-Beispiels auf: Claude legt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw-ai die Aufnahme ohne KI ab und der Plan wird übernommen](docs/media/demo.webp)
+![caw-ai nimmt einen Test des Errand-Beispiels auf: Claude legt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw-ai die Aufnahme ohne KI ab und der Plan wird übernommen](docs/media/demo.webp)
 
 Jeder Schritt beschreibt eine Aktion und das erwartete Ergebnis:
 
 ```yaml
-# caw/tests/create-ticket.yaml
+# caw/tests/first-errand.yaml
 steps:
-  - id: S2
-    name: Ticket anlegen
-    do: Lege ein neues Ticket "Drucker offline {{runTag}}" für den Kunden "Acme Corp" mit Priorität "High" an.
-    expect: Eine Bestätigung nennt die Nummer des neuen Tickets.
+  - id: S1
+    name: Todo anlegen
+    do: Lege das Todo "Feed the raven {{runTag}}" mit dem Tag "#home" an.
+    expect: Eine Bestätigung nennt die Nummer des neuen Todos, und es steht oben in der Liste.
 ```
 
 Einmal aufnehmen, dann abspielen:
 
 ```bash
-npx caw-ai record create-ticket --target local   # Claude führt die Schritte in Chrome aus, du gibst das Ergebnis frei
-npx caw-ai run create-ticket --target local      # spielt die Aufzeichnung ab, ohne Claude
+npx caw-ai record first-errand --target local   # Claude führt die Schritte in Chrome aus, du gibst das Ergebnis frei
+npx caw-ai run first-errand --target local      # spielt die Aufzeichnung ab, ohne Claude
 ```
 
 ## Funktionsweise
@@ -41,6 +41,17 @@ npx caw-ai run create-ticket --target local      # spielt die Aufzeichnung ab, o
 - Fehler werden als Test, Anwendung oder Umgebung eingeordnet, anhand von Requests, Konsolenausgaben und den Änderungen an der Seite bei der Aufnahme.
 - Claude steuert den Browser über einen festen Satz Befehle, erreicht nur die konfigurierten Hosts und bekommt keine Zugangsdaten.
 - Unterstützt: reine Web-Apps, React, Vue, Angular und ExtJS.
+
+## Nach dem Lauf
+
+Das Fenster bleibt offen, angemeldet, im Zustand, den der Test erreicht hat. Von dort aus:
+
+| | |
+|---|---|
+| **Zustand herstellen.** F1 listet jeden Test der Umgebung, für jede Rolle. Test und Schritt wählen; caw-ai meldet sich frisch mit dem Konto der Rolle an und spielt bis dorthin ab. | ![Der F1-Dialog „Zustand wählen“ zeigt den Test first-errand mit den Schritten S1 bis S4](docs/media/states.webp) |
+| **Entwickeln.** Ein Element in der App wählen und danach fragen. Claude liest deinen Quellcode und antwortet mit Datei und Zeile. Gegen deinen Dev-Server oder mit `--overlay` dein lokaler Code über einer deployten Umgebung; F5 lädt deine Änderung. | ![Ein Element ist in der App gewählt; Claude erklärt im Chat mit server.mjs:134, warum „Add todo“ gesperrt ist](docs/media/develop.webp) |
+| **Bug mit Claude beheben.** Ein Bugticket in den Chat einfügen. Claude stellt es im erreichten Zustand nach, nennt die Ursache und schlägt die Korrektur als Änderung an deinem Code vor; „Änderung übernehmen“ schreibt sie. | ![Claude stellt einen Fehler in der Suche nach und schlägt eine Änderung an server.mjs mit dem Knopf „Apply change“ vor](docs/media/bugfix.webp) |
+| **Themes.** Drei eingebaute Themes oder ein eigenes: F7 öffnet den Editor für Farben, Glyphen, den Raben und den CRT-Look. | ![Dieselbe Werkbank in den Themes nacht, bernstein und phosphor](docs/media/themes.webp) |
 
 ## Voraussetzungen
 
@@ -86,7 +97,7 @@ npx caw-ai record smoke --target local
 npx caw-ai run smoke --target local
 ```
 
-[`examples/helpdesk`](examples/helpdesk) enthält eine kleine Beispiel-App mit Test.
+[`examples/errand`](examples/errand) ist eine kleine Todo-App mit Anmeldung und aufgenommenem Test, den du sofort abspielen kannst; siehe [`examples`](examples).
 
 ### Häufige Befehle
 

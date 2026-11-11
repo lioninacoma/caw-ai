@@ -12,24 +12,24 @@ English · [Deutsch](README.de.md)
 >
 > *Constrained* because the agent has limits: Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials, and every recording ends with a plan you approve.
 
-![caw-ai records a test of the helpdesk example: Claude proposes the test plan, works through it in the app and answers a question in the chat; then caw-ai replays the recording without AI and the plan is adopted](docs/media/demo.webp)
+![caw-ai records a test of the Errand example: Claude proposes the test plan, works through it in the app and answers a question in the chat; then caw-ai replays the recording without AI and the plan is adopted](docs/media/demo.webp)
 
 Each step describes an action and the expected result:
 
 ```yaml
-# caw/tests/create-ticket.yaml
+# caw/tests/first-errand.yaml
 steps:
-  - id: S2
-    name: Create a ticket
-    do: Create a new ticket "Printer offline {{runTag}}" for customer "Acme Corp" with priority "High".
-    expect: A confirmation shows the number of the new ticket.
+  - id: S1
+    name: Add a todo
+    do: Add the todo "Feed the raven {{runTag}}" with the tag "#home".
+    expect: A confirmation shows the number of the new todo, and it is at the top of the list.
 ```
 
 Record once, then replay:
 
 ```bash
-npx caw-ai record create-ticket --target local   # Claude performs the steps in Chrome, you approve the result
-npx caw-ai run create-ticket --target local      # replays the recording, without Claude
+npx caw-ai record first-errand --target local   # Claude performs the steps in Chrome, you approve the result
+npx caw-ai run first-errand --target local      # replays the recording, without Claude
 ```
 
 ## How it works
@@ -41,6 +41,17 @@ npx caw-ai run create-ticket --target local      # replays the recording, withou
 - Failures are classified as test, app or environment, based on requests, console output and the page changes seen during recording.
 - Claude controls the browser through a fixed set of commands, reaches only the configured hosts and does not get the credentials.
 - Supported: plain web apps, React, Vue, Angular and ExtJS.
+
+## After the run
+
+The window stays open, signed in, in the state the test reached. From there:
+
+| | |
+|---|---|
+| **Restore a state.** F1 lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account and replays up to there. | ![The F1 dialog "Choose state" lists the test first-errand with its steps S1 to S4](docs/media/states.webp) |
+| **Develop.** Pick an element in the app and ask about it. Claude reads your source code and answers with file and line. Against your dev server, or with `--overlay` your local code over a deployed environment; F5 loads your change. | ![An element is picked in the app; Claude explains in the chat why "Add todo" is disabled, with server.mjs:134](docs/media/develop.webp) |
+| **Fix a bug with Claude.** Paste a bug ticket into the chat. Claude reproduces it in the reached state, names the cause and proposes the fix as a change to your code; "Apply change" writes it. | ![Claude reproduces a search bug and proposes a code change to server.mjs with an "Apply change" button](docs/media/bugfix.webp) |
+| **Theming.** Three built-in themes, or your own: F7 opens the editor for colors, glyphs, the raven and the CRT look. | ![The same workbench in the themes nacht, bernstein and phosphor](docs/media/themes.webp) |
 
 ## Prerequisites
 
@@ -86,7 +97,7 @@ npx caw-ai record smoke --target local
 npx caw-ai run smoke --target local
 ```
 
-[`examples/helpdesk`](examples/helpdesk) contains a small sample app with a test.
+[`examples/errand`](examples/errand) is a small todo app with sign-in and a recorded test you can replay right away; see [`examples`](examples).
 
 ### Common commands
 

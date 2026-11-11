@@ -5,6 +5,8 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 ## [Unreleased]
 
 ### Added
+- Example `examples/errand` replaces `examples/helpdesk`: a small todo app with sign-in, search, a "New todo" dialog with selects and a detail page, with the recorded test `first-errand`. `examples/README.md` lists the examples.
+- README: new video (recording with Claude, a question in the chat, the check run) and images of restoring a state, developing, fixing a bug with Claude and the themes.
 - `explore` asks first whether the app has a sign-in (`--login` / `--no-login` for scripts), notices the sign-in by itself and ends with a **Done** button in the window instead of Enter in the terminal. It keeps only selectors that survive a second page load, prefers a state class on html/body as the signed-in marker and leaves out `submitSelector` when Enter submits.
 - A failed sign-in shows up after seconds instead of the timeout: form back after submitting, page settled without the marker, or a configured selector missing. With chat (`record`, `run` with chat) Claude proposes a corrected `auth` block from evidence on the page, without field values or account text; `caw.config.json` changes only after yes.
 - Command headers with the ASCII raven, also in `--help`.
