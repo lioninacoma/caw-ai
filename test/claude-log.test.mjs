@@ -49,7 +49,7 @@ test('formatClaudeLine appends turns, tokens and cost to the completion line, on
 
 test('a login error in the log is still recognised as a token problem on the host', () => {
     const lines = formatClaudeLine(event({ type: 'result', is_error: true, duration_ms: 1, result: 'Failed to authenticate. API Error: 401 Invalid bearer token' }));
-    assert.match(claudeFailureReason(1, lines.join('\n')), /CLAUDE_CODE_OAUTH_TOKEN/);
+    assert.match(claudeFailureReason(1, lines.join('\n')), /ANTHROPIC_API_KEY/);
 });
 
 test('stampLine prefixes the seconds since start', () => {

@@ -327,7 +327,8 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 |---|---|
 | `CAW_LANG` | `en` oder `de`. Hat Vorrang vor `language` in der Config. |
 | `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` oder `~/.config/caw-ai`. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Token für den Agenten `docker`. Erzeugen mit `claude setup-token`. |
+| `ANTHROPIC_API_KEY` | API-Schlüssel aus der Claude Console für den Agenten `docker`. `local` und `session` nutzen deine Claude-Code-Anmeldung. |
+| `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` | Modell und Budget in US-Dollar für Claude-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
 | `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record`, `fix`, `open`, `--until` und `--handover` werden abgelehnt. |
 | `NO_COLOR`, `FORCE_COLOR` | Farben im Terminal aus oder an. |
@@ -361,7 +362,7 @@ Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und 
 | `overlay-ambiguous` | 2 | ExtJS: einer App in `app.json` einen eigenen `output.js.path` geben |
 | `overlay-stale` | 2 | ExtJS: `bootstrap.json` des Watch nennt Dateien, die er nicht ausliefert. Warten, bis der Watch fertig gebaut hat, oder ihn neu starten |
 | `claude-missing` | 2 | Claude Code installieren und anmelden, oder `--agent docker` |
-| `token-missing` | 2 | `CLAUDE_CODE_OAUTH_TOKEN` setzen |
+| `token-missing` | 2 | `ANTHROPIC_API_KEY` setzen oder `--agent local` nutzen |
 | `docker-missing`, `docker-not-running`, `docker-wrong-mode` | 2 | Docker mit Linux-Containern starten, oder `--agent local` |
 | `image-build-failed`, `devcontainer-unsupported` | 2 | Anmeldung an der Registry und `sandboxImage` prüfen |
 | `aborted` | 2 | Du hast das Fenster geschlossen oder Strg+C gedrückt |

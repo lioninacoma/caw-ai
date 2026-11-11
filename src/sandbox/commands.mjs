@@ -120,7 +120,13 @@ export const claudeEnv = (timeoutMin, env = process.env) => {
 };
 
 /** Claude's invocation in the container: all permissions, but only there. Without tools that defer work to later. */
-export const claudeArgs = (prompt) => ['-p', prompt, '--dangerously-skip-permissions', '--disallowedTools', 'Monitor,ScheduleWakeup', '--output-format', 'stream-json', '--verbose'];
+export const claudeArgs = (prompt, env = process.env) => ['-p', prompt, '--dangerously-skip-permissions', '--disallowedTools', 'Monitor,ScheduleWakeup', '--output-format', 'stream-json', '--verbose', ...limitArgs(env)];
+
+/** Cost limits the host passes on (agent.model, agent.maxBudgetUsd or CAW_CLAUDE_MODEL/CAW_CLAUDE_BUDGET), as Claude Code options. */
+export const limitArgs = (env = process.env) => [
+    ...(env.CAW_CLAUDE_MODEL ? ['--model', env.CAW_CLAUDE_MODEL] : []),
+    ...(env.CAW_CLAUDE_BUDGET ? ['--max-budget-usd', env.CAW_CLAUDE_BUDGET] : []),
+];
 
 const SKILL_FILE = fileURLToPath(new URL('../../templates/skill.md', import.meta.url));
 const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
@@ -155,6 +161,7 @@ export const localClaudeArgs = (prompt, { mcpConfig, settings, systemPromptFile 
     '--settings', settings,
     '--append-system-prompt-file', systemPromptFile,
     '--output-format', 'stream-json', '--verbose',
+    ...limitArgs(),
 ];
 
 // From the user's settings only what the connection to Claude needs (proxy, Bedrock, key helper, model), no permissions.

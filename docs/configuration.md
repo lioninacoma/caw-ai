@@ -275,6 +275,8 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `language` | detected | `en` or `de` for UI, CLI and reports. `CAW_LANG` overrides it. |
 | `framework` | `web` | `web`, `react`, `vue`, `angular` or `extjs`. Decides how targets are stored and when a page counts as ready. |
 | `agent.sandbox` | `local` | Where Claude runs: `local` (Claude Code on your machine, read-only tools) or `docker`. Always `docker` in CI. |
+| `agent.model` | Claude Code's default | Model for Claude, passed as `--model`, e.g. `haiku` or `sonnet`. `CAW_CLAUDE_MODEL` overrides it for one run. |
+| `agent.maxBudgetUsd` | none | Stops a Claude run at this estimated spend in US dollars (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` overrides it. |
 | `extraAllowedHosts` | `[]` | More hosts Chrome may reach, e.g. login or CDN. Everything else is blocked. |
 | `insecureTls` | `false` | Accept self-signed certificates. |
 | `browser` | system Chrome | `{ "channel": "msedge" }` or `{ "executablePath": "/path/to/chromium" }` |

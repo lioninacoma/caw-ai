@@ -148,11 +148,11 @@ test('doctor: names the next step per problem, optional items do not block, neve
     writeFileSync(join(root, 'caw', '.env'), 'CAW_LOGIN_TESTER=geheim-login\nCAW_PW_TESTER=geheim-pw\n');
     const lines = [];
     const ui = { success: (text) => lines.push(`ok ${text}`), note: (text) => lines.push(`opt ${text}`), warn: (text) => lines.push(`warn ${text}`) };
-    assert.equal(await doctor(root, { ui, env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-geheim' }, nodeVersion: '22.4.0', probes }), 0);
+    assert.equal(await doctor(root, { ui, env: { ANTHROPIC_API_KEY: 'sk-geheim' }, nodeVersion: '22.4.0', probes }), 0);
     const output = lines.join('\n');
     assert.match(output, /ok OK +Rolle tester: Zugangsdaten gesetzt/);
     assert.match(output, /ok OK +Claude Code 2\.1\.0 \(Claude läuft lokal, ohne Docker\)/);
-    assert.doesNotMatch(output, /Docker gefunden|OAUTH_TOKEN/, 'locally neither Docker nor token count');
+    assert.doesNotMatch(output, /Docker gefunden|ANTHROPIC_API_KEY/, 'locally neither Docker nor key count');
     assert.match(output, /ok OK +local: http:\/\/localhost:5173 antwortet/);
     assert.match(output, /opt OPTIONAL +staging: https:\/\/staging\.firma\.intern antwortet nicht/);
     assert.match(output, /opt OPTIONAL +demo: https:\/\/demo\.example\.com ist ein Platzhalter\. Die echte Adresse/);
@@ -187,12 +187,12 @@ test('doctor: names the next step per problem, optional items do not block, neve
     assert.equal(broken.next, 'caw-ai validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.
-    const inCi = await doctorChecks(root, { env: { CI: 'true', CLAUDE_CODE_OAUTH_TOKEN: 'sk-geheim' }, nodeVersion: '22.4.0', probes });
+    const inCi = await doctorChecks(root, { env: { CI: 'true', ANTHROPIC_API_KEY: 'sk-geheim' }, nodeVersion: '22.4.0', probes });
     assert.ok(inCi.some(({ text, optional }) => optional && /Kein Docker gefunden/.test(text)));
-    assert.ok(inCi.some(({ ok, text }) => ok && /CLAUDE_CODE_OAUTH_TOKEN ist gesetzt/.test(text)));
+    assert.ok(inCi.some(({ ok, text }) => ok && /Zugang für Claude in Docker: ANTHROPIC_API_KEY/.test(text)));
     // --agent chooses as for run: docker checks Docker and token, session only the entry in .mcp.json.
     const docker = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'docker' });
-    assert.ok(docker.some(({ text }) => /CLAUDE_CODE_OAUTH_TOKEN fehlt/.test(text)));
+    assert.ok(docker.some(({ text }) => /Kein Zugang für Claude in Docker/.test(text)));
     assert.ok(!docker.some(({ text }) => /Claude Code 2/.test(text)));
     rmSync(join(root, '.mcp.json'), { force: true });
     const session = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' });

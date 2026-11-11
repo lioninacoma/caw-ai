@@ -275,6 +275,8 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `language` | erkannt | `en` oder `de` für Oberfläche, CLI und Berichte. `CAW_LANG` hat Vorrang. |
 | `framework` | `web` | `web`, `react`, `vue`, `angular` oder `extjs`. Bestimmt, wie Ziele gespeichert werden und wann eine Seite als bereit gilt. |
 | `agent.sandbox` | `local` | Wo Claude läuft: `local` (Claude Code auf deinem Rechner, nur lesende Werkzeuge) oder `docker`. In der CI immer `docker`. |
+| `agent.model` | Standard von Claude Code | Modell für Claude, weitergegeben als `--model`, z. B. `haiku` oder `sonnet`. `CAW_CLAUDE_MODEL` überschreibt es für einen Lauf. |
+| `agent.maxBudgetUsd` | keins | Beendet einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` überschreibt es. |
 | `extraAllowedHosts` | `[]` | Weitere Hosts, die Chrome erreichen darf, etwa Anmeldung oder CDN. Alles andere ist gesperrt. |
 | `insecureTls` | `false` | Selbstsignierte Zertifikate annehmen. |
 | `browser` | Chrome des Systems | `{ "channel": "msedge" }` oder `{ "executablePath": "/pfad/zu/chromium" }` |

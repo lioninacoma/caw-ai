@@ -21,7 +21,7 @@ test('parseEnvFile reads values with and without quotes and ignores comments', (
 });
 
 test('claudeFailureReason names token, time limit and other causes', () => {
-    assert.match(claudeFailureReason(1, 'Failed to authenticate. API Error: 401 Invalid bearer token'), /CLAUDE_CODE_OAUTH_TOKEN/);
+    assert.match(claudeFailureReason(1, 'Failed to authenticate. API Error: 401 Invalid bearer token'), /ANTHROPIC_API_KEY/);
     assert.match(claudeFailureReason(124, ''), /--timeout/);
     assert.match(claudeFailureReason(7, 'whatever'), /Exit 7/);
 });

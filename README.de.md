@@ -53,6 +53,18 @@ npx caw-ai run first-errand --target local      # spielt die Aufzeichnung ab, oh
 - [Claude Code](https://claude.com/claude-code), nur zum Aufnehmen und Reparieren
 - Docker, nur wenn Claude im Container laufen soll (`--agent docker`)
 
+### Zugang zu Claude und Kosten
+
+caw-ai ruft Claude nicht selbst auf. Es startet dein eigenes Claude Code (`--agent local`), arbeitet als Werkzeug in deiner Claude-Code-Session (`--agent session`) oder reicht deinen eigenen `ANTHROPIC_API_KEY` zur Laufzeit in den Container (`--agent docker`, nur mit API-Schlüssel); caw-ai liest und speichert ihn nie. Welche Bedingungen gelten, hängt von deinem Konto ab: Pro- und Max-Pläne sind für die persönliche Nutzung gedacht; für Firmenprojekte und CI einen Team- oder Enterprise-Plan oder einen API-Schlüssel aus der Claude Console nutzen. Die Einhaltung der Anthropic-Bedingungen liegt bei dir.
+
+Claude läuft nur beim Aufnehmen, Reparieren oder wenn du im Chat fragst; Wiederholungen brauchen keine Token. Abgerechnet wird über dein Konto. Begrenzen kannst du das mit Modell und Budget pro Claude-Lauf:
+
+```json
+"agent": { "model": "haiku", "maxBudgetUsd": 0.5 }
+```
+
+oder für einen Lauf `CAW_CLAUDE_MODEL=haiku CAW_CLAUDE_BUDGET=0.5`. caw-ai gibt sie als `--model` und `--max-budget-usd` an Claude Code weiter.
+
 ## Installation
 
 ```bash

@@ -53,6 +53,18 @@ npx caw-ai run first-errand --target local      # replays the recording, without
 - [Claude Code](https://claude.com/claude-code), for recording and fixing only
 - Docker, only if Claude should run in a container (`--agent docker`)
 
+### Claude access and costs
+
+caw-ai does not call Claude itself. It starts your own Claude Code (`--agent local`), works as a tool in your Claude Code session (`--agent session`), or passes your own `ANTHROPIC_API_KEY` into the container at run time (`--agent docker`, API key only); it never reads or stores it. Which terms apply depends on your account: Pro and Max plans are for personal use; for company projects and CI use a Team or Enterprise plan or an API key from the Claude Console. Complying with Anthropic's terms is up to you.
+
+Claude only runs while recording, fixing or when you ask in the chat; replays use no tokens. Usage is billed to your account. To cap it, set a model and a budget per Claude run:
+
+```json
+"agent": { "model": "haiku", "maxBudgetUsd": 0.5 }
+```
+
+or for one run `CAW_CLAUDE_MODEL=haiku CAW_CLAUDE_BUDGET=0.5`. caw-ai passes them to Claude Code as `--model` and `--max-budget-usd`.
+
 ## Install
 
 ```bash

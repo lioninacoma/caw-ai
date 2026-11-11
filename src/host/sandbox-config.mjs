@@ -111,11 +111,14 @@ export const maskArgs = (root, containerRoot, emptyFile) => {
 };
 
 /** `host*` is the source as Docker sees it, `container*` the target. Only this run's agent folder is writable. */
-export const sandboxRunArgs = ({ hostRoot, containerRoot, image, masks, name, hostAgentDir, containerAgentDir, command, color = false }) => [
+export const sandboxRunArgs = ({ hostRoot, containerRoot, image, masks, name, hostAgentDir, containerAgentDir, command, color = false, limits = {} }) => [
     'run', '--rm', '--init', '--name', name,
     // Only the firewall needs NET_ADMIN at start; the entrypoint drops all capabilities afterwards.
     '--cap-add=NET_ADMIN', '--cap-add=NET_RAW', '--security-opt=no-new-privileges',
-    '-e', 'CLAUDE_CODE_OAUTH_TOKEN',
+    // The user's API key from the Claude Console, by name only: Docker takes the value from the environment, it never ends up
+    // in the image, a file or caw-ai's output. Subscription logins are not passed into containers.
+    '-e', 'ANTHROPIC_API_KEY',
+    ...Object.entries(limits).flatMap(([key, value]) => ['-e', `${key}=${value}`]),
     '-e', `CAW_ALLOWED_HOSTS=${CONTAINER_HOSTS.join(' ')}`,
     '-e', `CAW_AGENT_DIR=${containerAgentDir}`,
     // The container has no terminal and cannot tell by itself whether colour is possible.

@@ -42,7 +42,7 @@ const writeShims = (dir) => {
     return bin;
 };
 
-export const localAgentEnv = (agentDir, { color = false, env = process.env } = {}) => {
+export const localAgentEnv = (agentDir, { color = false, env = process.env, limits = {} } = {}) => {
     const pathKey = Object.keys(env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
     return {
         ...env,
@@ -51,6 +51,8 @@ export const localAgentEnv = (agentDir, { color = false, env = process.env } = {
         CAW_AGENT_LOCAL: '1',
         CAW_AGENT_DIR: agentDir,
         ...(color ? { CAW_COLOR: '1' } : {}),
+        // Model and budget for Claude Code (claudeLimits), read by sandbox-run.
+        ...limits,
     };
 };
 
@@ -71,9 +73,9 @@ const killTree = (child) => {
  * Starts a run's agent on the host.
  * @returns { ended: Promise<{ code }>, stop }
  */
-export const startLocalAgent = ({ command, agentDir, root, color = false }) => {
+export const startLocalAgent = ({ command, agentDir, root, color = false, limits = {} }) => {
     const [file, ...args] = localCommand(command);
-    const child = spawn(file, args, { cwd: root, env: localAgentEnv(agentDir, { color }), stdio: ['ignore', 'inherit', 'inherit'], detached: process.platform !== 'win32' });
+    const child = spawn(file, args, { cwd: root, env: localAgentEnv(agentDir, { color, limits }), stdio: ['ignore', 'inherit', 'inherit'], detached: process.platform !== 'win32' });
     const ended = new Promise((resolveEnded) => {
         child.on('error', () => resolveEnded({ code: 127 }));
         child.on('close', (code) => resolveEnded({ code: code ?? 1 }));

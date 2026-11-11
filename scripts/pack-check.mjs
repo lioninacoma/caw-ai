@@ -25,7 +25,7 @@ for (const path of paths) {
         const text = readFileSync(join(root, path), 'utf8');
         const hit = PROJECT_TERMS.exec(text);
         if (hit !== null) problems.push(`${path}: project-specific term "${hit[0]}"`);
-        if (/CLAUDE_CODE_OAUTH_TOKEN\s*=\s*\S{8,}|sk-ant-[\w-]{8,}/.test(text)) problems.push(`${path}: looks like a token`);
+        if (/(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)\s*=\s*\S{8,}|sk-ant-[\w-]{8,}/.test(text)) problems.push(`${path}: looks like a token`);
     }
 }
 const TEMPLATES = ['caw.config.example.json', 'Dockerfile.tpl', 'entrypoint.sh', 'init-firewall.sh', 'skill.md'].map((name) => `templates/${name}`);

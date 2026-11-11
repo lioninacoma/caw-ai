@@ -86,7 +86,8 @@ test('sandbox: folder read-only, only the agent folder writable, only Anthropic,
     assert.match(joined, /--workdir \/w\/p/);
     assert.ok(args.includes('CAW_ALLOWED_HOSTS=api.anthropic.com'));
     assert.ok(args.includes(`CAW_AGENT_DIR=${agentPath}`));
-    assert.match(joined, /-e CLAUDE_CODE_OAUTH_TOKEN(?!=)/);
+    assert.match(joined, /-e ANTHROPIC_API_KEY(?!=)/);
+    assert.doesNotMatch(joined, /CLAUDE_CODE_OAUTH_TOKEN/);
     assert.match(joined, /--security-opt=no-new-privileges/);
     assert.doesNotMatch(joined, /-p |--publish|docker\.sock|--privileged/);
     assert.deepEqual(args.slice(-3), ['img', 'caw-ai', 'x']);

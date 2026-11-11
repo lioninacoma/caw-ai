@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 
 import { colorEnabled } from '../shared/color.mjs';
 import { createUi } from '../shared/ui.mjs';
-import { TODO, authOf, browserHosts, buildDevlinkConfig, isLoopback, sessionPath } from '../shared/config.mjs';
+import { TODO, authOf, browserHosts, buildDevlinkConfig, claudeLimits, isLoopback, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
@@ -535,7 +535,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             return { ended: agent.ended, log: () => '', stopTail: () => {}, stop: agent.stop };
         }
         if (box.kind === 'local') {
-            const agent = startLocalAgent({ command: agentCommand, agentDir, root, color });
+            const agent = startLocalAgent({ command: agentCommand, agentDir, root, color, limits: claudeLimits(config) });
             const stopTail = (() => { const stop = tailLines(log, onLine); return () => { stop(); closePoint(); }; })();
             return {
                 ended: agent.ended,
@@ -556,6 +556,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             containerAgentDir: posix.join(box.containerRoot, relativeRun, AGENT_DIR),
             command: agentCommand,
             color,
+            limits: claudeLimits(config),
         }));
         const stopTail = (() => { const stop = tailLines(log, onLine); return () => { stop(); closePoint(); }; })();
         return {

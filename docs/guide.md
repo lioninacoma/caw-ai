@@ -11,7 +11,7 @@ Where Claude runs when a run needs it is set by `agent.sandbox` in the config (`
 | Agent | How Claude runs | Good for |
 |---|---|---|
 | `local` | `claude -p` on your machine with your login. Only the tools `Read`, `Grep`, `Glob` and the caw tool: no shell, no writing, no web, no hooks, no other MCP servers. | everyday work on your own machine |
-| `docker` | `claude` in a container with a firewall, token from `CLAUDE_CODE_OAUTH_TOKEN` | CI, nightly runs, and anyone who doesn't want Claude on their own system |
+| `docker` | `claude` in a container with a firewall, only with an API key (`ANTHROPIC_API_KEY`) | anyone who doesn't want Claude on their own system |
 | `session` | No Claude process of its own. Your open Claude Code session takes the role via the MCP server `caw-ai mcp`. | recording, fixing and developing in your usual IDE session |
 
 In all three cases the browser is the actual boundary: Claude sees the application only through the fixed commands and can navigate only to allowed hosts (see [Sandbox boundaries](#sandbox-boundaries)).

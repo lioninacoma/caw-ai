@@ -327,7 +327,8 @@ These are the only way Claude can touch the browser. They exist for the agent du
 |---|---|
 | `CAW_LANG` | `en` or `de`. Overrides `language` in the config. |
 | `CAW_AI_HOME` | Folder for personal settings (`prefs.json`). Default `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` or `~/.config/caw-ai`. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Token for the `docker` agent. Create one with `claude setup-token`. |
+| `ANTHROPIC_API_KEY` | API key from the Claude Console for the `docker` agent. `local` and `session` use your Claude Code login. |
+| `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
 | `CI` | Set: no chat, `docker` agent only; `record`, `fix`, `open`, `--until` and `--handover` are rejected. |
 | `NO_COLOR`, `FORCE_COLOR` | Terminal colors off or on. |
@@ -361,7 +362,7 @@ When caw-ai stops, or a run ends with `error`, it prints the reason and then the
 | `overlay-ambiguous` | 2 | ExtJS: give one app its own `output.js.path` in `app.json` |
 | `overlay-stale` | 2 | ExtJS: the watch's `bootstrap.json` names files it doesn't serve. Wait until the watch has finished building, or restart it |
 | `claude-missing` | 2 | Install Claude Code and sign in, or use `--agent docker` |
-| `token-missing` | 2 | Set `CLAUDE_CODE_OAUTH_TOKEN` |
+| `token-missing` | 2 | Set `ANTHROPIC_API_KEY`, or use `--agent local` |
 | `docker-missing`, `docker-not-running`, `docker-wrong-mode` | 2 | Start Docker with Linux containers, or use `--agent local` |
 | `image-build-failed`, `devcontainer-unsupported` | 2 | Check registry login and `sandboxImage` |
 | `aborted` | 2 | You closed the window or pressed Ctrl+C |

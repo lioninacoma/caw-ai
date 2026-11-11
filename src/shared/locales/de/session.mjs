@@ -41,9 +41,9 @@ export default {
 
     // docker
     'session.docker.nativeStartHint': 'Starte Docker Desktop oder den Docker-Dienst.',
-    'session.docker.nativeTokenHint': '{token} ist nicht gesetzt.',
+    'session.docker.nativeTokenHint': '{key} ist nicht gesetzt.',
     'session.docker.wslStartHint': 'Starte den Dienst in WSL: sudo service docker start.',
-    'session.docker.wslTokenHint': '{token} ist nicht gesetzt, weder unter Windows noch in der WSL-Login-Shell.',
+    'session.docker.wslTokenHint': '{key} ist nicht gesetzt, weder unter Windows noch in der WSL-Login-Shell.',
     'session.docker.unknownChoice': 'CAW_DOCKER="{choice}" gibt es nicht (erlaubt: windows, wsl).',
     'session.docker.wrongMode': '{label} steht auf Windows-Container, die Sandbox braucht Linux-Container. In Docker Desktop umstellen: "Switch to Linux containers".',
     'session.docker.notRunning': 'Der Docker-Dienst läuft nicht. {hints}',
@@ -73,7 +73,7 @@ export default {
     'session.args.clash': '{without} geht nicht zusammen mit {other}.',
     'session.args.batchClash': '{other} gilt nur für einen Test; mehrere Tests oder --all laufen ohne Chat und ohne Übergabe.',
     'session.args.report': '--report erwartet junit=<datei>, etwa --report junit=caw-junit.xml',
-    'session.claude.tokenInvalid': 'Das Claude-Token ist ungültig oder abgelaufen. CLAUDE_CODE_OAUTH_TOKEN erneuern, z. B. mit claude setup-token.',
+    'session.claude.tokenInvalid': 'Claude hat den Zugang als ungültig oder abgelaufen abgelehnt. Lokal: in Claude Code neu anmelden (/login). In Docker: ANTHROPIC_API_KEY prüfen.',
     'session.claude.timeout': 'Claude hat das Zeitlimit überschritten. Längeres Limit mit --timeout <minuten>.',
     'session.claude.exit': 'Claude endete mit Exit {code}, siehe claude.log.',
 

@@ -21,6 +21,7 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - Run artefacts have English names: `claude-gespraech.log` → `claude-talk.log`, `claude-empfehlung.log` → `claude-advice.log`, `test-entwurf.yaml` → `test-draft.yaml`, `report-testlauf.md` → `report-test-run.md`, `vorfuehrung.json` → `demonstration.json`, `punkt-N.png` → `point-N.png`, `fehler.json` → `failures.json`, `netzwerk.json` → `network.json`, `fehler-schritt-N.png` → `failure-step-N.png`, `anleitung.md` → `instructions.md`, `.caw/auswahl.json` → `.caw/selection.json`, `caw-werkbank.js` → `caw-workbench.js`; demonstration run folders end in `-demonstration` (was `-vorfuehrung`).
 - Workbench: the light theme and the `fed` setting in `prefs.json` are gone; `"theme": "light"` or `"dark"` there falls back to `nacht`. The Silkscreen font is replaced by VT323.
 - The Claude Code skill changed: run `caw-ai skill` once to update `.claude/skills/caw-ai/SKILL.md`.
+- `--agent docker` needs an API key from the Claude Console (`ANTHROPIC_API_KEY`, passed to Docker by name only); `CLAUDE_CODE_OAUTH_TOKEN` is no longer passed into containers. `local` and `session` use your own Claude Code login as before.
 
 
 ### Added
@@ -43,6 +44,7 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - Themes as packages (`themes/<name>/theme.json`): built-in `nacht` (default), `bernstein` and `phosphor`, plus three with their own layouts, not just colours: `kachel` (tmux-style tiles, tab and status bar), `plakat` (light, signal yellow, steps as tiles, one big number) and `cockpit` (round gauge, warning lamps for steps), which bring a `theme.css` and, for `plakat` and `cockpit`, their own fonts; own themes next to `prefs.json`; a team default as `theme` in `caw.config.json`. `caw-ai theme`, `theme use <name>`, `theme check <name>`; F7 in the workbench edits colours, glyphs, raven and CRT look.
 - Workbench: a chip shows recording, replay or pause while something runs; "Your turn" when the chat waits for you; the adopt decision as a card; a key bar at the bottom (F1 Choose state, F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F7 Theme, F8 App only, F10 Animations off).
 - [Upgrading from 0.1.0](docs/upgrading.md).
+- Cost limits for Claude: `agent.model` and `agent.maxBudgetUsd` (or `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` for one run), passed to Claude Code as `--model` and `--max-budget-usd`. README section "Claude access and costs": which account for which use, and that caw-ai never handles logins.
 - `readyIgnore` setting for areas that change by themselves (ticker, clock, permanent spinner); `browser.locale` and `browser.timezone` pin the test browser's language and time zone.
 - The run log line "Claude finished after …" shows turns, tokens and the cost Claude Code reports.
 - Upgrade guide [docs/upgrading.md](docs/upgrading.md); `validate` and `doctor` say where each config key from 0.1.0 went.

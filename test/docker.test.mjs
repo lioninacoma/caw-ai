@@ -5,9 +5,9 @@ import { dockerCandidates, nativeDocker, selectDocker, wslDocker, wslEnv } from 
 
 const fake = (label, result) => ({ label, startHint: `start ${label}`, run: async () => result });
 
-test('wslEnv passes the token through and keeps existing entries', () => {
-    assert.equal(wslEnv({}).WSLENV, 'CLAUDE_CODE_OAUTH_TOKEN');
-    assert.equal(wslEnv({ WSLENV: 'A/p' }).WSLENV, 'A/p:CLAUDE_CODE_OAUTH_TOKEN');
+test('wslEnv passes the API key through and keeps existing entries', () => {
+    assert.equal(wslEnv({}).WSLENV, 'ANTHROPIC_API_KEY');
+    assert.equal(wslEnv({ WSLENV: 'A/p' }).WSLENV, 'A/p:ANTHROPIC_API_KEY');
     assert.equal(wslEnv({ X: '1' }).X, '1');
 });
 

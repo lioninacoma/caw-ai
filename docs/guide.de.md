@@ -11,7 +11,7 @@ Wo Claude läuft, wenn ein Lauf es braucht, legt `agent.sandbox` in der Config f
 | Agent | Wie Claude läuft | Gut für |
 |---|---|---|
 | `local` | `claude -p` auf deinem Rechner, mit deiner Anmeldung. Nur die Werkzeuge `Read`, `Grep`, `Glob` und das caw-Tool, keine Shell, kein Schreiben, kein Web, keine Hooks, keine anderen MCP-Server. | den Alltag am eigenen Rechner |
-| `docker` | `claude` im Container mit Firewall, Token aus `CLAUDE_CODE_OAUTH_TOKEN` | CI, nächtliche Läufe, und wer Claude nicht auf dem eigenen System haben will |
+| `docker` | `claude` im Container mit Firewall, nur mit API-Schlüssel (`ANTHROPIC_API_KEY`) | wer Claude nicht auf dem eigenen System haben will |
 | `session` | Kein eigener Claude-Prozess. Deine offene Claude-Code-Session übernimmt die Rolle über den MCP-Server `caw-ai mcp`. | Aufnehmen, Beheben und Entwickeln in der gewohnten IDE-Session |
 
 In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die Anwendung nur über die festen Befehle, Navigation nur zu erlaubten Hosts (siehe [Sandbox-Grenzen](#sandbox-grenzen)).

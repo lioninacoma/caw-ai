@@ -83,6 +83,24 @@ const oldKeyHint = (old, key, path, place = (name) => name) => {
 
 /** Where Claude runs: locally with restricted tools (default) or isolated in Docker. */
 export const AGENT_SANDBOXES = ['local', 'docker'];
+const AGENT_KEYS = ['sandbox', 'model', 'maxBudgetUsd'];
+/** A Claude Code model alias or name, e.g. "haiku" or "claude-sonnet-5-5": no spaces, no options. */
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,79}$/;
+
+/**
+ * Cost limits for Claude, passed on to Claude Code (`--model`, `--max-budget-usd`): from the environment (CAW_CLAUDE_MODEL,
+ * CAW_CLAUDE_BUDGET, e.g. for one run) or from `agent.model` / `agent.maxBudgetUsd`. Invalid values are left out.
+ * @returns the variables for the agent process, e.g. { CAW_CLAUDE_MODEL: 'haiku', CAW_CLAUDE_BUDGET: '0.5' }
+ */
+export const claudeLimits = (config, env = process.env) => {
+    const agent = isObject(config?.agent) ? config.agent : {};
+    const model = env.CAW_CLAUDE_MODEL || agent.model;
+    const budget = env.CAW_CLAUDE_BUDGET || (agent.maxBudgetUsd === undefined ? undefined : String(agent.maxBudgetUsd));
+    return {
+        ...(typeof model === 'string' && MODEL_NAME.test(model) ? { CAW_CLAUDE_MODEL: model } : {}),
+        ...(typeof budget === 'string' && /^\d+(\.\d+)?$/.test(budget) && Number(budget) > 0 ? { CAW_CLAUDE_BUDGET: budget } : {}),
+    };
+};
 
 /** The sandbox for Claude from the config. Always Docker in CI: nobody is there to watch a local agent. */
 export const agentSandbox = (config, env = process.env) => {
@@ -335,9 +353,11 @@ export const validateConfig = (given, root = process.cwd()) => {
     if (config.agent !== undefined) {
         if (!isObject(config.agent)) issues.push(t('config.agent.notObject'));
         else {
-            const unknown = Object.keys(config.agent).find((key) => key !== 'sandbox');
-            if (unknown !== undefined) issues.push(t('config.agent.unknown', { key: unknown, hint: hintFor(unknown, ['sandbox']) }));
+            const unknown = Object.keys(config.agent).find((key) => !AGENT_KEYS.includes(key));
+            if (unknown !== undefined) issues.push(t('config.agent.unknown', { key: unknown, hint: hintFor(unknown, AGENT_KEYS) }));
             if (config.agent.sandbox !== undefined && !AGENT_SANDBOXES.includes(config.agent.sandbox)) issues.push(t('config.agent.sandbox', { names: AGENT_SANDBOXES.join(', ') }));
+            if (config.agent.model !== undefined && (typeof config.agent.model !== 'string' || !MODEL_NAME.test(config.agent.model))) issues.push(t('config.agent.model'));
+            if (config.agent.maxBudgetUsd !== undefined && !(typeof config.agent.maxBudgetUsd === 'number' && config.agent.maxBudgetUsd > 0)) issues.push(t('config.agent.budget'));
         }
     }
     if (config.browser !== undefined) {

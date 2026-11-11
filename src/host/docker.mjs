@@ -7,13 +7,14 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { shellJoin, toWslPath } from './linux.mjs';
 
-const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN';
+/** Claude in the container only with an API key from the Claude Console; subscription logins stay in the user's own Claude Code. */
+const KEY = 'ANTHROPIC_API_KEY';
 const COMMAND_NOT_FOUND = 127;
 
-/** WSL only takes over Windows variables listed in WSLENV. This way the token may be set on either side. */
+/** WSL only takes over Windows variables listed in WSLENV. This way the key may be set on either side. */
 export const wslEnv = (env) => ({
     ...env,
-    WSLENV: [env.WSLENV, TOKEN].filter(Boolean).join(':'),
+    WSLENV: [env.WSLENV, KEY].filter(Boolean).join(':'),
 });
 
 const exec = (command, args, { capture = false, env = process.env } = {}) => new Promise((resolvePromise) => {
@@ -33,8 +34,8 @@ export const nativeDocker = {
     get startHint() { return t('session.docker.nativeStartHint'); },
     run: (args, options) => exec('docker', args, options),
     hostPath: (path) => path,
-    hasToken: async () => Boolean(process.env[TOKEN]),
-    get tokenHint() { return t('session.docker.nativeTokenHint', { token: TOKEN }); },
+    hasToken: async () => Boolean(process.env[KEY]),
+    get tokenHint() { return t('session.docker.nativeTokenHint', { key: KEY }); },
 };
 
 export const wslDocker = {
@@ -45,8 +46,8 @@ export const wslDocker = {
     hostPath: toWslPath,
     // wsl.exe exists on almost every Windows, even without a distribution. Then Docker is missing, not just stopped.
     reachable: async () => (await exec('wsl.exe', ['-e', 'bash', '-lc', 'true'], { capture: true })).code === 0,
-    hasToken: async () => (await exec('wsl.exe', ['-e', 'bash', '-lc', `[ -n "\${${TOKEN}:-}" ]`], { capture: true, env: wslEnv(process.env) })).code === 0,
-    get tokenHint() { return t('session.docker.wslTokenHint', { token: TOKEN }); },
+    hasToken: async () => (await exec('wsl.exe', ['-e', 'bash', '-lc', `[ -n "\${${KEY}:-}" ]`], { capture: true, env: wslEnv(process.env) })).code === 0,
+    get tokenHint() { return t('session.docker.wslTokenHint', { key: KEY }); },
 };
 
 /** What to try, in this order. `CAW_DOCKER` picks the way when both exist. */

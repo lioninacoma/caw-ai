@@ -98,8 +98,9 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
         } catch (error) {
             add({ ok: false, optional: true, text: String(error?.message ?? error).split('\n')[0], next: t('cli.doctorDockerNext') });
         }
-        add(typeof env.CLAUDE_CODE_OAUTH_TOKEN === 'string' && env.CLAUDE_CODE_OAUTH_TOKEN !== ''
-            ? { ok: true, optional: true, text: t('cli.doctorTokenOk') }
+        // Docker only with an API key; the value is never shown.
+        add(typeof env.ANTHROPIC_API_KEY === 'string' && env.ANTHROPIC_API_KEY !== ''
+            ? { ok: true, optional: true, text: t('cli.doctorTokenOk', { name: 'ANTHROPIC_API_KEY' }) }
             : { ok: false, optional: true, text: t('cli.doctorTokenMissing'), next: t('cli.doctorTokenNext') });
     }
 
