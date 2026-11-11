@@ -441,6 +441,7 @@ footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px
 /* Cards: windows within the window, the header line in VT323 with the mark in front. */
 .question,.plan,.advice,.failure,.decision{padding:10px 12px 11px;background:var(--pane-2);border:2px solid var(--line);white-space:normal}
 .question{border-color:var(--info)}.question>.who .mk{color:var(--info)}
+.ruled{display:flex!important;align-items:baseline}.ruled .fill{flex:1;min-width:2ch;margin-left:.5ch;overflow:hidden;white-space:nowrap}
 .plan strong,.advice strong,.failure strong,.decision strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:6px;text-shadow:0 0 8px var(--glow);white-space:pre-wrap}
 .plan{border-color:var(--frame)}
 .plan .notes{color:var(--muted);font-size:13px;margin-bottom:6px}.step{padding:8px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:500}.step .sid{flex:none;font:400 18px/1 var(--font-crt);color:var(--info)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--warn)}.step .before{color:var(--muted);text-decoration:line-through}
@@ -540,6 +541,11 @@ const markOf=(kind,frame)=>glyph(TH?.marks?.[kind],'['+kind+']').split('{spinner
 const bulletOf=(kind)=>glyph(TH?.bullets?.[kind],'▸');
 const treeOf=(kind)=>glyph(TH?.tree?.[kind],kind==='end'?'└':'├');
 const ruleTitle=(title)=>{const line=glyph(TH?.rule?.line,'─');return glyph(TH?.rule?.format,'{line}{line} {title}').split('{title}').join(title).split('{line}').join(line).replace(/\\s*$/,'');};
+const fillRule=(node,title)=>{const line=glyph(TH?.rule?.line,'─'),format=glyph(TH?.rule?.format,'{line}{line} {title}');const at=format.lastIndexOf('{line}');
+  const trailing=at>format.indexOf('{title}')&&format.slice(at+6).trim()==='';node.classList.toggle('ruled',trailing);
+  if(!trailing){node.textContent=ruleTitle(title);return;}
+  const head=document.createElement('span');head.textContent=format.slice(0,at).split('{title}').join(title).split('{line}').join(line).replace(/\\s*$/,'');
+  const fill=document.createElement('span');fill.className='fill';fill.setAttribute('aria-hidden','true');fill.textContent=line.repeat(240);node.replaceChildren(head,fill);};
 const marker=(cls,text,data)=>{const span=document.createElement('span');span.className=cls;span.textContent=text;for(const [key,value] of Object.entries(data??{}))span.dataset[key]=value;return span;};
 const whoLine=(who,extra)=>{const line=marker('who '+(who==='claude'?'c':'h'),'');line.append(marker('',prompt(who),{who}));if(extra)line.append(extra);return line;};
 // Rewrite everything that comes from the theme: after a new message from the workbench.
@@ -549,7 +555,7 @@ const paintTheme=()=>{
   for(const node of document.querySelectorAll('[data-bullet]'))node.textContent=bulletOf(node.dataset.bullet);
   for(const node of document.querySelectorAll('[data-tree]'))node.textContent=treeOf(node.dataset.tree);
   for(const node of document.querySelectorAll('[data-rule]'))node.textContent=glyph(TH?.rule?.line,'─').repeat(2);
-  for(const node of document.querySelectorAll('[data-heading]'))node.textContent=ruleTitle(node.dataset.heading);
+  for(const node of document.querySelectorAll('[data-heading]'))fillRule(node,node.dataset.heading);
   document.body.classList.toggle('fail-inv',TH?.failInverted!==false);
   const cursor=Number(TH?.prompt?.cursorMs);document.documentElement.style.setProperty('--cursor-ms',(Number.isFinite(cursor)&&cursor>=200&&cursor<=5000?Math.round(cursor):1000)+'ms');
   spin();
@@ -625,7 +631,7 @@ window.addMessage=(who,text,about)=>{
   }
   if(who==='plan'){
     group=null;const card=document.createElement('div');card.className='message plan';const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    const heading=about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']);const title=part('strong','',ruleTitle(heading));title.dataset.heading=heading;card.append(title);if(about.notes)card.append(part('div','notes',about.notes));
+    const heading=about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']);const title=part('strong','','');fillRule(title,heading);title.dataset.heading=heading;card.append(title);if(about.notes)card.append(part('div','notes',about.notes));
     for(const step of about.steps){const box=document.createElement('section');box.className='step';const head=document.createElement('div');head.className='head';head.append(part('span','sid',step.id),part('span','',step.name));const facts=document.createElement('dl');
       const fact=(label,value,changed,before)=>{const row=document.createElement('div');if(changed)row.className='changed';row.append(part('dt','',label));if(before)row.append(part('dd','before',before));row.append(part('dd','',value));facts.append(row);};
       if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));box.append(head,facts);card.append(box);}
