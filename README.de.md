@@ -12,7 +12,7 @@
 >
 > *Constrained*, weil der Agent Grenzen hat: Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten, und jede Aufnahme endet mit einem Plan, den du freigibst.
 
-![caw-ai spielt einen aufgenommenen Test des Helpdesk-Beispiels ohne KI ab: Neben der App hakt die Werkbank Schritt für Schritt ab, danach meldet der Chat das Ergebnis](docs/media/demo.webp)
+![caw-ai nimmt einen Test des Helpdesk-Beispiels auf: Claude legt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw-ai die Aufnahme ohne KI ab und der Plan wird übernommen](docs/media/demo.webp)
 
 Jeder Schritt beschreibt eine Aktion und das erwartete Ergebnis:
 

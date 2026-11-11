@@ -12,7 +12,7 @@ English · [Deutsch](README.de.md)
 >
 > *Constrained* because the agent has limits: Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials, and every recording ends with a plan you approve.
 
-![caw-ai replays a recorded test of the helpdesk example without AI: the steps tick off one by one next to the app, then the chat reports the result](docs/media/demo.webp)
+![caw-ai records a test of the helpdesk example: Claude proposes the test plan, works through it in the app and answers a question in the chat; then caw-ai replays the recording without AI and the plan is adopted](docs/media/demo.webp)
 
 Each step describes an action and the expected result:
 
