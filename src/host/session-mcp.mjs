@@ -237,7 +237,8 @@ const statusData = (root, { waiting, running, log }) => {
     }
     if (meta?.command === 'explore') {
         const explored = join(root, EXPLORE_FILE);
-        if ((mtime(explored) ?? 0) >= Date.parse(meta.startedAt)) data.explore = readJson(explored);
+        // File times can be coarser than the clock (ext4 jiffies, FAT 2 s): allow 2 s before the start.
+        if ((mtime(explored) ?? 0) >= Date.parse(meta.startedAt) - 2000) data.explore = readJson(explored);
     }
     // The overlay check only if it is newer than the last run: an older one may describe a different watch.
     const check = join(root, RUN_DIR, OVERLAY_CHECK_FILE);
