@@ -239,12 +239,27 @@ const fetchSource = async (base, path, fetchImpl, hint) => {
 /** The packages from bootstrap.json with their sources, excluding the framework's. */
 const ownPackages = (bootstrap) => {
     const packages = new Map();
+    const loaded = bootstrap.loadOrder.map((entry) => entry?.path).filter((path) => typeof path === 'string');
     for (const [name, entry] of Object.entries(bootstrap.packages ?? {})) {
-        const paths = (Array.isArray(entry?.files) ? entry.files : []).map((index) => bootstrap.loadOrder[index]?.path).filter((path) => typeof path === 'string');
+        let paths = (Array.isArray(entry?.files) ? entry.files : []).map((index) => bootstrap.loadOrder[index]?.path).filter((path) => typeof path === 'string');
+        // Newer Sencha Cmd (7.x) lists no files per package: then its sources are the ones below its namespace's path, e.g.
+        // paths.Orders = "packages/local/orders-model/src".
+        if (paths.length === 0 && typeof entry?.namespace === 'string' && typeof bootstrap.paths?.[entry.namespace] === 'string') {
+            const dir = `${bootstrap.paths[entry.namespace].replace(/\/+$/, '')}/`;
+            paths = loaded.filter((path) => path.startsWith(dir));
+        }
         if (paths.length === 0 || paths.some((path) => FRAMEWORK_SOURCE.test(path))) continue;
         packages.set(name, paths);
     }
     return packages;
+};
+
+/** The app's own scripts outside app/ (app.json "js", e.g. app.js with Ext.application), without the framework's. */
+const appScripts = (appDir) => {
+    const listed = readJson(join(appDir, 'app.json'))?.js;
+    const paths = (Array.isArray(listed) ? listed : []).map((entry) => (typeof entry === 'string' ? entry : entry?.path))
+        .filter((path) => typeof path === 'string' && !path.includes('${') && !FRAMEWORK_SOURCE.test(path));
+    return new Set(paths.length > 0 ? paths : ['app.js']);
 };
 
 /**
@@ -258,7 +273,9 @@ export const replaceable = (appDir, bootstrap) => {
         if (known !== undefined && known.label !== part.label) throw new CawError('overlay-ambiguous', t('session.overlay.ambiguousName', { file, first: known.label, second: part.label }));
         parts.set(file, part);
     };
-    const appPaths = bootstrap.loadOrder.map((entry) => entry?.path).filter((path) => typeof path === 'string' && APP_SOURCE.test(path));
+    // The app's classes under app/ and its own scripts such as app.js, which calls Ext.application: without it the app never starts.
+    const scripts = appScripts(appDir);
+    const appPaths = bootstrap.loadOrder.map((entry) => entry?.path).filter((path) => typeof path === 'string' && (APP_SOURCE.test(path) || scripts.has(path)));
     const appName = appNameOf(appDir);
     if (appPaths.length > 0) for (const file of appBuildNames(appDir)) add(file, { label: appName, kind: 'app', paths: appPaths });
     for (const [name, paths] of ownPackages(bootstrap)) {

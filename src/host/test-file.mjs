@@ -285,6 +285,17 @@ const invalid = (label, problems) => new CawError('test-invalid', problems.map((
 export const withExpectations = (spec) => ({ ...spec, expectations: spec.steps.map(({ id, expect }) => ({ id, text: expect })) });
 
 /**
+ * Step texts that YAML silently cuts: in an unquoted value " #" starts a comment, so `expect: Toast "Added #12" shows` would
+ * become `Toast "Added`. Claude and people write such texts; the step would then check something else than intended.
+ */
+// "#12", "#home", "#<id>" are text; a real comment starts with "# " (space), and caw keeps those when it writes the file.
+const COMMENT_CUT = /^\s*(?:-\s+)?(name|do|expect|note):[ \t]+(?!['"|>])[^#\r\n]*?[ \t]#(?=\S)/;
+const commentCuts = (text) => String(text).split(/\r?\n/).flatMap((line, index) => {
+    const match = COMMENT_CUT.exec(line);
+    return match === null ? [] : [t('config.test.line', { line: index + 1, message: t('config.test.commentCut', { key: match[1] }) })];
+});
+
+/**
  * Reads a test file and checks its shape, with line numbers; everything that depends on the target is done by `checkTest`.
  * @param description the description in caw/tests: without recordings and knownMessages, which live in caw/recordings.
  *                    Otherwise a run's draft, a single file with both.
@@ -304,6 +315,7 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     if (description && value.knownMessages !== undefined) report(['knownMessages'], t('config.test.recordingOnly', { key: 'knownMessages' }));
     else if (!knownMessagesOk(value.knownMessages)) report(['knownMessages'], t('config.test.knownMessages'));
     const steps = readSteps(value.steps, problems, lineOf, { allowRecording: !description, description });
+    problems.push(...commentCuts(text));
     if (problems.length === 0) problems.push(...retryProblems(steps));
     if (problems.length > 0) throw invalid(label, problems);
     return withExpectations({

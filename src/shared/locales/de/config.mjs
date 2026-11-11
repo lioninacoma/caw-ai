@@ -252,6 +252,7 @@ export default {
     'config.test.didYouMean': ' Meintest du {name}?',
     'config.test.targets': 'targets muss eine nichtleere Liste sein.',
     'config.test.mutates': 'mutates fehlt: true, wenn der Test Daten anlegt oder ändert (läuft nur auf Umgebungen mit writable: true), false, wenn er nur liest.',
+    'config.test.commentCut': '{key} enthält " #" ohne Anführungszeichen: YAML schneidet ab dort alles als Kommentar ab. Den Text in Anführungszeichen setzen, z. B. {key}: \'Toast "Added #12" erscheint\'.',
     'config.test.also': 'also muss eine Liste sein.',
     'config.test.knownMessages': 'knownMessages muss eine Liste von Texten oder Mustern {pattern: "<Ausdruck>"} mit gültigem Ausdruck sein.',
     'config.test.plan.object': 'Der Plan muss ein Objekt mit notes und steps sein.',

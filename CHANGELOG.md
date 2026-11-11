@@ -45,6 +45,8 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - Workbench: a chip shows recording, replay or pause while something runs; "Your turn" when the chat waits for you; the adopt decision as a card; a key bar at the bottom (F1 Choose state, F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F7 Theme, F8 App only, F10 Animations off).
 - [Upgrading from 0.1.0](docs/upgrading.md).
 - Cost limits for Claude: `agent.model` and `agent.maxBudgetUsd` (or `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` for one run), passed to Claude Code as `--model` and `--max-budget-usd`. README section "Claude access and costs": which account for which use, and that caw-ai never handles logins.
+- ExtJS overlay with Sencha Cmd 7: packages whose `bootstrap.json` entry has no file list are found by their namespace path, and the app part includes `app.js` (`Ext.application`) and the other scripts from `app.json` `js`.
+- Test files: a step text with an unquoted ` #` followed by text (`expect: Toast "Added #12" shows`) is an error with its line number, because YAML would cut it off as a comment.
 - `readyIgnore` setting for areas that change by themselves (ticker, clock, permanent spinner); `browser.locale` and `browser.timezone` pin the test browser's language and time zone.
 - The run log line "Claude finished after …" shows turns, tokens and the cost Claude Code reports.
 - Upgrade guide [docs/upgrading.md](docs/upgrading.md); `validate` and `doctor` say where each config key from 0.1.0 went.

@@ -59,3 +59,10 @@ test('config: agent.model and agent.maxBudgetUsd are checked up front', () => {
     assert.match(issues({ ...BASE, agent: { maxBudgetUsd: 0 } }).join('\n'), /agent\.maxBudgetUsd/);
     assert.match(issues({ ...BASE, agent: { budget: 1 } }).join('\n'), /maxBudgetUsd/);
 });
+
+test('test files: an unquoted " #" in a step text is an error with line and fix, a quoted one is fine', async () => {
+    const { parseTest } = await import('../src/host/test-file.mjs');
+    const plan = (expect) => `mutates: true\nsteps:\n  - id: S1\n    name: Add\n    do: Add the todo with the tag "#home".\n    expect: ${expect}\n`;
+    assert.throws(() => parseTest(plan('A toast "Added #12" shows.')), /Zeile 6: expect enthält " #" ohne Anführungszeichen/);
+    assert.equal(parseTest(plan('\'A toast "Added #12" shows.\'')).steps[0].expect, 'A toast "Added #12" shows.');
+});

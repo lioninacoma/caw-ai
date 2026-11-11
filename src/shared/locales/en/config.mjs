@@ -252,6 +252,7 @@ export default {
     'config.test.didYouMean': ' Did you mean {name}?',
     'config.test.targets': 'targets must be a non-empty list.',
     'config.test.mutates': 'mutates is missing: true if the test creates or changes data (runs only on environments with writable: true), false if it only reads.',
+    'config.test.commentCut': '{key} contains " #" without quotes: YAML cuts off everything from there as a comment. Put the text in quotes, e.g. {key}: \'Toast "Added #12" shows\'.',
     'config.test.also': 'also must be a list.',
     'config.test.knownMessages': 'knownMessages must be a list of strings or patterns {pattern: "<expression>"} with a valid expression.',
     'config.test.plan.object': 'The plan must be an object with notes and steps.',

@@ -228,3 +228,25 @@ test('Pattern finder: three sources (plain path, proxy parameter, second proxy) 
     assert.deepEqual(encoded.suggestions, []);
     assert.equal(encoded.unresolved[0].source, 'https://p.example/proxy?file=');
 });
+
+test('replaceable with Sencha Cmd 7: packages without files are found by their namespace path, app.js with Ext.application is part of the app', (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'caw-cmd7-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, 'app.json'), JSON.stringify({ name: 'Errand', js: [{ path: '${framework.dir}/build/ext-modern-all-debug.js' }, { path: 'app.js', bundle: true }] }));
+    const bootstrap = {
+        paths: { Errand: 'app', Orders: 'packages/local/orders-model/src' },
+        packages: { 'orders-model': { namespace: 'Orders', required: true, version: '1.0.0' }, core: { namespace: 'Ext' } },
+        loadOrder: [
+            { path: 'ext/modern/modern/src/Widget.js' },
+            { path: 'packages/local/orders-model/src/model/Order.js' },
+            { path: 'app/Application.js' },
+            { path: 'app/view/main/Main.js' },
+            { path: 'app.js' },
+            { path: 'build/temp/development/Errand/sencha-compiler/app/full-page-master-bundle.js' },
+        ],
+    };
+    const parts = replaceable(dir, bootstrap);
+    assert.deepEqual(parts.get('app.js').paths, ['app/Application.js', 'app/view/main/Main.js', 'app.js']);
+    assert.deepEqual(parts.get('orders-model.js').paths, ['packages/local/orders-model/src/model/Order.js']);
+    assert.equal(parts.get('core.js'), undefined, 'framework packages stay out');
+});
