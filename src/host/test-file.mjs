@@ -60,7 +60,8 @@ const TARGETED = ['click', 'fill', 'type', 'upload', 'download'];
 const TEXT_ACTIONS = { press: 'key', goto: 'url', screenshot: 'name' };
 const ACTION_NAMES = [...TARGETED, ...Object.keys(TEXT_ACTIONS), 'reload', 'wait-ready', 'remember'];
 // Felder neben dem Ziel: was einzugeben, hochzuladen oder als Dateiname eines Downloads zu erwarten ist.
-const ACTION_EXTRAS = { fill: ['value'], type: ['value'], upload: ['files'], download: ['file'], goto: ['denied'] };
+// optional: ein Klick, der nur zaehlt, wenn sein Ziel da ist (etwa ein Cookie-Banner, der nur beim ersten Besuch kommt).
+const ACTION_EXTRAS = { click: ['optional'], fill: ['value'], type: ['value'], upload: ['files'], download: ['file'], goto: ['denied'] };
 // Namen, die das Tool am Element liest; laengere liest es als leer, ein solches Ziel trifft nie.
 const TEXT_LIMITED = ['name', 'own'];
 
@@ -141,6 +142,7 @@ const readAction = (raw, report) => {
         if (['fill', 'type'].includes(name) && typeof raw.value !== 'string') report(t('config.test.action.value', { name }));
         if (name === 'upload' && !isFileList(raw.files)) report(t('config.test.action.files'));
         if (name === 'download' && !isRegExp(raw.file)) report(t('config.test.action.file'));
+        if (raw.optional !== undefined && raw.optional !== true) report(t('config.test.action.optional'));
         return {
             action: name,
             target: payload,
@@ -148,6 +150,7 @@ const readAction = (raw, report) => {
             ...(raw.value === undefined ? {} : { value: raw.value }),
             ...(raw.files === undefined ? {} : { files: raw.files }),
             ...(raw.file === undefined ? {} : { file: raw.file }),
+            ...(raw.optional === true ? { optional: true } : {}),
         };
     }
     if (TEXT_ACTIONS[name] !== undefined) {
@@ -169,7 +172,7 @@ const readAction = (raw, report) => {
     return { action: name, ...extras };
 };
 
-const writeAction = ({ action, target, key, url, name, code, secret, store, minCount, value, files, file, denied, path, timeoutMs }) => {
+const writeAction = ({ action, target, key, url, name, code, secret, store, minCount, value, files, file, denied, path, timeoutMs, optional }) => {
     let payload = {};
     if (TARGETED.includes(action)) payload = target;
     else if (action === 'press') payload = key;
@@ -183,6 +186,7 @@ const writeAction = ({ action, target, key, url, name, code, secret, store, minC
         ...(files === undefined ? {} : { files }),
         ...(file === undefined ? {} : { file }),
         ...(denied === undefined ? {} : { denied }),
+        ...(optional === true ? { optional } : {}),
         ...(path === undefined ? {} : { path }),
         ...(timeoutMs === undefined ? {} : { timeoutMs }),
     };

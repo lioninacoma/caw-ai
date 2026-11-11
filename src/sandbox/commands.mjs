@@ -105,7 +105,7 @@ const MODES = {
     run: { log: 'claude.log', prompt: (runId) => `/caw-ai Der Lauf ${runId} ist offen. Fuehre ihn durch und reiche das Ergebnis mit finish ein.` },
     advise: { log: 'claude-empfehlung.log', prompt: (runId) => `/caw-ai Im Lauf ${runId} sind Fehler oder Warnungen aufgetreten. Lies den Auftrag mit task und reiche deine Empfehlungen mit advise ein.` },
     talk: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai Im Lauf ${runId} ist ein Schritt gescheitert, und der Mensch fragt dich im Chat. Lies den Auftrag mit task, antworte mit say und warte mit chat auf ihn.` },
-    develop: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai Im Lauf ${runId} entwickelt der Mensch im hergestellten Zustand und fragt dich im Chat. Lies den Auftrag mit task, antworte mit say und warte mit chat auf ihn.` },
+    develop: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai Im Lauf ${runId} entwickelt der Mensch im hergestellten Zustand und fragt dich im Chat, etwa nach einem Bug. Lies den Auftrag mit task, antworte mit say und warte mit chat auf ihn.` },
 };
 
 /**

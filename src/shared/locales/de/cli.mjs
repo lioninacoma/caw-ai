@@ -4,7 +4,7 @@ export default {
     'cli.help.intro': `caw-ai - KI-gesteuerte Integrationstests für Webanwendungen (Constrained Agentic Webtester)
 
 Erste Schritte (im Projektordner, die Anwendung läuft):
-  1. npx caw-ai init --url http://localhost:5173      im Fenster anmelden, Enter: legt caw.config.json, caw/.env.example und
+  1. npx caw-ai init --url http://localhost:5173      im Fenster anmelden, „Fertig“: legt caw.config.json, caw/.env.example und
                                                       den Skill an; was TODO bleibt, selbst eintragen
   2. caw/.env.example nach caw/.env kopieren und Zugangsdaten eines Testkontos eintragen
   3. npx caw-ai doctor                                bis nichts mehr FEHLT
@@ -42,6 +42,8 @@ Auf dem Host (im Projektordner):`,
                                          ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.doctor': `  doctor [--agent local|docker|session]  Node, Chrome, Claude Code (local) bzw. Docker und Token (docker), Zugangsdaten und
                                          Umgebungen prüfen, mit nächstem Schritt`,
+    'cli.help.theme': `  theme [use <name> | check <name>]      Themes auflisten, eines wählen (gilt für dich, in allen Projekten) oder prüfen:
+                                         Schema, Kontrast, Markenbreite, Schriften. Ändern in der Werkbank mit F7`,
     'cli.help.auth': `  auth <rolle> --target <umgebung>       Bei auth.type storageState: einmal von Hand anmelden (etwa SSO), die Sitzung
                                          landet in caw/.auth/<umgebung>/<rolle>.json`,
     'cli.help.version': '  --version                              Version des Pakets',
@@ -100,7 +102,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
   task                                   Auftrag des offenen Laufs anzeigen
   snapshot                               Seitenstruktur mit Referenzen (e1, e2, ...)
   url                                    Aktuelle URL
-  click <ziel>                           Ziel: Referenz oder Selektor
+  click <ziel> [--optional]              Ziel: Referenz oder Selektor; --optional: fehlt es, nichts tun
   fill <ziel> <text>                     Feld setzen
   type <ziel> <text>                     Zeichenweise tippen
   press <taste>                          Taste drücken, z. B. Enter
@@ -122,7 +124,8 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
   advise --file <empfehlung.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
     // Die Kurzform je Befehl, unter einem Aufruffehler.
     'cli.synopsis.init': 'caw-ai init [--url <adresse>] [--yes] [--from <datei>] [--no-mcp] [--offline]',
-    'cli.synopsis.explore': 'caw-ai explore --url <adresse> [--yes] [--insecure-tls]',
+    'cli.synopsis.explore': 'caw-ai explore --url <adresse> [--login | --no-login] [--yes] [--insecure-tls]',
+    'cli.synopsis.theme': 'caw-ai theme [use <name> | check <name>]',
     'cli.synopsis.list': 'caw-ai list [<test>]',
     'cli.synopsis.doctor': 'caw-ai doctor [--agent local|docker|session]',
     'cli.synopsis.auth': 'caw-ai auth <rolle> --target <umgebung>',
@@ -327,6 +330,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.doctorFixFirst': '{summary}. Erst die mit FEHLT beheben.',
 
     // explore.mjs
+    'cli.exploreWhyState': 'Zustand an html/body, für jedes Konto gleich',
     'cli.exploreWhyLogout': 'Abmelden gibt es nur angemeldet',
     'cli.exploreWhyAccount': 'Benutzer- oder Kontobereich, erst nach der Anmeldung da',
     'cli.exploreWhyLandmark': 'benannte Navigation, auf jeder Seite der angemeldeten Anwendung',
@@ -341,13 +345,42 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.exploreNoSignedIn': 'Nach der Anmeldung kam kein neues Element mit stabilem Selektor dazu; signedInSelector bitte von Hand setzen.',
     'cli.exploreNoLogin': 'Kein Anmeldeformular gesehen. Braucht die Anwendung doch eine Anmeldung, explore erneut starten und dabei anmelden.',
     'cli.exploreConsole': 'Konsolenfehler traten schon beim Öffnen auf. Nur übernehmen, was bekanntes Rauschen ist, sonst verdeckt es Fehler.',
+    'cli.exploreAskLogin': 'Braucht die Anwendung eine Anmeldung?',
+    'cli.exploreOpening': 'Chrome öffnet {host}',
+    'cli.exploreOpened': 'Chrome offen auf {host}',
+    'cli.exploreStepSignIn': 'Anmelden',
+    'cli.exploreSignIn': 'Melde dich im Chrome-Fenster mit einem Testkonto an.',
+    'cli.exploreWaitingSignIn': 'Warte auf die Anmeldung',
+    'cli.exploreSignedInDone': 'Angemeldet',
+    'cli.exploreSignInSkipped': 'Anmeldung übersprungen',
+    'cli.exploreStepStart': 'Startseite',
+    'cli.exploreGoStart': 'Geh zur Seite, auf der Tests beginnen sollen, und klick unten rechts auf „Fertig“.',
+    'cli.exploreWaitingDone': 'Warte auf „Fertig“ im Fenster',
+    'cli.exploreStartChosen': 'Startseite gewählt',
+    'cli.exploreCardWait': 'Seite lädt',
+    'cli.exploreCardSignIn': 'Melde dich mit einem Testkonto an. Ich merke selbst, wann du drin bist.',
+    'cli.exploreCardStart': 'Geh zur Seite, auf der Tests beginnen sollen.',
+    'cli.exploreCardReading': 'Ich lese die Seite',
+    'cli.exploreCardDone': 'Gespeichert. Das Fenster schließt gleich.',
+    'cli.exploreCardPage': 'SEITE',
+    'cli.exploreCardSaved': '■ GESPEICHERT',
+    'cli.exploreDoneButton': 'Fertig',
+    'cli.exploreClosed': 'Fenster geschlossen, abgebrochen',
+    'cli.exploreReading': 'Lese die Seite zweimal (nur Stabiles zählt)',
+    'cli.exploreRead': 'Seite gelesen',
+    'cli.exploreStepResult': 'Ergebnis',
+    'cli.exploreFoundFramework': 'Framework: {framework}',
+    'cli.exploreFoundNoLogin': 'Keine Anmeldung',
+    'cli.exploreFoundLogin': 'Anmeldung: {type}',
+    'cli.exploreFoundSignedIn': 'Angemeldet erkennbar an {selector} ({why})',
+    'cli.exploreFoundStart': 'Startseite: {path}',
+    'cli.exploreSavedTo': 'Gespeichert in {file}',
+    'cli.exploreLoginNotFound': 'Du sagtest, es gibt eine Anmeldung, aber ich habe kein Anmeldeformular gesehen. Prüfe auth in der Config.',
+    'cli.yesNoDefaultYes': '[J/n]',
+    'cli.yesNoDefaultNo': '[j/N]',
     'cli.exploreUsage': 'Aufruf: caw-ai explore --url <adresse>, etwa --url http://app.localhost:5173',
-    'cli.exploreNeedsTty': 'explore braucht ein Terminal: Du meldest dich im Fenster an und bestätigst hier. Ohne Anmeldung: --yes.',
+    'cli.exploreNeedsTty': 'explore braucht ein Terminal für die Frage nach der Anmeldung. Ohne Terminal: --yes.',
     'cli.exploreUnreachable': '{url} antwortet nicht. Läuft der Dev-Server, stimmt die Adresse?',
-    'cli.exploreSignIn': 'Im Fenster: Melde dich mit einem Testkonto an, falls die Anwendung das verlangt, und geh zur Startseite der Anwendung.',
-    'cli.explorePressEnter': 'Danach hier Enter drücken: ',
-    'cli.exploreSaved': 'Vorschläge in {file}: Framework {framework}, Anmeldung {auth}{signedIn}.',
-    'cli.exploreSignedIn': ', angemeldet erkennbar an {selector}',
     'cli.exploreNext': 'Weiter: npx caw-ai init übernimmt {file}. Was dort TODO bleibt, trägst du in caw.config.json ein.',
 
     // ui.mjs
@@ -373,5 +406,21 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.uiWarnings': '{count} Warnung(en) im Bericht.',
     'cli.uiReport': 'Bericht:',
     'cli.uiMoreFailures': 'und {count} weitere im Bericht',
-    'cli.uiWarningsShort': '! {count} Warnung(en) im Bericht',
+    'cli.uiWarningsShort': '{count} Warnung(en) im Bericht',
+    'cli.uiPassed': '{count} bestanden',
+    'cli.uiFailed': '{count} Fehler',
+    'cli.uiOpen': '{count} offen',
+    'cli.themeHeading': 'Themes',
+    'cli.themeOwn': 'eigenes, auf {base}',
+    'cli.themeActive': '(aktiv)',
+    'cli.themeHint': 'Wählen: caw-ai theme use <name>. Ändern: F7 in der Werkbank.',
+    'cli.themeUsed': 'Theme {name} gewählt.',
+    'cli.themeUnknown': 'Theme {name} gibt es nicht. Vorhanden: {names}',
+    'cli.themeUsage': 'Aufruf: caw-ai theme [use <name> | check <name>]',
+    'cli.themeCheck': 'Theme {name} prüfen',
+    'cli.themeSchemaOk': 'Schema passt',
+    'cli.themeWidth': 'Die Marken sind unterschiedlich breit; Texte dahinter stehen dann nicht untereinander.',
+    'cli.themeContrast': 'Kontrast {pair} nur {ratio}:1, unter 4,5:1 schwer lesbar.',
+    'cli.themeFontMissing': 'Schrift fehlt: {file}',
+    'cli.themeLooksOk': 'Kontrast, Marken und Schriften in Ordnung',
 };

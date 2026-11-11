@@ -14,6 +14,8 @@
 // Request, Chromes Netz und Host-Sperre gelten weiter, Weiterleitungen und Cookies bleiben, wie sie sind.
 
 export const APP_FRAME = 'caw-app';
+/** Der Name des Chat-Frames in der Werkbank (workbench.mjs: CHAT_FRAME). */
+export const CHAT_FRAME_NAME = 'caw-chat';
 
 /** Name, unter dem Skripte der Werkbank und des Chats in Konsole und Stacks stehen: So zaehlen ihre Meldungen nie zur Anwendung. */
 export const WORKBENCH_SOURCE = 'caw-werkbank.js';
@@ -215,6 +217,8 @@ export const FOCUS_SCRIPT = `addEventListener('focusin', (event) => { window.__c
 /** F5 und Strg+R in der Anwendung laden nicht die Werkbank neu, sondern melden ihr „Aktualisieren“: Sie stellt den Zustand wieder her. */
 export const RELOAD_SCRIPT = `if (window !== top && window.parent === top && window.name === ${JSON.stringify(APP_FRAME)}) addEventListener('keydown', (event) => {
     if (event.key === 'F5' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r')) { event.preventDefault(); top.postMessage({ caw: 'refresh' }, '*'); }
+    // F1: Zustand waehlen in der Werkbank, statt der Hilfe von Chrome.
+    else if (event.key === 'F1' && !event.ctrlKey && !event.altKey && !event.metaKey) { event.preventDefault(); top.postMessage({ caw: 'key', key: 'F1' }, '*'); }
 }, true);`;
 
 const descendants = (frame) => [frame, ...frame.childFrames().flatMap(descendants)];
@@ -232,6 +236,8 @@ export const frameView = (page, first) => {
         const found = page.frame({ name: APP_FRAME });
         return found !== null && !found.isDetached() ? found : first;
     };
+    // on(load) meldet eine Huelle an: off braucht sie wieder.
+    const wrappers = new Map();
     const view = {
         isFrameView: true,
         workbench: page,
@@ -241,6 +247,7 @@ export const frameView = (page, first) => {
         locator: (...args) => current().locator(...args),
         getByRole: (...args) => current().getByRole(...args),
         $: (...args) => current().$(...args),
+        isVisible: (...args) => current().isVisible(...args),
         fill: (...args) => current().fill(...args),
         click: (...args) => current().click(...args),
         press: (...args) => current().press(...args),
@@ -264,6 +271,26 @@ export const frameView = (page, first) => {
         frames: () => descendants(current()),
         context: () => page.context(),
         bringToFront: () => page.bringToFront(),
+        /**
+         * Eine Aktion in der Anwendung, ohne dem Menschen den Chat wegzunehmen: Klicken und Fuellen fokussieren das Ziel in der
+         * Anwendung. Tippte er gerade im Chat, landeten seine Tasten danach in der Maske und loesten dort Tastenkuerzel aus. Hatte der
+         * Chat den Fokus, bekommt er ihn gleich danach zurueck.
+         */
+        keepChatFocus: async (action) => {
+            const inChat = await page.evaluate((name) => document.activeElement?.tagName === 'IFRAME' && document.activeElement.name === name, CHAT_FRAME_NAME).catch(() => false);
+            // Das Element im Chat, meist das Eingabefeld: Es verliert den Fokus mit, ihn bekommt es danach selbst zurueck.
+            const chat = inChat ? page.frame({ name: CHAT_FRAME_NAME }) : null;
+            const held = chat === null ? null : await chat.evaluateHandle(() => document.activeElement).catch(() => null);
+            try {
+                return await action();
+            } finally {
+                if (inChat) {
+                    await page.locator(`iframe[name="${CHAT_FRAME_NAME}"]`).focus().catch(() => {});
+                    await held?.asElement()?.focus().catch(() => {});
+                }
+                await held?.dispose().catch(() => {});
+            }
+        },
         isClosed: () => page.isClosed() || current().isDetached(),
         keyboard: {
             // Die echte Taste: erst das iframe fokussieren, dann das Element, das zuletzt den Fokus hatte.
@@ -278,10 +305,21 @@ export const frameView = (page, first) => {
         /** Ereignisse wie an einer Seite: popup und close von der Werkbank, Navigation nur die des Frames. */
         on: (event, listener) => {
             if (event === 'domcontentloaded' || event === 'load') {
-                page.on('framenavigated', (navigated) => {
+                const wrapped = (navigated) => {
                     if (navigated === current()) navigated.waitForLoadState(event).then(() => listener(view), () => {});
-                });
+                };
+                wrappers.set(listener, wrapped);
+                page.on('framenavigated', wrapped);
             } else page.on(event, listener);
+            return view;
+        },
+        // Wie an einer Seite abmelden; etwa die Anmeldung im Frame (Zustand herstellen) beobachtet Requests nur, solange sie laeuft.
+        off: (event, listener) => {
+            if (event === 'domcontentloaded' || event === 'load') {
+                const wrapped = wrappers.get(listener);
+                if (wrapped !== undefined) page.off('framenavigated', wrapped);
+                wrappers.delete(listener);
+            } else page.off(event, listener);
             return view;
         },
     };

@@ -9,7 +9,7 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const [{ files }] = JSON.parse(execFileSync(npm, ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: root, encoding: 'utf8', shell: process.platform === 'win32' }));
 const paths = files.map(({ path }) => path.replaceAll('\\', '/'));
 
-const ALLOWED = /^(bin|src|templates|assets)\/|^(package\.json|README(\.de)?\.md|NOTICE\.md|LICENSE|CHANGELOG\.md)$/;
+const ALLOWED = /^(bin|src|templates|assets|themes)\/|^(package\.json|README(\.de)?\.md|NOTICE\.md|LICENSE|CHANGELOG\.md)$/;
 const FORBIDDEN_NAME = /(^|\/)\.env(\.|$)(?!.*example)|\.pem$|\.key$|(^|\/)\.caw\/|(^|\/)caw\/\.auth\/|\.tgz$|(^|\/)(test|e2e|scripts)\//;
 // Optional: Woerter eines eigenen Projekts, die nicht ins Paket duerfen, kommagetrennt in CAW_PACK_TERMS.
 const terms = (process.env.CAW_PACK_TERMS ?? '').split(',').map((term) => term.trim()).filter(Boolean)

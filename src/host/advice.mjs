@@ -2,6 +2,7 @@
 // nach dem Klick des Menschen etwas. Anwendungsseitige bringen einen Prompt und optional konkrete Aenderungen am Code mit; die schreibt
 // der Host nur auf Klick, denn die Sandbox liest das Projekt nur.
 
+import { stepLabel } from './replay.mjs';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, posix, relative } from 'node:path';
 
@@ -18,7 +19,8 @@ const STEP_FIELDS = ['name', 'do', 'expect', 'note', 'retry'];
 const CONFIG_KEYS = ['consoleIgnore', 'foreignCode'];
 // Wo die Seite Meldungen zeigt: Die Empfehlung ersetzt die ganze Liste, etwa den Toast-Container durch den einzelnen Toast.
 const SELECTOR_KEY = 'messageSelectors';
-const KINDS = ['step', 'test', 'context', 'config'];
+// action: einen aufgezeichneten Klick optional machen (oder wieder nicht), ohne neu aufzunehmen, etwa einen Cookie-Banner.
+const KINDS = ['step', 'action', 'test', 'context', 'config'];
 const SIDES = ['test', 'app'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -56,6 +58,16 @@ const readChange = (change, spec, config, report) => {
         } catch (error) {
             return report(error.message.split('\n').map((line) => line.replace(/^Testdatei: Zeile \d+: /, '')).join(' '));
         }
+        return undefined;
+    }
+    if (change.kind === 'action') {
+        const step = spec.steps.find(({ id }) => id === change.id);
+        if (step === undefined) return report(`Schritt ${change.id} gibt es nicht.`);
+        const actions = step.recording?.actions ?? [];
+        if (actions.length === 0) return report(`${change.id} ist nicht aufgezeichnet.`);
+        if (!Number.isInteger(change.index) || change.index < 1 || change.index > actions.length) return report(`change.index ist die Nummer der Aktion in ${change.id}, 1 bis ${actions.length}.`);
+        if (actions[change.index - 1].action !== 'click') return report(`Aktion ${change.index} von ${change.id} ist kein Klick; optional gibt es nur fuer Klicks.`);
+        if (typeof change.optional !== 'boolean') return report('change.optional muss true oder false sein.');
         return undefined;
     }
     if (change.kind === 'test') return isText(change.notes, LIMITS.notes) ? undefined : report('change.notes muss Text sein.');
@@ -237,6 +249,12 @@ export const adviceView = (item, spec, failures = [], config = {}) => {
         };
         return { ...base, target: `${step.id} ${step.name}`, changes: Object.entries(change.fields).map(([key, value]) => ({ label: labelOf(key), before: show(key, step[key]), after: show(key, value) })) };
     }
+    if (change.kind === 'action') {
+        const step = spec.steps.find(({ id }) => id === change.id);
+        const action = step.recording.actions[change.index - 1];
+        const word = (on) => t(on ? 'run.advice.optional' : 'run.advice.required');
+        return { ...base, target: `${step.id} ${step.name}`, changes: [{ label: t('run.advice.action', { number: change.index, label: stepLabel(action) }), before: word(action.optional === true), after: word(change.optional) }] };
+    }
     if (change.kind === 'test') return { ...base, target: t('run.advice.testCase'), changes: [{ label: labelOf('notes'), before: spec.notes ?? '', after: change.notes }] };
     if (change.kind === 'context') return { ...base, target: CONTEXT_FILE, changes: [{ label: t('run.advice.section', { section: change.section }), before: '', after: change.text }] };
     if (change.key === SELECTOR_KEY) return { ...base, target: CONFIG_FILE, changes: [{ label: labelOf(SELECTOR_KEY), before: (config[SELECTOR_KEY] ?? []).join('  ·  '), after: change.selectors.join('  ·  ') }] };
@@ -249,6 +267,16 @@ export const adviceView = (item, spec, failures = [], config = {}) => {
  */
 export const applyToSpec = (spec, change) => {
     if (change.kind === 'test') return { spec: { ...spec, notes: change.notes.trim() }, notes: true };
+    // Nur die Aufzeichnung aendert sich, der Schritt bleibt, wie er ist: nicht veraltet, kein neues Aufnehmen.
+    if (change.kind === 'action') {
+        const step = spec.steps.find(({ id }) => id === change.id);
+        const actions = step.recording.actions.map((action, index) => {
+            if (index !== change.index - 1) return action;
+            const { optional: _optional, ...rest } = action;
+            return change.optional ? { ...rest, optional: true } : rest;
+        });
+        return { spec: replaceStep(spec, { ...step, recording: { ...step.recording, actions } }), id: step.id, stale: false };
+    }
     const step = spec.steps.find(({ id }) => id === change.id);
     const next = changedStep(step, change.fields);
     const stale = step.recording !== undefined && stepHash(next) !== step.recording.hash;

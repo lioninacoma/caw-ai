@@ -13,6 +13,19 @@ export function webTargets(element, { mode, target, exact = false }) {
     const short = (text) => (text.length <= 80 ? text : '');
     // Shadow DOM: Eltern ueber die Grenze hinweg, Suche in allen offenen Shadow Roots.
     const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
+    // Pruefen, ob ein Ziel frei liegt, scrollt es kurz in die Mitte. Danach steht alles wieder, wie es war: Sonst springt die Seite
+    // bei jeder Suche, auch wenn gar nicht geklickt wird (Klicks scrollen selbst zum Ziel).
+    const keepScroll = (node, check) => {
+        const saved = [];
+        for (let at = parentOf(node); at !== null; at = parentOf(at)) saved.push([at, at.scrollTop, at.scrollLeft]);
+        const [x, y] = [window.scrollX, window.scrollY];
+        try {
+            return check();
+        } finally {
+            for (const [at, top, left] of saved) if (at.scrollTop !== top || at.scrollLeft !== left) { at.scrollTop = top; at.scrollLeft = left; }
+            if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+        }
+    };
     const deepAll = (selector, root = document) => {
         const found = [...root.querySelectorAll(selector)];
         for (const host of [root, ...root.querySelectorAll('*')]) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
@@ -92,8 +105,10 @@ export function webTargets(element, { mode, target, exact = false }) {
         const style = getComputedStyle(node);
         if (style.visibility === 'hidden' || style.display === 'none') return false;
         if (onTop(node)) return true;
-        node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-        return onTop(node);
+        return keepScroll(node, () => {
+            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            return onTop(node);
+        });
     };
     const describeNode = (node) => {
         const role = roleOf(node);
@@ -173,9 +188,11 @@ export function webTargets(element, { mode, target, exact = false }) {
         const box = node.getBoundingClientRect();
         const style = getComputedStyle(node);
         if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.display === 'none') return { hidden: true };
-        node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-        const now = node.getBoundingClientRect();
-        const hit = hitAt(now.left + now.width / 2, now.top + now.height / 2);
+        const hit = keepScroll(node, () => {
+            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            const now = node.getBoundingClientRect();
+            return hitAt(now.left + now.width / 2, now.top + now.height / 2);
+        });
         if (hit === null || deepContains(node, hit) || deepContains(hit, node)) return { elsewhere: candidates.length > 0 && target.inside !== undefined };
         const layer = deepClosest(hit, 'dialog, [role=dialog], [role=alertdialog], [aria-modal=true]');
         const cover = layer ?? hit;

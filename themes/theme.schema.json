@@ -1,0 +1,594 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lioninacoma/caw-ai/themes/theme.schema.json",
+  "title": "caw-ai theme",
+  "description": "A caw-ai theme package (themeApi 1): themes/<name>/theme.json plus optional theme.css and fonts/. A custom theme names a built-in theme as base and only lists what differs.",
+  "type": "object",
+  "required": [
+    "themeApi",
+    "name"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "hex": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "text": {
+      "description": "Plain text or one text per language.",
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 200
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z]{2}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      ]
+    },
+    "glyph": {
+      "description": "A short string of characters, optionally per language.",
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 32
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z]{2}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 32
+          }
+        }
+      ]
+    },
+    "font": {
+      "type": "object",
+      "required": [
+        "family"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9 -]{1,48}$"
+        },
+        "file": {
+          "type": "string",
+          "description": "builtin:<file> from caw-ai/assets/fonts, or fonts/<file>.woff2 inside the package.",
+          "pattern": "^(builtin:[a-z0-9-]+\\.woff2|fonts/[A-Za-z0-9._-]+\\.woff2)$"
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 900
+        }
+      }
+    },
+    "ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 60000
+    },
+    "range": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ms"
+      },
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "themeApi": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$"
+    },
+    "base": {
+      "description": "Built-in theme this one builds on. Required for custom themes, absent for built-ins.",
+      "enum": [
+        "nacht",
+        "bernstein",
+        "phosphor"
+      ]
+    },
+    "label": {
+      "$ref": "#/$defs/text"
+    },
+    "description": {
+      "$ref": "#/$defs/text"
+    },
+    "mono": {
+      "type": "boolean",
+      "description": "Single-colour monitor look: status by glyph and brightness, failures inverted."
+    },
+    "css": {
+      "type": "string",
+      "description": "Optional stylesheet in the package for workbench, chat and explore card. Only loaded from disk, never from the page.",
+      "pattern": "^[A-Za-z0-9._-]+\\.css$"
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "screen": {
+          "$ref": "#/$defs/hex"
+        },
+        "pane": {
+          "$ref": "#/$defs/hex"
+        },
+        "frame": {
+          "$ref": "#/$defs/hex"
+        },
+        "text": {
+          "$ref": "#/$defs/hex"
+        },
+        "muted": {
+          "$ref": "#/$defs/hex"
+        },
+        "accent": {
+          "$ref": "#/$defs/hex"
+        },
+        "ok": {
+          "$ref": "#/$defs/hex"
+        },
+        "warn": {
+          "$ref": "#/$defs/hex"
+        },
+        "fail": {
+          "$ref": "#/$defs/hex"
+        },
+        "info": {
+          "$ref": "#/$defs/hex"
+        },
+        "claude": {
+          "$ref": "#/$defs/hex"
+        },
+        "human": {
+          "$ref": "#/$defs/hex"
+        },
+        "heart": {
+          "$ref": "#/$defs/hex"
+        }
+      }
+    },
+    "crt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scanlines": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/hex"
+            },
+            "alpha": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "vignette": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "headingGlowPx": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "textGlow": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "px": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 8
+            },
+            "alpha": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "display": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/font"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/font"
+              },
+              "maxItems": 4
+            }
+          ]
+        },
+        "text": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/font"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/font"
+              },
+              "maxItems": 4
+            }
+          ]
+        }
+      }
+    },
+    "marks": {
+      "description": "Status marks. All must have the same width in characters. {spinner} is replaced by the current spinner frame.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "$ref": "#/$defs/glyph"
+        },
+        "warn": {
+          "$ref": "#/$defs/glyph"
+        },
+        "fail": {
+          "$ref": "#/$defs/glyph"
+        },
+        "run": {
+          "$ref": "#/$defs/glyph"
+        },
+        "open": {
+          "$ref": "#/$defs/glyph"
+        },
+        "ask": {
+          "$ref": "#/$defs/glyph"
+        }
+      }
+    },
+    "failInverted": {
+      "type": "boolean"
+    },
+    "spinner": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frames": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 2
+          },
+          "minItems": 1,
+          "maxItems": 12
+        },
+        "ms": {
+          "$ref": "#/$defs/ms"
+        }
+      }
+    },
+    "bullets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "$ref": "#/$defs/glyph"
+        },
+        "warn": {
+          "$ref": "#/$defs/glyph"
+        },
+        "fail": {
+          "$ref": "#/$defs/glyph"
+        },
+        "run": {
+          "$ref": "#/$defs/glyph"
+        },
+        "info": {
+          "$ref": "#/$defs/glyph"
+        },
+        "pause": {
+          "$ref": "#/$defs/glyph",
+          "description": "Pause sign, e.g. in the chat pill Pausiert."
+        }
+      }
+    },
+    "tree": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mid": {
+          "type": "string",
+          "maxLength": 2
+        },
+        "end": {
+          "type": "string",
+          "maxLength": 2
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "format": {
+          "type": "string",
+          "maxLength": 32
+        }
+      }
+    },
+    "legend": {
+      "type": "string",
+      "maxLength": 32
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tl": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "tr": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "bl": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "br": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "h": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "v": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "titleOpen": {
+          "type": "string",
+          "maxLength": 4
+        },
+        "titleClose": {
+          "type": "string",
+          "maxLength": 4
+        }
+      }
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "done": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "run": {
+          "type": "string",
+          "maxLength": 1
+        },
+        "open": {
+          "type": "string",
+          "maxLength": 1
+        }
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claude": {
+          "$ref": "#/$defs/glyph"
+        },
+        "human": {
+          "$ref": "#/$defs/glyph"
+        },
+        "cursorMs": {
+          "$ref": "#/$defs/ms"
+        }
+      }
+    },
+    "raven": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "description": "ASCII logo, {eye} and {beak} are replaced.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 24
+          },
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "parts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "enum": [
+                "frame",
+                "text",
+                "muted",
+                "accent",
+                "info"
+              ]
+            },
+            "eye": {
+              "enum": [
+                "frame",
+                "text",
+                "muted",
+                "accent",
+                "info"
+              ]
+            },
+            "beak": {
+              "enum": [
+                "frame",
+                "text",
+                "muted",
+                "accent",
+                "info"
+              ]
+            }
+          }
+        },
+        "beak": {
+          "type": "string",
+          "maxLength": 2
+        },
+        "eyes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "open": {
+              "type": "string",
+              "maxLength": 2
+            },
+            "shut": {
+              "type": "string",
+              "maxLength": 2
+            },
+            "happy": {
+              "type": "string",
+              "maxLength": 2
+            }
+          }
+        },
+        "blink": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ms": {
+              "$ref": "#/$defs/ms"
+            },
+            "firstMs": {
+              "$ref": "#/$defs/ms"
+            },
+            "pauseMs": {
+              "$ref": "#/$defs/range"
+            },
+            "double": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "chance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "afterMs": {
+                  "$ref": "#/$defs/ms"
+                },
+                "ms": {
+                  "$ref": "#/$defs/ms"
+                }
+              }
+            }
+          }
+        },
+        "pet": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "happyMs": {
+              "$ref": "#/$defs/ms"
+            },
+            "hearts": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "glyphs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 24
+                  },
+                  "minItems": 1,
+                  "maxItems": 12
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 20
+                },
+                "staggerMs": {
+                  "$ref": "#/$defs/ms"
+                },
+                "startAt": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "risePx": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 400
+                },
+                "driftPx": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 200
+                },
+                "steps": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 60
+                },
+                "durationMs": {
+                  "$ref": "#/$defs/range"
+                },
+                "fadeFrom": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "glowPx": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 24
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

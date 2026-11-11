@@ -19,6 +19,7 @@ import { isAbsolute, join, posix } from 'node:path';
 import { CawError } from './errors.mjs';
 import { t } from './i18n.mjs';
 import { CONFIG_FILE } from './names.mjs';
+import { projectThemeProblems, setProjectTheme } from './theme-package.mjs';
 import { didYouMean } from './suggest.mjs';
 
 export { CONFIG_FILE } from './names.mjs';
@@ -49,7 +50,7 @@ export const sessionPath = (target, role) => posix.join(AUTH_DIR, ...String(targ
 
 const TOP_FIELDS = ['framework', 'extends', 'environments', 'sites', 'auth', 'apps', 'roles', 'messageSelectors', 'insecureTls', 'requestKeys',
     'consoleIgnore', 'foreignCode', 'extraAllowedHosts', 'assetUrlPattern', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
-    'browser', 'agent', 'language'];
+    'browser', 'agent', 'language', 'theme'];
 
 /** Wo Claude laeuft: lokal mit engen Werkzeugen (Standard) oder abgeschottet in Docker. */
 export const AGENT_SANDBOXES = ['local', 'docker'];
@@ -274,6 +275,7 @@ export const validateConfig = (given, root = process.cwd()) => {
         issues.push(t('config.messageSelectors'));
     }
     if (config.insecureTls !== undefined && typeof config.insecureTls !== 'boolean') issues.push(t('config.insecureTls'));
+    if (config.theme !== undefined) for (const { key } of projectThemeProblems(config.theme)) issues.push(t('config.theme', { key }));
     if (config.framework !== undefined && !FRAMEWORK_NAMES.includes(config.framework)) issues.push(t('config.framework', { names: FRAMEWORK_NAMES.join(', ') }));
     for (const key of ['sandboxImage', 'sandboxUser', 'lintCommand']) {
         if (config[key] !== undefined && (typeof config[key] !== 'string' || config[key].trim() === '')) issues.push(t('config.text', { key }));
@@ -386,7 +388,10 @@ export const loadConfigWithNotes = (root) => {
     }
     const { issues, notes } = validateConfig(config, root);
     if (issues.length > 0) throw new CawError('config-invalid', `${CONFIG_FILE}:\n- ${issues.join('\n- ')}`);
-    return { config: effectiveConfig(config, root).config, notes };
+    const effective = effectiveConfig(config, root).config;
+    // Der Team-Standard fuer das Theme gilt fuer alles, was dieser Prozess zeigt: Werkbank, Chat, Karte, Terminal.
+    setProjectTheme(effective.theme);
+    return { config: effective, notes };
 };
 
 export const loadConfig = (root) => loadConfigWithNotes(root).config;

@@ -88,3 +88,62 @@ test('Zwischenablage: Mit dem Recht für den Origin liest eine Prüfung, was die
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Prüfsumme 3fa9');
     return undefined;
 });
+
+// Wie „Abbrechen“ mit Rueckfrage: Der erste Klick oeffnet einen modalen Dialog ueber dem Knopf.
+const CANCEL = `<button onclick="document.getElementById('d').showModal()">Abbrechen</button>
+<dialog id="d" aria-label="Antrag abbrechen?"><p>Wirklich abbrechen?</p><button>Ja</button><button>Nein</button></dialog>`;
+
+test('click: Ein wiederholter Klick, dessen Ziel der Dialog des ersten verdeckt, wird übersprungen statt bis zum Zeitlimit zu warten', async (t) => {
+    if (needsChrome()) return t.skip('kein Chrome');
+    await page.setContent(CANCEL);
+    const target = { role: 'button', name: 'Abbrechen' };
+    const start = Date.now();
+    const { broken, results } = await play([
+        { action: 'click', target },
+        { action: 'click', target },
+        { action: 'check', id: 'S4', code: "document.getElementById('d').open === true" },
+    ]);
+    assert.equal(broken, null);
+    assert.equal(results.get('S4').status, 'pass');
+    assert.match(results.get('S4').note, /Wiederholten Klick übersprungen/);
+    assert.ok(Date.now() - start < 8000, `nicht bis zum Zeitlimit: ${Date.now() - start} ms`);
+    return undefined;
+});
+
+test('click: Ein verdecktes Ziel ohne gleichen Klick davor bleibt ein Fehler', async (t) => {
+    if (needsChrome()) return t.skip('kein Chrome');
+    await page.setContent(`${CANCEL}<button>Speichern</button>`);
+    const { broken } = await playReplay({
+        replay: { steps: [
+            { action: 'click', target: { role: 'button', name: 'Abbrechen' } },
+            { action: 'click', target: { role: 'button', name: 'Speichern' } },
+            { action: 'check', id: 'S4', code: 'true' },
+        ] },
+        handler: async () => ({ pass: true, value: true }),
+        session: { page: () => page, waitReady: async () => ({ settled: true }) },
+        base: ORIGIN,
+        stepTimeoutMs: 2500,
+    });
+    assert.notEqual(broken, null);
+    assert.equal(broken.kind, 'target');
+    return undefined;
+});
+
+test('click optional: Fehlt das Ziel (Cookie-Banner schon weg), fällt der Klick nach kurzer Zeit weg; ist es da, wird geklickt', async (t) => {
+    if (needsChrome()) return t.skip('kein Chrome');
+    const banner = { action: 'click', target: { role: 'button', name: 'Alle akzeptieren' }, optional: true };
+    await page.setContent('<button onclick="this.textContent=\'Weiter!\'">Weiter</button>');
+    const start = Date.now();
+    const absent = await play([banner, { action: 'click', target: { role: 'button', name: 'Weiter' } }, { action: 'check', id: 'S1', code: "document.querySelector('button').textContent === 'Weiter!'" }]);
+    assert.equal(absent.broken, null);
+    assert.equal(absent.results.get('S1').status, 'pass');
+    assert.match(absent.results.get('S1').note, /Optionalen Klick übersprungen/);
+    assert.ok(Date.now() - start < 8000, `nicht bis zum Zeitlimit: ${Date.now() - start} ms`);
+
+    await page.setContent('<div id="b"><button onclick="document.getElementById(\'b\').remove()">Alle akzeptieren</button></div>');
+    const shown = await play([banner, { action: 'check', id: 'S1', code: "document.getElementById('b') === null" }]);
+    assert.equal(shown.broken, null);
+    assert.equal(shown.results.get('S1').status, 'pass');
+    assert.doesNotMatch(shown.results.get('S1').note ?? '', /übersprungen/);
+    return undefined;
+});

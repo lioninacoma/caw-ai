@@ -35,6 +35,15 @@ const CODE_ANSWER_MS = 10_000;
 // Ein TOTP-Code gilt 30 s. Der neue Code kommt kurz nach Beginn des naechsten Fensters, falls die Uhren etwas abweichen.
 const TOTP_WINDOW_MS = 30_000;
 const NEXT_WINDOW_MARGIN_MS = 1000;
+// Nach dem Absenden: Steht das Formular so lange ruhig wieder da (Seite geladen, kein Request offen), hat die Anwendung abgelehnt.
+const LOGIN_REJECT_QUIET_MS = 3000;
+// Ist das Formular weg, die Seite fertig und ruhig, aber die Marke fehlt: so lange Gnade fuer spaet rendernde Seiten, dann gilt sie als falsch.
+const LOGIN_MARKER_QUIET_MS = 5000;
+// Nach dem Laden: So lange darf ein Formular noch erscheinen (gerendert vom Framework), bevor der Selektor als falsch gilt.
+const LOGIN_FORM_MS = 8000;
+const LOGIN_POLL_MS = 250;
+// Ein Request, der laenger offen ist, zaehlt nicht mehr als Arbeit der Anmeldung (Long-Polling, Stream).
+const LOGIN_STALE_REQUEST_MS = 10_000;
 const sleepMs = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
 /** Antworten, die offen bleiben, solange die Seite lebt: Server-Sent Events und Zeilen-JSON. */
 export const STREAM_TYPE = /text\/event-stream|application\/(x-)?ndjson|application\/stream\+json|application\/jsonl/i;
@@ -184,8 +193,9 @@ export const trackAgentPages = (first) => {
  * Meldet den Browser an, falls noetig. Die Zugangsdaten bleiben auf dem Host; der Trace startet erst
  * nach der Anmeldung, und keine Meldung enthaelt sie.
  */
-const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, framework }) => {
-    const page = context.pages()[0];
+// @param on die Seite fuer die Anmeldung; ohne Angabe der erste Tab (vor der Werkbank), beim erneuten Anmelden der Frame der Anwendung
+const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, framework, on }) => {
+    const page = on ?? context.pages()[0];
     const broken = watchBroken(page);
     // Nur die SPA-Adapter: Ihre Anmeldeseite ist meist Teil der App. `web` und `extjs` (Portal-Anmeldung ohne Ext) bleiben wie bisher.
     const originOf = (address) => { try { return new URL(address).origin; } catch { return null; } };
@@ -204,10 +214,59 @@ const ensureLoggedIn = async (context, { url, marker, login, password, totpSecre
     } catch (error) {
         const seen = broken.text();
         if (seen !== '' && error instanceof CawError) error.message = `${error.message} ${seen}`;
+        if (error instanceof CawError) error.evidence = await loginEvidence(page, { marker, ...selectors });
         throw error;
     } finally {
         broken.stop();
     }
+};
+
+// Was eine Sitzung im Browser hinterlaesst, ausser Cookies (die gehen fuer alle Origins mit clearCookies).
+const SITE_DATA = 'local_storage,indexeddb,cache_storage,service_workers,websql,file_systems';
+
+/**
+ * Eine neue Sitzung im selben Fenster, wie ein neuer Lauf mit frischem Profil: Cookies aller Origins, dazu localStorage, IndexedDB,
+ * Cache Storage und Service Worker der Origins, die die Anwendung zeigt, und ihr sessionStorage. Nur die Schluessel der Werkbank
+ * (`caw-`) bleiben: Sie teilt sich mit der Anwendung den Origin, nicht deren Daten.
+ * @param context der Browser-Kontext
+ * @param view    die Anwendung (Seite oder Frame der Werkbank)
+ * @param base    die Adresse der Umgebung; ihr Origin wird immer geleert
+ */
+export const freshSession = async (context, view, base) => {
+    await context.clearCookies();
+    // Chrome leert mit dem Storage auch sessionStorage: Die Schluessel der Werkbank vorher sichern, danach zurueckschreiben.
+    const kept = await view.evaluate(() => {
+        try {
+            const own = Object.keys(sessionStorage).filter((key) => key.startsWith('caw-')).map((key) => [key, sessionStorage.getItem(key)]);
+            sessionStorage.clear();
+            return own;
+        } catch {
+            return [];
+        }
+    }).catch(() => []);
+    const origins = new Set([new URL(base).origin]);
+    for (const address of [view.url(), ...(view.frames?.() ?? []).map((frame) => frame.url())]) {
+        try {
+            const { origin, protocol } = new URL(address);
+            if (protocol === 'http:' || protocol === 'https:') origins.add(origin);
+        } catch {
+            // keine Adresse
+        }
+    }
+    const cdp = await context.newCDPSession(view.workbench ?? context.pages()[0]).catch(() => null);
+    try {
+        for (const origin of origins) await cdp?.send('Storage.clearDataForOrigin', { origin, storageTypes: SITE_DATA }).catch(() => {});
+    } finally {
+        await cdp?.detach().catch(() => {});
+    }
+    await view.evaluate((own) => {
+        try {
+            for (const [key, value] of own) sessionStorage.setItem(key, value);
+        } catch {
+            // ohne Zugriff
+        }
+    }, kept).catch(() => {});
+    return [...origins];
 };
 
 /**
@@ -263,9 +322,86 @@ const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep })
     if (await codeStays()) await submit();
 };
 
+/** Offene Requests der Seite (Dokumente, XHR, fetch), damit „ruhig“ nicht mitten in einer langsamen Antwort gilt. */
+const trackRequests = (page, now) => {
+    if (typeof page.on !== 'function') return { open: () => 0, stop: () => {} };
+    const open = new Map();
+    const relevant = (request) => ['document', 'xhr', 'fetch'].includes(request.resourceType?.());
+    const start = (request) => { if (relevant(request)) open.set(request, now()); };
+    const end = (request) => { open.delete(request); };
+    page.on('request', start);
+    page.on('requestfinished', end);
+    page.on('requestfailed', end);
+    return {
+        open: () => [...open.values()].filter((since) => now() - since < LOGIN_STALE_REQUEST_MS).length,
+        stop: () => {
+            page.off?.('request', start);
+            page.off?.('requestfinished', end);
+            page.off?.('requestfailed', end);
+        },
+    };
+};
+
+/**
+ * Wartet nach dem Absenden auf das Ergebnis, ohne die volle Zeitgrenze abzusitzen: Marke da, Formular steht ruhig wieder da
+ * (abgelehnt), oder Seite fertig und ruhig ohne Formular und ohne Marke (Marke falsch). Ruhig heisst: Adresse, Ladezustand und
+ * Formular unveraendert, kein Request offen.
+ * @returns 'signed-in' | 'form' | 'no-marker' | 'timeout'
+ */
+export const waitForLoginOutcome = async (page, { marker, selectors, now = Date.now, sleep = sleepMs, requests = { open: () => 0 } }) => {
+    const start = now();
+    let state = null;
+    let since = start;
+    while (now() - start < LOGIN_TIMEOUT_MS) {
+        if (await page.$(marker).catch(() => null) !== null) return 'signed-in';
+        const loaded = typeof page.evaluate === 'function' ? await page.evaluate(() => document.readyState).catch(() => 'loading') : 'complete';
+        const form = await page.isVisible(selectors.password).catch(() => false);
+        const next = `${page.url()}|${loaded}|${form}`;
+        if (next !== state || requests.open() > 0) {
+            state = next;
+            since = now();
+        }
+        const quiet = now() - since;
+        if (loaded === 'complete' && form && quiet >= LOGIN_REJECT_QUIET_MS) return 'form';
+        if (loaded === 'complete' && !form && quiet >= LOGIN_MARKER_QUIET_MS) return 'no-marker';
+        await sleep(LOGIN_POLL_MS);
+    }
+    return 'timeout';
+};
+
+/**
+ * Was auf der Seite stand, als die Anmeldung scheiterte: wie oft jeder Selektor der Config trifft, und was explore dort fuer stabil
+ * hielte (Felder, Knoepfe, Klassen an html/body). Ohne Werte von Feldern, ohne Parameter der Adresse. Grundlage fuer Claudes Vorschlag.
+ */
+export const loginEvidence = async (page, selectors) => {
+    try {
+        const { surveyPage } = await import('./explore.mjs');
+        const hits = {};
+        for (const [key, selector] of Object.entries(selectors)) {
+            if (typeof selector === 'string') hits[key] = { selector, count: await page.locator(selector).count().catch(() => -1) };
+        }
+        const survey = await page.evaluate(surveyPage, 200).catch(() => null);
+        const address = new URL(page.url());
+        return {
+            path: address.pathname,
+            title: survey?.title ?? '',
+            hits,
+            login: survey?.login ?? null,
+            stateClasses: survey?.stateClasses ?? [],
+            // Ohne Texte: Ein Benutzermenue zeigt oft den Namen des Kontos.
+            markers: (survey?.markers ?? []).slice(0, 120).map(({ selector, tag, role }) => ({ selector, tag, role })),
+        };
+    } catch {
+        return null;
+    }
+};
+
 export const loginSteps = async (page, { url, marker, login, password, totpSecret, selectors, ready, now = Date.now, sleep = sleepMs }) => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector(`${marker}, ${selectors.user}`, { timeout: LOGIN_TIMEOUT_MS }).catch(() => {
+    // Erst die Seite fertig laden, dann nur noch kurz auf ein Formular warten, das das Framework rendert: Ein falscher Selektor
+    // faellt so nach Sekunden auf, nicht nach der vollen Zeitgrenze.
+    await page.waitForLoadState('load', { timeout: LOGIN_TIMEOUT_MS }).catch(() => {});
+    await page.waitForSelector(`${marker}, ${selectors.user}`, { timeout: LOGIN_FORM_MS }).catch(() => {
         throw new CawError('login-form-missing', t('session.browser.loginFormMissing', { marker, url }));
     });
     if (await page.$(marker) !== null) return;
@@ -278,19 +414,34 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
         await ready(page);
         if (await page.$(marker) !== null) return;
     }
+    if (await page.$(selectors.password) === null) {
+        throw new CawError('login-failed', t('session.browser.selectorMissing', { key: 'passwordSelector', selector: selectors.password }));
+    }
+    // Ein Knopf, den es nicht gibt, hinge sonst bis zur Zeitgrenze des Klicks.
+    if (selectors.submit !== undefined && await page.$(selectors.submit) === null) {
+        throw new CawError('login-failed', t('session.browser.selectorMissing', { key: 'submitSelector', selector: selectors.submit }));
+    }
     await page.fill(selectors.user, login);
     await page.fill(selectors.password, password);
-    if (selectors.submit === undefined) await page.press(selectors.password, 'Enter');
-    else await page.click(selectors.submit);
-    await secondFactor(page, { marker, totpSecret, selectors, now, sleep });
-    // Ein kaltes Portal leitet weiter, rendert aber die Seite danach nicht rechtzeitig fertig: einmal neu laden, dann gilt es.
-    const signedIn = await page.waitForSelector(marker, { timeout: LOGIN_TIMEOUT_MS }).then(() => true, () => false);
-    if (signedIn) return;
-    if (await page.$(selectors.password) === null) await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForSelector(marker, { timeout: LOGIN_TIMEOUT_MS }).catch(() => {
+    const requests = trackRequests(page, now);
+    try {
+        if (selectors.submit === undefined) await page.press(selectors.password, 'Enter');
+        else await page.click(selectors.submit);
+        await secondFactor(page, { marker, totpSecret, selectors, now, sleep });
+        let outcome = await waitForLoginOutcome(page, { marker, selectors, now, sleep, requests });
+        // Ein kaltes Portal leitet weiter, rendert aber die Seite danach nicht rechtzeitig fertig: einmal neu laden, dann gilt es.
+        if (outcome === 'no-marker' || outcome === 'timeout') {
+            await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+            outcome = await waitForLoginOutcome(page, { marker, selectors, now, sleep, requests });
+        }
+        if (outcome === 'signed-in') return;
         // Nur der Pfad: Parameter koennten Daten aus der Anmeldung enthalten.
-        throw new CawError('login-failed', t('session.browser.loginFailed', { url, marker, path: new URL(page.url()).pathname }));
-    });
+        const path = new URL(page.url()).pathname;
+        if (outcome === 'form') throw new CawError('login-failed', t('session.browser.loginRejected', { url, path }));
+        throw new CawError('login-failed', t('session.browser.loginFailed', { url, marker, path }));
+    } finally {
+        requests.stop();
+    }
 };
 
 /**
@@ -552,6 +703,25 @@ export const openBrowserSession = async (spec) => {
         process.removeListener('unhandledRejection', ignoreClosedBrowser);
     };
 
+    // Wer gerade angemeldet ist: Beim Herstellen eines Zustands aus einem Test einer anderen Rolle wechselt das Konto.
+    let current = credentials;
+    // Alle Passwoerter dieser Sitzung bleiben geschwaerzt, auch nach einem Wechsel des Kontos.
+    const passwords = credentials?.password === undefined ? [] : [credentials.password];
+    const formLogin = (on) => ensureLoggedIn(raw, {
+        url: `${resolved.url}${auth.path}`,
+        marker: auth.signedInSelector,
+        login: current.login,
+        password: current.password,
+        totpSecret: current.totpSecret,
+        framework,
+        selectors: {
+            user: auth.userSelector,
+            password: auth.passwordSelector,
+            ...(auth.submitSelector === undefined ? {} : { submit: auth.submitSelector }),
+            ...(auth.codeSelector === undefined ? {} : { code: auth.codeSelector }),
+        },
+        ...(on === undefined ? {} : { on }),
+    });
     try {
         // Der Host startet den Browser erst nach seinem Preflight. Die Anmeldung haengt deshalb am Launcher.
         const launcher = createPlaywrightLauncher(async (dir) => {
@@ -565,22 +735,7 @@ export const openBrowserSession = async (spec) => {
             if (spec.embed === true) await raw.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
             if (auth.type === 'storageState') await applyStorageState(raw, credentials.storageState);
             // Ueber die eigene Anmeldeseite: So laedt die Anwendung nicht schon einmal vor dem Einspielen des lokalen Codes.
-            if (auth.type === 'form') {
-                await ensureLoggedIn(raw, {
-                    url: `${resolved.url}${auth.path}`,
-                    marker: auth.signedInSelector,
-                    login: credentials.login,
-                    password: credentials.password,
-                    totpSecret: credentials.totpSecret,
-                    framework,
-                    selectors: {
-                        user: auth.userSelector,
-                        password: auth.passwordSelector,
-                        ...(auth.submitSelector === undefined ? {} : { submit: auth.submitSelector }),
-                        ...(auth.codeSelector === undefined ? {} : { code: auth.codeSelector }),
-                    },
-                });
-            }
+            if (auth.type === 'form') await formLogin();
             timing.login = Date.now();
             return raw;
         });
@@ -598,13 +753,16 @@ export const openBrowserSession = async (spec) => {
         });
         // Der Host prueft das Merkmal auf der Startseite der Umgebung, bevor lokaler Code eingespielt wird. Seine Meldungen sind
         // allgemein gehalten; hier werden sie zu einem Hinweis, was im Projekt zu tun ist.
-        await host.start().catch((error) => {
+        await host.start().catch(async (error) => {
             const message = String(error?.message ?? '');
             if (/not signed in/.test(message)) {
                 const next = auth.type === 'storageState'
                     ? t('session.browser.sessionExpired')
                     : t('session.browser.checkSelector');
-                throw new CawError(auth.type === 'storageState' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
+                const failure = new CawError(auth.type === 'storageState' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
+                const page = raw?.pages()[0];
+                if (page !== undefined) failure.evidence = await loginEvidence(page, { marker: auth.signedInSelector });
+                throw failure;
             }
             throw error;
         });
@@ -912,11 +1070,30 @@ export const openBrowserSession = async (spec) => {
                 await pages.main().goto(startUrl, { waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },
+            /**
+             * Wie restart, aber in einer neuen Sitzung (freshSession: Cookies, Storage, Service Worker weg), neu angemeldet, dann die Startseite. So beginnt das Herstellen eines
+             * Zustands wie ein neuer Lauf, nicht in der Sitzung, die der letzte Zustand hinterlassen hat. Die Anmeldung laeuft im Frame
+             * der Anwendung, die Werkbank bleibt.
+             */
+            // @param as     Zugangsdaten einer anderen Rolle (aus readCredentials); ohne Angabe dasselbe Konto
+            // @param start  Startpfad einer anderen App; ohne Angabe die App dieser Sitzung
+            signInAgain: async ({ as, start } = {}) => {
+                if (as !== undefined && as !== null) {
+                    current = as;
+                    if (as.password !== undefined && !passwords.includes(as.password)) passwords.push(as.password);
+                }
+                for (const popup of pages.popups()) await popup.close().catch(() => {});
+                await freshSession(raw, pages.main(), resolved.url);
+                if (auth.type === 'storageState') await applyStorageState(raw, current.storageState);
+                if (auth.type === 'form') await formLogin(pages.main());
+                await pages.main().goto(start === undefined ? startUrl : `${resolved.url}${start}`, { waitUntil: 'load' });
+                return waitReady({ timeout: spec.readyTimeoutMs });
+            },
             /** Der Framework-Adapter: Ziele, Seitenzustand, Bereitschaft. */
             framework,
             failures: () => failures,
             /** Was nie als Text aus dem Browser gehen darf: das Passwort der Rolle und geheim gemerkte Werte. */
-            secrets: () => [...(credentials?.password === undefined ? [] : [credentials.password]), ...hidden],
+            secrets: () => [...passwords, ...hidden],
             /** Ein Wert, der ab jetzt wie das Passwort geschwaerzt wird, etwa aus `remember` mit `secret: true`. */
             hide: (value) => { if (typeof value === 'string' && !hidden.includes(value)) hidden.push(value); },
             warnings: () => warnings,

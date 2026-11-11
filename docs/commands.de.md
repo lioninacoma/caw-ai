@@ -193,6 +193,10 @@ npx caw-ai open --target dev --overlay
 | `--overlay [build\|dev\|<url>]` | Wie bei `run`. |
 | `--agent local\|docker\|session`, `--timeout <minuten>`, `--max-steps <n>` | Wie bei `record`. |
 
+Nach der Übergabe wählt **F1** in der Werkbank einen Zustand: einen beliebigen Test dieser Umgebung (und optional den Schritt, bis zu dem er läuft). caw-ai beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
+
+Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner, der schon weg ist), frag im Chat: Claude kann den Klick optional machen. Was du übernimmst, steht sofort in der Testdatei. Beim Aufnehmen geht das direkt mit `click <ziel> --optional`.
+
 ## auth
 
 ```bash
@@ -200,6 +204,16 @@ npx caw-ai auth user --target dev
 ```
 
 Für `auth.type: storageState` (SSO, OAuth, MFA). Öffnet Chrome auf der Anmeldung. Du meldest dich von Hand an. Sobald `signedInSelector` erscheint, speichert caw-ai Cookies und Storage in `caw/.auth/<env>/<rolle>.json`. Erneut ausführen, wenn die Sitzung abläuft.
+
+## theme
+
+```bash
+npx caw-ai theme                 # Themes auflisten, aktives markiert
+npx caw-ai theme use phosphor    # eines wählen
+npx caw-ai theme check mein-theme  # Schema, Kontrast, Markenbreite, Schriften
+```
+
+Das Theme gehört dir, steht in `prefs.json` und gilt in allen Projekten. Eingebaut: `nacht` (Standard), `bernstein`, `phosphor`. Farben, Zeichen, Rabe und CRT-Look änderst du mit F7 in der Werkbank; eigene Themes sind Ordner neben `prefs.json`. Details: [themes/README.de.md](../themes/README.de.md).
 
 ## mcp
 

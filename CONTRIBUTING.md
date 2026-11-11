@@ -21,7 +21,7 @@ npm i -D ../caw-ai    # or pnpm add -D link:../caw-ai
 npx caw-ai doctor
 ```
 
-`examples/helpdesk` is a small app with a recorded test you can replay right away (`run create-ticket --target local`).
+`examples/errand` is a small todo app with a recorded test you can replay right away (`run first-errand --target local`).
 
 ## Layout
 
@@ -34,7 +34,8 @@ npx caw-ai doctor
 | `templates/` | Files `init` writes into a project (config, skill, Docker sandbox) |
 | `test/` | Unit tests (`node --test`) |
 | `e2e/` | End-to-end run against a fake app in a real Chrome |
-| `assets/mascot/` | Crow sprite sheet from Blender via Pixor (work in progress, not used yet), see its README (needs Blender and Pixor, not part of the package) |
+| `assets/fonts/` | Fonts of the built-in themes (OFL) |
+| `themes/` | Built-in theme packages and the schema, see `themes/README.md` |
 
 ## Pull requests
 

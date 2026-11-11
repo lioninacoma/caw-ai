@@ -7,7 +7,7 @@ import { after, before, test } from 'node:test';
 
 import { chromium } from 'playwright-core';
 
-import { buildSuggestions, explore, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
+import { buildSuggestions, explore, keepStable, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
 import { answersFromExplore, starterConfig } from '../src/host/commands.mjs';
 import { validateConfig } from '../src/shared/config.mjs';
 
@@ -32,7 +32,7 @@ test('explore: Anmeldeformular, stabile Selektoren und Marke für angemeldet aus
     if (browser === null) return t.skip('kein Chrome');
     await page.setContent(LOGIN);
     const login = await page.evaluate(surveyPage, 600);
-    assert.deepEqual(login.login, { userSelector: '#email', passwordSelector: '#pw', submitSelector: '[data-testid="login-submit"]', submitText: 'Anmelden' });
+    assert.deepEqual(login.login, { userSelector: '#email', passwordSelector: '#pw', submitSelector: '[data-testid="login-submit"]', submitText: 'Anmelden', submitsWithEnter: true });
     assert.deepEqual(login.messages, ['[role=alert]']);
     await page.setContent(HOME);
     const home = await page.evaluate(surveyPage, 600);
@@ -43,6 +43,35 @@ test('explore: Anmeldeformular, stabile Selektoren und Marke für angemeldet aus
     assert.equal(signedIn.selector, 'nav[aria-label="Haupt"]', 'die benannte Hauptnavigation steht auf jeder Seite');
     assert.equal(signedIn.confidence, 'certain');
     assert.ok(signedIn.alternatives.some(({ selector }) => selector === '[data-testid="user-menu"]'));
+});
+
+// Wie manche Portale: Absendeknopf mit zufaelligem Kuerzel je Laden, Seitenmenue nur fuer Konten mit Verwaltungsrechten, Zustand am body.
+const portal = (suffix, signedIn) => `<form id="login-form">
+  <input id="portlet_login" type="text"><input id="portlet_password" type="password">
+  <button type="submit" id="portlet_${suffix}">Anmelden</button></form>
+  <button class="product-menu-toast-toggle">2</button><div class="portlet-toast">Hinweis</div>
+  <script>${signedIn ? "document.body.classList.add('signed-in')" : "document.body.classList.add('signed-out')"}</script>`;
+
+test('explore: zufällige Kennungen fallen beim zweiten Laden weg, Zustand am body schlägt Menüs', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    await page.setContent(portal('kmvu', false));
+    const first = await page.evaluate(surveyPage, 600);
+    assert.equal(first.login.submitSelector, '#portlet_kmvu', 'einzeln sieht das Kuerzel stabil aus');
+    assert.ok(first.messages.includes('.portlet-toast'));
+    assert.ok(!first.messages.includes('.product-menu-toast-toggle'), 'ein Knopf ist keine Meldung');
+    await page.setContent(portal('qzxa', false));
+    const stable = keepStable(first, await page.evaluate(surveyPage, 600));
+    assert.equal(stable.login.submitSelector, null);
+    assert.equal(stable.login.userSelector, '#portlet_login');
+    assert.ok(!stable.markers.some(({ selector }) => selector === '#portlet_kmvu'));
+    const after = { url: 'https://portal.example/home', markers: [{ selector: '#product-menu-toggle', text: '', tag: 'button' }], stateClasses: ['body.signed-in'] };
+    const signedIn = suggestSignedIn(stable, after);
+    assert.equal(signedIn.selector, 'body.signed-in');
+    assert.equal(signedIn.why, 'Zustand an html/body, für jedes Konto gleich');
+    // Enter sendet das Formular: kein submitSelector im Vorschlag.
+    const form = buildSuggestions({ url: 'https://portal.example/', seen: { before: first, loginPage: first, after } });
+    assert.equal(form.auth.submitSelector, undefined);
+    assert.equal(form.auth.signedInSelector, 'body.signed-in');
 });
 
 test('explore: Vorschläge für Formular, SSO und ohne Anmeldung; Konsolenrauschen ohne Zahlen', () => {
@@ -105,14 +134,15 @@ test('explore: Ablauf mit Fake-Browser schreibt nur caw/.explore.json', async (t
         goto: async () => {},
         waitForLoadState: async () => {},
         on: () => {},
-        evaluate: async () => surveys.shift(),
+        // Die Umfrage liefert die Seiten der Reihe nach; die Abfrage des Formulars sieht eine fertige Seite ohne Passwortfeld.
+        evaluate: async (fn) => (fn === surveyPage ? surveys.shift() : { form: false, loaded: true }),
     };
     const { createServer } = await import('node:http');
     const server = createServer((req, res) => res.end('ok'));
     await new Promise((ok) => { server.listen(0, '127.0.0.1', ok); });
     t.after(() => server.close());
     const url = `http://127.0.0.1:${server.address().port}/`;
-    const code = await explore(root, ['--url', url, '--yes'], { open: async () => ({ page: fakePage, consoleErrors: [], foreignHosts: new Set(), close: async () => { closed = true; } }), wait: async () => {}, detect: () => 'web' });
+    const code = await explore(root, ['--url', url, '--yes'], { open: async () => ({ page: fakePage, consoleErrors: [], foreignHosts: new Set(), close: async () => { closed = true; } }), wait: async () => {}, ask: async () => true, detect: () => 'web' });
     assert.equal(code, 0);
     assert.ok(closed);
     const written = JSON.parse(readFileSync(join(root, 'caw/.explore.json'), 'utf8'));

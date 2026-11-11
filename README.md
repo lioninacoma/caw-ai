@@ -12,24 +12,24 @@ English · [Deutsch](README.de.md)
 >
 > *Constrained* because the agent has limits: Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials, and every recording ends with a plan you approve.
 
-![caw-ai replays a recorded test of a small todo app at phone width, without AI: the raven follows each step, then lands on the chat with a question](docs/media/demo.webp)
+<img src="docs/media/demo.webp" width="720" alt="caw-ai records a test of the Errand example: Claude proposes the test plan, works through it in the app and answers a question in the chat; then caw-ai replays the recording without AI and the plan is adopted">
 
 Each step describes an action and the expected result:
 
 ```yaml
-# caw/tests/create-ticket.yaml
+# caw/tests/first-errand.yaml
 steps:
-  - id: S2
-    name: Create a ticket
-    do: Create a new ticket "Printer offline {{runTag}}" for customer "Acme Corp" with priority "High".
-    expect: A confirmation shows the number of the new ticket.
+  - id: S1
+    name: Add a todo
+    do: Add the todo "Feed the raven {{runTag}}" with the tag "#home".
+    expect: A confirmation shows the number of the new todo, and it is at the top of the list.
 ```
 
 Record once, then replay:
 
 ```bash
-npx caw-ai record create-ticket --target local   # Claude performs the steps in Chrome, you approve the result
-npx caw-ai run create-ticket --target local      # replays the recording, without Claude
+npx caw-ai record first-errand --target local   # Claude performs the steps in Chrome, you approve the result
+npx caw-ai run first-errand --target local      # replays the recording, without Claude
 ```
 
 ## How it works
@@ -37,6 +37,7 @@ npx caw-ai run create-ticket --target local      # replays the recording, withou
 - Tests are YAML files with steps in plain language. While recording, Claude performs each step in Chrome and stores the targets by role, label and text, not as CSS selectors.
 - A replay uses only the recording. It is deterministic and uses no tokens, locally and in CI.
 - If a step fails, the chat next to the app shows the cause. `fix` re-records only that step.
+- After a run the window is yours: F1 restores the state of any test in a fresh session, and Claude in the chat can use the page, reproduce a pasted bug ticket and propose the fix in your code.
 - Failures are classified as test, app or environment, based on requests, console output and the page changes seen during recording.
 - Claude controls the browser through a fixed set of commands, reaches only the configured hosts and does not get the credentials.
 - Supported: plain web apps, React, Vue, Angular and ExtJS.
@@ -85,7 +86,7 @@ npx caw-ai record smoke --target local
 npx caw-ai run smoke --target local
 ```
 
-[`examples/helpdesk`](examples/helpdesk) contains a small sample app with a test.
+[`examples/errand`](examples/errand) is a small todo app with sign-in and a recorded test you can replay right away; see [`examples`](examples).
 
 ### Common commands
 
@@ -100,6 +101,7 @@ npx caw-ai run smoke --target local
 | Test local code inside a deployed environment | `caw-ai run <test> --target dev --overlay` |
 | Let Claude explain failures right away | `caw-ai run <test> --target local --advise` |
 | Check config and tests | `caw-ai validate` |
+| Pick a theme (F7 in the workbench to change one) | `caw-ai theme use phosphor` |
 
 Exit codes: `0` pass, `1` fail, `2` environment error, `3` invalid input, `4` needs recording. All commands and options: [docs/commands.md](docs/commands.md).
 
@@ -120,6 +122,34 @@ With `CI` set there is no chat and Claude is not started. Record and fix locally
 /caw-ai record a test for creating a ticket
 /caw-ai take me to the ticket detail page, I want to work on the status field
 ```
+
+## After the run
+
+The window stays open, signed in, in the state the test reached. From there:
+
+### Restore a state
+
+F1 lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account and replays up to there.
+
+<img src="docs/media/states.webp" width="720" alt="The F1 dialog &quot;Choose state&quot; lists the test first-errand with its steps S1 to S4">
+
+### Develop
+
+Pick an element in the app and ask about it. Claude reads your source code and answers with file and line. Against your dev server, or with `--overlay` your local code over a deployed environment; F5 loads your change.
+
+<img src="docs/media/develop.webp" width="720" alt="An element is picked in the app; Claude explains in the chat why &quot;Add todo&quot; is disabled, with server.mjs:134">
+
+### Fix a bug with Claude
+
+Paste a bug ticket into the chat. Claude reproduces it in the reached state, names the cause and proposes the fix as a change to your code; "Apply change" writes it.
+
+<img src="docs/media/bugfix.webp" width="720" alt="Claude reproduces a search bug and proposes a code change to server.mjs with an &quot;Apply change&quot; button">
+
+### Theming
+
+Three built-in themes, or your own: F7 opens the editor for colors, glyphs, the raven and the CRT look.
+
+<img src="docs/media/themes.webp" width="720" alt="The same workbench in the themes nacht, bernstein and phosphor">
 
 ## Config
 
@@ -162,6 +192,7 @@ It uses Playwright to drive your installed Chrome. You don't write Playwright co
 - [Configuration](docs/configuration.md): `caw.config.json`, login types, `caw/.env`, `caw/caw.md`
 - [Test files](docs/test-files.md): test plan and recording format, placeholders
 - [Guide](docs/guide.md): agents, workbench, chat, failure assessment, sandbox
+- [Themes](themes/README.md): built-in themes, own theme packages, `caw-ai theme`
 
 ## Contributing
 

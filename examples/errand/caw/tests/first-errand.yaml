@@ -1,0 +1,26 @@
+# Example test, recording included (caw/recordings/first-errand.yaml). Replay it with: npx caw-ai run first-errand --target local
+id: first-errand
+app: web
+role: user
+targets: [local]
+mutates: true
+notes: |-
+  Someone jots down an errand on their phone, finds it again, ticks it off and plans it for tomorrow.
+
+steps:
+  - id: S1
+    name: Add a todo
+    do: Add the todo "Feed the raven {{runTag}}" with the tag "#home".
+    expect: A confirmation shows the number of the new todo, and it is at the top of the list.
+  - id: S2
+    name: Find it
+    do: Search the list for "{{runTag}}".
+    expect: Exactly one todo is listed, tagged "#home" and not done.
+  - id: S3
+    name: Tick it off
+    do: Tick the todo off.
+    expect: It is struck through and the progress ring counts it as done.
+  - id: S4
+    name: Plan it
+    do: Open the todo and move it to "Tomorrow".
+    expect: 'The todo shows "When: Tomorrow".'

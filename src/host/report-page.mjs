@@ -1,7 +1,9 @@
-// Der Bericht als Seite im Pixel-Theme: Aus dem Chat öffnet „Bericht öffnen“ ihn in einem neuen Reiter desselben Browsers.
+// Der Bericht als Seite im Konsolen-Stil: Aus dem Chat öffnet „Bericht öffnen“ ihn in einem neuen Reiter desselben Browsers.
 // Es reicht das Markdown, das renderReport schreibt: Überschriften, Absätze, Listen, Tabellen, `Code` und **fett**.
+// Lesetext bleibt scharf in der Textschrift; nur Überschriften, Marken und Legende tragen Anzeigeschrift und Leuchten.
 import { language, t } from '../shared/i18n.mjs';
-import { FAVICON, FONT_FACES, PAGE_BG, PIXEL_CSS, TOKENS, ring } from './theme.mjs';
+import { activeTheme } from '../shared/theme-package.mjs';
+import { CONSOLE_CSS, FAVICON, themeAttr, themeCss, themeStyle } from './theme.mjs';
 
 const escape = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const inline = (text) => escape(text)
@@ -9,9 +11,22 @@ const inline = (text) => escape(text)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim());
 const STATUS = /^(pass|fail|error|skipped|warn)$/;
+// Welche Marke des Themes zu welchem Status gehoert.
+const MARK = { pass: 'ok', fail: 'fail', error: 'fail', warn: 'warn', skipped: 'open' };
+const FALLBACK = { ok: '[  OK  ]', fail: '[ FAIL ]', warn: '[ WARN ]', open: '[      ]' };
+const text = (value, fallback) => (typeof value === 'string' && value !== '' ? value : fallback);
 
-/** Markdown aus renderReport als HTML-Körper. */
-export const reportBody = (markdown) => {
+/**
+ * Markdown aus renderReport als HTML-Körper.
+ * @param marks        die Statusmarken des Themes ({ ok, fail, warn, open }); ohne: schlichte Vorgaben
+ * @param failInverted Fehler invertiert (Hintergrund fail)
+ */
+export const reportBody = (markdown, { marks = {}, failInverted = true } = {}) => {
+    const mark = (status) => {
+        const kind = MARK[status];
+        const inverted = kind === 'fail' && failInverted ? ' inverted' : '';
+        return `<span class="st st-${status}"><span class="tag tag-${kind}${inverted}">${escape(text(marks[kind], FALLBACK[kind]))}</span> ${status}</span>`;
+    };
     const lines = String(markdown).replace(/\r\n/g, '\n').split('\n');
     const out = [];
     let i = 0;
@@ -29,7 +44,7 @@ export const reportBody = (markdown) => {
                 rows.push(cells(lines[i]));
                 i += 1;
             }
-            const td = (cell) => (STATUS.test(cell) ? `<td><span class="st st-${cell}">${cell}</span></td>` : `<td>${inline(cell)}</td>`);
+            const td = (cell) => (STATUS.test(cell) ? `<td>${mark(cell)}</td>` : `<td>${inline(cell)}</td>`);
             out.push(`<div class="table"><table><thead><tr>${head.map((cell) => `<th>${inline(cell)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map(td).join('')}</tr>`).join('')}</tbody></table></div>`);
         } else if (/^\s*[-*] /.test(line)) {
             const items = [];
@@ -50,32 +65,42 @@ export const reportBody = (markdown) => {
         } else if (line.trim() === '') {
             i += 1;
         } else {
-            const text = [];
+            const paragraph = [];
             while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,3} |\s*\||\s*[-*] |```)/.test(lines[i])) {
-                text.push(lines[i]);
+                paragraph.push(lines[i]);
                 i += 1;
             }
-            out.push(`<p>${inline(text.join(' '))}</p>`);
+            out.push(`<p>${inline(paragraph.join(' '))}</p>`);
         }
     }
     return out.join('\n');
 };
 
-/** Die ganze Seite. theme: 'light' | 'dark' | '' (System). */
-export const reportPage = ({ markdown, path = '', theme = '' }) => `<!doctype html><html lang="${language()}"${theme === 'light' || theme === 'dark' ? ` data-theme="${theme}"` : ''}><head><meta charset="utf-8"><title>caw-ai · ${t('workbench.report.title')}</title>${FAVICON}<style>
-${FONT_FACES}${TOKENS}${PIXEL_CSS}
+/** Die ganze Seite im aktiven Theme. */
+export const reportPage = ({ markdown, path = '', theme = activeTheme() }) => {
+    const title = t('workbench.report.title');
+    const legend = text(theme.legend, '┤ {title} ├').split('{title}').join(title.toUpperCase());
+    return `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw-ai · ${escape(title)}</title>${FAVICON}<style>
+${themeCss(theme)}${CONSOLE_CSS}
 *{box-sizing:border-box}
-body{margin:0;${PAGE_BG};color:var(--text);font:var(--fs-body)/1.5 var(--font-body)}
-main{max-width:1100px;margin:24px auto;padding:24px 28px;background:var(--surface);box-shadow:${ring('3px', 'var(--frame)')},6px 6px 0 var(--shadow)}
-.path{margin:0 0 6px;font:var(--fs-meta) var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);overflow-wrap:anywhere}
-h1{margin:0 0 12px;font:400 22px/1.3 var(--font-deco)}h2{margin:28px 0 8px;font:500 15px var(--font-ui);letter-spacing:.06em;text-transform:uppercase}h3{margin:20px 0 6px;font-size:15px}
-p,ul{margin:0 0 12px}li{margin:2px 0}
-code,pre{font:13px/1.45 var(--font-mono);background:var(--surface-2)}code{padding:1px 4px}pre{padding:10px 12px;overflow:auto;box-shadow:${ring('2px', 'var(--line)')}}
-.table{overflow:auto;margin:0 0 14px;box-shadow:${ring('2px', 'var(--frame)')}}
-table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:7px 10px;text-align:left;vertical-align:top;border-top:2px solid var(--line)}
-th{border-top:0;background:var(--surface-2);font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+html{background:var(--page)}
+body{margin:0;padding:28px 16px;color:var(--text);font:var(--fs-body,14px)/1.55 var(--font-body)}
+.case{max-width:1100px;margin:0 auto;padding:14px}
+.screen{padding:22px 16px 16px}
+main{padding:22px 24px 18px}
+.path{margin:0 0 10px;font:12px var(--font-ui);color:var(--muted);overflow-wrap:anywhere}
+h1,h2,h3{font-family:var(--font-crt);font-weight:400;text-shadow:0 0 8px var(--glow)}
+h1{margin:0 0 14px;font-size:30px;line-height:1.1;color:var(--accent)}
+h2{margin:26px 0 8px;font-size:24px;line-height:1.1;color:var(--accent)}
+h3{margin:18px 0 6px;font-size:21px;line-height:1.1;color:var(--text)}
+p,ul{margin:0 0 12px}li{margin:2px 0}li::marker{color:var(--faint)}
+code,pre{font:13px/1.45 var(--font-mono);background:var(--screen)}code{padding:1px 4px;color:var(--info)}pre{padding:10px 12px;overflow:auto;box-shadow:inset 0 0 0 2px var(--line)}
+strong{font-weight:500;color:var(--text)}
+.table{overflow:auto;margin:0 0 14px;border:2px solid var(--frame)}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 10px;text-align:left;vertical-align:top;border-top:2px solid var(--line)}
+th{border-top:0;background:var(--pane-2);font:400 18px/1.1 var(--font-crt);color:var(--muted)}
 td{overflow-wrap:anywhere}
-.st{display:inline-block;padding:1px 6px;font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--icon-ink)}
-.st-pass{background:var(--ok)}.st-fail,.st-error{background:var(--fail)}.st-warn{background:var(--warn)}.st-skipped{background:var(--pending)}
-@media (max-width:700px){main{margin:0;padding:16px}}
-</style></head><body><main>${path ? `<p class="path">${escape(path)}</p>` : ''}${reportBody(markdown)}</main></body></html>`;
+.st{white-space:nowrap;color:var(--muted)}.st .tag{font-size:18px}
+@media (max-width:700px){body{padding:0}.case{padding:6px}main{padding:16px 12px}}
+</style>${themeStyle(theme)}</head><body><div class="case crt-case"><div class="screen crt"><main class="win readable"><span class="lg glow">${escape(legend)}</span>${path ? `<p class="path">${escape(path)}</p>` : ''}${reportBody(markdown, { marks: theme.marks, failInverted: theme.failInverted !== false })}</main></div></div></body></html>`;
+};

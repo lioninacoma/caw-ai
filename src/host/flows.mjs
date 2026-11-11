@@ -23,6 +23,8 @@ const CLOSE = button('close', 'run.button.close');
 const ASK = button('ask', 'run.button.ask', { primary: true });
 // Nur die Wirkung weicht ab, die Pruefung ist erfuellt: Die gelernte Wirkung vergessen, ohne Claude und ohne Tokens.
 const FORGET_EFFECT = button('forget-effect', 'run.button.forgetEffect');
+// Nur Skriptfehler, etwa aus fremdem Code: in consoleIgnore eintragen und gleich neu pruefen, ohne Claude und ohne Tokens.
+const IGNORE_ERRORS = button('ignore-errors', 'run.button.ignoreErrors', { primary: true });
 const ONLY_CLOSE = button('close', 'run.button.onlyClose', { primary: true });
 // Nach der Uebergabe, beim Entwickeln im hergestellten Zustand.
 const RESTORE = button('restore', 'run.button.restore', { primary: true });
@@ -114,7 +116,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
          * @returns { advice, target, repaired, ask, forget }: `advice` aus dem Gespraech oder null; `forget`: die gelernte Wirkung dieses Schritts vergessen; `target` wird mit Vorlauf behoben; `repaired`
          *          ist schon im selben Browser behoben; `ask`: Claude soll die Ursache suchen und empfehlen
          */
-        settle: async ({ failed, chat, verdict, talk, repairHere }, spec, { canAsk = false, repeated = false } = {}) => {
+        settle: async ({ failed, chat, verdict, talk, repairHere, ignore, cleared }, spec, { canAsk = false, repeated = false } = {}) => {
             const { diagnosis } = failed;
             const app = diagnosis?.side === 'app';
             let hint = failed.suspect ? t('run.flow.suspect') : '';
@@ -148,10 +150,23 @@ const createFixer = ({ sandbox, openSandbox }) => {
             if (repeated) options = canAsk ? [ASK, secondary(FIX), CLOSE] : [{ ...CLOSE, primary: true }, secondary(FIX)];
             const effectOnly = isEffectCause(failed.reason);
             if (effectOnly) options = [secondary(FORGET_EFFECT), ...options];
+            // Nur Skriptfehler: Ignorieren steht vorn, Beheben ueber Claude bleibt moeglich.
+            if (ignore !== undefined) options = [IGNORE_ERRORS, ...options.map(secondary)];
+            /** Die Config erlaubt jetzt alle harten Fehler: Ein Pruefdurchlauf ohne Claude genuegt, kein Beheben. */
+            const recheck = async (advice) => {
+                chat.notice(t('run.flow.ignoredRecheck'));
+                return { advice, target: null, recheck: true };
+            };
             let talker = null;
             for (;;) {
-                const answer = await chat.discuss(question, options, question === undefined ? undefined : card);
+                // Uebernimmt der Mensch im Gespraech eine Aenderung an der Config, die alle Fehler erlaubt, geht es ohne weiteren Klick weiter.
+                const changed = talker === null || talker.over() || talker.configChanged === undefined ? null : talker.configChanged().then(() => ({ configChanged: true }));
+                const answer = await Promise.race([chat.discuss(question, options, question === undefined ? undefined : card), ...(changed === null ? [] : [changed])]);
                 question = undefined;
+                if (answer?.configChanged === true) {
+                    if (cleared?.() === true) return recheck(await talker.end());
+                    continue;
+                }
                 if (answer?.message !== undefined) {
                     if (talk === undefined) continue;
                     if (talker !== null && !talker.over()) {
@@ -163,12 +178,21 @@ const createFixer = ({ sandbox, openSandbox }) => {
                     continue;
                 }
                 const advice = talker === null ? null : await talker.end();
+                if (answer?.choice === IGNORE_ERRORS.id) {
+                    const added = ignore();
+                    if (added.length > 0) chat.notice(t('run.flow.ignoredErrors', { patterns: added.join(', '), config: CONFIG_FILE }));
+                    return recheck(advice);
+                }
                 if (answer?.choice === FORGET_EFFECT.id) return { advice, target: null, forget: failed.id };
                 if (answer?.choice === ASK.id) return { advice, target: null, ask: true };
                 if (answer?.choice !== FIX.id) return { advice, target: null };
                 if (await open(chat, cannotFix(chat)) === null) return { advice, target: null };
-                if (repairHere === undefined) return { advice, target: failed };
-                const repaired = await repairHere({ sandbox: box, reason: failed.reason });
+                // Beheben startet einen neuen Claude: Er bekommt das Gespraech und die harten Fehler, damit Vereinbartes gilt.
+                const agreed = talker?.log?.() ?? [];
+                const failures = verdict?.failures ?? [];
+                const context = { ...(agreed.length === 0 ? {} : { agreed }), ...(failures.length === 0 ? {} : { failures }) };
+                if (repairHere === undefined) return { advice, target: { ...failed, ...context } };
+                const repaired = await repairHere({ sandbox: box, reason: failed.reason, ...context });
                 if (repaired.candidate === undefined) {
                     await chat.choose('deciding', t('run.flow.noNewRecording', { id: failed.id, reason: failureText(repaired.verdict) }), [ONLY_CLOSE]);
                 }
@@ -284,7 +308,9 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
             concluded.chat.notice(forgottenText(settled.forget));
         }
         if (settled.target !== null || settled.repaired !== undefined) fixedBefore.add(key);
-        const changed = await absorb(settled.advice, concluded.chat, { offer: settled.target === null && settled.repaired === undefined });
+        const changed = await absorb(settled.advice, concluded.chat, { offer: settled.target === null && settled.repaired === undefined && settled.recheck !== true });
+        // Die Fehler sind jetzt erlaubt: kein Beheben, nur ein neuer Pruefdurchlauf.
+        if (settled.recheck === true) return { next: null, repaired: null, recheck: true };
         return { next: settled.target ?? changed, repaired: settled.repaired?.candidate === undefined ? null : settled.repaired };
     };
     const lostAdvice = () => {
@@ -292,13 +318,14 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
     };
     for (;;) {
         if (next !== null) {
-            const { id, reason, rerecord, diagnosis, evidence } = next;
+            const { id, reason, rerecord, diagnosis, evidence, agreed, failures } = next;
             advising = true;
             let offered = null;
+            let rechecking = false;
             const repaired = await execute({
                 sandbox: fixer.sandbox(),
                 spec: current,
-                repair: { id, reason, ...(rerecord ? { rerecord } : {}), ...(diagnosis === undefined ? {} : { diagnosis, evidence }) },
+                repair: { id, reason, ...(rerecord ? { rerecord } : {}), ...(diagnosis === undefined ? {} : { diagnosis, evidence }), ...(agreed === undefined ? {} : { agreed }), ...(failures === undefined ? {} : { failures }) },
                 conclude: async (concluded) => {
                     const { verdict, candidate, failed, chat, repairAdvice } = concluded;
                     // Als Naechstes prueft ein Lauf ohne Claude, in einem neuen Fenster.
@@ -306,25 +333,29 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     // Hat Claude beim Beheben schon empfohlen, etwa eine Aenderung an der Anwendung, startet es dafuer nicht noch einmal.
                     offered = repairAdvice === undefined ? await takeAdvice(concluded) : await absorb(repairAdvice, chat);
                     if (offered !== null) return { next: 'claude' };
-                    if (failed) ({ next: offered } = await settle(concluded));
+                    if (failed) ({ next: offered, recheck: rechecking = false } = await settle(concluded));
                     else await chat.choose('deciding', t('run.flow.noNewRecording', { id, reason: failureText(verdict) }), [ONLY_CLOSE]);
+                    if (rechecking) return { next: 'check' };
                     return offered === null ? undefined : { next: 'claude' };
                 },
             });
             next = offered;
             if (next !== null) continue;
-            if (repaired.candidate === undefined) {
+            if (repaired.candidate !== undefined) {
+                current = repaired.candidate;
+                seen.push(...hardFailures(repaired.verdict));
+                changes.push(changeOf({ id, reason, rerecord, ...repaired }));
+            } else if (!rechecking) {
                 lostAdvice();
                 return repaired.exitCode;
             }
-            current = repaired.candidate;
-            seen.push(...hardFailures(repaired.verdict));
-            changes.push(changeOf({ id, reason, rerecord, ...repaired }));
+            // Sonst scheiterte das Beheben nur an Fehlern, die jetzt erlaubt sind: Der Pruefdurchlauf zeigt, ob der Test so besteht.
         }
 
         let choice = null;
         let offered = null;
         let repairedHere = null;
+        let rechecking = false;
         // Die geschriebene Testdatei: Uebernommen wird gleich nach der Wahl, damit der Chat sie noch nennen kann.
         let saved = null;
         const played = await execute({
@@ -354,16 +385,29 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     return { outcome: t('run.flow.discarded') };
                 }
                 if (failed) {
-                    ({ next: offered, repaired: repairedHere } = await settle(concluded));
+                    ({ next: offered, repaired: repairedHere, recheck: rechecking = false } = await settle(concluded));
+                    if (rechecking) return { next: 'check' };
                     if (offered !== null) return { next: 'claude' };
                     return repairedHere === null ? undefined : { next: 'check' };
                 }
-                await chat.choose('deciding', t('run.flow.checkFailed', { reason: failureText(verdict), findings: findingsText(verdict) }), [ONLY_CLOSE]);
+                // Alle Schritte bestanden, aber harte Fehler: Sind es nur Skriptfehler, lassen sie sich ignorieren und der Lauf wiederholen.
+                const ignorable = concluded.ignore !== undefined;
+                const answer = await chat.choose('deciding', t('run.flow.checkFailed', { reason: failureText(verdict), findings: findingsText(verdict) }),
+                    ignorable ? [IGNORE_ERRORS, { ...ONLY_CLOSE, primary: false }] : [ONLY_CLOSE]);
+                if (ignorable && answer === IGNORE_ERRORS.id) {
+                    const added = concluded.ignore();
+                    if (added.length > 0) chat.notice(t('run.flow.ignoredErrors', { patterns: added.join(', '), config: CONFIG_FILE }));
+                    chat.notice(t('run.flow.ignoredRecheck'));
+                    rechecking = true;
+                    return { next: 'check' };
+                }
                 return undefined;
             },
         });
         next = offered;
         if (next !== null) continue;
+        // Die Fehler sind jetzt erlaubt: derselbe Stand noch einmal, ohne Claude.
+        if (rechecking) continue;
         if (repairedHere !== null) {
             // Im selben Browser behoben: Der naechste Pruefdurchlauf zeigt, ob es auch ohne Claude geht.
             current = carry(repairedHere.candidate, current, repairedHere.id);
@@ -451,7 +495,7 @@ export const runFlow = async (options) => {
              * @param onRefresh  meldet der Werkbank, wer aktualisiert (null: gesperrt)
              * @param onReload   nach dem Neuladen der ganzen Werkbank; liefert die Abmeldung
              */
-            develop: async ({ chat, talk, until: state, refresh, restore, onRefresh, onReload, toCode }) => {
+            develop: async ({ chat, talk, until: state, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState }) => {
                 let talker = null;
                 const at = state === undefined ? t('run.develop.atEnd') : t('run.develop.atState', { state });
                 // open: keine Schritte, also nichts neu herzustellen; nur Aktualisieren und Fragen.
@@ -472,8 +516,20 @@ export const runFlow = async (options) => {
                         chat.notice(t('run.develop.attemptFailed', { what, message: String(error?.message ?? error).split(/\r?\n/)[0] }));
                     }
                 };
+                // Herstellen nacheinander: Wer mit F1 einen Zustand waehlt, waehrend „Zustand neu herstellen“ laeuft, wartet, bis der fertig ist.
+                let queue = Promise.resolve();
+                const serial = (work) => {
+                    queue = queue.then(work, work);
+                    return queue;
+                };
                 onRefresh?.(() => attempt(t('run.develop.refresh'), refresh));
-                const offReload = onReload?.(() => { chat.notice(t('run.develop.benchReloaded', { at, restore: RESTORE.label })); });
+                // Neu laden gehoert beim Entwickeln dazu (F5, hart neu laden mit leerem Cache): keine Warnung, der Zustand ist dein Arbeitsstand.
+                const offReload = onReload?.(() => {});
+                // F1 in der Werkbank: einen Test (und optional den Schritt) waehlen, caw-ai stellt den Zustand hier her.
+                onPickState?.((test, step) => serial(async () => {
+                    chat.progress(t('run.develop.restoringOther', { test, step: step ?? t('run.develop.allSteps') }));
+                    await attempt(RESTORE.label, () => restoreTo(test, step));
+                }));
                 chat.onPicked?.((picked) => {
                     toCode(picked);
                     chat.notice(t('run.develop.picked', { label: picked.label }));
@@ -490,8 +546,10 @@ export const runFlow = async (options) => {
                     question = undefined;
                     if (answer === null || answer.choice === END_DEVELOP.id) return;
                     if (answer.choice === RESTORE.id) {
-                        chat.progress(t('run.develop.restoring'));
-                        await attempt(RESTORE.label, restore);
+                        await serial(async () => {
+                            chat.progress(t('run.develop.restoring'));
+                            await attempt(RESTORE.label, restore);
+                        });
                     } else if (answer.message !== undefined) {
                         if (talker !== null && !talker.over()) {
                             talker.send(answer.message, answer.element);
@@ -503,6 +561,7 @@ export const runFlow = async (options) => {
                 }
                 } finally {
                     onRefresh?.(null);
+                    onPickState?.(null);
                     offReload?.();
                     chat.onPicked?.(null);
                     // Auch bei Fenster zu oder Fehler: Claude laeuft nicht weiter und verbraucht keine Token.

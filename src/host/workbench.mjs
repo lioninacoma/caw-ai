@@ -1,34 +1,44 @@
-// Die Werkbank: eine Seite fuer den ganzen Lauf, drei Spalten im Pixel-Stil. Links Schritte und Zaehler, in der Mitte die
-// Anwendung im iframe mit Requests und Konsole darunter, rechts der Chat. Der Chat ist ein eigenes Dokument im selben Origin
+// Die Werkbank: eine Seite fuer den ganzen Lauf im Stil einer Konsole. Links Schritte mit Start-Log-Marken, in der Mitte die
+// Anwendung im iframe mit Requests und Konsole darunter, rechts der Chat. Unten die F-Tasten. Der Chat ist ein eigenes Dokument
 // (srcdoc), seine Seite bleibt die aus chat.mjs.
 //
-// Der Rabe aus dem Logo begleitet den Lauf: Er fliegt auf den aktuellen Schritt, zum Chat, wenn der Mensch gefragt ist, und am
-// Ende zurueck ins Logo. „Animationen aus“ in der Kopfzeile schickt ihn ins Logo und haelt dort alles still.
+// Aussehen und Zeichen kommen aus dem aktiven Theme-Paket (src/shared/theme-package.mjs): Farben, Marken, Spinner, Baum, Fortschritt,
+// Legenden, Rabe. Das Logo ist der ASCII-Rabe: Er blinzelt ab und an, ein Klick schickt Herzen hoch. Er fliegt nicht mehr.
+// F7 waehlt und bearbeitet Themes (eingebaute bleiben, wie sie sind; die erste Aenderung legt eine eigene Kopie an), F8 zeigt nur die
+// Anwendung im Vollbild, F10 haelt alles still.
 //
-// Aktualisieren (Knopf, F5, Klick aufs Logo) laedt nach der Uebergabe die aktuelle Seite der Anwendung ohne Cache neu; Chat und
-// Schritte bleiben, die Schritte zeigen danach „Zustand verlassen“. Solange der Test laeuft, ist Neuladen gesperrt: Es wuerde den
-// Zustand fuer die folgenden Schritte verfaelschen. Laedt jemand die ganze Werkbank neu, baut der Host sie wieder auf.
+// Aktualisieren (F5) laedt nach der Uebergabe die aktuelle Seite der Anwendung ohne Cache neu; Chat und Schritte bleiben, die
+// Schritte zeigen danach „Zustand verlassen“. Solange der Test laeuft, ist Neuladen gesperrt: Es wuerde den Zustand fuer die
+// folgenden Schritte verfaelschen. Laedt jemand die ganze Werkbank neu, baut der Host sie wieder auf. F11 und F12 bleiben bei Chrome.
 //
 // Die Anwendung teilt den Origin mit der Werkbank (top.Ext & Co.), nicht mit dem Chat: Der liegt sandboxed in einem opaken Origin,
 // und der Host kennt ihn als den Frame, den die Werkbank beim Laden angelegt hat, nie ueber seinen Namen. Ein nachgebautes iframe
 // namens caw-chat spricht darum nicht als Mensch. Aktualisieren darf die Anwendung ausloesen (F5 in ihr meldet sich ohnehin), es
-// greift erst nach der Uebergabe.
+// greift erst nach der Uebergabe. Themes speichern darf nur die Werkbank selbst, und nur, was das Schema besteht (nie CSS, nie Dateien).
 
-import { APP_FRAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, interceptDocuments, sourceTag } from './app-view.mjs';
+import { APP_FRAME, CHAT_FRAME_NAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, interceptDocuments, sourceTag } from './app-view.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
 import { readPrefs, writePref } from '../shared/prefs.mjs';
-import { RAVEN_CLIPS } from './raven-clips.mjs';
-import { FAVICON, FONT_FACES, PAGE_BG, PIXEL_CSS, RAVEN_SHEET, TOKENS, ring } from './theme.mjs';
+import { LONG_NAME } from '../shared/raven.mjs';
+import { BUILTIN_THEMES, THEME_KEYS, activeTheme, deleteTheme, listThemes, loadTheme, readThemePackage, renameTheme, saveTheme } from '../shared/theme-package.mjs';
+import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, clientTheme, ravenLogo, themeAttr, themeCss, themeStyle } from './theme.mjs';
 
-export const CHAT_FRAME = 'caw-chat';
+export const CHAT_FRAME = CHAT_FRAME_NAME;
 export const PREF_BINDING = 'cawPref';
 export const REFRESH_BINDING = 'cawRefresh';
+export const THEME_BINDING = 'cawTheme';
+/** Nur Anwendung (F8): das Fenster ins Vollbild oder zurueck. */
+export const FULLSCREEN_BINDING = 'cawFullscreen';
+/** Zustand waehlen (F1): einen Test bis zu einem Schritt herstellen. */
+export const STATE_BINDING = 'cawState';
 /**
  * Der Chat laeuft in einem sandboxed iframe ohne allow-same-origin, also mit eigenem, opakem Origin. Die Werkbank teilt sich den
  * Origin mit der Anwendung (damit top.Ext & Co. gehen). Ohne die Sandbox koennte die Anwendung den Chat erreichen und als Mensch
  * entscheiden, etwa eine Aenderung uebernehmen. So erreicht sie weder sein DOM noch sein Binding.
  */
 export const CHAT_SANDBOX = 'allow-scripts allow-forms';
+/** Tasten, die der Chat an die Werkbank weiterreichen darf. Mehr loest eine Nachricht aus dem Chat nicht aus. */
+export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F10'];
 const RELOADED_MS = 15000;
 /** Die Gruppe der Vorbereitung: Chrome, Anmelden, lokaler Code, Laden. */
 export const PREP = 'prep';
@@ -37,219 +47,269 @@ const MAX_ROWS = 300;
 // Ein Binding laesst sich je Seite nur einmal anlegen; je Seite merkt sich der Host, wer gerade aktualisiert.
 const benches = new WeakMap();
 
-/** Ein Pixelbild aus Zeilen ("X" = Pixel) als box-shadow eines 2-px-Elements. */
-// Hell und dunkel: Sonne und Mond als Pixelbild, je Zeile ein Rechteck pro gesetztem Pixel.
-const pixelSvg = (rows) => `<svg class="pixel-icon" viewBox="0 0 ${rows[0].length} ${rows.length}" shape-rendering="crispEdges" aria-hidden="true"><path d="${rows.flatMap((row, y) => [...row].map((cell, x) => (cell === 'X' ? `M${x} ${y}h1v1h-1z` : ''))).join('')}"/></svg>`;
-const SUN = pixelSvg(['....X....', '.X.....X.', '...XXX...', '..XXXXX..', 'X.XXXXX.X', '..XXXXX..', '...XXX...', '.X.....X.', '....X....']);
-const MOON = pixelSvg(['...XXXX..', '..XXX....', '.XXX.....', '.XXX.....', '.XXX.....', '.XXX.....', '.XXXX...X', '..XXXXXX.', '...XXXX..']);
-const pixels = (rows, color, size = 2) => rows.flatMap((row, y) => [...row].map((cell, x) => (cell === 'X' ? `${x * size}px ${y * size}px 0 ${color}` : null))).filter(Boolean).join(',');
-// Ein- und Ausklappen: ein einfacher Winkel, der in die Richtung zeigt, in die die Spalte geht.
-const chevron = (path) => `<svg class="panel-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="${path}"/></svg>`;
-const LEFT = chevron('M10 3.5 5.5 8l4.5 4.5');
-const RIGHT = chevron('M6 3.5 10.5 8 6 12.5');
-const STEPS_CLOSE = LEFT;
-const STEPS_OPEN = RIGHT;
-const CHAT_CLOSE = RIGHT;
-const CHAT_OPEN = LEFT;
-const HEART = pixels(['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'], 'var(--fail)');
-const CRUMB = pixels(['XX.', 'XXX'], 'var(--crumb)');
-const CLOUD = pixels(['....XXXX......', '..XXXXXXXX.XX.', '.XXXXXXXXXXXXX', 'XXXXXXXXXXXXXX', '.XXXXXXXXXXXX.'], 'var(--cloud)');
-const CONFETTI = ['var(--ok)', 'var(--primary)', 'var(--fail)', 'var(--warn)'];
-const CHECK = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.5 3.5L13 4.5' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
-const CROSS = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9' shape-rendering='crispEdges'%3E%3Cpath d='M2 2h1v1h1v1h1V3h1V2h1v1H6v1H5v1h1v1h1v1H6V6H5V5H4v1H3v1H2V6h1V5h1V4H3V3H2z'/%3E%3C/svg%3E\")";
-
-/** Der Platzhalter im Chat-Frame, bis der Chat kommt. In der aktuellen Sprache, darum erst beim Gebrauch. */
-const chatPlaceholder = () => `<!doctype html><html lang="${language()}"><meta charset="utf-8"><title>${t('workbench.chat')}</title><script>(()=>{addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;const theme=event.data.theme;if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme;else delete document.documentElement.dataset.theme;});try{parent.postMessage({caw:'theme-request'},'*');}catch{}})();${sourceTag}</script><style>${FONT_FACES}${TOKENS}
-body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--surface);color:var(--muted)}
-header{padding:14px 18px 14px 56px;border-bottom:var(--frame-w) solid var(--frame);font:500 var(--fs-label) var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
-p{flex:1;display:grid;place-items:center;margin:0;padding:24px;text-align:center;font:var(--fs-body)/1.5 var(--font-body)}</style>
-<header>Chat · Claude</header><p>${t('workbench.chatPlaceholder')}</p></html>`;
-
 const esc = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
+/** JSON fuer ein <script>: `<` kann es nicht beenden. */
+const json = (value) => JSON.stringify(value).replaceAll('<', '\\u003c');
+/** Eine Legende des Themes, etwa ┤ SCHRITTE ├. */
+const legend = (theme, title) => esc(String(theme.legend ?? '┤ {title} ├').replace('{title}', title));
+
+/** Der Platzhalter im Chat-Frame, bis der Chat kommt. In der aktuellen Sprache und im aktiven Theme, darum erst beim Gebrauch. */
+const chatPlaceholder = (theme = activeTheme()) => `<!doctype html><html lang="${language()}"${themeAttr(theme)}><meta charset="utf-8"><title>${t('workbench.chat')}</title><script>${APPLY_THEME_SCRIPT}
+addEventListener('message',(event)=>{if(event.source===parent&&event.data?.caw==='theme')cawApplyTheme(document.documentElement,event.data.theme);});try{parent.postMessage({caw:'theme-request'},'*');}catch{}${sourceTag}</script><style>${themeCss(theme)}
+body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--pane);color:var(--muted)}
+header{padding:10px 14px;border-bottom:2px solid var(--line);font:400 20px/1 var(--font-crt);color:var(--claude)}
+p{flex:1;display:grid;place-items:center;margin:0;padding:24px;text-align:center;font:var(--fs-body)/1.5 var(--font-body)}</style>
+<header>${esc(theme.prompt?.claude ?? 'claude>')}</header><p>${t('workbench.chatPlaceholder')}</p></html>`;
+
+/** Die Themes fuer den Dialog, je mit ihren Farben fuer das Muster. */
+export const themeList = (env = process.env) => listThemes(env).map((entry) => ({ ...entry, colors: loadTheme(entry.name, env)?.colors }));
+
+/**
+ * Was der Theme-Dialog der Werkbank tun darf: waehlen, speichern (nur eigene, nur was das Schema fuer die Seite erlaubt), loeschen,
+ * umbenennen. Die Wahl steht in prefs.json. @returns das Theme, das danach gilt
+ */
+export const themeAction = (action, payload, env = process.env) => {
+    const chosen = () => readPrefs(env).theme;
+    if (action === 'use') {
+        if (readThemePackage(payload, env) === undefined) throw new Error(`${payload}?`);
+        writePref('theme', payload, env);
+        return loadTheme(payload, env);
+    }
+    if (action === 'save') {
+        saveTheme(payload, env);
+        writePref('theme', payload.name, env);
+        return loadTheme(payload.name, env);
+    }
+    if (action === 'delete') {
+        const pkg = readThemePackage(payload, env);
+        deleteTheme(payload, env);
+        if (chosen() === payload) writePref('theme', BUILTIN_THEMES.includes(pkg?.base) ? pkg.base : BUILTIN_THEMES[0], env);
+        return activeTheme(env);
+    }
+    if (action === 'rename') {
+        renameTheme(payload?.from, payload?.to, env);
+        if (chosen() === payload.from) writePref('theme', payload.to, env);
+        return activeTheme(env);
+    }
+    throw new Error(`${action}?`);
+};
 
 /**
  * Die Seite der Werkbank. `appUrl` laedt das iframe, alles Weitere setzt der Host per `window.workbench`.
- * @param prefs  persoenliche Einstellungen: animations 'on' | 'off', steps und chat 'open' | 'closed'
+ * @param prefs   persoenliche Einstellungen: animations 'on' | 'off', steps und chat 'open' | 'closed'
+ * @param theme   das aktive Theme (aufgeloest); ohne: activeTheme()
+ * @param themes  die Liste fuer den Dialog (listThemes); ohne: eingebaute und eigene
  */
-export const workbenchHtml = ({ appUrl, title, prefs = {} }) => {
+export const workbenchHtml = ({ appUrl, title, prefs = {}, theme = activeTheme(), themes = themeList() }) => {
     const still = prefs.animations === 'off';
-    const theme = prefs.theme === 'light' || prefs.theme === 'dark' ? ` data-theme="${prefs.theme}"` : '';
     const classes = [still ? 'still' : '', prefs.steps === 'closed' ? 'fold-steps' : '', prefs.chat === 'closed' ? 'fold-chat' : ''].filter(Boolean).join(' ');
     const refreshTitle = t('workbench.refreshTitle');
-    return `<!doctype html><html lang="${language()}"${theme}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${FAVICON}<style>
-${FONT_FACES}${TOKENS}${PIXEL_CSS}
+    const test = String(title ?? '').replace(/^caw-ai\s*·?\s*/, '');
+    const key = (name, label, attrs = '', cls = '') => `<button type="button" class="fk${cls}"${attrs}><b>${name}</b>${label}</button>`;
+    const lg = (label) => `<span class="lg glow" data-title="${esc(label.toUpperCase())}">${legend(theme, label.toUpperCase())}</span>`;
+    return `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${FAVICON}<style>
+${themeCss(theme)}${CONSOLE_CSS}${RAVEN_CSS}
 *,*::before,*::after{box-sizing:border-box}html,body{height:100%;margin:0}
-body{${PAGE_BG};color:var(--text);font:var(--fs-body)/1.4 var(--font-body)}
-button{font:inherit;color:inherit}
-:focus-visible{outline:3px dashed var(--primary-text);outline-offset:3px}
-.pa{height:100vh;display:flex;flex-direction:column}
-.pa-header{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding:10px var(--gap-page);background:var(--surface);border-bottom:var(--frame-w) solid var(--frame)}
-.pa-logo{display:flex;align-items:center;gap:12px}
-.pa-logo__mark{position:relative;padding:8px 0 0;margin:0;border:0;background:none;cursor:pointer}
-.pa-logo__tile{display:block;position:relative;width:40px;height:40px;background:var(--surface)}
-.raven-away .pa-logo__tile::after{content:'';position:absolute;left:4px;top:4px;width:32px;height:32px;background:url(${RAVEN_SHEET}) no-repeat 0 0/${RAVEN_CLIPS.width * 32 / RAVEN_CLIPS.cell}px ${RAVEN_CLIPS.height * 32 / RAVEN_CLIPS.cell}px;image-rendering:pixelated;transform:scaleX(-1);opacity:.28}
-.raven-away .pa-logo__bubble{visibility:hidden}
-.pa-logo__bubble{position:absolute;left:24px;top:0;font:9px var(--font-deco);padding:1px 5px 2px;background:var(--primary);color:var(--primary-ink);box-shadow:${ring('2px', 'var(--bubble-frame)')}}
-.pa-logo__word{font:var(--fs-logo)/.85 var(--font-deco);padding-top:8px}
-#state{display:none}#state.on{display:inline-flex}
-.pa-meta{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none;min-width:0;flex:1 1 280px}
-.pa-chip{padding:4px 9px;font-size:14px;background:var(--surface-2);box-shadow:${ring('2px', 'var(--shadow)')};white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-.pa-chip__label{font:500 var(--fs-meta) var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:6px}
-.pa-tools{margin-left:auto;display:flex;align-items:center;gap:18px}#reload{padding:9px 12px}
-#theme{display:grid;place-items:center;width:38px;height:36px;padding:0}.pixel-icon{display:block;width:18px;height:18px;fill:currentColor}
-#notice{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;font:500 12px var(--font-ui);color:var(--muted);background:var(--surface-2);box-shadow:${ring('2px', 'var(--pending)')}}#notice::before{content:"";width:6px;height:6px;background:var(--pending)}#notice[hidden]{display:none}
-.left-state #steps,.left-state #progress{opacity:.45}
-#leftNote{margin:14px 2px 2px;padding:10px 12px;font-size:13px;line-height:1.45;color:var(--muted);background:var(--surface-2);box-shadow:${ring('2px', 'var(--pending)')}}#leftNote[hidden]{display:none}
-#leftNote strong{display:flex;align-items:center;gap:7px;margin-bottom:3px;font:500 12px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}#leftNote strong::before{content:"";width:6px;height:6px;background:var(--pending)}
-.pa-check{display:inline-flex;align-items:center;gap:8px;font:500 12px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);cursor:pointer;white-space:nowrap}.pa-check:hover{color:var(--text)}
-.pa-check input{appearance:none;display:grid;place-content:center;width:18px;height:18px;margin:0;background:var(--surface);box-shadow:${ring('2px', 'var(--frame)')};cursor:pointer}
-.pa-check input:checked{background:var(--primary)}.pa-check input:checked::after{content:"";width:14px;height:14px;background:var(--primary-ink);-webkit-mask:${CHECK} center/100% no-repeat;mask:${CHECK} center/100% no-repeat}
-.pa-main{flex:1;min-height:0;display:grid;gap:var(--gap-page);padding:var(--gap-page);
---col-steps:minmax(280px,320px);--col-chat:minmax(320px,400px);grid-template-columns:var(--col-steps) minmax(0,1fr) var(--col-chat);grid-template-rows:minmax(0,1fr);
+body{background:var(--page);color:var(--text);font:var(--fs-body)/1.45 var(--font-body)}
+button,input{font:inherit;color:inherit}
+.pa{height:100vh;padding:10px;display:flex}
+#bench{flex:1;min-width:0;display:flex;flex-direction:column;padding:10px 16px 0;box-shadow:inset 0 0 0 2px #000,inset 0 0 60px rgba(0,0,0,.6)}
+.top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;padding-bottom:10px;border-bottom:2px solid var(--line)}
+.id{display:flex;flex-direction:column;gap:2px;min-width:0}
+.id b{font:400 28px/1 var(--font-crt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.id b .cmd{color:var(--info)}
+.id>span{color:var(--muted);font-size:12px}
+.facts{display:flex;gap:4px 18px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:0;padding:0;list-style:none;min-width:0;flex:1 1 220px}
+.facts li{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}.facts b{color:var(--text);font-weight:500;margin-left:6px}
+.tools{margin-left:auto;display:flex;align-items:center;gap:10px}
+#state{display:none}#state.on{display:inline-flex}.px-pill--claude,#stateSpin.px-pill--claude{color:var(--claude)}
+#stateSpin{font:400 20px/1 var(--font-crt);color:var(--info)}#stateSpin[hidden]{display:none}
+#notice{font:400 19px/1 var(--font-crt);color:var(--warn)}#notice[hidden]{display:none}
+.panes{flex:1;min-height:0;display:grid;gap:14px;padding:20px 0 14px;
+--col-steps:minmax(270px,320px);--col-chat:minmax(300px,380px);grid-template-columns:var(--col-steps) minmax(0,1fr) var(--col-chat);grid-template-rows:minmax(0,1fr);
 grid-template-areas:"steps browser chat"}
-.pa-card{min-width:0}.pa-steps,.pa-chat{position:relative}
-/* Einklappen: ein Pfeil bündig in der Ecke zur Mitte hin, ohne Fläche und Rahmen. */
-.pa-fold{position:absolute;top:6px;z-index:3;display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;background:transparent;color:var(--muted);cursor:pointer}
-#stepsFold{right:6px}#chatFold{left:6px}.pa-fold:hover{color:var(--text);background:var(--surface-2)}
-.panel-icon{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.pa-steps .pa-card__head{padding-right:34px}
-.pa-strip{display:none;flex:1;width:100%;flex-direction:column;align-items:center;gap:12px;padding:14px 0;border:0;background:none;cursor:pointer;color:var(--text);font:500 12px var(--font-ui);letter-spacing:.08em;text-transform:uppercase}
-.pa-strip:hover{background:var(--surface-2)}.pa-strip span{writing-mode:vertical-rl}.pa-strip .panel-icon{color:var(--muted);margin-bottom:4px}.pa-strip:hover .panel-icon{color:var(--text)}
-.pa-steps{grid-area:steps;align-self:start;max-height:100%;min-height:0;display:flex;flex-direction:column;padding:var(--pad-card)}
-.pa-card__head{display:flex;justify-content:space-between;align-items:center;gap:8px}.pa-card__head .px-label{font-size:12px}
-.pa-muted{color:var(--muted)}
-#progress{margin:12px 0 2px}#progress:empty{display:none}
+.win{display:flex;flex-direction:column}
+.pa-steps{grid-area:steps;padding:16px 12px 10px}
+.pa-browser{grid-area:browser;padding:16px 10px 10px}
+.pa-chat{grid-area:chat;padding:14px 0 0}
+.fold{position:absolute;top:-13px;right:10px;z-index:3;border:0;cursor:pointer;background:var(--screen);color:var(--accent);font:400 22px/1 var(--font-crt);padding:0 6px}
+.fold:hover{color:var(--text)}
+.strip{display:none;border:0;cursor:pointer;background:none;color:var(--muted);font:400 22px/1 var(--font-crt);writing-mode:vertical-rl;padding:10px 0;align-items:center;gap:10px;width:100%;height:100%}
+.strip:hover{color:var(--text);background:var(--pane-2)}.strip b{font-weight:400;color:var(--accent)}
+#gauge{margin:2px 0 8px}#gauge:empty{display:none}
+.left-state #steps,.left-state #gauge{opacity:.45}
+#leftNote{margin:4px 0 8px;padding:8px 10px;font-size:13px;line-height:1.45;color:var(--muted);background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}#leftNote[hidden]{display:none}
+#leftNote strong{display:block;margin-bottom:3px;font:400 19px/1 var(--font-crt);color:var(--warn)}
+.hint{margin:6px 0;font-size:var(--fs-small);color:var(--faint)}#stepsHint[hidden]{display:none}
 /* Die Liste scrollt von selbst mit dem aktuellen Punkt, darum ohne Scrollbalken. Mausrad geht weiter. */
-#track{min-height:0;overflow:auto;margin:0 -6px 0 0;padding-right:6px;scrollbar-width:none}#track::-webkit-scrollbar{display:none}
-/* Variante B: Jede Gruppe (Vorbereitung, S1..Sn, Abschluss, Fehler klaeren) ist eine Zwischenueberschrift, darunter jede Aktion als Punkt.
-   Die Schiene laeuft durch alle Symbole, der Rabe landet auf jedem Punkt. */
+#track{flex:1;min-height:0;overflow:auto;scrollbar-width:none}#track::-webkit-scrollbar{display:none}
 #steps,#steps .pts{list-style:none;margin:0;padding:0}
-#steps{padding:8px 0 4px;position:relative}
-#steps::before{content:"";position:absolute;left:20px;width:4px;top:24px;bottom:18px;background:repeating-linear-gradient(var(--rail) 0 4px,transparent 4px 8px)}
-#steps .head{display:grid;grid-template-columns:44px 36px minmax(0,1fr) auto;align-items:center;min-height:44px;margin-top:6px}
+#steps .head{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:2px 4px;margin:6px -4px 0}
 #steps>li:first-child>.head{margin-top:0}
-#steps>li[data-kind=phase]>.head{grid-template-columns:44px minmax(0,1fr) auto}
-.step-icon{justify-self:center;width:18px;height:18px;position:relative;z-index:1;background:var(--surface)}
-.pt-icon{justify-self:center;width:12px;height:12px;position:relative;z-index:1;background:var(--surface)}
-#steps>li[data-state=waiting]>.head .step-icon,.pts>li[data-state=waiting] .pt-icon{box-shadow:inset 0 0 0 2px var(--pending)}
-#steps>li[data-state=skipped]>.head .step-icon,#steps>li[data-state=skipped] .pt-icon{box-shadow:inset 0 0 0 2px var(--pending);opacity:.45}
-#steps>li[data-state=running]>.head .step-icon,.pts>li[data-state=running] .pt-icon{background:var(--primary);animation:run 1s steps(1,end) infinite}
-#steps>li[data-state=pass]>.head .step-icon,.pts>li[data-state=pass] .pt-icon{background:var(--ok)}
-#steps>li[data-state=fail]>.head .step-icon,.pts>li[data-state=fail] .pt-icon{background:var(--fail)}
-#steps>li[data-state=pass]>.head .step-icon::after,#steps>li[data-state=fail]>.head .step-icon::after,.pts>li[data-state=fail] .pt-icon::after{content:"";position:absolute;inset:0;background:var(--icon-ink);-webkit-mask:var(--glyph) center/100% no-repeat;mask:var(--glyph) center/100% no-repeat}
-#steps>li[data-state=pass]>.head{--glyph:${CHECK}}#steps>li[data-state=fail]>.head,.pts>li[data-state=fail]{--glyph:${CROSS}}
+#steps .id{font-size:12px;color:var(--muted)}
+#steps .text{min-width:0}
+#steps .head .name{font-size:13.5px;overflow-wrap:anywhere}
+#steps .ms{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+#steps .note{font-size:12px;line-height:1.35;color:var(--fail);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+#steps>li[data-state=running]>.head{background:var(--pane-2);box-shadow:inset 3px 0 0 var(--info)}
 #steps>li[data-state=fail]>.head{background:var(--fail-tint)}
-#steps .id{font:500 11px var(--font-ui);color:var(--muted)}
-#steps .text{min-width:0;padding:5px 0}
-#steps .head .name{display:block;font-size:15px;font-weight:500;line-height:1.3;overflow-wrap:anywhere;hyphens:auto}
-#steps>li[data-kind=phase]>.head .name{font:500 12px var(--font-ui);letter-spacing:.08em;text-transform:uppercase}
-#steps .note{font:12px/1.35 var(--font-mono);color:var(--fail-text);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
-#steps .ms{font:12px var(--font-mono);color:var(--muted);padding:0 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
-#steps>li[data-state=waiting]>.head .name,#steps>li[data-state=skipped]>.head .name{color:var(--subtle)}
-#steps>li[data-state=skipped]>.head .text::after{content:${JSON.stringify(t('workbench.page.skipped'))};display:block;font:500 10px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--subtle)}
-#steps>li[data-state=running]>.head .name{color:var(--primary-text)}
-#steps>li[data-state=fail]>.head :is(.name,.id,.ms){color:var(--fail-text)}
-.pts>li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;min-height:28px}
-.pts .text{font-size:13px;line-height:1.35;overflow-wrap:anywhere}
-.pts .kind{font:500 10px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--auto);margin-right:7px}
-.pts .ms{font-size:11px!important}
-.pts>li[data-state=waiting] .text,#steps>li[data-state=skipped] .pts .text{color:var(--subtle)}
-.pts>li[data-state=running] .text{color:var(--primary-text)}
-.pts>li[data-state=fail]{background:var(--fail-tint)}.pts>li[data-state=fail] .text{color:var(--fail-text)}
-.pts .live{display:block;font-size:12px;color:var(--primary-text)}
-.pts .live::before{content:"";display:inline-block;width:4px;height:4px;margin-right:18px;vertical-align:middle;background:var(--primary);box-shadow:6px 0 var(--muted),12px 0 var(--muted);animation:dots .9s steps(1,end) infinite}
-@keyframes dots{33%{background:var(--muted);box-shadow:6px 0 var(--primary),12px 0 var(--muted)}66%{background:var(--muted);box-shadow:6px 0 var(--muted),12px 0 var(--primary)}}
-.hint{margin:14px 0 4px;font-size:var(--fs-small);color:var(--subtle)}#stepsHint[hidden]{display:none}
-.bad{color:var(--fail-text)!important}
-.pa-browser{grid-area:browser;display:flex;flex-direction:column;min-height:0;min-width:0}
-.pa-browser__bar{flex:none;display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--primary);color:var(--primary-ink);border-bottom:var(--frame-w) solid var(--frame)}
-.pa-browser__dots{display:flex;gap:6px}.pa-browser__dots i{width:10px;height:10px}
-.pa-browser__dots i:nth-child(1){background:var(--browser-dot-1)}.pa-browser__dots i:nth-child(2){background:var(--browser-dot-2)}.pa-browser__dots i:nth-child(3){background:var(--browser-dot-3)}
-#url{flex:1;min-width:0;padding:5px 10px;background:var(--primary-deep);font:13px var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#browserState{font:500 11px var(--font-ui);letter-spacing:.06em;color:var(--primary-soft);white-space:nowrap}
-/* Beim Vorfuehren zaehlt jeder Klick: rot wie eine Aufnahme. Wartet der Chat auf den Menschen, sagt es auch die Leiste. */
-#browserState.rec,#browserState.ask{padding:3px 8px;background:var(--surface)}#browserState.rec{color:var(--fail-text)}#browserState.ask{color:var(--warn)}
-.px-pill--warn{color:var(--warn);background:var(--surface-2)}
-#reload:disabled{opacity:.5;cursor:not-allowed}
-#app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
-.drawer{flex:none;border-top:var(--frame-w) solid var(--frame);background:var(--surface)}
-.tabs{display:flex;gap:4px;padding:6px 10px}
-.tabs button{font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:none;border:0;padding:5px 10px;cursor:pointer}
+#steps>li[data-state=waiting]>.head .name,#steps>li[data-state=skipped]>.head .name{color:var(--muted)}
+#steps>li[data-state=waiting]>.head .id,#steps>li[data-state=skipped]>.head .id{color:var(--faint)}
+#steps>li[data-state=skipped]>.head .text::after{content:${JSON.stringify(t('workbench.page.skipped'))};display:block;font:400 16px/1 var(--font-crt);color:var(--faint)}
+/* Phasen (Vorbereitung, Abschluss, Fehler klaeren) sind Abschnitte wie ── NAME ───, ihre Punkte stehen mit eigener Marke darunter. */
+#steps>li[data-kind=phase]>.head{grid-template-columns:minmax(0,1fr) auto;background:none;box-shadow:none;margin-top:10px}
+#steps>li[data-kind=phase]>.head>.st{display:none}
+#steps>li[data-kind=phase]>.head .name{font:400 19px/1.2 var(--font-crt);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
+#steps>li[data-kind=phase][data-state=fail]>.head .name{color:var(--fail)}
+.pts>li{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:6px;align-items:baseline;padding:1px 4px 1px 0;font-size:12.5px;color:var(--muted)}
+#steps>li[data-kind=step]>.pts>li{padding-left:22px}
+.pts .tree{color:var(--faint)}
+#steps>li[data-kind=phase]>.pts>li{grid-template-columns:auto minmax(0,1fr) auto;padding-left:0;font-size:13px;color:var(--text)}
+#steps>li[data-kind=phase] .tree,#steps>li[data-kind=phase] .mk,#steps>li[data-kind=step] .pt-tag{display:none}
+.mk-ok{color:var(--ok)}.mk-fail{color:var(--fail)}.mk-run{color:var(--info)}.mk-open{color:var(--faint)}
+.pts .text{overflow-wrap:anywhere}
+.pts .kind{color:var(--claude);margin-right:6px}
+.pts>li[data-state=running] .text{color:var(--text)}.pts>li[data-state=fail] .text{color:var(--fail)}
+.pts>li[data-state=waiting] .text,#steps>li[data-state=skipped] .pts .text{color:var(--faint)}
+.pts .live{display:block;font-size:12px;color:var(--info)}
+.bad{color:var(--fail)!important}
+.appbar{flex:none;display:flex;gap:10px;align-items:center;font-size:12px;padding:0 2px 8px;white-space:nowrap;overflow:hidden}
+#urlMark{color:var(--ok)}
+#url{color:var(--muted);overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+#browserState{font:400 19px/1 var(--font-crt);color:var(--info)}
+#browserState.rec{color:var(--fail)}#browserState.ask{color:var(--warn)}
+.solo-btn{border:0;cursor:pointer;background:var(--pane-2);color:var(--text);font:400 19px/1 var(--font-crt);padding:3px 8px;box-shadow:inset 0 0 0 2px var(--line);flex:none}
+.solo-btn:hover{box-shadow:inset 0 0 0 2px var(--accent)}.solo-btn b{font-weight:400;color:var(--info);margin-right:6px}
+#app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff;box-shadow:0 0 0 2px #000}
+.drawer{flex:none;padding-top:8px}
+.tabs{display:flex;gap:4px}
+.tabs button{font:400 20px/1 var(--font-crt);color:var(--muted);background:none;border:0;padding:3px 10px;cursor:pointer;box-shadow:inset 0 0 0 2px var(--line)}
 .tabs button:hover{color:var(--text)}
-.tabs button[aria-selected=true]{color:var(--text);background:var(--surface-2);box-shadow:inset 0 -3px 0 var(--primary)}
-.tabs .count{margin-left:8px}.tabs .count.bad::before{content:"✕ "}
-.tabs #drawerClose{display:none;margin-left:auto;box-shadow:${ring('2px', 'var(--frame)')}}.drawer.open #drawerClose{display:inline-flex}
-.panel{display:none;height:28vh;min-height:120px;overflow:auto;border-top:2px solid var(--line)}.drawer.open .panel{display:block}
+.tabs button[aria-selected=true]{color:var(--text);box-shadow:inset 0 0 0 2px var(--accent)}
+.tabs .count{margin-left:6px;color:var(--info)}.tabs .count.bad{color:var(--fail)}
+.tabs #drawerClose{display:none;margin-left:auto}.drawer.open #drawerClose{display:inline-flex}
+.panel{display:none;height:26vh;min-height:110px;overflow:auto;margin-top:6px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}.drawer.open .panel{display:block}
 table{width:100%;border-collapse:collapse;font:12px/1.4 var(--font-mono)}
-td{padding:5px 12px;border-top:2px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+td{padding:4px 10px;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
 tr:first-child td{border-top:0}
-td.name{width:60%}td.ok{color:var(--ok-text,var(--ok))}td.bad{color:var(--fail-text)}td.open{color:var(--muted)}td.ms{text-align:right;color:var(--muted);width:90px}
-.empty{padding:10px 14px;color:var(--muted);font:12px var(--font-mono)}
-.line{padding:5px 14px;border-top:2px solid var(--line);font:12px/1.45 var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere}.line:first-child{border-top:0}.line.fail{color:var(--fail-text)}.line.warn{color:var(--warn)}
-.pa-chat{grid-area:chat;min-height:0;min-width:0;display:flex}
-#chat{flex:1;width:100%;height:100%;border:0;display:block;background:var(--surface)}
+td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:var(--muted)}td.ms{text-align:right;color:var(--muted);width:90px}
+.empty{padding:10px 12px;color:var(--muted);font:12px var(--font-mono)}
+.line{padding:4px 12px;border-top:1px solid var(--line);font:12px/1.45 var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere}.line:first-child{border-top:0}.line.fail{color:var(--fail)}.line.warn{color:var(--warn)}
+#chat{flex:1;width:100%;min-height:0;border:0;display:block;background:var(--pane)}
+.fkeys{flex:none;display:flex;flex-wrap:wrap;gap:6px 16px;border-top:2px solid var(--line);margin:0 -16px;padding:8px 16px 10px;font:400 20px/1 var(--font-crt);color:var(--muted)}
+.fk{white-space:nowrap;background:none;border:0;padding:0;cursor:pointer;color:inherit;font:inherit}.fk:hover:enabled{color:var(--text)}
+.fk b{font-weight:400;background:var(--info);color:var(--ink);padding:1px 5px;margin-right:6px}
+.fk.x b{background:var(--fail)}.fk:disabled{opacity:.45;cursor:not-allowed}.fk[aria-pressed=true]{color:var(--text)}.fk[aria-pressed=true] b{background:var(--accent)}
+/* Nur Anwendung (F8): Kopf, Schritte, Chat, Leiste und Requests/Konsole weg; eine Zeile bleibt fuer den Rueckweg. */
+.soloBar{display:none;align-items:center;gap:14px;padding:0 2px 8px;font:400 20px/1 var(--font-crt);color:var(--muted);white-space:nowrap;overflow:hidden}
+.soloBar .raven{line-height:1;padding:0 2px}#soloTag{color:var(--ok)}#soloTag[hidden]{display:none}
+#soloUrl{font:12px var(--font-mono);overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.solo .soloBar{display:flex}
+.solo .top,.solo .pa-steps,.solo .pa-chat,.solo .fkeys,.solo .pa-browser>.lg,.solo .appbar,.solo .drawer{display:none}
+.solo .panes{grid-template-columns:minmax(0,1fr);grid-template-areas:"browser";padding:0 0 10px}
+.solo .pa-browser{border:0;padding:0;background:none;box-shadow:none}
+.solo .pa{padding:0}.solo #bench{padding-top:8px}
+/* Zustand waehlen (F1): links die Tests, rechts ihre Schritte, unten Herstellen. Auch im Vollbild. */
+#stateDlg{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(0,0,0,.55)}#stateDlg[hidden]{display:none}
+#stateDlg>.win{width:min(900px,calc(100vw - 32px));height:min(620px,calc(100vh - 48px));display:flex;flex-direction:column;padding:22px 16px 14px;background:var(--pane)}
+#stateDlg .lg{top:-13px}
+.scols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;flex:1;min-height:0}
+.scol{display:flex;flex-direction:column;min-height:0;min-width:0}
+.scol .sec{margin:0 0 6px}
+.sfilter{display:flex;gap:8px;align-items:center;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line);padding:5px 8px;margin-bottom:8px}
+.sfilter span{font:400 18px/1 var(--font-crt);color:var(--muted)}
+.sfilter input{flex:1;min-width:0;background:none;border:0;color:var(--text);font:13px var(--font-mono);outline:0}
+.slist{overflow:auto;display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
+.srow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:baseline;text-align:left;border:0;background:none;cursor:pointer;padding:5px 6px;width:100%;color:var(--text);font:13px var(--font-mono)}
+.srow:hover:enabled{background:var(--pane-2)}.srow:disabled{cursor:not-allowed;color:var(--faint)}
+.srow[aria-selected=true]{background:var(--pane-2);box-shadow:inset 3px 0 0 var(--accent)}
+.srow .mk{font:400 17px/1 var(--font-crt);color:var(--faint)}.srow[aria-selected=true] .mk{color:var(--accent)}
+.srow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .meta{font-size:11.5px;color:var(--muted);white-space:nowrap}.srow .meta.w{color:var(--warn)}
+.srow.all .nm{color:var(--info)}
+.sfoot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-top:2px solid var(--line);padding-top:10px;margin-top:10px}
+.sfoot p{margin:0;font-size:12.5px;color:var(--muted);min-width:0;flex:1 1 300px}
+.sfoot .acts{display:flex;gap:8px}
+.fk[hidden],.solo-btn[hidden]{display:none}
+@media (max-width:859px){.scols{grid-template-columns:minmax(0,1fr)}}
+/* Theme (F7): ein Fenster ueber der Werkbank. */
+#themeDlg{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(0,0,0,.55)}#themeDlg[hidden]{display:none}
+#themeDlg>.win{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:22px 0 14px;background:var(--pane)}
+#themeDlg .tbody{min-height:0;overflow:auto;padding:0 16px}
+#themeDlg .lg{top:-13px}
+.tthemes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:2px solid var(--line)}
+.tthemes button{border:0;cursor:pointer;display:grid;grid-template-columns:auto auto;gap:0 8px;align-items:center;text-align:left;background:var(--pane-2);color:var(--muted);padding:5px 10px 5px 6px;box-shadow:inset 0 0 0 2px var(--line)}
+.tthemes button i{grid-row:span 2;width:18px;height:18px;display:inline-block;background:var(--sw-screen);box-shadow:inset 0 0 0 3px var(--sw-screen),inset 0 0 0 9px var(--sw-accent)}
+.tthemes button span{font:400 20px/1 var(--font-crt)}.tthemes button small{font-size:11px;color:var(--faint)}
+.tthemes button[aria-checked=true]{color:var(--text);box-shadow:inset 0 0 0 2px var(--accent),0 0 10px var(--glow)}
+.trow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.trow[hidden]{display:none}
+.trow label{font-size:12.5px;color:var(--muted)}
+.trow input,.tfields input[type=text],.tfields input[type=number]{font:13px var(--font-mono);color:var(--text);background:var(--screen);border:0;box-shadow:inset 0 0 0 2px var(--line);padding:5px 8px}
+.trow code{font:11.5px var(--font-mono);color:var(--faint);overflow-wrap:anywhere}
+.ttabs{display:flex;gap:4px;margin:4px 0 10px}
+.ttabs button{font:400 20px/1 var(--font-crt);color:var(--muted);background:none;border:0;padding:3px 10px;cursor:pointer;box-shadow:inset 0 0 0 2px var(--line)}
+.ttabs button[aria-selected=true]{color:var(--text);box-shadow:inset 0 0 0 2px var(--accent)}
+.tfields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:4px 12px;align-items:center}
+.tfields .grp{grid-column:1/-1;font:400 19px/1 var(--font-crt);color:var(--faint);margin-top:10px;white-space:nowrap;overflow:hidden}.tfields .grp:first-child{margin-top:0}
+.tfields label{font-size:13px}
+.tfields input{width:100%}
+.sw{display:flex;align-items:center;gap:8px}.sw code{font:12px var(--font-mono);color:var(--muted);width:7ch}
+.tfields input[type=color]{width:34px;height:24px;border:0;padding:0;background:none;cursor:pointer;box-shadow:0 0 0 2px var(--line)}
+.tfields input[type=color]::-webkit-color-swatch-wrapper{padding:0}.tfields input[type=color]::-webkit-color-swatch{border:0}
+#tproblems{margin:12px 0 0;padding:0;list-style:none;color:var(--warn);font-size:13px}#tproblems[hidden]{display:none}
+.tbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}.tbtns [hidden]{display:none}
+#tmsg{font-size:12.5px;color:var(--muted)}
+#tjsonBox{margin-top:12px}#tjsonBox summary{cursor:pointer;color:var(--muted);font-size:12.5px}
+#tjson{margin:8px 0 0;padding:10px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line);font:12px/1.45 var(--font-mono);color:var(--muted);white-space:pre;overflow:auto;max-height:220px}
 /* Ab 1000px drei Spalten; bis 1500px schmalere Raender, damit die Anwendung ihr Desktop-Layout behaelt. */
-@media (min-width:1000px) and (max-width:1499px){.pa-main{--col-steps:minmax(220px,260px);--col-chat:minmax(300px,340px)}}
+@media (min-width:1000px) and (max-width:1499px){.panes{--col-steps:minmax(220px,260px);--col-chat:minmax(280px,330px)}}
 @media (min-width:1000px){
-.fold-steps .pa-main{--col-steps:48px}.fold-chat .pa-main{--col-chat:48px}
-.fold-steps .pa-steps{align-self:stretch;padding:0}.fold-steps .pa-steps>:not(#stepsStrip),.fold-chat #chat,.fold-chat #chatFold{display:none}
+.fold-steps .panes{--col-steps:44px}.fold-chat .panes{--col-chat:44px}
+.fold-steps .pa-steps,.fold-chat .pa-chat{padding:0}
+.fold-steps .pa-steps>:not(#stepsStrip),.fold-chat .pa-chat>:not(#chatStrip){display:none}
 .fold-steps #stepsStrip,.fold-chat #chatStrip{display:flex}}
 @media (max-width:999px){
-.pa-fold{display:none}
+.fold{display:none}
 .pa{height:auto;min-height:100vh}
-.pa-main{grid-template-columns:minmax(300px,380px) minmax(0,1fr);grid-template-rows:auto minmax(60vh,1fr);grid-template-areas:"steps browser" "chat browser"}
+.panes{grid-template-columns:minmax(300px,380px) minmax(0,1fr);grid-template-rows:auto minmax(60vh,1fr);grid-template-areas:"steps browser" "chat browser"}
 .pa-steps{max-height:40vh}}
 @media (max-width:859px){
-.pa-main{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "chat" "browser"}
-.pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh}.pa-tools{margin-left:0}}
-@keyframes run{50%{background:var(--primary-soft)}}
-#ravenLayer{position:fixed;inset:0;pointer-events:none;z-index:50;overflow:hidden}
-#raven{position:absolute;left:0;top:0;width:${RAVEN_CLIPS.cell}px;height:${RAVEN_CLIPS.cell}px;pointer-events:auto;cursor:pointer;transform-origin:50% 85%;will-change:transform}
-#raven.home{pointer-events:none}
-#raven .sprite{display:block;width:${RAVEN_CLIPS.cell}px;height:${RAVEN_CLIPS.cell}px;background:url(${RAVEN_SHEET}) no-repeat 0 0/${RAVEN_CLIPS.width}px ${RAVEN_CLIPS.height}px;image-rendering:pixelated;scale:var(--raven-dir,-1) 1;translate:calc(var(--raven-dir,-1) * var(--raven-shift-x,0px) * -1) calc(var(--raven-shift-y,0px) * -1);
-filter:drop-shadow(1px 0 0 var(--raven-outline)) drop-shadow(-1px 0 0 var(--raven-outline)) drop-shadow(0 1px 0 var(--raven-outline)) drop-shadow(0 -1px 0 var(--raven-outline)) drop-shadow(0 0 3px var(--raven-outline-fade))}
-#ravenSay{position:absolute;left:0;top:0;font:13px/1.2 var(--font-deco);padding:3px 9px 4px;white-space:nowrap;color:var(--primary-ink);background:var(--primary);box-shadow:${ring('2px', 'var(--bubble-frame)')}}
-#ravenSay[hidden]{display:none}#ravenSay.zz{background:var(--surface-2);color:var(--muted)}
-#ravenSay.pop{animation:say-pop .2s steps(2,end) 1}#ravenSay.float{animation:say-float 2.4s steps(4,end) infinite}
-@keyframes say-pop{from{opacity:0;translate:0 4px}to{opacity:1;translate:0 0}}
-@keyframes say-float{from{translate:0 0;opacity:1}to{translate:0 -8px;opacity:.4}}
-.heart,.crumb{position:absolute;width:2px;height:2px}
-/* Regenwoelkchen ueber dem Raben, solange sein Punkt gescheitert ist */
-#ravenCloud{position:absolute;left:0;top:0;width:28px;height:22px}#ravenCloud[hidden]{display:none}
-#ravenCloud::before{content:"";position:absolute;left:0;top:0;width:2px;height:2px;box-shadow:${CLOUD}}
-#ravenCloud i{position:absolute;top:12px;width:2px;height:4px;background:var(--drop);animation:drop .7s steps(4,end) infinite}
-#ravenCloud i:nth-child(1){left:6px}#ravenCloud i:nth-child(2){left:12px;animation-delay:-.25s}#ravenCloud i:nth-child(3){left:18px;animation-delay:-.5s}
-@keyframes drop{from{translate:0 0;opacity:1}to{translate:0 10px;opacity:0}}
-.confetti{position:absolute;width:4px;height:4px;animation:confetti 1.6s steps(12,end) forwards}
-@keyframes confetti{0%{translate:0 0}45%{translate:calc(var(--dx) * .6) var(--up)}100%{translate:var(--dx) 24px;opacity:0}}
-.heart{box-shadow:${HEART};animation:heart-up .9s steps(6,end) both}
-@keyframes heart-up{from{translate:0 0;opacity:1}to{translate:0 -24px;opacity:0}}
-.crumb{box-shadow:${CRUMB};animation:crumb-drop .24s steps(4,end) both}
-@keyframes crumb-drop{from{translate:0 -16px}to{translate:0 0}}
+.panes{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "chat" "browser"}
+.pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh}.tools{margin-left:0}.tfields{grid-template-columns:minmax(0,1fr)}}
 .still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style></head><body class="${classes}"><div class="pa">
-<header class="pa-header">
-<div class="pa-logo"><button class="pa-logo__mark" id="logo" type="button" aria-label="${t('workbench.refresh')}" title="${refreshTitle}"><span class="pa-logo__tile px-frame-sm" id="tile"></span><span class="pa-logo__bubble" aria-hidden="true">caw!</span></button><span class="pa-logo__word">caw-ai</span></div>
-<span id="state" class="px-pill" role="status"></span>
-<ul class="pa-meta" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
-<div class="pa-tools"><span id="notice" role="status" hidden></span><label class="pa-check" title="${t('workbench.stillTitle')}"><input type="checkbox" id="still"${still ? ' checked' : ''}>${t('workbench.still')}</label>
-<button id="theme" class="px-btn" type="button" aria-label="${t('workbench.theme')}" title="${t('workbench.themeTitle')}"></button>
-<button id="reload" class="px-btn" type="button" disabled title="${t('workbench.page.refreshLockedTitle')}">↻ ${t('workbench.refresh')}</button></div>
-</header>
-<main class="pa-main">
-<section class="pa-steps pa-card px-frame" id="stepsCard" aria-label="${t('workbench.steps')}"><button class="pa-fold" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')}">${STEPS_CLOSE}</button><button class="pa-strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')}">${STEPS_OPEN}<span>${t('workbench.steps')} <span id="stripTally"></span></span></button><div class="pa-card__head"><span class="px-label">${t('workbench.steps')}</span><span class="px-label pa-muted" id="tally"></span></div>
-<div class="px-progress" id="progress" aria-hidden="true"></div><p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
-<section class="pa-browser px-frame" aria-label="${t('workbench.app')}"><div class="pa-browser__bar"><span class="pa-browser__dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="url"></span><span id="browserState"></span></div>
+</style>${themeStyle(theme)}</head><body class="${classes}"><div class="pa crt-case"><div class="crt" id="bench">
+<div class="soloBar">${ravenLogo(theme, { size: 11, label: 'caw' })}<span id="soloTag" hidden>${esc(t('workbench.handedOver'))}</span><span id="soloState"></span><span id="soloUrl"></span><button class="solo-btn" type="button" data-states hidden><b>F1</b>${t('workbench.stateTitle')}</button><button class="solo-btn" type="button" data-solo><b>F8</b>${t('workbench.bench')}</button></div>
+<header class="top">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="id"><b class="glow">caw-ai <span class="cmd" id="cmd"></span> <span id="testName">${esc(test)}</span></b><span>${LONG_NAME}</span></div>
+<ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
+<div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinf" aria-hidden="true" hidden></span><span id="state" class="px-pill glow" role="status"></span></div></header>
+<main class="panes">
+<section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${lg(t('workbench.steps'))}<button class="fold" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')} (F4)">◂</button><button class="strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')} (F4)"><b>▸</b>${t('workbench.steps').toUpperCase()} <span id="stripTally"></span></button>
+<div class="gauge" id="gauge" aria-hidden="true"></div><span id="tally" hidden></span><p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track" class="readable"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
+<section class="pa-browser win" aria-label="${t('workbench.app')}">${lg(t('workbench.app'))}<div class="appbar"><span id="urlMark" aria-hidden="true"></span><span id="url"></span><span id="browserState"></span><button class="solo-btn" type="button" data-solo title="${t('workbench.soloTitle')}"><b>F8</b>${t('workbench.solo')}</button></div>
 <iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-read; clipboard-write"></iframe>
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}" title="${t('workbench.collapse')}">▾ ${t('workbench.collapse')}</button></div>
-<div class="panel" id="panel"></div></div></section>
-<section class="pa-chat pa-card px-frame" id="chatCard" aria-label="${t('workbench.chatLabel')}"><button class="pa-fold" id="chatFold" type="button" aria-expanded="true" aria-label="${t('workbench.chatFold')}" title="${t('workbench.chatFold')}">${CHAT_CLOSE}</button><button class="pa-strip" id="chatStrip" type="button" aria-expanded="false" aria-label="${t('workbench.chatUnfold')}" title="${t('workbench.chatUnfold')}">${CHAT_OPEN}<span>${t('workbench.chat')}</span></button><iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder())}"></iframe></section>
-</main></div>
-<div id="ravenLayer"><div id="raven" aria-hidden="true"><span class="sprite"></span></div><span id="ravenSay" hidden aria-hidden="true"></span><span id="ravenCloud" hidden aria-hidden="true"><i></i><i></i><i></i></span></div>
-<script>
-const T=${JSON.stringify(texts('workbench.page.'))};
-const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
+<div class="panel readable" id="panel"></div></div></section>
+<section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${lg(t('workbench.chat'))}<button class="fold" id="chatFold" type="button" aria-expanded="true" aria-label="${t('workbench.chatFold')}" title="${t('workbench.chatFold')} (F6)">▸</button><button class="strip" id="chatStrip" type="button" aria-expanded="false" aria-label="${t('workbench.chatUnfold')}" title="${t('workbench.chatUnfold')} (F6)"><b>◂</b>${t('workbench.chat').toUpperCase()}</button><iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(theme))}"></iframe></section>
+</main>
+<nav class="fkeys" aria-label="${t('workbench.keys')}">${key('F1', t('workbench.stateTitle'), ' data-states hidden')}${key('F5', t('workbench.keyReload'), ` id="reload" disabled title="${t('workbench.page.refreshLockedTitle')}"`)}${key('F9', t('workbench.keyPause'), ' data-key="F9"')}${key('Esc', t('workbench.keyAbort'), ' data-key="Escape"', ' x')}${key('F2', t('workbench.requests'), ' data-tabkey="requests"')}${key('F3', t('workbench.console'), ' data-tabkey="console"')}${key('F4', t('workbench.steps'), ' id="fSteps"')}${key('F6', t('workbench.chat'), ' id="fChat"')}${key('F7', t('workbench.keyTheme'), ' id="fTheme" aria-pressed="false"')}${key('F8', t('workbench.solo'), ' data-solo')}${key('F10', t('workbench.still'), ` id="still" aria-pressed="${still}" title="${t('workbench.stillTitle')}"`)}</nav>
+</div></div>
+<div id="stateDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.stateTitle')}"><div class="win crt">${lg(t('workbench.stateTitle'))}
+<div class="scols"><div class="scol"><div class="sec">── <b>${t('workbench.page.stateTest').toUpperCase()}</b></div><div class="sfilter"><span>/</span><input id="sq" type="search" autocomplete="off" spellcheck="false" placeholder="${t('workbench.page.stateSearch')}" aria-label="${t('workbench.page.stateSearch')}"></div><div class="slist" id="stests" role="listbox" aria-label="${t('workbench.page.stateTest')}"></div></div>
+<div class="scol"><div class="sec">── <b id="sstepsHead">${t('workbench.page.stateSteps').toUpperCase()}</b></div><div class="slist" id="ssteps" role="listbox" aria-label="${t('workbench.page.stateSteps')}"></div></div></div>
+<div class="sfoot"><p id="sfoot"></p><div class="acts"><button type="button" class="px-btn" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="px-btn px-btn--primary" id="sgo" disabled>[ ${t('workbench.page.stateGo').toUpperCase()} ]</button></div></div></div></div>
+<div id="themeDlg" hidden role="dialog" aria-modal="true" aria-labelledby="tname"><div class="win crt"><span class="lg glow" id="tname"></span><div class="tbody">
+<div class="tthemes" id="tthemes" role="radiogroup" aria-label="${t('workbench.page.themeList')}"></div>
+<div class="trow" id="tnameRow" hidden><label for="tlabel">${t('workbench.page.themeLabel')}</label><input id="tlabel" maxlength="40" spellcheck="false"><label for="tslug">${t('workbench.page.themeName')}</label><input id="tslug" maxlength="32" spellcheck="false" size="14"><code id="tfile"></code></div>
+<div class="ttabs" id="ttabs" role="tablist"></div><div class="tfields" id="tfields"></div><ul id="tproblems" hidden></ul>
+<div class="tbtns"><button type="button" class="px-btn" id="tdup"></button><button type="button" class="px-btn" id="treset">${t('workbench.page.themeReset')}</button><button type="button" class="px-btn" id="tdelete"></button><button type="button" class="px-btn" id="tclose">${t('workbench.page.themeClose')}</button><span id="tmsg" role="status"></span></div>
+<details id="tjsonBox"><summary id="tjsonHead"></summary><pre id="tjson"></pre></details></div></div></div>
+<script>${RAVEN_SCRIPT}
+${GLYPH_SCRIPT}
+${APPLY_THEME_SCRIPT}
+const T=${json(texts('workbench.page.'))};
+// Die Labels der Pill: dieselben wie im Chat-Kopf.
+const PILL=${json(Object.fromEntries(Object.entries(texts('chat.status.')).filter(([key]) => key.endsWith('.label'))))};
+const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]??key);
 const $=(id)=>document.getElementById(id);
 const state={tab:null,requests:[],console:[]};
 const LABELS={waiting:T['workbench.page.waiting'],running:T['workbench.page.running'],pass:T['workbench.page.pass'],fail:T['workbench.page.fail'],skipped:T['workbench.page.skipped']};
@@ -257,14 +317,29 @@ const items=()=>[...$('steps').children];
 // Gezaehlt werden nur die Schritte des Tests; Vorbereitung, Abschluss und Fehler klaeren sind Phasen.
 const stepItems=()=>items().filter((li)=>li.dataset.kind!=='phase');
 const pointsOf=(li)=>[...li.querySelector(':scope>.pts').children];
-// Wo der Rabe landen kann: jeder Punkt, und eine Gruppe ohne Punkte selbst.
-const spots=()=>items().flatMap((li)=>{const points=pointsOf(li);return points.length>0?points:[li];});
 const groupOf=(spot)=>spot.closest('#steps>li');
-const spotState=(spot)=>{const li=groupOf(spot);return li!==spot&&li.dataset.state==='skipped'?'skipped':spot.dataset.state;};
-const spotIcon=(spot)=>spot.querySelector(groupOf(spot)===spot?':scope>.head .step-icon':'.pt-icon');
+// Gruppe oder Punkt, auch bevor der Knoten in der Liste steht.
+const isGroup=(node)=>node.querySelector(':scope>.head')!==null;
 const groupTitle=(li)=>li.dataset.kind==='phase'?li.dataset.name.toUpperCase():li.dataset.id;
 const duration=(ms)=>ms<1000?Math.round(ms)+' ms':(ms/1000).toFixed(1).replace('.',T['workbench.page.decimal'])+' s';
 const cell=(text,cls)=>{const td=document.createElement('td');td.textContent=text;if(cls)td.className=cls;td.title=text;return td;};
+const still=()=>document.body.classList.contains('still');
+// Das Theme, wie es die Seite kennt (ohne css und Dateien). Zeichen nur als textContent, Farben nur als CSS-Variablen.
+let TH=${json(clientTheme(theme))};
+let LIST=${json(themes)};
+const raven=cawRaven(document,document.body,still,TH.raven);
+const str=(value,fallback)=>(typeof value==='string'&&value!==''?value:fallback);
+const frames=()=>(Array.isArray(TH.spinner?.frames)&&TH.spinner.frames.length>0?TH.spinner.frames:['▖','▘','▝','▗']);
+// Eine Marke: der Text des Themes, {spinner} wird ein eigenes Element, das der Takt weiterdreht.
+const markInto=(el,kind)=>{const [before,after]=[...str(TH.marks?.[kind],'[      ]').split('{spinner}'),''];el.replaceChildren(before);
+  if(str(TH.marks?.[kind],'').includes('{spinner}')){const s=document.createElement('span');s.className='spinf';s.replaceChildren(cawGlyph(frames()[spinAt%frames().length]));el.append(s,after);}};
+let spinTimer=0,spinAt=0;
+// Blockzeichen zeichnet die Seite selbst (cawGlyph), andere Frames bleiben Text.
+const spin=()=>{clearInterval(spinTimer);const ms=Number.isInteger(TH.spinner?.ms)&&TH.spinner.ms>=40?TH.spinner.ms:150;
+  spinTimer=setInterval(()=>{if(still())return;spinAt=(spinAt+1)%frames().length;for(const s of document.querySelectorAll('.spinf'))s.replaceChildren(cawGlyph(frames()[spinAt]));},ms);};
+const ruleText=(title,width=34)=>{const format=str(TH.rule?.format,'── {title} {line}'),line=str(TH.rule?.line,'─');
+  const used=[...format.replace('{title}',title).replace('{line}','')].length;return format.replace('{title}',title).replace('{line}',line.repeat(Math.max(3,width-used)));};
+const legendText=(title)=>str(TH.legend,'┤ {title} ├').replace('{title}',title);
 const render=()=>{
   const panel=$('panel');panel.replaceChildren();
   if(state.tab==='requests'){
@@ -277,39 +352,55 @@ const render=()=>{
     for(const c of state.console.slice().reverse()){const div=document.createElement('div');div.className='line '+c.severity;div.textContent=c.text;panel.append(div);}
   }
 };
-const select=(tab)=>{state.tab=state.tab===tab?null:tab;$('drawer').classList.toggle('open',state.tab!==null);for(const b of document.querySelectorAll('[data-tab]'))b.setAttribute('aria-selected',String(b.dataset.tab===state.tab));render();};
+const select=(tab)=>{state.tab=state.tab===tab?null:tab;try{sessionStorage.setItem('caw-bench-tab',state.tab??'');}catch{}$('drawer').classList.toggle('open',state.tab!==null);for(const b of document.querySelectorAll('[data-tab]'))b.setAttribute('aria-selected',String(b.dataset.tab===state.tab));render();};
 // Die Konsole oeffnet sich nur bei neuen Fehlern von selbst; schliessen tut sie nur der Mensch.
 let seenFails=0;
 for(const b of document.querySelectorAll('[data-tab]'))b.addEventListener('click',()=>select(b.dataset.tab));
+// Der offene Reiter bleibt nach dem Neuladen der Werkbank offen.
+try{const tab=sessionStorage.getItem('caw-bench-tab');if(tab==='requests'||tab==='console')select(tab);}catch{}
+for(const b of document.querySelectorAll('[data-tabkey]'))b.addEventListener('click',()=>select(b.dataset.tabkey));
 $('drawerClose').addEventListener('click',()=>{if(state.tab!==null)select(state.tab);});
-const setCount=(name,value,bad)=>{for(const node of document.querySelectorAll('[data-count='+name+']')){node.textContent=value;node.classList.toggle('bad',bad===true);}};
+const setCount=(name,value,bad)=>{for(const node of document.querySelectorAll('[data-count='+name+']')){node.textContent=(bad===true?str(TH.bullets?.fail,'✖')+' ':'')+value;node.classList.toggle('bad',bad===true);}};
 let aborted=false;
 // Was der Chat gerade will: ask aus der Stimmung, dazu sein Zustand (showing: der Mensch fuehrt vor).
 let asking=false,chatState=null;
 const stepsHintText=$('stepsHint').textContent;
+// Fortschritt als Balken: je Schritt gleich viele Zeichen, bestanden, laufend oder gescheitert, offen (Zeichen aus dem Theme).
+const gauge=(list)=>{const box=$('gauge');if(list.length===0){box.replaceChildren();return;}
+  const per=Math.max(1,Math.floor(20/list.length)),pass=list.filter((li)=>li.dataset.state==='pass').length,p=TH.progress??{};
+  const parts=list.map((li)=>{const s=li.dataset.state;const span=document.createElement('span');span.className=s==='pass'?'mk-ok':s==='fail'?'mk-fail':s==='running'?'mk-run':'mk-open';
+    const char=s==='pass'?str(p.done,'█'):s==='fail'||s==='running'?str(p.run,'▓'):str(p.open,'░');span.replaceChildren(...Array.from({length:per},()=>cawGlyph(char)));return span;});
+  const sum=document.createElement('span');sum.className='mk-open';sum.textContent=' '+pass+'/'+list.length;box.replaceChildren(...parts,sum);};
+// Baumzeichen der Unterpunkte: der letzte endet.
+const trees=()=>{for(const ol of document.querySelectorAll('#steps .pts')){const all=[...ol.children];all.forEach((li,i)=>{li.querySelector(':scope>.tree').textContent=i===all.length-1?str(TH.tree?.end,'└'):str(TH.tree?.mid,'├');});}};
 // Kopfzeile, Fortschritt und Zaehler folgen den Schritten: was laeuft, was gescheitert ist, wie viele bestanden sind.
 const summarize=()=>{
   const list=stepItems(),n=list.length,all=items();
   $('stepsHint').hidden=all.length>0;$('stepsHint').textContent=chatState==='showing'?T['workbench.page.stepsHintShowing']:stepsHintText;
   const count=(name)=>list.filter((li)=>li.dataset.state===name).length;
   const pass=count('pass');
-  $('tally').textContent=$('stripTally').textContent=n===0?'':pass+' / '+n;
-  const segments=$('progress');if(segments.children.length!==n)segments.replaceChildren(...list.map(()=>document.createElement('i')));
-  list.forEach((li,i)=>{const s=li.dataset.state;segments.children[i].className=s==='pass'?'pass':s==='fail'?'fail':s==='running'?'run':'';});
+  $('tally').textContent=$('stripTally').textContent=n===0?'':pass+'/'+n;
+  gauge(list);trees();
   const failed=all.find((li)=>li.dataset.state==='fail'),running=list.find((li)=>li.dataset.state==='running')??all.find((li)=>li.dataset.state==='running');
   const [kind,text,browser]=aborted?['fail',T['workbench.page.aborted'],T['workbench.page.aborted']]:failed?['fail',fill('workbench.page.groupFailed',{id:groupTitle(failed)}),T['workbench.page.browserFailed']]:running?['run',fill('workbench.page.groupRunning',{id:groupTitle(running)}),T['workbench.page.browserRunning']]:n>0&&pass===n?['ok',T['workbench.page.allPassed'],T['workbench.page.browserPassed']]:pass>0?(document.body.classList.contains('left-state')?['',fill('workbench.page.left',{id:list.filter((li)=>li.dataset.state==='pass').at(-1).dataset.id}),T['workbench.page.browserReloaded']]:['ok',fill('workbench.page.reached',{id:list.filter((li)=>li.dataset.state==='pass').at(-1).dataset.id}),T['workbench.page.ready']]):n>0?['',T['workbench.page.ready'],T['workbench.page.ready']]:[null,'',''];
-  let [pillKind,pillText,browserText,tone]=[kind,text,browser,''];
-  // Wartet der Chat auf den Menschen, sagt das auch die Kopfzeile: Sonst stuende dort BEREIT, waehrend der Plan auf Freigabe wartet.
-  if(!aborted&&asking){pillKind='warn';pillText=T['workbench.page.yourTurn'];browserText=T['workbench.page.browserYourTurn'];tone='ask';}
+  let [browserText,tone]=[browser,''];
+  // Wartet der Chat auf den Menschen, sagt das die Leiste der Anwendung; die Pill nicht, das sagt schon der Chat.
+  if(!aborted&&asking){browserText=T['workbench.page.browserYourTurn'];tone='ask';}
   if(!aborted&&chatState==='showing'){browserText=T['workbench.page.recording'];tone='rec';}
-  const pill=$('state');pill.className='px-pill'+(pillKind?' px-pill--'+pillKind:'')+(pillKind!==null?' on':'');pill.dataset.state=failed?'fail':running?'running':n>0&&pass===n?'pass':'';pill.textContent=pillText;
+  // Die Pill oben rechts: nur die vier Labels des Chat-Kopfs (Claude arbeitet, caw-ai arbeitet, Hält an …, Pausiert), ohne Schritt.
+  // Zustaende ohne Label zeigen keine Pill. Den aktuellen Schritt zeigt die Schrittliste.
+  const label=aborted||chatState===null?undefined:PILL['chat.status.'+chatState+'.label'];
+  const claudeWorks=chatState==='running'||chatState==='advising',cawWorks=label!==undefined&&!claudeWorks&&chatState!=='pausing'&&chatState!=='paused';
+  const pill=$('state');pill.className='px-pill glow'+(label===undefined?'':' on')+(claudeWorks?' px-pill--claude':cawWorks?' px-pill--run':'');pill.dataset.state=chatState??'';
+  pill.textContent=label===undefined?'':(chatState==='paused'?str(TH.bullets?.pause,'‖')+' ':'')+label;
+  $('stateSpin').hidden=!(claudeWorks||cawWorks);$('stateSpin').classList.toggle('px-pill--claude',claudeWorks);
   $('browserState').textContent=browserText;$('browserState').className=tone;
-  raven.update();
+  $('soloState').textContent=text;$('soloTag').hidden=!refreshOn;
 };
 // Aktualisieren entscheidet der Host: nach der Uebergabe die Seite ohne Cache neu laden, im laufenden Test gar nicht.
-let appUrl=$('app').src;$('url').textContent=appUrl;
+let appUrl=$('app').src;$('url').textContent=$('soloUrl').textContent=appUrl;
 let refreshing=false,noticeTimer=0,refreshOn=false;
-const REFRESH_TITLE=${JSON.stringify(refreshTitle)};
+const REFRESH_TITLE=${json(refreshTitle)};
 const notice=(text)=>{const box=$('notice');box.textContent=text;box.hidden=false;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{box.hidden=true;},6000);};
 const refresh=async()=>{
   if(refreshing)return;refreshing=true;$('reload').disabled=true;$('browserState').textContent=T['workbench.page.reloading'];
@@ -317,280 +408,228 @@ const refresh=async()=>{
   if(!done)notice(T['workbench.page.refreshLocked']);
   refreshing=false;$('reload').disabled=!refreshOn;summarize();
 };
-$('reload').addEventListener('click',refresh);$('logo').addEventListener('click',refresh);
-const isRefreshKey=(event)=>event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r');
-addEventListener('keydown',(event)=>{if(isRefreshKey(event)){event.preventDefault();refresh();}});
-// F5 in der Anwendung oder im Chat meldet deren Frame hierher. Mehr als Aktualisieren kann eine solche Nachricht nicht ausloesen.
-addEventListener('message',(event)=>{if(event.data?.caw==='refresh'&&(event.source===$('app').contentWindow||event.source===$('chat').contentWindow))refresh();
-  if(event.data?.caw==='theme-request'&&event.source===$('chat').contentWindow)sendTheme();
-  if(event.data?.caw==='perch'&&event.source===$('chat').contentWindow&&Number.isFinite(event.data.y)){chatPerch={y:event.data.y,x:Number.isFinite(event.data.x)?event.data.x:null};raven.update();}});
-// Die Linie unter dem Kopf des Chats, gemeldet vom Chat selbst; bis dahin eine Schaetzung.
-let chatPerch=null;
-// Der Chat liegt abgeschottet in einem eigenen Origin: Sein Thema bekommt er als Nachricht.
-const sendTheme=()=>{try{$('chat').contentWindow.postMessage({caw:'theme',theme:document.documentElement.dataset.theme??null},'*');}catch{}};
+$('reload').addEventListener('click',refresh);
 // Persoenliche Einstellungen: Der Host prueft Schluessel und Wert.
 const pref=(key,value)=>{try{const result=window.${PREF_BINDING}?.(key,value);result?.catch?.(()=>{});}catch{}};
-// Hell oder dunkel: ohne Wahl wie das System, mit Wahl fest und gemerkt. Der Knopf zeigt, wohin er schaltet.
-const systemDark=matchMedia('(prefers-color-scheme: dark)');
-const isDark=()=>{const chosen=document.documentElement.dataset.theme;return chosen?chosen==='dark':systemDark.matches;};
-const paintTheme=()=>{const dark=isDark();$('theme').innerHTML=dark?'${SUN}':'${MOON}';$('theme').setAttribute('aria-label',dark?T['workbench.page.toLight']:T['workbench.page.toDark']);};
-$('theme').addEventListener('click',()=>{const next=isDark()?'light':'dark';document.documentElement.dataset.theme=next;pref('theme',next);paintTheme();sendTheme();});
-systemDark.addEventListener('change',paintTheme);paintTheme();
 // Schritte und Chat lassen sich einklappen. Fragt der Chat etwas, klappt er von selbst auf, ohne die Wahl zu ueberschreiben.
-const fold=(name,on,remember=true)=>{document.body.classList.toggle('fold-'+name,on);$(name+'Fold').setAttribute('aria-expanded',String(!on));$(name+'Strip').setAttribute('aria-expanded',String(!on));if(remember){pref(name,on?'closed':'open');if(name==='steps')autoSteps=false;}raven.update();};
-const folded=(name)=>document.body.classList.contains('fold-'+name)&&innerWidth>=1000;
+const fold=(name,on,remember=true)=>{document.body.classList.toggle('fold-'+name,on);$(name+'Fold').setAttribute('aria-expanded',String(!on));$(name+'Strip').setAttribute('aria-expanded',String(!on));if(remember){pref(name,on?'closed':'open');if(name==='steps')autoSteps=false;}};
+const toggleFold=(name)=>fold(name,!document.body.classList.contains('fold-'+name));
 // Ohne eigene Wahl startet die Schrittliste in schmalen Fenstern eingeklappt: Der Platz gehoert der Anwendung.
 let autoSteps=${prefs.steps === undefined ? 'true' : 'false'};
 // Scheitert ein Schritt oder stehen die Schritte fest, klappt die Liste von selbst auf, aber nur, wenn sie auch von selbst zu war.
 let stepsWanted=false;
 const fitSteps=()=>{if(!autoSteps)return;const on=innerWidth<1500&&!stepsWanted;document.body.classList.toggle('fold-steps',on);$('stepsFold').setAttribute('aria-expanded',String(!on));$('stepsStrip').setAttribute('aria-expanded',String(!on));};
 fitSteps();addEventListener('resize',fitSteps);
-const showSteps=()=>{if(!autoSteps||stepsWanted)return;stepsWanted=true;fitSteps();raven.update();};
+const showSteps=()=>{if(!autoSteps||stepsWanted)return;stepsWanted=true;fitSteps();};
 $('stepsFold').addEventListener('click',()=>fold('steps',true));$('stepsStrip').addEventListener('click',()=>fold('steps',false));
 $('chatFold').addEventListener('click',()=>fold('chat',true));$('chatStrip').addEventListener('click',()=>fold('chat',false));
+$('fSteps').addEventListener('click',()=>toggleFold('steps'));$('fChat').addEventListener('click',()=>toggleFold('chat'));
+// Nur Anwendung: Die Werkbank tritt zurueck, das Browserfenster bleibt, wie es ist (kein Vollbild wie F11). Der Host merkt es sich
+// und stellt es nach dem Neuladen der Werkbank wieder her.
+const showSolo=(on)=>{document.body.classList.toggle('solo',on);};
+const solo=(on=!document.body.classList.contains('solo'))=>{showSolo(on);try{const result=window.${FULLSCREEN_BINDING}?.(on);result?.catch?.(()=>{});}catch{}};
+for(const b of document.querySelectorAll('[data-solo]'))b.addEventListener('click',()=>solo());
+// Animationen aus (F10): kein Blinzeln, kein Spinner, kein Cursor. Gilt auch fuer die naechsten Laeufe.
+const setStill=(on)=>{document.body.classList.toggle('still',on);$('still').setAttribute('aria-pressed',String(on));pref('animations',on?'off':'on');};
+$('still').addEventListener('click',()=>setStill(!still()));
+// Pause und Abbrechen gehoeren dem Chat: Die Werkbank reicht die Taste nur weiter.
+const chatWindow=()=>{try{return $('chat').contentWindow;}catch{return null;}};
+const toChat=(key)=>{try{chatWindow()?.postMessage({caw:'key',key},'*');}catch{}};
+for(const b of document.querySelectorAll('[data-key]'))b.addEventListener('click',()=>toChat(b.dataset.key));
+const sendTheme=()=>{try{chatWindow()?.postMessage({caw:'theme',theme:TH},'*');}catch{}};
 
-// Der Rabe: derselbe wie im Logo. Er sitzt im Logo, auf dem ersten nicht bestandenen Schritt oder auf dem Chat.
-// Ein Schritt weiter huepft er, weiter weg fliegt er. Mit „Animationen aus“ sitzt er still im Logo. Alles rein kosmetisch.
-const raven=(()=>{
-  const K=2,S=${RAVEN_CLIPS.cell},SETTLE=170,motion=matchMedia('(prefers-reduced-motion: reduce)');
-  // Die Clips des Sheets (raven-clips.mjs): je Frame [Spalte, Zeile, ms]. Was einmal laeuft, dauert so lang wie sein Clip.
-  // FEET: so viele Pixel stehen die Fuesse ueber dem Zellboden (Platz fuer den Flug darunter); er sitzt auf den Fuessen.
-  // SHIFT: Clips mit eigenem Zuschnitt (der Flug) stehen in ihrer Zelle versetzt; die Grafik wird um so viel zurueckgeschoben.
-  const CLIPS=${JSON.stringify(RAVEN_CLIPS.clips)},FEET=${RAVEN_CLIPS.feet ?? 0},SHIFT=${JSON.stringify(RAVEN_CLIPS.shift ?? {})},len=(n)=>CLIPS[n].reduce((s,f)=>s+f[2],0);
-  // Weniger Bewegung gilt sofort, auch wenn der Mensch es mitten im Lauf im System umstellt.
-  let reduce=motion.matches,fed=${Number(prefs.fed) || 0};
-  const IDLE={blink:[2.5,len('blink')],caw:[1,len('caw')],look:[.5,900],puff:[1.5,len('puff')],peck:[1.5,900],hop:[.3,520],doze:[0,3200],feed:[0,1000],joy:[0,len('joy')],nod:[0,700],sigh:[0,len('sigh')],confetti:[0,0]};
-  // Er sagt nie Woerter: nur caw, ! und ?.
-  const REACT={greet:[{name:'caw',text:'caw!'}],fail:[{name:'caw',text:'caw?!'},'sigh'],done:[{name:'caw',text:'caw!'},'home'],home:['joy','confetti'],ask:[{name:'caw',text:'caw?'},'look'],aborted:['doze']};
-  const layer=$('ravenLayer'),wrap=$('raven'),sprite=wrap.firstElementChild,say=$('ravenSay'),cloud=$('ravenCloud'),tile=$('tile'),toggle=$('still');
-  const LOGO={kind:'logo'};
-  let place=LOGO,want=LOGO,move=null,settle=0,act=null,queue=[],nextIdle=0,recent=[],waitSince=0,bubbleTill=0,lastKey='',x=0,y=0;
-  // Ruhe statt Hin und Her: Eine kurze Rueckfrage holt ihn nicht in den Chat, und nach einer Rueckfrage bleibt er dort eine Weile
-  // sitzen. Folgen mehrere aufeinander (Start, Token-Hinweis, Plan), fliegt er so nicht jedes Mal zurueck.
-  const ASK_DELAY=450,LINGER=8000;
-  let askSince=0,askEnd=0,recheck=0;
-  let still=${still},homing=false,mood=null,celebrated=false,greeted=false,cheering=false,clickTimer=0,cur={x:0,y:0};
-  const same=(a,b)=>a.kind===b.kind&&a.i===b.i;
-  const shown=(r)=>r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth;
-  const anchor=(p)=>{
-    if(p.kind==='step'){const spot=spots()[p.i],icon=spot&&spotIcon(spot);if(icon){const r=icon.getBoundingClientRect(),t=$('track').getBoundingClientRect(),mid=r.top+r.height/2;return {x:r.left+r.width/2,y:r.top+K,show:mid>=t.top&&mid<=t.bottom&&shown(r)};}}
-    if(p.kind==='chat'){const r=$('chatCard').getBoundingClientRect(),f=$('chat').getBoundingClientRect();return {x:chatPerch?.x==null?r.left+Math.round(r.width*.55):f.left+chatPerch.x,y:chatPerch===null?r.top+42:f.top+chatPerch.y+K,show:shown(r)};}
-    if(p.kind==='pos')return {x:p.x,y:p.y,show:true};
-    const r=tile.getBoundingClientRect();return {x:r.left+r.width/2,y:r.bottom,show:shown(r)};
-  };
-  const frame=(c,r)=>{sprite.style.backgroundPosition=(-c*S)+'px '+(-r*S)+'px';};
-  // Ein Frame des Clips (i<0 zaehlt von hinten), oder der Clip zur Zeit t: im Kreis, oder einmal und dann stehen bleiben.
-  let shifted='';
-  const clip=(n)=>{if(n===shifted)return;shifted=n;const d=SHIFT[n]||[0,0];sprite.style.setProperty('--raven-shift-x',d[0]+'px');sprite.style.setProperty('--raven-shift-y',d[1]+'px');};
-  const pose=(n,i=0)=>{const f=CLIPS[n].at(i);clip(n);frame(f[0],f[1]);};
-  const play=(n,t,loop=true)=>{const L=len(n);let u=loop?((t%L)+L)%L:t;clip(n);for(const f of CLIPS[n]){if(u<f[2]){frame(f[0],f[1]);return;}u-=f[2];}pose(n,-1);};
-  const face=(dir)=>{sprite.style.setProperty('--raven-dir',String(dir));};
-  const setT=(px,py,lift,rot)=>{cur={x:px,y:py};wrap.style.transform='translate('+Math.round(px-S/2)+'px,'+Math.round(py-S+FEET-(lift||0))+'px)'+(rot?' rotate('+Math.round(rot)+'deg)':'');};
-  const hideSay=()=>{say.hidden=true;say.className='';bubbleTill=0;};
-  const showCloud=(on)=>{const show=on&&!still&&wrap.style.visibility!=='hidden';cloud.hidden=!show;if(show){cloud.style.left=Math.round(x-14)+'px';cloud.style.top=Math.round(y-S-24)+'px';}};
-  // Konfetti aus dem Fortschrittsbalken, wenn alles gruen ist und er zu Hause angekommen ist.
-  const burst=()=>{if(still||reduce)return;const bar=$('progress').getBoundingClientRect();if(bar.width===0)return;
-    for(let i=0;i<28;i+=1){const bit=document.createElement('i');bit.className='confetti';bit.style.background=${JSON.stringify(CONFETTI)}[i%4];
-      bit.style.left=Math.round(bar.left+Math.random()*bar.width)+'px';bit.style.top=Math.round(bar.top)+'px';
-      bit.style.setProperty('--dx',Math.round((Math.random()-.5)*60)+'px');bit.style.setProperty('--up',Math.round(-30-Math.random()*50)+'px');
-      bit.style.animationDelay=Math.round(Math.random()*200)+'ms';layer.append(bit);setTimeout(()=>bit.remove(),2000);}};
-  const speak=(text,zz,ms)=>{if(still)return;say.textContent=text;say.className=zz?'zz':'';say.hidden=false;void say.offsetWidth;say.classList.add(zz?'float':'pop');bubbleTill=performance.now()+(ms||1300);placeSay();};
-  // Die Blase haengt an der Sitzposition, in ganzen Pixeln, und bleibt im Fenster.
-  const placeSay=()=>{
-    const home=place.kind==='logo';let bx=home?x+S/2+6:x+S*0.4,by=home?y-S+2:y-S-26;
-    bx=Math.min(Math.max(bx,4),innerWidth-say.offsetWidth-4);by=Math.max(by,4);
-    say.style.left=Math.round(bx)+'px';say.style.top=Math.round(by)+'px';
-  };
-  const wanted=()=>{
-    const list=spots(),n=list.length;
-    if(still||homing||mood==='aborted'||n===0)return LOGO;
-    const now=performance.now(),here=move?move.target:place;
-    if(mood==='ask'){
-      if(folded('chat'))return LOGO;
-      if(here.kind!=='chat'&&now-askSince<ASK_DELAY){recheck=askSince+ASK_DELAY;return here;}
-      return {kind:'chat'};
-    }
-    // Laeuft schon ein Schritt, gibt es dort etwas zu sehen: dann ohne Warten zurueck.
-    if(here.kind==='chat'&&now-askEnd<LINGER&&!folded('chat')&&!list.some((spot)=>spotState(spot)==='running')){recheck=askEnd+LINGER;return here;}
-    if(folded('steps'))return LOGO;
-    // Jeder Punkt ist ein Ziel: der laufende, sonst der gescheiterte, sonst der erste offene. Nicht erreichte Punkte hinter einem
-    // hergestellten Zustand sind keines, dann bleibt er auf dem letzten bestandenen.
-    const states=list.map(spotState),open=states.findIndex((s)=>s!=='pass'&&s!=='skipped'),done=mood==='done'||open<0;
-    const last=Math.max(0,states.lastIndexOf('pass')),running=states.lastIndexOf('running'),failed=states.indexOf('fail');
-    if(!done)celebrated=false;
-    if(done&&celebrated)return LOGO;
-    return {kind:'step',i:done?(open<0&&mood!=='done'?last:n-1):running>=0?running:failed>=0?failed:open};
-  };
-  const condition=()=>{
-    if(place.kind==='chat')return mood==='ask'?'ask':'';
-    if(place.kind==='logo')return mood==='aborted'?'aborted':mood==='done'&&celebrated?'home':'';
-    const list=spots(),spot=list[place.i];if(!spot)return '';
-    const state=spotState(spot);
-    if(state==='fail'||(mood==='fail'&&!list.some((other)=>spotState(other)==='fail')))return 'fail';
-    return place.i===list.length-1&&(mood==='done'||list.every((other)=>spotState(other)==='pass'))?'done':'';
-  };
-  const label=()=>{toggle.checked=still||homing;document.body.classList.toggle('still',still);};
-  const rest=()=>{homing=false;still=true;act=null;queue=[];hideSay();showCloud(false);label();};
-  const wake=()=>{still=false;homing=false;lastKey='';nextIdle=performance.now()+600;label();update();};
-  const update=()=>{want=wanted();kick();};
-  toggle.addEventListener('change',()=>{kick();if(!toggle.checked){wake();pref('animations','on');return;}
-    homing=true;act=null;queue=[];hideSay();label();pref('animations','off');
-    // Mitten im Flug: von der aktuellen Stelle direkt ins Logo, ohne den Flug zu Ende zu fliegen.
-    if(move){place={kind:'pos',x:cur.x,y:cur.y};move=null;settle=0;}
-    if(reduce||place.kind==='logo'){place=LOGO;rest();}
-    update();});
-  const startAct=(a,now)=>{
-    const name=typeof a==='string'?a:a.name;
-    if(name==='home'){celebrated=true;update();return;}
-    if(name==='confetti'){burst();return;}
-    act={name,start:now,dur:IDLE[name][1],text:a.text};
-    if(name==='caw')setTimeout(()=>{if(act&&act.name==='caw')speak(act.text||'caw!');},140);
-    if(name==='doze')speak('z z z',true,IDLE.doze[1]);
-    if(name==='hop')hideSay();
-  };
-  const pickIdle=(now)=>{
-    const waited=now-waitSince;
-    // Die letzten zwei Aktionen kommen nicht gleich wieder, damit er abwechslungsreich bleibt.
-    const pool=Object.entries(IDLE).filter(([n])=>n!=='feed'&&!recent.includes(n)).map(([n,[w]])=>[n,n==='doze'?(waited>9000?1.5:0):w]);
-    let r=Math.random()*pool.reduce((sum,[,w])=>sum+w,0),pick='blink';
-    for(const [n,w] of pool)if((r-=w)<0){pick=n;break;}
-    recent=[pick,...recent].slice(0,2);return pick;
-  };
-  const startMove=(now)=>{
-    const from=anchor(place),to=anchor(want),target=want;
-    hideSay();showCloud(false);act=null;queue=[];cheering=false;
-    if(reduce){place=target;lastKey='';return;}
-    // Zwischen Schritten gezielt: zum naechsten ein Hopser, weiter ein flacher Flug mit Fluegelschlag geradewegs hin; vom Logo zu den
-    // Schritten und zurueck ebenso geradewegs. Nur zum Chat und vom Chat weg fliegt er nicht quer ueber die Anwendung,
-    // sondern an der naechsten Seite aus dem Fenster und an der Seite des Ziels wieder herein.
-    const steps=place.kind==='step'&&target.kind==='step',d=steps?Math.abs(target.i-place.i):0,chat=place.kind==='chat'||target.kind==='chat';
-    move={origin:place,from,to,target,start:now,steps,d,kind:steps&&d===1?'hop':chat?'out':'glide',dir:to.x<from.x-2?1:-1};
-    const side=(p)=>(p.x<innerWidth/2?-S*2:innerWidth+S*2);
-    if(move.kind==='out'){move.exit={x:side(from),y:from.y-S*3};move.enter={x:side(to),y:to.y-S*3};
-      const leg=(a,b)=>Math.min(1000,Math.max(480,Math.hypot(b.x-a.x,b.y-a.y)*1.2));move.out=leg(from,move.exit);move.away=260;move.dur=move.out+move.away+leg(move.enter,to);}
-    // Lang genug fuer mehrere Fluegelschlaege (ein Schlag sind 8 Frames, etwa 0,45 s).
-    else move.dur=move.kind==='hop'?460:steps?420+150*Math.min(d,6):Math.min(1200,Math.max(560,Math.hypot(to.x-from.x,to.y-from.y)*1.1));
-  };
-  // Start und Ziel in jedem Bild neu messen: Scrollt die Schrittliste oder verschiebt sich der Chat waehrend des Flugs, fliegt er mit,
-  // statt zur alten Stelle zu fliegen und dort zu springen.
-  const live=(p,fallback)=>(p.kind==='step'||p.kind==='chat'?anchor(p):fallback);
-  const flying=(now)=>{
-    const m=move,t=Math.min(1,(now-m.start)/m.dur),e=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2,f=live(m.origin,m.from),g=live(m.target,m.to),lean=m.dir<0?1:-1;
-    wrap.style.visibility='';face(m.dir);
-    if(m.kind==='hop'){
-      // Geradewegs zum Ziel, nur ein kleiner Bogen nach oben.
-      setT(f.x+(g.x-f.x)*e,f.y+(g.y-f.y)*e,Math.sin(Math.PI*t)*S*.45,lean*Math.sin(Math.PI*t)*8);
-      if(t<.12||t>.9)pose('peck');else pose('fly',t<.5?0:-1);
-    }else if(m.kind==='glide'){
-      setT(f.x+(g.x-f.x)*e,f.y+(g.y-f.y)*e,Math.sin(Math.PI*t)*S*.3,0);
-      play('fly',now);
-    }else{
-      // Hinaus, kurz weg, an der Seite des Ziels wieder herein. Raus beschleunigt er, rein bremst er.
-      const u=now-m.start,inn=m.dur-m.out-m.away;
-      if(u<m.out){const k=u/m.out,a=k*k;face(m.exit.x<f.x?1:-1);setT(f.x+(m.exit.x-f.x)*a,f.y+(m.exit.y-f.y)*a,0,lean*-8);}
-      else if(u<m.out+m.away){wrap.style.visibility='hidden';}
-      else{const k=Math.min(1,(u-m.out-m.away)/inn),b=1-(1-k)*(1-k);face(g.x<m.enter.x?1:-1);setT(m.enter.x+(g.x-m.enter.x)*b,m.enter.y+(g.y-m.enter.y)*b,0,0);}
-      play('fly',now);
-    }
-    if(t>=1){place=m.target;move=null;lastKey='';waitSince=now;nextIdle=now+3000+Math.random()*4000;}
-  };
-  const perched=(now)=>{
-    const p=anchor(place);x=p.x;y=p.y;wrap.style.visibility=p.show?'':'hidden';
-    face(-1);
-    if(still){pose('idle');setT(x,y);return;}
-    const c=condition(),key=place.kind+(place.i??'')+':'+c;
-    // Weniger Bewegung: kein Huepfen, Drehen oder Picken; nur die Blase sagt, was los ist.
-    if(reduce){if(key!==lastKey){lastKey=key;const said=c?REACT[c].find((a)=>a.text):null;if(said)speak(said.text);}pose('idle');setT(x,y);return;}
-    if(key!==lastKey){lastKey=key;if(c){act=null;queue=REACT[c].slice();}
-      // Der erste Punkt nach dem Einflug: Er gruesst einmal.
-      else if(!greeted&&place.kind==='step'){greeted=true;act=null;queue=REACT.greet.slice();}}
-    showCloud(c==='fail');
-    // Im Logo sitzt er still: keine Idle-Aktionen, kein Atmen; nur Reaktionen (Abbruch, Heimkehr) spielen dort.
-    const home=place.kind==='logo';
-    if(!act){if(queue.length)startAct(queue.shift(),now);else if(!reduce&&!home&&now>nextIdle&&c!=='done')startAct(pickIdle(now),now);}
-    let lift=0;const a=act;
-    if(!a){if(c==='fail')pose('sad',-1);else if(home)pose('idle');else play('idle',now);}
-    else{
-      const t=now-a.start;
-      // Einmal kurz zurueckblicken, nicht hin und her.
-      if(a.name==='look'){pose('idle');if(t>200&&t<700)face(1);}
-      else if(a.name==='feed'){if(t<240)pose('idle');else play('peck',t-240);}
-      else if(a.name==='hop'){if(t>=80&&t<=440){pose('fly');lift=Math.sin(Math.PI*(t-80)/360)*S/3;}else pose('peck');}
-      // Einmal: blink, caw, puff, joy, sigh; im Kreis, solange die Handlung dauert: peck, doze, nod. Winken (wave) spielt die Werkbank nicht.
-      else if(['blink','caw','puff','joy','sigh'].includes(a.name))play(a.name,t,false);
-      else if(CLIPS[a.name])play(a.name,t);
-      // Animationen nur ab und zu: zwischen zwei Handlungen sitzt er ein paar Sekunden ruhig da (idle atmet weiter).
-      if(t>=a.dur){act=null;nextIdle=now+5000+Math.random()*7000;if(queue.length===0)cheering=false;}
-    }
-    setT(x,y,lift);
-  };
-  const loop=(now)=>{
-    if(!move&&!same(place,want)&&want.kind==='step'&&cheering&&(act!==null||queue.length>0)){/* erst die zwei Huepfer zu Ende */}
-    else if(!move&&!same(place,want)){
-      const ahead=place.kind==='step'&&want.kind==='step'&&want.i>place.i;
-      if(!settle)settle=now+(reduce?0:ahead?SETTLE:80);
-      if(now>=settle){settle=0;startMove(now);}
-    }else if(!move)settle=0;
-    if(recheck&&now>=recheck){recheck=0;update();}
-    if(homing&&!move&&place.kind==='logo')rest();
-    if(move)flying(now);else perched(now);
-    wrap.classList.toggle('home',!move&&place.kind==='logo');
-    document.body.classList.toggle('raven-away',move!==null||place.kind!=='logo');
-    if(bubbleTill&&now>bubbleTill)hideSay();
-    if(!say.hidden)placeSay();
-    // Still im Logo gibt es nichts zu bewegen: Die Schleife ruht, bis sich etwas aendert (wake, update, Fenstergroesse).
-    if(still&&!homing&&!move&&place.kind==='logo'&&same(want,LOGO)&&say.hidden){looping=false;return;}
-    requestAnimationFrame(loop);
-  };
-  let looping=true;
-  const kick=()=>{if(!looping){looping=true;requestAnimationFrame(loop);}};
-  addEventListener('resize',kick);
-  motion.addEventListener?.('change',(event)=>{reduce=event.matches;lastKey='';kick();});
-  // Klick: Herzchen. Doppelklick: ein Kruemel, er pickt und plustert sich. Nach jeder dritten Fuetterung bedankt er sich.
-  const pet=()=>{
-    // Auf das 2-px-Raster der Pixelkunst: Sonst landen die Pixel bei krummem Zoom auf halben Geraetepixeln und das Herz wirkt verzerrt.
-    const grid=(v)=>Math.round(v/2)*2;
-    for(let i=0;i<3;i+=1){const heart=document.createElement('i');heart.className='heart';heart.style.left=grid(x-7+(i-1)*12)+'px';heart.style.top=grid(y-S-14-(i%2)*6)+'px';heart.style.animationDelay=(i*120)+'ms';layer.append(heart);setTimeout(()=>heart.remove(),1400);}
-    if(!act)queue.unshift('blink');
-  };
-  const feed=()=>{
-    const crumb=document.createElement('i');crumb.className='crumb';crumb.style.left=Math.round(x+13)+'px';crumb.style.top=Math.round(y-4)+'px';layer.append(crumb);setTimeout(()=>crumb.remove(),1000);
-    act=null;hideSay();queue=['feed','puff'];
-    fed+=1;pref('fed',String(fed));
-    if(fed%3===0)queue.push({name:'caw',text:'caw!'});
-  };
-  const busy=()=>still||homing||move!==null||place.kind==='logo';
-  wrap.addEventListener('click',()=>{if(busy())return;clearTimeout(clickTimer);clickTimer=setTimeout(pet,240);});
-  wrap.addEventListener('dblclick',()=>{if(busy())return;clearTimeout(clickTimer);feed();});
-  label();pose('idle');face(-1);
-  requestAnimationFrame(loop);
-  return {
-    update,
-    mood:(value)=>{if(value==='ask'&&mood!=='ask'){askSince=performance.now();if(document.body.classList.contains('fold-chat'))fold('chat',false,false);}
-      else if(value!=='ask'&&mood==='ask')askEnd=performance.now();if(value==='wait')mood=null;else if(['ask','fail','done','aborted'].includes(value))mood=value;else return;if(value!=='aborted')aborted=false;update();},
-    reset:()=>{mood=null;celebrated=false;greeted=false;lastKey='';update();},
-    // Ein Schritt ist bestanden und er sitzt darauf: zwei kleine Huepfer, dann weiter.
-    cheer:(li)=>{if(still||reduce||move||place.kind!=='step')return;const spot=spots()[place.i];if(!spot||groupOf(spot)!==li)return;act=null;queue=['hop','hop'];cheering=true;kick();},
-    // Eine Nachricht vom Menschen: Er nickt, ohne Zeichen.
-    nod:()=>{if(still||reduce||move)return;act=null;queue.unshift('nod');kick();},
-  };
-})();
-const makeIcon=(cls)=>{const icon=document.createElement('span');icon.className=cls;icon.setAttribute('role','img');icon.setAttribute('aria-label',LABELS.waiting);return icon;};
-const setState=(node,stateName,note)=>{const label=LABELS[stateName]??stateName,own=groupOf(node)===node;node.dataset.state=stateName;node.setAttribute('aria-label',node.dataset.label+' – '+label);
-  node.querySelector(own?':scope>.head [role=img]':'[role=img]').setAttribute('aria-label',label);
+const KIND={waiting:'open',running:'run',pass:'ok',fail:'fail',skipped:'open'};
+const BULLET={running:'run',pass:'ok',fail:'fail'};
+const makeMark=(point)=>{const st=document.createElement('span');st.className='st';st.setAttribute('role','img');st.setAttribute('aria-label',LABELS.waiting);
+  const tg=document.createElement('span');tg.className='tag'+(point?' pt-tag':'');st.append(tg);
+  if(point){const mk=document.createElement('span');mk.className='mk';st.append(mk);}return st;};
+const paint=(node)=>{const own=isGroup(node),st=node.querySelector(own?':scope>.head>.st':':scope>.st'),stateName=node.dataset.state,k=KIND[stateName]??'open';
+  const tg=st.querySelector('.tag');tg.className='tag tag-'+k+(k==='fail'&&TH.failInverted!==false?' inverted':'')+(own?'':' pt-tag');markInto(tg,k);
+  const mk=st.querySelector('.mk');if(mk){mk.className='mk mk-'+k;mk.textContent=BULLET[stateName]?str(TH.bullets?.[BULLET[stateName]],'▸'):'·';}};
+const setState=(node,stateName,note)=>{const label=LABELS[stateName]??stateName,own=isGroup(node);node.dataset.state=stateName;node.setAttribute('aria-label',node.dataset.label+' – '+label);
+  node.querySelector(own?':scope>.head [role=img]':'[role=img]').setAttribute('aria-label',label);paint(node);
   if(note!==undefined||stateName!=='fail'){const text=node.querySelector(own?':scope>.head .text':'.text');text.querySelector(':scope>.note')?.remove();
     if(note){const div=document.createElement('div');div.className='note';div.textContent=note;div.title=note;text.append(div);}}};
-const showMs=(node,ms)=>{const cell=node.querySelector(groupOf(node)===node?':scope>.head .ms':'.ms');if(ms===undefined){cell.textContent='';delete node.dataset.ms;}else{cell.textContent=duration(ms);node.dataset.ms=String(Math.round(ms));}};
+const showMs=(node,ms)=>{const cell=node.querySelector(isGroup(node)?':scope>.head .ms':'.ms');if(ms===undefined){cell.textContent='';delete node.dataset.ms;}else{cell.textContent=duration(ms);node.dataset.ms=String(Math.round(ms));}};
+const liveText=(text)=>str(TH.bullets?.run,'▸')+' '+text;
 const makePoint=(p)=>{const li=document.createElement('li');li.dataset.id=p.id;li.dataset.state='waiting';if(p.kind)li.dataset.kind=p.kind;li.dataset.label=((p.kind?p.kind+' ':'')+(p.label??'')).trim();li.setAttribute('aria-label',li.dataset.label+' – '+LABELS.waiting);
+  const tree=document.createElement('span');tree.className='tree';tree.setAttribute('aria-hidden','true');
   const text=document.createElement('span');text.className='text';if(p.kind){const kind=document.createElement('span');kind.className='kind';kind.textContent=p.kind;text.append(kind);}
   const name=document.createElement('span');name.className='name';name.textContent=p.label??'';text.append(name);
-  const ms=document.createElement('span');ms.className='ms';li.append(makeIcon('pt-icon'),text,ms);return li;};
+  const ms=document.createElement('span');ms.className='ms';li.append(tree,makeMark(true),text,ms);paint(li);return li;};
+const phaseName=(li)=>{li.querySelector(':scope>.head .name').textContent=ruleText(li.dataset.name.toUpperCase());};
 const makeGroup=(g)=>{const li=document.createElement('li');const phase=g.kind==='phase';li.dataset.id=g.id;li.dataset.kind=phase?'phase':'step';li.dataset.name=g.name;li.dataset.state='waiting';li.dataset.label=(phase?'':g.id+' ')+g.name;li.setAttribute('aria-label',li.dataset.label+' – '+LABELS.waiting);
-  const head=document.createElement('div');head.className='head';head.append(makeIcon('step-icon'));
+  const head=document.createElement('div');head.className='head';head.append(makeMark(false));
   if(!phase){const id=document.createElement('span');id.className='id';id.textContent=g.id;head.append(id);}
   const text=document.createElement('span');text.className='text';const name=document.createElement('span');name.className='name';name.textContent=g.name;text.append(name);
   const ms=document.createElement('span');ms.className='ms';head.append(text,ms);
-  const pts=document.createElement('ol');pts.className='pts';pts.append(...(g.points??[]).map(makePoint));li.append(head,pts);return li;};
+  const pts=document.createElement('ol');pts.className='pts';li.append(head,pts);pts.append(...(g.points??[]).map(makePoint));paint(li);if(phase)phaseName(li);return li;};
+// Ein anderes Theme: alle Zeichen neu, Farben als Variablen, Rabe, Legenden, Chat.
+const repaint=()=>{for(const li of document.querySelectorAll('#steps li'))paint(li);for(const li of items())if(li.dataset.kind==='phase')phaseName(li);
+  for(const lg of document.querySelectorAll('.lg[data-title]'))lg.textContent=legendText(lg.dataset.title);
+  for(const live of document.querySelectorAll('.pts .live'))live.textContent=liveText(live.dataset.text??'');
+  $('urlMark').textContent=str(TH.bullets?.ok,'■');$('stateSpin').replaceChildren(cawGlyph(frames()[0]));spin();summarize();};
+const useTheme=(theme)=>{if(!theme||typeof theme!=='object')return;TH=theme;cawApplyTheme(document.documentElement,TH);raven.setRaven(TH.raven);repaint();sendTheme();};
+repaint();
+
+// Theme (F7): Themes waehlen, eigene anlegen und bearbeiten. Eingebaute bleiben, wie sie sind: Die erste Aenderung legt eine Kopie
+// „mein-<base>“ an. Gespeichert wird ueber cawTheme im Host, der das Schema prueft; die Seite setzt nur Variablen und textContent.
+const KEYS=${json(THEME_KEYS)},BUILTIN=${json(BUILTIN_THEMES)},LANG=${json(language())},NAME=/^[a-z0-9-]{1,32}$/;
+const isObj=(v)=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+const txt=(v)=>(isObj(v)?v[LANG]??v.en??Object.values(v)[0]??'':v??'');
+const clone=(v)=>JSON.parse(JSON.stringify(v??{}));
+const getPath=(obj,path)=>path.split('.').reduce((o,k)=>(o==null?o:o[k]),obj);
+const isBuiltin=()=>BUILTIN.includes(TH.name);
+const FIELDS={
+  marks:[['marks'],['marks.ok','text',32],['marks.warn','text',32],['marks.fail','lang',32],['marks.run','text',32],['marks.open','text',32],['marks.ask','text',32],
+    ['bullets'],['bullets.ok','text',4],['bullets.warn','text',4],['bullets.fail','text',4],['bullets.run','text',4],['bullets.pause','lang',4],
+    ['lines'],['tree.mid','text',2],['tree.end','text',2],['rule.line','text',1],['legend','text',32],
+    ['progress'],['progress.done','text',1],['progress.run','text',1],['progress.open','text',1],['spinner.frames','chars',12],['spinner.ms','num',60000],
+    ['chat'],['prompt.claude','text',32],['prompt.human','lang',32]],
+  raven:[['logo'],['raven.lines.0','text',24],['raven.lines.1','text',24],['raven.lines.2','text',24],['raven.beak','text',2],
+    ['eyes'],['raven.eyes.open','text',2],['raven.eyes.shut','text',2],['raven.eyes.happy','text',2],
+    ['blink'],['raven.blink.ms','num',60000],['raven.blink.pauseMs.0','num',60000],['raven.blink.pauseMs.1','num',60000],
+    ['hearts'],['raven.pet.hearts.glyphs','list',24],['raven.pet.hearts.count','num',20],['raven.pet.hearts.risePx','num',400]],
+  crt:[['screen'],['crt.scanlines.color','color'],['crt.scanlines.alpha','range'],['crt.vignette','range'],
+    ['glow'],['crt.headingGlowPx','num',24],['crt.textGlow.px','num',8],['crt.textGlow.alpha','range']],
+};
+const TABS=['colors','marks','raven','crt'];
+let tab='colors',confirmDelete=false,busy=false;
+const msg=(text)=>{$('tmsg').textContent=text??'';};
+const call=async(action,payload)=>{if(busy)return null;busy=true;
+  try{const result=await window.${THEME_BINDING}?.(action,payload);
+    if(result?.ok===true){if(Array.isArray(result.list))LIST=result.list;if(result.theme)useTheme(result.theme);msg('');return result;}
+    msg(fill('workbench.page.themeFailed',{why:String(result?.error??'').slice(0,200)}));}
+  catch{msg(fill('workbench.page.themeFailed',{why:''}));}
+  finally{busy=false;renderDialog();}
+  return null;};
+const unique=(stem)=>{let name=stem.slice(0,32),i=2;while(LIST.some((entry)=>entry.name===name))name=(stem.slice(0,28)+'-'+(i++));return name;};
+// Das eigene Paket zum Speichern: ohne css und Schriften, die kommen nur von der Platte und bleiben im Host.
+const ownPkg=()=>{const pkg=clone(TH.pkg);delete pkg.css;delete pkg.fonts;delete pkg.$schema;return pkg;};
+const fresh=(base,label)=>({themeApi:1,name:unique('mein-'+base),base,label:{[LANG]:label}});
+const setPath=(pkg,path,value)=>{const keys=path.split('.');let o=pkg;
+  keys.slice(0,-1).forEach((k,i)=>{const next=keys[i+1];if(o[k]==null)o[k]=/^\\d+$/.test(next)?clone(getPath(TH,keys.slice(0,i+1).join('.'))??[]):{};else o[k]=clone(o[k]);o=o[k];});
+  o[keys.at(-1)]=value;};
+const edit=(path,value)=>{const pkg=isBuiltin()?fresh(TH.name,fill('workbench.page.themeMine',{label:TH.label})):ownPkg();setPath(pkg,path,value);return call('save',pkg);};
+const problems=()=>{const out=[];
+  const widths=new Set(Object.values(TH.marks??{}).map((m)=>[...String(m).replace('{spinner}','x')].length));
+  if(widths.size>1)out.push(T['workbench.page.themeWidth']);
+  const lum=(hex)=>{const [r,g,b]=hex.slice(1).match(/../g).map((p)=>{const c=parseInt(p,16)/255;return c<=.03928?c/12.92:((c+.055)/1.055)**2.4;});return .2126*r+.7152*g+.0722*b;};
+  const ratio=(a,b)=>{const [x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return (x+.05)/(y+.05);};
+  for(const k of ['screen','pane']){const q=ratio(TH.colors.text,TH.colors[k]);if(q<4.5)out.push(fill('workbench.page.themeContrast',{ground:T['workbench.page.f.colors.'+k],ratio:q.toFixed(1).replace('.',T['workbench.page.decimal'])}));}
+  return out;};
+const input=(path,kind,max)=>{const raw=getPath(TH,path),el=document.createElement('input');el.id='f-'+path.replaceAll('.','-');el.dataset.path=path;el.dataset.kind=kind;
+  if(kind==='color'){el.type='color';el.value=raw??'#000000';}
+  else if(kind==='range'){el.type='range';el.min='0';el.max='1';el.step='0.01';el.value=String(raw??0);}
+  else if(kind==='num'){el.type='number';el.min='0';el.max=String(max);el.value=String(raw??0);}
+  else{el.type='text';el.maxLength=kind==='list'||kind==='chars'?200:max;el.value=kind==='list'?(raw??[]).join('  ').replaceAll('\\n','\\\\n'):kind==='chars'?(raw??[]).join(''):txt(raw);if(kind==='list')el.title=T['workbench.page.themeListHint'];}
+  const live=kind==='color'||kind==='range';
+  el.addEventListener(live?'input':'change',()=>{let v=el.value;
+    if(kind==='color'&&!/^#[0-9a-f]{6}$/i.test(v))return;
+    if(kind==='num'||kind==='range'){v=Number(v);if(!Number.isFinite(v)||v<0)return;if(kind==='num')v=Math.min(Math.round(v),max);}
+    if(kind==='list')v=v.split(/ {2,}/).map((s)=>s.replaceAll('\\\\n','\\n')).filter(Boolean).slice(0,12);
+    if(kind==='chars')v=[...v].filter((c)=>c.trim()).slice(0,12);
+    if((kind==='list'||kind==='chars')&&v.length===0)return;
+    if(kind==='lang')v={...(isObj(getPath(TH.pkg,path))?getPath(TH.pkg,path):{}),[LANG]:v};
+    if(live){const preview=clone(TH);setPath(preview,path,v);cawApplyTheme(document.documentElement,preview);const code=el.previousElementSibling;if(code?.tagName==='CODE')code.textContent=el.value;}
+    else edit(path,v);});
+  if(live)el.addEventListener('change',()=>{let v=el.value;if(kind==='range')v=Number(v);edit(path,v);});
+  return el;};
+const label=(forId,text)=>{const l=document.createElement('label');l.htmlFor=forId;l.textContent=text;return l;};
+const renderFields=()=>{
+  $('ttabs').replaceChildren(...TABS.map((name)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',String(name===tab));b.textContent=T['workbench.page.tab.'+name];b.addEventListener('click',()=>{tab=name;renderFields();});return b;}));
+  const out=[];
+  if(tab==='colors')for(const k of KEYS){const el=input('colors.'+k,'color');const sw=document.createElement('span');sw.className='sw';const code=document.createElement('code');code.textContent=el.value;sw.append(code,el);out.push(label(el.id,T['workbench.page.f.colors.'+k]??k),sw);}
+  else for(const f of FIELDS[tab]){if(f.length===1){const g=document.createElement('div');g.className='grp';g.textContent=ruleText(T['workbench.page.g.'+f[0]].toUpperCase(),40);out.push(g);continue;}
+    const el=input(f[0],f[1],f[2]);let box=el;if(f[1]==='color'){box=document.createElement('span');box.className='sw';const code=document.createElement('code');code.textContent=el.value;box.append(code,el);}
+    out.push(label(el.id,T['workbench.page.f.'+f[0]]??f[0]),box);}
+  $('tfields').replaceChildren(...out);};
+const renderDialog=()=>{const own=!isBuiltin();
+  $('tthemes').replaceChildren(...LIST.map((entry)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(entry.name===TH.name));
+    const i=document.createElement('i');const sample=entry.name===TH.name?TH.colors:entry.colors;if(sample){i.style.setProperty('--sw-screen',sample.screen);i.style.setProperty('--sw-accent',sample.accent);}
+    const name=document.createElement('span');name.textContent=entry.label||entry.name;const small=document.createElement('small');small.textContent=entry.builtin?T['workbench.page.themeBuiltin']:fill('workbench.page.themeOwn',{base:entry.base});
+    b.append(i,name,small);b.addEventListener('click',()=>{confirmDelete=false;if(entry.name!==TH.name)call('use',entry.name);});return b;}));
+  $('tname').textContent=legendText('THEME '+String(TH.label||TH.name).toUpperCase());
+  $('tnameRow').hidden=!own;
+  if(own){if(document.activeElement!==$('tlabel'))$('tlabel').value=txt(TH.pkg?.label)||TH.name;if(document.activeElement!==$('tslug'))$('tslug').value=TH.name;$('tfile').textContent=fill('workbench.page.themeFile',{name:TH.name});}
+  $('tdelete').hidden=!own;$('treset').hidden=!own;
+  $('tdelete').textContent=confirmDelete?T['workbench.page.themeDeleteSure']:T['workbench.page.themeDelete'];
+  $('tdup').textContent=own?T['workbench.page.themeDuplicate']:T['workbench.page.themeOwnFrom'];
+  if(!$('tfields').contains(document.activeElement))renderFields();
+  const warn=problems();$('tproblems').replaceChildren(...warn.map((w)=>{const li=document.createElement('li');li.textContent=str(TH.bullets?.warn,'◆')+' '+w;return li;}));$('tproblems').hidden=warn.length===0;
+  $('tjsonHead').textContent=own?T['workbench.page.themeJsonOwn']:T['workbench.page.themeJsonBuiltin'];
+  const shown=clone(TH.pkg);delete shown.css;$('tjson').textContent=JSON.stringify(shown,null,2);};
+$('tlabel').addEventListener('change',()=>{const v=$('tlabel').value.trim().slice(0,40);if(v&&!isBuiltin())edit('label',{...(isObj(TH.pkg?.label)?TH.pkg.label:{}),[LANG]:v});});
+$('tslug').addEventListener('change',()=>{const to=$('tslug').value.trim().toLowerCase();if(isBuiltin()||to===TH.name)return;
+  if(!NAME.test(to)||LIST.some((entry)=>entry.name===to)){msg(T['workbench.page.themeBadName']);$('tslug').value=TH.name;return;}call('rename',{from:TH.name,to});});
+$('tdup').addEventListener('click',()=>{const base=isBuiltin()?TH.name:TH.base;const copy=fill('workbench.page.themeCopy',{label:TH.label});
+  if(isBuiltin()){call('save',{...fresh(base,copy),name:unique(TH.name+'-kopie')});return;}
+  call('save',{...ownPkg(),name:unique(TH.name+'-kopie'),label:{[LANG]:copy}});});
+$('treset').addEventListener('click',()=>{if(isBuiltin())return;const p=ownPkg();call('save',{themeApi:1,name:p.name,base:p.base,...(p.label?{label:p.label}:{})});});
+$('tdelete').addEventListener('click',()=>{if(isBuiltin())return;if(!confirmDelete){confirmDelete=true;renderDialog();return;}confirmDelete=false;call('delete',TH.name);});
+let themeFocus=null;
+// Zustand waehlen (F1): nur nach der Uebergabe, wenn der Host Tests anbietet. Ohne Schritt laeuft der Test bis zum letzten herstellbaren.
+let STATES=[],sTest=null,sStep=null;
+const stateDlg=$('stateDlg');
+const okSteps=(test)=>test.steps.filter((step)=>step.ok);
+const sRow=(cls,mark,name,meta,selected,disabled)=>{const b=document.createElement('button');b.type='button';b.className='srow'+(cls?' '+cls:'');b.setAttribute('role','option');b.setAttribute('aria-selected',String(selected));b.disabled=disabled===true;
+  const m=document.createElement('span');m.className='mk';m.textContent=mark;const n=document.createElement('span');n.className='nm';n.textContent=name;const x=document.createElement('span');x.className='meta'+(meta?.warn?' w':'');x.textContent=meta?.text??'';b.append(m,n,x);return b;};
+const renderStates=()=>{
+  const q=$('sq').value.trim().toLowerCase();
+  const shown=STATES.filter((test)=>test.id.toLowerCase().includes(q)||test.name.toLowerCase().includes(q)||String(test.role??'').toLowerCase().includes(q));
+  if(sTest!==null&&!STATES.some((test)=>test.id===sTest))sTest=null;
+  $('stests').replaceChildren(...shown.map((test)=>{const row=sRow('',test.id===sTest?'▸':' ',test.id,test.mutates?{text:(test.role?test.role+' · ':'')+T['workbench.page.stateWrites'],warn:true}:{text:(test.role?test.role+' · ':'')+fill('workbench.page.stateCount',{count:test.steps.length})},test.id===sTest);
+    row.addEventListener('click',()=>{sTest=test.id;sStep=null;renderStates();});return row;}));
+  const test=STATES.find((entry)=>entry.id===sTest);
+  $('sstepsHead').textContent=(test?T['workbench.page.stateSteps']+' · '+test.id:T['workbench.page.stateSteps']).toUpperCase();
+  if(!test){$('ssteps').replaceChildren();$('sgo').disabled=true;$('sfoot').textContent=T['workbench.page.stateHint'];return;}
+  const last=okSteps(test).at(-1);
+  const all=sRow('all',sStep===null?'▸':' ',fill('workbench.page.stateAll',{id:last.id}),null,sStep===null);
+  all.addEventListener('click',()=>{sStep=null;renderStates();});
+  const rows=test.steps.map((step,i,list)=>{const row=sRow('',(i===list.length-1?'└':'├'),step.id+'  '+step.name,step.ok?null:{text:T['workbench.page.stateWhy.'+step.why]??'',warn:true},sStep===step.id,!step.ok);
+    if(sStep===step.id)row.querySelector('.mk').textContent='▸';
+    row.addEventListener('click',()=>{sStep=step.id;renderStates();});return row;});
+  $('ssteps').replaceChildren(all,...rows);
+  $('sgo').disabled=false;
+  $('sfoot').textContent=fill('workbench.page.stateFoot',{test:test.id,step:sStep??last.id})+(test.role?fill('workbench.page.stateFootRole',{role:test.role}):'')+(test.mutates?T['workbench.page.stateFootWrites']:'');
+};
+let stateFocus=null;
+const openStates=(on=stateDlg.hidden)=>{if(on&&STATES.length===0)return;if(on&&!$('themeDlg').hidden)openTheme(false);stateDlg.hidden=!on;
+  if(on){stateFocus=document.activeElement;if(sTest===null&&STATES.length===1)sTest=STATES[0].id;renderStates();$('sq').focus();}else stateFocus?.focus?.();};
+const goState=()=>{const test=STATES.find((entry)=>entry.id===sTest);if(!test)return;openStates(false);
+  try{const result=window.${STATE_BINDING}?.(test.id,sStep);result?.catch?.(()=>{});}catch{}};
+$('sq').addEventListener('input',renderStates);
+$('sq').addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!$('sgo').disabled){event.preventDefault();goState();}});
+$('scancel').addEventListener('click',()=>openStates(false));$('sgo').addEventListener('click',goState);
+stateDlg.addEventListener('click',(event)=>{if(event.target===stateDlg)openStates(false);});
+for(const b of document.querySelectorAll('[data-states]'))b.addEventListener('click',()=>openStates(true));
+const openTheme=(on=$('themeDlg').hidden)=>{$('themeDlg').hidden=!on;$('fTheme').setAttribute('aria-pressed',String(on));confirmDelete=false;
+  if(on){themeFocus=document.activeElement;msg('');renderDialog();$('tthemes').querySelector('[aria-checked=true]')?.focus();}else themeFocus?.focus?.();};
+$('fTheme').addEventListener('click',()=>openTheme());$('tclose').addEventListener('click',()=>openTheme(false));
+$('themeDlg').addEventListener('click',(event)=>{if(event.target===$('themeDlg'))openTheme(false);});
+
+// Die Tasten der Werkbank. F11 und F12 bleiben bei Chrome, F5 und Strg+R meinen Aktualisieren.
+const isRefreshKey=(event)=>event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r');
+const press=(key)=>{
+  if(key==='F1'){openStates();return true;}
+  if(key==='F2')select('requests');else if(key==='F3')select('console');else if(key==='F4')toggleFold('steps');else if(key==='F6')toggleFold('chat');
+  else if(key==='F7')openTheme();else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
+  return true;};
+addEventListener('keydown',(event)=>{
+  if(isRefreshKey(event)){event.preventDefault();refresh();return;}
+  if(event.key==='Escape'&&!stateDlg.hidden){event.preventDefault();openStates(false);return;}
+  if(event.key==='Escape'&&!$('themeDlg').hidden){event.preventDefault();openTheme(false);return;}
+  if(event.key==='Escape'&&event.target?.closest?.('input,textarea,select'))return;
+  if(event.ctrlKey||event.altKey||event.metaKey)return;
+  if(press(event.key))event.preventDefault();});
+// F5 in der Anwendung oder im Chat meldet deren Frame hierher, der Chat auch seine F-Tasten. Mehr kann eine solche Nachricht nicht ausloesen.
+const CHAT_KEYS=${json(CHAT_KEYS)};
+addEventListener('message',(event)=>{const fromChat=event.source===chatWindow();
+  if(event.data?.caw==='refresh'&&(event.source===$('app').contentWindow||fromChat))refresh();
+  if(event.data?.caw==='theme-request'&&fromChat)sendTheme();
+  if(event.data?.caw==='key'&&fromChat&&CHAT_KEYS.includes(event.data.key))press(event.data.key);
+  if(event.data?.caw==='key'&&event.data.key==='F1'&&event.source===$('app').contentWindow)press('F1');});
+
 // Der aktuelle Punkt bleibt immer im Bild: laufend, sonst gescheitert, sonst der erste offene; er steht im oberen Drittel.
 const track=$('track');let followFrame=0;
 const innermost=(state)=>[...document.querySelectorAll('#steps li[data-state='+state+']')].find((li)=>!li.querySelector('li[data-state='+state+']'));
@@ -604,19 +643,21 @@ const follow=()=>{cancelAnimationFrame(followFrame);followFrame=requestAnimation
 new MutationObserver(follow).observe($('steps'),{subtree:true,childList:true,attributes:true,attributeFilter:['data-state']});
 new ResizeObserver(follow).observe(track);
 window.workbench={
-  facts:(entries)=>{$('facts').replaceChildren(...entries.map(([label,value])=>{const li=document.createElement('li');li.className='pa-chip';li.title=label+': '+value;const span=document.createElement('span');span.className='pa-chip__label';span.textContent=label;li.append(span,String(value));return li;}));},
-  url:(url)=>{appUrl=url;$('url').textContent=url;$('url').title=url;},
-  steps:(groups)=>{aborted=false;raven.reset();$('steps').replaceChildren(...groups.map(makeGroup));if(groups.length>0)showSteps();summarize();},
+  // Die erste Angabe ist der Modus (Kopf: caw-ai <modus> <test>), der Test steht schon im Titel; der Rest kommt in die Fakten.
+  facts:(entries)=>{const [first,...rest]=entries;$('cmd').textContent=first?String(first[1]).toLowerCase():'';
+    const test=$('testName').textContent;
+    $('facts').replaceChildren(...rest.filter(([,value])=>String(value)!==test).map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;const b=document.createElement('b');b.textContent=String(value);li.append(label,b);return li;}));},
+  url:(url)=>{appUrl=url;$('url').textContent=$('soloUrl').textContent=url;$('url').title=url;},
+  steps:(groups)=>{aborted=false;$('steps').replaceChildren(...groups.map(makeGroup));if(groups.length>0)showSteps();summarize();},
   // Eine Gruppe dazu oder neu benannt, etwa „Fehler klären“, wenn Claude untersucht. Bestehende Punkte bleiben.
-  group:(def)=>{const known=items().find((li)=>li.dataset.id===def.id);if(known){known.dataset.name=def.name;known.querySelector(':scope>.head .name').textContent=def.name;for(const point of def.points??[])if(!pointsOf(known).some((li)=>li.dataset.id===point.id))known.querySelector(':scope>.pts').append(makePoint(point));}else $('steps').append(makeGroup(def));summarize();},
+  group:(def)=>{const known=items().find((li)=>li.dataset.id===def.id);if(known){known.dataset.name=def.name;if(known.dataset.kind==='phase')phaseName(known);else known.querySelector(':scope>.head .name').textContent=def.name;for(const point of def.points??[])if(!pointsOf(known).some((li)=>li.dataset.id===point.id))known.querySelector(':scope>.pts').append(makePoint(point));}else $('steps').append(makeGroup(def));summarize();},
   step:(id,stateName,note)=>{for(const li of items()){if(li.dataset.id===id){setState(li,stateName,note);
       if(stateName==='running'){if(!li.dataset.t0)li.dataset.t0=String(performance.now());}else if((stateName==='pass'||stateName==='fail')&&li.dataset.t0){showMs(li,performance.now()-Number(li.dataset.t0));delete li.dataset.t0;}else if(stateName==='waiting'){showMs(li);delete li.dataset.t0;}
       // Der Schritt nimmt seine Punkte mit: bestanden heisst alle gelaufen, gescheitert trifft den laufenden, offen setzt alle zurueck.
       for(const point of pointsOf(li)){const s=point.dataset.state;
         if(stateName==='pass'&&s!=='pass'&&s!=='fail'){setState(point,'pass');point.querySelector('.live')?.remove();}
         else if(stateName==='fail'&&s==='running'){setState(point,'fail');point.querySelector('.live')?.remove();}
-        else if(stateName==='waiting'){setState(point,'waiting');showMs(point);point.querySelector('.live')?.remove();}}
-      if(stateName==='pass'&&li.dataset.kind!=='phase')raven.cheer(li);}
+        else if(stateName==='waiting'){setState(point,'waiting');showMs(point);point.querySelector('.live')?.remove();}}}
     else if(stateName==='running'&&li.dataset.state==='running'&&li.dataset.kind!=='phase')window.workbench.step(li.dataset.id,'pass');}summarize();},
   // Ein Punkt einer Gruppe; unbekannt kommt er ans Ende. ms: Dauer vom Host, live: was gerade passiert, note: warum gescheitert.
   point:(groupId,id,stateName,opts={})=>{const li=items().find((node)=>node.dataset.id===groupId);if(!li)return;
@@ -627,20 +668,27 @@ window.workbench={
     setState(point,stateName,opts.note);
     if(opts.ms!==undefined)showMs(point,opts.ms);else if(stateName==='waiting'||stateName==='running')showMs(point);
     point.querySelector('.live')?.remove();
-    if(stateName==='running'&&opts.live){const live=document.createElement('span');live.className='live';live.textContent=opts.live;point.querySelector('.text').append(live);}
+    if(stateName==='running'&&opts.live){const live=document.createElement('span');live.className='live';live.dataset.text=opts.live;live.textContent=liveText(opts.live);point.querySelector('.text').append(live);}
     // Eine Phase steht so, wie ihre Punkte stehen.
     if(li.dataset.kind==='phase'){const states=pointsOf(li).map((node)=>node.dataset.state);
       setState(li,states.includes('fail')?'fail':states.length>0&&states.every((s)=>s==='pass')?'pass':states.some((s)=>s==='running'||s==='pass')?'running':'waiting');
       const sum=pointsOf(li).reduce((total,node)=>total+Number(node.dataset.ms||0),0);showMs(li,li.dataset.state==='pass'||li.dataset.state==='fail'?sum:undefined);}
     summarize();},
   panels:(data)=>{state.requests=data.requests;state.console=data.console;const fails=data.console.filter((c)=>c.severity==='fail').length;setCount('requests',data.requests.length);setCount('console',data.console.length,fails>0);const fresh=fails>seenFails;seenFails=fails;if(fresh&&state.tab===null)select('console');else render();},
-  // Stimmung des Raben: wait (auf dem aktuellen Schritt), fail, done (Jubel, dann ins Logo), aborted (ins Logo, doesen), ask (zum Chat).
-  mood:(value)=>{if(value==='aborted')aborted=true;if(value==='ask')asking=true;else if(['wait','fail','done','aborted'].includes(value))asking=false;if(value==='fail')showSteps();raven.mood(value);summarize();},
+  // Stimmung des Laufs: wait, fail, done, aborted, ask (der Chat fragt: Er klappt auf, wenn er zu war, ohne die Wahl zu aendern).
+  mood:(value)=>{if(value==='aborted')aborted=true;else if(['wait','fail','done','ask'].includes(value))aborted=false;
+    if(value==='ask'){if(!asking&&document.body.classList.contains('fold-chat'))fold('chat',false,false);asking=true;}else if(['wait','fail','done','aborted'].includes(value))asking=false;
+    if(value==='fail')showSteps();summarize();},
   // Der Zustand des Chats, etwa showing: Dann zeigt die Leiste der Anwendung, dass aufgenommen wird.
   chatState:(value)=>{chatState=typeof value==='string'?value:null;summarize();},
+  // Nur Anwendung, vom Host gesetzt: nach der Uebergabe von selbst, nach dem Neuladen wieder.
+  solo:(on)=>showSolo(on===true),
+  // Die Tests, aus denen sich hier ein Zustand herstellen laesst; leer blendet F1 aus.
+  states:(list)=>{STATES=Array.isArray(list)?list.filter((test)=>Array.isArray(test?.steps)&&test.steps.some((step)=>step.ok)):[];for(const b of document.querySelectorAll('[data-states]'))b.hidden=STATES.length===0;if(!stateDlg.hidden)renderStates();},
   // Aktualisieren geht nur, wenn der Host es erlaubt; sonst ist der Knopf gesperrt.
-  refreshable:(on)=>{refreshOn=on===true;$('reload').disabled=!refreshOn||refreshing;$('reload').title=refreshOn?REFRESH_TITLE:T['workbench.page.refreshLockedTitle'];},
-  nod:()=>raven.nod(),
+  refreshable:(on)=>{refreshOn=on===true;$('reload').disabled=!refreshOn||refreshing;$('reload').title=refreshOn?REFRESH_TITLE:T['workbench.page.refreshLockedTitle'];summarize();},
+  // Eine Nachricht vom Menschen kam an. Der Rabe fliegt nicht mehr; nichts zu tun.
+  nod:()=>{},
   // Nach dem Neuladen steht die Seite nicht mehr sicher auf dem Zustand des Laufs; „Zustand neu herstellen“ holt ihn zurueck.
   left:(on,text)=>{document.body.classList.toggle('left-state',on);const box=$('leftNote');box.hidden=!on;const title=document.createElement('strong');title.textContent=T['workbench.page.pageReloaded'];box.replaceChildren(title,text||'');summarize();},
 };
@@ -671,7 +719,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
     // Nur die Werkbank selbst darf speichern und aktualisieren, nicht die Anwendung im iframe und nicht der Chat. Die Werte prueft writePref.
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, fullscreen: null, state: null };
         bench = holder;
         benches.set(page, holder);
         // Die Werkbank liegt auf der Adresse der Anwendung: Nur das Dokument des obersten Fensters beantwortet das Tool.
@@ -695,6 +743,26 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
                 // unbekannter Wert oder nicht schreibbar: bleibt fuer diesen Lauf
             }
         });
+        // Themes: nur die Werkbank selbst. Was gespeichert wird, prueft saveTheme (Schema fuer die Seite: kein css, keine Dateien).
+        await page.exposeBinding(THEME_BINDING, ({ frame }, action, payload) => {
+            if (frame !== page.mainFrame()) return { ok: false, error: 'frame' };
+            try {
+                const theme = themeAction(action, payload);
+                return { ok: true, list: themeList(), theme: clientTheme(theme) };
+            } catch (error) {
+                return { ok: false, error: String(error?.message ?? error).slice(0, 200) };
+            }
+        });
+        // Zustand waehlen (F1): nur die Werkbank selbst. Was hergestellt werden darf, prueft der Host gegen seinen Katalog.
+        await page.exposeBinding(STATE_BINDING, async ({ frame }, test, step) => {
+            if (frame !== page.mainFrame() || holder.state === null || typeof test !== 'string') return;
+            await holder.state(test, typeof step === 'string' ? step : undefined);
+        });
+        // Nur Anwendung (F8): Nur die Werkbank selbst meldet es; der Host merkt es sich fuers Neuladen.
+        await page.exposeBinding(FULLSCREEN_BINDING, async ({ frame }, on) => {
+            if (frame !== page.mainFrame() || holder.fullscreen === null) return;
+            await holder.fullscreen(on === true);
+        });
         // true: Der Host hat neu geladen. false: gesperrt, der Test laeuft.
         await page.exposeBinding(REFRESH_BINDING, async ({ frame }) => {
             if (frame !== page.mainFrame() || holder.refresh === null) return false;
@@ -711,7 +779,11 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
     const view = frameView(page, frame);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // Was der Host gezeigt hat, merkt er sich: Nach dem Neuladen der Werkbank stellt er es wieder her.
-    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null };
+    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, solo: false, catalog: null };
+    // Nur Anwendung merkt sich der Host, damit sie nach dem Neuladen der Werkbank wiederkommt. Das Browserfenster bleibt unberuehrt.
+    bench.fullscreen = async (on) => {
+        shown.solo = on;
+    };
     // Wann ein Punkt zu laufen begann: Die Dauer misst der Host, so steht sie auch nach dem Neuladen der Werkbank.
     const started = new Map();
     // Der Schritt, der zuletzt anlief: Dort landen Claudes Aktionen beim Aufnehmen.
@@ -747,6 +819,9 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             if (shown.mood !== null) await call('mood', shown.mood);
             if (shown.left !== null) await call('left', ...shown.left);
             if (shown.chatState !== null) await call('chatState', shown.chatState);
+            // Nur Anwendung bleibt nach dem Neuladen, das Fenster ist ohnehin noch im Vollbild.
+            if (shown.solo) await call('solo', true);
+            if (shown.catalog !== null) await call('states', shown.catalog);
             await call('refreshable', bench.refresh !== null);
             // Neu geladen hat der Mensch (F5, Knopf des Browsers) oder die Anwendung selbst (top.location, Formular mit target=_top).
             // Nur das erste stoert einen laufenden Test; das zweite gehoert zum Verhalten der Anwendung.
@@ -856,6 +931,20 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
         onRefresh: (handler) => {
             bench.refresh = handler ?? null;
             return call('refreshable', bench.refresh !== null);
+        },
+        /** Die Tests fuer F1, aus states.mjs (stateCatalog). */
+        states: (catalog) => {
+            shown.catalog = catalog;
+            return call('states', catalog);
+        },
+        /** Wer einen mit F1 gewaehlten Zustand herstellt: (test, step | undefined); null: aus. */
+        onState: (handler) => {
+            bench.state = handler ?? null;
+        },
+        /** Nur Anwendung (F8) an oder aus, etwa von selbst nach der Uebergabe zum Entwickeln. Das Fenster bleibt, wie es ist. */
+        solo: async (on) => {
+            await bench.fullscreen(on === true);
+            await call('solo', on === true);
         },
         /**
          * Nach dem Neuladen der ganzen Werkbank, wenn Schritte und Zaehler wieder stehen. Der Listener bekommt { human }: true bei

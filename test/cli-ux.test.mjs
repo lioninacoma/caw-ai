@@ -178,13 +178,16 @@ test('Hilfe: je Befehl nur sein Block, Agent-Befehle unter help agent, Kurzform 
     assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw-ai --help.');
 });
 
+const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
+
 test('Abbruch im Terminal: zuerst die Meldung, dann die Kurzform, zuletzt blass Code und Exit', () => {
     const lines = [];
     const ui = createUi({ fancy: true, out: (text) => lines.push(text), err: (text) => lines.push(text) });
     ui.fatal('usage', 'Name des Tests fehlt.', { synopsis: 'caw-ai fix <test> <S4>', exit: 3 });
     assert.equal(lines.length, 3);
-    assert.match(lines[0], /✗.* Name des Tests fehlt\.$/);
-    assert.equal(lines[1], '  Aufruf: caw-ai fix <test> <S4>');
+    assert.match(plain(lines[0]), /^ {2}\[FEHLER\] Name des Tests fehlt\.$/);
+    // Unter dem Text der Meldung, nicht unter der Marke.
+    assert.equal(lines[1], '           Aufruf: caw-ai fix <test> <S4>');
     assert.match(lines[2], /\(code: usage, exit 3\)/);
 });
 
@@ -192,7 +195,7 @@ test('Bericht: im Terminal zusätzlich als file://-Adresse zum Anklicken', () =>
     const lines = [];
     const ui = createUi({ fancy: true, out: (text) => lines.push(text) });
     ui.verdict({ status: 'pass', testId: 'x', target: 'local' }, { report: '.caw/runs/r/report.md', reportUrl: 'file:///c:/p/.caw/runs/r/report.md', elapsed: 1 });
-    assert.match(lines.join('\n'), /Bericht:.*\.caw\/runs\/r\/report\.md\n.*file:\/\/\/c:\/p\/\.caw\/runs\/r\/report\.md/);
+    assert.match(plain(lines.join('\n')), /Bericht:.*\.caw\/runs\/r\/report\.md\n.*file:\/\/\/c:\/p\/\.caw\/runs\/r\/report\.md/);
 });
 
 test('stepsText: lückenlos als Bereich, sonst aufgezählt', () => {

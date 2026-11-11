@@ -227,3 +227,18 @@ test('web: Ein Dialog als Web Component über einem Knopf nennt Name und Meldung
     assert.deepEqual(why, { covered: { role: 'dialog', name: 'Hinweis', messages: ['Sitzung läuft ab'] } });
     return undefined;
 });
+
+test('web: Die Suche nach einem Ziel außerhalb des Bildes lässt die Seite, wo sie war', async (t) => {
+    if (needsChrome()) return t.skip('kein Chrome');
+    await page.setViewportSize({ width: 800, height: 400 });
+    await page.setContent('<button>Oben</button><div style="height:3000px"></div><button>Unten</button>');
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const before = await page.evaluate(() => window.scrollY);
+    assert.ok(before > 1000);
+    assert.ok(await find({ role: 'button', name: 'Oben' }) !== null, 'gefunden');
+    assert.equal(await page.evaluate(() => window.scrollY), before, 'kein Sprung nach oben');
+    const explain = (target) => page.evaluate(`(${webTargets})(null, ${JSON.stringify({ mode: 'explain', target })})`);
+    await explain({ role: 'button', name: 'Oben' });
+    assert.equal(await page.evaluate(() => window.scrollY), before, 'auch nicht beim Erklären');
+    return undefined;
+});

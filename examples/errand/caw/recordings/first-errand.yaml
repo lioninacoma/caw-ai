@@ -1,0 +1,63 @@
+# Written by caw-ai, belongs to caw/tests/first-errand.yaml. Delete by hand if needed, never edit.
+
+test: first-errand
+steps:
+  - id: S1
+    hash: 4c427b458d835b8c
+    recordedOn: local
+    recordedAt: 2026-11-11T09:19:44.355Z
+    actions:
+      - click: {role: button, name: New todo}
+        path: /
+      - fill: {role: textbox, name: Title, inside: {role: dialog, name: New todo}}
+        value: Feed the raven {{runTag}}
+        path: /
+      - type: {role: combobox, name: Tag, inside: {role: dialog, name: New todo}}
+        value: "#home"
+        path: /
+      - click: {role: button, name: Add todo, inside: {role: dialog, name: New todo}}
+        path: /
+      - wait-ready: {}
+      - remember: {name: nr, code: "(document.querySelector('[role=status]').textContent.match(/#([0-9]+)/)||[])[1]"}
+    check: "/^Added #[0-9]+$/.test(document.querySelector('[role=status]').textContent.trim()) && document.querySelector('#list li .title').textContent==='Feed the raven {{runTag}}'"
+  - id: S2
+    hash: 99303d08d9cbd5f3
+    after: S1
+    recordedOn: local
+    recordedAt: 2026-11-11T09:19:44.355Z
+    actions:
+      - fill: {role: searchbox, name: Search todos}
+        value: "{{runTag}}"
+        path: /
+      - wait-ready: {}
+    check: (()=>{const li=[...document.querySelectorAll('#list li')];return li.length===1 && li[0].querySelector('.chip').textContent==='#home' && !li[0].classList.contains('done');})()
+  - id: S3
+    hash: c434d4339b7dbf75
+    after: S2
+    recordedOn: local
+    recordedAt: 2026-11-11T09:19:44.355Z
+    actions:
+      - click: {role: button, name: "Complete Feed the raven {{runTag}}", inside: {role: listitem, name: "Feed the raven {{runTag}}"}}
+        path: /
+      - wait-ready: {}
+    check: (()=>{const li=document.querySelector('#list li');return !!li && li.classList.contains('done') && document.getElementById('progress').textContent==='1/1';})()
+  - id: S4
+    hash: a4428a46df3ef77c
+    after: S3
+    recordedOn: local
+    recordedAt: 2026-11-11T09:19:44.355Z
+    actions:
+      - click: {role: link, name: "Feed the raven {{runTag}}", inside: {role: listitem, name: "Feed the raven {{runTag}}"}}
+        path: /
+      - wait-ready: {}
+      - type: {role: combobox, name: Move to}
+        value: Tomorrow
+        path: /todos/1045
+      - click: {role: button, name: Save}
+        path: /todos/1045
+      - wait-ready: {}
+    check: document.getElementById('when').textContent==='Tomorrow'
+knownMessages:
+  - "Added ##"
+  - Moved to Tomorrow
+  - Nice.
