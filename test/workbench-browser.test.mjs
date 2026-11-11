@@ -260,12 +260,14 @@ test('workbench: the chip at the top right shows record, play and pause and surv
     await bench.transport('play');
     assert.deepEqual(await chip(), { on: true, kind: 'play', text: 'PLAY', label: 'Wiedergabe', pulse: 'none' });
     await bench.mood('aborted');
-    assert.equal((await chip()).kind, 'pause', 'cancelled');
+    assert.equal((await chip()).on, false, 'cancelled: nothing runs, no chip');
     await bench.mood('wait');
     assert.equal((await chip()).kind, 'play');
-    await bench.onRefresh(async () => {});
-    assert.equal((await chip()).kind, 'pause', 'handed over');
-    await bench.onRefresh(null);
+    await bench.transport(null);
+    await bench.chatState('paused');
+    assert.equal((await chip()).on, false, 'F9 without a running run: no chip');
+    await bench.chatState('running');
+    await bench.transport('play');
     // Reloading the whole workbench (here by the app itself) brings the chip back.
     await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/weiter`);
     assert.ok(await until(async () => (await chip().catch(() => ({}))).kind === 'play'), 'PLAY again after the reload');

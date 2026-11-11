@@ -407,8 +407,8 @@ const summarize=()=>{
   $('stateSpin').hidden=!(claudeWorks||cawWorks);$('stateSpin').classList.toggle('px-pill--claude',claudeWorks);
   $('browserState').textContent=browserText;$('browserState').className=tone;
   $('soloState').textContent=text;$('soloTag').hidden=!refreshOn;
-  // Record or play comes from the host; pausing (F9), cancelling and the handover show pause.
-  const mode=transport===null?null:aborted||chatState==='paused'||chatState==='pausing'||refreshOn?'pause':transport;
+  // Only while something runs: record or play from the host, pause while that run is paused (F9). Cancelled: nothing.
+  const mode=transport===null||aborted?null:chatState==='paused'||chatState==='pausing'?'pause':transport;
   const chip=$('transport'),name=mode===null?'':mode[0].toUpperCase()+mode.slice(1);chip.classList.toggle('on',mode!==null);chip.dataset.kind=mode??'';
   chip.querySelector('span').textContent=mode===null?'':T['workbench.page.transport'+name];
   const word=mode===null?'':T['workbench.page.transport'+name+'Title'];chip.setAttribute('aria-label',word);chip.title=word;
@@ -940,7 +940,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             shown.chatState = state;
             return call('chatState', state);
         },
-        /** The chip at the top right: 'record', 'play', 'pause' or null. Pausing (F9), cancelling and the handover show pause on their own. */
+        /** The chip at the top right while something runs: 'record', 'play' or null (nothing runs). Pausing (F9) shows pause on its own. */
         transport: (kind) => {
             shown.transport = kind;
             return call('transport', kind);

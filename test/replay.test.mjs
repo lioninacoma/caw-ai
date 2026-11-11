@@ -715,5 +715,5 @@ test('workbench chip: recording shows REC, replaying PLAY, open without steps PA
     assert.equal(transportOf(undefined), 'record', 'record, fix and rerecord replay nothing');
     assert.equal(transportOf({ steps: [{ id: 'S1' }] }), 'play', 'run and check run');
     assert.equal(transportOf({ steps: [{ id: 'S1' }], until: 'S1' }), 'play', '--until replays first');
-    assert.equal(transportOf({ steps: [] }), 'pause', 'open hands over at once');
+    assert.equal(transportOf({ steps: [] }), null, 'open runs nothing and hands over at once: no chip');
 });

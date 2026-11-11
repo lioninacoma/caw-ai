@@ -5,7 +5,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 ## [Unreleased]
 
 ### Added
-- Workbench: a chip at the top right shows what the run does: "● REC" while Claude records or fixes, "▶ PLAY" while replaying (run, check run, restoring a state), "❚❚ PAUSE" when paused (F9), cancelled, over or handed over. Theme colours; with "Animations off" the record dot does not pulse.
+- Workbench: a chip at the top right shows what the run does: "● REC" while Claude records or fixes, "▶ PLAY" while replaying (run, check run, restoring a state), "❚❚ PAUSE" while such a run is paused (F9); no chip when nothing runs. Theme colours; with "Animations off" the record dot does not pulse.
 - Example `examples/errand` replaces `examples/helpdesk`: a small todo app with sign-in, search, a "New todo" dialog with selects and a detail page, with the recorded test `first-errand`. `examples/README.md` lists the examples.
 - README: new video (recording with Claude, a question in the chat, the check run) and images of restoring a state, developing, fixing a bug with Claude and the themes.
 - `explore` asks first whether the app has a sign-in (`--login` / `--no-login` for scripts), notices the sign-in by itself and ends with a **Done** button in the window instead of Enter in the terminal. It keeps only selectors that survive a second page load, prefers a state class on html/body as the signed-in marker and leaves out `submitSelector` when Enter submits.
