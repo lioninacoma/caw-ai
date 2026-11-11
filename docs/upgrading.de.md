@@ -141,4 +141,4 @@ npx caw-ai list       # Aufzeichnungsstand je Test
 npx caw-ai doctor     # Rechner, Zugangsdaten, Umgebungen
 ```
 
-`validate` nennt jeden alten Schlüssel und wohin er gewandert ist, etwa „environments.dev.agent heißt seit 0.2.0 claude“, und jeden Schlüssel, den es nicht kennt.
+`validate` nennt jeden alten Schlüssel und wohin er gewandert ist, etwa „environments.dev.agent heißt seit 0.3.0 claude“, und jeden Schlüssel, den es nicht kennt.

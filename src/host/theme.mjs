@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { HEX, THEME_KEYS, activeTheme, themeDir } from '../shared/theme-package.mjs';
+import { HEX, THEME_KEYS, activeTheme, builtinFontUrl, themeDir } from '../shared/theme-package.mjs';
 
 const dataUrl = (location, type) => {
     try {
@@ -30,7 +30,7 @@ const FAMILY = /^[A-Za-z0-9 -]{1,48}$/;
 export const fontFaces = (theme = activeTheme()) => [...fontList(theme.fonts?.display), ...fontList(theme.fonts?.text)].map((font) => {
     if (typeof font?.file !== 'string' || !FAMILY.test(font.family ?? '')) return '';
     const dir = themeDir(theme.name);
-    const location = font.file.startsWith('builtin:') ? new URL(`../../assets/fonts/${font.file.slice(8)}`, import.meta.url)
+    const location = font.file.startsWith('builtin:') ? builtinFontUrl(font.file)
         : typeof dir === 'string' ? join(dir, font.file) : new URL(font.file, dir);
     const src = /^(builtin:[a-z0-9-]+\.woff2|fonts\/[A-Za-z0-9._-]+\.woff2)$/.test(font.file) ? dataUrl(location, 'font/woff2') : null;
     const weight = Number.isInteger(font.weight) ? font.weight : 400;

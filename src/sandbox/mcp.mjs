@@ -83,7 +83,8 @@ export const cawTool = ({ agentDir, env = process.env, run = runCli }) => ({
 
 /**
  * Answers a JSON-RPC message; undefined for notifications.
- * @param tools entries { name, description, inputSchema, call(input) -> { text, isError } }; by default only caw with `agentDir`
+ * @param tools entries { name, description, inputSchema, call(input) -> { text, data?, isError } }; by default only caw with `agentDir`.
+ *              With `data` the result also carries it as `structuredContent`, next to the text.
  */
 export const createMcpHandler = ({ agentDir, env = process.env, run = runCli, tools, name = 'caw' } = {}) => {
     const all = tools ?? [cawTool({ agentDir, env, run })];
@@ -101,8 +102,8 @@ export const createMcpHandler = ({ agentDir, env = process.env, run = runCli, to
                 const tool = all.find((candidate) => candidate.name === params?.name);
                 if (tool === undefined) return failure(-32602, `Unknown tool: ${params?.name}`);
                 try {
-                    const { text, isError = false } = await tool.call(params.arguments ?? {});
-                    return reply({ content: [{ type: 'text', text }], isError });
+                    const { text, data, isError = false } = await tool.call(params.arguments ?? {});
+                    return reply({ content: [{ type: 'text', text }], ...(data === undefined ? {} : { structuredContent: data }), isError });
                 } catch (error) {
                     return reply({ content: [{ type: 'text', text: error.message }], isError: true });
                 }

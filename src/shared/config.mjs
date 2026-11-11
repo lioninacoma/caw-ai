@@ -13,7 +13,7 @@
 //   Target: "nord/dev"
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, posix } from 'node:path';
 
 import { CawError } from './errors.mjs';
@@ -56,7 +56,7 @@ const TOP_FIELDS = ['framework', 'extends', 'environments', 'sites', 'auth', 'ap
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone'];
 
 // Keys of earlier versions: for one release a hint instead of a bare "unknown field" (see docs/upgrading.md).
-// `renamed`: same meaning under a new name in 0.2.0; `instead`: removed, this field covers it now; neither: removed without successor.
+// `renamed`: same meaning under a new name in 0.3.0; `instead`: removed, this field covers it now; neither: removed without successor.
 const OLD_TOP = {
     portals: { instead: 'environments, sites' },
     customPortals: { instead: 'environments.<name>.url' },
@@ -387,15 +387,7 @@ export const validateConfig = (given, root = process.cwd()) => {
         && (config.effects.fail === undefined || (Array.isArray(config.effects.fail) && config.effects.fail.every((list) => effectLists.includes(list)))))) {
         issues.push(t('config.effects', { lists: effectLists.join(', ') }));
     }
-    if (config.assetUrlPattern !== undefined) {
-        let groups = -1;
-        try {
-            groups = new RegExp(`${config.assetUrlPattern}|`).exec('').length - 1;
-        } catch {
-            issues.push(t('config.patterns.invalid', { key: 'assetUrlPattern', pattern: String(config.assetUrlPattern) }));
-        }
-        if (groups === 0) issues.push(t('config.assetUrlPattern.group'));
-    }
+    if (config.assetUrlPattern !== undefined) issues.push(...assetPatternIssues('assetUrlPattern', config.assetUrlPattern));
     const extjs = config.framework === 'extjs';
     for (const [name, app] of Object.entries(isObject(config.apps) ? config.apps : {})) {
         if (!isObject(app)) {
@@ -458,6 +450,54 @@ export const loadConfigWithNotes = (root) => {
 
 export const loadConfig = (root) => loadConfigWithNotes(root).config;
 
+// Keys that would hold a secret. Names of environment variables (loginEnv, passwordEnv) and selectors (passwordSelector) are fine.
+const SECRET_KEY = /(password|passwd|secret|token)/i;
+const NAMED_ONLY = /(Env|Selector)$/;
+
+/** The keys of a patch that would write a secret, as paths. */
+const secretKeys = (value, path = []) => (isObject(value) ? Object.entries(value).flatMap(([key, entry]) => [
+    ...(SECRET_KEY.test(key) && !NAMED_ONLY.test(key) ? [[...path, key].join('.')] : []),
+    ...secretKeys(entry, [...path, key]),
+]) : []);
+
+/** Deep merge for a config patch: objects merge, arrays and values replace, null deletes the key. */
+const mergePatch = (base, patch) => {
+    if (!isObject(patch)) return patch;
+    const out = isObject(base) ? { ...base } : {};
+    for (const [key, value] of Object.entries(patch)) {
+        if (value === null) delete out[key];
+        else out[key] = isObject(value) ? mergePatch(out[key], value) : value;
+    }
+    return out;
+};
+
+/**
+ * Changes caw.config.json: merges the patch into the file as written (not the effective config), validates the result and writes
+ * it atomically, only if valid and not dryRun. Never writes a secret: keys like password, secret or token are refused; credentials
+ * stay in caw/.env, which this never touches.
+ * @returns { ok, issues, config } with config as it would be written
+ */
+export const writeConfig = (root, patch, { dryRun = false } = {}) => {
+    if (!isObject(patch)) return { ok: false, issues: [t('config.write.patch')], config: null };
+    const secrets = secretKeys(patch);
+    if (secrets.length > 0) return { ok: false, issues: [t('config.write.secret', { keys: secrets.join(', ') })], config: null };
+    const file = join(root, CONFIG_FILE);
+    let raw;
+    try {
+        raw = JSON.parse(readFileSync(file, 'utf8'));
+    } catch (error) {
+        return { ok: false, issues: [error?.code === 'ENOENT' ? t('config.load.missing', { file: CONFIG_FILE, root }) : t('config.load.invalidJson', { file: CONFIG_FILE, error: error.message })], config: null };
+    }
+    const config = mergePatch(raw, patch);
+    const { issues } = validateConfig(config, root);
+    if (issues.length > 0 || dryRun) return { ok: issues.length === 0, issues, config };
+    // One temp file per process, so two concurrent writers never leave a half-written file.
+    const temp = `${file}.${process.pid}.tmp`;
+    writeFileSync(temp, `${JSON.stringify(config, null, 4)}\n`);
+    renameSync(temp, file);
+    return { ok: true, issues: [], config };
+};
+
 // A path inside the project: relative, without `..`. Like `dir` and `overlay.build`.
 const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
 const APP_KEYS = ['dir', 'startUrl', 'overlay'];
@@ -470,7 +510,29 @@ export const isServerUrl = (value) => {
         return false;
     }
 };
-const OVERLAY_KEYS = ['build', 'dev', 'buildCommand', 'devCommand', 'statics'];
+const OVERLAY_KEYS = ['build', 'dev', 'buildCommand', 'devCommand', 'statics', 'assetUrlPattern'];
+
+/** assetUrlPattern as a list: one pattern or several, one per asset source (plain path, proxy parameter, CDN). */
+export const patternList = (value) => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.filter((pattern) => typeof pattern === 'string') : []);
+
+/** The asset patterns for an app, without the default: the top-level list plus the app's own (apps.<app>.overlay.assetUrlPattern). */
+export const assetPatterns = (config, app) => [...new Set([...patternList(config?.assetUrlPattern), ...patternList(config?.apps?.[app]?.overlay?.assetUrlPattern)])];
+
+/** The errors of an assetUrlPattern value: a string or a non-empty list of strings; each compiles and has group 1. */
+const assetPatternIssues = (key, value) => {
+    if (!(typeof value === 'string' || (Array.isArray(value) && value.length > 0 && value.every((pattern) => typeof pattern === 'string')))) return [t('config.assetUrlPattern.type', { key })];
+    const issues = [];
+    for (const pattern of patternList(value)) {
+        let groups = -1;
+        try {
+            groups = new RegExp(`${pattern}|`).exec('').length - 1;
+        } catch {
+            issues.push(t('config.patterns.invalid', { key, pattern }));
+        }
+        if (groups === 0) issues.push(t('config.assetUrlPattern.group', { key, pattern }));
+    }
+    return issues;
+};
 const STATIC_KEYS = ['name', 'path'];
 
 /** The errors in `apps.<name>.overlay`. With ExtJS the source is the Sencha watch: no build and no dev URL. */
@@ -487,6 +549,7 @@ const overlayIssues = (name, overlay, extjs) => {
     }
     if (overlay.buildCommand !== undefined && overlay.build === undefined) issues.push(t('config.overlay.commandWithout', { name, key: 'buildCommand', needs: 'build' }));
     if (overlay.devCommand !== undefined && overlay.dev === undefined && !extjs) issues.push(t('config.overlay.commandWithout', { name, key: 'devCommand', needs: 'dev' }));
+    if (overlay.assetUrlPattern !== undefined) issues.push(...assetPatternIssues(`apps.${name}.overlay.assetUrlPattern`, overlay.assetUrlPattern));
     if (overlay.statics !== undefined && !Array.isArray(overlay.statics)) issues.push(t('config.overlay.statics', { name }));
     else (overlay.statics ?? []).forEach((entry, index) => {
         const extra = isObject(entry) ? Object.keys(entry).find((key) => !STATIC_KEYS.includes(key)) : undefined;

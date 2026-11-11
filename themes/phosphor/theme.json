@@ -47,12 +47,12 @@
     "text": [
       {
         "family": "IBM Plex Mono",
-        "file": "builtin:ibm-plex-mono-latin-400-normal.woff2",
+        "file": "builtin:ibm-plex-mono-400.woff2",
         "weight": 400
       },
       {
         "family": "IBM Plex Mono",
-        "file": "builtin:ibm-plex-mono-latin-500-normal.woff2",
+        "file": "builtin:ibm-plex-mono-500.woff2",
         "weight": 500
       }
     ]

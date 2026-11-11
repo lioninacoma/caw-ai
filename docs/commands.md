@@ -12,6 +12,7 @@ Run every command from your project root: `npx caw-ai <command>` (or `pnpm exec`
 | [`explore`](#explore) | Look at the app and suggest settings, write nothing else | no |
 | [`skill`](#skill) | Create or update the Claude Code skill and `.mcp.json` | no |
 | [`doctor`](#doctor) | Check machine, config, credentials and environments | no |
+| [`overlay check`](#overlay-check) | Check that `--overlay` replaces everything it should | no |
 | [`validate`](#validate) | Check config and tests offline | no |
 | [`list`](#list) | List tests and steps with their recording status | no |
 | [`record`](#record) | Record a test or replace its recording | yes |
@@ -84,6 +85,32 @@ npx caw-ai doctor --agent docker
 ```
 
 Checks Node, Chrome, Claude Code (agent `local`) or Docker and token (agent `docker`), the config, `TODO` values, credentials per role and whether each environment answers. Every failed check comes with the next step. For an invalid config it shows the first finding; `validate` lists them all. Placeholder addresses (`example.com`, `.test`, `.invalid`) are reported, never contacted.
+
+For ExtJS with an environment that has `overlay: true`, doctor adds optional lines per app: `bootstrap.json` present and current, the Sencha watch running, and per part (app, package) the result of the last `overlay check` with its age, or the hint to run one. doctor never starts the watch.
+
+## overlay check
+
+```bash
+npx caw-ai overlay check
+npx caw-ai overlay check --target dev --apply
+npx caw-ai overlay check --json
+```
+
+Opens the app headless with `--overlay` (signed in, no steps, no Claude) and compares the page's script requests with what the overlay should replace. For ExtJS that is the app and every own package from `bootstrap.json`, `x.js` and `x-debug.js` counting as one part. Per part it prints `local`, `deployed` or `not loaded` (maybe loaded later).
+
+A part that came `deployed` means a mixed version: the page ran partly on your code, partly on the server's. The script URLs are matched by name, independent of `assetUrlPattern`, so the check also finds sources the config doesn't know. For each such source it suggests a pattern:
+
+```
+✓ aekwl-theme-material: local
+! AllgemeineVorgangsbearbeitungAntragstellung: deployed
+› https://dev.example.com/o/FormProxyServlet?url=inubitrepository:///Root/ (5 script(s)): assetUrlPattern "[?&]url=inubitrepository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)"
+```
+
+`--apply` adds the suggested patterns to `assetUrlPattern` in `caw.config.json` (only missing ones; a single string becomes a list), validates the file before writing and checks once more. A source without a safe pattern is listed as such; add one by hand.
+
+Before the browser it checks the preconditions: the environment allows the overlay, the app folder has `app.json`, `bootstrap.json` is current and the watch runs. Without the watch it stops with the command (`sencha app watch` in the app folder) and never starts it, unless the app has `overlay.devCommand`.
+
+`--target` defaults to the only environment with `overlay: true`; `--app` and `--role` to the only app and the first role. The result always goes to `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, after `--apply` also `applied`). `--json` prints it as the only line on stdout. Exit 0 complete, 2 incomplete or watch problem, 3 no overlay environment or no app.
 
 ## validate
 
@@ -221,12 +248,21 @@ The theme is yours, stored in `prefs.json`, and applies in every project. Built 
 
 Started by Claude Code through `.mcp.json`. You don't call it yourself. It gives your session these tools:
 
-| Tool | |
-|---|---|
-| `caw_start` | Start `run`, `record` or `fix` with `--agent session` |
-| `caw_status` | Is a run waiting for the session? Last lines of output |
-| `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) |
-| `caw_selection` | The element you picked with the crosshair in the workbench |
+| Tool | | Tokens |
+|---|---|---|
+| `caw_doctor` | `doctor` as data | no |
+| `caw_init` | `init` without questions (`offline`, `fromExplore`, `roles`, `noMcp`) | no |
+| `caw_explore` | Start `explore` in the background (`login` or `yes`) | no |
+| `caw_config` | Read the config, or change it validated (`patch`, `dryRun`) | no |
+| `caw_validate` | `validate` as data | no |
+| `caw_list` | `list` as data | no |
+| `caw_overlay_check` | `overlay check` (`target`, `app`, `apply`), waits for the result | no |
+| `caw_start` | Start `run`, `record`, `fix` or `open` with `--agent session` (`test`, `target`, `step`, `until`, `overlay`, `headless`, or `args`) | `record`, `fix`; `run`/`open` only via the chat |
+| `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data | no |
+| `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
+| `caw_selection` | The element you picked with the crosshair in the workbench | no |
+
+Results come as short text plus `structuredContent` (JSON).
 
 ## Agent commands
 
@@ -279,6 +315,7 @@ When caw-ai stops, or a run ends with `error`, it prints the reason and then the
 | `browser-missing` | 2 | Install Google Chrome, or set `browser` in the config |
 | `overlay-not-ready` | 2 | Start the dev server or build, or set `devCommand` / `buildCommand` on the app; the message names the command |
 | `overlay-ssr` | 2 | Server-rendered page: test local code with the dev server as the environment (`--target local`) |
+| `overlay-incomplete` | 2 | Parts came from the server instead of local code (mixed version): add the suggested `assetUrlPattern`, or run `overlay check --apply` |
 | `overlay-unused` | 2 | Nothing came from local code: do build or dev server match the app, does `assetUrlPattern` cover its requests? |
 | `overlay-ambiguous` | 2 | ExtJS: give one app its own `output.js.path` in `app.json` |
 | `watch-missing`, `watch-stale` | 2 | Start the Sencha watch (`sencha app watch`) or set `devCommand` |

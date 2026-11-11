@@ -158,6 +158,20 @@ export const replaceable = (appDir, bootstrap) => {
 };
 
 /**
+ * What the overlay is expected to replace, one entry per part: an app or package with all its build names (x.js and x-debug.js
+ * are one part). The completeness check compares the page's script requests against these names.
+ * @returns [{ label, kind, names }]
+ */
+export const expectedParts = (appDir) => {
+    const parts = new Map();
+    for (const [file, part] of replaceable(appDir, checkAppFiles(appDir))) {
+        if (!parts.has(part.label)) parts.set(part.label, { label: part.label, kind: part.kind, names: [] });
+        parts.get(part.label).names.push(file);
+    }
+    return [...parts.values()];
+};
+
+/**
  * The overlay source: resolve(name) returns the content for a name from assetUrlPattern, or null. bootstrap.json is reread per
  * request, since the watch rewrites it when classes are added.
  */

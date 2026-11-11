@@ -8,7 +8,7 @@ import { after, before, test } from 'node:test';
 
 
 import { interceptDocuments } from '../src/host/app-view.mjs';
-import { prepareOverlay, routeOverlay } from '../src/host/overlay.mjs';
+import { incompleteText, prepareOverlay, routeOverlay } from '../src/host/overlay.mjs';
 import { launchChrome } from './chrome.mjs';
 
 let browser;
@@ -87,4 +87,70 @@ test('Overlay build in the browser: local state despite different split, nonce C
     const seen = overlay.diagnose();
     assert.deepEqual({ ssr: seen.ssr, local: seen.local, swapped: seen.swapped, mixed: seen.mixed, label: seen.label }, { ssr: null, local: 3, swapped: true, mixed: [], label: 'dist' });
     assert.ok(seen.server >= 1, 'env.js from the server');
+});
+
+// A portal like FA214: the theme via a plain path, app and package through a proxy servlet with the repository path as parameter.
+const PORTAL_PAGE = `<!doctype html><html><head>
+<script src="/html/js/theme/theme.js"></script>
+<script src="/o/FormProxyServlet?url=inubitrepository:///Root/public/PackagesExtJS6/modell.js"></script>
+<script src="/o/FormProxyServlet?url=inubitrepository:///Root/Fachanwendung214/Bestellung.js"></script>
+</head><body></body></html>`;
+
+test('Overlay watch in the browser: app and package via a proxy parameter are a mixed state with a pattern; with it the load is local', async (t) => {
+    if (browser === null) {
+        t.skip('no Chrome');
+        return;
+    }
+    const project = mkdtempSync(join(tmpdir(), 'caw-overlay-portal-'));
+    t.after(() => rmSync(project, { recursive: true, force: true }));
+    const files = {
+        'app/app.json': JSON.stringify({ name: 'Bestellung', output: { js: { path: 'Bestellung.js' } } }),
+        'app/app/Main.js': 'window.APP = `lokal ${window.MODELL}`;',
+        'packages/modell/src/M.js': 'window.MODELL = "lokal";',
+        'packages/theme/src/T.js': 'window.THEME = "lokal";',
+        'app/bootstrap.json': JSON.stringify({ loadOrder: [{ path: '../packages/theme/src/T.js' }, { path: '../packages/modell/src/M.js' }, { path: 'app/Main.js' }], packages: { theme: { files: [0] }, modell: { files: [1] } } }),
+    };
+    for (const [name, text] of Object.entries(files)) {
+        mkdirSync(join(project, name, '..'), { recursive: true });
+        writeFileSync(join(project, name), text);
+    }
+    const portal = createServer((request, response) => {
+        const url = new URL(request.url, 'http://x');
+        const js = { 'content-type': 'text/javascript' };
+        if (url.pathname === '/html/js/theme/theme.js') return response.writeHead(200, js).end('window.THEME = "deployed";');
+        if (url.pathname === '/o/FormProxyServlet') {
+            const file = url.searchParams.get('url') ?? '';
+            if (file.endsWith('/modell.js')) return response.writeHead(200, js).end('window.MODELL = "deployed";');
+            if (file.endsWith('/Bestellung.js')) return response.writeHead(200, js).end('window.APP = `deployed ${window.MODELL}`;');
+            return response.writeHead(404).end();
+        }
+        return response.writeHead(200, { 'content-type': 'text/html' }).end(PORTAL_PAGE);
+    });
+    await new Promise((resolve) => { portal.listen(0, '127.0.0.1', resolve); });
+    t.after(() => portal.close());
+    const portalUrl = `http://127.0.0.1:${portal.address().port}`;
+    const open = async (config) => {
+        const overlay = await prepareOverlay({ root: project, config: { framework: 'extjs', apps: { web: { dir: 'app' } }, ...config }, checked: { url: portalUrl, apps: { web: { kind: 'watch', statics: [] } } }, deps: { running: () => true } });
+        const context = await browser.newContext();
+        t.after(() => context.close());
+        await routeOverlay(context, overlay);
+        const page = await context.newPage();
+        await page.goto(`${portalUrl}/group/start`);
+        await page.waitForFunction(() => window.APP !== undefined);
+        return { overlay, state: await page.evaluate(() => ({ app: window.APP, theme: window.THEME })) };
+    };
+    // Only the default pattern: the theme comes local, app and package deployed. That is the mixed state the run refuses.
+    const mixed = await open({});
+    assert.deepEqual(mixed.state, { app: 'deployed deployed', theme: 'lokal' });
+    const seen = mixed.overlay.diagnose();
+    assert.deepEqual(seen.missed.map(({ part }) => part).sort(), ['Bestellung', 'modell']);
+    assert.equal(seen.suggestions.length, 1);
+    assert.equal(seen.suggestions[0].pattern, '[?&]url=inubitrepository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)');
+    assert.match(incompleteText(seen), /"\[\?&\]url=inubitrepository:\/\/\/Root\//);
+    // With the suggested pattern everything expected comes local.
+    const fixed = await open({ assetUrlPattern: [seen.suggestions[0].pattern] });
+    assert.deepEqual(fixed.state, { app: 'lokal lokal', theme: 'lokal' });
+    const complete = fixed.overlay.diagnose();
+    assert.deepEqual(complete.missed, []);
+    assert.deepEqual(complete.parts.map(({ status }) => status), ['local', 'local', 'local']);
 });

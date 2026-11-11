@@ -236,6 +236,10 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     }
     if (typeof startUrl === 'string' && startUrl.startsWith('/')) config.apps.web.startUrl = startUrl;
     if (typeof appDir === 'string' && appDir !== '') config.apps.web.dir = appDir;
+    // ExtJS: the Sencha watch is the overlay source, so the app gets an empty overlay entry and never a devCommand (caw must not
+    // start the watch on its own). No environment gets "overlay": true automatically: validate notes that --overlay works nowhere
+    // until a deployed environment allows it; caw-ai overlay check then confirms the setup.
+    if (framework === 'extjs') config.apps.web.overlay = {};
     if (Array.isArray(messageSelectors) && messageSelectors.length > 0) config.messageSelectors = messageSelectors;
     if (Array.isArray(consoleIgnore) && consoleIgnore.length > 0) config.consoleIgnore = consoleIgnore;
     return config;

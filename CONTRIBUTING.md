@@ -59,15 +59,12 @@ npx caw-ai doctor
 Maintainers only.
 
 1. Move the `[Unreleased]` entries in `CHANGELOG.md` to a new version section and update the compare links at the bottom.
-2. Set `version` in `package.json` (`npm version 0.2.0 --no-git-tag-version`) and commit.
-3. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
+2. Set `version` in `package.json` (`npm version 0.3.0 --no-git-tag-version`) and commit.
+3. Tag and push: `git tag v0.3.0 && git push origin v0.3.0`.
 
-The tag starts `.github/workflows/release.yml`: it checks that the tag matches `package.json`, runs `npm ci`, lint, tests and `pack:check`, then `npm publish --provenance --access public`. A version with a pre-release part (`v0.2.0-beta.1`) is published under the `next` dist-tag.
+The tag starts `.github/workflows/release.yml`: it checks that the tag matches `package.json`, runs `npm ci`, lint, tests and `pack:check`, then `npm publish --provenance --access public`. A version with a pre-release part (`v0.3.0-beta.1`) is published under the `next` dist-tag.
 
-The workflow needs one of:
-
-- an `NPM_TOKEN` repository secret: an npm automation (or granular) token with publish rights for `caw-ai`, or
-- [trusted publishing](https://docs.npmjs.com/trusted-publishers) configured on npmjs.com for this repository and `release.yml`; then the token is not needed (the workflow installs npm 11.5.1 or later, which trusted publishing requires).
+Publishing uses npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), no token: on npmjs.com, package `caw-ai` → Settings → Trusted publisher → GitHub Actions, repository `lioninacoma/caw-ai`, workflow `release.yml`. The workflow installs npm 11.5.1 or later, which trusted publishing requires. Once it works, set the package to require 2FA and disallow tokens.
 
 ## Security
 

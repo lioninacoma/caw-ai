@@ -13,7 +13,9 @@
 // - `hints`: optional, hints for Claude where to look in the source code
 // - `watch`: optional, { label(), command, start }: the framework's watch as overlay source (--overlay), how to recognize its
 //   process and how to start it
-// - `overlay`: optional, with `watch`: { createWatchSource(appDir), checkAppFiles(appDir, hint) }; what the watch replaces
+// - `overlay`: optional, with `watch`: { createWatchSource(appDir), checkAppFiles(appDir, hint), expected?(appDir) }; what the watch
+//   replaces. `expected` returns [{ label, kind, names }]: every part the overlay should replace, for the completeness check after
+//   loading (a script request carrying one of the names that came from the server is a mixed state). Without it the check is skipped
 // - `hydrates`: optional, true: before filling in the login, wait until `probe` reports appReady (SSR hydration)
 // - `name`: for the config; `label()`: the localized name for messages (called at runtime, never at import)
 

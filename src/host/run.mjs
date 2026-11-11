@@ -1,6 +1,6 @@
 // A complete run: open the browser on the host, start the container, execute its commands, write the report.
 
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
@@ -183,7 +183,7 @@ export const embedsApp = (interactive) => interactive === true;
  * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
  * @param interactive with a chat, i.e. with a human in front of it
  */
-export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, recorded = recordedBrowser(spec.steps ?? []) }) => {
+export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, info = (text) => ui.info(text) }) => {
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
@@ -192,10 +192,10 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     const app = config.apps[spec.app];
     // The overlay source must be ready before Chrome starts, otherwise the run would silently test something else. Whatever
     // caw starts for it (dev server, watch) ends with the session.
-    const overlay = checked.source === 'overlay' ? await prepareOverlay({ root, config, checked, info: (text) => ui.info(text) }) : null;
+    const overlay = checked.source === 'overlay' ? await prepareOverlay({ root, config, checked, info }) : null;
     // Imported only here so that validate works without the browser code.
     const { openBrowserSession } = await import('./browser-session.mjs');
-    ui.info(t('run.openingChrome'));
+    info(t('run.openingChrome'));
     let session;
     try {
         session = await openBrowserSession({
@@ -218,6 +218,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             title: `caw-ai · ${spec.id}`,
             role: spec.role,
             overlay,
+            // strict false: a mixed or unused overlay is reported via diagnose instead of ending the session (overlay check).
+            overlayStrict: strict,
         });
     } catch (error) {
         overlay?.stop();
@@ -230,6 +232,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         throw error;
     }
     if (overlay === null) return session;
+    // The overlay's full diagnosis after loading, for caw-ai overlay check.
+    session.diagnose = () => overlay.diagnose();
     const close = session.close;
     session.close = async (...args) => {
         try {
@@ -239,6 +243,25 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         }
     };
     return session;
+};
+
+/** Where the last run lives, for the Claude session (caw_status): `.caw/last-run.json`, written at run start. */
+export const LAST_RUN_FILE = 'last-run.json';
+
+/**
+ * Notes the run that just started: { runId, runDir, pid, command, test, target, startedAt }, runDir relative to the project with
+ * forward slashes. Never fails the run.
+ */
+export const writeLastRun = (root, { runId, runDir, command, test, target, pid = process.pid, startedAt = new Date().toISOString() }) => {
+    try {
+        mkdirSync(join(root, RUN_DIR), { recursive: true });
+        const file = join(root, RUN_DIR, LAST_RUN_FILE);
+        const temp = `${file}.${process.pid}.tmp`;
+        writeFileSync(temp, `${JSON.stringify({ runId, runDir: runDir.replaceAll('\\', '/'), pid, command, test, target, startedAt }, null, 2)}\n`);
+        renameSync(temp, file);
+    } catch {
+        // Only a pointer for the session; the run itself does not depend on it.
+    }
 };
 
 /** The other tests the project already has. */
@@ -307,6 +330,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const agentDir = join(runDir, AGENT_DIR);
     const channel = join(agentDir, CHANNEL_DIR);
     mkdirSync(channel, { recursive: true });
+    const runCommand = repair !== undefined ? 'fix' : creating ? 'record' : replay.steps.length === 0 && replay.until === undefined ? 'open' : 'run';
+    writeLastRun(root, { runId, runDir: relativeRun, command: runCommand, test: spec.id, target });
 
     const startedAt = Date.now();
     let modeLabel = t('run.mode.record');

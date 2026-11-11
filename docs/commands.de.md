@@ -12,6 +12,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw-ai <befehl>` (oder
 | [`explore`](#explore) | App ansehen und Einstellungen vorschlagen, sonst nichts schreiben | nein |
 | [`skill`](#skill) | Skill für Claude Code und `.mcp.json` anlegen oder aktualisieren | nein |
 | [`doctor`](#doctor) | Rechner, Config, Zugangsdaten und Umgebungen prüfen | nein |
+| [`overlay check`](#overlay-check) | Prüfen, ob `--overlay` alles ersetzt, was es soll | nein |
 | [`validate`](#validate) | Config und Tests offline prüfen | nein |
 | [`list`](#list) | Tests und Schritte mit Stand der Aufnahme auflisten | nein |
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen | ja |
@@ -84,6 +85,32 @@ npx caw-ai doctor --agent docker
 ```
 
 Prüft Node, Chrome, Claude Code (Agent `local`) oder Docker und Token (Agent `docker`), die Config, `TODO`-Werte, die Zugangsdaten je Rolle und ob jede Umgebung antwortet. Jede fehlgeschlagene Prüfung nennt den nächsten Schritt. Bei einer ungültigen Config zeigt es den ersten Befund, `validate` alle. Platzhalter-Adressen (`example.com`, `.test`, `.invalid`) meldet es, ohne sie anzufragen.
+
+Bei ExtJS und einer Umgebung mit `overlay: true` kommen je App optionale Zeilen dazu: `bootstrap.json` vorhanden und aktuell, der Sencha-Watch läuft, und je Teil (App, Paket) das Ergebnis des letzten `overlay check` mit Alter, sonst der Hinweis, einen zu starten. doctor startet den Watch nie.
+
+## overlay check
+
+```bash
+npx caw-ai overlay check
+npx caw-ai overlay check --target dev --apply
+npx caw-ai overlay check --json
+```
+
+Öffnet die App headless mit `--overlay` (angemeldet, ohne Schritte, ohne Claude) und vergleicht die Skript-Requests der Seite mit dem, was das Overlay ersetzen soll. Bei ExtJS sind das die App und jedes eigene Paket aus `bootstrap.json`, `x.js` und `x-debug.js` zählen als ein Teil. Je Teil steht `lokal`, `ausgeliefert` oder `nicht geladen` (vielleicht erst später).
+
+Ein Teil `ausgeliefert` heißt Mischstand: Die Seite lief teils mit deinem Code, teils mit dem des Servers. Die Skript-URLs werden über den Dateinamen erkannt, unabhängig von `assetUrlPattern`; so findet die Prüfung auch Quellen, die die Config nicht kennt. Für jede schlägt sie ein Muster vor:
+
+```
+✓ aekwl-theme-material: lokal
+! AllgemeineVorgangsbearbeitungAntragstellung: ausgeliefert
+› https://dev.example.com/o/FormProxyServlet?url=inubitrepository:///Root/ (5 Skript(e)): assetUrlPattern "[?&]url=inubitrepository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)"
+```
+
+`--apply` trägt die vorgeschlagenen Muster in `assetUrlPattern` in `caw.config.json` ein (nur fehlende; ein einzelner Text wird zur Liste), prüft die Datei vor dem Schreiben und prüft danach noch einmal. Eine Quelle ohne sicheres Muster wird als solche gemeldet; dann trägst du eins von Hand ein.
+
+Vor dem Browser prüft es die Voraussetzungen: Die Umgebung erlaubt das Overlay, der App-Ordner hat `app.json`, `bootstrap.json` ist aktuell und der Watch läuft. Ohne Watch hört es mit dem Befehl auf (`sencha app watch` im App-Ordner) und startet ihn nie selbst, außer die App hat `overlay.devCommand`.
+
+`--target` ist ohne Angabe die einzige Umgebung mit `overlay: true`, `--app` und `--role` die einzige App und die erste Rolle. Das Ergebnis steht immer in `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, nach `--apply` auch `applied`). `--json` gibt es als einzige Zeile auf stdout aus. Exit 0 vollständig, 2 unvollständig oder Watch-Problem, 3 keine Overlay-Umgebung oder keine App.
 
 ## validate
 
@@ -221,12 +248,21 @@ Das Theme gehört dir, steht in `prefs.json` und gilt in allen Projekten. Eingeb
 
 Startet Claude Code über `.mcp.json`. Du rufst es nicht selbst auf. Deine Sitzung bekommt diese Tools:
 
-| Tool | |
-|---|---|
-| `caw_start` | `run`, `record` oder `fix` mit `--agent session` starten |
-| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe |
-| `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) |
-| `caw_selection` | Das Element, das du mit dem Fadenkreuz in der Werkbank gewählt hast |
+| Tool | | Tokens |
+|---|---|---|
+| `caw_doctor` | `doctor` als Daten | nein |
+| `caw_init` | `init` ohne Rückfragen (`offline`, `fromExplore`, `roles`, `noMcp`) | nein |
+| `caw_explore` | `explore` im Hintergrund starten (`login` oder `yes`) | nein |
+| `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`) | nein |
+| `caw_validate` | `validate` als Daten | nein |
+| `caw_list` | `list` als Daten | nein |
+| `caw_overlay_check` | `overlay check` (`target`, `app`, `apply`), wartet auf das Ergebnis | nein |
+| `caw_start` | `run`, `record`, `fix` oder `open` mit `--agent session` starten (`test`, `target`, `step`, `until`, `overlay`, `headless` oder `args`) | `record`, `fix`; `run`/`open` nur über den Chat |
+| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten | nein |
+| `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
+| `caw_selection` | Das Element, das du mit dem Fadenkreuz in der Werkbank gewählt hast | nein |
+
+Ergebnisse kommen als kurzer Text plus `structuredContent` (JSON).
 
 ## Agenten-Befehle
 
@@ -279,6 +315,7 @@ Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und 
 | `browser-missing` | 2 | Google Chrome installieren oder `browser` in der Config setzen |
 | `overlay-not-ready` | 2 | Dev-Server starten oder bauen, oder `devCommand` / `buildCommand` an der App eintragen; die Meldung nennt den Befehl |
 | `overlay-ssr` | 2 | Serverseitig gerenderte Seite: lokalen Code mit dem Dev-Server als Umgebung testen (`--target local`) |
+| `overlay-incomplete` | 2 | Teile kamen vom Server statt aus dem lokalen Code (Mischstand): das vorgeschlagene `assetUrlPattern` eintragen oder `overlay check --apply` |
 | `overlay-unused` | 2 | Nichts kam aus dem lokalen Code: Passen Build bzw. Dev-Server zur App, erfasst `assetUrlPattern` ihre Requests? |
 | `overlay-ambiguous` | 2 | ExtJS: einer App in `app.json` einen eigenen `output.js.path` geben |
 | `watch-missing`, `watch-stale` | 2 | Den Sencha-Watch starten (`sencha app watch`) oder `devCommand` eintragen |

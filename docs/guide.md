@@ -34,12 +34,21 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` onl
 
 `init` adds the MCP server to the project's `.mcp.json` (`node node_modules/caw-ai/bin/caw-ai.mjs mcp`). Your session then has these tools:
 
-| Tool | Purpose |
-|---|---|
-| `caw_start` | starts `run`, `record` or `fix` in the background with `--agent session`; the window opens on your side |
-| `caw_status` | whether a run is waiting for the session, with its task, and the last lines of output (`.caw/session-*.log`) |
-| `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …), as described in the skill |
-| `caw_selection` | the element you picked with the crosshair in the workbench while developing |
+| Tool | Purpose | Tokens |
+|---|---|---|
+| `caw_doctor` | `doctor` as data: every check with next step, counts of blocking and optional ones | no |
+| `caw_init` | `init` without questions: `offline`, or `fromExplore` after `caw_explore`; `roles`, `noMcp`. Returns created files and TODO fields | no |
+| `caw_explore` | starts `explore` in the background (`login: true/false` or `yes`); `caw_status` then shows `caw/.explore.json` | no |
+| `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written | no |
+| `caw_validate` | `validate` as data: config findings, per test problems, hints and code per target | no |
+| `caw_list` | `list` as data: per test app, role, targets, writes, recording state per step | no |
+| `caw_overlay_check` | `overlay check` (optionally `apply`), waits up to 3 minutes and returns the result | no |
+| `caw_start` | starts `run`, `record`, `fix` or `open` with `--agent session`: fields `test`, `target`, `step`, `until`, `overlay`, `headless` (or `args`). With `overlay` and no running watch it returns the command for you instead of starting | `record`, `fix`: yes; `run`, `open`: only when the chat calls Claude |
+| `caw_status` | whether a run is waiting for the session, the last lines of output (`.caw/session-*.log`), and as data the last run: result, last step, artefacts (report, trace, logs) | no |
+| `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …), as described in the skill | as part of the run |
+| `caw_selection` | the element you picked with the crosshair in the workbench while developing | no |
+
+The data tools return a short text and the same result as `structuredContent` (JSON). None of them prints to the MCP channel or asks on stdin; `explore`, `overlay check` and runs run as separate processes.
 
 So in your session you write "record a test for the order" or "take me to S4 of bestellung", and the skill does the rest. If you start the run yourself in the terminal with `--agent session`, the chat shows that it is waiting for the session; then tell it "take over the caw run" (it finds it with `caw_status`).
 
@@ -376,6 +385,10 @@ A request matches by the last segment of its path; the folder in front of it is 
 - **Changed files arrive on the next load.** New classes appear in `bootstrap.json` only after the watch has built.
 - **`bootstrap.json` missing, empty or naming files that no longer exist:** exit 2 (`watch-missing`, `watch-stale`).
 - **`node_modules` must be in the project folder.** If it lives in a named devcontainer volume, the host can't see it and reports `watch-stale`.
+
+**Completeness.** After the first load caw compares the page's script requests with the parts from `bootstrap.json` (app and own packages). It recognises a part by its file name anywhere in the URL, in the path or in a query value such as `/o/FormProxyServlet?url=…/Root/…/x.js`, independent of `assetUrlPattern`. If a part came from the server, the run ends with exit 2 (`overlay-incomplete`): the page would run partly on your code, partly on the deployed one, which shows up as errors far from the cause (`$jscomp is not defined`, a broken grid). The message lists the parts, up to five URLs and the `assetUrlPattern` that catches them. A part that was never requested is only a note: the app may load it later.
+
+Set up the ExtJS overlay in this order: start `sencha app watch` in the app folder yourself, then `npx caw-ai overlay check` until it reports complete (`--apply` adds suggested patterns). `doctor` shows the watch, `bootstrap.json` and the last check per part.
 
 ## Framework: `web`, `react`, `vue`, `angular` or `extjs`
 

@@ -15,7 +15,9 @@ import { language, t } from './i18n.mjs';
 import { prefsDir, readPrefs } from './prefs.mjs';
 
 const TOOL_THEMES = new URL('../../themes/', import.meta.url);
-const SCHEMA = JSON.parse(readFileSync(new URL('theme.schema.json', TOOL_THEMES), 'utf8'));
+// Read on first use: the sandbox imports this module through config.mjs but ships without themes/.
+let schemaCache;
+const SCHEMA = () => (schemaCache ??= JSON.parse(readFileSync(new URL('theme.schema.json', TOOL_THEMES), 'utf8')));
 
 /** The base colours in the order of the theme dialog. */
 export const THEME_KEYS = ['screen', 'pane', 'frame', 'text', 'muted', 'accent', 'ok', 'warn', 'fail', 'info', 'claude', 'human', 'heart'];
@@ -28,7 +30,7 @@ const isObject = (value) => value !== null && typeof value === 'object' && !Arra
 
 // A small validator for exactly the parts of JSON Schema that theme.schema.json uses.
 const check = (schema, value, path, problems) => {
-    if (schema.$ref !== undefined) return check(schema.$ref.split('/').slice(1).reduce((node, key) => node[key], SCHEMA), value, path, problems);
+    if (schema.$ref !== undefined) return check(schema.$ref.split('/').slice(1).reduce((node, key) => node[key], SCHEMA()), value, path, problems);
     if (schema.oneOf !== undefined) {
         const passing = schema.oneOf.filter((option) => check(option, value, path, []) === 0);
         if (passing.length !== 1) problems.push(`${path}: ${t(passing.length === 0 ? 'config.theme.schema.noShape' : 'config.theme.schema.ambiguous')}`);
@@ -72,7 +74,7 @@ const check = (schema, value, path, problems) => {
  */
 export const validateTheme = (pkg, { fromPage = false } = {}) => {
     const problems = [];
-    check(SCHEMA, pkg, 'theme', problems);
+    check(SCHEMA(), pkg, 'theme', problems);
     if (fromPage && isObject(pkg)) {
         if (pkg.css !== undefined) problems.push(t('config.theme.cssOnlyInPackage'));
         const fonts = Object.values(isObject(pkg.fonts) ? pkg.fonts : {}).flatMap((entry) => (Array.isArray(entry) ? entry : [entry]));
@@ -252,11 +254,20 @@ export const themeWarnings = (theme) => {
     return warnings;
 };
 
+// Built-in fonts in assets/fonts. Old names stay valid for themes made before IBM's own Plex files replaced the Fontsource subsets.
+const FONT_ALIASES = { 'ibm-plex-mono-latin-400-normal.woff2': 'ibm-plex-mono-400.woff2', 'ibm-plex-mono-latin-500-normal.woff2': 'ibm-plex-mono-500.woff2' };
+
+/** The file of a `builtin:` font, aliases resolved. */
+export const builtinFontUrl = (file) => {
+    const name = file.slice('builtin:'.length);
+    return new URL(`../../assets/fonts/${FONT_ALIASES[name] ?? name}`, import.meta.url);
+};
+
 /** A package's missing font files. */
 export const missingFonts = (theme, env = process.env) => {
     const fonts = Object.values(theme.fonts ?? {}).flatMap((entry) => (Array.isArray(entry) ? entry : [entry])).filter((font) => typeof font?.file === 'string');
     return fonts.map((font) => font.file).filter((file) => {
-        if (file.startsWith('builtin:')) return !existsSync(new URL(`../../assets/fonts/${file.slice(8)}`, import.meta.url));
+        if (file.startsWith('builtin:')) return !existsSync(builtinFontUrl(file));
         const dir = themeDir(theme.name, env);
         return !existsSync(typeof dir === 'string' ? join(dir, file) : new URL(file, dir));
     });
