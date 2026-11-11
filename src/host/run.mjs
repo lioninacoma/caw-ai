@@ -44,8 +44,8 @@ const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
 // How long the window stays open after the last decision, with a countdown, unless the human closes it.
 const LINGER_MS = 15000;
-const ADVICE_LOG = 'claude-empfehlung.log';
-const DRAFT_FILE = 'test-entwurf.yaml';
+const ADVICE_LOG = 'claude-advice.log';
+const DRAFT_FILE = 'test-draft.yaml';
 // Changes the page state or proves a step: only allowed once the plan is approved.
 const NEEDS_PLAN = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember']);
 // While advising Claude only reads: the page should stay as the run left it.
@@ -56,13 +56,14 @@ const TALK_READS = new Set([...ADVISE_READS, 'chat']);
 // Only on request (see skill); no test results from it, so there is no `check` or `remember` here.
 const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
 /**
- * The chip at the top right of the workbench for a run: record while Claude records or fixes (no replay), play while replaying
- * (run, check run, --until, restoring a state), pause for open: it replays nothing and hands over at once.
+ * The chip at the top right of the workbench while something runs: record while Claude records or fixes (no replay), play while
+ * replaying (run, check run, --until; restoring a state sets play itself). Nothing for open: it replays nothing and hands over at
+ * once. The page shows pause while a running run is paused (F9); once the run is over the chip goes away.
  */
-export const transportOf = (replay) => (replay === undefined ? 'record' : replay.steps.length === 0 ? 'pause' : 'play');
+export const transportOf = (replay) => (replay === undefined ? 'record' : replay.steps.length === 0 ? null : 'play');
 /** What Claude may do in the browser while advising, talking after a failure, or developing. */
 export const consultAllowed = (mode) => (mode === 'develop' ? DEVELOP_ACTS : mode === 'talk' ? TALK_READS : ADVISE_READS);
-const TALK_LOG = 'claude-gespraech.log';
+const TALK_LOG = 'claude-talk.log';
 // Labels as getters: the language is not known yet at import time.
 const ACCEPT = { id: 'accept', get label() { return t('run.button.accept'); }, primary: true };
 const REJECT = { id: 'discard', get label() { return t('run.button.discard'); } };
@@ -315,6 +316,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
+        // The run is over: nothing runs any more, so the chip goes away.
+        session?.workbench?.transport?.(null)?.catch?.(() => {});
     };
     const finishRun = () => {
         ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000 });
@@ -768,20 +771,27 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }
         agentHandler = newAgentHandler({ ...run, expectations: shownSpec.expectations });
         const tag = newRunTag();
-        const again = await playReplay({
-            replay: plan,
-            handler: agentHandler,
-            session,
-            base: checked.url,
-            authMarker: authOf(config).signedInSelector,
-            stepTimeoutMs,
-            filesDir: join(root, PROJECT_DIR),
-            runTag: tag,
-            log: (entry) => {
-                chat?.progress(`${entry.owner} · ${entry.number} ${entry.label}`);
-                showAction(entry);
-            },
-        });
+        // Restoring replays the test: play while it runs, nothing afterwards.
+        await session.workbench?.transport?.('play')?.catch?.(() => {});
+        let again;
+        try {
+            again = await playReplay({
+                replay: plan,
+                handler: agentHandler,
+                session,
+                base: checked.url,
+                authMarker: authOf(config).signedInSelector,
+                stepTimeoutMs,
+                filesDir: join(root, PROJECT_DIR),
+                runTag: tag,
+                log: (entry) => {
+                    chat?.progress(`${entry.owner} · ${entry.number} ${entry.label}`);
+                    showAction(entry);
+                },
+            });
+        } finally {
+            await session.workbench?.transport?.(null)?.catch?.(() => {});
+        }
         const failed = failedStep({ ...again, expectations: shownSpec.expectations, failures: [] });
         if (failed !== null) {
             const requests = again.requests?.get(failed.id) ?? [];
@@ -874,8 +884,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 ui.note(line);
             } else if (typeof after.outcome === 'string') chat.notice(after.outcome);
         }
-        // The run is over: the chip at the top right shows pause.
-        await session.workbench?.transport?.('pause').catch(() => {});
+        // The run is over: no chip at the top right.
+        await session.workbench?.transport?.(null).catch(() => {});
         if (!developing) chat?.human.closed();
         // After the last decision the window does not just vanish: it stays open briefly, the human can close it.
         // Without a chat (CI, --no-chat, headless) nothing waits here.
@@ -887,7 +897,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             let phase = t('run.phase.handedOver');
             if (developing) phase = replay?.until !== undefined && verdict.status === 'pass' ? t('run.phase.developIn', { until: replay.until }) : t('run.phase.develop');
             await session.workbench?.facts(factsOf(phase)).catch(() => {});
-            await session.workbench?.transport?.('pause').catch(() => {});
+            await session.workbench?.transport?.(null).catch(() => {});
             if (replay?.until !== undefined && verdict.status === 'pass') {
                 ui.success(t('run.handover.state', { until: replay.until, local: checked.source === 'overlay' ? t('run.handover.local') : '' }));
             } else {
@@ -1213,12 +1223,12 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
     /**
      * Repairs the failed step where the test run stopped: without replaying the steps before, with the values the replay
-     * read. The test run's report is kept as `report-testlauf.md`.
+     * read. The test run's report is kept as `report-test-run.md`.
      * @returns { verdict, exitCode, candidate, fresh, expectChange } of the repair
      */
     const repairInPlace = async ({ sandbox: box, reason, agreed, failures }, failed) => {
         const before = verdict;
-        if (existsSync(join(runDir, 'report.md'))) copyFileSync(join(runDir, 'report.md'), join(runDir, 'report-testlauf.md'));
+        if (existsSync(join(runDir, 'report.md'))) copyFileSync(join(runDir, 'report.md'), join(runDir, 'report-test-run.md'));
         repair = { id: failed.id, reason, agreed, failures, ...(failed.diagnosis === undefined ? {} : { diagnosis: failed.diagnosis, evidence: failed.evidence }) };
         repairing = givenSpec.steps.find(({ id }) => id === failed.id);
         spec = { ...givenSpec, steps: [repairing], expectations: givenSpec.expectations.filter(({ id }) => id === failed.id) };

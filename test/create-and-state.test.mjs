@@ -132,7 +132,7 @@ test('Demonstration: text becomes a checkpoint with screenshot; an empty line en
         },
     });
     assert.deepEqual(items.map(({ action }) => action), ['click', 'checkpoint', 'click']);
-    assert.deepEqual(items[1], { action: 'checkpoint', text: 'Maske da', path: '/a', screenshot: 'punkt-1.png' });
+    assert.deepEqual(items[1], { action: 'checkpoint', text: 'Maske da', path: '/a', screenshot: 'point-1.png' });
 
     const closing = { ...session, context: { ...context }, closed: Promise.resolve() };
     const none = await demonstrate({ session: closing, ui: silent, dir, operator: { nextLine: () => never } });
@@ -231,7 +231,7 @@ test('Demonstration: a reload is a hint in the recording; refresh only reloads t
 test('Demonstration: help in the same run does not overwrite earlier screenshots', async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-png-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
-    writeFileSync(join(dir, 'punkt-1.png'), 'alt');
+    writeFileSync(join(dir, 'point-1.png'), 'alt');
     const page = { screenshot: async () => Buffer.from('neu'), url: () => 'https://p.example/a' };
     const context = { exposeBinding: async () => {}, addInitScript: async () => {}, pages: () => [], on: () => {} };
     const lines = ['Zweiter', ''];
@@ -241,7 +241,7 @@ test('Demonstration: help in the same run does not overwrite earlier screenshots
         dir,
         operator: { nextLine: async () => lines.shift() },
     });
-    assert.equal(items[0].screenshot, 'punkt-2.png');
+    assert.equal(items[0].screenshot, 'point-2.png');
 });
 
 test('Demonstration: Ctrl+C aborts instead of continuing with half a demonstration', async (t) => {
@@ -706,18 +706,18 @@ test('Recording: the last demonstration stays reusable for a day; empty and fore
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const put = (name, items) => {
         mkdirSync(join(root, '.caw/runs', name), { recursive: true });
-        if (items !== undefined) writeFileSync(join(root, '.caw/runs', name, 'vorfuehrung.json'), JSON.stringify(items));
+        if (items !== undefined) writeFileSync(join(root, '.caw/runs', name, 'demonstration.json'), JSON.stringify(items));
     };
     assert.equal(lastDemonstration(root, 'x'), null);
-    put('2026-11-08T12-26-03-652Z-x-vorfuehrung', [{ action: 'click' }]);
-    put('2026-11-08T12-35-34-782Z-x-vorfuehrung', [{ action: 'note', text: 'warm' }, { action: 'click' }]);
-    put('2026-11-08T12-40-00-000Z-x-vorfuehrung');
-    put('2026-11-08T12-45-00-000Z-y-vorfuehrung', [{ action: 'click' }]);
+    put('2026-11-08T12-26-03-652Z-x-demonstration', [{ action: 'click' }]);
+    put('2026-11-08T12-35-34-782Z-x-demonstration', [{ action: 'note', text: 'warm' }, { action: 'click' }]);
+    put('2026-11-08T12-40-00-000Z-x-demonstration');
+    put('2026-11-08T12-45-00-000Z-y-demonstration', [{ action: 'click' }]);
     const now = Date.parse('2026-11-08T13:00:00Z');
     const last = lastDemonstration(root, 'x', now);
     assert.equal(last.items.length, 2);
     assert.equal(last.at, Date.parse('2026-11-08T12:35:34.782Z'));
-    assert.match(last.dir, /12-35-34-782Z-x-vorfuehrung$/);
+    assert.match(last.dir, /12-35-34-782Z-x-demonstration$/);
     assert.equal(lastDemonstration(root, 'x', now + 2 * 24 * 3600 * 1000), null, 'not after a day');
 });
 
@@ -748,6 +748,6 @@ test('Demonstration: application failures appear in place, the human sees them a
     assert.deepEqual(told, ['Fehler der Anwendung, http: HTTP 500 (https://p.example/abschliessen)']);
     assert.deepEqual(recordableSteps(items).steps, []);
     const { readFileSync } = await import('node:fs');
-    assert.deepEqual(JSON.parse(readFileSync(join(dir, 'fehler.json'), 'utf8')).map(({ text }) => text), ['HTTP 500'], 'only failures of this demonstration');
-    assert.deepEqual(JSON.parse(readFileSync(join(dir, 'netzwerk.json'), 'utf8')), [{ name: 'POST /abschliessen ab 3' }]);
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, 'failures.json'), 'utf8')).map(({ text }) => text), ['HTTP 500'], 'only failures of this demonstration');
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, 'network.json'), 'utf8')), [{ name: 'POST /abschliessen ab 3' }]);
 });

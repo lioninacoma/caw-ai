@@ -153,7 +153,7 @@ und `/tmp`. Die Anwendung erreichst du nur ueber diese Befehle, nicht per curl.
    **Daten relativ zu heute:** Brauchst du ein Datum (Beginn, Frist), nimm eines nahe am heutigen Tag, hoechstens 60 Tage davor oder
    danach, im Format `TT.MM.JJJJ` oder `JJJJ-MM-TT`. Die Aufzeichnung speichert es als `{{today}}`, `{{today+7}}` bzw. `{{todayIso-1}}`,
    und das Abspielen setzt das Datum seines Tages ein. Auch hier schreibst du den echten Wert. Ein Datum weiter weg bleibt fest.
-6. **Urteil einreichen.** Schreibe `/tmp/ergebnis.json` und rufe `finish --file /tmp/ergebnis.json` auf:
+6. **Urteil einreichen.** Schreibe `/tmp/result.json` und rufe `finish --file /tmp/result.json` auf:
 
    ```json
    {
@@ -382,7 +382,7 @@ empfiehlst, was zu tun ist. Der Browser steht noch so, wie der Lauf ihn hinterla
   - `prompt`: fuer eine Claude-Code-Sitzung beim Menschen, auch wenn es `edits` gibt: der Fehler im Wortlaut, Datei und Zeile, die
     Ursache, die Aenderung und wie man sie prueft (`lintCommand` aus dem Auftrag, falls gesetzt, und erneut `caw-ai run <test>`). Er muss ohne diesen Lauf
     verstaendlich sein.
-- **Einreichen:** Schreibe `/tmp/empfehlung.json` und rufe `advise --file /tmp/empfehlung.json` auf. Hoechstens 10 Eintraege, die
+- **Einreichen:** Schreibe `/tmp/advice.json` und rufe `advise --file /tmp/advice.json` auf. Hoechstens 10 Eintraege, die
   wichtigste Empfehlung zuerst, ohne E-Mail-Adressen und Zugangsdaten:
 
   ```json

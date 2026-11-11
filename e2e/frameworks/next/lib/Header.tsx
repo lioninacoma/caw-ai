@@ -16,7 +16,7 @@ export default function Header() {
   return (
     <header>
       {user !== null && <span data-testid="user-menu">{user}</span>}
-      <nav aria-label="Hauptnavigation"><Link href="/">Tickets</Link> <Link href="/info">Info</Link></nav>
+      <nav aria-label="Main navigation"><Link href="/">Tickets</Link> <Link href="/info">Info</Link></nav>
     </header>
   );
 }

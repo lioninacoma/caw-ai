@@ -779,7 +779,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         // Clean: nothing of this step has run yet, so the page is right before it. An external failure may have changed it.
         const clean = kind !== 'external' && position - 1 === starts.get(owner);
         broken = { number: `${position}/${replay.steps.length}`, step: owner, label, kind, message, clean, ...(blocker === undefined ? {} : { blocker }) };
-        const name = `fehler-schritt-${position}.png`;
+        const name = `failure-step-${position}.png`;
         await handler({ action: 'screenshot', name }).then(() => { broken.screenshot = name; }, () => {});
     };
 

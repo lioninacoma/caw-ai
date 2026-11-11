@@ -8,7 +8,7 @@ import { Session } from './session';
   template: `
     <header>
       @if (session.user(); as user) { <span data-testid="user-menu">{{ user }}</span> }
-      <nav aria-label="Hauptnavigation"><a routerLink="/">Tickets</a> <a routerLink="/info">Info</a></nav>
+      <nav aria-label="Main navigation"><a routerLink="/">Tickets</a> <a routerLink="/info">Info</a></nav>
     </header>
     <main><router-outlet /></main>
   `,

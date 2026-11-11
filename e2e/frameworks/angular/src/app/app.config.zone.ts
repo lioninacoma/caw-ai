@@ -5,7 +5,7 @@ import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
 
-// Variante mit Zone.js und Testability, wie aeltere oder migrierte Anwendungen.
+// Variant with Zone.js and Testability, like older or migrated applications.
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),

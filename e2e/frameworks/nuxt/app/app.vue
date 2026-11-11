@@ -11,7 +11,7 @@ onMounted(async () => {
 <template>
   <header>
     <span v-if="user" data-testid="user-menu">{{ user }}</span>
-    <nav aria-label="Hauptnavigation"><NuxtLink to="/">Tickets</NuxtLink> <NuxtLink to="/info">Info</NuxtLink></nav>
+    <nav aria-label="Main navigation"><NuxtLink to="/">Tickets</NuxtLink> <NuxtLink to="/info">Info</NuxtLink></nav>
   </header>
   <main><NuxtPage /></main>
 </template>

@@ -4,7 +4,7 @@ import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
 
-// Standard von Angular 21: zoneless, ohne Testability.
+// Angular 21 default: zoneless, without Testability.
 export const appConfig: ApplicationConfig = {
   providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient()],
 };

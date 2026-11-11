@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: "caw Next" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="de">
+    <html lang="en">
       <body>
         <Header />
         <main>{children}</main>

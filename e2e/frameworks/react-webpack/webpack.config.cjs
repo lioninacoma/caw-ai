@@ -1,7 +1,7 @@
-// Dieselben Quellen wie react-vite, gebaut mit webpack 5. Anders als Vite: klassische Skripte statt ES-Module, eine Laufzeit im
-// Einstieg, die lazy Chunks per JSONP unter Namen aus ihrer eigenen Tabelle laedt, Hash als [contenthash] hinter einem Punkt.
-//   CAW_BUILD   Kennung auf der Seite (dev, deployed, local)
-//   --output-path deploy|local   wie bei den anderen Projekten
+// The same sources as react-vite, built with webpack 5. Unlike Vite: classic scripts instead of ES modules, a runtime in the entry
+// that loads lazy chunks via JSONP under names from its own table, hash as [contenthash] after a dot.
+//   CAW_BUILD   build id on the page (dev, deployed, local)
+//   --output-path deploy|local   as in the other projects
 const { join, resolve } = require('node:path');
 const { DefinePlugin } = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
@@ -25,7 +25,7 @@ module.exports = (_env, argv) => {
         devtool: 'source-map',
         resolve: {
             extensions: ['.tsx', '.ts', '.js'],
-            // react und react-router aus react-vite, sonst gaebe es zwei Kopien
+            // react and react-router from react-vite, otherwise there would be two copies
             modules: [join(shared, 'node_modules'), 'node_modules'],
         },
         module: {
@@ -41,11 +41,11 @@ module.exports = (_env, argv) => {
             port: 5175,
             historyApiFallback: true,
             hot: true,
-            // Der Socket fuer HMR unter der Adresse der Seite (localhost), nicht unter host: Sonst lehnt der Server den Origin ab.
+            // The HMR socket at the address of the page (localhost), not at host: otherwise the server rejects the origin.
             client: { webSocketURL: 'auto://0.0.0.0:0/ws' },
             proxy: [{ context: ['/api'], target: 'http://127.0.0.1:3999' }],
         },
-        // CAW_SPLIT=1: Vendor-Code in eigenen Chunks, die die Seite per Tag laedt; ohne die Tags des lokalen Builds startete main nicht.
+        // CAW_SPLIT=1: vendor code in chunks of its own that the page loads by tag; without the tags of the local build main would not start.
         ...(process.env.CAW_SPLIT === '1' ? { optimization: { runtimeChunk: 'single', splitChunks: { chunks: 'all', cacheGroups: { vendor: { test: /[\\/]node_modules[\\/]/, name: 'vendor' } } } } } : {}),
         performance: { hints: false },
     };

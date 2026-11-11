@@ -104,9 +104,9 @@ export const firewallCheck = async ({ print = (value) => console.log(JSON.string
 // One log per mode: the recording's log survives later advice or clarification.
 const MODES = {
     run: { log: 'claude.log', prompt: (runId) => `/caw-ai Run ${runId} is open. Carry it out and submit the result with finish.` },
-    advise: { log: 'claude-empfehlung.log', prompt: (runId) => `/caw-ai Run ${runId} had errors or warnings. Read the assignment with task and submit your advice with advise.` },
-    talk: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai In run ${runId} a step failed, and the human is asking you in the chat. Read the assignment with task, answer with say and wait for them with chat.` },
-    develop: { log: 'claude-gespraech.log', prompt: (runId) => `/caw-ai In run ${runId} the human is developing in the prepared state and asks you in the chat, e.g. about a bug. Read the assignment with task, answer with say and wait for them with chat.` },
+    advise: { log: 'claude-advice.log', prompt: (runId) => `/caw-ai Run ${runId} had errors or warnings. Read the assignment with task and submit your advice with advise.` },
+    talk: { log: 'claude-talk.log', prompt: (runId) => `/caw-ai In run ${runId} a step failed, and the human is asking you in the chat. Read the assignment with task, answer with say and wait for them with chat.` },
+    develop: { log: 'claude-talk.log', prompt: (runId) => `/caw-ai In run ${runId} the human is developing in the prepared state and asks you in the chat, e.g. about a bug. Read the assignment with task, answer with say and wait for them with chat.` },
 };
 
 /**
@@ -171,7 +171,7 @@ export const connectionSettings = (env = process.env) => {
 export const writeLocalSetup = (dir, env = process.env) => {
     const mcpConfig = join(dir, 'mcp.json');
     const settings = join(dir, 'settings.json');
-    const systemPromptFile = join(dir, 'anleitung.md');
+    const systemPromptFile = join(dir, 'instructions.md');
     writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { caw: { command: process.execPath, args: [BIN, 'mcp-agent'], env: { CAW_SANDBOX: '1', CAW_AGENT_DIR: dir, ...(env.CAW_COLOR ? { CAW_COLOR: env.CAW_COLOR } : {}) } } } }, null, 2));
     writeFileSync(settings, JSON.stringify({ ...connectionSettings(env), permissions: { deny: LOCAL_DENY }, disableAllHooks: true }, null, 2));
     writeFileSync(systemPromptFile, `${LOCAL_PREAMBLE}${readFileSync(SKILL_FILE, 'utf8').replace(/^---[\s\S]*?---\s*/, '')}`);

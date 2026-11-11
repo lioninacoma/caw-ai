@@ -15,7 +15,7 @@ echo "caw/.env: $(wc -c < caw/.env) Bytes"
 echo "sub/.env: $(wc -c < sub/.env) Bytes"
 echo ".git: $(ls -A .git | wc -l), .claude: $(ls -A .claude | wc -l)"
 echo ".caw/runs: $(ls .caw/runs | wc -l) Lauf sichtbar"
-touch projekt-schreiben 2>&1 | head -1
+touch project-write 2>&1 | head -1
 echo x > "$CAW_AGENT_DIR/geschrieben" && echo "Agent-Ordner beschreibbar"
 touch "$(dirname "$CAW_AGENT_DIR")/result.json" 2>&1 | head -1
 env | grep -c 'fx-geheim' | sed 's/^/Passwort in env: /'

@@ -15,15 +15,15 @@ export default function App() {
       if (me === null && location.pathname !== '/login') navigate('/login')
     })
   }, [location.pathname])
-  if (user === undefined) return <p>Lädt …</p>
+  if (user === undefined) return <p>Loading …</p>
   return (
     <>
       <header>
         {user !== null && <span data-testid="user-menu">{user}</span>}
-        <nav aria-label="Hauptnavigation"><Link to="/">Tickets</Link> <Link to="/info">Info</Link></nav>
+        <nav aria-label="Main navigation"><Link to="/">Tickets</Link> <Link to="/info">Info</Link></nav>
       </header>
       <main>
-        <Suspense fallback={<p>Lädt …</p>}>
+        <Suspense fallback={<p>Loading …</p>}>
           <Routes>
             <Route path="/login" element={<LoginScreen onLogin={(name) => { setUser(name); navigate('/') }} />} />
             <Route path="/" element={<TicketsScreen />} />

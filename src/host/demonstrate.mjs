@@ -169,8 +169,8 @@ const writeOwn = (path, data) => {
 /** Several checkpoints in the same run: earlier images are kept. */
 const freeScreenshot = (dir) => {
     let number = 1;
-    while (taken(join(dir, `punkt-${number}.png`))) number += 1;
-    return `punkt-${number}.png`;
+    while (taken(join(dir, `point-${number}.png`))) number += 1;
+    return `point-${number}.png`;
 };
 
 /** How the frame's document came about: 'reload', 'navigate', 'back_forward', or null if it cannot be determined. */
@@ -358,8 +358,8 @@ export const demonstrate = async ({ session, operator, ui, dir, now = Date.now, 
         // Evidence independent of the trace, which may be incomplete after an abrupt end.
         if (dir !== undefined) {
             try {
-                writeOwn(join(dir, 'fehler.json'), JSON.stringify((session.failures?.() ?? []).slice(failuresAt), null, 2));
-                if (session.network !== undefined) writeOwn(join(dir, 'netzwerk.json'), JSON.stringify(session.network.since(networkAt), null, 2));
+                writeOwn(join(dir, 'failures.json'), JSON.stringify((session.failures?.() ?? []).slice(failuresAt), null, 2));
+                if (session.network !== undefined) writeOwn(join(dir, 'network.json'), JSON.stringify(session.network.since(networkAt), null, 2));
             } catch {
                 // Evidence is a bonus; the demonstration itself is what counts.
             }
