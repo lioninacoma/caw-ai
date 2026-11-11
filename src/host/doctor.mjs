@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AUTH_DIR, TODO, agentSandbox, allTargets, authOf, browserLaunch, loadConfig, resolveTarget, sessionPath } from '../shared/config.mjs';
+import { AUTH_DIR, agentSandbox, allTargets, authOf, browserLaunch, loadConfig, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
 import { parseEnvFile } from './linux.mjs';
@@ -16,6 +16,17 @@ const browserName = (config) => {
 };
 
 const MIN_NODE = 22;
+
+/** Reserved example names (RFC 2606, RFC 6761): example.com/.net/.org and everything under .example, .invalid and .test. */
+export const isPlaceholderHost = (url) => {
+    let hostname;
+    try {
+        ({ hostname } = new URL(url));
+    } catch {
+        return false;
+    }
+    return /(^|\.)(example\.(com|net|org)|example|invalid|test)$/i.test(hostname);
+};
 
 /**
  * The individual checks. Each yields { ok, text, next?, optional? }; `optional` means: only needed for runs with Claude.
@@ -34,11 +45,14 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     try {
         config = loadConfig(root);
         add({ ok: true, text: t('cli.doctorConfigOk', { file: CONFIG_FILE }) });
-        const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
-        if (todo.length > 0) add({ ok: false, text: t('cli.doctorTodo', { keys: todo.join(', ') }), next: t('cli.doctorTodoNext') });
+        const todo = todoFields(config);
+        if (todo.length > 0) add({ ok: false, text: t('cli.doctorTodo', { keys: todo.join(', '), count: todo.length }), next: t('cli.doctorTodoNext') });
     } catch (error) {
+        // The first real finding; the message itself starts with "caw.config.json:" and lists them below.
+        const issues = Array.isArray(error?.issues) ? error.issues : [];
+        const first = issues.length > 0 ? `${CONFIG_FILE}: ${issues[0]}` : String(error?.message ?? error).split('\n')[0];
         add(existsSync(join(root, CONFIG_FILE))
-            ? { ok: false, text: error.message.split('\n')[0].replace(/\.$/, ''), next: t('cli.doctorConfigNextValidate') }
+            ? { ok: false, text: first.replace(/\.$/, ''), next: t('cli.doctorConfigNextValidate', { count: issues.length }) }
             : { ok: false, text: t('cli.doctorConfigMissing', { file: CONFIG_FILE }), next: t('cli.doctorConfigNextInit') });
     }
 
@@ -124,6 +138,11 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
         const { url, production } = resolveTarget(config, target);
         // The tool never contacts production, not even to probe it.
         if (production) continue;
+        // A placeholder such as staging.example.com never answers: say so instead of probing it.
+        if (isPlaceholderHost(url)) {
+            add({ ok: false, optional: true, text: t('cli.doctorReachPlaceholder', { target, url }), next: t('cli.doctorReachPlaceholderNext') });
+            continue;
+        }
         add(await reach(url)
             ? { ok: true, optional: true, text: t('cli.doctorReachOk', { target, url }) }
             : { ok: false, optional: true, text: t('cli.doctorReachFail', { target, url }), next: t('cli.doctorReachNext') });

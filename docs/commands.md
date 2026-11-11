@@ -39,7 +39,7 @@ An option that needs a value never takes the next option as its value: `--target
 npx caw-ai init --url http://localhost:5173
 ```
 
-Opens the app in Chrome. Sign in once, then press Enter. caw-ai detects framework, login form and a "signed in" marker and creates:
+Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. Sign in with a test account (caw-ai notices when the sign-in form is gone), go to the page where tests should start and click **Done** in the card at the bottom right of the window. caw-ai detects framework, login form and a "signed in" marker and creates:
 
 - `caw.config.json`
 - `caw/.env.example` with the credential variables per role
@@ -47,12 +47,12 @@ Opens the app in Chrome. Sign in once, then press Enter. caw-ai detects framewor
 - `caw/tests/` for your test plans and `caw/caw.md` for notes Claude reads in every run
 - `.gitignore` entries for `caw/.env`, `.caw/` and `caw/.auth/`
 
-Anything it couldn't detect is set to `TODO`. `doctor` and `validate` point you to it. Existing files are left alone.
+Anything it couldn't detect is set to `TODO`. `doctor` lists it, `validate` fails with exit 3 until it is filled in. Existing files are left alone.
 
 | Option | |
 |---|---|
 | `--url <address>` | The app's address. Without it, `init` asks. |
-| `--yes` | Don't wait for you to sign in, ask no questions. Good for apps without login. |
+| `--yes` | Don't wait for you to sign in, ask no questions. Good for apps without login. With a login nobody signs in: `signedInSelector` stays `TODO` and `startUrl` stays `/` (or the path of `--url`). |
 | `--from <file>` | Use an existing `explore` result instead of opening the app. If `caw/.explore.json` exists, `init` uses it automatically. |
 | `--no-mcp` | Don't touch `.mcp.json`. |
 | `--offline` | Don't open the app: write the template with `TODO` for the sign-in. Without a terminal and without `--url`, `init` does this by itself. |
@@ -66,7 +66,7 @@ npx caw-ai explore --url http://localhost:5173
 
 Like `init`, but only writes suggestions to `caw/.explore.json`: framework, login type and selectors, signed-in marker, start page, messages and console noise. Each suggestion has `confidence: certain` or `likely`. Pass the file to `init --from` later.
 
-Options: `--yes`, `--insecure-tls` (as for `init`).
+Options: `--yes`, `--insecure-tls` (as for `init`); `--login` or `--no-login` answer the sign-in question for scripts.
 
 ## skill
 
@@ -83,7 +83,7 @@ npx caw-ai doctor
 npx caw-ai doctor --agent docker
 ```
 
-Checks Node, Chrome, Claude Code (agent `local`) or Docker and token (agent `docker`), the config, `TODO` values, credentials per role and whether each environment answers. Every failed check comes with the next step.
+Checks Node, Chrome, Claude Code (agent `local`) or Docker and token (agent `docker`), the config, `TODO` values, credentials per role and whether each environment answers. Every failed check comes with the next step. For an invalid config it shows the first finding; `validate` lists them all. Placeholder addresses (`example.com`, `.test`, `.invalid`) are reported, never contacted.
 
 ## validate
 
@@ -91,9 +91,11 @@ Checks Node, Chrome, Claude Code (agent `local`) or Docker and token (agent `doc
 npx caw-ai validate
 ```
 
-Checks `caw.config.json` and every file in `caw/tests/` without browser or Claude. Errors name file and line. Use it in CI and pre-commit hooks.
+Checks `caw.config.json` and every file in `caw/tests/` without browser or Claude. Errors name file and line, all of them at once. Use it in CI and pre-commit hooks.
 
-Per test and target it prints which code runs there and where `--overlay` would apply, e.g. `smoke (staging): deployed` or `smoke (dev): deployed; with --overlay: overlay, build dist`. Notes that don't fail validation: `auth` values still `TODO` and settings without effect, such as an app with `overlay` while no environment allows it (see [Testing local code](configuration.md#testing-local-code)).
+`auth` values still `TODO` fail validation (exit 3, code `config-invalid`): each one says what belongs there. Config keys from 0.1.0 (`agent` and `localCode` on an environment, `statics`, `redirects` and `constants` on an app) name their new place, see [Upgrading](upgrading.md).
+
+Per test and target it prints which code runs there and where `--overlay` would apply, e.g. `smoke (staging): deployed` or `smoke (dev): deployed; with --overlay: overlay, build dist`. Notes that don't fail validation: settings without effect, such as an app with `overlay` while no environment allows it (see [Testing local code](configuration.md#testing-local-code)).
 
 ## list
 
@@ -104,7 +106,7 @@ npx caw-ai list create-ticket
 
 Without a test: one row per test with its targets, its recording status (`recorded`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)`. No browser, no Claude.
 
-A test name that doesn't exist names the known tests and, for a typo, the closest one (`Did you mean create-ticket?`). An unknown step names the test's steps (`Steps: S1–S6.`).
+Without `caw.config.json` it stops like every other command (`config-missing`). A test name that doesn't exist names the known tests and, for a typo, the closest one (`Did you mean create-ticket?`); `record <name>` is offered only for a new test. An unknown step names the test's steps (`Steps: S1–S6.`).
 
 ## record
 
@@ -142,7 +144,7 @@ npx caw-ai run create-ticket --target local
 
 Replays the recording. No Claude, no tokens. On environments where Claude may work (`claude`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
 
-With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml`. At the end it says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the next commands: a run with chat to find the cause and `--until` up to the step before the failure. The report path is also printed as a `file://` link.
+With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml`. At the end it says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `--until` up to the step before the failure. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
 
 | Option | |
 |---|---|
@@ -239,7 +241,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `0` | pass |
 | `1` | fail: the app didn't do what the test expects |
 | `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …), or an unexpected internal error (the stack is printed) |
-| `3` | rejected: invalid call, config or test file. Nothing ran. |
+| `3` | rejected: invalid call, config (also `TODO` values left from `init`) or test file. Nothing ran. |
 | `4` | needs recording: the recording is missing (`record`) or a step changed since it was recorded (`fix`). Nothing ran. |
 
 ## Environment variables
@@ -256,13 +258,13 @@ These are the only way Claude can touch the browser. They exist for the agent du
 
 ## Error codes
 
-When caw-ai stops, it prints the reason and then the code.
+When caw-ai stops, or a run ends with `error`, it prints the reason and then the code.
 
 | Code | Exit | Fix |
 |---|---|---|
 | `usage`, `unknown-command` | 3 | `npx caw-ai <command> --help` |
 | `config-missing` | 3 | `npx caw-ai init --url <address>` |
-| `config-invalid` | 3 | Fix the field named in the message, then `doctor` |
+| `config-invalid` | 3 | Fix the field named in the message or fill in the `TODO` values, then `doctor` |
 | `test-missing`, `test-invalid` | 3 | Create or fix the test file, then `validate` |
 | `replay-missing` | 4 | `record` the test |
 | `replay-stale` | 4 | A step changed since recording: `fix <test> <step>` |

@@ -130,11 +130,13 @@ export const LOCAL_TOOLS = ['Read', 'Grep', 'Glob'];
 export const LOCAL_ALLOWED = [...LOCAL_TOOLS.map((tool) => `${tool}(./**)`), 'mcp__caw__caw'];
 // The same secrets as masked in the container (maskArgs), here as read denials.
 export const LOCAL_DENY = ['.env', '.env.*', '**/.env', '**/.env.*', '.git/**', '**/.git/**', '.claude/**', '.worktrees/**', '.caw/**', 'caw/.auth/**',
-    '**/.npmrc', '**/.netrc', '**/.pgpass', '**/.git-credentials', '**/*.pem', '**/*.key', '**/*.p12', '**/*.pfx', '**/id_rsa*', '**/id_dsa*', '**/id_ed25519*', '**/id_ecdsa*']
+    '**/.npmrc', '**/.netrc', '**/.pgpass', '**/.git-credentials', '**/*.pem', '**/*.key', '**/*.p12', '**/*.pfx', '**/id_rsa*', '**/id_dsa*', '**/id_ed25519*', '**/id_ecdsa*',
+    // Keep in line with the secret files in src/host/secrets.mjs (the image has no src/host, so the list is repeated here).
+    '**/*.env', '**/.envrc', '**/.pypirc', '**/.yarnrc*', '**/credentials.json', '**/*.jks', '**/.aws/**', '**/.ssh/**', '**/.docker/config.json']
     .flatMap((pattern) => LOCAL_TOOLS.map((tool) => `${tool}(${pattern})`));
 // Prepended to the skill: locally there is no shell, the commands go through a tool.
 export const LOCAL_PREAMBLE = `You are running locally, not in the container. You have no shell and cannot write files. Every command
-\`caw-ai <befehl> ...\` in the following guide is a call of the tool mcp__caw__caw with args, e.g. args ["snapshot"] or
+\`caw-ai <command> ...\` in the following guide is a call of the tool mcp__caw__caw with args, e.g. args ["snapshot"] or
 ["click", "e12"]. Where the guide writes a file and passes --file (plan, finish, advise), pass its content in file instead.
 Read the source code with Read, Grep and Glob. Do not read files outside the project.
 

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { evaluateFinish, renderReport } from '../src/shared/report.mjs';
+import { t } from '../src/shared/i18n.mjs';
+import { evaluateFinish, isSkipped, renderReport } from '../src/shared/report.mjs';
 
 const rb = { id: 'smoke', expectations: [{ id: 'E1', text: 'a' }, { id: 'E2', text: 'b' }] };
 const ok = (id) => ({ id, status: 'pass', evidence: { type: 'eval', value: 'true' } });
@@ -57,4 +58,27 @@ test('the report names status, expectations, evidence and console errors', () =>
     const r = finish({ expectations: [ok('E1'), { ...ok('E2'), status: 'fail', note: 'leer' }] }, [{ type: 'pageerror', text: 'boom' }]);
     const md = renderReport({ ...r, testId: 'smoke', target: 'shop/dev', source: 'overlay', expectations: rb.expectations });
     for (const part of ['fail', 'smoke', 'shop/dev', 'E1', 'E2', 'leer', 'boom']) assert.ok(md.includes(part), part);
+});
+
+test('the report links screenshots in agent/ and marks steps never reached as skipped', () => {
+    const shot = { type: 'screenshot', value: 'failure-step-4.png' };
+    const results = [
+        { id: 'S1', status: 'fail', evidence: shot, note: 'kaputt' },
+        { id: 'S2', status: 'fail', evidence: shot, note: t('session.replay.notReachedBecause', { owner: 'S1' }) },
+        { id: 'S3', status: 'skipped', evidence: shot, note: '' },
+    ];
+    const expectations = [{ id: 'S1', text: 'a' }, { id: 'S2', text: 'b' }, { id: 'S3', text: 'c' }];
+    const md = renderReport({ status: 'fail', testId: 'x', target: 'local', results, expectations });
+    assert.match(md, /\| S1 \| a \| fail \| screenshot: \[failure-step-4\.png\]\(agent\/failure-step-4\.png\) \| kaputt \|/);
+    assert.match(md, /\| S2 \| b \| skipped \| - \| Nicht erreicht/);
+    assert.match(md, /\| S3 \| c \| skipped \| - \|/);
+    assert.equal(isSkipped(results[0], results), false, 'the failed step itself is no skip');
+    assert.equal(isSkipped({ id: 'S2', status: 'fail', note: 'anderer Grund' }, results), false);
+});
+
+test('the tested version is the line the terminal prints; older results keep the label', () => {
+    const base = { status: 'pass', testId: 'x', target: 'local', source: 'deployed' };
+    assert.match(renderReport({ ...base, testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174, dein aktueller Stand/);
+    assert.match(renderReport(base), /Getesteter Stand: ausgelieferter Stand/);
+    assert.match(renderReport({ ...base, status: 'error', code: 'unreachable', testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174/, 'the error code stays separate from the tested version');
 });

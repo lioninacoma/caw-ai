@@ -20,14 +20,14 @@ import { prepareOverlay } from './overlay.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep } from './test-plan.mjs';
-import { createAgentHandler } from './agent-commands.mjs';
-import { adviceView, applyEdits, applyToFiles, applyToSpec, changesFiles, configValue, readAdvice } from './advice.mjs';
+import { codeText, createAgentHandler } from './agent-commands.mjs';
+import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
-import { fillDates } from './dates.mjs';
-import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, replayBefore, replayVerdict, stepGroups, stepLabel, swapText, tidyNumbers, trailingNumbers } from './replay.mjs';
+import { fillDates, zonedNow } from './dates.mjs';
+import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayVerdict, stepGroups, stepLabel, tidyNumbers, trailingNumbers } from './replay.mjs';
 import { canRestore, loadStateTest, stateCatalog } from './states.mjs';
 import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
@@ -47,7 +47,8 @@ const LINGER_MS = 15000;
 const ADVICE_LOG = 'claude-advice.log';
 const DRAFT_FILE = 'test-draft.yaml';
 // Changes the page state or proves a step: only allowed once the plan is approved.
-const NEEDS_PLAN = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember']);
+// eval too: it runs any script in the page and can change it just like a click. Reading stays allowed via snapshot.
+export const NEEDS_PLAN = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember', 'eval']);
 // While advising Claude only reads: the page should stay as the run left it.
 const ADVISE_READS = new Set(['task', 'snapshot', 'url', 'eval', 'console', 'network', 'screenshot', 'say', 'advise']);
 // A conversation only adds waiting for the human.
@@ -74,6 +75,18 @@ const APPLY = { id: 'apply', get label() { return t('run.button.apply'); }, prim
 const color = colorEnabled();
 const ui = createUi();
 const sleep = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
+/** The signals that end a run like Ctrl+C. SIGBREAK only exists on Windows (Ctrl+Break). */
+export const ABORT_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP', ...(process.platform === 'win32' ? ['SIGBREAK'] : [])];
+
+/**
+ * Calls `abort` on the first of the signals, each handled once: a second Ctrl+C ends the process as usual.
+ * @returns stop(): removes the listeners again
+ */
+export const onAbortSignals = (abort, { signals = ABORT_SIGNALS, target = process } = {}) => {
+    for (const signal of signals) target.once(signal, abort);
+    return () => { for (const signal of signals) target.removeListener(signal, abort); };
+};
+
 /** Errors before the run caused by the invocation or config: exit 3 as documented, not 2. */
 const NOTHING_RAN = new Set(['auth-missing', 'config-invalid']);
 
@@ -170,7 +183,7 @@ export const embedsApp = (interactive) => interactive === true;
  * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
  * @param interactive with a chat, i.e. with a human in front of it
  */
-export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false }) => {
+export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, recorded = recordedBrowser(spec.steps ?? []) }) => {
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
@@ -198,6 +211,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             consoleIgnore: config.consoleIgnore ?? [],
             foreignCode: config.foreignCode ?? [],
             readyTimeoutMs: config.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS,
+            // Language and time zone of the recording, unless the config pins them.
+            recordedBrowser: recorded,
             headless,
             embed: !headless && embedsApp(interactive),
             title: `caw-ai · ${spec.id}`,
@@ -301,13 +316,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     else if (replay !== undefined) modeLabel = t('run.mode.replay');
     else if (repair !== undefined) modeLabel = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
     // Which code runs, always on one line, also in CI: otherwise a silently deployed version would only show in the result.
-    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: describeCode(config, spec, checked, { root }), ...(replay === undefined ? { maxSteps } : {}) });
+    const codeLine = describeCode(config, spec, checked, { root });
+    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: codeLine, ...(replay === undefined ? { maxSteps } : {}) });
 
-    const reportBase = { testId: spec.id, target, source: checked.source, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
+    // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
+    const reportBase = { testId: spec.id, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
     let verdict = null;
     let session;
     // All advice of this run, also across several sessions: the report lists them together.
     const decided = [];
+    // One budget per run for advice with code edits: after five rejected submissions, edits are refused.
+    const checkAdvice = adviceReader();
     const adviceNotes = [];
     const adviceOf = () => (decided.length === 0 && adviceNotes.length === 0 ? {} : { advice: { items: decided, ...(adviceNotes.length === 0 ? {} : { note: adviceNotes.join(' ') }) } });
     // If Claude gives advice while repairing and then submits a verdict, the advice stays in the report.
@@ -331,7 +350,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         [t('run.fact.test'), spec.id],
         [t('run.fact.target'), target],
         ...(spec.role ? [[t('run.fact.role'), spec.role]] : []),
-        [t('run.fact.code'), t(checked.source === 'overlay' ? 'run.fact.local' : 'run.fact.deployed')],
+        [t('run.fact.code'), checked.source === 'overlay' ? t('run.fact.local') : codeLine],
     ];
     // Every recorded action is a point of its step. Without an action, the replay reports a new attempt.
     const showAction = ({ owner, position, step, label }) => {
@@ -341,23 +360,26 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         if (step === undefined) bench.point(owner, `v${position}-${Date.now()}`, 'pass', { kind: t('run.point.attempt'), label: label.replace(/^\S+: /, '').replace(/^(neuer Versuch|attempt) /, '') });
         else bench.point(owner, `a${position}`, 'running');
     };
+    // Ctrl+C, a CI cancel (SIGTERM), a closed terminal (SIGHUP, on Windows also Ctrl+Break) end the run alike: verdict, Chrome
+    // profile and dev server cleaned up. Listening from before Chrome starts: a signal while it starts ends the run right after.
+    let abortSignal;
+    const aborted = new Promise((ok) => { abortSignal = ok; });
+    const stopSignals = onAbortSignals(abortSignal);
     try {
-        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined });
+        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         await session.workbench?.facts(factsOf(modeLabel));
         await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
     } catch (error) {
+        stopSignals();
         if (!(error instanceof CawError)) throw error;
         writeResult({ status: 'error', code: error.code, reason: error.message });
         return { exitCode: finishRun(), verdict };
     }
 
-    let abortSignal;
-    const aborted = new Promise((ok) => { abortSignal = ok; });
     // On abort the workbench raven flies into the logo.
-    aborted.then(() => session.workbench?.mood?.('aborted')).catch(() => {});
-    process.once('SIGINT', abortSignal);
+    aborted.then(() => session?.workbench?.mood?.('aborted')).catch(() => {});
 
     // The chat always sits next to the application window. With `lazy` it opens only when something goes wrong.
     let chat = null;
@@ -369,7 +391,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (replay !== undefined && conversation.testing === true) chat.testing();
             else if (replay !== undefined) chat.verifying();
         } catch (error) {
-            process.removeListener('SIGINT', abortSignal);
+            stopSignals();
             await session.close();
             if (!(error instanceof CawError)) throw error;
             writeResult({ status: 'error', code: error.code, reason: error.message });
@@ -640,7 +662,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (command.action === 'chat') return closing && inbox.length === 0 ? { ended: true } : new Promise((resolve) => { waiting = resolve; deliver(); });
             if (command.action !== 'advise') return reader(command);
             if (submitted && !talking) throw new CawError('advise-only', 'The advice has already been submitted.');
-            const items = readAdvice(command.advice, result.spec, config, { root, diagnosis: failed?.diagnosis });
+            const items = checkAdvice(command.advice, result.spec, config, { root, diagnosis: failed?.diagnosis });
             submitted = true;
             try {
                 const decisions = await review(items, talking ? log : undefined);
@@ -963,7 +985,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 await Promise.race([session.closed, aborted]);
             }
         }
-        process.removeListener('SIGINT', abortSignal);
+        stopSignals();
         await session.close();
         return { exitCode, verdict, ...found };
     };
@@ -980,7 +1002,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const claudeWork = async (box) => {
         verdict = null;
         // For Claude: secret values stay placeholders that the handler fills in on execution (fillSecrets).
-        const fillIn = (value) => fillDates(openRemembered().reduce((current, [placeholder, real]) => swapText(current, placeholder, real), fillRun(value, runTag)));
+        // Only for check code: values are escaped for a string literal.
+        const fillIn = (value) => fillDates(openRemembered().reduce((current, [placeholder, real]) => current.split(placeholder).join(codeText(real)), fillRun(value, runTag)), zonedNow(session.browser?.timezone));
         if (repairing !== undefined) {
             const position = givenSpec.steps.indexOf(repairing);
             run.repair = {
@@ -1077,7 +1100,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (command?.action === 'finish' && command.results?.status !== 'error') checkAgainstPlan(command.results ?? {});
             return budget.handler(command);
         };
-        recorder = createRecorder({ handler, session, base: checked.url, authMarker: authOf(config).signedInSelector, runTag, remembered });
+        // Dates near today become placeholders relative to the browser's today, in its pinned time zone.
+        recorder = createRecorder({ handler, session, base: checked.url, authMarker: authOf(config).signedInSelector, runTag, remembered, now: () => zonedNow(session.browser?.timezone) });
         /** The human shows in the same browser what Claude cannot find. The budget only counts Claude's own steps. */
         const askOperator = async ({ question }) => {
             ui.heading(t('run.ask.heading', { question: String(question ?? '').slice(0, 500) }));
@@ -1135,7 +1159,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (command?.action === 'chat') return readChat();
             if (command?.action !== 'task') chat.gate();
             if (command?.action === 'plan') return proposePlan(command);
-            if (plan === null && NEEDS_PLAN.has(command?.action)) throw new CawError('plan-required', `Submit the plan first: caw-ai plan --file <${PLAN_FILE}>. Reading works without it, e.g. snapshot and eval.`);
+            if (plan === null && NEEDS_PLAN.has(command?.action)) throw new CawError('plan-required', `Submit the plan first: caw-ai plan --file <${PLAN_FILE}>. Reading works without it, e.g. snapshot.`);
             if (command?.action === 'check') checkOrder(command);
             if (command?.action === 'ask-operator') return askOperator(command);
             if (command?.action === 'recording') return recorder.list();
@@ -1144,13 +1168,13 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (command?.action === 'advise' && repairing !== undefined) {
                 repairReviewer ??= createReviewer(givenSpec);
                 // The classification as Claude got it: without the one a human decision has lifted.
-                return repairReviewer.review(readAdvice(command.advice, repairReviewer.result.spec, config, { root, diagnosis: run.repair?.diagnosis }));
+                return repairReviewer.review(checkAdvice(command.advice, repairReviewer.result.spec, config, { root, diagnosis: run.repair?.diagnosis }));
             }
             // When recording only config and project context: if the human declares an error harmless, that already applies to the
             // verification run afterwards. The recording itself changes the test plan.
             if (command?.action === 'advise') {
                 repairReviewer ??= createReviewer(givenSpec ?? { id: spec?.id ?? 'neu', steps: [] });
-                const items = readAdvice(command.advice, repairReviewer.result.spec, config, { root });
+                const items = checkAdvice(command.advice, repairReviewer.result.spec, config, { root });
                 if (!items.every(changesFiles)) throw new CawError('advice-invalid', 'When recording, only advice with change.kind config or context is allowed. You change the test plan through the recording itself.');
                 return repairReviewer.review(items);
             }
@@ -1195,7 +1219,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
 
         if (budget.used() > 0) ui.info(t('run.budget', { used: budget.used(), max: maxSteps ?? t('run.budget.unlimited') }));
 
-        const built = buildReplay({ recorder, outcome: verdict, spec, target, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(creating && previous !== undefined ? { previous } : {}) });
+        const built = buildReplay({ recorder, outcome: verdict, spec, target, browser: session.browser ?? {}, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(creating && previous !== undefined ? { previous } : {}) });
         let { candidate } = built;
         // Created as read-only but it wrote: then the test mutates, otherwise it would run on targets without writable.
         const written = verdict?.writes ?? [];

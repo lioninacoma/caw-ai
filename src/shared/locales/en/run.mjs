@@ -61,8 +61,8 @@ export default {
     'run.tokens.cancelRun': 'Cancel run',
     'run.tokens.remembered': 'Noted, this notice won\'t show again',
     'run.tokens.declined': 'Continuing without Claude',
-    'run.error.todo': '{keys} is still TODO. Enter it in caw.config.json; npx caw-ai doctor shows what is still missing.',
-    'run.error.credentialsMissing': '{names} missing: set it as an environment variable or in {file}.',
+    'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} are still TODO. Enter them in caw.config.json; npx caw-ai doctor shows what is still missing.` : `${keys} is still TODO. Enter it in caw.config.json; npx caw-ai doctor shows what is still missing.`),
+    'run.error.credentialsMissing': ({ names, file }) => `${names} missing: set ${String(names).includes(',') ? 'them as environment variables' : 'it as an environment variable'} or in ${file}.`,
     'run.error.unreachable': '{url} is not reachable.',
     'run.openingChrome': 'Opening Chrome and signing in ...',
     'run.channelError': 'Channel: {message}',
@@ -198,6 +198,10 @@ export default {
     'run.develop.restoring': 'Restoring the state',
     'run.develop.restoringOther': 'Restoring {test} up to {step}',
     'run.develop.allSteps': 'the last step',
+    'run.develop.confirmRestore': 'Restore {test} up to {step} as {role}?',
+    'run.develop.confirmRestoreNoRole': 'Restore {test} up to {step}?',
+    'run.button.restorePicked': 'Restore',
+    'run.button.cancelRestore': 'Cancel',
     'run.develop.cannotRestore': '{test} {step} cannot be restored here: other role, app or environment, or the step is stale.',
 
     // Advice
@@ -260,6 +264,7 @@ export default {
     'run.agent.finished': 'The verdict is in; the run accepts no more commands.',
     'run.agent.unknownCommand': 'Unknown command: {action}',
     'run.agent.timeout': '{action} timed out.',
+    'run.agent.secretInCode': 'Secret values work only as fill or type values, not in code (check, eval, remember).',
 
     // MCP tools of the Claude Code session
     'run.mcp.noRun': 'No run is waiting for you as agent. Start one with caw_start (record, fix or run with chat), or the run has already ended: caw_status shows its output.',

@@ -39,7 +39,7 @@ Eine Option, die einen Wert braucht, nimmt nie die nächste Option als Wert: `--
 npx caw-ai init --url http://localhost:5173
 ```
 
-Öffnet die App in Chrome. Einmal anmelden, dann Enter drücken. caw-ai erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
+Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Chrome. Mit einem Testkonto anmelden (caw-ai merkt, wenn das Anmeldeformular verschwunden ist), zur Seite gehen, auf der Tests beginnen sollen, und in der Karte unten rechts im Fenster auf **Fertig** klicken. caw-ai erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
 
 - `caw.config.json`
 - `caw/.env.example` mit den Variablen für die Zugangsdaten je Rolle
@@ -47,12 +47,12 @@ npx caw-ai init --url http://localhost:5173
 - `caw/tests/` für deine Testpläne und `caw/caw.md` für Notizen, die Claude in jedem Lauf liest
 - Einträge in `.gitignore` für `caw/.env`, `.caw/` und `caw/.auth/`
 
-Was es nicht erkennen konnte, steht auf `TODO`. `doctor` und `validate` weisen dich darauf hin. Vorhandene Dateien bleiben unberührt.
+Was es nicht erkennen konnte, steht auf `TODO`. `doctor` listet es auf, `validate` scheitert mit Exit 3, bis es eingetragen ist. Vorhandene Dateien bleiben unberührt.
 
 | Option | |
 |---|---|
 | `--url <adresse>` | Adresse der App. Ohne fragt `init` nach. |
-| `--yes` | Nicht aufs Anmelden warten, nichts fragen. Gut für Apps ohne Anmeldung. |
+| `--yes` | Nicht aufs Anmelden warten, nichts fragen. Gut für Apps ohne Anmeldung. Mit Anmeldung meldet sich niemand an: `signedInSelector` bleibt `TODO`, `startUrl` bleibt `/` (oder der Pfad aus `--url`). |
 | `--from <datei>` | Ein vorhandenes Ergebnis von `explore` nehmen, statt die App zu öffnen. Gibt es `caw/.explore.json`, nimmt `init` es von selbst. |
 | `--no-mcp` | `.mcp.json` nicht anfassen. |
 | `--offline` | Die App nicht öffnen: die Vorlage schreiben, die Anmeldung bleibt `TODO`. Ohne Terminal und ohne `--url` macht `init` das von selbst. |
@@ -66,7 +66,7 @@ npx caw-ai explore --url http://localhost:5173
 
 Wie `init`, schreibt aber nur Vorschläge nach `caw/.explore.json`: Framework, Anmeldeart und Selektoren, Marke für angemeldet, Startseite, Meldungen und Konsolenrauschen. Jeder Vorschlag hat `confidence: certain` oder `likely`. Die Datei übernimmt später `init --from`.
 
-Optionen: `--yes`, `--insecure-tls` (wie bei `init`).
+Optionen: `--yes`, `--insecure-tls` (wie bei `init`); `--login` oder `--no-login` beantworten die Frage nach der Anmeldung für Skripte.
 
 ## skill
 
@@ -83,7 +83,7 @@ npx caw-ai doctor
 npx caw-ai doctor --agent docker
 ```
 
-Prüft Node, Chrome, Claude Code (Agent `local`) oder Docker und Token (Agent `docker`), die Config, `TODO`-Werte, die Zugangsdaten je Rolle und ob jede Umgebung antwortet. Jede fehlgeschlagene Prüfung nennt den nächsten Schritt.
+Prüft Node, Chrome, Claude Code (Agent `local`) oder Docker und Token (Agent `docker`), die Config, `TODO`-Werte, die Zugangsdaten je Rolle und ob jede Umgebung antwortet. Jede fehlgeschlagene Prüfung nennt den nächsten Schritt. Bei einer ungültigen Config zeigt es den ersten Befund, `validate` alle. Platzhalter-Adressen (`example.com`, `.test`, `.invalid`) meldet es, ohne sie anzufragen.
 
 ## validate
 
@@ -91,9 +91,11 @@ Prüft Node, Chrome, Claude Code (Agent `local`) oder Docker und Token (Agent `d
 npx caw-ai validate
 ```
 
-Prüft `caw.config.json` und alle Dateien in `caw/tests/` ohne Browser und ohne Claude. Fehler nennen Datei und Zeile. Gut für CI und Pre-Commit-Hooks.
+Prüft `caw.config.json` und alle Dateien in `caw/tests/` ohne Browser und ohne Claude. Fehler nennen Datei und Zeile, alle auf einmal. Gut für CI und Pre-Commit-Hooks.
 
-Je Test und Ziel nennt es, welcher Code dort läuft und wo `--overlay` ginge, etwa `smoke (staging): ausgelieferter Stand` oder `smoke (dev): ausgelieferter Stand; mit --overlay: Overlay, Build dist`. Hinweise, an denen die Prüfung nicht scheitert: Werte in `auth`, die noch `TODO` sind, und Einstellungen ohne Wirkung, etwa eine App mit `overlay`, während keine Umgebung es erlaubt (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)).
+Werte in `auth`, die noch `TODO` sind, lassen die Prüfung scheitern (Exit 3, Code `config-invalid`); jeder sagt, was hineingehört. Config-Felder aus 0.1.0 (`agent` und `localCode` an einer Umgebung, `statics`, `redirects` und `constants` an einer App) nennen ihren neuen Platz, siehe [Upgrade](upgrading.md).
+
+Je Test und Ziel nennt es, welcher Code dort läuft und wo `--overlay` ginge, etwa `smoke (staging): ausgelieferter Stand` oder `smoke (dev): ausgelieferter Stand; mit --overlay: Overlay, Build dist`. Hinweise, an denen die Prüfung nicht scheitert: Einstellungen ohne Wirkung, etwa eine App mit `overlay`, während keine Umgebung es erlaubt (siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen)).
 
 ## list
 
@@ -104,7 +106,7 @@ npx caw-ai list create-ticket
 
 Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)`. Ohne Browser und ohne Claude.
 
-Einen Testnamen, den es nicht gibt, beantwortet caw-ai mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`). Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
+Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw-ai mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
 
 ## record
 
@@ -142,7 +144,7 @@ npx caw-ai run create-ticket --target local
 
 Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen Claude arbeiten darf (`claude`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
 
-Mit Chat lernt der Lauf fehlende Vergleichswerte in `caw/recordings/<test>.yaml`. Am Ende sagt er, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `--until` bis zum Schritt vor dem Fehler. Den Bericht gibt es zusätzlich als `file://`-Link.
+Mit Chat lernt der Lauf fehlende Vergleichswerte in `caw/recordings/<test>.yaml`. Am Ende sagt er, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `--until` bis zum Schritt vor dem Fehler. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs.
 
 | Option | |
 |---|---|
@@ -239,7 +241,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | `0` | bestanden |
 | `1` | fehlgeschlagen: Die App tut nicht, was der Test erwartet |
 | `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …), oder ein unerwarteter interner Fehler (der Stack steht in der Ausgabe) |
-| `3` | abgewiesen: Aufruf, Config oder Testdatei ungültig. Es lief nichts. |
+| `3` | abgewiesen: Aufruf, Config (auch `TODO`-Werte aus `init`) oder Testdatei ungültig. Es lief nichts. |
 | `4` | Aufnahme nötig: Die Aufzeichnung fehlt (`record`) oder ein Schritt hat sich seit der Aufnahme geändert (`fix`). Es lief nichts. |
 
 ## Umgebungsvariablen
@@ -256,13 +258,13 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 
 ## Fehlercodes
 
-Bricht caw-ai ab, nennt es zuerst den Grund und danach den Code.
+Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und danach den Code.
 
 | Code | Exit | Abhilfe |
 |---|---|---|
 | `usage`, `unknown-command` | 3 | `npx caw-ai <befehl> --help` |
 | `config-missing` | 3 | `npx caw-ai init --url <adresse>` |
-| `config-invalid` | 3 | Das genannte Feld korrigieren, dann `doctor` |
+| `config-invalid` | 3 | Das genannte Feld korrigieren oder die `TODO`-Werte eintragen, dann `doctor` |
 | `test-missing`, `test-invalid` | 3 | Testdatei anlegen oder korrigieren, dann `validate` |
 | `replay-missing` | 4 | Test mit `record` aufnehmen |
 | `replay-stale` | 4 | Ein Schritt hat sich seit der Aufnahme geändert: `fix <test> <schritt>` |

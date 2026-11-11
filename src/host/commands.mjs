@@ -1,13 +1,11 @@
 // The host commands. init and validate need neither browser code nor Docker.
 
-// cpSync is stable from Node 22.3; the engine range only says >=22.
-// eslint-disable-next-line n/no-unsupported-features/node-builtins
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -321,7 +319,7 @@ export const init = (root, answers = {}) => {
         created.push('.gitignore');
     }
     ui.success(created.length > 0 ? t('cli.initCreated', { files: created.join(', ') }) : t('cli.initAlready'));
-    const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
+    const todo = todoFields(config);
     if (created.includes(CONFIG_FILE) && todo.length > 0) ui.warn(t(answers.offline ? 'cli.initTodoOffline' : 'cli.initTodo', { keys: todo.join(', ') }));
     // If explore just ran, advising to run it first would be confusing.
     if (created.includes(CONFIG_FILE)) ui.note(`${t('cli.initNext', { target: Object.keys(config.environments)[0] })}${answers.explored ? '' : t('cli.initNextExplore')}`);
@@ -358,17 +356,31 @@ export const auth = async (root, args, { capture } = {}) => {
 
 /** Checks the config and all tests against all their targets, without Docker or network. Stale steps are a hint, not an error. */
 export const validate = (root) => {
-    const { config, notes } = loadConfigWithNotes(root);
+    const { config, notes, todo } = loadConfigWithNotes(root);
     const dir = join(root, TEST_DIR);
     const files = existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith('.yaml')) : [];
     const problems = [];
-    const hints = [...notes, ...todoNotes(config)];
+    const hints = [...notes];
     // One line per test and target saying which code runs there, so an unnoticed deployed build stands out here already.
     const codeLines = [];
     for (const file of files) {
         try {
             // Description plus recording from caw/recordings; loadTest reports a mismatching id.
             const spec = withDefaults(loadTest(root, file.slice(0, -'.yaml'.length)), config);
+            // App, role and targets all at once: checkTest stops at the first.
+            const basics = testBasics(spec, config);
+            const badTargets = spec.targets.flatMap((target) => {
+                try {
+                    resolveTarget(config, target);
+                    return [];
+                } catch (error) {
+                    return [`${file} (${target}): ${error.message}`];
+                }
+            });
+            if (basics.length > 0 || badTargets.length > 0) {
+                problems.push(...basics.map((text) => `${file}: ${text}`), ...badTargets);
+                continue;
+            }
             for (const target of spec.targets) {
                 try {
                     const checked = checkTest(spec, target, config);
@@ -403,16 +415,36 @@ export const validate = (root) => {
     } catch (error) {
         problems.push(error.message);
     }
-    if (problems.length > 0) throw new CawError('test-invalid', problems.join('\n'));
+    // A login value still TODO is no typo, but nothing that signs in can run: rejected like an invalid config, never "valid".
+    const todoLines = todo.map((key) => t('cli.validateTodo', { key, what: t(`cli.validateTodo.${key.slice('auth.'.length)}`) }));
+    if (problems.length > 0 || todoLines.length > 0) {
+        codeLines.forEach((line) => ui.info(line));
+        hints.forEach((hint) => ui.note(hint));
+        const todoBlock = todoLines.length === 0 ? [] : [`${CONFIG_FILE}:`, ...todoLines.map((line) => `- ${line}`)];
+        throw new CawError(todoLines.length > 0 ? 'config-invalid' : 'test-invalid', [...todoBlock, ...problems].join('\n'));
+    }
     codeLines.forEach((line) => ui.info(line));
     hints.forEach((hint) => ui.note(hint));
     ui.success(t('cli.validateOk', { config: CONFIG_FILE, count: files.length }));
     return EXIT.pass;
 };
 
-/** One hint per login value still TODO since init, saying what belongs there. */
-const todoNotes = (config) => Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO)
-    .map(([key]) => t('cli.validateTodo', { key: `auth.${key}`, what: t(`cli.validateTodo.${key}`) }));
+const namesIn = (map) => Object.keys(map ?? {}).join(', ') || '–';
+
+/** What makes a test unrunnable on every target: app, its startUrl, also and role. Texts as in checkTest. */
+const testBasics = (spec, config) => {
+    const problems = [];
+    const id = String(spec.id);
+    if (spec.app === undefined) problems.push(t('config.test.check.appMissing', { id, apps: namesIn(config.apps), config: CONFIG_FILE }));
+    else if (config.apps[spec.app] === undefined) problems.push(t('config.test.check.app', { app: String(spec.app), apps: namesIn(config.apps), config: CONFIG_FILE }));
+    else if (config.apps[spec.app].startUrl === undefined) problems.push(t('config.test.check.startUrl', { app: String(spec.app) }));
+    for (const name of spec.also ?? []) {
+        if (config.apps[name] === undefined) problems.push(t('config.test.check.also', { app: String(name), apps: namesIn(config.apps), config: CONFIG_FILE }));
+    }
+    if (spec.role === undefined && authOf(config).type !== 'none') problems.push(t('config.test.check.role', { id, type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
+    if (spec.role !== undefined && config.roles?.[spec.role] === undefined) problems.push(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
+    return problems;
+};
 
 /** Builds the sandbox image unless one exists for this base image, user and tool version. */
 const ensureImage = async (docker, baseImage, user) => {
@@ -508,9 +540,11 @@ const suggestion = (word, candidates) => {
 /** The test does not exist: with a suggestion, the known tests and the command that records it. */
 const testMissing = (root, config, id, target) => {
     const known = testIds(root);
-    return new CawError('test-missing', t('cli.testMissing', {
+    const near = closest(id, known);
+    // For a typo the closest name is the answer; recording under the typo would only create a second test.
+    return new CawError('test-missing', t(near === undefined ? 'cli.testMissing' : 'cli.testMissingNear', {
         file: `${TEST_DIR}/${id}.yaml`,
-        suggestion: suggestion(id, known),
+        name: near,
         known: known.length === 0 ? t('cli.noTests') : t('cli.knownTests', { tests: known.join(', ') }),
         hint: recordHint(config, id, target),
     }));
@@ -603,6 +637,8 @@ export const list = (root, args, { out = console.log } = {}) => {
     const [test, ...rest] = args;
     const extra = rest[0] ?? (test?.startsWith('-') ? test : undefined);
     if (extra !== undefined) throw new CawError('usage', t('session.args.unexpected', { arg: extra }));
+    // Without a config there is no project here, like for every other command; an invalid one still lists the tests.
+    if (!existsSync(join(root, CONFIG_FILE))) loadConfig(root);
     const mutatesText = (spec) => t(spec.mutates === false ? 'cli.listReadOnly' : 'cli.listWrites');
     if (test !== undefined) {
         if (!existsSync(testPath(root, test))) {

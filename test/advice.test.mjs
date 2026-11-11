@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { CONTEXT_FILE, adviceView, applyEdits, applyToFiles, applyToSpec, changesFiles, readAdvice } from '../src/host/advice.mjs';
+import { CONTEXT_FILE, MAX_REJECTED_EDITS, adviceReader, adviceView, applyEdits, applyToFiles, applyToSpec, changesFiles, readAdvice } from '../src/host/advice.mjs';
 import { CONFIG_FILE } from '../src/shared/config.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { composeTest } from '../src/host/test-plan.mjs';
@@ -219,4 +219,68 @@ test('advice: a recorded click becomes optional without making the step stale, a
     } finally {
         rmSync(root, { recursive: true, force: true });
     }
+});
+
+test('advice: secrets and tool files answer like a missing file, so find is no content oracle', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-oracle-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const secret = 'TOKEN=abc123';
+    const files = ['.env', '.env.local', 'prod.env', '.envrc', '.npmrc', '.yarnrc.yml', '.pypirc', '.netrc', 'credentials.json', 'certs/server.pem',
+        'certs/server.key', 'certs/store.p12', 'certs/store.pfx', 'certs/store.jks', 'id_rsa.pub', '.aws/credentials', 'home/.ssh/config',
+        '.docker/config.json', CONFIG_FILE, 'web/caw.config.json', 'web/.caw/x.json', '.mcp.json', 'web/.claude/settings.json', 'package.json',
+        'web/package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', '.github/workflows/ci.yml',
+        '.gitlab-ci.yml', '.husky/pre-commit', '.vscode/settings.json', '.idea/x.xml', '.devcontainer/devcontainer.json', 'Dockerfile',
+        'web/Dockerfile.dev', 'docker-compose.yml'];
+    for (const file of files) {
+        mkdirSync(join(root, file, '..'), { recursive: true });
+        writeFileSync(join(root, file), `${secret}\n${secret}\n`);
+    }
+    const answer = (file, find) => problems({ items: [appItem({ edits: [{ file, find, replace: 'x' }] })] }, { root });
+    for (const file of files) {
+        // Whether find occurs twice, not at all, or the file is gone: always the answer for a missing file.
+        const shown = [answer(file, secret), answer(file, 'nowhere'), answer(file.replace(/[^/]+$/, 'gone-$&'), secret).replace('gone-', '')];
+        assert.deepEqual(shown, Array(3).fill(`items[0]: edits[0]: ${file} does not exist.`), file);
+    }
+    // The same through a link into .aws: the answer stays the same.
+    mkdirSync(join(root, 'src'));
+    let linked = true;
+    try {
+        symlinkSync(join(root, '.aws'), join(root, 'src/cloud'), 'junction');
+    } catch {
+        linked = false;
+    }
+    if (linked) assert.equal(answer('src/cloud/credentials', secret), 'items[0]: edits[0]: src/cloud/credentials does not exist.');
+    // Nothing of it can be written either, even if the advice came from elsewhere.
+    assert.throws(() => applyEdits(root, [{ file: '.env', find: secret, replace: 'x' }]), { code: 'advice-invalid' });
+    assert.equal(readFileSync(join(root, '.env'), 'utf8'), `${secret}\n${secret}\n`);
+    // .env.example is no secret but still not the application.
+    writeFileSync(join(root, '.env.example'), 'TOKEN=');
+    assert.match(answer('.env.example', 'TOKEN='), /\.env\.example does not exist/);
+});
+
+test('advice: after five rejected submissions with edits, the run checks no more edits', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-budget-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src/a.js'), 'const a = 1;\n');
+    const read = adviceReader();
+    const submit = (raw) => {
+        try {
+            return read(raw, SPEC, CONFIG, { root });
+        } catch (error) {
+            assert.equal(error.code, 'advice-invalid');
+            return error.message;
+        }
+    };
+    const probe = { items: [appItem({ edits: [{ file: 'src/a.js', find: 'nowhere', replace: 'x' }] })] };
+    // Rejections without edits do not count.
+    for (let i = 0; i < 3; i += 1) assert.match(submit({ items: [appItem({ title: '' })] }), /title is missing/);
+    for (let i = 0; i < MAX_REJECTED_EDITS; i += 1) assert.match(submit(probe), /not at all in src\/a\.js/);
+    assert.match(submit(probe), /5 submissions with edits were rejected/);
+    // Even a correct edit is no longer checked: it could still tell something.
+    assert.match(submit({ items: [appItem({ edits: [{ file: 'src/a.js', find: 'const a = 1;', replace: 'const a = 2;' }] })] }), /no longer checked/);
+    // Advice without edits still goes through.
+    assert.equal(submit({ items: [appItem()] }).length, 1);
+    // A new run, a new budget.
+    assert.equal(adviceReader()({ items: [appItem({ edits: [{ file: 'src/a.js', find: 'const a = 1;', replace: 'const a = 2;' }] })] }, SPEC, CONFIG, { root })[0].edits.length, 1);
 });

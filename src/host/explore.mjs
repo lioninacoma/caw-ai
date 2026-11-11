@@ -193,6 +193,18 @@ const HTTP_NOISE = /^Failed to load resource/i;
 export const suggestConsoleIgnore = (errors) => [...new Set(errors.filter((error) => !HTTP_NOISE.test(String(error).trim())).map(ignorePattern)
     .filter((pattern) => pattern.replace(/\\d\+/g, '0').length >= 8))].slice(0, 8);
 
+const pathOf = (address) => new URL(address).pathname + new URL(address).search;
+
+/**
+ * Where tests start: the page the human chose at the end. If that still shows a sign-in form (nobody signed in, e.g. with
+ * --yes), it is no start page: then the given address, unless that is the sign-in page itself, else "/".
+ */
+export const startUrlOf = (url, after) => {
+    if (after.login === null || after.login === undefined) return pathOf(after.url);
+    const given = pathOf(url);
+    return given === pathOf(after.url) ? '/' : given;
+};
+
 /**
  * Combines everything into suggestions for the config.
  * @param seen     { before, loginPage, after }: the page at the start, the page with the sign-in form (if any) and at the end
@@ -240,7 +252,7 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
         notes.push(t('cli.exploreNoLogin'));
     }
     if (signedIn !== null) suggestion.signedIn = signedIn;
-    if (after !== undefined && after !== null) suggestion.startUrl = new URL(after.url).pathname + new URL(after.url).search;
+    if (after !== undefined && after !== null) suggestion.startUrl = startUrlOf(url, after);
     const messages = [...new Set([...(before?.messages ?? []), ...(after?.messages ?? [])])];
     if (messages.length > 0) suggestion.messageSelectors = messages;
     const ignore = suggestConsoleIgnore(consoleErrors);

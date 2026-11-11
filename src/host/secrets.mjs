@@ -41,3 +41,30 @@ export const redactFor = async (page, text, known = []) => {
     const values = await (async () => page.evaluate(passwordValues))().catch(() => []);
     return redact(text, [...known, ...(Array.isArray(values) ? values : [])]);
 };
+
+// Secret files, one list for the Docker masks (maskArgs), the local agent's read denials and the files advice must not touch.
+// Windows is case-insensitive: .ENV is the same file as .env.
+const SECRET_NAMES = new Set(['.npmrc', '.netrc', '.pgpass', '.git-credentials', '.envrc', '.pypirc', 'credentials.json']);
+// Folders whose whole content is secret, at any depth.
+export const SECRET_DIRS = ['.aws', '.ssh'];
+
+/** Is a file with this name (no path) secret? .env.example is the documented template, not a secret. */
+export const isSecretFile = (name) => {
+    const lower = name.toLowerCase();
+    if (/^\.env(\..+)?$/.test(lower)) return lower !== '.env.example';
+    return SECRET_NAMES.has(lower) || lower.startsWith('.yarnrc') || /\.(env|pem|key|p12|pfx|jks)$/.test(lower) || /^id_(rsa|ed25519|ecdsa|dsa)/.test(lower);
+};
+
+/** A path relative to the project with '/': a secret file, anything in a secret folder, or Docker's login (.docker/config.json). */
+export const isSecretPath = (path) => {
+    const parts = path.toLowerCase().split('/');
+    const name = parts.at(-1);
+    return isSecretFile(name) || parts.slice(0, -1).some((part) => SECRET_DIRS.includes(part)) || (name === 'config.json' && parts.at(-2) === '.docker');
+};
+
+/** The same as glob patterns, e.g. for Claude Code's read denials of the local agent. */
+export const SECRET_GLOBS = [
+    '**/.env', '**/.env.*', '**/*.env', '**/.envrc', '**/.npmrc', '**/.netrc', '**/.pgpass', '**/.git-credentials', '**/.pypirc', '**/.yarnrc*',
+    '**/credentials.json', '**/*.pem', '**/*.key', '**/*.p12', '**/*.pfx', '**/*.jks', '**/id_rsa*', '**/id_dsa*', '**/id_ed25519*', '**/id_ecdsa*',
+    ...SECRET_DIRS.map((dir) => `**/${dir}/**`), '**/.docker/config.json',
+];

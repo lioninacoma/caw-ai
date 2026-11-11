@@ -165,11 +165,18 @@ test('handler: Claude never sees secret values, playback gets them, only the hos
     });
     assert.deepEqual(await handler({ action: 'remember', name: 'token', code: 'token()' }), { name: 'token', value: '••••' }, 'redacted for Claude');
     assert.deepEqual(await handler.reveal({ action: 'remember', name: 'token', code: 'token()' }), { name: 'token', value: 'abcd1234' }, 'not for playback');
-    // eval, remember, goto: no filling, otherwise the value would come back transformed ("{{token}}".split("").join("-")).
-    assert.equal(await handler({ action: 'eval', code: '"{{token}}".split("").join("-")' }), '"{{token}}".split("").join("-")');
-    assert.equal(evaluated.at(-1), '"{{token}}".split("").join("-")', 'eval gets the placeholder');
-    // A check gets the value but only reports pass or fail.
-    assert.deepEqual(await handler({ action: 'check', id: 'S1', code: 'document.title === "{{token}}"' }), { id: 'S1', pass: true });
-    assert.equal(evaluated.at(-1), 'document.title === "abcd1234"');
-    assert.deepEqual(await handler({ action: 'check', id: 'S1', code: '"{{token}}"' }), { id: 'S1', pass: false }, 'no value, even if the check returns it');
+    // No code gets the value: a check could leave it in the page (window.x = "{{token}}".split("")), the next eval reads it
+    // transformed past the redaction. Refused with a reason, before anything runs in the page.
+    const before = evaluated.length;
+    for (const command of [
+        { action: 'check', id: 'S1', code: 'document.title === "{{token}}"' },
+        { action: 'check', id: 'S1', code: '(window.x = "{{token}}".split("").join("|"), true)' },
+        { action: 'eval', code: '"{{token}}".split("").join("-")' },
+        { action: 'remember', name: 'copy', code: '"{{token}}"' },
+    ]) {
+        await assert.rejects(handler(command), { code: 'usage', message: /Geheime Werte gehen nur als Wert von fill oder type/ }, command.action);
+    }
+    assert.equal(evaluated.length, before, 'nothing ran in the page');
+    // fill and type still get it; a check without a secret placeholder works as before.
+    assert.deepEqual(await handler({ action: 'check', id: 'S1', code: 'document.title === "abcd1234"' }), { id: 'S1', pass: true, value: true });
 });

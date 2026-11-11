@@ -1,8 +1,7 @@
 {
     "framework": "web",
     "environments": {
-        "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
-        "staging": { "url": "https://staging.example.com" }
+        "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
     },
     "auth": {
         "type": "form",

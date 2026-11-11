@@ -69,8 +69,41 @@ test('valid configs: flat, with sites, without login, with a stored session', ()
     assert.deepEqual(validateConfig(twoFactor).issues, [], 'a one-time code after the password');
 });
 
-test('config: unknown fields are errors, including names from earlier versions', () => {
-    for (const key of ['portals', 'stages', 'login', 'preset', 'gibtsnicht']) assert.match(issues({ ...simple(), [key]: 1 }), new RegExp(`Unbekanntes Feld: ${key}`));
+test('config: unknown fields are errors, names from earlier versions say where they went', () => {
+    assert.match(issues({ ...simple(), gibtsnicht: 1 }), /Unbekanntes Feld: gibtsnicht/);
+    assert.equal(issues({ ...simple(), stages: 1 }), 'stages gibt es seit 0.2.0 nicht mehr (stattdessen: environments), siehe docs/upgrading.md');
+    assert.equal(issues({ ...simple(), ui: 1 }), 'ui gibt es seit 0.2.0 nicht mehr, siehe docs/upgrading.md');
+    for (const key of ['portals', 'login', 'preset']) assert.match(issues({ ...simple(), [key]: 1 }), new RegExp(`^${key} gibt es seit 0\\.2\\.0 nicht mehr \\(stattdessen: `));
+    // All old keys of an environment and an app at once, each with its new place.
+    const old = simple();
+    old.environments.local = { ...old.environments.local, agent: true, localCode: true };
+    delete old.environments.local.claude;
+    old.apps.shop = { ...old.apps.shop, statics: [], redirects: {}, constants: {} };
+    assert.deepEqual(validateConfig(old).issues, [
+        'environments.local.agent heißt seit 0.2.0 claude, siehe docs/upgrading.md',
+        'environments.local.localCode heißt seit 0.2.0 overlay, siehe docs/upgrading.md',
+        'apps.shop.statics heißt seit 0.2.0 apps.shop.overlay.statics, siehe docs/upgrading.md',
+        'apps.shop.redirects gibt es seit 0.2.0 nicht mehr, siehe docs/upgrading.md',
+        'apps.shop.constants gibt es seit 0.2.0 nicht mehr, siehe docs/upgrading.md',
+    ]);
+});
+
+test('config: TODO from init is a gap, not an error; doctor and validate list it', () => {
+    const todo = { ...simple(), auth: { ...simple().auth, path: 'TODO', signedInSelector: 'TODO' } };
+    const result = validateConfig(todo);
+    assert.deepEqual(result.issues, [], 'a TODO path is not reported as a wrong path');
+    assert.deepEqual(result.todo, ['auth.path', 'auth.signedInSelector']);
+    assert.deepEqual(validateConfig(simple()).todo, []);
+});
+
+test('config: browser.locale, browser.timezone and readyIgnore', () => {
+    assert.equal(issues({ ...simple(), browser: { locale: 'de-DE', timezone: 'Europe/Berlin' }, readyIgnore: ['.uhr', '#ticker'] }), '');
+    assert.match(issues({ ...simple(), browser: { locale: 'kein locale!' } }), /browser\.locale muss ein Sprachkürzel sein/);
+    assert.match(issues({ ...simple(), browser: { locale: 7 } }), /browser\.locale/);
+    assert.match(issues({ ...simple(), browser: { timezone: 'Mars/Olympus' } }), /browser\.timezone muss eine Zeitzone sein/);
+    assert.match(issues({ ...simple(), browser: { zone: 'UTC' } }), /browser\.zone gibt es nicht \(erlaubt: channel, executablePath, locale, timezone\)/);
+    assert.match(issues({ ...simple(), readyIgnore: '.uhr' }), /readyIgnore muss eine Liste von CSS-Selektoren sein/);
+    assert.match(issues({ ...simple(), readyIgnore: [''] }), /readyIgnore/);
 });
 
 test('config: required fields, login per type, fragment only as a file in the project', () => {
@@ -235,10 +268,10 @@ test('config: suggestions for typos, notes on settings without effect', () => {
     assert.match(issues({ ...simple(), extraAllowedHosts: ['https://login.example.com/'] }), /"https:\/\/login\.example\.com\/" ist kein Hostname; gemeint ist wohl "login\.example\.com"/);
     assert.match(issues({ ...simple(), extraAllowedHosts: ['a b'] }), /"a b" ist kein Hostname, etwa/);
     const claude = { ...simple(), environments: { local: { url: 'http://app.localhost:5173', claude: true, writable: true } } };
-    assert.deepEqual(validateConfig(claude), { ok: true, issues: [], notes: [] });
+    assert.deepEqual(validateConfig(claude), { ok: true, issues: [], notes: [], todo: [] });
     assert.equal(resolveTarget(claude, 'local').agent, true);
-    // No legacy name any more: agent on an environment is an error like any unknown field.
-    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', agent: true } } }), /Umgebung local: agent gibt es dort nicht/);
+    // No legacy name any more: agent on an environment is an error, with the hint on its new name.
+    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', agent: true } } }), /environments\.local\.agent heißt seit 0\.2\.0 claude/);
     const buildOnly = { ...claude, apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { build: 'dist' } } } };
     assert.match(validateConfig(buildOnly).notes.join('\n'), /App shop hat overlay, aber keine Umgebung hat "overlay": true/);
 });

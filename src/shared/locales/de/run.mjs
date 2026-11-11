@@ -61,8 +61,8 @@ export default {
     'run.tokens.cancelRun': 'Lauf abbrechen',
     'run.tokens.remembered': 'Gemerkt, der Hinweis kommt nicht mehr',
     'run.tokens.declined': 'Ohne Claude weiter',
-    'run.error.todo': '{keys} steht noch auf TODO. Trag es in caw.config.json ein; npx caw-ai doctor zeigt, was noch fehlt.',
-    'run.error.credentialsMissing': '{names} fehlt: als Umgebungsvariable oder in {file}.',
+    'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} stehen noch auf TODO. Trag sie in caw.config.json ein; npx caw-ai doctor zeigt, was noch fehlt.` : `${keys} steht noch auf TODO. Trag es in caw.config.json ein; npx caw-ai doctor zeigt, was noch fehlt.`),
+    'run.error.credentialsMissing': ({ names, file }) => `${names} ${String(names).includes(',') ? 'fehlen: als Umgebungsvariablen' : 'fehlt: als Umgebungsvariable'} oder in ${file} setzen.`,
     'run.error.unreachable': '{url} ist nicht erreichbar.',
     'run.openingChrome': 'Öffne Chrome und melde an ...',
     'run.channelError': 'Kanal: {message}',
@@ -198,6 +198,10 @@ export default {
     'run.develop.restoring': 'Stelle den Zustand neu her',
     'run.develop.restoringOther': 'Stelle {test} her, bis {step}',
     'run.develop.allSteps': 'zum letzten Schritt',
+    'run.develop.confirmRestore': '{test} bis {step} als {role} herstellen?',
+    'run.develop.confirmRestoreNoRole': '{test} bis {step} herstellen?',
+    'run.button.restorePicked': 'Herstellen',
+    'run.button.cancelRestore': 'Abbrechen',
     'run.develop.cannotRestore': '{test} {step} lässt sich hier nicht herstellen: falsche Rolle, App oder Umgebung, oder der Schritt ist veraltet.',
 
     // Advice
@@ -260,6 +264,7 @@ export default {
     'run.agent.finished': 'Das Urteil ist eingereicht, der Lauf nimmt keine Befehle mehr an.',
     'run.agent.unknownCommand': 'Unbekannter Befehl: {action}',
     'run.agent.timeout': '{action} hat das Zeitlimit überschritten.',
+    'run.agent.secretInCode': 'Geheime Werte gehen nur als Wert von fill oder type, nicht in Code (check, eval, remember).',
 
     // MCP tools of the Claude Code session
     'run.mcp.noRun': 'Kein Lauf wartet auf dich als Agent. Starte einen mit caw_start (record, fix oder run mit Chat), oder der Lauf ist schon beendet: caw_status zeigt seine Ausgabe.',

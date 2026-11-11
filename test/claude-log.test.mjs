@@ -35,6 +35,18 @@ test('formatClaudeLine reports completion, errors and retries', () => {
     assert.match(formatClaudeLine(event({ type: 'system', subtype: 'api_retry', attempt: 2, error_status: 401, error: 'authentication_failed' }))[0], /401.*attempt 2/);
 });
 
+test('formatClaudeLine appends turns, tokens and cost to the completion line, only what is present', () => {
+    const usage = { input_tokens: 1200, cache_read_input_tokens: 80_000, cache_creation_input_tokens: 4300, output_tokens: 6400 };
+    assert.deepEqual(formatClaudeLine(event({ type: 'result', duration_ms: 42_000, num_turns: 12, usage, total_cost_usd: 0.3125 })),
+        ['Claude finished after 42 s · 12 turns · 86k tokens in / 6k out · $0.31.']);
+    assert.deepEqual(formatClaudeLine(event({ type: 'result', duration_ms: 1000, num_turns: 1, total_cost_usd: 0 })), ['Claude finished after 1 s · 1 turn · $0.00.']);
+    assert.deepEqual(formatClaudeLine(event({ type: 'result', duration_ms: 1000, usage: { output_tokens: 850 } })), ['Claude finished after 1 s · 850 tokens out.']);
+    assert.deepEqual(formatClaudeLine(event({ type: 'result', duration_ms: 1000, usage: { input_tokens: 1_250_000, output_tokens: 'x' }, total_cost_usd: null })),
+        ['Claude finished after 1 s · 1.3M tokens in.']);
+    assert.deepEqual(formatClaudeLine(event({ type: 'result', duration_ms: 1000, is_error: true, result: 'boom', num_turns: 3, total_cost_usd: 0.05 })),
+        ['Claude finished after 1 s · 3 turns · $0.05 with an error: boom']);
+});
+
 test('a login error in the log is still recognised as a token problem on the host', () => {
     const lines = formatClaudeLine(event({ type: 'result', is_error: true, duration_ms: 1, result: 'Failed to authenticate. API Error: 401 Invalid bearer token' }));
     assert.match(claudeFailureReason(1, lines.join('\n')), /CLAUDE_CODE_OAUTH_TOKEN/);

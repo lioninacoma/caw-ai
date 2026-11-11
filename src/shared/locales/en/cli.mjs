@@ -72,7 +72,7 @@ On the host (in the project folder):`,
       [--target <env>]                   worst run. --all takes every test that lists the target
       [--headless]                       No window
       [--report junit=<file>]            Also write the result as JUnit XML`,
-    'cli.help.record': `  record <test> [--target <env>]         Record or replace a test plan, always with chat; only on environments where
+    'cli.help.record': `  record <test> [--target <env>]         Record a test plan or replace its recording, always with chat; only on environments where
                                          Claude may work{here}
       [--role <role> --app <app>]        First time only; not needed if the config has just one
       [--also <app>]                     First time only: the flow leads into another app of the project
@@ -93,7 +93,7 @@ On the host (in the project folder):`,
       [--overlay [build|dev|<url>]]      as for run
       [--agent local|docker|session] [--timeout <minutes>] [--max-steps <n>]`,
     'cli.help.here': ' (here: {names})',
-    'cli.help.footer': `<env>: a name from environments, e.g. local; with sites tenant/env, e.g. nord/dev. Without --target caw-ai takes the
+    'cli.help.footer': `<env>: a name from environments, e.g. local; with sites tenant/env, e.g. north/dev. Without --target caw-ai takes the
 test's only target (for record of a new test the only environment where Claude may work).
 
 Help on one command: caw-ai <command> --help. Commands for the agent: caw-ai help agent.
@@ -158,10 +158,10 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.initNeedsUrl': 'Usage: npx caw-ai init --url <address>. init looks at the app first; you sign in in the window.',
     'cli.initUsesExplore': 'Using the suggestions from {file}.',
     'cli.envExampleHead': '# Copy to caw/.env (gitignored) and enter test accounts with few rights.\n# The agent cannot see this file but drives a signed-in browser: do not use personal accounts.',
-    'cli.initTodo': 'Still to fill in caw.config.json: {keys} (explore did not find them, see notes in caw/.explore.json).',
+    'cli.initTodo': 'Still to fill in caw.config.json: {keys} (not found by explore, see notes in caw/.explore.json).',
     'cli.initTodoOffline': 'Still to fill in caw.config.json: {keys}. caw-ai explore --url <address> finds the selectors once the app is running.',
-    'cli.doctorTodo': '{keys} is still TODO',
-    'cli.doctorTodoNext': 'Enter the selector in caw.config.json, e.g. from the source of the sign-in page.',
+    'cli.doctorTodo': ({ keys, count }) => `${keys} ${count > 1 ? 'are' : 'is'} still TODO`,
+    'cli.doctorTodoNext': 'Fill in caw.config.json: path and field selectors from the sign-in page, signedInSelector from the page after signing in. caw-ai explore --url <address> finds them.',
     'cli.initNext': 'Next: caw-ai doctor, then record the first test: caw-ai record <test> --target {target}.',
     'cli.initNextExplore': ' No fitting selectors yet? Run caw-ai explore --url <address> first.',
     'cli.initOfflineFallback': 'No terminal and no --url: init writes the template, the sign-in stays TODO. Later: caw-ai explore --url <address>.',
@@ -221,6 +221,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.imageBuildFailed': "Couldn't build the sandbox image (exit {code}). Missing registry login for {image}?",
     'cli.noWatch': 'No {label} running: without it the overlay would test an outdated version. Start {start} in the app folder, or leave out --overlay.',
     'cli.testMissing': 'Test not found: {file}.{suggestion} {known} Record it: {hint}',
+    'cli.testMissingNear': 'Test not found: {file}. Did you mean {name}? {known} To record a new test of this name: {hint}',
     'cli.targetChosen': 'Target: {target} ({why})',
     'cli.targetWhyTest': 'only target of {test}',
     'cli.targetWhyTestAgent': 'only target of {test} where Claude may work',
@@ -294,7 +295,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.doctorNodeOld': 'Node {version} is too old',
     'cli.doctorNodeNext': 'Install Node {min} or newer.',
     'cli.doctorConfigOk': '{file} is valid',
-    'cli.doctorConfigNextValidate': 'caw-ai validate shows all findings.',
+    'cli.doctorConfigNextValidate': ({ count }) => (count > 1 ? `caw-ai validate shows all ${count} findings.` : 'caw-ai validate shows all findings.'),
     'cli.doctorConfigMissing': '{file} is missing',
     'cli.doctorConfigNextInit': 'caw-ai init creates it.',
     'cli.doctorBrowserOk': 'Browser starts ({browser})',
@@ -322,6 +323,8 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.doctorReachOk': '{target}: {url} responds',
     'cli.doctorReachFail': "{target}: {url} doesn't respond",
     'cli.doctorReachNext': 'Check VPN, dev server or the address in environments.',
+    'cli.doctorReachPlaceholder': '{target}: {url} is a placeholder',
+    'cli.doctorReachPlaceholderNext': 'Enter the real address in environments or remove the environment.',
     'cli.doctorMarkOk': 'OK        ',
     'cli.doctorMarkOptional': 'OPTIONAL  ',
     'cli.doctorMarkMissing': 'MISSING   ',

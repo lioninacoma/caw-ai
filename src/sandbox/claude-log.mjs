@@ -16,6 +16,33 @@ const assistantLines = (message) => (message?.content ?? []).flatMap((block) => 
     return [];
 });
 
+const isCount = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+/** 850 → "850", 85_400 → "85k", 1_250_000 → "1.3M". */
+const tokens = (count) => {
+    if (count >= 1_000_000) return `${Number((count / 1_000_000).toFixed(1))}M`;
+    if (count >= 1000) return `${Math.round(count / 1000)}k`;
+    return String(count);
+};
+
+/**
+ * What the run cost, from the result event, e.g. " · 12 turns · 85k tokens in / 6k out · $0.31". Only what the event
+ * carries. Tokens in include cache reads and writes: Claude read them too, only cheaper.
+ */
+const usageText = (event) => {
+    const parts = [];
+    if (isCount(event.num_turns)) parts.push(`${event.num_turns} turn${event.num_turns === 1 ? '' : 's'}`);
+    const usage = event.usage ?? {};
+    const inKeys = ['input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'].filter((key) => isCount(usage[key]));
+    const inTokens = inKeys.length > 0 ? tokens(inKeys.reduce((sum, key) => sum + usage[key], 0)) : null;
+    const outTokens = isCount(usage.output_tokens) ? tokens(usage.output_tokens) : null;
+    if (inTokens !== null && outTokens !== null) parts.push(`${inTokens} tokens in / ${outTokens} out`);
+    else if (inTokens !== null) parts.push(`${inTokens} tokens in`);
+    else if (outTokens !== null) parts.push(`${outTokens} tokens out`);
+    if (isCount(event.total_cost_usd)) parts.push(`$${event.total_cost_usd.toFixed(2)}`);
+    return parts.map((part) => ` · ${part}`).join('');
+};
+
 /**
  * One output line from Claude as log lines. Non-JSON stays unchanged, since that is how e.g. start errors
  * show up. Tool results are left out: they are in the trace and would only bloat the log.
@@ -36,7 +63,7 @@ export const formatClaudeLine = (line) => {
     if (event.type === 'result') {
         const seconds = Math.round((event.duration_ms ?? 0) / 1000);
         const failure = event.is_error && event.result ? ` ${event.result}` : '';
-        return [`Claude finished after ${seconds} s${event.is_error ? ' with an error:' : '.'}${failure}`];
+        return [`Claude finished after ${seconds} s${usageText(event)}${event.is_error ? ' with an error:' : '.'}${failure}`];
     }
     return [];
 };

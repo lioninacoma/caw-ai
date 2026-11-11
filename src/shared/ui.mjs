@@ -3,7 +3,9 @@
 // In files and pipes it stays plain, greppable lines prefixed with [caw-ai].
 
 import { colorEnabled, themePainter } from './color.mjs';
+import { exitOf } from './errors.mjs';
 import { t } from './i18n.mjs';
+import { isErrorCode, isSkipped } from './report.mjs';
 import { glyphs } from './marks.mjs';
 import { ravenBanner } from './raven.mjs';
 
@@ -18,6 +20,19 @@ const WIDTH = 56;
 // eslint-disable-next-line no-control-regex -- strips ANSI colour codes to measure visible width
 const ANSI = /\u001b\[[0-9;]*m/g;
 const width = (text) => [...String(text).replace(ANSI, '')].length;
+// The reason of a failed step in the plain output: two terminal lines at most, the rest is in report.md.
+const MAX_REASON = 240;
+
+/** Why the run failed, as "S1: <note>": the first failed step that was reached, otherwise the first hard error. */
+export const failedReason = ({ results = [], failures = [] }) => {
+    const failed = results.find((item) => item.status === 'fail' && !isSkipped(item, results) && item.note);
+    let text;
+    if (failed !== undefined) text = `${failed.id}: ${failed.note}`;
+    else if (failures.length > 0) text = `${failures[0].type}: ${failures[0].text}`;
+    else return undefined;
+    const line = String(text).replace(/\s+/g, ' ').trim();
+    return line.length > MAX_REASON ? `${line.slice(0, MAX_REASON - 1)}…` : line;
+};
 
 /**
  * Yes/no prompt in the terminal; Enter takes the default. Accepts j/ja/y/yes and n/nein/no.
@@ -190,21 +205,27 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         },
 
         /** A run's result: rule with the outcome, one mark per expectation, progress, report. */
-        verdict: ({ status, reason, note, testId, target, expectations = [], results = [], failures = [], warnings = [] }, { report, reportUrl, elapsed }) => {
+        verdict: ({ status, reason, note, code, testId, target, expectations = [], results = [], failures = [], warnings = [] }, { report, reportUrl, elapsed }) => {
             const { title, color } = STATUS[status];
+            // An error always names its code, as when a command stops (fatal).
+            const codeLabel = status === 'error' && isErrorCode(code) ? t('cli.errorCode', { code, exit: exitOf(code) }) : '';
+            const why = failedReason({ results, failures });
             if (!fancy) {
-                out(`[caw-ai] ${testId} ${t('cli.uiOn')} ${target}: ${status}${reason ? ` (${safe(reason)})` : ''}`);
+                out(`[caw-ai] ${testId} ${t('cli.uiOn')} ${target}: ${status}${reason ? ` (${safe(reason)})` : ''}${codeLabel ? ` ${codeLabel}` : ''}`);
+                // Without a window or in CI this is all there is: the reason belongs in the terminal, not only in report.md.
+                if (status === 'fail' && why !== undefined) out(`[caw-ai] ${safe(why)}`);
                 if (warnings.length > 0) out(`[caw-ai] ${t('cli.uiWarnings', { count: warnings.length })}`);
                 out(`[caw-ai] ${t('cli.uiReport')} ${report}`);
                 return;
             }
             out('');
             out(rule(`${title} · ${safe(testId)} ${t('cli.uiOn')} ${safe(target)} · ${seconds(elapsed)}`, (text) => color(paint.bold(text))));
-            if (reason) out(`  ${tag(STATUS[status].kind)} ${paint.text(safe(reason))}`);
+            if (reason) out(`  ${tag(STATUS[status].kind)} ${paint.text(safe(reason))}${codeLabel ? ` ${paint.muted(codeLabel)}` : ''}`);
             const counts = { pass: 0, fail: 0, open: 0 };
             for (const { id, text } of expectations) {
                 const item = results.find((candidate) => candidate.id === id);
-                if (item === undefined) {
+                // Not reached because an earlier step failed: open, not one more failure.
+                if (item === undefined || isSkipped(item, results)) {
                     counts.open += 1;
                     out(`  ${tag('open')} ${paint.faint(`${id} ${safe(text)}`)}`);
                     continue;

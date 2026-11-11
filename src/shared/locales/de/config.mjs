@@ -1,5 +1,8 @@
 // Texts: config (de). Keys prefixed with "config.".
 // Config validation, report (report.md), test files, test plan and assessment of a failure.
+// The yaml library ends its messages with the position (" at line 7, column 1:"); the line number is shown once, in front.
+const yamlMessage = (message) => String(message).replace(/\s*at line \d+, column \d+:?\s*$/, '').replace(/:\s*$/, '');
+
 export default {
 
     // config.mjs: fragment from extends
@@ -54,6 +57,9 @@ export default {
     'config.notObject': 'Die Config muss ein JSON-Objekt sein, etwa { "environments": { … }, "apps": { … } }',
     'config.unknownField': 'Unbekanntes Feld: {key}{hint}',
     'config.didYouMean': ' (meintest du {name}?)',
+    'config.old.renamed': '{key} heißt seit 0.2.0 {name}, siehe docs/upgrading.md',
+    'config.old.removed': '{key} gibt es seit 0.2.0 nicht mehr{instead}, siehe docs/upgrading.md',
+    'config.old.instead': ' (stattdessen: {name})',
     'config.language': 'language: {value} gibt es nicht (erlaubt: de, en)',
     'config.extendsOnlyProject': 'extends steht nur in der Config des Projekts',
     'config.apps.missing': 'apps fehlt, etwa { "web": { "dir": ".", "startUrl": "/" } }',
@@ -86,14 +92,17 @@ export default {
     'config.agent.unknown': 'agent.{key} gibt es nicht (erlaubt: sandbox){hint}',
     'config.agent.sandbox': 'agent.sandbox muss einer von {names} sein',
     'config.browser.notObject': 'browser muss ein Objekt sein, etwa { "channel": "msedge" }',
-    'config.browser.unknown': 'browser.{key} gibt es nicht (erlaubt: channel, executablePath){hint}',
+    'config.browser.unknown': 'browser.{key} gibt es nicht (erlaubt: {fields}){hint}',
     'config.browser.channel': 'browser.channel muss einer von {names} sein',
     'config.browser.executablePath': 'browser.executablePath muss ein absoluter Pfad zu einem Chromium-Browser sein',
     'config.browser.both': 'browser: channel oder executablePath, nicht beides',
+    'config.browser.locale': 'browser.locale muss ein Sprachkürzel sein, etwa "de-DE"',
+    'config.browser.timezone': 'browser.timezone muss eine Zeitzone sein, etwa "Europe/Berlin"',
     'config.sandboxImage': 'sandboxImage muss eine Image-Referenz sein, etwa "node:22-bookworm-slim", ohne Leerzeichen',
     'config.sandboxUser': 'sandboxUser muss ein Linux-Benutzername sein',
     'config.maxSteps': 'maxSteps muss eine positive ganze Zahl sein',
     'config.readyTimeoutMs': 'readyTimeoutMs muss eine positive ganze Zahl sein (Millisekunden)',
+    'config.readyIgnore': 'readyIgnore muss eine Liste von CSS-Selektoren sein, etwa [".uhr"]',
     'config.extraAllowedHosts': 'extraAllowedHosts muss eine Liste von Hostnamen sein, etwa ["login.example.com"]',
     'config.extraAllowedHosts.entry': 'extraAllowedHosts: {value} ist kein Hostname, etwa "login.example.com"',
     'config.extraAllowedHosts.url': 'extraAllowedHosts: {value} ist kein Hostname; gemeint ist wohl "{host}"',
@@ -186,7 +195,7 @@ export default {
     'config.report.dropped.intro': 'Diese Schritte sind ausgeführt worden, gehören aber nicht zum Weg. In der Anwendung sind sie trotzdem passiert.',
 
     // test-file.mjs
-    'config.test.line': 'Zeile {line}: {message}',
+    'config.test.line': ({ line, message }) => `Zeile ${line}: ${yamlMessage(message)}`,
     'config.test.aliases': 'Aliase sind nicht erlaubt.',
     'config.test.effects': 'recording.effects braucht runs (Zahl), actions: [{ action: Nummer, controls/view/requests/responses/console: [Zeilen] }] und optional basis (Zeitpunkt der Aufnahme des Schritts davor).',
     'config.test.network.list': 'recording.network muss eine Liste sein.',

@@ -111,7 +111,7 @@ export const sessionTools = ({ root, spawnRun, run }) => [
                 ? (running === undefined
                     ? t(log === undefined ? 'run.mcp.noneWaiting' : 'run.mcp.ended')
                     : t('run.mcp.busy', { pid: running.pid }))
-                : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Work according to the caw-ai skill, section "Ablauf in der Sandbox", using the caw tool. ${DATA_NOTE}`;
+                : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Work according to the caw-ai skill, section "Flow in the sandbox", using the caw tool. ${DATA_NOTE}`;
             return { text: `${head}${tail === '' ? '' : `\n\n${t('run.mcp.output', { log })}\n${tail}`}` };
         },
     },

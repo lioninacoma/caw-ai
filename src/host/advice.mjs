@@ -10,6 +10,7 @@ import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, PROJECT_DIR, RUN_DIR } from '../shared/names.mjs';
 import { parseTest, renderTest, stepHash } from './test-file.mjs';
 import { stepLabel } from './replay.mjs';
+import { isSecretPath } from './secrets.mjs';
 import { CONTROL, EMAIL, replaceStep } from './test-plan.mjs';
 
 export { CONTEXT_FILE } from '../shared/names.mjs';
@@ -98,6 +99,18 @@ const MAX_EDITS = 10;
 const EDIT_LIMIT = 4000;
 // App-side advice never changes test files, run folders or dependencies.
 const NOT_APP = new RegExp(`^(${PROJECT_DIR}|\\${RUN_DIR}|node_modules|\\.git|\\.claude)(/|$)`, 'i');
+// Tool, CI and dependency files at any depth: a change there alters what gets built, installed or run, not the application.
+// Also every .env.* (.env.example too): environment files, not code.
+const TOOL_NAMES = new Set([CONFIG_FILE, '.mcp.json', 'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', '.gitlab-ci.yml']);
+const TOOL_DIRS = new Set([RUN_DIR, '.claude', '.github', '.husky', '.vscode', '.idea', '.devcontainer']);
+const isToolFile = (path) => {
+    const parts = path.toLowerCase().split('/');
+    const name = parts.at(-1);
+    return TOOL_NAMES.has(name) || name.startsWith('.env.') || name.startsWith('dockerfile') || name.startsWith('docker-compose') || parts.slice(0, -1).some((part) => TOOL_DIRS.has(part));
+};
+// Secrets and tool files look like missing files. Checking `find` against them would otherwise be a content oracle: the answer
+// "occurs not at all / 2 times" lets Claude probe .env or .npmrc piece by piece, and even "exists" tells something.
+const hidden = (path) => isSecretPath(path) || isToolFile(path);
 // A path as it appears in the project: normalized, without dot or empty segments and without what Windows silently reinterprets
 // (trailing dot or space, data streams with ':', short names like GIT~1). Otherwise ././.git or .git. would still lead to .git.
 const plainPath = (file) => posix.normalize(file) === file
@@ -113,9 +126,9 @@ const realInRoot = (root, path) => {
 };
 /** May advice change this file? Checked on the text and the real location, so a link cannot lead into .git or caw/ either. */
 const appFile = (root, file) => {
-    if (NOT_APP.test(file)) return false;
+    if (NOT_APP.test(file) || hidden(file)) return false;
     const real = realInRoot(root, join(root, file));
-    return real !== null && !NOT_APP.test(real);
+    return real !== null && !NOT_APP.test(real) && !hidden(real);
 };
 const lf = (text) => text.replaceAll('\r\n', '\n');
 const occurrences = (text, part) => text.split(part).length - 1;
@@ -138,10 +151,14 @@ const readEdits = (edits, root, report) => {
         if (!isText(edit.find, EDIT_LIMIT) || typeof edit.replace !== 'string' || edit.replace.length > EDIT_LIMIT) return at(`find and replace are text up to ${EDIT_LIMIT} characters, find not empty.`);
         if (edit.find === edit.replace) return at('find and replace are identical.');
         if (edit.why !== undefined && !isText(edit.why, 500)) return at('why must be short text.');
+        // Where the file would be checked: the same answer, in the same order, as for a missing file.
+        const missing = () => at(`${file} does not exist.`);
+        if (hidden(file)) return missing();
         if (root === undefined) return checked.push({ file, find: edit.find, replace: edit.replace, ...(edit.why === undefined ? {} : { why: edit.why }) });
         const path = join(root, file);
         if (!contents.has(file)) {
-            if (!existsSync(path)) return at(`${file} does not exist.`);
+            // Also a link to a hidden file: the same answer as for a missing one.
+            if (!existsSync(path) || hidden(realInRoot(root, path) ?? '')) return missing();
             if (!appFile(root, file)) return at(`${file} is not part of the application.`);
             contents.set(file, lf(readFileSync(path, 'utf8')));
         }
@@ -156,6 +173,11 @@ const readEdits = (edits, root, report) => {
     });
     return checked.length === edits.length ? checked : undefined;
 };
+
+// After this many rejected submissions with code edits, the run checks no more of them: each rejection tells something about
+// the files, so the number of attempts stays small.
+export const MAX_REJECTED_EDITS = 5;
+const withEdits = (raw) => isObject(raw) && Array.isArray(raw.items) && raw.items.some((item) => isObject(item) && item.edits !== undefined);
 
 /** Writes the edits into the application code, only after the human clicks. @returns the changed files */
 export const applyEdits = (root, edits) => {
@@ -212,6 +234,26 @@ export const readAdvice = (raw, spec, config, { root, diagnosis } = {}) => {
     });
     if (problems.length > 0) throw new CawError('advice-invalid', problems.join(' '));
     return items;
+};
+
+/**
+ * readAdvice with a budget, one per run: after `limit` rejected submissions with code edits, further ones with edits are refused
+ * without looking at any file. Advice without edits is always checked.
+ */
+export const adviceReader = (limit = MAX_REJECTED_EDITS) => {
+    let rejected = 0;
+    return (raw, spec, config, options) => {
+        const editing = withEdits(raw);
+        if (editing && rejected >= limit) {
+            throw new CawError('advice-invalid', `${limit} submissions with edits were rejected in this run; edits are no longer checked. Submit the advice without edits and describe the change in prompt.`);
+        }
+        try {
+            return readAdvice(raw, spec, config, options);
+        } catch (error) {
+            if (editing) rejected += 1;
+            throw error;
+        }
+    };
 };
 
 /** Labels on the card: the human knows the fields from the plan, not their keys in the file. */

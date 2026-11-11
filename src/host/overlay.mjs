@@ -527,7 +527,6 @@ export const routeOverlay = async (context, overlay, { onProblem = () => {} } = 
 const closeCode = (code) => (code === undefined || code === 1005 || code === 1006 ? 1000 : code);
 
 /** Bridges a page WebSocket to the dev server. Other sockets (the application's own) go unchanged to their target. */
-// eslint-disable-next-line n/no-unsupported-features/node-builtins -- the global WebSocket is stable from Node 22.4; only dev-server HMR uses it
 export const bridgeWebSocket = (ws, devOrigin, devHost, WebSocketImpl = WebSocket) => {
     const requested = new URL(ws.url());
     // Vite (also Angular 17+) uses the vite-hmr protocol; webpack-dev-server names its own host. Another socket may still belong to

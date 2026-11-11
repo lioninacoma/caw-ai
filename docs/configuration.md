@@ -264,6 +264,7 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `extraAllowedHosts` | `[]` | More hosts Chrome may reach, e.g. login or CDN. Everything else is blocked. |
 | `insecureTls` | `false` | Accept self-signed certificates. |
 | `browser` | system Chrome | `{ "channel": "msedge" }` or `{ "executablePath": "/path/to/chromium" }` |
+| `browser.locale`, `browser.timezone` | as recorded | Language and time zone of the test browser, e.g. `"de-DE"` and `"Europe/Berlin"`. Without them a replay uses the values stored with the recording, and a recording (or an older recording) uses the host's. Dates, numbers and translations then look the same on every machine and CI runner. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS selectors for error messages without ARIA roles. |
 | `consoleIgnore` | `[]` | Regexes for known, harmless console errors. Keep them narrow. |
 | `foreignCode` | `[]` | Regexes for third-party scripts, e.g. `"/vendor/"`. Their errors become warnings. |
@@ -271,6 +272,7 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `effects.fail` | `["controls", "console"]` | Which learned effects fail a step when they change. `[]` makes all of them warnings. |
 | `maxSteps` | `100` | Claude's action budget when recording and fixing. |
 | `readyTimeoutMs` | | How long to wait for the app to settle. |
+| `readyIgnore` | `[]` | CSS selectors of areas that change by themselves, e.g. `["#ticker", ".clock", "footer [role=progressbar]"]`. Their DOM changes and progress indicators don't count when waiting for a quiet page. Spinners without size, hidden or outside the viewport never count. If a page never gets quiet, the report says so once per step. |
 | `lintCommand` | | Your check command, e.g. `npm run lint`. Claude mentions it in code suggestions. |
 | `assetUrlPattern` | | Regex for requests that load app code; group 1 is the name for `overlay.statics`, the path inside `overlay.build`, or the build name of an ExtJS app or package. Used with `--overlay` in addition to the path below the environment URL. |
 | `sites` | | Same app for several tenants: `["north", "south"]`, then `urls` per environment. |

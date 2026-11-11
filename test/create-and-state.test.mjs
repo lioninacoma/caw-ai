@@ -30,8 +30,11 @@ test('Step budget: counts every action, failed ones too; reading is free', async
 });
 
 test('Run tag: the recording keeps the placeholder, every replay inserts its own', async () => {
-    const id = newRunTag(new Date('2026-11-05T18:52:33Z'));
-    assert.equal(id, 'CAW-20261105185233');
+    const id = newRunTag(new Date('2026-11-05T18:52:33.120Z'), () => 0.39);
+    // Milliseconds and two random digits: two runs in the same second still differ.
+    assert.equal(id, 'CAW-2026110518523312039');
+    assert.match(newRunTag(), /^CAW-\d{19}$/);
+    assert.notEqual(newRunTag(new Date(0), () => 0.1), newRunTag(new Date(0), () => 0.2));
     const page = { locator: () => ({ evaluate: async () => ({ xtype: 'liste', own: `Vorgang ${id}` }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
     const recorder = createRecorder({ handler: async (command) => (command.action === 'check' ? { pass: true } : 'ok'), session: { page: () => page }, base: 'https://p.example', runTag: id });
     await recorder.handler({ action: 'fill', target: 'e1', value: `Anliegen ${id}` });

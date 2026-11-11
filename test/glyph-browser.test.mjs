@@ -2,15 +2,15 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
-import { chromium } from 'playwright-core';
 
 import { BLOCK_GLYPHS, CONSOLE_CSS, GLYPH_SCRIPT, themeCss } from '../src/host/theme.mjs';
 import { loadTheme } from '../src/shared/theme-package.mjs';
+import { launchChrome } from './chrome.mjs';
 
 let browser = null;
 
 before(async () => {
-    browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
+    browser = await launchChrome();
 });
 after(async () => {
     await browser?.close();

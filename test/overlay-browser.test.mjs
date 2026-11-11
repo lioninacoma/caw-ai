@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
-import { chromium } from 'playwright-core';
 
 import { interceptDocuments } from '../src/host/app-view.mjs';
 import { prepareOverlay, routeOverlay } from '../src/host/overlay.mjs';
+import { launchChrome } from './chrome.mjs';
 
 let browser;
 let server;
@@ -26,7 +26,7 @@ const DEPLOYED_PAGE = `<!doctype html><html><head><meta charset="iso-8859-1"><ti
 </head><body><p id="text">Grüße</p></body></html>`;
 
 before(async () => {
-    browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
+    browser = await launchChrome();
     root = mkdtempSync(join(tmpdir(), 'caw-overlay-browser-'));
     const files = {
         'public/env.js': 'window.ENV = "lokal";',

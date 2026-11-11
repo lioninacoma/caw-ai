@@ -167,6 +167,27 @@ export function webTargets(element, { mode, target, exact = false }) {
         list.scrollTop += Math.max(40, Math.floor(list.clientHeight * 0.8));
     };
 
+    // Several matches of a target without `index`: where they are and the text around them, so a human can tell them apart.
+    if (mode === 'ambiguity') {
+        const all = matches(target);
+        const nearOf = (node) => {
+            const own = fullNameOf(node) || fullOwnText(node);
+            let at = parentOf(node);
+            for (let depth = 0; at !== null && at !== document.body && depth < 6; depth += 1, at = parentOf(at)) {
+                const line = clean((at.innerText ?? '').split('\n').find((text) => clean(text) !== '' && clean(text) !== own) ?? '');
+                if (line !== '') return line.slice(0, 60);
+            }
+            return '';
+        };
+        return {
+            count: all.length,
+            candidates: all.slice(0, 3).map((node, index) => {
+                const box = node.getBoundingClientRect();
+                return { index, x: box.left + box.width / 2 + window.scrollX, y: box.top + box.height / 2 + window.scrollY, near: nearOf(node) };
+            }),
+        };
+    }
+
     if (mode === 'find') {
         const found = matches(target)[target.index ?? 0] ?? null;
         if (found === null && (LISTISH.has(target.role) || LISTISH.has(target.inside?.role))) scrollOn();
@@ -216,27 +237,55 @@ export function webTargets(element, { mode, target, exact = false }) {
     // the target would be the dialog or role area around it, which holds no frame.
     const node = exact ? element : deepClosest(element, 'button, a[href], input, select, textarea, summary, [data-testid], [role]') ?? element;
     const described = describeNode(node);
-    const index = matches(described).indexOf(node);
-    return index === -1 ? null : { ...described, ...(index === 0 ? {} : { index }) };
+    const all = matches(described);
+    const index = all.indexOf(node);
+    // With several matches even the first one gets its index: replay then knows the choice was deliberate, and a target without
+    // index that matches several elements is ambiguous.
+    return index === -1 ? null : { ...described, ...(index === 0 && all.length === 1 ? {} : { index }) };
 }
 
 /**
  * Runs in the browser: what is loading right now, also in open shadow roots. `aria-busy`, indeterminate progress (`role=progressbar`
  * without `aria-valuenow`, which is how Material, MUI and Vuetify draw spinners) and, with `domQuietMs`, a DOM that is changing.
+ * Only indicators a person would see count: with a size, not hidden, at least partly in the viewport. `ignore` (config
+ * `readyIgnore`) names areas that never count: a live ticker, a clock with seconds, a spinner that runs forever in the footer.
  * Must run as one function without dependencies, so everything lives inside it.
  */
-export function webBusy({ domQuietMs = 0 } = {}) {
+export function webBusy({ domQuietMs = 0, ignore = [] } = {}) {
     const deepAll = (selector, root = document) => {
         const found = [...root.querySelectorAll(selector)];
         for (const host of [root, ...root.querySelectorAll('*')]) if (host.shadowRoot) found.push(...deepAll(selector, host.shadowRoot));
         return found;
     };
-    const seen = (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
-    const busy = deepAll('[aria-busy=true], [role=progressbar]:not([aria-valuenow])').filter(seen).length;
+    const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
+    // An invalid selector must not stop the wait: it simply matches nothing.
+    const fits = (node, selector) => {
+        try {
+            return node.matches(selector);
+        } catch {
+            return false;
+        }
+    };
+    window.__cawReadyIgnore = Array.isArray(ignore) ? ignore.filter((selector) => typeof selector === 'string' && selector !== '') : [];
+    const ignored = (start) => {
+        const selectors = window.__cawReadyIgnore ?? [];
+        if (selectors.length === 0) return false;
+        for (let node = start?.nodeType === Node.ELEMENT_NODE ? start : start?.parentElement ?? (start?.host ?? null); node !== null && node !== undefined; node = parentOf(node)) {
+            if (node.nodeType === Node.ELEMENT_NODE && selectors.some((selector) => fits(node, selector))) return true;
+        }
+        return false;
+    };
+    const seen = (node) => {
+        const box = node.getBoundingClientRect();
+        if (box.width <= 0 || box.height <= 0 || getComputedStyle(node).visibility === 'hidden') return false;
+        return box.bottom > 0 && box.right > 0 && box.top < window.innerHeight && box.left < window.innerWidth;
+    };
+    const busy = deepAll('[aria-busy=true], [role=progressbar]:not([aria-valuenow])').filter((node) => seen(node) && !ignored(node)).length;
     if (domQuietMs <= 0) return busy;
     // The DOM often keeps rendering after a request (change detection, Suspense, nextTick). The observer attaches on the first call
     // and counts only new or changed nodes, not attributes: a clock or spinner would otherwise never let it settle.
     // An observer on the document does not see into shadow roots: every open root gets its own, including later ones.
+    // Changes inside ignored areas do not count; the selectors are read on every change, so a later call can change them.
     const KEY = '__cawLastMutation';
     if (window[KEY] === undefined) {
         window[KEY] = 0;
@@ -245,7 +294,10 @@ export function webBusy({ domQuietMs = 0 } = {}) {
     const watch = (root) => {
         if (window.__cawObserved.has(root)) return;
         window.__cawObserved.add(root);
-        new MutationObserver(() => { window[KEY] = Date.now(); }).observe(root, { subtree: true, childList: true, characterData: true });
+        new MutationObserver((records) => {
+            if (records.every((record) => ignored(record.target))) return;
+            window[KEY] = Date.now();
+        }).observe(root, { subtree: true, childList: true, characterData: true });
     };
     watch(document);
     for (const host of deepAll('*')) if (host.shadowRoot) watch(host.shadowRoot);
@@ -342,9 +394,11 @@ export const DOM_QUIET_MS = 150;
 /**
  * Runs in the browser: what is still loading. The host adds open requests from the network log. With `store` (a CSS selector)
  * `counts` counts the visible hits, e.g. rows of a list. `webBusy` is inlined as text, since the function runs in the browser.
+ * Takes the store alone or { store, ignore } (see `waitQuiet`).
  */
-export const webProbe = new Function('store', `
-    const busy = (${webBusy})({ domQuietMs: ${DOM_QUIET_MS} });
+export const webProbe = new Function('given', `
+    const { store = null, ignore = [] } = given !== null && typeof given === 'object' ? given : { store: given };
+    const busy = (${webBusy})({ domQuietMs: ${DOM_QUIET_MS}, ignore });
     const counts = (${webCount})(store);
     return { pendingAjax: 0, loadingStores: busy, counts, appReady: document.readyState === 'complete' };
 `);

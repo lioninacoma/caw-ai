@@ -1,5 +1,5 @@
-# Unit-Tests und Paketinhalt bei jedem Push und Pull Request, unter Linux und Windows.
-# Das E2E braucht Docker und ein sichtbares Chrome (unter Linux per xvfb) und laeuft nachts oder von Hand.
+# Lint once; unit tests and package contents on every push and pull request (Linux and Windows, macOS optional).
+# The E2E run needs Docker and a visible Chrome (xvfb on Linux); it runs nightly or by hand.
 name: CI
 
 on:
@@ -10,26 +10,66 @@ on:
     - cron: '30 2 * * *'
 
 jobs:
+  lint:
+    name: Lint
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+
   unit:
+    name: Unit tests (${{ matrix.os }}, Node ${{ matrix.node }})
     if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: [22, 24]
+        # Lowest supported version (engines in package.json), current 22 and 24.
+        node: ['22.4', '22', '24']
     runs-on: ${{ matrix.os }}
+    env:
+      # Browser tests fail instead of skipping when Chrome is missing on the runner.
+      CAW_REQUIRE_CHROME: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run pack:check
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Check package contents
+        run: npm run pack:check
+
+  macos:
+    name: Unit tests (macOS, optional)
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    # macOS is untested: report results, never block.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests
+        run: npm test
 
   e2e:
+    name: E2E
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -41,13 +81,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - name: Chrome und xvfb
+      - name: Install dependencies
+        run: npm ci
+      - name: Chrome and xvfb
         run: |
           google-chrome --version
           sudo apt-get update && sudo apt-get install -y xvfb
-      - run: xvfb-run -a npm run e2e
-      - uses: actions/upload-artifact@v5
+      - name: E2E
+        run: xvfb-run -a npm run e2e
+      - name: Upload logs and screenshots
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: e2e

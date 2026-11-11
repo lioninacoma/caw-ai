@@ -2,13 +2,13 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-import { changeTracker, chooseTarget, init, junitXml, list, run, runMode, stepsText } from '../src/host/commands.mjs';
+import { changeTracker, chooseTarget, init, junitXml, list, run, runMode, stepsText, validate } from '../src/host/commands.mjs';
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
@@ -26,6 +26,11 @@ const project = (t) => {
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
     init(root);
+    // init writes only local; staging is a second environment without Claude.
+    const configFile = join(root, 'caw.config.json');
+    const config = JSON.parse(readFileSync(configFile, 'utf8'));
+    config.environments.staging = { url: 'https://staging.shop.intern' };
+    writeFileSync(configFile, JSON.stringify(config, null, 4));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
     const base = { app: 'web', role: 'tester', source: 'deployed', also: [], notes: '', knownMessages: undefined };
     writeTest(root, { ...base, id: 'anmelden', targets: ['local'], mutates: false, steps: [recorded(step('S1', 'Maske')), recorded(step('S2', 'Start'))] });
@@ -107,8 +112,36 @@ test('list: per test targets, recording state and writes; with a test one line p
     assert.match(lines[1], /^\s+S1\s+Liste\s+\(aufgenommen\)$/);
     assert.match(lines[2], /^\s+S2\s+geaendert\s+\(veraltet\)$/);
     assert.match(lines[3], /^\s+S3\s+Ende\s+\(nicht aufgenommen\)$/);
-    assert.throws(() => list(root, ['bestelen'], { out }), (error) => error.code === 'test-missing' && /Meintest du bestellen\? Bekannte Tests: anmelden, bestellen, neu\./.test(error.message));
+    // A typo gets the closest name; recording under the typo is only offered as a new test.
+    assert.throws(() => list(root, ['bestelen'], { out }), (error) => error.code === 'test-missing'
+        && /Meintest du bestellen\? Bekannte Tests: anmelden, bestellen, neu\. Einen neuen Test unter diesem Namen nimmt auf: caw-ai record bestelen/.test(error.message));
+    assert.throws(() => list(root, ['zzzzzz'], { out }), (error) => /Neu aufnehmen: caw-ai record zzzzzz/.test(error.message) && !/Meintest/.test(error.message));
     assert.throws(() => list(root, ['a', 'b'], { out }), /Unerwartetes Argument: b/);
+});
+
+test('list without caw.config.json reports the missing config like every other command', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-ux-empty-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    assert.throws(() => list(root, [], { out: () => {} }), (error) => error.code === 'config-missing' && exitOf(error.code) === 3);
+});
+
+test('validate: all problems of a test at once, YAML positions only once', (t) => {
+    const root = project(t);
+    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'app: gibtsnicht\nrole: geist\ntargets: [qa]\nmutates: false\nsteps:\n  - id: S1\n    name: Eins\n    do: a\n    expect: b\n');
+    t.mock.method(process.stdout, 'write', () => true);
+    assert.throws(() => validate(root), (error) => {
+        assert.equal(error.code, 'test-invalid');
+        assert.match(error.message, /kaputt\.yaml: Unbekannte App: gibtsnicht/);
+        assert.match(error.message, /kaputt\.yaml: Unbekannte Rolle: geist/);
+        assert.match(error.message, /kaputt\.yaml \(qa\): Umgebung "qa" gibt es nicht/);
+        return true;
+    });
+    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'mutates: false\nsteps:\n  - id: S1\n    do: a: b\n');
+    assert.throws(() => validate(root), (error) => {
+        assert.match(error.message, /Zeile 4: Nested mappings are not allowed in compact mappings(\n|$)/);
+        assert.doesNotMatch(error.message, /at line|:\n|:$/);
+        return true;
+    });
 });
 
 test('run: without --target the only target, typos get a suggestion and the choices', async (t) => {
@@ -236,4 +269,17 @@ test('run tracks changes to the test files: baselines per step, otherwise "uncha
     const learned = { ...spec, steps: spec.steps.map((item) => ({ ...item, recording: { ...item.recording, check: 'document.title !== ""' } })) };
     tracker.adopt(learned, new Set(['S1', 'S2']), { learned: 'baselines' });
     assert.equal(tracker.summary(), 'Geändert: caw/recordings/anmelden.yaml (Vergleichswerte S1, S2)');
+});
+
+test('help texts: English examples in English, record replaces the recording', async () => {
+    const { default: en } = await import('../src/shared/locales/en/cli.mjs');
+    assert.match(en['cli.help.footer'], /e\.g\. north\/dev/);
+    assert.match(en['cli.help.record'], /Record a test plan or replace its recording/);
+    assert.match(en['cli.doctorTodoNext'], /signedInSelector from the page after signing in/);
+});
+
+test('doctor never probes placeholder hosts', async () => {
+    const { isPlaceholderHost } = await import('../src/host/doctor.mjs');
+    for (const url of ['https://staging.example.com', 'https://example.org', 'https://app.example', 'https://x.invalid', 'https://shop.test']) assert.ok(isPlaceholderHost(url), url);
+    for (const url of ['http://localhost:5173', 'https://staging.firma.de', 'https://example.company.com', 'https://testing.io']) assert.ok(!isPlaceholderHost(url), url);
 });

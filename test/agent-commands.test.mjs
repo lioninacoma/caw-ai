@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { createAgentHandler, isAllowedUrl } from '../src/host/agent-commands.mjs';
+import { codeText, createAgentHandler, isAllowedUrl } from '../src/host/agent-commands.mjs';
 
 const setup = (t, overrides = {}) => {
     const agentDir = mkdtempSync(join(tmpdir(), 'caw-agent-'));
@@ -150,4 +150,24 @@ test('click --optional: a missing target is not clicked and reported as absent; 
     visible = true;
     assert.equal(await handler({ action: 'click', target: 'e1', optional: true }), 'ok');
     assert.deepEqual(clicked, ['aria-ref=e1']);
+});
+
+test('secret placeholders: filled into fill values only, code with one is refused', async (t) => {
+    const { handler, calls } = setup(t, { handler: { expand: (text) => text.split('{{iban}}').join('DE89370400440532013000') } });
+    assert.equal(await handler({ action: 'fill', target: '#iban', value: '{{iban}}' }), 'ok');
+    assert.deepEqual(calls.at(-1), ['fill', '#iban', 'DE89370400440532013000']);
+    for (const command of [{ action: 'check', id: 'E1', code: 'x === "{{iban}}"' }, { action: 'eval', code: '"{{iban}}"' }, { action: 'remember', name: 'copy', code: '"{{iban}}"' }]) {
+        await assert.rejects(handler(command), { code: 'usage', message: /fill oder type/ }, command.action);
+    }
+    assert.equal(calls.filter(([kind]) => kind === 'eval').length, 0, 'nothing ran in the page');
+    // Code without a secret placeholder runs as before.
+    assert.deepEqual(await handler({ action: 'check', id: 'E1', code: 'true' }), { id: 'E1', pass: false, value: 42 });
+});
+
+test('codeText: a value stays one literal in any quotes', () => {
+    const value = 'O\'Brien "x" `y` ${z} a\b\nc\r ';
+    for (const quote of ['\'', '"', '`']) {
+        assert.equal(new Function(`return ${quote}${codeText(value)}${quote};`)(), value, quote);
+    }
+    assert.equal(codeText('VG-2026'), 'VG-2026', 'plain values unchanged');
 });

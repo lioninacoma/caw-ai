@@ -2,14 +2,14 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
-import { chromium } from 'playwright-core';
 
 import { webBusy, webPageState, webProbe, webTargets } from '../src/host/framework/web.mjs';
+import { launchChrome } from './chrome.mjs';
 
 let browser = null;
 let page = null;
 before(async () => {
-    browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
+    browser = await launchChrome();
     page = await browser?.newPage();
 });
 after(async () => { await browser?.close(); });
