@@ -173,13 +173,15 @@ test('caw-ai mcp: start a run with --agent session, status, selection, caw only 
     const { sessionMcpHandler, startRun } = await import('../src/host/session-mcp.mjs');
     const { announceSessionAgent } = await import('../src/shared/session-agent.mjs');
     const root = tempDir(t);
+    // caw_start checks the config before it starts anything.
+    writeFileSync(join(root, 'caw.config.json'), readFileSync(new URL('../templates/caw.config.example.json', import.meta.url), 'utf8'));
     const spawned = [];
     const spawnRun = (file, args, options) => { spawned.push({ args, options }); return { pid: 999999, unref: () => {} }; };
     const calls = [];
     const handler = sessionMcpHandler({ root, spawnRun, run: async (args, env) => { calls.push({ args, env }); return { code: 0, out: 'ok' }; } });
     const call = async (name, args) => (await handler({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })).result;
     const list = await handler({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_start', 'caw_status', 'caw_selection', 'caw']);
+    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_explore', 'caw_overlay_check', 'caw']);
     assert.ok(list.result.tools.every((tool) => tool.call === undefined && tool.inputSchema !== undefined));
 
     assert.match((await call('caw_status', {})).content[0].text, /Kein Lauf wartet/);

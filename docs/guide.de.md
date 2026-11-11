@@ -34,12 +34,21 @@ In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` gre
 
 `init` trägt den MCP-Server in die `.mcp.json` des Projekts ein (`node node_modules/caw-ai/bin/caw-ai.mjs mcp`). Danach hat deine Session diese Werkzeuge:
 
-| Werkzeug | Zweck |
-|---|---|
-| `caw_start` | startet `run`, `record` oder `fix` im Hintergrund mit `--agent session`; das Fenster öffnet sich bei dir |
-| `caw_status` | ob ein Lauf auf die Session wartet, mit Auftrag, und die letzten Zeilen der Ausgabe (`.caw/session-*.log`) |
-| `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …), wie im Skill beschrieben |
-| `caw_selection` | das Element, das du beim Entwickeln in der Werkbank mit dem Fadenkreuz gewählt hast |
+| Werkzeug | Zweck | Tokens |
+|---|---|---|
+| `caw_doctor` | `doctor` als Daten: jede Prüfung mit nächstem Schritt, Anzahl blockierender und optionaler | nein |
+| `caw_init` | `init` ohne Rückfragen: `offline`, oder `fromExplore` nach `caw_explore`; `roles`, `noMcp`. Liefert angelegte Dateien und TODO-Felder | nein |
+| `caw_explore` | startet `explore` im Hintergrund (`login: true/false` oder `yes`); danach zeigt `caw_status` `caw/.explore.json` | nein |
+| `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben | nein |
+| `caw_validate` | `validate` als Daten: Config-Befunde, je Test Probleme, Hinweise und Code je Ziel | nein |
+| `caw_list` | `list` als Daten: je Test App, Rolle, Ziele, ob er schreibt, Aufnahmestand je Schritt | nein |
+| `caw_overlay_check` | `overlay check` (optional `apply`), wartet bis zu 3 Minuten und liefert das Ergebnis | nein |
+| `caw_start` | startet `run`, `record`, `fix` oder `open` mit `--agent session`: Felder `test`, `target`, `step`, `until`, `overlay`, `headless` (oder `args`). Mit `overlay` und ohne laufenden Watch kommt der Befehl für dich zurück, statt zu starten | `record`, `fix`: ja; `run`, `open`: nur wenn der Chat Claude ruft |
+| `caw_status` | ob ein Lauf auf die Session wartet, die letzten Zeilen der Ausgabe (`.caw/session-*.log`) und als Daten der letzte Lauf: Ergebnis, letzter Schritt, Artefakte (Bericht, Trace, Logs) | nein |
+| `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …), wie im Skill beschrieben | im Lauf |
+| `caw_selection` | das Element, das du beim Entwickeln in der Werkbank mit dem Fadenkreuz gewählt hast | nein |
+
+Die Daten-Werkzeuge liefern einen kurzen Text und dasselbe Ergebnis als `structuredContent` (JSON). Keins schreibt auf den MCP-Kanal oder fragt auf stdin; `explore`, `overlay check` und Läufe laufen als eigene Prozesse.
 
 Du schreibst also in deiner Session „nimm einen Test für die Bestellung auf“ oder „bring mich zu S4 von bestellung“, und der Skill erledigt den Rest. Startest du den Lauf selbst im Terminal mit `--agent session`, zeigt der Chat, dass er auf die Session wartet; schreib ihr dann „übernimm den caw-Lauf“ (sie findet ihn mit `caw_status`).
 
@@ -377,6 +386,10 @@ Ein Request passt über den letzten Teil seines Pfads; der Ordner davor ist der 
 - **Geänderte Dateien kommen beim nächsten Laden an.** Neue Klassen stehen erst in `bootstrap.json`, wenn der Watch gebaut hat.
 - **`bootstrap.json` fehlt, ist leer oder nennt Dateien, die es nicht mehr gibt:** Exit 2 (`watch-missing`, `watch-stale`).
 - **`node_modules` muss im Projektordner liegen.** Liegt es in einem benannten Volume des Devcontainers, sieht der Host es nicht und meldet `watch-stale`.
+
+**Vollständigkeit.** Nach dem ersten Laden vergleicht caw die Skript-Requests der Seite mit den Teilen aus `bootstrap.json` (App und eigene Pakete). Einen Teil erkennt es an seinem Dateinamen irgendwo in der URL, im Pfad oder in einem Parameterwert wie `/o/FormProxyServlet?url=…/Root/…/x.js`, unabhängig von `assetUrlPattern`. Kam ein Teil vom Server, endet der Lauf mit Exit 2 (`overlay-incomplete`): Die Seite liefe teils mit deinem Code, teils mit dem ausgelieferten, und das zeigt sich als Fehler fern der Ursache (`$jscomp is not defined`, ein kaputtes Grid). Die Meldung nennt die Teile, bis zu fünf URLs und das `assetUrlPattern`, das sie abfängt. Ein Teil, der nie angefragt wurde, ist nur ein Hinweis: Vielleicht lädt die App ihn später.
+
+Das Overlay für ExtJS richtest du in dieser Reihenfolge ein: `sencha app watch` selbst im App-Ordner starten, dann `npx caw-ai overlay check`, bis es vollständig meldet (`--apply` trägt vorgeschlagene Muster ein). `doctor` zeigt Watch, `bootstrap.json` und die letzte Prüfung je Teil.
 
 ## Framework: `web`, `react`, `vue`, `angular` oder `extjs`
 

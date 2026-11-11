@@ -3,7 +3,7 @@
 // part element inside it. The page is ready when no Ext.Ajax request and no store is loading.
 
 import { t } from '../../shared/i18n.mjs';
-import { checkAppFiles, createWatchSource } from './extjs-overlay.mjs';
+import { checkAppFiles, createWatchSource, expectedParts } from './extjs-overlay.mjs';
 
 /**
  * Runs in the browser, so it must not use anything from outside. `describe` describes an element, `find` finds it
@@ -234,5 +234,5 @@ export const extjs = {
     // names no devCommand, the run ends with the command to start it.
     watch: { label: () => t('session.overlay.senchaWatch'), command: /\bapp["']?\s+["']?watch\b/i, start: 'sencha app watch' },
     // The adapter derives what gets replaced from app.json, package.json and bootstrap.json (extjs-overlay.mjs).
-    overlay: { createWatchSource, checkAppFiles },
+    overlay: { createWatchSource, checkAppFiles, expected: expectedParts },
 };

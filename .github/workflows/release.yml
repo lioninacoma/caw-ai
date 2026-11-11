@@ -1,5 +1,5 @@
-# Publishes to npm when a version tag (v*) is pushed. Needs the NPM_TOKEN secret, or npm trusted publishing
-# configured for this repository and workflow (see CONTRIBUTING.md).
+# Publishes to npm when a version tag (v*) is pushed, via npm trusted publishing (OIDC, no token): configured on
+# npmjs.com for this repository and this workflow file (see CONTRIBUTING.md).
 name: Release
 
 on:
@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: read
-  # Provenance: npm signs the package with the identity of this workflow run.
+  # Trusted publishing and provenance: npm authenticates and signs with the identity of this workflow run.
   id-token: write
 
 jobs:
@@ -44,12 +44,10 @@ jobs:
       - name: Check package contents
         run: npm run pack:check
       - name: Publish
-        # A version with a pre-release part (0.2.0-beta.1) goes to the "next" tag, not "latest".
+        # A version with a pre-release part (0.3.0-beta.1) goes to the "next" tag, not "latest".
         run: |
           if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
             npm publish --provenance --access public --tag next
           else
             npm publish --provenance --access public
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

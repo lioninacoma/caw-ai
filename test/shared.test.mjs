@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { allTargets, browserHosts, buildDevlinkConfig, defaultAssetPattern, effectiveConfig, environmentsWith, resolveTarget, validateConfig } from '../src/shared/config.mjs';
+import { allTargets, assetPatterns, browserHosts, buildDevlinkConfig, defaultAssetPattern, effectiveConfig, environmentsWith, resolveTarget, validateConfig, writeConfig } from '../src/shared/config.mjs';
 import { deriveName } from '../src/host/overlay.mjs';
 import { checkTest, withDefaults } from '../src/host/test-file.mjs';
 import { CawError } from '../src/shared/errors.mjs';
@@ -71,20 +71,20 @@ test('valid configs: flat, with sites, without login, with a stored session', ()
 
 test('config: unknown fields are errors, names from earlier versions say where they went', () => {
     assert.match(issues({ ...simple(), gibtsnicht: 1 }), /Unbekanntes Feld: gibtsnicht/);
-    assert.equal(issues({ ...simple(), stages: 1 }), 'stages gibt es seit 0.2.0 nicht mehr (stattdessen: environments), siehe docs/upgrading.md');
-    assert.equal(issues({ ...simple(), ui: 1 }), 'ui gibt es seit 0.2.0 nicht mehr, siehe docs/upgrading.md');
-    for (const key of ['portals', 'login', 'preset']) assert.match(issues({ ...simple(), [key]: 1 }), new RegExp(`^${key} gibt es seit 0\\.2\\.0 nicht mehr \\(stattdessen: `));
+    assert.equal(issues({ ...simple(), stages: 1 }), 'stages gibt es seit 0.3.0 nicht mehr (stattdessen: environments), siehe docs/upgrading.md');
+    assert.equal(issues({ ...simple(), ui: 1 }), 'ui gibt es seit 0.3.0 nicht mehr, siehe docs/upgrading.md');
+    for (const key of ['portals', 'login', 'preset']) assert.match(issues({ ...simple(), [key]: 1 }), new RegExp(`^${key} gibt es seit 0\\.3\\.0 nicht mehr \\(stattdessen: `));
     // All old keys of an environment and an app at once, each with its new place.
     const old = simple();
     old.environments.local = { ...old.environments.local, agent: true, localCode: true };
     delete old.environments.local.claude;
     old.apps.shop = { ...old.apps.shop, statics: [], redirects: {}, constants: {} };
     assert.deepEqual(validateConfig(old).issues, [
-        'environments.local.agent heißt seit 0.2.0 claude, siehe docs/upgrading.md',
-        'environments.local.localCode heißt seit 0.2.0 overlay, siehe docs/upgrading.md',
-        'apps.shop.statics heißt seit 0.2.0 apps.shop.overlay.statics, siehe docs/upgrading.md',
-        'apps.shop.redirects gibt es seit 0.2.0 nicht mehr, siehe docs/upgrading.md',
-        'apps.shop.constants gibt es seit 0.2.0 nicht mehr, siehe docs/upgrading.md',
+        'environments.local.agent heißt seit 0.3.0 claude, siehe docs/upgrading.md',
+        'environments.local.localCode heißt seit 0.3.0 overlay, siehe docs/upgrading.md',
+        'apps.shop.statics heißt seit 0.3.0 apps.shop.overlay.statics, siehe docs/upgrading.md',
+        'apps.shop.redirects gibt es seit 0.3.0 nicht mehr, siehe docs/upgrading.md',
+        'apps.shop.constants gibt es seit 0.3.0 nicht mehr, siehe docs/upgrading.md',
     ]);
 });
 
@@ -271,7 +271,7 @@ test('config: suggestions for typos, notes on settings without effect', () => {
     assert.deepEqual(validateConfig(claude), { ok: true, issues: [], notes: [], todo: [] });
     assert.equal(resolveTarget(claude, 'local').agent, true);
     // No legacy name any more: agent on an environment is an error, with the hint on its new name.
-    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', agent: true } } }), /environments\.local\.agent heißt seit 0\.2\.0 claude/);
+    assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', agent: true } } }), /environments\.local\.agent heißt seit 0\.3\.0 claude/);
     const buildOnly = { ...claude, apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { build: 'dist' } } } };
     assert.match(validateConfig(buildOnly).notes.join('\n'), /App shop hat overlay, aber keine Umgebung hat "overlay": true/);
 });
@@ -317,6 +317,53 @@ test('overlay: file name from the URL, via assetUrlPattern or as the path under 
     const under = defaultAssetPattern('https://Shop.Example:443/app/');
     assert.equal(deriveName('https://shop.example/app/assets/index-X1Y2Z3W4.js?v=2', under), 'assets/index-X1Y2Z3W4.js');
     assert.equal(deriveName('https://cdn.example/app/assets/index.js', under), null, 'only the environment');
+});
+
+test('assetUrlPattern: a string or a list, one per source; also per app; each entry needs group 1', () => {
+    const proxy = '[?&]url=repo:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)';
+    const cdn = '^https://cdn\\.example/js/(?:[^?#]*/)?([^/?#]+\\.js)';
+    assert.equal(issues({ ...simple(), assetUrlPattern: [proxy, cdn] }), '');
+    assert.equal(issues({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { assetUrlPattern: cdn } } } }), '');
+    assert.match(issues({ ...simple(), assetUrlPattern: [] }), /assetUrlPattern muss ein regulärer Ausdruck sein oder eine Liste davon/);
+    assert.match(issues({ ...simple(), assetUrlPattern: [proxy, 3] }), /eine Liste davon/);
+    assert.match(issues({ ...simple(), assetUrlPattern: [proxy, '/static/.+'] }), /assetUrlPattern: "\/static\/\.\+" braucht eine Gruppe/);
+    assert.match(issues({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { assetUrlPattern: '(' } } } }), /apps\.shop\.overlay\.assetUrlPattern: "\(" ist kein gültiger/);
+    const both = { ...simple(), assetUrlPattern: proxy, apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { assetUrlPattern: [cdn, proxy] } } } };
+    assert.deepEqual(assetPatterns(both, 'shop'), [proxy, cdn], 'the app adds to the top-level list, without duplicates');
+    assert.deepEqual(assetPatterns({ assetUrlPattern: [proxy, cdn] }, 'other'), [proxy, cdn]);
+    assert.deepEqual(assetPatterns({}, 'shop'), []);
+});
+
+test('writeConfig: merges into the file, validates first, writes atomically with 4 spaces; never secrets', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-write-config-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const file = join(root, 'caw.config.json');
+    writeFileSync(file, JSON.stringify({ ...simple(), assetUrlPattern: 'a/([^/]+\\.js)', consoleIgnore: ['x'] }));
+    const before = readFileSync(file, 'utf8');
+    const invalid = writeConfig(root, { assetUrlPattern: ['('] });
+    assert.equal(invalid.ok, false);
+    assert.match(invalid.issues.join('\n'), /kein gültiger/);
+    assert.equal(readFileSync(file, 'utf8'), before, 'nothing written when invalid');
+    const dry = writeConfig(root, { assetUrlPattern: ['a/([^/]+\\.js)', 'b/([^/]+\\.js)'] }, { dryRun: true });
+    assert.equal(dry.ok, true);
+    assert.deepEqual(dry.config.assetUrlPattern, ['a/([^/]+\\.js)', 'b/([^/]+\\.js)']);
+    assert.equal(readFileSync(file, 'utf8'), before, 'dryRun writes nothing');
+    const written = writeConfig(root, { assetUrlPattern: ['a/([^/]+\\.js)', 'b/([^/]+\\.js)'], consoleIgnore: null, environments: { staging: { writable: true } } });
+    assert.deepEqual(written, { ok: true, issues: [], config: written.config });
+    const text = readFileSync(file, 'utf8');
+    assert.ok(text.startsWith('{\n    "environments": {') && text.endsWith('}\n'), '4 spaces, trailing newline');
+    const saved = JSON.parse(text);
+    assert.deepEqual(saved.assetUrlPattern, ['a/([^/]+\\.js)', 'b/([^/]+\\.js)'], 'arrays replace');
+    assert.equal(saved.consoleIgnore, undefined, 'null deletes');
+    assert.deepEqual(saved.environments.staging, { url: 'https://staging.shop.example', writable: true }, 'objects merge');
+    assert.deepEqual(readdirSync(root), ['caw.config.json'], 'no temp file left');
+    for (const patch of [{ roles: { kaeufer: { password: 'geheim' } } }, { agent: { token: 'sk' } }, { apiSecret: 'x' }]) {
+        const refused = writeConfig(root, patch);
+        assert.equal(refused.ok, false);
+        assert.match(refused.issues[0], /Geheimnisse gehören nach caw\/\.env/);
+    }
+    assert.equal(writeConfig(root, { roles: { kaeufer: { loginEnv: 'L2', passwordEnv: 'P2' } }, auth: { passwordSelector: '#pw2' } }).ok, true, 'variable names and selectors are fine');
+    assert.equal(writeConfig(mkdtempSync(join(tmpdir(), 'caw-write-none-')), {}).ok, false, 'no config file');
 });
 
 test('checkTest: the target must be listed in the test', () => {

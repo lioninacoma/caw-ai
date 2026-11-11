@@ -13,7 +13,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix, relative } from 'node:path';
 
-import { defaultAssetPattern } from '../shared/config.mjs';
+import { assetPatterns, defaultAssetPattern } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { RUN_DIR } from '../shared/names.mjs';
@@ -39,6 +39,137 @@ export const deriveName = (url, pattern) => {
     if (match === null) return null;
     const name = (match[1] ?? '').replace(/\/{2,}/g, '/').replace(/^\//, '');
     return name === '' ? null : name;
+};
+
+const decoded = (value) => {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+};
+
+/** The last segment of a path-like value, without query or fragment. */
+const lastSegment = (value) => value.replace(/[?#].*$/, '').split(/[\\/]/).filter(Boolean).at(-1) ?? '';
+
+/** The raw query parameters of a URL, in order, as [name, raw value]: the pattern must match the URL as Chrome writes it. */
+const rawParams = (url) => url.search.replace(/^\?/, '').split('&').filter(Boolean).map((pair) => {
+    const index = pair.indexOf('=');
+    return index < 0 ? [pair, ''] : [pair.slice(0, index), pair.slice(index + 1)];
+});
+
+/**
+ * The script names a request may carry, independent of any pattern: the last path segment and the last segment of every `.js`
+ * value in the query (`/proxy?url=repo:///Root/dir/x.js` -> proxy, x.js). Only for the diagnosis, never for serving.
+ */
+export const scriptNames = (url) => {
+    let parsed;
+    try {
+        parsed = new URL(url);
+    } catch {
+        return [];
+    }
+    const names = new Set();
+    const own = lastSegment(decoded(parsed.pathname));
+    if (own !== '') names.add(own);
+    for (const [, value] of rawParams(parsed)) {
+        const name = lastSegment(decoded(value));
+        if (/\.js$/i.test(name)) names.add(name);
+    }
+    return [...names];
+};
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const baseName = (name) => posix.basename(name);
+
+/** The longest common prefix of strings (by character) or arrays (by element). */
+const commonPrefix = (values) => values.reduce((prefix, value) => {
+    let index = 0;
+    while (index < prefix.length && index < value.length && prefix[index] === value[index]) index += 1;
+    return prefix.slice(0, index);
+});
+
+/**
+ * Patterns for the asset sources the current patterns miss. Groups the missed URLs by source (origin + path, or origin + path +
+ * query parameter) and proposes one pattern per group:
+ * - name in a query parameter p after a common value prefix V: [?&]p=V(?:[^&#]*\/)?([^/&#]+\.js)(?:[&#]|$)
+ * - name as the last path segment below a common folder D:       ^D/(?:[^?#]*\/)?([^/?#]+\.js)
+ * A candidate counts only if it yields an expected name for every URL of its group (as the watch source resolves: last segment)
+ * and changes nothing for URLs that are already local. Groups without such a candidate come back as unresolved.
+ * @param urls     the missed URLs (from the server, carrying an expected name)
+ * @param expected the expected names (x.js, x-debug.js, …)
+ * @param current  { patterns, local }: the patterns in use (with the default) and the URLs served locally
+ * @returns { suggestions: [{ source, pattern, urls }], unresolved: [{ source, urls }] }
+ */
+export const suggestAssetPatterns = ({ urls, expected, current = {} }) => {
+    const names = new Set(expected);
+    const patterns = current.patterns ?? [];
+    const groups = new Map();
+    const unresolved = [];
+    const add = (key, entry, url) => {
+        if (!groups.has(key)) groups.set(key, { ...entry, urls: [], values: [] });
+        groups.get(key).urls.push(url);
+        return groups.get(key);
+    };
+    for (const url of new Set(urls)) {
+        let parsed;
+        try {
+            parsed = new URL(url);
+        } catch {
+            unresolved.push({ source: url, urls: [url] });
+            continue;
+        }
+        if (names.has(lastSegment(decoded(parsed.pathname)))) {
+            add(`path ${parsed.origin}`, { kind: 'path', origin: parsed.origin }, url).values.push(posix.dirname(parsed.pathname));
+            continue;
+        }
+        const param = rawParams(parsed).find(([, value]) => names.has(lastSegment(decoded(value))));
+        if (param === undefined) {
+            unresolved.push({ source: `${parsed.origin}${parsed.pathname}`, urls: [url] });
+            continue;
+        }
+        add(`query ${parsed.origin}${parsed.pathname} ${param[0]}`, { kind: 'query', origin: parsed.origin, path: parsed.pathname, param: param[0] }, url).values.push(param[1]);
+    }
+    // The name a URL resolves to: the first name from the patterns that is expected, as the watch source tries them in order.
+    const firstExpected = (url, list) => list.map((pattern) => deriveName(url, pattern)).find((name) => name !== null && names.has(baseName(name))) ?? null;
+    const suggestions = [];
+    for (const group of groups.values()) {
+        let source;
+        let pattern;
+        if (group.kind === 'path') {
+            const dir = commonPrefix(group.values.map((path) => path.replace(/\/+$/, '').split('/'))).join('/');
+            source = `${group.origin}${dir}/`;
+            pattern = `^${escapeRegExp(`${group.origin}${dir}`)}/(?:[^?#]*/)?([^/?#]+\\.js)`;
+        } else {
+            const prefix = commonPrefix(group.values);
+            const value = prefix.slice(0, prefix.lastIndexOf('/') + 1);
+            source = `${group.origin}${group.path}?${group.param}=${value}`;
+            pattern = `[?&]${escapeRegExp(group.param)}=${escapeRegExp(value)}(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)`;
+        }
+        const covers = group.urls.every((url) => {
+            const name = deriveName(url, pattern);
+            return name !== null && names.has(baseName(name));
+        });
+        const keepsLocal = (current.local ?? []).every((url) => firstExpected(url, patterns) === firstExpected(url, [...patterns, pattern]));
+        if (!covers || !keepsLocal) {
+            unresolved.push({ source, urls: group.urls });
+            continue;
+        }
+        const same = suggestions.find((entry) => entry.pattern === pattern);
+        if (same === undefined) suggestions.push({ source, pattern, urls: group.urls });
+        else same.urls.push(...group.urls);
+    }
+    return { suggestions, unresolved };
+};
+
+/** The message for a mixed state: which parts came from the server, up to five URLs, and the pattern(s) that would fix it. */
+export const incompleteText = ({ missed, suggestions, unresolved }) => {
+    const parts = [...new Set(missed.map(({ part }) => part))];
+    const urls = missed.slice(0, 5).map(({ url }) => `  ${url}`).join('\n');
+    const next = suggestions.length > 0
+        ? t('session.overlay.suggestion', { patterns: suggestions.map(({ source, pattern }) => `  ${source}: ${JSON.stringify(pattern)}`).join('\n') })
+        : t('session.overlay.noSuggestion');
+    return t('session.overlay.incomplete', { parts: parts.join(', '), count: missed.length, urls, next, unresolved: unresolved.length });
 };
 
 const tail = (file) => {
@@ -350,6 +481,8 @@ const watchSource = ({ root, name, appDir, choice, config, info, running = proce
             return null;
         },
         replaced: source.replaced,
+        // What the watch should replace, for the completeness check; empty if the adapter does not say.
+        expected: () => overlay.expected?.(appDir) ?? [],
     };
 };
 
@@ -375,6 +508,36 @@ const staticsOf = (appDir, statics) => {
     };
 };
 
+const namesWith = (patterns) => (url) => [...new Set(patterns.map((pattern) => deriveName(url, pattern)).filter((name) => name !== null))];
+
+/** The expected parts of every app whose source names them; a source that breaks meanwhile (bootstrap.json) names none. */
+const expectedOf = (apps) => apps.flatMap(({ source }) => {
+    try {
+        return source.expected?.() ?? [];
+    } catch {
+        return [];
+    }
+});
+
+/** Per expected part: local, deployed or not loaded; the missed server URLs and patterns for them. See diagnose. */
+const completeness = ({ apps, served, patterns }) => {
+    const expected = expectedOf(apps);
+    const partOf = new Map(expected.flatMap((part) => part.names.map((name) => [name, part])));
+    const hits = (url) => scriptNames(url).filter((name) => partOf.has(name));
+    const missed = [...served.server.entries()].filter(([, type]) => type === 'script').flatMap(([url]) => {
+        const [name] = hits(url);
+        return name === undefined ? [] : [{ url, name, part: partOf.get(name).label }];
+    });
+    const local = new Set([...served.local.keys()].flatMap(hits).map((name) => partOf.get(name).label));
+    for (const name of apps.flatMap(({ source }) => source.replaced?.() ?? [])) if (partOf.has(name)) local.add(partOf.get(name).label);
+    const deployed = new Set(missed.map(({ part }) => part));
+    const parts = expected.map(({ label, kind, names }) => ({ label, kind, names, status: deployed.has(label) ? 'deployed' : local.has(label) ? 'local' : 'not-loaded' }));
+    const { suggestions, unresolved } = missed.length === 0
+        ? { suggestions: [], unresolved: [] }
+        : suggestAssetPatterns({ urls: missed.map(({ url }) => url), expected: [...partOf.keys()], current: { patterns, local: [...served.local.keys()] } });
+    return { parts, missed, notLoaded: parts.filter(({ status }) => status === 'not-loaded').map(({ label }) => label), suggestions, unresolved };
+};
+
 /**
  * Checks and starts the sources of all overlay apps of the run (checked.apps from checkTest), before the browser.
  * @returns { apps: [{ name, kind, label, source, statics }], resolve, fileFor, devServers, stop }
@@ -386,7 +549,9 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
         for (const [name, choice] of Object.entries(checked.apps ?? {})) {
             const appDir = join(root, config.apps[name].dir);
             const source = SOURCES[choice.kind]({ root, name, appDir, choice, config, info, envUrl: checked.url, ...deps });
-            apps.push({ name, kind: choice.kind, label: source.label, source, statics: staticsOf(appDir, choice.statics ?? []) });
+            // The default pattern, the top-level list, then the app's own: the first name a source can resolve wins.
+            const patterns = [defaultAssetPattern(checked.url), ...assetPatterns(config, name)];
+            apps.push({ name, kind: choice.kind, label: source.label, source, patterns, namesOf: namesWith(patterns), statics: staticsOf(appDir, choice.statics ?? []) });
             await source.ready();
             apps.at(-1).statics.check();
         }
@@ -394,8 +559,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
         stopAll();
         throw error;
     }
-    const patterns = [defaultAssetPattern(checked.url), config.assetUrlPattern].filter((pattern) => typeof pattern === 'string');
-    const namesOf = (url) => [...new Set(patterns.map((pattern) => deriveName(url, pattern)).filter((name) => name !== null))];
+    const allPatterns = [...new Set(apps.flatMap(({ patterns }) => patterns))];
     const pages = [];
     // Per URL, whether a script or stylesheet came from local code or from the server (filled in by routeOverlay).
     const served = { local: new Map(), server: new Map() };
@@ -415,7 +579,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
                     if (app.source.page === undefined) continue;
                     const base = baseOf(out, url);
                     const deployed = codeTags(out, base);
-                    const plan = await app.source.page({ url, base, deployed, namesOf });
+                    const plan = await app.source.page({ url, base, deployed, namesOf: app.namesOf });
                     if (plan === null || plan.issue !== undefined || !deployed.some(plan.owned)) {
                         seen.swaps.push({ app: app.name, skipped: plan?.issue ?? 'no-match' });
                         continue;
@@ -433,8 +597,8 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
         /** The response from local code for a request, or null for the server. The test's app comes first. */
         resolve: async (url, type) => {
             if (type === 'document') return null;
-            const request = { url, type, names: namesOf(url) };
             for (const app of apps) {
+                const request = { url, type, names: app.namesOf(url) };
                 const found = app.statics.resolve(request) ?? await app.source.resolve(request);
                 if (found !== null) return { ...found, app: app.name };
             }
@@ -442,8 +606,8 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
         },
         /** The local file behind a URL (build, statics), for source maps; otherwise undefined. */
         fileFor: (url) => {
-            const request = { url, type: undefined, names: namesOf(url) };
             for (const app of apps) {
+                const request = { url, type: undefined, names: app.namesOf(url) };
                 const found = app.statics.resolve(request);
                 if (found !== null) return found.file;
                 if (app.kind !== 'build') continue;
@@ -458,7 +622,10 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
         served,
         /**
          * What ran after loading, for the diagnosis: never silently test the deployed state.
-         * @returns { ssr, local, server, swapped, localBase, mixed: [urls], label }
+         * With an adapter that names the expected parts (ExtJS), also per part whether it came local, deployed or not at all:
+         * missed are script URLs from the server that carry an expected name (found pattern-independently via scriptNames), with
+         * suggestions for patterns that would catch them.
+         * @returns { ssr, local, server, swapped, localBase, mixed: [urls], label, parts, missed, notLoaded, suggestions, unresolved }
          */
         diagnose: () => {
             const folder = (url) => {
@@ -475,6 +642,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
                 localBase: pages.some(({ swaps }) => swaps.some(({ skipped }) => skipped === 'local-base')),
                 mixed: [...served.server.keys()].filter((url) => localFolders.has(folder(url).key)),
                 label: apps.map(({ name, label }) => (apps.length > 1 ? `${name}: ${label}` : label)).join(', '),
+                ...completeness({ apps, served, patterns: allPatterns }),
             };
         },
         stop: stopAll,

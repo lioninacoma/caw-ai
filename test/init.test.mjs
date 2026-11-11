@@ -183,7 +183,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     // An invalid config: the first real finding, not just "caw.config.json:".
     writeFileSync(configPath, saved.replace('"local": {', '"local": { "agent": true, "localCode": true,'));
     const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
-    assert.equal(broken.text, 'caw.config.json: environments.local.agent heißt seit 0.2.0 claude, siehe docs/upgrading.md');
+    assert.equal(broken.text, 'caw.config.json: environments.local.agent heißt seit 0.3.0 claude, siehe docs/upgrading.md');
     assert.equal(broken.next, 'caw-ai validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.
@@ -402,4 +402,46 @@ test('run and record: TODO in the login aborts before Chrome and Claude', async 
     const config = { auth: { type: 'form', path: '/', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'TODO' }, roles: { tester: {} }, apps: {} };
     await assert.rejects(openRunSession({ root: tmpdir(), config, spec: { role: 'tester' }, checked: { target: 'local', url: 'http://localhost:1' } }),
         (error) => error.code === 'config-invalid' && /auth\.signedInSelector steht noch auf TODO/.test(error.message));
+});
+
+test('init for ExtJS: an empty overlay entry, no devCommand, no environment with overlay', () => {
+    const config = starterConfig({ framework: 'extjs', appDir: 'apps/Bestellung', url: 'https://dev.firma.intern', auth: 'none' });
+    assert.deepEqual(config.apps.web.overlay, {});
+    assert.ok(Object.values(config.environments).every((environment) => environment.overlay === undefined));
+    assert.equal(starterConfig({ framework: 'react' }).apps.web.overlay, undefined);
+});
+
+test('doctor: overlay lines for ExtJS (bootstrap.json, watch, last overlay check), all optional', async (t) => {
+    const { doctorChecks } = await import('../src/host/doctor.mjs');
+    const root = mkdtempSync(join(tmpdir(), 'caw-doctor-overlay-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const config = {
+        framework: 'extjs',
+        environments: { dev: { url: 'https://dev.firma.intern', overlay: true } },
+        apps: { web: { dir: 'app', startUrl: '/' } },
+    };
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
+    mkdirSync(join(root, 'app', 'app'), { recursive: true });
+    writeFileSync(join(root, 'app', 'app.json'), '{ "name": "Bestellung" }');
+    writeFileSync(join(root, 'app', 'app', 'Main.js'), '');
+    const probes = { chrome: async () => {}, claude: () => '2.1.0', reachable: async () => true, watch: () => false };
+    const overlayLines = (checks) => checks.filter(({ text }) => /^dev, App web/.test(text));
+    let lines = overlayLines(await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes }));
+    assert.ok(lines.every(({ optional }) => optional), JSON.stringify(lines));
+    assert.match(lines[0].text, /bootstrap\.json fehlt/);
+    assert.match(lines[0].next, /Starte sencha app watch in app; caw startet ihn nicht selbst/);
+    assert.equal(lines[1].text, 'dev, App web: Sencha-Watch läuft nicht');
+    assert.equal(lines[2].next, 'caw-ai overlay check --target dev');
+    writeFileSync(join(root, 'app', 'bootstrap.json'), JSON.stringify({ loadOrder: [{ path: 'app/Main.js' }] }));
+    mkdirSync(join(root, '.caw'));
+    const parts = [{ label: 'Bestellung', kind: 'app', names: ['Bestellung.js'], status: 'local' }, { label: 'modell', kind: 'package', names: ['modell.js'], status: 'deployed' }];
+    writeFileSync(join(root, '.caw', 'overlay-check.json'), JSON.stringify({ at: new Date(Date.now() - 5 * 60_000).toISOString(), target: 'dev', app: 'web', state: 'incomplete', parts }));
+    lines = overlayLines(await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes: { ...probes, watch: () => true } }));
+    assert.deepEqual(lines.map(({ ok, text }) => [ok, text]), [
+        [true, 'dev, App web: bootstrap.json passt'],
+        [true, 'dev, App web: Sencha-Watch läuft'],
+        [true, 'dev, App web: Bestellung lokal (geprüft vor 5 min)'],
+        [false, 'dev, App web: modell ausgeliefert (geprüft vor 5 min)'],
+    ]);
+    assert.match(lines[3].next, /--apply/);
 });

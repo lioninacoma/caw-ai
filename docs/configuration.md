@@ -203,6 +203,7 @@ It needs `"overlay": true` on the environment and a source on the app:
 | `buildCommand` | One-shot build, e.g. `"npm run build"`, not `--watch`. Needs `build`. |
 | `devCommand` | Starts the dev server, e.g. `"npm run dev -- --port 5173 --strictPort"`. Needs `dev`. |
 | `statics` | Fixed names served live from disk: `name` is the name in the request, `path` the file relative to the app folder. For every framework and every source. |
+| `assetUrlPattern` | Extra patterns for this app only, in addition to the top-level `assetUrlPattern`: for an app whose files come from somewhere else. String or list. |
 
 Unknown fields are an error. You need only one of `build` and `dev`.
 
@@ -236,13 +237,26 @@ caw prints every action, e.g. `The dev server http://localhost:5173 isn't runnin
 | Finding | Result |
 |---|---|
 | Server-rendered page (Next.js, Nuxt, SvelteKit, Angular SSR) | Exit 2 (`overlay-ssr`). Test local code there with the dev server as the environment (`--target local`). |
+| Expected parts came from the server (ExtJS: app or own package) | Exit 2 (`overlay-incomplete`): a mixed version. The message names the parts, up to five URLs and the `assetUrlPattern` that catches them. `caw-ai overlay check --apply` adds it. |
 | Nothing came from local code | Exit 2 (`overlay-unused`). |
+| Expected parts never requested | Note "Not loaded": maybe the app loads them later. |
 | Scripts from the local asset folder came from the server | Warning "Mixed version": rebuild, or check that the build matches the deployed version. |
 | Build with a different base path | Warning, no page swap. |
 
 `report.md` names what happened: `Overlay: dist; 14 file(s) local, 2 script(s)/stylesheet(s) from the server; page swapped: yes`.
 
 **ExtJS:** With `"framework": "extjs"` the local code comes from the Sencha watch. The app needs no `overlay` entry, optionally `statics` and `devCommand` (e.g. `"sencha app watch"`, then caw starts the watch). `build`, `dev` and `buildCommand` are errors there; use `--overlay` or `--overlay dev`. Details: [Guide](guide.md#how-local-code-gets-into-the-application).
+
+**Several asset sources.** A page may load its code from more than one place. caw names each request by the path below the environment URL and by every `assetUrlPattern`; the first name a source knows wins. `assetUrlPattern` is a string or a list, one pattern per source, group 1 the file name. An FA214-like portal loads the theme by a plain path (covered by the default) and app and packages through a proxy servlet:
+
+```json
+"assetUrlPattern": [
+  "[?&]url=inubitrepository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)",
+  "^https://cdn\\.example\\.com/js/(?:[^?#]*/)?([^/?#]+\\.js)"
+]
+```
+
+You don't have to write these by hand: `npx caw-ai overlay check` loads the app once, lists per part whether it came local or deployed, and suggests one pattern per missing source; `--apply` adds them. ExtJS overlay setup is done when `overlay check` reports complete. caw never starts the Sencha watch by itself unless the app has `devCommand`.
 
 **`validate`** prints the code per test and target and where `--overlay` would apply:
 
@@ -274,7 +288,7 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `readyTimeoutMs` | | How long to wait for the app to settle. |
 | `readyIgnore` | `[]` | CSS selectors of areas that change by themselves, e.g. `["#ticker", ".clock", "footer [role=progressbar]"]`. Their DOM changes and progress indicators don't count when waiting for a quiet page. Spinners without size, hidden or outside the viewport never count. If a page never gets quiet, the report says so once per step. |
 | `lintCommand` | | Your check command, e.g. `npm run lint`. Claude mentions it in code suggestions. |
-| `assetUrlPattern` | | Regex for requests that load app code; group 1 is the name for `overlay.statics`, the path inside `overlay.build`, or the build name of an ExtJS app or package. Used with `--overlay` in addition to the path below the environment URL. |
+| `assetUrlPattern` | | Regex, or a list of them (one per asset source), for requests that load app code; group 1 is the name for `overlay.statics`, the path inside `overlay.build`, or the build name of an ExtJS app or package. Used with `--overlay` in addition to the path below the environment URL. `caw-ai overlay check` suggests missing ones. |
 | `sites` | | Same app for several tenants: `["north", "south"]`, then `urls` per environment. |
 | `extends` | | Shared defaults from a file, e.g. `"./caw/base.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Base image for the `docker` agent. Falls back to `image` in `.devcontainer/devcontainer.json`. |

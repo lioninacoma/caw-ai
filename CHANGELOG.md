@@ -4,6 +4,10 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-11
+
+0.2.0 was never published; its changes are part of 0.3.0.
+
 ### Breaking
 
 Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
@@ -40,10 +44,17 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - `readyIgnore` setting for areas that change by themselves (ticker, clock, permanent spinner); `browser.locale` and `browser.timezone` pin the test browser's language and time zone.
 - The run log line "Claude finished after …" shows turns, tokens and the cost Claude Code reports.
 - Upgrade guide [docs/upgrading.md](docs/upgrading.md); `validate` and `doctor` say where each config key from 0.1.0 went.
-- Release workflow: a `v*` tag runs lint, tests and the pack check and publishes with npm provenance.
+- Release workflow: a `v*` tag runs lint, tests and the pack check and publishes through npm trusted publishing with provenance, without a token.
+- `caw-ai overlay check [--target] [--app] [--apply] [--json]`: opens the app headless with the overlay and shows per expected part (app, packages, theme) whether it came from local code, from the server or was not loaded; suggests an `assetUrlPattern` per missing source and adds it with `--apply`. Writes `.caw/overlay-check.json`. Never starts the Sencha watch; names the command when it is missing or stale.
+- `assetUrlPattern` takes a list of patterns for pages that load code from several sources (a path and a proxy parameter); `apps.<app>.overlay.assetUrlPattern` per app.
+- `doctor` shows bootstrap.json, the watch and the last overlay check per part for ExtJS overlay environments; `init` adds ExtJS overlay hints.
+- MCP: the Claude Code session can run every setup and check step: `caw_doctor`, `caw_init`, `caw_explore`, `caw_config`, `caw_validate`, `caw_list` and `caw_overlay_check`, none of them uses tokens. Tool results carry `structuredContent` next to a short text.
+- MCP: `caw_start` takes typed fields (`test`, `target`, `step`, `until`, `overlay`, `headless`) and `open`, checks the config first and returns the watch command instead of starting when an overlay needs a watch that is missing or stale. `caw_status` also returns the last run's result, last step and artefacts, explore suggestions and the latest overlay check.
 
 
 ### Changed
+- An ExtJS overlay run where expected parts still came from the server ends with exit 2 (`overlay-incomplete`), naming the parts, server URLs and a suggested `assetUrlPattern`. Before, only a run where nothing came from local code failed.
+- IBM Plex Mono now ships as IBM's own unmodified files (`builtin:ibm-plex-mono-400.woff2`, `-500.woff2`); the old `builtin:ibm-plex-mono-latin-*-normal.woff2` names still work.
 - New look ("console") for workbench, chat, report, the `explore` card and the terminal: VT323 for headings, IBM Plex Mono for text. Without a terminal the plain `[caw-ai]` lines stay.
 - Test files: `id`, `app`, `role` and `targets` may be left out (file name, the only app, the only role, all non-production environments). A test name is a file name in `caw/tests`, without folders.
 - Error output: message first, then the command's short form for usage errors, then `(code: …, exit …)`.
@@ -147,5 +158,6 @@ First public release.
 - User interface, CLI, error messages and reports in English and German (`language` in `caw.config.json`, `CAW_LANG`, or the system language).
 - Sign-in: login form, second factor via `auth.codeSelector` and `totpEnv` per role, SSO via `storageState` and `caw-ai auth`; apps without a login need no `auth`.
 
-[Unreleased]: https://github.com/lioninacoma/caw-ai/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lioninacoma/caw-ai/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/lioninacoma/caw-ai/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/lioninacoma/caw-ai/releases/tag/v0.1.0

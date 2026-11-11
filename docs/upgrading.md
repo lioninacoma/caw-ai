@@ -141,4 +141,4 @@ npx caw-ai list       # recording status per test
 npx caw-ai doctor     # machine, credentials, environments
 ```
 
-`validate` names every old key and where it went, e.g. "environments.dev.agent was renamed to claude in 0.2.0", and every key it doesn't know.
+`validate` names every old key and where it went, e.g. "environments.dev.agent was renamed to claude in 0.3.0", and every key it doesn't know.

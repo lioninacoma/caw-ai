@@ -1293,6 +1293,25 @@ ${finishOf(['S2'])}`;
             undo();
             rmSync(marker, { force: true });
         }
+        // Without assetUrlPattern the package comes through the DataProxy from the server: a mixed state, exit 2 with the pattern.
+        const undoWatch = withOverlay({ devCommand: 'node -e "setInterval(() => {}, 1000)"' });
+        const config = JSON.parse(readFileSync(mainConfig, 'utf8'));
+        const pattern = config.assetUrlPattern;
+        delete config.assetUrlPattern;
+        writeFileSync(mainConfig, JSON.stringify(config, null, 4));
+        try {
+            const code = await run(fake, [ID, ...short, '--overlay', 'dev']);
+            verify('Without assetUrlPattern: Exit 2', code === 2, String(code));
+            const { result } = newestRun();
+            verify('Without assetUrlPattern: overlay-incomplete', result.code === 'overlay-incomplete', JSON.stringify(result).slice(0, 300));
+            verify('Without assetUrlPattern: names fx-model and suggests the DataProxy pattern',
+                /fx-model/.test(result.reason ?? '') && (result.reason ?? '').includes('[?&]url=repo:///Root/Fx/'), result.reason);
+        } finally {
+            const restored = JSON.parse(readFileSync(mainConfig, 'utf8'));
+            restored.assetUrlPattern = pattern;
+            writeFileSync(mainConfig, JSON.stringify(restored, null, 4));
+            undoWatch();
+        }
     });
 } catch (error) {
     verify('Script', false, error.stack);

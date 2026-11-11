@@ -66,10 +66,15 @@ you add what can only be learned from the code or from the human:
    environment, on the app `overlay.build` (build folder) or `overlay.dev` (dev server), and the run explicitly needs `--overlay`;
    ExtJS only needs `overlay: true`, `assetUrlPattern` and the Sencha watch. Without the option the delivered state
    always runs; `validate` names per test and target where `--overlay` would work.
+   ExtJS overlay setup is only done when `npx caw-ai overlay check --target <environment>` (or `caw_overlay_check`) is green:
+   every expected part (app, packages, theme) comes from the watch. If a part still comes from the server, the check names the
+   server URLs and suggests an `assetUrlPattern`; apply it with `--apply` (or `apply: true`) after the human agrees, then check again.
+   Pages can load parts from several sources (a path and a proxy parameter); `assetUrlPattern` then holds one pattern per source.
+   If the check reports the watch missing or stale, ask the human to start `sencha app watch` in the app folder; never start it yourself.
    Only adopt console noise if the human confirms it as known. Nothing with `confidence: likely` without asking.
 5. **Write:** Add what was clarified to the config and replace every `TODO`. Only the
    human enters credentials in `caw/.env`; you only name the names.
-6. **Check:** `npx caw-ai doctor` and `npx caw-ai validate`, until nothing is MISSING any more.
+6. **Check:** `npx caw-ai doctor` and `npx caw-ai validate` (or `caw_doctor`, `caw_validate`), until nothing is MISSING any more; with an ExtJS overlay also the overlay check from step 4.
 7. **First tests:** Propose one to three short tests (per file `id`, `app`, `role`, `targets`, `mutates` and `steps` with `id`, `name`, `do`, `expect`; example in `npx caw-ai help`),
    e.g. "Log in and see the start page" and the most important read path. Recording happens with the human: `record <test> --target <environment>`,
    or you record, as the agent in your session (below).
@@ -86,7 +91,12 @@ its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.j
 3. **Work** according to "Flow in the sandbox" and the following sections, with the tool `caw` (`args` like `caw-ai <command>`; for `plan`,
    `finish` and `advise` the content goes in `file`). Without the tools: `npx caw-ai <command>` in the project folder. The human sees plan,
    questions and decisions in the workbench chat and answers there.
-4. **Element questions:** If the human picks an element with the crosshair in the workbench while developing, `caw_selection` reads it including target, component
+4. **Setup and checks without tokens:** `caw_doctor`, `caw_validate`, `caw_list`, `caw_config` (`read`, or `patch` with `dryRun`;
+   it writes only a valid config), `caw_init`, `caw_explore` (needs `login` or `yes`) and `caw_overlay_check`. Results come as JSON
+   (`structuredContent`). `caw_start` takes typed fields (`command`, `test`, `target`, `step`, `until`, `overlay`, `headless`) and
+   `open`; with `overlay` it returns the watch command instead of starting when the watch is missing. `record`, `fix` and runs with
+   chat use tokens: start them only when the human asks. `caw_status` also returns the last run's result, step and artefacts.
+5. **Element questions:** If the human picks an element with the crosshair in the workbench while developing, `caw_selection` reads it including target, component
    or source file and the step's requests. With that you find the place in the code.
 
 As the agent in the run (tool `caw`) the rules below apply, including "Do not change any application code". Outside of that, as the human's

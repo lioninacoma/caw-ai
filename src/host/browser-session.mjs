@@ -12,7 +12,7 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { totp } from '../shared/totp.mjs';
 import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig } from './devlink-core.mjs';
-import { fileVersion, routeOverlay } from './overlay.mjs';
+import { fileVersion, incompleteText, routeOverlay } from './overlay.mjs';
 import { DEFAULT_MESSAGE_SELECTORS, authOf, browserLaunch, isLoopback } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
 import { responseLine } from './effects.mjs';
@@ -1090,18 +1090,27 @@ export const openBrowserSession = async (spec) => {
         const waitReady = (args = {}) => waitQuiet(framework, pages.current(), { ...args, ignore, pending: (page) => network.pending(page) });
         const ready = await waitReady({ timeout: spec.readyTimeoutMs });
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
-        if (!ready.settled) throw new CawError('app-not-settled', t('session.browser.notSettled', { reason: ready.reason }));
-        if (ready.lastSample?.appReady !== true) throw new CawError('app-not-loaded', t('session.browser.notLoaded', { url: startUrl, framework: framework.label() }));
+        // overlayStrict false (caw-ai overlay check): report instead of throwing, the check reads the diagnosis itself. A broken
+        // app is often just what a mixed state causes.
+        const strict = spec.overlayStrict !== false;
+        let loadProblem = null;
+        if (!ready.settled) loadProblem = new CawError('app-not-settled', t('session.browser.notSettled', { reason: ready.reason }));
+        else if (ready.lastSample?.appReady !== true) loadProblem = new CawError('app-not-loaded', t('session.browser.notLoaded', { url: startUrl, framework: framework.label() }));
+        if (loadProblem !== null && (strict || overlay === null)) throw loadProblem;
         // With an overlay, never silently test the deployed version: SSR cannot be swapped, and if nothing came from the local code the
-        // test ran against the server. Single scripts from the local asset folder served by the server: a mixed state, as a warning.
+        // test ran against the server. Expected parts (app, packages) from the server: a mixed state, the run ends. Single scripts
+        // from the local asset folder served by the server: a mixed state, as a warning.
         let overlaySummary = null;
         if (overlay !== null) {
             const seen = overlay.diagnose();
             if (seen.ssr !== null) throw new CawError('overlay-ssr', t('session.overlay.ssr', { framework: seen.ssr }));
-            if (seen.local === 0) throw new CawError('overlay-unused', t('session.overlay.unused', { source: seen.label, url: startUrl }));
+            // Missed expected parts first: that message names the parts and the pattern that catches them.
+            if (strict && seen.missed.length > 0) throw new CawError('overlay-incomplete', incompleteText(seen));
+            if (strict && seen.local === 0) throw new CawError('overlay-unused', t('session.overlay.unused', { source: seen.label, url: startUrl }));
             if (seen.localBase) addWarning({ type: 'note', text: t('session.overlay.localBase') });
             if (seen.mixed.length > 0) addWarning({ type: 'note', text: t('session.overlay.mixed', { count: seen.mixed.length, examples: seen.mixed.slice(0, 3).join(', ') }) });
-            overlaySummary = { label: seen.label, local: seen.local, server: seen.server, swapped: seen.swapped };
+            if (seen.notLoaded.length > 0) addWarning({ type: 'note', text: t('session.overlay.notLoaded', { parts: seen.notLoaded.join(', ') }) });
+            overlaySummary = { label: seen.label, local: seen.local, server: seen.server, swapped: seen.swapped, missed: seen.missed, notLoaded: seen.notLoaded, ...(loadProblem === null ? {} : { loadProblem: loadProblem.message }) };
         }
 
         // The workbench shows the application's address, requests and console; once per second while it is open.

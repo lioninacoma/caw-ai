@@ -1,6 +1,6 @@
 {
     "name": "caw-ai",
-    "version": "0.1.0",
+    "version": "0.3.0",
     "description": "caw-ai, the Constrained Agentic Webtester: AI-driven integration tests for web apps, Claude behind a fixed set of browser commands, locally or in Docker",
     "keywords": [
         "testing",

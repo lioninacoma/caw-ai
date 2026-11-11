@@ -5,7 +5,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { bridgeWebSocket, prepareOverlay, probeServer } from '../src/host/overlay.mjs';
+import { bridgeWebSocket, incompleteText, prepareOverlay, probeServer } from '../src/host/overlay.mjs';
+
+// An ExtJS app as the Sencha watch leaves it: app Bestellung, packages modell and theme, bootstrap.json in load order.
+const extjsProject = (t) => project(t, {
+    'app/app.json': JSON.stringify({ name: 'Bestellung', output: { js: { path: 'Bestellung.js' } } }),
+    'app/app/Main.js': 'window.APP = "lokal";',
+    'packages/modell/src/M.js': 'window.MODELL = "lokal";',
+    'packages/theme/src/T.js': 'window.THEME = "lokal";',
+    'app/bootstrap.json': JSON.stringify({ loadOrder: [{ path: '../packages/modell/src/M.js' }, { path: '../packages/theme/src/T.js' }, { path: 'app/Main.js' }], packages: { modell: { files: [0] }, theme: { files: [1] } } }),
+});
+const PORTAL = 'https://portal.example';
+const watchChecked = { url: PORTAL, apps: { web: { kind: 'watch', statics: [] } } };
+const extjsConfig = (extra = {}) => ({ framework: 'extjs', apps: { web: { dir: 'app' } }, ...extra });
+const PROXY_PATTERN = '[?&]url=repo:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)';
+
+/** What routeOverlay does per request: local if the overlay answers, otherwise the server. */
+const load = async (overlay, urls) => {
+    for (const url of urls) {
+        const found = await overlay.resolve(url, 'script');
+        overlay.served[found === null ? 'server' : 'local'].set(url, 'script');
+    }
+};
 
 const project = (t, files) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-overlay-'));
@@ -134,4 +155,44 @@ test('HMR: dev server sockets go to it with its origin; others go unchanged to t
     auto.handlers.message('{"type":"hash"}');
     assert.deepEqual(made[3].sent, ['{"type":"hash"}']);
     assert.equal(auto.direct, undefined);
+});
+
+test('Overlay watch: diagnose names parts from the server (missed), parts never loaded, and the pattern that catches them', async (t) => {
+    const root = extjsProject(t);
+    const overlay = await prepareOverlay({ root, config: extjsConfig(), checked: watchChecked, deps: { running: () => true } });
+    // The theme via a plain path below the environment (default pattern), app and modell via a proxy parameter.
+    await load(overlay, [`${PORTAL}/html/js/theme/theme.js`, `${PORTAL}/o/Proxy?url=repo:///Root/Fa/Bestellung.js`, `${PORTAL}/o/Proxy?url=repo:///Root/public/Other.js`]);
+    const seen = overlay.diagnose();
+    assert.equal(seen.local, 1);
+    assert.deepEqual(seen.parts.map(({ label, status }) => [label, status]), [['Bestellung', 'deployed'], ['modell', 'not-loaded'], ['theme', 'local']]);
+    assert.deepEqual(seen.missed, [{ url: `${PORTAL}/o/Proxy?url=repo:///Root/Fa/Bestellung.js`, name: 'Bestellung.js', part: 'Bestellung' }]);
+    assert.deepEqual(seen.notLoaded, ['modell']);
+    assert.deepEqual(seen.suggestions.map(({ pattern }) => pattern), ['[?&]url=repo:///Root/Fa/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)']);
+    const text = incompleteText(seen);
+    assert.match(text, /^Mischstand: 1 Skript\(e\) von Bestellung kamen vom Server statt aus dem lokalen Code:\n {2}https:\/\/portal\.example\/o\/Proxy/);
+    assert.match(text, /caw-ai overlay check --apply/);
+    assert.match(incompleteText({ ...seen, suggestions: [] }), /assetUrlPattern, dessen Gruppe 1 der Dateiname ist/);
+});
+
+test('Overlay watch: assetUrlPattern as a string, as a list and per app all resolve; then nothing is missed', async (t) => {
+    const root = extjsProject(t);
+    const urls = [`${PORTAL}/html/js/theme/theme.js`, `${PORTAL}/o/Proxy?url=repo:///Root/Fa/Bestellung.js`, `https://cdn.example/js/modell.js`];
+    const configs = {
+        string: extjsConfig({ assetUrlPattern: PROXY_PATTERN }),
+        list: extjsConfig({ assetUrlPattern: [PROXY_PATTERN, '^https://cdn\\.example/js/([^/?#]+\\.js)'] }),
+        perApp: extjsConfig({ assetUrlPattern: [PROXY_PATTERN], apps: { web: { dir: 'app', overlay: { assetUrlPattern: '^https://cdn\\.example/js/([^/?#]+\\.js)' } } } }),
+    };
+    for (const [name, config] of Object.entries(configs)) {
+        const overlay = await prepareOverlay({ root, config, checked: watchChecked, deps: { running: () => true } });
+        await load(overlay, urls);
+        assert.match(String((await overlay.resolve(urls[1], 'script')).body), /window\.APP = "lokal"/, name);
+        const seen = overlay.diagnose();
+        if (name === 'string') {
+            assert.deepEqual(seen.missed.map(({ part }) => part), ['modell'], 'the CDN needs its own entry');
+            assert.equal(seen.suggestions[0].source, 'https://cdn.example/js/');
+        } else {
+            assert.deepEqual(seen.missed, [], name);
+            assert.deepEqual(seen.parts.map(({ status }) => status), ['local', 'local', 'local'], name);
+        }
+    }
 });

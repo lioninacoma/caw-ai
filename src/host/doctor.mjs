@@ -7,8 +7,12 @@ import { join } from 'node:path';
 import { AUTH_DIR, agentSandbox, allTargets, authOf, browserLaunch, loadConfig, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
+import { ago } from './code-source.mjs';
+import { frameworkOf } from './framework/index.mjs';
 import { parseEnvFile } from './linux.mjs';
 import { claudeVersion } from './local-agent.mjs';
+import { OVERLAY_CHECK_FILE } from './overlay-check.mjs';
+import { processRunning } from './processes.mjs';
 
 const browserName = (config) => {
     const launch = browserLaunch(config);
@@ -147,7 +151,65 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
             ? { ok: true, optional: true, text: t('cli.doctorReachOk', { target, url }) }
             : { ok: false, optional: true, text: t('cli.doctorReachFail', { target, url }), next: t('cli.doctorReachNext') });
     }
+    for (const entry of await overlayLines(root, config, probes)) add(entry);
     return results;
+};
+
+/**
+ * The overlay lines for ExtJS: per environment with overlay and app with app.json, bootstrap.json, the watch and the last
+ * `caw-ai overlay check`. All optional: only runs with --overlay need them. Never starts the watch.
+ * @param probes.watch tests only: true, false or null (unknown) instead of the process list
+ */
+const overlayLines = async (root, config, probes, now = Date.now()) => {
+    const adapter = frameworkOf(config);
+    if (adapter.watch === undefined || adapter.overlay === undefined) return [];
+    const targets = allTargets(config).filter((target) => {
+        const resolved = resolveTarget(config, target);
+        return resolved.overlay && !resolved.production;
+    });
+    const apps = Object.entries(config.apps ?? {}).filter(([, app]) => typeof app?.dir === 'string' && existsSync(join(root, app.dir, 'app.json')));
+    if (targets.length === 0 || apps.length === 0) return [];
+    const label = adapter.watch.label();
+    let watching;
+    const watch = async () => {
+        if (watching === undefined) watching = await (probes.watch ?? (() => processRunning(adapter.watch.command)))();
+        return watching;
+    };
+    let last = null;
+    try {
+        last = JSON.parse(readFileSync(join(root, RUN_DIR, OVERLAY_CHECK_FILE), 'utf8'));
+    } catch {
+        // No check yet or unreadable: the line says how to run one.
+    }
+    const lines = [];
+    for (const target of targets) {
+        for (const [app, { dir, overlay = {} }] of apps) {
+            const command = overlay.devCommand ?? adapter.watch.start;
+            const next = t('cli.doctorOverlayWatchNext', { command, dir: dir.replaceAll('\\', '/') });
+            try {
+                adapter.overlay.checkAppFiles(join(root, dir), '');
+                lines.push({ ok: true, optional: true, text: t('cli.doctorOverlayBootstrap', { target, app }) });
+            } catch (error) {
+                const problem = String(error?.message ?? error).split('\n')[0].trim().replace(/\.$/, '');
+                lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayBootstrapBad', { target, app, problem }), next });
+            }
+            const running = await watch();
+            if (running === true) lines.push({ ok: true, optional: true, text: t('cli.doctorOverlayWatchOk', { target, app, label }) });
+            else if (running === null) lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayWatchUnknown', { target, app, label }), next });
+            else lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayWatchMissing', { target, app, label }), next });
+            const checked = last !== null && last.target === target && last.app === app && Array.isArray(last.parts) && last.parts.length > 0;
+            if (!checked) {
+                lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayNoCheck', { target, app }), next: t('cli.doctorOverlayNoCheckNext', { target }) });
+                continue;
+            }
+            const age = ago(Math.max(0, now - Date.parse(last.at)));
+            for (const { label: part, status } of last.parts) {
+                const text = t('cli.doctorOverlayPart', { target, app, label: part, status: t(`cli.doctorOverlayStatus.${status}`), ago: age });
+                lines.push(status === 'deployed' ? { ok: false, optional: true, text, next: t('cli.doctorOverlayPartNext') } : { ok: true, optional: true, text });
+            }
+        }
+    }
+    return lines;
 };
 
 /** Prints the checks. Exit 0 when everything required is fine, also when only optional items are missing. */
