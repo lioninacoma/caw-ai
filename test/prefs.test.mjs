@@ -19,13 +19,13 @@ const home = (t) => {
     return { dir, env: { CAW_AI_HOME: dir } };
 };
 
-test('prefs: Ort je Plattform, CAW_AI_HOME gewinnt', () => {
+test('prefs: location per platform, CAW_AI_HOME wins', () => {
     assert.equal(prefsDir({ CAW_AI_HOME: '/x' }), '/x');
     assert.equal(prefsDir({ APPDATA: 'C:\\A' }, 'win32'), join('C:\\A', 'caw-ai'));
     assert.equal(prefsDir({ XDG_CONFIG_HOME: '/cfg' }, 'linux'), join('/cfg', 'caw-ai'));
 });
 
-test('prefs: Animationen bleiben aus, fremde Werte werden abgelehnt', (t) => {
+test('prefs: animations stay off, foreign values are rejected', (t) => {
     const { dir, env } = home(t);
     assert.deepEqual(readPrefs(env), {});
     writePref('animations', 'off', env);
@@ -34,17 +34,17 @@ test('prefs: Animationen bleiben aus, fremde Werte werden abgelehnt', (t) => {
     assert.deepEqual(readPrefs(env), { animations: 'off', chat: 'closed', theme: 'bernstein' });
     writePref('chat', null, env);
     assert.deepEqual(readPrefs(env), { animations: 'off', theme: 'bernstein' });
-    assert.throws(() => writePref('theme', 'Nacht!', env), /Unbekannte/);
-    assert.throws(() => writePref('animations', '<script>', env), /Unbekannte/);
-    assert.throws(() => writePref('token', 'x', env), /Unbekannte/);
-    assert.throws(() => writePref('fed', '7', env), /Unbekannte/, 'den Raben fuettert niemand mehr');
+    assert.throws(() => writePref('theme', 'Nacht!', env), /Unknown setting/);
+    assert.throws(() => writePref('animations', '<script>', env), /Unknown setting/);
+    assert.throws(() => writePref('token', 'x', env), /Unknown setting/);
+    assert.throws(() => writePref('fed', '7', env), /Unknown setting/, 'nobody feeds the raven any more');
     writeFileSync(join(dir, 'prefs.json'), '{"animations":"wild","raven":"caged","x":1}');
     assert.deepEqual(readPrefs(env), {});
     writeFileSync(join(dir, 'prefs.json'), 'kaputt');
     assert.deepEqual(readPrefs(env), {});
 });
 
-test('Theme: die eingebauten Pakete bestehen das Schema, ohne Hinweise', () => {
+test('theme: the built-in packages pass the schema without warnings', () => {
     for (const { name, builtin } of listThemes({ CAW_AI_HOME: '/gibt-es-nicht' })) {
         assert.ok(builtin);
         assert.deepEqual(validateTheme(readThemePackage(name)), [], name);
@@ -52,14 +52,14 @@ test('Theme: die eingebauten Pakete bestehen das Schema, ohne Hinweise', () => {
     }
 });
 
-test('Theme: nacht, dann Team-Standard, dann eigene Wahl; eigene Themes erben von base', (t) => {
+test('theme: nacht, then team default, then own choice; custom themes inherit from base', (t) => {
     const { dir, env } = home(t);
     assert.equal(activeTheme(env).name, 'nacht');
-    assert.equal(activeTheme(env).marks.fail, '[FEHLER]', 'Texte in der aktuellen Sprache');
+    assert.equal(activeTheme(env).marks.fail, '[FEHLER]', 'texts in the current language');
     setProjectTheme({ base: 'phosphor', colors: { accent: '#00ff00' } });
     assert.deepEqual([activeTheme(env).base, activeTheme(env).colors.accent, activeTheme(env).mono], ['phosphor', '#00ff00', true]);
     writePref('theme', 'nacht', env);
-    assert.equal(activeTheme(env).colors.accent, loadTheme('nacht').colors.accent, 'die eigene Wahl gewinnt');
+    assert.equal(activeTheme(env).colors.accent, loadTheme('nacht').colors.accent, 'the own choice wins');
     saveTheme({ themeApi: 1, name: 'hafen', base: 'bernstein', colors: { heart: '#ff00ff' }, marks: { ok: '[ PASS ]' } }, env);
     writePref('theme', 'hafen', env);
     const own = activeTheme(env);
@@ -69,14 +69,14 @@ test('Theme: nacht, dann Team-Standard, dann eigene Wahl; eigene Themes erben vo
     assert.deepEqual(listThemes(env).map(({ name }) => name), ['nacht', 'bernstein', 'phosphor', 'kai']);
     deleteTheme('kai', env);
     assert.equal(readThemePackage('kai', env), undefined);
-    // Kaputte oder fremde Pakete zaehlen nicht: Es gilt der Team-Standard.
+    // Broken or foreign packages do not count: the team default applies.
     mkdirSync(join(dir, 'themes', 'kaputt'), { recursive: true });
     writeFileSync(join(dir, 'themes', 'kaputt', 'theme.json'), '{"themeApi":1,"name":"kaputt","base":"nacht","colors":{"text":"url(x)"}}');
     writePref('theme', 'kaputt', env);
     assert.equal(activeTheme(env).base, 'phosphor');
 });
 
-test('Theme aus der Seite: Schema, kein css, keine Schriftdateien, keine eingebauten Namen', (t) => {
+test('theme from the page: schema, no css, no font files, no built-in names', (t) => {
     const { env } = home(t);
     const ok = { themeApi: 1, name: 'meins', base: 'nacht' };
     for (const bad of [
@@ -89,12 +89,12 @@ test('Theme aus der Seite: Schema, kein css, keine Schriftdateien, keine eingeba
         { ...ok, name: 'nacht' },
         { ...ok, base: undefined },
         { ...ok, evil: 1 },
-    ]) assert.throws(() => saveTheme(bad, env), /ungueltig|eingebaut/, JSON.stringify(bad));
+    ]) assert.throws(() => saveTheme(bad, env), /Invalid theme|built in/, JSON.stringify(bad));
     saveTheme(ok, env);
     assert.equal(readThemePackage('meins', env).base, 'nacht');
 });
 
-test('Theme: Team-Standard und Hinweise', () => {
+test('theme: team default and warnings', () => {
     assert.deepEqual(projectThemeProblems({ base: 'nacht', colors: { accent: '#123456' } }), []);
     assert.deepEqual(projectThemeProblems({ base: 'tag', colors: { glow: '#123456', text: 'weiss' }, extra: 1 }).map(({ key }) => key), ['base', 'colors.glow', 'colors.text', 'extra']);
     assert.ok(contrast('#e8e9f7', '#0f1026') > 4.5);

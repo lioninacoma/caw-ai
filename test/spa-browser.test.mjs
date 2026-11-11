@@ -1,5 +1,5 @@
-// Adapter react, vue und angular in Chrome (headless), mit den Spuren, die die Frameworks im Dev-Build am DOM hinterlassen.
-// Ohne Chrome uebersprungen.
+// The react, vue and angular adapters in Chrome (headless), with the traces the frameworks leave on the DOM in dev builds.
+// Skipped without Chrome.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
@@ -19,10 +19,10 @@ const FORM = '<div id="root"><form aria-label="Bestellung"><button id="b"><span>
 const describe = (adapter) => page.locator('#b span').evaluate(adapter.targets, { mode: 'describe' });
 const probe = (adapter) => page.evaluate(adapter.probe, null);
 
-test('react: Komponente aus der Fiber, auch hinter memo; Bereitschaft am Root-Container', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('react: component from the fiber, also behind memo; readiness at the root container', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     await page.setContent(FORM);
-    assert.equal((await probe(FRAMEWORKS.react)).appReady, false, 'React nicht eingehaengt');
+    assert.equal((await probe(FRAMEWORKS.react)).appReady, false, 'React not mounted');
     await page.evaluate(() => {
         function OrderForm() {}
         const memo = { $$typeof: 'memo', type: OrderForm };
@@ -34,9 +34,9 @@ test('react: Komponente aus der Fiber, auch hinter memo; Bereitschaft am Root-Co
     assert.deepEqual(described, { role: 'button', name: 'Senden', inside: { role: 'form', name: 'Bestellung' }, component: 'OrderForm' });
     assert.equal(targetLabel(described), 'button "Senden" in <OrderForm>');
     const found = await page.evaluateHandle(`(${FRAMEWORKS.react.targets})(null, ${JSON.stringify({ mode: 'find', target: { ...described, component: 'Umbenannt' } })})`);
-    assert.ok(found.asElement() !== null, 'component ist nur ein Hinweis, find wertet ihn nicht aus');
+    assert.ok(found.asElement() !== null, 'component is only a hint, find ignores it');
     assert.equal((await probe(FRAMEWORKS.react)).appReady, true);
-    // Dev-Build von React 19: Besitzerkette. Der Knopf allein sagt wenig, der Bildschirm, der ihn rendert, fuehrt zur Datei.
+    // React 19 dev build: owner chain. The button alone says little; the screen rendering it leads to the file.
     await page.evaluate(() => {
         function Button() {}
         function OrdersScreen() {}
@@ -50,8 +50,8 @@ test('react: Komponente aus der Fiber, auch hinter memo; Bereitschaft am Root-Co
     return undefined;
 });
 
-test('vue: Komponente und Datei der SFC; Bereitschaft an data-v-app', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('vue: component and file of the SFC; readiness via data-v-app', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     await page.setContent(FORM);
     await page.evaluate(() => {
         document.getElementById('b').__vueParentComponent = { type: { __name: 'OrderForm', __file: 'src/components/OrderForm.vue' }, parent: null };
@@ -62,8 +62,8 @@ test('vue: Komponente und Datei der SFC; Bereitschaft an data-v-app', async (t) 
     return undefined;
 });
 
-test('angular: Komponente über ng, minifizierte Namen fallen weg; Zone.js instabil heißt lädt', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('angular: component via ng, minified names are dropped; unstable Zone.js means loading', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     await page.setContent(`${FORM.replace('<div id="root">', '<div id="root" ng-version="19.0.0">')}`);
     await page.evaluate(() => {
         class OrderFormComponent {}
@@ -75,21 +75,21 @@ test('angular: Komponente über ng, minifizierte Namen fallen weg; Zone.js insta
     await page.waitForTimeout(200);
     const unstable = await probe(FRAMEWORKS.angular);
     assert.equal(unstable.appReady, true);
-    assert.equal(unstable.loadingStores, 1, 'Zone.js hat noch Aufgaben');
-    await page.evaluate(() => { window.__stable = true; window.ng.getOwningComponent = () => new (class t {})(); });
+    assert.equal(unstable.loadingStores, 1, 'Zone.js still has tasks');
+    await page.evaluate(() => { window.__stable = true; window.ng.getOwningComponent = () => new (class a {})(); });
     assert.equal((await probe(FRAMEWORKS.angular)).loadingStores, 0);
-    assert.equal((await describe(FRAMEWORKS.angular)).component, undefined, 'Produktions-Build: kein Hinweis, kein Fehler');
+    assert.equal((await describe(FRAMEWORKS.angular)).component, undefined, 'production build: no hint, no error');
     return undefined;
 });
 
-test('Produktions-Build ohne Spuren: Beschreiben wie web, kein Fehler', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('Production build without traces: describes like web, no error', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     await page.setContent(FORM);
     for (const name of ['react', 'vue', 'angular']) assert.deepEqual(await describe(FRAMEWORKS[name]), await describe(FRAMEWORKS.web), name);
     return undefined;
 });
 
-test('stackSkip: Framework-Dateien, nicht die Anwendung', () => {
+test('stackSkip: framework files, not the application', () => {
     assert.ok(FRAMEWORKS.react.stackSkip.test('http://app.localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=1'));
     assert.ok(FRAMEWORKS.vue.stackSkip.test('https://a.example/node_modules/@vue/runtime-core/dist/x.js'));
     assert.ok(FRAMEWORKS.angular.stackSkip.test('https://a.example/polyfills-ABC.js'));
@@ -97,8 +97,8 @@ test('stackSkip: Framework-Dateien, nicht die Anwendung', () => {
     for (const adapter of [FRAMEWORKS.react, FRAMEWORKS.vue, FRAMEWORKS.angular]) assert.ok(adapter.hints.length > 0);
 });
 
-test('react: SSR mit hydrateRoot(document) (Next.js App Router, React Router Framework-Modus) gilt als eingehaengt', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('react: SSR with hydrateRoot(document) (Next.js App Router, React Router framework mode) counts as mounted', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     await page.setContent(FORM);
     assert.equal((await probe(FRAMEWORKS.react)).appReady, false);
     await page.evaluate(() => { document['__reactContainer$xyz'] = {}; });

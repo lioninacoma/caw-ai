@@ -17,13 +17,13 @@ const build = (t, files) => {
     return dir;
 };
 
-/** Ein Projekt mit Build unter dist, das Overlay darueber und die Antwort der Route wie im Browser. */
+/** A project with a build under dist, the overlay on top and the route's answer as in the browser. */
 const overlayOf = async (t, files, { command } = {}) => {
     const root = build(t, Object.fromEntries(Object.entries(files).map(([name, text]) => [`dist/${name}`, text])));
     const checked = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [], ...(command === undefined ? {} : { command }) } } };
     const overlay = await prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked });
     let handler;
-    await routeOverlay({ route: async (match, handle) => { handler = handle; }, routeWebSocket: async () => { throw new Error('ohne Dev-Server kein WebSocket'); } }, overlay);
+    await routeOverlay({ route: async (match, handle) => { handler = handle; }, routeWebSocket: async () => { throw new Error('no WebSocket without a dev server'); } }, overlay);
     const answer = async (url, type = 'script') => {
         let result = null;
         const request = { url: () => url, resourceType: () => type };
@@ -33,30 +33,30 @@ const overlayOf = async (t, files, { command } = {}) => {
     return { root, overlay, answer };
 };
 
-test('Hash-Vergleich: Vite, Angular und webpack, aber nicht Namen, die nur ähnlich sind', () => {
-    assert.equal(sameButHash('index-D-7xQ_aZ.js', 'index-Bq9k1LmZ.js'), true, 'Vite, Hash mit - und _');
+test('Hash comparison: Vite, Angular and webpack, but not names that are merely similar', () => {
+    assert.equal(sameButHash('index-D-7xQ_aZ.js', 'index-Bq9k1LmZ.js'), true, 'Vite, hash with - and _');
     assert.equal(sameButHash('main-ABCD1234.js', 'main-ZYXW9876.js'), true, 'Angular');
     assert.equal(sameButHash('main.0a1b2c3d4e5f6a7b.js', 'main.9f8e7d6c5b4a3f2e.js'), true, 'webpack');
-    assert.equal(sameButHash('index-AAAA1111.js', 'index-AAAA1111.js'), false, 'gleich ist kein Hash-Unterschied');
-    assert.equal(sameButHash('index-AAAA1111.js', 'index-BBBB2222.css'), false, 'andere Endung');
-    assert.equal(sameButHash('index-AAAA1111.js', 'Info-BBBB2222.js'), false, 'anderer Name');
-    assert.equal(sameButHash('index-AAAA1111.js', 'index-BBBB222.js'), true, 'andere Hash-Länge, etwa nach einer anderen Bundler-Einstellung');
-    assert.equal(sameButHash('main.0a1b2c', 'main.9f8e7d'), false, 'ohne Endung kein Hash');
-    assert.equal(sameButHash(`app-${'a1'.repeat(32)}.js`, 'app-B2C3D4E5.js'), true, 'Digest mit 64 Zeichen');
-    assert.equal(sameButHash(`app-${'a1'.repeat(33)}.js`, 'app-B2C3D4E5.js'), false, 'mehr als 64 Zeichen ist kein Hash');
-    assert.equal(sameButHash('app-AB1.js', 'app-CD2.js'), false, 'weniger als 6 Zeichen ist kein Hash');
-    assert.equal(sameButHash('main.0a1b2c3d.chunk.js', 'main.9f8e7d6c.chunk.js'), true, 'Hash vor mehreren Endungen');
-    assert.equal(sameButHash('main.0a1b2c3d.chunk.js', 'main.9f8e7d6c.js'), false, 'andere Endungen');
-    assert.equal(sameButHash('main.js', 'main-A1B2C3D4.js'), true, 'fester Name gegen gehashten');
+    assert.equal(sameButHash('index-AAAA1111.js', 'index-AAAA1111.js'), false, 'equal is no hash difference');
+    assert.equal(sameButHash('index-AAAA1111.js', 'index-BBBB2222.css'), false, 'different extension');
+    assert.equal(sameButHash('index-AAAA1111.js', 'Info-BBBB2222.js'), false, 'different name');
+    assert.equal(sameButHash('index-AAAA1111.js', 'index-BBBB222.js'), true, 'different hash length, e.g. after another bundler setting');
+    assert.equal(sameButHash('main.0a1b2c', 'main.9f8e7d'), false, 'no extension, no hash');
+    assert.equal(sameButHash(`app-${'a1'.repeat(32)}.js`, 'app-B2C3D4E5.js'), true, 'digest with 64 characters');
+    assert.equal(sameButHash(`app-${'a1'.repeat(33)}.js`, 'app-B2C3D4E5.js'), false, 'more than 64 characters is no hash');
+    assert.equal(sameButHash('app-AB1.js', 'app-CD2.js'), false, 'fewer than 6 characters is no hash');
+    assert.equal(sameButHash('main.0a1b2c3d.chunk.js', 'main.9f8e7d6c.chunk.js'), true, 'hash before several extensions');
+    assert.equal(sameButHash('main.0a1b2c3d.chunk.js', 'main.9f8e7d6c.js'), false, 'different extensions');
+    assert.equal(sameButHash('main.js', 'main-A1B2C3D4.js'), true, 'fixed name versus hashed one');
     assert.equal(sameButHash('main-A1B2C3D4.js', 'main.js'), true);
     assert.equal(sameButHash('styles.css', 'styles.0a1b2c3d4e.css'), true);
-    assert.equal(sameButHash('main.js', 'main-button.js'), false, 'ein Wort ist kein Hash');
-    assert.equal(sameButHash('my-button.js', 'my-dialog.js'), false, 'kein Hash: nur Kleinbuchstaben');
-    assert.equal(sameButHash('my-button.js', 'my-dialog.js', { loose: true }), true, 'nur wenn die lokale Seite die Datei laedt');
+    assert.equal(sameButHash('main.js', 'main-button.js'), false, 'a word is no hash');
+    assert.equal(sameButHash('my-button.js', 'my-dialog.js'), false, 'no hash: lowercase only');
+    assert.equal(sameButHash('my-button.js', 'my-dialog.js', { loose: true }), true, 'only when the local page loads the file');
     assert.equal(sameButHash('main.js', 'main.js'), false);
 });
 
-test('resolveLocalBuild: exakt, bis auf den Hash, eindeutig oder gar nicht', (t) => {
+test('resolveLocalBuild: exact, except for the hash, unambiguous or not at all', (t) => {
     const dir = build(t, {
         'assets/index-NEW11111.js': 'neu',
         'assets/index-NEW11111.css': 'css',
@@ -69,15 +69,15 @@ test('resolveLocalBuild: exakt, bis auf den Hash, eindeutig oder gar nicht', (t)
     assert.equal(resolveLocalBuild(dir, 'assets/index-OLD99999.js').file, join(dir, 'assets', 'index-NEW11111.js'));
     assert.deepEqual(resolveLocalBuild(dir, 'assets/index-OLD99999.css'), { file: join(dir, 'assets', 'index-NEW11111.css'), contentType: 'text/css', alias: 'index-NEW11111.css' });
     assert.equal(resolveLocalBuild(dir, 'main-DEPLOYED.js').file, join(dir, 'main-LOCAL123.js'));
-    assert.equal(resolveLocalBuild(dir, 'chunk-DEPLOYED.js'), null, 'mehrdeutig: kommt vom Server');
+    assert.equal(resolveLocalBuild(dir, 'chunk-DEPLOYED.js'), null, 'ambiguous: comes from the server');
     assert.equal(resolveLocalBuild(dir, 'assets/logo-ABCD1234.svg'), null);
-    assert.equal(resolveLocalBuild(dir, 'info'), null, 'SPA-Route');
+    assert.equal(resolveLocalBuild(dir, 'info'), null, 'SPA route');
     assert.equal(resolveLocalBuild(dir, '../secret-ABCD1234.js'), null);
     assert.equal(resolveLocalBuild(join(dir, 'fehlt'), 'main-X.js'), null);
 });
 
-test('resolveLocalBuild: mehrere Dateien gleichen Namens bis auf den Hash, die lokale Seite nennt den Einstieg', (t) => {
-    // Vite nennt auch einen lazy Chunk aus pages/x/index.tsx `index-…js`.
+test('resolveLocalBuild: several files with the same name except for the hash, the local page names the entry', (t) => {
+    // Vite also names a lazy chunk from pages/x/index.tsx `index-…js`.
     const dir = build(t, {
         'index.html': '<script type="module" crossorigin src="/assets/index-NEW11111.js"></script>',
         'assets/index-NEW11111.js': 'entry',
@@ -85,31 +85,31 @@ test('resolveLocalBuild: mehrere Dateien gleichen Namens bis auf den Hash, die l
     });
     assert.equal(resolveLocalBuild(dir, 'assets/index-OLD99999.js').file, join(dir, 'assets', 'index-NEW11111.js'));
     const unnamed = build(t, { 'assets/index-NEW11111.js': 'entry', 'assets/index-LAZY2222.js': 'lazy' });
-    assert.equal(resolveLocalBuild(unnamed, 'assets/index-OLD99999.js'), null, 'ohne Seite bleibt es mehrdeutig');
+    assert.equal(resolveLocalBuild(unnamed, 'assets/index-OLD99999.js'), null, 'without a page it stays ambiguous');
 });
 
-test('resolveLocalBuild: der Watch-Build schreibt neu, der Ordner wird neu gelesen', (t) => {
+test('resolveLocalBuild: the watch build rewrites, the folder is read again', (t) => {
     const dir = build(t, { 'main-AAAA1111.js': 'a' });
     assert.equal(resolveLocalBuild(dir, 'main-OLD00000.js').file, join(dir, 'main-AAAA1111.js'));
     rmSync(join(dir, 'main-AAAA1111.js'));
     writeFileSync(join(dir, 'main-BBBB2222.js'), 'b');
-    // Auf manchen Dateisystemen ist die mtime grob; sicherstellen, dass sie sich aendert.
+    // Some file systems have a coarse mtime; make sure it changes.
     utimesSync(dir, new Date(), new Date(Date.now() + 5000));
     assert.equal(resolveLocalBuild(dir, 'main-OLD00000.js').file, join(dir, 'main-BBBB2222.js'));
 });
 
-test('contentTypeOf und hasBuild', (t) => {
+test('contentTypeOf and hasBuild', (t) => {
     assert.equal(contentTypeOf('a.mjs'), 'application/javascript');
     assert.equal(contentTypeOf('a.woff2'), 'font/woff2');
     assert.equal(contentTypeOf('a.js.map'), 'application/json');
     assert.equal(contentTypeOf('a.unknown'), 'application/octet-stream');
     assert.equal(hasBuild(build(t, { 'browser/main-X.js': 'x' })), true);
-    assert.equal(hasBuild(build(t, { 'index.html': 'x' })), true, 'eine Seite reicht');
-    assert.equal(hasBuild(build(t, { 'app/browser/index.html': 'x', 'app/browser/main-X.js': 'x' })), false, 'zu weit oben');
+    assert.equal(hasBuild(build(t, { 'index.html': 'x' })), true, 'a page is enough');
+    assert.equal(hasBuild(build(t, { 'app/browser/index.html': 'x', 'app/browser/main-X.js': 'x' })), false, 'too far up');
     assert.equal(hasBuild(join(tmpdir(), 'caw-gibt-es-nicht')), false);
 });
 
-test('Overlay build: ohne Build, zu weit oben oder veraltet endet der Lauf vor dem Browser mit dem Grund', async (t) => {
+test('Overlay build: without a build, too far up or stale, the run ends before the browser with the reason', async (t) => {
     const root = build(t, { 'src/x.js': 'x', 'dist/app/browser/index.html': 'x', 'dist/app/browser/main-A1B2C3D4.js': 'x' });
     const config = { apps: { web: { dir: '.' } } };
     const checked = (dir, command) => ({ url: 'https://app.example', apps: { web: { kind: 'build', dir, statics: [], ...(command === undefined ? {} : { command }) } } });
@@ -122,7 +122,7 @@ test('Overlay build: ohne Build, zu weit oben oder veraltet endet der Lauf vor d
     await assert.rejects(prepareOverlay({ root, config, checked: checked('dist/app/browser') }), (error) => /ist älter als deine letzte Änderung \(src\/x\.js/.test(error.message) && /overlay\.buildCommand/.test(error.message));
 });
 
-test('Overlay build: Ist der Build alt und steht buildCommand in der Config, baut caw selbst und prueft danach', async (t) => {
+test('Overlay build: if the build is stale and the config has buildCommand, caw builds itself and checks again', async (t) => {
     const root = build(t, { 'src/x.js': 'x', 'dist/main.js': 'alt' });
     const past = Date.now() / 1000 - 600;
     utimesSync(join(root, 'dist/main.js'), past, past);
@@ -136,7 +136,7 @@ test('Overlay build: Ist der Build alt und steht buildCommand in der Config, bau
     await assert.rejects(prepareOverlay({ root, config, checked: failing }), (error) => error.code === 'overlay-not-ready' && /ist gescheitert/.test(error.message));
 });
 
-test('Overlay build: Dateien mit Typ und als Bytes, nie gecacht; Seiten, fremde Hosts und Unbekanntes vom Server', async (t) => {
+test('Overlay build: files with type and as bytes, never cached; pages, foreign hosts and unknown files from the server', async (t) => {
     const { answer } = await overlayOf(t, { 'assets/index-NEW11111.js': 'neu', 'assets/index-NEW11111.css': 'body{}' });
     const js = await answer('https://app.example/assets/index-OLD00000.js?v=1');
     assert.equal(js.fulfill.contentType, 'application/javascript');
@@ -149,16 +149,16 @@ test('Overlay build: Dateien mit Typ und als Bytes, nie gecacht; Seiten, fremde 
     assert.equal(await answer('https://other.example/assets/index-OLD00000.js'), 'fallback');
 });
 
-test('moduleAlias: ein ES-Modul unter deploytem Namen verweist auf das lokale, damit es nur einmal läuft', async (t) => {
+test('moduleAlias: an ES module under the deployed name re-exports the local one, so it runs only once', async (t) => {
     assert.equal(moduleAlias('index-NEW.js', 'import{a as b}from"./x.js";console.log(b)'), 'import "./index-NEW.js";\nexport * from "./index-NEW.js";\n');
     assert.match(moduleAlias('main-NEW.js', 'const a=1;export{a as default,c as d};'), /export \{ default \} from "\.\/main-NEW\.js"/);
-    assert.equal(moduleAlias('main.0a1b2c3d.js', '(()=>{var e={};self.webpackChunk=[]})();'), null, 'klassisches Skript');
+    assert.equal(moduleAlias('main.0a1b2c3d.js', '(()=>{var e={};self.webpackChunk=[]})();'), null, 'classic script');
     assert.equal(moduleAlias('index-NEW.css', 'import"x";'), null);
-    assert.doesNotMatch(moduleAlias('index-NEW.js', 'import{a}from"./x.js";const l="Set as default";export{a as b};'), /default/, '„as default“ in einem String ist kein Export');
+    assert.doesNotMatch(moduleAlias('index-NEW.js', 'import{a}from"./x.js";const l="Set as default";export{a as b};'), /default/, '"as default" in a string is no export');
     assert.match(moduleAlias('index-NEW.js', 'export default 1;'), /export \{ default \}/);
 
     const { answer } = await overlayOf(t, { 'assets/index-NEW11111.js': 'import"./vendor-AAAA1111.js";export{x as default};' });
     const bodyOf = async (url) => String((await answer(url)).fulfill.body);
     assert.match(await bodyOf('https://app.example/assets/index-OLD00000.js'), /^import "\.\/index-NEW11111\.js";/);
-    assert.match(await bodyOf('https://app.example/assets/index-NEW11111.js'), /^import"\.\/vendor/, 'unter eigenem Namen der Inhalt');
+    assert.match(await bodyOf('https://app.example/assets/index-NEW11111.js'), /^import"\.\/vendor/, 'the content under its own name');
 });

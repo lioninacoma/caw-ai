@@ -1,5 +1,5 @@
-// Die Ablaeufe rund um einen Schritt. Was Claude geschafft hat, muss auch ohne Claude laufen, und erst danach entscheidet der
-// Mensch im Chat, ob es den Testplan abloest. Scheitert ein Schritt, klaert der Mensch ihn im Chat und kann ihn beheben lassen.
+// The flows around a step. What Claude achieved must also run without Claude, and only then does the human decide in the
+// chat whether it replaces the test plan. If a step fails, the human clarifies it in the chat and can have it fixed.
 
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -8,34 +8,34 @@ import { cutReplay, positionalActions, replayOf, replayUpToStale, withBaselines,
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { staleSteps } from './test-file.mjs';
 
-// Beschriftungen als Getter: Die Sprache steht beim Import noch nicht fest. Kopien mit Spread entstehen erst zur Laufzeit.
+// Labels as getters: the language is not settled at import time. Copies via spread are only made at runtime.
 const button = (id, key, extra = {}) => ({ id, get label() { return t(key); }, ...extra });
 const ADOPT = { id: 'adopt', primary: true };
-/** Der Knopf nennt, wie viele Schritte der Testplan dann hat. */
+/** The button states how many steps the test plan will then have. */
 const adoptButton = (count, extra = {}) => ({ ...ADOPT, label: t('run.button.adopt', { count }), ...extra });
-// Verwerfen laesst sich nicht rueckgaengig machen: Es will ein zweites Mal geklickt werden, wie Abbrechen im Kopf des Chats.
+// Discarding cannot be undone: it needs a second click, like Cancel in the chat header.
 const DISCARD = { id: 'discard', get label() { return t('run.button.discardDraft'); }, get confirm() { return t('run.button.discardSure'); } };
 const FIX = button('fix', 'run.button.fix', { primary: true });
 const RERECORD = button('fix', 'run.button.rerecord', { primary: true });
 const RERUN = button('rerun', 'run.button.rerun', { primary: true });
-// Beendet regulaer („Lauf beenden“): mit dem Ergebnis des Laufs. „Abbrechen“ im Kopf des Chats beendet dagegen sofort, als Fehler ohne Ergebnis.
+// Ends regularly with the result of the run. Cancel in the chat header ends immediately, as an error without a result.
 const CLOSE = button('close', 'run.button.close');
 const ASK = button('ask', 'run.button.ask', { primary: true });
-// Nur die Wirkung weicht ab, die Pruefung ist erfuellt: Die gelernte Wirkung vergessen, ohne Claude und ohne Tokens.
+// Only the effects deviate, the check is met: forget the learned effects, without Claude and without tokens.
 const FORGET_EFFECT = button('forget-effect', 'run.button.forgetEffect');
-// Nur Skriptfehler, etwa aus fremdem Code: in consoleIgnore eintragen und gleich neu pruefen, ohne Claude und ohne Tokens.
+// Only script errors, e.g. from third-party code: add them to consoleIgnore and re-check right away, without Claude and tokens.
 const IGNORE_ERRORS = button('ignore-errors', 'run.button.ignoreErrors', { primary: true });
 const ONLY_CLOSE = button('close', 'run.button.onlyClose', { primary: true });
-// Nach der Uebergabe, beim Entwickeln im hergestellten Zustand.
+// After the handover, while developing in the prepared state.
 const RESTORE = button('restore', 'run.button.restore', { primary: true });
 const END_DEVELOP = button('end', 'run.button.endDevelop');
 
 const withoutDot = (text) => text.replace(/\.$/, '');
 
-/** Ergaenzte Vergleichswerte in einem Satz fuer den Chat. */
+/** Added baselines in one sentence for the chat. */
 const baselineText = (baselines) => t('run.flow.baselines', { ids: [...baselines.keys()].join(', ') });
 
-/** Warum ein Lauf nicht bestanden hat, in einem Satz fuer den Chat. */
+/** Why a run did not pass, in one sentence for the chat. */
 const failureText = (verdict) => {
     const failed = (verdict?.results ?? []).find(({ status }) => status === 'fail');
     return withoutDot(verdict?.reason ?? failed?.note ?? verdict?.failures?.[0]?.text ?? (failed === undefined ? t('run.flow.seeReport') : t('run.flow.notMet', { id: failed.id })));
@@ -45,38 +45,38 @@ const hardFailures = (verdict) => (verdict?.failures ?? []).map(({ type, text, a
 const LISTED = 3;
 const listed = (texts) => (texts.length <= LISTED ? texts.join('; ') : t('run.flow.andMore', { shown: texts.slice(0, LISTED).join('; '), count: texts.length - LISTED }));
 
-/** Harte Fehler und Warnungen in einem Satz: Ohne Claude ist das alles, was der Mensch im Chat davon sieht. */
+/** Hard failures and warnings in one sentence: without Claude this is all the human sees of them in the chat. */
 const findingsText = (verdict) => [
     ...(hardFailures(verdict).length === 0 ? [] : [t('run.flow.hardFailures', { list: listed(hardFailures(verdict)) })]),
     ...((verdict?.warnings ?? []).length === 0 ? [] : [t('run.flow.warnings', { list: listed(verdict.warnings.map(({ text, origin }) => `${withoutDot(text)}${origin === undefined ? '' : ` (${origin})`}`)) })]),
 ].join('');
 
-/** Geaenderte Dateien nennt auch der Chat: Code der Anwendung pruefen Lint und ein neuer Lauf, committet wird nie. */
+/** The chat also names changed files: app code is checked by lint and a new run; nothing is ever committed. */
 const noticeFiles = (files, chat) => {
     if (files.length === 0) return;
     const code = appFilesOf(files).length > 0 ? t('run.flow.checkChange') : '';
     chat.notice?.(t('run.flow.changedFiles', { files: files.join(', '), code }));
 };
 
-/** Die geaenderten Dateien der Anwendung, ohne Config und Projektkontext von caw-ai. */
+/** The changed files of the app, without the caw-ai config and project context. */
 const appFilesOf = (files) => files.filter((file) => file !== CONFIG_FILE && file !== CONTEXT_FILE);
 
-/** Was ein Beheben ergeben hat, so wie es der Pruefdurchlauf und die Entscheidung brauchen. */
+/** What a fix produced, as the check run and the decision need it. */
 const changeOf = ({ id, reason, rerecord, fresh, expectChange }) => ({ id, reason, fresh: fresh ?? [], ...(rerecord ? { rerecord } : {}), ...(expectChange === undefined ? {} : { expectChange }) });
 
 /**
- * Ein im selben Browser behobener Schritt entsteht aus dem Test vom Beginn des Laufs. Was der Mensch seitdem aus Empfehlungen
- * uebernommen hat, gilt fuer die anderen Schritte weiter.
+ * A step fixed in the same browser is built from the test as it was at the start of the run. What the human has adopted
+ * from advice since then still applies to the other steps.
  */
 const carry = (candidate, current, repairedId) => {
     const steps = candidate.steps.map((step) => (step.id === repairedId ? step : current.steps.find(({ id }) => id === step.id) ?? step));
     return { ...candidate, notes: current.notes, steps, expectations: steps.map(({ id, expect }) => ({ id, text: expect })) };
 };
 
-/** Der Mensch entscheidet, ob Claude startet: Bis dahin laufen weder Docker noch Token, und das Angebot steht im offenen Chat. */
+/** The human decides whether Claude starts: until then neither Docker nor tokens run, and the offer stays in the open chat. */
 const createFixer = ({ sandbox, openSandbox }) => {
     let box = sandbox;
-    /** @returns die Sandbox oder null, wenn sie gerade nicht geht; `say` meldet das */
+        /** @returns the sandbox or null if it is unavailable right now; `say` reports that */
     const open = async (chat, say) => {
         if (box !== undefined && box !== null) return box;
         try {
@@ -93,15 +93,15 @@ const createFixer = ({ sandbox, openSandbox }) => {
     return {
         sandbox: () => box,
         open,
-        /** Ein Schritt, dessen Plan sich durch eine Empfehlung geaendert hat, braucht eine neue Aufnahme. @returns der Schritt oder null */
+        /** A step whose plan changed through advice needs a new recording. @returns the step or null */
         offerChanged: async ({ id, title }, chat) => {
             const choice = await chat.choose('deciding', t('run.flow.offerChanged', { id, title: withoutDot(title) }), [RERECORD, CLOSE]);
             if (choice !== RERECORD.id) return null;
             return await open(chat, cannotFix(chat)) === null ? null : { id, reason: t('run.flow.planChanged', { title: withoutDot(title) }), rerecord: true };
         },
         /**
-         * Claude empfiehlt von sich aus, wenn der Lauf Fehler oder Warnungen hatte.
-         * @returns das Ergebnis von advise oder null
+         * Claude advises on its own if the run had failures or warnings.
+         * @returns the result of advise or null
          */
         advise: async ({ flawed, advise, chat }, spec) => {
             if (!flawed) return null;
@@ -109,12 +109,12 @@ const createFixer = ({ sandbox, openSandbox }) => {
             return ready === null ? null : advise({ sandbox: ready, spec });
         },
         /**
-         * Ein Schritt ist gescheitert: Der Mensch kann Claude fragen, im Zustand des Fehlers, und ihn beheben lassen. Erst seine
-         * Nachricht oder sein Klick startet Claude.
-         * @param spec der Test, auf den sich Empfehlungen im Gespraech beziehen
-         * @param canAsk der Knopf „Ursache von Claude untersuchen lassen“: Claude empfiehlt wie mit --advise, nur auf Klick
-         * @returns { advice, target, repaired, ask, forget }: `advice` aus dem Gespraech oder null; `forget`: die gelernte Wirkung dieses Schritts vergessen; `target` wird mit Vorlauf behoben; `repaired`
-         *          ist schon im selben Browser behoben; `ask`: Claude soll die Ursache suchen und empfehlen
+         * A step failed: the human can ask Claude, in the failure state, and have it fixed. Only their message or
+         * click starts Claude.
+         * @param spec the test that advice in the conversation refers to
+         * @param canAsk the "ask Claude for the cause" button: Claude advises as with --advise, only on click
+         * @returns { advice, target, repaired, ask, forget }: `advice` from the conversation or null; `forget`: forget the learned effects of this step; `target` is fixed with a warm-up; `repaired`
+         *          is already fixed in the same browser; `ask`: Claude should find the cause and advise
          */
         settle: async ({ failed, chat, verdict, talk, repairHere, ignore, cleared }, spec, { canAsk = false, repeated = false } = {}) => {
             const { diagnosis } = failed;
@@ -125,12 +125,11 @@ const createFixer = ({ sandbox, openSandbox }) => {
                 hint = ` ${diagnosis.text} ${diagnosis.findings.join(' ')}${warn}`;
             }
             const where = t(repairHere === undefined ? 'run.flow.whereFresh' : 'run.flow.whereHere');
-            // Dass man Claude fragen kann, sagt die Statuszeile darunter.
-            const ask = '';
-            // Derselbe Fehler nach einem Beheben: Noch ein Beheben desselben Schritts aendert nichts, die Ursache liegt woanders.
+            // The status line below says that Claude can be asked.
+            // Same failure after a fix: fixing the same step again changes nothing, the cause lies elsewhere.
             const again = repeated ? t('run.flow.again', { config: CONFIG_FILE }) : '';
-            let question = `${t('run.flow.failed', { id: failed.id, reason: withoutDot(failed.reason) })}${hint}${findingsText(verdict)}${again}${where}${ask}`;
-            // Dasselbe als Karte: oben Schritt, Grund und Einschaetzung, die Befunde zum Aufklappen, unten der naechste Schritt.
+            let question = `${t('run.flow.failed', { id: failed.id, reason: withoutDot(failed.reason) })}${hint}${findingsText(verdict)}${again}${where}`;
+            // The same as a card: step, reason and assessment on top, findings collapsible, the next step at the bottom.
             const card = {
                 id: failed.id,
                 reason: withoutDot(failed.reason),
@@ -140,9 +139,9 @@ const createFixer = ({ sandbox, openSandbox }) => {
                 failures: hardFailures(verdict),
                 warnings: (verdict?.warnings ?? []).map(({ text, origin }) => `${withoutDot(text)}${origin === undefined ? '' : ` (${origin})`}`),
                 ...(repeated ? { warn: again.trim() } : {}),
-                next: `${where}${ask}`.trim(),
+                next: where.trim(),
             };
-            // Spricht alles fuer die Anwendung, ist die Ursache im Code der naheliegende Weg; beheben bleibt moeglich, der Mensch entscheidet.
+            // If everything points to the app, the cause in the code is the obvious path; fixing stays possible, the human decides.
             const secondary = (option) => ({ ...option, primary: false });
             let options = canAsk
                 ? (app ? [ASK, secondary(FIX), CLOSE] : [FIX, secondary(ASK), CLOSE])
@@ -150,16 +149,16 @@ const createFixer = ({ sandbox, openSandbox }) => {
             if (repeated) options = canAsk ? [ASK, secondary(FIX), CLOSE] : [{ ...CLOSE, primary: true }, secondary(FIX)];
             const effectOnly = isEffectCause(failed.reason);
             if (effectOnly) options = [secondary(FORGET_EFFECT), ...options];
-            // Nur Skriptfehler: Ignorieren steht vorn, Beheben ueber Claude bleibt moeglich.
+            // Only script errors: Ignore comes first, fixing via Claude stays possible.
             if (ignore !== undefined) options = [IGNORE_ERRORS, ...options.map(secondary)];
-            /** Die Config erlaubt jetzt alle harten Fehler: Ein Pruefdurchlauf ohne Claude genuegt, kein Beheben. */
+            /** The config now allows all hard failures: a check run without Claude is enough, no fix. */
             const recheck = async (advice) => {
                 chat.notice(t('run.flow.ignoredRecheck'));
                 return { advice, target: null, recheck: true };
             };
             let talker = null;
             for (;;) {
-                // Uebernimmt der Mensch im Gespraech eine Aenderung an der Config, die alle Fehler erlaubt, geht es ohne weiteren Klick weiter.
+                // If the human adopts a config change in the conversation that allows all failures, it continues without another click.
                 const changed = talker === null || talker.over() || talker.configChanged === undefined ? null : talker.configChanged().then(() => ({ configChanged: true }));
                 const answer = await Promise.race([chat.discuss(question, options, question === undefined ? undefined : card), ...(changed === null ? [] : [changed])]);
                 question = undefined;
@@ -187,7 +186,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
                 if (answer?.choice === ASK.id) return { advice, target: null, ask: true };
                 if (answer?.choice !== FIX.id) return { advice, target: null };
                 if (await open(chat, cannotFix(chat)) === null) return { advice, target: null };
-                // Beheben startet einen neuen Claude: Er bekommt das Gespraech und die harten Fehler, damit Vereinbartes gilt.
+                // Fixing starts a new Claude: it gets the conversation and the hard failures, so that agreements hold.
                 const agreed = talker?.log?.() ?? [];
                 const failures = verdict?.failures ?? [];
                 const context = { ...(agreed.length === 0 ? {} : { agreed }), ...(failures.length === 0 ? {} : { failures }) };
@@ -202,10 +201,10 @@ const createFixer = ({ sandbox, openSandbox }) => {
     };
 };
 
-/** Was nach „Neue Wirkung übernehmen“ geschieht, in einem Satz. */
+/** What happens after forgetting the learned effects, in one sentence. */
 const forgottenText = (id) => t('run.flow.forgotten', { id, runs: LEARN_RUNS });
 
-/** Was „Übernehmen“ in die Testdatei schreibt, in einem Satz. */
+/** What adopting writes into the test file, in one sentence. */
 const adoptedText = (current, changes, whole) => {
     if (whole) return t('run.flow.adoptWhole', { count: current.steps.length });
     if (changes.length === 0) return '';
@@ -231,8 +230,8 @@ const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole
 ].join(' ');
 
 /**
- * Dieselbe Entscheidung als Karte: oben was uebernommen wuerde und was der Mensch vorher wissen muss, je ein Punkt; Warnungen,
- * bekannte Meldungen und ueber die Position gewaehlte Aktionen zum Aufklappen.
+ * The same decision as a card: on top what would be adopted and what the human needs to know first, one point each;
+ * warnings, known messages and actions chosen by position collapsible.
  */
 const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole = false } = {}) => {
     const adopted = adoptedText(current, changes, whole);
@@ -261,31 +260,31 @@ const changeNote = (changes) => {
 };
 
 /**
- * Behebt einen Schritt und prueft den ganzen Test ohne Claude, bis er besteht oder der Mensch aufhoert. Scheitert dabei ein anderer
- * Schritt, klaert ihn der Mensch im Chat. Nur was wirklich behoben wurde, aendert sich in der Datei.
- * @param draft        der Test, im Speicher: die Datei oder eine noch nicht uebernommene Aufnahme
- * @param target       { id, reason }, null prueft zuerst
- * @param changes      schon behobene Schritte, etwa im selben Browser nach einem Testlauf
- * @param whole        der ganze Plan ist neu und wird als Ganzes uebernommen
- * @param discardCode  Exit-Code beim Verwerfen, sonst der des Pruefdurchlaufs
- * @param fresh        bei einer ganzen Aufnahme: Meldungen, die neu als bekannt gelten
- * @param seenFailures harte Fehler aus der Aufnahme davor, der Mensch sieht sie vor seiner Entscheidung
- * @param execute      ein einzelner Lauf
- * @param adopt        (Test, geaenderte Schritte oder undefined fuer alle, { withNotes }) schreibt die Datei und nennt sie
- * @param advising     Claude empfiehlt von sich aus bei Fehlern und Warnungen; nach einer Aufnahme erst, wenn ein Schritt behoben wird
- * @param log          Meldung im Terminal
+ * Fixes a step and checks the whole test without Claude until it passes or the human stops. If another step fails on the
+ * way, the human clarifies it in the chat. Only what was really fixed changes in the file.
+ * @param draft        the test, in memory: the file or a recording not adopted yet
+ * @param target       { id, reason }; null checks first
+ * @param changes      steps already fixed, e.g. in the same browser after a test run
+ * @param whole        the whole plan is new and is adopted as a whole
+ * @param discardCode  exit code on discard, otherwise that of the check run
+ * @param fresh        for a whole recording: messages that newly count as known
+ * @param seenFailures hard failures from the previous recording, the human sees them before deciding
+ * @param execute      a single run
+ * @param adopt        (test, changed steps or undefined for all, { withNotes }) writes the file and returns its name
+ * @param advising     Claude advises on its own on failures and warnings; after a recording only once a step gets fixed
+ * @param log          message in the terminal
  */
 export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, log, advising: advisingFirst = true }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
-    // Was der Mensch aus Empfehlungen uebernimmt, gilt erst mit dem Testplan: Bis dahin steht es nur im Entwurf.
+    // What the human adopts from advice only takes effect with the test plan: until then it lives only in the draft.
     const advised = new Set();
     let advisedNotes = false;
     let advising = advisingFirst || changes.length > 0;
     let current = draft;
     let next = target;
-    /** Empfehlungen in den Entwurf. @returns der Schritt, den eine Empfehlung veraltet gemacht hat, wenn der Mensch ihn beheben will */
+    /** Advice into the draft. @returns the step that advice made stale, if the human wants to fix it */
     const absorb = async (result, chat, { offer = true } = {}) => {
         if (result === null) return null;
         current = result.spec;
@@ -296,9 +295,9 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         return offer && result.stale.length > 0 ? fixer.offerChanged(result.stale[0], chat) : null;
     };
     const takeAdvice = async (concluded) => (advising ? absorb(await fixer.advise(concluded, current), concluded.chat) : null);
-    // Welcher Schritt mit genau diesem Grund schon behoben wurde: Kommt derselbe Fehler wieder, sagt der Chat das.
+    // Which step was already fixed with exactly this reason: if the same failure comes back, the chat says so.
     const fixedBefore = new Set();
-    /** Scheitert ein Schritt, klaert der Mensch ihn. @returns { next, repaired } */
+    /** If a step fails, the human clarifies it. @returns { next, repaired } */
     const settle = async (concluded) => {
         const key = `${concluded.failed.id} ${concluded.failed.reason}`;
         const settled = await fixer.settle(concluded, current, { repeated: fixedBefore.has(key) });
@@ -309,7 +308,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         }
         if (settled.target !== null || settled.repaired !== undefined) fixedBefore.add(key);
         const changed = await absorb(settled.advice, concluded.chat, { offer: settled.target === null && settled.repaired === undefined && settled.recheck !== true });
-        // Die Fehler sind jetzt erlaubt: kein Beheben, nur ein neuer Pruefdurchlauf.
+        // The failures are allowed now: no fix, just a new check run.
         if (settled.recheck === true) return { next: null, repaired: null, recheck: true };
         return { next: settled.target ?? changed, repaired: settled.repaired?.candidate === undefined ? null : settled.repaired };
     };
@@ -328,9 +327,9 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 repair: { id, reason, ...(rerecord ? { rerecord } : {}), ...(diagnosis === undefined ? {} : { diagnosis, evidence }), ...(agreed === undefined ? {} : { agreed }), ...(failures === undefined ? {} : { failures }) },
                 conclude: async (concluded) => {
                     const { verdict, candidate, failed, chat, repairAdvice } = concluded;
-                    // Als Naechstes prueft ein Lauf ohne Claude, in einem neuen Fenster.
+                    // Next, a run without Claude checks, in a new window.
                     if (candidate !== undefined) return { next: 'check' };
-                    // Hat Claude beim Beheben schon empfohlen, etwa eine Aenderung an der Anwendung, startet es dafuer nicht noch einmal.
+                    // If Claude already advised while fixing, e.g. a change to the app, it does not start again for that.
                     offered = repairAdvice === undefined ? await takeAdvice(concluded) : await absorb(repairAdvice, chat);
                     if (offered !== null) return { next: 'claude' };
                     if (failed) ({ next: offered, recheck: rechecking = false } = await settle(concluded));
@@ -349,14 +348,14 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 lostAdvice();
                 return repaired.exitCode;
             }
-            // Sonst scheiterte das Beheben nur an Fehlern, die jetzt erlaubt sind: Der Pruefdurchlauf zeigt, ob der Test so besteht.
+            // Otherwise the fix only failed on errors that are allowed now: the check run shows whether the test passes like this.
         }
 
         let choice = null;
         let offered = null;
         let repairedHere = null;
         let rechecking = false;
-        // Die geschriebene Testdatei: Uebernommen wird gleich nach der Wahl, damit der Chat sie noch nennen kann.
+        // The written test file: it is adopted right after the choice so the chat can still name it.
         let saved = null;
         const played = await execute({
             spec: current,
@@ -367,7 +366,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 offered = await takeAdvice(concluded);
                 if (offered !== null) return { next: 'claude' };
                 if (verdict.status === 'pass') {
-                    // Bleibt nach dem Pruefdurchlauf ein Schritt veraltet, etwa der zweite von zwei angepassten, kommt er als Naechstes dran.
+                    // If a step is still stale after the check run, e.g. the second of two adjusted ones, it comes next.
                     const [stale] = staleSteps(current);
                     const again = stale === undefined ? null : { id: 'rerecord-next', label: t('run.button.rerecordStep', { id: stale.id }), primary: true };
                     const count = current.steps.length;
@@ -390,7 +389,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     if (offered !== null) return { next: 'claude' };
                     return repairedHere === null ? undefined : { next: 'check' };
                 }
-                // Alle Schritte bestanden, aber harte Fehler: Sind es nur Skriptfehler, lassen sie sich ignorieren und der Lauf wiederholen.
+                // All steps passed, but hard failures: if they are only script errors, they can be ignored and the run repeated.
                 const ignorable = concluded.ignore !== undefined;
                 const answer = await chat.choose('deciding', t('run.flow.checkFailed', { reason: failureText(verdict), findings: findingsText(verdict) }),
                     ignorable ? [IGNORE_ERRORS, { ...ONLY_CLOSE, primary: false }] : [ONLY_CLOSE]);
@@ -406,10 +405,10 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         });
         next = offered;
         if (next !== null) continue;
-        // Die Fehler sind jetzt erlaubt: derselbe Stand noch einmal, ohne Claude.
+        // The failures are allowed now: the same state again, without Claude.
         if (rechecking) continue;
         if (repairedHere !== null) {
-            // Im selben Browser behoben: Der naechste Pruefdurchlauf zeigt, ob es auch ohne Claude geht.
+            // Fixed in the same browser: the next check run shows whether it also works without Claude.
             current = carry(repairedHere.candidate, current, repairedHere.id);
             seen.push(...hardFailures(repairedHere.verdict));
             changes.push(changeOf(repairedHere));
@@ -430,34 +429,34 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
 };
 
 /**
- * Neu aufnehmen: Claude arbeitet mit dem Menschen am Chat, danach geht es weiter wie beim Beheben.
- * @param sandbox  Docker, Token und Image
- * @param execute  ein einzelner Lauf, liefert { exitCode, verdict, candidate, failed }
+ * Record anew: Claude works with the human at the chat, then it continues as with fixing.
+ * @param sandbox  Docker, token and image
+ * @param execute  a single run, returns { exitCode, verdict, candidate, failed }
  */
 export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
     const recorded = await execute({
         sandbox,
         conclude: async ({ verdict, candidate, chat }) => {
-            // Die Aufnahme steht: Der Pruefdurchlauf kommt in einem neuen Fenster.
+            // The recording is done: the check run comes in a new window.
             if (candidate !== undefined) return { next: 'check' };
             await chat.choose('deciding', t('run.flow.noRecording', { reason: failureText(verdict) }), [ONLY_CLOSE]);
             return undefined;
         },
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
-    // Der Pruefdurchlauf einer Aufnahme kostet ohne Zutun keine weiteren Token: Empfohlen wird erst, wenn ein Schritt behoben wird.
+    // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
     return fixFlow({ draft: recorded.candidate, whole: true, fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, log, advising: false });
 };
 
 /**
- * Testlauf nach Plan, ohne Claude. Auf dev mit Terminal steht der Chat von Anfang an daneben und zeigt die Schritte; scheitert einer,
- * klaert der Mensch ihn dort sofort. Docker und Token gibt es erst auf seine Nachricht oder seinen Klick.
- * @param canFix    auf dev, mit Terminal und Chat
- * @param advise    --advise: Bei Fehlern oder Warnungen empfiehlt Claude von sich aus, auch in einem bestandenen Lauf. Kostet Token
- * @param handover  der Mensch will das Fenster danach bekommen
- * @param fillBaselines bestandene Schritte ohne Vergleich der Requests bekommen ihn aus diesem Lauf, ohne Claude und Token
- * @param onPlayed  bekommt das Ergebnis des Abspielens, bevor es weitergeht
- * @param hint      (failed, { canFix }) nach einem gescheiterten Schritt, wenn der Lauf damit endet
+ * Test run by plan, without Claude. On dev with a terminal the chat is there from the start and shows the steps; if one
+ * fails, the human clarifies it there right away. Docker and tokens only start on their message or click.
+ * @param canFix    on dev, with terminal and chat
+ * @param advise    --advise: on failures or warnings Claude advises on its own, even in a passed run. Costs tokens
+ * @param handover  the human wants the window afterwards
+ * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens
+ * @param onPlayed  gets the playback result before things continue
+ * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  */
 export const runFlow = async (options) => {
     const { spec, until, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, openSandbox, execute, adopt, log, hint } = options;
@@ -466,7 +465,7 @@ export const runFlow = async (options) => {
     let repaired = null;
     let rerun = false;
     let current = spec;
-    /** Beim Testlauf ist die Datei der Massstab: Was der Mensch uebernimmt, steht sofort darin. @returns ein veralteter Schritt zum Beheben */
+    /** In a test run the file is the yardstick: what the human adopts goes into it immediately. @returns a stale step to fix */
     const keep = async (result, chat, { offer = true } = {}) => {
         if (result === null) return null;
         current = result.spec;
@@ -475,7 +474,7 @@ export const runFlow = async (options) => {
         noticeFiles(result.files, chat);
         return offer && result.stale.length > 0 ? fixer.offerChanged(result.stale[0], chat) : null;
     };
-    /** Ob gleich ein neues Fenster kommt: fuer Claude (beheben), den Pruefdurchlauf oder einen neuen Testlauf. */
+    /** Whether a new window comes next: for Claude (fix), the check run or a new test run. */
     const windowAfter = () => {
         if (rerun) return { next: 'run' };
         if (repaired !== null) return { next: 'check' };
@@ -488,17 +487,17 @@ export const runFlow = async (options) => {
         ...(canFix ? {
             testing: true,
             /**
-             * Der Mensch entwickelt im hergestellten Zustand. Der Test ist vorbei: Neuladen veraendert kein Ergebnis mehr, die Werkbank
-             * zeigt danach nur, dass die Seite den Zustand verlassen hat. „Zustand neu herstellen“ spielt die Schritte von vorn ab.
-             * @param refresh    laedt die aktuelle Seite ohne Cache neu (Aktualisieren, F5, Logo)
-             * @param restore    laedt neu und spielt die Schritte bis zum Zustand ab; liefert die Meldung
-             * @param onRefresh  meldet der Werkbank, wer aktualisiert (null: gesperrt)
-             * @param onReload   nach dem Neuladen der ganzen Werkbank; liefert die Abmeldung
+             * The human develops in the prepared state. The test is over: reloading no longer changes any result, the workbench
+             * only shows afterwards that the page left the state. Restore plays the steps back from the start.
+             * @param refresh    reloads the current page without cache (refresh, F5, logo)
+             * @param restore    reloads and plays the steps up to the state; returns the message
+             * @param onRefresh  tells the workbench who refreshes (null: locked)
+             * @param onReload   after reloading the whole workbench; returns the unsubscribe function
              */
             develop: async ({ chat, talk, until: state, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState }) => {
                 let talker = null;
                 const at = state === undefined ? t('run.develop.atEnd') : t('run.develop.atState', { state });
-                // open: keine Schritte, also nichts neu herzustellen; nur Aktualisieren und Fragen.
+                // open: no steps, so nothing to restore; only refresh and questions.
                 const opened = spec.steps.length === 0;
                 let question = opened ? t('run.develop.opened', { agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens') }) : t('run.develop.intro', {
                     start: state === undefined ? t('run.develop.runDone') : t('run.develop.stateReady', { state }),
@@ -506,8 +505,8 @@ export const runFlow = async (options) => {
                     restore: RESTORE.label,
                     agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens'),
                 });
-                const options = opened ? [END_DEVELOP] : [RESTORE, END_DEVELOP];
-                // Laedt der Dev-Server gerade neu, scheitert das Neuladen: Das ist eine Meldung im Chat, kein Ende des Laufs.
+                const buttons = opened ? [END_DEVELOP] : [RESTORE, END_DEVELOP];
+                // If the dev server is reloading right now, the reload fails: that is a message in the chat, not the end of the run.
                 const attempt = async (what, work) => {
                     try {
                         const text = await work();
@@ -516,16 +515,16 @@ export const runFlow = async (options) => {
                         chat.notice(t('run.develop.attemptFailed', { what, message: String(error?.message ?? error).split(/\r?\n/)[0] }));
                     }
                 };
-                // Herstellen nacheinander: Wer mit F1 einen Zustand waehlt, waehrend „Zustand neu herstellen“ laeuft, wartet, bis der fertig ist.
+                // Restore one after another: whoever picks a state with F1 while a restore runs waits until it is done.
                 let queue = Promise.resolve();
                 const serial = (work) => {
                     queue = queue.then(work, work);
                     return queue;
                 };
                 onRefresh?.(() => attempt(t('run.develop.refresh'), refresh));
-                // Neu laden gehoert beim Entwickeln dazu (F5, hart neu laden mit leerem Cache): keine Warnung, der Zustand ist dein Arbeitsstand.
+                // Reloading is part of developing (F5, hard reload with empty cache): no warning, the state is your working state.
                 const offReload = onReload?.(() => {});
-                // F1 in der Werkbank: einen Test (und optional den Schritt) waehlen, caw-ai stellt den Zustand hier her.
+                // F1 in the workbench: pick a test (and optionally the step), caw-ai restores the state here.
                 onPickState?.((test, step) => serial(async () => {
                     chat.progress(t('run.develop.restoringOther', { test, step: step ?? t('run.develop.allSteps') }));
                     await attempt(RESTORE.label, () => restoreTo(test, step));
@@ -535,14 +534,14 @@ export const runFlow = async (options) => {
                     chat.notice(t('run.develop.picked', { label: picked.label }));
                 });
                 try {
-                // Mit der eigenen Claude-Code-Session als Agent wartet sie nicht auf die erste Frage im Chat: Wer in Claude Code
-                // arbeitet, will die Seite im Zustand gleich ansehen. Fragen aus dem Chat bekommt sie danach wie sonst.
+                // With the own Claude Code session as agent it does not wait for the first question in the chat: whoever works in
+                // Claude Code wants to look at the page in that state right away. It gets questions from the chat as usual afterwards.
                 if (sessionAgent) {
                     const ready = await fixer.open(chat, (message) => { chat.progress(t('run.flow.claudeUnavailable', { message })); });
                     if (ready !== null) talker = talk({ sandbox: ready, spec: current });
                 }
                 for (;;) {
-                    const answer = await chat.develop(question, options);
+                    const answer = await chat.develop(question, buttons);
                     question = undefined;
                     if (answer === null || answer.choice === END_DEVELOP.id) return;
                     if (answer.choice === RESTORE.id) {
@@ -564,19 +563,19 @@ export const runFlow = async (options) => {
                     onPickState?.(null);
                     offReload?.();
                     chat.onPicked?.(null);
-                    // Auch bei Fenster zu oder Fehler: Claude laeuft nicht weiter und verbraucht keine Token.
+                    // Also when the window closes or on error: Claude does not keep running and uses no tokens.
                     if (talker !== null) await Promise.resolve(talker.end()).catch(() => {});
                 }
             },
             conclude: async (concluded) => {
                 const { failed, chat, verdict } = concluded;
-                /** Nach Claudes Empfehlung. @returns true, wenn damit alles entschieden ist */
+                /** After Claude's advice. @returns true if that settles everything */
                 const afterAdvice = async (advised) => {
                     target = await keep(advised, chat);
                     if (target !== null) return true;
-                    // Der Code der Anwendung ist geaendert: Den Test jetzt anzupassen wuerde den Fehler verdecken. Ob es reicht, zeigt ein neuer Lauf.
+                    // The app code changed: adjusting the test now would hide the failure. A new run shows whether it is enough.
                     if (failed && (advised?.files ?? []).length > 0) {
-                        // Nur was wirklich geaendert ist: Wer die Aenderung am Code abgelehnt und nur die Config uebernommen hat, liest das so.
+                        // Only what really changed: whoever rejected the code change and only adopted the config reads it that way.
                         const app = appFilesOf(advised.files);
                         const what = app.length > 0 ? t('run.flow.appChanged', { files: app.join(', ') }) : t('run.flow.filesChanged', { files: advised.files.join(', ') });
                         rerun = await chat.choose('deciding', t('run.flow.rerunOffer', { id: failed.id, what }), [RERUN, CLOSE]) === RERUN.id;
@@ -589,13 +588,13 @@ export const runFlow = async (options) => {
                 if (!failed) {
                     const filled = fillBaselines && concluded.baselines !== undefined ? ` ${baselineText(concluded.baselines)}` : '';
                     const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${filled}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
-                    // Ein bestandener Lauf wartet auf niemanden, auch nicht mit Warnungen. open hat nichts bestanden: nur Funde nennen.
+                    // A passed run waits for nobody, not even with warnings. open passed nothing: only name findings.
                     if (spec.steps.length === 0 && advised === null && verdict.status === 'pass' && findingsText(verdict) === '') return;
                     if (advised === null && verdict.status === 'pass') chat.notice(summary);
                     else await chat.choose('deciding', summary, [ONLY_CLOSE]);
                     return;
                 }
-                // Mit --advise hat Claude schon empfohlen; sonst sucht Claude die Ursache erst auf Klick, dasselbe wie --advise, nur bei Bedarf.
+                // With --advise Claude already advised; otherwise Claude looks for the cause only on click, same as --advise, just on demand.
                 let settled = await fixer.settle(concluded, current, { canAsk: !advise });
                 if (settled.ask) {
                     await keep(settled.advice, chat, { offer: false });
@@ -632,7 +631,7 @@ export const runFlow = async (options) => {
         return fixFlow({ ...shared, draft: carry(repaired.candidate, current, repaired.id), changes: [changeOf(repaired)], seenFailures: hardFailures(repaired.verdict) });
     }
     if (target !== null) return fixFlow({ ...shared, draft: current, target });
-    // Nach jedem Fehlschlag die naechsten Aufrufe; ohne Chat auch, wo sich die Ursache klaeren laesst.
+    // After every failure the next commands; without a chat also where the cause can be clarified.
     if (played.failed) hint?.(played.failed, { canFix });
     return played.exitCode;
 };

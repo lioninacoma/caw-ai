@@ -1,4 +1,4 @@
-// Bedienung im Terminal: list, Wahl des Ziels, Hilfe je Befehl, Meldungen mit Vorschlag, Exit-Codes, mehrere Tests, JUnit.
+// Terminal usage: list, target choice, help per command, messages with suggestions, exit codes, several tests, JUnit.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -20,7 +20,7 @@ const BIN = fileURLToPath(new URL('../bin/caw-ai.mjs', import.meta.url));
 const step = (id, name) => ({ id, name, do: `${name} tun`, expect: `${name} sichtbar` });
 const recorded = (plain) => ({ ...plain, recording: { hash: stepHash(plain), recordedOn: 'local', recordedAt: '2026-11-06T09:00:00.000Z', actions: [], check: 'true' } });
 
-/** Ein Projekt wie nach init (local mit Claude, staging ohne), mit drei Tests in verschiedenem Stand. */
+/** A project as after init (local with Claude, staging without), with three tests in different states. */
 const project = (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-ux-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -34,7 +34,7 @@ const project = (t) => {
     return root;
 };
 
-test('editDistance und closest: Tippfehler finden ihren Befehl, Gleichstand ergibt keinen Vorschlag', () => {
+test('editDistance and closest: typos find their command, a tie gives no suggestion', () => {
     assert.equal(editDistance('lsit', 'list'), 1);
     assert.equal(editDistance('create-tiket', 'create-ticket'), 1);
     assert.equal(closest('lsit', ['list', 'init', 'run']), 'list');
@@ -42,7 +42,7 @@ test('editDistance und closest: Tippfehler finden ihren Befehl, Gleichstand ergi
     assert.equal(closest('xyz', ['list', 'run']), undefined);
 });
 
-test('Exit-Codes: Aufnahme nötig ist 4, der schlimmste Lauf bestimmt den Stapel', () => {
+test('exit codes: needs recording is 4, the worst run decides the batch', () => {
     assert.equal(exitOf('replay-missing'), EXIT.needsRecording);
     assert.equal(exitOf('replay-stale'), 4);
     assert.equal(exitOf('usage'), EXIT.rejected);
@@ -54,7 +54,7 @@ test('Exit-Codes: Aufnahme nötig ist 4, der schlimmste Lauf bestimmt den Stapel
     assert.equal(worstExit([0, 3]), 3);
 });
 
-test('parseRunArgs: Eine Option ohne Wert schluckt nicht die nächste', () => {
+test('parseRunArgs: an option without a value does not swallow the next one', () => {
     assert.throws(() => parseRunArgs('run', ['t', '--target', '--headless']), /--target braucht einen Wert, etwa --target local/);
     assert.throws(() => parseRunArgs('run', ['t', '--until']), /--until braucht einen Wert, etwa --until S4/);
     assert.throws(() => parseRunArgs('run', ['t', '--target=']), /--target braucht einen Wert/);
@@ -63,7 +63,7 @@ test('parseRunArgs: Eine Option ohne Wert schluckt nicht die nächste', () => {
     assert.throws(() => parseRunArgs('fix', ['t', 'S1', '--timeout', '--x']), /--timeout braucht einen Wert/);
 });
 
-test('parseRunArgs: mehrere Tests oder --all laufen ohne Chat, --until und --advise nur für einen Test', () => {
+test('parseRunArgs: several tests or --all run without chat, --until and --advise only for one test', () => {
     const many = parseRunArgs('run', ['a', 'b', '--target', 'local']);
     assert.deepEqual([many.tests, many.batch, many.noChat], [['a', 'b'], true, true]);
     const all = parseRunArgs('run', ['--all', '--headless', '--report', 'junit=out/x.xml']);
@@ -76,13 +76,13 @@ test('parseRunArgs: mehrere Tests oder --all laufen ohne Chat, --until und --adv
     assert.equal(parseRunArgs('run', ['a']).batch, undefined);
 });
 
-test('chooseTarget: das einzige Ziel, für record/fix das einzige mit Claude, sonst die Auswahl', () => {
+test('chooseTarget: the only target, for record/fix the only one with Claude, otherwise the choices', () => {
     const config = { environments: { local: { url: 'http://localhost:1', claude: true }, dev: { url: 'https://dev.example', claude: true }, staging: { url: 'https://s.example' } } };
     const said = [];
     const log = (text) => said.push(text);
     assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { command: 'run', log }), 'dev');
     assert.match(said.at(-1), /Ziel: dev \(einziges Ziel von x\)/);
-    assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { target: 'local', command: 'run', log }), 'local', 'Ein genanntes Ziel gilt');
+    assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { target: 'local', command: 'run', log }), 'local', 'a given target wins');
     assert.throws(() => chooseTarget(config, { id: 'x', targets: ['local', 'staging'] }, { command: 'run', log }), /--target fehlt: local, staging/);
     assert.equal(chooseTarget(config, { id: 'x', targets: ['local', 'staging'] }, { command: 'fix', log }), 'local');
     assert.match(said.at(-1), /auf dem Claude arbeiten darf/);
@@ -92,7 +92,7 @@ test('chooseTarget: das einzige Ziel, für record/fix das einzige mit Claude, so
     assert.match(said.at(-1), /einzige Umgebung, auf der Claude arbeiten darf/);
 });
 
-test('list: je Test Ziele, Stand der Aufnahme und Schreiben; mit Test je Schritt eine Zeile', (t) => {
+test('list: per test targets, recording state and writes; with a test one line per step', (t) => {
     const root = project(t);
     const lines = [];
     const out = (text) => lines.push(text);
@@ -111,20 +111,20 @@ test('list: je Test Ziele, Stand der Aufnahme und Schreiben; mit Test je Schritt
     assert.throws(() => list(root, ['a', 'b'], { out }), /Unerwartetes Argument: b/);
 });
 
-test('run: ohne --target das einzige Ziel, Tippfehler bekommen Vorschlag und Auswahl', async (t) => {
+test('run: without --target the only target, typos get a suggestion and the choices', async (t) => {
     const root = project(t);
     await assert.rejects(run(root, ['anmeldn']), (error) => error.code === 'test-missing' && /Meintest du anmelden\?/.test(error.message) && /caw-ai record anmeldn$/.test(error.message));
     await assert.rejects(run(root, ['bestellen']), (error) => error.code === 'usage' && /--target fehlt: local, staging/.test(error.message));
     await assert.rejects(run(root, ['anmelden', '--until', 'S9']), (error) => error.code === 'step-unknown' && /Schritte: S1, S2\./.test(error.message));
-    // Fehlt die Aufzeichnung, ist das Exit 4 (Aufnahme nötig), nicht 3.
+    // A missing recording is exit 4 (needs recording), not 3.
     await assert.rejects(run(root, ['neu']), (error) => error.code === 'replay-missing' && exitOf(error.code) === 4);
 });
 
-test('run mit mehreren Tests: jeder läuft, die Tabelle nennt den Ausgang, der Exit ist der schlimmste, JUnit auf Wunsch', async (t) => {
+test('run with several tests: each runs, the table shows the outcome, the exit is the worst, JUnit on request', async (t) => {
     const root = project(t);
     const said = [];
     t.mock.method(console, 'log', (text) => said.push(text));
-    // neu ist nicht aufgenommen (4), gibtsnicht fehlt (3), bestellen ist veraltet (4): Es startet kein Browser.
+    // neu is not recorded (4), gibtsnicht is missing (3), bestellen is stale (4): no browser starts.
     const code = await run(root, ['neu', 'gibtsnicht', 'bestellen', '--target', 'local', '--report', 'junit=out/junit.xml']);
     assert.equal(code, EXIT.needsRecording);
     const text = said.join('\n');
@@ -132,39 +132,39 @@ test('run mit mehreren Tests: jeder läuft, die Tabelle nennt den Ausgang, der E
     assert.match(text, /AUFNAHME NÖTIG\s+neu/);
     assert.match(text, /ABGELEHNT\s+gibtsnicht/);
     assert.match(text, /JUnit-Bericht: out\/junit\.xml/);
-    // --all nimmt nur Tests mit dem Ziel; ohne --target gilt das einzige Ziel aller Tests nicht, hier gibt es zwei.
+    // --all only takes tests with the target; without --target the tests' only target is needed, but there are two here.
     await assert.rejects(run(root, ['--all']), /--target fehlt: local, staging/);
     said.length = 0;
-    // Nur bestellen nennt staging; dort darf er nicht schreiben: abgelehnt.
+    // Only bestellen names staging; it must not write there: rejected.
     assert.equal(await run(root, ['--all', '--target', 'staging']), EXIT.rejected);
     assert.match(said.join('\n'), /Ergebnis: 1 Test auf staging/);
 });
 
-test('junitXml: fail als failure, Aufnahme nötig und Fehler als error, Text sicher maskiert', () => {
+test('junitXml: fail as failure, needs recording and errors as error, text safely escaped', () => {
     const xml = junitXml({ target: 'local', rows: [
         { test: 'a', exit: 0, seconds: 1 },
-        { test: 'b', exit: 1, seconds: 2, note: 'bei S2 <x> & "y"' },
-        { test: 'c', exit: 4, seconds: 0, note: 'keine Aufnahme' },
+        { test: 'b', exit: 1, seconds: 2, note: 'at S2 <x> & "y"' },
+        { test: 'c', exit: 4, seconds: 0, note: 'no recording' },
     ] });
     assert.match(xml, /<testsuite name="caw-ai local" tests="3" failures="1" errors="1"/);
     assert.match(xml, /<testcase classname="caw-ai.local" name="a" time="1.000"\/>/);
-    assert.match(xml, /<failure type="fail" message="bei S2 &lt;x&gt; &amp; &quot;y&quot;"\/>/);
-    assert.match(xml, /<error type="needs-recording" message="keine Aufnahme"\/>/);
+    assert.match(xml, /<failure type="fail" message="at S2 &lt;x&gt; &amp; &quot;y&quot;"\/>/);
+    assert.match(xml, /<error type="needs-recording" message="no recording"\/>/);
 });
 
-test('runMode: --no-learn behält den Chat und sagt, dass die Datei bleibt; sonst nennt er die Datei', () => {
+test('runMode: --no-learn keeps the chat and says the file stays; otherwise it names the file', () => {
     const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'local' };
     assert.match(runMode({ ...base, file: 'caw/recordings/x.yaml' }), /lernt der Lauf in caw\/recordings\/x\.yaml \(abschalten mit --no-learn\)/);
     assert.match(runMode({ ...base, learn: false }), /mit Chat, ohne Lernen \(--no-learn\)/);
 });
 
-test('Hilfe: je Befehl nur sein Block, Agent-Befehle unter help agent, Kurzform für Aufruffehler', () => {
+test('help: per command only its block, agent commands under help agent, synopsis for usage errors', () => {
     const all = helpText(undefined, { here: 'local' });
     assert.match(all, /list \[<test>\]/);
     assert.match(all, /run <test> \[--target <umgebung>\]/);
     assert.match(all, /auf denen Claude\s+arbeiten\s+darf \(hier: local\)/);
     assert.match(all, /4 Aufnahme nötig/);
-    assert.doesNotMatch(all, /fill <ziel> <text>/, 'Befehle für den Agenten stehen unter help agent');
+    assert.doesNotMatch(all, /fill <ziel> <text>/, 'agent commands are under help agent');
     const fix = helpText('fix');
     assert.match(fix, /^ {2}fix <test> <S4>/);
     assert.doesNotMatch(fix, /record|Erste Schritte/);
@@ -178,39 +178,41 @@ test('Hilfe: je Befehl nur sein Block, Agent-Befehle unter help agent, Kurzform 
     assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw-ai --help.');
 });
 
+// Strips ANSI colour codes.
+// eslint-disable-next-line no-control-regex
 const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
 
-test('Abbruch im Terminal: zuerst die Meldung, dann die Kurzform, zuletzt blass Code und Exit', () => {
+test('fatal error in the terminal: first the message, then the synopsis, last code and exit dimmed', () => {
     const lines = [];
     const ui = createUi({ fancy: true, out: (text) => lines.push(text), err: (text) => lines.push(text) });
     ui.fatal('usage', 'Name des Tests fehlt.', { synopsis: 'caw-ai fix <test> <S4>', exit: 3 });
     assert.equal(lines.length, 3);
     assert.match(plain(lines[0]), /^ {2}\[FEHLER\] Name des Tests fehlt\.$/);
-    // Unter dem Text der Meldung, nicht unter der Marke.
+    // Aligned with the message text, not the mark.
     assert.equal(lines[1], '           Aufruf: caw-ai fix <test> <S4>');
     assert.match(lines[2], /\(code: usage, exit 3\)/);
 });
 
-test('Bericht: im Terminal zusätzlich als file://-Adresse zum Anklicken', () => {
+test('report: in the terminal also as a clickable file:// address', () => {
     const lines = [];
     const ui = createUi({ fancy: true, out: (text) => lines.push(text) });
     ui.verdict({ status: 'pass', testId: 'x', target: 'local' }, { report: '.caw/runs/r/report.md', reportUrl: 'file:///c:/p/.caw/runs/r/report.md', elapsed: 1 });
     assert.match(plain(lines.join('\n')), /Bericht:.*\.caw\/runs\/r\/report\.md\n.*file:\/\/\/c:\/p\/\.caw\/runs\/r\/report\.md/);
 });
 
-test('stepsText: lückenlos als Bereich, sonst aufgezählt', () => {
+test('stepsText: contiguous as a range, otherwise listed', () => {
     assert.equal(stepsText({ steps: [{ id: 'S1' }, { id: 'S2' }, { id: 'S3' }, { id: 'S4' }] }), 'S1–S4');
     assert.equal(stepsText({ steps: [{ id: 'S1' }, { id: 'S3' }, { id: 'S4' }] }), 'S1, S3, S4');
 });
 
-test('CLI: unbekannter Befehl mit Vorschlag, Hilfe überall mit -h, Exit-Codes', (t) => {
+test('CLI: unknown command with suggestion, help everywhere with -h, exit codes', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-bin-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const cli = (...args) => spawnSync(process.execPath, [BIN, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CAW_LANG: 'de', NO_COLOR: '1', INIT_CWD: root } });
     const typo = cli('lsit');
     assert.equal(typo.status, 3);
     assert.match(typo.stderr, /Unbekannter Befehl: lsit\. Meintest du list\? Siehe caw-ai --help\./);
-    assert.doesNotMatch(typo.stderr + typo.stdout, /Erste Schritte/, 'keine ganze Hilfe nach einem Tippfehler');
+    assert.doesNotMatch(typo.stderr + typo.stdout, /Erste Schritte/, 'no full help after a typo');
     const help = cli('run', 'x', '-h');
     assert.equal(help.status, 0);
     assert.match(help.stdout, /^ {2}run <test>/);
@@ -223,12 +225,12 @@ test('CLI: unbekannter Befehl mit Vorschlag, Hilfe überall mit -h, Exit-Codes',
     assert.equal(cli('validate').status, 3);
 });
 
-test('run merkt sich Änderungen an den Dateien des Tests: Vergleichswerte je Schritt, sonst „unverändert“', (t) => {
+test('run tracks changes to the test files: baselines per step, otherwise "unchanged"', (t) => {
     const root = project(t);
     const tracker = changeTracker(root);
     assert.equal(tracker.summary(), 'Testdatei unverändert.');
     const spec = loadTest(root, 'anmelden');
-    // Unveraendert geschrieben zaehlt nicht.
+    // Writing unchanged content does not count.
     tracker.adopt(spec, new Set(['S1']), { learned: 'baselines' });
     assert.equal(tracker.summary(), 'Testdatei unverändert.');
     const learned = { ...spec, steps: spec.steps.map((item) => ({ ...item, recording: { ...item.recording, check: 'document.title !== ""' } })) };

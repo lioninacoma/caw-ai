@@ -1,5 +1,5 @@
-// Der Ablaufplan, den Claude im Chat vorlegt, ist die spaetere Testdatei ohne Aufzeichnung: dieselben Felder, keine zweite Form.
-// Der Agent kann das Projekt nicht aendern. Die Metadaten schreibt das Tool, Rolle, Ziele und Schreibrecht bleiben beim Menschen.
+// The plan Claude presents in the chat is the future test file without recordings: same fields, no second format.
+// The agent cannot change the project. The tool writes the metadata; role, targets and write access stay with the human.
 
 import { t } from '../shared/i18n.mjs';
 import { parsePlan, withExpectations } from './test-file.mjs';
@@ -8,11 +8,12 @@ export const PLAN_FILE = 'plan.yaml';
 
 const MAX_LENGTH = 100_000;
 export const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
-// Der Text stammt mittelbar aus der Anwendung und landet in Chat und Terminal.
+// The text comes indirectly from the application and ends up in chat and terminal.
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
 export const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/;
 
 /**
- * Passt ein Plan? Laeuft, bevor der Mensch ihn sieht, damit der Agent noch nachbessern kann.
+ * Is the plan valid? Runs before the human sees it, so the agent can still correct it.
  * @returns { problems, plan }
  */
 export const readPlan = (text) => {
@@ -25,7 +26,7 @@ export const readPlan = (text) => {
     return problems.length > 0 ? { problems } : { problems, plan: parsed.plan };
 };
 
-/** Metadaten vom Tool, Inhalt vom Agenten. Eine Aufzeichnung gibt es erst nach dem Lauf. */
+/** Metadata from the tool, content from the agent. Recordings only exist after the run. */
 export const composeTest = (meta, { notes, steps }) => withExpectations({
     id: meta.id,
     app: meta.app,
@@ -37,14 +38,14 @@ export const composeTest = (meta, { notes, steps }) => withExpectations({
     steps,
 });
 
-/** Ersetzt genau einen Schritt, alle anderen bleiben dieselben Objekte. */
+/** Replaces exactly one step; all other steps stay the same objects. */
 export const replaceStep = (spec, step) => withExpectations({ ...spec, steps: spec.steps.map((current) => (current.id === step.id ? step : current)) });
 
-/** Gleicher Plan fuer einen Schritt: Titel, Aktion, Ergebnis, Hinweis und Wiederholung. Die Aufzeichnung zaehlt nicht. */
+/** Same plan for a step: name, action, expectation, note and retry. The recording does not count. */
 export const samePlanStep = (a, b) => ['id', 'name', 'do', 'expect', 'note'].every((key) => (a[key] ?? '') === (b[key] ?? ''))
     && JSON.stringify(a.retry ?? null) === JSON.stringify(b.retry ?? null);
 
-/** Was die Plankarte im Chat zeigt, nur Plan-Felder. */
+/** What the plan card in the chat shows: plan fields only. */
 export const planView = ({ notes, steps }, { repairing = false, rerecord = false, previous } = {}) => ({
     repairing,
     title: repairing ? t(rerecord ? 'config.plan.rerecord' : 'config.plan.fix', { id: String(steps[0]?.id) }) : t('config.plan.title'),

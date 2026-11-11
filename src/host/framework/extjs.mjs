@@ -1,13 +1,13 @@
-// Adapter fuer ExtJS (Config `"framework": "extjs"`). Stabile Ziele: Referenzen aus dem Snapshot und IDs wie ext-element-29 gelten
-// nur fuer einen Seitenstand, und ExtJS-Buttons haben oft keinen zugaenglichen Namen. Stabil ist die Komponente: xtype plus Text oder
-// Beschriftung, dazu das Teil-Element darin. Bereit ist die Seite, wenn kein Ext.Ajax-Request und kein Store mehr laedt.
+// Adapter for ExtJS (config `"framework": "extjs"`). Stable targets: snapshot references and IDs like ext-element-29 only hold for
+// one page state, and ExtJS buttons often have no accessible name. The component is stable: xtype plus text or label, plus the
+// part element inside it. The page is ready when no Ext.Ajax request and no store is loading.
 
 import { checkAppFiles, createWatchSource } from './extjs-overlay.mjs';
 
 /**
- * Laeuft im Browser, darf also nichts von aussen benutzen. `describe` beschreibt ein Element, `find` sucht es
- * wieder. Treffer zaehlen nur, wenn sie wirklich klickbar sind: sichtbar und nicht ueberdeckt. Damit warten
- * Schritte von selbst auf Lademasken und treffen bei Dialogen in Dialogen den obersten.
+ * Runs in the browser, so it must not use anything from outside. `describe` describes an element, `find` finds it
+ * again. Hits only count if they are really clickable: visible and not covered. That way steps wait for load masks
+ * by themselves and hit the topmost dialog when dialogs are stacked.
  */
 export function extjsTargets(element, { mode, target }) {
     const clean = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
@@ -15,8 +15,8 @@ export function extjsTargets(element, { mode, target }) {
         const text = clean(node.innerText ?? node.textContent);
         return text.length <= 80 ? text : '';
     };
-    // Pruefen, ob ein Ziel frei liegt, scrollt es kurz in die Mitte. Danach steht alles wieder, wie es war: Sonst springt die Seite
-    // bei jeder Suche, auch wenn gar nicht geklickt wird (Klicks scrollen selbst zum Ziel).
+    // Checking whether a target is free briefly scrolls it to the center. Afterwards everything is restored: otherwise the page
+    // would jump on every search, even without a click (clicks scroll to the target themselves).
     const keepScroll = (node, check) => {
         const saved = [];
         for (let at = node.parentElement; at !== null; at = at.parentElement) saved.push([at, at.scrollTop, at.scrollLeft]);
@@ -50,7 +50,7 @@ export function extjsTargets(element, { mode, target }) {
         const style = getComputedStyle(node);
         if (style.visibility === 'hidden' || style.display === 'none') return false;
         if (onTop(node, component)) return true;
-        // Am Bildrand kann z. B. ein fester Cookie-Banner liegen, mittig ist das Element dann frei.
+        // A fixed cookie banner may cover the edge of the viewport; centered, the element is free.
         return keepScroll(node, () => {
             node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
             return onTop(node, component);
@@ -61,7 +61,7 @@ export function extjsTargets(element, { mode, target }) {
         const label = clean(component.getLabel?.());
         return { ...(text === '' ? {} : { text }), ...(label === '' ? {} : { label }) };
     };
-    // Namenlose Teile wie der Pfeil einer Combobox: erkennbar erst ueber das Feld, zu dem sie gehoeren.
+    // Unnamed parts like the arrow of a combobox: only recognizable via the field they belong to.
     const namedParent = (component) => {
         for (let node = rootOf(component)?.parentElement ?? null; node !== null; node = node.parentElement) {
             const parent = componentOf(node);
@@ -72,7 +72,7 @@ export function extjsTargets(element, { mode, target }) {
         }
         return null;
     };
-    // `all`: auch Treffer, die gerade verdeckt oder unsichtbar sind, etwa der gleiche Knopf im Formular unter einem Sheet.
+    // `all`: also hits that are currently covered or invisible, e.g. the same button in the form below a sheet.
     const matches = (wanted, all = false) => {
         const isInside = (component) => {
             if (wanted.inside === undefined) return true;
@@ -102,7 +102,7 @@ export function extjsTargets(element, { mode, target }) {
 
     if (mode === 'find') return matches(target)[target.index ?? 0] ?? null;
 
-    // Warum ein Ziel nicht klickbar ist: fehlt es, ist es unsichtbar, oder liegt ein schwebendes Fenster darueber, etwa eine Meldung?
+    // Why a target is not clickable: is it missing, invisible, or covered by a floating window such as a message box?
     if (mode === 'explain') {
         const candidates = matches(target, true);
         const node = candidates[target.index ?? 0] ?? candidates[0];
@@ -136,30 +136,32 @@ export function extjsTargets(element, { mode, target }) {
         ...(part === undefined ? {} : { part }),
         ...(ownText(element) === '' ? {} : { own: ownText(element) }),
     };
-    // Namenlose Teile brauchen den Bereich immer. Benannte, sobald es dieselbe Beschreibung noch einmal gibt, auch verdeckt: Sonst
-    // traefe das Abspielen den Zwilling, wenn der richtige noch nicht da ist, etwa `Speichern` im Formular statt im Sheet.
+    // Unnamed parts always need the enclosing component. Named ones too, as soon as the same description exists again, even covered:
+    // otherwise replay would hit the twin while the right one is not there yet, e.g. `Speichern` in the form instead of the sheet.
     const twins = component !== null && Object.keys(own).length > 0 && matches(plain, true).length > 1;
     const parent = component !== null && (Object.keys(own).length === 0 || twins) ? namedParent(component) : null;
-    // Reihenfolge wie bisher, damit sich vorhandene Aufzeichnungen beim Neuschreiben nicht umstellen.
-    const { part: _part, own: _own, ...head } = plain;
+    // Keep the key order, so existing recordings do not get reordered when rewritten.
+    const head = { ...plain };
+    delete head.part;
+    delete head.own;
     const described = parent === null ? plain : { ...head, inside: { xtype: parent.xtype, ...named(parent) }, ...(part === undefined ? {} : { part }), ...(plain.own === undefined ? {} : { own: plain.own }) };
     const index = matches(described).indexOf(element);
     return index === -1 ? null : { ...described, ...(index === 0 ? {} : { index }) };
 }
 
 /**
- * Laeuft im Browser: der Zustand, der ueber Fehlschlag oder Nachbessern entscheidet. Die Anwendungen setzen an
- * ihren Dialogen kein Fehler-Merkmal, darum zaehlt jede sichtbare Meldung und wird gegen die Aufzeichnung geprueft.
- * Zahlen werden neutralisiert, damit Bestellnummern und Daten keinen Fehlschlag ausloesen.
+ * Runs in the browser: the state that decides between failure and fix-up. Applications put no error marker on
+ * their dialogs, so every visible message counts and is checked against the recording.
+ * Digits are neutralized so order numbers and dates do not cause a failure.
  */
 export function extjsPageState({ marker, selectors }) {
     const query = window.Ext?.ComponentQuery?.query?.bind(window.Ext.ComponentQuery);
     const components = (selector) => (query === undefined ? [] : query(selector)).filter((component) => !component.destroyed && component.isVisible?.() !== false);
     const seen = (node) => node !== null && node !== undefined && node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
     const boxes = components('dialog, messagebox, toast').map((component) => component.el?.dom ?? component.element?.dom);
-    // Meldungen der Seite ausserhalb der Anwendung, etwa eines umgebenden Portals: Selektoren aus der Config (`messageSelectors`).
+    // Page messages outside the application, e.g. of a surrounding portal: selectors from the config (`messageSelectors`).
     const alerts = selectors.length === 0 ? [] : [...document.querySelectorAll(selectors.join(', '))];
-    // Der ganze Text, wie bei `web`: Gekuerzt wird erst beim Anzeigen.
+    // The full text, as with `web`: it is shortened only for display.
     const texts = [...boxes, ...alerts].filter(seen).map((node) => (node.innerText ?? '').replace(/\s+/g, ' ').trim().replace(/\d+/g, '#'));
     return {
         appLoaded: window.Ext !== undefined,
@@ -171,7 +173,7 @@ export function extjsPageState({ marker, selectors }) {
 }
 
 /**
- * Laeuft im Browser: offene Ext.Ajax-Requests und ladende Stores, mit `store` nur dieser (Store-Id oder ComponentQuery) samt Anzahl.
+ * Runs in the browser: open Ext.Ajax requests and loading stores; with `store` only that one (store id or ComponentQuery) with its count.
  * @returns { pendingAjax, loadingStores, counts, appReady }
  */
 export function extjsProbe(store) {
@@ -197,15 +199,15 @@ export const extjs = {
     targets: extjsTargets,
     pageState: extjsPageState,
     probe: extjsProbe,
-    // Ext.Ajax zaehlt selbst; offene Requests ausserhalb von Ext, etwa Long-Polling der umgebenden Seite, sollen das Warten nicht aufhalten.
+    // Ext.Ajax counts itself; open requests outside Ext, e.g. long polling of the surrounding page, must not hold up the wait.
     countNetwork: false,
-    // Die Reihenfolge der schwebenden Fenster (Dialoge) fuer floats.log.
+    // The order of floating windows (dialogs) for floats.log.
     floats: true,
-    // Dateien des Frameworks reichen Fehler meist nur weiter: Die Herkunft ist der erste Eintrag ausserhalb.
+    // Framework files mostly just pass errors on: the origin is the first entry outside them.
     stackSkip: /\/ext-[\w-]*\.js/,
-    // Das Overlay braucht den Sencha-Watch: Er haelt bootstrap.json und die Pakete aktuell. Laeuft er nicht und nennt die Config
-    // keinen devCommand, endet der Lauf mit dem Befehl zum Starten.
+    // The overlay needs the Sencha watch: it keeps bootstrap.json and the packages up to date. If it is not running and the config
+    // names no devCommand, the run ends with the command to start it.
     watch: { label: 'Sencha-Watch', command: /\bapp["']?\s+["']?watch\b/i, start: 'sencha app watch' },
-    // Was ersetzt wird, leitet der Adapter aus app.json, package.json und bootstrap.json her (extjs-overlay.mjs).
+    // The adapter derives what gets replaced from app.json, package.json and bootstrap.json (extjs-overlay.mjs).
     overlay: { createWatchSource, checkAppFiles },
 };

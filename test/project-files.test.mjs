@@ -28,25 +28,25 @@ const FILES = {
     'node_modules/x/env.js': 'console.log("kompiliert")',
 };
 
-test('isProjectCopy: Eine Kopie aus public/ ist eine, kompilierter Code nie, auch nicht in einem anderen Build-Ordner (Git)', (t) => {
+test('isProjectCopy: a copy from public/ is one, compiled code never, not even in another build folder (Git)', (t) => {
     const dir = project(t, { ...FILES, '.gitignore': 'dist\ndeploy\nnode_modules\n' }, { git: true });
     const skip = [join(dir, 'dist')];
     assert.equal(isProjectCopyFile(dir, join(dir, 'dist/env.js'), { skip }), true);
-    assert.equal(isProjectCopyFile(dir, join(dir, 'dist/assets/index-AB12CD34.js'), { skip }), false, 'deploy/ ist ignoriert, node_modules auch');
+    assert.equal(isProjectCopyFile(dir, join(dir, 'dist/assets/index-AB12CD34.js'), { skip }), false, 'deploy/ is ignored, node_modules too');
     assert.equal(isProjectCopy(dir, Buffer.from("window.__ENV__='local'"), { skip }), true);
-    assert.equal(isProjectCopy(dir, Buffer.from("window.__ENV__='lokal'"), { skip }), false, 'gleich lang, anderer Inhalt');
+    assert.equal(isProjectCopy(dir, Buffer.from("window.__ENV__='lokal'"), { skip }), false, 'same length, different content');
     assert.equal(isProjectCopy(dir, Buffer.alloc(0), { skip }), false);
     assert.equal(isProjectCopy('', Buffer.from('x')), false);
 });
 
-test('isProjectCopy: Ohne Git zaehlen node_modules, Punktordner und der Build-Ordner nicht', (t) => {
+test('isProjectCopy: without Git, node_modules, dot folders and the build folder do not count', (t) => {
     const dir = project(t, { 'public/env.js': "window.__ENV__='local'", 'dist/env.js': "window.__ENV__='local'", 'dist/main.js': 'a()', 'node_modules/y/main.js': 'a()', '.cache/main.js': 'a()' });
     const skip = [join(dir, 'dist')];
     assert.equal(isProjectCopyFile(dir, join(dir, 'dist/env.js'), { skip }), true);
     assert.equal(isProjectCopyFile(dir, join(dir, 'dist/main.js'), { skip }), false);
 });
 
-test('Overlay: env.js aus public/ kommt vom Server, der kompilierte Einstieg aus dem Build', async (t) => {
+test('Overlay: env.js from public/ comes from the server, the compiled entry from the build', async (t) => {
     const dir = project(t, { 'public/env.js': "window.__ENV__='local'", 'dist/env.js': "window.__ENV__='local'", 'dist/index.html': '<script type="module" src="/assets/index-NEW11111.js"></script>', 'dist/assets/index-NEW11111.js': 'export{}' });
     const overlay = await prepareOverlay({ root: dir, config: { apps: { web: { dir: '.' } } }, checked: { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [] } } } });
     assert.equal(await overlay.resolve('https://app.example/env.js', 'script'), null);

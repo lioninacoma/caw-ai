@@ -1,20 +1,20 @@
-// Testschritte im echten Chrome: Das Skript ersetzt Claude im Container und den Menschen am Chat.
+// Test steps in real Chrome: the script stands in for Claude in the container and for the human at the chat.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-// Laeufe ohne `interactive: true` verhalten sich wie in CI: ohne Chat. Der Chat haengt nicht mehr am Terminal.
+// Runs without `interactive: true` behave like CI: no chat. The chat is no longer tied to the terminal.
 process.env.CI ??= '1';
-// Die Pruefungen lesen die deutschen Texte; Kindprozesse erben die Sprache.
+// The checks read the German texts; child processes inherit the language.
 process.env.CAW_LANG = 'de';
-// Persoenliche Einstellungen (etwa Animationen aus) nie ins echte Nutzerverzeichnis.
+// Never write personal settings (e.g. animations off) to the real user folder.
 process.env.CAW_AI_HOME = join(dirname(fileURLToPath(import.meta.url)), '.caw-home');
-// Der Hinweis auf Token kommt nur im Szenario, das ihn prueft (S); sonst stuende er vor jedem Start von Claude.
+// The token notice only appears in the scenario that checks it (S); otherwise it would precede every Claude start.
 const quietTokens = () => {
     mkdirSync(process.env.CAW_AI_HOME, { recursive: true });
     const file = join(process.env.CAW_AI_HOME, 'prefs.json');
-    const now = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
-    writeFileSync(file, JSON.stringify({ ...now, tokenNotice: 'off' }));
+    const current = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+    writeFileSync(file, JSON.stringify({ ...current, tokenNotice: 'off' }));
 };
 quietTokens();
 
@@ -26,36 +26,36 @@ const { loadTest, parseTest, renderTest, stepHash, writeTest } = await import(pa
 const { setLanguage } = await import(pathToFileURL(`${tool}/../shared/i18n.mjs`).href);
 rmSync(join(fake, 'caw/runbooks'), { recursive: true, force: true });
 rmSync(join(fake, 'caw/replays'), { recursive: true, force: true });
-// Alte Laeufe weg: Sonst bietet eine Aufnahme die letzte Vorfuehrung eines frueheren E2E-Laufs an.
+// Remove old runs: otherwise a recording offers the last demonstration of an earlier E2E run.
 rmSync(join(fake, '.caw/runs'), { recursive: true, force: true });
 mkdirSync(join(fake, 'caw/tests'), { recursive: true });
-// Zugang zum Fake-Portal: Es nimmt nur den Benutzer fx-user an, das Passwort ist beliebig. Nicht eingecheckt, damit kein
-// .env im Repository liegt; sub/.env prueft, dass die Sandbox auch verschachtelte .env-Dateien verdeckt.
+// Fake portal login: it only accepts the user fx-user, any password. Not checked in, so no .env lives in the repository;
+// sub/.env checks that the sandbox also hides nested .env files.
 writeFileSync(join(fake, 'caw/.env'), 'CAW_LOGIN_KUNDE=fx-user\nCAW_PW_KUNDE=fx-passwort-e2e\n');
 mkdirSync(join(fake, 'sub'), { recursive: true });
 writeFileSync(join(fake, 'sub/.env'), 'NUR_FUER_DIE_SANDBOX_PRUEFUNG=1\n');
 const hits = join(here, 'portal-hits.log');
 const portal = spawn('node', [join(here, 'portal-neu.mjs')], { cwd: fake, stdio: 'ignore' });
-await new Promise((ok) => { setTimeout(ok, 1000); });
+await new Promise((resolve) => { setTimeout(resolve, 1000); });
 
-// Ergebnisse auch in eine eigene Datei: Prozesse des Agenten erben stdout. Ist es in eine Datei umgeleitet, schreiben sie
-// unter Windows mit eigenem Versatz hinein und ueberschreiben dabei Zeilen dieses Skripts. Zaehlen gilt nur aus dieser Datei.
+// Results also go to a separate file: agent processes inherit stdout. When it is redirected to a file, on Windows they write at
+// their own offset and overwrite lines of this script. Only this file counts.
 const results = process.env.CAW_E2E_ERGEBNIS ?? join(here, 'ergebnis.log');
 writeFileSync(results, '');
-const report = (line) => {
+const print = (line) => {
     console.log(line);
     appendFileSync(results, `${line}\n`);
 };
 const tally = { ok: 0, fail: 0 };
-setTimeout(() => { report('FEHL Wachhund: Zeitlimit'); portal.kill(); process.exit(9); }, 2_400_000);
+setTimeout(() => { print('FEHL Wachhund: Zeitlimit'); portal.kill(); process.exit(9); }, 2_400_000);
 const verify = (name, ok, detail = '') => {
     tally[ok ? 'ok' : 'fail'] += 1;
-    report(`${ok ? 'OK  ' : 'FEHL'} ${name} ${detail}`);
+    print(`${ok ? 'OK  ' : 'FEHL'} ${name} ${detail}`);
 };
 const only = process.argv[2];
 const scenario = async (name, body) => {
     if (only !== undefined && !only.includes(name[0])) return;
-    report(`##### ${name}`);
+    print(`##### ${name}`);
     await body();
 };
 const ID = 'fx-schritte';
@@ -67,21 +67,21 @@ const approve = async (page) => {
     await stateOf(page, 'planning');
     await page.locator('#approve').click();
 };
-// Beenden heisst je nach Lage „Ohne Beheben beenden“ oder „Lauf beenden“.
+// Closing is labelled "Ohne Beheben beenden" or "Lauf beenden" depending on the situation.
 const decide = (page, label) => page.locator('#choices button', { hasText: label === 'Schließen' ? /Ohne Beheben beenden|Lauf beenden/ : label }).click({ timeout: 90000 });
-// Wer einen Entwurf verwirft, bestaetigt das mit einem zweiten Klick („Wirklich verwerfen?“).
+// Discarding a draft needs a second confirming click ("Wirklich verwerfen?").
 const discard = async (page) => {
     await decide(page, 'Entwurf verwerfen');
     await page.locator('#choices button.sure').click({ timeout: 10000 });
 };
-// Alles laeuft in der Werkbank wie im echten Betrieb: Der Chat ist ein Frame neben der Anwendung im iframe. Fuer die Handler sieht
-// der Chat-Frame aus wie eine Seite, deren erste Seite im Kontext die Anwendung ist.
+// Everything runs in the workbench as in real use: the chat is a frame next to the application iframe. To the handlers the chat
+// frame looks like a page whose first page in the context is the application.
 /**
- * Dasselbe Bild hell und dunkel. Das Thema wird in jedem Frame ausdruecklich gesetzt: Hat ein Szenario davor eine Wahl
- * gespeichert (data-theme), waeren beide Bilder sonst gleich. Danach gilt wieder, was vorher galt.
+ * The same screenshot light and dark. The theme is set explicitly in every frame: if an earlier scenario saved a choice
+ * (data-theme), both images would otherwise be the same. Afterwards the previous setting is restored.
  */
 const shootThemes = async (given, light, dark) => {
-    // Ein Chat-Frame (auch hinter asHuman) gehoert zur Werkbank-Seite: Die zeigt das Bild, und ihre Frames bekommen das Thema.
+    // A chat frame (also behind asHuman) belongs to the workbench page: that page is captured, and its frames get the theme.
     const page = typeof given.frames === 'function' ? given : given.page();
     const set = (theme) => Promise.all(page.frames().map((frame) => frame.evaluate((value) => {
         const root = document.documentElement;
@@ -122,10 +122,10 @@ const humans = (...windows) => {
             const human = windows[index];
             index += 1;
             running.push((human ?? (async () => verify('Unerwartetes Fenster', false, String(index))))(asHuman(page)).catch(async (error) => {
-                // Wo der Chat stand: Ohne das sagt ein Timeout nichts.
+                // Where the chat was: without this a timeout says nothing.
                 const seen = await page.evaluate(() => `${document.body?.dataset.state ?? '-'} | ${document.body?.innerText.replace(/\s+/g, ' ').slice(-300)}`).catch((reason) => `nicht lesbar: ${reason.message.split('\n')[0]}`);
                 verify(`Mensch in Fenster ${index}`, false, `${error.message.split('\n')[0]} | Chat: ${seen}`);
-                // Sonst wartet der Lauf ewig auf eine Entscheidung: Fenster zu, der Lauf endet als abgebrochen.
+                // Otherwise the run waits forever for a decision: close the window, the run ends as cancelled.
                 await (typeof page.page === 'function' ? page.page() : page).close().catch(() => {});
             }));
         },
@@ -138,14 +138,14 @@ const S1 = '  - id: S1\n    name: Ziel erreichen\n    do: Klicke Weiter.\n    ex
 const S2 = (action = 'Fuelle das Anliegen und sende es.', expect = 'Der Vorgang steht da.') => `  - id: S2\n    name: Vorgang anlegen\n    do: ${action}\n    expect: ${expect}`;
 const S3 = (expect = 'Der Vorgang ist fertig.') => `  - id: S3\n    name: Abschliessen\n    do: Schliesse den Vorgang ab.\n    expect: ${expect}`;
 const WHOLE = `notes: Bleibe bei deinem Vorgang.\nsteps:\n${S1}\n${S2()}\n${S3()}`;
-const ZIEL = "document.getElementById('ziel').textContent==='Ziel erreicht'";
-const VORGANG = "document.getElementById('vorgang').textContent";
-const FERTIG = "document.getElementById('fertig').textContent==='fertig'";
+const TARGET_REACHED = "document.getElementById('ziel').textContent==='Ziel erreicht'";
+const CASE_TEXT = "document.getElementById('vorgang').textContent";
+const CASE_DONE = "document.getElementById('fertig').textContent==='fertig'";
 const tag = 'TAG=$($A task | grep -o \'CAW-[0-9]*\' | head -1)';
 const finishOf = (ids, omit = '[]') => `echo '{"expectations":[${ids.map((id) => `{"id":"${id}","status":"pass","evidence":{"type":"eval","value":"ok"}}`).join(',')}],"omit":${omit}}' > /tmp/e.json; $A finish --file /tmp/e.json; echo "finish Exit=$?"`;
 
 const ORIGINAL_HEAD = '# Kopf vom Menschen\n';
-/** Die Datei ohne Vergleichswerte: Ein bestandener Schritt bekommt sie im Testlauf, sonst aendert sich nichts. */
+/** The file without comparison values: a passed step gets them in the test run, nothing else changes. */
 const noNet = (text) => {
     let block = null;
     return text.split('\n').filter((line) => {
@@ -156,8 +156,8 @@ const noNet = (text) => {
     }).join('\n');
 };
 let good = '';
-// Zwei Dateien: Das Skript arbeitet mit einer Sicht als eine Datei (Beschreibung plus Aufzeichnung, mit dem Kopfkommentar der
-// Beschreibung) und schreibt sie als Beschreibung und Aufzeichnung zurueck, wie das Tool. So bleiben die Vergleiche unten gleich.
+// Two files: the script works with a single-file view (description plus recording, with the description's header comment) and
+// writes it back as description and recording, like the tool. That keeps the comparisons below unchanged.
 const recordingFile = join(fake, 'caw/recordings', `${ID}.yaml`);
 const restore = (text = good) => {
     rmSync(file, { force: true });
@@ -184,7 +184,7 @@ const breakStep = (text, label) => {
     return broken;
 };
 
-// Das Fake-Portal unter einem Namen mit Punkt: Nur so laesst es sich in die Werkbank einbetten.
+// The fake portal under a host name with a dot: only then can it be embedded in the workbench.
 const mainConfig = join(fake, 'caw.config.json');
 const configBefore = readFileSync(mainConfig, 'utf8');
 {
@@ -209,25 +209,25 @@ ${tag}
 $A click '#weiter'
 ${count('$A check S2 "true"', 'step-order', 'REIHENFOLGE')}
 ${count('$A check S9 "true"', 'step-unknown', 'UNBEKANNT')}
-$A check S1 "${ZIEL}"
+$A check S1 "${TARGET_REACHED}"
 $A fill '#anliegen' "erst"
 $A fill '#anliegen' "Vorgang $TAG"
 $A screenshot beweis.png >/dev/null
 $A click '#senden'
-$A remember nr "${VORGANG}"
-$A check S2 "${VORGANG}==='Vorgang $TAG'"
+$A remember nr "${CASE_TEXT}"
+$A check S2 "${CASE_TEXT}==='Vorgang $TAG'"
 $A click '#spaeter'
-$A check S3 "${FERTIG} && ${VORGANG}==='Vorgang $TAG'"
+$A check S3 "${CASE_DONE} && ${CASE_TEXT}==='Vorgang $TAG'"
 $A press Tab
 ${count(finishOf(['S1', 'S2', 'S3']), 'Nach der letzten Pruefung', 'NACHLAUF')}
-$A check S3 "${FERTIG} && ${VORGANG}==='Vorgang $TAG'"
+$A check S3 "${CASE_DONE} && ${CASE_TEXT}==='Vorgang $TAG'"
 ${finishOf(['S1', 'S2', 'S3'])}`;
         const h = humans(async (page) => {
             const app = page.context().pages()[0];
             await stateOf(page, 'showing');
             await app.locator('#weiter').click();
             await page.waitForTimeout(400);
-            // Doppelklick auf Fertig: Der zweite trifft einen gesperrten Knopf, der Chat zeigt sofort die Uebernahme.
+            // Double click on Done: the second click hits a disabled button, the chat shows the handover at once.
             await page.locator('#toggle').dblclick().catch(() => {});
             const after = await page.evaluate(() => `${document.body.dataset.state}|${getComputedStyle(document.getElementById('form')).display}`).catch(() => 'geschlossen');
             verify('Nach Fertig: wird uebernommen, nichts mehr zu klicken', after === 'handing|none' || after === 'geschlossen', after);
@@ -304,7 +304,7 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
         verify('Ein Fenster', await h.done() === 1);
         verify('Exit 1', code === 1, String(code));
         verify('Kein Docker', dockerUsed === 0);
-        // Nur der bestandene S1 bekommt seinen fehlenden Vergleich, sonst bleibt die Datei, wie sie war.
+        // Only the passed S1 gets its missing comparison, otherwise the file stays as it was.
         verify('Datei bis auf den Vergleich fuer S1 unveraendert', noNet(read()) === noNet(broken) && /network: \[\]/.test(stepText(read(), 'S1')) && !/network:/.test(stepText(broken, 'S1')) && stepText(read(), 'S2') === stepText(broken, 'S2'));
         restore();
     });
@@ -322,10 +322,10 @@ ${planOf(`steps:\n${S2('Fuelle das Anliegen neu und sende es.')}`)}
 $A plan --file /tmp/p.yaml > /dev/null
 $A fill '#anliegen' "Vorgang $TAG"
 $A click '#senden'
-$A remember nr "${VORGANG}"
+$A remember nr "${CASE_TEXT}"
 $A check S2 "true"
 ${count(finishOf(['S2']), 'Pruefung gleich', 'MASSSTAB')}
-$A check S2 "${VORGANG}==='Vorgang $TAG'"
+$A check S2 "${CASE_TEXT}==='Vorgang $TAG'"
 ${finishOf(['S2'])}`;
         const docker = undefined;
         const h = humans(async (page) => {
@@ -346,7 +346,7 @@ ${finishOf(['S2'])}`;
         verify('Drei Fenster', await h.done() === 3);
         verify('Exit 0', code === 0, String(code));
         const now = read();
-        // Der Testlauf davor hat S1 bestanden und ihm den fehlenden Vergleich eingetragen; sonst bleibt alles gleich.
+        // The previous test run passed S1 and added its missing comparison; everything else stays the same.
         verify('S1 bekam Vergleichswerte', /network:/.test(stepText(now, 'S1')) && !/network:/.test(stepText(broken, 'S1')), stepText(now, 'S1'));
         verify('S1 und S3 sonst Zeichen fuer Zeichen gleich', noNet(stepText(now, 'S1')) === stepText(broken, 'S1') && stepText(now, 'S3') === stepText(broken, 'S3'));
         verify('S2 neu', /Fuelle das Anliegen neu/.test(stepText(now, 'S2')) && !/Verschwunden/.test(now));
@@ -365,9 +365,9 @@ echo "GEMERKT=$NR"
 ${planOf(`steps:\n${S3('Der Vorgang ist abgeschlossen und bleibt sichtbar.')}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 $A click '#spaeter'
-$A check S3 "${FERTIG} && ${VORGANG}.length > 0 && ${VORGANG}==='$NR'"
+$A check S3 "${CASE_DONE} && ${CASE_TEXT}.length > 0 && ${CASE_TEXT}==='$NR'"
 ${finishOf(['S3'])}`;
-        // fix spielt erst ab: S3 besteht, der Chat schliesst mit dem Lauf, dann nimmt Claude neu auf.
+        // fix replays first: S3 passes, the chat closes with the run, then Claude records again.
         const h = humans(async () => {}, async (page) => {
             await stateOf(page, 'planning');
             const card = page.locator('.message.plan').last();
@@ -375,7 +375,7 @@ ${finishOf(['S3'])}`;
             await shootThemes(page, join(here, 'schritt-aenderung-hell.png'), join(here, 'schritt-aenderung-dunkel.png'));
             await page.locator('#approve').click();
         }, async (page) => {
-            // Die Entscheidung nach dem Pruefdurchlauf ist eine Karte.
+            // The decision after the check run is a card.
             await page.locator('.message.decision', { hasText: 'Geändertes Ergebnis in S3' }).waitFor({ timeout: 90000 });
             await discard(page);
         });
@@ -394,8 +394,8 @@ ${planOf(`steps:\n${S2('Noch einmal anders.')}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 $A fill '#anliegen' "Vorgang $TAG"
 $A click '#senden'
-$A remember nr "${VORGANG}"
-$A check S2 "${VORGANG}==='Vorgang $TAG'"
+$A remember nr "${CASE_TEXT}"
+$A check S2 "${CASE_TEXT}==='Vorgang $TAG'"
 ${finishOf(['S2'])}`;
         const h = humans(async () => {}, approve, async (page) => {
             await page.locator('.message.question', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 90000 });
@@ -444,7 +444,7 @@ $A task > /tmp/t.json; echo "NEU-AUFNEHMEN=$(grep -c '"rerecord": true' /tmp/t.j
 ${planOf(`steps:\n${S1}`)}
 $A plan --file /tmp/p.yaml > /tmp/a.json; echo "OHNE-FREIGABE=$(grep -c '"approved": true' /tmp/a.json)" >> "$CAW_AGENT_DIR/i.txt"
 $A click '#weiter'
-$A check S1 "${ZIEL}"
+$A check S1 "${TARGET_REACHED}"
 ${finishOf(['S1'])}`;
         const h = humans(async () => {}, async (page) => {
             await page.locator('.message', { hasText: 'Plan für S1 unverändert, Claude nimmt den Schritt neu auf' }).waitFor({ timeout: 90000 });
@@ -509,9 +509,9 @@ sleep 60`;
     await scenario('L Fehler aus fremdem Code: Warnung statt Abbruch, ohne foreignCode bleibt er hart', async () => {
         const step = { id: 'S4', name: 'Fremd', do: '', expect: 'Fremder Fehler stoert nicht.' };
         const check = "(()=>{if(!sessionStorage.w){sessionStorage.w='1';const s=document.createElement('script');s.src='/public/fremd.js';document.head.append(s);return false}return true})()";
-        const text = `  - id: S4\n    name: Fremd\n    do: ""\n    expect: Fremder Fehler stoert nicht.\n    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: local/dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
+        const stepYaml = `  - id: S4\n    name: Fremd\n    do: ""\n    expect: Fremder Fehler stoert nicht.\n    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: local/dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
         const at = good.indexOf('knownMessages');
-        restore(at === -1 ? `${good}${text}` : `${good.slice(0, at)}${text}${good.slice(at)}`);
+        restore(at === -1 ? `${good}${stepYaml}` : `${good.slice(0, at)}${stepYaml}${good.slice(at)}`);
         const configPath = join(fake, 'caw.config.json');
         const config = readFileSync(configPath, 'utf8');
         const newest = () => {
@@ -547,7 +547,7 @@ sleep 60`;
     };
     const card = (page, n) => page.locator('.message.advice').nth(n);
     const shoot = async (chat, name) => {
-        // Mit Werkbank ist der Chat ein Frame: Das Bild zeigt die ganze Werkbank.
+        // With the workbench the chat is a frame: the screenshot shows the whole workbench.
         const page = typeof chat.page === 'function' ? chat.page() : chat;
         await page.waitForTimeout(300);
         await shootThemes(page, join(here, `${name}-hell.png`), join(here, `${name}-dunkel.png`));
@@ -557,8 +557,8 @@ sleep 60`;
         const at = good.indexOf('knownMessages');
         return at === -1 ? `${good}${text}` : `${good.slice(0, at)}${text}${good.slice(at)}`;
     };
-    const FREMD = "(()=>{if(!sessionStorage.w){sessionStorage.w='1';const s=document.createElement('script');s.src='/public/fremd.js';document.head.append(s);return false}return true})()";
-    const FREMD_STEP = { id: 'S4', name: 'Fremd', do: '', expect: 'Fremder Fehler stoert nicht.' };
+    const FOREIGN_CHECK = "(()=>{if(!sessionStorage.w){sessionStorage.w='1';const s=document.createElement('script');s.src='/public/fremd.js';document.head.append(s);return false}return true})()";
+    const FOREIGN_STEP = { id: 'S4', name: 'Fremd', do: '', expect: 'Fremder Fehler stoert nicht.' };
 
     await scenario('M run ohne --advise: Chat neben der Anwendung, keine Empfehlung, kein Docker', async () => {
         const broken = breakStep(good, 'Senden');
@@ -650,7 +650,7 @@ $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\
     });
 
     await scenario('P run --fix bestanden mit Warnung: Textaenderung macht den Schritt veraltet, Beheben wird angeboten', async () => {
-        restore(withS4(FREMD_STEP, FREMD));
+        restore(withS4(FOREIGN_STEP, FOREIGN_CHECK));
         const back = keep(configPath);
         writeFileSync(configPath, JSON.stringify({ ...JSON.parse(readFileSync(configPath, 'utf8')), foreignCode: ['.'] }, null, 4));
         const advice = `A=caw-ai
@@ -689,10 +689,10 @@ $A task > /tmp/t.json; echo "FAIL=$(grep -c '"status": "fail"' /tmp/t.json)"
 echo '{"items":[{"about":"S3","side":"test","title":"Hinweis","evidence":"S3 fail","reason":"r","change":{"kind":"step","id":"S3","fields":{"note":"Nur im Entwurf"}}}]}' > /tmp/a.json
 $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         const h = humans(async () => {}, async (page) => {
-            // Unveraenderter Plan: keine Freigabe noetig.
+            // Unchanged plan: no approval needed.
             await stateOf(page, 'reviewing');
             await decide(page, 'Übernehmen');
-            // note zaehlt zum Hash: Der Schritt ist danach veraltet, Beheben wird angeboten.
+            // note is part of the hash: the step is then stale and a fix is offered.
             await page.locator('.message.question', { hasText: 'neu aufgenommen' }).waitFor({ timeout: 60000 });
             await decide(page, 'Schließen');
             await page.locator('.message.question', { hasText: 'keine neue Aufzeichnung entstanden' }).waitFor({ timeout: 60000 });
@@ -736,7 +736,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
                 verify('Werkbank auf Englisch', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()) === 'Preparation');
                 await page.locator('.message.question', { hasText: 'The run passed' }).waitFor({ timeout: 60000 });
                 await stateOf(page, 'developing');
-                const german = await bench.evaluate(() => /[äöüß]|(und|nicht|Schritt|Lauf)/i.test(document.querySelector('header')?.innerText ?? ''));
+                const german = await bench.evaluate(() => /[äöüß]|\b(und|nicht|Schritt|Lauf)\b/i.test(document.querySelector('header')?.innerText ?? ''));
                 verify('Kopfzeile ohne Deutsch', !german);
                 await shootThemes(page, join(here, 'englisch-hell.png'), join(here, 'englisch-dunkel.png'));
                 process.emit('SIGINT');
@@ -758,7 +758,7 @@ $A say "Der Knopf Senden fehlt, MODE=$(grep -c '"mode": "talk"' /tmp/t.json)."
 $A chat > /tmp/c1.json
 $A say "Zweite Nachricht: $(grep -o 'Und jetzt' /tmp/c1.json | head -1)"
 $A chat > /tmp/c2.json; echo "ENDE=$(grep -c ended /tmp/c2.json)"`;
-        // Der Hinweis auf Token ist wieder an: „Ohne Claude weiter“ laesst Claude aus, „Nicht mehr fragen“ startet ihn und merkt sich das.
+        // The token notice is on again: "Ohne Claude weiter" skips Claude, "Nicht mehr fragen" starts it and remembers that.
         const prefsFile = join(process.env.CAW_AI_HOME, 'prefs.json');
         writeFileSync(prefsFile, JSON.stringify({ ...JSON.parse(readFileSync(prefsFile, 'utf8')), tokenNotice: 'on' }));
         let gate = '';
@@ -783,7 +783,7 @@ $A chat > /tmp/c2.json; echo "ENDE=$(grep -c ended /tmp/c2.json)"`;
             await page.locator('.message.claude', { hasText: 'Zweite Nachricht: Und jetzt' }).waitFor({ timeout: 60000 });
             await decide(page, 'Schließen');
         });
-        // Das echte sandbox-run schreibt das Log selbst; das Skript ersetzt es und schreibt dorthin, wo der Chat mitliest.
+        // The real sandbox-run writes the log itself; the script replaces it and writes where the chat reads along.
         const logged = `{\n${talk}\n} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-gespraech.log"`;
         const code = await run(fake, [ID, ...short], { interactive: true, onChatOpen: h.onChatOpen, talkCommand: ['bash', '-c', logged] });
         verify('Ein Fenster, Exit 1', await h.done() === 1 && code === 1, String(code));
@@ -802,18 +802,18 @@ $A chat > /tmp/c2.json; echo "ENDE=$(grep -c ended /tmp/c2.json)"`;
         const agent = `A=caw-ai
 $A task > /tmp/t.json
 NR=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/t.json','utf8')).repair.remembered[0].value)")
-echo "GEMERKT=$NR STEHT=$($A eval "${VORGANG}")"
+echo "GEMERKT=$NR STEHT=$($A eval "${CASE_TEXT}")"
 ${planOf(`steps:\n${S3()}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 $A click '#spaeter'
-$A check S3 "${FERTIG} && ${VORGANG}==='$NR'"
+$A check S3 "${CASE_DONE} && ${CASE_TEXT}==='$NR'"
 ${finishOf(['S3'])}`;
         const saved = hitCount('Speichern');
         const h = humans(async (page) => {
             await page.locator('.message.question', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 60000 });
             verify('Angebot: im selben Browser', /im selben Browser, ohne die Schritte davor/.test(await page.locator('.message.question').last().textContent()));
             await decide(page, 'Schritt beheben');
-            // Unveraenderter Plan: keine Freigabe noetig.
+            // Unchanged plan: no approval needed.
         }, async (page) => {
             await page.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
             await decide(page, 'Testplan übernehmen');
@@ -821,7 +821,7 @@ ${finishOf(['S3'])}`;
         const code = await run(fake, [ID, ...short], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
         verify('Zwei Fenster, Exit 0', await h.done() === 2 && code === 0, String(code));
         verify('Kein Vorlauf: S2 sendet nur im Testlauf und im Pruefdurchlauf', hitCount('Speichern') - saved === 2, String(hitCount('Speichern') - saved));
-        // S1 und S2 haben im Testlauf bestanden und ihren Vergleich bekommen, sonst bleiben sie gleich.
+        // S1 and S2 passed in the test run and got their comparison, otherwise they stay the same.
         verify('S3 neu, S1 und S2 bis auf Vergleichswerte gleich', !/Verschwunden/.test(read()) && noNet(stepText(read(), 'S1')) === noNet(stepText(broken, 'S1')) && noNet(stepText(read(), 'S2')) === noNet(stepText(broken, 'S2')));
         verify('Bericht des Testlaufs bleibt', runDirs().filter((name) => !before.has(name)).some((name) => existsSync(join(fake, '.caw/runs', name, 'report-testlauf.md'))));
         verify('run besteht danach', await run(fake, [ID, ...short]) === 0);
@@ -871,7 +871,7 @@ ${finishOf(['S3'])}`;
             await page.locator('#down').click();
             await page.waitForTimeout(800);
             verify('Knopf scrollt ans Ende und verschwindet', await gap() < 5 && !await page.locator('#down').isVisible(), String(await gap()));
-            // Ohne Claude endet der Lauf sofort: Der Zustand wird in der Seite gelesen, bevor sie zugeht.
+            // Without Claude the run ends at once: the state is read in the page before it closes.
             const after = await page.evaluate(() => { const a = document.getElementById('abort'); a.click(); a.click(); a.click(); return { disabled: a.disabled, text: a.textContent, status: document.getElementById('status').textContent }; });
             verify('Abbrechen gesperrt und benannt', after.disabled && /Wird abgebrochen/.test(after.text), JSON.stringify(after));
             verify('Hinweis im Status', /Lauf wird beendet/.test(after.status));
@@ -882,11 +882,11 @@ ${finishOf(['S3'])}`;
         restore();
     });
 
-    // Ein Schritt, der Preise laedt. Der Code der Anwendung liegt in preise.js im Projekt, das Fake-Portal liefert ihn mit.
+    // A step that loads prices. The application code lives in preise.js in the project; the fake portal serves it.
     const appFile = join(fake, 'preise.js');
-    const GEBUEHR = "document.getElementById('preis').textContent==='geladen'";
+    const PRICES_LOADED = "document.getElementById('preis').textContent==='geladen'";
     const FEES = 'GET /o/DataProxy connector=HTTP-X-Preise';
-    const preise = (ms) => `// Laedt die Preise der Bestellung.\nwindow.ladePreise = function () {\n    location.hash = 'preise-' + Date.now();\n    const controller = new AbortController();\n    setTimeout(() => controller.abort(), ${ms});\n    fetch('/o/DataProxy?connector=HTTP-X-Preise', { signal: controller.signal })\n        .then(() => { document.getElementById('preis').textContent = 'geladen'; })\n        .catch(() => {});\n};\n`;
+    const pricesScript = (ms) => `// Laedt die Preise der Bestellung.\nwindow.ladePreise = function () {\n    location.hash = 'preise-' + Date.now();\n    const controller = new AbortController();\n    setTimeout(() => controller.abort(), ${ms});\n    fetch('/o/DataProxy?connector=HTTP-X-Preise', { signal: controller.signal })\n        .then(() => { document.getElementById('preis').textContent = 'geladen'; })\n        .catch(() => {});\n};\n`;
     const S4_PLAIN = '  - id: S4\n    name: Preise laden\n    do: Lade die Preise.\n    expect: Die Preis steht da.\n';
     const plainS4 = () => {
         const at = good.indexOf('knownMessages');
@@ -905,9 +905,9 @@ ${finishOf(['S3'])}`;
         }
     };
     let withFees = '';
-    /** S4 einmal per fix aufnehmen: Dabei entsteht recording.network, der Vergleich fuer die Einschaetzung. */
+    /** Records S4 once via fix: this creates recording.network, the comparison for the assessment. */
     const ensureFees = async () => {
-        writeFileSync(appFile, preise(40000));
+        writeFileSync(appFile, pricesScript(40000));
         if (withFees !== '') return restore(withFees);
         const config = JSON.parse(readFileSync(configPath, 'utf8'));
         writeFileSync(configPath, JSON.stringify({ ...config, requestKeys: ['connector'] }, null, 4));
@@ -917,18 +917,18 @@ ${planOf(`steps:\n${S4_PLAIN.trimEnd()}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 $A click '#laden'
 sleep 1
-$A check S4 "${GEBUEHR}"
+$A check S4 "${PRICES_LOADED}"
 ${finishOf(['S4'])}`;
-        // Unveraenderter Plan: Im Fenster von Claude gibt es nichts freizugeben.
+        // Unchanged plan: nothing to approve in Claude's window.
         const h = humans(async () => {}, async (page) => {
             await page.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
             await decide(page, 'Testplan übernehmen');
         });
         const code = await fix(fake, [ID, 'S4', ...opts], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
         await h.done();
-        // Vergleichswerte entstehen nie beim Aufnehmen, sondern im ersten gesunden Testlauf danach.
+        // Comparison values are never created while recording, only in the first healthy test run afterwards.
         verify('Aufnahme: ohne recording.network', code === 0 && parseTest(read()).steps.find(({ id }) => id === 'S4')?.recording?.network === undefined);
-        // Mit Chat: Ohne ihn, etwa in CI, aendert ein Lauf die Testdatei nicht. Ein bestandener Lauf wartet auf niemanden.
+        // With chat: without it, e.g. in CI, a run does not change the test file. A passed run waits for nobody.
         const healthy = await run(fake, [ID, ...short], { interactive: true });
         withFees = read();
         const s4 = parseTest(withFees).steps.find(({ id }) => id === 'S4');
@@ -940,7 +940,7 @@ ${finishOf(['S4'])}`;
 
     await scenario('X Einschaetzung: Abbruch nach 1 ms ist ein Fehler der Anwendung, im Chat, im Bericht und fuer Claude', async () => {
         await ensureFees();
-        writeFileSync(appFile, preise(1));
+        writeFileSync(appFile, pricesScript(1));
         const talk = `A=caw-ai
 $A task > /tmp/t.json
 $A network > /tmp/n.json
@@ -969,7 +969,7 @@ $A chat > /dev/null`;
 
     await scenario('Y Beheben bei Anwendungsfehler: Aenderung am Code geprueft, auf Klick geschrieben, danach besteht der Lauf', async () => {
         await ensureFees();
-        writeFileSync(appFile, preise(1));
+        writeFileSync(appFile, pricesScript(1));
         const before = new Set(runDirs());
         const bad = JSON.stringify({ items: [{ about: 'S4', side: 'app', title: 'x', evidence: 'e', reason: 'r', prompt: 'p', edits: [{ file: 'preise.js', find: 'gibt es nicht', replace: 'y' }] }] });
         const advice = JSON.stringify({ items: [{
@@ -1005,7 +1005,7 @@ echo '{"expectations":[{"id":"S4","status":"fail","note":"Fehler der Anwendung",
         });
         const code = await run(fake, [ID, ...short], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
         verify('Zwei Fenster, Exit 1', await h.done() === 2 && code === 1, String(code));
-        verify('Code geaendert, Rest gleich', readFileSync(appFile, 'utf8') === preise(40000));
+        verify('Code geaendert, Rest gleich', readFileSync(appFile, 'utf8') === pricesScript(40000));
         verify('Testdatei bis auf Vergleichswerte unveraendert', noNet(read()) === noNet(withFees));
         const logs = runDirs().filter((name) => !before.has(name)).map((name) => join(fake, '.caw/runs', name, 'agent/claude-beheben.log')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('\n');
         verify('Beheben sah die Einschaetzung, falsche Stelle abgelehnt, fail ohne Plan', /REPAIR-APP=[1-9]/.test(logs) && /EDIT-ABGELEHNT=1/.test(logs) && /ADVISE Exit=0/.test(logs) && /FINISH Exit=0/.test(logs) && /Urteil angenommen: fail/.test(logs), logs.slice(-600));
@@ -1024,7 +1024,7 @@ echo '{"expectations":[{"id":"S4","status":"fail","note":"Fehler der Anwendung",
         verify('Tabelle: abgebrochen (Seitenwechsel)', /HTTP-X-Langsam \| abgebrochen \(Seitenwechsel\)/.test(section), section);
         verify('Kein Befund zum Abbruch', !/ohne Seitenwechsel/.test(section) && !/Langsam wurde nach/.test(section));
         verify('Fehlender Request der Aufnahme wird genannt', /HTTP-X-Preise kam bei der Aufnahme/.test(section));
-        writeFileSync(appFile, preise(40000));
+        writeFileSync(appFile, pricesScript(40000));
         restore();
     });
 
@@ -1036,11 +1036,11 @@ $A plan --file /tmp/p.yaml >/dev/null
 $A eval "Promise.reject({a:1});1" >/dev/null
 sleep 1
 $A click '#weiter'
-$A check S1 "${ZIEL}"
+$A check S1 "${TARGET_REACHED}"
 ${finishOf(['S1'])}`;
         const h = humans(async (page) => {
             const app = page.context().pages()[0];
-            // Szenario A hat eben vorgefuehrt: Die Aufnahme bietet diese Vorfuehrung an, gewaehlt wird trotzdem neu vorfuehren.
+            // Scenario A just demonstrated: the recording offers that demonstration, but a new demonstration is chosen.
             await stateOf(page, 'choosing');
             verify('Letzte Vorfuehrung wird angeboten', await page.locator('#choices button', { hasText: 'Letzte Vorführung verwenden' }).count() === 1);
             await decide(page, 'Selbst vorführen');
@@ -1082,8 +1082,8 @@ echo "PRESS=$($A eval "document.getElementById('anliegen').value")"
 $A screenshot werkbank.png > /dev/null; echo "SHOT Exit=$?"
 $A fill "$REF" "Vorgang $TAG"
 $A click '#senden'
-$A remember nr "${VORGANG}"
-$A check S2 "${VORGANG}==='Vorgang $TAG'"
+$A remember nr "${CASE_TEXT}"
+$A check S2 "${CASE_TEXT}==='Vorgang $TAG'"
 ${finishOf(['S2'])}`;
         const workbenchOf = (chat) => {
             verify('Chat ist ein Frame der Werkbank', typeof chat.page === 'function' && chat.name() === 'caw-chat');
@@ -1095,7 +1095,7 @@ ${finishOf(['S2'])}`;
             await chat.locator('.message.question', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
             const app = appFrame(bench);
             verify('Werkbank unter der Adresse der Anwendung', new URL(bench.url()).origin === new URL(app.url()).origin && bench.url() === app.url(), `${bench.url()} ${app.url()}`);
-            // Wie im Portal: Die Anwendung greift auf das oberste Fenster zu und findet dort ihre eigenen globalen Namen.
+            // As in the portal: the application accesses the top window and finds its own globals there.
             await app.evaluate(() => { window.cawProbe = { ok: 42 }; });
             await bench.waitForTimeout(700);
             const topAccess = await app.evaluate(() => { try { return `${top.cawProbe?.ok}|${top.location.href === location.href}|${parent.document.title !== ''}`; } catch (error) { return `Fehler ${error.message}`; } });
@@ -1169,7 +1169,7 @@ ${finishOf(['S2'])}`;
             const raven = await bench.evaluate(() => { const r = document.getElementById('raven')?.getBoundingClientRect(); const c = document.querySelector('iframe[name=caw-chat]')?.getBoundingClientRect(); return r && c ? { x: r.x, cx: c.x } : null; });
             verify('Rabe fliegt zum Chat', raven !== null && raven.x >= raven.cx - 40, JSON.stringify(raven));
             await shoot(chat, 'entwickeln');
-            // Fadenkreuz: Das Element haengt an der naechsten Frage und liegt sofort fuer die Claude-Code-Sitzung bereit.
+            // Crosshair: the element is attached to the next question and is ready for the Claude Code session at once.
             await chat.locator('#pick').click();
             await bench.waitForTimeout(500);
             await appOf(bench).locator('#ziel').click();
@@ -1177,12 +1177,12 @@ ${finishOf(['S2'])}`;
             await chat.locator('.message', { hasText: '“ liegt für deine Claude-Code-Sitzung bereit' }).waitFor({ timeout: 20000 });
             const picked = existsSync(selection) ? JSON.parse(readFileSync(selection, 'utf8')) : null;
             verify('Auswahl fuer die Session', picked?.test === ID && picked?.until === 'S2' && typeof picked?.element?.label === 'string', JSON.stringify(picked)?.slice(0, 200));
-            // Requests und Konsole: auf und per Knopf wieder zu.
+            // Requests and console: open, then closed again via the button.
             await bench.locator('[data-tab=requests]').click();
             const opened = await bench.locator('#drawer.open').count();
             await bench.locator('#drawerClose').click();
             verify('Leiste per Knopf eingeklappt', opened === 1 && await bench.locator('#drawer.open').count() === 0);
-            // Schritte und Chat einklappen und wieder auf, gemerkt in den Einstellungen.
+            // Collapse steps and chat and expand them again, remembered in the settings.
             await bench.locator('#chatFold').click();
             await bench.locator('#stepsFold').click();
             await bench.waitForTimeout(400);
@@ -1192,19 +1192,19 @@ ${finishOf(['S2'])}`;
             await bench.locator('#stepsStrip').click();
             await bench.waitForTimeout(400);
             verify('Wieder ausgeklappt', await bench.locator('#chat').isVisible() && await bench.locator('#steps').isVisible() && pref().chat === 'open' && pref().steps === 'open', JSON.stringify(pref()));
-            // F5 in der Anwendung: nur die Seite neu, Chat und Schritte bleiben, die Schritte zeigen „verlassen“.
+            // F5 in the application: only the page reloads, chat and steps stay, the steps show "verlassen".
             await appOf(bench).locator('body').press('F5');
             await bench.locator('#leftNote').waitFor({ state: 'visible', timeout: 30000 });
             const kept = await chat.locator('.message', { hasText: '“ liegt für deine Claude-Code-Sitzung bereit' }).count();
             const states = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
             verify('F5: Seite neu, Werkbank bleibt, Zustand verlassen markiert', kept === 1 && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 1, JSON.stringify(states));
             await shoot(chat, 'verlassen');
-            // Zustand neu herstellen: Der Rabe huepft nur vorwaerts, die Markierung verschwindet.
+            // Restore the state: the raven only hops forward, the marker disappears.
             await bench.evaluate(() => {
                 window.__flight = [];
                 window.__flightTimer = setInterval(() => {
                     const r = document.getElementById('raven').getBoundingClientRect();
-                    // Er landet auf Punkten und Schritten; gezaehlt wird der Schritt, zu dem das Symbol gehoert.
+                    // It lands on dots and steps; the step the icon belongs to is counted.
                     const groups = [...document.querySelectorAll('#steps > li[data-kind=step]')];
                     const icon = [...document.querySelectorAll('#steps .step-icon, #steps .pt-icon')].find((node) => { const box = node.getBoundingClientRect(); return Math.abs(box.left + box.width / 2 - (r.left + r.width / 2)) < 6 && Math.abs(box.top + 2 - r.bottom) < 6; });
                     const at = icon === undefined ? -1 : groups.indexOf(icon.closest('#steps > li'));
@@ -1217,7 +1217,7 @@ ${finishOf(['S2'])}`;
             const flight = await bench.evaluate(() => { clearInterval(window.__flightTimer); return window.__flight; });
             verify('Rabe huepft beim Wiederherstellen nur vorwaerts', flight.length > 0 && flight.every((at, index) => index === 0 || at > flight[index - 1]) && !flight.includes(2), JSON.stringify(flight));
             verify('Zustand neu hergestellt, Markierung weg', (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht' && await bench.locator('body.left-state').count() === 0);
-            // Die ganze Werkbank ueber den Browser neu laden: Chat und Schritte kommen wieder, die Seite gilt als verlassen.
+            // Reload the whole workbench via the browser: chat and steps come back, the page counts as left.
             await bench.reload();
             const fresh = bench.frame({ name: 'caw-chat' });
             await fresh.locator('.message', { hasText: 'Werkbank neu geladen' }).waitFor({ timeout: 30000 });
@@ -1228,7 +1228,7 @@ ${finishOf(['S2'])}`;
             const deadline = Date.now() + 60000;
             while (await restored(fresh) < 2 && Date.now() < deadline) await bench.waitForTimeout(300);
             verify('Nach dem Neuladen: Zustand neu herstellen geht', await restored(fresh) === 2 && (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht' && await bench.locator('body.left-state').count() === 0);
-            // Animationen aus: Der Rabe fliegt ins Logo, gemerkt fuer die naechsten Laeufe.
+            // Animations off: the raven flies into the logo, remembered for the next runs.
             await bench.locator('#still').check();
             await bench.waitForTimeout(2000);
             verify('Animationen aus: Rabe im Logo, gemerkt', await bench.locator('#raven.home').count() === 1 && await bench.locator('body.still').count() === 1 && pref().animations === 'off', JSON.stringify(pref()));
@@ -1251,7 +1251,7 @@ ${finishOf(['S2'])}`;
     });
 
     await scenario('4 Overlay dev: Sencha-Watch ueber dem Portal, nur mit --overlay, nie still der ausgelieferte Stand', async () => {
-        // Den Test nimmt A auf: allein mit `node schritte-e2e.mjs A4`.
+        // Scenario A records the test: run alone with `node schritte-e2e.mjs A4`.
         restore();
         const withOverlay = (extra) => {
             const config = JSON.parse(readFileSync(mainConfig, 'utf8'));
@@ -1265,14 +1265,14 @@ ${finishOf(['S2'])}`;
             };
         };
         const overlayLine = () => (newestRun().report.match(/Overlay: [^\n]*/) ?? [''])[0];
-        // Ohne Option: ausgeliefert, auch wenn eine Overlay-Config da ist.
+        // Without the option: deployed, even if an overlay config exists.
         verify('Ohne --overlay: Exit 0', await run(fake, [ID, ...short]) === 0);
         verify('Ohne --overlay: keine Overlay-Zeile im Bericht', overlayLine() === '', overlayLine());
-        // Kein Watch und kein devCommand: Exit 2 mit dem Befehl, nie still der Server.
+        // No watch and no devCommand: exit 2 with the command, never silently the server.
         verify('Ohne Watch: Exit 2', await run(fake, [ID, ...short, '--overlay', 'dev']) === 2);
         const missing = JSON.stringify(newestRun().result);
         verify('Ohne Watch: Ergebnis nennt sencha app watch', /sencha app watch/.test(missing), missing.slice(0, 300));
-        // Mit devCommand startet caw den Watch selbst; ein Stellvertreter, denn bootstrap.json liegt schon bereit.
+        // With devCommand caw starts the watch itself; a stand-in, since bootstrap.json is already in place.
         const marker = join(fake, '.caw/watch-stellvertreter.txt');
         rmSync(marker, { force: true });
         const undo = withOverlay({ devCommand: `node -e "require('fs').writeFileSync('.caw/watch-stellvertreter.txt', String(process.pid)); setInterval(() => {}, 1000)"` });
@@ -1283,7 +1283,7 @@ ${finishOf(['S2'])}`;
             const local = Number((line.match(/(\d+) Datei\(en\) lokal/) ?? [0, 0])[1]);
             verify('Bericht: Sencha-Watch, App-Statics und Paket lokal', /Sencha-Watch/.test(line) && local >= 2, line);
             verify('Watch wurde gestartet', existsSync(marker));
-            // Danach beendet: Der Prozess des Stellvertreters lebt nicht mehr.
+            // Stopped afterwards: the stand-in process is no longer alive.
             const pid = existsSync(marker) ? Number(readFileSync(marker, 'utf8')) : 0;
             const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
             const until = Date.now() + 10000;
@@ -1300,5 +1300,5 @@ ${finishOf(['S2'])}`;
     writeFileSync(mainConfig, configBefore);
     portal.kill();
 }
-report(`ERGEBNIS OK=${tally.ok} FEHL=${tally.fail}`);
+print(`ERGEBNIS OK=${tally.ok} FEHL=${tally.fail}`);
 process.exit(tally.fail > 0 ? 1 : 0);

@@ -1,5 +1,5 @@
-// Macht aus den Ereignissen von `claude --output-format stream-json` ein lesbares Log. Es wird laufend
-// geschrieben, damit es auch dann vollstaendig ist, wenn der Host den Container nach dem Urteil beendet.
+// Turns the events of `claude --output-format stream-json` into a readable log. It is written continuously
+// so it is complete even when the host stops the container after the verdict.
 
 const MAX_INPUT_CHARS = 500;
 
@@ -17,8 +17,8 @@ const assistantLines = (message) => (message?.content ?? []).flatMap((block) => 
 });
 
 /**
- * Eine Ausgabezeile von Claude als Log-Zeilen. Was kein JSON ist, bleibt unveraendert, denn so melden sich
- * z. B. Startfehler. Toolergebnisse bleiben draussen: Sie stehen im Trace und wuerden das Log nur aufblaehen.
+ * One output line from Claude as log lines. Non-JSON stays unchanged, since that is how e.g. start errors
+ * show up. Tool results are left out: they are in the trace and would only bloat the log.
  */
 export const formatClaudeLine = (line) => {
     if (line.trim() === '') return [];
@@ -30,8 +30,9 @@ export const formatClaudeLine = (line) => {
     }
     if (event.type === 'assistant') return assistantLines(event.message);
     if (event.type === 'system' && event.subtype === 'api_retry') {
-        return [`API-Fehler ${event.error_status ?? ''} (${event.error ?? 'unbekannt'}), Versuch ${event.attempt}`];
+        return [`API error ${event.error_status ?? ''} (${event.error ?? 'unknown'}), attempt ${event.attempt}`];
     }
+    // "Claude beendet nach" is parsed by host/chat.mjs, so this line stays German.
     if (event.type === 'result') {
         const seconds = Math.round((event.duration_ms ?? 0) / 1000);
         const failure = event.is_error && event.result ? ` ${event.result}` : '';
@@ -41,19 +42,19 @@ export const formatClaudeLine = (line) => {
 };
 
 /**
- * Sekunden seit dem Start von Claude: So sieht man, wo die Zeit eines Laufs bleibt. Der Text kann aus der Anwendung
- * stammen, darum fallen Steuerzeichen weg: Er darf das Terminal nicht steuern.
+ * Seconds since Claude started, to show where a run's time goes. The text may come from the application,
+ * so control characters are dropped: it must not control the terminal.
  */
 export const stampLine = (line, startedAt, now) => `[+${((now - startedAt) / 1000).toFixed(1)}s] ${line.replaceAll(/[^\P{Cc}\n\t]/gu, '')}\n`;
 
-/** Dieselbe Zeile fuers Terminal: Zeit gedimmt, Befehle, Fehler und Abschluss farbig, Claudes Text unveraendert. */
+/** The same line for the terminal: time dimmed, commands, errors and the end coloured, Claude's text unchanged. */
 export const colorLine = (stamped, paint) => {
     const match = /^(\[\+[\d.]+s\]) (.*)$/su.exec(stamped);
     if (match === null) return stamped;
     const [, stamp, text] = match;
     let colored = text;
     if (text.startsWith('> ')) colored = paint.cyan(text.trimEnd());
-    else if (text.startsWith('API-Fehler')) colored = paint.yellow(text.trimEnd());
+    else if (text.startsWith('API error')) colored = paint.yellow(text.trimEnd());
     else if (text.startsWith('Claude beendet')) colored = (text.includes('mit Fehler') ? paint.red : paint.dim)(text.trimEnd());
     return `${paint.dim(stamp)} ${colored.endsWith('\n') ? colored : `${colored}\n`}`;
 };

@@ -1,4 +1,4 @@
-// Die Funktionen des Adapters `web`, die im Browser laufen, gegen echtes DOM in Chrome (headless). Ohne Chrome uebersprungen.
+// The in-browser functions of the `web` adapter, against a real DOM in Chrome (headless). Skipped without Chrome.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
@@ -21,7 +21,7 @@ const find = async (target) => {
     return handle.asElement();
 };
 
-// Eine Web Component mit offenem Shadow Root, wie Lit, Ionic oder Angular mit ViewEncapsulation.ShadowDom sie erzeugen.
+// A web component with an open shadow root, as Lit, Ionic or Angular with ViewEncapsulation.ShadowDom create them.
 const SHADOW = `
 <main>
   <section role="region" aria-label="Bestellung"><x-card id="a"></x-card></section>
@@ -36,42 +36,42 @@ customElements.define('x-card', class extends HTMLElement {
 });
 </script>`;
 
-test('web: Ziele in offenen Shadow Roots beschreiben und wiederfinden, gleiche Knöpfe über den Bereich unterscheiden', { skip: false }, async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: describe and find targets in open shadow roots, tell identical buttons apart by their area', { skip: false }, async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(SHADOW);
     const second = page.locator('#b').locator('button span');
     const described = await second.evaluate(webTargets, { mode: 'describe' });
-    assert.deepEqual(described, { role: 'button', name: 'Speichern', inside: { role: 'group', name: 'Aktionen' }, index: 1 }, 'Klick aufs Innere gehört zum Knopf');
+    assert.deepEqual(described, { role: 'button', name: 'Speichern', inside: { role: 'group', name: 'Aktionen' }, index: 1 }, 'a click on the inside belongs to the button');
     const field = await page.locator('#a').locator('input').evaluate(webTargets, { mode: 'describe' });
-    assert.equal(field.name, 'Menge', 'Beschriftung aus dem Shadow Root');
+    assert.equal(field.name, 'Menge', 'label from the shadow root');
     const found = await find(described);
-    assert.ok(found !== null, 'wiedergefunden');
+    assert.ok(found !== null, 'found again');
     assert.equal(await found.evaluate((node) => node.getRootNode().host.id), 'b');
     return undefined;
 });
 
-test('web: Ein Auswahlfeld im Label heißt wie die Beschriftung, ohne seine Optionen', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: a select inside a label is named by the label, without its options', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(`<label>Customer <select id="c"><option>Acme</option><option>Globex</option></select></label>
 <label for="p">Priority</label><select id="p"><option>Low</option></select>`);
     assert.equal((await describe('#c')).name, 'Customer');
     assert.equal((await describe('#p')).name, 'Priority');
-    // Kommt eine Option dazu, findet die Suche das Feld weiter.
+    // When an option is added, the search still finds the field.
     await page.evaluate(() => document.querySelector('#c').append(new Option('Initech')));
     assert.ok(await find({ role: 'combobox', name: 'Customer' }));
     return undefined;
 });
 
-test('web: Ein überdeckter Knopf im Shadow Root zählt nicht als klickbar', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: a covered button in a shadow root does not count as clickable', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(`${SHADOW}<div style="position:fixed;inset:0;background:#fff"></div>`);
-    assert.equal(await describe('#a'), null, 'nichts Klickbares');
+    assert.equal(await describe('#a'), null, 'nothing clickable');
     assert.equal(await find({ role: 'button', name: 'Speichern' }), null);
     return undefined;
 });
 
-test('web: unbestimmter Fortschritt und aria-busy laden, auch im Shadow Root; bestimmter Fortschritt nicht', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: indeterminate progress and aria-busy mean loading, also in a shadow root; determinate progress does not', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent('<div role="progressbar" aria-valuenow="40"></div><x-spin></x-spin><script>customElements.define("x-spin", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = "<div role=progressbar style=\'width:9px;height:9px\'></div>"; } });</script>');
     assert.equal(await page.evaluate(webBusy, {}), 1);
     const state = await page.evaluate(webPageState, { marker: 'body', selectors: ['[role=status]'] });
@@ -81,21 +81,21 @@ test('web: unbestimmter Fortschritt und aria-busy laden, auch im Shadow Root; be
     return undefined;
 });
 
-test('web: DOM-Ruhe, erst still nach domQuietMs; Attribute zählen nicht', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: DOM quiet only after domQuietMs; attributes do not count', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent('<ul id="l"></ul>');
-    assert.equal((await page.evaluate(webProbe, null)).loadingStores, 0, 'erster Aufruf hängt nur den Beobachter an');
+    assert.equal((await page.evaluate(webProbe, null)).loadingStores, 0, 'the first call only attaches the observer');
     await page.evaluate(() => { document.getElementById('l').append(document.createElement('li')); });
-    assert.equal((await page.evaluate(webProbe, null)).loadingStores, 1, 'gerade gerendert');
+    assert.equal((await page.evaluate(webProbe, null)).loadingStores, 1, 'just rendered');
     await page.waitForTimeout(250);
     assert.equal((await page.evaluate(webProbe, null)).loadingStores, 0);
     await page.evaluate(() => { document.getElementById('l').setAttribute('class', 'tick'); });
-    assert.equal((await page.evaluate(webProbe, null)).loadingStores, 0, 'Attribut, etwa eine Animation');
+    assert.equal((await page.evaluate(webProbe, null)).loadingStores, 0, 'attribute, e.g. an animation');
     return undefined;
 });
 
-test('web: Statusmeldungen (Toast, Snackbar) als Hinweis, Zahlen als #; ohne Marker gilt angemeldet', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: status messages (toast, snackbar) as notes, digits as #; without a marker counts as signed in', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent('<div role="status">3 Einträge gespeichert</div><div role="status"></div>');
     const state = await page.evaluate(webPageState, { marker: null, selectors: ['[role=alert]', '[role=status]'] });
     assert.deepEqual(state.messages, []);
@@ -104,8 +104,8 @@ test('web: Statusmeldungen (Toast, Snackbar) als Hinweis, Zahlen als #; ohne Mar
     return undefined;
 });
 
-test('web: Ein Formular im Dialog ist keine Meldung, ein Hinweis darin und eine Rückfrage schon', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: a form in a dialog is not a message, an alert in it and a confirmation are', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(`<div role="dialog" aria-modal="true"><h2>Akte anlegen</h2><input aria-label="Name"><div role="alert">Diesen Namen trägt schon eine Akte.</div><button>Anlegen</button></div>
 <div role="dialog" aria-modal="true"><p>Akte auflösen?</p><label><input type="checkbox"> Ich weiß</label><button>Auflösen</button></div>`);
     const state = await page.evaluate(webPageState, { marker: null, selectors: ['[role=alert]'] });
@@ -113,38 +113,38 @@ test('web: Ein Formular im Dialog ist keine Meldung, ein Hinweis darin und eine 
     return undefined;
 });
 
-test('web: Ein Toast-Stapel ergibt je Toast eine Meldung, eine Meldung mit Inline-Teilen bleibt ganz', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: a toast stack yields one message per toast, a message with inline parts stays whole', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(`<div class="toasts" aria-live="polite"><div class="toast">„Akte 7“ ist angelegt.</div><div class="toast">Gespeichert</div></div>
 <div role="alert"><b>Fehler:</b> <span>Name fehlt</span></div>
 <div role="status"><div>EULA nicht angenommen. <a href="#e">EULA</a></div><div><button>Annehmen</button></div></div>`);
     const state = await page.evaluate(webPageState, { marker: null, selectors: ['[role=alert]', '[role=status]', '[aria-live=polite]'] });
-    assert.deepEqual(state.messages, ['Fehler: Name fehlt'], 'Nur der Fehler kann scheitern lassen');
+    assert.deepEqual(state.messages, ['Fehler: Name fehlt'], 'only the error can fail the step');
     assert.deepEqual(state.notes.sort(), ['EULA nicht angenommen. EULA Annehmen', 'Gespeichert', '„Akte #“ ist angelegt.']);
     return undefined;
 });
 
-test('web: Warum ein Ziel nicht klickbar ist: fehlt, unsichtbar, oder unter einem Dialog mit Meldung', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: why a target is not clickable: missing, invisible, or under a dialog with a message', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     const explain = (target) => page.evaluate(`(${webTargets})(null, ${JSON.stringify({ mode: 'explain', target })})`);
     await page.setContent(`<nav aria-label="Haupt"><a href="#e">Einstellungen</a><a href="#v" style="display:none">Versteckt</a></nav>
 <div role="dialog" aria-modal="true" style="position:fixed;inset:0;background:#fff8"><h2>Akte anlegen</h2><div role="alert">Diesen Namen trägt schon eine Akte.</div></div>`);
     assert.deepEqual(await explain({ role: 'link', name: 'Einstellungen' }), { covered: { role: 'dialog', name: 'Akte anlegen', messages: ['Diesen Namen trägt schon eine Akte.'] } });
     assert.deepEqual(await explain({ role: 'link', name: 'Versteckt' }), { hidden: true });
-    // Fehlt es ganz, kommen die sichtbaren Namen derselben Rolle mit, der Host sucht darin ein umbenanntes Ziel.
+    // If it is missing entirely, the visible names of the same role come along; the host looks for a renamed target among them.
     assert.deepEqual(await explain({ role: 'link', name: 'Gibt es nicht' }), { missing: true, names: ['Einstellungen'] });
-    // Ein unsichtbarer Zwilling in einem anderen Bereich erklaert nichts: Das Ziel selbst fehlt.
+    // An invisible twin in another area explains nothing: the target itself is missing.
     await page.setContent(`<nav aria-label="Haupt"><a id="p" href="#p">Profil</a></nav><nav aria-label="Mobil"><a href="#p" style="display:none">Profil</a></nav>`);
     const described = await page.evaluate(`(${webTargets})(document.getElementById('p'), { mode: 'describe' })`);
-    assert.ok(described.inside !== undefined, 'gleicher Name im anderen Bereich: das Ziel nennt seinen Bereich');
+    assert.ok(described.inside !== undefined, 'same name in another area: the target names its area');
     await page.evaluate(() => document.getElementById('p').remove());
     assert.deepEqual(await explain(described), { elsewhere: true });
     return undefined;
 });
 
-test('web: virtualisierte Liste, die Suche rollt weiter, bis die Zeile im DOM ist', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
-    // Nur die sichtbaren Zeilen stehen im DOM, wie bei react-window oder CDK Virtual Scroll.
+test('web: virtualized list, the search keeps scrolling until the row is in the DOM', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    // Only the visible rows are in the DOM, as with react-window or CDK Virtual Scroll.
     await page.setContent(`<div id="v" role="list" aria-label="Akten" style="height:100px;overflow:auto"><div id="s" style="height:20000px;position:relative"></div></div>
 <script>
 const v = document.getElementById('v'); const s = document.getElementById('s');
@@ -155,30 +155,30 @@ v.addEventListener('scroll', draw); draw();
     let found = null;
     for (let tries = 0; tries < 200 && found === null; tries += 1) {
         found = (await page.evaluateHandle(`(${webTargets})(null, ${JSON.stringify({ mode: 'find', target })})`)).asElement();
-        // Erst neu zeichnen lassen: Sonst rollt die Suche auf langsamen Rechnern mehrmals, bevor die Liste nachzieht, und springt über Zeile 300.
+        // Let it redraw first: otherwise on slow machines the search scrolls several times before the list catches up and skips row 300.
         if (found === null) await page.evaluate(() => new Promise((done) => { requestAnimationFrame(() => requestAnimationFrame(done)); }));
     }
-    assert.ok(found !== null, 'Zeile 300 erreicht');
+    assert.ok(found !== null, 'row 300 reached');
     assert.match(await found.evaluate((node) => node.parentElement.textContent), /Akte 300/);
     return undefined;
 });
 
-test('web: Ein Name als Muster trifft eine wechselnde Zahl, einen Bereich und einen Namen über 80 Zeichen', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: a name pattern matches a changing number, an area and a name over 80 characters', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     const long = `Max Mustermann — Person, abgedeckt als <PERSON_1> ${'und noch mehr Text '.repeat(4)}`;
     await page.setContent(`<div role="toolbar" aria-label="Dokumente 12"><button id="p">Prüfen 3</button></div><button id="l">${long}</button>`);
     const id = async (target) => (await find(target))?.evaluate((node) => node.id) ?? null;
     assert.equal(await id({ role: 'button', name: { pattern: '^Prüfen( \\d+)?$' } }), 'p');
-    assert.equal(await id({ role: 'button', name: 'Prüfen' }), null, 'fester Name bleibt genau');
+    assert.equal(await id({ role: 'button', name: 'Prüfen' }), null, 'a fixed name stays exact');
     assert.equal(await id({ role: 'button', name: { pattern: '^Prüfen' }, inside: { role: 'toolbar', name: { pattern: '^Dokumente \\d+$' } } }), 'p');
     assert.equal(await id({ role: 'button', name: { pattern: '^Prüfen' }, inside: { role: 'toolbar', name: { pattern: '^Akten' } } }), null);
-    assert.equal(await id({ role: 'button', name: { pattern: '^Max Mustermann — Person' } }), 'l', 'das Muster sieht den ganzen Namen');
-    assert.equal(await id({ role: 'button', name: long.trim() }), null, 'als fester Name ist er zu lang');
+    assert.equal(await id({ role: 'button', name: { pattern: '^Max Mustermann — Person' } }), 'l', 'the pattern sees the whole name');
+    assert.equal(await id({ role: 'button', name: long.trim() }), null, 'as a fixed name it is too long');
     return undefined;
 });
 
-test('web: Eine Meldung über 300 Zeichen kommt ganz, damit sie ihren Eintrag in knownMessages trifft', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: a message over 300 characters comes whole, so it matches its entry in knownMessages', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     const text = `Prüfung abschließen. ${'Ein langer Satz im Dialog. '.repeat(15)}Freigeben`;
     await page.setContent(`<div role="alertdialog">${text}</div>`);
     const state = await page.evaluate(webPageState, { marker: null, selectors: [] });
@@ -187,7 +187,7 @@ test('web: Eine Meldung über 300 Zeichen kommt ganz, damit sie ihren Eintrag in
     return undefined;
 });
 
-// Web Components wie Shoelace oder Ionic: Label um das Feld, Meldung und Marker im Shadow Root, Dialog als Web Component.
+// Web components like Shoelace or Ionic: label around the field, message and marker in the shadow root, dialog as a web component.
 const SHADOW_PARTS = `
 <x-field id="feld"></x-field>
 <x-menu></x-menu>
@@ -203,23 +203,23 @@ define('x-row', '<li class="zeile">Zeile</li>');
 define('x-dialog', '<div role="dialog" aria-modal="true" aria-label="Rückfrage"><p role="alert">Wirklich löschen?</p><input></div>');
 </script>`;
 
-test('web: Shadow DOM auch für Label, Marker, Meldungen, Formular im Dialog und Zählung', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: shadow DOM also for label, marker, messages, form in dialog and counting', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(SHADOW_PARTS);
     const field = await page.locator('#feld').locator('input').evaluate(webTargets, { mode: 'describe' });
-    assert.equal(field.name, 'Betrag', 'umschließendes Label im Shadow Root');
+    assert.equal(field.name, 'Betrag', 'enclosing label in the shadow root');
     const state = await page.evaluate(webPageState, { marker: '[data-testid=user-menu]', selectors: ['[role=alert]', '[role=status]'] });
-    assert.equal(state.signedIn, true, 'Marker im Shadow Root');
-    assert.deepEqual(state.notes, ['Ticket # gespeichert'], 'Status im Shadow Root ist ein Hinweis, mit Text aus allen Teilen');
-    assert.deepEqual(state.messages, ['Wirklich löschen?'], 'der Dialog mit Feld ist Bedienung, sein Alarm eine Meldung');
-    assert.equal((await page.evaluate(webProbe, '.zeile')).counts, 2, 'Zählung in Shadow Roots');
+    assert.equal(state.signedIn, true, 'marker in the shadow root');
+    assert.deepEqual(state.notes, ['Ticket # gespeichert'], 'status in the shadow root is a note, with text from all parts');
+    assert.deepEqual(state.messages, ['Wirklich löschen?'], 'the dialog with a field is regular use, its alert is a message');
+    assert.equal((await page.evaluate(webProbe, '.zeile')).counts, 2, 'counting in shadow roots');
     const { webCount } = await import('../src/host/framework/web.mjs');
     assert.equal(await page.evaluate(webCount, null), null);
     return undefined;
 });
 
-test('web: Ein Dialog als Web Component über einem Knopf nennt Name und Meldung', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: a dialog web component over a button reports name and message', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(`<button>Speichern</button>
 <x-modal></x-modal>
 <script>customElements.define('x-modal', class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: 'open' }).innerHTML = '<div role="dialog" aria-modal="true" style="position:fixed;inset:0;background:#fff"><h2>Hinweis</h2><p role="alert">Sitzung läuft ab</p></div>'; } });</script>`);
@@ -228,17 +228,17 @@ test('web: Ein Dialog als Web Component über einem Knopf nennt Name und Meldung
     return undefined;
 });
 
-test('web: Die Suche nach einem Ziel außerhalb des Bildes lässt die Seite, wo sie war', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('web: searching for a target outside the viewport leaves the page where it was', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setViewportSize({ width: 800, height: 400 });
     await page.setContent('<button>Oben</button><div style="height:3000px"></div><button>Unten</button>');
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    const before = await page.evaluate(() => window.scrollY);
-    assert.ok(before > 1000);
-    assert.ok(await find({ role: 'button', name: 'Oben' }) !== null, 'gefunden');
-    assert.equal(await page.evaluate(() => window.scrollY), before, 'kein Sprung nach oben');
+    const scrolled = await page.evaluate(() => window.scrollY);
+    assert.ok(scrolled > 1000);
+    assert.ok(await find({ role: 'button', name: 'Oben' }) !== null, 'found');
+    assert.equal(await page.evaluate(() => window.scrollY), scrolled, 'no jump to the top');
     const explain = (target) => page.evaluate(`(${webTargets})(null, ${JSON.stringify({ mode: 'explain', target })})`);
     await explain({ role: 'button', name: 'Oben' });
-    assert.equal(await page.evaluate(() => window.scrollY), before, 'auch nicht beim Erklären');
+    assert.equal(await page.evaluate(() => window.scrollY), scrolled, 'not when explaining either');
     return undefined;
 });

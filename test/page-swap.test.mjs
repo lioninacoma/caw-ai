@@ -25,7 +25,7 @@ const buildOverlay = async (t, files, { url = ENV, dir = 'dist' } = {}) => {
     return prepareOverlay({ root, config, checked: { url, apps: { web: { kind: 'build', dir, statics: [] } } } });
 };
 
-// Ausgeliefert: Vite-Build mit Einstieg, Vendor-Chunk und Stylesheet, dazu env.js (Projektkopie) und ein Skript des Portals.
+// Deployed: Vite build with entry, vendor chunk and stylesheet, plus env.js (project copy) and a portal script.
 const DEPLOYED = `<!doctype html><html><head><meta charset="iso-8859-1"><title>Grüße</title>
 <script nonce="n0nce" src="/env.js"></script>
 <script nonce="n0nce">window.dataLayer=[]</script>
@@ -33,10 +33,10 @@ const DEPLOYED = `<!doctype html><html><head><meta charset="iso-8859-1"><title>G
 <link rel="modulepreload" crossorigin href="/assets/vendor-OLD22222.js">
 <link rel="stylesheet" crossorigin href="/assets/index-OLD33333.css" integrity="sha384-alt">
 <link rel="icon" href="/favicon.ico">
-<script type="application/json" id="daten">{"a":1}</script>
+<script type="application/json" id="data">{"a":1}</script>
 </head><body><div id="root"></div><!-- <script src="/assets/alt-OLD44444.js"></script> --></body></html>`;
 
-// Lokal: andere Aufteilung (zwei Chunks statt Vendor), env.js aus public/ unveraendert mitkopiert.
+// Local: different split (two chunks instead of vendor), env.js copied unchanged from public/.
 const LOCAL_INDEX = `<!doctype html><html><head><script src="/env.js"></script>
 <script type="module" crossorigin src="/assets/index-NEW11111.js"></script>
 <link rel="modulepreload" crossorigin href="/assets/react-NEW55555.js">
@@ -45,8 +45,8 @@ const LOCAL_INDEX = `<!doctype html><html><head><script src="/env.js"></script>
 </head><body><div id="root"></div></body></html>`;
 
 const viteFiles = {
-    'public/env.js': "window.ENV='lokal'",
-    'dist/env.js': "window.ENV='lokal'",
+    'public/env.js': "window.ENV='local'",
+    'dist/env.js': "window.ENV='local'",
     'dist/index.html': LOCAL_INDEX,
     'dist/assets/index-NEW11111.js': 'import"./react-NEW55555.js"',
     'dist/assets/react-NEW55555.js': 'react',
@@ -54,8 +54,8 @@ const viteFiles = {
     'dist/assets/index-NEW33333.css': 'body{}',
 };
 
-test('codeTags: Skripte, Stile und Preloads, nicht JSON, Icons oder Auskommentiertes', () => {
-    const tags = codeTags(DEPLOYED, `${ENV}/bestellung/5`);
+test('codeTags: scripts, styles and preloads, not JSON, icons or commented-out tags', () => {
+    const tags = codeTags(DEPLOYED, `${ENV}/order/5`);
     assert.deepEqual(tags.map(({ urls, inline }) => (inline ? 'inline' : urls[0])), [
         `${ENV}/env.js`, 'inline', `${ENV}/assets/index-OLD11111.js`, `${ENV}/assets/vendor-OLD22222.js`, `${ENV}/assets/index-OLD33333.css`,
     ]);
@@ -64,7 +64,7 @@ test('codeTags: Skripte, Stile und Preloads, nicht JSON, Icons oder Auskommentie
     assert.equal(baseOf('<p>', `${ENV}/x/y`), `${ENV}/x/y`);
 });
 
-test('ssrMarker: Next, Nuxt, SvelteKit und Angular SSR, nicht eine gewoehnliche Seite', () => {
+test('ssrMarker: Next, Nuxt, SvelteKit and Angular SSR, not an ordinary page', () => {
     assert.equal(ssrMarker('<script>self.__next_f.push([1,""])</script>'), 'Next.js');
     assert.equal(ssrMarker('<script id="__NEXT_DATA__" type="application/json">{}</script>'), 'Next.js');
     assert.equal(ssrMarker('<script>window.__NUXT__={}</script>'), 'Nuxt');
@@ -74,7 +74,7 @@ test('ssrMarker: Next, Nuxt, SvelteKit und Angular SSR, nicht eine gewoehnliche 
     assert.equal(ssrMarker(DEPLOYED), null);
 });
 
-test('swapPage: an der Stelle des ersten entfernten Tags, mit der Nonce der Seite; der Rest bleibt Byte fuer Byte', () => {
+test('swapPage: at the place of the first removed tag, with the page nonce; the rest stays byte for byte', () => {
     const base = `${ENV}/`;
     const local = codeTags('<head><script src="/a-NEW.js"></script></head><body><script src="/b-NEW.js"></script></body>', base);
     const html = '<head><title>x</title><script nonce="abc" src="/a-OLD.js"></script><meta x><link rel="stylesheet" href="/s-OLD.css"></head><body><p>ä</p><script src="/b-OLD.js"></script></body>';
@@ -82,28 +82,28 @@ test('swapPage: an der Stelle des ersten entfernten Tags, mit der Nonce der Seit
     assert.equal(swapped.html, '<head><title>x</title><script nonce="abc" src="/a-NEW.js"></script><meta x></head><body><p>ä</p><script nonce="abc" src="/b-NEW.js"></script></body>');
     assert.deepEqual(swapped.removed, [`${ENV}/a-OLD.js`, `${ENV}/s-OLD.css`, `${ENV}/b-OLD.js`]);
     const appended = swapPage('<head></head><body><script src="/keep.js"></script></body>', { base, owned: () => false, local });
-    assert.equal(appended.html, '<head><script src="/a-NEW.js"></script></head><body><script src="/keep.js"></script><script src="/b-NEW.js"></script></body>', 'nichts entfernt: ans Ende');
+    assert.equal(appended.html, '<head><script src="/a-NEW.js"></script></head><body><script src="/keep.js"></script><script src="/b-NEW.js"></script></body>', 'nothing removed: appended at the end');
 });
 
-test('Overlay build: andere Aufteilung startet, weil die Seite die Tags des lokalen Builds bekommt; env.js, Inline und Portal bleiben', async (t) => {
+test('Overlay build: a different split starts because the page gets the local build tags; env.js, inline and portal stay', async (t) => {
     const overlay = await buildOverlay(t, viteFiles);
-    const out = await overlay.rewritePage(DEPLOYED, { url: `${ENV}/bestellung/5` });
-    assert.match(out, /<script nonce="n0nce" type="module" crossorigin src="\/assets\/index-NEW11111\.js"><\/script>/, 'mit der Nonce der Seite');
-    assert.equal(out.match(/nonce=/g).length, 6, 'je Tag eine Nonce, keine doppelt');
+    const out = await overlay.rewritePage(DEPLOYED, { url: `${ENV}/order/5` });
+    assert.match(out, /<script nonce="n0nce" type="module" crossorigin src="\/assets\/index-NEW11111\.js"><\/script>/, 'with the page nonce');
+    assert.equal(out.match(/nonce=/g).length, 6, 'one nonce per tag, none twice');
     assert.match(out, /href="\/assets\/react-NEW55555\.js"/);
     assert.match(out, /href="\/assets\/router-NEW66666\.js"/);
     assert.match(out, /href="\/assets\/index-NEW33333\.css"/);
-    assert.doesNotMatch(out, /OLD11111|vendor-OLD22222|index-OLD33333/, 'kein ausgelieferter Code-Tag der App');
-    assert.equal(out.match(/src="\/env\.js"/g).length, 1, 'env.js bleibt die der Umgebung, einmal');
+    assert.doesNotMatch(out, /OLD11111|vendor-OLD22222|index-OLD33333/, 'no deployed code tag of the app');
+    assert.equal(out.match(/src="\/env\.js"/g).length, 1, 'env.js stays the environment one, once');
     assert.match(out, /window\.dataLayer=\[\]/);
     assert.match(out, /rel="icon"/);
-    assert.match(out, /<!-- <script src="\/assets\/alt-OLD44444\.js"><\/script> -->/, 'Kommentare bleiben');
+    assert.match(out, /<!-- <script src="\/assets\/alt-OLD44444\.js"><\/script> -->/, 'comments stay');
     assert.doesNotMatch(out, /integrity/);
-    assert.match(out, /Grüße/, 'Latin-1 bleibt');
+    assert.match(out, /Grüße/, 'Latin-1 stays');
     assert.deepEqual(overlay.pages.at(-1).swaps, [{ app: 'web', removed: [`${ENV}/assets/index-OLD11111.js`, `${ENV}/assets/vendor-OLD22222.js`, `${ENV}/assets/index-OLD33333.css`], inserted: 4 }]);
 });
 
-test('Overlay build: kein Tausch ohne Treffer (Anmeldeseite), bei SSR und wenn der Build einen anderen base-Pfad hat', async (t) => {
+test('Overlay build: no swap without a match (sign-in page), with SSR, and when the build has a different base path', async (t) => {
     const overlay = await buildOverlay(t, viteFiles);
     const login = '<html><head><script src="/sso/login.js"></script></head><body><form></form></body></html>';
     assert.equal(await overlay.rewritePage(login, { url: `${ENV}/signin` }), login);
@@ -111,14 +111,14 @@ test('Overlay build: kein Tausch ohne Treffer (Anmeldeseite), bei SSR und wenn d
     const next = DEPLOYED.replace('</body>', '<script>self.__next_f.push([1,""])</script></body>');
     assert.match(await overlay.rewritePage(next, { url: `${ENV}/` }), /index-OLD11111/);
     assert.equal(overlay.pages.at(-1).ssr, 'Next.js');
-    // Die Umgebung liegt unter /shop/, der Build zeigt auf /assets/: Das Muster der Umgebung erfasst die Adresse nicht.
+    // The environment lives under /shop/, the build points to /assets/: the environment pattern does not cover the address.
     const shop = await buildOverlay(t, viteFiles, { url: `${ENV}/shop/` });
     const shopPage = DEPLOYED.replaceAll('"/assets/', '"/shop/assets/');
     assert.match(await shop.rewritePage(shopPage, { url: `${ENV}/shop/` }), /shop\/assets\/index-OLD11111/);
     assert.deepEqual(shop.pages.at(-1).swaps, [{ app: 'web', skipped: 'local-base' }]);
 });
 
-test('Overlay build: von mehreren Seiten die mit den meisten Treffern; webpack-Laufzeit inline mit dem Asset-Ordner weicht', async (t) => {
+test('Overlay build: of several pages the one with the most matches; inline webpack runtime with the asset folder is replaced', async (t) => {
     const overlay = await buildOverlay(t, {
         'dist/index.html': '<head><script defer src="/static/js/main.NEW1a2b3c.js"></script><script>__webpack_public_path__="/static/js/"</script></head>',
         'dist/admin.html': '<head><script defer src="/static/js/admin.NEW9f8e7d.js"></script></head>',
@@ -128,28 +128,28 @@ test('Overlay build: von mehreren Seiten die mit den meisten Treffern; webpack-L
     });
     const deployed = '<head><script>__webpack_public_path__="/static/js/";var old=1</script><script defer src="/static/js/admin.OLD1a2b3c.js"></script><script defer src="/static/js/chunk.OLD4d5e6f.js"></script></head>';
     const out = await overlay.rewritePage(deployed, { url: `${ENV}/admin` });
-    assert.equal(out, '<head><script defer src="/static/js/admin.NEW9f8e7d.js"></script></head>', 'admin.html; der Chunk im Asset-Ordner weicht, die alte Laufzeit auch');
+    assert.equal(out, '<head><script defer src="/static/js/admin.NEW9f8e7d.js"></script></head>', 'admin.html; the chunk in the asset folder is replaced, the old runtime too');
 });
 
-test('Diagnose: SSR, nichts lokal und Skripte aus dem lokalen Asset-Ordner vom Server; der Bericht nennt das Overlay', async (t) => {
+test('Diagnosis: SSR, nothing local and scripts from the local asset folder served by the server; the report names the overlay', async (t) => {
     const overlay = await buildOverlay(t, viteFiles);
-    assert.deepEqual((({ ssr, local, swapped, mixed }) => ({ ssr, local, swapped, mixed }))(overlay.diagnose()), { ssr: null, local: 0, swapped: false, mixed: [] }, 'nichts geladen: nichts lokal');
+    assert.deepEqual((({ ssr, local, swapped, mixed }) => ({ ssr, local, swapped, mixed }))(overlay.diagnose()), { ssr: null, local: 0, swapped: false, mixed: [] }, 'nothing loaded: nothing local');
     await overlay.rewritePage(DEPLOYED.replace('</body>', '<script>window.__NUXT__={}</script></body>'), { url: `${ENV}/` });
     assert.equal(overlay.diagnose().ssr, 'Nuxt');
     overlay.served.local.set(`${ENV}/assets/index-NEW11111.js`, 'script');
     overlay.served.server.set(`${ENV}/assets/legacy-OLD77777.js`, 'script');
     overlay.served.server.set(`${ENV}/env.js`, 'script');
-    assert.deepEqual(overlay.diagnose().mixed, [`${ENV}/assets/legacy-OLD77777.js`], 'env.js im Wurzelordner ist kein Mischstand');
+    assert.deepEqual(overlay.diagnose().mixed, [`${ENV}/assets/legacy-OLD77777.js`], 'env.js in the root folder is not a mixed state');
     const { renderReport } = await import('../src/shared/report.mjs');
     const report = renderReport({ status: 'pass', testId: 'smoke', target: 'staging', source: 'overlay', overlay: { label: 'dist', local: 3, server: 1, swapped: true } });
     assert.match(report, /Getesteter Stand: lokaler Code über der Umgebung \(--overlay\)\nOverlay: dist; 3 Datei\(en\) lokal, 1 Skript\(e\)\/Stylesheet\(s\) vom Server; Seite getauscht: ja/);
 });
 
-test('Overlay dev: Tags aus dem HTML des Dev-Servers, Projektkopien und Fremdes bleiben', async (t) => {
-    const root = project(t, { 'public/env.js': "window.ENV='lokal'" });
+test('Overlay dev: tags from the dev server HTML, project copies and foreign scripts stay', async (t) => {
+    const root = project(t, { 'public/env.js': "window.ENV='local'" });
     const dev = createServer((request, response) => {
         const path = new URL(request.url, 'http://x').pathname;
-        if (path === '/env.js') return response.writeHead(200, { 'content-type': 'text/javascript' }).end("window.ENV='lokal'");
+        if (path === '/env.js') return response.writeHead(200, { 'content-type': 'text/javascript' }).end("window.ENV='local'");
         if (path.startsWith('/src/') || path.startsWith('/@')) return response.writeHead(200, { 'content-type': 'text/javascript' }).end('code');
         return response.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html><head><script src="/env.js"></script>
 <script type="module">import RefreshRuntime from "/@react-refresh";window.$RefreshReg$=()=>{}</script>
@@ -160,12 +160,12 @@ test('Overlay dev: Tags aus dem HTML des Dev-Servers, Projektkopien und Fremdes 
     const url = `http://127.0.0.1:${dev.address().port}`;
     const overlay = await prepareOverlay({ root, config, checked: { url: ENV, apps: { web: { kind: 'dev', url, statics: [] } } } });
     const deployed = DEPLOYED.replace('<link rel="icon"', '<script src="https://cdn.example/analytics.js"></script><link rel="icon"');
-    const out = await overlay.rewritePage(deployed, { url: `${ENV}/bestellung/5` });
-    assert.match(out, /<script nonce="n0nce" type="module">import RefreshRuntime from "\/@react-refresh"/, 'die Preamble mit Nonce');
+    const out = await overlay.rewritePage(deployed, { url: `${ENV}/order/5` });
+    assert.match(out, /<script nonce="n0nce" type="module">import RefreshRuntime from "\/@react-refresh"/, 'the preamble with nonce');
     assert.match(out, /<script nonce="n0nce" type="module" src="\/@vite\/client"><\/script>/);
     assert.match(out, /<script nonce="n0nce" type="module" src="\/src\/main\.tsx"><\/script><\/body>/);
     assert.doesNotMatch(out, /OLD11111|OLD22222|OLD33333/);
     assert.equal(out.match(/src="\/env\.js"/g).length, 1);
-    assert.match(out, /cdn\.example\/analytics\.js/, 'fremder Origin bleibt');
+    assert.match(out, /cdn\.example\/analytics\.js/, 'foreign origin stays');
     assert.match(out, /window\.dataLayer/);
 });

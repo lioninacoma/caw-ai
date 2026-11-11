@@ -1,6 +1,6 @@
-// Texte: run (en). Schluessel mit Praefix "run.".
+// Texts: run (en). Keys prefixed with "run.".
 export default {
-    // Knoepfe im Chat
+    // Chat buttons
     'run.button.accept': 'Accept',
     'run.button.discard': 'Discard',
     'run.button.discardDraft': 'Discard draft',
@@ -19,7 +19,7 @@ export default {
     'run.button.restore': 'Restore state',
     'run.button.endDevelop': 'End run',
 
-    // Schrittliste
+    // Step list
     'run.group.advise': 'Claude investigates',
     'run.group.talk': 'Clarify failure',
     'run.group.develop': 'Develop',
@@ -33,7 +33,7 @@ export default {
     'run.learn.kind': 'Learn',
     'run.learn.label': 'baselines',
 
-    // Kopfzeile
+    // Header
     'run.mode.record': 'Claude records',
     'run.mode.verify': 'Verify without Claude',
     'run.mode.until': 'Replay up to {until}, then the window stays open',
@@ -52,7 +52,7 @@ export default {
     'run.phase.developIn': 'Develop in {until}',
     'run.phase.handedOver': 'Handed over',
 
-    // Lauf
+    // Run
     'run.error.authMissing': 'No saved session for role {role} on {target}. Sign in once: caw-ai auth {role} --target {target}',
     'run.tokens.question': 'Claude works now, this uses tokens.',
     'run.tokens.go': 'Continue',
@@ -114,7 +114,7 @@ export default {
     'run.replaying': 'Replaying the recording ({count} steps, recorded on {on}) ...',
     'run.failedBefore': '{id} failed before {target} was reached: {reason}',
 
-    // Ablaeufe im Chat
+    // Flows in the chat
     'run.flow.baselines': 'Baselines recorded for {ids}: if a step fails later, the tool uses them to tell test, app or environment apart.',
     'run.flow.seeReport': 'see report',
     'run.flow.notMet': '{id} not met',
@@ -181,7 +181,7 @@ export default {
     'run.flow.effectsLearned': 'Learned or cleaned up per-action effects for {ids}: {file}. Please review and commit.',
     'run.flow.rerunning': 'Testing again with the changed app ...',
 
-    // Entwickeln im Zustand
+    // Developing in a state
     'run.develop.atEnd': 'the end of the test',
     'run.develop.atState': 'state {state}',
     'run.develop.runDone': 'The run is done.',
@@ -200,7 +200,7 @@ export default {
     'run.develop.allSteps': 'the last step',
     'run.develop.cannotRestore': '{test} {step} cannot be restored here: other role, app or environment, or the step is stale.',
 
-    // Empfehlungen
+    // Advice
     'run.advice.fileChanged': '{file} has changed; the spot is no longer unique.',
     'run.advice.label.name': 'Title',
     'run.advice.label.do': 'Action',
@@ -219,7 +219,7 @@ export default {
     'run.advice.testCase': 'Test case',
     'run.advice.section': 'Section "{section}"',
 
-    // Wirkung
+    // Effects
     'run.effect.appears': '{what} appears',
     'run.effect.disappears': '{what} disappears',
     'run.effect.differs': '{step}, action {number} ({label}) behaves differently than in healthy runs.',
@@ -227,7 +227,7 @@ export default {
     'run.effect.instead': 'Instead: {list}.',
     'run.effect.console': 'New in the console: {list}.',
 
-    // Vorfuehren
+    // Demonstrating
     'run.item.about': ' on {label}',
     'run.item.checkpoint': 'Checkpoint{about}: {text}',
     'run.item.note': 'Note{about}: {text}',
@@ -248,7 +248,7 @@ export default {
     'run.demo.secret': 'A password field was filled in; that can\'t be recorded.',
     'run.demo.unstable': '{item}: the target can\'t be described stably.',
 
-    // Befehle am Browser
+    // Browser commands
     'run.agent.missing': '{field} missing.',
     'run.agent.unknownStep': 'Unknown step: {id}',
     'run.agent.rememberName': 'The name must look like orderno: letters and digits only, and not runTag or runTagLower.',
@@ -260,7 +260,7 @@ export default {
     'run.agent.unknownCommand': 'Unknown command: {action}',
     'run.agent.timeout': '{action} timed out.',
 
-    // MCP-Werkzeuge der Claude-Code-Session
+    // MCP tools of the Claude Code session
     'run.mcp.noRun': 'No run is waiting for you as agent. Start one with caw_start (record, fix or run with chat), or the run has already ended: caw_status shows its output.',
     'run.mcp.commandInvalid': 'command must be one of {list}.',
     'run.mcp.argsInvalid': 'args must be a list of strings, e.g. ["order", "--target", "local"].',

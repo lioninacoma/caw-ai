@@ -1,23 +1,23 @@
-// Duenne Adapter fuer React, Vue und Angular auf Basis von `web`. Ziele bleiben ARIA, Name, `data-testid` und `inside`; erzeugte
-// Klassen und ids (`_ngcontent-…`, CSS-Module-Hashes, `:r1:` aus `useId`) nutzt keiner. Dazu kommen je Framework:
-// - `component` (und `source`, wo das Framework ihn kennt) beim Beschreiben eines Ziels, nur als Hinweis: `find` wertet ihn nicht aus,
-//   er fuehrt Claude bei einem Anwendungsfehler zur Datei. Nur Dev-Builds tragen die Namen; im Produktions-Build fehlt der Hinweis.
-// - Bereitschaft: das Framework hat die Anwendung eingehaengt, Angular zusaetzlich stabil (Zone.js), sonst gilt die DOM-Ruhe von `web`.
-// - `stackSkip`: Dateien des Frameworks, damit die erste eigene Zeile im Stack die der Anwendung ist.
-// - `hints`: wo Claude im Quellcode typischerweise sucht und wie Pruefungen ohne globalen Store aussehen.
+// Thin adapters for React, Vue and Angular on top of `web`. Targets remain ARIA, name, `data-testid` and `inside`; none of them uses
+// generated classes and ids (`_ngcontent-…`, CSS module hashes, `:r1:` from `useId`). Per framework they add:
+// - `component` (and `source` where the framework knows it) when describing a target, only as a hint: `find` ignores it, it
+//   leads Claude to the file on an application error. Only dev builds carry the names; production builds lack the hint.
+// - Readiness: the framework has mounted the application, Angular is also stable (Zone.js), otherwise `web`'s DOM quiet applies.
+// - `stackSkip`: framework files, so the first own line in the stack is the application's.
+// - `hints`: where Claude typically looks in the source code and what checks look like without a global store.
 
 import { DOM_QUIET_MS, web, webBusy, webCount, webTargets } from './web.mjs';
 
 /**
- * Laeuft im Browser: die Komponenten, zu denen das Element gehoert, von aussen nach innen, hoechstens drei. Allein waere die innerste
- * meist ein Baustein wie `Button`; erst der Besitzer (die Komponente, die ihn rendert, `_debugOwner` im Dev-Build) fuehrt zur Datei.
+ * Runs in the browser: the components the element belongs to, outermost first, at most three. The innermost alone would usually be
+ * a building block like `Button`; only the owner (the component rendering it, `_debugOwner` in dev builds) leads to the file.
  */
 function reactComponent(element) {
     const NAME = /^[A-Z][\w$]*$/;
     const nameOf = (fiber) => {
         const type = fiber?.type;
         if (type === null || type === undefined || typeof type === 'string') return null;
-        // memo und forwardRef verpacken die Komponente.
+        // memo and forwardRef wrap the component.
         const inner = type.render ?? type.type ?? type;
         const name = type.displayName ?? inner.displayName ?? inner.name;
         return typeof name === 'string' && NAME.test(name) ? name : null;
@@ -26,7 +26,7 @@ function reactComponent(element) {
         const key = Object.keys(node).find((candidate) => candidate.startsWith('__reactFiber$'));
         if (key === undefined) continue;
         const names = [];
-        // Besitzer, wo React sie kennt; sonst die naechste Komponente darueber im Baum.
+        // Owners where React knows them; otherwise the next component above in the tree.
         let fiber = node[key]._debugOwner;
         if (fiber === undefined) for (fiber = node[key].return; fiber && nameOf(fiber) === null; fiber = fiber.return);
         for (; fiber && names.length < 3; fiber = fiber._debugOwner) {
@@ -42,7 +42,7 @@ function vueComponent(element) {
     for (let node = element; node !== null; node = node.parentElement) {
         const instance = node.__vueParentComponent;
         if (instance === undefined) continue;
-        // Wie bei React die Kette von aussen nach innen; `source` ist die innerste Datei der Anwendung, nicht einer Bibliothek.
+        // As with React the chain from outside in; `source` is the innermost file of the application, not of a library.
         const names = [];
         let source;
         for (let current = instance; current && names.length < 3; current = current.parent) {
@@ -62,11 +62,11 @@ function angularComponent(element) {
     if (typeof ng?.getOwningComponent !== 'function') return null;
     const owner = ng.getComponent?.(element) ?? ng.getOwningComponent(element);
     const name = owner?.constructor?.name;
-    // Minifizierte Klassen heissen etwa `t` oder `_a`.
+    // Minified classes are named like `t` or `_a`.
     return typeof name === 'string' && name.length > 2 && !/^_/.test(name) ? { component: name } : null;
 }
 
-/** Ziele wie `web`, beim Beschreiben ergaenzt um die Komponente. */
+/** Targets like `web`, with the component added when describing. */
 const withComponent = (hint) => new Function('element', 'options', `
     const found = (${webTargets})(element, options);
     if (options.mode !== 'describe' || found === null) return found;
@@ -75,23 +75,23 @@ const withComponent = (hint) => new Function('element', 'options', `
     return extra === null ? found : { ...found, ...extra };
 `);
 
-/** Bereitschaft: `mounted` sagt, ob das Framework die Anwendung eingehaengt hat; `stable` (optional), ob es fertig gerechnet hat. */
+/** Readiness: `mounted` tells whether the framework has mounted the application; `stable` (optional) whether it has settled. */
 const probeWith = (mounted, stable = '() => true') => new Function('store', `
     let busy = (${webBusy})({ domQuietMs: ${DOM_QUIET_MS} });
     let ready = false;
     try { ready = document.readyState === 'complete' && (${mounted})(); } catch { ready = false; }
-    try { if (ready && !(${stable})()) busy += 1; } catch { /* ohne Auskunft gilt die DOM-Ruhe */ }
+    try { if (ready && !(${stable})()) busy += 1; } catch { /* without an answer, DOM quiet applies */ }
     const counts = (${webCount})(store);
     return { pendingAjax: 0, loadingStores: busy, counts, appReady: ready };
 `);
 
-// Wo das Framework die Anwendung einhaengt. Gesucht wird unter den ersten Elementen, nicht nur in #root bzw. #app. Bei SSR mit
-// hydrateRoot(document, …) ist der Container das Dokument selbst (Next.js App Router, React Router im Framework-Modus, Remix).
+// Where the framework mounts the application. Searches the first elements, not just #root or #app. With SSR and
+// hydrateRoot(document, …) the container is the document itself (Next.js App Router, React Router in framework mode, Remix).
 const REACT_MOUNTED = `() => [document, ...document.querySelectorAll('html, body, body *')].slice(0, 300).some((node) => Object.keys(node).some((key) => key.startsWith('__reactContainer$')) && node.childNodes.length > 0)`;
 const VUE_MOUNTED = `() => document.querySelector('[data-v-app]') !== null || [...document.querySelectorAll('body *')].slice(0, 300).some((node) => node.__vue_app__ !== undefined)`;
-// Bei SSR steht ng-version schon im HTML vom Server; das `ngh` am Wurzelelement entfernt Angular erst beim Hydrieren.
+// With SSR, ng-version is already in the server HTML; Angular removes `ngh` from the root element only when hydrating.
 const ANGULAR_MOUNTED = `() => { const root = document.querySelector('[ng-version]'); return root !== null && !root.hasAttribute('ngh'); }`;
-// Zone.js meldet ueber Testability, ob noch Aufgaben laufen. Ohne Zone.js (zoneless) gibt es die Funktion nicht, dann reicht die DOM-Ruhe.
+// Zone.js reports via Testability whether tasks are still running. Without Zone.js (zoneless) the function is missing; DOM quiet suffices then.
 const ANGULAR_STABLE = `() => typeof window.getAllAngularTestabilities !== 'function' || window.getAllAngularTestabilities().every((testability) => testability.isStable())`;
 
 export const react = {
@@ -100,7 +100,7 @@ export const react = {
     label: 'die React-Anwendung',
     targets: withComponent(reactComponent),
     probe: probeWith(REACT_MOUNTED),
-    // Die Anmeldeseite ist meist Teil der App und bei SSR vor der Hydration nicht bedienbar; die Anmeldung wartet auf das Einhaengen.
+    // The login page is usually part of the app and not usable before hydration with SSR; login waits for the mount.
     hydrates: true,
     stackSkip: /\/(react-dom|react|scheduler)[\w.-]*\.js|\/node_modules\/\.vite\/deps\/(react|scheduler)|\/node_modules\/(react-dom|react|scheduler)\//,
     hints: [

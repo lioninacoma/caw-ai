@@ -1,5 +1,5 @@
-// Die harte Grenze fuer einen Lauf mit Claude: Der Host zaehlt jede Aktion am Browser, auch gescheiterte. So kann
-// Claude suchen, wo es will, aber nicht endlos. Lesen kostet nichts.
+// The hard limit for a run with Claude: the host counts every browser action, failed ones included. Claude can
+// search wherever it likes, but not forever. Reading is free.
 
 import { CawError } from '../shared/errors.mjs';
 
@@ -14,7 +14,7 @@ export const withStepBudget = (handler, maxSteps) => {
         handler: async (command) => {
             if (STEPS.has(command?.action)) {
                 if (used >= maxSteps) {
-                    throw new CawError('step-limit', `Das Budget von ${maxSteps} Schritten ist aufgebraucht. Reiche das Ergebnis ein: Was du nicht erreicht hast, ist ein fail mit Begründung.`);
+                    throw new CawError('step-limit', `The budget of ${maxSteps} steps is used up. Submit the result: whatever you did not reach is a fail with a reason.`);
                 }
                 used += 1;
             }

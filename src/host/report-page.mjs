@@ -1,6 +1,6 @@
-// Der Bericht als Seite im Konsolen-Stil: Aus dem Chat öffnet „Bericht öffnen“ ihn in einem neuen Reiter desselben Browsers.
-// Es reicht das Markdown, das renderReport schreibt: Überschriften, Absätze, Listen, Tabellen, `Code` und **fett**.
-// Lesetext bleibt scharf in der Textschrift; nur Überschriften, Marken und Legende tragen Anzeigeschrift und Leuchten.
+// The report as a console-style page: the chat's "open report" opens it in a new tab of the same browser.
+// It only needs the Markdown renderReport writes: headings, paragraphs, lists, tables, `code` and **bold**.
+// Body text stays sharp in the text font; only headings, marks and legend use the display font and glow.
 import { language, t } from '../shared/i18n.mjs';
 import { activeTheme } from '../shared/theme-package.mjs';
 import { CONSOLE_CSS, FAVICON, themeAttr, themeCss, themeStyle } from './theme.mjs';
@@ -11,15 +11,15 @@ const inline = (text) => escape(text)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim());
 const STATUS = /^(pass|fail|error|skipped|warn)$/;
-// Welche Marke des Themes zu welchem Status gehoert.
+// Which theme mark belongs to which status.
 const MARK = { pass: 'ok', fail: 'fail', error: 'fail', warn: 'warn', skipped: 'open' };
 const FALLBACK = { ok: '[  OK  ]', fail: '[ FAIL ]', warn: '[ WARN ]', open: '[      ]' };
 const text = (value, fallback) => (typeof value === 'string' && value !== '' ? value : fallback);
 
 /**
- * Markdown aus renderReport als HTML-Körper.
- * @param marks        die Statusmarken des Themes ({ ok, fail, warn, open }); ohne: schlichte Vorgaben
- * @param failInverted Fehler invertiert (Hintergrund fail)
+ * Markdown from renderReport as HTML body.
+ * @param marks        the theme's status marks ({ ok, fail, warn, open }); default: plain fallbacks
+ * @param failInverted failures inverted (fail background)
  */
 export const reportBody = (markdown, { marks = {}, failInverted = true } = {}) => {
     const mark = (status) => {
@@ -76,7 +76,7 @@ export const reportBody = (markdown, { marks = {}, failInverted = true } = {}) =
     return out.join('\n');
 };
 
-/** Die ganze Seite im aktiven Theme. */
+/** The whole page in the active theme. */
 export const reportPage = ({ markdown, path = '', theme = activeTheme() }) => {
     const title = t('workbench.report.title');
     const legend = text(theme.legend, '┤ {title} ├').split('{title}').join(title.toUpperCase());

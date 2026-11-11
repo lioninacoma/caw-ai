@@ -1,4 +1,4 @@
-// Overlay im echten Chrome: Die ausgelieferte Seite (Nonce-CSP, integrity) bekommt die Tags des lokalen Builds mit anderer Aufteilung.
+// Overlay in real Chrome: the deployed page (nonce CSP, integrity) gets the tags of the local build with a different chunk split.
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -16,9 +16,9 @@ let server;
 let origin;
 let root;
 
-// Ausgeliefert: ein Einstieg, der einen Vendor-Chunk braucht. Lokal: ein Einstieg mit zwei anderen Chunks. Bekaeme der lokale Einstieg
-// nur den deployten Namen (Abbildung je Request), fehlten seine Chunks nicht, aber der Vendor-Preload liefe ins Leere; mit dem Tausch
-// laedt die Seite genau den lokalen Satz.
+// Deployed: an entry that needs a vendor chunk. Local: an entry with two other chunks. If the local entry only got the deployed name
+// (per-request mapping), its chunks would still load but the vendor preload would go nowhere; with the swap the page loads exactly
+// the local set.
 const DEPLOYED_PAGE = `<!doctype html><html><head><meta charset="iso-8859-1"><title>Grüße</title>
 <script nonce="r4nd0m" src="/env.js"></script>
 <script type="module" nonce="r4nd0m" src="/assets/index-OLD11111.js" integrity="sha384-deployed"></script>
@@ -51,7 +51,7 @@ before(async () => {
             'content-security-policy': "script-src 'nonce-r4nd0m' 'strict-dynamic'",
         }).end(Buffer.from(DEPLOYED_PAGE, 'latin1'));
     });
-    await new Promise((ok) => { server.listen(0, '127.0.0.1', ok); });
+    await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${server.address().port}`;
 });
 
@@ -61,9 +61,9 @@ after(async () => {
     rmSync(root, { recursive: true, force: true });
 });
 
-test('Overlay build im Browser: lokaler Stand trotz anderer Aufteilung, Nonce-CSP und integrity; env.js vom Server; Latin-1 bleibt', async (t) => {
+test('Overlay build in the browser: local state despite different split, nonce CSP and integrity; env.js from the server; Latin-1 kept', async (t) => {
     if (browser === null) {
-        t.skip('kein Chrome');
+        t.skip('no Chrome');
         return;
     }
     const overlay = await prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked: { url: origin, apps: { web: { kind: 'build', dir: 'dist', statics: [] } } } });
@@ -79,12 +79,12 @@ test('Overlay build im Browser: lokaler Stand trotz anderer Aufteilung, Nonce-CS
     await page.goto(`${origin}/bestellung/5`);
     await page.waitForFunction(() => window.BUILD !== undefined);
     assert.equal(await page.evaluate(() => window.BUILD), 'lokal AB');
-    assert.equal(await page.evaluate(() => window.ENV), 'staging', 'die Umgebung setzt env.js');
+    assert.equal(await page.evaluate(() => window.ENV), 'staging', 'the environment sets env.js');
     assert.equal(await page.textContent('#text'), 'Grüße');
     assert.deepEqual(errors, []);
     assert.deepEqual(problems, []);
-    assert.equal(overlay.pages.at(-1).swaps[0].inserted, 2, 'Einstieg und Preload; env.js nicht doppelt');
+    assert.equal(overlay.pages.at(-1).swaps[0].inserted, 2, 'entry and preload; env.js not twice');
     const seen = overlay.diagnose();
     assert.deepEqual({ ssr: seen.ssr, local: seen.local, swapped: seen.swapped, mixed: seen.mixed, label: seen.label }, { ssr: null, local: 3, swapped: true, mixed: [], label: 'dist' });
-    assert.ok(seen.server >= 1, 'env.js vom Server');
+    assert.ok(seen.server >= 1, 'env.js from the server');
 });

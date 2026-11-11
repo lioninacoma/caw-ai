@@ -1,5 +1,5 @@
-// Werkbank und Chat in echtem Chrome: Nur der Chat spricht als Mensch, die Anwendung darf das oberste Fenster selbst navigieren, ein
-// Neuladen durch den Menschen bricht den Test ab. Ohne Chrome uebersprungen.
+// Workbench and chat in real Chrome: only the chat speaks as the human, the application may navigate the top window itself, a
+// reload by the human aborts the test. Skipped without Chrome.
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -58,12 +58,12 @@ const open = async (t) => {
 
 const pause = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
 
-test('Werkbank: Nur der eigene Chat spricht als Mensch, ein nachgebautes iframe namens caw-chat nicht', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: only the own chat speaks as the human, a fake iframe named caw-chat does not', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, aborts } = await open(t);
     const chat = bench.chatFrame();
     assert.equal(chat.name(), CHAT_FRAME);
-    // Die Anwendung teilt den Origin mit der Werkbank: Sie ersetzt den Chat durch ein eigenes iframe gleichen Namens.
+    // The application shares the origin with the workbench: it replaces the chat with its own iframe of the same name.
     await bench.view.frame.evaluate((name) => {
         top.document.getElementById('chat').remove();
         const fake = top.document.createElement('iframe');
@@ -72,60 +72,60 @@ test('Werkbank: Nur der eigene Chat spricht als Mensch, ein nachgebautes iframe 
         top.document.body.append(fake);
     }, CHAT_FRAME);
     await new Promise((ok) => { setTimeout(ok, 800); });
-    assert.equal(aborts(), 0, 'der Nachbau bricht nichts ab');
-    assert.equal(bench.chatFrame(), chat, 'der Host sucht den Chat nicht über den Namen');
+    assert.equal(aborts(), 0, 'the fake aborts nothing');
+    assert.equal(bench.chatFrame(), chat, 'the host does not look up the chat by name');
 });
 
-test('Werkbank: Lädt die Anwendung das echte Chat-iframe neu, spricht die neue Seite nicht als Mensch', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: if the application reloads the real chat iframe, the new page does not speak as the human', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, aborts } = await open(t);
     const chat = bench.chatFrame();
-    // Derselbe Frame, dasselbe Binding, aber nicht die Seite, die der Host geschrieben hat.
+    // Same frame, same binding, but not the page the host wrote.
     await bench.view.frame.evaluate(() => {
         top.document.getElementById('chat').srcdoc = '<script>window.__cawChat({ type: "abort" }); window.__cawChat({ type: "abort", nonce: null })</script>';
     });
     await new Promise((ok) => { setTimeout(ok, 800); });
-    assert.equal(bench.chatFrame(), chat, 'derselbe Frame');
-    assert.equal(aborts(), 0, 'die nachgeladene Seite bricht nichts ab');
+    assert.equal(bench.chatFrame(), chat, 'the same frame');
+    assert.equal(aborts(), 0, 'the reloaded page aborts nothing');
 });
 
-test('Werkbank: Der echte Chat spricht weiter als Mensch', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: the real chat still speaks as the human', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, aborts } = await open(t);
     await bench.chatFrame().evaluate(() => document.getElementById('abort').click());
     await bench.chatFrame().evaluate(() => document.getElementById('abort').click()).catch(() => {});
-    assert.ok(await until(() => aborts() >= 1), 'Abbrechen im echten Chat kommt an');
+    assert.ok(await until(() => aborts() >= 1), 'abort in the real chat arrives');
 });
 
-test('Werkbank: Navigiert die Anwendung das oberste Fenster selbst, läuft der Test weiter; F5 des Menschen bricht ab', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: if the application navigates the top window itself the test continues; the human pressing F5 aborts', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, aborts } = await open(t);
     const page = bench.page;
-    const before = bench.chatFrame();
+    const chatBefore = bench.chatFrame();
     await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/weiter`);
-    assert.ok(await until(async () => bench.chatFrame() !== before && (await page.evaluate(() => window.workbench !== undefined).catch(() => false))), 'neue Werkbank');
-    // Der Chat ist wieder da und wieder der echte.
-    assert.ok(await until(async () => (await bench.chatFrame().evaluate(() => typeof window.setStatus === 'function').catch(() => false))));
+    assert.ok(await until(async () => bench.chatFrame() !== chatBefore && page.evaluate(() => window.workbench !== undefined).catch(() => false)), 'new workbench');
+    // The chat is back, and it is the real one again.
+    assert.ok(await until(async () => bench.chatFrame().evaluate(() => typeof window.setStatus === 'function').catch(() => false)));
     assert.equal(bench.chatFrame().name(), CHAT_FRAME);
     await new Promise((ok) => { setTimeout(ok, 500); });
-    assert.equal(aborts(), 0, 'eine Navigation der Anwendung ist ihr Verhalten');
+    assert.equal(aborts(), 0, 'a navigation by the application is its behaviour');
 
     await page.reload();
-    assert.ok(await until(() => aborts() === 1), 'F5 des Menschen macht den laufenden Test ungültig');
+    assert.ok(await until(() => aborts() === 1), 'the human pressing F5 invalidates the running test');
 });
 
-test('Werkbank: Popups der Anwendung sind nicht die Werkbank, die Werkbank selbst schon', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: application popups are not the workbench, the workbench itself is', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     assert.equal(await bench.page.evaluate(() => window.__cawWorkbench === true), true);
     assert.equal(await bench.view.frame.evaluate(() => window.__cawWorkbench === true), false);
     const [popup] = await Promise.all([bench.page.context().waitForEvent('page'), bench.view.frame.evaluate((url) => { window.open(url, '_blank'); }, `${base}/popup`)]);
     await popup.waitForLoadState('domcontentloaded');
-    assert.equal(await popup.evaluate(() => window.__cawWorkbench === true), false, 'dort führt der Mensch auch vor');
+    assert.equal(await popup.evaluate(() => window.__cawWorkbench === true), false, 'the human demonstrates there too');
 });
 
-test('Lokaler Code: Auch Popups und neue Tabs der Anwendung bekommen ihr HTML ohne Subresource Integrity', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('local code: application popups and new tabs also get their HTML without subresource integrity', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const sri = createServer((request, response) => {
         response.setHeader('content-type', 'text/html; charset=utf-8');
         response.setHeader('content-encoding', 'gzip');
@@ -140,94 +140,94 @@ test('Lokaler Code: Auch Popups und neue Tabs der Anwendung bekommen ihr HTML oh
     await interceptDocuments(context, page, ['127.0.0.1'], { request: context.request, rewrite: withoutIntegrity });
     await page.goto(url);
     const integrity = (target) => target.evaluate(() => document.querySelector('script')?.getAttribute('integrity') ?? null);
-    assert.equal(await integrity(page), null, 'die eigene Seite');
+    assert.equal(await integrity(page), null, 'the page itself');
     const [popup] = await Promise.all([context.waitForEvent('page'), page.evaluate((address) => { window.open(address); }, url)]);
     await popup.waitForLoadState();
-    assert.equal(await popup.locator('#x').textContent(), 'OK', 'entpackt und lesbar');
-    assert.equal(await integrity(popup), null, 'das Popup');
+    assert.equal(await popup.locator('#x').textContent(), 'OK', 'decompressed and readable');
+    assert.equal(await integrity(popup), null, 'the popup');
     const tab = await context.newPage();
     await tab.goto(url);
-    assert.equal(await integrity(tab), null, 'ein neuer Tab');
+    assert.equal(await integrity(tab), null, 'a new tab');
 });
 
-test('Lokaler Code: Eine Seite in ISO-8859-1 behält ihre Umlaute, auch wenn sie umgeschrieben wird', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
-    const server = createServer((request, response) => {
+test('local code: an ISO-8859-1 page keeps its umlauts even when rewritten', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const latinServer = createServer((request, response) => {
         response.setHeader('content-type', 'text/html; charset=iso-8859-1');
         response.end(Buffer.from('<h1 id="x">Grüße</h1><script integrity="sha384-alt" src="/a.js"></script>', 'latin1'));
     });
-    await new Promise((ok) => { server.listen(0, '127.0.0.1', ok); });
-    t.after(() => server.close());
-    const url = `http://127.0.0.1:${server.address().port}/`;
+    await new Promise((ok) => { latinServer.listen(0, '127.0.0.1', ok); });
+    t.after(() => latinServer.close());
+    const url = `http://127.0.0.1:${latinServer.address().port}/`;
     const context = await browser.newContext();
     t.after(() => context.close());
     const page = await context.newPage();
     await interceptDocuments(context, page, ['127.0.0.1'], { request: context.request, rewrite: withoutIntegrity });
     await page.goto(url);
-    assert.equal(await page.locator('#x').textContent(), 'Grüße', 'die eigene Seite');
+    assert.equal(await page.locator('#x').textContent(), 'Grüße', 'the page itself');
     assert.equal(await page.evaluate(() => document.querySelector('script').getAttribute('integrity')), null);
     const [popup] = await Promise.all([context.waitForEvent('page'), page.evaluate((address) => { window.open(address); }, url)]);
     await popup.waitForLoadState();
-    assert.equal(await popup.locator('#x').textContent(), 'Grüße', 'ein Popup');
+    assert.equal(await popup.locator('#x').textContent(), 'Grüße', 'a popup');
 });
 
-test('Chat: Esc leert erst das Feld, dann fragt es den Abbruch nur an, erst ein zweites Esc bricht ab', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('chat: Esc first clears the field, then only asks to abort, only a second Esc aborts', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, aborts } = await open(t);
     const frame = bench.chatFrame();
     await frame.fill('#input', 'halb getippt');
     await frame.focus('#input');
     await bench.page.keyboard.press('Escape');
-    assert.equal(await frame.inputValue('#input'), '', 'das Feld ist leer');
-    assert.equal(await frame.evaluate(() => document.getElementById('abort').classList.contains('sure')), false, 'nichts angefragt');
+    assert.equal(await frame.inputValue('#input'), '', 'the field is empty');
+    assert.equal(await frame.evaluate(() => document.getElementById('abort').classList.contains('sure')), false, 'nothing asked');
     await bench.page.keyboard.press('Escape');
     assert.match(await frame.textContent('#abort'), /Wirklich abbrechen\? \(Esc\)/);
-    assert.equal(await frame.isVisible('#abortNo'), true, 'mit „Nein“');
+    assert.equal(await frame.isVisible('#abortNo'), true, 'with "Nein"');
     await pause(300);
-    assert.equal(aborts(), 0, 'ein Esc bricht nicht ab');
+    assert.equal(aborts(), 0, 'one Esc does not abort');
     await bench.page.keyboard.press('Escape');
-    assert.ok(await until(() => aborts() === 1), 'das zweite Esc bestätigt');
+    assert.ok(await until(() => aborts() === 1), 'the second Esc confirms');
 });
 
-test('Chat: Die Entscheidung ist eine Karte, Verwerfen will ein zweites Mal geklickt werden', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('chat: the decision is a card, discard needs a second click', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, chat, waiting } = await open(t);
     const frame = bench.chatFrame();
     const card = { title: 'Prüflauf bestanden', facts: ['Übernommen würde der ganze Testplan (2 Schritte).'], details: [{ title: 'Warnungen im Bericht', items: ['t.getKey'] }], question: 'Soll das der neue Testplan werden?' };
     const options = [{ id: 'adopt', label: 'Testplan übernehmen (2 Schritte)', primary: true }, { id: 'discard', label: 'Entwurf verwerfen', confirm: 'Wirklich verwerfen?' }];
     let answer;
     const chosen = chat.choose('deciding', 'Text fürs Protokoll', options, card).then((id) => { answer = id; });
-    assert.ok(await until(() => frame.isVisible('.decision')), 'die Karte steht');
-    assert.match(await frame.textContent('.decision strong'), /Prüflauf bestanden$/, 'Titel, davor die Marke des Themes');
+    assert.ok(await until(() => frame.isVisible('.decision')), 'the card is shown');
+    assert.match(await frame.textContent('.decision strong'), /Prüflauf bestanden$/, 'title, preceded by the theme mark');
     assert.equal(await frame.locator('.decision > ul > li').count(), 1);
-    assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'Warnungen zum Aufklappen');
-    assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Der Testplan ändert sich erst mit deiner Wahl.'], 'einmal im Terminal');
-    // Die Leiste der Anwendung sagt es auch. Die Pill oben rechts kennt nur die vier Labels des Chat-Kopfs: Hier hat sie keines.
+    assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'warnings collapsed');
+    assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Der Testplan ändert sich erst mit deiner Wahl.'], 'once in the terminal');
+    // The application bar says so too. The pill top right only knows the four chat header labels: there is none here.
     assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === 'DU BIST DRAN'));
-    assert.equal(await bench.page.isVisible('#state'), false, 'keine Pill ohne Label');
+    assert.equal(await bench.page.isVisible('#state'), false, 'no pill without a label');
 
     const discard = frame.locator('#choices button', { hasText: 'Entwurf verwerfen' });
     await discard.click();
     assert.equal(await frame.locator('#choices button.sure').textContent(), 'Wirklich verwerfen?');
     await frame.locator('#choices button.no').click();
     await pause(200);
-    assert.equal(answer, undefined, '„Nein“ verwirft nichts');
+    assert.equal(answer, undefined, '"Nein" discards nothing');
     await frame.locator('#choices button', { hasText: 'Entwurf verwerfen' }).click();
     await frame.locator('#choices button.sure').click();
     await chosen;
     assert.equal(answer, 'discard');
 });
 
-test('Werkbank: Vorführen zeigt die Aufnahme, Aktualisieren ist gesperrt, bis der Host es erlaubt', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: demonstrating shows recording, refresh is locked until the host allows it', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, chat } = await open(t);
     const frame = bench.chatFrame();
-    assert.equal(await bench.page.isDisabled('#reload'), true, 'gesperrt');
+    assert.equal(await bench.page.isDisabled('#reload'), true, 'locked');
     assert.equal(await bench.page.getAttribute('#reload', 'title'), 'Während der Test läuft gesperrt');
     await bench.onRefresh(async () => {});
-    assert.equal(await bench.page.isDisabled('#reload'), false, 'erlaubt');
+    assert.equal(await bench.page.isDisabled('#reload'), false, 'allowed');
     await bench.onRefresh(null);
-    assert.equal(await bench.page.isDisabled('#reload'), true, 'wieder gesperrt');
+    assert.equal(await bench.page.isDisabled('#reload'), true, 'locked again');
 
     chat.enter('showing');
     assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === '● AUFNAHME – deine Klicks zählen'));
@@ -236,11 +236,11 @@ test('Werkbank: Vorführen zeigt die Aufnahme, Aktualisieren ist gesperrt, bis d
     assert.equal(await frame.textContent('#mark'), 'Als Prüfpunkt setzen');
     assert.match(await frame.getAttribute('#input', 'placeholder'), /Als Prüfpunkt setzen/);
     chat.progress('Klick: Weiter');
-    assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'die Aktionen sind offen');
+    assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'the actions are open');
 });
 
-test('Chat: Nach dem Lauf bleibt das Fenster offen, bis der Mensch schließt oder die Zeit um ist', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('chat: after the run the window stays open until the human closes it or the time is up', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench, chat } = await open(t);
     const frame = bench.chatFrame();
     await chat.finished({ report: join(dir, 'x.md'), text: '2 von 2 Schritten bestanden.', command: 'caw-ai run t' });
@@ -257,11 +257,11 @@ test('Chat: Nach dem Lauf bleibt das Fenster offen, bis der Mensch schließt ode
     assert.equal(done, true);
     const start = Date.now();
     await chat.linger(300);
-    assert.ok(Date.now() - start < 3000, 'ohne Klick nach Ablauf');
+    assert.ok(Date.now() - start < 3000, 'without a click after the timeout');
 });
 
-test('Werkbank: Die Pill oben rechts zeigt nur die vier Labels des Chat-Kopfs, ohne Schritt', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: the pill top right shows only the four chat header labels, without a step', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     const pill = async () => ((await bench.page.isVisible('#state')) ? bench.page.textContent('#state') : null);
     await bench.steps([{ id: 'S1', name: 'Eins' }]);
@@ -272,55 +272,55 @@ test('Werkbank: Die Pill oben rechts zeigt nur die vier Labels des Chat-Kopfs, o
     }
 });
 
-test('Werkbank: Füllt Claude ein Feld der Anwendung, während der Mensch im Chat tippt, bleibt der Fokus im Chat', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: if Claude fills an application field while the human types in the chat, focus stays in the chat', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     const frame = bench.chatFrame();
     await bench.page.waitForSelector('iframe[name="caw-app"]');
-    assert.ok(await until(async () => (await bench.view.locator('#feld').count()) === 1), 'Anwendung geladen');
+    assert.ok(await until(async () => (await bench.view.locator('#feld').count()) === 1), 'application loaded');
     await frame.waitForSelector('#input');
     await frame.click('#input');
     await bench.page.keyboard.type('Hal');
-    // Claude füllt in der Anwendung, wie im Lauf über keepChatFocus.
+    // Claude fills in the application, as in a run via keepChatFocus.
     await bench.view.keepChatFocus(() => bench.view.locator('#feld').fill('Meier'));
     await bench.page.keyboard.type('lo');
-    assert.equal(await frame.inputValue('#input'), 'Hallo', 'weiter im Chat getippt');
-    assert.equal(await bench.view.locator('#feld').inputValue(), 'Meier', 'nichts davon in der Maske');
+    assert.equal(await frame.inputValue('#input'), 'Hallo', 'kept typing in the chat');
+    assert.equal(await bench.view.locator('#feld').inputValue(), 'Meier', 'none of it in the form');
     return undefined;
 });
 
-test('Werkbank: Nur Anwendung und der offene Reiter überstehen das Neuladen der ganzen Werkbank', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: solo view and the open tab survive a reload of the whole workbench', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     await bench.solo(true);
     assert.equal(await bench.page.evaluate(() => document.body.classList.contains('solo')), true);
     await bench.page.evaluate(() => document.querySelector('[data-tab=console]').click());
-    // Wie „Cache leeren und hart neu laden“ aus den DevTools: das oberste Dokument neu.
+    // Like "empty cache and hard reload" from the DevTools: the top document anew.
     await bench.page.reload({ waitUntil: 'domcontentloaded' });
-    assert.ok(await until(() => bench.page.evaluate(() => document.body.classList.contains('solo')).catch(() => false)), 'Nur Anwendung bleibt');
-    assert.ok(await until(() => bench.page.evaluate(() => document.getElementById('drawer')?.classList.contains('open')).catch(() => false)), 'Konsole bleibt offen');
+    assert.ok(await until(() => bench.page.evaluate(() => document.body.classList.contains('solo')).catch(() => false)), 'solo view stays');
+    assert.ok(await until(() => bench.page.evaluate(() => document.getElementById('drawer')?.classList.contains('open')).catch(() => false)), 'console stays open');
     await bench.solo(false);
     assert.equal(await bench.page.evaluate(() => document.body.classList.contains('solo')), false);
     return undefined;
 });
 
-test('Werkbank: F1 wählt einen Zustand, ohne Schritt bis zum letzten, veraltete Schritte gesperrt', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('workbench: F1 picks a state, without a step up to the last one, stale steps locked', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     const page = bench.page;
     const picked = [];
-    bench.onState(async (test, step) => { picked.push([test, step]); });
-    assert.equal(await page.isVisible('.fkeys [data-states]'), false, 'ohne Tests kein F1');
+    bench.onState(async (testId, step) => { picked.push([testId, step]); });
+    assert.equal(await page.isVisible('.fkeys [data-states]'), false, 'no F1 without tests');
     await bench.states([
         { id: 'sb-antrag-abbrechen', name: '', mutates: true, steps: [{ id: 'S1', name: 'Personensuche', ok: true }, { id: 'S2', name: 'Person wählen', ok: true }, { id: 'S3', name: 'Antrag', ok: false, why: 'stale' }] },
         { id: 'pruefen-liste', name: '', mutates: false, steps: [{ id: 'S1', name: 'Liste', ok: true }] },
     ]);
     assert.equal(await page.isVisible('.fkeys [data-states]'), true);
     await page.keyboard.press('F1');
-    assert.equal(await page.isVisible('#stateDlg'), true, 'F1 öffnet den Dialog');
+    assert.equal(await page.isVisible('#stateDlg'), true, 'F1 opens the dialog');
     await page.click('#stests .srow >> text=sb-antrag-abbrechen');
-    assert.match(await page.textContent('#sfoot'), /bis S2 ab, ohne Claude\. Legt dabei neue Daten an\./, 'ohne Schritt: bis zum letzten herstellbaren');
-    assert.equal(await page.isDisabled('#ssteps .srow >> text=S3'), true, 'veraltet gesperrt');
+    assert.match(await page.textContent('#sfoot'), /bis S2 ab, ohne Claude\. Legt dabei neue Daten an\./, 'without a step: up to the last reachable one');
+    assert.equal(await page.isDisabled('#ssteps .srow >> text=S3'), true, 'stale is locked');
     await page.click('#sgo');
     await until(() => picked.length === 1);
     assert.deepEqual(picked[0], ['sb-antrag-abbrechen', null].map((value) => value ?? undefined));
@@ -330,7 +330,7 @@ test('Werkbank: F1 wählt einen Zustand, ohne Schritt bis zum letzten, veraltete
     await page.click('#sgo');
     await until(() => picked.length === 2);
     assert.deepEqual(picked[1], ['sb-antrag-abbrechen', 'S1']);
-    // Im Vollbild steht F1 in der schmalen Leiste.
+    // In solo view F1 sits in the narrow bar.
     await bench.solo(true);
     assert.equal(await page.isVisible('.soloBar [data-states]'), true);
     return undefined;

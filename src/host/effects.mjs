@@ -1,6 +1,6 @@
-// Was bewirkt eine Aktion auf der Seite? Ein gesunder Lauf haelt es je Aktion fest, ein spaeterer vergleicht. So faellt die erste
-// Aktion auf, nach der sich die Anwendung anders verhaelt, auch wenn erst ein spaeteres Ziel oder eine Pruefung scheitert.
-// Alles aus dem Browser, ohne Wissen ueber Framework oder Umgebung, und ohne Werte: keine Feldinhalte, keine Parameterwerte.
+// What does an action do to the page? A healthy run records it per action, a later run compares. This reveals the first
+// action after which the app behaves differently, even if only a later target or check fails.
+// Everything comes from the browser, with no knowledge of framework or environment, and without values: no field contents, no parameter values.
 
 import { createHash } from 'node:crypto';
 
@@ -8,7 +8,7 @@ import { t } from '../shared/i18n.mjs';
 import { CATALOGS } from '../shared/locales/index.mjs';
 import { redactFor } from './secrets.mjs';
 
-/** Gesunde Laeufe, bis die Wirkung als gelernt gilt. Bis dahin faellt weg, was zwischen den Laeufen schwankt. */
+/** Healthy runs until the effects count as learned. Until then, whatever fluctuates between runs is dropped. */
 export const LEARN_RUNS = 2;
 const MAX_LINES = 12;
 const MAX_CONTROLS = 40;
@@ -17,15 +17,15 @@ export const EFFECT_LISTS = ['controls', 'view', 'requests', 'responses', 'conso
 
 const shortHash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 10);
 
-// Zahlen wechseln von Lauf zu Lauf (Bestellnummern, Daten, Zaehler).
+// Numbers change from run to run (order numbers, dates, counters).
 const neutral = (text) => text.replace(/\d+/g, '#');
 
-/** Laeuft im Browser: Zustand der sichtbaren Bedienelemente, ohne Werte. */
+/** Runs in the browser: state of the visible controls, without values. */
 export function controlsProbe() {
     const seen = (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
     const short = (text) => (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
-    // Ohne eigene Beschriftung: die erste Textzeile des naechsten umgebenden Bereichs, etwa die Ueberschrift einer Karte. Sonst
-    // stuende nur `textarea ""` da, und niemand faende die Stelle im Code.
+    // Without its own label: the first text line of the nearest enclosing area, e.g. the heading of a card. Otherwise
+    // it would just say `textarea ""` and nobody could find the spot in the code.
     const contextOf = (node) => {
         let current = node.parentElement;
         for (let depth = 0; current !== null && current !== document.body && depth < 6; depth += 1, current = current.parentElement) {
@@ -34,7 +34,7 @@ export function controlsProbe() {
         }
         return '';
     };
-    // Ohne die Felder im Label: Die Optionen eines <select> sind Daten, nicht die Beschriftung.
+    // Without the fields inside the label: the options of a <select> are data, not the label.
     const labelText = (label) => {
         if (!label) return '';
         const copy = label.cloneNode(true);
@@ -59,14 +59,14 @@ export function controlsProbe() {
         node.getAttribute('aria-selected') === 'true' ? 'selected' : '',
         'value' in node && node.type !== 'checkbox' && node.type !== 'radio' && node.tagName !== 'BUTTON' ? (node.value === '' ? 'empty' : 'filled') : '',
     ].filter(Boolean);
-    // Zeilen von Listen und Tabellen sind Daten, oft auch fremder Vorgaenge: Ihre Bedienelemente zaehlen nicht. Von einer Liste
-    // zaehlt nur, ob sie Zeilen hat.
+    // Rows of lists and tables are data, often of other records: their controls do not count. Of a list, only whether it
+    // has rows counts.
     const ROW = '[role=row], [role=gridcell], [role=listitem], [role=option], [role=treeitem], tr, li';
     const controls = [...document.querySelectorAll('input, select, textarea, button, [role=button], [role=tab], [role=checkbox], [role=combobox], [role=textbox]')]
         .filter((node) => node.type !== 'hidden' && seen(node) && node.closest(ROW) === null)
         .map((node) => `${node.getAttribute('role') ?? node.tagName.toLowerCase()} "${labelOf(node)}" ${flags(node).join(',')}`.trim());
     const lists = [...document.querySelectorAll('[role=grid], [role=treegrid], [role=listbox], [role=tree], [role=table], table')]
-        .filter((node) => seen(node) && node.parentElement?.closest('[role=grid], [role=treegrid], [role=listbox], [role=tree], [role=table], table') == null)
+        .filter((node) => seen(node) && (node.parentElement?.closest('[role=grid], [role=treegrid], [role=listbox], [role=tree], [role=table], table') ?? null) === null)
         .map((node) => {
             const rows = [...node.querySelectorAll('[role=row], [role=option], [role=treeitem], tr')].filter((row) => seen(row) && row.querySelector('[role=columnheader], th') === null);
             return `list "${short(node.getAttribute('aria-label') || contextOf(node))}" ${rows.length === 0 ? 'empty' : 'rows'}`;
@@ -75,8 +75,8 @@ export function controlsProbe() {
 }
 
 /**
- * Der ARIA-Baum als Zeilen ohne Werte: Links, Feldinhalte und lange Texte (meist Daten einer Liste) fallen weg, ebenso Zeilen
- * ohne Namen.
+ * The ARIA tree as lines without values: links, field contents and long texts (mostly list data) are dropped, as are lines
+ * without a name.
  */
 export const viewLines = (aria) => aria.split('\n')
     .map((line) => line.trimEnd())
@@ -85,14 +85,14 @@ export const viewLines = (aria) => aria.split('\n')
     .filter((line) => line.length <= MAX_LINE && !/^\s*- (?:button|img|generic|list|listitem|group|row|cell|text)?:?$/.test(line))
     .map((line) => neutral(line).trim());
 
-/** Unterschied zweier Listen als +/- Zeilen. */
+/** Difference of two lists as +/- lines. */
 export const lineDelta = (before, after) => {
     const was = new Set(before);
     const now = new Set(after);
     return [...new Set([...after.filter((line) => !was.has(line)).map((line) => `+ ${line}`), ...before.filter((line) => !now.has(line)).map((line) => `- ${line}`)])];
 };
 
-/** Form einer JSON-Antwort: Pfade der Schluessel, Arrays zusammengefasst, ohne Werte. */
+/** Shape of a JSON response: key paths, arrays collapsed, without values. */
 export const jsonShape = (value, prefix = '', out = new Set(), depth = 0) => {
     if (depth > 5 || out.size > 200) return out;
     if (Array.isArray(value)) {
@@ -109,7 +109,7 @@ export const jsonShape = (value, prefix = '', out = new Set(), depth = 0) => {
 
 const FAILURE_KEYS = /^(success|ok|error|errors|fehler|fehlermeldung)$/i;
 
-/** Eine JSON-Antwort als eine Zeile: Name des Requests, Form als Kurz-Hash und fachliche Fehlerzeichen der obersten Ebene. */
+/** A JSON response as one line: request name, shape as short hash and business error markers of the top level. */
 export const responseLine = (name, body) => {
     const hints = body === null || typeof body !== 'object' || Array.isArray(body) ? [] : Object.entries(body)
         .filter(([key]) => FAILURE_KEYS.test(key))
@@ -120,8 +120,8 @@ export const responseLine = (name, body) => {
 const unique = (lines) => [...new Set(lines)].slice(0, MAX_LINES);
 
 /**
- * Misst die Wirkung je Aktion: `before()` vor der Aktion, `after()` danach, wenn die Seite ruhig ist.
- * @param session Browser-Session mit page(), network und trail
+ * Measures the effect per action: `before()` before the action, `after()` afterwards, once the page is quiet.
+ * @param session browser session with page(), network and trail
  */
 export const createEffects = ({ session }) => {
     const read = async () => {
@@ -130,7 +130,7 @@ export const createEffects = ({ session }) => {
             page.evaluate(controlsProbe).catch(() => null),
             page.locator('body').ariaSnapshot({ timeout: 5000 }).catch(() => null),
         ]);
-        // Die Wirkung landet in der Aufzeichnung, also im Repository: ohne Passwoerter.
+        // The effects end up in the recording, i.e. in the repository: without passwords.
         const view = aria === null ? null : viewLines(await redactFor(page, aria, session.secrets?.() ?? []));
         return { controls: controls?.map(neutral) ?? null, view };
     };
@@ -143,10 +143,10 @@ export const createEffects = ({ session }) => {
             netMark = session.network?.mark() ?? 0;
             trailMark = session.trail?.mark() ?? 0;
         },
-        /** @returns die Wirkung, Listen ohne Eintraege fehlen; null, wenn sich die Seite nicht lesen liess */
+        /** @returns the effect, lists without entries are omitted; null if the page could not be read */
         after: async () => {
             const after = await read();
-            if (before?.controls == null || after.controls === null || before.view === null || after.view === null) return null;
+            if ((before?.controls ?? null) === null || after.controls === null || before.view === null || after.view === null) return null;
             const requests = (session.network?.since(netMark) ?? [])
                 .filter(({ outcome }) => outcome === 'ok' || outcome === 'http')
                 .map(({ name, status }) => `${name} ${status}`);
@@ -158,7 +158,7 @@ export const createEffects = ({ session }) => {
                 responses: unique(trail.filter(({ kind }) => kind === 'response').map(({ line }) => line)),
                 console: unique(trail.filter(({ kind }) => kind === 'console').map(({ line }) => neutral(line).slice(0, MAX_LINE))),
             };
-            // Bedienelemente sind kurze Zeilen und das verlaesslichste Signal: Eine Maske hat schnell mehr als ein Dutzend davon.
+            // Controls are short lines and the most reliable signal: a form quickly has more than a dozen of them.
             effect.controls = effect.controls.slice(0, MAX_CONTROLS);
             effect.view = effect.view.slice(0, MAX_LINES);
             return Object.fromEntries(Object.entries(effect).filter(([, lines]) => lines.length > 0));
@@ -167,11 +167,11 @@ export const createEffects = ({ session }) => {
 };
 
 /**
- * Lernt aus einem gesunden Lauf. Bis LEARN_RUNS bleibt nur, was in allen Laeufen gleich war; die Konsole sammelt, was vorkam,
- * denn dort zaehlt spaeter das Neue. Danach aendert ein Lauf nichts mehr: Eine Abweichung ist dann ein Befund, kein Rauschen.
- * @param recorded recording.effects oder undefined
- * @param observed Map Aktionsnummer (ab 1) -> Wirkung aus diesem Lauf
- * @returns die neuen recording.effects oder null, wenn sich nichts aendert
+ * Learns from a healthy run. Until LEARN_RUNS only what was equal in all runs stays; the console collects what occurred,
+ * because later only new entries count there. After that a run changes nothing: a deviation is then a finding, not noise.
+ * @param recorded recording.effects or undefined
+ * @param observed Map action number (from 1) -> effect from this run
+ * @returns the new recording.effects or null if nothing changes
  */
 export const learnEffects = (recorded, observed) => {
     if (recorded !== undefined && recorded.runs >= LEARN_RUNS) return null;
@@ -192,9 +192,9 @@ export const learnEffects = (recorded, observed) => {
 };
 
 /**
- * Selbstbereinigung: Was in einem bestandenen Lauf in einer Liste fehlte, die nicht ueber das Scheitern entscheidet, schwankt
- * offenbar und faellt aus der gelernten Wirkung. Listen aus `fail` bleiben: Dort ist eine Abweichung ein Befund.
- * @returns die neuen recording.effects oder null, wenn nichts zu streichen ist
+ * Self-cleanup: what was missing in a passed run in a list that does not decide on failure apparently fluctuates and
+ * drops out of the learned effects. Lists from `fail` stay: a deviation there is a finding.
+ * @returns the new recording.effects or null if there is nothing to drop
  */
 export const pruneEffects = (recorded, deviation, fail = DEFAULT_EFFECT_FAIL) => {
     if (recorded === undefined || deviation === undefined || deviation === null || deviation.lists.some((list) => fail.includes(list))) return null;
@@ -212,37 +212,37 @@ export const pruneEffects = (recorded, deviation, fail = DEFAULT_EFFECT_FAIL) =>
 };
 
 /**
- * Weicht die Wirkung von der gelernten ab? Fehlen zaehlt bei allem ausser der Konsole, dort zaehlt das Neue.
- * @returns { missing, extra, instead } oder null
+ * Do the effects deviate from the learned ones? Missing entries count for everything except the console, where new ones count.
+ * @returns { missing, extra, instead } or null
  */
 export const effectChange = (recorded, observed) => {
     if (recorded === undefined || observed === undefined) return null;
     const now = observed ?? {};
-    // Eine Antwortform fehlt nur, wenn derselbe Request jetzt anders geformt antwortet. Kam er nicht oder spaeter, zeigt das `requests`.
+    // A response shape is only missing if the same request now answers with a different shape. If it did not come or came later, `requests` shows that.
     const nameOf = (line) => line.replace(/ form [0-9a-f]+.*$/, '');
     const answered = new Set((now.responses ?? []).map(nameOf));
     const counts = (list, line) => list !== 'responses' || answered.has(nameOf(line));
     const byList = Object.fromEntries(EFFECT_LISTS.filter((list) => list !== 'console')
         .map((list) => [list, (recorded[list] ?? []).filter((line) => !(now[list] ?? []).includes(line) && counts(list, line))]));
     const extra = (now.console ?? []).filter((line) => !(recorded.console ?? []).includes(line));
-    // Was stattdessen geschah, aus denselben Listen: Es zeigt, wie sich die Maske jetzt umstellt.
+    // What happened instead, from the same lists: it shows how the form rearranges itself now.
     const instead = ['controls', 'view'].flatMap((list) => (now[list] ?? []).filter((line) => !(recorded[list] ?? []).includes(line))).slice(0, 6);
     return summarized({ byList, extra: extra.slice(0, 5), instead });
 };
 
-/** Fasst die Abweichung je Liste zusammen; null, wenn nichts bleibt. */
+/** Summarizes the deviation per list; null if nothing remains. */
 const summarized = ({ byList, extra, instead }) => {
     const missing = Object.values(byList).flat();
     if (missing.length === 0 && extra.length === 0) return null;
-    // Welche Listen abweichen: Davon haengt ab, ob die Abweichung den Schritt scheitern laesst.
+    // Which lists deviate: that decides whether the deviation fails the step.
     const lists = EFFECT_LISTS.filter((list) => (list === 'console' ? extra.length > 0 : (byList[list] ?? []).length > 0));
     return { missing: missing.slice(0, 8), extra, instead, lists, byList };
 };
 
 /**
- * Ein Request, der nach der Messung noch im selben Schritt kam, fehlt nicht: Er war nur langsamer.
- * @param answered Zeilen `Name Status` aller beantworteten Requests des Schritts
- * @returns die bereinigte Abweichung oder null
+ * A request that came later within the same step after the measurement is not missing: it was just slower.
+ * @param answered lines `name status` of all answered requests of the step
+ * @returns the cleaned deviation or null
  */
 export const withoutLate = (deviation, answered) => {
     if (deviation === undefined || deviation === null) return null;
@@ -252,16 +252,16 @@ export const withoutLate = (deviation, answered) => {
     return rest === null ? null : { ...deviation, ...rest };
 };
 
-/** Standard: Was in gesunden Laeufen voellig stabil war, laesst den Schritt scheitern; der Rest bleibt Warnung. */
+/** Default: what was completely stable in healthy runs fails the step; the rest stays a warning. */
 export const DEFAULT_EFFECT_FAIL = ['controls', 'console'];
 
-/** Laesst diese Abweichung den Schritt scheitern? Nur gelernte Wirkung, und nur in den Listen aus `fail`. */
+/** Does this deviation fail the step? Only learned effects, and only in the lists from `fail`. */
 export const failsStep = (deviation, fail = DEFAULT_EFFECT_FAIL) => deviation?.learned === true && deviation.lists.some((list) => fail.includes(list));
 
-/** Anfang der Begruendung, wenn nur die Wirkung abweicht. Erkannt wird er in jeder Sprache, auch in Laeufen einer anderen. */
+/** Start of the reason when only the effects deviate. Recognized in every language, also in runs of another one. */
 export const effectCause = () => t('run.effect.cause');
-// Nach Wiederholungen steht der Grund hinter "In allen 2 Versuchen gescheitert: " bzw. "Auch im 2. Versuch gescheitert: ". Es zaehlt
-// der Grund des letzten Versuchs; die davor stehen hinter ihm und zaehlen nicht.
+// After retries the reason follows a retry prefix (e.g. "Failed in all 2 attempts: ", see RETRY_KEYS).
+// The reason of the last attempt counts; the earlier ones follow it and do not count.
 const RETRY_KEYS = ['session.replay.allTriesFailed', 'session.replay.tryFailed'];
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const RETRY_PREFIXES = Object.values(CATALOGS).flatMap((catalog) => RETRY_KEYS.map((key) => catalog[key]).filter((text) => typeof text === 'string'))
@@ -273,8 +273,8 @@ export const isEffectCause = (reason) => {
         && bare.some((candidate) => candidate.startsWith(catalog['run.effect.cause'])));
 };
 
-// Bedienelemente stehen als Aenderung in der Wirkung: "+ x" erscheint durch die Aktion, "- x" verschwindet. Fuer Menschen ausgeschrieben.
-// Die Zeile selbst kann aus einem Snapshot stammen ("- link \"x\":"): Spiegelstrich und Doppelpunkt am Ende gehoeren nicht zum Namen.
+// Controls appear as changes in the effects: "+ x" appears through the action, "- x" disappears. Spelled out for humans.
+// The line itself may come from a snapshot ("- link \"x\":"): the leading dash and trailing colon are not part of the name.
 const changeWords = (line) => {
     const plain = (text) => text.replace(/^- /, '').replace(/:$/, '');
     if (line.startsWith('+ ')) return t('run.effect.appears', { what: plain(line.slice(2)) });
@@ -282,7 +282,7 @@ const changeWords = (line) => {
     return line;
 };
 
-/** Die Abweichung in einem Satz, fuer Einschaetzung, Bericht und Claude. */
+/** The deviation in one sentence, for assessment, report and Claude. */
 export const deviationText = ({ step, number, label, missing, extra, instead }) => [
     t('run.effect.differs', { step, number, label }),
     ...(missing.length === 0 ? [] : [t('run.effect.missing', { list: missing.map(changeWords).join('; ') })]),

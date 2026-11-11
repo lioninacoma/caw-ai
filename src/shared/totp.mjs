@@ -1,5 +1,5 @@
-// Einmalcode nach RFC 6238 (TOTP, HMAC-SHA1, 30 s, 6 Stellen), wie ihn Authenticator-Apps zeigen: fuer Testkonten,
-// deren Anmeldung nach dem Passwort einen zweiten Faktor verlangt. Das Geheimnis ist Base32, wie im otpauth-Link.
+// One-time codes per RFC 6238 (TOTP, HMAC-SHA1, 30 s, 6 digits), as shown by authenticator apps: for test accounts whose
+// sign-in asks for a second factor after the password. The secret is Base32, as in the otpauth link.
 
 import { createHmac } from 'node:crypto';
 
@@ -9,7 +9,7 @@ const DIGITS = 6;
 const BITS_PER_CHAR = 5;
 const BITS_PER_BYTE = 8;
 
-/** Base32 (RFC 4648) zu Bytes; Leerzeichen, Bindestriche und `=` zaehlen nicht. */
+/** Base32 (RFC 4648) to bytes; spaces, hyphens and `=` are ignored. */
 export const base32Bytes = (text) => {
     const clean = String(text).toUpperCase().replace(/[\s=-]/g, '');
     const bytes = [];
@@ -17,7 +17,7 @@ export const base32Bytes = (text) => {
     let bits = 0;
     for (const char of clean) {
         const value = ALPHABET.indexOf(char);
-        if (value === -1) throw new Error(`base32: unerlaubtes Zeichen ${JSON.stringify(char)}`);
+        if (value === -1) throw new Error(`base32: invalid character ${JSON.stringify(char)}`);
         buffer = (buffer << BITS_PER_CHAR) | value;
         bits += BITS_PER_CHAR;
         if (bits >= BITS_PER_BYTE) {
@@ -28,7 +28,7 @@ export const base32Bytes = (text) => {
     return Buffer.from(bytes);
 };
 
-/** Der Code zum Zeitpunkt `nowMs` fuer ein rohes Geheimnis (Bytes). */
+/** The code at `nowMs` for a raw secret (bytes). */
 export const totpFromKey = (key, nowMs = Date.now(), { digits = DIGITS, step = STEP_SECONDS, algorithm = 'sha1' } = {}) => {
     const counter = Buffer.alloc(BITS_PER_BYTE);
     counter.writeBigUInt64BE(BigInt(Math.floor(nowMs / 1000 / step)));
@@ -38,5 +38,5 @@ export const totpFromKey = (key, nowMs = Date.now(), { digits = DIGITS, step = S
     return String(value).padStart(digits, '0');
 };
 
-/** Der Code fuer ein Base32-Geheimnis, wie es in `caw/.env` steht. */
+/** The code for a Base32 secret, as stored in `caw/.env`. */
 export const totp = (secret, nowMs = Date.now()) => totpFromKey(base32Bytes(secret), nowMs);

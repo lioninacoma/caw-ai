@@ -2,8 +2,8 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 
 /**
- * Windows-Pfad zu Linux-Pfad, auch \\wsl.localhost\<distro>\... Laesst Linux-Pfade unveraendert. Ergibt auch den
- * Pfad des Projekts im Container, damit er auf jedem Docker-Weg gleich aussieht.
+ * Windows path to Linux path, including \\wsl.localhost\<distro>\... Leaves Linux paths unchanged. Also yields the
+ * project path inside the container, so it looks the same on every Docker way.
  */
 export const toWslPath = (path) => {
     const share = /^[\\/]{2}wsl(?:\.localhost|\$)[\\/][^\\/]+[\\/](.*)$/i.exec(path);
@@ -17,9 +17,9 @@ export const shellQuote = (value) => `'${String(value).replaceAll("'", `'\\''`)}
 export const shellJoin = (args) => args.map(shellQuote).join(' ');
 
 /**
- * Ein Wert wie bei dotenv: in Anfuehrungszeichen genau der Inhalt (danach darf ein Kommentar stehen, in "…" wird \n zum Umbruch),
- * sonst bis zu einem Kommentar nach Leerraum (" # Testkonto") und ohne Leerraum aussen. Ein # ohne Leerraum davor gehoert zum Wert,
- * Passwoerter enthalten es.
+ * A value as in dotenv: quoted means exactly the content (a comment may follow, in "…" \n becomes a newline),
+ * otherwise up to a comment after whitespace (" # test account"), trimmed. A # without whitespace before it belongs to the value,
+ * passwords contain it.
  */
 const envValue = (raw) => {
     const value = raw.trim();
@@ -42,35 +42,35 @@ export const parseEnvFile = (text) => {
 
 const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--overlay'];
 const COMMAND_OPTIONS = {
-    // --timeout und --max-steps gelten fuer Claude beim Klaeren, Empfehlen und Beheben; das Abspielen selbst begrenzt --step-timeout.
+    // --timeout and --max-steps apply to Claude when clarifying, advising and fixing; playback itself is limited by --step-timeout.
     run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay'],
     record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
     fix: CLAUDE_OPTIONS,
     open: ['--target', '--role', '--app', '--overlay', '--agent', '--timeout', '--max-steps'],
 };
 const SWITCHES = new Set(['--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--read-only']);
-/** Ein Beispielwert je Option, fuer die Meldung, wenn der Wert fehlt. */
+/** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
     '--target': 'local', '--until': 'S4', '--role': 'admin', '--app': 'web', '--also': 'admin', '--agent': 'local', '--timeout': '60',
     '--max-steps': '100', '--step-timeout': '30', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
 };
-/** Wo Claude arbeitet: lokal gestartet, in Docker oder als die Claude-Code-Session des Entwicklers. */
+/** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
 export const AGENT_CHOICES = ['local', 'docker', 'session'];
-/** Woher das Overlay kommt: lokaler Build oder Dev-Server (Sencha: der Watch). Ohne Wert die eine konfigurierte Quelle. */
+/** Where the overlay comes from: local build or dev server (Sencha: the watch). Without a value the one configured source. */
 export const OVERLAY_CHOICES = ['build', 'dev'];
-/** Ein Wert von --overlay: build, dev oder die Adresse eines Dev-Servers. */
+/** A value of --overlay: build, dev or the address of a dev server. */
 const overlayValue = (value) => OVERLAY_CHOICES.includes(value) || /^https?:\/\/[^\s/]+/i.test(value ?? '');
-// Der Mensch sitzt am Chat, das dauert laenger als ein Lauf ohne ihn.
+// The human is at the chat, which takes longer than a run without them.
 export const CLAUDE_TIMEOUT_MIN = 60;
 const STEP_ID = /^S[1-9]\d*$/;
 
-/** Fehlt der Wert einer Option oder steht dort schon die naechste (--target --headless), ist das ein Aufruffehler mit Beispiel. */
+/** A missing option value, or the next option in its place (--target --headless), is a usage error with an example. */
 const requireValue = (flag, value) => {
     if (value === undefined || value === '' || value.startsWith('--')) throw new CawError('usage', t('session.args.valueMissing', { flag, example: VALUE_EXAMPLES[flag] ?? '…' }));
     return value;
 };
 
-/** Der Wert einer Option in einfachen Aufrufen (init, explore, doctor, auth): undefined ohne die Option, Aufruffehler ohne Wert. */
+/** An option's value in simple commands (init, explore, doctor, auth): undefined without the option, usage error without a value. */
 export const optionValue = (args, name) => {
     const index = args.findIndex((arg) => arg === name || arg.startsWith(`${name}=`));
     if (index === -1) return undefined;
@@ -79,17 +79,17 @@ export const optionValue = (args, name) => {
 };
 
 /**
- * Ein Dateiname in caw/tests, flach: Ein Pfad wie team/login scheiterte erst nach der ganzen Aufnahme beim Schreiben, ../x schriebe
- * ausserhalb von caw/tests. Buchstaben jeder Sprache (kündigung), keine Trenner und keine Steuerzeichen.
+ * A flat file name in caw/tests: a path like team/login would only fail when writing after the whole recording, ../x would write
+ * outside caw/tests. Letters of any language (kündigung), no separators and no control characters.
  */
 const checkTestId = (test) => {
     if (!/^[\p{L}\p{N}][\p{L}\p{M}\p{N}_.-]*$/u.test(test) || test.endsWith('.') || test.length > 100) throw new CawError('usage', t('session.args.testId', { test }));
 };
 
 /**
- * Jeder Befehl kennt nur seine eigenen Optionen. --target darf fehlen: Dann waehlt der Befehl das einzige passende Ziel.
- * run nimmt auch mehrere Tests oder --all; dann laeuft es nacheinander ohne Chat und zeigt am Ende eine Tabelle.
- * @param command run, record oder fix
+ * Each command only knows its own options. --target may be omitted: then the command picks the only matching target.
+ * run also takes several tests or --all; they then run one after another without chat, with a table at the end.
+ * @param command run, record, fix or open
  */
 export const parseRunArgs = (command, args) => {
     const allowed = COMMAND_OPTIONS[command];
@@ -107,8 +107,8 @@ export const parseRunArgs = (command, args) => {
         }
         const [flag, inline] = arg.split(/=(.*)/s);
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
-        // --overlay darf ohne Wert stehen: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. Ein Test, der
-        // build heisst, braucht --overlay=…
+        // --overlay may stand without a value: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. A test
+        // named build needs --overlay=…
         if (flag === '--overlay') {
             const value = inline ?? (overlayValue(rest[0]) ? rest.shift() : undefined);
             if (value !== undefined && !overlayValue(value)) throw new CawError('usage', t('session.args.overlayChoice', { choices: OVERLAY_CHOICES.join(', ') }));
@@ -149,14 +149,14 @@ export const parseRunArgs = (command, args) => {
     if (!Number.isFinite(options.stepTimeoutSec) || options.stepTimeoutSec <= 0) throw new CawError('usage', t('session.args.stepTimeout'));
     if (options.maxSteps !== undefined && (!Number.isInteger(options.maxSteps) || options.maxSteps <= 0)) throw new CawError('usage', t('session.args.maxSteps'));
     if (options.until !== undefined && !STEP_ID.test(options.until)) throw new CawError('usage', t('session.args.until'));
-    // Mehrere Tests sind fuer CI gedacht: ohne Chat und ohne Uebergabe, sonst wartete jeder Test auf einen Menschen.
+    // Several tests are meant for CI: no chat and no handover, otherwise every test would wait for a human.
     if (command === 'run' && (options.all || options.tests.length > 1)) {
         const clash = [['--advise', options.advise], ['--handover', options.handover], ['--until', options.until !== undefined]].find(([, set]) => set);
         if (clash !== undefined) throw new CawError('usage', t('session.args.batchClash', { other: clash[0] }));
         options.batch = true;
         options.noChat = true;
     }
-    // Ohne Fenster gibt es nichts zu uebergeben, ohne Chat nichts zu beheben.
+    // Without a window there is nothing to hand over, without chat nothing to fix.
     if (options.headless) options.noChat = true;
     const without = options.headless ? '--headless' : '--no-chat';
     if (options.noChat) {
@@ -166,7 +166,7 @@ export const parseRunArgs = (command, args) => {
     return options;
 };
 
-/** Warum Claude keinen Lauf geliefert hat, so benannt, dass der Bericht die Abhilfe nennt. */
+/** Why Claude delivered no run, phrased so the report names the remedy. */
 export const claudeFailureReason = (code, log) => {
     if (/\b401\b|Invalid bearer token|Failed to authenticate/.test(log)) {
         return t('session.claude.tokenInvalid');

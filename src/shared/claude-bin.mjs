@@ -1,6 +1,6 @@
-// Wie Claude Code gestartet wird, ohne Shell: Der Prompt geht als Argument mit und darf nie durch eine Shell laufen.
-// Unter Windows liegt je nach Installation claude.exe (nativ) oder nur claude.cmd (npm) im PATH; .cmd laesst sich ohne Shell
-// nicht starten, darum nimmt caw dann das Node-Skript dahinter.
+// How Claude Code is launched, without a shell: the prompt is passed as an argument and must never go through a shell.
+// On Windows the PATH holds claude.exe (native) or only claude.cmd (npm), depending on the install; a .cmd cannot start
+// without a shell, so caw then uses the Node script behind it.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 
 const NPM_CLI = ['node_modules', '@anthropic-ai', 'claude-code', 'cli.js'];
 
-/** Kandidaten aus `where claude` (Windows), in dieser Reihenfolge. */
+/** Candidates from `where claude` (Windows), in that order. */
 const whereClaude = (run) => {
     const result = run('where', ['claude'], { encoding: 'utf8', windowsHide: true });
     if (result.error !== undefined || result.status !== 0) return [];
@@ -16,7 +16,7 @@ const whereClaude = (run) => {
 };
 
 /**
- * @returns { file, args } zum Start ohne Shell, oder undefined, wenn Claude Code nicht gefunden wird
+ * @returns { file, args } to launch without a shell, or undefined if Claude Code is not found
  */
 export const resolveClaude = ({ platform = process.platform, run = spawnSync, exists = existsSync, node = process.execPath } = {}) => {
     if (platform !== 'win32') return { file: 'claude', args: [] };

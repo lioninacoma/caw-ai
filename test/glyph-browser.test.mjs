@@ -1,4 +1,4 @@
-// Blockzeichen zeichnet die Seite selbst, ohne Ersatzschrift: Der Spinner bleibt so breit wie [  OK  ]. Ohne Chrome uebersprungen.
+// The page draws block characters itself, without a fallback font: the spinner stays as wide as [  OK  ]. Skipped without Chrome.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
@@ -16,8 +16,8 @@ after(async () => {
     await browser?.close();
 });
 
-test('cawGlyph: Blockzeichen als Element mit Muster, alles andere als Text', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('cawGlyph: block characters as an element with a pattern, everything else as text', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const page = await browser.newPage();
     t.after(() => page.close());
     await page.setContent(`<script>${GLYPH_SCRIPT}</script>`);
@@ -29,8 +29,8 @@ test('cawGlyph: Blockzeichen als Element mit Muster, alles andere als Text', asy
     assert.equal(Object.keys(BLOCK_GLYPHS).length, 15);
 });
 
-test('Spinner in der Marke: so breit wie [  OK  ], das Viertel in currentColor an der richtigen Stelle', async (t) => {
-    if (browser === null) return t.skip('kein Chrome');
+test('spinner in the mark: as wide as [  OK  ], the quarter in currentColor at the right place', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
     const page = await browser.newPage();
     t.after(() => page.close());
     await page.setContent(`<style>${themeCss(loadTheme('nacht'))}${CONSOLE_CSS}</style><script>${GLYPH_SCRIPT}</script>
@@ -45,5 +45,5 @@ test('Spinner in der Marke: so breit wie [  OK  ], das Viertel in currentColor a
         getComputedStyle(document.querySelector('.qb')).backgroundPosition,
     ]);
     assert.ok(Math.abs(ok - run) < 0.5, `OK ${ok}px, Spinner ${run}px`);
-    assert.equal(quarter, '0px 100%', 'unten links');
+    assert.equal(quarter, '0px 100%', 'bottom left');
 });

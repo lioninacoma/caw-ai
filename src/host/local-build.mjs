@@ -1,7 +1,7 @@
-// Lokaler Build-Ordner (`overlay.build`): Dateien eines normalen, gehashten Builds (Vite, Angular CLI, webpack) statt der deployten.
-// Der Browser fordert nur die Einstiegsdateien unter deployten Namen an, etwa `assets/index-OLD.js` aus dem deployten index.html.
-// Sie werden auf die lokale Datei mit gleichem Namen bis auf den Hash abgebildet. Alles, was der lokale Einstieg nachlaedt, traegt
-// lokale Namen und liegt genau so im Ordner.
+// Local build folder (`overlay.build`): files of a normal, hashed build (Vite, Angular CLI, webpack) instead of the deployed ones.
+// The browser requests only the entry files under deployed names, e.g. `assets/index-OLD.js` from the deployed index.html.
+// They map to the local file with the same name except for the hash. Everything the local entry loads afterwards carries local
+// names and exists in the folder as is.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, posix } from 'node:path';
@@ -31,24 +31,24 @@ const TYPES = {
 
 export const contentTypeOf = (file) => TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream';
 
-// Welche Requests ein Build-Ordner beantwortet: was der Browser als Code, Stil, Schrift oder Bild laedt. Daten per fetch/XHR (etwa
-// `assets/config.json`, die das Deployment je Umgebung ersetzt) kommen immer vom Server; nur Code darf auch per fetch kommen (Worker,
-// WebAssembly). Ohne Typ (Quellkarten fuer den Host) zaehlt nur der Name.
+// Which requests a build folder answers: what the browser loads as code, style, font or image. Data via fetch/XHR (e.g.
+// `assets/config.json`, which the deployment replaces per environment) always comes from the server; only code may also come via
+// fetch (workers, WebAssembly). Without a type (source maps for the host) only the name counts.
 const BUILD_TYPES = new Set(['script', 'stylesheet', 'font', 'image', 'media']);
 const FETCHED_CODE = /\.(m?js|wasm|css)$/;
 export const servesBuild = (resourceType, name) => resourceType === undefined || BUILD_TYPES.has(resourceType)
     || ((resourceType === 'fetch' || resourceType === 'xhr' || resourceType === 'other') && FETCHED_CODE.test(name));
 
-// Hashes der Bundler, eine Regel fuer alle: `stamm[-.]hash.endung`, der Hash 6 bis 64 Zeichen aus `[A-Za-z0-9_-]` (Vite, Rollup,
-// esbuild: 8 Zeichen Base64url wie `D-7xQ_aZ`; webpack, Next: Hex bis 20; Digests bis 64). Die Laenge darf sich zwischen den Builds
-// aendern (andere Bundler-Einstellung). Ein Hash enthaelt eine Ziffer oder einen Grossbuchstaben (jeder vierte Vite-Hash hat keine
-// Ziffer); ein Wort wie `button` ist keiner. Ein Hash nur aus Kleinbuchstaben (selten) ist nicht von einem Wort zu unterscheiden; er
-// zaehlt nur, wenn die lokale Seite die Datei laedt (`loose`). Nach dem Hash darf mehr als eine Endung stehen (`main.0a1b2c3d.chunk.js`).
+// Bundler hashes, one rule for all: `stem[-.]hash.ext`, the hash 6 to 64 characters of `[A-Za-z0-9_-]` (Vite, Rollup, esbuild:
+// 8 characters Base64url like `D-7xQ_aZ`; webpack, Next: hex up to 20; digests up to 64). The length may change between builds
+// (different bundler setting). A hash contains a digit or an uppercase letter (every fourth Vite hash has no digit); a word like
+// `button` is none. A lowercase-only hash (rare) cannot be told from a word; it only counts when the local page loads the file
+// (`loose`). More than one extension may follow the hash (`main.0a1b2c3d.chunk.js`).
 const HASH = /^[A-Za-z0-9_-]{6,64}$/;
 const hashLike = (text, loose) => HASH.test(text) && (loose || /[0-9A-Z]/.test(text));
 const REST = /^(?:\.[A-Za-z0-9]+)+$/;
 
-/** Jede Zerlegung eines Namens in Stamm, Trenner, Hash und Endung(en); dazu die Form ohne Hash. */
+/** Every split of a name into stem, separator, hash and extension(s), plus the form without hash. */
 const splits = (name, loose) => {
     const found = [];
     for (let at = 1; at < name.length; at += 1) {
@@ -64,8 +64,8 @@ const splits = (name, loose) => {
 };
 
 /**
- * Gleicher Name bis auf den Hash? Gleicher Stamm, Trenner und Endung, ein anderer Hash (siehe oben), oder einer der Namen ist die Form
- * ohne Hash (`main.js` und `main-A1B2C3D4.js`: ein fester Name auf der einen, ein gehashter auf der anderen Seite).
+ * Same name except for the hash? Same stem, separator and extension with a different hash (see above), or one name is the form
+ * without hash (`main.js` and `main-A1B2C3D4.js`: a fixed name on one side, a hashed one on the other).
  */
 export const sameButHash = (a, b, { loose = false } = {}) => {
     if (a === b) return false;
@@ -75,7 +75,7 @@ export const sameButHash = (a, b, { loose = false } = {}) => {
     return left.some((one) => right.some((two) => one.key === two.key && one.hash !== two.hash));
 };
 
-// Je Ordner die Dateinamen, je Datei der Text; gueltig, solange sich die mtime nicht aendert (der Watch-Build schreibt neu).
+// File names per folder, text per file; valid while the mtime is unchanged (the watch build rewrites them).
 const listings = new Map();
 const texts = new Map();
 
@@ -92,7 +92,7 @@ const filesIn = (dir) => {
     if (mtimeMs === null) return [];
     const cached = listings.get(dir);
     if (cached !== undefined && cached.mtimeMs === mtimeMs) return cached.files;
-    let files = [];
+    let files;
     try {
         files = readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => entry.name);
     } catch {
@@ -107,7 +107,7 @@ const textOf = (file) => {
     if (mtimeMs === null) return '';
     const cached = texts.get(file);
     if (cached !== undefined && cached.mtimeMs === mtimeMs) return cached.text;
-    let text = '';
+    let text;
     try {
         text = readFileSync(file, 'utf8');
     } catch {
@@ -117,17 +117,17 @@ const textOf = (file) => {
     return text;
 };
 
-/** Die Seiten im Build-Ordner selbst (index.html, bei Angular mit SSR index.csr.html), als Text. */
+/** The pages directly in the build folder (index.html, index.csr.html for Angular with SSR), as text. */
 const pagesIn = (dir) => filesIn(dir).filter((file) => file.endsWith('.html')).map((file) => textOf(join(dir, file)));
 
-/** Die Seiten im Build-Ordner mit Namen, als Byte-String (latin1) wie die ausgelieferte Seite beim Umschreiben. */
+/** The pages in the build folder with names, as byte strings (latin1) like the served page when rewriting. */
 export const localPages = (dir) => filesIn(dir).filter((file) => file.endsWith('.html')).map((file) => ({ name: file, text: readFileSync(join(dir, file)).toString('latin1') }));
 
-// Ein Wert in einem Tag: nach Anfuehrungszeichen oder `=`, bis zu Anfuehrungszeichen, `?`, `#`, Leerraum, `>` oder Ende. Gefunden wird
-// er unter jedem Rest hinter einem `/` (`/assets/index-x.js` unter `assets/index-x.js` und `index-x.js`).
+// A value in a tag: after a quote or `=`, up to a quote, `?`, `#`, whitespace, `>` or the end. It is indexed under every tail
+// after a `/` (`/assets/index-x.js` under `assets/index-x.js` and `index-x.js`).
 const TAG_VALUE = /["'=]([^"'=?#\s>]+)(?=["'?#\s>]|$)/g;
 const tailsOf = (value) => value.split('/').map((_, at, parts) => parts.slice(at).join('/')).filter((tail) => tail !== '' && !tail.startsWith('/'));
-// Je Build-Ordner: welche Tags seiner Seiten eine Datei nennen, nach Dateiname. Einmal je Stand der Seiten gebaut, nicht je Request.
+// Per build folder: which tags of its pages name a file, by file name. Built once per state of the pages, not per request.
 const tagIndex = new Map();
 const tagsByName = (dir) => {
     const pages = pagesIn(dir);
@@ -145,11 +145,11 @@ const tagsByName = (dir) => {
     return byName;
 };
 
-/** Die Tags der lokalen Seiten, die eine Datei laden (`<script src=…>`, `<link href=…>`). */
+/** The tags of the local pages that load a file (`<script src=…>`, `<link href=…>`). */
 const tagsFor = (dir, file) => tagsByName(dir).get(file) ?? [];
 
 /**
- * Laedt die lokale Seite die Datei als ES-Modul (`type="module"`, `modulepreload`), als klassisches Skript, oder nennt sie sie nicht?
+ * Does the local page load the file as an ES module (`type="module"`, `modulepreload`), as a classic script, or not at all?
  * @returns 'module' | 'classic' | null
  */
 export const scriptKind = (dir, file) => {
@@ -159,7 +159,7 @@ export const scriptKind = (dir, file) => {
     return null;
 };
 
-// Dateinamen, die ein Text nennt (`"./chunk-AB12CD34.js"`, `assets/index-x.css`): nur der Name, ohne Pfad davor.
+// File names mentioned in a text (`"./chunk-AB12CD34.js"`, `assets/index-x.css`): just the name, without the path.
 const NAMED = /[\w.-]+\.(?:m?js|css)\b/g;
 const named = new Map();
 const namesIn = (file) => {
@@ -172,8 +172,8 @@ const namesIn = (file) => {
 };
 
 /**
- * Die Dateien in `at`, die der aktuelle lokale Stand erreicht: von seinen Seiten genannt, oder von einem Skript bzw. Stylesheet in
- * `at`, das selbst erreicht wird (Einstieg -> lazy Chunk -> Chunk). Ein alter Build, der nur noch sich selbst nennt, gehoert nicht dazu.
+ * The files in `at` reachable from the current local state: named by its pages, or by a script or stylesheet in `at` that is
+ * reachable itself (entry -> lazy chunk -> chunk). An old build that only names itself is not included.
  */
 const reachable = (dir, at, listing) => {
     const files = new Set(listing);
@@ -191,8 +191,8 @@ const reachable = (dir, at, listing) => {
     }
     return live;
 };
-// Je Ordner der erreichte Stand, solange Dateiliste und Seiten dieselben sind: Ein neuer Build schreibt neue Namen (Hash), die Liste
-// aendert sich. Angular nennt jeden lazy Chunk chunk-<HASH>.js, jeder Request darauf hat Zwillinge und fragt hier.
+// Reachable files per folder, while file list and pages stay the same: a new build writes new (hashed) names, so the list
+// changes. Angular names every lazy chunk chunk-<HASH>.js, so each request for one has twins and asks here.
 const lives = new Map();
 const liveFiles = (dir, at) => {
     const listing = filesIn(at);
@@ -205,7 +205,7 @@ const liveFiles = (dir, at) => {
     return live;
 };
 
-/** Der Ordner einer Datei im Build und ihr Name; `..` nie. */
+/** The folder of a file in the build and its name; never `..`. */
 const locate = (dir, name) => {
     if (typeof name !== 'string' || name === '' || name.split('/').some((part) => part === '..' || part === '.')) return null;
     const folder = posix.dirname(name);
@@ -222,9 +222,9 @@ const resolveExact = (dir, name) => {
     const loaded = (file) => tagsFor(dir, file).length > 0;
     const hit = (file) => ({ file: join(at, file), contentType: contentTypeOf(file), ...(file === base ? {} : { alias: file }) });
     if (exact) {
-        // Ein liegengebliebener alter Build kann genau den deployten Namen tragen (einmal den deployten Stand lokal gebaut). Erreicht der
-        // aktuelle lokale Stand die Datei nicht (weder seine Seite noch ein Skript, das sie laedt), wohl aber genau einen Zwilling, gilt
-        // der. Ein lazy Chunk steht in keiner Seite, nur im Einstieg: Er bleibt er selbst, auch wenn ein anderer Chunk vorgeladen wird.
+        // A leftover old build may carry exactly the deployed name (the deployed state was once built locally). If the current local
+        // state does not reach the file (neither its page nor a script loading it) but reaches exactly one twin, that twin wins. A lazy
+        // chunk appears in no page, only in the entry: it stays itself even if another chunk is preloaded.
         if (twins.length === 0) return hit(base);
         const live = liveFiles(dir, at);
         if (live.has(base)) return hit(base);
@@ -232,18 +232,18 @@ const resolveExact = (dir, name) => {
         return hit(current.length === 1 ? current[0] : base);
     }
     if (twins.length === 1) return hit(twins[0]);
-    // Mehrere Zwillinge (Vite nennt jeden Chunk aus einer `index.tsx` `index-…js`, ein Watch ohne Aufraeumen laesst alte Builds
-    // liegen): der, den die lokale Seite laedt. Ein Hash ganz aus Kleinbuchstaben zaehlt nur so.
+    // Several twins (Vite names every chunk from an `index.tsx` `index-…js`, a watch without cleanup leaves old builds behind):
+    // the one the local page loads. A lowercase-only hash only counts this way.
     const candidates = (twins.length > 1 ? twins : files.filter((file) => sameButHash(base, file, { loose: true }))).filter(loaded);
     return candidates.length === 1 ? hit(candidates[0]) : null;
 };
 
 /**
- * Die lokale Datei fuer einen angeforderten Namen, etwa `assets/index-OLD.js`. Liegt die App unter einem Pfad (`/shop/assets/…`),
- * der Build aber ohne ihn (`dist/assets/…`), traegt der Name den Pfad davor: Dann zaehlt der kuerzeste Rest, der im Ordner liegt.
- * @param dir  absoluter Pfad des Build-Ordners
- * @param name Pfad relativ zum Ordner, mit `/`
- * @returns { file, contentType, alias? } oder null; `alias` ist der lokale Name, wenn er vom angeforderten abweicht
+ * The local file for a requested name, e.g. `assets/index-OLD.js`. If the app lives under a path (`/shop/assets/…`) but the build
+ * does not (`dist/assets/…`), the name carries that path in front: then the shortest tail found in the folder wins.
+ * @param dir  absolute path of the build folder
+ * @param name path relative to the folder, with `/`
+ * @returns { file, contentType, alias? } or null; `alias` is the local name when it differs from the requested one
  */
 export const resolveLocalBuild = (dir, name) => {
     if (typeof name !== 'string') return null;
@@ -255,18 +255,18 @@ export const resolveLocalBuild = (dir, name) => {
     return null;
 };
 
-// Ein ES-Modul hat import/export als Anweisung: `import x from`, `import{`, `import"…"`, `export{`, `export default`, `export const`.
-// `importScripts(…)`, `exports.x`, `import(…)` (auch in klassischen Skripten erlaubt) zaehlen nicht.
+// An ES module has import/export as statements: `import x from`, `import{`, `import"…"`, `export{`, `export default`, `export const`.
+// `importScripts(…)`, `exports.x`, `import(…)` (also allowed in classic scripts) do not count.
 const MODULE_SYNTAX = /(^|[;\n}])\s*(import\s*(?:[{*"'`]|[\w$]+\s*(?:,|from\b))|export\s*(?:[{*]|(?:default|const|let|var|function|class|async)\b))/;
-// Ein Default-Export nur als Anweisung (`export default …`, `export{a as default}`), nie irgendwo im Text: Ein Satz wie „Set as
-// default“ in einem String haengte sonst `export { default }` an, und das Modul liesse sich nicht laden.
+// A default export only as a statement (`export default …`, `export{a as default}`), never anywhere in the text: a phrase like
+// "Set as default" in a string would otherwise add `export { default }`, and the module would fail to load.
 const DEFAULT_EXPORT = /(^|[;\n}])\s*export\s*(default\b|\{[^}]*\bas\s+default\s*[,}])/;
 
 /**
- * Was der Browser unter dem deployten Namen eines ES-Moduls bekommt: nur ein Verweis auf das lokale Modul. Lazy Chunks importieren den
- * Einstieg unter seinem lokalen Namen (`./index-NEW.js`); bekaeme der deployte Name den Inhalt selbst, liefe das Modul zweimal, mit
- * zwei Instanzen von Vue oder React. null fuer klassische Skripte, die bekommen den Inhalt.
- * @param kind 'module' | 'classic' | null, wie die lokale Seite die Datei laedt (scriptKind); ohne Auskunft entscheidet die Syntax
+ * What the browser gets under the deployed name of an ES module: just a re-export of the local module. Lazy chunks import the entry
+ * under its local name (`./index-NEW.js`); if the deployed name got the content itself, the module would run twice, with two
+ * instances of Vue or React. null for classic scripts, which get the content.
+ * @param kind 'module' | 'classic' | null, how the local page loads the file (scriptKind); without that the syntax decides
  */
 export const moduleAlias = (localName, source, kind = null) => {
     if (!/\.m?js$/.test(localName) || kind === 'classic') return null;
@@ -277,9 +277,9 @@ export const moduleAlias = (localName, source, kind = null) => {
 };
 
 /**
- * Liegt im Ordner ein Build, den `resolveLocalBuild` auch findet? Eine Seite (index.html) oder Skripte direkt darin bzw. eine Ebene
- * tiefer (Vite: `assets/`). Sonst, falls es ihn gibt, der Unterordner mit einer Seite: Angular schreibt nach `dist/<app>/browser`.
- * @returns { ok: true } | { ok: false, hint?: Pfad relativ zum Ordner }
+ * Does the folder hold a build that `resolveLocalBuild` can find? A page (index.html) or scripts directly in it or one level
+ * deeper (Vite: `assets/`). Otherwise, if there is one, the subfolder with a page as a hint: Angular writes to `dist/<app>/browser`.
+ * @returns { ok: true } | { ok: false, hint?: path relative to the folder }
  */
 export const buildCheck = (dir) => {
     const entries = (path) => {
@@ -304,11 +304,11 @@ export const buildCheck = (dir) => {
     return { ok: false };
 };
 
-/** Liegt ein Build im Ordner? (fuer die Matrix und `checkLocalBuild`) */
+/** Is there a build in the folder? (for the matrix and `checkLocalBuild`) */
 export const hasBuild = (dir) => buildCheck(dir).ok;
 
 /**
- * Das deployte HTML ohne Subresource Integrity: Der lokale Code hat andere Bytes als die Hashes in `integrity`, Chrome verweigerte jedes
- * eingespielte Skript und Stylesheet. Nur Attribute an `<script>` und `<link>`, sonst bleibt die Seite, wie der Server sie schickt.
+ * The deployed HTML without Subresource Integrity: the local code has other bytes than the `integrity` hashes, so Chrome would refuse
+ * every injected script and stylesheet. Only attributes on `<script>` and `<link>`; the rest stays as the server sends it.
  */
 export const withoutIntegrity = (html) => html.replace(/(<(?:script|link)\b[^>]*?)\s+integrity\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '$1');

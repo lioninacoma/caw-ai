@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:https';
-import { appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Schreibende Requests fuer die Pruefungen des E2E, neben diesem Skript.
+// Writing requests, logged next to this script for the E2E checks.
 const HITS = join(dirname(fileURLToPath(import.meta.url)), 'portal-hits.log');
 
 const repo = (path) => `/o/DataProxy?url=repo:///Root/${path}`;
@@ -26,7 +25,7 @@ const appPage = `<!doctype html><title>Fake-Portal</title>
 <button id=spaeter onclick="fetch('/o/DataProxy?connector=HTTP-X-Abschliessen',{method:'POST'});document.getElementById('fertig').textContent='fertig'">Abschliessen</button>
 <button id=laden onclick="ladePreise()">Preise laden</button>
 <div id=vorgang></div><div id=fertig></div><div id=ziel></div><div id=preis></div></body>`;
-// Der Code der Anwendung liegt im Projekt: Eine uebernommene Aenderung wirkt beim naechsten Laden.
+// The application code lives in the project: an accepted change takes effect on the next load.
 const appCode = () => {
     try {
         return `<script>${readFileSync('preise.js', 'utf8')}</script>`;
@@ -40,9 +39,9 @@ createServer({ key: readFileSync('key.pem'), cert: readFileSync('cert.pem') }, (
     const authed = /auth=1/.test(req.headers.cookie ?? '');
     if (req.method === 'POST' && req.url === '/login') {
         let body = '';
-        req.on('data', (c) => { body += c; }).on('end', () => {
-            const ok = body.includes('l=fx-user');
-            res.writeHead(302, { location: '/app', ...(ok ? { 'set-cookie': 'auth=1; Path=/' } : {}) });
+        req.on('data', (chunk) => { body += chunk; }).on('end', () => {
+            const knownUser = body.includes('l=fx-user');
+            res.writeHead(302, { location: '/app', ...(knownUser ? { 'set-cookie': 'auth=1; Path=/' } : {}) });
             res.end();
         });
         return;
@@ -60,12 +59,12 @@ createServer({ key: readFileSync('key.pem'), cert: readFileSync('cert.pem') }, (
         return;
     }
     if (req.url.startsWith('/o/DataProxy')) {
-        // Der deployte Stand: Kommt das bei der App an, hat die Substitution versagt.
+        // The deployed state: if this reaches the app, the substitution failed.
         res.writeHead(200, { 'content-type': 'text/javascript' });
         res.end("window.STAND='DEPLOYT';");
         return;
     }
-    // Wie ein echtes Portal: Einbetten verboten. Die Werkbank nimmt das nur im Testbrowser heraus.
+    // Like a real portal: embedding forbidden. The workbench lifts that only in the test browser.
     res.writeHead(200, { 'content-type': 'text/html', 'x-frame-options': 'SAMEORIGIN', 'content-security-policy': "frame-ancestors 'self'; object-src 'none'" });
     res.end(authed ? appPage.replace('</body>', `${appCode()}</body>`) : loginPage);
 }).listen(8443, '127.0.0.1');

@@ -1,7 +1,7 @@
-// `caw-ai explore --url <adresse>`: oeffnet die Anwendung einmal, der Mensch meldet sich an, und das Tool leitet ab, was die Config
-// braucht: Framework, Anmeldeformular, woran man „angemeldet“ erkennt, Startseite, Meldungen und Rauschen in der Konsole. Es schreibt
-// nur Vorschlaege nach caw/.explore.json, nie die Config; die uebernimmt `init --from` oder der Skill nach Rueckfragen.
-// Ohne Claude und ohne Token. Der Browser erreicht nur den Host der Adresse.
+// `caw-ai explore --url <address>`: opens the application once, the human signs in, and the tool derives what the config needs:
+// framework, sign-in form, how to recognise "signed in", start page, message containers and console noise. It only writes
+// suggestions to caw/.explore.json, never the config; `init --from` or the skill (after asking) takes them over.
+// No Claude, no tokens. The browser only reaches the host of the address.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,11 +19,11 @@ const SETTLE_MS = 10_000;
 const ui = createUi();
 
 /**
- * Laeuft in der Seite: Felder, Knoepfe, stabile Selektoren und Meldungscontainer, ohne Werte von Feldern. Nur CSS-Selektoren, die
- * genau ein Element treffen und nicht nach erzeugten Kennungen aussehen.
+ * Runs in the page: fields, buttons, stable selectors and message containers, without field values. Only CSS selectors that
+ * match exactly one element and do not look like generated ids.
  */
 export const surveyPage = (maxMarkers) => {
-    // Erzeugte Kennungen wechseln mit jedem Rendern oder Build: React useId (:r1:, «r1», _r_1_), Radix, Headless UI, MUI, ExtJS, Ember …
+    // Generated ids change with every render or build: React useId (:r1:, «r1», _r_1_), Radix, Headless UI, MUI, ExtJS, Ember …
     const generated = (value) => /\d{3,}|:r[\w]*:|«r\w*»|^_r_\w*_$|^ext-|^ember|^[a-f0-9-]{8,}$|^mat-|^cdk-|^ng-|^react-|^radix-|^headlessui-|^mui-\d|^v-\d/i.test(value);
     const unique = (selector) => {
         try {
@@ -58,7 +58,7 @@ export const surveyPage = (maxMarkers) => {
     if (passwords.length > 0) {
         const password = passwords[0];
         const fields = [...document.querySelectorAll('input')].filter((el) => visible(el) && ['text', 'email', 'tel', ''].includes(el.type) && el !== password);
-        // Das Feld fuer den Namen steht vor dem Passwort, meist direkt davor oder mit autocomplete=username.
+        // The user name field comes before the password, usually right before it or with autocomplete=username.
         const before = fields.filter((el) => el.compareDocumentPosition(password) & Node.DOCUMENT_POSITION_FOLLOWING);
         const user = before.find((el) => el.autocomplete === 'username') ?? before.at(-1) ?? null;
         const scope = password.form ?? document;
@@ -69,7 +69,7 @@ export const surveyPage = (maxMarkers) => {
             passwordSelector: selectorOf(password),
             submitSelector: submit === null ? null : selectorOf(submit),
             submitText: submit === null ? null : textOf(submit),
-            // Ein echter Absendeknopf im Formular des Passworts: Enter im Passwortfeld sendet, ein Selektor waere nur eine Fehlerquelle.
+            // A real submit button in the password's form: Enter in the password field submits, a selector would only be a source of errors.
             submitsWithEnter: password.form !== null && submit !== null && submit.type === 'submit' && submit.form === password.form,
         };
     }
@@ -88,7 +88,7 @@ export const surveyPage = (maxMarkers) => {
         messages.add(role === null ? `[aria-live=${quote(el.getAttribute('aria-live'))}]` : `[role=${role}]`);
     }
     for (const el of document.querySelectorAll('[class*=toast], [class*=snackbar], [class*=notification], [class*=Toastify]')) {
-        // Knoepfe und Links, die Meldungen nur oeffnen oder zaehlen, sind selbst keine Meldung.
+        // Buttons and links that only open or count messages are not messages themselves.
         if (el.matches('button, a, input, [role=button], [role=link]')) continue;
         const name = [...el.classList].find((cls) => /toast|snackbar|notification/i.test(cls) && !/toggle|btn|button|trigger|icon|badge|count/i.test(cls) && !generated(cls));
         if (name !== undefined) messages.add(`.${CSS.escape(name)}`);
@@ -102,7 +102,7 @@ export const surveyPage = (maxMarkers) => {
         return reactRoot ? 'react' : null;
     })();
 
-    // Klassen an html und body: Viele Anwendungen setzen dort den Zustand (signed-in, logged-in, authenticated), fuer jedes Konto gleich.
+    // Classes on html and body: many applications put the state there (signed-in, logged-in, authenticated), the same for every account.
     const stateClasses = [document.documentElement, document.body].flatMap((el) => (el === null ? [] : [...el.classList]
         .filter((cls) => !generated(cls))
         .map((cls) => `${el.tagName.toLowerCase()}.${CSS.escape(cls)}`)));
@@ -111,16 +111,16 @@ export const surveyPage = (maxMarkers) => {
 };
 
 /**
- * Nur, was zwei Ladevorgaenge derselben Seite ueberstanden hat: Kennungen, die der Server oder das Framework bei jedem Rendern neu
- * erfindet (etwa ein zufaelliges Kuerzel am Ende), sehen einzeln stabil aus, unterscheiden sich aber beim naechsten Laden.
+ * Only what survived two loads of the same page: ids that the server or framework invents on every render (e.g. a random
+ * suffix) look stable on their own but differ on the next load.
  */
 export const keepStable = (first, second) => {
-    if (first == null || second == null) return first;
+    if (first === null || first === undefined || second === null || second === undefined) return first;
     const seen = new Set([
         ...(second.markers ?? []).map(({ selector }) => selector),
         ...Object.entries(second.login ?? {}).filter(([key]) => key.endsWith('Selector')).map(([, value]) => value),
     ]);
-    const login = first.login == null ? first.login : Object.fromEntries(Object.entries(first.login)
+    const login = first.login === null || first.login === undefined ? first.login : Object.fromEntries(Object.entries(first.login)
         .map(([key, value]) => [key, key.endsWith('Selector') && value !== null && !seen.has(value) ? null : value]));
     const states = new Set(second.stateClasses ?? []);
     return {
@@ -135,22 +135,22 @@ const LOGOUT = /abmelden|ausloggen|logout|log out|sign ?out|signout/i;
 const ACCOUNT = /user|avatar|profil|profile|account|konto|benutzer|mein|my-|menu/i;
 const SIGNED_IN_STATE = /signed-?in|logged-?in|log-?in|authenticated|authed|angemeldet|eingeloggt/i;
 
-/** Woran man „angemeldet“ erkennt: Elemente, die es erst nach der Anmeldung gibt, das beste zuerst. */
+/** How to recognise "signed in": elements that only exist after sign-in, best first. */
 export const suggestSignedIn = (before, after) => {
     const known = new Set((before?.markers ?? []).map(({ selector }) => selector));
     const fresh = (after?.markers ?? []).filter(({ selector }) => !known.has(selector));
-    // Eine benannte Navigation oder Kopfzeile ist die robusteste Marke: Sie steht auf jeder Seite der angemeldeten Anwendung.
+    // A named navigation or header is the most robust marker: it is on every page of the signed-in application.
     const landmark = ({ tag = '', role = '' }) => /^(nav|header|aside)$/.test(tag) || /^(navigation|banner|complementary)$/.test(role);
     const score = ({ selector, text, ...marker }) => (LOGOUT.test(text) || LOGOUT.test(selector) ? 8 : 0)
         + (ACCOUNT.test(selector) ? 4 : 0)
         + (landmark(marker) && selector.includes('aria-label') ? 5 : 0)
-        // Brotkrumen fehlen oft auf der Startseite, die Hauptnavigation nie.
+        // Breadcrumbs are often missing on the start page, the main navigation never is.
         + (/aria-label="[^"]*(haupt|main|primary|global)/i.test(selector) ? 2 : 0)
         - (/brotkrume|breadcrumb/i.test(selector) ? 3 : 0)
         + (/^\[data-(testid|test|cy|qa)=/.test(selector) ? 2 : 0)
         + (selector.startsWith('#') ? 1 : 0)
         - (text.length > 25 ? 1 : 0);
-    // Eine Zustandsklasse an html/body haengt nicht an Rechten oder Inhalt der Seite: Sie gilt fuer jedes Konto und jede Seite.
+    // A state class on html/body does not depend on permissions or page content: it holds for every account and every page.
     const knownStates = new Set(before?.stateClasses ?? []);
     const states = (after?.stateClasses ?? []).filter((selector) => !knownStates.has(selector) && SIGNED_IN_STATE.test(selector))
         .map((selector) => ({ selector, text: '', tag: selector.split('.')[0], state: true, score: 10 }));
@@ -173,8 +173,8 @@ export const suggestSignedIn = (before, after) => {
 
 const MAX_IGNORE = 60;
 /**
- * Ein Muster fuer consoleIgnore (regulaerer Ausdruck, gesucht irgendwo in der Meldung): der Anfang der ersten Zeile bis vor die
- * erste Adresse, an einer Wortgrenze gekuerzt, Sonderzeichen maskiert, Zahlen als \d+, weil sie sich von Lauf zu Lauf aendern.
+ * A pattern for consoleIgnore (regular expression, searched anywhere in the message): the start of the first line up to the first
+ * address, cut at a word boundary, special characters escaped, numbers as \d+ because they change from run to run.
  */
 const ignorePattern = (text) => {
     let head = String(text).split(/\r?\n/)[0].split(/https?:\/\//)[0].replace(/\s+/g, ' ');
@@ -184,25 +184,25 @@ const ignorePattern = (text) => {
 };
 
 /**
- * Chrome meldet jede HTTP-Antwort ab 400 so; ein Muster darauf verdeckte alle HTTP-Fehler der Anwendung. Vor der Anmeldung sind sie
- * erwartbar (401), darum nie ein Vorschlag.
+ * Chrome reports every HTTP response from 400 up like this; a pattern for it would hide all HTTP errors of the application. Before
+ * sign-in they are expected (401), so never suggest one.
  */
 const HTTP_NOISE = /^Failed to load resource/i;
 
-/** Konsolenfehler, die schon ohne Zutun auftreten: Kandidaten fuer consoleIgnore, jeder ein gueltiger Ausdruck, der seine Meldung trifft. */
+/** Console errors that occur without any interaction: candidates for consoleIgnore, each a valid regex that matches its message. */
 export const suggestConsoleIgnore = (errors) => [...new Set(errors.filter((error) => !HTTP_NOISE.test(String(error).trim())).map(ignorePattern)
     .filter((pattern) => pattern.replace(/\\d\+/g, '0').length >= 8))].slice(0, 8);
 
 /**
- * Fasst alles zu Vorschlaegen fuer die Config zusammen.
- * @param seen     { before, loginPage, after }: die Seite am Anfang, die Seite mit dem Anmeldeformular (falls es eine gab) und am Ende
- * @param detected Framework aus der package.json
+ * Combines everything into suggestions for the config.
+ * @param seen     { before, loginPage, after }: the page at the start, the page with the sign-in form (if any) and at the end
+ * @param detected framework from package.json
  */
 export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts = [], detected = 'web' }) => {
     const { before, loginPage, after } = seen;
     const parsed = new URL(url);
     const notes = [];
-    // http erlaubt die Config nur auf dem eigenen Rechner; die Adresse bleibt, wie der Mensch sie kennt.
+    // The config only allows http on the local machine; the address stays as the human knows it.
     const origin = parsed.origin;
     if (parsed.protocol === 'http:' && !isLoopback(parsed.hostname)) {
         notes.push(t('cli.exploreHttp', { host: parsed.hostname }));
@@ -220,7 +220,7 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
     if (foreignHosts.length > 0) {
         suggestion.auth = { type: 'storageState', confidence: 'likely', ...(signedIn === null ? {} : { signedInSelector: signedIn.selector }) };
         notes.push(t('cli.exploreForeign', { hosts: foreignHosts.join(', ') }));
-    } else if (loginPage?.login != null) {
+    } else if (loginPage?.login !== null && loginPage?.login !== undefined) {
         const { userSelector, passwordSelector, submitsWithEnter } = loginPage.login;
         const submitSelector = submitsWithEnter === true ? null : loginPage.login.submitSelector;
         const path = new URL(loginPage.url).pathname;
@@ -252,13 +252,13 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
     return suggestion;
 };
 
-/** Ein Browserfenster nur fuer diesen Host, mit Mitschnitt von Konsolenfehlern und abgewiesenen fremden Seiten. */
+/** A browser window for this host only, recording console errors and blocked foreign pages. */
 const openExploreBrowser = async ({ url, insecureTls, launch }) => {
     const { exploreBrowser } = await import('./browser-session.mjs');
     return exploreBrowser({ url, insecureTls, launch });
 };
 
-/** Die Texte der Karte im Fenster; die Nummern der Schritte wie im Terminal. */
+/** The texts of the card in the window; step numbers as in the terminal. */
 const cardTexts = (withLogin) => ({
     title: 'CAW-AI EXPLORE',
     steps: { signin: `1 ${t('cli.exploreStepSignIn')}`.toUpperCase(), start: `${withLogin ? 2 : 1} ${t('cli.exploreStepStart')}`.toUpperCase() },
@@ -274,7 +274,7 @@ const cardTexts = (withLogin) => ({
     saved: t('cli.exploreCardSaved'),
 });
 
-/** Steht gerade ein sichtbares Passwortfeld da, und ist die Seite fertig geladen? */
+/** Is a visible password field present, and has the page finished loading? */
 const formState = () => ({
     form: [...document.querySelectorAll('input[type=password]')].some((el) => el.getBoundingClientRect().width > 0),
     loaded: document.readyState === 'complete',
@@ -284,16 +284,16 @@ const POLL_MS = 500;
 const HUMAN_MS = 30 * 60 * 1000;
 
 /**
- * @param open nur fuer Tests: ersetzt den Browser ({ page, consoleErrors, foreignHosts, close })
- * @param wait nur fuer Tests: ersetzt das Warten auf den Knopf „Fertig“ im Fenster
- * @param ask  nur fuer Tests: ersetzt die Frage im Terminal, ob die Anwendung eine Anmeldung hat
+ * @param open for tests only: replaces the browser ({ page, consoleErrors, foreignHosts, close })
+ * @param wait for tests only: replaces waiting for the "Done" button in the window
+ * @param ask  for tests only: replaces the terminal question whether the application has a sign-in
  */
 export const explore = async (root, args, { open = openExploreBrowser, wait, ask = askYesNo, detect, next = true } = {}) => {
     const url = optionValue(args, '--url');
     if (url === undefined || !/^https?:\/\//.test(url)) throw new CawError('usage', t('cli.exploreUsage'));
-    // --yes: ohne Mensch, etwa fuer Anwendungen ohne Anmeldung; dann wird nur die Seite angesehen.
+    // --yes: without a human, e.g. for applications without sign-in; then only the page is looked at.
     const unattended = args.includes('--yes') && wait === undefined;
-    // Ein Terminal braucht nur die Frage nach der Anmeldung; „Fertig“ kommt aus dem Fenster.
+    // The terminal is only needed for the sign-in question; "Done" comes from the window.
     const asks = !unattended && ask === askYesNo && !args.includes('--login') && !args.includes('--no-login');
     if (asks && !process.stdin.isTTY) throw new CawError('usage', t('cli.exploreNeedsTty'));
     const { detectFramework } = await import('./commands.mjs');
@@ -301,7 +301,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
     ui.banner({ title: 'caw-ai explore' });
     if (!await reachable(url)) throw new CawError('target-unreachable', t('cli.exploreUnreachable', { url }));
 
-    // Nicht raten: Ob es eine Anmeldung gibt, weiss der Mensch. --login/--no-login fuer Skripte; ohne Mensch entscheidet die Seite.
+    // No guessing: the human knows whether there is a sign-in. --login/--no-login for scripts; without a human the page decides.
     let withLogin = args.includes('--login') ? true : args.includes('--no-login') ? false : null;
     if (withLogin === null && !unattended) withLogin = await ask(t('cli.exploreAskLogin'));
 
@@ -310,7 +310,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
     const browser = await open({ url, insecureTls: args.includes('--insecure-tls') });
     const survey = (page = browser.page) => page.evaluate(surveyPage, MAX_MARKERS).catch(() => null);
     const settle = (page = browser.page) => page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
-    // Dieselbe Seite noch einmal laden und nur behalten, was beide Male gleich war.
+    // Load the same page again and keep only what was the same both times.
     const surveyTwice = async () => {
         const first = await survey();
         if (browser.page.reload === undefined) return first;
@@ -318,7 +318,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
         await settle();
         return keepStable(first, await survey());
     };
-    // Eine Anmeldeseite, zu der der Mensch erst navigiert: in einem zweiten Tab derselben Sitzung ein zweites Mal laden, sein Tab bleibt.
+    // A sign-in page the human navigated to: load it a second time in another tab of the same session, their tab stays.
     const confirmInSecondTab = async (seen) => {
         const context = browser.page.context?.();
         if (context === undefined) return seen;
@@ -336,14 +336,15 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
         }
     };
 
-    // Die Karte im Fenster zeigt den Schritt; „Fertig“ dort ersetzt Enter im Terminal, das Fenster schliessen bricht ab.
+    // The card in the window shows the step; "Done" there replaces Enter in the terminal, closing the window aborts.
     let pressDone;
     const done = new Promise((ok) => { pressDone = ok; });
     const closed = new Promise((ok) => { browser.page.on?.('close', () => ok('closed')); });
     let phase = 'wait';
-    const setPhase = async (next) => {
-        phase = next;
-        await browser.page.evaluate(([name, value]) => window.dispatchEvent(new CustomEvent(name, { detail: value })), [PHASE_EVENT, next]).catch(() => {});
+    const setPhase = async (value) => {
+        phase = value;
+        // eslint-disable-next-line n/no-unsupported-features/node-builtins -- runs in the browser page, not in Node
+        await browser.page.evaluate(([name, detail]) => window.dispatchEvent(new CustomEvent(name, { detail })), [PHASE_EVENT, value]).catch(() => {});
     };
     if (!unattended && wait === undefined) {
         const context = browser.page.context?.();
@@ -360,14 +361,14 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
         await settle();
         const before = await surveyTwice();
         opening.done(t('cli.exploreOpened', { host }));
-        if (before?.login != null) loginPage = before;
-        // Ohne Mensch: Die Seite entscheidet, ob es eine Anmeldung gibt.
+        if (before?.login !== null && before?.login !== undefined) loginPage = before;
+        // Without a human: the page decides whether there is a sign-in.
         if (withLogin === null) withLogin = loginPage !== null;
-        // Ein Anmeldeformular kann auch erst nach einem Klick auf „Anmelden“ kommen: jede neue Seite einmal ansehen.
+        // A sign-in form may only appear after clicking "Sign in": look at every new page once.
         browser.page.on('load', () => {
             pending = pending.then(async () => {
                 const seen = await survey();
-                if (seen?.login != null && seen.url !== loginPage?.url) loginPage = await confirmInSecondTab(seen);
+                if (seen?.login !== null && seen?.login !== undefined && seen.url !== loginPage?.url) loginPage = await confirmInSecondTab(seen);
             });
         });
 
@@ -377,8 +378,8 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
                 ui.section(1, t('cli.exploreStepSignIn'));
                 ui.info(t('cli.exploreSignIn'));
                 const signingIn = ui.pending(t('cli.exploreWaitingSignIn'));
-                // Angemeldet: Ein Passwortfeld war da und ist weg, die Seite fertig geladen. Kein Enter noetig.
-                let sawForm = before?.login != null;
+                // Signed in: a password field was there and is gone, the page has finished loading. No Enter needed.
+                let sawForm = before?.login !== null && before?.login !== undefined;
                 let stop = false;
                 const signedIn = (async () => {
                     const start = Date.now();
@@ -426,7 +427,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
         if (withLogin && loginPage === null && browser.foreignHosts.size === 0) suggestion.notes.unshift(t('cli.exploreLoginNotFound'));
         mkdirSync(join(root, 'caw'), { recursive: true });
         writeFileSync(join(root, EXPLORE_FILE), `${JSON.stringify(suggestion, null, 2)}\n`);
-        // Unsichere Funde (likely) als Warnung im Block, sichere als abgehakt.
+        // Uncertain findings (likely) as a warning in the box, certain ones as checked.
         const sure = (confidence) => (confidence === 'likely' ? 'warn' : 'ok');
         ui.box(t('cli.exploreStepResult'), summaryLines(suggestion).map((text, index) => ({
             text,
@@ -440,7 +441,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
     }
 };
 
-/** Was explore fand, je Punkt eine Zeile. */
+/** What explore found, one line per item. */
 export const summaryLines = (suggestion) => [
     t('cli.exploreFoundFramework', { framework: suggestion.framework.value }),
     suggestion.auth.type === 'none' ? t('cli.exploreFoundNoLogin') : t('cli.exploreFoundLogin', { type: suggestion.auth.type }),

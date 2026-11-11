@@ -5,7 +5,7 @@ import { detectLanguage, setLanguage, t } from '../src/shared/i18n.mjs';
 
 const HELP = new Set(['-h', '--help']);
 
-/** Die Umgebungen, auf denen Claude arbeiten darf, fuer die Hilfe; ohne lesbare Config undefined. */
+/** The environments Claude may work on, for the help text; undefined without a readable config. */
 const claudeEnvironments = async (root) => {
     try {
         const { environmentsWith, loadConfig } = await import('../src/shared/config.mjs');
@@ -15,7 +15,7 @@ const claudeEnvironments = async (root) => {
     }
 };
 
-/** -h und --help gelten ueberall: allein fuer alles, nach einem Befehl fuer dessen Block; help agent zeigt die Befehle des Agenten. */
+/** -h and --help work everywhere: alone for everything, after a command for its block; `help agent` shows the agent commands. */
 const helpFor = async (root, command, args) => {
     if (command === undefined || HELP.has(command)) return helpText(undefined, { here: await claudeEnvironments(root) });
     if (command === 'help') {
@@ -24,7 +24,7 @@ const helpFor = async (root, command, args) => {
         return helpText(topic, { here: await claudeEnvironments(root) });
     }
     if (HOST_COMMANDS.includes(command) && args.some((arg) => HELP.has(arg))) return helpText(command, { here: await claudeEnvironments(root) });
-    // Befehle fuer den Agenten nehmen beliebigen Text: Nur direkt nach dem Befehl ist --help die Hilfe.
+    // Agent commands take arbitrary text: --help is the help only right after the command.
     if (AGENT_COMMANDS.includes(command) && HELP.has(args[0])) return helpText(command);
     return undefined;
 };
@@ -48,7 +48,7 @@ const main = async ([command, ...args]) => {
     switch (command) {
         case 'init': {
             const commands = await host();
-            // init sieht sich die Anwendung erst an (explore); im Terminal fragt es nach Adresse und Rollen, --yes oder CI nicht.
+            // init explores the application first; in a terminal it asks for address and roles, not with --yes or in CI.
             const ask = process.stdin.isTTY && !args.includes('--yes') && !process.env.CI;
             const prepared = await commands.initAnswers(root, args, { interactive: ask });
             if (prepared.code !== undefined) return prepared.code;
@@ -76,13 +76,13 @@ const main = async ([command, ...args]) => {
         case 'sandbox-run': return (await sandbox()).sandboxRun({ root, runId: option(args, '--run-id'), timeoutMin: Number(option(args, '--timeout')), mode: args.includes('--develop') ? 'develop' : args.includes('--talk') ? 'talk' : args.includes('--advise') ? 'advise' : 'run' });
         case 'advise': return (await sandbox()).advise(option(args, '--file'));
         case 'firewall-check': return (await sandbox()).firewallCheck();
-        // Werkzeuge fuer die Claude-Code-Session des Entwicklers, eingetragen in .mcp.json.
+        // Tools for the developer's Claude Code session, registered in .mcp.json.
         case 'mcp': {
             const [{ serveMcp }, { sessionMcpHandler }] = await Promise.all([import('../src/sandbox/mcp.mjs'), import('../src/host/session-mcp.mjs')]);
             await serveMcp(sessionMcpHandler({ root }));
             return EXIT.pass;
         }
-        // Intern: Werkzeug-Server fuer Claude ohne Container, gestartet von Claude Code selbst.
+        // Internal: tool server for Claude without a container, started by Claude Code itself.
         case 'mcp-agent': {
             const { createMcpHandler, serveMcp } = await import('../src/sandbox/mcp.mjs');
             if (process.env.CAW_SANDBOX !== '1' || !process.env.CAW_AGENT_DIR) throw new CawError('not-in-sandbox', t('cli.mcpAgentOnly'));
@@ -97,7 +97,7 @@ const main = async ([command, ...args]) => {
         case 'network':
         case 'recording':
             return browser({ action: command });
-        // Der Mensch braucht Zeit: Der Kanal wartet hier laenger als bei Browser-Befehlen.
+        // The human needs time: the channel waits longer here than for browser commands.
         case 'ask-operator': return (await sandbox()).browserCommand({ action: command, question: args[0] }, { timeoutMs: 60 * 60 * 1000 });
         case 'chat': return (await sandbox()).browserCommand({ action: command }, { timeoutMs: 60 * 60 * 1000 });
         case 'say': return browser({ action: command, text: args[0] });
@@ -136,16 +136,16 @@ const argv = process.argv.slice(2);
 try {
     process.exitCode = await main(argv);
 } catch (error) {
-    // Ein unerwarteter Fehler (Datei, Playwright, ein Fehler im Tool) ist kein Urteil ueber die Anwendung: Exit 2, nicht 1, damit CI ihn
-    // nicht als gescheiterten Test zaehlt. Der Stack bleibt fuer die Fehlersuche.
+    // An unexpected error (file, Playwright, a bug in the tool) is no verdict on the application: exit 2, not 1, so CI does not
+    // count it as a failed test. The stack stays for debugging.
     if (!(error instanceof CawError)) {
         process.exitCode = EXIT.error;
-        // Beenden wie ein ungefangener Fehler (offene Browser halten den Prozess sonst), aber erst, wenn der Stack geschrieben ist.
+        // Exit like an uncaught error (open browsers would keep the process alive), but only once the stack is written.
         process.stderr.write(`${error?.stack ?? String(error)}\n`, () => process.exit());
         await new Promise(() => {});
     }
     const [{ colorEnabled }, { createUi }] = await Promise.all([import('../src/shared/color.mjs'), import('../src/shared/ui.mjs')]);
-    // Erst die Meldung, bei einem Aufruffehler die Kurzform des Befehls, zuletzt Code und Exit. result.json bleibt davon unberuehrt.
+    // First the message, for a usage error the command synopsis, then code and exit. result.json is not affected.
     const exit = exitOf(error.code);
     const synopsis = error.code === 'usage' ? synopsisOf(argv[0]) : undefined;
     createUi({ fancy: colorEnabled({ isTTY: process.stderr.isTTY }) }).fatal(error.code, error.message, { synopsis, exit });

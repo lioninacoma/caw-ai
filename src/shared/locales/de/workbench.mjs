@@ -1,4 +1,4 @@
-// Texte: workbench (de). Schluessel mit Praefix "workbench.". workbench.page.*: auch fuer das Seiten-JS. workbench.report.*: Berichtsseite.
+// Texts: workbench (de). Keys prefixed with "workbench.". workbench.page.*: also for the page script. workbench.report.*: report page.
 export default {
     'workbench.refreshTitle': 'Seite ohne Cache neu laden (F5). Erst nach der Übergabe.',
     'workbench.refresh': 'Aktualisieren',

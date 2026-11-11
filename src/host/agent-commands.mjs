@@ -1,5 +1,5 @@
-// Was der Agent am Browser darf, abschliessend aufgezaehlt. Er bekommt nie CDP, denn damit liesse sich
-// die Host-Sperre umgehen (z. B. ein neuer Browser-Kontext mit eigenem Proxy).
+// The complete list of what the agent may do in the browser. It never gets CDP, since that would allow bypassing
+// the host block (e.g. a new browser context with its own proxy).
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,13 +11,13 @@ import { passwordValues, redactDeep } from './secrets.mjs';
 
 const ACTION_TIMEOUT_MS = 15_000;
 const NETWORK_SHOWN = 60;
-// Druecken und Loslassen wie bei einem Menschen: Oberflaechen reagieren teils zeitversetzt auf das Druecken.
+// Press and release like a human: some UIs react to the press with a delay.
 export const CLICK_DELAY_MS = 100;
 const COMMAND_TIMEOUT_MS = 300_000;
 const SCREENSHOT_NAME = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.png$/;
 const ARIA_REF = /^(f\d+)?e\d+$/;
 const REMEMBER_NAME = /^[A-Za-z][A-Za-z0-9]{0,30}$/;
-// Kurze Werte kaemen auch in fremden Texten vor und wuerden dort mit ersetzt.
+// Short values would also occur in unrelated text and be replaced there too.
 const REMEMBER_MIN_LENGTH = 4;
 
 const usage = (message) => new CawError('usage', message);
@@ -28,7 +28,7 @@ const text = (command, field) => {
     return value;
 };
 
-/** Navigation nur zu den Hosts, die auch die Chrome-Sperre durchlaesst. */
+/** Navigation only to the hosts the Chrome block also lets through. */
 export const isAllowedUrl = (url, hosts) => {
     try {
         const { protocol, hostname } = new URL(url);
@@ -38,18 +38,18 @@ export const isAllowedUrl = (url, hosts) => {
     }
 };
 
-/** Referenz aus dem Snapshot oder CSS-Selektor. */
+/** A reference from the snapshot, or a CSS selector. */
 export const locatorFor = (page, target) => page.locator(ARIA_REF.test(target) ? `aria-ref=${target}` : target);
 
-/**
- * @param expand optional: setzt Platzhalter geheimer gemerkter Werte ({{iban}}) in Werte von fill/type und in den Code einer Pruefung
- *   ein. Claude sieht sie nie im Klartext und arbeitet mit dem Platzhalter; erst der Host fuellt ihn.
- */
-// So lange wartet ein optionaler Klick auf sein Ziel.
+// How long an optional click waits for its target.
 const OPTIONAL_WAIT_MS = 3000;
-// Diese Befehle fokussieren in der Anwendung.
+// These commands move focus into the application.
 const FOCUSING = new Set(['click', 'fill', 'type', 'press', 'upload', 'download']);
 
+/**
+ * @param expand optional: fills placeholders of secret remembered values ({{iban}}) into fill/type values and into a check's code.
+ *   Claude never sees them in plain text and works with the placeholder; only the host fills it in.
+ */
 export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, expand = (value) => value, commandTimeoutMs = COMMAND_TIMEOUT_MS }) => {
     const screenshots = new Set();
     let finished = false;
@@ -61,12 +61,12 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         snapshot: () => session.page().ariaSnapshot({ mode: 'ai' }),
         url: () => session.page().url(),
         click: async (command) => {
-            // Optional, etwa ein Cookie-Banner: Ist das Ziel nicht (mehr) da, ist nichts zu tun. Das Abspielen ueberspringt ihn dann ebenso.
+            // Optional, e.g. a cookie banner: if the target is not (or no longer) there, there is nothing to do. Replay skips it the same way.
             if (command.optional === true && !await locate(command).waitFor({ state: 'visible', timeout: OPTIONAL_WAIT_MS }).then(() => true, () => false)) return 'absent';
             await locate(command).click({ timeout: ACTION_TIMEOUT_MS, delay: CLICK_DELAY_MS });
             return 'ok';
         },
-        // Leer ist erlaubt: So leert man ein Feld unabhaengig davon, was gerade drinsteht. Ein Klick aufs X scheitert, wenn es leer ist.
+        // Empty is allowed: it clears a field regardless of its content. Clicking a clear button fails when the field is empty.
         fill: async (command) => {
             if (typeof command.value !== 'string') throw usage(t('run.agent.missing', { field: 'value' }));
             await locate(command).fill(command.value, { timeout: ACTION_TIMEOUT_MS });
@@ -75,7 +75,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         type: async (command) => { await locate(command).pressSequentially(text(command, 'value'), { timeout: ACTION_TIMEOUT_MS }); return 'ok'; },
         press: async (command) => { await session.page().keyboard.press(text(command, 'key')); return 'ok'; },
         eval: (command) => session.page().evaluate(text(command, 'code')),
-        // Eine Pruefung, die sich wiederholen laesst. Bestanden ist nur genau true, nicht irgendetwas Wahres.
+        // A repeatable check. Only exactly true passes, not any truthy value.
         check: async (command) => {
             const id = text(command, 'id');
             if (!run.expectations.some((expectation) => expectation.id === id)) throw new CawError('step-unknown', t('run.agent.unknownStep', { id }));
@@ -83,7 +83,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
             await session.workbench?.step(id, value === true ? 'pass' : 'running');
             return { id, pass: value === true, value };
         },
-        // Ein Wert, den erst der Lauf erzeugt. Die Aufzeichnung speichert den Ausdruck statt des Werts.
+        // A value that only the run produces. The recording stores the expression instead of the value.
         remember: async (command) => {
             const name = text(command, 'name');
             if (!REMEMBER_NAME.test(name) || name === 'runTag' || name === 'runTagLower') throw usage(t('run.agent.rememberName'));
@@ -96,7 +96,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
             const name = text(command, 'name');
             if (!SCREENSHOT_NAME.test(name)) throw usage(t('run.agent.screenshotName'));
             const image = await session.page().screenshot();
-            // Neu anlegen statt ueberschreiben, der Ordner gehoert dem Container.
+            // Create, never overwrite: the folder belongs to the container.
             writeFileSync(join(agentDir, name), image, { flag: 'wx' });
             screenshots.add(name);
             return name;
@@ -114,7 +114,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
             ...(Number.isFinite(command.timeout) ? { timeout: command.timeout } : {}),
         }),
         console: () => session.drainFailures(),
-        // Die letzten Requests der Anwendung mit Ausgang und Dauer, ohne Parameterwerte: Belege, ob es an der Anwendung liegt.
+        // The application's latest requests with outcome and duration, without parameter values: evidence whether the app is at fault.
         network: () => (session.network === undefined ? [] : session.network.since(Math.max(0, session.network.mark() - NETWORK_SHOWN))),
         finish: (command) => {
             if (typeof command.results !== 'object' || command.results === null) throw new CawError('finish-rejected', t('run.agent.resultMissing'));
@@ -122,7 +122,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
                 expectations: run.expectations,
                 results: command.results,
                 failures: session.failures(),
-                // Nur was das Tool selbst aufgenommen hat, zaehlt als Screenshot.
+                // Only what the tool captured itself counts as a screenshot.
                 fileExists: (name) => screenshots.has(name),
             });
             finished = true;
@@ -131,17 +131,17 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         },
     };
 
-    // Befehle, deren Antwort Text der Seite enthalten kann; die uebrigen liefern nur ok, eine Adresse oder einen Dateinamen.
+    // Commands whose answer can contain page text; the others only return ok, a URL or a file name.
     const PAGE_TEXT = new Set(['snapshot', 'eval', 'check', 'remember', 'console']);
-    // Kein Passwort erreicht Claude: weder ueber den Snapshot (er enthaelt Feldwerte) noch ueber eval, check oder remember.
+    // No password reaches Claude: neither via the snapshot (it contains field values) nor via eval, check or remember.
     const hideSecrets = async (value) => {
         const onPage = await (async () => session.page().evaluate(passwordValues))().catch(() => []);
         const secrets = [...(session.secrets?.() ?? []), ...(Array.isArray(onPage) ? onPage : [])];
         return secrets.length === 0 ? value : redactDeep(value, secrets);
     };
 
-    // Wo ein Platzhalter gefuellt wird: im Wert fuer fill/type immer, im Code nur einer Pruefung, die dann nur bestanden oder nicht meldet.
-    // Nie in eval, remember oder einer Adresse: Dort kaeme der Wert umgeformt (zerlegt, kodiert) zurueck, an redactDeep vorbei.
+    // Where a placeholder is filled: always in a fill/type value, in code only for a check, which then reports just pass or fail.
+    // Never in eval, remember or a URL: the value could come back transformed (split, encoded), slipping past redactDeep.
     const expandable = (action, key) => key === 'value' || (key === 'code' && action === 'check');
     const handle = async (given, { reveal = false } = {}) => {
         if (finished) throw new CawError('run-finished', t('run.agent.finished'));
@@ -162,7 +162,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
             timer = setTimeout(() => reject(new CawError('command-timeout', t('run.agent.timeout', { action: command.action }))), commandTimeoutMs);
         });
         try {
-            // Aktionen, die in der Anwendung fokussieren, geben dem Chat den Fokus zurueck, wenn der Mensch dort gerade tippt.
+            // Actions that focus the application hand focus back to the chat if the human is typing there.
             const view = session.page?.();
             const act = () => commands[command.action](command);
             const work = FOCUSING.has(command.action) && typeof view?.keepChatFocus === 'function' ? view.keepChatFocus(act) : act();
@@ -174,8 +174,8 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         }
     };
     const handler = (command) => handle(command);
-    // Nur fuer den Host (Abspielen): ein geheimer remember-Wert ungeschwaerzt. Sonst laese ein zweiter Versuch des Schritts den beim
-    // ersten versteckten Wert als ••••. Claude erreicht nur `handler` selbst, nie diese Eigenschaft.
+    // Host only (replay): a secret remember value unredacted. Otherwise a retry of the step would read the value hidden on the
+    // first attempt as ••••. Claude only reaches `handler` itself, never this property.
     handler.reveal = (command) => handle(command, { reveal: true });
     return handler;
 };

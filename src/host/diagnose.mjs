@@ -1,5 +1,5 @@
-// Liegt ein Fehlschlag am Test, an der Anwendung oder an der Umgebung? Das Tool ordnet ihn aus Belegen ein, die jeder Browser liefert:
-// Requests mit Dauer und Ausgang, harte Fehler und der Vergleich mit der Aufnahme. Kein Wissen ueber Framework oder Umgebung.
+// Is a failure caused by the test, the application or the environment? The tool decides from evidence any browser provides:
+// requests with duration and outcome, hard failures, and the comparison with the recording. No knowledge of framework or environment.
 
 import { language, t } from '../shared/i18n.mjs';
 import { deviationText, isEffectCause } from './effects.mjs';
@@ -10,29 +10,30 @@ const QUICK_ABORT_MS = 1000;
 const QUICK_SHARE = 0.2;
 const SLOW_MS = 5000;
 const SLOW_FACTOR = 3;
-// Ohne Vergleich aus der Aufnahme: Was so lange braucht, ist eher die Umgebung als die Anwendung.
+// Without a baseline from the recording: anything this slow points to the environment rather than the application.
 const VERY_SLOW_MS = 10_000;
-// So lange offen gilt ein Request als Dauerverbindung (Long-Polling, Stream), wie beim Warten auf Ruhe.
+// A request open this long counts as a persistent connection (long polling, stream), as when waiting for idle.
 const STALE_MS = 10_000;
-// Antworten eines Gateways: Der Dienst dahinter laeuft nicht oder startet noch.
+// Gateway responses: the service behind it is down or still starting.
 const GATEWAY = new Set([502, 503, 504]);
-// Abgelehnte Daten, nicht ein falscher Aufruf: Konflikt (etwa ein Name, den es schon gibt) oder eine fachliche Pruefung.
+// Rejected data, not a wrong call: a conflict (e.g. a name that already exists) or a business validation.
 const DATA_STATUS = new Set([409, 422]);
-// Meldungen, die von Daten sprechen, nicht von der Anwendung: etwas gibt es schon, muss eindeutig sein, ist ungueltig.
-/** Wenn nur die Wirkung abweicht: Der Datenstand kann sich geaendert haben, dann ist die neue Wirkung richtig. */
+/** When only the effect deviates: the data may have changed, in which case the new effect is correct. */
 export const dataStateHint = () => t('config.diag.dataStateHint');
+// Messages about data rather than the application: something already exists, must be unique, is invalid. German and English,
+// since these are the application's own texts.
 const DATA_WORDING = /bereits|existiert|schon vergeben|gibt es schon|trägt schon|eindeutig|ungültig|pflicht|already|exists|unique|duplicate|invalid|required/i;
 
 const RANK = { 'app:clear': 6, 'environment:clear': 5, 'app:likely': 4, 'environment:likely': 3, 'test:likely': 2, 'unclear:likely': 1 };
-// Seiten der Einschaetzung: app, environment, test, unclear (Text unter config.diag.side.<seite>).
+// Diagnosis sides: app, environment, test, unclear (text under config.diag.side.<side>).
 const sideText = (side) => t(`config.diag.side.${side}`);
 
 const seconds = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1).replace('.', language() === 'de' ? ',' : '.')} s` : `${Math.round(ms)} ms`);
 const recorded = (entry) => (entry === undefined ? '' : t('config.diag.recorded', { status: String(entry.status), time: seconds(entry.ms) }));
 
 /**
- * Ein Abbruch, auf den ein neuer Aufruf desselben Namens folgt: ueberholt, etwa eine Suche beim Tippen oder ein neu ladender
- * Store. Das ist normal, egal wie der neue Aufruf ausgeht.
+ * An abort followed by a new call with the same name: superseded, e.g. a search while typing or a store reloading. That is
+ * normal, however the new call ends.
  */
 const superseded = (request, all) => {
     const at = all.indexOf(request);
@@ -40,13 +41,13 @@ const superseded = (request, all) => {
 };
 
 /**
- * Bricht die Anwendung einen Request kurz nach dem Start selbst ab, und kam er bei der Aufnahme durch? Nur mit Vergleich: Ohne ihn
- * kann es auch ein Abbruch beim Schliessen einer Ansicht sein (Aufraeumen eines Effekts, eines Abos).
+ * Does the application abort a request itself shortly after it started, while it went through at recording time? Only with a
+ * baseline: without one it may also be an abort when a view closes (cleanup of an effect or subscription).
  */
 const quickAbort = (request, then, all = []) => request.outcome === 'aborted' && !request.navigated && then !== undefined
     && (request.ms ?? 0) < Math.max(QUICK_ABORT_MS, then.ms * QUICK_SHARE) && !superseded(request, all);
 
-/** Meint der harte Fehler mit dieser Adresse denselben Request? Verglichen wird der neutrale Pfad. */
+/** Does the hard failure with this URL refer to the same request? Compares the neutral path. */
 const sameRequest = (request, url) => {
     try {
         return request.name.split(' ')[1] === neutralPath(new URL(url).pathname);
@@ -55,9 +56,9 @@ const sameRequest = (request, url) => {
     }
 };
 
-/** Was sich an den Parameternamen geaendert hat, oder null. */
+/** What changed in the parameter names, or null. */
 export const paramChange = (given, then) => {
-    // Schluessel eines JSON-Bodys kennen erst neuere Aufnahmen: Fehlen sie dort ganz, zaehlen sie auch jetzt nicht.
+    // Only newer recordings know JSON body keys: if the recording has none, they do not count now either.
     const now = then.some((name) => name.startsWith(JSON_PREFIX)) ? given : given.filter((name) => !name.startsWith(JSON_PREFIX));
     const gone = then.filter((name) => !now.includes(name));
     const added = now.filter((name) => !then.includes(name));
@@ -66,9 +67,9 @@ export const paramChange = (given, then) => {
 };
 
 /**
- * Ein Abbruch, den ein neuer Versuch nicht aendert: Die Anwendung bricht den Request selbst ab, jedes Mal gleich.
- * Andere Befunde, etwa ein Skriptfehler, koennen nach dem Neuladen verschwinden; dort bleibt `retry`.
- * @returns der Satz fuer den Bericht oder null
+ * An abort a retry will not change: the application aborts the request itself, the same way every time.
+ * Other findings, such as a script error, may disappear after a reload; `retry` stays useful there.
+ * @returns the sentence for the report, or null
  */
 export const selfAbort = (requests = [], baseline = []) => {
     const before = new Map((baseline ?? []).map((entry) => [neutralName(entry.name), entry]));
@@ -77,33 +78,33 @@ export const selfAbort = (requests = [], baseline = []) => {
 };
 
 /**
- * @param failed    der gescheiterte Schritt aus failedStep, mit reason
- * @param broken    der Abbruch des Abspielens oder null, wenn eine Pruefung nicht erfuellt war
- * @param failures  harte Fehler des Laufs
- * @param requests  die Requests des gescheiterten Schritts aus dem Abspielen
- * @param baseline  recording.network des Schritts, fehlt bei aelteren Aufnahmen
- * @param deviation die erste Aktion bis zu diesem Schritt, die anders wirkt als gelernt, oder null
- * @param earlier   { id, requests } des Schritts davor: Dort kann die Ursache liegen, auch wenn seine Pruefung bestand
+ * @param failed    the failed step from failedStep, with reason
+ * @param broken    why replay stopped, or null if a check was not met
+ * @param failures  the run's hard failures
+ * @param requests  the failed step's requests during replay
+ * @param baseline  the step's recording.network, missing in older recordings
+ * @param deviation the first action up to this step whose effect differs from what was learned, or null
+ * @param earlier   { id, requests } of the previous step: the cause may lie there even if its check passed
  * @returns { side, strength, findings, text }
  */
 export const diagnose = ({ failed, broken = null, failures = [], requests = [], baseline, deviation = null, earlier = null }) => {
     const found = [];
-    // Eine gescheiterte Pruefung meldet sich selbst als Abbruch (kind check): Das schliesst die Wirkung als einzigen Grund nicht aus.
+    // A failed check reports itself as a break (kind check): that does not rule out the effect as the only cause.
     const effectOnly = (broken === null || broken.kind === 'check') && isEffectCause(failed?.reason);
     const add = (side, strength, text) => found.push({ side, strength, text });
-    // Die erste Aktion, die anders wirkt als in gesunden Laeufen: Die Anwendung reagiert anders, der Test hat sich nicht geaendert.
-    // Laesst sie den Schritt scheitern, war das Signal in allen gesunden Laeufen stabil: dann eindeutig.
-    // Noch nicht gelernte Wirkung (zu wenige gesunde Laeufe) ist nur ein Beleg. Fehlt das Ziel und hat sich die Oberflaeche davor
-    // umgestellt, ohne dass das den Schritt scheitern laesst, ist das eher eine geaenderte Seite als ein Fehler.
+    // The first action whose effect differs from healthy runs: the application reacts differently, the test has not changed.
+    // If it fails the step, the signal was stable across all healthy runs: then it is clear.
+    // An effect not learned yet (too few healthy runs) is only evidence. If the target is missing and the UI changed before it
+    // without failing the step, that is more likely a changed page than a bug.
     const notes = [];
     const uiChanged = deviation !== null && !deviation.fails && broken?.kind === 'target' && (deviation.instead ?? []).length > 0;
-    // Nur die Oberflaeche anders, ohne andere Requests und ohne Konsolenfehler: eine absichtliche Aenderung oder ein Fehler, das
-    // entscheidet erst ein Blick in den Code.
+    // Only the UI differs, no different requests and no console errors: an intended change or a bug; only a look at the code
+    // can tell.
     const pageOnly = deviation !== null && (deviation.lists ?? []).every((list) => list === 'controls' || list === 'view');
     if (deviation !== null && pageOnly && (deviation.fails || (deviation.learned === true && !uiChanged))) {
         add('unclear', 'likely', t('config.diag.pageOnly', { deviation: deviationText(deviation), hint: effectOnly ? ` ${dataStateHint()}` : '' }));
     } else if (deviation !== null && deviation.fails && effectOnly) {
-        // Die Pruefung ist erfuellt, nur die Wirkung ist anders: Das kann auch ein anderer Datenstand sein, etwa eine Liste, die beim Lernen leer war.
+        // The check passed, only the effect differs: this may also be different data, e.g. a list that was empty while learning.
         add('app', 'likely', `${deviationText(deviation)} ${dataStateHint()}`);
     } else if (deviation !== null && deviation.fails) add('app', 'clear', deviationText(deviation));
     else if (deviation !== null && deviation.learned === true && !uiChanged) add('app', 'likely', deviationText(deviation));
@@ -112,8 +113,8 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
     const own = requests.filter((request) => !(request.outcome === 'aborted' && request.navigated));
     const covered = broken?.kind === 'target' ? broken.blocker?.covered : undefined;
 
-    // Andere Parameternamen als bei der Aufnahme: Die Anwendung ruft die Schnittstelle anders auf als damals, als sie ging.
-    // Nur bei einem gescheiterten Request: Manche Schnittstellen werden mit wechselnden Parametern aufgerufen, ohne dass etwas falsch ist.
+    // Different parameter names than at recording time: the application calls the API differently than when it worked.
+    // Only for a failed request: some APIs are called with varying parameters without anything being wrong.
     const reported = new Set();
     for (const request of own) {
         const then = before.get(request.name);
@@ -140,17 +141,17 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
         } else if (request.outcome === 'http' && request.status >= 500) {
             add('app', 'clear', t('config.diag.http', { name: request.name, status: String(request.status), recorded: recorded(then) }));
         } else if (request.outcome === 'http' && then?.status === request.status) {
-            // Bei der Aufnahme genauso: gewollt, etwa eine optionale Einstellung, die es nicht gibt.
+            // Same at recording time: intended, e.g. an optional setting that does not exist.
             continue;
         } else if (request.outcome === 'http' && covered !== undefined && DATA_STATUS.has(request.status)) {
-            // Abgelehnt mit einem Dialog darueber: Das ordnet der Abschnitt zum verdeckten Ziel ein, zusammen mit der Meldung.
+            // Rejected with a dialog on top: the covered-target section below classifies this together with the message.
             continue;
         } else if (request.outcome === 'http' && request.status === 403 && answeredBefore) {
             add('app', 'likely', t('config.diag.forbidden', { name: request.name, recorded: recorded(then) }));
         } else if (request.outcome === 'http' && (request.status === 401 || request.status === 403)) {
             add('environment', 'likely', t('config.diag.unauthorized', { name: request.name, status: String(request.status), recorded: recorded(then) }));
         } else if (request.outcome === 'open' && ms >= SLOW_MS) {
-            // Eine Dauerverbindung, die auch bei der Aufnahme lange lief oder dort nie antwortete, ist kein Befund.
+            // A persistent connection that also ran long at recording time, or never answered there, is not a finding.
             const lasting = (then !== undefined && then.ms >= SLOW_MS) || (then === undefined && baseline !== undefined && ms >= STALE_MS);
             if (lasting) notes.push(t('config.diag.lasting', { name: request.name, time: seconds(ms) }));
             else add('environment', 'likely', t('config.diag.waiting', { name: request.name, time: seconds(ms), recorded: recorded(then) }));
@@ -165,8 +166,8 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
         }
     }
 
-    // Was die Aufnahme kannte, aber jetzt fehlt: Nur aussagekraeftig, wenn die Aktionen des Schritts gelaufen sind. Ein fehlendes
-    // Schreiben ist ein Befund; ein fehlendes Lesen nur ein Hinweis, es kann aus einem Cache kommen oder einmalig sein (Token-Erneuerung).
+    // Requests the recording had but that are missing now: only meaningful if the step's actions ran. A missing write is a
+    // finding; a missing read only a note, since it may come from a cache or be a one-off (token refresh).
     const ranThrough = broken === null || broken.kind === 'check';
     if (ranThrough && baseline !== undefined) {
         const now = new Set(own.map(({ name }) => name));
@@ -181,7 +182,7 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
 
     for (const failure of failures) {
         if (failure.type === 'pageerror') add('app', 'clear', t('config.diag.pageerror', { text: String(failure.text), at: failure.at ? t('config.diag.pageerrorAt', { at: String(failure.at) }) : '' }));
-        // Mit Quelle (Stack ueber Quellkarten aufgeloest) ist es ein gefangener Skriptfehler der Anwendung, etwa aus Angulars ErrorHandler.
+        // With a source (stack resolved via source maps) it is a caught script error of the application, e.g. from Angular's ErrorHandler.
         else if (isCaughtScriptError(failure)) add('app', 'clear', t('config.diag.pageerror', { text: String(failure.text).split('\n')[0], at: t('config.diag.pageerrorAt', { at: String(failure.at) }) }));
         else if (failure.type === 'console') add('app', 'likely', t('config.diag.console', { text: String(failure.text) }));
         else if (failure.type === 'http' && !own.some((request) => `HTTP ${request.status}` === failure.text && sameRequest(request, failure.url))) {
@@ -192,13 +193,13 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
         }
     }
 
-    // Ein Ziel, das da ist, aber unter einem offenen Dialog liegt: Die Aktion davor hat den Dialog nicht geschlossen. Meldet er etwas,
-    // hat die Anwendung eine Eingabe abgelehnt; lehnte sie dabei einen Request ab (4xx), passt das zu Testdaten oder einem Zustand aus
-    // einem frueheren Lauf, etwa einem Namen, der eindeutig sein muss. Ein Fehler der Anwendung ist das nur selten.
+    // A target that exists but lies under an open dialog: the previous action did not close the dialog. If the dialog shows a
+    // message, the application rejected an input; if a request was rejected too (4xx), that fits test data or state from an
+    // earlier run, e.g. a name that must be unique. It is rarely an application bug.
     const refused = (list) => list.filter((request) => request.outcome === 'http' && request.status >= 400 && request.status < 500 && request.status !== 401 && request.status !== 403);
     const rejected = refused(earlier?.requests ?? []);
     const rejectedHere = refused(own);
-    // Ein schlichtes Element ohne Rolle darueber, waehrend ein Request noch offen ist: vermutlich eine Ladeanzeige, die auf ihn wartet.
+    // A plain element without a role on top while a request is still open: probably a loading indicator waiting for it.
     const waiting = covered !== undefined && covered.role === undefined ? own.find((request) => request.outcome === 'open') : undefined;
     if (waiting !== undefined) {
         add('environment', 'likely', t('config.diag.loading', { tag: String(covered.tag), name: waiting.name, time: seconds(waiting.ms ?? 0) }));
@@ -213,7 +214,7 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
         ].join('');
         const all = [...rejectedHere, ...rejected];
         const text = t('config.diag.covered', { by, said, cause });
-        // Testdaten nur mit Beleg: ein Konflikt oder eine fachliche Ablehnung, oder eine Meldung, die von den Daten spricht.
+        // Test data only with evidence: a conflict or business rejection, or a message about the data.
         if (all.some(({ status }) => DATA_STATUS.has(status)) || messages.some((message) => DATA_WORDING.test(message))) {
             add('test', 'likely', t('config.diag.coveredData', { text }));
         } else if (all.length > 0) {
@@ -229,8 +230,8 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
     if (broken?.kind === 'target' && broken.blocker?.hidden) add('test', 'likely', t('config.diag.hidden'));
 
     const reason = failed?.reason ?? '';
-    // Eine verlorene Anmeldung erklaert die Folgen (401, 500, HTML statt JSON, leere Masken): Sie geht allem vor.
-    // Der Grund kommt aus replay.mjs in der Sprache des Laufs, darum beide Fassungen.
+    // A lost sign-in explains the consequences (401, 500, HTML instead of JSON, empty forms): it takes precedence over everything.
+    // The reason comes from replay.mjs in the run's language, hence both versions.
     if (/Anmeldung ist verloren|sign-in was lost/i.test(reason)) {
         return { side: 'environment', strength: 'clear', findings: [t('config.diag.signInLost'), ...found.map(({ text }) => text)].slice(0, 6), text: t('config.diag.verdictStrength', { side: sideText('environment'), strength: t('config.diag.clear') }) };
     }

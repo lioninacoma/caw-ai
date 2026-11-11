@@ -1,16 +1,16 @@
-// Die Umgebung kommt aus der Config des Projekts, optional ergaenzt um ein Fragment im Projekt (`extends`). Das Tool selbst kennt
-// keine Umgebung, kein Portal und keine Kunden.
+// The environments come from the project config, optionally extended by a fragment in the project (`extends`). The tool itself
+// knows no environment, portal or customer.
 //
-// Der Normalfall ist flach: eine Anwendung, ein paar Umgebungen mit je einer Adresse.
+// The normal case is flat: one application, a few environments with one URL each.
 //   "environments": { "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
 //                     "staging": { "url": "https://staging.example.com" } }
-//   Ziel: "local"
-// Ein lokaler Dev-Server liefert den lokalen Code selbst aus: Das ist die Umgebung "local", ohne jede Option. Das Overlay legt lokalen
-// Code ueber eine ausgelieferte Umgebung (Portal, Shell, Backend nur auf Staging), nur mit --overlay und nur, wo die Umgebung es
-// erlaubt: "dev": { "url": "https://dev.example.com", "claude": true, "overlay": true }
-// Laeuft dieselbe Anwendung fuer mehrere Mandanten unter eigenen Adressen, nennt `sites` die Mandanten und jede Umgebung `urls`:
+//   Target: "local"
+// A local dev server serves the local code itself: that is the environment "local", without any option. The overlay puts local
+// code on top of a deployed environment (portal, shell, backend only on staging), only with --overlay and only where the
+// environment allows it: "dev": { "url": "https://dev.example.com", "claude": true, "overlay": true }
+// If the same application runs for several sites (tenants) under their own URLs, `sites` names them and each environment has `urls`:
 //   "sites": ["nord", "sued"], "environments": { "dev": { "urls": { "nord": "https://…", "sued": "https://…" }, "claude": true } }
-//   Ziel: "nord/dev"
+//   Target: "nord/dev"
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -25,15 +25,15 @@ import { didYouMean } from './suggest.mjs';
 export { CONFIG_FILE } from './names.mjs';
 
 const ENVIRONMENT_FLAGS = ['claude', 'overlay', 'writable', 'production'];
-// Eine Produktionsumgebung gibt es nur ausdruecklich, und dann ohne Claude, ohne lokalen Code und ohne Schreiben.
-// Auch als Bestandteil, etwa prod-de oder live_eu. Wer so eine Umgebung nicht als Produktion meint, sagt das mit "production": false.
+// A production environment must be declared explicitly, and then has no Claude, no local code and no writing.
+// Names containing it count too, e.g. prod-de or live_eu. If such an environment is not production, say so with "production": false.
 const PRODUCTION_NAME = /(^|[-_.])(prod|production|produktion|produktiv|prd|live)([-_.]|\d|$)/i;
 const PRODUCTION_EXACT = /^(prod|production|produktion|produktiv|prd|live)$/i;
 const NAME = /^[a-z][\w-]*$/;
 export const DEFAULT_MESSAGE_SELECTORS = ['[role=alert]', '[role=alertdialog]'];
-/** Die Framework-Adapter unter src/host/framework/; `web` ist der Standard. */
+/** The framework adapters in src/host/framework/; `web` is the default. */
 export const FRAMEWORK_NAMES = ['web', 'extjs', 'react', 'vue', 'angular'];
-/** Arten der Anmeldung. */
+/** Login types. */
 export const AUTH_TYPES = ['form', 'basic', 'storageState', 'none'];
 const AUTH_FIELDS = {
     form: ['type', 'path', 'userSelector', 'passwordSelector', 'submitSelector', 'codeSelector', 'signedInSelector'],
@@ -41,30 +41,30 @@ const AUTH_FIELDS = {
     storageState: ['type', 'path', 'signedInSelector'],
     none: ['type'],
 };
-/** Ordner der gespeicherten Sitzungen (`auth.type: storageState`): je Rolle eine Datei, nie eingecheckt. */
+/** Folder of saved sessions (`auth.type: storageState`): one file per role, never checked in. */
 export const AUTH_DIR = 'caw/.auth';
-/** Wert eines Anmelde-Selektors, den explore nicht fand: doctor meldet ihn, bis er eingetragen ist. */
+/** Value of a login selector explore did not find: doctor reports it until it is filled in. */
 export const TODO = 'TODO';
-/** Die gespeicherte Sitzung einer Rolle auf einem Ziel, relativ zum Projekt: caw/.auth/<umgebung>/<rolle>.json, mit Mandanten caw/.auth/<mandant>/<umgebung>/<rolle>.json. */
+/** The saved session of a role on a target, relative to the project: caw/.auth/<environment>/<role>.json, with sites caw/.auth/<site>/<environment>/<role>.json. */
 export const sessionPath = (target, role) => posix.join(AUTH_DIR, ...String(target).split('/'), `${role}.json`);
 
 const TOP_FIELDS = ['framework', 'extends', 'environments', 'sites', 'auth', 'apps', 'roles', 'messageSelectors', 'insecureTls', 'requestKeys',
     'consoleIgnore', 'foreignCode', 'extraAllowedHosts', 'assetUrlPattern', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme'];
 
-/** Wo Claude laeuft: lokal mit engen Werkzeugen (Standard) oder abgeschottet in Docker. */
+/** Where Claude runs: locally with restricted tools (default) or isolated in Docker. */
 export const AGENT_SANDBOXES = ['local', 'docker'];
 
-/** Der Weg fuer Claude aus der Config. In CI immer Docker: Dort sitzt niemand, der einem lokalen Agenten zusieht. */
+/** The sandbox for Claude from the config. Always Docker in CI: nobody is there to watch a local agent. */
 export const agentSandbox = (config, env = process.env) => {
     const chosen = isObject(config?.agent) && typeof config.agent.sandbox === 'string' ? config.agent.sandbox : 'local';
     return env.CI !== undefined && env.CI !== '' ? 'docker' : chosen;
 };
 
-/** Chromium-Browser, die Playwright ueber das System findet. Ein anderer Browser hat keine Host-Sperre ueber Startparameter. */
+/** Chromium browsers Playwright finds on the system. Other browsers have no host block via launch arguments. */
 export const BROWSER_CHANNELS = ['chrome', 'chrome-beta', 'chrome-dev', 'msedge', 'msedge-beta', 'msedge-dev'];
 
-/** Wie der Browser startet: Standard ist Chrome des Systems, sonst `browser.channel` oder `browser.executablePath` aus der Config. */
+/** How the browser starts: the system Chrome by default, otherwise `browser.channel` or `browser.executablePath` from the config. */
 export const browserLaunch = (config) => {
     const browser = isObject(config?.browser) ? config.browser : {};
     if (typeof browser.executablePath === 'string' && browser.executablePath !== '') return { executablePath: browser.executablePath };
@@ -73,7 +73,7 @@ export const browserLaunch = (config) => {
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const HOST = /^[a-z0-9.-]+$/i;
-/** Der Host aus einer Adresse wie "https://login.example.com/" oder "login.example.com:443", sonst null. */
+/** The host from an address like "https://login.example.com/" or "login.example.com:443", otherwise null. */
 const hostOf = (value) => {
     if (typeof value !== 'string') return null;
     try {
@@ -84,15 +84,15 @@ const hostOf = (value) => {
     }
 };
 
-/** Der Vorschlag zu einem unbekannten Feld als Zusatz, etwa " (meintest du insecureTls?)", sonst leer. */
+/** The suggestion for an unknown field as a suffix, e.g. " (did you mean insecureTls?)", otherwise empty. */
 const hintFor = (key, allowed) => {
     const name = didYouMean(key, allowed);
     return name === undefined ? '' : t('config.didYouMean', { name });
 };
 
 /**
- * Liest das Fragment aus `extends` (`"extends": "./caw/presets/basis.json"`): Felder wie in der Config, ohne eigenes `extends`.
- * @returns das Fragment oder ein Text mit dem Problem
+ * Reads the fragment from `extends` (`"extends": "./caw/presets/basis.json"`): fields as in the config, without its own `extends`.
+ * @returns the fragment or a text describing the problem
  */
 const loadFragment = (spec, root) => {
     if (typeof spec !== 'string' || !(spec.startsWith('./') || spec.startsWith('../') || isAbsolute(spec)) || !spec.endsWith('.json')) {
@@ -110,8 +110,8 @@ const loadFragment = (spec, root) => {
 };
 
 /**
- * Die wirksame Config: das Fragment aus `extends`, darueber die Config des Projekts. Umgebungen werden je Name zusammengefuehrt,
- * Felder des Projekts gewinnen; alles andere ersetzt das Projekt ganz.
+ * The effective config: the fragment from `extends`, with the project config on top. Environments are merged by name with
+ * project fields winning; everything else the project replaces entirely.
  * @returns { config, issues }
  */
 export const effectiveConfig = (config, root = process.cwd()) => {
@@ -124,24 +124,24 @@ export const effectiveConfig = (config, root = process.cwd()) => {
     return { config: merged, issues: [] };
 };
 
-/** Die Umgebungen mit Faehigkeiten und Adressen; ohne `sites` steht die Adresse unter dem leeren Mandanten. */
+/** The environments with abilities and URLs; without `sites` the URL is stored under the empty site. */
 export const environmentDefs = (config) => Object.fromEntries(Object.entries(config.environments ?? {}).map(([name, raw]) => {
     const entry = raw ?? {};
     const urls = config.sites === undefined ? (entry.url === undefined ? {} : { '': entry.url }) : Object.fromEntries((config.sites ?? []).filter((site) => entry.urls?.[site] !== undefined).map((site) => [site, entry.urls[site]]));
-    // Intern heisst die Faehigkeit weiter `agent`: Claude darf hier arbeiten.
+    // Internally the ability is still called `agent`: Claude may work here.
     return [name, { agent: entry.claude === true, overlay: entry.overlay === true, writable: entry.writable === true, production: entry.production === true, urls }];
 }));
 
-/** Umgebungen mit einer Faehigkeit, fuer Meldungen wie "nur auf dev". */
+/** Environments with an ability, for messages like "only on dev". */
 export const environmentsWith = (config, ability) => Object.entries(environmentDefs(config)).filter(([, entry]) => entry[ability]).map(([name]) => name);
 
 /**
- * Der eigene Rechner: localhost, 127.0.0.1 und Namen unter .localhost (RFC 6761). Sie zeigen fest auf Loopback und gelten in
- * Chrome als sicher, darum ist dort auch http erlaubt, etwa fuer einen lokalen Dev-Server.
+ * This machine: localhost, 127.0.0.1 and names under .localhost (RFC 6761). They always point to loopback and Chrome treats them
+ * as secure, so http is allowed there too, e.g. for a local dev server.
  */
 export const isLoopback = (hostname) => hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
 
-/** Warum eine Adresse kein erlaubter Origin ist, oder null. http nur auf dem eigenen Rechner (isLoopback), sonst https. */
+/** Why an address is not an allowed origin, or null. http only on this machine (isLoopback), otherwise https. */
 const originProblem = (value) => {
     let url;
     try {
@@ -157,8 +157,7 @@ const originProblem = (value) => {
     return null;
 };
 
-
-const checkEnvironments = (config, issues, notes) => {
+const checkEnvironments = (config, issues) => {
     if (!isObject(config.environments) || Object.keys(config.environments).length === 0) {
         issues.push(t('config.env.missing'));
         return;
@@ -200,7 +199,7 @@ const checkEnvironments = (config, issues, notes) => {
     }
 };
 
-/** Die Anmeldung, wie sie das Tool benutzt. Ohne `auth`: keine Anmeldung. */
+/** The login as the tool uses it. Without `auth`: no login. */
 export const authOf = (config) => (isObject(config.auth) ? config.auth : { type: 'none' });
 
 const checkAuth = (config, issues) => {
@@ -242,7 +241,7 @@ const checkRoles = (config, issues) => {
         const needsSecrets = type === 'form' || type === 'basic';
         if (needsSecrets && (!role.loginEnv || !role.passwordEnv)) issues.push(t('config.role.secrets', { name }));
         if (needsSecrets) {
-            // Namen von Umgebungsvariablen in caw/.env; ein Tippfehler im Schluessel (passwortEnv) fiele sonst erst beim Anmelden auf.
+            // Names of environment variables in caw/.env; a typo in the key (passwortEnv) would otherwise only show up at login.
             for (const [key, value] of Object.entries(role)) {
                 if (!ROLE_FIELDS.includes(key)) issues.push(t('config.role.unknownField', { name, key, allowed: ROLE_FIELDS.join(', '), hint: hintFor(key, ROLE_FIELDS) }));
                 else if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) issues.push(t('config.role.envName', { name, key }));
@@ -253,13 +252,13 @@ const checkRoles = (config, issues) => {
 };
 
 /**
- * Prueft eine Config und sammelt alle Befunde, damit `validate` sie in einem Durchgang nennen kann.
- * @param given die Config wie in der Datei; das Fragment aus `extends` wird relativ zu `root` gelesen
+ * Checks a config and collects all findings, so `validate` can report them in one pass.
+ * @param given the config as in the file; the fragment from `extends` is read relative to `root`
  */
 export const validateConfig = (given, root = process.cwd()) => {
     if (!isObject(given)) return { ok: false, issues: [t('config.notObject')], notes: [] };
     const issues = [];
-    // Hinweise, die nichts verhindern: Einstellungen, die so nichts bewirken.
+    // Notes that block nothing: settings that have no effect as they are.
     const notes = [];
     for (const key of Object.keys(given)) if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
     if (given.language !== undefined && !['de', 'en'].includes(given.language)) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
@@ -267,7 +266,7 @@ export const validateConfig = (given, root = process.cwd()) => {
     issues.push(...loaded);
     if (config.extends !== undefined && given.extends === undefined) issues.push(t('config.extendsOnlyProject'));
 
-    checkEnvironments(config, issues, notes);
+    checkEnvironments(config, issues);
     checkAuth(config, issues);
     checkRoles(config, issues);
     if (!isObject(config.apps) || Object.keys(config.apps).length === 0) issues.push(t('config.apps.missing'));
@@ -305,7 +304,7 @@ export const validateConfig = (given, root = process.cwd()) => {
     if (config.extraAllowedHosts !== undefined && !Array.isArray(config.extraAllowedHosts)) issues.push(t('config.extraAllowedHosts'));
     else for (const value of config.extraAllowedHosts ?? []) {
         if (typeof value === 'string' && HOST.test(value)) continue;
-        // Meist steht dort eine ganze Adresse: Dann den Host daraus nennen.
+        // Usually a full address was given: then suggest its host.
         const host = hostOf(value);
         issues.push(host === null ? t('config.extraAllowedHosts.entry', { value: JSON.stringify(value) }) : t('config.extraAllowedHosts.url', { value: JSON.stringify(value), host }));
     }
@@ -348,7 +347,7 @@ export const validateConfig = (given, root = process.cwd()) => {
         if (typeof app.dir !== 'string' || app.dir === '' || /^([\\/]|[A-Za-z]:)/.test(app.dir) || app.dir.split(/[\\/]/).includes('..')) {
             issues.push(t('config.app.dir', { name }));
         }
-        // Ohne startUrl: Die App wird nur unterwegs erreicht, etwa ueber eine Aufgabe.
+        // Without startUrl the app is only reached along the way, e.g. via a task.
         if (app.startUrl !== undefined && (typeof app.startUrl !== 'string' || !app.startUrl.startsWith('/'))) issues.push(t('config.app.startUrl', { name }));
         const unknown = Object.keys(app).find((key) => !APP_KEYS.includes(key));
         if (unknown !== undefined) issues.push(t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) }));
@@ -359,8 +358,8 @@ export const validateConfig = (given, root = process.cwd()) => {
 };
 
 /**
- * Das Overlay geht nur, wenn Umgebung und App zusammenpassen: overlay an der Umgebung, eine Quelle an der App. Fehlt eine Seite, geht
- * --overlay nirgends; mit einer Adresse auf der Kommandozeile (--overlay http://…) braucht die App keine.
+ * The overlay only works when environment and app match: overlay on the environment, a source on the app. If either is missing,
+ * --overlay works nowhere; with an address on the command line (--overlay http://…) the app needs none.
  */
 const overlayNotes = (config) => {
     const apps = Object.keys(config.apps ?? {});
@@ -372,7 +371,7 @@ const overlayNotes = (config) => {
     return notes;
 };
 
-/** Die Config wie loadConfig, dazu die Hinweise der Pruefung (Einstellungen ohne Wirkung). */
+/** The config as loadConfig returns it, plus the validation notes (settings without effect). */
 export const loadConfigWithNotes = (root) => {
     let raw;
     try {
@@ -389,17 +388,17 @@ export const loadConfigWithNotes = (root) => {
     const { issues, notes } = validateConfig(config, root);
     if (issues.length > 0) throw new CawError('config-invalid', `${CONFIG_FILE}:\n- ${issues.join('\n- ')}`);
     const effective = effectiveConfig(config, root).config;
-    // Der Team-Standard fuer das Theme gilt fuer alles, was dieser Prozess zeigt: Werkbank, Chat, Karte, Terminal.
+    // The team default theme applies to everything this process shows: workbench, chat, card, terminal.
     setProjectTheme(effective.theme);
     return { config: effective, notes };
 };
 
 export const loadConfig = (root) => loadConfigWithNotes(root).config;
 
-// Ein Pfad im Projekt: relativ, ohne `..`. Wie `dir` und `overlay.build`.
+// A path inside the project: relative, without `..`. Like `dir` and `overlay.build`.
 const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
 const APP_KEYS = ['dir', 'startUrl', 'overlay'];
-/** Die Adresse eines Servers: http(s), mit Host. Wie --overlay <url>. */
+/** A server address: http(s), with host. Like --overlay <url>. */
 export const isServerUrl = (value) => {
     if (typeof value !== 'string' || !/^https?:\/\/[^\s/]+/i.test(value)) return false;
     try {
@@ -411,7 +410,7 @@ export const isServerUrl = (value) => {
 const OVERLAY_KEYS = ['build', 'dev', 'buildCommand', 'devCommand', 'statics'];
 const STATIC_KEYS = ['name', 'path'];
 
-/** Die Fehler in `apps.<name>.overlay`. Bei ExtJS ist die Quelle der Sencha-Watch: kein build und kein dev-URL. */
+/** The errors in `apps.<name>.overlay`. With ExtJS the source is the Sencha watch: no build and no dev URL. */
 const overlayIssues = (name, overlay, extjs) => {
     if (!isObject(overlay)) return [t('config.overlay.notObject', { name })];
     const issues = [];
@@ -435,22 +434,22 @@ const overlayIssues = (name, overlay, extjs) => {
     return issues;
 };
 
-/** Ohne `assetUrlPattern`: der Pfad unterhalb der Umgebungs-URL, etwa `assets/index-X.js` aus `https://host/app/assets/index-X.js`. */
+/** Without `assetUrlPattern`: the path below the environment URL, e.g. `assets/index-X.js` from `https://host/app/assets/index-X.js`. */
 export const defaultAssetPattern = (url) => {
-    // Wie Chrome die Adresse eines Requests schreibt: Host klein, ohne Standardport. Sonst passte das Muster nie, still.
+    // As Chrome writes a request URL: lowercase host, no default port. Otherwise the pattern would silently never match.
     const parsed = new URL(String(url));
     const base = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
     return `^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/([^?#]+)`;
 };
 
-/** Wie ein Ziel geschrieben wird: `umgebung`, mit Mandanten `mandant/umgebung`. */
+/** How a target is written: `environment`, with sites `site/environment`. */
 export const targetForm = (config) => (config.sites === undefined ? t('config.targetForm.plain') : t('config.targetForm.sites'));
 
-/** Alle Ziele, die die Config kennt, fuer Meldungen und `init`. */
+/** All targets the config knows, for messages and `init`. */
 export const allTargets = (config) => Object.entries(environmentDefs(config))
     .flatMap(([name, entry]) => Object.keys(entry.urls).map((site) => (site === '' ? name : `${site}/${name}`)));
 
-/** Loest ein Ziel auf: die Umgebung, mit Mandanten auch der Mandant, samt Adresse und Faehigkeiten. */
+/** Resolves a target: the environment (and the site, with sites), with URL and abilities. */
 export const resolveTarget = (config, target) => {
     const text = String(target);
     const parts = text.split('/');
@@ -464,15 +463,16 @@ export const resolveTarget = (config, target) => {
     if (withSites && !config.sites.includes(site)) throw new CawError('target-invalid', t('config.target.site', { site, sites: config.sites.join(', ') }));
     const url = defs[environment].urls[site];
     if (url === undefined) throw new CawError('target-invalid', t('config.target.siteUrl', { site, environment }));
-    const { urls, ...abilities } = defs[environment];
+    const abilities = { ...defs[environment] };
+    delete abilities.urls;
     return { target: text, ...(withSites ? { site } : {}), environment, url, ...abilities };
 };
 
 /**
- * Was Chrome erreichen darf: die Adressen der Umgebungen und projekteigene Ausnahmen, etwa ein Anmeldedienst.
- * Produktion nie, ausser der Lauf zielt selbst darauf: Sonst erreichte ein Lauf auf dev ueber goto, eval oder einen Link die
- * Produktion, womoeglich mit geteilter Anmeldung.
- * @param target das aufgeloeste Ziel des Laufs (resolveTarget); ohne Ziel nur Umgebungen ohne production
+ * What Chrome may reach: the environment hosts and project-specific exceptions, e.g. a login service.
+ * Never production unless the run targets it: otherwise a run on dev could reach production via goto, eval or a link,
+ * possibly with a shared login.
+ * @param target the resolved target of the run (resolveTarget); without a target only non-production environments
  */
 export const browserHosts = (config, target) => {
     const hosts = Object.values(environmentDefs(config)).filter(({ production }) => !production)
@@ -480,20 +480,20 @@ export const browserHosts = (config, target) => {
     const own = target?.url === undefined ? [] : [new URL(target.url).hostname];
     const production = new Set(Object.values(environmentDefs(config)).filter(({ production: isProduction }) => isProduction)
         .flatMap(({ urls }) => Object.values(urls).map((url) => new URL(url).hostname)));
-    // Eine Ausnahme darf keine Produktion wieder freischalten.
+    // An exception must not re-enable production.
     const extra = (config.extraAllowedHosts ?? []).filter((host) => target?.production === true || !production.has(host));
     return [...new Set([...own, ...hosts, ...extra])];
 };
 
-/** Stabile, eindeutige UUID-Form je Eintrag; devlink verlangt Identitaeten, sie tragen aber keine Bedeutung. */
+/** Stable, unique UUID-shaped id per entry; devlink requires identities, but they carry no meaning. */
 const uuidOf = (seed) => {
-    const h = createHash('sha256').update(seed).digest('hex');
-    return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+    const hash = createHash('sha256').update(seed).digest('hex');
+    return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 };
 
 /**
- * Baut aus Projekt-Config und Ziel die Config, die der devlink-Host erwartet: Umgebung, Startseite, Anmeldemerkmal. Den lokalen Code
- * spielt er nicht ein, das macht das Overlay (src/host/overlay.mjs) mit einer eigenen Route.
+ * Builds the config the devlink host expects from project config and target: environment, start page, login marker. It does not
+ * inject local code; the overlay (src/host/overlay.mjs) does that with its own route.
  */
 export const buildDevlinkConfig = (config, resolved, appName) => {
     const app = config.apps[appName];

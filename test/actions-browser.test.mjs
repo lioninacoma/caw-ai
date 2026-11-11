@@ -1,4 +1,4 @@
-// upload, download und die Zwischenablage gegen echtes Chrome (headless). Ohne Chrome uebersprungen.
+// upload, download and the clipboard against real Chrome (headless). Skipped without Chrome.
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,7 +19,7 @@ before(async () => {
     browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
     context = await browser?.newContext({ acceptDownloads: true });
     page = await context?.newPage();
-    // Eine Seite mit echtem Origin: Die Zwischenablage gibt es nur in einem sicheren Kontext.
+    // A page with a real origin: the clipboard only exists in a secure context.
     await page?.route(`${ORIGIN}/**`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>caw</title>' }));
     dir = mkdtempSync(join(tmpdir(), 'caw-actions-'));
     mkdirSync(join(dir, 'fixtures'));
@@ -40,13 +40,13 @@ const play = (steps) => playReplay({
     },
     session: { page: () => page, waitReady: async () => ({ settled: true }) },
     base: ORIGIN,
-    // Grosszuegig: Auf langsamen CI-Rechnern unter Windows braucht der erste Klick mit Dateiauswahl mehrere Sekunden.
+    // Generous: on slow Windows CI machines the first click with a file chooser takes several seconds.
     stepTimeoutMs: 10000,
     filesDir: dir,
 });
 
-test('upload: Ein verstecktes Dateifeld hinter einem Knopf bekommt die Datei über die Dateiauswahl', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('upload: a hidden file input behind a button gets the file via the file chooser', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.goto(`${ORIGIN}/`);
     await page.setContent('<button onclick="document.getElementById(\'f\').click()">Dateien wählen</button><input type="file" id="f" hidden>');
     const { broken, results } = await play([
@@ -58,8 +58,8 @@ test('upload: Ein verstecktes Dateifeld hinter einem Knopf bekommt die Datei üb
     return undefined;
 });
 
-test('upload: Ein sichtbares Dateifeld bekommt die Datei direkt', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('upload: a visible file input gets the file directly', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent('<label>Datei <input type="file" id="f"></label>');
     const { broken } = await play([
         { action: 'upload', target: { role: 'textbox', name: 'Datei' }, files: ['fixtures/brief.pdf'] },
@@ -69,8 +69,8 @@ test('upload: Ein sichtbares Dateifeld bekommt die Datei direkt', async (t) => {
     return undefined;
 });
 
-test('download: Der Klick lädt eine Datei mit passendem Namen, ein falscher Name lässt den Schritt scheitern', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('download: the click downloads a file with a matching name; a wrong name fails the step', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent('<a href="data:text/plain,Inhalt" download="akte-7.txt">Exportieren</a>');
     const target = { role: 'link', name: 'Exportieren' };
     assert.equal((await play([{ action: 'download', target, file: '^akte-\\d+\\.txt$' }])).broken, null);
@@ -80,21 +80,21 @@ test('download: Der Klick lädt eine Datei mit passendem Namen, ein falscher Nam
     return undefined;
 });
 
-test('Zwischenablage: Mit dem Recht für den Origin liest eine Prüfung, was die Seite kopiert hat', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('Clipboard: with the permission for the origin a check reads what the page copied', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await grantClipboard(context, `${ORIGIN}/start`);
     await page.goto(`${ORIGIN}/`);
-    await page.evaluate(() => navigator.clipboard.writeText('Prüfsumme 3fa9'));
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Prüfsumme 3fa9');
+    await page.evaluate("navigator.clipboard.writeText('Prüfsumme 3fa9')");
+    assert.equal(await page.evaluate('navigator.clipboard.readText()'), 'Prüfsumme 3fa9');
     return undefined;
 });
 
-// Wie „Abbrechen“ mit Rueckfrage: Der erste Klick oeffnet einen modalen Dialog ueber dem Knopf.
+// Like "Abbrechen" with a confirmation: the first click opens a modal dialog over the button.
 const CANCEL = `<button onclick="document.getElementById('d').showModal()">Abbrechen</button>
 <dialog id="d" aria-label="Antrag abbrechen?"><p>Wirklich abbrechen?</p><button>Ja</button><button>Nein</button></dialog>`;
 
-test('click: Ein wiederholter Klick, dessen Ziel der Dialog des ersten verdeckt, wird übersprungen statt bis zum Zeitlimit zu warten', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('click: a repeated click whose target is covered by the dialog of the first is skipped instead of waiting for the timeout', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(CANCEL);
     const target = { role: 'button', name: 'Abbrechen' };
     const start = Date.now();
@@ -106,12 +106,12 @@ test('click: Ein wiederholter Klick, dessen Ziel der Dialog des ersten verdeckt,
     assert.equal(broken, null);
     assert.equal(results.get('S4').status, 'pass');
     assert.match(results.get('S4').note, /Wiederholten Klick übersprungen/);
-    assert.ok(Date.now() - start < 8000, `nicht bis zum Zeitlimit: ${Date.now() - start} ms`);
+    assert.ok(Date.now() - start < 8000, `not until the timeout: ${Date.now() - start} ms`);
     return undefined;
 });
 
-test('click: Ein verdecktes Ziel ohne gleichen Klick davor bleibt ein Fehler', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('click: a covered target without the same click before stays an error', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     await page.setContent(`${CANCEL}<button>Speichern</button>`);
     const { broken } = await playReplay({
         replay: { steps: [
@@ -129,8 +129,8 @@ test('click: Ein verdecktes Ziel ohne gleichen Klick davor bleibt ein Fehler', a
     return undefined;
 });
 
-test('click optional: Fehlt das Ziel (Cookie-Banner schon weg), fällt der Klick nach kurzer Zeit weg; ist es da, wird geklickt', async (t) => {
-    if (needsChrome()) return t.skip('kein Chrome');
+test('click optional: if the target is missing (cookie banner already gone), the click is dropped after a short time; if present, it is clicked', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
     const banner = { action: 'click', target: { role: 'button', name: 'Alle akzeptieren' }, optional: true };
     await page.setContent('<button onclick="this.textContent=\'Weiter!\'">Weiter</button>');
     const start = Date.now();
@@ -138,7 +138,7 @@ test('click optional: Fehlt das Ziel (Cookie-Banner schon weg), fällt der Klick
     assert.equal(absent.broken, null);
     assert.equal(absent.results.get('S1').status, 'pass');
     assert.match(absent.results.get('S1').note, /Optionalen Klick übersprungen/);
-    assert.ok(Date.now() - start < 8000, `nicht bis zum Zeitlimit: ${Date.now() - start} ms`);
+    assert.ok(Date.now() - start < 8000, `not until the timeout: ${Date.now() - start} ms`);
 
     await page.setContent('<div id="b"><button onclick="document.getElementById(\'b\').remove()">Alle akzeptieren</button></div>');
     const shown = await play([banner, { action: 'check', id: 'S1', code: "document.getElementById('b') === null" }]);

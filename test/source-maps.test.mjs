@@ -16,23 +16,23 @@ const encode = (values) => values.map((number) => {
     return out;
 }).join('');
 
-test('Quellkarten: VLQ hin und zurück, auch negativ und mehrstellig', () => {
+test('Source maps: VLQ round trip, also negative and multi-digit', () => {
     for (const values of [[0], [1, -1], [16, 1000, -4096], [0, 0, 41, 6]]) assert.deepEqual(decodeVlq(encode(values)), values);
-    assert.throws(() => decodeVlq('A!'), /kein Base64/);
+    assert.throws(() => decodeVlq('A!'), /not a Base64/);
 });
 
-// Erzeugt: Zeile 1 ab Spalte 0 aus a.ts 1:1, ab Spalte 40 aus b.ts 42:7 (relativ codiert); Zeile 2 leer; Segment ohne Quelle faellt weg.
+// Generated: line 1 from column 0 maps to a.ts 1:1, from column 40 to b.ts 42:7 (relative encoding); line 2 empty; a segment without source is dropped.
 const MAP = {
     version: 3,
     sources: ['webpack://shop/./src/a.ts', 'webpack://shop/./src/app/orders.service.ts'],
     mappings: `${encode([0, 0, 0, 0])},${encode([40, 1, 41, 6])},${encode([5])};`,
 };
 
-test('Quellkarten: Zuordnung je Zeile, Segmente ohne Quelle fallen weg', () => {
+test('Source maps: mappings per line, segments without a source are dropped', () => {
     assert.deepEqual(parseMappings(MAP.mappings), [[[0, 0, 0, 0], [40, 1, 41, 6]], []]);
 });
 
-test('Quellkarten: Pfade wie im Projekt, ohne Praefixe der Bundler', () => {
+test('Source maps: paths as in the project, without bundler prefixes', () => {
     assert.equal(sourcePath('webpack://shop/./src/a.ts', 'https://app.example/main.js.map'), 'src/a.ts');
     assert.equal(sourcePath('../src/App.tsx', 'https://app.example/assets/index-3f9a.js.map'), 'src/App.tsx');
     assert.equal(sourcePath('http://app.localhost:5173/src/App.tsx?t=123', 'http://app.localhost:5173/src/App.tsx'), 'src/App.tsx');
@@ -47,7 +47,7 @@ const STACK = [
     '    at x (https://app.example/inline.js:1:3)',
 ].join('\n');
 
-test('Quellkarten: Stack übersetzen, erste eigene Stelle, fremde Quellkarten nicht laden', async () => {
+test('Source maps: translate a stack, first own position, never load foreign source maps', async () => {
     const fetched = [];
     const files = {
         'https://app.example/vendor.js': 'x()\n//# sourceMappingURL=https://evil.example/vendor.js.map',
@@ -57,28 +57,28 @@ test('Quellkarten: Stack übersetzen, erste eigene Stelle, fremde Quellkarten ni
     };
     const mapper = createSourceMapper({ fetchText: async (url) => { fetched.push(url); return files[url] ?? null; } });
     const { at, stack } = await mapper.translate(STACK);
-    assert.equal(at, 'https://app.example/vendor.js:1:20', 'ohne Quellkarte bleibt die URL');
+    assert.equal(at, 'https://app.example/vendor.js:1:20', 'without a source map the URL stays');
     assert.deepEqual(stack, ['https://app.example/vendor.js:1:20', 'src/app/orders.service.ts:42:7', 'src/inline.ts:1:1']);
-    assert.ok(!fetched.some((url) => url.includes('evil')), 'kein Abruf auf einem fremden Origin');
+    assert.ok(!fetched.some((url) => url.includes('evil')), 'no fetch from a foreign origin');
     const skipped = await mapper.translate(STACK, { skip: /vendor/ });
-    assert.equal(skipped.at, 'src/app/orders.service.ts:42:7', 'Framework-Dateien übersprungen');
+    assert.equal(skipped.at, 'src/app/orders.service.ts:42:7', 'framework files skipped');
     await mapper.translate(STACK);
-    assert.equal(fetched.filter((url) => url.endsWith('main.3f9a.js')).length, 1, 'je Skript nur einmal geladen');
+    assert.equal(fetched.filter((url) => url.endsWith('main.3f9a.js')).length, 1, 'each script loaded only once');
 });
 
-test('Quellkarten: Inline-Karte länger als das Dateiende (Vite im Dev-Modus)', async () => {
+test('Source maps: inline map longer than the file tail (Vite in dev mode)', async () => {
     const big = Buffer.from(JSON.stringify({ ...MAP, sourcesContent: ['x'.repeat(50_000)] })).toString('base64');
     const mapper = createSourceMapper({ fetchText: async () => `code\n//# sourceMappingURL=data:application/json;base64,${big}\n` });
     assert.equal((await mapper.translate('    at https://app.example/src/App.tsx?t=1:1:45')).at, 'src/app/orders.service.ts:42:7');
 });
 
-test('Quellkarten: Nicht erlaubte Skripte, kaputte Karten und fehlender Stack scheitern nie', async () => {
+test('Source maps: disallowed scripts, broken maps and a missing stack never fail', async () => {
     const mapper = createSourceMapper({ fetchText: async (url) => (url.endsWith('.map') ? '{kaputt' : 'code'), allowed: (url) => !url.includes('gesperrt') });
     assert.deepEqual(await mapper.translate('    at https://gesperrt.example/a.js:1:1\n    at https://app.example/b.js:3:4'), { at: 'https://gesperrt.example/a.js:1:1', stack: ['https://gesperrt.example/a.js:1:1', 'https://app.example/b.js:3:4'] });
     assert.deepEqual(await mapper.translate(undefined), { at: undefined, stack: [] });
 });
 
-test('sourceRoot: mit genau einem / davor, absolute Quellen bleiben', () => {
+test('sourceRoot: with exactly one / before, absolute sources stay', () => {
     assert.equal(withRoot('src', 'a.ts'), 'src/a.ts');
     assert.equal(withRoot('src/', 'a.ts'), 'src/a.ts');
     assert.equal(withRoot('', 'a.ts'), 'a.ts');
@@ -87,12 +87,12 @@ test('sourceRoot: mit genau einem / davor, absolute Quellen bleiben', () => {
     assert.equal(withRoot('src', '/abs/a.ts'), '/abs/a.ts');
 });
 
-test('Quellkarten: Index-Karte mit sections (Turbopack, next dev) und file:///-Quellen', async () => {
+test('Source maps: index map with sections (Turbopack, next dev) and file:/// sources', async () => {
     const part = (file) => ({ version: 3, sources: [`file:///C:/app/lib/${file}`], mappings: `;${encode([4, 0, 1, 8])}` });
     const map = { version: 3, sources: [], sections: [{ offset: { line: 4, column: 0 }, map: part('Tickets.tsx') }, { offset: { line: 20, column: 0 }, map: part('explode.ts') }] };
     const files = { 'https://a.example/chunk.js': '//# sourceMappingURL=chunk.js.map', 'https://a.example/chunk.js.map': JSON.stringify(map) };
     const mapper = createSourceMapper({ fetchText: async (url) => files[url] ?? null });
-    // Zeile 22 der Datei ist Zeile 2 der zweiten Teilkarte, Spalte 5 trifft das Segment ab Spalte 4.
+    // Line 22 of the file is line 2 of the second section; column 5 hits the segment starting at column 4.
     const { at, stack } = await mapper.translate('Error: x\n    at explode (https://a.example/chunk.js:22:5)\n    at f (https://a.example/chunk.js:6:9)\n    at g (https://a.example/chunk.js:2:1)');
     assert.equal(at, 'C:/app/lib/explode.ts:2:9');
     assert.deepEqual(stack, ['C:/app/lib/explode.ts:2:9', 'C:/app/lib/Tickets.tsx:2:9', 'https://a.example/chunk.js:2:1']);

@@ -12,24 +12,24 @@ import { readContext } from '../src/host/run.mjs';
 import { withStepBudget } from '../src/host/step-budget.mjs';
 import { isAllowedFailure, renderReport } from '../src/shared/report.mjs';
 
-test('Schrittbudget: Zählt jede Aktion, auch gescheiterte; Lesen kostet nichts', async () => {
+test('Step budget: counts every action, failed ones too; reading is free', async () => {
     const seen = [];
     const budget = withStepBudget(async ({ action }) => {
         seen.push(action);
-        if (action === 'click') throw new Error('verdeckt');
+        if (action === 'click') throw new Error('covered');
         return 'ok';
     }, 2);
     await budget.handler({ action: 'snapshot' });
     await budget.handler({ action: 'eval' });
-    await assert.rejects(budget.handler({ action: 'click' }), /verdeckt/);
+    await assert.rejects(budget.handler({ action: 'click' }), /covered/);
     await budget.handler({ action: 'goto' });
     assert.equal(budget.used(), 2);
     await assert.rejects(budget.handler({ action: 'fill' }), { code: 'step-limit' });
-    assert.deepEqual(seen, ['snapshot', 'eval', 'click', 'goto'], 'Der abgewiesene Schritt erreicht den Browser nicht');
+    assert.deepEqual(seen, ['snapshot', 'eval', 'click', 'goto'], 'the rejected step does not reach the browser');
     await budget.handler({ action: 'finish' });
 });
 
-test('Laufkennung: Aufzeichnung kennt den Platzhalter, jedes Abspielen setzt die eigene ein', async () => {
+test('Run tag: the recording keeps the placeholder, every replay inserts its own', async () => {
     const id = newRunTag(new Date('2026-11-05T18:52:33Z'));
     assert.equal(id, 'CAW-20261105185233');
     const page = { locator: () => ({ evaluate: async () => ({ xtype: 'liste', own: `Vorgang ${id}` }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
@@ -40,7 +40,7 @@ test('Laufkennung: Aufzeichnung kennt den Platzhalter, jedes Abspielen setzt die
     assert.equal(recorder.steps[0].value, `Anliegen ${RUN_TAG_PLACEHOLDER}`);
     assert.equal(recorder.steps[1].target.own, `Vorgang ${RUN_TAG_PLACEHOLDER}`);
     assert.equal(recorder.steps[2].code, `text.includes('${RUN_TAG_PLACEHOLDER}')`);
-    // Vergleichswerte entstehen erst beim ersten gesunden run, nie unter Claudes Steuerung mit Fehlklicks.
+    // Baseline values come from the first healthy run, never from Claude's session with its misclicks.
     const withNet = createRecorder({ handler: async () => ({ pass: true }), session: { page: () => page, network: { mark: () => 0, since: () => [{ name: 'GET /umweg', outcome: 'ok', status: 200, ms: 1 }] } }, base: 'https://p.example' });
     await withNet.handler({ action: 'check', id: 'S1', code: 'true' });
     assert.deepEqual(withNet.steps, [{ action: 'check', id: 'S1', code: 'true' }]);
@@ -62,14 +62,14 @@ test('Laufkennung: Aufzeichnung kennt den Platzhalter, jedes Abspielen setzt die
     assert.equal(seen[0].code, "text.includes('CAW-2')");
 });
 
-test('Aufnahme: Ein Statushinweis, der dabei stand, gilt danach als bekannt und warnt nicht in jedem Lauf', async () => {
+test('Recording: a status note present while recording counts as known and does not warn in every run', async () => {
     const page = { locator: () => ({ evaluate: async () => ({ xtype: 'a', own: 'A' }) }), url: () => 'https://p.example/a', evaluate: async () => ({ appLoaded: true, signedIn: true, messages: [], notes: ['EULA nicht angenommen.'] }) };
     const recorder = createRecorder({ handler: async () => ({ pass: true }), session: { page: () => page }, base: 'https://p.example' });
     await recorder.handler({ action: 'check', id: 'S1', code: 'true' });
     assert.ok([...recorder.messages].includes('EULA nicht angenommen.'));
 });
 
-test('Vorführung: Der Chat liest jede aufgezeichnete Aktion mit, Prüfpunkte und Fehler zeigt er ohnehin', () => {
+test('Demonstration: the chat echoes every recorded action; checkpoints and failures it shows anyway', () => {
     assert.equal(feedLabel({ action: 'click', target: { role: 'link', name: 'Alle Akten' } }), 'Klick link "Alle Akten"');
     assert.equal(feedLabel({ action: 'fill', target: { role: 'textbox', name: 'Passwort' }, secret: true }), 'Eingabe in ein Passwortfeld, wird nicht aufgezeichnet');
     assert.equal(feedLabel({ action: 'press', key: 'Enter' }), 'Taste Enter');
@@ -77,7 +77,7 @@ test('Vorführung: Der Chat liest jede aufgezeichnete Aktion mit, Prüfpunkte un
     for (const action of ['checkpoint', 'note', 'failure']) assert.equal(feedLabel({ action, text: 'x' }), null);
 });
 
-test('Laufkennung in Kleinbuchstaben: Adressen aus Namen bekommen einen eigenen Platzhalter', async () => {
+test('Lower-case run tag: URLs derived from names get their own placeholder', async () => {
     const id = 'CAW-20261108172351';
     const page = { locator: () => ({ evaluate: async () => ({ xtype: 'a', own: 'Akte' }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
     const recorder = createRecorder({ handler: async () => ({ pass: true }), session: { page: () => page }, base: 'https://p.example', runTag: id });
@@ -88,7 +88,7 @@ test('Laufkennung in Kleinbuchstaben: Adressen aus Namen bekommen einen eigenen 
     assert.deepEqual(tagRun({ a: 'x' }, id), { a: 'x' });
 });
 
-test('Vorführung: Direkt wiederholbar ist nur, was ein stabiles Ziel hat und kein Geheimnis ist', () => {
+test('Demonstration: only actions with a stable target and no secret are directly replayable', () => {
     const target = { xtype: 'b', text: 'Weiter' };
     const { steps, problems } = recordableSteps([
         { action: 'click', target, path: '/a' },
@@ -97,14 +97,14 @@ test('Vorführung: Direkt wiederholbar ist nur, was ein stabiles Ziel hat und ke
         { action: 'click', target: null, hint: 'div', path: '/a' },
         { action: 'navigated', url: '/b#vorgang/4711', path: '/b' },
     ]);
-    assert.deepEqual(steps, [{ action: 'click', target, path: '/a' }], 'Ein Seitenwechsel ist nur Hinweis, nie ein festes goto');
+    assert.deepEqual(steps, [{ action: 'click', target, path: '/a' }], 'a navigation is only a hint, never a fixed goto');
     assert.match(itemLabel({ action: 'navigated', url: '/b' }), /nur Hinweis/);
     assert.equal(problems.length, 2);
     assert.equal(itemLabel({ action: 'click', target }), 'click b "Weiter"');
     assert.match(itemLabel({ action: 'click', target: null, hint: 'div' }), /ohne stabile/);
 });
 
-test('Vorführung: Text wird Prüfpunkt mit Screenshot, leere Zeile beendet, Fenster schließen auch', async (t) => {
+test('Demonstration: text becomes a checkpoint with screenshot; an empty line ends it, so does closing the window', async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-show-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const bindings = {};
@@ -139,7 +139,7 @@ test('Vorführung: Text wird Prüfpunkt mit Screenshot, leere Zeile beendet, Fen
     assert.deepEqual(none, []);
 });
 
-test('Vorführung im Browser: Passwort bleibt in der Seite, Felder kommen vor der Taste', () => {
+test('Demonstration in the browser: passwords stay in the page, fields come before the key', () => {
     const sent = [];
     const listeners = {};
     class Field {
@@ -170,21 +170,21 @@ test('Vorführung im Browser: Passwort bleibt in der Seite, Felder kommen vor de
     field.value = 'Text';
     listeners.keydown({ isTrusted: true, key: 'Enter', target: field });
     listeners.change({ target: field });
-    assert.deepEqual(sent.map(({ action, value, key }) => [action, value ?? key]), [['fill', 'Text'], ['press', 'Enter']], 'Keine Doppelung durch das späte change');
+    assert.deepEqual(sent.map(({ action, value, key }) => [action, value ?? key]), [['fill', 'Text'], ['press', 'Enter']], 'no duplicate from the late change event');
 
     sent.length = 0;
     listeners.click({ isTrusted: false, target: field });
     listeners.keydown({ isTrusted: true, key: 'a', target: field });
-    assert.deepEqual(sent, [], 'Synthetische Klicks und normale Tasten zählen nicht');
+    assert.deepEqual(sent, [], 'synthetic clicks and ordinary keys do not count');
 });
 
-test('Bericht: Schreibende Aufrufe stehen drin, Parameter nicht', () => {
+test('Report: lists writing calls, not their parameters', () => {
     const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay', writes: [{ label: 'connector HTTP-X', count: 2 }] });
     assert.match(report, /## Schreibende Aufrufe[\s\S]*connector HTTP-X \(2x\)/);
     assert.doesNotMatch(renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay' }), /Schreibende/);
 });
 
-test('Vorführung: Neuladen ist ein Hinweis in der Aufnahme, Aktualisieren lädt nur die Seite', async (t) => {
+test('Demonstration: a reload is a hint in the recording; refresh only reloads the page', async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-reload-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const handlers = {};
@@ -192,17 +192,17 @@ test('Vorführung: Neuladen ist ein Hinweis in der Aufnahme, Aktualisieren lädt
     const frame = { evaluate: async (fn) => (typeof fn === 'function' ? navType : undefined), waitForLoadState: async () => {}, url: () => 'https://p.example/a#liste' };
     const page = { url: () => frame.url(), screenshot: async () => Buffer.from('png'), on: (name, callback) => { handlers[name] = callback; }, mainFrame: () => frame, frames: () => [frame] };
     const context = { exposeBinding: async () => {}, addInitScript: async () => {}, pages: () => [page], on: () => {} };
-    let refresh = 'nie gesetzt';
+    let refresh = 'never set';
     let reloads = 0;
     const workbench = { page: {}, view: { frame }, onRefresh: (handler) => { refresh = handler; } };
     let clock = 0;
     const lines = [
         async () => {
-            // F5 auf derselben Adresse, dann ein echter Seitenwechsel lange nach dem letzten Klick
+            // F5 on the same URL, then a real navigation long after the last click
             await refresh();
             handlers.framenavigated(frame);
             await new Promise((ok) => { setTimeout(ok, 5); });
-            // Ein Formular auf dieselbe Adresse ist kein Neuladen
+            // A form posting to the same URL is not a reload
             navType = 'navigate';
             handlers.framenavigated(frame);
             await new Promise((ok) => { setTimeout(ok, 5); });
@@ -223,12 +223,12 @@ test('Vorführung: Neuladen ist ein Hinweis in der Aufnahme, Aktualisieren lädt
     assert.deepEqual(items.map(({ action }) => action), ['reloaded', 'navigated', 'note']);
     assert.deepEqual(items[0], { action: 'reloaded', url: '/a#liste', path: '/a' });
     assert.match(itemLabel(items[0]), /^Seite neu geladen: \/a#liste \(nur Hinweis\)$/);
-    assert.equal(reloads, 1, 'Aktualisieren lädt während der Vorführung die Seite neu');
-    assert.equal(refresh, null, 'danach ist Aktualisieren wieder gesperrt');
-    assert.deepEqual(recordableSteps(items).steps, [], 'Neuladen wird kein fester Schritt');
+    assert.equal(reloads, 1, 'refresh reloads the page during the demonstration');
+    assert.equal(refresh, null, 'afterwards refresh is blocked again');
+    assert.deepEqual(recordableSteps(items).steps, [], 'a reload does not become a fixed step');
 });
 
-test('Vorführung: Hilfe im selben Lauf überschreibt frühere Bilder nicht', async (t) => {
+test('Demonstration: help in the same run does not overwrite earlier screenshots', async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-png-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     writeFileSync(join(dir, 'punkt-1.png'), 'alt');
@@ -244,7 +244,7 @@ test('Vorführung: Hilfe im selben Lauf überschreibt frühere Bilder nicht', as
     assert.equal(items[0].screenshot, 'punkt-2.png');
 });
 
-test('Vorführung: Strg+C bricht ab, statt mit halber Vorführung weiterzumachen', async (t) => {
+test('Demonstration: Ctrl+C aborts instead of continuing with half a demonstration', async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-int-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const context = { exposeBinding: async () => {}, addInitScript: async () => {}, pages: () => [], on: () => {} };
@@ -258,7 +258,7 @@ test('Vorführung: Strg+C bricht ab, statt mit halber Vorführung weiterzumachen
     await new Promise((ok) => { setTimeout(ok, 20); });
     process.emit('SIGINT');
     await assert.rejects(running, { code: 'aborted' });
-    assert.equal(aborted, true, 'Die offene Eingabe wird beendet');
+    assert.equal(aborted, true, 'the pending input is ended');
 });
 
 const RECORDED = [
@@ -269,7 +269,7 @@ const RECORDED = [
     { action: 'check', id: 'S1', code: 'a' },
 ];
 
-test('Umwege: Nummern werden gelesen und streng geprüft', () => {
+test('Detours: numbers are parsed and strictly validated', () => {
     assert.deepEqual(dropNumbers(RECORDED, undefined), []);
     assert.deepEqual(dropNumbers(RECORDED, [3, '1-2', 3]), [1, 2, 3]);
     assert.throws(() => dropNumbers(RECORDED, 3), { code: 'finish-rejected' });
@@ -277,11 +277,11 @@ test('Umwege: Nummern werden gelesen und streng geprüft', () => {
     assert.throws(() => dropNumbers(RECORDED, [0]), { code: 'finish-rejected' });
     assert.throws(() => dropNumbers(RECORDED, ['4-99']), { code: 'finish-rejected' });
     assert.throws(() => dropNumbers(RECORDED, ['3-2']), { code: 'finish-rejected' });
-    assert.throws(() => dropNumbers(RECORDED, [5]), /Prüfung \(S1\)/);
-    assert.throws(() => dropNumbers(RECORDED, ['4-5']), /Prüfung/);
+    assert.throws(() => dropNumbers(RECORDED, [5]), /a check \(S1\)/);
+    assert.throws(() => dropNumbers(RECORDED, ['4-5']), /a check/);
 });
 
-test('Umwege: Streichen zeigt die Liste, kürzt und lässt kein doppeltes wait-ready stehen', () => {
+test('Detours: dropping lists the steps, shortens them and leaves no duplicate wait-ready', () => {
     const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => ({}) }, base: 'https://p.example' });
     recorder.addSteps(RECORDED);
     assert.match(recorder.list()[2], /^3 click tab "Falsch"$/);
@@ -289,12 +289,12 @@ test('Umwege: Streichen zeigt die Liste, kürzt und lässt kein doppeltes wait-r
     assert.deepEqual(recorder.steps.map(({ action }) => action), ['goto', 'wait-ready', 'check']);
 });
 
-test('Bericht: Gestrichene Schritte stehen drin', () => {
+test('Report: dropped steps are listed', () => {
     const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay', dropped: ['3 click tab "Falsch"'] });
     assert.match(report, /## Aus der Aufzeichnung gestrichen[\s\S]*3 click tab "Falsch"/);
 });
 
-test('caw.md: wird gelesen, fehlt oder leer gibt es nichts', () => {
+test('caw.md: is read; missing or empty yields nothing', () => {
     const root = mkdtempSync(join(tmpdir(), 'caw-context-'));
     try {
         assert.equal(readContext(root), undefined);
@@ -308,7 +308,7 @@ test('caw.md: wird gelesen, fehlt oder leer gibt es nichts', () => {
     }
 });
 
-test('consoleIgnore: erlaubt bekannte Meldungen, aber nie HTTP ab 500', () => {
+test('consoleIgnore: allows known messages, but never HTTP 500 and above', () => {
     const patterns = [/getKey is not a function/, /HTTP 500/, /DataProxy/];
     assert.equal(isAllowedFailure({ type: 'pageerror', text: 'TypeError: t.getKey is not a function' }, undefined, patterns), true);
     assert.equal(isAllowedFailure({ type: 'pageerror', text: 'TypeError: anderes' }, undefined, patterns), false);
@@ -326,7 +326,7 @@ const rememberRecorder = () => createRecorder({
     base: 'https://p.example',
 });
 
-test('remember: Spätere Schritte speichern den Platzhalter, frühere bleiben, auch nach dem Streichen', async () => {
+test('remember: later steps store the placeholder, earlier ones stay, even after dropping', async () => {
     const recorder = rememberRecorder();
     await recorder.handler({ action: 'fill', target: 'e1', value: 'vorher 20262140000260' });
     await recorder.handler({ action: 'remember', name: 'vorgangsnr', code: 'lies()' });
@@ -339,10 +339,10 @@ test('remember: Spätere Schritte speichern den Platzhalter, frühere bleiben, a
     recorder.drop([4]);
     assert.equal(recorder.steps[0].value, 'vorher 20262140000260');
     assert.deepEqual(recorder.list().at(1), '2 remember vorgangsnr');
-    assert.throws(() => dropNumbers(recorder.steps, [2]), /merkt sich vorgangsnr/);
+    assert.throws(() => dropNumbers(recorder.steps, [2]), /remembers vorgangsnr/);
 });
 
-test('remember: Das Abspielen liest den Wert neu und wartet, bis er da ist', async () => {
+test('remember: replay reads the value again and waits until it is there', async () => {
     const seen = [];
     let tries = 0;
     const session = {
@@ -354,7 +354,7 @@ test('remember: Das Abspielen liest den Wert neu und wartet, bis er da ist', asy
         seen.push(command);
         if (command.action !== 'remember') return { pass: true, value: true };
         tries += 1;
-        if (tries === 1) throw new Error('noch nicht');
+        if (tries === 1) throw new Error('not yet');
         return { name: command.name, value: '20262140000999' };
     };
     const { broken, results } = await playReplay({
@@ -370,7 +370,7 @@ test('remember: Das Abspielen liest den Wert neu und wartet, bis er da ist', asy
     assert.equal(seen.at(-1).code, "x === '20262140000999'");
 });
 
-test('remember: Der Host weist leere, kurze und reservierte Werte ab', async () => {
+test('remember: the host rejects empty, short and reserved values', async () => {
     let result = '20262140000260';
     const handler = createAgentHandler({ session: { page: () => ({ evaluate: async () => result }) }, run: { expectations: [] }, hosts: [], agentDir: '.', onVerdict: () => {} });
     assert.deepEqual(await handler({ action: 'remember', name: 'nr', code: 'x' }), { name: 'nr', value: '20262140000260' });
@@ -385,7 +385,7 @@ test('remember: Der Host weist leere, kurze und reservierte Werte ab', async () 
     await assert.rejects(handler({ action: 'remember', name: 'a b', code: 'x' }), { code: 'usage' });
 });
 
-test('Chat: Eine Nachricht hält jeden Browserbefehl an, bis Claude sie gelesen hat', () => {
+test('Chat: a message holds every browser command until Claude has read it', () => {
     const shown = [];
     const chat = createChat({ show: (who, text) => shown.push([who, text]) });
     chat.gate();
@@ -399,21 +399,21 @@ test('Chat: Eine Nachricht hält jeden Browserbefehl an, bis Claude sie gelesen 
     assert.throws(() => chat.say(' '), { code: 'usage' });
 });
 
-test('Chat: Pause lässt Zeit für Eingaben, erst Weiter gibt zurück', async () => {
+test('Chat: pause leaves time for input, only continue returns', async () => {
     const states = [];
     const chat = createChat({ status: (state) => states.push(state) });
     chat.human.toggle();
     assert.equal(chat.paused(), true);
     assert.throws(() => chat.gate(), { code: 'human-message' });
     chat.human.toggle();
-    assert.equal(chat.paused(), false, 'Solange Claude noch nicht wartet, lässt sich die Pause zurücknehmen');
+    assert.equal(chat.paused(), false, 'while Claude is not yet waiting, the pause can be withdrawn');
     chat.human.toggle();
     chat.enter('paused');
     const first = chat.operator.nextLine();
     chat.human.message('Eins');
     assert.deepEqual(await first, { note: 'Eins' });
     chat.human.message('Zwei', { checkpoint: true });
-    assert.deepEqual(await chat.operator.nextLine(), { note: 'Zwei' }, 'Text beendet die Pause nicht, und nur eine Vorführung legt Prüfpunkte an');
+    assert.deepEqual(await chat.operator.nextLine(), { note: 'Zwei' }, 'text does not end the pause, and only a demonstration creates checkpoints');
     const end = chat.operator.nextLine();
     chat.human.toggle();
     assert.equal(await end, '');
@@ -422,7 +422,7 @@ test('Chat: Pause lässt Zeit für Eingaben, erst Weiter gibt zurück', async ()
     assert.deepEqual(states, ['pausing', 'running', 'pausing', 'paused', 'paused', 'running']);
 });
 
-test('Chat: Eine Antwort auf eine Frage beendet das Warten gleich, und ein geschlossenes Fenster hält nichts auf', async () => {
+test('Chat: an answer to a question ends the wait at once, and a closed window blocks nothing', async () => {
     const chat = createChat();
     chat.enter('asking');
     chat.human.message('Sonstiges');
@@ -439,7 +439,7 @@ test('Chat: Eine Antwort auf eine Frage beendet das Warten gleich, und ein gesch
     assert.equal(chat.available(), false);
 });
 
-test('Chat: abgebrochene Eingabe liest nicht weiter', async () => {
+test('Chat: aborted input stops reading', async () => {
     const chat = createChat();
     chat.enter('paused');
     const input = new AbortController();
@@ -448,7 +448,7 @@ test('Chat: abgebrochene Eingabe liest nicht weiter', async () => {
     assert.equal(await pending, null);
 });
 
-test('Chat: Beim Vorführen trennt der Mensch Kontext und Prüfpunkt', async () => {
+test('Chat: while demonstrating, the human separates context and checkpoint', async () => {
     const shown = [];
     const chat = createChat({ show: (who, text) => shown.push([who, text]) });
     chat.enter('showing');
@@ -459,11 +459,11 @@ test('Chat: Beim Vorführen trennt der Mensch Kontext und Prüfpunkt', async () 
     assert.deepEqual(shown, [['human', 'Das Feld muss leer sein'], ['checkpoint', 'Maske ist da']]);
 });
 
-test('Chat: Ein markiertes Element hängt an der nächsten Nachricht und geht ohne Text nicht verloren', async () => {
+test('Chat: a picked element attaches to the next message and is not lost without text', async () => {
     const shown = [];
     const chat = createChat({ show: (who, text, about) => shown.push([who, text, about]) });
     const element = { label: 'button "Weiter"', target: { xtype: 'button', text: 'Weiter' }, tag: 'button', text: 'Weiter' };
-    assert.equal(chat.canPick(), false, 'Solange Claude arbeitet, nicht');
+    assert.equal(chat.canPick(), false, 'not while Claude is working');
     chat.enter('paused');
     assert.equal(chat.canPick(), true);
     chat.attach(element);
@@ -484,28 +484,28 @@ test('Chat: Ein markiertes Element hängt an der nächsten Nachricht und geht oh
     assert.deepEqual(await chat.operator.nextLine(), { note: 'Weg' });
 });
 
-test('Vorführung: Hinweise stehen in der Reihenfolge, machen aber keinen Schritt und keinen Punkt', () => {
+test('Demonstration: notes keep their order but create neither a step nor a checkpoint', () => {
     assert.equal(itemLabel({ action: 'note', text: 'leer lassen' }), 'Hinweis: leer lassen');
     assert.equal(itemLabel({ action: 'note', text: 'der', element: { label: 'button' } }), 'Hinweis zu button: der');
     assert.deepEqual(recordableSteps([{ action: 'note', text: 'x', path: '/a' }]), { steps: [], problems: [] });
 });
 
-test('Chat: Claudes Log wird zu Nachrichten und Aktionen, das Gespräch selbst nicht doppelt', () => {
+test('Chat: the Claude log becomes messages and actions, the conversation itself is not duplicated', () => {
     assert.deepEqual(parseClaudeLog('[+47.0s] Suche ist da. ⏎ Ich suche.'), { kind: 'text', text: 'Suche ist da. Ich suche.' });
     assert.equal(parseClaudeLog('[+143.7s] Claude beendet nach 142 s.'), null);
     assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Wege"; caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Wege"; press Enter' });
     assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Wege" && caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Wege" && press Enter' });
     assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai say "Hallo"'), null);
-    // Der lokale Agent ruft caw ueber MCP: Der Mensch liest denselben Befehl, ohne interne Namen und JSON.
+    // The local agent calls caw via MCP: the human reads the same command, without internal names and JSON.
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["snapshot"]}'), { kind: 'activity', text: 'snapshot' });
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["click","button \\"Senden\\""]}'), { kind: 'activity', text: 'click button "Senden"' });
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["check","S1","document.title === \'x\'"]}'), { kind: 'activity', text: 'check S1 document.title === \'x\'' });
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["fill","f4","Hans Muster"]}'), { kind: 'activity', text: 'fill f4 "Hans Muster"' });
-    assert.equal(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["say","Alles da"]}'), null, 'say steht ohnehin im Chat');
-    assert.equal(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["say","Al'), null, 'auch abgeschnitten kein say');
+    assert.equal(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["say","Alles da"]}'), null, 'say is in the chat anyway');
+    assert.equal(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["say","Al'), null, 'no say even when truncated');
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["eval","document.querySelector(\\"#a'), { kind: 'activity', text: 'eval document.querySelector("#a…' });
     assert.deepEqual(parseClaudeLog('[+2.0s] > Read: caw/caw.md'), { kind: 'activity', text: 'Read: caw/caw.md' });
-    assert.deepEqual(parseClaudeLog('[+1.0s] > Bash: grep x mein-caw.log'), { kind: 'activity', text: 'grep x mein-caw.log' }, 'nur der Befehl, nicht jedes Wort');
+    assert.deepEqual(parseClaudeLog('[+1.0s] > Bash: grep x mein-caw.log'), { kind: 'activity', text: 'grep x mein-caw.log' }, 'only the command, not every word');
     assert.deepEqual(parseClaudeLog('[+1.0s] > Read: /a.md'),{ kind: 'activity', text: 'Read: /a.md' });
     assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai chat'), null);
     assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai chat; caw-ai click e1').kind, 'activity');
@@ -513,7 +513,7 @@ test('Chat: Claudes Log wird zu Nachrichten und Aktionen, das Gespräch selbst n
     assert.equal(parseClaudeLog('[+1.0s] '), null);
 });
 
-test('Chat: Das Mitlesen liefert nur vollständige Zeilen, jede einmal', () => {
+test('Chat: tailing delivers only complete lines, each once', () => {
     let text = '';
     const seen = [];
     const stop = tailLines(() => text, (line) => seen.push(line), 60_000);
@@ -527,7 +527,7 @@ test('Chat: Das Mitlesen liefert nur vollständige Zeilen, jede einmal', () => {
     assert.deepEqual(again, ['a', 'b']);
 });
 
-test('Chat: Log und Fragen erscheinen im Fenster, nach dem Ende nichts mehr', () => {
+test('Chat: log and questions appear in the window, nothing after the end', () => {
     const shown = [];
     const chat = createChat({ show: (who, text) => shown.push([who, text]) });
     chat.logLine('[+1.0s] Ich schaue.');
@@ -535,13 +535,13 @@ test('Chat: Log und Fragen erscheinen im Fenster, nach dem Ende nichts mehr', ()
     chat.ask('Welcher Bereich?');
     chat.human.closed();
     chat.logLine('[+2.0s] Zu spät.');
-    // Freier Text ist eine Notiz, keine Nachricht: Sie steht bei den Aktionen.
+    // Free text is a note, not a message: it goes with the actions.
     assert.deepEqual(shown, [['activity', 'Ich schaue.'], ['activity', 'snapshot'], ['question', 'Welcher Bereich?']]);
 });
 
 const VIEW = { repairing: false, notes: '', steps: [{ id: 'S1', name: 'Los', do: 'Tu es', expect: 'Da' }] };
 
-test('Plan: Eine Nachricht ist eine Anpassung, der Knopf gibt frei, und das Warten lässt nichts durch', async () => {
+test('Plan: a message is a change request, the button approves, and the wait lets nothing through', async () => {
     const shown = [];
     const states = [];
     const chat = createChat({ show: (who, value, about) => shown.push({ who, value, about }), status: (state) => states.push(state) });
@@ -551,18 +551,18 @@ test('Plan: Eine Nachricht ist eine Anpassung, der Knopf gibt frei, und das Wart
     chat.human.message('Nimm den anderen Bereich');
     assert.deepEqual(await first, { approved: false, feedback: 'Nimm den anderen Bereich' });
     assert.equal(states.at(-1), 'running');
-    assert.deepEqual(chat.takeUnread(), [], 'Die Anpassung ist schon die Antwort');
+    assert.deepEqual(chat.takeUnread(), [], 'the change request already is the answer');
     const second = chat.plan(VIEW);
     chat.human.toggle();
     assert.deepEqual(await second, { approved: true });
-    assert.equal(chat.paused(), false, 'Freigeben pausiert nicht');
+    assert.equal(chat.paused(), false, 'approving does not pause');
     const cards = shown.filter(({ who }) => who === 'plan');
     assert.equal(cards.length, 2);
-    assert.equal(cards[0].about, VIEW, 'Die Karte bekommt die Struktur, das Protokoll einen Text');
+    assert.equal(cards[0].about, VIEW, 'the card gets the structure, the log a text');
     assert.equal(cards[0].value, 'S1 Los: Da');
 });
 
-test('Plan: Ein markiertes Element hängt an der Anpassung', async () => {
+test('Plan: a picked element attaches to the change request', async () => {
     const chat = createChat();
     const pending = chat.plan(VIEW);
     const element = { label: 'combobox Bereich' };
@@ -571,7 +571,7 @@ test('Plan: Ein markiertes Element hängt an der Anpassung', async () => {
     assert.deepEqual(await pending, { approved: false, feedback: 'Hier den Standard lassen', element });
 });
 
-test('Plan: Fenster zu oder Abbrechen beendet das Warten', async () => {
+test('Plan: closing the window or cancelling ends the wait', async () => {
     const aborted = [];
     const chat = createChat({ onAbort: () => aborted.push(true) });
     const pending = chat.plan(VIEW);
@@ -585,7 +585,7 @@ test('Plan: Fenster zu oder Abbrechen beendet das Warten', async () => {
     assert.deepEqual(await closing.plan(VIEW), { approved: false, feedback: null });
 });
 
-test('Wahl: Nur angebotene Knöpfe zählen, und die Frage steht im Chat', async () => {
+test('Choice: only offered buttons count, and the question is in the chat', async () => {
     const shown = [];
     const states = [];
     const chat = createChat({ show: (who, value) => shown.push([who, value]), status: (state, options) => states.push([state, options]) });
@@ -604,7 +604,7 @@ test('Wahl: Nur angebotene Knöpfe zählen, und die Frage steht im Chat', async 
     assert.equal(await waiting, null);
 });
 
-test('Prüfdurchlauf im Chat: Nur Fortschritt, der Knopf tut nichts', () => {
+test('Verification run in the chat: progress only, the button does nothing', () => {
     const states = [];
     const shown = [];
     const chat = createChat({ show: (who, value) => shown.push([who, value]), status: (state) => states.push(state) });
@@ -616,34 +616,34 @@ test('Prüfdurchlauf im Chat: Nur Fortschritt, der Knopf tut nichts', () => {
     assert.deepEqual(shown, [['activity', '1/3 click weiter']]);
 });
 
-test('Bereinigen durch das Tool: Screenshots und das erste von zwei fill aufs selbe Feld', () => {
-    const feld = { xtype: 'textfield', label: 'A' };
+test('Tidying by the tool: screenshots and the first of two fills on the same field', () => {
+    const field = { xtype: 'textfield', label: 'A' };
     const steps = [
-        { action: 'click', target: feld },
-        { action: 'fill', target: feld, value: 'x' },
+        { action: 'click', target: field },
+        { action: 'fill', target: field, value: 'x' },
         { action: 'wait-ready' },
-        { action: 'fill', target: feld, value: 'y' },
+        { action: 'fill', target: field, value: 'y' },
         { action: 'screenshot', name: 'a.png' },
         { action: 'fill', target: { xtype: 'textfield', label: 'B' }, value: 'z' },
-        { action: 'click', target: feld },
+        { action: 'click', target: field },
         { action: 'fill', target: { xtype: 'textfield', label: 'B' }, value: 'zz' },
     ];
     assert.deepEqual(tidyNumbers(steps), [2, 5]);
-    assert.deepEqual(tidyNumbers(steps, [7]), [2, 5, 6], 'Was Claude streicht, steht nicht mehr dazwischen');
+    assert.deepEqual(tidyNumbers(steps, [7]), [2, 5, 6], 'what Claude drops no longer sits in between');
 });
 
-test('Vorbereitung im Chat: Nur Fortschritt, danach arbeitet Claude', () => {
+test('Preparation in the chat: progress only, then Claude works', () => {
     const states = [];
     const chat = createChat({ status: (state) => states.push(state) });
     chat.preparing();
     chat.human.toggle();
     assert.equal(chat.paused(), false);
     chat.preparing(false);
-    // Der ignorierte Klick bekommt seinen Zustand zurueck: So gibt die Seite den gesperrten Knopf wieder frei.
+    // The ignored click gets its state back, so the page re-enables the blocked button.
     assert.deepEqual(states, ['preparing', 'preparing', 'running']);
 });
 
-test('Fertig nach der Vorfuehrung: sofort „Wird übernommen“, ein zweiter Klick aendert nichts, eine neue Vorfuehrung beginnt sauber', async () => {
+test('Done after the demonstration: immediately "handing over", a second click changes nothing, a new demonstration starts clean', async () => {
     const states = [];
     const chat = createChat({ status: (state) => states.push(state) });
     chat.enter('showing');
@@ -651,15 +651,15 @@ test('Fertig nach der Vorfuehrung: sofort „Wird übernommen“, ein zweiter Kl
     assert.equal(await chat.operator.nextLine(), '');
     assert.equal(states.at(-1), 'handing');
     chat.human.toggle();
-    assert.equal(states.at(-1), 'handing', 'Zweiter Klick: kein Pausieren, keine zweite Abgabe');
+    assert.equal(states.at(-1), 'handing', 'second click: no pause, no second handover');
     assert.equal(chat.paused(), false);
     chat.enter('showing');
-    assert.equal(states.at(-1), 'showing', 'Nichts vorgefuehrt: Es geht wieder von vorn los');
+    assert.equal(states.at(-1), 'showing', 'nothing demonstrated: it starts over');
     chat.human.closed();
     assert.equal(chat.available(), false);
 });
 
-test('Fehler klären: Eine Nachricht oder ein Knopf beantwortet, eine Karte unterbricht, danach steht das Gespräch wieder offen', async () => {
+test('Discussing a failure: a message or a button answers, a card interrupts, then the conversation is open again', async () => {
     const shown = [];
     const states = [];
     const chat = createChat({ show: (who, value) => shown.push([who, value]), status: (state) => states.push(state) });
@@ -670,13 +670,13 @@ test('Fehler klären: Eine Nachricht oder ein Knopf beantwortet, eine Karte unte
     assert.equal(states.at(-1), 'discussing');
     chat.human.message('Warum?');
     assert.deepEqual(await first, { message: 'Warum?' });
-    assert.deepEqual(chat.takeUnread(), [], 'Die Nachricht ist schon die Antwort');
+    assert.deepEqual(chat.takeUnread(), [], 'the message already is the answer');
     const second = chat.discuss(undefined, options);
     const card = chat.advice({ side: 'test', title: 'Warten' }, [{ id: 'accept', label: 'Übernehmen' }]);
     assert.equal(states.at(-1), 'reviewing');
     chat.human.choose('accept');
     assert.equal(await card, 'accept');
-    assert.equal(states.at(-1), 'discussing', 'Nach der Karte geht das Gespräch weiter');
+    assert.equal(states.at(-1), 'discussing', 'after the card the conversation continues');
     chat.human.choose('fix');
     assert.deepEqual(await second, { choice: 'fix' });
     assert.deepEqual(shown.filter(([who]) => who === 'question'), [['question', 'S2 ist gescheitert.']]);
@@ -686,7 +686,7 @@ test('Fehler klären: Eine Nachricht oder ein Knopf beantwortet, eine Karte unte
     assert.equal(await waiting, null);
 });
 
-test('remember: Ein gemerkter Wert mit der Laufkennung wird zum Platzhalter, nicht nur die Kennung darin', async () => {
+test('remember: a remembered value containing the run tag becomes the placeholder, not just the tag inside it', async () => {
     const recorder = createRecorder({
         handler: async (command) => (command.action === 'remember' ? { name: 'nr', value: 'Vorgang CAW-7' } : { pass: true }),
         session: { page: () => rememberPage },
@@ -696,11 +696,11 @@ test('remember: Ein gemerkter Wert mit der Laufkennung wird zum Platzhalter, nic
     await recorder.handler({ action: 'fill', target: 'e1', value: 'Vorgang CAW-7' });
     await recorder.handler({ action: 'remember', name: 'nr', code: 'lies()' });
     await recorder.handler({ action: 'check', id: 'S1', code: "x === 'Vorgang CAW-7'" });
-    assert.equal(recorder.steps[0].value, 'Vorgang {{runTag}}', 'Vor dem Merken gilt nur die Kennung');
+    assert.equal(recorder.steps[0].value, 'Vorgang {{runTag}}', 'before remembering only the tag applies');
     assert.equal(recorder.steps[2].code, "x === '{{nr}}'");
 });
 
-test('Aufnahme: Die letzte Vorführung bleibt einen Tag wiederverwendbar, leere und fremde zählen nicht', async (t) => {
+test('Recording: the last demonstration stays reusable for a day; empty and foreign ones do not count', async (t) => {
     const { lastDemonstration } = await import('../src/host/commands.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-reuse-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -718,10 +718,10 @@ test('Aufnahme: Die letzte Vorführung bleibt einen Tag wiederverwendbar, leere 
     assert.equal(last.items.length, 2);
     assert.equal(last.at, Date.parse('2026-11-08T12:35:34.782Z'));
     assert.match(last.dir, /12-35-34-782Z-x-vorfuehrung$/);
-    assert.equal(lastDemonstration(root, 'x', now + 2 * 24 * 3600 * 1000), null, 'nach einem Tag nicht mehr');
+    assert.equal(lastDemonstration(root, 'x', now + 2 * 24 * 3600 * 1000), null, 'not after a day');
 });
 
-test('Vorführung: Fehler der Anwendung stehen an ihrer Stelle, der Mensch sieht sie sofort, Belege liegen im Ordner', async (t) => {
+test('Demonstration: application failures appear in place, the human sees them at once, evidence is in the folder', async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-fail-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const failures = [{ type: 'pageerror', text: 'alt' }];
@@ -748,6 +748,6 @@ test('Vorführung: Fehler der Anwendung stehen an ihrer Stelle, der Mensch sieht
     assert.deepEqual(told, ['Fehler der Anwendung, http: HTTP 500 (https://p.example/abschliessen)']);
     assert.deepEqual(recordableSteps(items).steps, []);
     const { readFileSync } = await import('node:fs');
-    assert.deepEqual(JSON.parse(readFileSync(join(dir, 'fehler.json'), 'utf8')).map(({ text }) => text), ['HTTP 500'], 'nur Fehler dieser Vorführung');
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, 'fehler.json'), 'utf8')).map(({ text }) => text), ['HTTP 500'], 'only failures of this demonstration');
     assert.deepEqual(JSON.parse(readFileSync(join(dir, 'netzwerk.json'), 'utf8')), [{ name: 'POST /abschliessen ab 3' }]);
 });

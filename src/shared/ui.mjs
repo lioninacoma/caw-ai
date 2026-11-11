@@ -1,25 +1,27 @@
-// Die Konsolenausgabe des Tools im Stil der Werkbank: Farben und Zeichen aus dem aktiven Theme, Statusmarken wie ein Start-Log
-// ([  OK  ] [ WARN ] [FEHLER]), Abschnitte als Linie (── 1 ANMELDEN ───), Ergebnisse im Kasten (┌─┤ ERGEBNIS ├─┐).
-// In Dateien und Pipes bleiben es schlichte, greifbare Zeilen mit [caw-ai] davor.
+// The tool's console output in workbench style: colours and glyphs from the active theme, boot-log style status marks
+// ([  OK  ] [ WARN ] [FEHLER]), sections as rules (── 1 ANMELDEN ───), results in a box (┌─┤ ERGEBNIS ├─┐).
+// In files and pipes it stays plain, greppable lines prefixed with [caw-ai].
 
 import { colorEnabled, themePainter } from './color.mjs';
 import { t } from './i18n.mjs';
 import { glyphs } from './marks.mjs';
 import { ravenBanner } from './raven.mjs';
 
-// Fehlertexte und Begruendungen koennen aus der Anwendung stammen. Im Terminal duerfen sie nichts steuern.
+// Error texts and reasons can come from the application; they must not control the terminal.
+// eslint-disable-next-line no-control-regex -- deliberately matches control characters to neutralise them
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 const safe = (text) => String(text).replace(CONTROL, '?');
 const seconds = (value) => `${value.toFixed(1)}s`;
 const MAX_FAILURES = 5;
-// Breite der Linien und Kaesten; laengere Zeilen duerfen darueber hinaus.
+// Width of rules and boxes; longer lines may extend beyond it.
 const WIDTH = 56;
+// eslint-disable-next-line no-control-regex -- strips ANSI colour codes to measure visible width
 const ANSI = /\u001b\[[0-9;]*m/g;
 const width = (text) => [...String(text).replace(ANSI, '')].length;
 
 /**
- * Ja/Nein im Terminal; Enter nimmt die Vorgabe. Erkennt j/ja/y/yes und n/nein/no.
- * @returns true oder false
+ * Yes/no prompt in the terminal; Enter takes the default. Accepts j/ja/y/yes and n/nein/no.
+ * @returns true or false
  */
 export const askYesNo = async (question, { fallback = true, input = process.stdin, output = process.stdout } = {}) => {
     const { createInterface } = await import('node:readline/promises');
@@ -39,30 +41,30 @@ export const askYesNo = async (question, { fallback = true, input = process.stdi
     }
 };
 
-// console erst beim Schreiben nachschlagen: So landet die Ausgabe auch dort, wo ein Test console.log ersetzt hat.
+// Look up console only when writing, so output also lands where a test has replaced console.log.
 export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(text), err = (text) => console.error(text), full, theme } = {}) => {
     const paint = themePainter(fancy, { ...(full === undefined ? {} : { full }), ...(theme === undefined ? {} : { theme }) });
     const marks = glyphs(theme);
     const blank = ' '.repeat(width(marks.tag('ok')));
-    /** Die Marke eines Status in ihrer Farbe; fail invertiert, wenn das Theme es will. */
+    /** A status mark in its colour; fail inverted if the theme wants it. */
     const tag = (kind, frame) => {
         const text = marks.tag(kind, frame);
         if (kind === 'fail') return marks.failInverted ? paint.failTag(text) : paint.fail(text);
         return ({ ok: paint.ok, warn: paint.warn, run: paint.info, ask: paint.info, open: paint.faint })[kind]?.(text) ?? paint.faint(text);
     };
     const bullet = (kind) => ({ ok: paint.ok, warn: paint.warn, fail: paint.fail, run: paint.info, info: paint.info })[kind](marks.bullet(kind));
-    /** Zeile mit Marke davor; ohne Terminal [caw-ai] davor. */
+    /** Line with a mark in front; without a terminal [caw-ai] in front. */
     const marked = (kind, text, write = out, color = paint.text) => write(fancy ? `  ${tag(kind)} ${color(safe(text))}` : `[caw-ai] ${safe(text)}`);
-    /** Zeile mit Punkt davor, fuer Hinweise und Anleitungen. */
+    /** Line with a bullet in front, for hints and instructions. */
     const pointed = (kind, text, write = out, color = paint.muted) => write(fancy ? `  ${bullet(kind)} ${color(safe(text))}` : `[caw-ai] ${safe(text)}`);
-    /** Unterpunkt unter einer Marke: Baum, Punkt, Text. */
+    /** Sub-item under a mark: tree, bullet, text. */
     const sub = (kind, text, last = true, color = paint.muted) => `  ${blank} ${paint.faint(last ? marks.tree.end : marks.tree.mid)} ${bullet(kind)} ${color(safe(text))}`;
-    /** Abschnitt: ── TITEL ─────── in faint, der Titel in accent. */
+    /** Section: ── TITLE ─────── in faint, the title in accent. */
     const rule = (title, color = paint.accent) => {
         const { before, after, tail, line } = marks.rule(title, WIDTH);
         return `  ${paint.faint(before)}${color(title)}${paint.faint(`${after}${line}${tail}`)}`;
     };
-    /** Kasten: ┌─┤ TITEL ├──┐, Zeilen mit │ links und rechts, └──┘. Zu lange Zeilen bleiben rechts offen. */
+    /** Box: ┌─┤ TITLE ├──┐, rows with │ left and right, └──┘. Overlong rows stay open on the right. */
     const box = (title, rows, color = paint.frame) => {
         const b = marks.box;
         const inner = Math.max(WIDTH - 2, ...rows.map((row) => width(row) + 2));
@@ -71,7 +73,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         for (const row of rows) out(`  ${color(b.v)} ${row}${' '.repeat(Math.max(0, inner - width(row) - 1))}${color(b.v)}`);
         out(`  ${color(`${b.bl}${b.h.repeat(inner)}${b.br}`)}`);
     };
-    /** Fortschritt: █ bestanden, ▓ laeuft oder gescheitert, ░ offen. */
+    /** Progress: █ passed, ▓ running or failed, ░ open. */
     const gauge = (counts, size = 24) => {
         const total = Math.max(1, counts.pass + counts.fail + counts.open);
         const cells = (count) => Math.round((count / total) * size);
@@ -93,8 +95,8 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         success: (text) => marked('ok', text),
         note: (text) => pointed('warn', text),
         /**
-         * Abbruch: zuerst die Meldung, bei einem Aufruffehler die Kurzform des Befehls, zuletzt blass der Code fuer Suche und Doku.
-         * @param synopsis etwa "caw-ai fix <test> <S4> [--target <umgebung>]"
+         * Abort: the message first, for a usage error the command synopsis, last the code (muted) for search and docs.
+         * @param synopsis e.g. "caw-ai fix <test> <S4> [--target <umgebung>]"
          */
         fatal: (code, text, { synopsis, exit } = {}) => {
             marked('fail', text, err, paint.fail);
@@ -103,7 +105,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             err(fancy ? `  ${blank} ${paint.muted(label)}` : `[caw-ai] ${label}`);
         },
 
-        /** Kopf eines Befehls: der ASCII-Rabe, daneben der Name und was er heisst. In Pipes nur der Name. */
+        /** Command header: the ASCII raven with the name and its long form. In pipes only the name. */
         banner: ({ title }) => {
             if (!fancy) {
                 out(`[caw-ai] ${safe(title)}`);
@@ -112,7 +114,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             for (const row of ravenBanner(safe(title), { bold: (text) => paint.bold(paint.text(text)), dim: paint.muted, frame: paint.frame, beak: paint.accent, eye: paint.text })) out(row);
             out('');
         },
-        /** Ein Abschnitt eines gefuehrten Ablaufs. */
+        /** A section of a guided flow. */
         section: (number, title) => {
             if (!fancy) {
                 out(`[caw-ai] ${number}. ${safe(title)}`);
@@ -122,7 +124,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             out(rule(`${number} ${safe(String(title).toUpperCase())}`));
         },
         /**
-         * Ein Kasten, etwa das Ergebnis von explore.
+         * A box, e.g. the result of explore.
          * @param items [{ status: ok | warn | fail | run | ask | open | info | note | added | removed, text }]
          */
         box: (title, items) => {
@@ -140,7 +142,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
                 return `${tag(status)} ${paint.text(safe(text))}`;
             }));
         },
-        /** Eine Zeile, die stehen bleibt, bis done() sie abhakt; im Terminal mit dem Spinner in der Marke. */
+        /** A line that stays until done() ticks it off; in a terminal with the spinner in the mark. */
         pending: (text) => {
             if (!fancy || !process.stdout.isTTY) {
                 out(`[caw-ai] ${safe(text)} …`);
@@ -159,8 +161,10 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             return { done: (final = text) => finish('ok', final, paint.text), fail: (final = text) => finish('fail', final, paint.fail) };
         },
 
-        /** Kopf eines einzelnen Laufs: Was laeuft wo, und wer steuert. */
-        /** `code` ist die Zeile "Code: …" (describeCode); sie steht immer da, auch ohne Terminal. */
+        /**
+         * Header of a single run: what runs where, and who drives.
+         * `code` is the "Code: …" line (describeCode); it is always shown, even without a terminal.
+         */
         header: ({ mode, test, target, source, code, maxSteps }) => {
             const codeLine = t('cli.uiCode', { code: code ?? (source === 'overlay' ? t('cli.uiLocal') : t('cli.uiDeployed')) });
             if (!fancy) {
@@ -185,7 +189,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             out(`  ${blank} ${bullet('run')} ${paint.accent(String(number).padStart(size))}${paint.faint(`/${total}`)} ${paint.text(safe(label))} ${paint.muted(`+${seconds(elapsed)}`)}`);
         },
 
-        /** Das Ergebnis eines Laufs: Linie mit dem Ausgang, je Punkt eine Marke, Fortschritt, Bericht. */
+        /** A run's result: rule with the outcome, one mark per expectation, progress, report. */
         verdict: ({ status, reason, note, testId, target, expectations = [], results = [], failures = [], warnings = [] }, { report, reportUrl, elapsed }) => {
             const { title, color } = STATUS[status];
             if (!fancy) {
@@ -222,13 +226,13 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
                 out(`  ${gauge(counts)}  ${parts.join(paint.muted(' · '))}`);
             }
             out(`  ${paint.muted(t('cli.uiReport'))} ${paint.info(report)}`);
-            // Zum Anklicken im Terminal; der relative Pfad darueber bleibt lesbar.
+            // Clickable in the terminal; the relative path above stays readable.
             if (reportUrl !== undefined) out(`  ${paint.muted(reportUrl)}`);
         },
 
         /**
-         * Die Tabelle nach mehreren Laeufen: je Test eine Zeile mit Ausgang, Dauer und Grund.
-         * @param rows [{ test, exit, seconds, note }]; exit wie EXIT (0 pass, 1 fail, 2 error, 3 abgelehnt, 4 Aufnahme noetig)
+         * The table after several runs: one line per test with outcome, duration and reason.
+         * @param rows [{ test, exit, seconds, note }]; exit as in EXIT (0 pass, 1 fail, 2 error, 3 rejected, 4 recording needed)
          */
         batch: ({ target, rows }) => {
             const LABEL = { 0: 'pass', 1: 'fail', 2: 'error', 3: 'rejected', 4: 'needsRecording' };

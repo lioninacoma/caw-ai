@@ -1,5 +1,5 @@
-// Die eigene Claude-Code-Session als Agent (--agent session): Der Lauf startet keinen Claude, sondern legt eine Marke ab und wartet.
-// Die Session findet ueber die Marke den Kanal dieses Laufs und schickt dieselben Befehle wie ein Agent in der Sandbox.
+// The developer's own Claude Code session as agent (--agent session): the run starts no Claude, it writes a marker and waits.
+// The session finds the run's channel through the marker and sends the same commands as an agent in the sandbox.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,7 @@ const MARKER = 'agent.json';
 
 export const markerPath = (root) => join(root, RUN_DIR, MARKER);
 
-const alive = (pid) => {
+const isAlive = (pid) => {
     try {
         process.kill(pid, 0);
         return true;
@@ -19,13 +19,13 @@ const alive = (pid) => {
     }
 };
 
-/** Der Lauf, der gerade auf die Session wartet, oder undefined. Eine Marke eines beendeten Prozesses zaehlt nicht. */
+/** The run currently waiting for the session, or undefined. A marker of an ended process does not count. */
 export const findSessionAgent = (root) => {
     const file = markerPath(root);
     if (!existsSync(file)) return undefined;
     try {
         const marker = JSON.parse(readFileSync(file, 'utf8'));
-        if (typeof marker.agentDir !== 'string' || !Number.isInteger(marker.pid) || !alive(marker.pid)) return undefined;
+        if (typeof marker.agentDir !== 'string' || !Number.isInteger(marker.pid) || !isAlive(marker.pid)) return undefined;
         return marker;
     } catch {
         return undefined;
@@ -33,7 +33,7 @@ export const findSessionAgent = (root) => {
 };
 
 /**
- * Meldet den Lauf fuer die Session an. `ended` endet nie von selbst: Der Lauf endet mit dem Urteil, dem Fenster oder einem Abbruch.
+ * Announces the run to the session. `ended` never settles on its own: the run ends with the verdict, the window or a cancel.
  * @returns { ended, stop }
  */
 export const announceSessionAgent = ({ root, runId, agentDir, mode, hint, pid = process.pid }) => {
@@ -45,11 +45,11 @@ export const announceSessionAgent = ({ root, runId, agentDir, mode, hint, pid = 
     return {
         ended: new Promise(() => {}),
         stop: async () => {
-            // Nur die eigene Marke: Ein neuerer Lauf kann sie inzwischen ersetzt haben.
+            // Only our own marker: a newer run may have replaced it meanwhile.
             try {
                 if (JSON.parse(readFileSync(file, 'utf8')).runId === runId) rmSync(file, { force: true });
             } catch {
-                // schon weg
+                // already gone
             }
         },
     };

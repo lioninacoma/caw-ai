@@ -1,12 +1,12 @@
-// Lokaler Code einer ExtJS-App aus dem Sencha-Watch, ohne Config: Was die Seite unter dem Build-Namen der App oder eines Pakets laedt,
-// kommt aus den Quellen, die bootstrap.json nennt. Der Watch schreibt bootstrap.json in den App-Ordner; gelesen wird von der Platte.
+// Local code of an ExtJS app from the Sencha watch, without config: what the page loads under the build name of the app or a
+// package comes from the sources listed in bootstrap.json. The watch writes bootstrap.json into the app folder; it is read from disk.
 //
-// Build-Namen, wie Sencha Cmd baut (geprueft an Cmd 7.5, ant/build/app/defaults.properties und ant/build/package/defaults.properties):
-// - App: output.js.path (oder output.js als Text) in app.json, auch in den Stages production, testing, development; sonst
-//   app.output.js.path bzw. app.output.js aus .sencha/app/*.properties; sonst app.js. Welche Stage ausgeliefert ist, weiss caw nicht,
-//   darum zaehlt jeder dieser Namen.
-// - Paket: <name>.js und <name>-debug.js, name aus package.json (so steht es in bootstrap.packages).
-// Verglichen wird der letzte Pfadteil des Requests: Der Ordner davor ist der Ablageort im Repository des Portals.
+// Build names as Sencha Cmd builds them (checked against Cmd 7.5, ant/build/app/defaults.properties and ant/build/package/defaults.properties):
+// - App: output.js.path (or output.js as a string) in app.json, also in the stages production, testing, development; otherwise
+//   app.output.js.path or app.output.js from .sencha/app/*.properties; otherwise app.js. caw does not know which stage is deployed,
+//   so every one of these names counts.
+// - Package: <name>.js and <name>-debug.js, name from package.json (as in bootstrap.packages).
+// Only the last path segment of the request is compared: the folder before it is where the portal repository keeps it.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -17,10 +17,10 @@ import { t } from '../../shared/i18n.mjs';
 const BOOTSTRAP = 'bootstrap.json';
 const STAGES = ['production', 'testing', 'development'];
 const APP_SOURCE = /^app\//;
-// Ext JS selbst und seine Pakete (charts, ux, Themes): nie von der Platte, sonst kaeme das Framework aus node_modules.
+// Ext JS itself and its packages (charts, ux, themes): never from disk, otherwise the framework would come from node_modules.
 const FRAMEWORK_SOURCE = /(^|\/)(ext|node_modules\/@sencha)\//;
 
-/** JSON mit Kommentaren und Kommas vor } oder ], wie Sencha es schreibt. Kommentare in Texten bleiben. */
+/** JSON with comments and trailing commas before } or ], as Sencha writes it. Comment markers inside strings are kept. */
 export const parseSenchaJson = (text) => {
     let out = '';
     for (let i = 0; i < text.length; i += 1) {
@@ -51,7 +51,7 @@ const readJson = (file) => {
     }
 };
 
-/** key=value aus Ant-Properties, ohne Kommentare und Fortsetzungszeilen. */
+/** key=value from Ant properties, ignoring comments; continuation lines are not supported. */
 const readProperties = (file) => {
     const values = {};
     for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
@@ -67,13 +67,13 @@ const jsPathOf = (output) => {
     return typeof js?.path === 'string' ? js.path : undefined;
 };
 
-/** Der Dateiname eines Build-Pfads; ein Platzhalter davor (${build.id}/x.js) stoert nicht, einer im Namen schon. */
+/** The file name of a build path; a placeholder before it (${build.id}/x.js) is fine, one in the name is not. */
 const fileName = (path) => {
     const name = basename(path.replaceAll('\\', '/'));
     return name === '' || name.includes('${') ? null : name;
 };
 
-/** Die Namen, unter denen ein Build der App ausgeliefert sein kann. */
+/** The names under which a build of the app may be deployed. */
 export const appBuildNames = (appDir) => {
     const appJson = readJson(join(appDir, 'app.json')) ?? {};
     const names = new Set();
@@ -90,7 +90,7 @@ export const appBuildNames = (appDir) => {
         return properties[key] === undefined ? all : expand(properties[key], depth + 1);
     }));
     const fromProperties = ['app.output.js.path', 'app.output.js'].filter((key) => properties[key] !== undefined).map((key) => expand(properties[key]));
-    // Eine Vorgabe aus app.json gilt vor den Properties; sie aendert aber nicht, was eine Stage in den Properties setzt.
+    // A setting in app.json takes precedence over the properties; it does not change what a stage sets in the properties.
     for (const path of fromJson.length > 0 ? fromJson : fromProperties) {
         const name = fileName(path);
         if (name !== null) names.add(name);
@@ -99,7 +99,7 @@ export const appBuildNames = (appDir) => {
     return names;
 };
 
-/** bootstrap.json, wie der Watch es gerade geschrieben hat. Fehler sind Meldungen mit dem Befehl zum Starten. */
+/** bootstrap.json as the watch last wrote it. Errors are messages with the command to start the watch. */
 const readBootstrap = (appDir, hint) => {
     const file = join(appDir, BOOTSTRAP);
     if (!existsSync(file)) throw new CawError('watch-missing', t('session.appFiles.missing', { file, hint }));
@@ -114,8 +114,8 @@ const readBootstrap = (appDir, hint) => {
 };
 
 /**
- * Passt bootstrap.json zu den Dateien? Ob der Watch laeuft, prueft der Aufrufer am Prozess; der haeufigste Schaden eines veralteten
- * Stands faellt hier auf statt mitten im Test.
+ * Does bootstrap.json match the files? The caller checks the watch process itself; the most common damage of a stale state
+ * shows up here instead of in the middle of a test.
  */
 export const checkAppFiles = (appDir, hint = t('session.appFiles.hint')) => {
     const bootstrap = readBootstrap(appDir, hint);
@@ -126,7 +126,7 @@ export const checkAppFiles = (appDir, hint = t('session.appFiles.hint')) => {
     return bootstrap;
 };
 
-/** Die Pakete aus bootstrap.json mit ihren Quellen, ohne die des Frameworks. */
+/** The packages from bootstrap.json with their sources, excluding the framework's. */
 const ownPackages = (bootstrap) => {
     const packages = new Map();
     for (const [name, entry] of Object.entries(bootstrap.packages ?? {})) {
@@ -138,8 +138,8 @@ const ownPackages = (bootstrap) => {
 };
 
 /**
- * Was ersetzt werden kann: Dateiname des Builds -> Teil (App oder Paket) mit seinen Quellen, in Ladereihenfolge.
- * Ein Name, der zu mehr als einem Teil passt, ist ein Fehler: Sonst ersetzte caw womoeglich den falschen.
+ * What can be replaced: build file name -> part (app or package) with its sources, in load order.
+ * A name matching more than one part is an error: otherwise caw might replace the wrong one.
  */
 export const replaceable = (appDir, bootstrap) => {
     const parts = new Map();
@@ -158,8 +158,8 @@ export const replaceable = (appDir, bootstrap) => {
 };
 
 /**
- * Die Quelle fuer das Overlay: resolve(name) liefert den Inhalt fuer einen Namen aus assetUrlPattern oder null. bootstrap.json wird je
- * Request neu gelesen, denn der Watch schreibt es bei neuen Klassen neu.
+ * The overlay source: resolve(name) returns the content for a name from assetUrlPattern, or null. bootstrap.json is reread per
+ * request, since the watch rewrites it when classes are added.
  */
 export const createWatchSource = (appDir) => {
     const used = new Map();
@@ -170,14 +170,14 @@ export const createWatchSource = (appDir) => {
             const bootstrap = checkAppFiles(appDir);
             const part = replaceable(appDir, bootstrap).get(file);
             if (part === undefined) return null;
-            // Zwei Requests aus verschiedenen Ordnern mit demselben Namen (zwei Apps mit app.js): keinen ersetzen.
+            // Two requests from different folders with the same name (two apps with app.js): replace neither.
             const first = used.get(file);
             if (first !== undefined && first !== name) throw new CawError('overlay-ambiguous', t('session.overlay.ambiguousPath', { file, first, second: name }));
             used.set(file, name);
             const body = part.paths.map((path) => `${readFileSync(join(appDir, path), 'utf8')}\n`).join('');
             return { body, label: part.label, kind: part.kind };
         },
-        /** Was dieser Lauf ersetzt hat, fuer die Zeile im Bericht. */
+        /** What this run replaced, for the line in the report. */
         replaced: () => [...used.keys()],
     };
 };

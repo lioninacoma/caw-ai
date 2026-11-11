@@ -1,5 +1,5 @@
 #!/bin/bash
-# Spielt den Agenten im Container: normale Befehle, dann Versuche, die Grenzen zu umgehen.
+# Plays the agent in the container: normal commands, then attempts to break out of the limits.
 A=caw-ai
 step() { echo; echo "--- $1"; }
 

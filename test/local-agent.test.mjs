@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 
-import { LOCAL_ALLOWED, LOCAL_DENY, LOCAL_TOOLS, localClaudeArgs, writeLocalSetup } from '../src/sandbox/commands.mjs';
+import { LOCAL_ALLOWED, LOCAL_DENY, localClaudeArgs, writeLocalSetup } from '../src/sandbox/commands.mjs';
 import { AGENT_COMMANDS, commandLine, createMcpHandler, serveMcp } from '../src/sandbox/mcp.mjs';
 import { claudeVersion, localAgentEnv, localCommand, requireClaude } from '../src/host/local-agent.mjs';
 import { resolveClaude } from '../src/shared/claude-bin.mjs';
@@ -17,19 +17,19 @@ const tempDir = (t) => {
     return dir;
 };
 
-test('Lokal: nur Lesen und das Tool caw, keine Shell, nichts wird gefragt, Geheimnisse gesperrt', () => {
-    const args = localClaudeArgs('Der Lauf x ist offen.', { mcpConfig: 'm.json', settings: 's.json', systemPromptFile: 'a.md' });
+test('local: read-only plus the caw tool, no shell, nothing is asked, secrets denied', () => {
+    const args = localClaudeArgs('Run x is open.', { mcpConfig: 'm.json', settings: 's.json', systemPromptFile: 'a.md' });
     assert.equal(args[args.indexOf('--tools') + 1], 'Read,Grep,Glob');
     assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk');
     assert.ok(args.includes('--strict-mcp-config'));
-    assert.equal(args[args.indexOf('--setting-sources') + 1], '', 'keine allow-Regeln aus Nutzer- oder Projekteinstellungen');
+    assert.equal(args[args.indexOf('--setting-sources') + 1], '', 'no allow rules from user or project settings');
     assert.ok(!args.includes('--dangerously-skip-permissions'));
-    assert.deepEqual(LOCAL_ALLOWED, ['Read(./**)', 'Grep(./**)', 'Glob(./**)', 'mcp__caw__caw'], 'nur im Projekt lesen');
+    assert.deepEqual(LOCAL_ALLOWED, ['Read(./**)', 'Grep(./**)', 'Glob(./**)', 'mcp__caw__caw'], 'read only inside the project');
     for (const tool of ['Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch']) assert.ok(!args.join(' ').includes(tool), tool);
     for (const pattern of ['Read(.env)', 'Grep(caw/.auth/**)', 'Glob(.git/**)', 'Read(.caw/**)', 'Read(**/.npmrc)']) assert.ok(LOCAL_DENY.includes(pattern), pattern);
 });
 
-test('Lokal: Einrichtung im Agent-Ordner, die Anleitung ist der Skill mit Vorspann', (t) => {
+test('local: setup in the agent folder, the guide is the skill with a preamble', (t) => {
     const dir = tempDir(t);
     const setup = writeLocalSetup(dir, { CAW_COLOR: '1' });
     const mcp = JSON.parse(readFileSync(setup.mcpConfig, 'utf8')).mcpServers.caw;
@@ -37,7 +37,7 @@ test('Lokal: Einrichtung im Agent-Ordner, die Anleitung ist der Skill mit Vorspa
     assert.equal(mcp.env.CAW_AGENT_DIR, dir);
     assert.equal(mcp.env.CAW_SANDBOX, '1');
     assert.equal(JSON.parse(readFileSync(setup.settings, 'utf8')).disableAllHooks, true);
-    // Aus den Nutzereinstellungen nur die Verbindung, nie Rechte.
+    // From the user settings only the connection, never permissions.
     const home = tempDir(t);
     writeFileSync(join(home, 'settings.json'), JSON.stringify({ env: { HTTPS_PROXY: 'http://proxy:8080' }, model: 'opus', permissions: { allow: ['Read'] }, additionalDirectories: ['/'] }));
     const carried = JSON.parse(readFileSync(writeLocalSetup(dir, { CLAUDE_CONFIG_DIR: home }).settings, 'utf8'));
@@ -46,27 +46,27 @@ test('Lokal: Einrichtung im Agent-Ordner, die Anleitung ist der Skill mit Vorspa
     assert.equal(carried.additionalDirectories, undefined);
     assert.deepEqual(Object.keys(carried.permissions), ['deny']);
     const guide = readFileSync(setup.systemPromptFile, 'utf8');
-    assert.match(guide, /^Du laeufst lokal/);
+    assert.match(guide, /^You are running locally/);
     assert.match(guide, /## Ablauf in der Sandbox/);
-    assert.doesNotMatch(guide, /^---/m, 'ohne Frontmatter des Skills');
+    assert.doesNotMatch(guide, /^---/m, 'without the skill frontmatter');
 });
 
-test('MCP: Befehle wie in der Sandbox, Dateien als Inhalt, Host-Befehle abgelehnt', (t) => {
+test('MCP: commands as in the sandbox, files as content, host commands rejected', (t) => {
     const dir = tempDir(t);
     const files = [];
     const write = (content) => { files.push(content); return join(dir, 'f.txt'); };
     assert.deepEqual(commandLine({ args: ['click', 'e12'] }, write), ['click', 'e12']);
     assert.deepEqual(commandLine({ args: ['plan'], file: 'steps: []' }, write), ['plan', '--file', join(dir, 'f.txt')]);
     assert.deepEqual(files, ['steps: []']);
-    assert.throws(() => commandLine({ args: ['run', 'x'] }, write), /Unbekannter Befehl: run/);
-    assert.throws(() => commandLine({ args: ['sandbox-run'] }, write), /Unbekannter Befehl/);
-    assert.throws(() => commandLine({ args: ['finish'] }, write), /braucht den Inhalt in file/);
-    assert.throws(() => commandLine({ args: ['snapshot'], file: 'x' }, write), /nimmt kein file/);
-    assert.throws(() => commandLine({ args: [] }, write), /args muss/);
+    assert.throws(() => commandLine({ args: ['run', 'x'] }, write), /Unknown command: run/);
+    assert.throws(() => commandLine({ args: ['sandbox-run'] }, write), /Unknown command/);
+    assert.throws(() => commandLine({ args: ['finish'] }, write), /needs the content in file/);
+    assert.throws(() => commandLine({ args: ['snapshot'], file: 'x' }, write), /takes no file/);
+    assert.throws(() => commandLine({ args: [] }, write), /args must/);
     for (const host of ['init', 'record', 'fix', 'auth', 'doctor', 'mcp-agent', 'firewall-check']) assert.ok(!AGENT_COMMANDS.has(host), host);
 });
 
-test('MCP: Protokoll mit initialize, tools/list und tools/call; Dateien werden danach geloescht', async (t) => {
+test('MCP: protocol with initialize, tools/list and tools/call; files are deleted afterwards', async (t) => {
     const dir = tempDir(t);
     const calls = [];
     const handler = createMcpHandler({
@@ -74,7 +74,7 @@ test('MCP: Protokoll mit initialize, tools/list und tools/call; Dateien werden d
         run: async (args) => {
             calls.push(args);
             if (args[0] === 'finish') assert.equal(readFileSync(args[2], 'utf8'), '{"expectations":[]}');
-            return args[0] === 'goto' ? { code: 3, out: 'Ziel nicht erlaubt' } : { code: 0, out: `${args[0]} ok\n` };
+            return args[0] === 'goto' ? { code: 3, out: 'target not allowed' } : { code: 0, out: `${args[0]} ok\n` };
         },
     });
     const init = await handler({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } });
@@ -87,33 +87,33 @@ test('MCP: Protokoll mit initialize, tools/list und tools/call; Dateien werden d
     assert.deepEqual(snap.result, { content: [{ type: 'text', text: 'snapshot ok' }], isError: false });
     const done = await handler({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'caw', arguments: { args: ['finish'], file: '{"expectations":[]}' } } });
     assert.equal(done.result.isError, false);
-    assert.ok(!existsSync(calls[1][2]), 'Datei geloescht');
+    assert.ok(!existsSync(calls[1][2]), 'file deleted');
     const denied = await handler({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'caw', arguments: { args: ['goto', 'https://example.com'] } } });
     assert.equal(denied.result.isError, true);
-    assert.match(denied.result.content[0].text, /Ziel nicht erlaubt\n\(Exit 3\)/);
+    assert.match(denied.result.content[0].text, /target not allowed\n\(Exit 3\)/);
     const bad = await handler({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'caw', arguments: { args: ['init'] } } });
     assert.equal(bad.result.isError, true);
-    assert.deepEqual(calls.map(([command]) => command), ['snapshot', 'finish', 'goto'], 'abgelehnte Befehle laufen nie');
+    assert.deepEqual(calls.map(([command]) => command), ['snapshot', 'finish', 'goto'], 'rejected commands never run');
     const unknown = await handler({ jsonrpc: '2.0', id: 7, method: 'resources/list' });
     assert.equal(unknown.error.code, -32601);
 });
 
-test('MCP: eine Nachricht je Zeile ueber stdio', async () => {
+test('MCP: one message per line over stdio', async () => {
     const input = new PassThrough();
     const output = new PassThrough();
     const lines = [];
     output.on('data', (chunk) => lines.push(...String(chunk).split('\n').filter(Boolean)));
     const served = serveMcp(createMcpHandler({ agentDir: tmpdir(), run: async () => ({ code: 0, out: '' }) }), { input, output });
-    input.write('{"jsonrpc":"2.0","id":1,"method":"ping"}\nkaputt\n');
+    input.write('{"jsonrpc":"2.0","id":1,"method":"ping"}\nbroken\n');
     input.end();
     await served;
-    await new Promise((ok) => { setImmediate(ok); });
+    await new Promise((resolveTick) => { setImmediate(resolveTick); });
     const answers = lines.map((line) => JSON.parse(line));
     assert.deepEqual(answers.find(({ id }) => id === 1), { jsonrpc: '2.0', id: 1, result: {} });
     assert.equal(answers.find(({ id }) => id === null).error.code, -32700);
 });
 
-test('Lokaler Agent: caw-ai aus diesem Paket, Kennzeichen fuer den Agenten, Claude Code im PATH', (t) => {
+test('local agent: caw-ai from this package, agent markers, Claude Code on the PATH', (t) => {
     const dir = tempDir(t);
     const [node, bin, ...rest] = localCommand(['caw-ai', 'sandbox-run', '--run-id', 'x']);
     assert.equal(node, process.execPath);
@@ -125,14 +125,14 @@ test('Lokaler Agent: caw-ai aus diesem Paket, Kennzeichen fuer den Agenten, Clau
     assert.equal(env.CAW_AGENT_LOCAL, '1');
     assert.equal(env.CAW_AGENT_DIR, dir);
     assert.equal(env.CAW_COLOR, '1');
-    assert.ok(env.Path.startsWith(join(dir, '.bin')) && env.Path.endsWith('C:\\bin'), 'PATH-Schreibweise von Windows bleibt');
+    assert.ok(env.Path.startsWith(join(dir, '.bin')) && env.Path.endsWith('C:\\bin'), 'the Windows spelling of PATH is kept');
     assert.ok(existsSync(join(dir, '.bin', 'caw-ai')) && existsSync(join(dir, '.bin', 'caw-ai.cmd')));
     const found = { file: 'claude', args: [] };
     assert.equal(claudeVersion(() => ({ status: 0, stdout: '2.1.319 (Claude Code)\n' }), found), '2.1.319');
     assert.equal(claudeVersion(() => ({ error: new Error('ENOENT') }), found), undefined);
-    assert.equal(claudeVersion(() => ({ status: 0, stdout: '2.1.319' }), null), undefined, 'nicht gefunden');
+    assert.equal(claudeVersion(() => ({ status: 0, stdout: '2.1.319' }), null), undefined, 'not found');
     assert.throws(() => requireClaude(() => ({ status: 1, stdout: '' }), found), /nicht im PATH/);
-    // Windows: nativ vor npm; npm-Installation ueber das Node-Skript, nie ueber die Shell.
+    // Windows: native before npm; an npm install via the Node script, never via the shell.
     const where = (stdout) => () => ({ status: 0, stdout });
     assert.deepEqual(resolveClaude({ platform: 'win32', run: where('C:\\a\\claude.cmd\r\nC:\\b\\claude.exe\r\n') }), { file: 'C:\\b\\claude.exe', args: [] });
     const npm = resolveClaude({ platform: 'win32', run: where('C:\\npm\\claude.cmd\r\n'), exists: () => true, node: 'node.exe' });
@@ -142,7 +142,7 @@ test('Lokaler Agent: caw-ai aus diesem Paket, Kennzeichen fuer den Agenten, Clau
     assert.deepEqual(resolveClaude({ platform: 'linux' }), { file: 'claude', args: [] });
 });
 
-test('Config: agent.sandbox, Standard lokal, in CI immer Docker', () => {
+test('config: agent.sandbox, local by default, always Docker in CI', () => {
     assert.equal(agentSandbox({}, {}), 'local');
     assert.equal(agentSandbox({ agent: { sandbox: 'docker' } }, {}), 'docker');
     assert.equal(agentSandbox({ agent: { sandbox: 'local' } }, { CI: 'true' }), 'docker');
@@ -154,22 +154,22 @@ test('Config: agent.sandbox, Standard lokal, in CI immer Docker', () => {
     assert.match(issues('docker'), /agent muss ein Objekt sein/);
 });
 
-test('Session als Agent: Marke nur waehrend des Laufs, fremde Marke bleibt, toter Prozess zaehlt nicht', async (t) => {
+test('session as agent: marker only during the run, another run\'s marker stays, a dead process does not count', async (t) => {
     const { announceSessionAgent, findSessionAgent, markerPath } = await import('../src/shared/session-agent.mjs');
     const root = tempDir(t);
     assert.equal(findSessionAgent(root), undefined);
-    const agent = announceSessionAgent({ root, runId: 'r1', agentDir: join(root, 'a'), mode: 'run', hint: 'Lauf r1' });
+    const agent = announceSessionAgent({ root, runId: 'r1', agentDir: join(root, 'a'), mode: 'run', hint: 'run r1' });
     assert.equal(findSessionAgent(root).agentDir, join(root, 'a'));
-    const newer = announceSessionAgent({ root, runId: 'r2', agentDir: join(root, 'b'), mode: 'talk', hint: 'Lauf r2' });
+    const newer = announceSessionAgent({ root, runId: 'r2', agentDir: join(root, 'b'), mode: 'talk', hint: 'run r2' });
     await agent.stop();
-    assert.equal(findSessionAgent(root).runId, 'r2', 'die Marke des neueren Laufs bleibt');
+    assert.equal(findSessionAgent(root).runId, 'r2', 'the newer run\'s marker stays');
     await newer.stop();
     assert.ok(!existsSync(markerPath(root)));
     announceSessionAgent({ root, runId: 'r3', agentDir: 'x', mode: 'run', hint: '', pid: 2 ** 22 + 12345 });
-    assert.equal(findSessionAgent(root), undefined, 'Prozess gibt es nicht mehr');
+    assert.equal(findSessionAgent(root), undefined, 'process no longer exists');
 });
 
-test('caw-ai mcp: Lauf starten mit --agent session, Status, Auswahl, caw nur mit wartendem Lauf', async (t) => {
+test('caw-ai mcp: start a run with --agent session, status, selection, caw only with a waiting run', async (t) => {
     const { sessionMcpHandler, startRun } = await import('../src/host/session-mcp.mjs');
     const { announceSessionAgent } = await import('../src/shared/session-agent.mjs');
     const root = tempDir(t);
@@ -191,23 +191,23 @@ test('caw-ai mcp: Lauf starten mit --agent session, Status, Auswahl, caw nur mit
     assert.equal((await call('caw_start', { command: 'init', args: [] })).isError, true);
     assert.equal((await call('caw_start', { command: 'run', args: ['x', '--agent', 'docker'] })).isError, true);
 
-    // Der gestartete Prozess (pid 999999) lebt nicht: caw_status sagt, dass der Lauf beendet ist, statt nur „wartet nicht“.
+    // The started process (pid 999999) is not alive: caw_status says the run has ended instead of just "not waiting".
     assert.match((await call('caw_status', {})).content[0].text, /der letzte ist beendet/);
     const denied = await call('caw', { args: ['snapshot'] });
     assert.equal(denied.isError, true);
     assert.match(denied.content[0].text, /caw_start/);
     assert.equal(calls.length, 0);
 
-    const agent = announceSessionAgent({ root, runId: 'r9', agentDir: join(root, 'agent'), mode: 'run', hint: 'Der Lauf r9 ist offen.' });
+    const agent = announceSessionAgent({ root, runId: 'r9', agentDir: join(root, 'agent'), mode: 'run', hint: 'Run r9 is open.' });
     t.after(() => agent.stop());
-    assert.match((await call('caw_status', {})).content[0].text, /Lauf r9 wartet auf dich \(run\)/);
+    assert.match((await call('caw_status', {})).content[0].text, /Run r9 is waiting for you \(run\)/);
     assert.equal((await call('caw', { args: ['snapshot'] })).isError, false);
     assert.equal(calls[0].env.CAW_AGENT_DIR, join(root, 'agent'));
     assert.match((await call('caw_selection', {})).content[0].text, /Noch kein Element/);
     assert.throws(() => startRun({ root, command: 'run', args: 'x' }), /args muss/);
     agent.stop();
 
-    // Ein Lauf, dessen Prozess noch lebt, aber gerade nicht auf die Session wartet: caw_status sagt das, caw_start wartet.
+    // A run whose process is alive but not waiting for the session right now: caw_status says so, caw_start refuses.
     const log = readdirSync(join(root, '.caw')).find((name) => name.endsWith('.log.pid'));
     writeFileSync(join(root, '.caw', log), String(process.pid));
     assert.ok((await call('caw_status', {})).content[0].text.includes(`Ein Lauf läuft (pid ${process.pid}), wartet aber gerade nicht`));
@@ -216,20 +216,20 @@ test('caw-ai mcp: Lauf starten mit --agent session, Status, Auswahl, caw nur mit
     assert.match(second.content[0].text, /läuft noch/);
 });
 
-test('Chat: Element geht beim Klären und Entwickeln mit, Wahl ist dort möglich', async () => {
+test('chat: the element goes along when clarifying and developing, picking is possible there', async () => {
     const { createChat } = await import('../src/host/chat.mjs');
     const states = [];
     const chat = createChat({ status: (state) => states.push(state) });
-    const element = { label: 'button "Senden"' };
+    const element = { label: 'button "Send"' };
     assert.equal(chat.canPick(), false);
-    const discussed = chat.discuss('S2 ist gescheitert.', [{ id: 'fix', label: 'Schritt beheben' }]);
-    assert.equal(chat.canPick(), true, 'beim Klären');
+    const discussed = chat.discuss('S2 failed.', [{ id: 'fix', label: 'Fix step' }]);
+    assert.equal(chat.canPick(), true, 'when clarifying');
     chat.attach(element);
-    chat.human.message('Was ist damit?');
-    assert.deepEqual(await discussed, { message: 'Was ist damit?', element });
-    const developing = chat.develop('Zustand S2 steht.', [{ id: 'end', label: 'Beenden' }]);
+    chat.human.message('What about this?');
+    assert.deepEqual(await discussed, { message: 'What about this?', element });
+    const developing = chat.develop('State S2 is ready.', [{ id: 'end', label: 'End' }]);
     assert.equal(states.at(-1), 'developing');
-    assert.equal(chat.canPick(), true, 'beim Entwickeln');
+    assert.equal(chat.canPick(), true, 'when developing');
     chat.attach(element);
     assert.deepEqual(chat.takeElement(), element);
     assert.equal(chat.takeElement(), null);

@@ -4,20 +4,20 @@ import { test } from 'node:test';
 import { createAgentHandler } from '../src/host/agent-commands.mjs';
 import { MASK, redact } from '../src/host/secrets.mjs';
 
-test('Geheimnisse: geschwärzt, längste zuerst, zu kurze bleiben', () => {
-    assert.equal(redact('textbox "Passwort": geheim123 und geheim1234', ['geheim123', 'geheim1234', 'ab']), `textbox "Passwort": ${MASK} und ${MASK}`);
+test('Secrets: redacted, longest first, too short ones stay', () => {
+    assert.equal(redact('textbox "Password": secret123 and secret1234', ['secret123', 'secret1234', 'ab']), `textbox "Password": ${MASK} and ${MASK}`);
     assert.equal(redact('ab cd', ['ab']), 'ab cd');
-    assert.equal(redact(42, ['geheim']), 42);
+    assert.equal(redact(42, ['secret']), 42);
 });
 
-test('Geheimnisse: Keine Antwort an Claude enthält das Passwort der Rolle oder eines Passwortfelds', async () => {
+test('Secrets: no answer to Claude contains the role password or the value of a password field', async () => {
     const page = {
-        ariaSnapshot: async () => '- textbox "Passwort" [ref=e2]:\n  - text: rollenPasswort1',
-        evaluate: async (code) => (typeof code === 'function' ? ['tippteNeu99'] : { feld: 'tippteNeu99', liste: ['rollenPasswort1'], zahl: 3 }),
+        ariaSnapshot: async () => '- textbox "Password" [ref=e2]:\n  - text: rolePassword1',
+        evaluate: async (code) => (typeof code === 'function' ? ['typedNew99'] : { field: 'typedNew99', list: ['rolePassword1'], number: 3 }),
         url: () => 'https://app.example/',
     };
-    const session = { page: () => page, secrets: () => ['rollenPasswort1'], failures: () => [] };
+    const session = { page: () => page, secrets: () => ['rolePassword1'], failures: () => [] };
     const handle = createAgentHandler({ session, run: { expectations: [] }, hosts: [], agentDir: '.', onVerdict: () => {} });
-    assert.doesNotMatch(await handle({ action: 'snapshot' }), /rollenPasswort1/);
-    assert.deepEqual(await handle({ action: 'eval', code: 'x' }), { feld: MASK, liste: [MASK], zahl: 3 });
+    assert.doesNotMatch(await handle({ action: 'snapshot' }), /rolePassword1/);
+    assert.deepEqual(await handle({ action: 'eval', code: 'x' }), { field: MASK, list: [MASK], number: 3 });
 });

@@ -1,6 +1,6 @@
-// Texte: cli (de). Schluessel mit Praefix "cli.".
+// Texts: cli (de). Keys prefixed with "cli.".
 export default {
-    // bin/caw-ai.mjs und help.mjs: Hilfe, je Befehl ein Block. caw-ai --help zeigt alle Blöcke, caw-ai <befehl> --help nur seinen.
+    // bin/caw-ai.mjs and help.mjs: help, one block per command. caw-ai --help shows all blocks, caw-ai <command> --help only its own.
     'cli.help.intro': `caw-ai - KI-gesteuerte Integrationstests für Webanwendungen (Constrained Agentic Webtester)
 
 Erste Schritte (im Projektordner, die Anwendung läuft):
@@ -122,7 +122,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
   recording                              Bisher aufgezeichnete Schritte nummeriert anzeigen
   finish --file <ergebnis.json>          Urteil einreichen; aufgezeichnet wird nur mit "omit"
   advise --file <empfehlung.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
-    // Die Kurzform je Befehl, unter einem Aufruffehler.
+    // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw-ai init [--url <adresse>] [--yes] [--from <datei>] [--no-mcp] [--offline]',
     'cli.synopsis.explore': 'caw-ai explore --url <adresse> [--login | --no-login] [--yes] [--insecure-tls]',
     'cli.synopsis.theme': 'caw-ai theme [use <name> | check <name>]',
@@ -142,7 +142,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.unknownCommand': 'Unbekannter Befehl: {command}.{suggestion} Siehe caw-ai --help.',
     'cli.didYouMean': ' Meintest du {name}?',
 
-    // commands.mjs: explore-Datei, Config, Skill, init
+    // commands.mjs: explore file, config, skill, init
     'cli.notExploreResult': 'Die Datei sieht nicht nach einem Ergebnis von caw-ai explore aus.',
     'cli.unknownFramework': 'Framework "{framework}" kennt caw-ai nicht ({names}).',
     'cli.initAuthUnknown': 'Anmeldung "{auth}" gibt es bei init nicht (form, storageState, none).',
@@ -166,7 +166,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.initOfflineFallback': 'Kein Terminal und keine --url: init schreibt die Vorlage, die Anmeldung bleibt TODO. Später: caw-ai explore --url <adresse>.',
     'cli.contextTemplate': '# Notizen für Claude\n\nWas Claude in jedem Test wissen sollte, aber nicht im Code sieht. Keine personenbezogenen Daten.\n\n- Beispiel: Die Suche merkt sich die letzte Eingabe. Erst „Filter löschen“ klicken.\n',
 
-    // commands.mjs: Dialog von init
+    // commands.mjs: init dialog
     'cli.askUrl': 'Adresse der lokalen Umgebung',
     'cli.askUrlProtocol': 'Bitte eine Adresse mit http:// oder https://.',
     'cli.askUrlInvalid': 'Das ist keine Adresse, etwa http://localhost:5173.',
@@ -215,7 +215,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.noTests': 'In caw/tests gibt es noch keine Tests.',
     'cli.knownSteps': 'Schritte: {steps}.',
 
-    // commands.mjs: Sandbox, Lauf, Aufnahme, Beheben
+    // commands.mjs: sandbox, run, record, fix
     'cli.imageBuilding': 'Baue das Sandbox-Image (nur beim ersten Lauf und nach Tool-Änderungen) ...',
     'cli.imageBuildFailed': 'Das Sandbox-Image ließ sich nicht bauen (Exit {code}). Fehlt der Registry-Login für {image}?',
     'cli.noWatch': 'Kein {label} aktiv: Ohne ihn testete das Overlay einen veralteten Stand. Starte {start} im App-Ordner, oder lass --overlay weg.',

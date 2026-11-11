@@ -1,13 +1,13 @@
-// Die Namen im Projekt: Config, Ordner der Tests und Aufzeichnungen, Projektkontext, Zugangsdaten, Laufordner.
+// Names in the project: config, test and recording folders, project context, credentials, run folder.
 
 export const CONFIG_FILE = 'caw.config.json';
 export const PROJECT_DIR = 'caw';
 export const TEST_DIR = `${PROJECT_DIR}/tests`;
 export const RECORDING_DIR = `${PROJECT_DIR}/recordings`;
 export const ENV_FILE = `${PROJECT_DIR}/.env`;
-/** Projektkontext fuer die Tests, wie CLAUDE.md: Eigenheiten der Anwendungen, relevante Infos. Pflegt der Mensch. */
+/** Project context for the tests, like CLAUDE.md: quirks of the applications, relevant notes. Maintained by the human. */
 export const CONTEXT_FILE = `${PROJECT_DIR}/caw.md`;
-/** Laufordner: Berichte, Screenshots, Austausch mit der Sandbox. Nicht eingecheckt. */
+/** Run folder: reports, screenshots, exchange with the sandbox. Not checked in. */
 export const RUN_DIR = '.caw';
-/** Das zuletzt in der Werkbank fuer die eigene Claude-Code-Session gewaehlte Element, unter RUN_DIR. */
+/** The element last selected in the workbench for the human's own Claude Code session, under RUN_DIR. */
 export const SELECTION_FILE = 'auswahl.json';

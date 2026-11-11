@@ -1,20 +1,20 @@
-// Adapter fuer jede Webanwendung, ohne Wissen ueber ein Framework (Config `"framework": "web"`, der Standard). Ziele beschreibt er
-// wie ein Mensch mit Screenreader: Rolle und zugaenglicher Name, dazu `data-testid` und der benannte Bereich darum (`inside`).
-// Bereit ist die Seite, wenn kein Request der Anwendung mehr offen ist, nichts `aria-busy` traegt, kein unbestimmter Fortschritt
-// laeuft und das DOM kurz still steht. Offene Shadow Roots (Web Components, Angular mit ShadowDom, Lit, Ionic) zaehlen mit.
+// Adapter for any web application, without framework knowledge (config `"framework": "web"`, the default). It describes targets
+// like a person with a screen reader: role and accessible name, plus `data-testid` and the named area around it (`inside`).
+// The page is ready when no application request is open, nothing has `aria-busy`, no indeterminate progress is running and the
+// DOM has been still for a moment. Open shadow roots (web components, Angular with ShadowDom, Lit, Ionic) are included.
 
 /**
- * Laeuft im Browser, darf also nichts von aussen benutzen. `describe` beschreibt ein Element, `find` sucht es wieder. Treffer zaehlen
- * nur, wenn sie wirklich klickbar sind: sichtbar und nicht ueberdeckt.
+ * Runs in the browser, so it must not use anything from outside. `describe` describes an element, `find` finds it again. Hits only
+ * count if they are really clickable: visible and not covered.
  */
 export function webTargets(element, { mode, target, exact = false }) {
     const clean = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
-    // Wie TARGET_TEXT_MAX: Laengere Texte waeren kein stabiles Ziel. Ein Muster prueft dagegen den ganzen Text.
+    // Like TARGET_TEXT_MAX: longer texts would not be a stable target. A pattern, however, checks the whole text.
     const short = (text) => (text.length <= 80 ? text : '');
-    // Shadow DOM: Eltern ueber die Grenze hinweg, Suche in allen offenen Shadow Roots.
+    // Shadow DOM: parents across the boundary, search in all open shadow roots.
     const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
-    // Pruefen, ob ein Ziel frei liegt, scrollt es kurz in die Mitte. Danach steht alles wieder, wie es war: Sonst springt die Seite
-    // bei jeder Suche, auch wenn gar nicht geklickt wird (Klicks scrollen selbst zum Ziel).
+    // Checking whether a target is free briefly scrolls it to the center. Afterwards everything is restored: otherwise the page
+    // would jump on every search, even without a click (clicks scroll to the target themselves).
     const keepScroll = (node, check) => {
         const saved = [];
         for (let at = parentOf(node); at !== null; at = parentOf(at)) saved.push([at, at.scrollTop, at.scrollLeft]);
@@ -49,10 +49,10 @@ export function webTargets(element, { mode, target, exact = false }) {
         if (node.tagName === 'INPUT') return INPUT_ROLES[node.type] ?? 'textbox';
         return TAG_ROLES[node.tagName] ?? null;
     };
-    // Rollen, deren Name aus dem Inhalt kommt; bei Feldern zaehlt nur die Beschriftung, nie der Wert.
+    // Roles whose name comes from their content; for fields only the label counts, never the value.
     const CONTENT_NAMED = new Set(['button', 'link', 'tab', 'menuitem', 'option', 'heading', 'checkbox', 'radio', 'switch', 'treeitem', 'cell', 'gridcell', 'columnheader']);
-    // Die Beschriftung ohne die Felder darin: Ein <select> im <label> braechte sonst alle Optionen in den Namen, und jede neue Option
-    // braeche das Wiederfinden.
+    // The label without the fields inside: a <select> in a <label> would otherwise put all options into the name, and every new
+    // option would break finding it again.
     const labelText = (label) => {
         if (!label) return '';
         const copy = label.cloneNode(true);
@@ -71,8 +71,8 @@ export function webTargets(element, { mode, target, exact = false }) {
     const fullOwnText = (node) => clean(node.innerText ?? node.textContent);
     const ownText = (node) => short(fullOwnText(node));
     const CONTAINERS = new Set(['dialog', 'alertdialog', 'form', 'region', 'group', 'tabpanel', 'navigation', 'menu', 'toolbar', 'row', 'listitem', 'article', 'complementary', 'banner', 'main', 'search']);
-    // Der naechste benannte Bereich: unterscheidet gleiche Knoepfe in verschiedenen Dialogen oder Zeilen.
-    // Mit `full` auch der ganze Name (`whole`), fuer ein Muster im Bereich.
+    // The nearest named area: tells apart identical buttons in different dialogs or rows.
+    // With `full` also the whole name (`whole`), for a pattern on the area.
     const insideOf = (node, full = false) => {
         for (let current = parentOf(node); current !== null && current !== document.body; current = parentOf(current)) {
             const role = roleOf(current);
@@ -84,7 +84,7 @@ export function webTargets(element, { mode, target, exact = false }) {
         return null;
     };
     const ACTIONABLE = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role], [data-testid], [contenteditable=""], [contenteditable=true], [tabindex]';
-    // Was an dieser Stelle oben liegt, auch innerhalb von Shadow Roots.
+    // What is on top at this point, also inside shadow roots.
     const hitAt = (x, y) => {
         let hit = document.elementFromPoint(x, y);
         while (hit?.shadowRoot) {
@@ -125,8 +125,8 @@ export function webTargets(element, { mode, target, exact = false }) {
         };
     };
     const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-    // Ein Wert des Ziels ist fest oder ein Muster {pattern}. Das Muster prueft den ganzen Text, auch ueber der Laengengrenze, etwa
-    // einen Knopf mit wechselnder Zahl ("Prüfen 3") oder einen langen Namen ueber seinen Anfang.
+    // A target value is fixed or a pattern {pattern}. The pattern checks the whole text, even beyond the length limit, e.g.
+    // a button with a changing number ("Prüfen 3") or a long name by its beginning.
     const isPattern = (value) => value !== null && typeof value === 'object' && typeof value.pattern === 'string';
     const fits = (wanted, seen, whole) => (isPattern(wanted) ? new RegExp(wanted.pattern).test(whole ?? seen ?? '') : seen === wanted);
     const wholeOf = (node, key) => (key === 'name' ? fullNameOf(node) : key === 'own' ? fullOwnText(node) : undefined);
@@ -151,8 +151,8 @@ export function webTargets(element, { mode, target, exact = false }) {
         }).filter(exact ? visible : reachable);
     };
 
-    // Virtualisierte Listen (CDK Virtual Scroll, react-window, vue-virtual-scroller) haben nur die sichtbaren Zeilen im DOM. Fehlt eine
-    // Zeile oder ein Ziel darin, rollt jede Suche die Liste ein Stueck weiter, bis es auftaucht oder das Ende erreicht ist.
+    // Virtualized lists (CDK Virtual Scroll, react-window, vue-virtual-scroller) only have the visible rows in the DOM. If a row or a
+    // target in it is missing, each search scrolls the list a bit further until it shows up or the end is reached.
     const LISTISH = new Set(['row', 'listitem', 'option', 'gridcell', 'cell', 'treeitem']);
     const scrollOn = () => {
         const SCROLLERS = '[role=grid], [role=list], [role=listbox], [role=table], [role=tree], [role=rowgroup], ul, ol, table, tbody, div';
@@ -172,14 +172,14 @@ export function webTargets(element, { mode, target, exact = false }) {
         return found;
     }
 
-    // Warum ein Ziel nicht klickbar ist: fehlt es, ist es unsichtbar, oder liegt etwas darueber, etwa ein offener Dialog mit Meldung?
+    // Why a target is not clickable: is it missing, invisible, or covered by something such as an open dialog with a message?
     if (mode === 'explain') {
         const candidates = deepAll(target.tag ?? ACTIONABLE).filter((node) => fitsKeys(target, node, describeNode(node)));
-        // Derselbe Bereich wie beim Suchen: Ein unsichtbarer Zwilling anderswo, etwa die mobile Navigation, erklaert nichts.
+        // The same area as when searching: an invisible twin elsewhere, e.g. the mobile navigation, explains nothing.
         const inArea = candidates.filter((node) => fitsInside(target.inside, node, describeNode(node)));
         if (inArea.length === 0) {
             if (candidates.length > 0) return { elsewhere: true };
-            // Fehlt es ganz: die Namen sichtbarer Elemente derselben Rolle, daraus waehlt der Host aehnliche, etwa einen umbenannten Knopf.
+            // Missing entirely: the names of visible elements with the same role; the host picks similar ones, e.g. a renamed button.
             const names = target.role === undefined ? [] : [...new Set(deepAll(ACTIONABLE).filter((node) => node.getClientRects().length > 0)
                 .map(describeNode).filter((seen) => seen.role === target.role && seen.name).map((seen) => seen.name))].slice(0, 80);
             return { missing: true, names };
@@ -198,7 +198,7 @@ export function webTargets(element, { mode, target, exact = false }) {
         const cover = layer ?? hit;
         const heading = deepAll('h1, h2, h3, [role=heading]', cover)[0] ?? null;
         const coverName = nameOf(cover) || (heading === null ? '' : short(clean(heading.innerText)));
-        // Auch ohne Rolle: der Hintergrund eines modalen Dialogs liegt ueber der ganzen Seite.
+        // Even without a role: the backdrop of a modal dialog covers the whole page.
         const scope = layer ?? deepAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]').find((dialog) => dialog.getClientRects().length > 0) ?? null;
         const messages = scope === null ? [] : deepAll('[role=alert], [role=status], [aria-live=assertive]', scope)
             .map((entry) => clean(entry.innerText).slice(0, 200)).filter((text) => text !== '');
@@ -211,8 +211,8 @@ export function webTargets(element, { mode, target, exact = false }) {
         };
     }
 
-    // Das Bedienelement, zu dem der Klick gehoert: etwa der Knopf um ein Icon. Mit `exact` das Element selbst, etwa ein iframe: Sonst
-    // stuende statt seiner der Dialog oder Bereich mit Rolle darum im Ziel, und darin liegt kein Frame.
+    // The control the click belongs to, e.g. the button around an icon. With `exact` the element itself, e.g. an iframe: otherwise
+    // the target would be the dialog or role area around it, which holds no frame.
     const node = exact ? element : deepClosest(element, 'button, a[href], input, select, textarea, summary, [data-testid], [role]') ?? element;
     const described = describeNode(node);
     const index = matches(described).indexOf(node);
@@ -220,9 +220,9 @@ export function webTargets(element, { mode, target, exact = false }) {
 }
 
 /**
- * Laeuft im Browser: Was gerade laedt, auch in offenen Shadow Roots. `aria-busy`, ein unbestimmter Fortschritt (`role=progressbar`
- * ohne `aria-valuenow`, so zeichnen Material, MUI und Vuetify ihre Spinner) und, mit `domQuietMs`, ein DOM, das sich gerade aendert.
- * Muss als eine Funktion ohne Abhaengigkeiten laufen, darum steckt alles darin.
+ * Runs in the browser: what is loading right now, also in open shadow roots. `aria-busy`, indeterminate progress (`role=progressbar`
+ * without `aria-valuenow`, which is how Material, MUI and Vuetify draw spinners) and, with `domQuietMs`, a DOM that is changing.
+ * Must run as one function without dependencies, so everything lives inside it.
  */
 export function webBusy({ domQuietMs = 0 } = {}) {
     const deepAll = (selector, root = document) => {
@@ -233,9 +233,9 @@ export function webBusy({ domQuietMs = 0 } = {}) {
     const seen = (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
     const busy = deepAll('[aria-busy=true], [role=progressbar]:not([aria-valuenow])').filter(seen).length;
     if (domQuietMs <= 0) return busy;
-    // Das DOM rendert nach einem Request oft noch nach (Change Detection, Suspense, nextTick). Der Beobachter haengt sich beim
-    // ersten Aufruf an und zaehlt nur neue oder geaenderte Knoten, keine Attribute: Eine Uhr oder ein Spinner laesst sonst nie Ruhe.
-    // Ein Beobachter am Dokument sieht nicht in Shadow Roots: Jede offene Root bekommt einen eigenen, auch spaeter entstandene.
+    // The DOM often keeps rendering after a request (change detection, Suspense, nextTick). The observer attaches on the first call
+    // and counts only new or changed nodes, not attributes: a clock or spinner would otherwise never let it settle.
+    // An observer on the document does not see into shadow roots: every open root gets its own, including later ones.
     const KEY = '__cawLastMutation';
     if (window[KEY] === undefined) {
         window[KEY] = 0;
@@ -251,7 +251,7 @@ export function webBusy({ domQuietMs = 0 } = {}) {
     return busy + (Date.now() - window[KEY] < domQuietMs ? 1 : 0);
 }
 
-/** Laeuft im Browser: Zustand der Seite ohne Framework. Meldungen aus `selectors` und modale Dialoge, Zahlen als #. */
+/** Runs in the browser: page state without a framework. Messages from `selectors` and modal dialogs, digits as #. */
 export function webPageState({ marker, selectors }) {
     const deepAll = (selector, root = document) => {
         const found = [...root.querySelectorAll(selector)];
@@ -264,14 +264,14 @@ export function webPageState({ marker, selectors }) {
         for (let current = node; current !== null; current = parentOf(current)) if (current.matches?.(selector)) return current;
         return null;
     };
-    // Ein modaler Dialog ist eine Meldung, wenn er etwas mitteilt oder bestaetigen laesst. Ein Formular im Dialog (Eingabefelder ausser
-    // Haken) ist Bedienung der Anwendung, keine Meldung: Als bekannte Meldung verdeckte es sonst spaeter echte Meldungen.
+    // A modal dialog is a message if it informs or asks for confirmation. A form in a dialog (input fields other than checkboxes)
+    // is regular use of the application, not a message: as a known message it would later hide real messages.
     const FIELDS = 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=button]):not([type=submit]), textarea, select, [contenteditable=true]';
     const isForm = (node) => node.getAttribute('role') !== 'alertdialog' && deepAll(FIELDS, node).some(seen);
     const modal = deepAll('dialog[open], [role=dialog][aria-modal=true], [role=alertdialog]').filter((node) => !isForm(node));
     const alerts = selectors.length === 0 ? [] : deepAll(selectors.join(', '));
-    // Text Knoten fuer Knoten mit Leerzeichen: innerText klebt Inline-Elemente aneinander ("Ich weiß" + Knopf "Auflösen").
-    // Offene Shadow Roots mit: Eine Meldung als Web Component traegt ihren Text oft nur dort.
+    // Text node by node with spaces: innerText glues inline elements together ("Ich weiß" + button "Auflösen").
+    // Includes open shadow roots: a message implemented as a web component often carries its text only there.
     const readable = (node) => {
         const parts = [];
         const walk = (root, deep) => {
@@ -289,30 +289,30 @@ export function webPageState({ marker, selectors }) {
             if (node.shadowRoot) walk(node.shadowRoot, true);
             walk(node, true);
         }
-        return parts.join(' ').replace(/\s+/g, ' ').replace(/ ([.,;:!?)\]“”"])/g, '$1').replace(/([(\[„]) /g, '$1').trim();
+        return parts.join(' ').replace(/\s+/g, ' ').replace(/ ([.,;:!?)\]“”"])/g, '$1').replace(/([([„]) /g, '$1').trim();
     };
-    // Ein Container wie ein Toast-Stapel (`aria-live` um mehrere Toasts) ist keine Meldung, jedes sichtbare Kind ist eine. Sonst
-    // entstuende je nach Timing eine neue Kombination ("angelegt. Gespeichert"), die nie bekannt ist.
+    // A container like a toast stack (`aria-live` around several toasts) is not a message, each visible child is one. Otherwise,
+    // depending on timing, a new combination ("angelegt. Gespeichert") would appear that is never known.
     const ownText = (node) => [...node.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.data.trim() !== '');
-    // Was selbst eine Meldung ist (role alert/status), bleibt ganz, auch wenn Text und Knoepfe eigene Bloecke sind.
+    // Whatever is a message itself (role alert/status) stays whole, even if text and buttons are separate blocks.
     const split = (node) => {
         if (['alert', 'status', 'alertdialog'].includes(node.getAttribute('role'))) return [node];
         const children = [...node.children].filter(seen);
         const blocks = children.every((child) => !getComputedStyle(child).display.startsWith('inline'));
         return children.length > 1 && blocks && !ownText(node) && deepClosest(node, 'dialog, [role=dialog], [role=alertdialog]') === null ? children : [node];
     };
-    // Ein Statushinweis (role=status, eine hoefliche Live-Region) teilt nur mit, was gerade geschieht, und kommt je nach Tempo oder
-    // nicht. Unbekannt warnt er nur. Fehler (role=alert, assertive) und Dialoge sind Meldungen: Unbekannt lassen sie den Schritt scheitern.
+    // A status note (role=status, a polite live region) only tells what is happening and may or may not appear depending on timing.
+    // When unknown it only warns. Errors (role=alert, assertive) and dialogs are messages: when unknown they fail the step.
     const isNote = (node) => !modal.includes(node) && deepClosest(node, '[role=alert], [role=alertdialog], [aria-live=assertive]') === null
         && deepClosest(node, '[role=status], [role=log], [role=timer], [role=progressbar], [aria-live=polite]') !== null;
-    // Der ganze Text: Nur so trifft eine lange Meldung ihren Eintrag in knownMessages. Gekuerzt wird erst beim Anzeigen.
+    // The whole text: only then does a long message match its entry in knownMessages. It is shortened only for display.
     const read = (node) => readable(node).replace(/\d+/g, '#');
     const shown = [...modal, ...alerts.flatMap(split)].filter(seen);
     const texts = shown.filter((node) => !isNote(node)).map(read);
     const notes = shown.filter(isNote).map(read);
     return {
         appLoaded: document.readyState === 'complete',
-        // Erst das Dokument selbst, nur ohne Treffer alle Shadow Roots: Der Zustand wird bei jedem Schritt gelesen.
+        // The document itself first, all shadow roots only without a hit: the state is read on every step.
         signedIn: marker === undefined || marker === null ? true : document.querySelector(marker) !== null || deepAll(marker).length > 0,
         loading: deepAll('[aria-busy=true], [role=progressbar]:not([aria-valuenow])').some(seen),
         path: location.pathname,
@@ -321,7 +321,7 @@ export function webPageState({ marker, selectors }) {
     };
 }
 
-/** Laeuft im Browser: die sichtbaren Treffer eines Selektors, auch in offenen Shadow Roots; null ohne Selektor. */
+/** Runs in the browser: the visible hits of a selector, also in open shadow roots; null without a selector. */
 export function webCount(store) {
     if (store === null || store === undefined) return null;
     const deepAll = (selector, root = document) => {
@@ -332,15 +332,15 @@ export function webCount(store) {
     return deepAll(store).filter((node) => node.getClientRects().length > 0).length;
 }
 
-/** So lang darf ein Name oder Text sein, damit er als Ziel zaehlt; `webTargets` liest laengere als leer. */
+/** Maximum length of a name or text to count as a target; `webTargets` treats longer ones as empty. */
 export const TARGET_TEXT_MAX = 80;
 
-/** Wie lange das DOM still stehen muss, bevor der Adapter `web` die Seite fuer ruhig haelt. */
+/** How long the DOM must be still before the `web` adapter considers the page quiet. */
 export const DOM_QUIET_MS = 150;
 
 /**
- * Laeuft im Browser: was noch laedt. Offene Requests zaehlt der Host aus dem Netzwerkprotokoll dazu. Mit `store` (ein CSS-Selektor)
- * zaehlt `counts` die sichtbaren Treffer, etwa Zeilen einer Liste. `busy` ist `webBusy` als Text, denn die Funktion laeuft im Browser.
+ * Runs in the browser: what is still loading. The host adds open requests from the network log. With `store` (a CSS selector)
+ * `counts` counts the visible hits, e.g. rows of a list. `webBusy` is inlined as text, since the function runs in the browser.
  */
 export const webProbe = new Function('store', `
     const busy = (${webBusy})({ domQuietMs: ${DOM_QUIET_MS} });
@@ -348,7 +348,7 @@ export const webProbe = new Function('store', `
     return { pendingAjax: 0, loadingStores: busy, counts, appReady: document.readyState === 'complete' };
 `);
 
-/** Meldungen der Seite: Fehler, Warnungen und, als Hinweis, Statusmeldungen wie Toasts und Snackbars. */
+/** Page messages: errors, warnings and, as notes, status messages like toasts and snackbars. */
 export const WEB_MESSAGE_SELECTORS = ['[role=alert]', '[role=alertdialog]', '[role=status]'];
 
 export const web = {

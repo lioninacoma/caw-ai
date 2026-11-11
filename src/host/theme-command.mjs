@@ -1,4 +1,4 @@
-// caw-ai theme: Themes auflisten, eines waehlen, eines pruefen. Das Theme ist persoenlich (prefs.json), gilt also in allen Projekten.
+// caw-ai theme: list themes, pick one, check one. The theme is personal (prefs.json), so it applies to all projects.
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,17 +11,17 @@ import { writePref } from '../shared/prefs.mjs';
 import { activeTheme, listThemes, loadTheme, missingFonts, readThemePackage, themeDir, themeWarnings, validateTheme } from '../shared/theme-package.mjs';
 import { createUi } from '../shared/ui.mjs';
 
-/** Der Team-Standard zaehlt fuer „aktiv“ mit: Die Config wird gelesen, wenn es eine gibt; eine kaputte stoert hier nicht. */
+/** The team default counts towards "active": the config is read if there is one; a broken one does not matter here. */
 const readProject = (root) => {
     if (!existsSync(join(root, CONFIG_FILE))) return;
     try {
         loadConfig(root);
     } catch {
-        // Ohne gueltige Config gilt eben kein Team-Standard.
+        // Without a valid config there is simply no team default.
     }
 };
 
-const known = (name, env) => {
+const requireKnownTheme = (name, env) => {
     if (readThemePackage(name, env) !== undefined) return;
     const names = listThemes(env).map((theme) => theme.name);
     throw new CawError('usage', t('cli.themeUnknown', { name, names: names.join(', ') }));
@@ -29,7 +29,7 @@ const known = (name, env) => {
 
 /**
  * caw-ai theme [use <name> | check <name>]
- * @returns Exit-Code
+ * @returns exit code
  */
 export const themeCommand = (root, args, { ui = createUi(), env = process.env } = {}) => {
     const [action, name, ...rest] = args;
@@ -47,7 +47,7 @@ export const themeCommand = (root, args, { ui = createUi(), env = process.env } 
         return EXIT.pass;
     }
     if (name === undefined || !['use', 'check'].includes(action)) throw new CawError('usage', t('cli.themeUsage'));
-    known(name, env);
+    requireKnownTheme(name, env);
     if (action === 'use') {
         writePref('theme', name, env);
         ui.success(t('cli.themeUsed', { name }));

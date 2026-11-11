@@ -1,20 +1,20 @@
-// Texte: config (en). Schluessel mit Praefix "config.".
-// Config-Pruefung, Bericht (report.md), Testdateien, Ablaufplan und Einschaetzung eines Fehlschlags.
+// Texts: config (en). Keys prefixed with "config.".
+// Config validation, report (report.md), test files, test plan and assessment of a failure.
 export default {
 
-    // config.mjs: Fragment aus extends
+    // config.mjs: fragment from extends
     'config.fragment.path': 'extends "{spec}": the fragment must be in the project, e.g. "extends": "./caw/presets/basis.json".',
     'config.fragment.unreadable': 'extends {spec} can\'t be read: {error}',
     'config.fragment.notObject': 'extends {spec} must be an object.',
     'config.fragment.nested': 'extends {spec}: a fragment can\'t extend another one.',
 
-    // config.mjs: Adressen
+    // config.mjs: URLs
     'config.origin.invalid': '"{value}" is not an address, e.g. "https://staging.example.com"',
     'config.origin.http': '"{value}": http only on your own machine (localhost, 127.0.0.1 or a name under .localhost); otherwise https',
     'config.origin.protocol': '"{value}" is not an https origin',
     'config.origin.path': '"{value}": origin only, no path and no trailing / ({origin}); the path goes in apps.<name>.startUrl',
 
-    // config.mjs: Umgebungen und Mandanten
+    // config.mjs: targets and tenants
     'config.env.missing': 'environments is missing, e.g. { "local": { "url": "http://localhost:5173", "claude": true, "writable": true } }',
     'config.sites.invalid': 'sites must be a list of names (lowercase letters, digits, - and _), e.g. ["nord", "sued"]',
     'config.env.name': 'Environment "{name}": only lowercase letters, digits, - and _',
@@ -33,7 +33,7 @@ export default {
     'config.site.production': 'Site {site} looks like production. Sites are customers, not environments: production goes in environments with "production": true.',
     'config.site.noUrl': 'Site {site} has no address in any environment',
 
-    // config.mjs: Anmeldung und Rollen
+    // config.mjs: login and roles
     'config.auth.type': 'auth.type must be one of {types}',
     'config.auth.foreign': 'auth ({type}): {key} is not allowed there or is not text (allowed: {fields}){hint}',
     'config.auth.formMissing': 'auth (form) needs {missing}',
@@ -50,7 +50,7 @@ export default {
     'config.role.sessionFile': 'the session is stored per target in {dir}/<target>/{name}.json',
     'config.role.noAuth': 'there is no sign-in',
 
-    // config.mjs: uebrige Felder
+    // config.mjs: other fields
     'config.notObject': 'The config must be a JSON object, e.g. { "environments": { … }, "apps": { … } }',
     'config.unknownField': 'Unknown field: {key}{hint}',
     'config.didYouMean': ' (did you mean {name}?)',
@@ -97,7 +97,7 @@ export default {
     'config.overlay.static': 'App {name}: overlay.statics[{index}] needs name and path (relative to the app folder, no ..), nothing else',
     'config.note.overlayNoEnv': 'App {name} has overlay, but no environment has "overlay": true: --overlay works nowhere.',
 
-    // config.mjs: Laden und Ziele
+    // config.mjs: loading and targets
     'config.load.missing': '{file} is missing in {root}. Set up with: npx caw-ai init --url <address>',
     'config.load.invalidJson': '{file} is not valid JSON: {error}',
     'config.targetForm.plain': 'environment',
@@ -108,7 +108,7 @@ export default {
     'config.target.site': 'Site "{site}" is not in sites ({sites}).',
     'config.target.siteUrl': 'Site "{site}" has no address in environment "{environment}".',
 
-    // report.mjs: Einreichen des Ergebnisses
+    // report.mjs: submitting the result
     'config.finish.evidenceMissing': '{id}: evidence is missing. Expected: {"type":"eval"|"screenshot","value":"..."}.',
     'config.finish.screenshotMissing': '{id}: screenshot {value} doesn\'t exist in the run folder.',
     'config.finish.reason': 'Environment errors need a reason.',

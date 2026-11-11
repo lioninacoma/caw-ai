@@ -1,7 +1,7 @@
-// Zwei Dateien je Test: Die Beschreibung (caw/tests/<id>.yaml) pflegt der Mensch, die Aufzeichnung (caw/recordings/<id>.yaml)
-// das Tool. Verbunden sind sie ueber die Schritt-ID und den Hash aus dem Text des Schritts; passt er nicht, ist die Aufzeichnung
-// des Schritts veraltet. Im Speicher ist der Test eine Einheit; als eine Datei steht er nur im Entwurf eines Laufs. Nur auf dem
-// Host: Die Sandbox hat das Paket yaml nicht und liest ihren Plan als Text.
+// Two files per test: the human maintains the description (caw/tests/<id>.yaml), the tool the recording
+// (caw/recordings/<id>.yaml). They are linked by step ID and a hash of the step text; if the hash no longer matches, that
+// step's recording is stale. In memory a test is one unit; as a single file it only exists in a run's draft. Host only: the
+// sandbox has no yaml package and reads its plan as text.
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -30,7 +30,7 @@ const STEP_FIELDS = [...PLAN_STEP_FIELDS, 'recording'];
 const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'actions', 'check', 'timeoutMs', 'network', 'effects'];
 const EFFECT_FIELDS = new Set(['action', ...EFFECT_LISTS]);
 
-/** Die gelernte Wirkung je Aktion: wie oft gelernt, und je Aktionsnummer Listen von Zeilen ohne Werte. */
+/** The learned effects: how many runs they were learned from, and per action number lists of lines without values. */
 const checkEffects = (raw, at, report) => {
     const ok = isObject(raw) && Object.keys(raw).every((key) => key === 'runs' || key === 'actions' || key === 'basis')
         && (raw.basis === undefined || isText(raw.basis)) && Number.isInteger(raw.runs) && raw.runs > 0 && Array.isArray(raw.actions)
@@ -41,7 +41,7 @@ const checkEffects = (raw, at, report) => {
 };
 const NETWORK_FIELDS = new Set(['name', 'status', 'ms', 'count', 'params']);
 
-/** Die Requests eines Schritts bei der Aufnahme, der Vergleich fuer einen spaeteren Fehler. */
+/** A step's requests at recording time, the baseline for diagnosing a later failure. */
 const checkNetwork = (raw, at, report) => {
     if (!Array.isArray(raw)) {
         report(at, t('config.test.network.list'));
@@ -59,14 +59,14 @@ const TARGET_KEY = /^[A-Za-z]+$/;
 const TARGETED = ['click', 'fill', 'type', 'upload', 'download'];
 const TEXT_ACTIONS = { press: 'key', goto: 'url', screenshot: 'name' };
 const ACTION_NAMES = [...TARGETED, ...Object.keys(TEXT_ACTIONS), 'reload', 'wait-ready', 'remember'];
-// Felder neben dem Ziel: was einzugeben, hochzuladen oder als Dateiname eines Downloads zu erwarten ist.
-// optional: ein Klick, der nur zaehlt, wenn sein Ziel da ist (etwa ein Cookie-Banner, der nur beim ersten Besuch kommt).
+// Fields besides the target: what to enter, upload, or expect as a download's file name.
+// optional: a click that only counts when its target is present (e.g. a cookie banner shown on the first visit only).
 const ACTION_EXTRAS = { click: ['optional'], fill: ['value'], type: ['value'], upload: ['files'], download: ['file'], goto: ['denied'] };
-// Namen, die das Tool am Element liest; laengere liest es als leer, ein solches Ziel trifft nie.
+// Names the tool reads from the element; longer ones read as empty, so such a target would never match.
 const TEXT_LIMITED = ['name', 'own'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
-/** Der Vorschlag zu einem unbekannten Feld als Zusatz, etwa " Meintest du targets?", sonst leer. */
+/** A suggestion for an unknown field as a suffix (e.g. " Did you mean targets?"), otherwise empty. */
 const hintFor = (key, allowed) => {
     const name = didYouMean(key, allowed);
     return name === undefined ? '' : t('config.test.didYouMean', { name });
@@ -74,7 +74,7 @@ const hintFor = (key, allowed) => {
 const isText = (value) => typeof value === 'string' && value.trim() !== '';
 const clean = (text) => (text ?? '').replaceAll('\r\n', '\n').trim();
 
-/** Schaltet alles ab, was YAML ausser Daten kann: Der Inhalt laeuft teils in der angemeldeten Seite. */
+/** Disables everything YAML can do beyond plain data: parts of the content run in the signed-in page. */
 const readYaml = (rawText) => {
     const text = rawText.replaceAll('\r\n', '\n');
     const lineCounter = new LineCounter();
@@ -88,7 +88,7 @@ const readYaml = (rawText) => {
             problems.push(t('config.test.aliases'));
         }
     }
-    /** Die Zeile eines Felds. Fehlt es, zaehlt die des naechsten vorhandenen Elternteils. */
+    /** The line of a field; if it is missing, the line of its nearest existing parent. */
     const lineOf = (path) => {
         for (let depth = path.length; depth > 0; depth -= 1) {
             const node = doc.getIn(path.slice(0, depth), true);
@@ -100,17 +100,17 @@ const readYaml = (rawText) => {
 };
 
 /**
- * Ein Ziel: einfache Werte oder ein Muster `{pattern}`, dazu hoechstens das umgebende Bauteil unter `inside` und, in einem iframe,
- * das iframe-Element unter `frame` (selbst ein Ziel, bei verschachtelten Frames wieder mit `frame`).
+ * A target: plain values or a pattern `{pattern}`, optionally the enclosing component under `inside` and, inside an iframe,
+ * the iframe element under `frame` (itself a target; nested frames again use `frame`).
  */
 const isTarget = (value) => isObject(value) && Object.keys(value).length > 0 && Object.entries(value).every(([key, item]) => TARGET_KEY.test(key)
     && (key === 'frame' ? isTarget(item) : ['string', 'number', 'boolean'].includes(typeof item) || isPattern(item) || (key === 'inside' && isTarget(item))));
 
-/** Ein Name ueber der Grenze, auch im Bereich darum: Er ist auf der Seite leer, das Ziel traefe nie. */
+/** A name over the limit, also under `inside` or `frame`: it reads as empty on the page, so the target would never match. */
 const namesOf = (target) => (isObject(target) ? [...TEXT_LIMITED.map((key) => target[key]), ...namesOf(target.inside), ...namesOf(target.frame)] : []);
 const tooLong = (target) => namesOf(target).find((text) => typeof text === 'string' && text.replace(/\s+/g, ' ').trim().length > TARGET_TEXT_MAX);
 
-/** Dateien fuer upload: relativ zum caw-Ordner, nie absolut und nie darueber hinaus. */
+/** Files for upload: relative to the caw folder, never absolute and never outside it. */
 const isFileList = (value) => Array.isArray(value) && value.length > 0 && value.every((file) => isText(file)
     && !/^([A-Za-z]:)?[\\/]/.test(file) && !file.split(/[\\/]/).includes('..'));
 
@@ -224,16 +224,16 @@ const checkRetry = (raw, at, report) => {
 };
 
 /**
- * Ein neuer Versuch beginnt bei diesem oder einem frueheren Schritt. Beim Beheben kennt der Plan nur einen Schritt, deshalb steht das
- * nicht in der Formpruefung des Plans.
- * @returns die Probleme als Text
+ * A retry starts at this step or an earlier one. When fixing, the plan holds only one step, so this is not part of the plan's
+ * shape check.
+ * @returns the problems as text
  */
 export const retryProblems = (steps) => steps.flatMap(({ id, retry }, position) => {
     if (retry?.from === undefined || steps.slice(0, position + 1).some((step) => step.id === retry.from)) return [];
     return [t('config.test.retry.order', { id: String(id), from: retry.from })];
 });
 
-/** Prueft die Schritte. Plan und Testdatei teilen das, nur die Aufzeichnung bleibt der Testdatei vorbehalten. */
+/** Checks the steps. Shared by plan and test file; only the test file may carry recordings. */
 const readSteps = (raw, problems, lineOf, { allowRecording, description = false }) => {
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!Array.isArray(raw) || raw.length === 0) {
@@ -269,7 +269,7 @@ const readSteps = (raw, problems, lineOf, { allowRecording, description = false 
             ...(step.note === undefined ? {} : { note: clean(step.note) }),
             ...(step.retry === undefined ? {} : { retry: step.retry }),
         };
-        // Im Plan zaehlt eine Aufzeichnung nicht: Nur das Tool schreibt sie.
+        // A recording in the plan is ignored: only the tool writes recordings.
         if (!allowRecording || step.recording === undefined) return plain;
         const recording = readRecording(step.recording, [...at, 'recording'], problems, lineOf);
         return recording === undefined ? plain : { ...plain, recording };
@@ -278,13 +278,13 @@ const readSteps = (raw, problems, lineOf, { allowRecording, description = false 
 
 const invalid = (label, problems) => new CawError('test-invalid', problems.map((problem) => `${label}: ${problem}`).join('\n'));
 
-/** Die Punkte, an denen Urteil und Bericht gemessen werden: je Schritt genau einer. */
+/** The points verdict and report are measured against: exactly one per step. */
 export const withExpectations = (spec) => ({ ...spec, expectations: spec.steps.map(({ id, expect }) => ({ id, text: expect })) });
 
 /**
- * Liest eine Testdatei und prueft ihre Form samt Zeilenangabe; alles vom Ziel Abhaengige macht `checkTest`.
- * @param description die Beschreibung in caw/tests: ohne Aufzeichnung und knownMessages, die stehen in caw/recordings. Sonst der
- *                    Entwurf eines Laufs, eine Datei mit beidem.
+ * Reads a test file and checks its shape, with line numbers; everything that depends on the target is done by `checkTest`.
+ * @param description the description in caw/tests: without recordings and knownMessages, which live in caw/recordings.
+ *                    Otherwise a run's draft, a single file with both.
  */
 export const parseTest = (text, label = t('config.test.label'), { description = false } = {}) => {
     const { value, problems, lineOf } = readYaml(text);
@@ -292,7 +292,7 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!isObject(value)) throw invalid(label, [t('config.test.file.object')]);
     for (const key of Object.keys(value)) if (!TOP_FIELDS.includes(key)) report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
-    // id, app, role und targets duerfen fehlen: Die Vorgaben kommen aus Dateiname und Config (withDefaults).
+    // id, app, role and targets may be missing: defaults come from the file name and the config (withDefaults).
     for (const key of ['id', 'app', 'role']) if (value[key] !== undefined && !isText(value[key])) report([key], t('config.test.text', { key }));
     if (value.targets !== undefined && (!Array.isArray(value.targets) || value.targets.length === 0 || !value.targets.every(isText))) report(['targets'], t('config.test.targets'));
     if (typeof value.mutates !== 'boolean') report(['mutates'], t('config.test.mutates'));
@@ -317,8 +317,8 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
 };
 
 /**
- * Liest den Plan des Agenten: nur `notes` und `steps`. Metadaten und Aufzeichnungen, die er trotzdem mitschickt, fallen weg,
- * denn Rolle, Ziele und Schreibrecht bleiben beim Menschen.
+ * Reads the agent's plan: only `notes` and `steps`. Metadata and recordings it sends anyway are dropped, because role, targets
+ * and write access stay with the human.
  */
 export const parsePlan = (text) => {
     const { value, problems, lineOf } = readYaml(text);
@@ -332,12 +332,12 @@ export const parsePlan = (text) => {
 export const testPath = (root, id) => join(root, TEST_DIR, `${id}.yaml`);
 export const recordingPath = (root, id) => join(root, RECORDING_DIR, `${id}.yaml`);
 
-// Eine bekannte Meldung ist ein fester Text oder ein Muster `{pattern}`, etwa fuer einen Dialog mit Pruefsumme oder Uhrzeit.
+// A known message is a fixed text or a pattern `{pattern}`, e.g. for a dialog showing a checksum or the time.
 const knownMessagesOk = (value) => value === undefined || (Array.isArray(value) && value.every((message) => typeof message === 'string' || isPattern(message)));
 
 /**
- * Liest eine Aufzeichnungsdatei: `test`, je Schritt `id` plus die Felder der Aufzeichnung, dazu `knownMessages`.
- * @returns { test, byId: Map Schritt -> recording, knownMessages? }
+ * Reads a recording file: `test`, per step `id` plus the recording fields, and `knownMessages`.
+ * @returns { test, byId: Map step -> recording, knownMessages? }
  */
 export const parseRecordings = (text, label = t('config.test.recordings.label')) => {
     const { value, problems, lineOf } = readYaml(text);
@@ -362,7 +362,7 @@ export const parseRecordings = (text, label = t('config.test.recordings.label'))
     return { test: value.test, byId, ...(value.knownMessages === undefined ? {} : { knownMessages: value.knownMessages }) };
 };
 
-/** Setzt die Aufzeichnung in die Beschreibung ein. Die Datei der Aufzeichnung gewinnt vor einer alten Aufzeichnung in der Beschreibung. */
+/** Merges recordings into the description. The recording file wins over an old recording inside the description. */
 export const mergeRecordings = (spec, { byId, knownMessages }) => ({
     ...spec,
     steps: spec.steps.map((step) => (byId.has(step.id) ? { ...step, recording: byId.get(step.id) } : step)),
@@ -382,22 +382,22 @@ export const loadTest = (root, id) => {
     const path = testPath(root, id);
     if (!existsSync(path)) throw new CawError('test-missing', t('config.test.notFound', { path: `${TEST_DIR}/${id}.yaml` }));
     const parsed = parseTest(readFileSync(path, 'utf8'), `${TEST_DIR}/${id}.yaml`, { description: true });
-    // Ohne id gilt der Dateiname; eine angegebene muss zu ihm passen.
+    // Without an id the file name applies; a given id must match it.
     if (parsed.id !== undefined && parsed.id !== id) throw new CawError('test-invalid', t('config.test.idMismatch', { path: `${TEST_DIR}/${id}.yaml`, id: String(parsed.id) }));
     const spec = { ...parsed, id };
     const recordings = readRecordingFile(root, id);
     return recordings === null ? spec : mergeRecordings(spec, recordings);
 };
 
-/** Der einzige Name in einer Liste der Config, sonst undefined. */
+/** The only name in a config map, otherwise undefined. */
 const onlyKey = (map) => {
     const keys = Object.keys(map ?? {});
     return keys.length === 1 ? keys[0] : undefined;
 };
 
 /**
- * Was der Test nicht nennt, gibt die Config vor: app und role, wenn es genau eine gibt (role nur mit Anmeldung), targets alle
- * Ziele ausser Produktion. Was dann noch fehlt, meldet checkTest.
+ * Whatever the test omits comes from the config: app and role when there is exactly one (role only with sign-in), targets all
+ * non-production targets. Anything still missing is reported by checkTest.
  */
 export const withDefaults = (spec, config) => {
     const app = spec.app ?? onlyKey(config.apps);
@@ -406,12 +406,12 @@ export const withDefaults = (spec, config) => {
     return { ...spec, ...(app === undefined ? {} : { app }), ...(role === undefined ? {} : { role }), targets };
 };
 
-/** Die Namen einer Liste der Config fuer Meldungen, etwa "admin, tester". */
+/** The names in a config map for messages, e.g. "admin, tester". */
 const namesIn = (map) => Object.keys(map ?? {}).join(', ') || '–';
 
 /**
- * Hinweise zur Aufzeichnung, die kein Fehler sind: Aufzeichnungen ohne Schritt (geloescht oder umbenannt) und Aufzeichnungsdateien
- * ohne Beschreibung. Beim naechsten Schreiben fallen solche Aufzeichnungen weg.
+ * Recording hints that are not errors: recordings without a step (deleted or renamed) and recording files without a description.
+ * Such recordings are dropped on the next write.
  */
 export const recordingHints = (root) => {
     const dir = join(root, RECORDING_DIR);
@@ -426,9 +426,9 @@ export const recordingHints = (root) => {
 };
 
 /**
- * Darf dieser Test auf diesem Ziel laufen? Hier sitzt der Schreibschutz, deterministisch und vor jedem Browser. Dazu, welcher Code
- * laeuft: ohne --overlay immer der ausgelieferte.
- * @param overlay aus --overlay: true, 'build', 'dev', die Adresse eines Dev-Servers oder undefined
+ * May this test run on this target? Write protection lives here, deterministic and before any browser starts. Also decides
+ * which code runs: without --overlay always the deployed code.
+ * @param overlay from --overlay: true, 'build', 'dev', a dev server URL, or undefined
  */
 export const checkTest = (given, target, config, { overlay } = {}) => {
     const resolved = resolveTarget(config, target);
@@ -451,10 +451,10 @@ export const checkTest = (given, target, config, { overlay } = {}) => {
 };
 
 /**
- * Welcher Code laeuft, an genau einer Stelle: der ausgelieferte, ausser jemand sagt --overlay. Nie still umgeschaltet, auch nicht
- * mit --until, in einer Testdatei oder weil ein Watch laeuft. Geht das Overlay nicht, ist das ein Aufruffehler mit dem Grund.
- * Ein Dev-Server auf dem eigenen Rechner (http auf localhost) liefert den lokalen Code selbst: Dort gibt es nichts zu ueberlagern.
- * @returns { source: 'deployed' } | { source: 'overlay', apps: { <app>: Quelle } }, Quelle siehe overlayChoice
+ * Which code runs, decided in exactly one place: the deployed code unless --overlay is given. Never switched silently, not by
+ * --until, a test file, or a running watch. If the overlay is not possible, that is a usage error stating why.
+ * A dev server on the local machine (http on localhost) already serves the local code, so there is nothing to overlay.
+ * @returns { source: 'deployed' } | { source: 'overlay', apps: { <app>: source } }, see overlayChoice for source
  */
 const codeFor = (spec, resolved, config, overlay) => {
     if (overlay === undefined) return { source: 'deployed' };
@@ -473,12 +473,12 @@ const codeFor = (spec, resolved, config, overlay) => {
 };
 
 /**
- * Die Quelle einer App fuer --overlay:
- * - { kind: 'build', dir, command? }: Build-Ordner relativ zum Projekt
- * - { kind: 'dev', url, command? }: Dev-Server
- * - { kind: 'watch', command? }: Sencha-Watch (ExtJS), Quellen laut bootstrap.json im App-Ordner
- * - { kind: 'files' }: nur overlay.statics
- * Jede mit `statics`. Eine weitere App (also) ohne Quelle bleibt ausgeliefert (null); die App des Tests braucht eine.
+ * An app's source for --overlay:
+ * - { kind: 'build', dir, command? }: build folder relative to the project
+ * - { kind: 'dev', url, command? }: dev server
+ * - { kind: 'watch', command? }: Sencha watch (ExtJS), sources per bootstrap.json in the app folder
+ * - { kind: 'files' }: overlay.statics only
+ * Each with `statics`. An additional app (also) without a source stays deployed (null); the test's app needs one.
  */
 export const overlayChoice = (config, name, flag, { required = true } = {}) => {
     const overlay = config.apps[name].overlay ?? {};
@@ -505,22 +505,22 @@ export const overlayChoice = (config, name, flag, { required = true } = {}) => {
     return only;
 };
 
-/** Nur was den Schritt fachlich ausmacht. Aendert sich das von Hand, ist genau dieser Schritt veraltet. `retry` aendert den Weg nicht. */
+/** Only what defines the step's content. A manual change makes exactly this step stale. `retry` does not change the path. */
 export const stepHash = ({ name, do: action, expect, note }) => createHash('sha256')
     .update(JSON.stringify([clean(name), clean(action), clean(expect), clean(note)]))
     .digest('hex')
     .slice(0, 16);
 
-/** Schritte, deren Aufzeichnung fehlt oder nicht mehr zum Text passt. */
+/** Steps whose recording is missing or no longer matches their text. */
 export const staleSteps = (spec) => spec.steps.flatMap((step) => {
     if (step.recording === undefined) return [{ id: step.id, why: t('config.test.stale.none') }];
     return step.recording.hash === stepHash(step) ? [] : [{ id: step.id, why: t('config.test.stale.changed') }];
 });
 
 /**
- * Baut die Aufzeichnung auf einem Schritt auf, der nicht mehr davorsteht? Ein eingefuegter Schritt stoert nicht, ein geloeschter
- * oder verschobener schon, denn was danach kommt, setzt seinen Zustand voraus.
- * @returns die erste solche Stelle oder null
+ * Does a recording build on a step that no longer precedes it? An inserted step is fine, a deleted or moved one is not, because
+ * what follows relies on its state.
+ * @returns the first such place, or null
  */
 export const brokenChain = (spec) => {
     const before = new Set();
@@ -546,7 +546,7 @@ const recordingFields = (recording) => ({
     ...(recording.effects === undefined ? {} : { effects: recording.effects }),
 });
 
-/** Ziele und Vergleichswerte in einer Zeile: Die Aufzeichnung ist so deutlich kuerzer und liest sich wie eine Liste. */
+/** Targets and baselines on one line each: the recording gets much shorter and reads like a list. */
 const compactRecording = (node) => {
     for (const entry of node?.get('network', true)?.items ?? []) entry.flow = true;
     for (const action of node?.get('actions', true)?.items ?? []) {
@@ -554,8 +554,10 @@ const compactRecording = (node) => {
     }
 };
 
-// Mehrfach genutzte Ziele schreibt yaml sonst als Alias, und den weist parseTest ab.
-/** Ein Schritt; mit `withRecording` samt Aufzeichnung wie im Entwurf eines Laufs. */
+/**
+ * A step node; with `withRecording` including its recording, as in a run's draft. Aliases are off: yaml would otherwise write
+ * reused targets as aliases, which parseTest rejects.
+ */
 const stepNode = (doc, step, { withRecording = true } = {}) => {
     const { recording } = step;
     const node = doc.createNode({
@@ -581,7 +583,7 @@ const setSteps = (doc, spec, only, options = {}) => {
     const known = new Map(list.items.map((item) => [item.get('id'), item]));
     const renew = (step) => {
         const node = stepNode(doc, step, options);
-        // Kommentare ueber dem Schritt gehoeren dem Menschen.
+        // Comments above the step belong to the human.
         node.commentBefore = known.get(step.id)?.commentBefore;
         return node;
     };
@@ -593,20 +595,19 @@ const setSteps = (doc, spec, only, options = {}) => {
         const step = spec.steps.find(({ id }) => id === item.get('id'));
         return step !== undefined && only.has(step.id) ? renew(step) : item;
     });
-    // Ein Schritt, den es in der Datei noch nicht gab, landet an seiner Stelle im Plan.
+    // A step that was not in the file yet is inserted at its position in the plan.
     spec.steps.forEach((step, position) => {
         if (only.has(step.id) && !known.has(step.id)) list.items.splice(position, 0, renew(step));
     });
 };
 
-/** Die Testdatei als Text, wie sie ohne Vorlage aussaehe. */
+/** The test file as text, as it would look when written from scratch. */
 export const renderTest = (spec) => {
     const doc = new Document({
         id: spec.id,
         app: spec.app,
         role: spec.role,
         targets: spec.targets,
-        // Nur wenn ausdruecklich anders als der Standard: Sonst klebte ein Stand am Test, den die Config laengst anders sieht.
         mutates: spec.mutates,
         ...(spec.also?.length > 0 ? { also: spec.also } : {}),
         ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),
@@ -619,16 +620,16 @@ export const renderTest = (spec) => {
     return doc.toString(STRINGIFY);
 };
 
-/** Der Plan als YAML, so wie der Agent ihn schreiben wuerde. */
+/** The plan as YAML, as the agent would write it. */
 export const renderPlan = (spec) => new Document({
     ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),
     steps: spec.steps.map(planFields),
 }).toString(STRINGIFY);
 
-/** Die Beschreibung als Text, ohne Aufzeichnung. */
-export const renderDescription = (spec) => renderTest({ ...spec, steps: spec.steps.map(({ recording, ...step }) => step), knownMessages: undefined });
+/** The description as text, without recordings. */
+export const renderDescription = (spec) => renderTest({ ...spec, steps: spec.steps.map(({ recording: _recording, ...step }) => step), knownMessages: undefined });
 
-/** Die Aufzeichnungsdatei als Text: Sie gehoert dem Tool, darum wird sie jedes Mal ganz geschrieben. */
+/** The recording file as text: it belongs to the tool, so it is always rewritten in full. */
 export const renderRecordings = (spec) => {
     const doc = new Document({ test: spec.id });
     doc.commentBefore = ` ${t('config.test.recordingHeader', { file: `${TEST_DIR}/${spec.id}.yaml` })}`;
@@ -649,7 +650,7 @@ const sameText = (doc, node, step) => {
     return JSON.stringify(planFields(normalized)) === JSON.stringify(planFields(step));
 };
 
-/** Schreibt nur, wenn sich etwas aendert, und behaelt die Zeilenenden der Datei. @returns ob geschrieben wurde */
+/** Writes only when something changes and keeps the file's line endings. @returns whether it wrote */
 const writeIfChanged = (path, text, raw) => {
     const final = raw?.includes('\r\n') ? text.replaceAll('\n', '\r\n') : text;
     if (raw === final) return false;
@@ -658,18 +659,17 @@ const writeIfChanged = (path, text, raw) => {
 };
 
 /**
- * Schreibt Beschreibung und Aufzeichnung. In der Beschreibung bleiben Kommentare und unberuehrte Schritte, wie sie sind; ein
- * Schritt aus `only` wird nur neu geschrieben, wenn sich sein Text geaendert hat. Lernt das Tool also Vergleichswerte oder
- * Wirkung, aendert sich nur die Aufzeichnung.
- * @param only die Schritte, die sich aendern; ohne Angabe wird der ganze Plan abgeloest
- * @param withNotes auch `notes` schreiben, wenn nur einzelne Schritte sich aendern
- * @returns die geaenderten Dateien relativ zum Projekt, durch Komma getrennt
+ * Writes description and recording. Comments and untouched steps in the description stay as they are; a step from `only` is
+ * only rewritten when its text changed. So when the tool learns baselines or effects, only the recording changes.
+ * @param only the steps that change; if omitted, the whole plan is replaced
+ * @param withNotes also write `notes` when only some steps change
+ * @returns the changed files relative to the project, comma-separated
  */
 export const writeTest = (root, spec, only, { withNotes = false } = {}) => {
     const path = testPath(root, spec.id);
     mkdirSync(join(root, TEST_DIR), { recursive: true });
     const changed = [];
-    // Was bisher galt: Daraus kommen die Aufzeichnungen der Schritte, die sich nicht aendern.
+    // The previous state: recordings of unchanged steps are taken from it.
     const before = existsSync(path) ? loadTest(root, spec.id) : null;
     if (before === null) {
         writeFileSync(path, renderDescription(spec));

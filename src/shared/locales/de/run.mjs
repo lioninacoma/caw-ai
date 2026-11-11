@@ -1,6 +1,6 @@
-// Texte: run (de). Schluessel mit Praefix "run.".
+// Texts: run (de). Keys prefixed with "run.".
 export default {
-    // Knoepfe im Chat
+    // Chat buttons
     'run.button.accept': 'Übernehmen',
     'run.button.discard': 'Verwerfen',
     'run.button.discardDraft': 'Entwurf verwerfen',
@@ -19,7 +19,7 @@ export default {
     'run.button.restore': 'Zustand neu herstellen',
     'run.button.endDevelop': 'Lauf beenden',
 
-    // Schrittliste
+    // Step list
     'run.group.advise': 'Claude untersucht',
     'run.group.talk': 'Fehler klären',
     'run.group.develop': 'Entwickeln',
@@ -33,7 +33,7 @@ export default {
     'run.learn.kind': 'Lernen',
     'run.learn.label': 'Vergleichswerte',
 
-    // Kopfzeile
+    // Header
     'run.mode.record': 'Claude nimmt auf',
     'run.mode.verify': 'Prüfen ohne Claude',
     'run.mode.until': 'Bis {until} abspielen, danach bleibt das Fenster offen',
@@ -52,7 +52,7 @@ export default {
     'run.phase.developIn': 'Entwickeln in {until}',
     'run.phase.handedOver': 'Übergeben',
 
-    // Lauf
+    // Run
     'run.error.authMissing': 'Für die Rolle {role} gibt es auf {target} keine gespeicherte Sitzung. Melde dich einmal an: caw-ai auth {role} --target {target}',
     'run.tokens.question': 'Jetzt arbeitet Claude, das kostet Token.',
     'run.tokens.go': 'Weiter',
@@ -114,7 +114,7 @@ export default {
     'run.replaying': 'Spiele die Aufzeichnung ab ({count} Schritte, aufgezeichnet auf {on}) ...',
     'run.failedBefore': '{id} ist gescheitert, bevor {target} an der Reihe war: {reason}',
 
-    // Ablaeufe im Chat
+    // Flows in the chat
     'run.flow.baselines': 'Vergleichswerte für {ids} aufgezeichnet: Scheitert ein Schritt später, ordnet das Tool ihn damit als Test, Anwendung oder Umgebung ein.',
     'run.flow.seeReport': 'siehe Bericht',
     'run.flow.notMet': '{id} nicht erfüllt',
@@ -181,7 +181,7 @@ export default {
     'run.flow.effectsLearned': 'Wirkung je Aktion für {ids} gelernt oder bereinigt: {file}. Bitte prüfen und committen.',
     'run.flow.rerunning': 'Erneut testen mit der geänderten Anwendung ...',
 
-    // Entwickeln im Zustand
+    // Developing in a state
     'run.develop.atEnd': 'dem Ende des Tests',
     'run.develop.atState': 'Zustand {state}',
     'run.develop.runDone': 'Der Lauf ist durch.',
@@ -200,7 +200,7 @@ export default {
     'run.develop.allSteps': 'zum letzten Schritt',
     'run.develop.cannotRestore': '{test} {step} lässt sich hier nicht herstellen: falsche Rolle, App oder Umgebung, oder der Schritt ist veraltet.',
 
-    // Empfehlungen
+    // Advice
     'run.advice.fileChanged': '{file} hat sich geändert, die Stelle ist nicht mehr eindeutig.',
     'run.advice.label.name': 'Titel',
     'run.advice.label.do': 'Aktion',
@@ -219,7 +219,7 @@ export default {
     'run.advice.testCase': 'Testfall',
     'run.advice.section': 'Abschnitt „{section}“',
 
-    // Wirkung
+    // Effects
     'run.effect.appears': '{what} erscheint',
     'run.effect.disappears': '{what} verschwindet',
     'run.effect.differs': '{step}, Aktion {number} ({label}) wirkt anders als in gesunden Läufen.',
@@ -227,7 +227,7 @@ export default {
     'run.effect.instead': 'Stattdessen: {list}.',
     'run.effect.console': 'Neu in der Konsole: {list}.',
 
-    // Vorfuehren
+    // Demonstrating
     'run.item.about': ' zu {label}',
     'run.item.checkpoint': 'Prüfpunkt{about}: {text}',
     'run.item.note': 'Hinweis{about}: {text}',
@@ -248,7 +248,7 @@ export default {
     'run.demo.secret': 'Der Mensch hat ein Passwortfeld ausgefüllt, das lässt sich nicht aufzeichnen.',
     'run.demo.unstable': '{item}: Das Ziel lässt sich nicht stabil beschreiben.',
 
-    // Befehle am Browser
+    // Browser commands
     'run.agent.missing': '{field} fehlt.',
     'run.agent.unknownStep': 'Unbekannter Schritt: {id}',
     'run.agent.rememberName': 'Der Name muss wie bestellnr aussehen, nur Buchstaben und Ziffern, und darf nicht runTag oder runTagLower sein.',
@@ -260,7 +260,7 @@ export default {
     'run.agent.unknownCommand': 'Unbekannter Befehl: {action}',
     'run.agent.timeout': '{action} hat das Zeitlimit überschritten.',
 
-    // MCP-Werkzeuge der Claude-Code-Session
+    // MCP tools of the Claude Code session
     'run.mcp.noRun': 'Kein Lauf wartet auf dich als Agent. Starte einen mit caw_start (record, fix oder run mit Chat), oder der Lauf ist schon beendet: caw_status zeigt seine Ausgabe.',
     'run.mcp.commandInvalid': 'command muss einer von {list} sein.',
     'run.mcp.argsInvalid': 'args muss eine Liste von Texten sein, etwa ["bestellung", "--target", "local"].',

@@ -17,15 +17,15 @@ const project = (t, files) => {
     return dir;
 };
 
-const freePort = () => new Promise((ok) => {
+const freePort = () => new Promise((resolve) => {
     const server = createServer();
     server.listen(0, '127.0.0.1', () => {
         const { port } = server.address();
-        server.close(() => ok(port));
+        server.close(() => resolve(port));
     });
 });
 
-// Ein kleiner Dev-Server: Code unter seinen Pfaden, HTML fuer alles andere (wie der SPA-Fallback von Vite), public/env.js als Kopie.
+// A tiny dev server: code under its paths, HTML for everything else (like Vite's SPA fallback), public/env.js as a copy.
 const DEV_SERVER = `const { readFileSync } = require('node:fs');
 const types = { '.js': 'text/javascript', '.css': 'text/css' };
 require('node:http').createServer((request, response) => {
@@ -39,7 +39,7 @@ require('node:http').createServer((request, response) => {
 
 const devChecked = (url, command) => ({ url: 'https://staging.example', apps: { web: { kind: 'dev', url, statics: [], ...(command === undefined ? {} : { command }) } } });
 
-test('Overlay dev: Antwortet der Dev-Server nicht und fehlt devCommand, endet der Lauf mit dem Befehl zum Starten', async (t) => {
+test('Overlay dev: if the dev server does not answer and devCommand is missing, the run ends with the start command', async (t) => {
     const root = project(t, {});
     const url = `http://127.0.0.1:${await freePort()}`;
     assert.equal(await probeServer(url), false);
@@ -47,7 +47,7 @@ test('Overlay dev: Antwortet der Dev-Server nicht und fehlt devCommand, endet de
         (error) => error.code === 'overlay-not-ready' && error.message.includes(`Der Dev-Server ${url} antwortet nicht`) && /apps\.web\.overlay\.devCommand/.test(error.message));
 });
 
-test('Overlay dev: caw startet devCommand, wartet auf die Adresse, leitet Code weiter und beendet den Server am Ende', async (t) => {
+test('Overlay dev: caw runs devCommand, waits for the address, forwards code and stops the server at the end', async (t) => {
     const port = await freePort();
     const root = project(t, { 'server.cjs': DEV_SERVER, 'public/env.js': "window.ENV='local'" });
     const url = `http://127.0.0.1:${port}`;
@@ -58,26 +58,26 @@ test('Overlay dev: caw startet devCommand, wartet auf die Adresse, leitet Code w
     const js = await overlay.resolve('https://staging.example/src/main.js?t=1', 'script');
     assert.equal(String(js.body), 'console.log("dev")');
     assert.equal(js.contentType, 'text/javascript');
-    assert.equal(String((await overlay.resolve('https://staging.example/src/style.css?import', 'fetch')).body), 'body{color:red}', 'Vite laedt CSS als Modul per fetch');
-    assert.equal(await overlay.resolve('https://staging.example/env.js', 'script'), null, 'eine Kopie aus public/ setzt die Umgebung');
-    assert.equal(await overlay.resolve('https://staging.example/assets/index-OLD.js', 'script'), null, 'HTML statt Code: der Server');
-    assert.equal(await overlay.resolve('https://staging.example/api/orders', 'fetch'), null, 'Daten nie');
+    assert.equal(String((await overlay.resolve('https://staging.example/src/style.css?import', 'fetch')).body), 'body{color:red}', 'Vite loads CSS as a module via fetch');
+    assert.equal(await overlay.resolve('https://staging.example/env.js', 'script'), null, 'a copy from public/ is set by the environment');
+    assert.equal(await overlay.resolve('https://staging.example/assets/index-OLD.js', 'script'), null, 'HTML instead of code: the server');
+    assert.equal(await overlay.resolve('https://staging.example/api/orders', 'fetch'), null, 'never data');
     assert.equal(await overlay.resolve('https://staging.example/', 'document'), null);
     assert.deepEqual(overlay.devServers, [url]);
     overlay.stop();
     const until = Date.now() + 10_000;
-    while (await probeServer(url) && Date.now() < until) await new Promise((ok) => { setTimeout(ok, 200); });
-    assert.equal(await probeServer(url), false, 'der gestartete Dev-Server endet mit dem Lauf');
+    while (await probeServer(url) && Date.now() < until) await new Promise((resolve) => { setTimeout(resolve, 200); });
+    assert.equal(await probeServer(url), false, 'the started dev server ends with the run');
 });
 
-test('Overlay dev: Startet devCommand den Server nicht, nennt die Meldung die Ausgabe', async (t) => {
+test('Overlay dev: if devCommand does not start the server, the message shows its output', async (t) => {
     const root = project(t, {});
     const url = `http://127.0.0.1:${await freePort()}`;
     await assert.rejects(prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked: devChecked(url, 'node -e "console.log(\'Port belegt\'); process.exit(1)"') }),
         (error) => error.code === 'overlay-not-ready' && /hat den Dev-Server .* nicht gestartet/.test(error.message) && /Port belegt/.test(error.message));
 });
 
-test('HMR: Sockets des Dev-Servers gehen an ihn, mit seinem Origin; andere unveraendert an ihr Ziel', () => {
+test('HMR: dev server sockets go to it with its origin; others go unchanged to their target', () => {
     const made = [];
     class FakeSocket {
         constructor(url, options) {
@@ -111,13 +111,13 @@ test('HMR: Sockets des Dev-Servers gehen an ihn, mit seinem Origin; andere unver
     vite.handlers.message('frueh');
     made[0].readyState = 1;
     made[0].onopen();
-    assert.deepEqual(made[0].sent, ['frueh'], 'was die Seite vor dem Verbinden schickt, geht nicht verloren');
+    assert.deepEqual(made[0].sent, ['frueh'], 'what the page sends before connecting is not lost');
     made[0].onmessage({ data: '{"type":"connected"}' });
     assert.deepEqual(vite.sent, ['{"type":"connected"}']);
     const webpack = page('ws://localhost:5173/ws');
     bridgeWebSocket(webpack, 'http://localhost:5173', 'localhost:5173', FakeSocket);
     assert.equal(made[1].url, 'ws://localhost:5173/ws');
-    // Ein Socket der Anwendung: erst der Dev-Server unter demselben Pfad; lehnt er ab, das Original, ohne dass etwas verloren geht.
+    // An application socket: first the dev server at the same path; if it refuses, the original, without losing anything.
     const app = page('wss://staging.example/live');
     bridgeWebSocket(app, 'http://localhost:5173', 'localhost:5173', FakeSocket);
     assert.equal(made[2].url, 'ws://localhost:5173/live');
@@ -126,7 +126,7 @@ test('HMR: Sockets des Dev-Servers gehen an ihn, mit seinem Origin; andere unver
     assert.deepEqual(app.direct.sent, ['hallo']);
     app.direct.message('vom Server');
     assert.deepEqual(app.sent, ['vom Server']);
-    // webpack-dev-server mit webSocketURL auto: Host der Seite, aber der Dev-Server nimmt den Handshake an.
+    // webpack-dev-server with webSocketURL auto: page host, but the dev server accepts the handshake.
     const auto = page('wss://staging.example/ws');
     bridgeWebSocket(auto, 'http://localhost:5173', 'localhost:5173', FakeSocket);
     made[3].readyState = 1;
