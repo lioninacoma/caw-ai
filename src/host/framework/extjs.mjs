@@ -15,6 +15,19 @@ export function extjsTargets(element, { mode, target }) {
         const text = clean(node.innerText ?? node.textContent);
         return text.length <= 80 ? text : '';
     };
+    // Pruefen, ob ein Ziel frei liegt, scrollt es kurz in die Mitte. Danach steht alles wieder, wie es war: Sonst springt die Seite
+    // bei jeder Suche, auch wenn gar nicht geklickt wird (Klicks scrollen selbst zum Ziel).
+    const keepScroll = (node, check) => {
+        const saved = [];
+        for (let at = node.parentElement; at !== null; at = at.parentElement) saved.push([at, at.scrollTop, at.scrollLeft]);
+        const [x, y] = [window.scrollX, window.scrollY];
+        try {
+            return check();
+        } finally {
+            for (const [at, top, left] of saved) if (at.scrollTop !== top || at.scrollLeft !== left) { at.scrollTop = top; at.scrollLeft = left; }
+            if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+        }
+    };
     const componentOf = (start) => {
         for (let node = start; node !== null && window.Ext?.getCmp !== undefined; node = node.parentElement) {
             const component = node.id ? window.Ext.getCmp(node.id) : null;
@@ -38,8 +51,10 @@ export function extjsTargets(element, { mode, target }) {
         if (style.visibility === 'hidden' || style.display === 'none') return false;
         if (onTop(node, component)) return true;
         // Am Bildrand kann z. B. ein fester Cookie-Banner liegen, mittig ist das Element dann frei.
-        node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-        return onTop(node, component);
+        return keepScroll(node, () => {
+            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            return onTop(node, component);
+        });
     };
     const named = (component) => {
         const text = clean(component.getText?.());
@@ -95,9 +110,11 @@ export function extjsTargets(element, { mode, target }) {
         const box = node.getBoundingClientRect();
         const style = getComputedStyle(node);
         if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.display === 'none') return { hidden: true };
-        node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-        const now = node.getBoundingClientRect();
-        const hit = document.elementFromPoint(now.left + now.width / 2, now.top + now.height / 2);
+        const hit = keepScroll(node, () => {
+            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            const now = node.getBoundingClientRect();
+            return document.elementFromPoint(now.left + now.width / 2, now.top + now.height / 2);
+        });
         if (hit === null || node.contains(hit) || hit.contains(node)) return { elsewhere: false };
         const layer = hit.closest('.x-messagebox, .x-dialog, .x-sheet, .x-floated, [role=dialog], [role=alertdialog]');
         if (layer === null) return { covered: { tag: hit.tagName.toLowerCase() } };

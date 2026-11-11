@@ -7,10 +7,11 @@ import { appendFileSync, readFileSync } from 'node:fs';
 
 import { CawError } from '../shared/errors.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
+import { activeTheme } from '../shared/theme-package.mjs';
 import { sourceTag } from './app-view.mjs';
 import { cancelPick, pickElement } from './demonstrate.mjs';
 import { reportPage } from './report-page.mjs';
-import { FAVICON, FONT_FACES, PIXEL_CSS, TOKENS, ring } from './theme.mjs';
+import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, clientTheme, themeAttr, themeCss, themeStyle } from './theme.mjs';
 
 const BINDING = '__cawChat';
 const MAX_TEXT = 4000;
@@ -413,112 +414,153 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
 };
 
 /** Die Chat-Seite in der aktuellen Sprache. Texte fuer das Seiten-JS stehen in T. */
-const chatPage = (nonce = '') => `<!doctype html><html lang="${language()}"><head><meta charset="utf-8"><title>caw-ai · Chat</title><script>(()=>{addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;const theme=event.data.theme;if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme;else delete document.documentElement.dataset.theme;});try{parent.postMessage({caw:'theme-request'},'*');}catch{}
-// Wo die Linie unter dem Kopf liegt und wo darauf Platz ist, gleich hinter dem Titel, in schmalen Spalten mittig vor der Pill: Die Werkbank setzt den Raben dorthin. Der Kopf kann umbrechen, darum bei jeder Groessenaenderung.
-addEventListener('DOMContentLoaded',()=>{const head=document.querySelector('header');if(!head)return;const perch=()=>{try{const title=head.querySelector('h1'),text=document.createRange();if(title)text.selectNodeContents(title);const end=title?text.getBoundingClientRect().right:0,next=[...head.children].find((el)=>el!==title&&el.offsetWidth>0&&el.getBoundingClientRect().left>end);parent.postMessage({caw:'perch',y:head.offsetTop+head.clientHeight,x:title?Math.min(end+28,next?(end+next.getBoundingClientRect().left)/2:Infinity):null},'*');}catch{}};new ResizeObserver(perch).observe(head);new MutationObserver(perch).observe(head,{subtree:true,childList:true,characterData:true,attributes:true});perch();});})();${sourceTag}</script>${FAVICON}<style>
-${FONT_FACES}${TOKENS}${PIXEL_CSS}
+/** Die Chat-Seite; exportiert fuer Vorschau und Tests. */
+export const chatPage = (nonce = '', theme = activeTheme()) => `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw-ai · Chat</title><script>(()=>{${APPLY_THEME_SCRIPT}
+// Das Theme kommt von der Werkbank: Der Chat liegt abgeschottet in einem eigenen Origin. Farben nur ueber cawApplyTheme (prueft
+// selbst), Zeichen und Prompts nur als Text (cawThemeText weiter unten).
+addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;cawApplyTheme(document.documentElement,event.data.theme);window.cawThemeText?.(event.data.theme);});try{parent.postMessage({caw:'theme-request'},'*');}catch{}})();${sourceTag}</script>${FAVICON}<style>
+${themeCss(theme)}${CONSOLE_CSS}
 *,*::before,*::after{box-sizing:border-box}html,body{height:100%}
-body{margin:0;display:flex;flex-direction:column;background:var(--surface);color:var(--text);font:var(--fs-body)/1.45 var(--font-body)}
-header{display:flex;align-items:center;gap:10px;padding:13px 16px 11px 56px;border-bottom:var(--frame-w) solid var(--frame)}
-h1{margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:500 12px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}#pill,#abort,#abortNo{flex:none}
-/* Schmaler Chat: Pill und Abbrechen haben Vorrang vor dem Namen. */
-@media (max-width:440px){h1 .who{display:none}}
-/* Eine Pill nur, solange jemand arbeitet und der Chat still sein kann. Sie ist ein Status, kein Knopf: ohne Rahmen. */
-#pill{display:inline-flex;align-items:center;gap:7px;padding:3px 8px 3px 6px;font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--primary-text);white-space:nowrap;cursor:default;user-select:none}
-#pill:has(#label:empty),.arming #pill{display:none}
-#dot{flex:none;width:4px;height:4px;margin-right:12px;background:currentColor;box-shadow:6px 0 color-mix(in srgb,currentColor 30%,transparent),12px 0 color-mix(in srgb,currentColor 30%,transparent);animation:pxload .9s steps(1,end) infinite}
-[data-state=handing] #pill,[data-state=verifying] #pill,[data-state=testing] #pill,[data-state=preparing] #pill{color:var(--muted)}
-[data-state=pausing] #pill,[data-state=paused] #pill{color:var(--muted);background:var(--surface-2)}
-[data-state=paused] #dot{width:8px;height:9px;margin-right:0;box-shadow:none;animation:none;background:linear-gradient(90deg,currentColor 0 3px,transparent 3px 5px,currentColor 5px 8px)}
+body{margin:0;display:flex;flex-direction:column;background:var(--pane);color:var(--text);font:var(--fs-body)/1.5 var(--font-body)}
+header{display:flex;align-items:center;gap:10px;padding:8px 12px 7px;border-bottom:2px solid var(--line)}
+h1{margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:400 19px/1 var(--font-crt);color:var(--faint);white-space:nowrap}h1 .name{color:var(--claude)}#abort,#abortNo{flex:none}
+/* Schmaler Chat: Abbrechen hat Vorrang vor dem Namen. Den Zustand (Claude arbeitet …) zeigt nur die Pill im Kopf der Werkbank. */
+@media (max-width:440px){h1 .name{display:none}}
 [data-state=discussing] #toggle,[data-state=developing] #toggle{display:none}[data-state=deciding] #abort,[data-state=discussing] #abort,[data-state=developing] #abort,[data-state=closed] #abort{display:none}
-#abortNo{border:0;background:none;padding:4px 6px;font:500 11px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--text)}#abortNo:hover{background:var(--surface-2)}#abortNo[hidden]{display:none}
-#abort{white-space:nowrap;border:0;background:none;padding:4px 6px;font:500 11px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}#abort:hover{background:var(--surface-2);color:var(--text)}#abort.sure{color:var(--fail-text);box-shadow:${ring('2px', 'var(--fail)')}}#abort:disabled{color:var(--muted);cursor:default;background:none;box-shadow:none}
-main{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px}
-footer{position:relative}#down{display:none;position:absolute;right:16px;top:6px;width:34px;height:34px;place-items:center;padding:0;background:var(--surface);border:0;box-shadow:${ring('2px', 'var(--frame)')},3px 3px 0 var(--shadow);color:var(--text)}#down.on{display:grid}footer:has(#down.on) #status{min-height:46px;padding-right:46px}#down:hover{background:var(--surface-2)}#down svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:square;stroke-linejoin:miter}#down.new::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;background:var(--primary)}
+#abortNo,#abort{white-space:nowrap;border:0;background:none;padding:3px 7px;font:400 19px/1 var(--font-crt);color:var(--muted)}
+#abortNo{color:var(--text)}#abortNo:hover,#abort:hover{background:var(--pane-2);color:var(--text)}#abortNo[hidden]{display:none}
+#abort.sure{background:var(--fail);color:var(--ink)}#abort:disabled{color:var(--muted);cursor:default;background:none}
+main{flex:1;overflow-y:auto;padding:12px 12px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-color:var(--line) var(--pane)}
+footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px;width:32px;height:32px;place-items:center;padding:0;background:var(--screen);border:0;box-shadow:inset 0 0 0 2px var(--frame);color:var(--text)}#down.on{display:grid}footer:has(#down.on) #status{min-height:44px;padding-right:44px}#down:hover{background:var(--pane-2)}#down svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:square;stroke-linejoin:miter}#down.new::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;background:var(--info)}
 .message{white-space:pre-wrap;overflow-wrap:anywhere}
-.about{display:block;font:11px/1.4 var(--font-mono);color:var(--muted);margin-bottom:2px;overflow-wrap:anywhere}
-.human,.checkpoint{align-self:flex-end;max-width:88%;background:var(--surface-2);padding:8px 12px;box-shadow:${ring('2px', 'var(--shadow)')}}
-.checkpoint::before{content:${JSON.stringify(t('chat.page.checkpoint'))};display:block;font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--primary-text)}
-.claude{padding:0 2px}
-.question{background:var(--surface-2);padding:11px 13px;box-shadow:0 -3px 0 var(--primary),0 2px 0 var(--shadow),-2px 0 0 var(--shadow),2px 0 0 var(--shadow)}
-.plan,.advice{padding:12px 14px 13px;background:var(--surface);box-shadow:0 -4px 0 var(--primary),0 2px 0 var(--frame),-2px 0 0 var(--frame),2px 0 0 var(--frame),4px 4px 0 var(--shadow)}
-.plan strong,.advice strong,.failure strong{display:block;font:500 12px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--primary-text);margin-bottom:6px}
-.plan .notes{color:var(--muted);font-size:14px;margin-bottom:6px}.step{padding:9px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:600}.step .sid{flex:none;font:500 11px var(--font-ui);color:var(--primary-text)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--pending);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--fail-text)}.step .before{color:var(--muted);text-decoration:line-through}
-.failure{padding:12px 14px 13px;background:var(--fail-tint);box-shadow:0 -4px 0 var(--fail),0 2px 0 var(--fail-line),-2px 0 0 var(--fail-line),2px 0 0 var(--fail-line)}.failure strong{color:var(--fail-text)}.failure .reason{margin:0 0 9px;font-size:16px;line-height:1.4;overflow-wrap:anywhere}
-.failure .badge{display:inline-block;margin:0 0 9px;padding:3px 9px;font-size:14px;background:var(--surface);color:var(--muted);box-shadow:${ring('2px', 'currentColor')}}.failure .badge.app{color:var(--fail-text)}.failure .badge.environment{color:var(--warn)}.failure .badge.test{color:var(--primary-text)}
-.decision{padding:12px 14px 13px;background:var(--surface);box-shadow:0 -4px 0 var(--ok),0 2px 0 var(--frame),-2px 0 0 var(--frame),2px 0 0 var(--frame),4px 4px 0 var(--shadow)}.decision strong{display:block;font:500 12px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ok-text);margin-bottom:6px}
-.decision ul{margin:0 0 8px;padding-left:18px;display:grid;gap:4px;font-size:14px;overflow-wrap:anywhere}.decision details{margin:0 0 6px}.decision summary{cursor:pointer;font-size:14px;font-weight:600}.decision details ul{margin:4px 0 0;color:var(--muted)}.decision .next{margin:6px 0 0;font-size:14px;font-weight:600}
-.failure .warn,.advice .warn,.decision .warn{margin:0 0 9px;padding:6px 9px;font-size:13.5px;color:var(--fail-text);background:var(--surface);box-shadow:inset 3px 0 0 var(--fail)}
-.failure details{margin:0 0 6px}.failure summary{cursor:pointer;font-size:14px;font-weight:600}.failure ul{margin:4px 0 0;padding-left:18px;display:grid;gap:4px;font-size:14px;color:var(--muted);overflow-wrap:anywhere}.failure .next{margin:6px 0 0;font-size:13px;color:var(--subtle)}
-.advice{box-shadow:0 -4px 0 var(--pending),0 2px 0 var(--frame),-2px 0 0 var(--frame),2px 0 0 var(--frame),4px 4px 0 var(--shadow)}.advice.app{box-shadow:0 -4px 0 var(--primary),0 2px 0 var(--frame),-2px 0 0 var(--frame),2px 0 0 var(--frame),4px 4px 0 var(--shadow)}.advice strong{color:var(--muted)}.advice.app strong{color:var(--primary-text)}
-.advice h2{margin:0 0 4px;font-size:16px;font-weight:600}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:500 11px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
-.advice pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface-2);padding:8px 10px;font:12px/1.45 var(--font-mono);box-shadow:${ring('2px', 'var(--shadow)')}}.advice pre.del{text-decoration:line-through;color:var(--muted);margin-bottom:6px}
-.advice .copy{margin-top:8px;padding:6px 10px;font:500 11px var(--font-ui);letter-spacing:.04em;background:var(--surface);border:0;box-shadow:${ring('2px', 'var(--frame)')}}.advice .copy:hover{background:var(--surface-2)}
-details.activity{font-size:13px;color:var(--muted)}
-details.activity summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;padding:2px 0;user-select:none;font:12px var(--font-mono)}
+/* Wer spricht, steht wie in einer Konsole davor: claude> und du>. */
+/* Prompts, Marken und Zeichen setzt das Seiten-JS als Text aus dem Theme (data-who, data-mark, data-bullet, data-tree). */
+.who{display:block;font:400 19px/1.1 var(--font-crt);white-space:pre}.who.c{color:var(--claude)}.who.h{color:var(--human)}.who .cp{color:var(--muted);margin-left:8px}
+.about{display:block;font:11.5px/1.4 var(--font-mono);color:var(--muted);margin-bottom:2px;overflow-wrap:anywhere}
+.about .tr,.bl{color:var(--faint);margin-right:6px}.bl{color:var(--ok)}
+.mk{font:400 18px/1 var(--font-crt);white-space:pre;margin-right:8px}
+/* Karten: Fenster im Fenster, die Kopfzeile in VT323 mit der Marke davor. */
+.question,.plan,.advice,.failure,.decision{padding:10px 12px 11px;background:var(--pane-2);border:2px solid var(--line);white-space:normal}
+.question{border-color:var(--info)}.question>.who .mk{color:var(--info)}
+.plan strong,.advice strong,.failure strong,.decision strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:6px;text-shadow:0 0 8px var(--glow);white-space:pre-wrap}
+.plan{border-color:var(--frame)}
+.plan .notes{color:var(--muted);font-size:13px;margin-bottom:6px}.step{padding:8px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:500}.step .sid{flex:none;font:400 18px/1 var(--font-crt);color:var(--info)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--warn)}.step .before{color:var(--muted);text-decoration:line-through}
+.failure{border-color:var(--fail);background:var(--fail-tint)}.failure strong{color:var(--text);text-shadow:none}.failure strong .mk{color:var(--fail)}.fail-inv .failure strong .mk{background:var(--fail);color:var(--ink)}
+.failure .reason{margin:0 0 9px;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.failure .badge{display:inline-block;margin:0 0 9px;padding:2px 8px;font:400 18px/1.1 var(--font-crt);color:var(--muted);box-shadow:inset 0 0 0 2px currentColor}.failure .badge.app{color:var(--fail)}.failure .badge.environment{color:var(--warn)}.failure .badge.test{color:var(--info)}
+.decision{border-color:var(--ok)}.decision strong{color:var(--text);text-shadow:none}.decision strong .mk{color:var(--ok)}
+.decision ul{margin:0 0 8px;padding-left:18px;display:grid;gap:4px;font-size:13.5px;overflow-wrap:anywhere}.decision details{margin:0 0 6px}.decision summary{cursor:pointer;font-size:13.5px;font-weight:500}.decision details ul{margin:4px 0 0;color:var(--muted)}.decision .next{margin:6px 0 0;font-size:13.5px;font-weight:500}
+.failure .warn,.advice .warn,.decision .warn{margin:0 0 9px;padding:6px 9px;font-size:13px;color:var(--warn);background:var(--screen);box-shadow:inset 3px 0 0 var(--warn)}
+.failure details{margin:0 0 6px}.failure summary{cursor:pointer;font-size:13.5px;font-weight:500}.failure ul{margin:4px 0 0;padding-left:18px;display:grid;gap:4px;font-size:13.5px;color:var(--muted);overflow-wrap:anywhere}.failure .next{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.advice{border-color:var(--frame)}.advice.app{border-color:var(--info)}.advice strong{color:var(--muted);text-shadow:none}.advice.app strong{color:var(--info)}.advice strong .bl{color:inherit}
+.advice h2{margin:0 0 4px;font-size:15px;font-weight:500}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
+.advice pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--screen);padding:8px 10px;font:12px/1.45 var(--font-mono);box-shadow:inset 0 0 0 2px var(--line)}.advice pre.del{text-decoration:line-through;color:var(--muted);margin-bottom:6px}
+.advice .copy{margin-top:8px;padding:5px 10px;font:400 18px/1 var(--font-crt);color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}.advice .copy:hover{background:var(--line)}
+/* Aktionen leise: ■ click … */
+details.activity{font-size:12.5px;color:var(--muted)}
+details.activity summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;padding:1px 0;user-select:none;font:12.5px var(--font-mono)}
 details.activity summary::-webkit-details-marker{display:none}
-details.activity summary::before{content:"";flex:none;width:6px;height:8px;background:currentColor;clip-path:polygon(0 0,100% 50%,0 100%)}
-details.activity[open] summary::before{width:8px;height:6px;clip-path:polygon(0 0,100% 0,50% 100%)}
+details.activity summary::before{content:"▸";flex:none;color:var(--faint)}
+details.activity[open] summary::before{content:"▾"}
 details.activity .latest{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
-details.activity ol{list-style:none;margin:8px 0 2px 2px;padding:0 0 0 12px;box-shadow:inset 2px 0 0 var(--line);display:flex;flex-direction:column;gap:3px}
+details.activity ol{list-style:none;margin:6px 0 2px 2px;padding:0 0 0 12px;box-shadow:inset 2px 0 0 var(--line);display:flex;flex-direction:column;gap:2px}
 details.activity li{font:12px/1.45 var(--font-mono);overflow-wrap:anywhere}
-#thinking{display:none;gap:5px;padding:2px 0}[data-state=running] #thinking,[data-state=advising] #thinking{display:flex}
-#thinking i{width:6px;height:6px;background:var(--primary-text);animation:blink 1.2s steps(1,end) infinite}#thinking i:nth-child(2){animation-delay:.2s}#thinking i:nth-child(3){animation-delay:.4s}
-footer{padding:0 16px 16px}
-#status{padding:8px 2px;font-size:13px;line-height:1.45;color:var(--subtle)}
+#thinking{display:none;gap:8px;align-items:baseline;font:400 19px/1 var(--font-crt)}[data-state=running] #thinking,[data-state=advising] #thinking{display:flex}
+#thinking .who{display:inline}#thinking i{font-style:normal;color:var(--info)}
+footer{padding:0 10px 10px}
+#status{padding:6px 2px;font-size:12.5px;line-height:1.45;color:var(--muted)}
 [data-state=paused] #status,[data-state=asking] #status,[data-state=showing] #status,[data-state=planning] #status{color:var(--text)}
-#choices{display:none;flex-direction:column;gap:12px;padding:4px 4px 14px 2px}[data-state=choosing] #choices,[data-state=deciding] #choices,[data-state=reviewing] #choices,[data-state=discussing] #choices,[data-state=developing] #choices,[data-state=planning] #choices{display:flex}
-#choices button.big{min-height:58px;font-size:14px;letter-spacing:.06em;text-transform:uppercase}[data-state=planning] #toggle{display:none}
+#choices{display:none;flex-direction:column;gap:10px;padding:4px 4px 12px 2px}[data-state=choosing] #choices,[data-state=deciding] #choices,[data-state=reviewing] #choices,[data-state=discussing] #choices,[data-state=developing] #choices,[data-state=planning] #choices{display:flex}
+#choices button.big{min-height:46px;font-size:24px}[data-state=planning] #toggle{display:none}
 /* Beim Fehler, bei Entscheidung und Empfehlung braucht die Karte den Platz: Knoepfe kompakt, die nachrangigen nebeneinander. */
-#choices .rest{display:flex;flex-wrap:wrap;gap:12px}#choices .rest button{flex:1 1 auto;min-width:96px}
+#choices .rest{display:flex;flex-wrap:wrap;gap:10px}#choices .rest button{flex:1 1 auto;min-width:96px}
 :is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices{gap:6px;padding-bottom:10px}:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices .rest{gap:6px}
-:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices button{min-height:34px;padding:7px 10px}
-#choices button.sure{color:var(--fail-text);box-shadow:${ring('2px', 'var(--fail)')},4px 4px 0 var(--shadow)}#choices .no{flex:0 0 auto;min-width:0}
-kbd{display:inline-block;margin-left:6px;padding:0 4px;font:500 10px/16px var(--font-ui);letter-spacing:0;text-transform:none;opacity:.75;box-shadow:inset 0 0 0 1px currentColor}
-#next{display:none;margin:2px 2px 14px;padding:12px 14px;background:var(--surface-2);box-shadow:${ring('2px', 'var(--frame)')}}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
-#next strong{display:block;font:500 12px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}#next p{margin:0 0 10px;font-size:13px;color:var(--muted)}#next code{font:12px var(--font-mono);overflow-wrap:anywhere}#next .cmd{margin:12px 0 0}
+:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices button{min-height:32px;padding:5px 10px}
+#choices button.sure{background:var(--fail);color:var(--ink);box-shadow:none}#choices .no{flex:0 0 auto;min-width:0}
+kbd{display:inline-block;margin-left:8px;padding:0 4px;font:400 15px/1.1 var(--font-crt);opacity:.8;box-shadow:inset 0 0 0 1px currentColor}
+#next{display:none;margin:2px 2px 12px;padding:10px 12px;background:var(--pane-2);border:2px solid var(--frame)}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
+#next strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:4px;text-shadow:0 0 8px var(--glow)}#next p{margin:0 0 10px;font-size:13px;color:var(--muted)}#next code{font:12px var(--font-mono);color:var(--info);overflow-wrap:anywhere}#next .cmd{margin:12px 0 0}
 #next .acts{display:flex;flex-wrap:wrap;gap:10px}
-#report,#closeWindow{min-height:40px;padding:9px 14px;font:500 12px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;border:0;background:var(--primary);color:var(--primary-ink);box-shadow:${ring('2px', 'var(--frame)')},4px 4px 0 var(--shadow)}#report:hover,#closeWindow:hover{background:var(--primary-hover)}#report:active,#closeWindow:active{transform:translate(2px,2px);box-shadow:${ring('2px', 'var(--frame)')}}
-#closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--surface);color:var(--text)}#next:has(#closeWindow:not([hidden])) #report:hover{background:var(--surface-2)}
-#choices button{min-height:44px;padding:11px 14px;font:500 12px/1.3 var(--font-ui);letter-spacing:.04em;text-align:center;color:var(--text);background:var(--surface);border:0;box-shadow:${ring('2px', 'var(--frame)')},4px 4px 0 var(--shadow)}
-#choices button:hover{background:var(--surface-2)}#choices button:active{transform:translate(2px,2px);box-shadow:${ring('2px', 'var(--frame)')}}
-#choices button.primary{background:var(--primary);color:var(--primary-ink)}#choices button.primary:hover{background:var(--primary-hover)}
-#choices button:disabled{cursor:progress;opacity:.55;transform:none}#choices button.busy{opacity:1}#choices button.busy::before{margin-right:22px}
+#report,#closeWindow{min-height:36px;padding:6px 14px;font:400 20px/1 var(--font-crt);border:0;background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#report:hover,#closeWindow:hover{filter:brightness(1.08)}#report:active,#closeWindow:active{transform:translate(2px,2px);box-shadow:none}
+#closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--pane);color:var(--text);box-shadow:inset 0 0 0 2px var(--frame)}
+#choices button{min-height:38px;padding:7px 12px;font:400 20px/1.1 var(--font-crt);text-align:center;color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}
+#choices button:hover{background:var(--line)}#choices button:active{transform:translate(1px,1px)}
+#choices button.primary{background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#choices button.primary:hover{filter:brightness(1.08)}
+#choices button:disabled{cursor:progress;opacity:.55;transform:none}#choices button.busy{opacity:1}
 [data-state=handing] form,[data-state=choosing] form,[data-state=deciding] form,[data-state=reviewing] form,[data-state=verifying] form,[data-state=testing] form,[data-state=preparing] form,[data-state=advising] form{display:none}
-form{margin:2px;padding:10px;background:var(--surface-2);box-shadow:${ring('2px', 'var(--shadow)')}}
-form:focus-within{box-shadow:${ring('2px', 'var(--primary-text)')}}
-#chip{display:none;align-items:center;gap:6px;max-width:100%;margin-bottom:8px;padding:3px 4px 3px 8px;background:var(--surface);color:var(--primary-text);font:12px var(--font-mono);box-shadow:${ring('2px', 'var(--primary-text)')}}#chip.on{display:inline-flex}#chipText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#chipRemove{border:0;background:none;padding:0 4px;font-size:14px;line-height:1;color:inherit}
-.small{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;font:500 11px var(--font-ui);letter-spacing:.04em;background:var(--surface);border:0;box-shadow:${ring('2px', 'var(--frame)')}}
-.small:hover:enabled{background:var(--surface-2)}.small:disabled{opacity:.45;cursor:default}.small svg{width:14px;height:14px}
-#pick svg{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square}#pick.on{color:var(--primary-text);box-shadow:${ring('2px', 'var(--primary-text)')}}
+/* Die Eingabe als Prompt: du> mit blinkendem Block, nur solange das Feld den Fokus hat und leer ist. Ohne Fokus kein Cursor und ein
+   gedaempftes du>: Sonst sieht es aus, als ginge Tippen in den Chat, waehrend die Tasten in der Anwendung landen. */
+form{margin:2px;padding:8px 10px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}
+form:focus-within{box-shadow:inset 0 0 0 2px var(--human)}
+.prompt{display:flex;align-items:flex-start;gap:8px}.prompt .p{flex:none;font:400 20px/1.15 var(--font-crt);color:var(--muted)}
+form:focus-within .prompt .p{color:var(--human)}
+.cursor{flex:none;display:none;width:.55em;height:1.1em;margin-top:2px;background:var(--human);animation:caw-cursor var(--cursor-ms,1000ms) steps(1) infinite}
+form:focus-within:has(textarea:placeholder-shown) .cursor{display:block}
+textarea:placeholder-shown:focus{caret-color:transparent}
+@keyframes caw-cursor{50%{opacity:0}}
+#chip{display:none;align-items:center;gap:6px;max-width:100%;margin-bottom:8px;padding:2px 4px 2px 8px;background:var(--pane);color:var(--info);font:12px var(--font-mono);box-shadow:inset 0 0 0 2px var(--info)}#chip.on{display:inline-flex}#chipText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#chipRemove{border:0;background:none;padding:0 4px;font-size:14px;line-height:1;color:inherit}
+.small{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;font:400 18px/1 var(--font-crt);color:var(--text);background:var(--pane-2);border:0;box-shadow:inset 0 0 0 2px var(--line)}
+.small:hover:enabled{box-shadow:inset 0 0 0 2px var(--accent)}.small:disabled{opacity:.45;cursor:default}.small svg{width:12px;height:12px}
+#pick svg{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square}#pick.on{color:var(--info);box-shadow:inset 0 0 0 2px var(--info)}
 .left{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;min-width:0}
-textarea{display:block;width:100%;min-height:24px;max-height:160px;resize:none;border:0;outline:0;padding:0 2px;font:inherit;color:inherit;background:transparent;overflow-y:hidden;scrollbar-width:thin}textarea.full{overflow-y:auto}
+textarea{display:block;flex:1;min-width:0;width:100%;min-height:22px;max-height:160px;resize:none;border:0;outline:0;padding:0 2px;font:inherit;color:inherit;background:transparent;overflow-y:hidden;scrollbar-width:thin;caret-color:var(--human)}textarea.full{overflow-y:auto}
 textarea::placeholder{color:var(--muted)}
-.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
 button{font:inherit;cursor:pointer;color:inherit;border-radius:0}
-[data-state=paused] #toggle,[data-state=asking] #toggle,[data-state=showing] #toggle,[data-state=planning] #toggle{background:var(--primary);color:var(--primary-ink)}
-#toggle{white-space:nowrap}#toggle svg{width:12px;height:12px;fill:currentColor}#toggle .play{display:none}
+[data-state=paused] #toggle,[data-state=asking] #toggle,[data-state=showing] #toggle,[data-state=planning] #toggle{background:var(--accent);color:var(--ink);box-shadow:none}
+#toggle{white-space:nowrap}#toggle svg{fill:currentColor}#toggle .play{display:none}
 [data-state=paused] #toggle .play,[data-state=asking] #toggle .play,[data-state=showing] #toggle .play,[data-state=planning] #toggle .play{display:block}
 [data-state=paused] #toggle .pause,[data-state=asking] #toggle .pause,[data-state=showing] #toggle .pause,[data-state=planning] #toggle .pause{display:none}
 /* Die Vorfuehrung endet mit Stopp wie eine Aufnahme, nicht mit Weiter. */
 #toggle .stop{display:none}[data-state=showing] #toggle .stop{display:block}[data-state=showing] #toggle .play{display:none}
 .actions{display:flex;align-items:center;gap:10px}#mark{display:none}[data-state=showing] #mark{display:inline-flex}
-#send{width:30px;padding:0;justify-content:center;background:var(--primary);color:var(--primary-ink)}#send:hover:enabled{background:var(--primary-hover)}#send svg{fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:square;stroke-linejoin:miter}
-:focus-visible{outline:3px dashed var(--primary-text);outline-offset:3px}textarea:focus-visible{outline:0}
+#send{width:30px;padding:0;justify-content:center;background:var(--human);color:var(--ink);box-shadow:none}#send:hover:enabled{filter:brightness(1.08);box-shadow:none}#send svg{fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:square;stroke-linejoin:miter}
+textarea:focus-visible{outline:0}
 [data-state=closed] form,.stopping form,.stopping #choices{opacity:.55;pointer-events:none}
-@keyframes blink{50%{opacity:.25}}
-@keyframes pxload{0%{background:var(--primary);box-shadow:6px 0 var(--muted),12px 0 var(--muted)}33%{background:var(--muted);box-shadow:6px 0 var(--primary),12px 0 var(--muted)}66%{background:var(--muted);box-shadow:6px 0 var(--muted),12px 0 var(--primary)}}
-.loader,[data-state=handing] #status::before,#toggle.busy::before,#choices button.busy::before{content:"";display:inline-block;flex:none;width:4px;height:4px;margin-right:20px;vertical-align:middle;background:var(--primary);box-shadow:6px 0 var(--muted),12px 0 var(--muted);animation:pxload .9s steps(1,end) infinite}
+/* Der Spinner aus dem Theme: Das Seiten-JS schreibt das aktuelle Bild in data-f, CSS zeigt es nur als Text. Blockzeichen zeichnet
+   es statt dessen ueber data-q (GLYPH_CSS), ohne Ersatzschrift. */
+.loader,[data-state=handing] #status::before,#toggle.busy::before,#choices button.busy::before{content:attr(data-f);display:inline-block;flex:none;margin-right:8px;color:var(--info)}
+[data-state=handing] #status.qbp[data-q]::before,#toggle.busy.qbp[data-q]::before,#choices button.busy.qbp[data-q]::before{content:"";width:1ch;height:1em;vertical-align:-.15em}
 #toggle.busy svg{display:none!important}#toggle.busy{cursor:progress}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
-</style></head><body data-state="running">
-<header><h1>Chat<span class="who"> · Claude</span></h1><span id="pill"><span id="dot"></span><span id="label"></span></span><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
-<main id="messages" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><i></i><i></i><i></i></div></main>
-<footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea>
+</style>${themeStyle(theme)}</head><body data-state="running">
+<header><h1><span data-rule></span> CHAT · <span class="name">CLAUDE</span></h1><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
+<main id="messages" class="readable" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><span class="who c" data-who="claude"></span><i data-spin></i></div></main>
+<footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><div class="prompt"><span class="p" aria-hidden="true" data-who="human"></span><span class="cursor" aria-hidden="true"></span><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea></div>
 <div class="row"><div class="left"><button id="toggle" class="small" type="button"><svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/></svg><svg class="play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1h2v1h2v1h2v1h2v4H9v1H7v1H5v1H3z"/></svg><svg class="stop" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8"/></svg><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button><button id="pick" class="small" type="button" disabled title="${t('chat.page.pickDisabled')}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>${t('chat.page.element')}</button></div>
 <div class="actions"><button id="mark" class="small" type="button" disabled title="${t('chat.page.markCheckpointTitle')}">${t('chat.page.markCheckpoint')}</button><button id="send" class="small" type="submit" aria-label="${t('chat.page.send')}" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></form></footer>
 <script>
+${GLYPH_SCRIPT}
 const T=${JSON.stringify(texts('chat.page.'))};
+// Zeichen und Prompts des Themes. Nur Text: per textContent gesetzt, nie als HTML oder CSS. Neue kommen mit der Nachricht der Werkbank.
+let TH=${JSON.stringify(clientTheme(theme)).replaceAll('<', '\\u003c')};
+const glyph=(value,fallback)=>typeof value==='string'&&value.length>0&&value.length<=64?value:fallback;
+const frames=()=>{const list=TH?.spinner?.frames;return Array.isArray(list)&&list.length>0?list.slice(0,16).map((frame)=>glyph(frame,'▖')):['▖','▘','▝','▗'];};
+const prompt=(who)=>glyph(TH?.prompt?.[who],who==='claude'?'claude>':'>');
+const markOf=(kind,frame)=>glyph(TH?.marks?.[kind],'['+kind+']').split('{spinner}').join(frame??frames()[0]);
+const bulletOf=(kind)=>glyph(TH?.bullets?.[kind],'▸');
+const treeOf=(kind)=>glyph(TH?.tree?.[kind],kind==='end'?'└':'├');
+const ruleTitle=(title)=>{const line=glyph(TH?.rule?.line,'─');return glyph(TH?.rule?.format,'{line}{line} {title}').split('{title}').join(title).split('{line}').join(line).replace(/\s*$/,'');};
+const marker=(cls,text,data)=>{const span=document.createElement('span');span.className=cls;span.textContent=text;for(const [key,value] of Object.entries(data??{}))span.dataset[key]=value;return span;};
+const whoLine=(who,extra)=>{const line=marker('who '+(who==='claude'?'c':'h'),'');line.append(marker('',prompt(who),{who}));if(extra)line.append(extra);return line;};
+// Alles, was aus dem Theme kommt, neu schreiben: nach einer neuen Nachricht der Werkbank.
+const paintTheme=()=>{
+  for(const node of document.querySelectorAll('[data-who]'))node.textContent=prompt(node.dataset.who);
+  for(const node of document.querySelectorAll('[data-mark]'))node.textContent=markOf(node.dataset.mark);
+  for(const node of document.querySelectorAll('[data-bullet]'))node.textContent=bulletOf(node.dataset.bullet);
+  for(const node of document.querySelectorAll('[data-tree]'))node.textContent=treeOf(node.dataset.tree);
+  for(const node of document.querySelectorAll('[data-rule]'))node.textContent=glyph(TH?.rule?.line,'─').repeat(2);
+  for(const node of document.querySelectorAll('[data-heading]'))node.textContent=ruleTitle(node.dataset.heading);
+  document.body.classList.toggle('fail-inv',TH?.failInverted!==false);
+  const cursor=Number(TH?.prompt?.cursorMs);document.documentElement.style.setProperty('--cursor-ms',(Number.isFinite(cursor)&&cursor>=200&&cursor<=5000?Math.round(cursor):1000)+'ms');
+  spin();
+};
+// Spinner: ein Takt fuer alle; bei weniger Bewegung steht das erste Bild.
+let spinTimer=0,spinIndex=0;
+const spinFrame=()=>{const list=frames(),frame=list[spinIndex%list.length],q=cawGlyphQ(frame);for(const node of document.querySelectorAll('[data-spin]'))node.replaceChildren(cawGlyph(frame));
+  for(const node of document.querySelectorAll('#status,#toggle,#choices button')){node.classList.toggle('qbp',q!==null);if(q===null){delete node.dataset.q;node.dataset.f=frame;}else{node.dataset.q=q;node.dataset.f='';}}};
+const spin=()=>{clearInterval(spinTimer);spinIndex=0;spinFrame();const ms=Number(TH?.spinner?.ms);if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;spinTimer=setInterval(()=>{spinIndex+=1;spinFrame();},Number.isFinite(ms)&&ms>=50&&ms<=2000?ms:150);};
+window.cawThemeText=(theme)=>{if(theme&&typeof theme==='object'){TH=theme;paintTheme();}};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
 const send=(type,text,checkpoint)=>window.${BINDING}({type,text,checkpoint,nonce:${JSON.stringify(nonce)}});
 const input=document.getElementById('input'),messages=document.getElementById('messages'),thinking=document.getElementById('thinking'),abort=document.getElementById('abort'),sendButton=document.getElementById('send'),mark=document.getElementById('mark');
@@ -533,9 +575,13 @@ input.addEventListener('input',fit);
 document.getElementById('form').addEventListener('submit',(event)=>{event.preventDefault();submit();});
 input.addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}});
 const toggleButton=document.getElementById('toggle');
+const PASS_KEYS=['F1','F2','F3','F4','F6','F7','F8','F10'];
 toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');document.getElementById('toggleText').textContent=T['chat.page.wait'];send('toggle');});
 // F5 im Chat laedt nicht die Werkbank neu, sondern aktualisiert wie dort: Anwendung neu, Zustand wieder hergestellt.
-addEventListener('keydown',(event)=>{if(event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}});
+addEventListener('keydown',(event)=>{if(event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}
+  // Die F-Tasten der Werkbank gelten auch hier: Der Chat reicht sie weiter. F9 und Esc behandelt er selbst, F11 und F12 bleiben beim Browser.
+  else if(PASS_KEYS.includes(event.key)&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();parent.postMessage({caw:'key',key:event.key},'*');}
+  else if(event.key==='F9'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();pauseKey();}});
 const pick=document.getElementById('pick'),chip=document.getElementById('chip'),statusBox=document.getElementById('status');let statusText='';
 pick.addEventListener('click',()=>send('pick'));document.getElementById('chipRemove').addEventListener('click',()=>{window.setChip(null);send('unpick');});
 window.setPicking=(on)=>{pick.classList.toggle('on',on);statusBox.textContent=on?T['chat.page.picking']:statusText;};
@@ -572,13 +618,13 @@ window.addMessage=(who,text,about)=>{
   if(who==='activity'){
     // Beim Vorfuehren zeigt die offene Liste, dass jeder Klick ankommt.
     if(group===null){const details=document.createElement('details');details.className='activity';if(document.body.dataset.state==='showing')details.open=true;details.setAttribute('aria-live','off');const summary=document.createElement('summary');const count=document.createElement('span');const latest=document.createElement('span');latest.className='latest';summary.append(count,latest);const list=document.createElement('ol');details.append(summary,list);group={details,count,latest,list,total:0};place(details);}
-    const item=document.createElement('li');item.textContent=text;group.list.append(item);group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.textContent=text;
+    const item=document.createElement('li');item.append(marker('bl',bulletOf('ok'),{bullet:'ok'}),text);group.list.append(item);group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.replaceChildren(marker('bl',bulletOf('ok'),{bullet:'ok'}),text);
     if(follow)toEnd();
     return;
   }
   if(who==='plan'){
     group=null;const card=document.createElement('div');card.className='message plan';const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    card.append(part('strong','',about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan'])));if(about.notes)card.append(part('div','notes',about.notes));
+    const heading=about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']);const title=part('strong','',ruleTitle(heading));title.dataset.heading=heading;card.append(title);if(about.notes)card.append(part('div','notes',about.notes));
     for(const step of about.steps){const box=document.createElement('section');box.className='step';const head=document.createElement('div');head.className='head';head.append(part('span','sid',step.id),part('span','',step.name));const facts=document.createElement('dl');
       const fact=(label,value,changed,before)=>{const row=document.createElement('div');if(changed)row.className='changed';row.append(part('dt','',label));if(before)row.append(part('dd','before',before));row.append(part('dd','',value));facts.append(row);};
       if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));box.append(head,facts);card.append(box);}
@@ -586,7 +632,7 @@ window.addMessage=(who,text,about)=>{
   }
   if(who==='failure'){
     group=null;const card=document.createElement('div');card.className='message question failure'+(about.diagnosis?' '+about.diagnosis.side:'');const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    card.append(part('strong','',fill('chat.page.failed',{id:about.id})),part('p','reason',about.reason));
+    const title=part('strong','',fill('chat.page.failed',{id:about.id}));title.prepend(marker('mk',markOf('fail'),{mark:'fail'}));card.append(title,part('p','reason',about.reason));
     if(about.diagnosis){const badge=part('div','badge '+about.diagnosis.side+' '+about.diagnosis.strength,(about.diagnosis.text.endsWith('.')?about.diagnosis.text.slice(0,-1):about.diagnosis.text));card.append(badge);}
     else if(about.suspect)card.append(part('div','badge app',T['chat.page.suspect']));
     if(about.warn)card.append(part('div','warn',about.warn));
@@ -597,7 +643,7 @@ window.addMessage=(who,text,about)=>{
   }
   if(who==='decision'){
     group=null;const card=document.createElement('div');card.className='message decision';const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    card.append(part('strong','',about.title));
+    const title=part('strong','',about.title);title.prepend(marker('mk',markOf('ok'),{mark:'ok'}));card.append(title);
     if(about.facts&&about.facts.length>0){const ul=document.createElement('ul');for(const text of about.facts)ul.append(part('li','',text));card.append(ul);}
     if(about.warn)card.append(part('div','warn',about.warn));
     for(const section of about.details??[]){if(!section.items||section.items.length===0)continue;const details=document.createElement('details');details.append(part('summary','',section.title+' ('+section.items.length+')'));const ul=document.createElement('ul');for(const text of section.items)ul.append(part('li','',text));details.append(ul);card.append(details);}
@@ -606,7 +652,7 @@ window.addMessage=(who,text,about)=>{
   }
   if(who==='advice'){
     group=null;const card=document.createElement('div');card.className='message advice '+about.side;const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    card.append(part('strong','',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']),part('h2','',about.title));if(about.target)card.append(part('div','target',about.target));if(about.about)card.append(part('div','target',fill('chat.page.about',{about:about.about})));card.append(part('p','reason',about.reason));
+    const title=part('strong','',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']);title.prepend(marker('bl',bulletOf('info'),{bullet:'info'}));card.append(title,part('h2','',about.title));if(about.target)card.append(part('div','target',about.target));if(about.about)card.append(part('div','target',fill('chat.page.about',{about:about.about})));card.append(part('p','reason',about.reason));
     if(about.evidence)card.append(part('div','target',fill('chat.page.evidence',{evidence:about.evidence})));
     if(about.contradicts)card.append(part('div','warn',T['chat.page.contradicts']));
     if(about.edits){const facts=document.createElement('dl');for(const edit of about.edits){facts.append(part('dt','',edit.file+(edit.line?':'+edit.line:'')+(edit.why?' · '+edit.why:'')),part('dd','',''));const last=facts.lastChild;last.append(part('pre','del',edit.find),part('pre','',edit.replace));}card.append(facts);}
@@ -616,7 +662,11 @@ window.addMessage=(who,text,about)=>{
       card.append(pre,copy);}
     place(card,true);return;
   }
-  group=null;const item=document.createElement('div');item.className='message '+who;if(about){const ref=document.createElement('span');ref.className='about';ref.textContent=about;item.append(ref);}item.append(text);place(item);
+  group=null;const item=document.createElement('div');item.className='message '+who;
+  if(who==='claude'||who==='human')item.append(whoLine(who));
+  else if(who==='checkpoint')item.append(whoLine('human',marker('cp',T['chat.page.checkpoint'])));
+  else if(who==='question'){const line=whoLine('claude');line.prepend(marker('mk',markOf('ask'),{mark:'ask'}));item.append(line);}
+  if(about){const ref=document.createElement('span');ref.className='about';ref.append(marker('tr',treeOf('end'),{tree:'end'}),about);item.append(ref);}item.append(text);place(item);
 };
 const choices=document.getElementById('choices');
 // Nach einem Klick sind alle Knoepfe gesperrt, der gewaehlte zeigt, dass es weitergeht: kein Doppelklick, keine zweite Wahl.
@@ -628,7 +678,7 @@ const lockChoices=(chosen)=>{for(const button of choices.querySelectorAll('butto
 const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘↵':T['chat.page.ctrlEnter'];toggleButton.querySelector('.key').textContent=KEY;
 // Nach dem Lauf: Bericht und wie es weitergeht.
 window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T['chat.page.newRun'],code);}};
-document.getElementById('report').addEventListener('click',()=>send('report',document.documentElement.dataset.theme??''));
+document.getElementById('report').addEventListener('click',()=>send('report',''));
 // Nach der letzten Entscheidung bleibt das Fenster kurz offen: Der Mensch sieht das Ergebnis und schliesst selbst, sonst nach Ablauf.
 const closeWindow=document.getElementById('closeWindow');let lingerTimer=0;
 closeWindow.addEventListener('click',()=>{clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
@@ -647,7 +697,7 @@ const primary=buttons.filter((choice)=>choice.classList.contains('primary')),res
 if(COMPACT.includes(state)&&rest.length>1){const row=document.createElement('div');row.className='rest';row.append(...rest);choices.replaceChildren(...primary,row);}else choices.replaceChildren(...buttons);
 // Neue Knoepfe bekommen den Fokus, damit Tastatur und Screenreader dort weitermachen; wer gerade tippt, behaelt das Feld.
 if(buttons.length>0&&document.activeElement!==input)(choices.querySelector('.primary')??choices.querySelector('button')).focus({preventScroll:true});
-const allowed=["paused","asking","showing","planning","discussing","developing"].includes(state);pick.disabled=!allowed;pick.title=allowed?T['chat.page.pickTitle']:T['chat.page.pickDisabled'];if(!allowed)window.setChip(null);document.getElementById('label').textContent=label;document.getElementById('toggleText').textContent=button;};
+const allowed=["paused","asking","showing","planning","discussing","developing"].includes(state);pick.disabled=!allowed;pick.title=allowed?T['chat.page.pickTitle']:T['chat.page.pickDisabled'];if(!allowed)window.setChip(null);document.getElementById('toggleText').textContent=button;};
 input.focus();
 // Kurzbefehle: Strg+Enter (Cmd+Enter) loest den Hauptknopf aus, etwa Freigeben oder Fertig. Esc leert zuerst das Feld, in dem
 // getippt wird; sonst fragt das erste Esc den Abbruch an, erst ein zweites innerhalb von 4 s bestaetigt ihn.
@@ -657,6 +707,13 @@ document.addEventListener('keydown',(event)=>{
     if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();return;}
     if(abort.offsetParent!==null&&!abort.disabled){event.preventDefault();abort.click();}}
 });
+// Pause per F9: wie der Knopf, wenn er gerade da ist.
+function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)toggleButton.click();}
+// F9 und Esc aus der Werkbank: nur von ihr, nur diese zwei.
+addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
+  if(event.data.key==='F9')pauseKey();
+  else if(event.data.key==='Escape'&&!pick.classList.contains('on')&&abort.offsetParent!==null&&!abort.disabled)abort.click();});
+paintTheme();
 ${sourceTag}</script></body></html>`;
 
 /**
@@ -686,9 +743,9 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     let closeWanted = null;
     // Nach dem Lauf: { report: absoluter Pfad, shown: Pfad fuer Menschen, text, command }.
     let next = null;
-    const openReport = async (theme) => {
+    const openReport = async () => {
         const page = await chatWindow.context().newPage();
-        await page.setContent(reportPage({ markdown: readFileSync(next.report, 'utf8'), path: next.shown ?? next.report, theme }));
+        await page.setContent(reportPage({ markdown: readFileSync(next.report, 'utf8'), path: next.shown ?? next.report }));
         await page.bringToFront();
     };
     const render = (state, options) => {
@@ -750,7 +807,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         else if (event?.type === 'toggle') chat.human.toggle();
         else if (event?.type === 'choose') chat.human.choose(event.text);
         else if (event?.type === 'abort') chat.human.abort();
-        else if (event?.type === 'report' && next !== null) quiet(openReport(event.text));
+        else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();
     });
     /** Beim Entwickeln: Wer ein mit dem Fadenkreuz gewaehltes Element zusaetzlich bekommt (die Claude-Code-Sitzung). null: niemand. */

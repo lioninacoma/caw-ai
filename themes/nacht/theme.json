@@ -1,0 +1,175 @@
+{
+  "$schema": "../theme.schema.json",
+  "themeApi": 1,
+  "name": "nacht",
+  "label": {
+    "de": "Nacht",
+    "en": "Night"
+  },
+  "description": {
+    "de": "Bunt, Farben aus der Werkbank.",
+    "en": "Colourful, the workbench colours."
+  },
+  "mono": false,
+  "colors": {
+    "screen": "#0f1026",
+    "pane": "#14163a",
+    "frame": "#5a61b0",
+    "text": "#e8e9f7",
+    "muted": "#a3a7cc",
+    "accent": "#f2c94c",
+    "ok": "#5fd18f",
+    "warn": "#f2a03c",
+    "fail": "#ff6c76",
+    "info": "#6fc3ef",
+    "claude": "#b9a6ff",
+    "human": "#f2c94c",
+    "heart": "#ff6c9a"
+  },
+  "crt": {
+    "scanlines": {
+      "color": "#ffffff",
+      "alpha": 0.035
+    },
+    "vignette": 0.45,
+    "headingGlowPx": 8,
+    "textGlow": {
+      "px": 0,
+      "alpha": 0
+    }
+  },
+  "fonts": {
+    "display": {
+      "family": "VT323",
+      "file": "builtin:vt323-latin-400-normal.woff2",
+      "weight": 400
+    },
+    "text": [
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-latin-400-normal.woff2",
+        "weight": 400
+      },
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-latin-500-normal.woff2",
+        "weight": 500
+      }
+    ]
+  },
+  "marks": {
+    "ok": "[  OK  ]",
+    "warn": "[ WARN ]",
+    "fail": {
+      "de": "[FEHLER]",
+      "en": "[ FAIL ]"
+    },
+    "run": "[  {spinner}   ]",
+    "open": "[      ]",
+    "ask": "[  ??  ]"
+  },
+  "failInverted": true,
+  "spinner": {
+    "frames": [
+      "▖",
+      "▘",
+      "▝",
+      "▗"
+    ],
+    "ms": 150
+  },
+  "bullets": {
+    "ok": "■",
+    "warn": "◆",
+    "fail": "✖",
+    "run": "▸",
+    "info": "▸",
+    "pause": "‖"
+  },
+  "tree": {
+    "mid": "├",
+    "end": "└"
+  },
+  "rule": {
+    "line": "─",
+    "format": "── {title} {line}"
+  },
+  "legend": "┤ {title} ├",
+  "box": {
+    "tl": "┌",
+    "tr": "┐",
+    "bl": "└",
+    "br": "┘",
+    "h": "─",
+    "v": "│",
+    "titleOpen": "┤ ",
+    "titleClose": " ├"
+  },
+  "progress": {
+    "done": "█",
+    "run": "▓",
+    "open": "░"
+  },
+  "prompt": {
+    "claude": "claude>",
+    "human": {
+      "de": "du>",
+      "en": "you>"
+    },
+    "cursorMs": 1000
+  },
+  "raven": {
+    "lines": [
+      "   __",
+      "  ( {eye} {beak}",
+      "  // )"
+    ],
+    "parts": {
+      "body": "frame",
+      "eye": "text",
+      "beak": "accent"
+    },
+    "beak": ">",
+    "eyes": {
+      "open": "•",
+      "shut": "-",
+      "happy": "^"
+    },
+    "blink": {
+      "ms": 160,
+      "firstMs": 1800,
+      "pauseMs": [
+        4000,
+        9000
+      ],
+      "double": {
+        "chance": 0.25,
+        "afterMs": 320,
+        "ms": 140
+      }
+    },
+    "pet": {
+      "happyMs": 800,
+      "hearts": {
+        "glyphs": [
+          "♥",
+          "<3",
+          "▄█▄█▄\n ▀█▀",
+          ".:♥:."
+        ],
+        "count": 6,
+        "staggerMs": 70,
+        "startAt": 0.2,
+        "risePx": 80,
+        "driftPx": 20,
+        "steps": 9,
+        "durationMs": [
+          1100,
+          1800
+        ],
+        "fadeFrom": 0.7,
+        "glowPx": 8
+      }
+    }
+  }
+}

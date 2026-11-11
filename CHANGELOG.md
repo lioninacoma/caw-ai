@@ -5,6 +5,27 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 ## [Unreleased]
 
 ### Added
+- `explore` asks first whether the app has a sign-in (`--login` / `--no-login` for scripts), notices the sign-in by itself and ends with a **Done** button in the window instead of Enter in the terminal. It keeps only selectors that survive a second page load, prefers a state class on html/body as the signed-in marker and leaves out `submitSelector` when Enter submits.
+- A failed sign-in shows up after seconds instead of the timeout: form back after submitting, page settled without the marker, or a configured selector missing. With chat (`record`, `run` with chat) Claude proposes a corrected `auth` block from evidence on the page, without field values or account text; `caw.config.json` changes only after yes.
+- Command headers with the ASCII raven, also in `--help`.
+- Redesign "console": workbench, chat, report, `explore` card and terminal share one look. CRT only on case, background and headings; reading text and the tested app stay sharp. Status marks like a boot log (`[  OK  ]`, `[ WARN ]`, `[FEHLER]`), sections as `── 1 SIGN IN ───`, results in a `┌─┤ RESULT ├─┐` box. VT323 for headings and marks, IBM Plex Mono for text. Without a terminal the plain `[caw-ai]` lines stay as they were.
+- Themes as packages: `themes/<name>/theme.json` (themeApi 1, schema in `themes/theme.schema.json`) sets colours, CRT, fonts, marks, prompts, raven and optionally a `theme.css`. Built in: `nacht` (default), `bernstein`, `phosphor`. Own themes live next to `prefs.json` in `themes/<name>/`, name a built-in one as `base` and list only what differs. The choice is personal (`prefs.json`); an optional team default goes into `caw.config.json` as `theme: { base, colors }`.
+- `caw-ai theme` lists the themes, `theme use <name>` picks one, `theme check <name>` checks schema, contrast, mark width and fonts. The terminal uses the theme colours in truecolor, otherwise the nearest of 256 colours.
+- The logo is the ASCII raven everywhere. Now and then it blinks; a click makes it squint and sends up ASCII hearts.
+- A failed check run whose hard failures are only script errors offers **Ignore errors and check again**: it adds the messages to `consoleIgnore` and starts a new check run without Claude, also when all steps passed. Accepting an ignore recommendation in the chat that allows all failures starts that check run by itself, no **Fix step** needed.
+- While recording, Claude can already submit config and context recommendations: when you call an error harmless, it proposes the `consoleIgnore` entry right away, so the check run afterwards does not fail on it.
+- Replay skips a repeated click on the same target when a dialog opened by the first click now covers it (for example **Cancel** with a confirmation), instead of waiting 30 s and failing; the step check decides, and the report names the skipped click.
+- **F1 Choose state** after every handover (`open`, `run --until`): a dialog lists the tests of the signed-in role for this app and environment. Pick a test to play it to its last step, or a step to stop there; caw-ai restores it in the same window without Claude. Stale or unrecorded steps are blocked and say why, tests that create data say so. Also in **App only**, from the app and from the chat.
+- After the handover (`open`, `--until`) the workbench starts in **App only**; F8 brings the workbench back. **App only** hides the workbench and leaves the browser window as it is (no F11 fullscreen). It and an open Requests or Console tab come back after reloading the whole workbench.
+- Optional clicks for things that do not always show up, like a cookie banner: `click <target> --optional` while recording, or Claude marks a recorded click optional (advice `kind: action`). Replay waits 3 s for the target and otherwise skips the click; the report names it. The step stays current, no new recording.
+- While developing (`open`, `--until`, after F1) Claude sees the whole test of the current state with all recorded actions. Accepted test changes go into the test file right away, and F1 and **Restore state** use them at once.
+- If restoring a state failed, Claude in the chat knows it: the failed step, reason, diagnosis and the requests of that restore, like after a failed run. No need to paste the message.
+- Fixed: restoring a test chosen with F1 from `open` (or from another test) failed every check with "not met after 30 s": the checks were run against the steps of the open run. A check that fails to evaluate until the timeout now names the error.
+- While developing after the handover, reloading is part of the work: no "state no longer secured" note, no greyed-out steps, no chat message.
+- The status pill in the workbench shows only the four labels of the chat header (Claude working, caw-ai working, Stopping …, Paused), no step number; other states show no pill.
+- Block glyphs (▖▘▝▗, ▀▄▌▐█ and friends) are drawn by the page in the text colour instead of coming from a fallback font: the spinner mark stays as wide as `[  OK  ]` and the VT323 look stays intact. Other spinner frames stay text; the terminal keeps characters.
+- The `explore` card in the browser in the same look: raven, current step, the path of the page while choosing the start page, and a **Done** button; it can be collapsed.
+
 - `--overlay [build|dev|<url>]` on `run`, `record`, `fix` and `open`: local code over a deployed environment, only where the environment has `"overlay": true`. The app names its sources in `apps.<app>.overlay`: a build folder (`build`), a dev server (`dev`), fixed files (`statics`); with ExtJS the Sencha watch. Without a value the one configured source; a URL is a dev server at that address. Without `--overlay` every run tests the deployed version; a dev server on your machine is an environment of its own.
 - With `--overlay` caw gets the source ready before Chrome starts, like Playwright's `webServer`: it starts the dev server with `devCommand` (with ExtJS the Sencha watch), builds once with `buildCommand` when the build is missing or older than the sources, prints each action and stops what it started at the end. Otherwise exit 2 with the reason and the command. The source never switches.
 - Page swap: each HTML page of the app gets the code tags of the local page (build folder or dev server) at the position of the old ones, with the page's CSP nonce and without `integrity`. Inline scripts, project copies such as `public/env.js` and foreign origins stay from the server. Build requests match the exact file or the same name up to the hash (one hash rule for all bundlers); code requests and the HMR WebSocket go to the dev server.
@@ -26,6 +47,11 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Workbench: the adopt decision is a card ("Check run passed", one line per fact, warnings folded); "Discard draft" asks once more. After the decision the chat says what was saved and the window stays open for 15 s with "Close window".
 - Workbench: before a new window opens (Claude, check run), chat and terminal say so. Keyboard shortcuts are shown on the buttons they trigger.
 
+### Removed
+- The raven no longer waves: the `wave` clip is gone from the clip table, the sprite sheet and the mascot pipeline.
+- The flying sprite raven in the workbench, feeding (`fed` in `prefs.json`) and the light theme; Silkscreen is replaced by VT323.
+- The sprite assets: `assets/raven-sheet.png`, `assets/favicon-32.png` and the crow pipeline in `assets/mascot/` (`npm run mascot`). The favicon is now an SVG of the raven in the theme colours.
+
 ### Changed
 - `examples/helpdesk` ships the recording of `create-ticket`: start the server and `run` it right away, no recording with Claude first.
 - Exit code 4 ("needs recording") for a missing or outdated recording (`replay-missing`, `replay-stale`).
@@ -36,6 +62,10 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Workbench: the first Esc only asks before cancelling (a second Esc confirms); Esc while typing clears the field. Choices in the failure and decision cards are compact and the card scrolls into view. The steps panel unfolds on failure on narrow screens. The workbench's refresh button is disabled while a test runs.
 
 ### Fixed
+- Clicks and inputs of Claude and of replay no longer take the chat away: if you were typing in the chat, focus goes back to its input right after the action, so your keys do not land in the app and trigger its shortcuts.
+- The chat shows its blinking cursor only when the input really has focus; before, it blinked when it did not, and typing went into the app.
+- Looking for a target (snapshot, click, explaining a failure) no longer scrolls the app: the reachability check restores every scroll position, so a page scrolled to the bottom stays there.
+- **Fix step** after a recording kept the conversation: what human and Claude agreed on (e.g. a console error from framework code) reaches the repair, and failures that the config now allows no longer count as the diagnosis.
 - Open shadow roots also count for an enclosing `<label>`, the sign-in marker, messages and dialogs as web components, and `wait-ready` counts.
 - React apps that hydrate the whole document (Next.js App Router, React Router framework mode, Remix) count as loaded; before, every run ended with `app-not-loaded`.
 - Sign-in on server-rendered pages (Nuxt, Next.js, Angular SSR) waits until the framework has taken over the form; before, the values were lost on hydration or Enter submitted the form natively.

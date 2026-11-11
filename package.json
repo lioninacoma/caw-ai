@@ -28,15 +28,7 @@
     },
     "files": [
         "assets/",
-    "!assets/mascot/out/",
-    "!assets/mascot/*.blend",
-    "!assets/mascot/*.aseprite",
-    "!assets/mascot/*.py",
-    "!assets/mascot/*.lua",
-    "!assets/mascot/*.mjs",
-    "!assets/mascot/*.json",
-    "!assets/mascot/README.md",
-    "!assets/mascot/__pycache__/",
+        "themes/",
         "bin/",
         "src/",
         "templates/",
@@ -53,7 +45,6 @@
         "test": "node --import ./test/setup-de.mjs --test \"test/*.test.mjs\"",
         "e2e": "node e2e/schritte-e2e.mjs",
         "pack:check": "node scripts/pack-check.mjs",
-        "mascot": "node assets/mascot/build.mjs",
         "prepack": "node scripts/pack-check.mjs"
     },
     "dependencies": {

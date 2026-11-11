@@ -45,6 +45,11 @@ export const locatorFor = (page, target) => page.locator(ARIA_REF.test(target) ?
  * @param expand optional: setzt Platzhalter geheimer gemerkter Werte ({{iban}}) in Werte von fill/type und in den Code einer Pruefung
  *   ein. Claude sieht sie nie im Klartext und arbeitet mit dem Platzhalter; erst der Host fuellt ihn.
  */
+// So lange wartet ein optionaler Klick auf sein Ziel.
+const OPTIONAL_WAIT_MS = 3000;
+// Diese Befehle fokussieren in der Anwendung.
+const FOCUSING = new Set(['click', 'fill', 'type', 'press', 'upload', 'download']);
+
 export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, expand = (value) => value, commandTimeoutMs = COMMAND_TIMEOUT_MS }) => {
     const screenshots = new Set();
     let finished = false;
@@ -55,7 +60,12 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         task: () => run,
         snapshot: () => session.page().ariaSnapshot({ mode: 'ai' }),
         url: () => session.page().url(),
-        click: async (command) => { await locate(command).click({ timeout: ACTION_TIMEOUT_MS, delay: CLICK_DELAY_MS }); return 'ok'; },
+        click: async (command) => {
+            // Optional, etwa ein Cookie-Banner: Ist das Ziel nicht (mehr) da, ist nichts zu tun. Das Abspielen ueberspringt ihn dann ebenso.
+            if (command.optional === true && !await locate(command).waitFor({ state: 'visible', timeout: OPTIONAL_WAIT_MS }).then(() => true, () => false)) return 'absent';
+            await locate(command).click({ timeout: ACTION_TIMEOUT_MS, delay: CLICK_DELAY_MS });
+            return 'ok';
+        },
         // Leer ist erlaubt: So leert man ein Feld unabhaengig davon, was gerade drinsteht. Ein Klick aufs X scheitert, wenn es leer ist.
         fill: async (command) => {
             if (typeof command.value !== 'string') throw usage(t('run.agent.missing', { field: 'value' }));
@@ -152,7 +162,11 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
             timer = setTimeout(() => reject(new CawError('command-timeout', t('run.agent.timeout', { action: command.action }))), commandTimeoutMs);
         });
         try {
-            const result = await Promise.race([commands[command.action](command), limit]);
+            // Aktionen, die in der Anwendung fokussieren, geben dem Chat den Fokus zurueck, wenn der Mensch dort gerade tippt.
+            const view = session.page?.();
+            const act = () => commands[command.action](command);
+            const work = FOCUSING.has(command.action) && typeof view?.keepChatFocus === 'function' ? view.keepChatFocus(act) : act();
+            const result = await Promise.race([work, limit]);
             if (filled) return { id: result.id, pass: result.pass };
             return PAGE_TEXT.has(command.action) && !reveal ? await hideSecrets(result) : result;
         } finally {

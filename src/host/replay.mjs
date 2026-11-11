@@ -21,6 +21,10 @@ const DESCRIBE_TIMEOUT_MS = 5000;
 const CHECK_POLL_MS = 250;
 const DEFAULT_RETRY_WAIT_MS = 10_000;
 const TARGETED = new Set(['click', 'fill', 'type', 'upload', 'download']);
+// So lange darf ein wiederholter Klick auf sein Ziel warten, bevor ein Dialog darueber ihn ueberspringen laesst.
+const REPEAT_CLICK_MS = 1500;
+// So lange wartet ein optionaler Klick (etwa ein Cookie-Banner) auf sein Ziel; kommt es nicht, faellt er weg.
+const OPTIONAL_CLICK_MS = 3000;
 const CHANGES_PAGE = new Set(['click', 'press', 'goto', 'reload']);
 const EFFECT_ACTIONS = new Set(['click', 'fill', 'type', 'press', 'upload', 'download']);
 // So viel einer Meldung steht in Grund und Bericht. Verglichen wird immer der ganze Text.
@@ -192,8 +196,10 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                 case 'click':
                 case 'fill':
                 case 'type':
+                    // Ein optionaler Klick ohne Ziel hat nichts getan: nichts aufzuzeichnen.
+                    if (value === 'absent') break;
                     if (target === null) problems.push(t('session.replay.unstableTarget', { action: command.action, target: command.target }));
-                    else add({ action: command.action, target, ...path, ...(command.value === undefined ? {} : { value: command.value }) });
+                    else add({ action: command.action, target, ...path, ...(command.value === undefined ? {} : { value: command.value }), ...(command.action === 'click' && command.optional === true ? { optional: true } : {}) });
                     break;
                 case 'press': add({ action: 'press', key: command.key }); break;
                 case 'goto': add({ action: 'goto', url: relativeUrl(command.url, base) }); break;
@@ -448,7 +454,7 @@ export const replayUpToStale = (spec) => {
 
 export const stepLabel = (step) => {
     switch (step.action) {
-        case 'click': return `click ${targetLabel(step.target)}`;
+        case 'click': return `click ${targetLabel(step.target)}${step.optional === true ? ' (optional)' : ''}`;
         case 'fill':
         case 'type': return `${step.action} ${targetLabel(step.target)}`;
         case 'upload': return `upload ${targetLabel(step.target)} ${step.files.join(', ')}`;
@@ -522,6 +528,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const warmup = new Set();
     // Schritte mit neuem Versuch, je Schritt die scheiternde Abweichung des letzten Versuchs, und die, die zweimal gleich abwichen.
     const retried = new Set();
+    // Je Schritt die wiederholten Klicks, die uebersprungen wurden, weil der erste schon einen Dialog geoeffnet hatte.
+    const repeatSkipped = new Map();
     const effectKeys = new Map();
     const repeated = new Set();
     const results = new Map();
@@ -636,9 +644,24 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (size === 0) throw finalError(t('session.replay.downloadEmpty', { name }), 'check');
     };
 
-    const act = async (step, timeoutMs) => {
+    /**
+     * @param previous die Aktion davor: Ist es derselbe Klick auf dasselbe Ziel und liegt jetzt ein Dialog darueber, hat der erste
+     *                 Klick schon gewirkt (etwa „Abbrechen“ oeffnet die Rueckfrage). Der zweite wird dann uebersprungen, statt bis
+     *                 zum Zeitlimit zu warten; ob der Schritt stimmt, sagt seine Pruefung.
+     * @returns 'skipped' oder undefined
+     */
+    const act = async (step, timeoutMs, previous) => {
         const deadline = now() + timeoutMs;
         const files = step.action === 'upload' ? uploadFiles(step.files) : [];
+        if (step.action === 'click' && previous?.action === 'click' && JSON.stringify(previous.target) === JSON.stringify(step.target)) {
+            const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: Math.min(timeoutMs, REPEAT_CLICK_MS), sleep, now });
+            if (element === null && (await explainTarget(session.framework ?? frameworkOf(), session.page(), step.target))?.covered !== undefined) return 'skipped';
+        }
+        // Optional, etwa der Cookie-Banner beim ersten Besuch: Ist das Ziel nicht da, gibt es nichts zu tun ('absent').
+        if (step.optional === true) {
+            const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: Math.min(timeoutMs, OPTIONAL_CLICK_MS), sleep, now });
+            if (element === null) return 'absent';
+        }
         for (;;) {
             const remaining = Math.max(deadline - now(), 1);
             const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: remaining, sleep, now });
@@ -650,11 +673,16 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 throw error;
             }
             try {
-                if (step.action === 'click') await element.click({ timeout: remaining, delay: CLICK_DELAY_MS });
-                else if (step.action === 'fill') await element.fill(step.value, { timeout: remaining });
-                else if (step.action === 'upload') await upload(element, step, files, remaining);
-                else if (step.action === 'download') await download(element, step, remaining);
-                else await element.type(step.value, { timeout: remaining });
+                const perform = async () => {
+                    if (step.action === 'click') await element.click({ timeout: remaining, delay: CLICK_DELAY_MS });
+                    else if (step.action === 'fill') await element.fill(step.value, { timeout: remaining });
+                    else if (step.action === 'upload') await upload(element, step, files, remaining);
+                    else if (step.action === 'download') await download(element, step, remaining);
+                    else await element.type(step.value, { timeout: remaining });
+                };
+                // Tippt der Mensch gerade im Chat, bekommt er den Fokus nach der Aktion zurueck (siehe frameView).
+                const view = session.page();
+                await (typeof view?.keepChatFocus === 'function' ? view.keepChatFocus(perform) : perform());
                 return;
             } catch (error) {
                 // ExtJS baut Elemente um. Solange Zeit bleibt, wird das Ziel neu gesucht.
@@ -667,17 +695,21 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const check = async (step, timeoutMs) => {
         const deadline = now() + timeoutMs;
         let last = t('session.replay.noEvaluation');
+        let failedWith = null;
         for (;;) {
             try {
                 const { pass, value } = await handler({ action: 'check', id: step.id, code: step.code });
                 last = JSON.stringify(value) ?? String(value);
+                failedWith = null;
                 if (pass) break;
             } catch (error) {
                 // Waehrend eines Seitenwechsels ist z. B. Ext kurz undefiniert.
                 last = firstLine(error);
+                failedWith = last;
             }
             if (now() >= deadline) {
-                const cause = await withSignIn(t('session.replay.checkTimeout', { seconds: Math.round(timeoutMs / 1000), code: step.code }));
+                const timedOut = t('session.replay.checkTimeout', { seconds: Math.round(timeoutMs / 1000), code: step.code });
+                const cause = await withSignIn(failedWith === null ? timedOut : `${timedOut} ${t('session.replay.checkError', { error: failedWith })}`);
                 causes.set(step.id, cause);
                 results.set(step.id, { id: step.id, status: 'fail', evidence: { type: 'eval', value: last }, note: withTries(step.id, cause) });
                 return;
@@ -685,11 +717,15 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             await sleep(CHECK_POLL_MS);
         }
         const tried = history.get(step.id);
+        const notes = [
+            ...(tried === undefined ? [] : [t('session.replay.passedOnTry', { count: tried.length + 1, tries: tried.join('; ') })]),
+            ...(repeatSkipped.get(step.id) ?? []).map(({ label, outcome }) => t(outcome === 'absent' ? 'session.replay.skippedOptional' : 'session.replay.skippedRepeat', { label })),
+        ];
         results.set(step.id, {
             id: step.id,
             status: 'pass',
             evidence: { type: 'eval', value: `${step.code} => ${last}` },
-            ...(tried === undefined ? {} : { note: t('session.replay.passedOnTry', { count: tried.length + 1, tries: tried.join('; ') }) }),
+            ...(notes.length === 0 ? {} : { note: notes.join(' ') }),
         });
     };
 
@@ -717,9 +753,11 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         }
     };
 
-    const run = async (step, timeoutMs) => {
-        if (TARGETED.has(step.action)) await act(step, timeoutMs);
-        else if (step.action === 'check') await check(step, timeoutMs);
+    const run = async (step, timeoutMs, previous) => {
+        if (TARGETED.has(step.action)) {
+            const outcome = await act(step, timeoutMs, previous);
+            if (outcome !== undefined) return outcome;
+        } else if (step.action === 'check') await check(step, timeoutMs);
         else if (step.action === 'remember') await remember(step, timeoutMs);
         else if (step.action === 'goto' && step.denied) {
             const denied = await handler({ action: 'goto', url: step.url }).then(() => false, (error) => error.code === 'target-denied');
@@ -894,7 +932,11 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             pending = { owner, number: index - starts.get(owner) + 1, label: stepLabel(step) };
         }
         try {
-            await run(step, step.timeoutMs ?? stepTimeoutMs);
+            const outcome = await run(step, step.timeoutMs ?? stepTimeoutMs, index > 0 ? replay.steps[index - 1] : undefined);
+            if (outcome === 'skipped' || outcome === 'absent') {
+                repeatSkipped.set(owner, [...(repeatSkipped.get(owner) ?? []), { label: stepLabel(step), outcome }]);
+                if (EFFECT_ACTIONS.has(step.action)) pending = null;
+            }
         } catch (error) {
             // Ist die Aktion selbst gescheitert, hat sie nichts bewirkt, das sich vergleichen liesse. Das Warten danach schon.
             if (EFFECT_ACTIONS.has(step.action)) pending = null;

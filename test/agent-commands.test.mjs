@@ -139,3 +139,15 @@ test('Hängender Befehl blockiert den Lauf nicht', async (t) => {
     });
     await assert.rejects(handler({ action: 'eval', code: 'x' }), { code: 'command-timeout' });
 });
+
+test('click --optional: Fehlt das Ziel, wird nicht geklickt und absent gemeldet; ist es da, wird geklickt', async () => {
+    let visible = false;
+    const clicked = [];
+    const page = { locator: (target) => ({ waitFor: async () => { if (!visible) throw new Error('timeout'); }, click: async () => { clicked.push(target); } }) };
+    const handler = createAgentHandler({ session: { page: () => page }, run: { expectations: [] }, hosts: [], agentDir: tmpdir(), onVerdict: () => {} });
+    assert.equal(await handler({ action: 'click', target: 'e1', optional: true }), 'absent');
+    assert.deepEqual(clicked, []);
+    visible = true;
+    assert.equal(await handler({ action: 'click', target: 'e1', optional: true }), 'ok');
+    assert.deepEqual(clicked, ['aria-ref=e1']);
+});

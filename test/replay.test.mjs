@@ -671,3 +671,30 @@ test('Schwere: Ein vom Framework gefangener Fehler mit Stack in der Konsole zaeh
     assert.equal(classifyFailure(console, { url: caller, stack: stackFrom('https://a.example/main.js') }, rules), 'fail');
     assert.equal(classifyFailure(console, { url: 'https://a.example/vendor/widget.js' }, rules), 'warn', 'Ohne Stack zaehlt die Datei wie bisher');
 });
+
+test('Aufnahme: click --optional wird als optional aufgezeichnet; fehlte das Ziel, wird gar nichts aufgezeichnet', async () => {
+    const page = { locator: () => ({ evaluate: async () => ({ role: 'button', name: 'Alle akzeptieren' }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
+    let absent = false;
+    const recorder = createRecorder({ handler: async () => (absent ? 'absent' : 'ok'), session: { page: () => page }, base: 'https://p.example' });
+    await recorder.handler({ action: 'click', target: 'e1', optional: true });
+    absent = true;
+    await recorder.handler({ action: 'click', target: 'e1', optional: true });
+    absent = false;
+    await recorder.handler({ action: 'click', target: 'e2' });
+    assert.equal(recorder.steps.length, 2);
+    assert.equal(recorder.steps[0].optional, true);
+    assert.equal(recorder.steps[1].optional, undefined);
+});
+
+test('Prüfung: Scheitert das Auswerten bis zum Zeitlimit, nennt die Meldung den Fehler statt nur „nicht erfüllt“', async () => {
+    const session = {
+        page: () => ({ evaluate: async () => ({ messages: [], extLoaded: true, signedIn: true }), evaluateHandle: async () => ({ asElement: () => null, dispose: async () => {} }), waitForLoadState: async () => {} }),
+        waitReady: async () => {},
+        failures: () => [],
+    };
+    const play = (handler) => playReplay({ replay: { steps: [{ action: 'check', id: 'S1', code: 'true' }] }, handler, session, base: 'https://p.example', stepTimeoutMs: 100 });
+    const broken = await play(async () => { throw new Error('Unbekannter Schritt: S1'); });
+    assert.match(broken.results.get('S1').note, /Nach 0 s nicht erfüllt: true \(Auswerten scheiterte zuletzt: Unbekannter Schritt: S1\)/);
+    const notYet = await play(async () => ({ pass: false, value: false }));
+    assert.doesNotMatch(notYet.results.get('S1').note, /scheiterte/);
+});

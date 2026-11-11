@@ -59,6 +59,7 @@ const main = async ([command, ...args]) => {
         case 'validate': return (await host()).validate(root);
         case 'list': return (await host()).list(root, args);
         case 'auth': return (await host()).auth(root, args);
+        case 'theme': return (await import('../src/host/theme-command.mjs')).themeCommand(root, args);
         case 'doctor': {
             const [{ doctor }, { createUi }, { optionValue }] = await Promise.all([import('../src/host/doctor.mjs'), import('../src/shared/ui.mjs'), import('../src/host/linux.mjs')]);
             const unknown = args.filter((arg, index) => arg !== '--agent' && !arg.startsWith('--agent=') && args[index - 1] !== '--agent');
@@ -100,7 +101,7 @@ const main = async ([command, ...args]) => {
         case 'ask-operator': return (await sandbox()).browserCommand({ action: command, question: args[0] }, { timeoutMs: 60 * 60 * 1000 });
         case 'chat': return (await sandbox()).browserCommand({ action: command }, { timeoutMs: 60 * 60 * 1000 });
         case 'say': return browser({ action: command, text: args[0] });
-        case 'click': return browser({ action: command, target: args[0] });
+        case 'click': return browser({ action: command, target: args.find((arg) => !arg.startsWith('--')), ...(args.includes('--optional') ? { optional: true } : {}) });
         case 'fill':
         case 'type':
             return browser({ action: command, target: args[0], value: args[1] });

@@ -4,7 +4,7 @@ export default {
     'cli.help.intro': `caw-ai - AI-driven integration tests for web apps (Constrained Agentic Webtester)
 
 Getting started (in the project folder, with the app running):
-  1. npx caw-ai init --url http://localhost:5173      sign in in the window, Enter: creates caw.config.json, caw/.env.example
+  1. npx caw-ai init --url http://localhost:5173      sign in in the window, "Done": creates caw.config.json, caw/.env.example
                                                       and the skill; fill in anything left TODO yourself
   2. copy caw/.env.example to caw/.env and enter the credentials of a test account
   3. npx caw-ai doctor                                until nothing is MISSING
@@ -42,6 +42,8 @@ On the host (in the project folder):`,
                                          they write; with <test> one line per step`,
     'cli.help.doctor': `  doctor [--agent local|docker|session]  Check Node, Chrome, Claude Code (local) or Docker and token (docker),
                                          credentials and environments, with next step`,
+    'cli.help.theme': `  theme [use <name> | check <name>]      List themes, pick one (applies to you, in all projects) or check one: schema,
+                                         contrast, mark width, fonts. Change it in the workbench with F7`,
     'cli.help.auth': `  auth <role> --target <env>             With auth.type storageState: sign in once by hand (e.g. SSO), the
                                          session goes to caw/.auth/<env>/<role>.json`,
     'cli.help.version': '  --version                              Package version',
@@ -101,7 +103,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
   task                                   Show the task of the open run
   snapshot                               Page structure with references (e1, e2, ...)
   url                                    Current URL
-  click <target>                         Target: reference or selector
+  click <target> [--optional]            Target: reference or selector; --optional: skip if absent
   fill <target> <text>                   Set a field
   type <target> <text>                   Type character by character
   press <key>                            Press a key, e.g. Enter
@@ -123,7 +125,8 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
   advise --file <advice.json>            Submit advice, also when fixing; the human decides per card`,
     // Die Kurzform je Befehl, unter einem Aufruffehler.
     'cli.synopsis.init': 'caw-ai init [--url <address>] [--yes] [--from <file>] [--no-mcp] [--offline]',
-    'cli.synopsis.explore': 'caw-ai explore --url <address> [--yes] [--insecure-tls]',
+    'cli.synopsis.explore': 'caw-ai explore --url <address> [--login | --no-login] [--yes] [--insecure-tls]',
+    'cli.synopsis.theme': 'caw-ai theme [use <name> | check <name>]',
     'cli.synopsis.list': 'caw-ai list [<test>]',
     'cli.synopsis.doctor': 'caw-ai doctor [--agent local|docker|session]',
     'cli.synopsis.auth': 'caw-ai auth <role> --target <env>',
@@ -328,6 +331,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.doctorFixFirst': '{summary}. Fix the MISSING ones first.',
 
     // explore.mjs
+    'cli.exploreWhyState': 'state on html/body, the same for every account',
     'cli.exploreWhyLogout': 'sign-out only exists when signed in',
     'cli.exploreWhyAccount': 'user or account area, only there after sign-in',
     'cli.exploreWhyLandmark': 'named navigation, on every page of the signed-in app',
@@ -342,13 +346,42 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.exploreNoSignedIn': 'No new element with a stable selector appeared after sign-in; please set signedInSelector by hand.',
     'cli.exploreNoLogin': 'No login form seen. If the app does need a sign-in, run explore again and sign in.',
     'cli.exploreConsole': 'Console errors already appeared on opening. Only take what is known noise, otherwise it hides errors.',
+    'cli.exploreAskLogin': 'Does the app need a sign-in?',
+    'cli.exploreOpening': 'Chrome opening {host}',
+    'cli.exploreOpened': 'Chrome open on {host}',
+    'cli.exploreStepSignIn': 'Sign in',
+    'cli.exploreSignIn': 'Sign in with a test account in the Chrome window.',
+    'cli.exploreWaitingSignIn': 'Waiting for sign-in',
+    'cli.exploreSignedInDone': 'Signed in',
+    'cli.exploreSignInSkipped': 'Sign-in skipped',
+    'cli.exploreStepStart': 'Start page',
+    'cli.exploreGoStart': 'Go to the page where tests should start and click "Done" at the bottom right.',
+    'cli.exploreWaitingDone': 'Waiting for "Done" in the window',
+    'cli.exploreStartChosen': 'Start page chosen',
+    'cli.exploreCardWait': 'Page loading',
+    'cli.exploreCardSignIn': "Sign in with a test account. I'll notice when you're in.",
+    'cli.exploreCardStart': 'Go to the page where tests should start.',
+    'cli.exploreCardReading': 'Reading the page',
+    'cli.exploreCardDone': 'Saved. The window closes in a moment.',
+    'cli.exploreCardPage': 'PAGE',
+    'cli.exploreCardSaved': '■ SAVED',
+    'cli.exploreDoneButton': 'Done',
+    'cli.exploreClosed': 'Window closed, cancelled',
+    'cli.exploreReading': 'Reading the page twice (only stable parts count)',
+    'cli.exploreRead': 'Page read',
+    'cli.exploreStepResult': 'Result',
+    'cli.exploreFoundFramework': 'Framework: {framework}',
+    'cli.exploreFoundNoLogin': 'No sign-in',
+    'cli.exploreFoundLogin': 'Sign-in: {type}',
+    'cli.exploreFoundSignedIn': 'Signed in recognised by {selector} ({why})',
+    'cli.exploreFoundStart': 'Start page: {path}',
+    'cli.exploreSavedTo': 'Saved to {file}',
+    'cli.exploreLoginNotFound': 'You said there\'s a sign-in, but I saw no sign-in form. Check auth in the config.',
+    'cli.yesNoDefaultYes': '[Y/n]',
+    'cli.yesNoDefaultNo': '[y/N]',
     'cli.exploreUsage': 'Usage: caw-ai explore --url <address>, e.g. --url http://app.localhost:5173',
-    'cli.exploreNeedsTty': 'explore needs a terminal: you sign in in the window and confirm here. Without sign-in: --yes.',
+    'cli.exploreNeedsTty': 'explore needs a terminal to ask about sign-in. Without a terminal: --yes.',
     'cli.exploreUnreachable': "{url} doesn't respond. Is the dev server running, is the address right?",
-    'cli.exploreSignIn': 'In the window: sign in with a test account if the app asks for it, and go to the app\'s start page.',
-    'cli.explorePressEnter': 'Then press Enter here: ',
-    'cli.exploreSaved': 'Suggestions in {file}: framework {framework}, login {auth}{signedIn}.',
-    'cli.exploreSignedIn': ', signed in recognizable by {selector}',
     'cli.exploreNext': 'Next: npx caw-ai init takes over {file}. Fill in what stays TODO in caw.config.json.',
 
     // ui.mjs
@@ -374,5 +407,21 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.uiWarnings': '{count} warning(s) in the report.',
     'cli.uiReport': 'Report:',
     'cli.uiMoreFailures': 'and {count} more in the report',
-    'cli.uiWarningsShort': '! {count} warning(s) in the report',
+    'cli.uiWarningsShort': '{count} warning(s) in the report',
+    'cli.uiPassed': '{count} passed',
+    'cli.uiFailed': '{count} failed',
+    'cli.uiOpen': '{count} open',
+    'cli.themeHeading': 'Themes',
+    'cli.themeOwn': 'custom, on {base}',
+    'cli.themeActive': '(active)',
+    'cli.themeHint': 'Pick: caw-ai theme use <name>. Change: F7 in the workbench.',
+    'cli.themeUsed': 'Theme {name} selected.',
+    'cli.themeUnknown': 'There is no theme {name}. Available: {names}',
+    'cli.themeUsage': 'Usage: caw-ai theme [use <name> | check <name>]',
+    'cli.themeCheck': 'Check theme {name}',
+    'cli.themeSchemaOk': 'Schema fits',
+    'cli.themeWidth': 'The marks differ in width; text after them will not line up.',
+    'cli.themeContrast': 'Contrast {pair} only {ratio}:1, below 4.5:1 is hard to read.',
+    'cli.themeFontMissing': 'Font missing: {file}',
+    'cli.themeLooksOk': 'Contrast, marks and fonts are fine',
 };

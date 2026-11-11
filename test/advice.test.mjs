@@ -179,3 +179,44 @@ test('Empfehlungen: Knowledge, Config und Testdatei werden ergänzt, Kommentare 
         rmSync(root, { recursive: true, force: true });
     }
 });
+
+test('Empfehlungen: Ein aufgezeichneter Klick wird optional, ohne den Schritt veralten zu lassen, und so gespeichert', () => {
+    const clicks = { ...recorded('S1'), recording: { ...recorded('S1').recording, actions: [{ action: 'click', target: { role: 'button', name: 'Alle akzeptieren' } }, { action: 'fill', target: { role: 'textbox', name: 'Name' }, value: 'x' }] } };
+    const spec = composeTest(meta, { notes: 'Alt.', steps: [clicks, recorded('S2')] });
+    const local = (raw) => {
+        try {
+            readAdvice(raw, spec, CONFIG);
+        } catch (error) {
+            return error.message;
+        }
+        return '';
+    };
+    assert.equal(local({ items: [item({ kind: 'action', id: 'S1', index: 1, optional: true })] }), '');
+    assert.match(local({ items: [item({ kind: 'action', id: 'S1', index: 2, optional: true })] }), /kein Klick/);
+    assert.match(local({ items: [item({ kind: 'action', id: 'S1', index: 3, optional: true })] }), /1 bis 2/);
+    assert.match(local({ items: [item({ kind: 'action', id: 'S2', index: 1, optional: true })] }), /1 bis 0|nicht aufgezeichnet/);
+    assert.match(local({ items: [item({ kind: 'action', id: 'S1', index: 1, optional: 'ja' })] }), /true oder false/);
+
+    const change = { kind: 'action', id: 'S1', index: 1, optional: true };
+    const view = adviceView(item(change), spec);
+    assert.equal(view.target, 'S1 Schritt S1');
+    assert.equal(view.changes.length, 1);
+    assert.match(view.changes[0].label, /^Aktion 1: click /);
+    assert.deepEqual([view.changes[0].before, view.changes[0].after], ['immer', 'optional: nur wenn das Ziel da ist']);
+
+    const applied = applyToSpec(spec, change);
+    assert.deepEqual([applied.id, applied.stale], ['S1', false]);
+    assert.equal(applied.spec.steps[0].recording.actions[0].optional, true);
+    assert.equal(applied.spec.steps[0].recording.hash, spec.steps[0].recording.hash);
+    assert.equal(applyToSpec(applied.spec, { ...change, optional: false }).spec.steps[0].recording.actions[0].optional, undefined);
+
+    const root = mkdtempSync(join(tmpdir(), 'caw-optional-'));
+    try {
+        writeTest(root, applied.spec);
+        const loaded = loadTest(root, 't');
+        assert.equal(loaded.steps[0].recording.actions[0].optional, true);
+        assert.equal(loaded.steps[0].recording.actions[1].optional, undefined);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});

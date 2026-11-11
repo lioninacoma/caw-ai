@@ -100,6 +100,7 @@ npx caw-ai run smoke --target local
 | Test local code inside a deployed environment | `caw-ai run <test> --target dev --overlay` |
 | Let Claude explain failures right away | `caw-ai run <test> --target local --advise` |
 | Check config and tests | `caw-ai validate` |
+| Pick a theme (F7 in the workbench to change one) | `caw-ai theme use phosphor` |
 
 Exit codes: `0` pass, `1` fail, `2` environment error, `3` invalid input, `4` needs recording. All commands and options: [docs/commands.md](docs/commands.md).
 
@@ -162,6 +163,7 @@ It uses Playwright to drive your installed Chrome. You don't write Playwright co
 - [Configuration](docs/configuration.md): `caw.config.json`, login types, `caw/.env`, `caw/caw.md`
 - [Test files](docs/test-files.md): test plan and recording format, placeholders
 - [Guide](docs/guide.md): agents, workbench, chat, failure assessment, sandbox
+- [Themes](themes/README.md): built-in themes, own theme packages, `caw-ai theme`
 
 ## Contributing
 

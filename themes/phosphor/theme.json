@@ -1,0 +1,175 @@
+{
+  "$schema": "../theme.schema.json",
+  "themeApi": 1,
+  "name": "phosphor",
+  "label": {
+    "de": "Phosphor",
+    "en": "Phosphor"
+  },
+  "description": {
+    "de": "Einfarbig grün wie ein Phosphor-Monitor. Status über Zeichen und Helligkeit.",
+    "en": "Single colour green like a phosphor monitor. Status by glyph and brightness."
+  },
+  "mono": true,
+  "colors": {
+    "screen": "#031208",
+    "pane": "#06190c",
+    "frame": "#1f9a47",
+    "text": "#a8ffbf",
+    "muted": "#5ccf7c",
+    "accent": "#41ff85",
+    "ok": "#41ff85",
+    "warn": "#b4ff9a",
+    "fail": "#41ff85",
+    "info": "#41ff85",
+    "claude": "#d0ffdc",
+    "human": "#b4ff9a",
+    "heart": "#41ff85"
+  },
+  "crt": {
+    "scanlines": {
+      "color": "#000000",
+      "alpha": 0.35
+    },
+    "vignette": 0.55,
+    "headingGlowPx": 8,
+    "textGlow": {
+      "px": 3,
+      "alpha": 0.35
+    }
+  },
+  "fonts": {
+    "display": {
+      "family": "VT323",
+      "file": "builtin:vt323-latin-400-normal.woff2",
+      "weight": 400
+    },
+    "text": [
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-latin-400-normal.woff2",
+        "weight": 400
+      },
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-latin-500-normal.woff2",
+        "weight": 500
+      }
+    ]
+  },
+  "marks": {
+    "ok": "[  OK  ]",
+    "warn": "[ WARN ]",
+    "fail": {
+      "de": "[FEHLER]",
+      "en": "[ FAIL ]"
+    },
+    "run": "[  {spinner}   ]",
+    "open": "[      ]",
+    "ask": "[  ??  ]"
+  },
+  "failInverted": true,
+  "spinner": {
+    "frames": [
+      "▖",
+      "▘",
+      "▝",
+      "▗"
+    ],
+    "ms": 150
+  },
+  "bullets": {
+    "ok": "■",
+    "warn": "◆",
+    "fail": "✖",
+    "run": "▸",
+    "info": "▸",
+    "pause": "‖"
+  },
+  "tree": {
+    "mid": "├",
+    "end": "└"
+  },
+  "rule": {
+    "line": "─",
+    "format": "── {title} {line}"
+  },
+  "legend": "┤ {title} ├",
+  "box": {
+    "tl": "┌",
+    "tr": "┐",
+    "bl": "└",
+    "br": "┘",
+    "h": "─",
+    "v": "│",
+    "titleOpen": "┤ ",
+    "titleClose": " ├"
+  },
+  "progress": {
+    "done": "█",
+    "run": "▓",
+    "open": "░"
+  },
+  "prompt": {
+    "claude": "claude>",
+    "human": {
+      "de": "du>",
+      "en": "you>"
+    },
+    "cursorMs": 1000
+  },
+  "raven": {
+    "lines": [
+      "   __",
+      "  ( {eye} {beak}",
+      "  // )"
+    ],
+    "parts": {
+      "body": "frame",
+      "eye": "text",
+      "beak": "accent"
+    },
+    "beak": ">",
+    "eyes": {
+      "open": "•",
+      "shut": "-",
+      "happy": "^"
+    },
+    "blink": {
+      "ms": 160,
+      "firstMs": 1800,
+      "pauseMs": [
+        4000,
+        9000
+      ],
+      "double": {
+        "chance": 0.25,
+        "afterMs": 320,
+        "ms": 140
+      }
+    },
+    "pet": {
+      "happyMs": 800,
+      "hearts": {
+        "glyphs": [
+          "♥",
+          "<3",
+          "▄█▄█▄\n ▀█▀",
+          ".:♥:."
+        ],
+        "count": 6,
+        "staggerMs": 70,
+        "startAt": 0.2,
+        "risePx": 80,
+        "driftPx": 20,
+        "steps": 9,
+        "durationMs": [
+          1100,
+          1800
+        ],
+        "fadeFrom": 0.7,
+        "glowPx": 8
+      }
+    }
+  }
+}

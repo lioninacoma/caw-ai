@@ -100,6 +100,7 @@ npx caw-ai run smoke --target local
 | Lokalen Code in einer ausgelieferten Umgebung testen | `caw-ai run <test> --target dev --overlay` |
 | Fehler sofort von Claude erklären lassen | `caw-ai run <test> --target local --advise` |
 | Config und Tests prüfen | `caw-ai validate` |
+| Theme wählen (ändern mit F7 in der Werkbank) | `caw-ai theme use phosphor` |
 
 Exit-Codes: `0` bestanden, `1` fehlgeschlagen, `2` Fehler der Umgebung, `3` Eingabe abgewiesen, `4` Aufnahme nötig. Alle Befehle und Optionen: [docs/commands.de.md](docs/commands.de.md).
 
@@ -162,6 +163,7 @@ caw-ai steuert dein installiertes Chrome über Playwright. Playwright-Code schre
 - [Konfiguration](docs/configuration.de.md): `caw.config.json`, Anmeldearten, `caw/.env`, `caw/caw.md`
 - [Testdateien](docs/test-files.de.md): Testplan, Aufzeichnung, Platzhalter
 - [Handbuch](docs/guide.de.md): Agenten, Werkbank, Chat, Einschätzung von Fehlern, Sandbox
+- [Themes](themes/README.de.md): eingebaute Themes, eigene Theme-Pakete, `caw-ai theme`
 
 ## Mitmachen
 

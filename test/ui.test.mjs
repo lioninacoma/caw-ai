@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { createUi } from '../src/shared/ui.mjs';
+import { loadTheme } from '../src/shared/theme-package.mjs';
 
-const capture = (fancy) => {
+const capture = (fancy, theme) => {
     const lines = [];
-    return { lines, ui: createUi({ fancy, out: (text) => lines.push(text), err: (text) => lines.push(text) }) };
+    return { lines, ui: createUi({ fancy, theme, out: (text) => lines.push(text), err: (text) => lines.push(text) }) };
 };
+const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
 const VERDICT = {
     status: 'fail',
     testId: 'r1',
@@ -25,15 +27,16 @@ test('Ohne Terminal: schlichte Zeilen ohne Steuerzeichen und Symbole', () => {
     assert.deepEqual(lines, ['[caw-ai] Hallo', '[+1.3s] 3/9 click', '[caw-ai] r1 auf a/dev: fail', '[caw-ai] Bericht: r.md', '[caw-ai] Falsch', '[caw-ai] (code: usage, exit ?)']);
 });
 
-test('Im Terminal: Ergebnisblock nennt jeden Punkt und den Grund eines Fehlschlags', () => {
+test('Im Terminal: Ergebnis nennt jeden Punkt mit Marke, den Grund eines Fehlschlags und den Fortschritt', () => {
     const { lines, ui } = capture(true);
     ui.verdict(VERDICT, { report: 'r.md', elapsed: 2 });
-    const text = lines.join('\n');
-    assert.match(text, /✗ FAIL/);
-    assert.match(text, /✓.*E1.*Maske da/);
-    assert.match(text, /✗.*E2.*Liste da/);
-    assert.match(text, /Liste leer/);
-    assert.match(text, /Bericht:.*r\.md/);
+    const text = plain(lines.join('\n'));
+    assert.match(text, /── FAIL · r1 auf a\/dev · 2\.0s ─+/);
+    assert.match(text, /\[ {2}OK {2}\] E1 Maske da/);
+    assert.match(text, /\[FEHLER\] E2 Liste da/);
+    assert.match(text, /└ ✖ Liste leer/);
+    assert.match(text, /█+▓+ {2}1 bestanden · 1 Fehler/);
+    assert.match(text, /Bericht: r\.md/);
 });
 
 test('Im Terminal: Zu viele Fehler werden gekürzt, der Bericht hat alle', () => {
@@ -57,5 +60,30 @@ test('Texte aus dem Portal können das Terminal nicht steuern', () => {
 test('Status ohne Einzelpunkte: error mit Grund', () => {
     const { lines, ui } = capture(true);
     ui.verdict({ status: 'error', reason: 'Portal weg', testId: 'r1', target: 'a/dev' }, { report: 'r.md', elapsed: 1 });
-    assert.match(lines.join('\n'), /! ERROR[\s\S]*Portal weg/);
+    assert.match(plain(lines.join('\n')), /── ERROR · r1[\s\S]*\[ WARN \] Portal weg/);
+});
+
+test('Im Terminal: Abschnitt als Linie, Ergebnis im Kasten mit Marken, alle Kastenzeilen gleich breit', () => {
+    const { lines, ui } = capture(true);
+    ui.section(1, 'Anmelden');
+    ui.box('Ergebnis', [{ status: 'ok', text: 'Framework: extjs' }, { status: 'warn', text: 'Startseite fehlt' }, { status: 'info', text: 'auth.submitSelector' },
+        { status: 'removed', text: '#alt' }, { status: 'added', text: '#neu' }]);
+    const text = plain(lines.join('\n'));
+    assert.match(text, /── 1 ANMELDEN ─+/);
+    assert.match(text, /┌─┤ ERGEBNIS ├─+┐/);
+    assert.match(text, /│ \[ {2}OK {2}\] Framework: extjs +│/);
+    assert.match(text, /│ \[ WARN \] Startseite fehlt +│/);
+    assert.match(text, /│ {3}- #alt +│/);
+    assert.match(text, /│ {3}\+ #neu +│/);
+    const boxed = text.split('\n').filter((row) => /[┌│└]/.test(row));
+    assert.equal(new Set(boxed.map((row) => [...row].length)).size, 1, boxed.join('\n'));
+});
+
+test('Im Terminal: Marken und Farben kommen aus dem Theme', () => {
+    const base = loadTheme('bernstein');
+    const { lines, ui } = capture(true, { ...base, marks: { ...base.marks, ok: '[ PASS ]' } });
+    ui.success('fertig');
+    assert.match(plain(lines[0]), /\[ PASS \] fertig/);
+    // Truecolor aus der Bernstein-Palette (ok #ffb547) oder deren 256er-Naeherung.
+    assert.match(lines[0], /\u001b\[38;(2;255;181;71|5;\d+)m/);
 });

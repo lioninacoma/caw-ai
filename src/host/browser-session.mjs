@@ -35,6 +35,15 @@ const CODE_ANSWER_MS = 10_000;
 // Ein TOTP-Code gilt 30 s. Der neue Code kommt kurz nach Beginn des naechsten Fensters, falls die Uhren etwas abweichen.
 const TOTP_WINDOW_MS = 30_000;
 const NEXT_WINDOW_MARGIN_MS = 1000;
+// Nach dem Absenden: Steht das Formular so lange ruhig wieder da (Seite geladen, kein Request offen), hat die Anwendung abgelehnt.
+const LOGIN_REJECT_QUIET_MS = 3000;
+// Ist das Formular weg, die Seite fertig und ruhig, aber die Marke fehlt: so lange Gnade fuer spaet rendernde Seiten, dann gilt sie als falsch.
+const LOGIN_MARKER_QUIET_MS = 5000;
+// Nach dem Laden: So lange darf ein Formular noch erscheinen (gerendert vom Framework), bevor der Selektor als falsch gilt.
+const LOGIN_FORM_MS = 8000;
+const LOGIN_POLL_MS = 250;
+// Ein Request, der laenger offen ist, zaehlt nicht mehr als Arbeit der Anmeldung (Long-Polling, Stream).
+const LOGIN_STALE_REQUEST_MS = 10_000;
 const sleepMs = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
 /** Antworten, die offen bleiben, solange die Seite lebt: Server-Sent Events und Zeilen-JSON. */
 export const STREAM_TYPE = /text\/event-stream|application\/(x-)?ndjson|application\/stream\+json|application\/jsonl/i;
@@ -204,6 +213,7 @@ const ensureLoggedIn = async (context, { url, marker, login, password, totpSecre
     } catch (error) {
         const seen = broken.text();
         if (seen !== '' && error instanceof CawError) error.message = `${error.message} ${seen}`;
+        if (error instanceof CawError) error.evidence = await loginEvidence(page, { marker, ...selectors });
         throw error;
     } finally {
         broken.stop();
@@ -263,9 +273,86 @@ const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep })
     if (await codeStays()) await submit();
 };
 
+/** Offene Requests der Seite (Dokumente, XHR, fetch), damit „ruhig“ nicht mitten in einer langsamen Antwort gilt. */
+const trackRequests = (page, now) => {
+    if (typeof page.on !== 'function') return { open: () => 0, stop: () => {} };
+    const open = new Map();
+    const relevant = (request) => ['document', 'xhr', 'fetch'].includes(request.resourceType?.());
+    const start = (request) => { if (relevant(request)) open.set(request, now()); };
+    const end = (request) => { open.delete(request); };
+    page.on('request', start);
+    page.on('requestfinished', end);
+    page.on('requestfailed', end);
+    return {
+        open: () => [...open.values()].filter((since) => now() - since < LOGIN_STALE_REQUEST_MS).length,
+        stop: () => {
+            page.off?.('request', start);
+            page.off?.('requestfinished', end);
+            page.off?.('requestfailed', end);
+        },
+    };
+};
+
+/**
+ * Wartet nach dem Absenden auf das Ergebnis, ohne die volle Zeitgrenze abzusitzen: Marke da, Formular steht ruhig wieder da
+ * (abgelehnt), oder Seite fertig und ruhig ohne Formular und ohne Marke (Marke falsch). Ruhig heisst: Adresse, Ladezustand und
+ * Formular unveraendert, kein Request offen.
+ * @returns 'signed-in' | 'form' | 'no-marker' | 'timeout'
+ */
+export const waitForLoginOutcome = async (page, { marker, selectors, now = Date.now, sleep = sleepMs, requests = { open: () => 0 } }) => {
+    const start = now();
+    let state = null;
+    let since = start;
+    while (now() - start < LOGIN_TIMEOUT_MS) {
+        if (await page.$(marker).catch(() => null) !== null) return 'signed-in';
+        const loaded = typeof page.evaluate === 'function' ? await page.evaluate(() => document.readyState).catch(() => 'loading') : 'complete';
+        const form = await page.isVisible(selectors.password).catch(() => false);
+        const next = `${page.url()}|${loaded}|${form}`;
+        if (next !== state || requests.open() > 0) {
+            state = next;
+            since = now();
+        }
+        const quiet = now() - since;
+        if (loaded === 'complete' && form && quiet >= LOGIN_REJECT_QUIET_MS) return 'form';
+        if (loaded === 'complete' && !form && quiet >= LOGIN_MARKER_QUIET_MS) return 'no-marker';
+        await sleep(LOGIN_POLL_MS);
+    }
+    return 'timeout';
+};
+
+/**
+ * Was auf der Seite stand, als die Anmeldung scheiterte: wie oft jeder Selektor der Config trifft, und was explore dort fuer stabil
+ * hielte (Felder, Knoepfe, Klassen an html/body). Ohne Werte von Feldern, ohne Parameter der Adresse. Grundlage fuer Claudes Vorschlag.
+ */
+export const loginEvidence = async (page, selectors) => {
+    try {
+        const { surveyPage } = await import('./explore.mjs');
+        const hits = {};
+        for (const [key, selector] of Object.entries(selectors)) {
+            if (typeof selector === 'string') hits[key] = { selector, count: await page.locator(selector).count().catch(() => -1) };
+        }
+        const survey = await page.evaluate(surveyPage, 200).catch(() => null);
+        const address = new URL(page.url());
+        return {
+            path: address.pathname,
+            title: survey?.title ?? '',
+            hits,
+            login: survey?.login ?? null,
+            stateClasses: survey?.stateClasses ?? [],
+            // Ohne Texte: Ein Benutzermenue zeigt oft den Namen des Kontos.
+            markers: (survey?.markers ?? []).slice(0, 120).map(({ selector, tag, role }) => ({ selector, tag, role })),
+        };
+    } catch {
+        return null;
+    }
+};
+
 export const loginSteps = async (page, { url, marker, login, password, totpSecret, selectors, ready, now = Date.now, sleep = sleepMs }) => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector(`${marker}, ${selectors.user}`, { timeout: LOGIN_TIMEOUT_MS }).catch(() => {
+    // Erst die Seite fertig laden, dann nur noch kurz auf ein Formular warten, das das Framework rendert: Ein falscher Selektor
+    // faellt so nach Sekunden auf, nicht nach der vollen Zeitgrenze.
+    await page.waitForLoadState('load', { timeout: LOGIN_TIMEOUT_MS }).catch(() => {});
+    await page.waitForSelector(`${marker}, ${selectors.user}`, { timeout: LOGIN_FORM_MS }).catch(() => {
         throw new CawError('login-form-missing', t('session.browser.loginFormMissing', { marker, url }));
     });
     if (await page.$(marker) !== null) return;
@@ -278,19 +365,34 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
         await ready(page);
         if (await page.$(marker) !== null) return;
     }
+    if (await page.$(selectors.password) === null) {
+        throw new CawError('login-failed', t('session.browser.selectorMissing', { key: 'passwordSelector', selector: selectors.password }));
+    }
+    // Ein Knopf, den es nicht gibt, hinge sonst bis zur Zeitgrenze des Klicks.
+    if (selectors.submit !== undefined && await page.$(selectors.submit) === null) {
+        throw new CawError('login-failed', t('session.browser.selectorMissing', { key: 'submitSelector', selector: selectors.submit }));
+    }
     await page.fill(selectors.user, login);
     await page.fill(selectors.password, password);
-    if (selectors.submit === undefined) await page.press(selectors.password, 'Enter');
-    else await page.click(selectors.submit);
-    await secondFactor(page, { marker, totpSecret, selectors, now, sleep });
-    // Ein kaltes Portal leitet weiter, rendert aber die Seite danach nicht rechtzeitig fertig: einmal neu laden, dann gilt es.
-    const signedIn = await page.waitForSelector(marker, { timeout: LOGIN_TIMEOUT_MS }).then(() => true, () => false);
-    if (signedIn) return;
-    if (await page.$(selectors.password) === null) await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForSelector(marker, { timeout: LOGIN_TIMEOUT_MS }).catch(() => {
+    const requests = trackRequests(page, now);
+    try {
+        if (selectors.submit === undefined) await page.press(selectors.password, 'Enter');
+        else await page.click(selectors.submit);
+        await secondFactor(page, { marker, totpSecret, selectors, now, sleep });
+        let outcome = await waitForLoginOutcome(page, { marker, selectors, now, sleep, requests });
+        // Ein kaltes Portal leitet weiter, rendert aber die Seite danach nicht rechtzeitig fertig: einmal neu laden, dann gilt es.
+        if (outcome === 'no-marker' || outcome === 'timeout') {
+            await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+            outcome = await waitForLoginOutcome(page, { marker, selectors, now, sleep, requests });
+        }
+        if (outcome === 'signed-in') return;
         // Nur der Pfad: Parameter koennten Daten aus der Anmeldung enthalten.
-        throw new CawError('login-failed', t('session.browser.loginFailed', { url, marker, path: new URL(page.url()).pathname }));
-    });
+        const path = new URL(page.url()).pathname;
+        if (outcome === 'form') throw new CawError('login-failed', t('session.browser.loginRejected', { url, path }));
+        throw new CawError('login-failed', t('session.browser.loginFailed', { url, marker, path }));
+    } finally {
+        requests.stop();
+    }
 };
 
 /**
@@ -598,13 +700,16 @@ export const openBrowserSession = async (spec) => {
         });
         // Der Host prueft das Merkmal auf der Startseite der Umgebung, bevor lokaler Code eingespielt wird. Seine Meldungen sind
         // allgemein gehalten; hier werden sie zu einem Hinweis, was im Projekt zu tun ist.
-        await host.start().catch((error) => {
+        await host.start().catch(async (error) => {
             const message = String(error?.message ?? '');
             if (/not signed in/.test(message)) {
                 const next = auth.type === 'storageState'
                     ? t('session.browser.sessionExpired')
                     : t('session.browser.checkSelector');
-                throw new CawError(auth.type === 'storageState' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
+                const failure = new CawError(auth.type === 'storageState' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
+                const page = raw?.pages()[0];
+                if (page !== undefined) failure.evidence = await loginEvidence(page, { marker: auth.signedInSelector });
+                throw failure;
             }
             throw error;
         });

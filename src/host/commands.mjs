@@ -172,7 +172,7 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
     // Ohne Anwendung: die Vorlage mit TODO in der Anmeldung. Auch ohne Terminal und ohne --url, statt abzubrechen.
     const offline = args.includes('--offline') || (file === undefined && url === undefined && !interactive && !existsSync(join(root, EXPLORE_FILE)));
     if (offline && from === undefined) {
-        if (!args.includes('--offline')) console.log(t('cli.initOfflineFallback'));
+        if (!args.includes('--offline')) ui.info(t('cli.initOfflineFallback'));
         const answers = { ...(url === undefined ? {} : { url }), offline: true };
         if (interactive) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
         if (args.includes('--no-mcp')) answers.mcp = false;
@@ -180,7 +180,7 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
     }
     if (file === undefined && url === undefined && existsSync(join(root, EXPLORE_FILE))) {
         file = EXPLORE_FILE;
-        console.log(t('cli.initUsesExplore', { file }));
+        ui.info(t('cli.initUsesExplore', { file }));
     }
     if (file === undefined) {
         if (url === undefined) {
@@ -254,7 +254,7 @@ const addMcpEntry = (root) => {
         mcp = null;
     }
     if (mcp === null) {
-        console.log(t('cli.mcpInvalid'));
+        ui.warn(t('cli.mcpInvalid'));
         return false;
     }
     if (mcp.mcpServers?.['caw-ai'] !== undefined) return false;
@@ -277,8 +277,8 @@ export const installSkill = (root) => {
     }
     const mcp = addMcpEntry(root);
     const skillText = before === null ? t('cli.skillCreated', { file: `${SKILL_DIR}/SKILL.md` }) : before === content ? t('cli.skillCurrent') : t('cli.skillUpdated', { file: `${SKILL_DIR}/SKILL.md` });
-    console.log(`${skillText}${mcp ? ', .mcp.json' : ''}.`);
-    if (!existsSync(join(root, CONFIG_FILE))) console.log(t('cli.skillNext'));
+    ui.success(`${skillText}${mcp ? ', .mcp.json' : ''}.`);
+    if (!existsSync(join(root, CONFIG_FILE))) ui.note(t('cli.skillNext'));
     return EXIT.pass;
 };
 
@@ -318,11 +318,11 @@ export const init = (root, answers = {}) => {
         appendFileSync(ignore, `\n# caw-ai\n${lines.join('\n')}\n`);
         created.push('.gitignore');
     }
-    console.log(created.length > 0 ? t('cli.initCreated', { files: created.join(', ') }) : t('cli.initAlready'));
+    ui.success(created.length > 0 ? t('cli.initCreated', { files: created.join(', ') }) : t('cli.initAlready'));
     const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
-    if (created.includes(CONFIG_FILE) && todo.length > 0) console.log(t(answers.offline ? 'cli.initTodoOffline' : 'cli.initTodo', { keys: todo.join(', ') }));
+    if (created.includes(CONFIG_FILE) && todo.length > 0) ui.warn(t(answers.offline ? 'cli.initTodoOffline' : 'cli.initTodo', { keys: todo.join(', ') }));
     // Lief explore eben, waere der Rat, es erst laufen zu lassen, verwirrend.
-    if (created.includes(CONFIG_FILE)) console.log(`${t('cli.initNext', { target: Object.keys(config.environments)[0] })}${answers.explored ? '' : t('cli.initNextExplore')}`);
+    if (created.includes(CONFIG_FILE)) ui.note(`${t('cli.initNext', { target: Object.keys(config.environments)[0] })}${answers.explored ? '' : t('cli.initNextExplore')}`);
     return EXIT.pass;
 };
 
@@ -350,7 +350,7 @@ export const auth = async (root, args, { capture } = {}) => {
         ui.info(t('cli.authClosed'));
         return EXIT.error;
     }
-    console.log(t('cli.authSaved', { file: sessionPath(resolved.target, roleName) }));
+    ui.success(t('cli.authSaved', { file: sessionPath(resolved.target, roleName) }));
     return EXIT.pass;
 };
 
@@ -404,7 +404,7 @@ export const validate = (root) => {
     if (problems.length > 0) throw new CawError('test-invalid', problems.join('\n'));
     codeLines.forEach((line) => ui.info(line));
     hints.forEach((hint) => ui.note(hint));
-    console.log(t('cli.validateOk', { config: CONFIG_FILE, count: files.length }));
+    ui.success(t('cli.validateOk', { config: CONFIG_FILE, count: files.length }));
     return EXIT.pass;
 };
 

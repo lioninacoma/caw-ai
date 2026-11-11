@@ -193,6 +193,10 @@ Opens the app signed in, with workbench and chat, without a test: navigate, try 
 | `--overlay [build\|dev\|<url>]` | As for `run`. |
 | `--agent local\|docker\|session`, `--timeout <minutes>`, `--max-steps <n>` | As for `record`. |
 
+After the handover, **F1** in the workbench chooses a state: a test of the same role (and optionally the step to stop at). caw-ai plays it in the same window, without Claude.
+
+If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
+
 ## auth
 
 ```bash
@@ -200,6 +204,16 @@ npx caw-ai auth user --target dev
 ```
 
 For `auth.type: storageState` (SSO, OAuth, MFA). Opens Chrome on the login. Sign in by hand. As soon as `signedInSelector` shows up, caw-ai stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
+
+## theme
+
+```bash
+npx caw-ai theme                 # list themes, the active one marked
+npx caw-ai theme use phosphor    # pick one
+npx caw-ai theme check my-theme  # schema, contrast, mark width, fonts
+```
+
+The theme is yours, stored in `prefs.json`, and applies in every project. Built in: `nacht` (default), `bernstein`, `phosphor`. Change colours, glyphs, raven and CRT look with F7 in the workbench; own themes are folders next to `prefs.json`. Details: [themes/README.md](../themes/README.md).
 
 ## mcp
 

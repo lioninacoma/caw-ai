@@ -18,7 +18,7 @@ import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
 import { prepareOverlay } from './overlay.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
-import { renderPlan, renderTest, retryProblems } from './test-file.mjs';
+import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep } from './test-plan.mjs';
 import { createAgentHandler } from './agent-commands.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, changesFiles, configValue, readAdvice } from './advice.mjs';
@@ -27,7 +27,8 @@ import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
 import { fillDates } from './dates.mjs';
-import { buildReplay, createRecorder, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, replayBefore, replayVerdict, stepGroups, stepLabel, swapText, tidyNumbers, trailingNumbers } from './replay.mjs';
+import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, replayBefore, replayVerdict, stepGroups, stepLabel, swapText, tidyNumbers, trailingNumbers } from './replay.mjs';
+import { canRestore, loadStateTest, stateCatalog } from './states.mjs';
 import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
 import { startLocalAgent } from './local-agent.mjs';
@@ -127,6 +128,27 @@ const endGroup = () => ({
     points: [{ id: 'effects', kind: t('run.end.effects'), label: t('run.end.compare') }, { id: 'report', kind: t('run.end.report'), label: 'report.md' }],
 });
 
+/**
+ * Harte Fehler eines Laufs, die nach der aktuellen Config erlaubt oder fremd waeren: Text, Adresse, Stelle oder Stack trifft ein Muster
+ * aus consoleIgnore oder foreignCode. So zaehlt eine Entscheidung des Menschen auch fuer die Einordnung, die vor ihr entstand.
+ */
+export const allowedNow = (failures, config) => {
+    const patterns = [...(config.consoleIgnore ?? []), ...(config.foreignCode ?? [])].map((pattern) => new RegExp(pattern));
+    if (patterns.length === 0) return [];
+    const textOf = ({ text, url, at, stack }) => [text, url, at, ...(Array.isArray(stack) ? stack : [stack])].filter(Boolean).join('\n');
+    return failures.filter((failure) => failure.type !== 'http' && patterns.some((pattern) => pattern.test(textOf(failure))));
+};
+
+/**
+ * Das Muster fuer consoleIgnore zu einem Skriptfehler: seine erste Zeile ohne den Fehlertyp davor, als woertlicher Ausdruck.
+ * Aus "TypeError: t.getKey is not a function" wird "t\.getKey is not a function".
+ */
+export const ignorePattern = (failure) => String(failure.text ?? '').split('\n')[0].replace(/^\s*[A-Za-z]*Error:\s*/, '').trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Bestehen die harten Fehler nur aus Skriptfehlern (keine HTTP-Fehler), die sich als Muster ignorieren lassen? */
+export const ignorableFailures = (failures) => failures.length > 0 && failures.every((failure) => failure.type !== 'http' && ignorePattern(failure) !== '');
+
 /** Chrome angemeldet und mit lokalem Code oeffnen. Fehler der Umgebung kommen als CawError. */
 /**
  * Mit Chat laeuft die Anwendung immer in der Werkbank (ein Fenster mit Schritten, Chat und Requests), ohne Chat im eigenen Fenster.
@@ -171,6 +193,12 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         });
     } catch (error) {
         overlay?.stop();
+        const { isLoginFailure, offerAuthRepair } = await import('./login-repair.mjs');
+        if (isLoginFailure(error)) {
+            // Token nur, wo ohnehin Claude laeuft: mit Chat und auf einer Umgebung mit claude. Sonst nur der Weg dahin.
+            if (interactive && checked.agent) await offerAuthRepair({ root, config, error }).catch(() => false);
+            else error.message = `${error.message} ${t('repair.hint')}`;
+        }
         throw error;
     }
     if (overlay === null) return session;
@@ -370,12 +398,13 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const fillSecrets = (text) => [...remembered].filter(([, value]) => isSecret(value)).reduce((current, [placeholder, real]) => current.split(placeholder).join(real), text);
     let verdictGiven;
     /** Je Urteil ein eigener Handler: Nach `finish` nimmt er nichts mehr an, beim Beheben im selben Browser kommt ein zweites Urteil. */
-    const newAgentHandler = () => {
+    // @param task ein anderer Auftrag, etwa beim Herstellen eines mit F1 gewaehlten Tests: Dessen Pruefungen gehoeren zu seinen Schritten.
+    const newAgentHandler = (task = run) => {
         let verdictSignal;
         verdictGiven = new Promise((ok) => { verdictSignal = ok; });
         return createAgentHandler({
             session,
-            run,
+            run: task,
             hosts: browserHosts(config, checked),
             agentDir,
             expand: fillSecrets,
@@ -497,7 +526,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
      */
     const createReviewer = (draft) => {
         const result = { spec: draft, touched: [], stale: [], notes: false, files: [] };
-        const review = async (items) => {
+        const review = async (items, log) => {
             const start = decided.length;
             for (const item of items) {
                 const view = adviceView(item, result.spec, session?.failures?.() ?? [], config);
@@ -521,18 +550,25 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     if (applied.stale && !result.stale.some(({ id }) => id === applied.id)) result.stale.push({ id: applied.id, title: item.title });
                 }
                 decided.push({ ...view, decision });
+                log?.push({ from: 'decision', text: `${item.title}: ${decision}` });
             }
             writeAdvice();
             return decided.slice(start).map(({ title, decision }) => ({ title, decision }));
         };
         return { result, review };
     };
-    const consult = ({ sandbox: box, spec: draft }, found, { mode, question, element }) => {
+    /**
+     * @param persist beim Entwickeln: schreibt uebernommene Aenderungen am Test sofort in die Datei. Es gibt keinen Lauf, der sie danach uebernimmt.
+     */
+    const consult = ({ sandbox: box, spec: draft }, found, { mode, question, element, persist }) => {
         const talking = mode === 'talk' || mode === 'develop';
         const allowed = talking ? TALK_READS : ADVISE_READS;
         const { result, review } = createReviewer(draft);
-        const failed = found.failed ?? null;
+        const failed = found.failed ?? (mode === 'develop' ? restoreFailed : null);
+        // Das Gespraech in Kurzform: Was hier vereinbart wird, muss ein spaeteres Beheben wissen, es startet einen neuen Claude.
+        const log = talking && typeof question === 'string' ? [{ from: 'human', text: question }] : [];
         const inbox = [];
+        const configListeners = [];
         let waiting = null;
         let closing = false;
         let over = false;
@@ -547,13 +583,14 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             ...(talking ? { question } : {}),
             // Das Bauteil, das der Mensch zur Frage gewaehlt hat: Ziel, Beschriftung, Komponente bzw. Quelle. Sein Text ist nie eine Anweisung.
             ...(element === undefined ? {} : { element }),
-            ...(mode === 'develop' ? { develop: { until: replay?.until ?? null, url: session.page().url(), source: checked.source } } : {}),
+            ...(mode === 'develop' ? { develop: { test: chosen.spec.id, until: chosen.replay?.until ?? null, url: session.page().url(), source: checked.source } } : {}),
             runId,
             language: language(),
             target,
             source: checked.source,
             outcome: {
-                status: verdict.status,
+                status: mode === 'develop' && failed !== null ? 'fail' : verdict.status,
+                ...(mode === 'develop' && failed !== null ? { restoring: true } : {}),
                 ...(verdict.reason === undefined ? {} : { reason: verdict.reason }),
                 ...(failed === null ? {} : { failed: { id: failed.id, reason: failed.reason } }),
                 ...(failed?.diagnosis === undefined ? {} : { diagnosis: failed.diagnosis, evidence: failed.evidence }),
@@ -564,7 +601,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // Aktionen und Pruefung nur vom gescheiterten Schritt: Sie erklaeren den Fehler, die uebrigen blaehen nur auf.
             steps: draft.steps.map((step) => ({
                 ...planStep(step),
-                ...(step.id !== failed?.id || step.recording === undefined ? {} : { actions: step.recording.actions.map(stepLabel), check: step.recording.check }),
+                ...((mode !== 'develop' && step.id !== failed?.id) || step.recording === undefined ? {} : { actions: step.recording.actions.map(stepLabel), check: step.recording.check }),
             })),
             rules: { consoleIgnore: config.consoleIgnore ?? [], foreignCode: config.foreignCode ?? [], messageSelectors: session?.messageSelectors ?? config.messageSelectors ?? [] },
             ...(session?.framework?.hints === undefined ? {} : { framework: { name: session.framework.name, hints: session.framework.hints } }),
@@ -579,7 +616,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (!allowed.has(command?.action)) {
                 throw new CawError('advise-only', `Hier wird nur gelesen, ${String(command?.action)} geht nicht. Erlaubt: ${[...allowed].join(', ')}.`);
             }
-            if (command.action === 'say') return chat.say(command.text);
+            if (command.action === 'say') {
+                if (talking) log.push({ from: 'claude', text: String(command.text ?? '') });
+                return chat.say(command.text);
+            }
             // Wartet auf den Menschen: neue Nachrichten oder das Ende, sobald er einen Knopf drueckt.
             if (command.action === 'chat') return closing && inbox.length === 0 ? { ended: true } : new Promise((resolve) => { waiting = resolve; deliver(); });
             if (command.action !== 'advise') return reader(command);
@@ -587,7 +627,13 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const items = readAdvice(command.advice, result.spec, config, { root, diagnosis: failed?.diagnosis });
             submitted = true;
             try {
-                return await review(items);
+                const decisions = await review(items, talking ? log : undefined);
+                // Eine uebernommene Aenderung an der Config (etwa ein Fehler ignoriert): Wer darauf wartet, prueft, ob damit alles erlaubt ist.
+                if (items.some((item, index) => item.change?.kind === 'config' && decisions[index]?.decision === 'adopted')) {
+                    for (const notify of configListeners.splice(0)) notify();
+                }
+                if (items.some((item, index) => item.side === 'test' && !changesFiles(item) && decisions[index]?.decision === 'adopted')) await persist?.(result);
+                return decisions;
             } finally {
                 if (!talking) doneSignal();
             }
@@ -641,7 +687,15 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             finished,
             /** Claude ist fertig, von sich aus oder weil der Lauf endete: Eine neue Nachricht braucht eine neue Sitzung. */
             over: () => over,
-            send: (message, picked) => { inbox.push(picked === undefined ? message : { text: message, element: picked }); deliver(); },
+            /** Das Gespraech bis jetzt: { from: human | claude | decision, text } */
+            log: () => [...log],
+            /** Erfuellt sich, sobald der Mensch eine Aenderung an der Config uebernimmt. */
+            configChanged: () => new Promise((resolve) => { configListeners.push(resolve); }),
+            send: (message, picked) => {
+                log.push({ from: 'human', text: String(message) });
+                inbox.push(picked === undefined ? message : { text: message, element: picked });
+                deliver();
+            },
             end: () => {
                 closing = true;
                 deliver();
@@ -661,18 +715,38 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
      * Spielt die Schritte bis zum Zustand erneut ab, im selben Fenster mit dem aktuellen Code und einer neuen runTag: Was der Lauf
      * vorher angelegt hat, bleibt, ein neuer Datensatz kommt dazu.
      */
-    const restoreState = async () => {
-        if (replay === undefined) return t('run.restore.noRecording');
+    // Welcher Zustand gerade gilt: der des Laufs, nach einer Wahl mit F1 der gewaehlte. „Zustand neu herstellen“ stellt ihn wieder her.
+    let chosen = { spec, replay };
+    const restoreState = async () => restoreWith(chosen);
+    /**
+     * Ein anderer Zustand, gewaehlt mit F1 in der Werkbank: ein Test derselben Rolle, App und Umgebung bis zu einem Schritt.
+     * Die Schrittliste zeigt danach diesen Test.
+     */
+    const choose = (other, until) => {
+        const end = other.steps.findIndex(({ id }) => id === until);
+        const reached = { ...other, steps: other.steps.slice(0, end + 1), expectations: other.expectations.slice(0, end + 1) };
+        chosen = { spec: reached, replay: cutReplay(other, until) };
+    };
+    const restoreOther = async (other, until) => {
+        choose(other, until);
+        await session.workbench?.steps(stepGroups(chosen.spec.steps, chosen.replay));
+        return restoreWith(chosen);
+    };
+    // Woran das letzte Herstellen gescheitert ist, mit Belegen wie im Lauf; null, wenn es geklappt hat. Geht beim Entwickeln an Claude.
+    let restoreFailed = null;
+    const restoreWith = async ({ spec: shownSpec, replay: plan }) => {
+        if (plan === undefined) return t('run.restore.noRecording');
+        restoreFailed = null;
         // Wie ein frischer Lauf: alle Schritte offen, der Rabe huepft von S1 aus vorwaerts statt quer ueber alte Ergebnisse.
         await session.workbench?.mood?.('wait');
         // Die Schritte laufen neu, wie beim ersten Lauf: nicht mehr ausgegraut, schon waehrend sie laufen.
         await session.workbench?.left?.(false);
-        for (const { id } of spec.expectations) await session.workbench?.step(id, 'waiting');
+        for (const { id } of shownSpec.expectations) await session.workbench?.step(id, 'waiting');
         await session.restart();
-        agentHandler = newAgentHandler();
+        agentHandler = newAgentHandler({ ...run, expectations: shownSpec.expectations });
         const tag = newRunTag();
         const again = await playReplay({
-            replay,
+            replay: plan,
             handler: agentHandler,
             session,
             base: checked.url,
@@ -685,21 +759,37 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 showAction(entry);
             },
         });
-        const failed = failedStep({ ...again, expectations: spec.expectations, failures: [] });
-        for (const { id } of spec.expectations) {
+        const failed = failedStep({ ...again, expectations: shownSpec.expectations, failures: [] });
+        if (failed !== null) {
+            const requests = again.requests?.get(failed.id) ?? [];
+            const broken = again.broken?.step === failed.id ? again.broken : null;
+            const previous = shownSpec.steps[shownSpec.steps.findIndex(({ id }) => id === failed.id) - 1]?.id;
+            const earlier = previous === undefined ? null : { id: previous, requests: again.requests?.get(previous) ?? [] };
+            const baseline = shownSpec.steps.find(({ id }) => id === failed.id)?.recording?.network;
+            const hide = (value) => redactDeep(value, session.secrets?.() ?? []);
+            restoreFailed = {
+                id: failed.id,
+                reason: hide(failed.reason),
+                test: shownSpec.id,
+                diagnosis: hide(diagnose({ failed, broken, failures: session.failures(), requests, baseline, deviation: null, earlier })),
+                evidence: hide({ requests, ...(baseline === undefined ? {} : { recorded: baseline }) }),
+            };
+        }
+        for (const { id } of shownSpec.expectations) {
             const status = again.results?.get(id)?.status;
             await session.workbench?.step(id, id === failed?.id ? 'fail' : status === 'pass' ? 'pass' : 'skipped');
         }
         // Danach ist wieder der Mensch dran: Der Rabe fliegt zum Chat, beim Fehler bleibt er auf dem Schritt.
         await session.workbench?.mood?.(failed === null ? 'ask' : 'fail');
+        const until = plan.until === undefined ? t('run.restore.atEnd') : shownSpec === spec ? plan.until : `${shownSpec.id} ${plan.until}`;
         return failed === null
-            ? t('run.restore.done', { until: replay.until ?? t('run.restore.atEnd'), tag })
+            ? t('run.restore.done', { until, tag })
             : t('run.restore.failed', { id: failed.id, reason: failed.reason.replace(/\.$/, '') });
     };
     /** Das gewaehlte Element samt Seite und letzten Requests fuer die eigene Claude-Code-Session (Tool caw_selection). */
     const handToCode = (element) => {
         const recent = session.network === undefined ? [] : session.network.since(Math.max(0, session.network.mark() - 20));
-        const selection = { at: new Date().toISOString(), runId, test: spec.id, target, until: replay?.until ?? null, url: session.page().url(), source: checked.source, element, requests: recent };
+        const selection = { at: new Date().toISOString(), runId, test: chosen.spec.id, target, until: chosen.replay?.until ?? null, url: session.page().url(), source: checked.source, element, requests: recent };
         writeFileSync(join(root, RUN_DIR, SELECTION_FILE), JSON.stringify(selection, null, 2));
         return selection;
     };
@@ -724,10 +814,25 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const talk = (options, question, element) => consult(options, found, { mode: 'talk', question, ...(element === undefined ? {} : { element }) });
         // Nur nach einem Testlauf, dessen gescheiterter Schritt noch nichts ausgefuehrt hat: Die Seite steht dann genau davor.
         const repairHere = replay !== undefined && played !== null && found.failed?.clean === true ? (options) => repairInPlace(options, found.failed) : undefined;
+        // Harte Fehler, die nur Skriptfehler sind: Der Mensch kann sie mit einem Klick ignorieren, ohne Claude. Danach und nach einer
+        // uebernommenen Empfehlung zeigt `cleared`, ob die Config jetzt alle erlaubt; dann genuegt ein neuer Pruefdurchlauf.
+        const hard = verdict.failures ?? [];
+        const ignore = ignorableFailures(hard) ? () => {
+            const added = [];
+            for (const failure of hard) {
+                if (allowedNow([failure], config).length > 0) continue;
+                const change = { kind: 'config', key: 'consoleIgnore', pattern: ignorePattern(failure) };
+                applyToFiles(root, change);
+                config.consoleIgnore = configValue(config, change);
+                added.push(change.pattern);
+            }
+            return added;
+        } : undefined;
+        const cleared = () => hard.length > 0 && allowedNow(hard, config).length === hard.length;
         // conclude sagt, wie es weitergeht: { next: 'claude' | 'check' | 'run' } oeffnet gleich ein neues Fenster, { outcome } ist das Ergebnis.
         let after = {};
         if (chat !== null && alive) {
-            const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere }), session.closed, aborted]);
+            const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere, ignore, cleared }), session.closed, aborted]);
             if (said !== null && typeof said === 'object') after = said;
         }
         const handing = handover?.({ verdict, ...found }) && alive;
@@ -763,22 +868,54 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 ui.note(t('run.handover.window'));
             }
             if (developing) {
-                const ask = (options, question, element) => consult(options, {}, { mode: 'develop', question, ...(element === undefined ? {} : { element }) });
+                // Nach dem Schreiben eines Tests: F1 und „Zustand neu herstellen“ sehen ihn so, wie er jetzt in der Datei steht.
+                let afterSave = async () => {};
+                const persist = async (result) => {
+                    const file = writeTest(root, result.spec, new Set(result.touched), { withNotes: result.notes });
+                    chat.notice(t('run.flow.adviceAdopted', { file }));
+                    if (result.stale.length > 0) chat.notice(t('run.develop.staleAdopted', { ids: result.stale.map(({ id }) => id).join(', ') }));
+                    result.touched.splice(0);
+                    result.notes = false;
+                    await afterSave(result.spec.id);
+                };
+                // Claude bekommt den ganzen Test des Zustands, wie er in der Datei steht (nach F1 der gewaehlte), nicht nur die Schritte bis hier:
+                // So kann es auch im Entwickeln einen Schritt aendern, etwa einen Klick optional machen, der den Zustand nicht mehr herstellt.
+                const ask = (options, question, element) => {
+                    const full = chosen.spec.steps.length === 0 ? undefined : loadStateTest(root, config, chosen.spec.id);
+                    return consult({ ...options, spec: full ?? options.spec }, {}, { mode: 'develop', question, persist, ...(element === undefined ? {} : { element }) });
+                };
                 try {
                     const bench = session.workbench;
-                    const left = t('run.develop.left', { until: replay?.until ?? t('run.develop.testEnd'), restore: t('run.button.restore') });
-                    // Aktualisieren laedt die aktuelle Seite ohne Cache, wie F5 beim Entwickeln; die Schritte zeigen danach „verlassen“.
+                    // Aktualisieren laedt die aktuelle Seite ohne Cache, wie F5 beim Entwickeln. Nach der Uebergabe ist Neuladen Arbeit,
+                    // kein Stoerfall: Die Schritte bleiben, wie sie sind, ohne „verlassen“ und ohne Warnung.
                     const refresh = async () => {
                         await session.reloadPage();
-                        await bench?.left?.(true, left);
                         return '';
                     };
                     const onReload = (listener) => bench?.onReload?.(async ({ human = true } = {}) => {
                         if (!human) return;
-                        await bench.left?.(true, left);
                         await listener();
                     });
-                    await Promise.race([develop({ chat, talk: ask, until: replay?.until, refresh, restore: replay === undefined ? reloadApp : restoreState, onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
+                    // Nach der Uebergabe (open, --until) zeigt die Werkbank nur die Anwendung im Vollbild; F8 holt die Werkbank zurueck.
+                    await bench?.solo?.(true);
+                    // F1: Zustaende aus allen Tests derselben Rolle, App und Umgebung. Ohne Schritt laeuft der Test bis zum letzten herstellbaren.
+                    let catalog = stateCatalog(root, config, { role: spec.role, app: spec.app, target });
+                    await bench?.states?.(catalog);
+                    afterSave = async (testId) => {
+                        catalog = stateCatalog(root, config, { role: spec.role, app: spec.app, target });
+                        await bench?.states?.(catalog);
+                        const until = chosen.replay?.until;
+                        const fresh = chosen.spec.id === testId && until !== undefined ? loadStateTest(root, config, testId) : undefined;
+                        if (fresh !== undefined && canRestore(catalog, testId, until)) choose(fresh, until);
+                    };
+                    const restoreTo = async (testId, stepId) => {
+                        const entry = catalog.find(({ id }) => id === testId);
+                        const until = stepId ?? entry?.steps.filter(({ ok }) => ok).at(-1)?.id;
+                        if (entry === undefined || until === undefined || !canRestore(catalog, testId, until)) throw new CawError('step-unknown', t('run.develop.cannotRestore', { test: testId, step: stepId ?? '' }));
+                        return restoreOther(loadStateTest(root, config, testId), until);
+                    };
+                    const restore = () => (chosen.replay === undefined ? reloadApp() : restoreState());
+                    await Promise.race([develop({ chat, talk: ask, until: replay?.until, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
                 } catch (error) {
                     ui.warn(t('run.develop.error', { message: String(error?.message ?? error).split(/\r?\n/)[0] }));
                 } finally {
@@ -817,8 +954,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 remembered: [...remembered].map(([placeholder, value]) => ({ name: placeholder.slice(2, -2), ...(isSecret(value) ? { secret: true, value: placeholder } : { value }) })),
                 before: givenSpec.steps.slice(0, position).map(({ id, name }) => ({ id, name })),
                 after: givenSpec.steps.slice(position + 1).map(({ id, name, expect }) => ({ id, name, expect })),
-                // Die Einordnung des Testlaufs: Claude prueft sie zuerst, bevor es den Schritt anpasst.
-                ...(repair.diagnosis === undefined ? {} : { diagnosis: repair.diagnosis, evidence: repair.evidence }),
+                // Die Einordnung des Testlaufs: Claude prueft sie zuerst, bevor es den Schritt anpasst. Hat der Mensch die harten Fehler
+                // inzwischen erlaubt (consoleIgnore, foreignCode), traegt sie nicht mehr: dann statt ihrer `resolved`.
+                ...(() => {
+                    const allowed = allowedNow(repair.failures ?? [], config);
+                    if (allowed.length > 0 && allowed.length === (repair.failures ?? []).length) {
+                        return { resolved: `Die harten Fehler des Testlaufs sind nach Entscheidung des Menschen erlaubt und zaehlen nur noch als Warnung: ${allowed.map(({ text }) => String(text).split('\n')[0]).join('; ')}. Sie sind kein Grund fuer fail. Pruefe den Schritt an seinem expect.` };
+                    }
+                    return repair.diagnosis === undefined ? {} : { diagnosis: repair.diagnosis, evidence: repair.evidence };
+                })(),
+                // Was der Mensch vor dem Beheben im Chat gesagt und entschieden hat: Das gilt, ein neuer Claude weiss es sonst nicht.
+                ...((repair.agreed ?? []).length === 0 ? {} : { agreed: repair.agreed }),
                 ...(repairing.recording?.network === undefined ? {} : { recordedNetwork: repairing.recording.network }),
             };
         }
@@ -959,7 +1105,16 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // Beim Beheben darf Claude eine Ursache in der Anwendung als Empfehlung vorlegen, statt den Test anzupassen.
             if (command?.action === 'advise' && repairing !== undefined) {
                 repairReviewer ??= createReviewer(givenSpec);
-                return repairReviewer.review(readAdvice(command.advice, repairReviewer.result.spec, config, { root, diagnosis: repair.diagnosis }));
+                // Die Einordnung, wie Claude sie bekam: ohne die, die eine Entscheidung des Menschen aufgehoben hat.
+                return repairReviewer.review(readAdvice(command.advice, repairReviewer.result.spec, config, { root, diagnosis: run.repair?.diagnosis }));
+            }
+            // Beim Aufnehmen nur Config und Projektkontext: Erklaert der Mensch einen Fehler fuer unbedenklich, gilt das schon fuer den
+            // Pruefdurchlauf danach. Den Testplan aendert die Aufnahme selbst.
+            if (command?.action === 'advise') {
+                repairReviewer ??= createReviewer(givenSpec ?? { id: spec?.id ?? 'neu', steps: [] });
+                const items = readAdvice(command.advice, repairReviewer.result.spec, config, { root });
+                if (!items.every(changesFiles)) throw new CawError('advice-invalid', 'Beim Aufnehmen gehen nur Empfehlungen mit change.kind config oder context. Den Testplan aenderst du mit der Aufnahme selbst.');
+                return repairReviewer.review(items);
             }
             return recorder.handler(command);
         };
@@ -1033,10 +1188,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
      * Abspielen gelesen hat. Der Bericht des Testlaufs bleibt als `report-testlauf.md`.
      * @returns { verdict, exitCode, candidate, fresh, expectChange } des Behebens
      */
-    const repairInPlace = async ({ sandbox: box, reason }, failed) => {
+    const repairInPlace = async ({ sandbox: box, reason, agreed, failures }, failed) => {
         const before = verdict;
         if (existsSync(join(runDir, 'report.md'))) copyFileSync(join(runDir, 'report.md'), join(runDir, 'report-testlauf.md'));
-        repair = { id: failed.id, reason, ...(failed.diagnosis === undefined ? {} : { diagnosis: failed.diagnosis, evidence: failed.evidence }) };
+        repair = { id: failed.id, reason, agreed, failures, ...(failed.diagnosis === undefined ? {} : { diagnosis: failed.diagnosis, evidence: failed.evidence }) };
         repairing = givenSpec.steps.find(({ id }) => id === failed.id);
         spec = { ...givenSpec, steps: [repairing], expectations: givenSpec.expectations.filter(({ id }) => id === failed.id) };
         reportBase.expectations = spec.expectations;

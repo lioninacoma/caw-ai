@@ -253,11 +253,11 @@ test('skill: nur Skill und MCP-Eintrag, ohne Config; bringt einen alten Skill au
     const file = join(root, '.claude', 'skills', 'caw-ai', 'SKILL.md');
     assert.match(readFileSync(file, 'utf8'), /### Projekt einrichten/);
     assert.ok(!existsSync(join(root, 'caw.config.json')), 'keine Config');
-    assert.match(said.join('\n'), /Angelegt: .*SKILL\.md, \.mcp\.json\.\nWeiter in Claude Code: „Richte caw-ai ein“/);
+    assert.match(said.join('\n'), /Angelegt: .*SKILL\.md, \.mcp\.json\.\n.*Weiter in Claude Code: „Richte caw-ai ein“/);
     writeFileSync(file, 'alt');
     said.length = 0;
     installSkill(root);
-    assert.match(said[0], /^Aktualisiert: .*SKILL\.md\.$/);
+    assert.match(said[0], /Aktualisiert:.*SKILL\.md\.$/);
     assert.notEqual(readFileSync(file, 'utf8'), 'alt');
 });
 

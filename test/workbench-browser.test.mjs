@@ -24,7 +24,7 @@ before(async () => {
     browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(() => null);
     server = createServer((request, response) => {
         response.setHeader('content-type', 'text/html; charset=utf-8');
-        response.end(`<h1>App ${request.url}</h1><button id="go">Weiter</button>`);
+        response.end(`<h1>App ${request.url}</h1><button id="go">Weiter</button><label>Name <input id="feld"></label>`);
     });
     await new Promise((ok) => { server.listen(0, '127.0.0.1', ok); });
     base = `http://127.0.0.1:${server.address().port}`;
@@ -198,13 +198,13 @@ test('Chat: Die Entscheidung ist eine Karte, Verwerfen will ein zweites Mal gekl
     let answer;
     const chosen = chat.choose('deciding', 'Text fürs Protokoll', options, card).then((id) => { answer = id; });
     assert.ok(await until(() => frame.isVisible('.decision')), 'die Karte steht');
-    assert.equal(await frame.textContent('.decision strong'), 'Prüflauf bestanden');
+    assert.match(await frame.textContent('.decision strong'), /Prüflauf bestanden$/, 'Titel, davor die Marke des Themes');
     assert.equal(await frame.locator('.decision > ul > li').count(), 1);
     assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'Warnungen zum Aufklappen');
     assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Der Testplan ändert sich erst mit deiner Wahl.'], 'einmal im Terminal');
-    // Kopfzeile und Leiste der Anwendung sagen es auch.
-    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'DU BIST DRAN'));
-    assert.equal(await bench.page.textContent('#browserState'), 'DU BIST DRAN');
+    // Die Leiste der Anwendung sagt es auch. Die Pill oben rechts kennt nur die vier Labels des Chat-Kopfs: Hier hat sie keines.
+    assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === 'DU BIST DRAN'));
+    assert.equal(await bench.page.isVisible('#state'), false, 'keine Pill ohne Label');
 
     const discard = frame.locator('#choices button', { hasText: 'Entwurf verwerfen' });
     await discard.click();
@@ -258,4 +258,80 @@ test('Chat: Nach dem Lauf bleibt das Fenster offen, bis der Mensch schließt ode
     const start = Date.now();
     await chat.linger(300);
     assert.ok(Date.now() - start < 3000, 'ohne Klick nach Ablauf');
+});
+
+test('Werkbank: Die Pill oben rechts zeigt nur die vier Labels des Chat-Kopfs, ohne Schritt', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench } = await open(t);
+    const pill = async () => ((await bench.page.isVisible('#state')) ? bench.page.textContent('#state') : null);
+    await bench.steps([{ id: 'S1', name: 'Eins' }]);
+    await bench.step('S1', 'running');
+    for (const [state, label] of [['running', 'Claude arbeitet'], ['testing', 'caw-ai arbeitet'], ['pausing', 'Hält an …'], ['paused', '‖ Pausiert'], ['deciding', null]]) {
+        await bench.chatState(state);
+        assert.ok(await until(async () => (await pill()) === label), `${state}: ${await pill()}`);
+    }
+});
+
+test('Werkbank: Füllt Claude ein Feld der Anwendung, während der Mensch im Chat tippt, bleibt der Fokus im Chat', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench } = await open(t);
+    const frame = bench.chatFrame();
+    await bench.page.waitForSelector('iframe[name="caw-app"]');
+    assert.ok(await until(async () => (await bench.view.locator('#feld').count()) === 1), 'Anwendung geladen');
+    await frame.waitForSelector('#input');
+    await frame.click('#input');
+    await bench.page.keyboard.type('Hal');
+    // Claude füllt in der Anwendung, wie im Lauf über keepChatFocus.
+    await bench.view.keepChatFocus(() => bench.view.locator('#feld').fill('Meier'));
+    await bench.page.keyboard.type('lo');
+    assert.equal(await frame.inputValue('#input'), 'Hallo', 'weiter im Chat getippt');
+    assert.equal(await bench.view.locator('#feld').inputValue(), 'Meier', 'nichts davon in der Maske');
+    return undefined;
+});
+
+test('Werkbank: Nur Anwendung und der offene Reiter überstehen das Neuladen der ganzen Werkbank', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench } = await open(t);
+    await bench.solo(true);
+    assert.equal(await bench.page.evaluate(() => document.body.classList.contains('solo')), true);
+    await bench.page.evaluate(() => document.querySelector('[data-tab=console]').click());
+    // Wie „Cache leeren und hart neu laden“ aus den DevTools: das oberste Dokument neu.
+    await bench.page.reload({ waitUntil: 'domcontentloaded' });
+    assert.ok(await until(() => bench.page.evaluate(() => document.body.classList.contains('solo')).catch(() => false)), 'Nur Anwendung bleibt');
+    assert.ok(await until(() => bench.page.evaluate(() => document.getElementById('drawer')?.classList.contains('open')).catch(() => false)), 'Konsole bleibt offen');
+    await bench.solo(false);
+    assert.equal(await bench.page.evaluate(() => document.body.classList.contains('solo')), false);
+    return undefined;
+});
+
+test('Werkbank: F1 wählt einen Zustand, ohne Schritt bis zum letzten, veraltete Schritte gesperrt', async (t) => {
+    if (browser === null) return t.skip('kein Chrome');
+    const { bench } = await open(t);
+    const page = bench.page;
+    const picked = [];
+    bench.onState(async (test, step) => { picked.push([test, step]); });
+    assert.equal(await page.isVisible('.fkeys [data-states]'), false, 'ohne Tests kein F1');
+    await bench.states([
+        { id: 'sb-antrag-abbrechen', name: '', mutates: true, steps: [{ id: 'S1', name: 'Personensuche', ok: true }, { id: 'S2', name: 'Person wählen', ok: true }, { id: 'S3', name: 'Antrag', ok: false, why: 'stale' }] },
+        { id: 'pruefen-liste', name: '', mutates: false, steps: [{ id: 'S1', name: 'Liste', ok: true }] },
+    ]);
+    assert.equal(await page.isVisible('.fkeys [data-states]'), true);
+    await page.keyboard.press('F1');
+    assert.equal(await page.isVisible('#stateDlg'), true, 'F1 öffnet den Dialog');
+    await page.click('#stests .srow >> text=sb-antrag-abbrechen');
+    assert.match(await page.textContent('#sfoot'), /bis S2 ab, ohne Claude\. Legt dabei neue Daten an\./, 'ohne Schritt: bis zum letzten herstellbaren');
+    assert.equal(await page.isDisabled('#ssteps .srow >> text=S3'), true, 'veraltet gesperrt');
+    await page.click('#sgo');
+    await until(() => picked.length === 1);
+    assert.deepEqual(picked[0], ['sb-antrag-abbrechen', null].map((value) => value ?? undefined));
+    assert.equal(await page.isVisible('#stateDlg'), false);
+    await page.keyboard.press('F1');
+    await page.click('#ssteps .srow >> text=S1');
+    await page.click('#sgo');
+    await until(() => picked.length === 2);
+    assert.deepEqual(picked[1], ['sb-antrag-abbrechen', 'S1']);
+    // Im Vollbild steht F1 in der schmalen Leiste.
+    await bench.solo(true);
+    assert.equal(await page.isVisible('.soloBar [data-states]'), true);
+    return undefined;
 });
