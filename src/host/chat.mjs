@@ -762,7 +762,11 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         },
         status: (state, options) => {
             quiet(render(state, options));
-            if (NEEDS_HUMAN.includes(state)) quiet(chatWindow.bringToFront());
+            // A decision has to be seen: in App only (F8) the chat is hidden, e.g. the confirmation after F1 while developing.
+            if (NEEDS_HUMAN.includes(state)) {
+                quiet(chatWindow.bringToFront());
+                quiet(Promise.resolve(bench.showChat?.()));
+            }
             // Whoever waits in the terminal sees there that the window is waiting. Repeating the same state does not count.
             if (NEEDS_HUMAN.includes(state) && state !== waitingFor) {
                 waitingFor = state;

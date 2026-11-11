@@ -984,6 +984,12 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             await bench.fullscreen(on === true);
             await call('solo', on === true);
         },
+        /** The chat needs a decision: App only hides it, so bring steps and chat back. Nothing happens otherwise. */
+        showChat: async () => {
+            if (!shown.solo) return;
+            await bench.fullscreen(false);
+            await call('solo', false);
+        },
         /**
          * After a reload of the whole workbench, once steps and counters are back. The listener gets { human }: true for
          * the human's F5 or back, false if the application navigated the top window itself. @returns an unsubscribe function

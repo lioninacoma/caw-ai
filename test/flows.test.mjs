@@ -375,7 +375,7 @@ test('Developing in a state with the Claude Code session as agent: it is there r
     };
     await develop({ chat, talk, until: 'S2', refresh: async () => '', restore: async () => '', onRefresh: () => {}, onReload: () => () => {}, toCode: () => {} });
     assert.deepEqual(sent, [{ question: undefined, sandbox: 'box' }, 'opened=1', { text: 'Was siehst du?' }, 'opened=1']);
-    assert.match(intro[0], /Claude-Code-Session ist schon angemeldet/);
+    assert.match(intro[0], /Claude-Code-Sitzung ist verbunden/);
     assert.doesNotMatch(intro[0], /kosten Token/);
 });
 
@@ -435,7 +435,7 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
     assert.equal(shown[1].question, undefined, 'the introduction comes only once');
     assert.equal(refreshed, 1, 'refresh only reloads the page, without a message');
     assert.deepEqual(handed, [element], 'the crosshair hands the element to Claude Code right away');
-    assert.match(notices[0], /„button "Senden"“ liegt für deine Claude-Code-Sitzung bereit/);
+    assert.match(notices[0], /„button "Senden"“ hängt an deiner nächsten Frage hier im Chat/);
     assert.ok(!notices.some((text) => /neu geladen|nicht mehr gesichert/.test(text)), 'reloading the workbench does not warn while developing');
     assert.equal(notices[1], 'Zustand S2 ist neu hergestellt');
     assert.deepEqual(sent[0], { question: 'Warum ist der deaktiviert?', about: element, sandbox: 'box' });

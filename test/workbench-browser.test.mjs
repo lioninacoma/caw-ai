@@ -362,6 +362,20 @@ test('workbench: solo view and the open tab survive a reload of the whole workbe
     return undefined;
 });
 
+test('workbench: a decision in the chat ends App only, so the question is visible; without App only nothing changes', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const solo = () => bench.page.evaluate(() => document.body.classList.contains('solo'));
+    await bench.showChat();
+    assert.equal(await solo(), false);
+    await bench.solo(true);
+    assert.equal(await solo(), true);
+    await bench.showChat();
+    assert.equal(await solo(), false, 'steps and chat are back');
+    assert.equal(await bench.page.isVisible('#chatCard'), true);
+    return undefined;
+});
+
 test('workbench: F1 picks a state, without a step up to the last one, stale steps locked', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
