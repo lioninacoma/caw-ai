@@ -30,7 +30,7 @@ test('theme: lists built-in and own themes, marks the active one, use selects', 
     assert.match(lines.join('\n'), /hafen +hafen · eigenes, auf nacht/);
     assert.equal(run(['use', 'hafen']), EXIT.pass);
     assert.equal(readPrefs({ CAW_AI_HOME: home }).theme, 'hafen');
-    assert.throws(() => run(['use', 'nonexistent']), /gibt es nicht\. Vorhanden: nacht, bernstein, phosphor, hafen/);
+    assert.throws(() => run(['use', 'nonexistent']), /gibt es nicht\. Vorhanden: nacht, bernstein, phosphor, kachel, plakat, cockpit, hafen/);
     assert.throws(() => run(['bogus']), /Aufruf: caw-ai theme/);
 });
 

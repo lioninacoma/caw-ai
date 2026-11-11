@@ -105,7 +105,10 @@
       "enum": [
         "nacht",
         "bernstein",
-        "phosphor"
+        "phosphor",
+        "kachel",
+        "plakat",
+        "cockpit"
       ]
     },
     "label": {

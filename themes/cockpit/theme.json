@@ -1,0 +1,183 @@
+{
+  "$schema": "../theme.schema.json",
+  "themeApi": 1,
+  "name": "cockpit",
+  "label": {
+    "de": "Cockpit",
+    "en": "Cockpit"
+  },
+  "description": {
+    "de": "Instrumentenbrett: Rundinstrument, Warnleuchten für die Schritte, runde Bedienelemente.",
+    "en": "Instrument panel: a round gauge, warning lamps for the steps, round controls."
+  },
+  "mono": false,
+  "css": "theme.css",
+  "colors": {
+    "screen": "#101216",
+    "pane": "#171a20",
+    "frame": "#363c48",
+    "text": "#dde1ea",
+    "muted": "#98a0b0",
+    "accent": "#ffb43a",
+    "ok": "#3ddc84",
+    "warn": "#ffc247",
+    "fail": "#ff5a4d",
+    "info": "#5cc8ff",
+    "claude": "#b9a6ff",
+    "human": "#ffb43a",
+    "heart": "#ff6c9a"
+  },
+  "crt": {
+    "scanlines": {
+      "color": "#ffffff",
+      "alpha": 0
+    },
+    "vignette": 0.25,
+    "headingGlowPx": 6,
+    "textGlow": {
+      "px": 0,
+      "alpha": 0
+    }
+  },
+  "fonts": {
+    "display": [
+      {
+        "family": "Rajdhani",
+        "file": "fonts/rajdhani-600.woff2",
+        "weight": 600
+      },
+      {
+        "family": "VT323",
+        "file": "builtin:vt323-latin-400-normal.woff2",
+        "weight": 400
+      }
+    ],
+    "text": [
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-400.woff2",
+        "weight": 400
+      },
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-500.woff2",
+        "weight": 500
+      }
+    ]
+  },
+  "marks": {
+    "ok": " OK ",
+    "warn": "WARN",
+    "fail": {
+      "de": "FEHL",
+      "en": "FAIL"
+    },
+    "run": " {spinner}  ",
+    "open": "----",
+    "ask": " ?? "
+  },
+  "failInverted": false,
+  "spinner": {
+    "frames": [
+      "▖",
+      "▘",
+      "▝",
+      "▗"
+    ],
+    "ms": 160
+  },
+  "bullets": {
+    "ok": "●",
+    "warn": "▲",
+    "fail": "✖",
+    "run": "▸",
+    "info": "•",
+    "pause": "‖"
+  },
+  "tree": {
+    "mid": "├",
+    "end": "└"
+  },
+  "rule": {
+    "line": "─",
+    "format": "{title} {line}"
+  },
+  "legend": "{title}",
+  "box": {
+    "tl": "╭",
+    "tr": "╮",
+    "bl": "╰",
+    "br": "╯",
+    "h": "─",
+    "v": "│",
+    "titleOpen": "",
+    "titleClose": " "
+  },
+  "progress": {
+    "done": "█",
+    "run": "▓",
+    "open": "░"
+  },
+  "prompt": {
+    "claude": "CLAUDE:",
+    "human": {
+      "de": "DU:",
+      "en": "YOU:"
+    },
+    "cursorMs": 900
+  },
+  "raven": {
+    "lines": [
+      "   __",
+      "  ( {eye} {beak}",
+      "  // )"
+    ],
+    "parts": {
+      "body": "frame",
+      "eye": "text",
+      "beak": "accent"
+    },
+    "beak": ">",
+    "eyes": {
+      "open": "•",
+      "shut": "-",
+      "happy": "^"
+    },
+    "blink": {
+      "ms": 160,
+      "firstMs": 1800,
+      "pauseMs": [
+        4000,
+        9000
+      ],
+      "double": {
+        "chance": 0.25,
+        "afterMs": 320,
+        "ms": 140
+      }
+    },
+    "pet": {
+      "happyMs": 800,
+      "hearts": {
+        "glyphs": [
+          "♥",
+          "<3",
+          "▄█▄█▄\n ▀█▀",
+          ".:♥:."
+        ],
+        "count": 6,
+        "staggerMs": 70,
+        "startAt": 0.2,
+        "risePx": 80,
+        "driftPx": 20,
+        "steps": 9,
+        "durationMs": [
+          1100,
+          1800
+        ],
+        "fadeFrom": 0.7,
+        "glowPx": 8
+      }
+    }
+  }
+}

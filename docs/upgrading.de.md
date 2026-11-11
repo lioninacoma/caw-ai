@@ -2,7 +2,7 @@
 
 # Upgrade von 0.1.0
 
-Das nächste Release ändert Config-Schlüssel, Exit-Codes und Dateinamen. Eine Kompatibilitätsschicht gibt es nicht: Alte Schlüssel werden abgewiesen, `validate` und `doctor` sagen, wohin sie gewandert sind. Arbeite die Liste ab und führe danach `npx caw-ai validate` aus.
+0.3.0 ändert Config-Schlüssel, Exit-Codes und Dateinamen. Eine Kompatibilitätsschicht gibt es nicht: Alte Schlüssel werden abgewiesen, `validate` und `doctor` sagen, wohin sie gewandert sind. Arbeite die Liste ab und führe danach `npx caw-ai validate` aus.
 
 ## 1. Node
 
@@ -146,7 +146,7 @@ Mit dem Agenten `docker` wird das Image beim nächsten Lauf neu gebaut; es insta
 
 ## 7. Persönliche Einstellungen
 
-Das helle Theme und die Einstellung `fed` gibt es nicht mehr. Ein `"theme": "light"` oder `"dark"` in `prefs.json` fällt auf `nacht` zurück. Wähle ein Theme mit `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`).
+Das helle Theme und die Einstellung `fed` gibt es nicht mehr. Ein `"theme": "light"` oder `"dark"` in `prefs.json` fällt auf `nacht` zurück. Wähle ein Theme mit `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`, `kachel`, `plakat`, `cockpit`).
 
 ## 8. Prüfen
 

@@ -2,7 +2,7 @@ English · [Deutsch](upgrading.de.md)
 
 # Upgrading from 0.1.0
 
-The next release changes config keys, exit codes and file names. caw-ai has no compatibility layer: old keys are rejected, and `validate` and `doctor` say where each one went. Work through the list, then run `npx caw-ai validate`.
+0.3.0 changes config keys, exit codes and file names. caw-ai has no compatibility layer: old keys are rejected, and `validate` and `doctor` say where each one went. Work through the list, then run `npx caw-ai validate`.
 
 ## 1. Node
 
@@ -146,7 +146,7 @@ With the `docker` agent the image is rebuilt on the next run; it now installs Cl
 
 ## 7. Personal settings
 
-The light theme and the `fed` setting are gone. A `"theme": "light"` or `"dark"` in `prefs.json` falls back to `nacht`. Pick a theme with `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`).
+The light theme and the `fed` setting are gone. A `"theme": "light"` or `"dark"` in `prefs.json` falls back to `nacht`. Pick a theme with `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`, `kachel`, `plakat`, `cockpit`).
 
 ## 8. Check
 

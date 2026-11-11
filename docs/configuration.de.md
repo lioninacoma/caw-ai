@@ -55,7 +55,7 @@ CAW_PW_USER=geheim
 
 `caw/.env` wird gelesen wie bei dotenv: `NAME=Wert`, gern in Anführungszeichen; ein Kommentar hinter dem Wert braucht ein Leerzeichen vor `#` (`NAME=Wert # Notiz`). Ein `#` ohne Leerzeichen davor gehört zum Wert; Werte mit ` #` in Anführungszeichen setzen.
 
-`npx caw-ai init` schreibt dir so eine Config.
+`npx caw-ai init` schreibt dir so eine Config, dazu die Rolle mit ihrem Testnutzer: Nach **Fertig** nennst du im Fenster die Rolle, **Speichern** schreibt die Variablen in `caw/.env`. Umgebungsvariablen gleichen Namens gehen vor `caw/.env`, etwa in CI.
 
 ## environments
 
@@ -123,6 +123,8 @@ Ein Eintrag je Art von Nutzer, als der sich deine Tests anmelden. Ein Test wähl
 | `form`, `basic` | `{ "loginEnv": "CAW_LOGIN_ADMIN", "passwordEnv": "CAW_PW_ADMIN" }`: Namen der Variablen in `caw/.env`. Optional `totpEnv` für `codeSelector`. |
 | `storageState` | `{}`: die Sitzung liegt je Umgebung in `caw/.auth/` |
 | keine | `roles` weglassen |
+
+Eine Rolle fügst du mit `npx caw-ai role add <rolle> --target <env>` hinzu: im Fenster mit dem Testkonto anmelden, Rolle benennen, **Speichern**. caw-ai schreibt den Eintrag oben, die Werte in `caw/.env` und `caw/.env` in `.gitignore`. Ohne Fenster (CI) setzt du die Variablen in der Umgebung. Siehe [role](commands.de.md#role).
 
 Nimm Testkonten mit so wenig Rechten wie möglich. Claude steuert einen Browser, der als dieser Nutzer angemeldet ist.
 
@@ -245,11 +247,11 @@ Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins. Frühere N
 
 **ExtJS:** Mit `"framework": "extjs"` kommt der lokale Code vom Webserver des Sencha-Watch, standardmäßig `http://localhost:1841/`. `init` schreibt `"overlay": { "url": "http://localhost:1841/" }`; ergänze `start` mit dem Watch-Befehl deines Projekts (etwa `"pnpm run watch"` oder `"sencha app watch"`), optional `statics`. caw prüft, dass der Server unter `url` *diese* App ausliefert (Name aus `app.json`, `bootstrap.json` mit Ladereihenfolge). War der Port belegt, nimmt der Watch einen zufälligen: caw findet ihn unter den laufenden Watch-Prozessen, nutzt ihn und sagt dir, dass du `url` anpassen sollst. `build` und `buildCommand` sind dort Fehler. Einzelheiten: [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
 
-**Mehrere Quellen für Skripte.** Eine Seite kann ihren Code von mehr als einer Stelle laden. caw benennt jeden Request über den Pfad unterhalb der Umgebungs-URL und über jedes `assetUrlPattern`; der erste Name, den eine Quelle kennt, gilt. `assetUrlPattern` ist ein Text oder eine Liste, ein Muster je Quelle, Gruppe 1 der Dateiname. Ein Portal wie bei FA214 lädt das Theme über einen normalen Pfad (deckt der Standard ab) und App und Pakete über ein Proxy-Servlet:
+**Mehrere Quellen für Skripte.** Eine Seite kann ihren Code von mehr als einer Stelle laden. caw benennt jeden Request über den Pfad unterhalb der Umgebungs-URL und über jedes `assetUrlPattern`; der erste Name, den eine Quelle kennt, gilt. `assetUrlPattern` ist ein Text oder eine Liste, ein Muster je Quelle, Gruppe 1 der Dateiname. Ein typisches Portal lädt das Theme über einen normalen Pfad (deckt der Standard ab) und App und Pakete über ein Proxy-Servlet:
 
 ```json
 "assetUrlPattern": [
-  "[?&]url=inubitrepository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)",
+  "[?&]url=repository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)",
   "^https://cdn\\.example\\.com/js/(?:[^?#]*/)?([^/?#]+\\.js)"
 ]
 ```
@@ -291,6 +293,7 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `extends` | | Gemeinsame Vorgaben aus einer Datei, etwa `"./caw/basis.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den Agenten `docker`. Sonst `image` aus `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | Nutzer im Container. |
+| `theme` | | Vorgabe fürs Team in der Werkbank: `{ "base": "phosphor", "colors": { … } }`. Eine eigene Wahl in `prefs.json` geht vor. Siehe [Themes](../themes/README.de.md#vorgabe-fürs-team). |
 
 ## caw/caw.md
 

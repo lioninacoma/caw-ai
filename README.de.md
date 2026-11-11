@@ -10,7 +10,7 @@
 >
 > KI-gestützte E2E-Tests, Workflow-Automatisierung und Fehlersuche in Anwendungen.
 >
-> Du beschreibst einen Test in normaler Sprache, Claude geht ihn einmal in deiner echten App durch, und danach läuft er ohne KI: schnell, reproduzierbar, ohne Token, und Claude kommt nur in den Chat zurück, wenn ein Schritt bricht.
+> Du zeigst oder beschreibst einen Ablauf, Claude geht ihn einmal in deiner echten App mit seinem Kontext durch (Nutzer, Rolle, Zustand), und danach läuft er ohne KI: schnell, reproduzierbar, ohne Token, und Claude kommt nur in den Chat zurück, wenn ein Schritt bricht.
 
 - **Capture:** Du führst einen echten Ablauf in deiner App vor, oder Claude geht einen Plan durch, den du beschreibst.
 - **Understand:** Die KI deutet jede Aktion in ihrem Kontext: angemeldeter Nutzer, Rolle, Zustand der Anwendung und Ziel, nicht nur eine Klickfolge.
@@ -44,7 +44,7 @@ npx caw-ai run first-errand --target local      # spielt die Aufzeichnung ab, oh
 - Schlägt ein Schritt fehl, zeigt der Chat neben der App die Ursache. `fix` nimmt nur diesen Schritt neu auf.
 - Nach einem Lauf gehört dir das Fenster: F1 stellt den Zustand jedes Tests in einer frischen Sitzung her, und Claude im Chat kann die Seite bedienen, ein eingefügtes Bugticket nachstellen und die Korrektur im Code vorschlagen.
 - Fehler werden als Test, Anwendung oder Umgebung eingeordnet, anhand von Requests, Konsolenausgaben und den Änderungen an der Seite bei der Aufnahme.
-- **Grenzen mit Absicht:** Claude steuert den Browser nur über einen festen Satz Befehle, erreicht nur die Hosts aus deiner Config, sieht nie deine Zugangsdaten; Pläne, die Daten schreiben, gibst du frei, und du entscheidest, ob eine Aufzeichnung übernommen wird.
+- Claude steuert den Browser nur über einen festen Satz Befehle und erreicht nur die Hosts aus deiner Config. Testkonten gibst du im Anmeldefenster ein, sie gehen direkt nach `caw/.env`; Claude sieht sie nie. Pläne, die Daten schreiben, gibst du frei, und du entscheidest, ob eine Aufzeichnung übernommen wird.
 - Unterstützt: reine Web-Apps, React, Vue, Angular und ExtJS.
 
 ## Voraussetzungen
@@ -64,8 +64,7 @@ npm i -D caw-ai
 App starten, dann:
 
 ```bash
-npx caw-ai init --url http://localhost:5173   # öffnet die App; einmal anmelden, „Fertig“ klicken
-cp caw/.env.example caw/.env                  # Testkonto eintragen
+npx caw-ai init --url http://localhost:5173   # öffnet die App; mit Testkonto anmelden, „Fertig“, als Rolle speichern
 npx caw-ai doctor                             # listet auf, was noch fehlt
 ```
 
@@ -117,7 +116,7 @@ Exit-Codes: `0` bestanden, `1` fehlgeschlagen, `2` Fehler der Umgebung, `3` Eing
 - run: npx caw-ai run smoke --target staging --headless
 ```
 
-Mit gesetztem `CI` gibt es keinen Chat, und Claude wird nicht gestartet. Lokal aufnehmen und reparieren, Dateien committen, in der CI abspielen.
+Mit gesetztem `CI` gibt es keinen Chat, und Claude wird nicht gestartet. Lokal aufnehmen und reparieren, Dateien committen, in der CI abspielen. Die Testnutzer bekommt die CI als Umgebungsvariablen (CI-Secrets), mit den Namen aus `roles` in der Config, etwa `CAW_LOGIN_TESTER` und `CAW_PW_TESTER`.
 
 ### Aus Claude Code
 
@@ -152,7 +151,7 @@ Ein Bugticket in den Chat einfügen. Claude stellt es im erreichten Zustand nach
 
 ### Themes
 
-Drei eingebaute Themes oder ein eigenes: F7 öffnet den Editor für Farben, Glyphen, den Raben und den CRT-Look.
+Sechs eingebaute Themes oder ein eigenes: F7 öffnet den Editor für Farben, Glyphen, den Raben und den CRT-Look.
 
 <img src="docs/media/themes.webp" width="100%" alt="Dieselbe Werkbank in den Themes nacht, bernstein und phosphor">
 
@@ -204,7 +203,7 @@ Noch nicht oder nicht geplant:
 ## FAQ
 
 **Kostet jeder Lauf Token?**
-Nein. Aufnehmen, `fix` und der Chat verbrauchen Claude-Token, abgerechnet über dein Claude-Code-Konto; Wiedergaben keine, lokal wie in der CI. Bevor Claude startet, fragt der Chat einmal pro Lauf nach; den Hinweis kannst du abschalten. Das Log des Laufs zeigt die Kosten, die Claude Code meldet.
+Nein. Aufnehmen, `fix` und der Chat verbrauchen Claude-Token, abgerechnet über dein Claude-Code-Konto; Wiedergaben keine, lokal wie in der CI. Bevor Claude startet, fragt der Chat einmal pro Lauf nach (nicht, wenn deine eigene Claude-Code-Session der Agent ist); den Hinweis kannst du abschalten. Das Log des Laufs zeigt die Kosten, die Claude Code meldet.
 
 **Sieht Claude meine Passwörter?**
 Nein. caw-ai meldet sich selbst an, bevor Claude startet. Claude kann `caw/.env` nicht lesen und steuert den Browser nur über feste Befehle. Trotzdem Testkonten verwenden: Claude handelt als dieser Nutzer.

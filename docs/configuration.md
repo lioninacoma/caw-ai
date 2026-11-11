@@ -55,7 +55,7 @@ CAW_PW_USER=secret
 
 `caw/.env` is read like dotenv: `KEY=value`, optionally in quotes; a comment after the value needs a space before `#` (`KEY=value # note`). A `#` without a space before it belongs to the value; quote values that contain ` #`.
 
-`npx caw-ai init` writes a config like this for you.
+`npx caw-ai init` writes a config like this for you, and the role with its test user: after **Done** you name the role in the window, **Save** writes the variables to `caw/.env`. Environment variables of the same name win over `caw/.env`, e.g. in CI.
 
 ## environments
 
@@ -123,6 +123,8 @@ One entry per kind of user your tests sign in as. Tests pick one with `role:`.
 | `form`, `basic` | `{ "loginEnv": "CAW_LOGIN_ADMIN", "passwordEnv": "CAW_PW_ADMIN" }`: names of variables in `caw/.env`. Optional `totpEnv` for `codeSelector`. |
 | `storageState` | `{}`: the session is stored per environment in `caw/.auth/` |
 | none | leave `roles` out |
+
+Add a role with `npx caw-ai role add <role> --target <env>`: sign in with the test account in the window, name the role, **Save**. caw-ai writes the entry above, the values to `caw/.env` and `caw/.env` to `.gitignore`. Without a window (CI) set the variables in the environment. See [role](commands.md#role).
 
 Use test accounts with as few rights as possible. Claude drives a browser signed in as this user.
 
@@ -245,11 +247,11 @@ Unknown fields are an error. You need only one of `build` and `url`. Earlier nam
 
 **ExtJS:** With `"framework": "extjs"` the local code comes from the web server of the Sencha watch, by default `http://localhost:1841/`. `init` writes `"overlay": { "url": "http://localhost:1841/" }`; add `start` with your project's watch command (e.g. `"pnpm run watch"` or `"sencha app watch"`), optionally `statics`. caw checks that the server at `url` serves *this* app (`app.json` name, `bootstrap.json` with a load order). If the port was taken, the watch picks a random one: caw finds it among the running watch processes, uses it and tells you to set `url`. `build` and `buildCommand` are errors there. Details: [Guide](guide.md#how-local-code-gets-into-the-application).
 
-**Several asset sources.** A page may load its code from more than one place. caw names each request by the path below the environment URL and by every `assetUrlPattern`; the first name a source knows wins. `assetUrlPattern` is a string or a list, one pattern per source, group 1 the file name. An FA214-like portal loads the theme by a plain path (covered by the default) and app and packages through a proxy servlet:
+**Several asset sources.** A page may load its code from more than one place. caw names each request by the path below the environment URL and by every `assetUrlPattern`; the first name a source knows wins. `assetUrlPattern` is a string or a list, one pattern per source, group 1 the file name. A typical portal loads the theme by a plain path (covered by the default) and app and packages through a proxy servlet:
 
 ```json
 "assetUrlPattern": [
-  "[?&]url=inubitrepository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)",
+  "[?&]url=repository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)",
   "^https://cdn\\.example\\.com/js/(?:[^?#]*/)?([^/?#]+\\.js)"
 ]
 ```
@@ -291,6 +293,7 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `extends` | | Shared defaults from a file, e.g. `"./caw/base.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Base image for the `docker` agent. Falls back to `image` in `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | User inside the container. |
+| `theme` | | Team default for the workbench: `{ "base": "phosphor", "colors": { … } }`. A personal choice in `prefs.json` wins. See [Themes](../themes/README.md#team-default). |
 
 ## caw/caw.md
 

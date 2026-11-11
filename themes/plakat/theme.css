@@ -1,0 +1,166 @@
+/* plakat: hell und laut. Signalgelb als Grund, weiße Flächen mit 3px-Rand und hartem Versatzschatten, schwere Grotesk.
+   Die Schritte sind Kacheln, nicht Zeilen; der Stand (3/5) steht groß über der Liste. Der Status sitzt in der Kachelfüllung. */
+
+:root{color-scheme:light;
+--tile-ok:#7dff9a;--tile-fail:#ff3b2f;--tile-run:#111111;--tile-open:#ffffff;
+--page:var(--screen);--case:var(--screen);--case-hi:var(--screen);--pane-2:#fff6a8;--line:#111111;--faint:#5b5a48;
+--drop-shadow:#111111;--ink:var(--screen);--fail-tint:#ffd2cc;--fail-line:#111111;--glow:transparent;
+--font-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;--fs-crt:17px;--frame-w:3px;
+--shadow-hard:5px 5px 0 #111}
+
+/* Die Pixelschrift-Größen auf Plakatgröße: Titel fett, Fließtext bleibt */
+.lg,.px-label,.px-btn,.px-pill,.fk,.tabs button,.solo-btn,.ttabs button,#choices button,#report,#closeWindow,.small,#abort,#abortNo,.tag,
+.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.who,.mk,.strip,.fold,.sec,.tfields .grp,#browserState,#notice,#stateSpin,
+.step .sid,.step dt,.advice dt,.failure .badge,#thinking,.tthemes button span,.advice .copy,#steps>li[data-kind=phase]>.head .name,.gauge{font-family:var(--font-crt);font-weight:400;letter-spacing:.02em;text-transform:uppercase}
+.lg,.sec,.tfields .grp,.strip,.fold{font-size:15px}
+.px-btn,.tabs button,.solo-btn,.ttabs button,.small,#choices button,#abort,#abortNo,.px-pill,#browserState,#notice,#stateSpin{font-size:14px}
+.fk{font-size:14px}
+.tag{font-size:14px}
+.who,.mk{font-size:13px}
+.id b{font:400 32px/1 var(--font-crt);letter-spacing:-.02em;text-transform:uppercase}
+
+/* Fläche und Rahmen */
+.crt-case{background:var(--screen);box-shadow:none}
+#bench{box-shadow:none;padding:14px 22px 0}
+.top{border-bottom:5px solid #111;padding-bottom:12px;gap:8px 20px}
+.facts li{border:2px solid #111;padding:1px 9px;background:#fff;color:#111;font-weight:500}
+.facts b{color:#111;font-weight:700}
+.id>span{color:#111;font-weight:500}
+.id b .cmd{color:var(--info)}
+.panes{gap:30px;padding:30px 4px 24px;--col-steps:minmax(270px,320px);--col-chat:minmax(300px,380px)}
+.win{background:#fff;border:3px solid #111;box-shadow:var(--shadow-hard)}
+.lg{top:-18px;left:-3px;padding:3px 12px;background:#111;color:var(--screen);line-height:1.15}
+.fold{top:-18px;right:-3px;background:var(--screen);color:#111;border:3px solid #111;padding:1px 8px;font-size:14px}
+.fold:hover{background:#111;color:var(--screen)}
+.strip{font-size:15px;color:#111}.strip:hover{background:var(--screen);color:#111}.strip b{color:#111}
+.pa-steps{padding:22px 14px 14px;background:var(--screen);border-style:solid}
+
+/* Die große Zahl */
+#gauge{display:none}
+#tally{display:block;font:400 76px/.9 var(--font-crt);letter-spacing:-.04em;margin:0 0 14px;color:#111}
+#tally[hidden]{display:block}
+#tally:empty{display:none}
+.hint{color:#111;font-weight:500}
+#leftNote{background:#fff;box-shadow:none;border:3px solid #111;color:#111}
+#leftNote strong{color:#111}
+
+/* Schritte als Liste: ein Block bündiger Zeilen, der Status ist die Füllung der Zeile */
+#steps{border:3px solid #111;background:#fff;box-shadow:var(--shadow-hard)}
+#steps>li{border-top:3px solid #111;min-width:0}
+#steps>li:first-child{border-top:0}
+#steps>li[data-kind=step]{background:var(--tile-open);color:#111}
+#steps>li[data-state=pass]{background:var(--tile-ok)}
+#steps>li[data-state=fail]{background:var(--tile-fail);color:#fff}
+#steps>li[data-state=running]{background:var(--tile-run);color:var(--screen)}
+#steps>li[data-state=skipped]{background:repeating-linear-gradient(135deg,#fff 0 8px,#eee 8px 16px)}
+#steps>li[data-kind=step]>.head,#steps>li[data-kind=step][data-state]>.head{padding:7px 10px;margin:0;background:none;box-shadow:none;gap:10px;align-items:baseline}
+#steps>li[data-kind=step]>.head .name{font:700 14px/1.3 var(--font-ui);color:inherit}
+#steps>li[data-kind=step]>.head .id{font:400 14px/1 var(--font-crt);color:inherit;opacity:.8}
+#steps>li[data-kind=step]>.head .ms{color:inherit;opacity:.8;font-weight:500}
+#steps>li[data-kind=step]>.head .tag{color:inherit;border:2px solid currentColor;padding:1px 5px}
+#steps>li[data-state=fail]>.head .tag.inverted{background:#fff;color:#111;border-color:#fff}
+#steps>li[data-state=waiting]>.head .name,#steps>li[data-state=skipped]>.head .name{color:#111}
+#steps>li[data-state=skipped]>.head .text::after{color:#111;font-size:13px}
+#steps .note{color:inherit;font-weight:500}
+#steps>li[data-kind=step]>.pts>li,#steps>li[data-kind=step]>.pts>li .text,#steps>li[data-kind=step]>.pts>li .tree,#steps>li[data-kind=step]>.pts .kind,#steps>li[data-kind=step]>.pts .live,#steps .pts .mk{color:inherit}
+#steps>li[data-kind=step]>.pts>li{padding:0 10px 4px 52px;font-weight:500}
+#steps>li[data-kind=step]>.pts:empty{display:none}
+#steps>li[data-kind=phase]{background:#111;color:var(--screen)}
+#steps>li[data-kind=phase]>.head{margin:0;padding:4px 10px}
+#steps>li[data-kind=phase]>.head .name{display:block;color:var(--screen);font-size:14px}
+#steps>li[data-kind=phase][data-state=fail]{background:var(--tile-fail);color:#fff}
+#steps>li[data-kind=phase][data-state=fail]>.head .name{color:#fff}
+#steps>li[data-kind=phase]>.pts>li,#steps>li[data-kind=phase]>.pts .text{color:inherit!important;font-weight:500;padding-left:10px;padding-right:10px}
+
+/* Anwendung */
+.pa-browser{padding:22px 0 0;background:#fff}
+.appbar{padding:0 12px 8px;color:#111;font-weight:500}
+#urlMark{color:#0b7a35}
+#url{color:#111}
+#browserState{color:var(--info)}#browserState.rec{color:var(--fail)}#browserState.ask{color:var(--warn)}
+#app{box-shadow:none;border-top:3px solid #111}
+.drawer{padding:0;border-top:3px solid #111}
+.tabs{gap:0}
+.tabs button{box-shadow:none;border:0;border-right:3px solid #111;color:#111;padding:5px 12px;background:#fff}
+.tabs button[aria-selected=true]{background:#111;color:var(--screen);box-shadow:none}
+.tabs .count{color:var(--info)}.tabs button[aria-selected=true] .count{color:var(--screen)}
+.tabs #drawerClose{border-right:0;border-left:3px solid #111;margin-left:auto}
+.panel{margin:0;box-shadow:none;background:#fff;border-top:3px solid #111}
+.empty,.line{color:#111}
+
+/* Tastenleiste: schwarze Kappen */
+.fkeys{border-top:5px solid #111;margin:0 -22px;padding:10px 22px 12px;background:var(--screen);color:#111}
+.fk{color:#111}.fk:hover:enabled{color:#111;text-decoration:underline}
+.fk b{background:#111;color:var(--screen);padding:3px 7px;margin-right:7px}
+.fk.x b{background:var(--tile-fail);color:#fff}
+.fk[aria-pressed=true] b{background:var(--info);color:#fff}
+
+/* Pille, Knöpfe, Felder */
+.px-pill{box-shadow:none;border:3px solid currentColor;background:#fff;padding:3px 9px}
+.px-btn,.solo-btn,.small,#choices button,#abort,#abortNo,.ttabs button,.advice .copy{background:#fff;color:#111;border:3px solid #111;box-shadow:3px 3px 0 #111;border-radius:0}
+.px-btn:hover:enabled,.solo-btn:hover,.small:hover:enabled,#choices button:hover,.advice .copy:hover{background:var(--screen);box-shadow:3px 3px 0 #111}
+.px-btn:active:enabled,#choices button:active,.small:active:enabled{transform:translate(3px,3px);box-shadow:none}
+.px-btn--primary,#choices button.primary,#report,#closeWindow{background:#111;color:var(--screen);border:3px solid #111;box-shadow:4px 4px 0 var(--info)}
+.px-btn--primary:hover:enabled,#choices button.primary:hover,#report:hover,#closeWindow:hover{background:#111;filter:none;box-shadow:4px 4px 0 var(--fail)}
+#choices button.sure{background:var(--tile-fail);color:#fff;box-shadow:3px 3px 0 #111}
+.solo-btn b{color:var(--info)}
+.ttabs button[aria-selected=true]{background:#111;color:var(--screen);box-shadow:3px 3px 0 #111}
+.tthemes button{background:#fff;color:#111;box-shadow:3px 3px 0 #111;border:3px solid #111}
+.tthemes button[aria-checked=true]{background:var(--screen);box-shadow:3px 3px 0 #111,0 0 0 3px var(--info)}
+.trow input,.tfields input[type=text],.tfields input[type=number],.sfilter{background:#fff;box-shadow:none;border:3px solid #111;color:#111}
+.sfilter input{color:#111}
+.srow{color:#111}.srow:hover:enabled{background:var(--pane-2)}
+.srow[aria-selected=true]{background:#111;color:var(--screen);box-shadow:none}
+.srow[aria-selected=true] .mk,.srow[aria-selected=true] .meta{color:var(--screen)}
+.srow .meta{color:#4a4a3c}
+.sfoot,.tthemes{border-top-width:3px;border-bottom-color:#111}
+.sfoot p{color:#111}
+#stateDlg,#themeDlg{background:rgba(17,17,17,.6)}
+#stateDlg>.win,#themeDlg>.win{background:#fff}
+#tjson,#leftNote,.sfilter{color:#111}
+:focus-visible{outline:3px solid var(--info);outline-offset:2px}
+
+/* Chat: Sprecher sind Etiketten, Menschen schwarz hinterlegt, Karten mit hartem Schatten */
+body{background:#fff}
+#chat{background:#fff}
+main{padding:14px 14px 8px;gap:14px;scrollbar-color:#111 #fff}
+.who{color:#111}.who.c{color:var(--claude)}.who.h{color:var(--human)}.who .cp{color:#4a4a3c}
+.message.human{background:#111;color:var(--screen);padding:8px 12px;box-shadow:4px 4px 0 var(--claude);font-weight:500}
+.message.human .who.h{color:var(--screen);opacity:.8}
+.about{color:#4a4a3c}.about .tr,.bl{color:#4a4a3c}
+.question,.plan,.advice,.failure,.decision,#next{background:#fff;border:3px solid #111;box-shadow:var(--shadow-hard);padding:10px 12px 12px}
+.plan strong,.advice strong,.failure strong,.decision strong,#next strong{color:#111;text-shadow:none;font-size:17px}
+.question{border-color:#111;background:var(--screen)}
+.failure{background:#ffd2cc}
+.decision{background:#bfffcd}
+.advice,.plan{background:#fff}
+.step{border-top:3px dashed #111}.step .sid{color:var(--info)}
+.step dt,.advice dt{color:#111}
+.plan .notes{color:#111}
+.failure .badge{box-shadow:none;border:2px solid #111;color:#111;background:#fff}
+.failure .badge.app{color:#fff;background:#111}
+.failure .warn,.advice .warn,.decision .warn{background:var(--screen);color:#111;box-shadow:none;border:2px solid #111}
+.advice pre,.advice pre.del{background:#fff;box-shadow:none;border:2px solid #111;color:#111}
+details.activity{color:#111}details.activity summary::before{color:#111}details.activity ol{box-shadow:inset 3px 0 0 #111}
+#status{color:#111;font-weight:500}
+form{margin:8px;padding:8px 10px;background:#fff;border:3px solid #111;box-shadow:none}
+form:focus-within{box-shadow:var(--shadow-hard)}
+.prompt .p{color:#111}form:focus-within .prompt .p{color:var(--human)}
+textarea::placeholder{color:#4a4a3c}
+.cursor{background:#111}
+#send{background:#111;color:var(--screen);border:3px solid #111;box-shadow:none}
+#chip{background:var(--screen);color:#111;box-shadow:none;border:2px solid #111}
+#down{background:#fff;box-shadow:none;border:3px solid #111;color:#111}
+kbd{box-shadow:inset 0 0 0 2px currentColor}
+
+@media (max-width:1499px){#tally{font-size:56px}}
+@media (max-width:859px){.panes{gap:34px}}
+
+/* Das Logo bleibt wie in nacht: gleiche Zeichen, gleiche Schrift (VT323), gleiche Größe */
+.raven{font-family:"VT323",monospace!important;font-weight:400;line-height:1;letter-spacing:0;text-transform:none;color:var(--frame)}
+
+/* Das Logo sitzt in einem schwarzen Kasten mit hartem Schatten, wie die Kappen der Tastenleiste. Die Zeichen bleiben gleich. */
+.raven{background:#111;border:3px solid #111;padding:6px 14px 4px 10px;box-shadow:5px 5px 0 var(--info);margin:0 6px 5px 0}
+.raven>span{color:var(--screen)!important}
+.raven .eye,.raven .beak{color:#fff!important}
+.soloBar .raven{padding:2px 8px 1px 5px;box-shadow:3px 3px 0 var(--info);margin:0 4px 3px 0}

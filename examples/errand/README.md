@@ -10,27 +10,20 @@ cd examples/errand
 node server.mjs                                    # http://localhost:4174, account demo / demo
 ```
 
-In a second terminal, put the demo account into `caw/.env`. This line works in bash, PowerShell and cmd:
+In a second terminal, run the test:
 
 ```bash
 cd examples/errand
-node -e "require('fs').writeFileSync('caw/.env', 'CAW_LOGIN_USER=demo\nCAW_PW_USER=demo\n')"
-```
-
-Or by shell:
-
-```bash
-printf 'CAW_LOGIN_USER=demo\nCAW_PW_USER=demo\n' > caw/.env                # bash, zsh
-Set-Content caw/.env "CAW_LOGIN_USER=demo`nCAW_PW_USER=demo"             # PowerShell
-(echo CAW_LOGIN_USER=demo& echo CAW_PW_USER=demo) > caw\.env             # cmd
-```
-
-Then run the test:
-
-```bash
 node ../../bin/caw-ai.mjs run first-errand --target local              # workbench window, chat next to the app
+```
+
+The role `user` has no test user yet, so the sign-in window opens first: sign in with `demo` / `demo` and click **Save**. caw-ai writes the account to `caw/.env` and the run goes on. From then on it runs without the window too:
+
+```bash
 node ../../bin/caw-ai.mjs run first-errand --target local --headless   # no window, result in the terminal
 ```
+
+Without a window (`--headless`, CI) the account has to be there already: set `CAW_LOGIN_USER=demo` and `CAW_PW_USER=demo` in the environment or in `caw/.env`.
 
 The run adds a todo "Feed the raven CAW-…", finds it with the search, ticks it off and moves it to "Tomorrow". The report is in `.caw/runs/`.
 

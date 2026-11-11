@@ -1,0 +1,94 @@
+/* kachel: Kachelfenster wie tmux. Alles bündig, 1px-Nähte statt Rahmen und Schatten, die Kopfzeile ist die Tab-Leiste,
+   die Tastenleiste die Statuszeile, Legenden sind Fensterleisten. Eine Monospace-Schrift, nur Farbe auf Zeichen. */
+
+:root{--fs-crt:13px;--font-mono:var(--font-ui);--drop-shadow:transparent;--case:var(--screen);--case-hi:var(--screen);
+--bar:color-mix(in srgb,var(--frame) 30%,var(--screen))}
+
+/* Alle Schriftgrößen, die für die Pixelschrift gebaut sind, auf Terminalgröße */
+.lg,.sec,.tag,.px-label,.px-btn,.px-pill,.gauge,.fk,.tabs button,.solo-btn,#browserState,#notice,#stateSpin,.ttabs button,
+.tthemes button span,.tfields .grp,#steps>li[data-kind=phase]>.head .name,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
+.small,#abort,#abortNo,.soloBar,.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.step .sid,.step dt,.advice dt,
+.failure .badge,#thinking,.fkeys,.sfilter span,.srow .mk,.px-pill,.advice .copy,.heart,#leftNote strong{font-size:12.5px;line-height:1.3;letter-spacing:0}
+.id b{font:500 13px/1.2 var(--font-crt)}
+
+/* Rahmen weg: Gehäuse und Bildschirm sind eine Fläche */
+.crt-case{background:var(--screen);box-shadow:none}
+.pa{padding:0}
+#bench{padding:0;box-shadow:none}
+.win{border:0;box-shadow:none;background:var(--pane)}
+
+/* Kopfzeile = Tab-Leiste */
+.top{gap:0 18px;padding:0 10px;min-height:26px;background:var(--bar);border-bottom:1px solid var(--frame)}
+.top .id{flex-direction:row;align-items:baseline;gap:10px}
+.top .id>span{display:none}
+.id b .cmd{color:var(--accent)}
+.facts{font-size:12px;gap:0 14px}
+.tools{gap:6px}
+.px-pill{box-shadow:none;padding:0 8px;background:var(--bar);color:var(--muted);border:1px solid currentColor}
+.px-pill--claude,#state.px-pill--claude{color:var(--claude)}
+
+/* Kacheln: 1px-Naht statt Abstand */
+.panes{gap:1px;padding:0;background:var(--frame)}
+.lg{position:static;display:block;padding:2px 10px;background:var(--bar);color:var(--muted);text-transform:lowercase;white-space:nowrap}
+.lg::before{content:"[";color:var(--frame)}.lg::after{content:"]";color:var(--frame)}
+.win:focus-within>.lg{background:var(--accent);color:var(--ink)}
+.win:focus-within>.lg::before,.win:focus-within>.lg::after{color:var(--ink)}
+.pa-steps,.pa-browser,.pa-chat{padding:0}
+.fold{top:2px;right:6px;background:none;color:inherit;font-size:12px;padding:0 4px}
+.strip{font-size:12px}
+#gauge{margin:6px 10px 2px;font-size:12px}
+.hint,#leftNote{margin:6px 10px}
+#track{padding:4px 10px 8px}
+#steps .head{padding:1px 4px;margin:2px -4px 0}
+#steps>li[data-state=running]>.head{background:var(--accent);box-shadow:none}
+#steps>li[data-state=running]>.head :is(.id,.name,.ms,.tag,.text){color:var(--ink)}
+#steps>li[data-state=fail]>.head{background:none;box-shadow:inset 2px 0 0 var(--fail)}
+#steps>li[data-kind=phase]>.head .name{text-transform:lowercase;color:var(--muted)}
+.tag-fail.inverted{padding:0 2px}
+.pts .live{font-size:11.5px}
+
+/* Anwendung */
+.appbar{padding:2px 10px;background:var(--bar);border-bottom:1px solid var(--frame)}
+#app{box-shadow:none}
+.drawer{padding:0;border-top:1px solid var(--frame)}
+.tabs{gap:0}
+.tabs button{box-shadow:none;border-right:1px solid var(--frame);padding:2px 10px}
+.tabs button[aria-selected=true]{background:var(--accent);color:var(--ink);box-shadow:none}
+.tabs button[aria-selected=true] .count{color:var(--ink)}
+.panel{margin:0;height:24vh;box-shadow:none;background:var(--screen)}
+.solo-btn,.ttabs button,.tabs #drawerClose{box-shadow:inset 0 0 0 1px var(--frame)}
+
+/* Statuszeile unten */
+.fkeys{margin:0;padding:0;gap:0;border-top:1px solid var(--frame);background:var(--bar)}
+.fk{padding:2px 10px;border-right:1px solid var(--frame)}
+.fk b{background:none;color:var(--accent);padding:0;margin-right:6px}
+.fk.x b{background:none;color:var(--fail)}
+.fk[aria-pressed=true],.fk[aria-pressed=true] b{background:var(--accent);color:var(--ink)}
+
+/* Knöpfe und Felder: flach, 1px */
+.px-btn,#choices button,.small,#report,#closeWindow,.advice .copy,.sfilter,.trow input,.tfields input[type=text],.tfields input[type=number]{box-shadow:inset 0 0 0 1px var(--frame);text-transform:lowercase}
+.px-btn--primary,#choices button.primary,#report,#closeWindow{box-shadow:none;background:var(--accent);color:var(--ink)}
+.px-btn:active:enabled,#choices button:active,#report:active,#closeWindow:active{transform:none;background:var(--line)}
+:focus-visible{outline:1px solid var(--accent);outline-offset:0}
+#stateDlg>.win,#themeDlg>.win{border:1px solid var(--accent)}
+#stateDlg .lg,#themeDlg .lg{position:absolute;top:0;left:0;right:0}
+#stateDlg>.win,#themeDlg>.win{padding-top:30px}
+.srow[aria-selected=true]{box-shadow:none;background:var(--accent);color:var(--ink)}
+.srow[aria-selected=true] .mk,.srow[aria-selected=true] .meta{color:var(--ink)}
+
+/* Chat: ein Log, keine Blasen */
+main{padding:6px 10px;gap:8px}
+.message.human{color:var(--human)}
+.message.human .who{color:var(--human)}
+.question,.plan,.advice,.failure,.decision,#next{background:none;border:1px solid var(--frame);padding:6px 10px 8px}
+.failure{border-color:var(--fail);background:none}
+.question{border-color:var(--info)}
+.step{border-top:1px dashed var(--frame)}
+form{margin:0;padding:6px 10px;border-top:1px solid var(--frame);background:var(--bar);box-shadow:none}
+form:focus-within{box-shadow:none;border-top-color:var(--accent)}
+#choices{padding:4px 10px 8px}
+#send{box-shadow:none}
+.cursor{background:var(--human)}
+
+/* Das Logo bleibt wie in nacht: gleiche Zeichen, gleiche Schrift (VT323), gleiche Größe */
+.raven{font-family:"VT323",monospace!important;font-weight:400;line-height:1;letter-spacing:0;text-transform:none;color:var(--frame)}

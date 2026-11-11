@@ -65,7 +65,7 @@ export default {
     'config.apps.missing': 'apps fehlt, etwa { "web": { "dir": ".", "startUrl": "/" } }',
     'config.messageSelectors': 'messageSelectors muss eine Liste von CSS-Selektoren sein',
     'config.insecureTls': 'insecureTls muss true oder false sein',
-    'config.theme': 'theme.{key} passt nicht: base ist nacht, bernstein oder phosphor, colors nur mit den 13 Grundfarben als #rrggbb',
+    'config.theme': 'theme.{key} passt nicht: base ist nacht, bernstein, phosphor, kachel, plakat oder cockpit, colors nur mit den 13 Grundfarben als #rrggbb',
     'config.theme.schema.noShape': 'passt zu keiner Form',
     'config.theme.schema.ambiguous': 'mehrdeutig',
     'config.theme.schema.const': 'muss {value} sein',

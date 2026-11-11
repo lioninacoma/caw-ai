@@ -10,7 +10,7 @@ English · [Deutsch](README.de.md)
 >
 > AI-powered E2E testing, workflow automation and application debugging.
 >
-> Describe a test in plain language, Claude walks it once in your real app, and from then on it replays without AI: fast, repeatable, token-free, with Claude back in the chat only when a step breaks.
+> Show or describe a workflow, Claude walks it once in your real app with its context (user, role, state), and from then on it replays without AI: fast, repeatable, token-free, with Claude back in the chat only when a step breaks.
 
 - **Capture:** demonstrate a real user workflow in your app, or let Claude walk a plan you describe.
 - **Understand:** the AI interprets each action in its context: signed-in user, role, application state and goal, not just a click sequence.
@@ -44,7 +44,7 @@ npx caw-ai run first-errand --target local      # replays the recording, without
 - If a step fails, the chat next to the app shows the cause. `fix` re-records only that step.
 - After a run the window is yours: F1 restores the state of any test in a fresh session, and Claude in the chat can use the page, reproduce a pasted bug ticket and propose the fix in your code.
 - Failures are classified as test, app or environment, based on requests, console output and the page changes seen during recording.
-- **Limits by design:** Claude drives the browser only through a fixed set of commands, reaches only the hosts in your config, never sees your credentials; you approve plans that write data and decide whether a recording is adopted.
+- Claude drives the browser only through a fixed set of commands and reaches only the hosts in your config. Test accounts are entered in the sign-in window and go straight to `caw/.env`; Claude never sees them. You approve plans that write data and decide whether a recording is adopted.
 - Supported: plain web apps, React, Vue, Angular and ExtJS.
 
 ## Prerequisites
@@ -64,8 +64,7 @@ npm i -D caw-ai
 Start your app, then:
 
 ```bash
-npx caw-ai init --url http://localhost:5173   # opens the app; sign in once, click Done
-cp caw/.env.example caw/.env                  # add a test account
+npx caw-ai init --url http://localhost:5173   # opens the app; sign in with a test account, click Done, save it as a role
 npx caw-ai doctor                             # lists what is still missing
 ```
 
@@ -117,7 +116,7 @@ Exit codes: `0` pass, `1` fail, `2` environment error, `3` invalid input, `4` ne
 - run: npx caw-ai run smoke --target staging --headless
 ```
 
-With `CI` set there is no chat and Claude is not started. Record and fix locally, commit the files, replay in CI.
+With `CI` set there is no chat and Claude is not started. Record and fix locally, commit the files, replay in CI. Pass the test users as environment variables (CI secrets), with the names from `roles` in the config, e.g. `CAW_LOGIN_TESTER` and `CAW_PW_TESTER`.
 
 ### From Claude Code
 
@@ -152,7 +151,7 @@ Paste a bug ticket into the chat. Claude reproduces it in the reached state, nam
 
 ### Theming
 
-Three built-in themes, or your own: F7 opens the editor for colors, glyphs, the raven and the CRT look.
+Six built-in themes, or your own: F7 opens the editor for colors, glyphs, the raven and the CRT look.
 
 <img src="docs/media/themes.webp" width="100%" alt="The same workbench in the themes nacht, bernstein and phosphor">
 
@@ -204,7 +203,7 @@ Not yet, or not planned:
 ## FAQ
 
 **Does every run cost tokens?**
-No. Recording, `fix` and the chat use Claude tokens, billed through your Claude Code account; replays use none, locally and in CI. Before Claude starts, the chat asks once per run; you can turn that notice off. The run log shows the cost Claude Code reports.
+No. Recording, `fix` and the chat use Claude tokens, billed through your Claude Code account; replays use none, locally and in CI. Before Claude starts, the chat asks once per run (not when your own Claude Code session is the agent); you can turn that notice off. The run log shows the cost Claude Code reports.
 
 **Does Claude see my passwords?**
 No. caw-ai signs in itself before Claude starts. Claude can't read `caw/.env` and only drives the browser through fixed commands. Use test accounts anyway: Claude acts as that user.

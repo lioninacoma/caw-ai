@@ -4,9 +4,9 @@ export default {
     'cli.help.intro': `caw-ai - Context-Aware Workflows: AI-powered E2E testing, workflow automation and application debugging
 
 Getting started (in the project folder, with the app running):
-  1. npx caw-ai init --url http://localhost:5173      sign in in the window, "Done": creates caw.config.json, caw/.env.example
-                                                      and the skill; fill in anything left TODO yourself
-  2. copy caw/.env.example to caw/.env and enter the credentials of a test account
+  1. npx caw-ai init --url http://localhost:5173      sign in with a test account in the window, "Done", save it as a role:
+                                                      creates caw.config.json, caw/.env and the skill; fill in anything left TODO
+  2. more test users: npx caw-ai role add <role> --target <env> (sign-in window, "Save")
   3. npx caw-ai doctor                                until nothing is MISSING
   4. describe a test (see Test plan), then record <test>, then run <test>
 
@@ -28,6 +28,7 @@ On the host (in the project folder):`,
                                          Claude Code sets up caw-ai with you ("Set up caw-ai")`,
     'cli.help.explore': `  explore --url <address>                Open the app once, you sign in; suggests framework, login, signed-in
                                          marker, start page and messages (caw/.explore.json), writes no config
+      [--login] [--no-login]             answer the sign-in question up front (scripts)
       [--yes]                            no sign-in, no questions, just look at the page
       [--insecure-tls]                   accept self-signed certificates (local environments only)`,
     'cli.help.init': `  init [--url <address>]                 Set up: looks at the app (you sign in in the window), creates config, skill
@@ -145,7 +146,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.synopsis.record': 'caw-ai record <test> [--target <env>] [--role <role>] [--app <app>]',
     'cli.synopsis.fix': 'caw-ai fix <test> <S4> [--target <env>]',
     'cli.synopsis.open': 'caw-ai open [--target <env>] [--role <role>] [--overlay]',
-    'cli.synopsis.overlay': 'caw-ai overlay check [--target <env>] [--app <app>] [--apply] [--json]',
+    'cli.synopsis.overlay': 'caw-ai overlay status|check [--target <env>] [--app <app>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': "Can't read {from}: {message}",
@@ -328,7 +329,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.doctorIgnoreNext': 'caw-ai init adds the entries.',
     'cli.doctorRoleOk': 'Role {name}: credentials set',
     'cli.doctorRoleMissing': ({ name, missing, count, file }) => `Role ${name}: ${missing} ${count > 1 ? 'are' : 'is'} missing in ${file}`,
-    'cli.doctorRoleNext': 'Set as environment variable (CI) or copy {file}.example to {file} and enter a test account.',
+    'cli.doctorRoleNext': 'caw-ai role add <role> --target <env> opens the sign-in window; in CI set the variables as environment variables ({file}.example names them).',
     'cli.doctorSessionSaved': 'Role {name} on {target}: session saved',
     'cli.doctorSessionNone': 'Role {name} on {target}: no session',
     'cli.doctorReachOk': '{target}: {url} responds',

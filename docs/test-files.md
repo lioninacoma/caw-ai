@@ -42,6 +42,8 @@ steps:
     expect: The ticket shows the status "In progress".
 ```
 
+Write test plans in any language; Claude reads them like a tester would.
+
 | Field | Required | |
 |---|---|---|
 | `id` | no | Defaults to the file name; if given, it must match it. |

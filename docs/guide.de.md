@@ -26,7 +26,7 @@ In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` gre
 
 **Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw-ai je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme (F7, siehe [Themes](../themes/README.de.md)).
 
-**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--advise`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder.
+**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--advise`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--agent session` gibt es den Hinweis nicht: Deine Session läuft ohnehin.
 
 **Ausprobieren** ohne eigenes Projekt: [`examples/errand`](../examples/errand) im Repository, eine kleine App mit Anmeldung und einem Test.
 
@@ -53,6 +53,7 @@ Die Daten-Werkzeuge liefern einen kurzen Text und dasselbe Ergebnis als `structu
 
 Du schreibst also in deiner Session „nimm einen Test für die Bestellung auf“ oder „bring mich zu S4 von bestellung“, und der Skill erledigt den Rest. Startest du den Lauf selbst im Terminal mit `--agent session`, zeigt der Chat, dass er auf die Session wartet; schreib ihr dann „übernimm den caw-Lauf“ (sie findet ihn mit `caw_status`).
 
+- **Weniger Rückfragen:** Ist deine Session der Agent, gibt es keinen Hinweis auf Token, und `record` eines vorhandenen Testplans startet ohne die Frage, wer vorführt. Ein lesender Plan, dem die Session unverändert folgt, braucht keine Plan-Freigabe; die Übernahme des geprüften Plans am Ende immer.
 - **Wartezeiten:** `plan` und `chat` warten auf dich, bis zu einer Stunde. Bricht Claude Code den Aufruf vorher ab, setz `MCP_TOOL_TIMEOUT` (Millisekunden) in der Umgebung von Claude Code höher.
 - **Vorsicht:** Deine Session hat mehr Rechte als der Agent im Lauf (Shell, Schreiben). Was aus der Anwendung kommt, ist für sie Daten, keine Anweisung; caw-ai sagt ihr das bei jedem Auftrag. Lass Bash- und Schreibaufrufe in dieser Session bestätigen, statt sie pauschal freizugeben.
 
@@ -125,8 +126,8 @@ Im Devcontainer selbst geht der Aufruf nicht, dort fehlt Chrome (und für den Ag
 - **Zustand:** F5 verliert, was nur im Browser stand, etwa offene Dialoge und ungespeicherte Eingaben. Zurück dorthin bringt dich „Zustand neu herstellen“ im Chat oder ein neuer Testlauf.
 - **Ende:** Fenster schließen beendet den Lauf. Der Exit-Code bleibt das Urteil.
 - **Tastatur im Chat:** Strg+Enter (Cmd+Enter) löst den Hauptknopf aus, etwa „Plan freigeben“ oder „Vorführung beenden“; der Knopf zeigt dazu `Strg+↵`. Esc leert zuerst das Eingabefeld, wenn du darin tippst. Sonst fragt Esc den Abbruch an („Wirklich abbrechen? (Esc)“ und „Nein“), erst ein zweites Esc innerhalb von 4 Sekunden bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
-- **Du bist dran:** Wartet der Chat auf dich (Plan, Entscheidung, Fehler klären), steht „DU BIST DRAN“ in der Kopfzeile und über der Anwendung, und das Terminal meldet einmal „Wartet im Chrome-Fenster auf dich: …“.
-- **Aufnahme, Wiedergabe, Pause:** Ein Chip oben rechts in der Werkbank zeigt, was der Lauf tut: „● REC“, solange Claude aufnimmt oder repariert, „▶ PLAY“, solange caw-ai abspielt (run, Prüflauf, Zustand herstellen), „❚❚ PAUSE“, solange ein solcher Lauf pausiert (F9). Läuft nichts (nach dem Lauf, nach der Übergabe, nach dem Abbruch), gibt es keinen Chip.
+- **Du bist dran:** Wartet der Chat auf dich (Plan, Entscheidung, Fehler klären), steht „DU BIST DRAN“ über der Anwendung, und das Terminal meldet einmal „Wartet im Chrome-Fenster auf dich: …“.
+- **Aufnahme, Wiedergabe, Pause:** Ein Chip oben rechts in der Werkbank zeigt, was der Lauf tut: „REC“, solange Claude aufnimmt oder repariert, „PLAY“, solange caw-ai abspielt (run, Prüflauf, Zustand herstellen), „PAUSE“, solange ein solcher Lauf pausiert (F9). Läuft nichts (nach dem Lauf, nach der Übergabe, nach dem Abbruch), gibt es keinen Chip.
 - **Nach dem Lauf:** Das Ergebnis steht als letzte Zeile im Chat, etwa „Gespeichert: caw/tests/bestellung.yaml“. Das Fenster bleibt mit „Fenster schließen“ noch 15 Sekunden offen und schließt sich dann selbst. Öffnet sich gleich ein neues Fenster (für Claude oder den Prüflauf), sagen Chat und Terminal das vorher.
 
 Eigene Tabs kannst du jederzeit öffnen, auch während des Laufs: Gesteuert wird nur der Anwendungs-Tab samt Popups, und nur deren Fehler zählen. Klickst du dagegen im Anwendungs-Tab, während ein Lauf arbeitet, beeinflusst du den Test.
@@ -167,12 +168,13 @@ Rolle und App nennst du nur beim ersten Mal, die Metadaten schreibt das Tool (`t
 
 Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 
-- **Oben:** Test, Ziel, Rolle, Stand (lokal oder wie unter der Adresse), „Animationen aus“ und „Neu laden“.
+- **Oben:** Test, Ziel, Rolle, Stand (lokal oder wie unter der Adresse), was Claude oder caw-ai gerade tut, und der Chip REC/PLAY/PAUSE.
 - **Links:** die Schritte mit ihrem Zustand (läuft, bestanden, gescheitert, nicht erreicht), darunter die Zähler für Requests und Konsole.
 - **Mitte:** die Anwendung in einem iframe mit ihrer Adresse. Darunter Requests (Name, Ausgang, Dauer) und Konsole (Fehler und Warnungen); bei einem Konsolenfehler klappt die Leiste von selbst auf, „Einklappen“ schließt sie.
-- **Rechts:** der Chat mit Claude.
-- **Einklappen:** Schritte und Chat klappen über den Knopf am Rand zu einer schmalen Leiste ein. Braucht der Chat dich, klappt er von selbst auf.
-- **Neu laden:** Der Knopf, F5 (auch in der Anwendung) und ein Klick aufs Logo laden nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw-ai sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
+- **Rechts:** der Chat mit Claude, in einem Rahmen mit dem Titel CHAT.
+- **Unten:** die Tastenleiste: F1 Zustand wählen (nach der Übergabe), F5 Neu laden, F9 Pause, Esc Abbrechen, F2 Requests, F3 Konsole, F4 Schritte, F6 Chat, F7 Theme, F8 Nur Anwendung, F10 Animationen aus. Die Tasten wirken auch, wenn der Fokus im Chat liegt.
+- **Einklappen:** Schritte und Chat klappen über den Knopf am Rand (F4, F6) zu einer schmalen Leiste ein. Braucht der Chat dich, klappt er von selbst auf.
+- **Neu laden:** F5 (die Taste, der Knopf in der Tastenleiste, auch in der Anwendung) lädt nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw-ai sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
 
 Die Werkbank liegt unter der Adresse der Anwendung selbst, auf ihrem Origin. Viele Anwendungen greifen auf das oberste Fenster zu (`top.Ext`, `parent.config`, `top.location.href`), weil sie sich im Portal dafür halten. In der Werkbank geht das genauso:
 
@@ -203,7 +205,7 @@ In der Werkbank rechts, auch in einem Testlauf ohne Claude. Der Verlauf wandert 
 - **Element markieren:** In Vorführung, Plan, Pause, Rückfrage und beim Fehler klären wählt „Element“ das Bauteil, auf das du dich beziehst: Der nächste Klick in der Anwendung löst dort nichts aus und kommt nicht in die Aufzeichnung, Esc bricht ab. Das Element hängt an deiner nächsten Nachricht, Claude bekommt seine Beschreibung.
 - **Rückfragen:** Claude fragt per `ask-operator`. Deine Antwort oder „Fertig“ gibt den Lauf frei.
 - **Schritt zurück:** Eine Rückspultaste gibt es nicht. Sag Claude, was falsch war: Es geht zum passenden Zustand und streicht den Umweg mit `omit`. Abgeschicktes bleibt in der Anwendung, dann hilft nur ein neuer Lauf.
-- **Abbrechen:** beendet alles sofort mit `error`, nach einer Rückfrage im Fenster. Den Chat zu schließen wirkt genauso, ohne ihn gibt es weder Freigabe noch Entscheidung.
+- **Abbrechen:** Esc (oder „Abbrechen“ in der Tastenleiste) fragt „Wirklich abbrechen? (Esc)“; ein zweites Esc oder ein Klick darauf innerhalb von 4 Sekunden bestätigt und beendet alles sofort mit `error`. Den Chat zu schließen wirkt genauso, ohne ihn gibt es weder Freigabe noch Entscheidung.
 
 Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard hier 60 Minuten (`--timeout`).
 
@@ -261,7 +263,7 @@ Die Werkbank startet in **Nur Anwendung** (F8 holt Schritte und Chat zurück); d
 - **Fragen:** Du fragst Claude im Chat, gern zu einem Element, das du mit dem Fadenkreuz-Knopf in der App gewählt hast. Claude liest den Quellcode und antwortet. Code ändert es nie selbst, es schlägt geprüfte Änderungen vor: „Änderung übernehmen“ schreibt sie in deinen Projektordner, „Prompt kopieren“ gibt sie dir für deine eigene Session.
 - **Claude bedienen lassen:** Auf deine Bitte klickt Claude, füllt aus, drückt Tasten, navigiert oder lädt neu, etwa „klick den gewählten Button“. Vor allem, was Daten speichert oder löscht, fragt es nach.
 - **Bug untersuchen:** Füge ein Bugticket in den Chat ein. Claude stellt es im hergestellten Zustand nach, sieht sich Konsole, Requests, Werte der Komponenten und den Quellcode an, nennt die Ursache mit Datei und Zeile und schlägt die Korrektur als Änderung vor, die du per Klick übernimmst. Danach neu laden oder den Zustand neu herstellen, und Claude prüft, ob der Bug weg ist.
-- **Neu laden** (Knopf oben, F5, Klick aufs Logo): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben; der Test ist schon vorbei, sein Ergebnis ändert sich nicht.
+- **Neu laden** (F5): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben; der Test ist schon vorbei, sein Ergebnis ändert sich nicht.
 - **Zustand neu herstellen** (im Chat): beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet neu an und spielt die Aufzeichnung bis zum Schritt ab, mit neuen Testdaten, also genau wie jeder andere Lauf.
 - **Zustand wählen (F1):** ein beliebiger Test dieser Umgebung, jeder Rolle, optional mit dem Schritt, bis zu dem er läuft. caw-ai stellt ihn im selben Fenster mit dem Konto der Rolle des Tests her. Scheitert das Herstellen, weiß Claude im Chat warum; es kann den Test auch anpassen, etwa einen Klick auf einen Cookie-Banner optional machen, und die Änderung steht sofort in der Testdatei.
 - **Element an Claude Code:** Mit dem Fadenkreuz-Knopf im Chat klickst du in der Anwendung auf ein Element (der Klick löst dort nichts aus, Esc bricht ab). Es hängt an deiner nächsten Frage im Chat, und caw-ai legt es mit Beschriftung, Komponente bzw. Quelle, Seite und Requests für deine Claude-Code-Session ab, abrufbar mit `caw_selection`.
@@ -359,7 +361,6 @@ Was Übernehmen bewirkt:
 - **Geänderter Text** in `name`, `do`, `expect` oder `note`: Der Schritt ist danach veraltet, und der Chat bietet „Schritt beheben“ an.
 - **`caw.md` und Config:** werden sofort geschrieben, die Config gilt ab dem nächsten Lauf.
 - **Testdatei:** Im `run` steht die Änderung sofort in der Datei. Bei `fix` und `record` kommt sie in den Entwurf und gilt erst mit „Testplan übernehmen“.
-
 - **Änderung am Code:** steht sofort in der Datei. Prüfe sie mit dem Lint des Projekts und einem neuen `run`.
 
 Der Abschnitt „Empfehlungen“ in `report.md` nennt jede Empfehlung mit Beleg und deiner Entscheidung, bei einer Anwendungsempfehlung samt Prompt und Änderungen als Diff. Committet wird nie.

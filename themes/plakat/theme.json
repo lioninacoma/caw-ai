@@ -1,0 +1,180 @@
+{
+  "$schema": "../theme.schema.json",
+  "themeApi": 1,
+  "name": "plakat",
+  "label": {
+    "de": "Plakat",
+    "en": "Poster"
+  },
+  "description": {
+    "de": "Hell und laut: Signalgelb, dicke Ränder, harte Schatten, Schritte als Kacheln, große Zahl.",
+    "en": "Bright and loud: signal yellow, thick borders, hard shadows, steps as tiles, one big number."
+  },
+  "mono": false,
+  "css": "theme.css",
+  "colors": {
+    "screen": "#ffe600",
+    "pane": "#ffffff",
+    "frame": "#111111",
+    "text": "#111111",
+    "muted": "#4a4a3c",
+    "accent": "#111111",
+    "ok": "#0b7a35",
+    "warn": "#9a5200",
+    "fail": "#d1180b",
+    "info": "#1f3fd8",
+    "claude": "#6a2bd1",
+    "human": "#b3360a",
+    "heart": "#e11d48"
+  },
+  "crt": {
+    "scanlines": {
+      "color": "#000000",
+      "alpha": 0
+    },
+    "vignette": 0,
+    "headingGlowPx": 0,
+    "textGlow": {
+      "px": 0,
+      "alpha": 0
+    }
+  },
+  "fonts": {
+    "display": [
+      {
+        "family": "Archivo Black",
+        "file": "fonts/archivo-black-400.woff2",
+        "weight": 400
+      },
+      {
+        "family": "VT323",
+        "file": "builtin:vt323-latin-400-normal.woff2",
+        "weight": 400
+      }
+    ],
+    "text": [
+      {
+        "family": "Space Grotesk",
+        "file": "fonts/space-grotesk-500.woff2",
+        "weight": 500
+      },
+      {
+        "family": "Space Grotesk",
+        "file": "fonts/space-grotesk-700.woff2",
+        "weight": 700
+      }
+    ]
+  },
+  "marks": {
+    "ok": "OK",
+    "warn": "!!",
+    "fail": "XX",
+    "run": " {spinner}",
+    "open": "..",
+    "ask": "??"
+  },
+  "failInverted": true,
+  "spinner": {
+    "frames": [
+      "▖",
+      "▘",
+      "▝",
+      "▗"
+    ],
+    "ms": 140
+  },
+  "bullets": {
+    "ok": "■",
+    "warn": "▲",
+    "fail": "✖",
+    "run": "►",
+    "info": "●",
+    "pause": "‖"
+  },
+  "tree": {
+    "mid": "├",
+    "end": "└"
+  },
+  "rule": {
+    "line": "■",
+    "format": "{title} {line}"
+  },
+  "legend": "{title}",
+  "box": {
+    "tl": "┏",
+    "tr": "┓",
+    "bl": "┗",
+    "br": "┛",
+    "h": "━",
+    "v": "┃",
+    "titleOpen": "",
+    "titleClose": " "
+  },
+  "progress": {
+    "done": "█",
+    "run": "▓",
+    "open": "░"
+  },
+  "prompt": {
+    "claude": "CLAUDE",
+    "human": {
+      "de": "DU",
+      "en": "YOU"
+    },
+    "cursorMs": 800
+  },
+  "raven": {
+    "lines": [
+      "   __",
+      "  ( {eye} {beak}",
+      "  // )"
+    ],
+    "parts": {
+      "body": "frame",
+      "eye": "text",
+      "beak": "accent"
+    },
+    "beak": ">",
+    "eyes": {
+      "open": "•",
+      "shut": "-",
+      "happy": "^"
+    },
+    "blink": {
+      "ms": 160,
+      "firstMs": 1800,
+      "pauseMs": [
+        4000,
+        9000
+      ],
+      "double": {
+        "chance": 0.25,
+        "afterMs": 320,
+        "ms": 140
+      }
+    },
+    "pet": {
+      "happyMs": 800,
+      "hearts": {
+        "glyphs": [
+          "♥",
+          "<3",
+          "▄█▄█▄\n ▀█▀",
+          ".:♥:."
+        ],
+        "count": 6,
+        "staggerMs": 70,
+        "startAt": 0.2,
+        "risePx": 80,
+        "driftPx": 20,
+        "steps": 9,
+        "durationMs": [
+          1100,
+          1800
+        ],
+        "fadeFrom": 0.7,
+        "glowPx": 8
+      }
+    }
+  }
+}

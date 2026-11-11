@@ -21,6 +21,8 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw-ai <befehl>` (oder
 | [`fix`](#fix) | Einen Schritt neu aufnehmen | ja |
 | [`open`](#open) | Die App angemeldet öffnen, mit Werkbank und Chat, ohne Test | nur auf Wunsch |
 | [`auth`](#auth) | Von Hand anmelden und die Sitzung speichern (SSO) | nein |
+| [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen | nein |
+| [`theme`](#theme) | Themes der Werkbank auflisten, wählen oder prüfen | nein |
 | [`mcp`](#mcp) | MCP-Server für deine eigene Claude-Code-Sitzung | – |
 
 `npx caw-ai help` zeigt dieselbe Übersicht im Terminal. `npx caw-ai <befehl> --help` (oder `-h`, an beliebiger Stelle) zeigt nur diesen Befehl, `npx caw-ai help agent` die Befehle für den Agenten. `npx caw-ai --version` zeigt die Version.
@@ -124,9 +126,9 @@ npx caw-ai overlay check --json
 Ein Teil `ausgeliefert` heißt Mischstand: Die Seite lief teils mit deinem Code, teils mit dem des Servers. Die Skript-URLs werden über den Dateinamen erkannt, unabhängig von `assetUrlPattern`; so findet die Prüfung auch Quellen, die die Config nicht kennt. Für jede schlägt sie ein Muster vor:
 
 ```
-✓ aekwl-theme-material: lokal
-! AllgemeineVorgangsbearbeitungAntragstellung: ausgeliefert
-› https://dev.example.com/o/FormProxyServlet?url=inubitrepository:///Root/ (5 Skript(e)): assetUrlPattern "[?&]url=inubitrepository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)"
+✓ shop-theme: lokal
+! OrderEntry: ausgeliefert
+› https://dev.example.com/o/FormProxyServlet?url=repository:///Root/ (5 Skript(e)): assetUrlPattern "[?&]url=repository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)"
 ```
 
 `--apply` trägt die vorgeschlagenen Muster in `assetUrlPattern` in `caw.config.json` ein (nur fehlende; ein einzelner Text wird zur Liste), prüft die Datei vor dem Schreiben und prüft danach noch einmal. Eine Quelle ohne sicheres Muster wird als solche gemeldet; dann trägst du eins von Hand ein.
@@ -263,8 +265,9 @@ Für `auth.type: storageState` (SSO, OAuth, MFA). Öffnet Chrome auf der Anmeldu
 
 ```bash
 npx caw-ai role                          # Rollen, ob ein Testnutzer gesetzt ist (nie die Werte), Tests je Rolle
+npx caw-ai role list --json              # dasselbe als eine JSON-Zeile
 npx caw-ai role add sb --target dev      # Fenster auf der Anmeldeseite: anmelden, Rolle speichern
-npx caw-ai role remove sb                # nur wenn kein Test sie nutzt
+npx caw-ai role remove sb                # nur wenn kein Test sie nutzt; entfernt auch ihre Zeilen in caw/.env
 ```
 
 Eine Rolle ist ein Testnutzer. `role add` öffnet die Anmeldeseite der Umgebung. Du meldest dich mit dem Testkonto an; die Karte nennt die Rolle (vorbelegt, änderbar), und **Speichern** schreibt Benutzername und Passwort in `caw/.env`, die Rolle mit ihren Variablennamen in `caw.config.json` und `caw/.env` in `.gitignore`. **+ Weitere Rolle** meldet ab und nimmt das nächste Konto. Die Werte gehen von der Seite direkt in die Datei: nicht zu Claude, nicht ins Terminal, nicht in `caw/.explore.json`.
@@ -279,7 +282,7 @@ npx caw-ai theme use phosphor    # eines wählen
 npx caw-ai theme check mein-theme  # Schema, Kontrast, Markenbreite, Schriften
 ```
 
-Das Theme gehört dir, steht in `prefs.json` und gilt in allen Projekten. Eingebaut: `nacht` (Standard), `bernstein`, `phosphor`. Farben, Zeichen, Rabe und CRT-Look änderst du mit F7 in der Werkbank; eigene Themes sind Ordner neben `prefs.json`. Details: [themes/README.de.md](../themes/README.de.md).
+Das Theme gehört dir, steht in `prefs.json` und gilt in allen Projekten. Eingebaut: `nacht` (Standard), `bernstein`, `phosphor`, `kachel`, `plakat`, `cockpit`. Farben, Zeichen, Rabe und CRT-Look änderst du mit F7 in der Werkbank; eigene Themes sind Ordner neben `prefs.json`. Details: [themes/README.de.md](../themes/README.de.md).
 
 ## mcp
 
@@ -323,7 +326,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | Variable | |
 |---|---|
 | `CAW_LANG` | `en` oder `de`. Hat Vorrang vor `language` in der Config. |
-| `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. |
+| `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` oder `~/.config/caw-ai`. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token für den Agenten `docker`. Erzeugen mit `claude setup-token`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
 | `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record`, `fix`, `open`, `--until` und `--handover` werden abgelehnt. |
@@ -346,7 +349,7 @@ Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und 
 | `target-invalid`, `target-denied` | 3 | Eine Umgebung aus der Config nehmen; Produktion lässt sich nicht aufnehmen |
 | `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `claude` / `writable` an der Umgebung |
 | `auth-missing` | 3 | Datei unter `caw/.auth/` löschen und `auth` erneut ausführen |
-| `credentials-missing` | 2 | `caw/.env` nach `caw/.env.example` füllen |
+| `credentials-missing` | 2 | `role add <rolle> --target <env>` (im Fenster anmelden), oder die Variablen in der Umgebung oder in `caw/.env` setzen (CI) |
 | `login-form-missing`, `login-failed` | 2 | Läuft das Backend? Stimmen die Selektoren in `auth` und die Zugangsdaten? |
 | `target-unreachable`, `unreachable` | 2 | Dev-Server starten, Adresse prüfen |
 | `app-not-loaded`, `app-not-settled` | 2 | Seite von Hand öffnen, Konsole ansehen |

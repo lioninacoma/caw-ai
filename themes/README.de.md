@@ -1,6 +1,6 @@
 # Themes
 
-Ein Theme ist ein Ordner mit einer `theme.json`. Die drei eingebauten liegen hier, eigene neben den persönlichen Einstellungen:
+Ein Theme ist ein Ordner mit einer `theme.json`. Die sechs eingebauten liegen hier, eigene neben den persönlichen Einstellungen:
 
 ```
 %APPDATA%\caw-ai\themes\<name>\theme.json      Windows
@@ -12,6 +12,9 @@ Ein Theme ist ein Ordner mit einer `theme.json`. Die drei eingebauten liegen hie
 | `nacht` | Bunt, Farben der Werkbank. Standard. |
 | `bernstein` | Einfarbig, Bernstein-Monitor. Status über Zeichen und Helligkeit. |
 | `phosphor` | Einfarbig, grüner Monitor. Status über Zeichen und Helligkeit. |
+| `kachel` | Kachelfenster wie tmux: bündig, Tab- und Statusleiste, nur Monospace. |
+| `plakat` | Hell und laut: Signalgelb, dicke Ränder, Schritte als Kacheln, große Zahl. |
+| `cockpit` | Instrumentenbrett: Rundinstrument, Warnleuchten für die Schritte, runde Bedienelemente. |
 
 ## In der Oberfläche ändern
 
@@ -60,3 +63,11 @@ caw-ai theme check hafen     # Schema, Kontrast, Markenbreite, Schriften
 ```
 
 Weitergeben heißt: Ordner kopieren.
+
+## Vorgabe fürs Team
+
+`theme` in `caw.config.json` legt eine Vorgabe für alle im Projekt fest: ein eingebautes `base` und optional `colors` (die 13 Grundfarben). Eine eigene Wahl in `prefs.json` geht vor.
+
+```json
+"theme": { "base": "phosphor", "colors": { "accent": "#ffd166" } }
+```

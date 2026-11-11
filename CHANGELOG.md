@@ -40,8 +40,8 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - A failed check run whose only hard failures are script errors offers **Ignore errors and check again** (adds them to `consoleIgnore`). Claude can propose `consoleIgnore` entries while recording.
 - `explore` and `init` ask whether the app has a sign-in (`--login` / `--no-login`), notice the sign-in themselves and end with a **Done** button in the window instead of Enter in the terminal. `init --offline` writes the template with `TODO` sign-in selectors.
 - A failed sign-in is reported after seconds instead of at the timeout; with chat Claude proposes a corrected `auth` block, applied only after you agree.
-- Themes as packages (`themes/<name>/theme.json`): built-in `nacht` (default), `bernstein` and `phosphor`; own themes next to `prefs.json`; a team default as `theme` in `caw.config.json`. `caw-ai theme`, `theme use <name>`, `theme check <name>`; F7 in the workbench edits colours, glyphs, raven and CRT look.
-- Workbench: a chip shows recording, replay or pause while something runs; "Your turn" when the chat waits for you; the adopt decision as a card; shortcuts shown on their buttons.
+- Themes as packages (`themes/<name>/theme.json`): built-in `nacht` (default), `bernstein` and `phosphor`, plus three with their own layouts, not just colours: `kachel` (tmux-style tiles, tab and status bar), `plakat` (light, signal yellow, steps as tiles, one big number) and `cockpit` (round gauge, warning lamps for steps), which bring a `theme.css` and, for `plakat` and `cockpit`, their own fonts; own themes next to `prefs.json`; a team default as `theme` in `caw.config.json`. `caw-ai theme`, `theme use <name>`, `theme check <name>`; F7 in the workbench edits colours, glyphs, raven and CRT look.
+- Workbench: a chip shows recording, replay or pause while something runs; "Your turn" when the chat waits for you; the adopt decision as a card; a key bar at the bottom (F1 Choose state, F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F7 Theme, F8 App only, F10 Animations off).
 - [Upgrading from 0.1.0](docs/upgrading.md).
 - `readyIgnore` setting for areas that change by themselves (ticker, clock, permanent spinner); `browser.locale` and `browser.timezone` pin the test browser's language and time zone.
 - The run log line "Claude finished after …" shows turns, tokens and the cost Claude Code reports.
@@ -62,9 +62,9 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 
 
 ### Changed
-- caw stands for **Context-Aware Workflows** (was "constrained agentic webtester"): workbench header, terminal banner, help, package description and README. Show it. Understand it. Replay it.
+- caw stands for **Context-Aware Workflows**: workbench header, terminal banner, help, package description and README. Show it. Understand it. Replay it.
 - README: the first sentence says what caw-ai does differently.
-- Workbench chat: the rule in the chat header runs through to the buttons; no stray dot when the chat is narrow.
+- Workbench chat: no header of its own, the frame says CHAT. Cancel with Esc (or Esc Cancel in the key bar), confirmed in a row in the chat. The reload key is called "Reload".
 - An ExtJS overlay run where expected parts still came from the server ends with exit 2 (`overlay-incomplete`), naming the parts, server URLs and a suggested `assetUrlPattern`. Before, only a run where nothing came from local code failed.
 - IBM Plex Mono now ships as IBM's own unmodified files (`builtin:ibm-plex-mono-400.woff2`, `-500.woff2`); the old `builtin:ibm-plex-mono-latin-*-normal.woff2` names still work.
 - New look ("console") for workbench, chat, report, the `explore` card and the terminal: VT323 for headings, IBM Plex Mono for text. Without a terminal the plain `[caw-ai]` lines stay.
@@ -81,7 +81,7 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - `validate` exits 3 while `auth` values are still `TODO` and reports every problem of a test file at once; `doctor` shows the first real config error and never probes placeholder hosts; `init` writes no placeholder `staging` environment and keeps `startUrl` off the sign-in page.
 - Without a window (`--headless`, CI) the terminal shows why the step failed; error verdicts always show their code; `report.md` links screenshots and marks steps never reached as skipped.
 - The Claude Code skill (`templates/skill.md`) is in English; run `caw-ai skill` to update it.
-- The raven logo is an easter egg again: no hand cursor, no frame on hover, not in the tab order. Its hearts are smaller; with "Animations off" none rise and those in flight disappear instead of freezing.
+- The raven logo is an easter egg again and no longer flies: no hand cursor, no frame on hover, not in the tab order. Its hearts are smaller; with "Animations off" none rise and those in flight disappear instead of freezing.
 
 
 ### Fixed
@@ -105,6 +105,7 @@ Upgrading from 0.1.0: see [docs/upgrading.md](docs/upgrading.md).
 - Remembered values with quotes (e.g. O'Brien) no longer break check code.
 - Cancelling a CI job (SIGTERM, SIGHUP) cleans up Chrome and the dev server like Ctrl+C.
 - The report names the tested code the same way as the terminal (e.g. "dev server …").
+- Chrome no longer offers to translate the app under test.
 
 
 ### Security

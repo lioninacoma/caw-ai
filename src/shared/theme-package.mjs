@@ -21,7 +21,7 @@ const SCHEMA = () => (schemaCache ??= JSON.parse(readFileSync(new URL('theme.sch
 
 /** The base colours in the order of the theme dialog. */
 export const THEME_KEYS = ['screen', 'pane', 'frame', 'text', 'muted', 'accent', 'ok', 'warn', 'fail', 'info', 'claude', 'human', 'heart'];
-export const BUILTIN_THEMES = ['nacht', 'bernstein', 'phosphor'];
+export const BUILTIN_THEMES = ['nacht', 'bernstein', 'phosphor', 'kachel', 'plakat', 'cockpit'];
 export const DEFAULT_THEME = 'nacht';
 export const THEME_NAME = /^[a-z0-9-]{1,32}$/;
 export const HEX = /^#[0-9a-f]{6}$/i;

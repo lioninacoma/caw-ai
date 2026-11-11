@@ -1,0 +1,131 @@
+/* cockpit: Instrumentenbrett. Runde Formen statt Konsolenecken, Warnleuchten (LED) für die Schritte, ein Rundinstrument
+   mit dem Stand, Glühen nur dort, wo ein Zustand leuchtet. Fehler blinkt (ohne Bewegung: statisch). */
+
+:root{--fs-crt:14px;--font-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;--drop-shadow:rgba(0,0,0,.5);
+--well:#0b0c10;--plate:linear-gradient(#1c2028,#14171c)}
+
+/* Schriftgrößen der Pixelschrift auf Rajdhani */
+.lg,.sec,.px-label,.px-btn,.px-pill,.fk,.tabs button,.solo-btn,.ttabs button,#choices button,#report,#closeWindow,.small,#abort,#abortNo,
+.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.who,.strip,.fold,.tfields .grp,#browserState,#notice,#stateSpin,
+.step .sid,.step dt,.advice dt,.failure .badge,#thinking,.tthemes button span,.advice .copy,#steps>li[data-kind=phase]>.head .name,.gauge{font-family:var(--font-crt);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:14px;line-height:1.15}
+.tag,.mk{font:500 10.5px/1 var(--font-ui);letter-spacing:.06em}
+.lg{font-size:13px;letter-spacing:.22em}
+.id b{font:600 26px/1 var(--font-crt);letter-spacing:.06em;text-transform:uppercase}
+
+/* Gehäuse: dunkle Frontplatte mit Punktraster */
+.crt-case{background:#08090c;box-shadow:none}
+#bench{box-shadow:none;background:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1.6px) 0 0/10px 10px,var(--screen)}
+.top{border-bottom:1px solid var(--frame);padding-bottom:12px}
+.id b .cmd{color:var(--accent)}
+.facts li{background:var(--well);border:1px solid var(--frame);border-radius:999px;padding:1px 12px;font-size:11.5px}
+.panes{gap:18px;padding:22px 2px 18px}
+
+/* Felder: runde Platten mit Titel oben innen */
+.win{background:var(--plate);border:1px solid var(--frame);border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 22px rgba(0,0,0,.5)}
+.lg{top:11px;left:18px;background:none;padding:0;color:var(--muted)}
+.fold{top:8px;right:14px;background:var(--well);border-radius:999px;font-size:13px;padding:1px 9px;color:var(--muted)}
+.fold:hover{color:var(--accent)}
+.pa-steps{padding:38px 14px 12px}
+.pa-browser{padding:38px 12px 12px}
+.pa-chat{padding:34px 0 0}
+.strip{border-radius:16px}
+
+/* Rundinstrument: der Stand. Der Ring zeigt den Zustand: grün, bernstein bei Lauf, rot bei Fehler. */
+#gauge{display:none}
+#tally{display:grid;place-items:center;width:112px;height:112px;margin:2px auto 14px;border-radius:50%;
+font:500 26px/1 var(--font-ui);color:var(--text);background:var(--well);
+box-shadow:inset 0 0 0 7px #232730,inset 0 0 0 9px var(--well),0 0 0 3px var(--ring,var(--ok)),0 0 18px color-mix(in srgb,var(--ring,var(--ok)) 55%,transparent)}
+#tally[hidden]{display:grid}
+#tally:empty{display:none}
+.pa-steps:has(#steps>li[data-state=running]){--ring:var(--warn)}
+.pa-steps:has(#steps>li[data-state=fail]){--ring:var(--fail)}
+.hint{text-align:center}
+#leftNote{border-radius:10px;box-shadow:inset 0 0 0 1px var(--frame);background:var(--well)}
+
+/* Prüfliste: jeder Schritt eine Zeile mit Leuchte, verbunden durch eine Schiene */
+#steps>li{position:relative;padding-left:26px}
+#steps>li[data-kind=step]::before{content:"";position:absolute;left:5px;top:10px;width:10px;height:10px;border-radius:50%;background:#3a3f4b;z-index:1}
+#steps>li[data-kind=step]::after{content:"";position:absolute;left:9.5px;top:22px;bottom:-8px;width:1px;background:var(--frame)}
+#steps>li:last-child::after{display:none}
+#steps>li[data-state=pass]::before{background:var(--ok);box-shadow:0 0 9px var(--ok)}
+#steps>li[data-state=running]::before{background:var(--warn);box-shadow:0 0 9px var(--warn)}
+#steps>li[data-state=fail]::before{background:var(--fail);box-shadow:0 0 11px var(--fail);animation:cockpit-blink 1s steps(2,jump-none) infinite}
+#steps>li[data-state=skipped]::before{background:none;box-shadow:inset 0 0 0 1px var(--frame)}
+#steps>li[data-kind=step]>.head{padding:4px 8px;border-radius:8px}
+#steps>li[data-state=running]>.head{background:color-mix(in srgb,var(--warn) 9%,var(--well));box-shadow:inset 0 0 0 1px var(--warn)}
+#steps>li[data-state=fail]>.head{background:color-mix(in srgb,var(--fail) 12%,var(--well));box-shadow:inset 0 0 0 1px var(--fail)}
+#steps>li[data-kind=step]>.head .id{font:500 10.5px/1 var(--font-ui);letter-spacing:.06em;text-transform:uppercase}
+#steps>li[data-kind=step]>.pts>li{padding-left:8px}
+#steps>li[data-kind=phase]{padding-left:0}
+#steps>li[data-kind=phase]>.head{margin-top:8px}
+#steps>li[data-kind=phase]>.head .name{font-size:13px;letter-spacing:.2em;display:flex;align-items:center;gap:10px;color:var(--muted)}
+#steps>li[data-kind=phase]>.head .name::after{content:"";flex:1;border-top:1px solid var(--frame)}
+#steps>li[data-kind=phase]>.pts>li{padding-left:8px}
+.tag-fail.inverted{background:none;color:var(--fail)}
+@keyframes cockpit-blink{50%{opacity:.25}}
+
+/* Kopf: Zustand als Leuchtpille */
+.px-pill{border-radius:999px;box-shadow:inset 0 0 0 1px currentColor,0 0 10px color-mix(in srgb,currentColor 35%,transparent);padding:3px 12px;background:var(--well)}
+#transport i{border-radius:50%;clip-path:none!important;width:9px;height:9px;box-shadow:0 0 8px var(--tc)}
+#transport[data-kind=play] i{clip-path:polygon(0 0,100% 50%,0 100%)!important;border-radius:0;box-shadow:none}
+#transport[data-kind=pause] i{border-radius:0}
+
+/* Anwendung */
+.appbar{padding:0 4px 8px}
+#app{border-radius:10px;box-shadow:0 0 0 1px var(--frame)}
+.drawer{padding-top:10px}
+.tabs{gap:6px}
+.tabs button,.solo-btn,.ttabs button{border-radius:999px;box-shadow:inset 0 0 0 1px var(--frame);background:var(--well);padding:3px 12px}
+.tabs button[aria-selected=true],.ttabs button[aria-selected=true]{box-shadow:inset 0 0 0 1px var(--accent),0 0 8px color-mix(in srgb,var(--accent) 40%,transparent);color:var(--accent)}
+.panel{border-radius:10px;background:var(--well);box-shadow:inset 0 0 0 1px var(--frame)}
+
+/* Tastenleiste: runde Kappen */
+.fkeys{border-top:1px solid var(--frame);gap:8px 10px;padding:10px 16px 12px}
+.fk{padding:3px 12px 3px 4px;border-radius:999px;background:var(--well);box-shadow:inset 0 0 0 1px var(--frame);font-size:13px}
+.fk b{background:var(--frame);color:var(--text);border-radius:999px;padding:1px 8px;margin-right:8px}
+.fk.x b{background:var(--fail);color:#fff}
+.fk[aria-pressed=true] b{background:var(--accent);color:var(--ink)}
+
+/* Knöpfe, Felder */
+.px-btn,#choices button,.small,#abort,#abortNo,.advice .copy{border-radius:999px;background:var(--well);box-shadow:inset 0 0 0 1px var(--frame)}
+.px-btn:hover:enabled,#choices button:hover,.small:hover:enabled{background:#1f232b;box-shadow:inset 0 0 0 1px var(--accent)}
+.px-btn--primary,#choices button.primary,#report,#closeWindow{border-radius:999px;background:var(--accent);color:var(--ink);box-shadow:0 0 14px color-mix(in srgb,var(--accent) 40%,transparent)}
+.px-btn--primary:hover:enabled,#choices button.primary:hover,#report:hover,#closeWindow:hover{filter:brightness(1.1)}
+.px-btn:active:enabled,#choices button:active,#report:active,#closeWindow:active{transform:scale(.97);box-shadow:none}
+#choices button.sure{background:var(--fail);color:#fff;box-shadow:0 0 14px color-mix(in srgb,var(--fail) 45%,transparent)}
+.trow input,.tfields input[type=text],.tfields input[type=number],.sfilter,#leftNote{border-radius:10px;background:var(--well)}
+.sfilter{box-shadow:inset 0 0 0 1px var(--frame)}
+.tthemes button{border-radius:12px;background:var(--well);box-shadow:inset 0 0 0 1px var(--frame)}
+.tthemes button i{border-radius:50%;box-shadow:inset 0 0 0 3px var(--sw-screen),inset 0 0 0 9px var(--sw-accent)}
+.tthemes button[aria-checked=true]{box-shadow:inset 0 0 0 1px var(--accent),0 0 12px var(--glow)}
+.srow{border-radius:8px}.srow[aria-selected=true]{box-shadow:inset 0 0 0 1px var(--accent)}
+#stateDlg>.win,#themeDlg>.win{border-radius:18px}
+#stateDlg .lg,#themeDlg .lg{top:12px;left:20px}
+#stateDlg>.win,#themeDlg>.win{padding-top:38px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+
+/* Chat: Logbuch mit farbiger Randleiste je Sprecher */
+body{background:var(--pane)}
+#chat{background:transparent;border-radius:0 0 16px 16px}
+main{padding:10px 14px;gap:12px}
+.message.claude,.message.human{padding:2px 0 2px 12px;border-left:2px solid var(--claude)}
+.message.human{border-left-color:var(--human)}
+.question,.plan,.advice,.failure,.decision,#next{border-radius:12px;background:var(--well);border:1px solid var(--frame)}
+.question{border-color:var(--info)}
+.failure{border-color:var(--fail);background:color-mix(in srgb,var(--fail) 10%,var(--well))}
+.decision{border-color:var(--ok)}
+.plan strong,.advice strong,.failure strong,.decision strong,#next strong{text-shadow:none;letter-spacing:.12em;font-size:15px}
+.step{border-top:1px dashed var(--frame)}
+.advice pre,.failure .warn,.advice .warn,.decision .warn{border-radius:8px}
+form{margin:6px 10px 10px;padding:8px 12px;border-radius:14px;background:var(--well);box-shadow:inset 0 0 0 1px var(--frame)}
+form:focus-within{box-shadow:inset 0 0 0 1px var(--human),0 0 12px color-mix(in srgb,var(--human) 30%,transparent)}
+#send{border-radius:50%;width:30px}
+#chip{border-radius:999px}
+#down{border-radius:50%}
+.cursor{border-radius:2px}
+#thinking{gap:10px}
+
+@media (prefers-reduced-motion:reduce){#steps>li[data-state=fail]::before{animation:none}}
+
+/* Das Logo bleibt wie in nacht: gleiche Zeichen, gleiche Schrift (VT323), gleiche Größe */
+.raven{font-family:"VT323",monospace!important;font-weight:400;line-height:1;letter-spacing:0;text-transform:none;color:var(--frame)}

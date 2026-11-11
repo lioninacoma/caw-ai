@@ -26,7 +26,7 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` onl
 
 **Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: the raven stops blinking, no spinner, no blinking cursor), collapsed steps or chat, and the theme (F7, see [Themes](../themes/README.md)).
 
-**Token notice:** Before Claude works (record, fix, investigate a failure, questions in the chat, `--advise`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back.
+**Token notice:** Before Claude works (record, fix, investigate a failure, questions in the chat, `--advise`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--agent session` there is no notice: your session is already running.
 
 **Try it** without a project of your own: [`examples/errand`](../examples/errand) in the repository, a small app with login and one test.
 
@@ -53,6 +53,7 @@ The data tools return a short text and the same result as `structuredContent` (J
 
 So in your session you write "record a test for the order" or "take me to S4 of bestellung", and the skill does the rest. If you start the run yourself in the terminal with `--agent session`, the chat shows that it is waiting for the session; then tell it "take over the caw run" (it finds it with `caw_status`).
 
+- **Fewer questions:** With your session as the agent there is no token notice, and `record` of an existing test plan starts without asking who demonstrates. A read-only plan that the session follows unchanged needs no plan approval; adopting the tested plan at the end always does.
 - **Waiting:** `plan` and `chat` wait for you for up to an hour. If Claude Code cancels the call earlier, raise `MCP_TOOL_TIMEOUT` (milliseconds) in Claude Code's environment.
 - **Caution:** Your session has more rights than the agent in a run (shell, writing). Whatever comes from the application is data to it, not an instruction; caw-ai tells it so with every task. Have Bash and write calls in this session confirmed instead of allowing them wholesale.
 
@@ -125,8 +126,8 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 - **State:** F5 loses whatever existed only in the browser, such as open dialogs and unsaved input. "Restore state" in the chat or a new test run brings you back.
 - **End:** Closing the window ends the run. The exit code remains the verdict.
 - **Keyboard in the chat:** Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl+↵`. Esc first clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
-- **Your turn:** When the chat waits for you (plan, decision, clarifying a failure), "YOUR TURN" shows in the header and above the application, and the terminal prints once "Waiting for you in the Chrome window: …".
-- **Record, play, pause:** A chip at the top right of the workbench shows what the run does: "● REC" while Claude records or fixes, "▶ PLAY" while caw-ai replays (run, check run, restoring a state), "❚❚ PAUSE" while such a run is paused (F9). When nothing runs (after the run, after the handover, after cancelling) there is no chip.
+- **Your turn:** When the chat waits for you (plan, decision, clarifying a failure), "YOUR TURN" shows above the application, and the terminal prints once "Waiting for you in the Chrome window: …".
+- **Record, play, pause:** A chip at the top right of the workbench shows what the run does: "REC" while Claude records or fixes, "PLAY" while caw-ai replays (run, check run, restoring a state), "PAUSE" while such a run is paused (F9). When nothing runs (after the run, after the handover, after cancelling) there is no chip.
 - **After the run:** The outcome is the last line in the chat, e.g. "Saved: caw/tests/bestellung.yaml". The window stays open for 15 seconds with "Close window" and then closes itself. If a new window is about to open (for Claude or the check run), chat and terminal say so first.
 
 You can open your own tabs at any time, even during a run: only the application tab and its popups are controlled, and only their errors count. Clicking in the application tab while a run is working, however, affects the test.
@@ -167,12 +168,13 @@ You name role and app only the first time; the tool writes the metadata (`target
 
 With chat, everything runs on one page, like Cypress:
 
-- **Top:** test, target, role, code state (local or as deployed at the address), "Animations off" and "Reload".
+- **Top:** test, target, role, code state (local or as deployed at the address), what Claude or caw-ai is doing, and the REC/PLAY/PAUSE chip.
 - **Left:** the steps with their state (running, passed, failed, not reached), below them the counters for requests and console.
 - **Center:** the application in an iframe with its address. Below it requests (name, outcome, duration) and console (errors and warnings); on a console error the panel opens by itself, "Collapse" closes it.
-- **Right:** the chat with Claude.
-- **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge. When the chat needs you, it opens by itself.
-- **Reload:** The button, F5 (also inside the application) and a click on the logo reload the current page without cache after handover; chat and steps stay. While the test is running this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
+- **Right:** the chat with Claude, in a frame titled CHAT.
+- **Bottom:** the key bar: F1 Choose state (after the handover), F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F7 Theme, F8 App only, F10 Animations off. The keys also work while the focus is in the chat.
+- **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge (F4, F6). When the chat needs you, it opens by itself.
+- **Reload:** F5 (the key, the button in the key bar, also inside the application) reloads the current page without cache after handover; chat and steps stay. While the test is running this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
 
 The workbench lives at the application's own address, on its origin. Many applications access the top window (`top.Ext`, `parent.config`, `top.location.href`) because they believe they are inside the portal. In the workbench this works the same:
 
@@ -203,7 +205,7 @@ On the right of the workbench, even in a test run without Claude. The history ca
 - **Mark element:** During demonstration, plan, pause, question and failure clarification, "Element" picks the component you mean: the next click in the application does nothing there and isn't recorded; Esc cancels. The element is attached to your next message; Claude gets its description.
 - **Questions:** Claude asks via `ask-operator`. Your answer or "Done" releases the run.
 - **Step back:** There is no rewind. Tell Claude what was wrong: it goes to the right state and drops the detour with `omit`. What was submitted stays in the application; then only a new run helps.
-- **Cancel:** ends everything immediately with `error`, after a confirmation in the window. Closing the chat has the same effect; without it there is neither approval nor decision.
+- **Cancel:** Esc (or "Cancel" in the key bar) asks "Really cancel? (Esc)"; a second Esc or a click on it within 4 seconds confirms and ends everything immediately with `error`. Closing the chat has the same effect; without it there is neither approval nor decision.
 
 The human's time counts toward Claude's limit, so the default here is 60 minutes (`--timeout`).
 
@@ -261,7 +263,7 @@ The workbench starts in **App only** (F8 brings steps and chat back); the browse
 - **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with the crosshair button. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
 - **Let Claude use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.
 - **Debug a bug:** Paste a bug ticket into the chat. Claude reproduces it in the reached state, looks at console, requests, component values and source, names the cause with file and line and proposes the fix as a change you apply with a click. Then reload or restore the state, and Claude checks whether the bug is gone.
-- **Reload** (button at the top, F5, click on the logo): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
+- **Reload** (F5): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
 - **Restore state** (in the chat): starts a new session (cookies and site storage cleared), signs in again and replays the recording up to the step, with new test data, exactly like any other run.
 - **Choose state (F1):** any test of this environment, of any role, and optionally the step to stop at. caw-ai restores it in the same window with the account of the test's role. If restoring fails, Claude in the chat knows why; it can also adjust the test, e.g. mark a cookie-banner click optional, and the change goes into the test file right away.
 - **Element to Claude Code:** With the crosshair button in the chat you click an element in the application (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw-ai stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.

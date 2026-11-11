@@ -1,0 +1,183 @@
+{
+  "$schema": "../theme.schema.json",
+  "themeApi": 1,
+  "name": "kachel",
+  "label": {
+    "de": "Kachel",
+    "en": "Tiles"
+  },
+  "description": {
+    "de": "Kachelfenster wie tmux: bündig, ohne Schatten, mit Tab- und Statusleiste.",
+    "en": "Tiled windows like tmux: flush, no shadows, with a tab bar and a status line."
+  },
+  "mono": false,
+  "css": "theme.css",
+  "colors": {
+    "screen": "#0b0e0b",
+    "pane": "#0d110d",
+    "frame": "#3a4a37",
+    "text": "#c5d1c0",
+    "muted": "#8a9c84",
+    "accent": "#8fd18a",
+    "ok": "#8fd18a",
+    "warn": "#f0c35a",
+    "fail": "#ff7a70",
+    "info": "#7fd0c8",
+    "claude": "#d6b3ff",
+    "human": "#f0c35a",
+    "heart": "#ff8fb0"
+  },
+  "crt": {
+    "scanlines": {
+      "color": "#000000",
+      "alpha": 0
+    },
+    "vignette": 0,
+    "headingGlowPx": 0,
+    "textGlow": {
+      "px": 0,
+      "alpha": 0
+    }
+  },
+  "fonts": {
+    "display": [
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-500.woff2",
+        "weight": 500
+      },
+      {
+        "family": "VT323",
+        "file": "builtin:vt323-latin-400-normal.woff2",
+        "weight": 400
+      }
+    ],
+    "text": [
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-400.woff2",
+        "weight": 400
+      },
+      {
+        "family": "IBM Plex Mono",
+        "file": "builtin:ibm-plex-mono-500.woff2",
+        "weight": 500
+      }
+    ]
+  },
+  "marks": {
+    "ok": " ok ",
+    "warn": "warn",
+    "fail": {
+      "de": "FEHL",
+      "en": "FAIL"
+    },
+    "run": " {spinner}  ",
+    "open": " .. ",
+    "ask": " ?? "
+  },
+  "failInverted": true,
+  "spinner": {
+    "frames": [
+      "|",
+      "/",
+      "-",
+      "\\"
+    ],
+    "ms": 120
+  },
+  "bullets": {
+    "ok": "+",
+    "warn": "!",
+    "fail": "x",
+    "run": ">",
+    "info": "-",
+    "pause": "||"
+  },
+  "tree": {
+    "mid": "|-",
+    "end": "`-"
+  },
+  "rule": {
+    "line": "-",
+    "format": "-- {title} {line}"
+  },
+  "legend": "{title}",
+  "box": {
+    "tl": "+",
+    "tr": "+",
+    "bl": "+",
+    "br": "+",
+    "h": "-",
+    "v": "|",
+    "titleOpen": "[ ",
+    "titleClose": " ]"
+  },
+  "progress": {
+    "done": "#",
+    "run": ">",
+    "open": "-"
+  },
+  "prompt": {
+    "claude": "claude>",
+    "human": {
+      "de": "du>",
+      "en": "you>"
+    },
+    "cursorMs": 530
+  },
+  "raven": {
+    "lines": [
+      "   __",
+      "  ( {eye} {beak}",
+      "  // )"
+    ],
+    "parts": {
+      "body": "frame",
+      "eye": "text",
+      "beak": "accent"
+    },
+    "beak": ">",
+    "eyes": {
+      "open": "•",
+      "shut": "-",
+      "happy": "^"
+    },
+    "blink": {
+      "ms": 160,
+      "firstMs": 1800,
+      "pauseMs": [
+        4000,
+        9000
+      ],
+      "double": {
+        "chance": 0.25,
+        "afterMs": 320,
+        "ms": 140
+      }
+    },
+    "pet": {
+      "happyMs": 800,
+      "hearts": {
+        "glyphs": [
+          "♥",
+          "<3",
+          "▄█▄█▄\n ▀█▀",
+          ".:♥:."
+        ],
+        "count": 6,
+        "staggerMs": 70,
+        "startAt": 0.2,
+        "risePx": 80,
+        "driftPx": 20,
+        "steps": 9,
+        "durationMs": [
+          1100,
+          1800
+        ],
+        "fadeFrom": 0.7,
+        "glowPx": 8
+      }
+    }
+  }
+}

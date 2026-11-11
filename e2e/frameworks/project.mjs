@@ -88,7 +88,7 @@ const writeTest = (root, id, { mutates = true }, steps) => {
         '# Written by hand for the framework matrix.', `test: ${id}`, 'steps:',
         ...steps.flatMap((step, index) => [
             `  - id: ${step.id}`,
-            `    hash: ${stepHash(step)}`,
+            `    hash: ${yamlString(stepHash(step))}`,
             ...(index === 0 ? [] : [`    after: ${steps[index - 1].id}`]),
             '    recordedOn: test',
             '    recordedAt: 2026-11-09T10:00:00.000Z',
