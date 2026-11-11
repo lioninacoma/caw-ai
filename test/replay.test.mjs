@@ -709,3 +709,11 @@ test('Claude am Browser: Beim Entwickeln darf es auf Bitte bedienen, beim Empfeh
     for (const action of ['check', 'remember', 'finish', 'upload', 'download']) assert.equal(consultAllowed('develop').has(action), false, action);
     assert.equal(consultAllowed('develop').has('advise'), true);
 });
+
+test('Werkbank-Chip: Aufnehmen zeigt REC, Abspielen PLAY, open ohne Schritte gleich PAUSE', async () => {
+    const { transportOf } = await import('../src/host/run.mjs');
+    assert.equal(transportOf(undefined), 'record', 'record, fix und rerecord spielen nichts ab');
+    assert.equal(transportOf({ steps: [{ id: 'S1' }] }), 'play', 'run und Prüflauf');
+    assert.equal(transportOf({ steps: [{ id: 'S1' }], until: 'S1' }), 'play', '--until spielt erst ab');
+    assert.equal(transportOf({ steps: [] }), 'pause', 'open übergibt sofort');
+});
