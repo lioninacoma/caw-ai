@@ -299,7 +299,7 @@ Started by Claude Code through `.mcp.json`. You don't call it yourself. It gives
 | `caw_list` | `list` as data | no |
 | `caw_overlay` | `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `target`, `app` | no |
 | `caw_start` | Start `run`, `record`, `fix` or `open` with `--agent session` (`test`, `target`, `step`, `until`, `overlay`, `headless`, or `args`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `appDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start`: the session starts the server itself after asking you | none beyond your session |
-| `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data | no |
+| `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with the crosshair in the workbench | no |
 

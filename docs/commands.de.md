@@ -299,7 +299,7 @@ Startet Claude Code über `.mcp.json`. Du rufst es nicht selbst auf. Deine Sitzu
 | `caw_list` | `list` als Daten | nein |
 | `caw_overlay` | `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `target`, `app` | nein |
 | `caw_start` | `run`, `record`, `fix` oder `open` mit `--agent session` starten (`test`, `target`, `step`, `until`, `overlay`, `headless` oder `args`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `appDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start`: Die Session startet den Server selbst, nachdem sie dich gefragt hat | nur deine Session |
-| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten | nein |
+| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit dem Fadenkreuz in der Werkbank gewählt hast | nein |
 
