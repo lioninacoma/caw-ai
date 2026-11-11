@@ -133,7 +133,7 @@ its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.j
 As the agent in the run (tool `caw`) the rules below apply, including "Do not change any application code". Outside of that, as the human's
 session, you change application code only if they explicitly ask you to. Recordings under `caw/recordings/` are always written
 only by the tool; as the session you may write a new test plan (step 5), an existing one changes only through a run. You pass files such as plan or verdict in the `file` field of the tool `caw`, not via paths like `/tmp` or
-`$CAW_AGENT_DIR`; those do not exist in the session. After a change the human presses "Refresh" (or F5): The page reloads without cache with the new code, but then is no longer reliably at the state; "Restore state" in the chat replays the steps from the start.
+`$CAW_AGENT_DIR`; those do not exist in the session. After a change the human presses "Reload" (F5): The page reloads without cache with the new code, but then is no longer reliably at the state; "Restore state" in the chat replays the steps from the start.
 
 ## Flow in the sandbox
 

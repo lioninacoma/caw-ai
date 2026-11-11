@@ -83,6 +83,7 @@ export default {
 
     // browser-session
     'session.browser.requestAborted': 'abgebrochen',
+    'session.browser.errorWithoutStack': 'Nicht abgefangener Fehler ohne Stack, oft ein abgelehnter Promise: {error}',
     'session.browser.failedRequests': 'Gescheiterte Anfragen: {list}{more}. Läuft das Backend der Anwendung?',
     'session.browser.failedRequestsMore': ' und {count} weitere',
     'session.browser.loginFormMissing': 'Weder Anmeldemaske noch Marker "{marker}" auf {url} gefunden.',

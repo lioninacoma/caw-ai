@@ -476,6 +476,8 @@ const quietProfile = (profileDir) => {
         credentials_enable_autosignin: false,
         profile: { password_manager_enabled: false, password_manager_leak_detection: false },
         autofill: { profile_enabled: false, credit_card_enabled: false },
+        // No "Translate this page?" offer: the app's language is the project's, not Chrome's.
+        translate: { enabled: false },
     }));
 };
 
@@ -587,7 +589,9 @@ const launchChrome = async (profileDir, hosts, { headless = false, insecureTls =
             // Maximised instead of fullscreen: forms get the full width, and on handover tabs and address bar stay visible.
             // With the workbench: Playwright serves it, Chrome considers it public and would otherwise block the intranet application in the iframe.
             // --test-type: without it Chrome shows a warning bar about --host-resolver-rules above the workbench (chromedriver does the same).
-            args: [...(headless ? [] : ['--start-maximized', '--test-type']), ...browserArgs(hosts), ...(embed ? ['--disable-features=LocalNetworkAccessChecks'] : [])],
+            // No "Translate this page?" bubble at the address bar when the app's language differs from Chrome's. Chrome only honours
+            // the last --disable-features, so all features go into one flag.
+            args: [...(headless ? [] : ['--start-maximized', '--test-type']), ...browserArgs(hosts), `--disable-features=${['Translate', 'TranslateUI', ...(embed ? ['LocalNetworkAccessChecks'] : [])].join(',')}`],
         });
     } catch (error) {
         throw new CawError('browser-missing', t('session.browser.chromeFailed', { error: error.message.split('\n')[0] }));
@@ -972,7 +976,7 @@ export const openBrowserSession = async (spec) => {
         raw.on('weberror', (webError) => {
             const error = webError.error();
             // Without a stack the report would just say "Object", which tells nothing.
-            const text = error?.stack ? String(error) : `Uncaught error without stack, often a rejected promise: ${String(error)}`;
+            const text = error?.stack ? String(error) : t('session.browser.errorWithoutStack', { error: String(error) });
             const entry = observe(webError.page(), { type: 'pageerror', text }, undefined, error?.stack || undefined);
             if (entry !== null && entry !== undefined && error?.stack) {
                 sourceMaps.translate(error.stack, { skip: framework.stackSkip }).then(({ at, stack }) => {

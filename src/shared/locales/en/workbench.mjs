@@ -1,7 +1,7 @@
 // Texts: workbench (en). Keys prefixed with "workbench.".
 export default {
     'workbench.refreshTitle': 'Reload the page without cache (F5). Only after the handover.',
-    'workbench.refresh': 'Refresh',
+    'workbench.refresh': 'Reload',
     'workbench.runFacts': 'Run details',
     'workbench.stillTitle': 'No blinking, no spinner, no cursor (F10). Applies to future runs too.',
     'workbench.still': 'Animations off',

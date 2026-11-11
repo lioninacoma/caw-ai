@@ -75,6 +75,14 @@ const file = join(fake, 'caw/tests', `${ID}.yaml`);
 const opts = ['--target', 'local/dev', '--timeout', '3', '--step-timeout', '5'];
 const short = ['--target', 'local/dev', '--step-timeout', '4'];
 const stateOf = (page, name) => page.locator(`body[data-state=${name}]`).waitFor({ timeout: 90000 });
+// After a handover (--until, --handover) the workbench starts in "App only" and hides steps and chat; the human brings them back
+// with F8 (here the button in the solo bar) to work in the chat.
+const benchBack = async (chat) => {
+    const bench = chat.page();
+    await bench.locator('body.solo').waitFor({ state: 'attached', timeout: 90000 });
+    await bench.locator('.soloBar [data-solo]').click();
+    await bench.locator('body:not(.solo)').waitFor({ state: 'attached', timeout: 10000 });
+};
 const approve = async (page) => {
     await stateOf(page, 'planning');
     await page.locator('#approve').click();
@@ -281,6 +289,7 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
         verify('Full run rejected, names fix S3', error?.code === 'replay-stale' && /fix fx-schritte S3/.test(error.message), error?.message);
         const before = existsSync(hits) ? readFileSync(hits, 'utf8') : '';
         const h = humans(async (page) => {
+            await benchBack(page);
             await page.locator('.message.question', { hasText: 'Der Lauf hat bestanden' }).waitFor({ timeout: 60000 });
             verify('Progress in the chat', /S1 · 1\/\d+ /.test(await page.locator('details.activity').first().textContent()));
             await stateOf(page, 'developing');
@@ -347,7 +356,7 @@ ${finishOf(['S2'])}`;
             verify('Fresh browser: S1 ran without Claude', (await page.context().pages()[0].locator('#ziel').textContent()) === 'Ziel erreicht');
             verify('Progress in the chat', /S1 ·/.test(await page.locator('details.activity').first().locator('ol').textContent()));
             const card = page.locator('.message.plan').last();
-            verify('Card: S2 beheben, only S2', (await card.locator('strong').textContent()) === 'S2 beheben' && await card.locator('.step').count() === 1 && (await card.locator('.sid').textContent()) === 'S2');
+            verify('Card: S2 beheben, only S2', (await card.locator('strong').getAttribute('data-heading')) === 'S2 beheben' && await card.locator('.step').count() === 1 && (await card.locator('.sid').textContent()) === 'S2');
             verify('No change marker for an unchanged result', await card.locator('.changed').count() === 0);
             await page.locator('#approve').click();
         }, async (page) => {
@@ -727,6 +736,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
             await stateOf(page, 'testing');
             verify('Input blocked in the test run', !await page.locator('#form').isVisible());
             await shoot(page, 'test-run');
+            await benchBack(page);
             await page.locator('.message.question', { hasText: 'Der Lauf hat bestanden' }).waitFor({ timeout: 60000 });
             verify('Progress with a single total', /S3 · \d+\/\d+ /.test(await page.locator('details.activity').last().textContent()) && !/\d+\/\d+\/\d+/.test(await page.locator('details.activity').last().textContent()));
             await stateOf(page, 'developing');
@@ -745,7 +755,8 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
                 const bench = page.page?.() ?? page;
                 await stateOf(page, 'testing');
                 verify('Chat in English', (await page.locator('#status').textContent()).includes('Test run without Claude') && await page.evaluate(() => document.documentElement.lang) === 'en');
-                verify('Workbench in English', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()) === 'Preparation');
+                verify('Workbench in English', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()).includes('PREPARATION'));
+                await benchBack(page);
                 await page.locator('.message.question', { hasText: 'The run passed' }).waitFor({ timeout: 60000 });
                 await stateOf(page, 'developing');
                 const german = await bench.evaluate(() => /[äöüß]|\b(und|nicht|Schritt|Lauf)\b/i.test(document.querySelector('header')?.innerText ?? ''));
@@ -1172,14 +1183,12 @@ ${finishOf(['S2'])}`;
         const appOf = (bench) => bench.frames().find((frame) => frame.name() === 'caw-app');
         const h = humans(async (chat) => {
             const bench = chat.page();
+            await benchBack(chat);
             await stateOf(chat, 'developing');
             const labels = await chat.locator('#choices button').allTextContents();
             verify('Buttons for developing', ['Zustand neu herstellen', 'Lauf beenden'].every((label) => labels.some((text) => text.includes(label))) && labels.length === 2, JSON.stringify(labels));
             verify('Crosshair in the chat', await chat.locator('#pick').isVisible() && await chat.locator('#pick').isEnabled());
-            verify('Header: Aktualisieren, animations on', (await bench.locator('#reload').textContent()).includes('Aktualisieren') && !(await bench.locator('#still').isChecked()));
-            await bench.waitForTimeout(1200);
-            const raven = await bench.evaluate(() => { const r = document.getElementById('raven')?.getBoundingClientRect(); const c = document.querySelector('iframe[name=caw-chat]')?.getBoundingClientRect(); return r && c ? { x: r.x, cx: c.x } : null; });
-            verify('Raven flies to the chat', raven !== null && raven.x >= raven.cx - 40, JSON.stringify(raven));
+            verify('Key bar: F5 Neu laden enabled, animations on', (await bench.locator('#reload').textContent()).includes('Neu laden') && await bench.locator('#reload').isEnabled() && await bench.locator('#still').getAttribute('aria-pressed') === 'false');
             await shoot(chat, 'develop');
             // Crosshair: the element is attached to the next question and is ready for the Claude Code session at once.
             await chat.locator('#pick').click();
@@ -1204,52 +1213,46 @@ ${finishOf(['S2'])}`;
             await bench.locator('#stepsStrip').click();
             await bench.waitForTimeout(400);
             verify('Expanded again', await bench.locator('#chat').isVisible() && await bench.locator('#steps').isVisible() && pref().chat === 'open' && pref().steps === 'open', JSON.stringify(pref()));
-            // F5 in the application: only the page reloads, chat and steps stay, the steps show "verlassen".
+            // F5 in the application: only the page reloads, chat and steps stay. After the handover reloading is part of the work:
+            // no "left" note, no greyed-out steps, no chat message.
+            const PICKED = '“ liegt für deine Claude-Code-Sitzung bereit';
+            const messages = await chat.locator('.message').count();
+            await appOf(bench).evaluate(() => { window.__cawBeforeReload = true; });
             await appOf(bench).locator('body').press('F5');
-            await bench.locator('#leftNote').waitFor({ state: 'visible', timeout: 30000 });
-            const kept = await chat.locator('.message', { hasText: '“ liegt für deine Claude-Code-Sitzung bereit' }).count();
+            const reloaded = Date.now() + 30000;
+            while (Date.now() < reloaded && await appOf(bench)?.evaluate(() => window.__cawBeforeReload === true).catch(() => true) !== false) await bench.waitForTimeout(300);
+            await appOf(bench).locator('#weiter').waitFor({ state: 'attached', timeout: 30000 });
+            await bench.waitForTimeout(800);
             const states = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
-            verify('F5: page reloaded, workbench stays, state marked as left', kept === 1 && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 1, JSON.stringify(states));
-            await shoot(chat, 'left');
-            // Restore the state: the raven only hops forward, the marker disappears.
-            await bench.evaluate(() => {
-                window.__flight = [];
-                window.__flightTimer = setInterval(() => {
-                    const r = document.getElementById('raven').getBoundingClientRect();
-                    // It lands on dots and steps; the step the icon belongs to is counted.
-                    const groups = [...document.querySelectorAll('#steps > li[data-kind=step]')];
-                    const icon = [...document.querySelectorAll('#steps .step-icon, #steps .pt-icon')].find((node) => { const box = node.getBoundingClientRect(); return Math.abs(box.left + box.width / 2 - (r.left + r.width / 2)) < 6 && Math.abs(box.top + 2 - r.bottom) < 6; });
-                    const at = icon === undefined ? -1 : groups.indexOf(icon.closest('#steps > li'));
-                    if (at >= 0 && window.__flight.at(-1) !== at) window.__flight.push(at);
-                }, 50);
-            });
+            const pageNew = await appOf(bench).evaluate(() => window.__cawBeforeReload === undefined);
+            verify('F5: page reloaded, workbench stays, no left marker, no message', pageNew && await chat.locator('.message', { hasText: PICKED }).count() === 1 && await chat.locator('.message').count() === messages && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 0 && !await bench.locator('#leftNote').isVisible(), JSON.stringify(states));
+            // Restore the state. (The raven is only the logo now; it no longer flies.)
             await decide(chat, 'Zustand neu herstellen');
             await chat.locator('.message', { hasText: 'ist neu hergestellt' }).first().waitFor({ timeout: 60000 });
             await bench.waitForTimeout(1500);
-            const flight = await bench.evaluate(() => { clearInterval(window.__flightTimer); return window.__flight; });
-            verify('Raven only hops forward while restoring', flight.length > 0 && flight.every((at, index) => index === 0 || at > flight[index - 1]) && !flight.includes(2), JSON.stringify(flight));
-            verify('State restored, marker gone', (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht' && await bench.locator('body.left-state').count() === 0);
-            // Reload the whole workbench via the browser: chat and steps come back, the page counts as left.
+            verify('State restored', (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht' && await bench.locator('body.left-state').count() === 0);
+            // Reload the whole workbench via the browser: chat history and steps come back, quietly as with F5.
             await bench.reload();
             const fresh = bench.frame({ name: 'caw-chat' });
-            await fresh.locator('.message', { hasText: 'Werkbank neu geladen' }).waitFor({ timeout: 30000 });
-            const back = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
-            verify('Workbench reloaded: history and steps are back', await fresh.locator('.message', { hasText: '“ liegt für deine Claude-Code-Sitzung bereit' }).count() === 1 && back.length === 3 && back[1] === 'pass' && await bench.locator('body.left-state').count() === 1, JSON.stringify(back));
+            await fresh.locator('.message', { hasText: PICKED }).waitFor({ timeout: 30000 });
             await stateOf(fresh, 'developing');
+            const back = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
+            verify('Workbench reloaded: history and steps are back', await fresh.locator('.message', { hasText: PICKED }).count() === 1 && back.length === 3 && back[1] === 'pass' && await bench.locator('body.left-state').count() === 0, JSON.stringify(back));
             await decide(fresh, 'Zustand neu herstellen');
             const deadline = Date.now() + 60000;
             while (await restored(fresh) < 2 && Date.now() < deadline) await bench.waitForTimeout(300);
-            verify('After reloading: restoring the state works', await restored(fresh) === 2 && (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht' && await bench.locator('body.left-state').count() === 0);
-            // Animations off: the raven flies into the logo, remembered for the next runs.
-            await bench.locator('#still').check();
+            verify('After reloading: restoring the state works', await restored(fresh) === 2 && (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht');
+            // Animations off (F10): everything stands still, remembered for the next runs.
+            await bench.locator('#still[aria-pressed=false]').click();
             await bench.waitForTimeout(2000);
-            verify('Animations off: raven in the logo, remembered', await bench.locator('#raven.home').count() === 1 && await bench.locator('body.still').count() === 1 && pref().animations === 'off', JSON.stringify(pref()));
+            verify('Animations off: still, remembered', await bench.locator('#still').getAttribute('aria-pressed') === 'true' && await bench.locator('body.still').count() === 1 && pref().animations === 'off', JSON.stringify(pref()));
             await decide(fresh, 'Beenden');
         }, async (chat) => {
             const bench = chat.page();
+            await benchBack(chat);
             await stateOf(chat, 'developing');
-            verify('Next run: animations stay off', await bench.locator('#still').isChecked() && await bench.locator('body.still').count() === 1);
-            await bench.locator('#still').uncheck();
+            verify('Next run: animations stay off', await bench.locator('#still').getAttribute('aria-pressed') === 'true' && await bench.locator('body.still').count() === 1);
+            await bench.locator('#still[aria-pressed=true]').click();
             await bench.waitForTimeout(800);
             verify('On again and remembered', pref().animations === 'on' && await bench.locator('body.still').count() === 0);
             await decide(chat, 'Beenden');

@@ -39,7 +39,8 @@ export const mcpEntry = (root) => {
 };
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
 // Only what the container runs. Browser code and devlink stay out.
-const TOOL_PARTS = ['bin', 'src/sandbox', 'src/shared', 'package.json'];
+// themes: the shared terminal output (also the error lines of caw-ai in the container) reads the built-in theme.
+const TOOL_PARTS = ['bin', 'src/sandbox', 'src/shared', 'themes', 'package.json'];
 const IMAGE_TEMPLATES = ['Dockerfile.tpl', 'init-firewall.sh', 'entrypoint.sh', 'skill.md'];
 const SANDBOX_USER = 'devuser';
 /** Without a project image: Node LTS on Debian. Claude Code only needs Node. */

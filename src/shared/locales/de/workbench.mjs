@@ -1,7 +1,7 @@
 // Texts: workbench (de). Keys prefixed with "workbench.". workbench.page.*: also for the page script. workbench.report.*: report page.
 export default {
     'workbench.refreshTitle': 'Seite ohne Cache neu laden (F5). Erst nach der Übergabe.',
-    'workbench.refresh': 'Aktualisieren',
+    'workbench.refresh': 'Neu laden',
     'workbench.runFacts': 'Laufdaten',
     'workbench.stillTitle': 'Kein Blinzeln, kein Spinner, kein Cursor (F10). Gilt auch für die nächsten Läufe.',
     'workbench.still': 'Animationen aus',

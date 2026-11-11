@@ -167,12 +167,12 @@ You name role and app only the first time; the tool writes the metadata (`target
 
 With chat, everything runs on one page, like Cypress:
 
-- **Top:** test, target, role, code state (local or as deployed at the address), "Animations off" and "Refresh".
+- **Top:** test, target, role, code state (local or as deployed at the address), "Animations off" and "Reload".
 - **Left:** the steps with their state (running, passed, failed, not reached), below them the counters for requests and console.
 - **Center:** the application in an iframe with its address. Below it requests (name, outcome, duration) and console (errors and warnings); on a console error the panel opens by itself, "Collapse" closes it.
 - **Right:** the chat with Claude.
 - **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge. When the chat needs you, it opens by itself.
-- **Refresh:** The button, F5 (also inside the application) and a click on the logo reload the current page without cache after handover; chat and steps stay. While the test is running this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
+- **Reload:** The button, F5 (also inside the application) and a click on the logo reload the current page without cache after handover; chat and steps stay. While the test is running this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
 
 The workbench lives at the application's own address, on its origin. Many applications access the top window (`top.Ext`, `parent.config`, `top.location.href`) because they believe they are inside the portal. In the workbench this works the same:
 
@@ -261,7 +261,7 @@ The workbench starts in **App only** (F8 brings steps and chat back); the browse
 - **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with the crosshair button. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
 - **Let Claude use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.
 - **Debug a bug:** Paste a bug ticket into the chat. Claude reproduces it in the reached state, looks at console, requests, component values and source, names the cause with file and line and proposes the fix as a change you apply with a click. Then reload or restore the state, and Claude checks whether the bug is gone.
-- **Refresh** (button at the top, F5, click on the logo): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
+- **Reload** (button at the top, F5, click on the logo): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
 - **Restore state** (in the chat): starts a new session (cookies and site storage cleared), signs in again and replays the recording up to the step, with new test data, exactly like any other run.
 - **Choose state (F1):** any test of this environment, of any role, and optionally the step to stop at. caw-ai restores it in the same window with the account of the test's role. If restoring fails, Claude in the chat knows why; it can also adjust the test, e.g. mark a cookie-banner click optional, and the change goes into the test file right away.
 - **Element to Claude Code:** With the crosshair button in the chat you click an element in the application (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw-ai stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.

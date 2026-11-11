@@ -83,6 +83,7 @@ export default {
 
     // browser-session
     'session.browser.requestAborted': 'aborted',
+    'session.browser.errorWithoutStack': 'Uncaught error without stack, often a rejected promise: {error}',
     'session.browser.failedRequests': 'Failed requests: {list}{more}. Is the app\'s backend running?',
     'session.browser.failedRequestsMore': ' and {count} more',
     'session.browser.loginFormMissing': 'Found neither a login form nor marker "{marker}" on {url}.',

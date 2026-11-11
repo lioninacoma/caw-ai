@@ -430,7 +430,7 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
         onReload: (listener) => { reloaded = listener; return () => { reloaded = 'unsubscribed'; }; },
         toCode: (value) => handed.push(value),
     });
-    assert.match(shown[0].question, /^Zustand S2 steht\. .*Aktualisieren.*Zustand neu herstellen.*Fadenkreuz.*kosten Token/);
+    assert.match(shown[0].question, /^Zustand S2 steht\. .*Neu laden.*Zustand neu herstellen.*Fadenkreuz.*kosten Token/);
     assert.deepEqual(shown[0].options, ['restore', 'end']);
     assert.equal(shown[1].question, undefined, 'the introduction comes only once');
     assert.equal(refreshed, 1, 'refresh only reloads the page, without a message');

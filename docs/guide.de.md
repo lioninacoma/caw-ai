@@ -167,12 +167,12 @@ Rolle und App nennst du nur beim ersten Mal, die Metadaten schreibt das Tool (`t
 
 Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 
-- **Oben:** Test, Ziel, Rolle, Stand (lokal oder wie unter der Adresse), „Animationen aus“ und „Aktualisieren“.
+- **Oben:** Test, Ziel, Rolle, Stand (lokal oder wie unter der Adresse), „Animationen aus“ und „Neu laden“.
 - **Links:** die Schritte mit ihrem Zustand (läuft, bestanden, gescheitert, nicht erreicht), darunter die Zähler für Requests und Konsole.
 - **Mitte:** die Anwendung in einem iframe mit ihrer Adresse. Darunter Requests (Name, Ausgang, Dauer) und Konsole (Fehler und Warnungen); bei einem Konsolenfehler klappt die Leiste von selbst auf, „Einklappen“ schließt sie.
 - **Rechts:** der Chat mit Claude.
 - **Einklappen:** Schritte und Chat klappen über den Knopf am Rand zu einer schmalen Leiste ein. Braucht der Chat dich, klappt er von selbst auf.
-- **Aktualisieren:** Der Knopf, F5 (auch in der Anwendung) und ein Klick aufs Logo laden nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw-ai sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
+- **Neu laden:** Der Knopf, F5 (auch in der Anwendung) und ein Klick aufs Logo laden nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw-ai sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
 
 Die Werkbank liegt unter der Adresse der Anwendung selbst, auf ihrem Origin. Viele Anwendungen greifen auf das oberste Fenster zu (`top.Ext`, `parent.config`, `top.location.href`), weil sie sich im Portal dafür halten. In der Werkbank geht das genauso:
 
@@ -261,7 +261,7 @@ Die Werkbank startet in **Nur Anwendung** (F8 holt Schritte und Chat zurück); d
 - **Fragen:** Du fragst Claude im Chat, gern zu einem Element, das du mit dem Fadenkreuz-Knopf in der App gewählt hast. Claude liest den Quellcode und antwortet. Code ändert es nie selbst, es schlägt geprüfte Änderungen vor: „Änderung übernehmen“ schreibt sie in deinen Projektordner, „Prompt kopieren“ gibt sie dir für deine eigene Session.
 - **Claude bedienen lassen:** Auf deine Bitte klickt Claude, füllt aus, drückt Tasten, navigiert oder lädt neu, etwa „klick den gewählten Button“. Vor allem, was Daten speichert oder löscht, fragt es nach.
 - **Bug untersuchen:** Füge ein Bugticket in den Chat ein. Claude stellt es im hergestellten Zustand nach, sieht sich Konsole, Requests, Werte der Komponenten und den Quellcode an, nennt die Ursache mit Datei und Zeile und schlägt die Korrektur als Änderung vor, die du per Klick übernimmst. Danach neu laden oder den Zustand neu herstellen, und Claude prüft, ob der Bug weg ist.
-- **Aktualisieren** (Knopf oben, F5, Klick aufs Logo): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben; der Test ist schon vorbei, sein Ergebnis ändert sich nicht.
+- **Neu laden** (Knopf oben, F5, Klick aufs Logo): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben; der Test ist schon vorbei, sein Ergebnis ändert sich nicht.
 - **Zustand neu herstellen** (im Chat): beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet neu an und spielt die Aufzeichnung bis zum Schritt ab, mit neuen Testdaten, also genau wie jeder andere Lauf.
 - **Zustand wählen (F1):** ein beliebiger Test dieser Umgebung, jeder Rolle, optional mit dem Schritt, bis zu dem er läuft. caw-ai stellt ihn im selben Fenster mit dem Konto der Rolle des Tests her. Scheitert das Herstellen, weiß Claude im Chat warum; es kann den Test auch anpassen, etwa einen Klick auf einen Cookie-Banner optional machen, und die Änderung steht sofort in der Testdatei.
 - **Element an Claude Code:** Mit dem Fadenkreuz-Knopf im Chat klickst du in der Anwendung auf ein Element (der Klick löst dort nichts aus, Esc bricht ab). Es hängt an deiner nächsten Frage im Chat, und caw-ai legt es mit Beschriftung, Komponente bzw. Quelle, Seite und Requests für deine Claude-Code-Session ab, abrufbar mit `caw_selection`.

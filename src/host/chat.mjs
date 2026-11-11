@@ -421,10 +421,10 @@ addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=
 ${themeCss(theme)}${CONSOLE_CSS}
 *,*::before,*::after{box-sizing:border-box}html,body{height:100%}
 body{margin:0;display:flex;flex-direction:column;background:var(--pane);color:var(--text);font:var(--fs-body)/1.5 var(--font-body)}
-header{display:flex;align-items:center;gap:10px;padding:8px 12px 7px;border-bottom:2px solid var(--line)}
-h1{margin:0;flex:1;min-width:0;display:flex;gap:.5ch;overflow:hidden;font:400 19px/1 var(--font-crt);color:var(--faint);white-space:nowrap}h1 .name{color:var(--claude)}h1 .dot{color:var(--faint)}h1 [data-fill]{flex:1;min-width:0;overflow:hidden}#abort,#abortNo{flex:none}
-/* Narrow chat: abort takes precedence over the name. The state (Claude working …) is shown only by the pill in the workbench header. */
-@media (max-width:440px){h1 .name,h1 .dot{display:none}}
+/* No header of its own: the workbench frame says CHAT, its key bar has "Esc Cancel". The row only appears while cancelling:
+   the first Esc asks here ("Really cancel?" / "No"), a second Esc or a click confirms. */
+header{display:none;align-items:center;justify-content:flex-end;gap:10px;padding:6px 12px 0}#abort,#abortNo{flex:none}
+body.arming header,body.stopping header{display:flex}
 [data-state=discussing] #toggle,[data-state=developing] #toggle{display:none}[data-state=deciding] #abort,[data-state=discussing] #abort,[data-state=developing] #abort,[data-state=closed] #abort{display:none}
 #abortNo,#abort{white-space:nowrap;border:0;background:none;padding:3px 7px;font:400 19px/1 var(--font-crt);color:var(--muted)}
 #abortNo{color:var(--text)}#abortNo:hover,#abort:hover{background:var(--pane-2);color:var(--text)}#abortNo[hidden]{display:none}
@@ -523,7 +523,7 @@ textarea:focus-visible{outline:0}
 #toggle.busy svg{display:none!important}#toggle.busy{cursor:progress}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>${themeStyle(theme)}</head><body data-state="running">
-<header><h1><span data-rule></span><span>CHAT</span><span class="dot">·</span><span class="name">CLAUDE</span><span data-fill aria-hidden="true"></span></h1><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
+<header><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
 <main id="messages" class="readable" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><span class="who c" data-who="claude"></span><i data-spin></i></div></main>
 <footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><div class="prompt"><span class="p" aria-hidden="true" data-who="human"></span><span class="cursor" aria-hidden="true"></span><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea></div>
 <div class="row"><div class="left"><button id="toggle" class="small" type="button"><svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/></svg><svg class="play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1h2v1h2v1h2v1h2v4H9v1H7v1H5v1H3z"/></svg><svg class="stop" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8"/></svg><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button><button id="pick" class="small" type="button" disabled title="${t('chat.page.pickDisabled')}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>${t('chat.page.element')}</button></div>
@@ -549,8 +549,6 @@ const paintTheme=()=>{
   for(const node of document.querySelectorAll('[data-bullet]'))node.textContent=bulletOf(node.dataset.bullet);
   for(const node of document.querySelectorAll('[data-tree]'))node.textContent=treeOf(node.dataset.tree);
   for(const node of document.querySelectorAll('[data-rule]'))node.textContent=glyph(TH?.rule?.line,'─').repeat(2);
-  // The rule runs on to the buttons: the header line has no gap where the state pill used to be.
-  for(const node of document.querySelectorAll('[data-fill]'))node.textContent=glyph(TH?.rule?.line,'─').repeat(160);
   for(const node of document.querySelectorAll('[data-heading]'))node.textContent=ruleTitle(node.dataset.heading);
   document.body.classList.toggle('fail-inv',TH?.failInverted!==false);
   const cursor=Number(TH?.prompt?.cursorMs);document.documentElement.style.setProperty('--cursor-ms',(Number.isFinite(cursor)&&cursor>=200&&cursor<=5000?Math.round(cursor):1000)+'ms');
@@ -589,6 +587,8 @@ window.setPicking=(on)=>{pick.classList.toggle('on',on);statusBox.textContent=on
 window.setChip=(label)=>{chip.classList.toggle('on',label!==null);document.getElementById('chipText').textContent=label??'';input.focus();};
 let sure=false,stopping=false,unsure=null;
 const abortNo=document.getElementById('abortNo');
+// Cancelling is possible while something runs; deciding, talking, developing and the end have no cancel.
+const canAbort=()=>!abort.disabled&&!['deciding','discussing','developing','closed'].includes(document.body.dataset.state);
 const unarm=()=>{sure=false;clearTimeout(unsure);document.body.classList.remove('arming');abort.classList.remove('sure');abort.textContent=T['chat.page.abort'];abortNo.hidden=true;};
 abortNo.addEventListener('click',()=>{unarm();abort.focus();});
 abort.addEventListener('click',()=>{
@@ -706,14 +706,14 @@ document.addEventListener('keydown',(event)=>{
   if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&input.value.trim()===''){const main=document.getElementById('approve');if(main&&main.offsetParent!==null&&!main.disabled){event.preventDefault();main.click();}else if(toggleButton.offsetParent!==null&&!toggleButton.disabled){event.preventDefault();toggleButton.click();}}
   else if(event.key==='Escape'&&!pick.classList.contains('on')){
     if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();return;}
-    if(abort.offsetParent!==null&&!abort.disabled){event.preventDefault();abort.click();}}
+    if(canAbort()){event.preventDefault();abort.click();}}
 });
 // Pause via F9: like the button, if it is currently shown.
 function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)toggleButton.click();}
 // F9 and Esc from the workbench: only from it, only these two.
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();
-  else if(event.data.key==='Escape'&&!pick.classList.contains('on')&&abort.offsetParent!==null&&!abort.disabled)abort.click();});
+  else if(event.data.key==='Escape'&&!pick.classList.contains('on')&&canAbort())abort.click();});
 paintTheme();
 ${sourceTag}</script></body></html>`;
 
