@@ -588,7 +588,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     /** Why a target is missing: if the page itself is in a wrong state, there is nothing to fix in the step. */
     const stateProblem = (state, step) => {
         if (state === null) return t('session.replay.pageUnreadable');
-        if (!state.appLoaded) return t('session.replay.appNotLoaded', { framework: (session.framework ?? frameworkOf()).label });
+        if (!state.appLoaded) return t('session.replay.appNotLoaded', { framework: (session.framework ?? frameworkOf()).label() });
         if (!state.signedIn) return LOST;
         if (state.loading) return t('session.replay.loadMask');
         if (step.path !== undefined && state.path !== step.path) return t('session.replay.wrongPath', { actual: state.path, expected: step.path });

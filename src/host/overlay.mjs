@@ -315,16 +315,16 @@ const watchSource = ({ root, name, appDir, choice, config, info, running = proce
     const hint = t('session.overlay.watchHint', { start: choice.command ?? watch.start });
     return {
         kind: 'watch',
-        label: watch.label,
+        label: watch.label(),
         ready: async () => {
             const isRunning = () => running(watch.command) !== false;
             if (isRunning()) {
                 overlay.checkAppFiles(appDir, hint);
                 return;
             }
-            if (choice.command === undefined) throw new CawError('watch-missing', t('cli.noWatch', { label: watch.label, start: watch.start }));
+            if (choice.command === undefined) throw new CawError('watch-missing', t('cli.noWatch', { label: watch.label(), start: watch.start }));
             const log = logFile(root, name, 'watch');
-            info(t('session.overlay.watchStarting', { label: watch.label, command: choice.command }));
+            info(t('session.overlay.watchStarting', { label: watch.label(), command: choice.command }));
             started = startCommand(choice.command, appDir, log);
             // We started the watch ourselves: it runs as long as its process lives (otherwise waitFor gives up).
             const ok = () => {
@@ -338,7 +338,7 @@ const watchSource = ({ root, name, appDir, choice, config, info, running = proce
             if (await waitFor(ok, WATCH_START_MS, { exited: started.exited })) return;
             started.stop();
             started = null;
-            throw new CawError('watch-missing', t('session.overlay.watchStartFailed', { label: watch.label, command: choice.command, seconds: WATCH_START_MS / 1000, log, tail: tail(log) }));
+            throw new CawError('watch-missing', t('session.overlay.watchStartFailed', { label: watch.label(), command: choice.command, seconds: WATCH_START_MS / 1000, log, tail: tail(log) }));
         },
         stop: () => started?.stop(),
         resolve: async ({ type, names }) => {

@@ -1012,7 +1012,7 @@ export const openBrowserSession = async (spec) => {
         const ready = await waitReady({ timeout: spec.readyTimeoutMs });
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
         if (!ready.settled) throw new CawError('app-not-settled', t('session.browser.notSettled', { reason: ready.reason }));
-        if (ready.lastSample?.appReady !== true) throw new CawError('app-not-loaded', t('session.browser.notLoaded', { url: startUrl, framework: framework.label }));
+        if (ready.lastSample?.appReady !== true) throw new CawError('app-not-loaded', t('session.browser.notLoaded', { url: startUrl, framework: framework.label() }));
         // With an overlay, never silently test the deployed version: SSR cannot be swapped, and if nothing came from the local code the
         // test ran against the server. Single scripts from the local asset folder served by the server: a mixed state, as a warning.
         let overlaySummary = null;

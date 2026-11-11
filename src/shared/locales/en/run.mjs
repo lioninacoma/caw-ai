@@ -202,6 +202,7 @@ export default {
 
     // Advice
     'run.advice.fileChanged': '{file} has changed; the spot is no longer unique.',
+    'run.advice.contextIntro': 'Project context for the tests: quirks of the applications and what every run needs to know.',
     'run.advice.label.name': 'Title',
     'run.advice.label.do': 'Action',
     'run.advice.label.expect': 'Expected result',

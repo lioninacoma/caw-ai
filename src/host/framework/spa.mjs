@@ -6,6 +6,7 @@
 // - `stackSkip`: framework files, so the first own line in the stack is the application's.
 // - `hints`: where Claude typically looks in the source code and what checks look like without a global store.
 
+import { t } from '../../shared/i18n.mjs';
 import { DOM_QUIET_MS, web, webBusy, webCount, webTargets } from './web.mjs';
 
 /**
@@ -97,7 +98,7 @@ const ANGULAR_STABLE = `() => typeof window.getAllAngularTestabilities !== 'func
 export const react = {
     ...web,
     name: 'react',
-    label: 'die React-Anwendung',
+    label: () => t('session.app.react'),
     targets: withComponent(reactComponent),
     probe: probeWith(REACT_MOUNTED),
     // The login page is usually part of the app and not usable before hydration with SSR; login waits for the mount.
@@ -113,7 +114,7 @@ export const react = {
 export const vue = {
     ...web,
     name: 'vue',
-    label: 'die Vue-Anwendung',
+    label: () => t('session.app.vue'),
     targets: withComponent(vueComponent),
     probe: probeWith(VUE_MOUNTED),
     hydrates: true,
@@ -128,7 +129,7 @@ export const vue = {
 export const angular = {
     ...web,
     name: 'angular',
-    label: 'die Angular-Anwendung',
+    label: () => t('session.app.angular'),
     targets: withComponent(angularComponent),
     probe: probeWith(ANGULAR_MOUNTED, ANGULAR_STABLE),
     hydrates: true,

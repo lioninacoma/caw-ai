@@ -30,6 +30,8 @@ export default {
     'workbench.chat': 'Chat',
     'workbench.chatPlaceholder': 'Hier erscheint der Chat,<br>sobald es etwas zu entscheiden gibt.',
 
+    'workbench.page.themeNameOwn': 'mein-{base}',
+    'workbench.page.themeNameCopy': '{name}-kopie',
     'workbench.page.waiting': 'offen',
     'workbench.page.running': 'läuft',
     'workbench.page.pass': 'bestanden',

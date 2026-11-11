@@ -32,11 +32,11 @@ export const formatClaudeLine = (line) => {
     if (event.type === 'system' && event.subtype === 'api_retry') {
         return [`API error ${event.error_status ?? ''} (${event.error ?? 'unknown'}), attempt ${event.attempt}`];
     }
-    // "Claude beendet nach" is parsed by host/chat.mjs, so this line stays German.
+    // host/chat.mjs recognises this line by "Claude finished after".
     if (event.type === 'result') {
         const seconds = Math.round((event.duration_ms ?? 0) / 1000);
         const failure = event.is_error && event.result ? ` ${event.result}` : '';
-        return [`Claude beendet nach ${seconds} s${event.is_error ? ' mit Fehler:' : '.'}${failure}`];
+        return [`Claude finished after ${seconds} s${event.is_error ? ' with an error:' : '.'}${failure}`];
     }
     return [];
 };
@@ -55,6 +55,6 @@ export const colorLine = (stamped, paint) => {
     let colored = text;
     if (text.startsWith('> ')) colored = paint.cyan(text.trimEnd());
     else if (text.startsWith('API error')) colored = paint.yellow(text.trimEnd());
-    else if (text.startsWith('Claude beendet')) colored = (text.includes('mit Fehler') ? paint.red : paint.dim)(text.trimEnd());
+    else if (text.startsWith('Claude finished')) colored = (text.includes('with an error') ? paint.red : paint.dim)(text.trimEnd());
     return `${paint.dim(stamp)} ${colored.endsWith('\n') ? colored : `${colored}\n`}`;
 };

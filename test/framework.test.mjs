@@ -24,7 +24,7 @@ test('Framework: web is the default, extjs on request, the config knows exactly 
     assert.deepEqual(Object.keys(FRAMEWORKS).sort(), [...FRAMEWORK_NAMES].sort());
     for (const adapter of Object.values(FRAMEWORKS)) {
         for (const key of ['targets', 'pageState', 'probe']) assert.equal(typeof adapter[key], 'function', `${adapter.name}.${key}`);
-        assert.equal(typeof adapter.label, 'string');
+        assert.equal(typeof adapter.label(), 'string', `${adapter.name}.label() is localized text`);
     }
     assert.match(validateConfig({ framework: 'svelte' }).issues.join('\n'), /framework muss einer von web, extjs, react, vue, angular/);
     assert.doesNotMatch(validateConfig({ framework: 'react' }).issues.join('\n'), /framework/);

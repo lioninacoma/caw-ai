@@ -204,7 +204,7 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
     if (waiting !== undefined) {
         add('environment', 'likely', t('config.diag.loading', { tag: String(covered.tag), name: waiting.name, time: seconds(waiting.ms ?? 0) }));
     } else if (covered !== undefined) {
-        const by = `${covered.role ?? covered.tag}${covered.name === undefined ? '' : (language() === 'de' ? ` „${covered.name}“` : ` "${covered.name}"`)}`;
+        const by = `${covered.role ?? covered.tag}${covered.name === undefined ? '' : ` ${t('session.point.quoted', { text: covered.name })}`}`;
         const messages = covered.messages ?? [];
         const said = messages.length === 0 ? '' : t('config.diag.says', { messages: messages.join(t('config.diag.saysJoin')), end: /[.!?]$/.test(messages.at(-1)) ? '' : '.' });
         const listed = (list) => list.map((request) => t('config.diag.listed', { name: request.name, status: String(request.status) })).join(', ');

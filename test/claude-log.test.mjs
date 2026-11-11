@@ -30,8 +30,8 @@ test('formatClaudeLine passes non-JSON through and drops empty lines', () => {
 });
 
 test('formatClaudeLine reports completion, errors and retries', () => {
-    assert.deepEqual(formatClaudeLine(event({ duration_ms: 12400, is_error: false, result: 'summary', type: 'result' })), ['Claude beendet nach 12 s.']);
-    assert.match(formatClaudeLine(event({ duration_ms: 1000, is_error: true, result: 'Failed to authenticate', type: 'result' }))[0], /mit Fehler: Failed to authenticate/);
+    assert.deepEqual(formatClaudeLine(event({ duration_ms: 12400, is_error: false, result: 'summary', type: 'result' })), ['Claude finished after 12 s.']);
+    assert.match(formatClaudeLine(event({ duration_ms: 1000, is_error: true, result: 'Failed to authenticate', type: 'result' }))[0], /with an error: Failed to authenticate/);
     assert.match(formatClaudeLine(event({ type: 'system', subtype: 'api_retry', attempt: 2, error_status: 401, error: 'authentication_failed' }))[0], /401.*attempt 2/);
 });
 
@@ -52,13 +52,13 @@ test('colorLine colours by line kind and leaves Claude\'s text unchanged', () =>
     const paint = painter(true);
     assert.equal(colorLine('[+1.0s] > Bash: x\n', paint), `${paint.dim('[+1.0s]')} ${paint.cyan('> Bash: x')}\n`);
     assert.equal(colorLine('[+1.0s] API error 401\n', paint), `${paint.dim('[+1.0s]')} ${paint.yellow('API error 401')}\n`);
-    assert.equal(colorLine('[+1.0s] Claude beendet nach 1 s mit Fehler: x\n', paint), `${paint.dim('[+1.0s]')} ${paint.red('Claude beendet nach 1 s mit Fehler: x')}\n`);
+    assert.equal(colorLine('[+1.0s] Claude finished after 1 s with an error: x\n', paint), `${paint.dim('[+1.0s]')} ${paint.red('Claude finished after 1 s with an error: x')}\n`);
     assert.equal(colorLine('[+1.0s] Checking\nE1\n', paint), `${paint.dim('[+1.0s]')} Checking\nE1\n`);
 });
 
 test('without colour the terminal line equals the log line', () => {
     const paint = painter(false);
-    for (const line of ['[+1.0s] > Bash: x\n', '[+1.0s] Text\nmore\n', '[+1.0s] Claude beendet nach 1 s.\n']) assert.equal(colorLine(line, paint), line);
+    for (const line of ['[+1.0s] > Bash: x\n', '[+1.0s] Text\nmore\n', '[+1.0s] Claude finished after 1 s.\n']) assert.equal(colorLine(line, paint), line);
 });
 
 test('colorEnabled: NO_COLOR wins, FORCE_COLOR forces, otherwise the terminal decides', () => {

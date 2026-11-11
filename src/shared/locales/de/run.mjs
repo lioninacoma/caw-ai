@@ -202,6 +202,7 @@ export default {
 
     // Advice
     'run.advice.fileChanged': '{file} hat sich geändert, die Stelle ist nicht mehr eindeutig.',
+    'run.advice.contextIntro': 'Projektkontext für die Tests: Eigenheiten der Anwendungen und was jeder Lauf wissen muss.',
     'run.advice.label.name': 'Titel',
     'run.advice.label.do': 'Aktion',
     'run.advice.label.expect': 'Ergebnis',

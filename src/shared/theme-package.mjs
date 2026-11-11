@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { language } from './i18n.mjs';
+import { language, t } from './i18n.mjs';
 import { prefsDir, readPrefs } from './prefs.mjs';
 
 const TOOL_THEMES = new URL('../../themes/', import.meta.url);
@@ -31,38 +31,38 @@ const check = (schema, value, path, problems) => {
     if (schema.$ref !== undefined) return check(schema.$ref.split('/').slice(1).reduce((node, key) => node[key], SCHEMA), value, path, problems);
     if (schema.oneOf !== undefined) {
         const passing = schema.oneOf.filter((option) => check(option, value, path, []) === 0);
-        if (passing.length !== 1) problems.push(`${path}: ${passing.length === 0 ? 'passt zu keiner Form' : 'mehrdeutig'}`);
+        if (passing.length !== 1) problems.push(`${path}: ${t(passing.length === 0 ? 'config.theme.schema.noShape' : 'config.theme.schema.ambiguous')}`);
         return problems.length;
     }
     const before = problems.length;
     const fail = (why) => problems.push(`${path}: ${why}`);
-    if (schema.const !== undefined && value !== schema.const) fail(`muss ${JSON.stringify(schema.const)} sein`);
-    if (schema.enum !== undefined && !schema.enum.includes(value)) fail(`erlaubt: ${schema.enum.join(', ')}`);
+    if (schema.const !== undefined && value !== schema.const) fail(t('config.theme.schema.const', { value: JSON.stringify(schema.const) }));
+    if (schema.enum !== undefined && !schema.enum.includes(value)) fail(t('config.theme.schema.enum', { values: schema.enum.join(', ') }));
     const type = schema.type;
     if (type === 'object') {
-        if (!isObject(value)) return fail('kein Objekt'), problems.length;
-        for (const key of schema.required ?? []) if (!Object.hasOwn(value, key)) fail(`${key} fehlt`);
+        if (!isObject(value)) return fail(t('config.theme.schema.notObject')), problems.length;
+        for (const key of schema.required ?? []) if (!Object.hasOwn(value, key)) fail(t('config.theme.schema.required', { key }));
         for (const [key, entry] of Object.entries(value)) {
-            if (schema.propertyNames?.pattern !== undefined && !new RegExp(schema.propertyNames.pattern).test(key)) fail(`Schluessel ${key} ungueltig`);
+            if (schema.propertyNames?.pattern !== undefined && !new RegExp(schema.propertyNames.pattern).test(key)) fail(t('config.theme.schema.badKey', { key }));
             const own = schema.properties?.[key];
             if (own !== undefined) check(own, entry, `${path}.${key}`, problems);
-            else if (schema.additionalProperties === false) fail(`unbekannt: ${key}`);
+            else if (schema.additionalProperties === false) fail(t('config.theme.schema.unknown', { key }));
             else if (isObject(schema.additionalProperties)) check(schema.additionalProperties, entry, `${path}.${key}`, problems);
         }
     } else if (type === 'array') {
-        if (!Array.isArray(value)) return fail('keine Liste'), problems.length;
-        if (schema.minItems !== undefined && value.length < schema.minItems) fail(`mindestens ${schema.minItems}`);
-        if (schema.maxItems !== undefined && value.length > schema.maxItems) fail(`hoechstens ${schema.maxItems}`);
+        if (!Array.isArray(value)) return fail(t('config.theme.schema.notList')), problems.length;
+        if (schema.minItems !== undefined && value.length < schema.minItems) fail(t('config.theme.schema.atLeast', { n: schema.minItems }));
+        if (schema.maxItems !== undefined && value.length > schema.maxItems) fail(t('config.theme.schema.atMost', { n: schema.maxItems }));
         if (schema.items !== undefined) value.forEach((entry, index) => check(schema.items, entry, `${path}[${index}]`, problems));
     } else if (type === 'string') {
-        if (typeof value !== 'string') return fail('kein Text'), problems.length;
-        if (schema.maxLength !== undefined && [...value].length > schema.maxLength) fail(`hoechstens ${schema.maxLength} Zeichen`);
-        if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(value)) fail('Form passt nicht');
+        if (typeof value !== 'string') return fail(t('config.theme.schema.notText')), problems.length;
+        if (schema.maxLength !== undefined && [...value].length > schema.maxLength) fail(t('config.theme.schema.maxLength', { n: schema.maxLength }));
+        if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(value)) fail(t('config.theme.schema.pattern'));
     } else if (type === 'number' || type === 'integer') {
-        if (typeof value !== 'number' || !Number.isFinite(value) || (type === 'integer' && !Number.isInteger(value))) return fail(type === 'integer' ? 'keine ganze Zahl' : 'keine Zahl'), problems.length;
-        if (schema.minimum !== undefined && value < schema.minimum) fail(`mindestens ${schema.minimum}`);
-        if (schema.maximum !== undefined && value > schema.maximum) fail(`hoechstens ${schema.maximum}`);
-    } else if (type === 'boolean' && typeof value !== 'boolean') fail('nicht true oder false');
+        if (typeof value !== 'number' || !Number.isFinite(value) || (type === 'integer' && !Number.isInteger(value))) return fail(t(type === 'integer' ? 'config.theme.schema.notInteger' : 'config.theme.schema.notNumber')), problems.length;
+        if (schema.minimum !== undefined && value < schema.minimum) fail(t('config.theme.schema.atLeast', { n: schema.minimum }));
+        if (schema.maximum !== undefined && value > schema.maximum) fail(t('config.theme.schema.atMost', { n: schema.maximum }));
+    } else if (type === 'boolean' && typeof value !== 'boolean') fail(t('config.theme.schema.notBoolean'));
     return problems.length - before;
 };
 
@@ -74,10 +74,10 @@ export const validateTheme = (pkg, { fromPage = false } = {}) => {
     const problems = [];
     check(SCHEMA, pkg, 'theme', problems);
     if (fromPage && isObject(pkg)) {
-        if (pkg.css !== undefined) problems.push('theme.css: nur als Datei im Paket');
+        if (pkg.css !== undefined) problems.push(t('config.theme.cssOnlyInPackage'));
         const fonts = Object.values(isObject(pkg.fonts) ? pkg.fonts : {}).flatMap((entry) => (Array.isArray(entry) ? entry : [entry]));
-        if (fonts.some((font) => isObject(font) && font.file !== undefined)) problems.push('theme.fonts: Schriftdateien nur im Paket');
-        if (pkg.base === undefined) problems.push('theme.base fehlt');
+        if (fonts.some((font) => isObject(font) && font.file !== undefined)) problems.push(t('config.theme.fontFilesOnlyInPackage'));
+        if (pkg.base === undefined) problems.push(t('config.theme.baseMissing'));
     }
     return problems;
 };

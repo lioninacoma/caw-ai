@@ -285,7 +285,7 @@ export const applyToSpec = (spec, change) => {
 
 const appendContext = (root, { section, text }) => {
     const path = join(root, CONTEXT_FILE);
-    const raw = existsSync(path) ? readFileSync(path, 'utf8') : '# caw-ai\n\nProjektkontext für die Tests: Eigenheiten der Anwendungen und was jeder Lauf wissen muss.\n';
+    const raw = existsSync(path) ? readFileSync(path, 'utf8') : `# caw-ai\n\n${t('run.advice.contextIntro')}\n`;
     const lines = raw.replaceAll('\r\n', '\n').replace(/\n+$/, '').split('\n');
     const entry = `- ${text.trim().replaceAll(/\s*\n\s*/g, ' ')}`;
     const heading = lines.findIndex((line) => line.trim() === `## ${section.trim()}`);

@@ -30,6 +30,8 @@ export default {
     'workbench.chat': 'Chat',
     'workbench.chatPlaceholder': 'The chat appears here<br>once there is something to decide.',
 
+    'workbench.page.themeNameOwn': 'my-{base}',
+    'workbench.page.themeNameCopy': '{name}-copy',
     'workbench.page.waiting': 'open',
     'workbench.page.running': 'running',
     'workbench.page.pass': 'passed',

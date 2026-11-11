@@ -2,6 +2,7 @@
 // like a person with a screen reader: role and accessible name, plus `data-testid` and the named area around it (`inside`).
 // The page is ready when no application request is open, nothing has `aria-busy`, no indeterminate progress is running and the
 // DOM has been still for a moment. Open shadow roots (web components, Angular with ShadowDom, Lit, Ionic) are included.
+import { t } from '../../shared/i18n.mjs';
 
 /**
  * Runs in the browser, so it must not use anything from outside. `describe` describes an element, `find` finds it again. Hits only
@@ -353,7 +354,7 @@ export const WEB_MESSAGE_SELECTORS = ['[role=alert]', '[role=alertdialog]', '[ro
 
 export const web = {
     name: 'web',
-    label: 'die Anwendung',
+    label: () => t('session.app.web'),
     targets: webTargets,
     pageState: webPageState,
     probe: webProbe,

@@ -9,16 +9,17 @@
 // - `floats`: record the order of floating windows; `stackSkip`: files that only pass errors on
 // - `messageSelectors`: page messages, unless the config names some
 // - `hints`: optional, hints for Claude where to look in the source code
-// - `watch`: optional, { label, command, start }: the framework's watch as overlay source (--overlay), how to recognize its
+// - `watch`: optional, { label(), command, start }: the framework's watch as overlay source (--overlay), how to recognize its
 //   process and how to start it
 // - `overlay`: optional, with `watch`: { createWatchSource(appDir), checkAppFiles(appDir, hint) }; what the watch replaces
 // - `hydrates`: optional, true: before filling in the login, wait until `probe` reports appReady (SSR hydration)
-// - `name`, `label`: for config and messages
+// - `name`: for the config; `label()`: the localized name for messages (called at runtime, never at import)
 
 import { extjs } from './extjs.mjs';
 import { angular, react, vue } from './spa.mjs';
 import { web, webTargets } from './web.mjs';
 import { patternLabel } from '../patterns.mjs';
+import { t } from '../../shared/i18n.mjs';
 
 export const FRAMEWORKS = { web, extjs, react, vue, angular };
 export const DEFAULT_FRAMEWORK = 'web';
@@ -149,12 +150,17 @@ export const closestNames = (wanted, names) => {
 /** The matching sentence for message and report, or ''. */
 export const explainText = (why) => {
     if (why === null || why === undefined) return '';
-    if (why.frameMissing) return ` Der Frame ${why.frameMissing} fehlt auf der Seite.`;
-    if (why.missing) return ` Es fehlt auf der Seite.${(why.similar ?? []).length === 0 ? '' : ` Ähnlich: ${why.similar.map(({ role, name }) => `${role} „${name}“`).join(', ')}. Wurde es umbenannt?`}`;
-    if (why.hidden) return ' Es ist da, aber unsichtbar.';
+    if (why.frameMissing) return t('session.explain.frameMissing', { frame: why.frameMissing });
+    if (why.missing) {
+        const similar = (why.similar ?? []).map(({ role, name }) => `${role} ${t('session.point.quoted', { text: name })}`);
+        return t('session.explain.missing') + (similar.length === 0 ? '' : t('session.explain.similar', { names: similar.join(', ') }));
+    }
+    if (why.hidden) return t('session.explain.hidden');
     const { role, tag, name, messages = [] } = why.covered;
-    const by = `${role ?? tag}${name === undefined ? '' : ` „${name}“`}`;
-    return ` Es ist da, aber verdeckt von ${by}${messages.length === 0 ? '.' : `, der meldet: „${messages.join('“, „')}“${/[.!?]$/.test(messages.at(-1)) ? '' : '.'}`}`;
+    const by = `${role ?? tag}${name === undefined ? '' : ` ${t('session.point.quoted', { text: name })}`}`;
+    if (messages.length === 0) return t('session.explain.covered', { by });
+    const said = messages.map((text) => t('session.point.quoted', { text })).join(', ');
+    return t('session.explain.coveredSays', { by, messages: said, end: /[.!?]$/.test(messages.at(-1)) ? '' : '.' });
 };
 
 export const DEFAULT_SELECTORS = ['[role=alert]', '[role=alertdialog]'];

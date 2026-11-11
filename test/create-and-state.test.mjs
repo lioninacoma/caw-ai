@@ -492,7 +492,7 @@ test('Demonstration: notes keep their order but create neither a step nor a chec
 
 test('Chat: the Claude log becomes messages and actions, the conversation itself is not duplicated', () => {
     assert.deepEqual(parseClaudeLog('[+47.0s] Suche ist da. ⏎ Ich suche.'), { kind: 'text', text: 'Suche ist da. Ich suche.' });
-    assert.equal(parseClaudeLog('[+143.7s] Claude beendet nach 142 s.'), null);
+    assert.equal(parseClaudeLog('[+143.7s] Claude finished after 142 s.'), null);
     assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Wege"; caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Wege"; press Enter' });
     assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Wege" && caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Wege" && press Enter' });
     assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai say "Hallo"'), null);

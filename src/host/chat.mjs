@@ -49,7 +49,7 @@ export const parseClaudeLog = (line) => {
     const match = /^\[\+[\d.]+s\] (> )?(.*)$/.exec(line);
     if (match === null || match[2].trim() === '') return null;
     // The tool reports the end itself, with the result instead of the duration.
-    if (match[1] === undefined && match[2].startsWith('Claude beendet nach')) return null;
+    if (match[1] === undefined && match[2].startsWith('Claude finished after')) return null;
     // Free text is Claude's notes to itself. It addresses the human only via say.
     if (match[1] === undefined) return { kind: 'text', text: match[2].replaceAll(' ⏎ ', ' ').slice(0, MAX_ACTIVITY) };
     const text = readableCommand(match[2]).replace(/^Bash: /, '').replace(/(^|[\s;&|(])caw-ai /g, '$1').replaceAll(' ⏎ ', '; ').trim();

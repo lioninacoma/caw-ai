@@ -2,6 +2,7 @@
 // one page state, and ExtJS buttons often have no accessible name. The component is stable: xtype plus text or label, plus the
 // part element inside it. The page is ready when no Ext.Ajax request and no store is loading.
 
+import { t } from '../../shared/i18n.mjs';
 import { checkAppFiles, createWatchSource } from './extjs-overlay.mjs';
 
 /**
@@ -195,7 +196,7 @@ export function extjsProbe(store) {
 
 export const extjs = {
     name: 'extjs',
-    label: 'ExtJS',
+    label: () => 'ExtJS',
     targets: extjsTargets,
     pageState: extjsPageState,
     probe: extjsProbe,
@@ -207,7 +208,7 @@ export const extjs = {
     stackSkip: /\/ext-[\w-]*\.js/,
     // The overlay needs the Sencha watch: it keeps bootstrap.json and the packages up to date. If it is not running and the config
     // names no devCommand, the run ends with the command to start it.
-    watch: { label: 'Sencha-Watch', command: /\bapp["']?\s+["']?watch\b/i, start: 'sencha app watch' },
+    watch: { label: () => t('session.overlay.senchaWatch'), command: /\bapp["']?\s+["']?watch\b/i, start: 'sencha app watch' },
     // The adapter derives what gets replaced from app.json, package.json and bootstrap.json (extjs-overlay.mjs).
     overlay: { createWatchSource, checkAppFiles },
 };

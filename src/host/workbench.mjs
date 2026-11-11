@@ -489,7 +489,7 @@ const useTheme=(theme)=>{if(!theme||typeof theme!=='object')return;TH=theme;cawA
 repaint();
 
 // Theme (F7): pick themes, create and edit own ones. Built-in themes stay as they are: the first change creates a copy
-// "mein-<base>". Saving goes through cawTheme in the host, which checks the schema; the page only sets variables and textContent.
+// "my-<base>" (localized). Saving goes through cawTheme in the host, which checks the schema; the page only sets variables and textContent.
 const KEYS=${json(THEME_KEYS)},BUILTIN=${json(BUILTIN_THEMES)},LANG=${json(language())},NAME=/^[a-z0-9-]{1,32}$/;
 const isObj=(v)=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const txt=(v)=>(isObj(v)?v[LANG]??v.en??Object.values(v)[0]??'':v??'');
@@ -522,7 +522,7 @@ const call=async(action,payload)=>{if(busy)return null;busy=true;
 const unique=(stem)=>{let name=stem.slice(0,32),i=2;while(LIST.some((entry)=>entry.name===name))name=(stem.slice(0,28)+'-'+(i++));return name;};
 // The own package for saving: without css and fonts, which only come from disk and stay in the host.
 const ownPkg=()=>{const pkg=clone(TH.pkg);delete pkg.css;delete pkg.fonts;delete pkg.$schema;return pkg;};
-const fresh=(base,label)=>({themeApi:1,name:unique('mein-'+base),base,label:{[LANG]:label}});
+const fresh=(base,label)=>({themeApi:1,name:unique(fill('workbench.page.themeNameOwn',{base})),base,label:{[LANG]:label}});
 const setPath=(pkg,path,value)=>{const keys=path.split('.');let o=pkg;
   keys.slice(0,-1).forEach((k,i)=>{const next=keys[i+1];if(o[k]==null)o[k]=/^\\d+$/.test(next)?clone(getPath(TH,keys.slice(0,i+1).join('.'))??[]):{};else o[k]=clone(o[k]);o=o[k];});
   o[keys.at(-1)]=value;};
@@ -579,8 +579,8 @@ $('tlabel').addEventListener('change',()=>{const v=$('tlabel').value.trim().slic
 $('tslug').addEventListener('change',()=>{const to=$('tslug').value.trim().toLowerCase();if(isBuiltin()||to===TH.name)return;
   if(!NAME.test(to)||LIST.some((entry)=>entry.name===to)){msg(T['workbench.page.themeBadName']);$('tslug').value=TH.name;return;}call('rename',{from:TH.name,to});});
 $('tdup').addEventListener('click',()=>{const base=isBuiltin()?TH.name:TH.base;const copy=fill('workbench.page.themeCopy',{label:TH.label});
-  if(isBuiltin()){call('save',{...fresh(base,copy),name:unique(TH.name+'-kopie')});return;}
-  call('save',{...ownPkg(),name:unique(TH.name+'-kopie'),label:{[LANG]:copy}});});
+  if(isBuiltin()){call('save',{...fresh(base,copy),name:unique(fill('workbench.page.themeNameCopy',{name:TH.name}))});return;}
+  call('save',{...ownPkg(),name:unique(fill('workbench.page.themeNameCopy',{name:TH.name})),label:{[LANG]:copy}});});
 $('treset').addEventListener('click',()=>{if(isBuiltin())return;const p=ownPkg();call('save',{themeApi:1,name:p.name,base:p.base,...(p.label?{label:p.label}:{})});});
 $('tdelete').addEventListener('click',()=>{if(isBuiltin())return;if(!confirmDelete){confirmDelete=true;renderDialog();return;}confirmDelete=false;call('delete',TH.name);});
 let themeFocus=null;

@@ -173,4 +173,16 @@ export default {
     'session.replay.notReached': 'not reached',
     'session.replay.notReachedBecause': 'Not reached because {owner} failed.',
     'session.point.quoted': '“{text}”',
+    // framework adapters
+    'session.app.web': 'the app',
+    'session.app.react': 'the React app',
+    'session.app.vue': 'the Vue app',
+    'session.app.angular': 'the Angular app',
+    'session.overlay.senchaWatch': 'Sencha watch',
+    'session.explain.frameMissing': ' The frame {frame} is missing on the page.',
+    'session.explain.missing': ' It is missing on the page.',
+    'session.explain.similar': ' Similar: {names}. Was it renamed?',
+    'session.explain.hidden': ' It is there but invisible.',
+    'session.explain.covered': ' It is there but covered by {by}.',
+    'session.explain.coveredSays': ' It is there but covered by {by}, which says: {messages}{end}',
 };
