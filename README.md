@@ -46,12 +46,29 @@ npx caw-ai run first-errand --target local      # replays the recording, without
 
 The window stays open, signed in, in the state the test reached. From there:
 
-| | |
-|---|---|
-| **Restore a state.** F1 lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account and replays up to there. | ![The F1 dialog "Choose state" lists the test first-errand with its steps S1 to S4](docs/media/states.webp) |
-| **Develop.** Pick an element in the app and ask about it. Claude reads your source code and answers with file and line. Against your dev server, or with `--overlay` your local code over a deployed environment; F5 loads your change. | ![An element is picked in the app; Claude explains in the chat why "Add todo" is disabled, with server.mjs:134](docs/media/develop.webp) |
-| **Fix a bug with Claude.** Paste a bug ticket into the chat. Claude reproduces it in the reached state, names the cause and proposes the fix as a change to your code; "Apply change" writes it. | ![Claude reproduces a search bug and proposes a code change to server.mjs with an "Apply change" button](docs/media/bugfix.webp) |
-| **Theming.** Three built-in themes, or your own: F7 opens the editor for colors, glyphs, the raven and the CRT look. | ![The same workbench in the themes nacht, bernstein and phosphor](docs/media/themes.webp) |
+### Restore a state
+
+F1 lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account and replays up to there.
+
+![The F1 dialog "Choose state" lists the test first-errand with its steps S1 to S4](docs/media/states.webp)
+
+### Develop
+
+Pick an element in the app and ask about it. Claude reads your source code and answers with file and line. Against your dev server, or with `--overlay` your local code over a deployed environment; F5 loads your change.
+
+![An element is picked in the app; Claude explains in the chat why "Add todo" is disabled, with server.mjs:134](docs/media/develop.webp)
+
+### Fix a bug with Claude
+
+Paste a bug ticket into the chat. Claude reproduces it in the reached state, names the cause and proposes the fix as a change to your code; "Apply change" writes it.
+
+![Claude reproduces a search bug and proposes a code change to server.mjs with an "Apply change" button](docs/media/bugfix.webp)
+
+### Theming
+
+Three built-in themes, or your own: F7 opens the editor for colors, glyphs, the raven and the CRT look.
+
+![The same workbench in the themes nacht, bernstein and phosphor](docs/media/themes.webp)
 
 ## Prerequisites
 

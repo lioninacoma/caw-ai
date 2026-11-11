@@ -46,12 +46,29 @@ npx caw-ai run first-errand --target local      # spielt die Aufzeichnung ab, oh
 
 Das Fenster bleibt offen, angemeldet, im Zustand, den der Test erreicht hat. Von dort aus:
 
-| | |
-|---|---|
-| **Zustand herstellen.** F1 listet jeden Test der Umgebung, für jede Rolle. Test und Schritt wählen; caw-ai meldet sich frisch mit dem Konto der Rolle an und spielt bis dorthin ab. | ![Der F1-Dialog „Zustand wählen“ zeigt den Test first-errand mit den Schritten S1 bis S4](docs/media/states.webp) |
-| **Entwickeln.** Ein Element in der App wählen und danach fragen. Claude liest deinen Quellcode und antwortet mit Datei und Zeile. Gegen deinen Dev-Server oder mit `--overlay` dein lokaler Code über einer deployten Umgebung; F5 lädt deine Änderung. | ![Ein Element ist in der App gewählt; Claude erklärt im Chat mit server.mjs:134, warum „Add todo“ gesperrt ist](docs/media/develop.webp) |
-| **Bug mit Claude beheben.** Ein Bugticket in den Chat einfügen. Claude stellt es im erreichten Zustand nach, nennt die Ursache und schlägt die Korrektur als Änderung an deinem Code vor; „Änderung übernehmen“ schreibt sie. | ![Claude stellt einen Fehler in der Suche nach und schlägt eine Änderung an server.mjs mit dem Knopf „Apply change“ vor](docs/media/bugfix.webp) |
-| **Themes.** Drei eingebaute Themes oder ein eigenes: F7 öffnet den Editor für Farben, Glyphen, den Raben und den CRT-Look. | ![Dieselbe Werkbank in den Themes nacht, bernstein und phosphor](docs/media/themes.webp) |
+### Zustand herstellen
+
+F1 listet jeden Test der Umgebung, für jede Rolle. Test und Schritt wählen; caw-ai meldet sich frisch mit dem Konto der Rolle an und spielt bis dorthin ab.
+
+![Der F1-Dialog „Zustand wählen“ zeigt den Test first-errand mit den Schritten S1 bis S4](docs/media/states.webp)
+
+### Entwickeln
+
+Ein Element in der App wählen und danach fragen. Claude liest deinen Quellcode und antwortet mit Datei und Zeile. Gegen deinen Dev-Server oder mit `--overlay` dein lokaler Code über einer deployten Umgebung; F5 lädt deine Änderung.
+
+![Ein Element ist in der App gewählt; Claude erklärt im Chat mit server.mjs:134, warum „Add todo“ gesperrt ist](docs/media/develop.webp)
+
+### Bug mit Claude beheben
+
+Ein Bugticket in den Chat einfügen. Claude stellt es im erreichten Zustand nach, nennt die Ursache und schlägt die Korrektur als Änderung an deinem Code vor; „Änderung übernehmen“ schreibt sie.
+
+![Claude stellt einen Fehler in der Suche nach und schlägt eine Änderung an server.mjs mit dem Knopf „Apply change“ vor](docs/media/bugfix.webp)
+
+### Themes
+
+Drei eingebaute Themes oder ein eigenes: F7 öffnet den Editor für Farben, Glyphen, den Raben und den CRT-Look.
+
+![Dieselbe Werkbank in den Themes nacht, bernstein und phosphor](docs/media/themes.webp)
 
 ## Voraussetzungen
 
