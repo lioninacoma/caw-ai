@@ -250,3 +250,40 @@ test('replaceable with Sencha Cmd 7: packages without files are found by their n
     assert.deepEqual(parts.get('orders-model.js').paths, ['packages/local/orders-model/src/model/Order.js']);
     assert.equal(parts.get('core.js'), undefined, 'framework packages stay out');
 });
+
+test('a theme package brings the JS of the themes it extends, in load order, like its build; other packages stay as they are', (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'caw-theme-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, 'app.json'), JSON.stringify({ name: 'Antrag' }));
+    const bootstrap = {
+        packages: {
+            'own-theme': { extend: 'theme-material', files: [0, 4] },
+            'theme-material': { extend: 'theme-neptune' },
+            'theme-neptune': { extend: 'theme-base' },
+            'theme-base': {},
+            komponenten: { files: [5] },
+        },
+        loadOrder: [
+            { path: 'node_modules/own-theme/overrides/locale.js' },
+            { path: 'node_modules/ext/modern/theme-material/overrides/Panel.js' },
+            { path: 'node_modules/ext/modern/theme-neptune/overrides/init.js' },
+            { path: 'node_modules/ext/modern/theme-material/overrides/Init.js' },
+            { path: 'node_modules/own-theme/overrides/fixes.js' },
+            { path: 'node_modules/komponenten/src/Button.js' },
+            { path: 'node_modules/ext/modern/modern/src/Widget.js' },
+            { path: 'app/Application.js' },
+        ],
+    };
+    const parts = replaceable(dir, bootstrap);
+    assert.deepEqual(parts.get('own-theme.js').paths, [
+        'node_modules/own-theme/overrides/locale.js',
+        'node_modules/ext/modern/theme-material/overrides/Panel.js',
+        'node_modules/ext/modern/theme-neptune/overrides/init.js',
+        'node_modules/ext/modern/theme-material/overrides/Init.js',
+        'node_modules/own-theme/overrides/fixes.js',
+    ]);
+    assert.deepEqual(parts.get('own-theme-debug.js').paths, parts.get('own-theme.js').paths);
+    assert.deepEqual(parts.get('komponenten.js').paths, ['node_modules/komponenten/src/Button.js'], 'no extend, unchanged');
+    assert.deepEqual([...parts.values()].find(({ kind }) => kind === 'app').paths, ['app/Application.js'], 'the app part takes no theme code');
+    assert.equal(parts.get('theme-material.js'), undefined, 'SDK themes are no parts of their own');
+});

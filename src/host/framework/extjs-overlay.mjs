@@ -251,7 +251,27 @@ const ownPackages = (bootstrap) => {
         if (paths.length === 0 || paths.some((path) => FRAMEWORK_SOURCE.test(path))) continue;
         packages.set(name, paths);
     }
+    // A theme package's build carries the JS of the themes it extends (aekwl-theme-material -> theme-material -> theme-neptune ->
+    // theme-base): replacing it with its own files only would drop e.g. Material's Panel override (flat buttons on the right).
+    // The SDK themes have no files in bootstrap.json; their sources are the loadOrder entries below <theme>/src or <theme>/overrides.
+    for (const [name, paths] of packages) {
+        const inherited = themeAncestors(bootstrap, name).filter((parent) => !packages.has(parent));
+        if (inherited.length === 0) continue;
+        const below = new RegExp(`(^|/)(${inherited.map(escapeRegex).join('|')})/(src|overrides)/`);
+        const own = new Set(paths);
+        packages.set(name, loaded.filter((path) => own.has(path) || below.test(path)));
+    }
     return packages;
+};
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The packages a package extends, nearest first (bootstrap.packages[name].extend, a name or a comma list). */
+const themeAncestors = (bootstrap, name, seen = new Set([name])) => {
+    const extend = bootstrap.packages?.[name]?.extend;
+    const parents = (typeof extend === 'string' ? extend.split(',') : []).map((parent) => parent.trim()).filter((parent) => parent !== '' && !seen.has(parent));
+    for (const parent of parents) seen.add(parent);
+    return parents.flatMap((parent) => [parent, ...themeAncestors(bootstrap, parent, seen)]);
 };
 
 /** The app's own scripts outside app/ (app.json "js", e.g. app.js with Ext.application), without the framework's. */
