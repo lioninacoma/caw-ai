@@ -146,7 +146,7 @@ Mit dem Agenten `docker` wird das Image beim nächsten Lauf neu gebaut; es insta
 
 ## 7. Persönliche Einstellungen
 
-Das helle Theme und die Einstellung `fed` gibt es nicht mehr. Ein `"theme": "light"` oder `"dark"` in `prefs.json` fällt auf `nacht` zurück. Wähle ein Theme mit `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`, `kachel`, `plakat`, `cockpit`).
+Das helle Theme und die Einstellung `fed` gibt es nicht mehr. Ein `"theme": "light"` oder `"dark"` in `prefs.json` fällt auf `nacht` zurück. Wähle ein Theme mit `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`, `kachel`, `cockpit`).
 
 ## 8. Prüfen
 

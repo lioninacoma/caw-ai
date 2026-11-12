@@ -146,7 +146,7 @@ With the `docker` agent the image is rebuilt on the next run; it now installs Cl
 
 ## 7. Personal settings
 
-The light theme and the `fed` setting are gone. A `"theme": "light"` or `"dark"` in `prefs.json` falls back to `nacht`. Pick a theme with `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`, `kachel`, `plakat`, `cockpit`).
+The light theme and the `fed` setting are gone. A `"theme": "light"` or `"dark"` in `prefs.json` falls back to `nacht`. Pick a theme with `npx caw-ai theme use <name>` (`nacht`, `bernstein`, `phosphor`, `kachel`, `cockpit`).
 
 ## 8. Check
 

@@ -284,7 +284,7 @@ npx caw-ai theme use phosphor    # pick one
 npx caw-ai theme check my-theme  # schema, contrast, mark width, fonts
 ```
 
-The theme is yours, stored in `prefs.json`, and applies in every project. Built in: `nacht` (default), `bernstein`, `phosphor`, `kachel`, `plakat`, `cockpit`. Change colours, glyphs, raven and CRT look with F7 in the workbench; own themes are folders next to `prefs.json`. Details: [themes/README.md](../themes/README.md).
+The theme is yours, stored in `prefs.json`, and applies in every project. Built in: `nacht` (default), `bernstein`, `phosphor`, `kachel`, `cockpit`. Change colours, glyphs, raven and CRT look with F7 in the workbench; own themes are folders next to `prefs.json`. Details: [themes/README.md](../themes/README.md).
 
 ## mcp
 

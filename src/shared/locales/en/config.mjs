@@ -65,7 +65,7 @@ export default {
     'config.apps.missing': 'apps is missing, e.g. { "web": { "dir": ".", "startUrl": "/" } }',
     'config.messageSelectors': 'messageSelectors must be a list of CSS selectors',
     'config.insecureTls': 'insecureTls must be true or false',
-    'config.theme': 'theme.{key} is invalid: base is nacht, bernstein, phosphor, kachel, plakat or cockpit, colors only the 13 base colors as #rrggbb',
+    'config.theme': 'theme.{key} is invalid: base is nacht, bernstein, phosphor, kachel or cockpit, colors only the 13 base colors as #rrggbb',
     'config.theme.schema.noShape': 'matches no allowed shape',
     'config.theme.schema.ambiguous': 'ambiguous',
     'config.theme.schema.const': 'must be {value}',

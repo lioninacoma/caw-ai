@@ -1,6 +1,6 @@
 # Themes
 
-Ein Theme ist ein Ordner mit einer `theme.json`. Die sechs eingebauten liegen hier, eigene neben den persönlichen Einstellungen:
+Ein Theme ist ein Ordner mit einer `theme.json`. Die fünf eingebauten liegen hier, eigene neben den persönlichen Einstellungen:
 
 ```
 %APPDATA%\caw-ai\themes\<name>\theme.json      Windows
@@ -13,7 +13,6 @@ Ein Theme ist ein Ordner mit einer `theme.json`. Die sechs eingebauten liegen hi
 | `bernstein` | Einfarbig, Bernstein-Monitor. Status über Zeichen und Helligkeit. |
 | `phosphor` | Einfarbig, grüner Monitor. Status über Zeichen und Helligkeit. |
 | `kachel` | Kachelfenster wie tmux: bündig, Tab- und Statusleiste, nur Monospace. |
-| `plakat` | Hell und laut: Signalgelb, dicke Ränder, Schritte als Kacheln, große Zahl. |
 | `cockpit` | Instrumentenbrett: Rundinstrument, Warnleuchten für die Schritte, runde Bedienelemente. |
 
 ## In der Oberfläche ändern

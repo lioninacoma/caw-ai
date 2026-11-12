@@ -1,6 +1,6 @@
 # Themes
 
-A theme is a folder with a `theme.json`. The six built-in themes live here; your own live next to your preferences:
+A theme is a folder with a `theme.json`. The five built-in themes live here; your own live next to your preferences:
 
 ```
 %APPDATA%\caw-ai\themes\<name>\theme.json      Windows
@@ -13,7 +13,6 @@ A theme is a folder with a `theme.json`. The six built-in themes live here; your
 | `bernstein` | Single colour amber monitor. Status by glyph and brightness. |
 | `phosphor` | Single colour green monitor. Status by glyph and brightness. |
 | `kachel` | Tiled windows like tmux: flush, tab and status bar, monospace only. |
-| `plakat` | Bright and loud: signal yellow, thick borders, steps as tiles, one big number. |
 | `cockpit` | Instrument panel: a round gauge, warning lamps for the steps, round controls. |
 
 ## Change it in the UI

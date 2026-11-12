@@ -66,7 +66,7 @@ test('theme: nacht, then team default, then own choice; custom themes inherit fr
     assert.deepEqual([own.name, own.base, own.colors.heart, own.colors.screen, own.marks.ok, own.marks.warn], ['hafen', 'bernstein', '#ff00ff', loadTheme('bernstein').colors.screen, '[ PASS ]', '[ WARN ]']);
     renameTheme('hafen', 'kai', env);
     assert.equal(readThemePackage('kai', env).name, 'kai');
-    assert.deepEqual(listThemes(env).map(({ name }) => name), ['nacht', 'bernstein', 'phosphor', 'kachel', 'plakat', 'cockpit', 'kai']);
+    assert.deepEqual(listThemes(env).map(({ name }) => name), ['nacht', 'bernstein', 'phosphor', 'kachel', 'cockpit', 'kai']);
     deleteTheme('kai', env);
     assert.equal(readThemePackage('kai', env), undefined);
     // Broken or foreign packages do not count: the team default applies.
