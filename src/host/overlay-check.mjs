@@ -138,7 +138,7 @@ export const overlayCheck = async (root, { target, part, role, apply = false, st
         return save(root, { ...base, state: 'no-expected', ...EMPTY(), message: t('cli.overlayCheck.noExpected', { framework: status.framework }), ...server });
     }
     const chosenRole = role ?? deps.role ?? (authOf(config).type === 'none' ? undefined : Object.keys(config.roles ?? {})[0]);
-    const spec = { id: CHECK_ID, ...(chosenRole === undefined ? {} : { role: chosenRole }), targets: [chosenTarget], mutates: false, notes: '', steps: [], expectations: [] };
+    const spec = { id: CHECK_ID, ...(chosenRole === undefined ? {} : { role: chosenRole }), environments: [chosenTarget], writes: false, notes: '', steps: [], expectations: [] };
     // Only this part comes from local code; a watch found on another port is used directly.
     const checked = checkTest(spec, chosenTarget, config, { overlay: chosenPart, start });
     if (status.foundUrl !== undefined) checked.parts[chosenPart] = overlayChoice(config, chosenPart, status.foundUrl, { start });

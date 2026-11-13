@@ -1,8 +1,7 @@
 # Header by the human
 id: fx-schritte
 role: kunde
-targets: [dev]
-mutates: true
+writes: true
 notes: Stay with your case.
 steps:
   - id: S1

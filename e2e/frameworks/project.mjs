@@ -54,7 +54,7 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
         },
         ...(embed ? [EMBED_STEP] : []),
     ]);
-    writeTest(root, 'error', { mutates: false }, [
+    writeTest(root, 'error', { writes: false }, [
         {
             id: 'S1', name: 'Trigger error', do: 'Click "Trigger error".', expect: 'Nothing happens.',
             actions: [{ click: "getByRole('button', { name: 'Trigger error', exact: true })", path: '/' }, { 'wait-ready': {} }],
@@ -79,9 +79,9 @@ const EMBED_STEP = {
     check: `document.querySelector('iframe[title=Payment]')?.contentDocument?.querySelector('[role=status]')?.textContent.trim()==='Payment of 12 EUR confirmed'&&document.querySelector('caw-rating')?.shadowRoot?.querySelector('[role=status]')?.textContent.trim()==='Thanks for your rating: Good'`,
 };
 
-const writeTest = (root, id, { mutates = true }, steps) => {
+const writeTest = (root, id, { writes = true }, steps) => {
     const plan = [
-        `id: ${id}`, 'app: web', 'role: tester', 'targets: [test]', `mutates: ${mutates}`, 'steps:',
+        `id: ${id}`, 'role: tester', 'environments: [test]', `writes: ${writes}`, 'steps:',
         ...steps.flatMap((step) => [`  - id: ${step.id}`, `    name: ${yamlString(step.name)}`, `    do: ${yamlString(step.do)}`, `    expect: ${yamlString(step.expect)}`]),
     ];
     writeFileSync(join(root, 'caw/tests', `${id}.yaml`), `${plan.join('\n')}\n`);

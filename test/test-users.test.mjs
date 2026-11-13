@@ -76,7 +76,7 @@ test('suggestRole and hasTestUser', (t) => {
 test('role list, remove and target choice', async (t) => {
     const root = project(t, { tester: roleEnvNames('tester'), clerk: roleEnvNames('clerk') });
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
-    writeFileSync(join(root, 'caw/tests/order.yaml'), 'role: tester\ntargets: [local]\nmutates: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the start page.\n    expect: The start page is visible.\n');
+    writeFileSync(join(root, 'caw/tests/order.yaml'), 'role: tester\nenvironments: [local]\nwrites: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the start page.\n    expect: The start page is visible.\n');
     saveTestUser(root, { role: 'tester', user: 'a', password: 'b' });
     const overview = roleOverview(root, { env: {} });
     assert.deepEqual(overview.roles.map(({ name, testUser, tests }) => [name, testUser, tests]), [['clerk', false, []], ['tester', true, ['order']]]);
@@ -129,7 +129,7 @@ test('record: a test plan with a new role opens the sign-in window first, then t
     const { record } = await import('../src/host/commands.mjs');
     const root = project(t);
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
-    writeFileSync(join(root, 'caw/tests/review.yaml'), 'role: clerk\ntargets: [local]\nmutates: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the review list.\n    expect: The review list is visible.\n');
+    writeFileSync(join(root, 'caw/tests/review.yaml'), 'role: clerk\nenvironments: [local]\nwrites: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the review list.\n    expect: The review list is visible.\n');
     t.mock.method(console, 'log', () => {});
     const stop = new Error('stop after the window');
     let asked;
@@ -148,14 +148,14 @@ test('record: a test plan with a new role opens the sign-in window first, then t
 test('sessionFollowsOwnPlan: only the session, only read-only, only the plan it wrote', async () => {
     const { sessionFollowsOwnPlan } = await import('../src/host/test-plan.mjs');
     const steps = [{ id: 'S1', name: 'Open', do: 'Open the list.', expect: 'The list is visible.' }];
-    const previous = { mutates: false, steps };
-    const same = { mutates: false, steps: steps.map((step) => ({ ...step })) };
+    const previous = { writes: false, steps };
+    const same = { writes: false, steps: steps.map((step) => ({ ...step })) };
     assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: same }), true);
     assert.equal(sessionFollowsOwnPlan({ agent: 'local', previous, proposed: same }), false, 'own Claude: card as always');
     assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous: undefined, proposed: same }), false, 'new test from a demonstration');
-    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous: { ...previous, mutates: true }, proposed: { ...same, mutates: true } }), false, 'writing test');
-    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { mutates: false, steps: [{ ...steps[0], expect: 'Something else.' }] } }), false, 'changed plan');
-    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { mutates: false, steps: [...steps, { id: 'S2', name: 'x', do: 'y', expect: 'z' }] } }), false, 'added step');
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous: { ...previous, writes: true }, proposed: { ...same, writes: true } }), false, 'writing test');
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { writes: false, steps: [{ ...steps[0], expect: 'Something else.' }] } }), false, 'changed plan');
+    assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { writes: false, steps: [...steps, { id: 'S2', name: 'x', do: 'y', expect: 'z' }] } }), false, 'added step');
 });
 
 test('roleRounds: a role named on the command line is saved right after the sign-in, without asking for the name', async (t) => {

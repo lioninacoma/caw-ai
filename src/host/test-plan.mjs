@@ -1,5 +1,5 @@
 // The plan Claude presents in the chat is the future test file without recordings: same fields, no second format.
-// The agent cannot change the project. The tool writes the metadata; role, targets and write access stay with the human.
+// The agent cannot change the project. The tool writes the metadata; role, environments and write access stay with the human.
 
 import { t } from '../shared/i18n.mjs';
 import { parsePlan, withExpectations } from './test-file.mjs';
@@ -30,8 +30,8 @@ export const readPlan = (text) => {
 export const composeTest = (meta, { notes, steps }) => withExpectations({
     id: meta.id,
     role: meta.role,
-    targets: meta.targets,
-    mutates: meta.mutates,
+    writes: meta.writes,
+    ...(meta.environments === undefined ? {} : { environments: meta.environments }),
     ...(meta.start === undefined ? {} : { start: meta.start }),
     notes,
     steps,
@@ -49,7 +49,7 @@ export const samePlanStep = (a, b) => ['id', 'name', 'do', 'expect', 'note'].eve
  * up front; adopting the proven test still does.
  */
 export const sessionFollowsOwnPlan = ({ agent, previous, proposed }) => agent === 'session' && previous !== undefined
-    && previous.mutates === false && proposed.mutates === false && proposed.steps.length === previous.steps.length
+    && previous.writes === false && proposed.writes === false && proposed.steps.length === previous.steps.length
     && proposed.steps.every((step, index) => samePlanStep(step, previous.steps[index]));
 
 /**

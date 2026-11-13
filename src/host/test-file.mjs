@@ -23,9 +23,9 @@ import { isPattern } from './patterns.mjs';
 export { RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
 const STEP_ID = /^S[1-9]\d*$/;
-const TOP_FIELDS = ['id', 'role', 'targets', 'mutates', 'start', 'notes', 'steps', 'knownMessages'];
-/** Fields from before 1.0: rejected with what replaced them. */
-const TEST_REMOVED = { app: 'config.removed.testApp', also: 'config.removed.also' };
+const TOP_FIELDS = ['id', 'role', 'writes', 'environments', 'start', 'notes', 'steps', 'knownMessages'];
+/** Fields from before 1.0: rejected with what replaced them (now) or why they went (why). */
+const TEST_REMOVED = { app: { why: 'config.removed.testApp' }, also: { why: 'config.removed.also' }, targets: { now: 'environments' }, mutates: { now: 'writes' } };
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
@@ -315,13 +315,16 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!isObject(value)) throw invalid(label, [t('config.test.file.object')]);
     for (const key of Object.keys(value).filter((candidate) => !TOP_FIELDS.includes(candidate))) {
-        report([key], TEST_REMOVED[key] === undefined ? t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }) : t('config.removed.gone', { key, why: t(TEST_REMOVED[key]) }));
+        const removed = TEST_REMOVED[key];
+        if (removed === undefined) report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
+        else report([key], removed.now === undefined ? t('config.removed.gone', { key, why: t(removed.why) }) : t('config.removed.renamed', { key, now: removed.now }));
     }
-    // id, role and targets may be missing: defaults come from the file name and the config (withDefaults).
+    // id, role and environments may be missing: defaults come from the file name and the config (withDefaults).
     for (const key of ['id', 'role']) if (value[key] !== undefined && !isText(value[key])) report([key], t('config.test.text', { key }));
     if (value.start !== undefined && !isStartPath(value.start)) report(['start'], t('config.test.start'));
-    if (value.targets !== undefined && (!Array.isArray(value.targets) || value.targets.length === 0 || !value.targets.every(isText))) report(['targets'], t('config.test.targets'));
-    if (typeof value.mutates !== 'boolean') report(['mutates'], t('config.test.mutates'));
+    if (value.environments !== undefined && (!Array.isArray(value.environments) || value.environments.length === 0 || !value.environments.every(isText))) report(['environments'], t('config.test.environments'));
+    // A renamed mutates is reported as renamed, not also as a missing writes.
+    if (typeof value.writes !== 'boolean' && value.mutates === undefined) report(['writes'], t('config.test.writes'));
     if (value.notes !== undefined && value.notes !== null && typeof value.notes !== 'string') report(['notes'], t('config.test.text', { key: 'notes' }));
     if (description && value.knownMessages !== undefined) report(['knownMessages'], t('config.test.recordingOnly', { key: 'knownMessages' }));
     else if (!knownMessagesOk(value.knownMessages)) report(['knownMessages'], t('config.test.knownMessages'));
@@ -332,8 +335,8 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     return withExpectations({
         ...(value.id === undefined ? {} : { id: value.id }),
         ...(value.role === undefined ? {} : { role: value.role }),
-        ...(value.targets === undefined ? {} : { targets: value.targets }),
-        mutates: value.mutates,
+        ...(value.environments === undefined ? {} : { environments: value.environments }),
+        writes: value.writes,
         ...(value.start === undefined ? {} : { start: value.start }),
         notes: clean(value.notes),
         steps,
@@ -342,7 +345,7 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
 };
 
 /**
- * Reads the agent's plan: only `notes` and `steps`. Metadata and recordings it sends anyway are dropped, because role, targets
+ * Reads the agent's plan: only `notes` and `steps`. Metadata and recordings it sends anyway are dropped, because role, environments
  * and write access stay with the human.
  */
 export const parsePlan = (text) => {
@@ -432,14 +435,36 @@ const onlyKey = (map) => {
 };
 
 /**
- * Whatever the test omits comes from the config: the role when there is exactly one (only with sign-in), environments per
- * testEnvironments (non-production, writable ones for a writing test). Anything still missing is reported by checkTest. The start
- * path stays as written: startPath falls back to the config's.
+ * Whatever the test omits comes from the config: the role when there is exactly one (only with sign-in). `runsOn` is where the
+ * test runs: its `environments` as written, otherwise testEnvironments (non-production, writable ones for a writing test).
+ * `environments` itself stays as written, so a test written back never pins the default. The start path stays as written too:
+ * startPath falls back to the config's. Anything still missing is reported by checkTest.
  */
 export const withDefaults = (spec, config) => {
     const role = spec.role ?? (authOf(config).type === 'none' ? undefined : onlyKey(config.roles));
-    const targets = spec.targets ?? testEnvironments(config, { writes: spec.mutates === true });
-    return { ...spec, ...(role === undefined ? {} : { role }), targets };
+    const runsOn = spec.environments ?? testEnvironments(config, { writes: spec.writes === true });
+    return { ...spec, ...(role === undefined ? {} : { role }), runsOn };
+};
+
+/**
+ * What is wrong with the environments a test lists itself: names that do not exist, and for a writing test environments it may
+ * not write on (production or not writable). A read-only test may list production (a prod smoke test).
+ */
+export const environmentProblems = (spec, config) => {
+    if (spec.environments === undefined) return [];
+    const known = Object.keys(config.environments ?? {});
+    return spec.environments.flatMap((name) => {
+        if (!known.includes(name)) return [t('config.test.envUnknown', { name: String(name), names: known.join(', ') || '–' })];
+        if (spec.writes !== true) return [];
+        let env;
+        try {
+            env = effectiveEnvironment(config, name);
+        } catch {
+            return []; // reported with the config
+        }
+        if (env.production) return [t('config.test.envProduction', { name })];
+        return env.writable ? [] : [t('config.test.envReadOnly', { name })];
+    });
 };
 
 /** The names in a config map for messages, e.g. "admin, tester". */
@@ -472,13 +497,15 @@ export const checkTest = (given, target, config, { overlay, start = false } = {}
     const spec = withDefaults(given, config);
     const bad = (message) => new CawError('test-invalid', message);
     const file = `${TEST_DIR}/${spec.id}.yaml`;
-    if (!spec.targets.includes(target)) throw bad(t('config.test.check.target', { target: String(target), id: String(spec.id), targets: spec.targets.join(', ') || '–', file }));
-    if (spec.role === undefined && authOf(config).type !== 'none') throw bad(t('config.test.check.role', { id: String(spec.id), type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
-    if (spec.role !== undefined && config.roles?.[spec.role] === undefined) throw bad(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
-    if (spec.mutates && !resolved.writable) {
+    const listed = environmentProblems(spec, config);
+    if (listed.length > 0) throw bad(`${file}: ${listed[0]}`);
+    if (spec.writes && !resolved.writable) {
         throw new CawError('write-protected', t('config.test.check.writeProtected', { id: String(spec.id), target: String(target), environment: resolved.name }));
     }
-    return { ...resolved, mutates: spec.mutates, ...codeFor(resolved, config, overlay, start) };
+    if (!spec.runsOn.includes(target)) throw bad(t('config.test.check.target', { target: String(target), id: String(spec.id), targets: spec.runsOn.join(', ') || '–', file }));
+    if (spec.role === undefined && authOf(config).type !== 'none') throw bad(t('config.test.check.role', { id: String(spec.id), type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
+    if (spec.role !== undefined && config.roles?.[spec.role] === undefined) throw bad(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
+    return { ...resolved, writes: spec.writes, ...codeFor(resolved, config, overlay, start) };
 };
 
 /**
@@ -698,13 +725,13 @@ export const renderTest = (spec) => {
     const doc = new Document({
         id: spec.id,
         role: spec.role,
-        targets: spec.targets,
-        mutates: spec.mutates,
+        writes: spec.writes,
+        ...(spec.environments === undefined ? {} : { environments: spec.environments }),
         ...(spec.start === undefined ? {} : { start: spec.start }),
         ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),
     });
-    const targets = doc.get('targets', true);
-    if (targets !== undefined) targets.flow = true;
+    const environments = doc.get('environments', true);
+    if (environments !== undefined) environments.flow = true;
     setSteps(doc, spec);
     if (spec.knownMessages !== undefined) doc.set('knownMessages', spec.knownMessages);
     return doc.toString(STRINGIFY);

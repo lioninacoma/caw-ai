@@ -19,7 +19,7 @@ import { EXPLORE_FILE, explore } from './explore.mjs';
 import { ensureTestUser } from './role-capture.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
-import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
+import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const SKILL_DIR = '.claude/skills/caw-ai';
 /** Entry for .mcp.json: node instead of npx works the same on every system and needs no cmd /c on Windows. */
@@ -370,7 +370,7 @@ export const roleLogin = async (root, { role: roleName, target }, { capture } = 
     return EXIT.pass;
 };
 
-/** Checks the config and all tests against all their targets, without Docker or network. Stale steps are a hint, not an error. */
+/** Checks the config and all tests on all their environments, without Docker or network. Stale steps are a hint, not an error. */
 export const validate = (root) => {
     const { config, notes, todo } = loadConfigWithNotes(root);
     const dir = join(root, TEST_DIR);
@@ -383,23 +383,16 @@ export const validate = (root) => {
         try {
             // Description plus recording from caw/recordings; loadTest reports a mismatching id.
             const spec = withDefaults(loadTest(root, file.slice(0, -'.yaml'.length)), config);
-            // App, role and targets all at once: checkTest stops at the first.
-            const basics = testBasics(spec, config);
-            const badTargets = spec.targets.flatMap((target) => {
-                try {
-                    effectiveEnvironment(config, target);
-                    return [];
-                } catch (error) {
-                    return [`${file} (${target}): ${error.message}`];
-                }
-            });
+            // Role and listed environments all at once: checkTest stops at the first.
+            const basics = [...testBasics(spec, config), ...environmentProblems(spec, config)];
+            const badTargets = [];
             // A writing test in a project without a writable environment: valid on its own, but it runs nowhere.
-            if (spec.targets.length === 0) badTargets.push(`${file}: ${t('cli.validateNowhere', { id: spec.id })}`);
+            if (spec.runsOn.length === 0) badTargets.push(`${file}: ${t('cli.validateNowhere', { id: spec.id })}`);
             if (basics.length > 0 || badTargets.length > 0) {
                 problems.push(...basics.map((text) => `${file}: ${text}`), ...badTargets);
                 continue;
             }
-            for (const target of spec.targets) {
+            for (const target of spec.runsOn) {
                 try {
                     const checked = checkTest(spec, target, config);
                     // Where an overlay is possible it is listed, although without --overlay the deployed build runs. If the app has
@@ -575,8 +568,7 @@ const stepUnknown = (key, spec, step, extra = {}) => new CawError('step-unknown'
  * @param writes record of a new test: whether it may write (not --read-only)
  */
 export const chooseEnv = (config, specs, { env, command, writes = true, ci = Boolean(process.env.CI), log = ui.info }) => {
-    // Until the test fields are renamed (P2.5): targets and mutates are environments and writes.
-    const model = specs.map((spec) => ({ id: spec.id, writes: spec.mutates === true, ...(Array.isArray(spec.targets) ? { environments: spec.targets } : {}) }));
+    const model = specs.map((spec) => ({ id: spec.id, writes: spec.writes === true, ...(Array.isArray(spec.environments) ? { environments: spec.environments } : {}) }));
     const candidates = environmentCandidates(config, { command, specs: model, writes });
     const { name, why } = chooseEnvironment(config, { given: env, candidates, command, ci });
     if (why !== 'given') {
@@ -595,7 +587,7 @@ const loadChecked = (root, id, given, command, { overlay, start } = {}) => {
 };
 
 /**
- * Loads tests with the config defaults (id, app, role, targets). Without a readable config as written: list works without one.
+ * Loads tests with the config defaults (role, runsOn). Without a readable config as written: list works without one.
  */
 /** The config for display, or {} if it is missing or invalid. */
 const displayConfig = (root) => {
@@ -632,7 +624,7 @@ const columns = (rows) => {
 };
 
 /**
- * `caw list`: per test its targets, recording state and whether it writes; `caw list <test>` one line per step. Without browser,
+ * `caw list`: per test its environments, recording state and whether it writes; `caw list <test>` one line per step. Without browser,
  * Claude or config.
  */
 export const list = (root, args, { out = console.log } = {}) => {
@@ -641,7 +633,7 @@ export const list = (root, args, { out = console.log } = {}) => {
     if (extra !== undefined) throw new CawError('usage', t('session.args.unexpected', { arg: extra }));
     // Without a config there is no project here, like for every other command; an invalid one still lists the tests.
     if (!existsSync(join(root, CONFIG_FILE))) loadConfig(root);
-    const mutatesText = (spec) => t(spec.mutates === false ? 'cli.listReadOnly' : 'cli.listWrites');
+    const writesText = (spec) => t(spec.writes === false ? 'cli.listReadOnly' : 'cli.listWrites');
     if (test !== undefined) {
         if (!existsSync(testPath(root, test))) {
             let config = {};
@@ -654,7 +646,7 @@ export const list = (root, args, { out = console.log } = {}) => {
         }
         const spec = testLoader(root)(test);
         const stale = new Set(staleSteps(spec).map(({ id }) => id));
-        out(t('cli.listTestHead', { test: spec.id, start: startPath(displayConfig(root), spec), role: spec.role ?? '–', targets: (spec.targets ?? []).join(', '), mutates: mutatesText(spec) }));
+        out(t('cli.listTestHead', { test: spec.id, start: startPath(displayConfig(root), spec), role: spec.role ?? '–', environments: (spec.runsOn ?? spec.environments ?? []).join(', '), writes: writesText(spec) }));
         const rows = spec.steps.map((step) => {
             let state = 'cli.listStepRecorded';
             if (step.recording === undefined) state = 'cli.listStepNotRecorded';
@@ -680,7 +672,7 @@ export const list = (root, args, { out = console.log } = {}) => {
             let text = t('cli.listRecorded');
             if (state === 'none') text = t('cli.listNotRecorded');
             else if (state === 'stale') text = t('cli.listStale', { ids: staleIds.join(', ') || chain });
-            return [id, (spec.targets ?? []).join(', '), text, mutatesText(spec)];
+            return [id, (spec.runsOn ?? spec.environments ?? []).join(', '), text, writesText(spec)];
         } catch (error) {
             // The table stays narrow, the reason goes below it; validate lists all findings.
             invalid.push(`${id}: ${String(error.message).split('\n')[0]}`);
@@ -735,9 +727,9 @@ const draftTest = (root, config, { id, target, role: chosenRole, readOnly = fals
     return {
         id,
         ...(role === undefined ? {} : { role }),
-        targets: [target],
-        // Writing unless the human says otherwise; a read-only test that does write becomes writing on adoption.
-        mutates: !readOnly,
+        // Writing unless the human says otherwise; a read-only test that does write becomes writing on adoption. No environments:
+        // the test runs wherever the config allows, not only where it was recorded.
+        writes: !readOnly,
         notes: '',
         steps: [],
         expectations: [],
@@ -925,9 +917,9 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
     const tracker = changeTracker(root);
     let failed;
-    // Where the human can clarify the failure in the chat: the test's first target Claude may work on.
+    // Where the human can clarify the failure in the chat: the test's first environment Claude may work on.
     const claude = new Set(environmentsWith(config, 'claude'));
-    const chatTarget = spec.targets.find((name) => claude.has(name));
+    const chatTarget = spec.runsOn.find((name) => claude.has(name));
     const code = await runFlow({
         spec,
         entry,
@@ -1003,8 +995,8 @@ const runMany = async (root, options, deps) => {
         }
     }
     const target = chooseEnv(loadConfig(root), [...specs.values()], { env: options.target, command: 'run' });
-    // --all: every test naming the target; an unreadable one stays in and shows up as rejected.
-    if (options.all) tests = tests.filter((id) => !specs.has(id) || (specs.get(id).targets ?? []).includes(target));
+    // --all: every test that runs on the environment; an unreadable one stays in and shows up as rejected.
+    if (options.all) tests = tests.filter((id) => !specs.has(id) || (specs.get(id).runsOn ?? []).includes(target));
     if (tests.length === 0) throw new CawError('usage', t('cli.batchNone', { target }));
     if (options.batch) ui.info(t('cli.batchStart', { count: tests.length, target, headless: options.headless ? '' : t('cli.batchWindow') }));
     const rows = [];
@@ -1051,7 +1043,7 @@ export const run = async (root, args, deps = {}) => {
  * contradiction.
  */
 export const contradicts = (spec, { role, readOnly = false }) => (role !== undefined && role !== spec.role)
-    || (readOnly && spec.mutates !== false);
+    || (readOnly && spec.writes !== false);
 
 /**
  * Re-records a test from a step to its end, always with chat: the steps before it replay without Claude, then Claude follows the

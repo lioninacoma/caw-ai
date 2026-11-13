@@ -169,7 +169,7 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
     good = `${ORIGINAL_HEAD}${read()}`;
     restore();
     const spec = parseTest(read());
-    verify('Metadata from the tool', spec.id === ID && spec.role === 'kunde' && spec.targets[0] === 'dev');
+    verify('Metadata from the tool', spec.id === ID && spec.role === 'kunde' && spec.environments === undefined, 'no environments: record does not pin');
     verify('Three steps with recording', spec.steps.every(({ recording }) => recording !== undefined));
     verify('Actions at the right step', spec.steps[0].recording.actions.some(({ action }) => action === 'click') && spec.steps[1].recording.actions.filter(({ action }) => action === 'fill').length === 1 && spec.steps[2].recording.actions.some(({ action }) => action === 'click'), JSON.stringify(spec.steps.map(({ recording }) => recording.actions.map(({ action }) => action))));
     verify('Screenshot removed', !JSON.stringify(spec.steps).includes('screenshot'));

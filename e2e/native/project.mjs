@@ -84,7 +84,7 @@ export const TESTS = {
 
 /** The single-file view of a test (description and recording), as parseTest reads it. */
 export const testText = (id, steps, { recordedOn = 'test' } = {}) => {
-    const lines = [`id: ${id}`, 'role: visitor', 'targets: [test]', 'mutates: false', 'steps:'];
+    const lines = [`id: ${id}`, 'role: visitor', 'environments: [test]', 'writes: false', 'steps:'];
     steps.forEach((step, index) => {
         const plain = { id: `S${index + 1}`, name: step.name, do: step.do ?? '', expect: step.expect };
         lines.push(

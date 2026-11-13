@@ -26,16 +26,16 @@ const project = (t) => {
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
     init(root);
-    // init writes only local; staging is a second environment without Claude.
+    // init writes only local; staging is a second, writable environment without Claude.
     const configFile = join(root, 'caw.config.json');
     const config = JSON.parse(readFileSync(configFile, 'utf8'));
-    config.environments.staging = { url: 'https://staging.shop.intern' };
+    config.environments.staging = { url: 'https://staging.shop.intern', writable: true };
     writeFileSync(configFile, JSON.stringify(config, null, 4));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
     const base = { role: 'tester', source: 'deployed', notes: '', knownMessages: undefined };
-    writeTest(root, { ...base, id: 'anmelden', targets: ['local'], mutates: false, steps: [recorded(step('S1', 'Maske')), recorded(step('S2', 'Start'))] });
-    writeTest(root, { ...base, id: 'bestellen', targets: ['local', 'staging'], mutates: true, steps: [recorded(step('S1', 'Liste')), { ...recorded(step('S2', 'Neu')), name: 'geaendert' }, step('S3', 'Ende')] });
-    writeTest(root, { ...base, id: 'neu', targets: ['local'], mutates: true, steps: [step('S1', 'Eins')] });
+    writeTest(root, { ...base, id: 'anmelden', environments: ['local'], writes: false, steps: [recorded(step('S1', 'Maske')), recorded(step('S2', 'Start'))] });
+    writeTest(root, { ...base, id: 'bestellen', environments: ['local', 'staging'], writes: true, steps: [recorded(step('S1', 'Liste')), { ...recorded(step('S2', 'Neu')), name: 'geaendert' }, step('S3', 'Ende')] });
+    writeTest(root, { ...base, id: 'neu', environments: ['local'], writes: true, steps: [step('S1', 'Eins')] });
     return root;
 };
 
@@ -85,35 +85,35 @@ test('chooseEnv: the only candidate, for run outside CI the only one with Claude
     const config = { environments: { local: { url: 'http://localhost:1', claude: true, writable: true }, dev: { url: 'https://dev.example', claude: true, writable: true }, staging: { url: 'https://s.example' } } };
     const said = [];
     const log = (text) => said.push(text);
-    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['dev'] }], { command: 'run', log }), 'dev');
+    assert.equal(chooseEnv(config, [{ id: 'x', environments: ['dev'] }], { command: 'run', log }), 'dev');
     assert.match(said.at(-1), /Umgebung: dev \(einzige Umgebung von x\)/);
-    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['dev'] }], { env: 'local', command: 'run', log }), 'local', 'a given environment wins');
+    assert.equal(chooseEnv(config, [{ id: 'x', environments: ['dev'] }], { env: 'local', command: 'run', log }), 'local', 'a given environment wins');
     // Two candidates, one of them with Claude: the developer's own outside CI; in CI nobody guesses.
-    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['local', 'staging'] }], { command: 'run', ci: false, log }), 'local');
+    assert.equal(chooseEnv(config, [{ id: 'x', environments: ['local', 'staging'] }], { command: 'run', ci: false, log }), 'local');
     assert.match(said.at(-1), /die einzige, auf der Claude arbeiten darf/);
-    assert.throws(() => chooseEnv(config, [{ id: 'x', targets: ['local', 'staging'] }], { command: 'run', ci: true, log }), /--env fehlt: local, staging/);
-    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['local', 'staging'] }], { command: 'record', log }), 'local', 'record: only where Claude may work');
+    assert.throws(() => chooseEnv(config, [{ id: 'x', environments: ['local', 'staging'] }], { command: 'run', ci: true, log }), /--env fehlt: local, staging/);
+    assert.equal(chooseEnv(config, [{ id: 'x', environments: ['local', 'staging'] }], { command: 'record', log }), 'local', 'record: only where Claude may work');
     assert.throws(() => chooseEnv(config, [], { command: 'record', log }), /--env fehlt: local, dev/);
     const one = { environments: { local: config.environments.local, staging: config.environments.staging } };
     assert.equal(chooseEnv(one, [], { command: 'record', log }), 'local');
     assert.match(said.at(-1), /einzige Umgebung, auf der Claude arbeiten darf/);
     // Several tests: the union of their environments.
-    assert.equal(chooseEnv(config, [{ id: 'a', targets: ['dev'] }, { id: 'b', targets: ['dev'] }], { command: 'run', ci: true, log }), 'dev');
+    assert.equal(chooseEnv(config, [{ id: 'a', environments: ['dev'] }, { id: 'b', environments: ['dev'] }], { command: 'run', ci: true, log }), 'dev');
     assert.match(said.at(-1), /einzige Umgebung der Tests/);
 });
 
-test('list: per test targets, recording state and writes; with a test one line per step', (t) => {
+test('list: per test environments, recording state and writes; with a test one line per step', (t) => {
     const root = project(t);
     const lines = [];
     const out = (text) => lines.push(text);
     assert.equal(list(root, [], { out }), EXIT.pass);
-    assert.match(lines[0], /^Test\s+Ziele\s+Aufnahme\s+Daten$/);
+    assert.match(lines[0], /^Test\s+Umgebungen\s+Aufnahme\s+Daten$/);
     assert.match(lines.find((line) => line.startsWith('anmelden')), /local\s+aufgenommen\s+liest nur/);
     assert.match(lines.find((line) => line.startsWith('bestellen')), /local, staging\s+veraltet \(S2, S3\)\s+schreibt/);
     assert.match(lines.find((line) => line.startsWith('neu')), /nicht aufgenommen/);
     lines.length = 0;
     list(root, ['bestellen'], { out });
-    assert.match(lines[0], /bestellen: Start \/, Rolle tester, Ziele local, staging, schreibt/);
+    assert.match(lines[0], /bestellen: Start \/, Rolle tester, Umgebungen local, staging, schreibt/);
     assert.match(lines[1], /^\s+S1\s+Liste\s+\(aufgenommen\)$/);
     assert.match(lines[2], /^\s+S2\s+geaendert\s+\(veraltet\)$/);
     assert.match(lines[3], /^\s+S3\s+Ende\s+\(nicht aufgenommen\)$/);
@@ -132,15 +132,15 @@ test('list without caw.config.json reports the missing config like every other c
 
 test('validate: all problems of a test at once, YAML positions only once', (t) => {
     const root = project(t);
-    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'role: geist\ntargets: [qa]\nmutates: false\nsteps:\n  - id: S1\n    name: Eins\n    do: a\n    expect: b\n');
+    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'role: geist\nenvironments: [qa]\nwrites: false\nsteps:\n  - id: S1\n    name: Eins\n    do: a\n    expect: b\n');
     t.mock.method(process.stdout, 'write', () => true);
     assert.throws(() => validate(root), (error) => {
         assert.equal(error.code, 'test-invalid');
         assert.match(error.message, /kaputt\.yaml: Unbekannte Rolle: geist/);
-        assert.match(error.message, /kaputt\.yaml \(qa\): Umgebung „qa“ gibt es nicht/);
+        assert.match(error.message, /kaputt\.yaml: environments: Umgebung „qa“ gibt es nicht\. Bekannt: local, staging/);
         return true;
     });
-    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'mutates: false\nsteps:\n  - id: S1\n    do: a: b\n');
+    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'writes: false\nsteps:\n  - id: S1\n    do: a: b\n');
     assert.throws(() => validate(root), (error) => {
         assert.match(error.message, /Zeile 4: Nested mappings are not allowed in compact mappings(\n|$)/);
         assert.doesNotMatch(error.message, /at line|:\n|:$/);
@@ -198,8 +198,8 @@ test('run with several tests: each runs, the table shows the outcome, the exit i
     // --all only takes tests with the environment; in CI without --env the tests' only environment is needed, but there are two here.
     await inCi(() => assert.rejects(run(root, ['--all']), /--env fehlt: local, staging/));
     said.length = 0;
-    // Only bestellen names staging; it must not write there: rejected.
-    assert.equal(await run(root, ['--all', '--env', 'staging']), EXIT.rejected);
+    // Only bestellen runs on staging; its recording is stale there as anywhere.
+    assert.equal(await run(root, ['--all', '--env', 'staging']), EXIT.needsRecording);
     assert.match(said.join('\n'), /Ergebnis: 1 Test auf staging/);
 });
 

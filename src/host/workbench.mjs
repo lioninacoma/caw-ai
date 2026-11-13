@@ -595,7 +595,7 @@ const renderStates=()=>{
   const q=$('sq').value.trim().toLowerCase();
   const shown=STATES.filter((test)=>test.id.toLowerCase().includes(q)||test.name.toLowerCase().includes(q)||String(test.role??'').toLowerCase().includes(q));
   if(sTest!==null&&!STATES.some((test)=>test.id===sTest))sTest=null;
-  $('stests').replaceChildren(...shown.map((test)=>{const row=sRow('',test.id===sTest?'▸':' ',test.id,test.mutates?{text:(test.role?test.role+' · ':'')+T['workbench.page.stateWrites'],warn:true}:{text:(test.role?test.role+' · ':'')+fill('workbench.page.stateCount',{count:test.steps.length})},test.id===sTest);
+  $('stests').replaceChildren(...shown.map((test)=>{const row=sRow('',test.id===sTest?'▸':' ',test.id,test.writes?{text:(test.role?test.role+' · ':'')+T['workbench.page.stateWrites'],warn:true}:{text:(test.role?test.role+' · ':'')+fill('workbench.page.stateCount',{count:test.steps.length})},test.id===sTest);
     row.addEventListener('click',()=>{sTest=test.id;sStep=null;renderStates();});return row;}));
   const test=STATES.find((entry)=>entry.id===sTest);
   $('sstepsHead').textContent=(test?T['workbench.page.stateSteps']+' · '+test.id:T['workbench.page.stateSteps']).toUpperCase();
@@ -608,7 +608,7 @@ const renderStates=()=>{
     row.addEventListener('click',()=>{sStep=step.id;renderStates();});return row;});
   $('ssteps').replaceChildren(all,...rows);
   $('sgo').disabled=false;
-  $('sfoot').textContent=(sStep===null?fill('workbench.page.stateFoot',{test:test.id,step:last.id}):fill('workbench.page.stateFootEntry',{test:test.id,step:sStep}))+(test.role?fill('workbench.page.stateFootRole',{role:test.role}):'')+(test.mutates?T['workbench.page.stateFootWrites']:'');
+  $('sfoot').textContent=(sStep===null?fill('workbench.page.stateFoot',{test:test.id,step:last.id}):fill('workbench.page.stateFootEntry',{test:test.id,step:sStep}))+(test.role?fill('workbench.page.stateFootRole',{role:test.role}):'')+(test.writes?T['workbench.page.stateFootWrites']:'');
 };
 let stateFocus=null;
 const openStates=(on=stateDlg.hidden)=>{if(on&&STATES.length===0)return;if(on&&!$('themeDlg').hidden)openTheme(false);stateDlg.hidden=!on;

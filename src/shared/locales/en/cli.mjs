@@ -27,7 +27,7 @@ Commands:`,
                                          Claude follows the old plan from S4 while you steer in the chat. From S4 on the
                                          plan may change, the steps before it stay. @S1 records the whole test
       [--role <role>]                    First time only, not with @<S4>; not needed if the config has just one
-      [--read-only]                      First time only: the test doesn't write (mutates: false); if it does, it's
+      [--read-only]                      First time only: the test doesn't write (writes: false); if it does, it's
                                          marked as writing
       [--claude-timeout <duration>]      Time limit for Claude, default 60m
       [--max-actions <n>]                Limit on Claude's actions, else maxSteps from the config, else 100
@@ -202,7 +202,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
 
     // commands.mjs: list
     'cli.listNone': 'No tests in {dir} yet. Record the first with caw record <test>.',
-    'cli.listHead': 'Test|Targets|Recording|Data',
+    'cli.listHead': 'Test|Environments|Recording|Data',
     'cli.listRecorded': 'recorded',
     'cli.listStale': 'stale ({ids})',
     'cli.listNotRecorded': 'not recorded',
@@ -212,7 +212,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.listStepRecorded': 'recorded',
     'cli.listStepStale': 'stale',
     'cli.listStepNotRecorded': 'not recorded',
-    'cli.listTestHead': '{test}: start {start}, role {role}, targets {targets}, {mutates}',
+    'cli.listTestHead': '{test}: start {start}, role {role}, environments {environments}, {writes}',
     'cli.knownTests': 'Known tests: {tests}.',
     'cli.noTests': 'There are no tests in caw/tests yet.',
     'cli.knownSteps': 'Steps: {steps}.',
@@ -268,7 +268,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.unchanged': 'Test file unchanged.',
     'cli.batchStart': '{count} test(s) on {target}, one after another and without chat{headless}.',
     'cli.batchWindow': ' (no window with --headless)',
-    'cli.batchNone': 'No test lists {target} in targets.',
+    'cli.batchNone': 'No test runs on {target}.',
     'cli.batchHeading': ({ count, target }) => `Result: ${count} ${count === 1 ? 'test' : 'tests'} on ${target}`,
     'cli.batchStatus.pass': 'PASS',
     'cli.batchStatus.fail': 'FAIL',

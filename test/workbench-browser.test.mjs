@@ -412,8 +412,8 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     bench.onState(async (testId, step) => { picked.push([testId, step]); });
     assert.equal(await page.isVisible('.fkeys [data-states]'), false, 'no F1 without tests');
     await bench.states([
-        { id: 'sb-antrag-abbrechen', name: '', mutates: true, steps: [{ id: 'S1', name: 'Personensuche', ok: true }, { id: 'S2', name: 'Person wählen', ok: true }, { id: 'S3', name: 'Antrag', ok: false, why: 'stale' }] },
-        { id: 'pruefen-liste', name: '', mutates: false, steps: [{ id: 'S1', name: 'Liste', ok: true }] },
+        { id: 'sb-antrag-abbrechen', name: '', writes: true, steps: [{ id: 'S1', name: 'Personensuche', ok: true }, { id: 'S2', name: 'Person wählen', ok: true }, { id: 'S3', name: 'Antrag', ok: false, why: 'stale' }] },
+        { id: 'pruefen-liste', name: '', writes: false, steps: [{ id: 'S1', name: 'Liste', ok: true }] },
     ]);
     assert.equal(await page.isVisible('.fkeys [data-states]'), true);
     await page.keyboard.press('F1');
@@ -454,7 +454,7 @@ test('workbench: the application reaches the bindings via top, but sets no token
     const { bench } = await open(t);
     const picked = [];
     bench.onState(async (...args) => { picked.push(args); });
-    await bench.states([{ id: 'liste', name: '', role: 'sb', mutates: false, steps: [{ id: 'S1', name: 'Liste', ok: true }, { id: 'S2', name: 'X', ok: false, why: 'stale' }] }]);
+    await bench.states([{ id: 'liste', name: '', role: 'sb', writes: false, steps: [{ id: 'S1', name: 'Liste', ok: true }, { id: 'S2', name: 'X', ok: false, why: 'stale' }] }]);
     // Same origin: the application calls the workbench's bindings through top, and they see the main frame as the caller.
     await bench.view.evaluate(() => Promise.all([top.cawPref('tokenNotice', 'off'), top.cawPref('animations', 'off')]));
     await bench.view.evaluate(() => Promise.all([top.cawState('unknown'), top.cawState('liste', 'S2'), top.cawState('liste', 'pretend text')]));

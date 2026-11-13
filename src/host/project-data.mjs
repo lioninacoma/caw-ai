@@ -5,7 +5,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, write
 import { join, resolve } from 'node:path';
 
 import { AUTH_DIR, authOf, loadConfig, loadConfigWithNotes, todoFields } from '../shared/config.mjs';
-import { effectiveEnvironment, startPath } from '../shared/environments.mjs';
+import { startPath } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -13,7 +13,7 @@ import { describeCode } from './code-source.mjs';
 import { answersFromExplore, detectApp, mcpEntry, starterConfig } from './commands.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
 import { templatePath } from './sandbox-config.mjs';
-import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
+import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
 
 const SKILL_FILE = '.claude/skills/caw-ai/SKILL.md';
 
@@ -54,17 +54,10 @@ const validateTest = (root, id, config) => {
     const entry = { id, problems: [], hints: [], code: [] };
     try {
         const spec = withDefaults(loadTest(root, id), config);
-        const badTargets = spec.targets.flatMap((target) => {
-            try {
-                effectiveEnvironment(config, target);
-                return [];
-            } catch (error) {
-                return [`${target}: ${error.message}`];
-            }
-        });
-        entry.problems.push(...testBasics(spec, config), ...badTargets);
+        entry.problems.push(...testBasics(spec, config), ...environmentProblems(spec, config));
+        if (spec.runsOn.length === 0) entry.problems.push(t('cli.validateNowhere', { id: spec.id }));
         if (entry.problems.length > 0) return entry;
-        for (const target of spec.targets) {
+        for (const target of spec.runsOn) {
             try {
                 entry.code.push(codeOn(spec, target, config));
             } catch (error) {
@@ -116,9 +109,9 @@ const recordingState = (spec) => {
 };
 
 /**
- * `caw list` as data: per test app, role, targets, whether it writes and the recording state per step. Without a readable
- * config the tests are listed as written (no defaults for app, role and targets).
- * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, app, role, targets, mutates, recording, steps: [{ id, name, recording }] } | { id, error }] }
+ * `caw list` as data: per test start path, role, environments, whether it writes and the recording state per step. Without a
+ * readable config the tests are listed as written (no defaults for role and environments).
+ * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, start, role, environments, writes, recording, steps: [{ id, name, recording }] } | { id, error }] }
  */
 export const listProject = (root) => {
     let config = null;
@@ -138,8 +131,8 @@ export const listProject = (root) => {
                 id,
                 start: config === null ? (spec.start ?? null) : startPath(config, spec),
                 role: spec.role ?? null,
-                targets: spec.targets ?? [],
-                mutates: spec.mutates !== false,
+                environments: spec.runsOn ?? spec.environments ?? [],
+                writes: spec.writes !== false,
                 recording,
                 steps: spec.steps.map((step) => ({
                     id: step.id,

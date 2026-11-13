@@ -12,7 +12,7 @@ const step = (id) => {
     const plain = { id, name: `Step ${id}`, do: `Do ${id}`, expect: `${id} is there` };
     return { ...plain, recording: { hash: stepHash(plain), recordedOn: 'dev', recordedAt: '2026-11-11T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [{ action: 'click', target: "getByRole('button', { name: 'Weiter', exact: true })" }], check: 'true' } };
 };
-const save = (root, id, role, start) => writeTest(root, composeTest({ id, role, targets: ['dev'], source: 'deployed', mutates: false, ...(start === undefined ? {} : { start }) }, { notes: '', steps: [step('S1')] }));
+const save = (root, id, role, start) => writeTest(root, composeTest({ id, role, environments: ['dev'], source: 'deployed', writes: false, ...(start === undefined ? {} : { start }) }, { notes: '', steps: [step('S1')] }));
 const CONFIG = {
     auth: { type: 'form' },
     start: '/antrag',

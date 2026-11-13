@@ -198,7 +198,7 @@ test('navigationHosts: every non-production environment and the allowed hosts, n
     assert.deepEqual(navigationHosts(simple(), 'local'), ['app.localhost', 'staging.shop.example']);
 });
 
-const SPEC = { id: 'smoke', role: 'kunde', targets: ['nord-dev', 'sued-test'], mutates: false };
+const SPEC = { id: 'smoke', role: 'kunde', environments: ['nord-dev', 'sued-test'], writes: false };
 
 test('checkTest: valid; without --overlay always the deployed code, even where the overlay would work', () => {
     assert.equal(checkTest(SPEC, 'nord-dev', multi()).source, 'deployed');
@@ -208,7 +208,7 @@ test('checkTest: valid; without --overlay always the deployed code, even where t
 
 test('checkTest: a role only with a login; with exactly one role it applies', () => {
     const open = withoutAuth();
-    const spec = { id: 'offen', targets: ['local'], mutates: false };
+    const spec = { id: 'offen', environments: ['local'], writes: false };
     assert.equal(checkTest(spec, 'local', open).source, 'deployed');
     assert.equal(withDefaults(spec, simple()).role, 'kaeufer');
     const two = { ...simple(), roles: { kaeufer: { loginEnv: 'A', passwordEnv: 'B' }, admin: { loginEnv: 'C', passwordEnv: 'D' } } };
@@ -219,12 +219,12 @@ test('checkTest: a role only with a login; with exactly one role it applies', ()
 test('which code runs: deployed unless --overlay; if the overlay is not possible, a usage error with the reason', () => {
     const withParts = (parts, extra = {}) => ({ ...simple(), ...extra, overlay: { environments: ['local'], parts } });
     const own = withParts({ shop: { dir: 'shop', build: 'dist' } });
-    const spec = { id: 'smoke', mutates: false };
+    const spec = { id: 'smoke', writes: false };
     const code = (config, overlay, options = {}) => {
         const { source, parts, skipped } = checkTest(spec, 'local', config, { overlay, ...options });
         return { source, parts, skipped };
     };
-    assert.deepEqual(withDefaults(spec, own), { ...spec, role: 'kaeufer', targets: ['local', 'staging'] }, 'role and targets from the config');
+    assert.deepEqual(withDefaults(spec, own), { ...spec, role: 'kaeufer', runsOn: ['local', 'staging'] }, 'role and where it runs from the config; environments stay unwritten');
     assert.equal(checkTest(spec, 'local', own).source, 'deployed', 'never silently local');
     const build = { kind: 'build', dir: 'dist', statics: [] };
     assert.deepEqual(code(own, true), { source: 'overlay', parts: { shop: build }, skipped: [] });
@@ -268,7 +268,7 @@ test('which code runs: deployed unless --overlay; if the overlay is not possible
     const at = (url) => ({ ...own, environments: { box: { url, claude: true } }, overlay: { ...own.overlay, environments: ['box'] } });
     assert.throws(() => checkTest(spec, 'box', at('http://localhost:5173'), { overlay: true }), (error) => error.code === 'usage' && /Umgebung box ist ein Dev-Server \(localhost:5173\)/.test(error.message));
     assert.equal(checkTest(spec, 'box', at('https://shop.localhost:8443'), { overlay: true }).source, 'overlay');
-    assert.throws(() => checkTest({ ...spec, targets: ['local'] }, 'staging', own), /Trage staging in targets in caw\/tests\/smoke\.yaml ein/);
+    assert.throws(() => checkTest({ ...spec, environments: ['local'] }, 'staging', own), /Trage staging in environments in caw\/tests\/smoke\.yaml ein/);
 });
 
 test('config: suggestions for typos, notes on settings without effect', () => {
@@ -394,19 +394,27 @@ test('writeConfig: merges into the file, validates first, writes atomically with
     assert.equal(writeConfig(mkdtempSync(join(tmpdir(), 'caw-write-none-')), {}).ok, false, 'no config file');
 });
 
-test('checkTest: the target must be listed in the test', () => {
-    assert.throws(() => checkTest(SPEC, 'nord-test', multi()), /targets/);
+test('checkTest: the environment must be one the test runs on', () => {
+    assert.throws(() => checkTest(SPEC, 'nord-test', multi()), /smoke läuft nicht auf nord-test, nur auf nord-dev, sued-test\. Trage nord-test in environments/);
 });
 
 test('checkTest: unknown role', () => {
     assert.throws(() => checkTest({ ...SPEC, role: 'x' }, 'nord-dev', multi()), /Rolle/);
 });
 
-test('checkTest: mutates is rejected on environments without writable', () => {
-    const spec = { ...SPEC, mutates: true, targets: ['nord-dev', 'nord-test', 'nord-abnahme'] };
-    assert.equal(checkTest(spec, 'nord-dev', multi()).mutates, true);
-    assert.equal(checkTest(spec, 'nord-test', multi()).mutates, true);
-    assert.throws(() => checkTest(spec, 'nord-abnahme', multi()), /schreibgeschützt/);
+test('checkTest: a writing test is rejected on environments without writable', () => {
+    // Listed: the test itself is invalid, wherever it runs.
+    const listed = { ...SPEC, writes: true, environments: ['nord-dev', 'nord-test', 'nord-abnahme'] };
+    assert.throws(() => checkTest(listed, 'nord-dev', multi()), (error) => error.code === 'test-invalid' && /nicht auf nord-abnahme laufen: Die Umgebung ist schreibgeschützt/.test(error.message));
+    const prod = { environments: { ...multi().environments, live: { url: 'https://www.nord.example', production: true } } };
+    assert.throws(() => checkTest({ ...listed, environments: ['nord-dev', 'live'] }, 'nord-dev', { ...multi(), ...prod }), /nicht auf live laufen: Das ist Produktion/);
+    assert.equal(checkTest({ ...listed, writes: false, environments: ['nord-dev', 'live'] }, 'live', { ...multi(), ...prod }).writes, false, 'a read-only test may list production');
+    // Not listed: the default is the writable environments; --env on another one is write-protected.
+    const spec = { ...SPEC, writes: true };
+    delete spec.environments;
+    assert.equal(checkTest(spec, 'nord-dev', multi()).writes, true);
+    assert.equal(checkTest(spec, 'nord-test', multi()).writes, true);
+    assert.throws(() => checkTest(spec, 'nord-abnahme', multi()), (error) => error.code === 'write-protected' && /schreibgeschützt/.test(error.message));
 });
 
 test('buildDevlinkConfig: environment and start page, no marker without login', () => {

@@ -9,7 +9,7 @@ import { sessionMcpHandler, startArgs } from '../src/host/session-mcp.mjs';
 import { initProject, listProject, validateProject } from '../src/host/project-data.mjs';
 
 const TEMPLATE = readFileSync(new URL('../templates/caw.config.example.json', import.meta.url), 'utf8');
-const STEPS = 'mutates: false\nsteps:\n  - id: S1\n    name: Öffnen\n    do: ""\n    expect: Startseite\n  - id: S2\n    name: Bestellen\n    do: ""\n    expect: Bestätigung\n';
+const STEPS = 'writes: false\nsteps:\n  - id: S1\n    name: Öffnen\n    do: ""\n    expect: Startseite\n  - id: S2\n    name: Bestellen\n    do: ""\n    expect: Bestätigung\n';
 /** The template with an overlay block: one part web, allowed on a deployed environment dev. */
 const OVERLAY_CONFIG = (() => {
     const config = JSON.parse(TEMPLATE);
@@ -77,7 +77,7 @@ test('caw_doctor, caw_validate and caw_list: data with counts, problems and reco
     const listed = (await call('caw_list')).structuredContent;
     assert.equal(listed.config, 'ok');
     assert.deepEqual(listed.tests[0], {
-        id: 'bestellung', start: '/', role: 'tester', targets: ['local'], mutates: false, recording: { state: 'none', stale: [] },
+        id: 'bestellung', start: '/', role: 'tester', environments: ['local'], writes: false, recording: { state: 'none', stale: [] },
         steps: [{ id: 'S1', name: 'Öffnen', recording: 'none' }, { id: 'S2', name: 'Bestellen', recording: 'none' }],
     });
 

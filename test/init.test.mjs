@@ -288,12 +288,12 @@ test('skill: only skill and MCP entry, no config; updates an old skill', async (
 
 test('record: options for an already described test may match, only contradictions abort', async () => {
     const { contradicts } = await import('../src/host/commands.mjs');
-    const spec = { role: 'nutzer', mutates: false };
+    const spec = { role: 'nutzer', writes: false };
     assert.equal(contradicts(spec, { readOnly: true }), false, 'as in the npm script Claude created');
     assert.equal(contradicts(spec, { role: 'nutzer' }), false);
     assert.equal(contradicts(spec, {}), false);
     assert.equal(contradicts(spec, { role: 'admin' }), true);
-    assert.equal(contradicts({ ...spec, mutates: true }, { readOnly: true }), true);
+    assert.equal(contradicts({ ...spec, writes: true }, { readOnly: true }), true);
 });
 
 test('init: explore is required, asks for address and roles, checks every answer at once', async (t) => {
@@ -363,7 +363,7 @@ test('validate: code per test and target, where an overlay is possible, and TODO
     }));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
     const steps = 'steps:\n  - id: S1\n    name: A\n    do: ""\n    expect: B\n';
-    writeFileSync(join(root, 'caw', 'tests', 'lesen.yaml'), `mutates: false\n${steps}`);
+    writeFileSync(join(root, 'caw', 'tests', 'lesen.yaml'), `writes: false\n${steps}`);
     const chunks = [];
     const write = t.mock.method(process.stdout, 'write', (chunk) => { chunks.push(String(chunk)); return true; });
     try {

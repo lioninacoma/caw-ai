@@ -29,13 +29,13 @@ export const loadStateTest = (root, config, id) => {
 };
 
 /**
- * The tests whose states can be restored here: the target among their targets, any role. Restoring signs in freshly with the
+ * The tests whose states can be restored here: those that run on the environment, any role. Restoring signs in freshly with the
  * account of the test's role. `role` narrows the list, e.g. for basic auth, where the account is tied to the browser.
- * @returns [{ id, name, role, start, mutates, steps: [{ id, name, ok, why }] }]; `why`: stale, missing or after (follows a blocked step)
+ * @returns [{ id, name, role, start, writes, steps: [{ id, name, ok, why }] }]; `why`: stale, missing or after (follows a blocked step)
  */
 export const stateCatalog = (root, config, { role, target }) => testIds(root).flatMap((id) => {
     const spec = loadStateTest(root, config, id);
-    if (spec === undefined || !(spec.targets ?? []).includes(target)) return [];
+    if (spec === undefined || !(spec.runsOn ?? []).includes(target)) return [];
     if (role !== undefined && spec.role !== role) return [];
     // Without an account for the role nothing can be restored.
     if ((spec.role !== undefined && config.roles?.[spec.role] === undefined && authType(config) !== 'none' && authType(config) !== 'storageState')) return [];
@@ -57,7 +57,7 @@ export const stateCatalog = (root, config, { role, target }) => testIds(root).fl
         return { id: step.id, name: String(step.name ?? ''), ok: why === undefined, ...(why === undefined ? {} : { why }) };
     });
     if (!steps.some(({ ok }) => ok)) return [];
-    return [{ id, name: String(spec.name ?? ''), role: String(spec.role ?? ''), start: startPath(config, spec), mutates: spec.mutates !== false, steps }];
+    return [{ id, name: String(spec.name ?? ''), role: String(spec.role ?? ''), start: startPath(config, spec), writes: spec.writes !== false, steps }];
 });
 
 /** Is the step in the catalog and restorable? */

@@ -480,7 +480,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         target,
         source: checked.source,
         framework: frameworkOf(config).name,
-        mutates: spec.mutates,
+        writes: spec.writes,
         expectations: spec.expectations,
         notes: spec.notes,
         steps: spec.steps.map(planStep),
@@ -1356,11 +1356,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
 
         const built = buildReplay({ recorder, outcome: verdict, spec, target, browser: session.browser ?? {}, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(range === undefined ? {} : { from: repair.id }), ...(creating && previous !== undefined ? { previous } : {}) });
         let { candidate } = built;
-        // Created as read-only but it wrote: then the test mutates, otherwise it would run on targets without writable.
+        // Created as read-only but it wrote: then the test writes, otherwise it would run on environments without writable.
         const written = verdict?.writes ?? [];
-        if (candidate !== undefined && !candidate.mutates && written.length > 0) {
-            candidate = { ...candidate, mutates: true };
-            ui.warn(t('run.mutates', { id: spec.id, labels: written.map(({ label }) => label).join(', ') }));
+        if (candidate !== undefined && !candidate.writes && written.length > 0) {
+            candidate = { ...candidate, writes: true };
+            ui.warn(t('run.writes', { id: spec.id, labels: written.map(({ label }) => label).join(', ') }));
         }
         if (candidate === undefined) {
             ui.warn(t('run.noRecording', { problems: built.problems.join(' ') }));

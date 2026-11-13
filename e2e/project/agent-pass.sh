@@ -20,7 +20,7 @@ echo x > "$CAW_AGENT_DIR/geschrieben" && echo "Agent-Ordner beschreibbar"
 touch "$(dirname "$CAW_AGENT_DIR")/result.json" 2>&1 | head -1
 env | grep -c 'fx-geheim' | sed 's/^/Passwort in env: /'
 
-step "Auftrag"; $A runbook | grep -E '"(target|source|mutates)"'
+step "Auftrag"; $A runbook | grep -E '"(target|source|writes)"'
 step "Snapshot"; $A snapshot
 step "Stand"; $A eval 'window.STAND'; $A eval 'window.CAW_MARKE'
 step "Klick per Referenz"

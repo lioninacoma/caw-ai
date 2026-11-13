@@ -27,7 +27,7 @@ Befehle:`,
                                          Claude dem alten Plan ab S4, du lenkst im Chat. Ab S4 darf sich der Plan ändern,
                                          die Schritte davor bleiben. @S1 nimmt den ganzen Test auf
       [--role <rolle>]                   Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
-      [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch,
+      [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (writes: false); schreibt er doch,
                                          wird er schreibend
       [--claude-timeout <dauer>]         Zeitlimit für Claude, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
@@ -203,7 +203,7 @@ Browser:
 
     // commands.mjs: list
     'cli.listNone': 'Noch keine Tests in {dir}. Den ersten nimmt caw record <test> auf.',
-    'cli.listHead': 'Test|Ziele|Aufnahme|Daten',
+    'cli.listHead': 'Test|Umgebungen|Aufnahme|Daten',
     'cli.listRecorded': 'aufgenommen',
     'cli.listStale': 'veraltet ({ids})',
     'cli.listNotRecorded': 'nicht aufgenommen',
@@ -213,7 +213,7 @@ Browser:
     'cli.listStepRecorded': 'aufgenommen',
     'cli.listStepStale': 'veraltet',
     'cli.listStepNotRecorded': 'nicht aufgenommen',
-    'cli.listTestHead': '{test}: Start {start}, Rolle {role}, Ziele {targets}, {mutates}',
+    'cli.listTestHead': '{test}: Start {start}, Rolle {role}, Umgebungen {environments}, {writes}',
     'cli.knownTests': 'Bekannte Tests: {tests}.',
     'cli.noTests': 'In caw/tests gibt es noch keine Tests.',
     'cli.knownSteps': 'Schritte: {steps}.',
@@ -269,7 +269,7 @@ Browser:
     'cli.unchanged': 'Testdatei unverändert.',
     'cli.batchStart': '{count} Test(s) auf {target}, nacheinander und ohne Chat{headless}.',
     'cli.batchWindow': ' (ohne Fenster mit --headless)',
-    'cli.batchNone': 'Kein Test nennt {target} in targets.',
+    'cli.batchNone': 'Kein Test läuft auf {target}.',
     'cli.batchHeading': ({ count, target }) => `Ergebnis: ${count} ${count === 1 ? 'Test' : 'Tests'} auf ${target}`,
     'cli.batchStatus.pass': 'PASS',
     'cli.batchStatus.fail': 'FAIL',
