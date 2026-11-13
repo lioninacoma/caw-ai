@@ -137,7 +137,10 @@ export const startRun = ({ root, command, args, spawnRun = spawn }) => {
     return spawnDetached({ root, command, args: [...args, '--agent', 'session'], spawnRun });
 };
 
+/** A value of --overlay after a space on the command line: build, dev or a dev server URL (parts only with =). */
 const isOverlayValue = (value) => value === true || value === 'build' || value === 'dev' || (typeof value === 'string' && /^https?:\/\/[^\s/]+/i.test(value));
+/** caw_start's overlay: true, or a value the CLI checks itself (build, dev, a URL, parts like "orders,admin:dev"). */
+const isOverlayInput = (value) => value === true || (typeof value === 'string' && /^[^\s-]\S*$/.test(value));
 
 /** The command line from the typed fields of caw_start, or the raw `args`. Throws with a message for Claude. */
 export const startArgs = (input) => {
@@ -161,7 +164,7 @@ export const startArgs = (input) => {
     }
     // A step without its test: open would open without a test and drop it.
     if (input.step !== undefined && input.test === undefined) throw new Error(t('run.mcp.fieldMissing', { field: 'test', command }));
-    if (given.includes('overlay') && !isOverlayValue(input.overlay)) throw new Error(t('run.mcp.overlayInvalid'));
+    if (given.includes('overlay') && !isOverlayInput(input.overlay)) throw new Error(t('run.mcp.overlayInvalid'));
     if (given.includes('headless') && input.headless !== true) throw new Error(t('run.mcp.fieldText', { field: 'headless' }));
     const args = [];
     if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
@@ -199,15 +202,11 @@ const withOverlayUrl = (args, url) => {
     return [...args.slice(0, index), `--overlay=${url}`, ...args.slice(index + length)];
 };
 
-/** The app of a test (for the overlay pre-check); undefined if the test cannot be read. */
-const appOf = async (root, config, test) => {
-    if (test === undefined) return undefined;
-    try {
-        const { loadTest, withDefaults } = await import('./test-file.mjs');
-        return withDefaults(loadTest(root, test), config).app;
-    } catch {
-        return undefined;
-    }
+/** The parts an --overlay value brings in (for the pre-check): the named ones, otherwise all of overlay.parts. */
+const overlayPartsOf = (config, value) => {
+    const names = Object.keys(config.overlay?.parts ?? {});
+    if (typeof value !== 'string' || isOverlayValue(value)) return names;
+    return value.split(',').map((item) => item.trim().split(':')[0]).filter((name) => names.includes(name));
 };
 
 /** The overlay pre-check, loaded on first use so the MCP server starts without the browser modules. */
@@ -312,7 +311,7 @@ const textField = (input, field) => {
  * @param run        tests only: replaces the CLI call of the caw tool
  * @param execCli    tests only: (args, { timeoutMs }) -> { code, out, err, timedOut }, replaces the awaited CLI call
  * @param probes     tests only: doctor probes (Chrome, Docker, network)
- * @param overlayPreconditions (root, config, { target, app }) -> overlayStatus result; for caw_start and caw_overlay status; default from overlay-check.mjs
+ * @param overlayPreconditions (root, config, { target, part }) -> overlayStatus result; for caw_start and caw_overlay status; default from overlay-check.mjs
  * @param writeConfig (root, patch, { dryRun }) -> { ok, issues, config }; default from config.mjs
  */
 export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), probes, overlayPreconditions, writeConfig, windowWait = {} } = {}) => [
@@ -321,11 +320,11 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         description: 'Starts a caw-ai command in the background with you as the agent (--agent session); the window opens for the human. '
             + 'command: run, record or open. Typed fields: test, target, step (record: re-record from this step to the end; open: stop at the '
             + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
-            + 'overlay (true, "build", "dev" or a dev server URL: local code on a deployed environment, only if the human wants it), headless (run). '
+            + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
             + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
             + 'With overlay the local code server is checked first (as caw_overlay status): down, wrong-app or stale returns state, url, start '
-            + 'and appDir instead of starting; then ask the human, start the project\'s start command in your own session in the background '
+            + 'and partDir instead of starting; then ask the human, start the project\'s start command in your own session in the background '
             + 'and poll caw_overlay status until ready. moved starts against the found URL and reports it. Then call caw_status until the run waits for you.',
         inputSchema: {
             type: 'object',
@@ -334,7 +333,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 test: { type: 'string' },
                 target: { type: 'string' },
                 step: { type: 'string', description: 'record: re-record from this step to the end; open: hand over at the entry of this step. E.g. S3, needs test' },
-                overlay: { type: ['boolean', 'string'], description: 'true, "build", "dev" or a dev server URL' },
+                overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
                 headless: { type: 'boolean' },
                 args: { type: 'array', items: { type: 'string' }, description: 'Raw command line instead of the typed fields' },
             },
@@ -359,28 +358,31 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             let moved;
             if (given.overlay) {
                 const check = overlayPreconditions ?? await defaultOverlayPreconditions();
-                let found;
-                try {
-                    found = await check?.(root, config, { target: given.target, app: await appOf(root, config, given.test) });
-                } catch {
-                    // The command itself reports what is wrong with the overlay.
-                }
-                if (['down', 'wrong-app', 'stale'].includes(found?.state)) {
-                    // Never started from here: Claude asks the human and starts `start` in its own session.
-                    const { state, url = null, foundUrl, start = null, appDir = null, framework, message } = found;
-                    const data = { state, url, ...(foundUrl === undefined ? {} : { foundUrl }), start, appDir, framework, ...(message === undefined ? {} : { message }) };
-                    return answer(t('run.mcp.overlayNotReady', { state, url: url ?? '', start: start ?? t('run.mcp.startUnknown'), appDir: appDir ?? '' }), data);
-                }
-                // The server of this app runs on another port: run against it (a build folder choice stays as it is).
-                if (found?.state === 'moved' && typeof found.foundUrl === 'string' && given.overlayValue !== 'build') {
-                    moved = { url: found.url ?? null, foundUrl: found.foundUrl, app: found.app ?? null };
-                    runArgs = withOverlayUrl(args, found.foundUrl);
+                const parts = overlayPartsOf(config, given.overlayValue);
+                for (const part of parts) {
+                    let found;
+                    try {
+                        found = await check?.(root, config, { target: given.target, part });
+                    } catch {
+                        // The command itself reports what is wrong with the overlay.
+                    }
+                    if (['down', 'wrong-app', 'stale'].includes(found?.state)) {
+                        // Never started from here: Claude asks the human and starts `start` in its own session.
+                        const { state, url = null, foundUrl, start = null, partDir = null, framework, message } = found;
+                        const data = { state, part, url, ...(foundUrl === undefined ? {} : { foundUrl }), start, partDir, framework, ...(message === undefined ? {} : { message }) };
+                        return answer(t('run.mcp.overlayNotReady', { state, url: url ?? '', start: start ?? t('run.mcp.startUnknown'), dir: partDir ?? '' }), data);
+                    }
+                    // The server of the only part runs on another port: run against it (a build folder choice stays as it is).
+                    if (parts.length === 1 && found?.state === 'moved' && typeof found.foundUrl === 'string' && given.overlayValue !== 'build') {
+                        moved = { url: found.url ?? null, foundUrl: found.foundUrl, part };
+                        runArgs = withOverlayUrl(args, found.foundUrl);
+                    }
                 }
             }
             const { log, pid } = startRun({ root, command: input.command, args: runArgs, spawnRun });
             const started = t('run.mcp.started', { pid, log });
             if (moved === undefined) return answer(started, { state: 'started', command: input.command, args: runArgs, pid, log: shown(root, log) });
-            const note = t('run.mcp.startedMoved', { found: moved.foundUrl, url: moved.url ?? '', app: moved.app ?? '<app>' });
+            const note = t('run.mcp.startedMoved', { found: moved.foundUrl, url: moved.url ?? '', app: moved.part });
             return answer(`${started} ${note}`, { state: 'started', command: input.command, args: runArgs, pid, log: shown(root, log), overlay: { state: 'moved', ...moved } });
         },
     },
@@ -606,35 +608,36 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_overlay',
-        description: 'The local code for --overlay. action status (fast, no browser): is the local code server (dev server, Sencha watch) of the app '
-            + 'ready at overlay.url? state ready, moved (runs at foundUrl: patch overlay.url via caw_config), down, wrong-app (another app answers), '
-            + 'stale, not-overlay, no-app, static-missing or static-invalid (an overlay.statics file is missing, outside the workspace or secret; '
-            + 'statics lists each entry with its state), with url, start (the project\'s start command) and appDir. On down ask the human whether to start it, '
-            + 'then run start in appDir in your own session in the background and poll status until ready; caw itself starts nothing. '
-            + 'action check: opens the app headless with the overlay and reports per part whether local or deployed code loaded, with suggested '
-            + 'assetUrlPattern; action apply: the same and writes the suggestions into the config. check and apply wait up to 3 minutes. No tokens.',
+        description: 'The local code for --overlay, per part of overlay.parts (part: needed when there are several). action status (fast, no browser): '
+            + 'is the local code server (dev server, Sencha watch) of the part ready at its url? state ready, moved (runs at foundUrl: patch '
+            + 'overlay.parts.<part>.url via caw_config), down, wrong-app (another app answers), stale, not-overlay, no-part, no-app (no app.json), '
+            + 'static-missing or static-invalid (a statics file is missing, outside the workspace or secret; statics lists each entry with its state), '
+            + 'with url, start (the part\'s start command) and partDir. On down ask the human whether to start it, then run start in partDir in your '
+            + 'own session in the background and poll status until ready; caw itself starts nothing. '
+            + 'action check: opens the app headless with the part\'s local code and reports per script part whether local or deployed code loaded, with '
+            + 'suggested overlay.assetUrlPattern; action apply: the same and writes the suggestions into the config. check and apply wait up to 3 minutes. No tokens.',
         inputSchema: {
             type: 'object',
-            properties: { action: { type: 'string', enum: ['status', 'check', 'apply'] }, target: { type: 'string' }, app: { type: 'string' } },
+            properties: { action: { type: 'string', enum: ['status', 'check', 'apply'] }, target: { type: 'string' }, part: { type: 'string' } },
             required: ['action'],
             additionalProperties: false,
         },
         call: async (input) => {
             if (!['status', 'check', 'apply'].includes(input.action)) throw new Error(t('run.mcp.overlayAction'));
-            for (const field of ['target', 'app']) if (input[field] !== undefined) textField(input, field);
+            for (const field of ['target', 'part']) if (input[field] !== undefined) textField(input, field);
             if (input.action === 'status') {
                 // In-process and silent: the MCP stdout carries only JSON-RPC.
                 let data;
                 try {
                     const status = overlayPreconditions ?? await defaultOverlayPreconditions();
-                    data = await status(root, loadConfig(root), { target: input.target, app: input.app });
+                    data = await status(root, loadConfig(root), { target: input.target, part: input.part });
                 } catch (error) {
                     return answer(`${t('run.mcp.overlayStatus', { state: 'error' })} ${String(error.message).split('\n')[0]}`, { state: 'error', code: error.code ?? 'error', message: error.message }, true);
                 }
                 return answer(`${t('run.mcp.overlayStatus', { state: data.state })}${data.message === undefined ? '' : ` ${data.message}`}`, data);
             }
             const args = ['overlay', 'check', '--json'];
-            for (const [field, flag] of [['target', '--env'], ['app', '--app']]) if (input[field] !== undefined) args.push(flag, input[field]);
+            for (const [field, flag] of [['target', '--env'], ['part', '--part']]) if (input[field] !== undefined) args.push(flag, input[field]);
             if (input.action === 'apply') args.push('--apply');
             const startedAt = Date.now();
             const { code, out = '', err = '', timedOut } = await execCli(args, { timeoutMs: OVERLAY_CHECK_TIMEOUT_MS });

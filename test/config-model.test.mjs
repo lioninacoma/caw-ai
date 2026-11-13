@@ -27,7 +27,7 @@ test('effectiveEnvironment: extends inherits everything but production, values r
     const south = effectiveEnvironment(config, 'south-dev');
     assert.deepEqual(south, {
         name: 'south-dev', url: 'https://south.dev.example.test', claude: true, writable: false, production: false,
-        signIn: config.signIn, allowHosts: ['cdn.example.test'], insecureTls: true, allowHttp: false, overlay: false,
+        signIn: config.signIn, allowHosts: ['cdn.example.test'], insecureTls: true, allowHttp: false,
     });
     assert.deepEqual(effectiveEnvironment(config, 'ci').signIn, { type: 'none' }, 'an environment signIn replaces the top level as a whole');
     // production is not inherited: the child must say it itself.

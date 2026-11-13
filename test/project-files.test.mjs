@@ -48,7 +48,7 @@ test('isProjectCopy: without Git, node_modules, dot folders and the build folder
 
 test('Overlay: env.js from public/ comes from the server, the compiled entry from the build', async (t) => {
     const dir = project(t, { 'public/env.js': "window.__ENV__='local'", 'dist/env.js': "window.__ENV__='local'", 'dist/index.html': '<script type="module" src="/assets/index-NEW11111.js"></script>', 'dist/assets/index-NEW11111.js': 'export{}' });
-    const overlay = await prepareOverlay({ root: dir, config: { apps: { web: { dir: '.' } } }, checked: { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [] } } } });
+    const overlay = await prepareOverlay({ root: dir, config: { overlay: { parts: { web: { dir: '.' } } } }, checked: { url: 'https://app.example', parts: { web: { kind: 'build', dir: 'dist', statics: [] } } } });
     assert.equal(await overlay.resolve('https://app.example/env.js', 'script'), null);
     assert.equal((await overlay.resolve('https://app.example/assets/index-OLD99999.js', 'script')).file, join(dir, 'dist', 'assets', 'index-NEW11111.js'));
 });

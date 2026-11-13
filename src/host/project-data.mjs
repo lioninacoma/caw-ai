@@ -210,7 +210,7 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
         created.push(target);
     };
     const detected = detectApp(root);
-    const config = starterConfig({ framework: detected.framework, appDir: detected.dir, ...answers });
+    const config = starterConfig({ framework: detected.framework, ...answers });
     write(CONFIG_FILE, `${JSON.stringify(config, null, 4)}\n`);
     if (config.auth?.type === 'form' || config.auth?.type === 'basic') {
         const names = Object.values(config.roles ?? {}).flatMap(({ loginEnv, passwordEnv }) => [loginEnv, passwordEnv]).filter(Boolean);

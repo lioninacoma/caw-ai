@@ -15,7 +15,7 @@ import { NAME, effectiveEnvironment, environmentNames } from './environments.mjs
 export { CONFIG_FILE } from './names.mjs';
 export { environmentsWith } from './environments.mjs';
 
-const ENVIRONMENT_FLAGS = ['claude', 'overlay', 'writable', 'production', 'insecureTls', 'allowHttp'];
+const ENVIRONMENT_FLAGS = ['claude', 'writable', 'production', 'insecureTls', 'allowHttp'];
 const ENVIRONMENT_KEYS = ['url', 'extends', 'allowHosts', ...ENVIRONMENT_FLAGS];
 // A production environment must be declared explicitly, and then has no Claude, no local code and no writing.
 // Names containing it count too, e.g. prod-de or live_eu. If such an environment is not production, say so with "production": false.
@@ -42,7 +42,7 @@ export const todoFields = (config) => Object.entries(isObject(config?.auth) ? co
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
 const TOP_FIELDS = ['framework', 'environments', 'auth', 'apps', 'roles', 'messageSelectors', 'requestKeys',
-    'consoleIgnore', 'foreignCode', 'allowHosts', 'assetUrlPattern', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
+    'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone'];
 
@@ -55,8 +55,10 @@ export const REMOVED_KEYS = {
     extends: { why: 'config.removed.extends' },
     insecureTls: { now: 'environments.<env>.insecureTls' },
     extraAllowedHosts: { now: 'allowHosts' },
+    assetUrlPattern: { now: 'overlay.assetUrlPattern' },
 };
-const ENVIRONMENT_REMOVED = { urls: { why: 'config.removed.urls' } };
+const ENVIRONMENT_REMOVED = { urls: { why: 'config.removed.urls' }, overlay: { now: 'overlay.environments' } };
+const APP_REMOVED = { dir: { now: 'overlay.parts.<part>.dir' }, overlay: { now: 'overlay.parts.<part>' } };
 /** The message for a removed key: renamed (now) or gone (why). */
 const removedKey = (path, entry) => (entry.now === undefined ? t('config.removed.gone', { key: path, why: t(entry.why) }) : t('config.removed.renamed', { key: path, now: entry.now }));
 
@@ -200,20 +202,20 @@ const checkEnvironments = (config, issues, notes) => {
     for (const name of names) {
         if (!isObject(config.environments[name])) continue;
         try {
-            effective.push({ raw: config.environments[name], env: effectiveEnvironment(config, name) });
+            effective.push(effectiveEnvironment(config, name));
         } catch (error) {
             if (error.code === 'config-invalid' && !issues.includes(error.message)) issues.push(error.message);
         }
     }
     const productionHosts = new Map();
-    for (const { env } of effective.filter(({ env: candidate }) => candidate.production)) {
+    for (const env of effective.filter((candidate) => candidate.production)) {
         try {
             productionHosts.set(new URL(env.url).hostname, env.name);
         } catch {
             // reported below
         }
     }
-    for (const { raw, env } of effective) {
+    for (const env of effective) {
         const { name } = env;
         if (env.url === undefined) issues.push(t('config.env.urlMissing', { name }));
         else {
@@ -226,8 +228,7 @@ const checkEnvironments = (config, issues, notes) => {
                 if (!env.production && production !== undefined) issues.push(t('config.env.productionHost', { name, host: hostname, production }));
             }
         }
-        const overlay = (raw.overlay ?? (raw.extends === undefined ? undefined : config.environments[raw.extends]?.overlay)) === true;
-        if (env.production && (env.claude || env.writable || overlay)) issues.push(t('config.env.productionFlags', { name }));
+        if (env.production && (env.claude || env.writable)) issues.push(t('config.env.productionFlags', { name }));
     }
 };
 
@@ -360,40 +361,22 @@ export const validateConfig = (given) => {
         && (config.effects.fail === undefined || (Array.isArray(config.effects.fail) && config.effects.fail.every((list) => effectLists.includes(list)))))) {
         issues.push(t('config.effects', { lists: effectLists.join(', ') }));
     }
-    if (config.assetUrlPattern !== undefined) issues.push(...assetPatternIssues('assetUrlPattern', config.assetUrlPattern));
-    const extjs = config.framework === 'extjs';
     for (const [name, app] of Object.entries(isObject(config.apps) ? config.apps : {})) {
         if (!isObject(app)) {
             issues.push(t('config.app.notObject', { name }));
             continue;
         }
-        if (typeof app.dir !== 'string' || app.dir === '' || /^([\\/]|[A-Za-z]:)/.test(app.dir) || app.dir.split(/[\\/]/).includes('..')) {
-            issues.push(t('config.app.dir', { name }));
-        }
         // Without startUrl the app is only reached along the way, e.g. via a task.
         if (app.startUrl !== undefined && (typeof app.startUrl !== 'string' || !app.startUrl.startsWith('/'))) issues.push(t('config.app.startUrl', { name }));
         for (const unknown of Object.keys(app).filter((key) => !APP_KEYS.includes(key))) {
-            issues.push(t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) }));
+            issues.push(APP_REMOVED[unknown] === undefined
+                ? t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) })
+                : removedKey(`apps.${name}.${unknown}`, APP_REMOVED[unknown]));
         }
-        if (app.overlay !== undefined) issues.push(...overlayIssues(name, app.overlay, extjs));
     }
-    if (issues.length === 0) notes.push(...overlayNotes(config));
+    if (config.overlay !== undefined) checkOverlay(config, issues);
     // Gaps from init: not wrong, but nothing that signs in can run until they are filled in.
     return { ok: issues.length === 0, issues, notes, todo: todoFields(config) };
-};
-
-/**
- * The overlay only works when environment and app match: overlay on the environment, a source on the app. If either is missing,
- * --overlay works nowhere; with an address on the command line (--overlay http://…) the app needs none.
- */
-const overlayNotes = (config) => {
-    const apps = Object.keys(config.apps ?? {});
-    const environments = environmentNames(config).filter((name) => config.environments[name]?.overlay === true);
-    const notes = [];
-    if (environments.length === 0) {
-        for (const name of apps.filter((app) => config.apps[app]?.overlay !== undefined)) notes.push(t('config.note.overlayNoEnv', { name }));
-    }
-    return notes;
 };
 
 /** The error for an invalid config: one finding per line; `issues` keeps them for doctor, which shows only the first. */
@@ -470,11 +453,11 @@ export const writeConfig = (root, patch, { dryRun = false } = {}) => {
     return { ok: true, issues: [], config };
 };
 
-// A path inside the project: relative, without `..`. Like `dir` and `overlay.build`.
+// A path inside the project: relative, without `..`. Like a part's `dir` and `build`.
 const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
-/** An overlay.statics path: relative, may leave the app folder with .. (a neighbouring package); the workspace bound is checked at run time. */
+/** A part's statics path: relative, may leave the part folder with .. (a neighbouring package); the workspace bound is checked at run time. */
 const staticPath = (value) => typeof value === 'string' && value.trim() !== '' && !/^([\\/]|[A-Za-z]:)/.test(value);
-const APP_KEYS = ['dir', 'startUrl', 'overlay'];
+const APP_KEYS = ['startUrl'];
 /** A server address: http(s), with host. Like --overlay <url>. */
 export const isServerUrl = (value) => {
     if (typeof value !== 'string' || !/^https?:\/\/[^\s/]+/i.test(value)) return false;
@@ -484,13 +467,21 @@ export const isServerUrl = (value) => {
         return false;
     }
 };
-const OVERLAY_KEYS = ['url', 'start', 'build', 'statics', 'assetUrlPattern'];
+const OVERLAY_KEYS = ['environments', 'parts', 'assetUrlPattern'];
+const PART_KEYS = ['dir', 'url', 'start', 'build', 'statics', 'assetUrlPattern'];
+/** Words of --overlay that select a source for all parts: a part must not be named like them. */
+export const OVERLAY_KINDS = ['build', 'dev'];
 
 /** assetUrlPattern as a list: one pattern or several, one per asset source (plain path, proxy parameter, CDN). */
 export const patternList = (value) => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.filter((pattern) => typeof pattern === 'string') : []);
 
-/** The asset patterns for an app, without the default: the top-level list plus the app's own (apps.<app>.overlay.assetUrlPattern). */
-export const assetPatterns = (config, app) => [...new Set([...patternList(config?.assetUrlPattern), ...patternList(config?.apps?.[app]?.overlay?.assetUrlPattern)])];
+/** The asset patterns for a part, without the default: overlay.assetUrlPattern plus the part's own. */
+export const assetPatterns = (config, part) => [...new Set([...patternList(config?.overlay?.assetUrlPattern), ...patternList(config?.overlay?.parts?.[part]?.assetUrlPattern)])];
+
+/** The overlay parts by name; empty without an overlay block. */
+export const overlayParts = (config) => (isObject(config?.overlay?.parts) ? config.overlay.parts : {});
+/** The environments where --overlay is allowed (overlay.environments); empty without an overlay block. */
+export const overlayEnvironments = (config) => (Array.isArray(config?.overlay?.environments) ? config.overlay.environments.filter((name) => typeof name === 'string') : []);
 
 /** The errors of an assetUrlPattern value: a string or a non-empty list of strings; each compiles and has group 1. */
 const assetPatternIssues = (key, value) => {
@@ -509,18 +500,66 @@ const assetPatternIssues = (key, value) => {
 };
 const STATIC_KEYS = ['name', 'path'];
 
-/** The errors in `apps.<name>.overlay`. With ExtJS the source is the Sencha watch at overlay.url: no build. */
-const overlayIssues = (name, overlay, extjs) => {
+/**
+ * The overlay block: environments where --overlay is allowed (existing, not production, not a dev server on this machine), shared
+ * asset patterns and the parts with their sources.
+ */
+const checkOverlay = (config, issues) => {
+    const overlay = config.overlay;
+    if (!isObject(overlay)) {
+        issues.push(t('config.overlay.block'));
+        return;
+    }
+    for (const key of Object.keys(overlay).filter((candidate) => !OVERLAY_KEYS.includes(candidate))) {
+        issues.push(t('config.overlay.blockUnknown', { key, hint: hintFor(key, OVERLAY_KEYS) }));
+    }
+    const names = environmentNames(config);
+    if (!Array.isArray(overlay.environments) || overlay.environments.length === 0 || !overlay.environments.every((name) => typeof name === 'string')) {
+        issues.push(t('config.overlay.environments'));
+    } else {
+        for (const name of overlay.environments) {
+            if (!names.includes(name)) {
+                issues.push(t('config.overlay.envUnknown', { name, names: names.join(', ') || '–' }));
+                continue;
+            }
+            let env;
+            try {
+                env = effectiveEnvironment(config, name);
+            } catch {
+                continue; // reported with the environments
+            }
+            if (env.production) issues.push(t('config.overlay.envProduction', { name }));
+            else if (typeof env.url === 'string' && URL.canParse(env.url)) {
+                const { protocol, hostname, host } = new URL(env.url);
+                if (protocol === 'http:' && isLoopback(hostname)) issues.push(t('config.overlay.envDevServer', { name, host }));
+            }
+        }
+    }
+    if (overlay.assetUrlPattern !== undefined) issues.push(...assetPatternIssues('overlay.assetUrlPattern', overlay.assetUrlPattern));
+    if (!isObject(overlay.parts) || Object.keys(overlay.parts).length === 0) {
+        issues.push(t('config.overlay.parts'));
+        return;
+    }
+    const extjs = config.framework === 'extjs';
+    for (const [name, part] of Object.entries(overlay.parts)) {
+        if (!NAME.test(name) || OVERLAY_KINDS.includes(name)) issues.push(t('config.overlay.partName', { name }));
+        issues.push(...partIssues(name, part, extjs));
+    }
+};
+
+/** The errors in `overlay.parts.<name>`. With ExtJS the source is the Sencha watch at url: no build. */
+const partIssues = (name, overlay, extjs) => {
     if (!isObject(overlay)) return [t('config.overlay.notObject', { name })];
     const issues = [];
-    const unknown = Object.keys(overlay).find((key) => !OVERLAY_KEYS.includes(key));
-    if (unknown !== undefined) issues.push(t('config.overlay.unknown', { name, key: unknown, hint: hintFor(unknown, OVERLAY_KEYS) }));
+    const unknown = Object.keys(overlay).find((key) => !PART_KEYS.includes(key));
+    if (unknown !== undefined) issues.push(t('config.overlay.unknown', { name, key: unknown, hint: hintFor(unknown, PART_KEYS) }));
+    if (!relativePath(overlay.dir)) issues.push(t('config.overlay.dir', { name }));
     if (overlay.build !== undefined && !relativePath(overlay.build)) issues.push(t('config.overlay.build', { name }));
     if (overlay.url !== undefined && !isServerUrl(overlay.url)) issues.push(t('config.overlay.dev', { name }));
     if (extjs && overlay.build !== undefined) issues.push(t('config.overlay.extjs', { name }));
     if (overlay.start !== undefined && (typeof overlay.start !== 'string' || overlay.start.trim() === '')) issues.push(t('config.overlay.command', { name }));
     if (overlay.start !== undefined && overlay.url === undefined && overlay.build === undefined && !extjs) issues.push(t('config.overlay.commandWithout', { name }));
-    if (overlay.assetUrlPattern !== undefined) issues.push(...assetPatternIssues(`apps.${name}.overlay.assetUrlPattern`, overlay.assetUrlPattern));
+    if (overlay.assetUrlPattern !== undefined) issues.push(...assetPatternIssues(`overlay.parts.${name}.assetUrlPattern`, overlay.assetUrlPattern));
     if (overlay.statics !== undefined && !Array.isArray(overlay.statics)) issues.push(t('config.overlay.statics', { name }));
     else (overlay.statics ?? []).forEach((entry, index) => {
         const extra = isObject(entry) ? Object.keys(entry).find((key) => !STATIC_KEYS.includes(key)) : undefined;
@@ -558,7 +597,7 @@ export const buildDevlinkConfig = (config, resolved, appName) => {
     const signedIn = authOf(config).signedInSelector;
     return {
         activePortal: siteUuid,
-        ...(config.assetUrlPattern === undefined ? {} : { assetUrlPattern: config.assetUrlPattern }),
+        ...(config.overlay?.assetUrlPattern === undefined ? {} : { assetUrlPattern: config.overlay.assetUrlPattern }),
         authMarker: signedIn ?? null,
         portals: [{ uuid: siteUuid, name: resolved.name, url: resolved.url }],
         projects: [{

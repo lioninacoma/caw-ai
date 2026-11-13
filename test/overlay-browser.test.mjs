@@ -67,7 +67,7 @@ test('Overlay build in the browser: local state despite different split, nonce C
         t.skip('no Chrome');
         return;
     }
-    const overlay = await prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked: { url: origin, apps: { web: { kind: 'build', dir: 'dist', statics: [] } } } });
+    const overlay = await prepareOverlay({ root, config: { overlay: { parts: { web: { dir: '.' } } } }, checked: { url: origin, parts: { web: { kind: 'build', dir: 'dist', statics: [] } } } });
     const context = await browser.newContext();
     t.after(() => context.close());
     const page = await context.newPage();
@@ -134,8 +134,8 @@ test('Overlay watch in the browser: app and package via a proxy parameter are a 
     const watch = await serveFolder(project);
     t.after(() => watch.close());
     const open = async (config) => {
-        const checked = { url: portalUrl, apps: { web: { kind: 'watch', url: `${watch.url}app/`, statics: [] } } };
-        const overlay = await prepareOverlay({ root: project, config: { framework: 'extjs', apps: { web: { dir: 'app' } }, ...config }, checked, deps: { discover: async () => null } });
+        const checked = { url: portalUrl, parts: { web: { kind: 'watch', url: `${watch.url}app/`, statics: [] } } };
+        const overlay = await prepareOverlay({ root: project, config: { framework: 'extjs', overlay: { environments: ['dev'], ...config, parts: { web: { dir: 'app' } } } }, checked, deps: { discover: async () => null } });
         const context = await browser.newContext();
         t.after(() => context.close());
         await routeOverlay(context, overlay);

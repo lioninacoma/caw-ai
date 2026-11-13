@@ -1174,16 +1174,16 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
     rmSync(selection, { force: true });
 });
 
-scenario('4', 'Overlay: the Sencha watch\'s server (overlay.url) over the portal, only with --overlay, never silently the deployed build', async () => {
+scenario('4', 'Overlay: the Sencha watch\'s server (the part\'s url) over the portal, only with --overlay, never silently the deployed build', async () => {
     restore();
     const withOverlay = (extra) => {
         const config = JSON.parse(readFileSync(mainConfig, 'utf8'));
-        const before = JSON.stringify(config.apps.bestellung.overlay);
-        config.apps.bestellung.overlay = { ...config.apps.bestellung.overlay, ...extra };
+        const before = JSON.stringify(config.overlay.parts.bestellung);
+        config.overlay.parts.bestellung = { ...config.overlay.parts.bestellung, ...extra };
         writeFileSync(mainConfig, JSON.stringify(config, null, 4));
         return () => {
             const now = JSON.parse(readFileSync(mainConfig, 'utf8'));
-            now.apps.bestellung.overlay = JSON.parse(before);
+            now.overlay.parts.bestellung = JSON.parse(before);
             writeFileSync(mainConfig, JSON.stringify(now, null, 4));
         };
     };
@@ -1250,8 +1250,8 @@ scenario('4', 'Overlay: the Sencha watch\'s server (overlay.url) over the portal
     const watch = await serveFolder(fake);
     const undoWatch = withOverlay({ url: watch.url });
     const config = JSON.parse(readFileSync(mainConfig, 'utf8'));
-    const pattern = config.assetUrlPattern;
-    delete config.assetUrlPattern;
+    const pattern = config.overlay.assetUrlPattern;
+    delete config.overlay.assetUrlPattern;
     writeFileSync(mainConfig, JSON.stringify(config, null, 4));
     try {
         const code = await run(fake, [ID, ...short, '--overlay']);
@@ -1262,7 +1262,7 @@ scenario('4', 'Overlay: the Sencha watch\'s server (overlay.url) over the portal
             /fx-model/.test(result.reason ?? '') && (result.reason ?? '').includes('[?&]url=repo:///Root/Fx/'), result.reason);
     } finally {
         const restored = JSON.parse(readFileSync(mainConfig, 'utf8'));
-        restored.assetUrlPattern = pattern;
+        restored.overlay.assetUrlPattern = pattern;
         writeFileSync(mainConfig, JSON.stringify(restored, null, 4));
         undoWatch();
         await watch.close();
@@ -1275,12 +1275,12 @@ scenario('5', 'overlay.statics from a neighbouring package: served fresh from di
     const marker = join(here, 'pnpm-workspace.yaml');
     const shared = join(here, 'fx-shared');
     const sharedFile = join(shared, 'Static.js');
-    const before = JSON.parse(readFileSync(mainConfig, 'utf8')).apps.bestellung.overlay;
+    const before = JSON.parse(readFileSync(mainConfig, 'utf8')).overlay.parts.bestellung;
     // ExtJS: the local code server is a stand-in watch serving the project, never a real watch on 1841 (another project's).
     const watch = await serveFolder(fake);
     const setStatic = (path) => {
         const now = JSON.parse(readFileSync(mainConfig, 'utf8'));
-        now.apps.bestellung.overlay = { ...before, url: watch.url, statics: [{ name: 'Fx/Static.js', path }] };
+        now.overlay.parts.bestellung = { ...before, url: watch.url, statics: [{ name: 'Fx/Static.js', path }] };
         writeFileSync(mainConfig, JSON.stringify(now, null, 4));
     };
     mkdirSync(shared, { recursive: true });
@@ -1315,7 +1315,7 @@ scenario('5', 'overlay.statics from a neighbouring package: served fresh from di
             result.code === 'config-invalid' && (result.reason ?? '').includes('Workspace'), JSON.stringify(result).slice(0, 400));
     } finally {
         const now = JSON.parse(readFileSync(mainConfig, 'utf8'));
-        now.apps.bestellung.overlay = before;
+        now.overlay.parts.bestellung = before;
         writeFileSync(mainConfig, JSON.stringify(now, null, 4));
         rmSync(marker, { force: true });
         rmSync(shared, { recursive: true, force: true });

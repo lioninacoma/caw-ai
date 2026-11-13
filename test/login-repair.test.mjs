@@ -42,7 +42,7 @@ test('Repair: proposal only with known fields, written only after a yes', async 
 
     const root = mkdtempSync(join(tmpdir(), 'caw-repair-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    const config = { framework: 'web', environments: { dev: { url: 'https://p.example', claude: true } }, auth, apps: { web: { dir: '.', startUrl: '/' } }, roles: { a: { loginEnv: 'L', passwordEnv: 'P' } } };
+    const config = { framework: 'web', environments: { dev: { url: 'https://p.example', claude: true } }, auth, apps: { web: { startUrl: '/' } }, roles: { a: { loginEnv: 'L', passwordEnv: 'P' } } };
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config, null, 4));
     const proposal = async () => JSON.stringify({ auth: { ...auth, submitSelector: undefined, signedInSelector: 'body.signed-in' }, why: 'stable' });
     const error = { code: 'login-failed', message: 'x', evidence: { hits: {} } };

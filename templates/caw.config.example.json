@@ -11,7 +11,7 @@
         "signedInSelector": "[data-testid=user-menu]"
     },
     "apps": {
-        "web": { "dir": ".", "startUrl": "/" }
+        "web": { "startUrl": "/" }
     },
     "roles": {
         "tester": { "loginEnv": "CAW_LOGIN_TESTER", "passwordEnv": "CAW_PW_TESTER" }

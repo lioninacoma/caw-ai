@@ -19,10 +19,10 @@ const project = (t, files) => {
 };
 
 const ENV = 'https://staging.example';
-const config = { apps: { web: { dir: '.' } } };
+const config = { overlay: { parts: { web: { dir: '.' } } } };
 const buildOverlay = async (t, files, { url = ENV, dir = 'dist' } = {}) => {
     const root = project(t, files);
-    return prepareOverlay({ root, config, checked: { url, apps: { web: { kind: 'build', dir, statics: [] } } } });
+    return prepareOverlay({ root, config, checked: { url, parts: { web: { kind: 'build', dir, statics: [] } } } });
 };
 
 // Deployed: Vite build with entry, vendor chunk and stylesheet, plus env.js (project copy) and a portal script.
@@ -158,7 +158,7 @@ test('Overlay dev: tags from the dev server HTML, project copies and foreign scr
     await new Promise((ok) => { dev.listen(0, '127.0.0.1', ok); });
     t.after(() => dev.close());
     const url = `http://127.0.0.1:${dev.address().port}`;
-    const overlay = await prepareOverlay({ root, config, checked: { url: ENV, apps: { web: { kind: 'dev', url, statics: [] } } } });
+    const overlay = await prepareOverlay({ root, config, checked: { url: ENV, parts: { web: { kind: 'dev', url, statics: [] } } } });
     const deployed = DEPLOYED.replace('<link rel="icon"', '<script src="https://cdn.example/analytics.js"></script><link rel="icon"');
     const out = await overlay.rewritePage(deployed, { url: `${ENV}/order/5` });
     assert.match(out, /<script nonce="n0nce" type="module">import RefreshRuntime from "\/@react-refresh"/, 'the preamble with nonce');

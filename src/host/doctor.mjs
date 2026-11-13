@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AUTH_DIR, agentSandbox, authOf, browserLaunch, loadConfig, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, agentSandbox, authOf, browserLaunch, loadConfig, overlayEnvironments, overlayParts, sessionPath, todoFields } from '../shared/config.mjs';
 import { effectiveEnvironments } from '../shared/environments.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
@@ -156,16 +156,16 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
 };
 
 /**
- * The overlay lines for ExtJS: per environment with overlay and app with app.json, bootstrap.json on disk, the local code server
- * (overlay.url: the watch of this app, or found on another port) and the last `caw overlay check`. All optional: only runs
- * with --overlay need them. Never starts anything.
- * @param probes.overlay tests only: (root, { target, app }) -> the result of overlayStatus
+ * The overlay lines for ExtJS: per environment of overlay.environments and part with app.json, bootstrap.json on disk, the local
+ * code server (the part's url: the watch of this app, or found on another port) and the last `caw overlay check`. All optional:
+ * only runs with --overlay need them. Never starts anything.
+ * @param probes.overlay tests only: (root, { target, part }) -> the result of overlayStatus
  */
 const overlayLines = async (root, config, probes, now = Date.now()) => {
     const adapter = frameworkOf(config);
     if (adapter.watch === undefined || adapter.overlay === undefined) return [];
-    const targets = Object.values(effectiveEnvironments(config)).filter((env) => env.overlay && !env.production).map((env) => env.name);
-    const apps = Object.entries(config.apps ?? {}).filter(([, app]) => typeof app?.dir === 'string' && existsSync(join(root, app.dir, 'app.json')));
+    const targets = overlayEnvironments(config);
+    const apps = Object.entries(overlayParts(config)).filter(([, part]) => typeof part?.dir === 'string' && existsSync(join(root, part.dir, 'app.json')));
     if (targets.length === 0 || apps.length === 0) return [];
     const status = probes.overlay ?? ((dir, options) => overlayStatus(dir, { ...options, config }));
     let last = null;
@@ -177,8 +177,7 @@ const overlayLines = async (root, config, probes, now = Date.now()) => {
     const firstLine = (text) => String(text ?? '').split('\n')[0].trim().replace(/\.$/, '');
     const lines = [];
     for (const target of targets) {
-        for (const [app, { dir, overlay }] of apps) {
-            const start = overlay?.start;
+        for (const [app, { dir, start }] of apps) {
             const next = start === undefined ? t('cli.doctorOverlayStartUnknown', { app }) : t('cli.doctorOverlayStartNext', { start, dir: dir.replaceAll('\\', '/') });
             try {
                 adapter.overlay.checkAppFiles(join(root, dir), '');
@@ -188,7 +187,7 @@ const overlayLines = async (root, config, probes, now = Date.now()) => {
             }
             let found;
             try {
-                found = await status(root, { target, app });
+                found = await status(root, { target, part: app });
             } catch (error) {
                 found = { state: 'error', message: error?.message ?? String(error) };
             }
@@ -197,7 +196,7 @@ const overlayLines = async (root, config, probes, now = Date.now()) => {
             else if (found.state === 'moved') lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayServerMoved', { target, app, url, found: found.foundUrl }), next: t('cli.doctorOverlayServerMovedNext', { app, found: found.foundUrl }) });
             else if (found.state === 'down') lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayServerDown', { target, app, url }), next });
             else lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayServerBad', { target, app, url, problem: firstLine(found.message) }), next });
-            const checked = last !== null && last.target === target && last.app === app && Array.isArray(last.parts) && last.parts.length > 0;
+            const checked = last !== null && last.target === target && last.part === app && Array.isArray(last.parts) && last.parts.length > 0;
             if (!checked) {
                 lines.push({ ok: false, optional: true, text: t('cli.doctorOverlayNoCheck', { target, app }), next: t('cli.doctorOverlayNoCheckNext', { target }) });
                 continue;

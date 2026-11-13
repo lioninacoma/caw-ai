@@ -60,10 +60,8 @@ const VALUE_EXAMPLES = {
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
 export const AGENT_CHOICES = ['local', 'docker', 'session'];
-/** Where the overlay comes from: local build or dev server (Sencha: the watch). Without a value the one configured source. */
-export const OVERLAY_CHOICES = ['build', 'dev'];
-/** A value of --overlay: build, dev or the address of a dev server. */
-const overlayValue = (value) => OVERLAY_CHOICES.includes(value) || /^https?:\/\/[^\s/]+/i.test(value ?? '');
+/** A value of --overlay after a space: build, dev or the address of a dev server. Parts only with =, see parseArgs. */
+const overlayValue = (value) => ['build', 'dev'].includes(value) || /^https?:\/\/[^\s/]+/i.test(value ?? '');
 // The human is at the chat, which takes longer than a run without them.
 export const CLAUDE_TIMEOUT_MIN = 60;
 const STEP_ID = /^S[1-9]\d*$/;
@@ -130,11 +128,11 @@ export const parseRunArgs = (command, args) => {
         const [flag, inline] = arg.split(/=(.*)/s);
         if (RENAMED_FLAGS[flag] !== undefined) throw new CawError('usage', t('session.args.renamedOption', { flag, now: RENAMED_FLAGS[flag] }));
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
-        // --overlay may stand without a value: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. A test
-        // named build needs --overlay=…
+        // --overlay may stand without a value: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. Parts
+        // only with =: --overlay=orders,admin:dev, since --overlay orders reads the test orders. checkTest validates the items.
         if (flag === '--overlay') {
             const value = inline ?? (overlayValue(rest[0]) ? rest.shift() : undefined);
-            if (value !== undefined && !overlayValue(value)) throw new CawError('usage', t('session.args.overlayChoice', { choices: OVERLAY_CHOICES.join(', ') }));
+            if (value === '') throw new CawError('usage', t('session.args.overlayChoice'));
             options.overlay = value ?? true;
             continue;
         }

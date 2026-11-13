@@ -1,16 +1,16 @@
 // `caw overlay status` and `caw overlay check`.
-// status: is the local code server ready, without a browser? Asks the server at overlay.url (ExtJS: is it the watch of this app,
+// status: is the local code server ready, without a browser? Asks the server at the part's url (ExtJS: is it the watch of this app,
 // with a current bootstrap.json; if not, is it running on another port). Starts nothing.
 // check: does the overlay replace everything it should? Opens the app headless with the overlay like a run without steps, signs
 // in, waits until it is ready and compares the page's script requests with what the framework adapter expects (ExtJS: app and
-// packages from bootstrap.json). Token-free; starts the local code server only with --start (overlay.start). The result always
+// packages from bootstrap.json). Token-free; starts the local code server only with --start (the part's start). The result always
 // lands in .caw/overlay-check.json, for doctor and the Claude session.
 
 import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-import { authOf, isLoopback, loadConfig, patternList, writeConfig } from '../shared/config.mjs';
-import { effectiveEnvironment, effectiveEnvironments, environmentNames } from '../shared/environments.mjs';
+import { authOf, isLoopback, loadConfig, overlayEnvironments, overlayParts, patternList, writeConfig } from '../shared/config.mjs';
+import { effectiveEnvironment } from '../shared/environments.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { RUN_DIR } from '../shared/names.mjs';
@@ -29,38 +29,42 @@ const onlyKey = (map) => {
     return keys.length === 1 ? keys[0] : undefined;
 };
 
-/** The environment without --env: the only one that allows the overlay. */
+/** The environment without --env: the only one in overlay.environments. */
 export const overlayTarget = (config) => {
-    const choices = Object.values(effectiveEnvironments(config)).filter((env) => env.overlay).map((env) => env.name);
-    if (choices.length !== 1) throw new CawError('usage', t('cli.overlayCheck.target', { choices: (choices.length > 0 ? choices : environmentNames(config)).join(', ') }));
+    if (config.overlay === undefined) throw new CawError('usage', t('config.overlay.none'));
+    const choices = overlayEnvironments(config);
+    if (choices.length !== 1) throw new CawError('usage', t('cli.overlayCheck.target', { choices: choices.join(', ') }));
     return choices[0];
 };
 
 /**
- * Is the local code ready for --overlay, before any browser? Environment with overlay, app, source; for a server (dev server,
- * Sencha watch) whether it answers at overlay.url, for ExtJS whether it is the watch of this app with a current bootstrap.json,
- * and if not whether it runs on another port. Never starts anything; `start` is the project's command (overlay.start) for the
- * human or Claude to run in `appDir`.
+ * Is the local code ready for --overlay, before any browser? Environment in overlay.environments, part, source; for a server (dev
+ * server, Sencha watch) whether it answers at the part's url, for ExtJS whether it is the watch of this app with a current
+ * bootstrap.json, and if not whether it runs on another port. Never starts anything; `start` is the part's command for the
+ * human or Claude to run in `partDir`.
  * @param config the loaded config; otherwise loaded from root
  * @param deps   tests only: { fetchImpl, discover({ url, appDir, adapter, fetchImpl }) -> url | null }
- * @returns { state, framework, app, appDir, url, foundUrl?, start, message? }
- *   state: ready | moved (runs at foundUrl) | down | wrong-app | stale | not-overlay | no-app; url and start null if unknown
+ * @returns { state, framework, part, partDir, url, foundUrl?, start, message? }
+ *   state: ready | moved (runs at foundUrl) | down | wrong-app | stale | not-overlay | no-part | no-app (no app.json); url and
+ *   start null if unknown
  */
-export const overlayStatus = async (root, { target, app, config: given, deps = {} } = {}) => {
+export const overlayStatus = async (root, { target, part, config: given, deps = {} } = {}) => {
     const config = given ?? loadConfig(root);
     const framework = config.framework ?? 'web';
-    const name = app ?? onlyKey(config.apps);
-    if (name === undefined || config.apps?.[name] === undefined) {
-        const message = t('cli.overlayCheck.noApp', { app: String(name ?? ''), apps: Object.keys(config.apps ?? {}).join(', ') || '–' });
-        return { state: 'no-app', framework, app: name ?? null, appDir: null, url: null, start: null, message };
+    const parts = overlayParts(config);
+    const name = part ?? onlyKey(parts);
+    if (name === undefined || parts[name] === undefined) {
+        const message = t('cli.overlayCheck.noPart', { part: String(name ?? ''), parts: Object.keys(parts).join(', ') || '–' });
+        return { state: 'no-part', framework, part: name ?? null, partDir: null, url: null, start: null, message };
     }
-    const appDir = String(config.apps[name].dir).replaceAll('\\', '/');
-    const settings = config.apps[name].overlay ?? {};
-    const base = { framework, app: name, appDir, url: settings.url ?? null, start: settings.start ?? null };
+    const appDir = String(parts[name].dir).replaceAll('\\', '/');
+    const settings = parts[name];
+    const base = { framework, part: name, partDir: appDir, url: settings.url ?? null, start: settings.start ?? null };
     const resolved = effectiveEnvironment(config, target ?? overlayTarget(config));
     const { protocol, hostname } = new URL(resolved.url);
-    if (!resolved.overlay || (protocol === 'http:' && isLoopback(hostname))) {
-        return { state: 'not-overlay', ...base, message: t('config.overlay.environment', { environment: resolved.name }) };
+    const allowed = overlayEnvironments(config);
+    if (!allowed.includes(resolved.name) || (protocol === 'http:' && isLoopback(hostname))) {
+        return { state: 'not-overlay', ...base, message: t('config.overlay.environment', { environment: resolved.name, environments: allowed.join(', ') || '–' }) };
     }
     let choice;
     try {
@@ -113,30 +117,33 @@ const SERVER_STATES = { 'overlay-not-ready': 'down', 'overlay-stale': 'stale' };
 
 /**
  * Runs the check and writes .caw/overlay-check.json.
- * @param apply add the suggested patterns to assetUrlPattern (validated writer), then check once more
- * @param start run overlay.start if the server does not answer (like run --start), stopped at the end
+ * @param apply add the suggested patterns to overlay.assetUrlPattern (validated writer), then check once more
+ * @param start run the part's start if the server does not answer (like run --start), stopped at the end
  * @param deps  tests only: { openSession, fetchImpl, discover, info, now, role }
- * @returns { at, target, app, state, parts: [{ label, kind, names, status }], missed: [{ url, name, part }], notLoaded, suggestions:
- *   [{ source, pattern, urls }], unresolved: [{ source, urls }], applied?, message?, code?, runDir?, appDir?, url, start }
- *   state: complete | incomplete | no-expected | error, or a status state (not-overlay, no-app, down, wrong-app, stale)
+ * @returns { at, target, part, state, parts: [{ label, kind, names, status }], missed: [{ url, name, part }], notLoaded, suggestions:
+ *   [{ source, pattern, urls }], unresolved: [{ source, urls }], applied?, message?, code?, runDir?, partDir?, url, start }
+ *   state: complete | incomplete | no-expected | error, or a status state (not-overlay, no-part, no-app, down, wrong-app, stale)
  */
-export const overlayCheck = async (root, { target, app, role, apply = false, start = false, deps = {} } = {}) => {
+export const overlayCheck = async (root, { target, part, role, apply = false, start = false, deps = {} } = {}) => {
     const config = loadConfig(root);
     const now = deps.now ?? (() => new Date());
     const chosenTarget = target ?? overlayTarget(config);
-    const chosenApp = app ?? onlyKey(config.apps);
-    const base = { at: now().toISOString(), target: chosenTarget, app: chosenApp ?? null };
-    const status = await overlayStatus(root, { target: chosenTarget, app: chosenApp, config, deps });
+    const chosenPart = part ?? onlyKey(overlayParts(config));
+    const base = { at: now().toISOString(), target: chosenTarget, part: chosenPart ?? null };
+    const status = await overlayStatus(root, { target: chosenTarget, part: chosenPart, config, deps });
     const server = { url: status.url, start: status.start };
     const usable = status.state === 'ready' || status.state === 'moved' || (start && status.state === 'down');
-    if (!usable) return save(root, { ...base, state: status.state, ...EMPTY(), message: status.message, appDir: status.appDir, ...server });
+    if (!usable) return save(root, { ...base, state: status.state, ...EMPTY(), message: status.message, partDir: status.partDir, ...server });
     if (frameworkOf(config).overlay?.expected === undefined) {
         return save(root, { ...base, state: 'no-expected', ...EMPTY(), message: t('cli.overlayCheck.noExpected', { framework: status.framework }), ...server });
     }
     const chosenRole = role ?? deps.role ?? (authOf(config).type === 'none' ? undefined : Object.keys(config.roles ?? {})[0]);
+    // The page to open: the app named like the part, otherwise the only app (until the config has one start path).
+    const chosenApp = config.apps?.[chosenPart] === undefined ? onlyKey(config.apps) : chosenPart;
     const spec = { id: CHECK_ID, app: chosenApp, ...(chosenRole === undefined ? {} : { role: chosenRole }), targets: [chosenTarget], mutates: false, also: [], notes: '', steps: [], expectations: [] };
-    // A watch found on another port: the check uses it directly.
-    const checked = checkTest(spec, chosenTarget, config, { overlay: status.foundUrl ?? true, start });
+    // Only this part comes from local code; a watch found on another port is used directly.
+    const checked = checkTest(spec, chosenTarget, config, { overlay: chosenPart, start });
+    if (status.foundUrl !== undefined) checked.parts[chosenPart] = overlayChoice(config, chosenPart, status.foundUrl, { start });
     const runId = `${now().toISOString().replace(/[:.]/g, '-')}-${CHECK_ID}`;
     const relativeRun = posix.join(RUN_DIR, 'runs', runId);
     mkdirSync(join(root, relativeRun), { recursive: true });
@@ -148,7 +155,7 @@ export const overlayCheck = async (root, { target, app, role, apply = false, sta
         session = await open({ root, config, spec, checked, runDir: join(root, relativeRun), headless: true, strict: false, info: deps.info ?? (() => {}) });
     } catch (error) {
         if (!(error instanceof CawError)) throw error;
-        return save(root, { ...base, state: SERVER_STATES[error.code] ?? 'error', ...EMPTY(), code: error.code, message: error.message, runDir: relativeRun, appDir: status.appDir, ...server });
+        return save(root, { ...base, state: SERVER_STATES[error.code] ?? 'error', ...EMPTY(), code: error.code, message: error.message, runDir: relativeRun, partDir: status.partDir, ...server });
     }
     let seen;
     let loadProblem;
@@ -166,26 +173,26 @@ export const overlayCheck = async (root, { target, app, role, apply = false, sta
     const result = { ...base, state, parts, missed, notLoaded, suggestions, unresolved, ...(statics.length === 0 ? {} : { statics }), runDir: relativeRun, ...server, ...(loadProblem === undefined ? {} : { message: loadProblem }) };
     if (!apply || suggestions.length === 0) return save(root, result);
     // Only the missing patterns, appended: a single string becomes a list, what is there stays first.
-    const current = patternList(config.assetUrlPattern);
+    const current = patternList(config.overlay?.assetUrlPattern);
     const added = suggestions.map(({ pattern }) => pattern).filter((pattern) => !current.includes(pattern));
     if (added.length === 0) return save(root, { ...result, applied: [] });
-    const written = writeConfig(root, { assetUrlPattern: [...current, ...added] });
+    const written = writeConfig(root, { overlay: { assetUrlPattern: [...current, ...added] } });
     if (!written.ok) return save(root, { ...result, applied: [], message: written.issues.join('\n') });
-    const again = await overlayCheck(root, { target: chosenTarget, app: chosenApp, role: chosenRole, apply: false, start, deps });
+    const again = await overlayCheck(root, { target: chosenTarget, part: chosenPart, role: chosenRole, apply: false, start, deps });
     return save(root, { ...again, applied: added });
 };
 
-/** Exit code of status: 0 ready (also on another port), 3 config (no overlay, no app), 2 the server (down, wrong app, stale). */
+/** Exit code of status: 0 ready (also on another port), 3 config (no overlay, no part, no app.json), 2 the server (down, wrong app, stale). */
 export const overlayStatusExit = ({ state }) => {
     if (state === 'ready' || state === 'moved') return EXIT.pass;
-    if (state === 'not-overlay' || state === 'no-app' || state === 'static-invalid') return EXIT.rejected;
+    if (state === 'not-overlay' || state === 'no-part' || state === 'no-app' || state === 'static-invalid') return EXIT.rejected;
     return EXIT.error;
 };
 
-/** Exit code of check: 0 complete (or nothing to compare), 3 config (no overlay, no app), 2 everything else (mixed, server, error). */
+/** Exit code of check: 0 complete (or nothing to compare), 3 config (no overlay, no part, no app.json), 2 everything else (mixed, server, error). */
 export const overlayCheckExit = ({ state }) => {
     if (state === 'complete' || state === 'no-expected') return EXIT.pass;
-    if (state === 'not-overlay' || state === 'no-app' || state === 'static-invalid') return EXIT.rejected;
+    if (state === 'not-overlay' || state === 'no-part' || state === 'no-app' || state === 'static-invalid') return EXIT.rejected;
     return EXIT.error;
 };
 
@@ -193,12 +200,12 @@ const SERVER_PROBLEMS = new Set(['down', 'wrong-app', 'stale']);
 
 /** For a server problem: the project's start command and where to run it. */
 const printStart = (result, ui) => {
-    if (typeof result.start === 'string' && SERVER_PROBLEMS.has(result.state)) ui.info(t('cli.overlayCheck.command', { command: result.start, dir: result.appDir ?? '.' }));
+    if (typeof result.start === 'string' && SERVER_PROBLEMS.has(result.state)) ui.info(t('cli.overlayCheck.command', { command: result.start, dir: result.partDir ?? '.' }));
 };
 
 /** The status for the terminal. */
 export const printOverlayStatus = (result, ui) => {
-    if (result.state === 'ready') ui.success(result.url === null ? t('cli.overlayStatus.readyNoServer', { app: result.app }) : t('cli.overlayStatus.ready', { app: result.app, url: result.url }));
+    if (result.state === 'ready') ui.success(result.url === null ? t('cli.overlayStatus.readyNoServer', { app: result.part }) : t('cli.overlayStatus.ready', { app: result.part, url: result.url }));
     else ui.warn(result.message);
     for (const entry of result.statics ?? []) ui[entry.state === 'ok' ? 'info' : 'warn'](t(`cli.overlayStatus.static.${entry.state}`, entry));
     printStart(result, ui);
@@ -208,7 +215,7 @@ const STATUS = { local: 'success', deployed: 'warn', 'not-loaded': 'note' };
 
 /** The result for the terminal. */
 export const printOverlayCheck = (result, ui) => {
-    ui.info(t('cli.overlayCheck.head', { target: result.target, app: result.app ?? '–' }));
+    ui.info(t('cli.overlayCheck.head', { target: result.target, part: result.part ?? '–' }));
     for (const { label, kind, status } of result.parts) ui[STATUS[status]](t(`cli.overlayCheck.part.${status}`, { label, kind }));
     for (const entry of result.statics ?? []) ui[STATUS[entry.status]](t(`cli.overlayCheck.static.${entry.status}`, entry));
     for (const { source, pattern, urls } of result.suggestions) ui.info(t('cli.overlayCheck.suggestion', { source, pattern: JSON.stringify(pattern), count: urls.length }));
@@ -223,14 +230,15 @@ export const printOverlayCheck = (result, ui) => {
 
 // The options per subcommand: with a value, then switches.
 const OPTIONS = {
-    status: { values: ['--env', '--app'], flags: ['--json'] },
-    check: { values: ['--env', '--app', '--role'], flags: ['--apply', '--start', '--json'] },
+    status: { values: ['--env', '--part'], flags: ['--json'] },
+    check: { values: ['--env', '--part', '--role'], flags: ['--apply', '--start', '--json'] },
 };
-const EXAMPLES = { '--env': 'dev', '--app': 'web', '--role': 'tester' };
+const EXAMPLES = { '--env': 'dev', '--part': 'web', '--role': 'tester' };
+const RENAMED = { '--target': '--env', '--app': '--part' };
 
 /**
- * `caw overlay status [--env <env>] [--app <app>] [--json]` and
- * `caw overlay check [--env <env>] [--app <app>] [--role <role>] [--apply] [--start] [--json]`.
+ * `caw overlay status [--env <env>] [--part <part>] [--json]` and
+ * `caw overlay check [--env <env>] [--part <part>] [--role <role>] [--apply] [--start] [--json]`.
  */
 export const overlayCommand = async (root, args, { out = (text) => console.log(text), deps = {} } = {}) => {
     const [sub, ...rest] = args;
@@ -239,7 +247,7 @@ export const overlayCommand = async (root, args, { out = (text) => console.log(t
     const options = {};
     for (let index = 0; index < rest.length; index += 1) {
         const arg = rest[index];
-        if (arg === '--target') throw new CawError('usage', t('session.args.renamedOption', { flag: arg, now: '--env' }));
+        if (RENAMED[arg] !== undefined) throw new CawError('usage', t('session.args.renamedOption', { flag: arg, now: RENAMED[arg] }));
         if (known.flags.includes(arg)) options[arg.slice(2)] = true;
         else if (known.values.includes(arg)) {
             const value = rest[index + 1];
@@ -254,12 +262,12 @@ export const overlayCommand = async (root, args, { out = (text) => console.log(t
     // With --json the result is the only line on stdout; progress goes to stderr.
     const ui = createUi(options.json ? { out: (text) => console.error(text) } : {});
     if (sub === 'status') {
-        const status = await overlayStatus(root, { target: options.env, app: options.app, deps });
+        const status = await overlayStatus(root, { target: options.env, part: options.part, deps });
         if (options.json) out(JSON.stringify(status));
         else printOverlayStatus(status, ui);
         return overlayStatusExit(status);
     }
-    const result = await overlayCheck(root, { target: options.env, app: options.app, role: options.role, apply: options.apply === true, start: options.start === true, deps: { info: (text) => ui.info(text), ...deps } });
+    const result = await overlayCheck(root, { target: options.env, part: options.part, role: options.role, apply: options.apply === true, start: options.start === true, deps: { info: (text) => ui.info(text), ...deps } });
     if (options.json) out(JSON.stringify(result));
     else printOverlayCheck(result, ui);
     return overlayCheckExit(result);

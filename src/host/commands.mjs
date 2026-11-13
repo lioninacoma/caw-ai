@@ -19,7 +19,6 @@ import { EXPLORE_FILE, explore } from './explore.mjs';
 import { ensureTestUser } from './role-capture.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
-import { FRAMEWORKS } from './framework/index.mjs';
 import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const SKILL_DIR = '.claude/skills/caw-ai';
@@ -224,7 +223,7 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
 };
 
 /** The first config from the answers of `init`; without answers the template with the detected framework. */
-export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), appDir, url, auth = 'form', login = {}, explored = false, offline = false, roles, startUrl, messageSelectors, consoleIgnore } = {}) => {
+export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), url, auth = 'form', login = {}, explored = false, offline = false, roles, startUrl, messageSelectors, consoleIgnore } = {}) => {
     if (!FRAMEWORK_NAMES.includes(framework)) throw new CawError('usage', t('cli.unknownFramework', { framework, names: FRAMEWORK_NAMES.join(', ') }));
     if (!['form', 'storageState', 'none'].includes(auth)) throw new CawError('usage', t('cli.initAuthUnknown', { auth }));
     const names = roles ?? [DEFAULT_ROLE];
@@ -254,11 +253,7 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
         }
     }
     if (typeof startUrl === 'string' && startUrl.startsWith('/')) config.apps.web.startUrl = startUrl;
-    if (typeof appDir === 'string' && appDir !== '') config.apps.web.dir = appDir;
-    // ExtJS: the Sencha watch's web server is the overlay source, at its usual address; the start command (overlay.start) is the
-    // project's own and is added later (Claude reads it from package.json). No environment gets "overlay": true automatically:
-    // validate notes that --overlay works nowhere until a deployed environment allows it; caw overlay status confirms the server.
-    if (framework === 'extjs') config.apps.web.overlay = { url: FRAMEWORKS.extjs.overlay.defaultUrl };
+    // Never an overlay block: the overlay is an extension the team adds when it wants local code on a deployed environment.
     if (Array.isArray(messageSelectors) && messageSelectors.length > 0) config.messageSelectors = messageSelectors;
     if (Array.isArray(consoleIgnore) && consoleIgnore.length > 0) config.consoleIgnore = consoleIgnore;
     return config;
@@ -320,7 +315,7 @@ export const init = (root, answers = {}) => {
     };
     const template = (name) => readFileSync(templatePath(name), 'utf8');
     const detected = detectApp(root);
-    const config = starterConfig({ framework: detected.framework, appDir: detected.dir, ...answers });
+    const config = starterConfig({ framework: detected.framework, ...answers });
     write(CONFIG_FILE, `${JSON.stringify(config, null, 4)}\n`);
     // No example test: it would not fit the application. record creates the first test.
     if (config.auth?.type === 'form' || config.auth?.type === 'basic') {

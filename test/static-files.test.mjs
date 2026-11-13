@@ -37,13 +37,14 @@ const NEIGHBOUR = '../../packages/Model/resources/Const.js';
 
 test('config: a statics path may leave the app folder with .., but is never absolute', () => {
     const config = (path) => ({
-        environments: { dev: { url: 'https://dev.example', overlay: true } },
-        apps: { web: { dir: '.', startUrl: '/', overlay: { statics: [{ name: 'Fx/Const.js', path }] } } },
+        environments: { dev: { url: 'https://dev.example' } },
+        apps: { web: { startUrl: '/' } },
+        overlay: { environments: ['dev'], parts: { web: { dir: '.', statics: [{ name: 'Fx/Const.js', path }] } } },
     });
     assert.deepEqual(validateConfig(config(NEIGHBOUR)).issues, []);
     assert.deepEqual(validateConfig(config('const.js')).issues, []);
     for (const path of ['/etc/x.js', 'C:/x.js', 'C:\\x.js', '\\\\server\\x.js', '', ' ']) {
-        assert.match(validateConfig(config(path)).issues.join('\n'), /overlay\.statics\[0\]/, JSON.stringify(path));
+        assert.match(validateConfig(config(path)).issues.join('\n'), /overlay\.parts\.web\.statics\[0\]/, JSON.stringify(path));
     }
 });
 
@@ -77,8 +78,8 @@ test('statics path: a neighbouring package is fine; outside the workspace, throu
 
 test('overlay: a static from a neighbouring package is served fresh from disk on every load; outside stops the run before the browser', async (t) => {
     const { ws, app } = monorepo(t);
-    const config = { apps: { web: { dir: '.' } } };
-    const checked = (path) => ({ url: 'https://portal.example', apps: { web: { kind: 'files', statics: [{ name: 'Fachanwendung/Const.js', path }] } } });
+    const config = { overlay: { parts: { web: { dir: '.' } } } };
+    const checked = (path) => ({ url: 'https://portal.example', parts: { web: { kind: 'files', statics: [{ name: 'Fachanwendung/Const.js', path }] } } });
     const overlay = await prepareOverlay({ root: app, config, checked: checked(NEIGHBOUR) });
     const url = 'https://portal.example/Fachanwendung/Const.js';
     assert.equal(String((await overlay.resolve(url, 'script')).body), "window.CONST = 'v1';");
@@ -94,8 +95,9 @@ test('overlay status: lists every static with its state; a broken one is static-
     const { app } = monorepo(t);
     const config = (statics) => ({
         framework: 'web',
-        environments: { dev: { url: 'https://dev.example', overlay: true } },
-        apps: { web: { dir: '.', startUrl: '/', overlay: { statics } } },
+        environments: { dev: { url: 'https://dev.example' } },
+        apps: { web: { startUrl: '/' } },
+        overlay: { environments: ['dev'], parts: { web: { dir: '.', statics } } },
     });
     const fine = await overlayStatus(app, { config: config([{ name: 'Fx/Const.js', path: NEIGHBOUR }]) });
     assert.equal(fine.state, 'ready');

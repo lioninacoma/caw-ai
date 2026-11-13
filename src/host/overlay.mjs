@@ -15,7 +15,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix, relative } from 'node:path';
 
-import { assetPatterns, defaultAssetPattern } from '../shared/config.mjs';
+import { assetPatterns, defaultAssetPattern, overlayParts } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { RUN_DIR } from '../shared/names.mjs';
@@ -625,17 +625,17 @@ const completeness = ({ apps, served, patterns }) => {
 };
 
 /**
- * Checks and starts the sources of all overlay apps of the run (checked.apps from checkTest), before the browser.
+ * Checks and starts the sources of all overlay parts of the run (checked.parts from checkTest), before the browser.
  * @returns { apps: [{ name, kind, label, source, statics }], resolve, fileFor, devServers, stop }
  */
 export const prepareOverlay = async ({ root, config, checked, info = () => {}, deps = {} }) => {
     const apps = [];
     const stopAll = () => { for (const { source } of apps) source.stop?.(); };
     try {
-        for (const [name, choice] of Object.entries(checked.apps ?? {})) {
-            const appDir = join(root, config.apps[name].dir);
+        for (const [name, choice] of Object.entries(checked.parts ?? {})) {
+            const appDir = join(root, overlayParts(config)[name].dir);
             const source = SOURCES[choice.kind]({ root, name, appDir, choice, config, info, envUrl: checked.url, ...deps });
-            // The default pattern, the top-level list, then the app's own: the first name a source can resolve wins.
+            // The default pattern, overlay.assetUrlPattern, then the part's own: the first name a source can resolve wins.
             const patterns = [defaultAssetPattern(checked.url), ...assetPatterns(config, name)];
             apps.push({ name, kind: choice.kind, label: source.label, source, patterns, namesOf: namesWith(patterns), statics: staticsOf(root, appDir, choice.statics ?? []) });
             await source.ready();
@@ -703,7 +703,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
                 if (found !== null) return found.file;
                 if (app.kind !== 'build') continue;
                 for (const requested of request.names) {
-                    const file = resolveLocalBuild(join(root, checked.apps[app.name].dir), requested)?.file;
+                    const file = resolveLocalBuild(join(root, checked.parts[app.name].dir), requested)?.file;
                     if (file !== undefined) return file;
                 }
             }

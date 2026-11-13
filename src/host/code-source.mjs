@@ -4,7 +4,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { isLoopback } from '../shared/config.mjs';
+import { isLoopback, overlayParts } from '../shared/config.mjs';
 import { language, t } from '../shared/i18n.mjs';
 
 // Folders that are not sources: dependencies, builds and caches of common tools. Dot folders (.git, .angular, .next,
@@ -65,7 +65,7 @@ const slash = (path) => path.replaceAll('\\', '/').replace(/\/+$/, '');
 
 /** One overlay source in words, e.g. "build dist, built 14:02, 3 min ago" or "dev server http://localhost:5173". */
 const describeChoice = (config, name, choice, { root, now }) => {
-    const severalApps = Object.keys(config.apps ?? {}).length > 1;
+    const severalParts = Object.keys(overlayParts(config)).length > 1;
     const statics = (choice.statics ?? []).length;
     let text;
     if (choice.kind === 'build') {
@@ -76,12 +76,12 @@ const describeChoice = (config, name, choice, { root, now }) => {
     else if (choice.kind === 'watch') text = t('cli.code.watch', { url: choice.url });
     else text = t('cli.code.files', { count: statics });
     if (choice.kind !== 'files' && statics > 0) text = t('cli.code.withStatics', { text, count: statics });
-    return severalApps ? t('cli.code.ofApp', { text, app: name }) : text;
+    return severalParts ? t('cli.code.ofPart', { text, part: name }) : text;
 };
 
 /**
  * The "Code: …" line without its prefix. With `root`, a build folder line says when it was built; validate omits that.
- * @param checked result of checkTest: source, apps
+ * @param checked result of checkTest: source, parts, skipped (parts without a source, they stay deployed)
  */
 export const describeCode = (config, spec, checked, { root, now = Date.now() } = {}) => {
     if (checked.source !== 'overlay') {
@@ -89,6 +89,7 @@ export const describeCode = (config, spec, checked, { root, now = Date.now() } =
         const url = checked.url === undefined ? null : new URL(checked.url);
         return url !== null && url.protocol === 'http:' && isLoopback(url.hostname) ? t('cli.code.devServer', { host: url.host }) : t('cli.code.deployed');
     }
-    const parts = Object.entries(checked.apps ?? {}).map(([name, choice]) => describeChoice(config, name, choice, { root, now }));
-    return t('cli.code.overlay', { details: parts.join('; ') });
+    const parts = Object.entries(checked.parts ?? {}).map(([name, choice]) => describeChoice(config, name, choice, { root, now }));
+    const skipped = (checked.skipped ?? []).map((part) => t('cli.code.skipped', { part }));
+    return t('cli.code.overlay', { details: [...parts, ...skipped].join('; ') });
 };

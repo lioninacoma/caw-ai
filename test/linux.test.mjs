@@ -38,8 +38,10 @@ test('parseRunArgs: --overlay with and without source for run, record and open; 
     assert.deepEqual(parseRunArgs('run', ['--overlay=build', 'build']).tests, ['build'], 'a test named build with --overlay=…');
     assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'http://localhost:5174']).overlay, 'http://localhost:5174', 'the address of a dev server');
     assert.equal(parseRunArgs('run', ['--overlay=https://box.local:8443/', 'smoke']).overlay, 'https://box.local:8443/');
-    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=local']), (error) => error.code === 'usage' && /--overlay erwartet nichts, build, dev oder die Adresse eines Dev-Servers/.test(error.message));
-    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=localhost:5173']), (error) => error.code === 'usage', 'no address without http://');
+    // Parts only with =: after a space a word is the test. checkTest validates the items against overlay.parts.
+    assert.equal(parseRunArgs('run', ['smoke', '--overlay=orders,admin:dev']).overlay, 'orders,admin:dev');
+    assert.deepEqual(parseRunArgs('run', ['--overlay', 'orders']).tests, ['orders'], 'a part after a space is the test');
+    assert.throws(() => parseRunArgs('run', ['smoke', '--overlay=']), (error) => error.code === 'usage' && /Teile mit =, etwa --overlay=orders,admin:dev/.test(error.message));
     assert.throws(() => parseRunArgs('run', ['smoke', '--code', 'local']), (error) => error.code === 'usage', '--code no longer exists');
 });
 

@@ -16,11 +16,9 @@
     },
     "apps": {
         "ext": {
-            "dir": ".",
             "startUrl": "/ext.html"
         },
         "extdata": {
-            "dir": ".",
             "startUrl": "/ext-data.html"
         }
     },

@@ -34,7 +34,7 @@ Befehle:`,
       [--max-actions <n>]                Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
       [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
       [--agent local|docker|session]     wie bei run
-      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]`,
+      [--overlay[=<teile>]]              wie bei run, auch [--start]`,
     'cli.help.run': `  run <test> [--env <name>]              Test ohne KI abspielen. Auf Umgebungen, auf denen Claude arbeiten darf{here},
                                          steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort mit Claude
       [--explain]                        Bei Fehlern oder Warnungen erklärt Claude von sich aus, kostet Token; nur auf
@@ -48,10 +48,10 @@ Befehle:`,
       [--max-actions <n>]                Grenze für Aktionen von Claude beim Beheben, sonst maxSteps aus der Config, sonst 100
       [--agent local|docker|session]     Wo Claude arbeitet; Standard aus agent.sandbox der Config (local). session: deine
                                          Claude-Code-Session übernimmt über ihre caw-Werkzeuge, caw startet keinen Claude
-      [--overlay [build|dev|<url>]]      Lokalen Code über die ausgelieferte Umgebung legen: lokaler Build oder Dev-Server
-                                         oder der Server unter <url>; ohne Wert die eine konfigurierte Quelle. Nur auf
-                                         Umgebungen mit overlay
-      [--start]                          Mit --overlay: overlay.start starten, wenn der lokale Code-Server nicht antwortet
+      [--overlay[=<teile>]]              Lokalen Code über die ausgelieferte Umgebung legen. Ohne Wert jeder Teil aus
+                                         overlay.parts mit seiner Quelle; build oder dev für diese Quelle; <url> für den
+                                         einzigen Teil; oder Teile: --overlay=orders,admin:dev. Nur auf overlay.environments
+      [--start]                          Mit --overlay: start-Befehle der Teile starten, wenn der lokale Code-Server nicht antwortet
   run <test> <test> … | --all            Mehrere Tests nacheinander, für CI: ohne Chat, am Ende eine Tabelle, Exit-Code des
       [--env <name>]                     schlimmsten Laufs. --all nimmt jeden Test, der die Umgebung nennt
       [--headless]                       Ohne Fenster
@@ -63,7 +63,7 @@ Befehle:`,
       [--role <rolle>] [--app <app>]     Nur ohne Test; nicht nötig, wenn die Config nur eine hat
       [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
       [--agent local|docker|session] [--claude-timeout <dauer>] [--max-actions <n>]
-      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]`,
+      [--overlay[=<teile>]]              wie bei run, auch [--start]`,
     'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
                                          aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne Claude (CI, Pre-Commit)',
@@ -77,14 +77,14 @@ Befehle:`,
                                          landet in caw/.auth/<umgebung>/<rolle>.json`,
     'cli.help.theme': `  theme [use <name> | check <name>]      Themes auflisten, eines wählen (gilt für dich, in allen Projekten) oder prüfen:
                                          Schema, Kontrast, Markenbreite, Schriften. Ändern in der Werkbank mit F7`,
-    'cli.help.overlay': `  overlay status [--env <name>]          Ist der lokale Code-Server bereit (overlay.url)? Ohne Browser, startet nichts:
+    'cli.help.overlay': `  overlay status [--env <name>]          Ist der lokale Code-Server bereit (url of the part)? Ohne Browser, startet nichts:
                                          ready, moved (läuft auf anderem Port), down, wrong-app, stale
-      [--app <app>] [--json]             Nicht nötig, wenn die Config nur eine kennt; --json: der Status als eine JSON-Zeile
+      [--part <teil>] [--json]           Nicht nötig, wenn overlay.parts nur einen kennt; --json: der Status als eine JSON-Zeile
   overlay check [--env <name>]           Prüft ohne Token, ob das Overlay alles ersetzt, was es soll: lädt die App
                                          headless mit --overlay, je Teil lokal, ausgeliefert oder nicht geladen
-      [--app <app>] [--role <rolle>]     Nicht nötig, wenn die Config nur eine kennt
-      [--apply]                          Vorgeschlagene assetUrlPattern eintragen und erneut prüfen
-      [--start]                          overlay.start starten, wenn der Server nicht antwortet, danach beenden
+      [--part <teil>] [--role <rolle>]   Nicht nötig, wenn overlay.parts nur einen kennt
+      [--apply]                          Vorgeschlagene overlay.assetUrlPattern eintragen und erneut prüfen
+      [--start]                          start des Teils ausführen, wenn der Server nicht antwortet, danach beenden
       [--json]                           Ergebnis als eine JSON-Zeile (auch in .caw/overlay-check.json)`,
     'cli.help.skill': `  skill                                  Nur den Skill für Claude Code (und .mcp.json) anlegen oder aktualisieren; danach
                                          richtet Claude Code caw mit dir ein („Richte caw ein“)`,
@@ -134,7 +134,7 @@ Browser:
     'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>]',
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>] [--app <app>]  oder  caw record <test>@<S4> [--env <name>]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>]',
-    'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--app <app>] [--apply] [--start] [--json]',
+    'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
@@ -331,17 +331,17 @@ Browser:
     'cli.overlayCheck.usage': 'overlay kennt status und check, nicht "{sub}".',
     'cli.overlayCheck.unknownArg': 'overlay {sub} kennt {arg} nicht. Erlaubt: {allowed}',
     'cli.overlayCheck.target': 'Welche Umgebung? Nimm --env, zur Wahl: {choices}',
-    'cli.overlayCheck.noApp': 'Keine App "{app}" in caw.config.json. Nimm --app, zur Wahl: {apps}',
-    'cli.overlayCheck.noAppJson': 'App {app}: In {dir} liegt keine app.json. Stimmt apps.{app}.dir?',
+    'cli.overlayCheck.noPart': 'Kein Teil „{part}“ in overlay.parts. Nimm --part, zur Wahl: {parts}',
+    'cli.overlayCheck.noAppJson': 'Teil {app}: In {dir} liegt keine app.json. Stimmt overlay.parts.{app}.dir?',
     'cli.overlayCheck.noExpected': 'Für {framework} gibt es keine erwartete Liste: Die Prüfung entfällt.',
     'cli.overlayCheck.noDiagnosis': 'Die Sitzung lieferte keine Diagnose des Overlays.',
-    'cli.overlayCheck.head': 'Overlay-Prüfung auf {target}, App {app}',
+    'cli.overlayCheck.head': 'Overlay-Prüfung auf {target}, Teil {part}',
     'cli.overlayCheck.part.local': '{label}: lokal',
     'cli.overlayCheck.part.deployed': '{label}: ausgeliefert',
     'cli.overlayCheck.part.not-loaded': '{label}: nicht geladen (vielleicht erst später)',
-    'cli.overlayCheck.suggestion': '{source} ({count} Skript(e)): assetUrlPattern {pattern}',
+    'cli.overlayCheck.suggestion': '{source} ({count} Skript(e)): overlay.assetUrlPattern {pattern}',
     'cli.overlayCheck.unresolved': '{source}: kein passendes Muster gefunden, etwa {urls}',
-    'cli.overlayCheck.applied': '{count} Muster in assetUrlPattern eingetragen und erneut geprüft',
+    'cli.overlayCheck.applied': '{count} Muster in overlay.assetUrlPattern eingetragen und erneut geprüft',
     'cli.overlayCheck.command': 'Befehl: {command} (in {dir})',
     'cli.overlayCheck.complete': 'Vollständig: Alles Erwartete kam lokal.',
     'cli.overlayStatus.static.ok': 'static {name}: {path}',
@@ -355,22 +355,22 @@ Browser:
     'cli.overlayCheck.incompleteApply': 'Unvollständig: {count} Skript(e) kamen vom Server. caw overlay check --apply trägt die Muster ein.',
     'cli.overlayStatus.ready': 'Lokaler Code für {app} ist bereit: {url}',
     'cli.overlayStatus.readyNoServer': 'Lokaler Code für {app} ist bereit (kein Server nötig)',
-    'cli.overlayStatus.moved': 'Der lokale Code-Server von {app} läuft unter {found}, nicht unter {url}. caw nimmt ihn; trage {found} in apps.{app}.overlay.url ein.',
-    'cli.doctorOverlayBootstrap': '{target}, App {app}: bootstrap.json passt',
-    'cli.doctorOverlayBootstrapBad': '{target}, App {app}: {problem}',
-    'cli.doctorOverlayServerOk': '{target}, App {app}: lokaler Code unter {url} liefert {app}',
-    'cli.doctorOverlayServerMoved': '{target}, App {app}: lokaler Code läuft unter {found}, nicht unter {url}',
-    'cli.doctorOverlayServerMovedNext': 'Trage {found} in apps.{app}.overlay.url ein.',
-    'cli.doctorOverlayServerDown': '{target}, App {app}: lokaler Code unter {url} antwortet nicht',
-    'cli.doctorOverlayServerBad': '{target}, App {app}: lokaler Code unter {url}: {problem}',
+    'cli.overlayStatus.moved': 'Der lokale Code-Server von {app} läuft unter {found}, nicht unter {url}. caw nimmt ihn; trage {found} in overlay.parts.{app}.url ein.',
+    'cli.doctorOverlayBootstrap': '{target}, Teil {app}: bootstrap.json passt',
+    'cli.doctorOverlayBootstrapBad': '{target}, Teil {app}: {problem}',
+    'cli.doctorOverlayServerOk': '{target}, Teil {app}: lokaler Code unter {url} liefert {app}',
+    'cli.doctorOverlayServerMoved': '{target}, Teil {app}: lokaler Code läuft unter {found}, nicht unter {url}',
+    'cli.doctorOverlayServerMovedNext': 'Trage {found} in overlay.parts.{app}.url ein.',
+    'cli.doctorOverlayServerDown': '{target}, Teil {app}: lokaler Code unter {url} antwortet nicht',
+    'cli.doctorOverlayServerBad': '{target}, Teil {app}: lokaler Code unter {url}: {problem}',
     'cli.doctorOverlayStartNext': 'Starte {start} in {dir}; caw startet ihn nur mit --start.',
-    'cli.doctorOverlayStartUnknown': 'Trage den Startbefehl in apps.{app}.overlay.start ein.',
-    'cli.doctorOverlayPart': '{target}, App {app}: {label} {status} (geprüft {ago})',
+    'cli.doctorOverlayStartUnknown': 'Trage den Startbefehl in overlay.parts.{app}.start ein.',
+    'cli.doctorOverlayPart': '{target}, Teil {app}: {label} {status} (geprüft {ago})',
     'cli.doctorOverlayStatus.local': 'lokal',
     'cli.doctorOverlayStatus.deployed': 'ausgeliefert',
     'cli.doctorOverlayStatus.not-loaded': 'nicht geladen',
     'cli.doctorOverlayPartNext': 'caw overlay check zeigt das fehlende Muster, --apply trägt es ein.',
-    'cli.doctorOverlayNoCheck': '{target}, App {app}: Overlay noch nicht geprüft',
+    'cli.doctorOverlayNoCheck': '{target}, Teil {app}: Overlay noch nicht geprüft',
     'cli.doctorOverlayNoCheckNext': 'caw overlay check --env {target}',
     'cli.doctorMarkOk': 'OK        ',
     'cli.doctorMarkOptional': 'OPTIONAL  ',
@@ -446,9 +446,10 @@ Browser:
     'cli.code.built': 'Build {dir}, gebaut {time}, {ago}',
     'cli.code.dev': 'Dev-Server {url}',
     'cli.code.watch': 'Sencha-Watch {url}',
-    'cli.code.files': '{count} feste Datei(en) aus overlay.statics',
-    'cli.code.withStatics': '{text}, dazu {count} aus overlay.statics',
-    'cli.code.ofApp': '{text} (App {app})',
+    'cli.code.files': '{count} feste Datei(en) aus statics',
+    'cli.code.withStatics': '{text}, dazu {count} aus statics',
+    'cli.code.ofPart': '{text} (Teil {part})',
+    'cli.code.skipped': 'Teil {part} ausgeliefert (keine Quelle)',
     'cli.code.agoNow': 'gerade eben',
     'cli.code.agoMinutes': 'vor {count} min',
     'cli.code.agoHours': 'vor {count} h',

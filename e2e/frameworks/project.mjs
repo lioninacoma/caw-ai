@@ -16,15 +16,16 @@ const NAVIGATION = "getByRole('navigation', { name: 'Main navigation' })";
  * @param url       address of the environment
  * @param build     expected text after "Build:" (dev, deployed, local)
  * @param embed     true: additionally S3 with an iframe and a web component (only react-vite has both)
- * @param overlay   app config for the overlay ({ build, url, start }); the environment then allows it
+ * @param overlay   the part's sources ({ build, url, start }); then overlay.environments allows the environment
  */
 export const writeProject = (root, { framework, url, build, overlay, embed = false }) => {
     const config = {
         language: 'en',
         framework,
-        environments: { test: { url, claude: true, writable: true, ...(overlay ? { overlay: true } : {}), ...(url.startsWith('https:') ? { insecureTls: true } : {}) } },
+        environments: { test: { url, claude: true, writable: true, ...(url.startsWith('https:') ? { insecureTls: true } : {}) } },
         auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
-        apps: { web: { dir: '.', startUrl: '/', ...(overlay ? { overlay } : {}) } },
+        apps: { web: { startUrl: '/' } },
+        ...(overlay ? { overlay: { environments: ['test'], parts: { web: { dir: '.', ...overlay } } } } : {}),
         roles: { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEnv: 'CAW_PW_TESTER' } },
     };
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify(config, null, 4)}\n`);

@@ -29,21 +29,21 @@ const project = (t, { built, changed }) => {
     return root;
 };
 
-const CONFIG = { apps: { web: { dir: '.', startUrl: '/', overlay: { build: 'dist/local' } } } };
+const CONFIG = { apps: { web: { startUrl: '/' } }, overlay: { environments: ['dev'], parts: { web: { dir: '.', build: 'dist/local' } } } };
 const SPEC = { id: 'smoke', app: 'web', also: [] };
-const BUILD = { source: 'overlay', apps: { web: { kind: 'build', dir: 'dist/local', statics: [] } } };
+const BUILD = { source: 'overlay', parts: { web: { kind: 'build', dir: 'dist/local', statics: [] } } };
 
 test('Code line: overlay names the source (a server by its address), a build with its time; otherwise the deployed state; validate without time', (t) => {
     const root = project(t, { built: NOW - 3 * MIN, changed: NOW - 10 * MIN });
     assert.match(describeCode(CONFIG, SPEC, BUILD, { root, now: NOW }), /^Overlay, Build dist\/local, gebaut \d\d:\d\d, vor 3 min$/);
     assert.equal(describeCode(CONFIG, SPEC, BUILD), 'Overlay, Build dist/local');
-    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', apps: { web: { kind: 'dev', url: 'http://localhost:5174', statics: [] } } }), 'Overlay, Dev-Server http://localhost:5174');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', parts: { web: { kind: 'dev', url: 'http://localhost:5174', statics: [] } } }), 'Overlay, Dev-Server http://localhost:5174');
     const statics = [{ name: 'a.js', path: 'a.js' }];
-    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', apps: { web: { kind: 'watch', url: 'http://localhost:1841/', statics } } }), 'Overlay, Sencha-Watch http://localhost:1841/, dazu 1 aus overlay.statics');
-    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', apps: { web: { kind: 'files', statics } } }), 'Overlay, 1 feste Datei(en) aus overlay.statics');
-    const two = { apps: { web: { dir: 'web' }, admin: { dir: 'admin' } } };
-    assert.equal(describeCode(two, SPEC, { source: 'overlay', apps: { web: { kind: 'build', dir: 'web/dist' }, admin: { kind: 'dev', url: 'http://localhost:5200' } } }),
-        'Overlay, Build web/dist (App web); Dev-Server http://localhost:5200 (App admin)');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', parts: { web: { kind: 'watch', url: 'http://localhost:1841/', statics } } }), 'Overlay, Sencha-Watch http://localhost:1841/, dazu 1 aus statics');
+    assert.equal(describeCode(CONFIG, SPEC, { source: 'overlay', parts: { web: { kind: 'files', statics } } }), 'Overlay, 1 feste Datei(en) aus statics');
+    const three = { overlay: { environments: ['dev'], parts: { web: { dir: 'web' }, admin: { dir: 'admin' }, help: { dir: 'help' } } } };
+    assert.equal(describeCode(three, SPEC, { source: 'overlay', parts: { web: { kind: 'build', dir: 'web/dist' }, admin: { kind: 'dev', url: 'http://localhost:5200' } }, skipped: ['help'] }),
+        'Overlay, Build web/dist (Teil web); Dev-Server http://localhost:5200 (Teil admin); Teil help ausgeliefert (keine Quelle)');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed' }), 'ausgelieferter Stand');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'http://localhost:5173' }), 'Dev-Server localhost:5173, dein aktueller Stand');
     assert.equal(describeCode(CONFIG, SPEC, { source: 'deployed', url: 'https://shop.localhost:8443' }), 'ausgelieferter Stand', 'https on *.localhost is a build');

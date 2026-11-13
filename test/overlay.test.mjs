@@ -20,9 +20,13 @@ const extjsProject = (t) => project(t, {
 const PORTAL = 'https://portal.example';
 // The watch's web server serves the workspace: the app at /app/, its packages at /packages/.
 const WATCH = 'http://watch.test/app/';
-const watchChecked = { url: PORTAL, apps: { web: { kind: 'watch', url: WATCH, statics: [] } } };
+const watchChecked = { url: PORTAL, parts: { web: { kind: 'watch', url: WATCH, statics: [] } } };
 const watchDeps = (root) => ({ fetchImpl: folderFetch(root, WATCH), discover: async () => null });
-const extjsConfig = (extra = {}) => ({ framework: 'extjs', apps: { web: { dir: 'app' } }, ...extra });
+/** ExtJS with the part web in app/; assetUrlPattern for the block, part for the part's own keys. */
+const extjsConfig = ({ assetUrlPattern, part = {} } = {}) => ({
+    framework: 'extjs',
+    overlay: { environments: ['dev'], ...(assetUrlPattern === undefined ? {} : { assetUrlPattern }), parts: { web: { dir: 'app', ...part } } },
+});
 const PROXY_PATTERN = '[?&]url=repo:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)';
 
 /** What routeOverlay does per request: local if the overlay answers, otherwise the server. */
@@ -63,17 +67,17 @@ require('node:http').createServer((request, response) => {
 }).listen(Number(process.argv[2]), '127.0.0.1');
 `;
 
-const devChecked = (url, command) => ({ url: 'https://staging.example', apps: { web: { kind: 'dev', url, statics: [], ...(command === undefined ? {} : { command }) } } });
+const devChecked = (url, command) => ({ url: 'https://staging.example', parts: { web: { kind: 'dev', url, statics: [], ...(command === undefined ? {} : { command }) } } });
 
 test('Overlay dev: if the dev server does not answer, caw starts nothing and names overlay.start (or asks for it)', async (t) => {
     const root = project(t, {});
     const url = `http://127.0.0.1:${await freePort()}`;
     assert.equal(await probeServer(url), false);
-    await assert.rejects(prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked: devChecked(url) }),
-        (error) => error.code === 'overlay-not-ready' && error.message.includes(`Der lokale Code-Server ${url} antwortet nicht`) && /apps\.web\.overlay\.start/.test(error.message));
+    await assert.rejects(prepareOverlay({ root, config: { overlay: { parts: { web: { dir: '.' } } } }, checked: devChecked(url) }),
+        (error) => error.code === 'overlay-not-ready' && error.message.includes(`Der lokale Code-Server ${url} antwortet nicht`) && /overlay\.parts\.web\.start/.test(error.message));
     // overlay.start without --start: named, not run.
-    const named = { url: 'https://staging.example', apps: { web: { kind: 'dev', url, start: 'npm run dev', statics: [] } } };
-    await assert.rejects(prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked: named }),
+    const named = { url: 'https://staging.example', parts: { web: { kind: 'dev', url, start: 'npm run dev', statics: [] } } };
+    await assert.rejects(prepareOverlay({ root, config: { overlay: { parts: { web: { dir: '.' } } } }, checked: named }),
         (error) => error.code === 'overlay-not-ready' && /Starte npm run dev in \. oder starte den Lauf mit --start/.test(error.message));
 });
 
@@ -82,7 +86,7 @@ test('Overlay dev with --start: caw runs overlay.start, waits for the address, f
     const root = project(t, { 'server.cjs': DEV_SERVER, 'public/env.js': "window.ENV='local'" });
     const url = `http://127.0.0.1:${port}`;
     const lines = [];
-    const overlay = await prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked: devChecked(url, `node server.cjs ${port}`), info: (text) => lines.push(text) });
+    const overlay = await prepareOverlay({ root, config: { overlay: { parts: { web: { dir: '.' } } } }, checked: devChecked(url, `node server.cjs ${port}`), info: (text) => lines.push(text) });
     t.after(() => overlay.stop());
     assert.match(lines.join('\n'), new RegExp(`Der Dev-Server ${url} läuft nicht, starte node server\\.cjs`));
     const js = await overlay.resolve('https://staging.example/src/main.js?t=1', 'script');
@@ -103,7 +107,7 @@ test('Overlay dev with --start: caw runs overlay.start, waits for the address, f
 test('Overlay dev with --start: if the command does not start the server, the message shows its output', async (t) => {
     const root = project(t, {});
     const url = `http://127.0.0.1:${await freePort()}`;
-    await assert.rejects(prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked: devChecked(url, 'node -e "console.log(\'Port belegt\'); process.exit(1)"') }),
+    await assert.rejects(prepareOverlay({ root, config: { overlay: { parts: { web: { dir: '.' } } } }, checked: devChecked(url, 'node -e "console.log(\'Port belegt\'); process.exit(1)"') }),
         (error) => error.code === 'overlay-not-ready' && /hat den Dev-Server .* nicht gestartet/.test(error.message) && /Port belegt/.test(error.message));
 });
 
@@ -183,13 +187,13 @@ test('Overlay watch: diagnose names parts from the server (missed), parts never 
     assert.match(incompleteText({ ...seen, suggestions: [] }), /assetUrlPattern, dessen Gruppe 1 der Dateiname ist/);
 });
 
-test('Overlay watch: assetUrlPattern as a string, as a list and per app all resolve; then nothing is missed', async (t) => {
+test('Overlay watch: assetUrlPattern as a string, as a list and per part all resolve; then nothing is missed', async (t) => {
     const root = extjsProject(t);
     const urls = [`${PORTAL}/html/js/theme/theme.js`, `${PORTAL}/o/Proxy?url=repo:///Root/Fa/Bestellung.js`, `https://cdn.example/js/modell.js`];
     const configs = {
         string: extjsConfig({ assetUrlPattern: PROXY_PATTERN }),
         list: extjsConfig({ assetUrlPattern: [PROXY_PATTERN, '^https://cdn\\.example/js/([^/?#]+\\.js)'] }),
-        perApp: extjsConfig({ assetUrlPattern: [PROXY_PATTERN], apps: { web: { dir: 'app', overlay: { assetUrlPattern: '^https://cdn\\.example/js/([^/?#]+\\.js)' } } } }),
+        perPart: extjsConfig({ assetUrlPattern: [PROXY_PATTERN], part: { assetUrlPattern: '^https://cdn\\.example/js/([^/?#]+\\.js)' } }),
     };
     for (const [name, config] of Object.entries(configs)) {
         const overlay = await prepareOverlay({ root, config, checked: watchChecked, deps: watchDeps(root) });
@@ -209,12 +213,12 @@ test('Overlay watch: assetUrlPattern as a string, as a list and per app all reso
 test('Overlay watch: ready only if the server at overlay.url serves this app; down without --start names the command', async (t) => {
     const root = extjsProject(t);
     const config = extjsConfig();
-    const down = { url: PORTAL, apps: { web: { kind: 'watch', url: 'http://127.0.0.1:9/', start: 'pnpm run watch', statics: [] } } };
+    const down = { url: PORTAL, parts: { web: { kind: 'watch', url: 'http://127.0.0.1:9/', start: 'pnpm run watch', statics: [] } } };
     await assert.rejects(prepareOverlay({ root, config, checked: down, deps: watchDeps(root) }),
         (error) => error.code === 'overlay-not-ready' && /Der lokale Code-Server http:\/\/127\.0\.0\.1:9\/ antwortet nicht\. Starte pnpm run watch in app/.test(error.message));
     // Another project's watch on the port: never used, never replaced by a start.
     writeFileSync(join(root, 'app', 'app.json'), JSON.stringify({ name: 'Zertifizierung' }));
-    await assert.rejects(prepareOverlay({ root, config, checked: { ...watchChecked, apps: { web: { ...watchChecked.apps.web, command: 'node -e 0' } } }, deps: { ...watchDeps(root), fetchImpl: folderFetch(join(root, 'other'), WATCH) } }),
+    await assert.rejects(prepareOverlay({ root, config, checked: { ...watchChecked, parts: { web: { ...watchChecked.parts.web, command: 'node -e 0' } } }, deps: { ...watchDeps(root), fetchImpl: folderFetch(join(root, 'other'), WATCH) } }),
         (error) => error.code === 'overlay-not-ready' && /keine app\.json/.test(error.message));
 });
 
@@ -229,7 +233,7 @@ test('Overlay watch: found on another port, the run uses it and says so; the lab
     const root = extjsProject(t);
     const moved = 'http://moved.test/app/';
     const lines = [];
-    const checked = { url: PORTAL, apps: { web: { kind: 'watch', url: 'http://localhost:1841/', statics: [] } } };
+    const checked = { url: PORTAL, parts: { web: { kind: 'watch', url: 'http://localhost:1841/', statics: [] } } };
     const fetchImpl = folderFetch(root, moved);
     const overlay = await prepareOverlay({ root, config: extjsConfig(), checked, info: (text) => lines.push(text), deps: { fetchImpl, discover: async () => moved } });
     assert.match(lines.join('\n'), /Sencha-Watch läuft unter http:\/\/moved\.test\/app\/, nicht unter http:\/\/localhost:1841\/: nehme ihn/);

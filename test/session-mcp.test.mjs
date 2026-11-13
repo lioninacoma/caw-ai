@@ -10,6 +10,13 @@ import { initProject, listProject, validateProject } from '../src/host/project-d
 
 const TEMPLATE = readFileSync(new URL('../templates/caw.config.example.json', import.meta.url), 'utf8');
 const STEPS = 'mutates: false\nsteps:\n  - id: S1\n    name: Öffnen\n    do: ""\n    expect: Startseite\n  - id: S2\n    name: Bestellen\n    do: ""\n    expect: Bestätigung\n';
+/** The template with an overlay block: one part web, allowed on a deployed environment dev. */
+const OVERLAY_CONFIG = (() => {
+    const config = JSON.parse(TEMPLATE);
+    config.environments.dev = { url: 'https://dev.example' };
+    config.overlay = { environments: ['dev'], parts: { web: { dir: '.' } } };
+    return JSON.stringify(config, null, 4);
+})();
 const PROBES = { chrome: async () => {}, claude: () => '2.1.0', docker: async () => { throw new Error('Kein Docker gefunden'); }, reachable: async () => true };
 
 const tempDir = (t) => {
@@ -249,7 +256,9 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
     assert.throws(() => startArgs({ command: 'qqqq', test: 'x', step: 'S2' }), /run, record, open/, 'an unknown command');
     assert.throws(() => startArgs({ command: 'open', step: 'S2' }), /open braucht test/, 'a step needs its test');
     assert.throws(() => startArgs({ command: 'open', test: 'x', step: '--S2' }), /ungültigen Wert/);
-    assert.throws(() => startArgs({ command: 'run', test: 'x', overlay: 'irgendwo' }), /overlay muss/);
+    assert.throws(() => startArgs({ command: 'run', test: 'x', overlay: 'zwei teile' }), /overlay muss/);
+    assert.throws(() => startArgs({ command: 'run', test: 'x', overlay: '--start' }), /overlay muss/);
+    assert.deepEqual(startArgs({ command: 'run', test: 'x', overlay: 'orders,admin:dev' }), ['x', '--overlay=orders,admin:dev'], 'parts are checked by the CLI');
     assert.throws(() => startArgs({ command: 'run', test: '--all' }), /ungültigen Wert/);
 
     const root = project(t);
@@ -278,21 +287,21 @@ test('caw_start: open is allowed, config problems come back with their code', as
 });
 
 test('caw_start with overlay: a local code server that is not ready returns its start command instead of starting', async (t) => {
-    const root = project(t);
+    const root = project(t, { config: OVERLAY_CONFIG });
     const asked = [];
     const overlayPreconditions = (dir, config, options) => {
         asked.push({ dir, options, framework: config.framework });
-        return { state: 'down', framework: 'extjs', app: 'web', appDir: 'projects/apps/App', url: 'http://localhost:1841/', start: 'pnpm run watch' };
+        return { state: 'down', framework: 'extjs', part: 'web', partDir: 'projects/apps/App', url: 'http://localhost:1841/', start: 'pnpm run watch' };
     };
     const { call, spawned } = session(root, { overlayPreconditions });
     const result = await call('caw_start', { command: 'run', test: 'bestellung', target: 'local', overlay: true });
     assert.equal(spawned.length, 0, 'nothing started');
-    assert.deepEqual(result.structuredContent, { state: 'down', url: 'http://localhost:1841/', start: 'pnpm run watch', appDir: 'projects/apps/App', framework: 'extjs' });
+    assert.deepEqual(result.structuredContent, { state: 'down', part: 'web', url: 'http://localhost:1841/', start: 'pnpm run watch', partDir: 'projects/apps/App', framework: 'extjs' });
     assert.match(result.content[0].text, /Nicht gestartet \(down\).*http:\/\/localhost:1841\/.*projects\/apps\/App: pnpm run watch/);
-    assert.deepEqual(asked[0].options, { target: 'local', app: 'web' });
-    // open with a test: the overlay of that test's app; the step does not belong to the test name.
+    assert.deepEqual(asked[0].options, { target: 'local', part: 'web' });
+    // open with a test: every part of overlay.parts; the step does not matter.
     await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', target: 'local', overlay: true });
-    assert.deepEqual(asked.at(-1).options, { target: 'local', app: 'web' });
+    assert.deepEqual(asked.at(-1).options, { target: 'local', part: 'web' });
     asked.pop();
     // Raw args with --overlay are checked as well; without overlay there is no check.
     await call('caw_start', { command: 'record', args: ['bestellung', '--env=local', '--overlay=build'] });
@@ -309,14 +318,14 @@ test('caw_start with overlay: a local code server that is not ready returns its 
 });
 
 test('caw_start with overlay: the server on another port starts the run against the found URL', async (t) => {
-    const root = project(t);
-    const overlayPreconditions = () => ({ state: 'moved', framework: 'extjs', app: 'web', appDir: 'App', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/', start: 'pnpm run watch' });
+    const root = project(t, { config: OVERLAY_CONFIG });
+    const overlayPreconditions = () => ({ state: 'moved', framework: 'extjs', part: 'web', partDir: 'App', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/', start: 'pnpm run watch' });
     const { call, spawned } = session(root, { overlayPreconditions });
     const typed = await call('caw_start', { command: 'run', test: 'bestellung', target: 'local', overlay: true });
     assert.equal(typed.structuredContent.state, 'started');
     assert.deepEqual(spawned[0].args.slice(1), ['run', 'bestellung', '--env', 'local', '--overlay=http://localhost:52775/', '--agent', 'session']);
-    assert.deepEqual(typed.structuredContent.overlay, { state: 'moved', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/', app: 'web' });
-    assert.match(typed.content[0].text, /läuft unter http:\/\/localhost:52775\/.*apps\.web\.overlay\.url/);
+    assert.deepEqual(typed.structuredContent.overlay, { state: 'moved', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/', part: 'web' });
+    assert.match(typed.content[0].text, /läuft unter http:\/\/localhost:52775\/.*overlay\.parts\.web\.url/);
     rmSync(join(root, '.caw'), { recursive: true, force: true });
     // Raw args: a separate value is replaced as well.
     await call('caw_start', { command: 'open', args: ['--overlay', 'http://localhost:1841', '--env', 'local'] });
@@ -326,7 +335,7 @@ test('caw_start with overlay: the server on another port starts the run against 
 test('caw_overlay status: overlayStatus in-process, as data; errors come back as data', async (t) => {
     const root = project(t);
     const asked = [];
-    let reply = { state: 'ready', framework: 'web', app: 'web', appDir: '.', url: 'http://localhost:5173/', start: 'npm run dev' };
+    let reply = { state: 'ready', framework: 'web', part: 'web', partDir: '.', url: 'http://localhost:5173/', start: 'npm run dev' };
     const overlayPreconditions = (dir, config, options) => {
         asked.push(options);
         if (reply instanceof Error) throw reply;
@@ -336,7 +345,7 @@ test('caw_overlay status: overlayStatus in-process, as data; errors come back as
     const ready = await call('caw_overlay', { action: 'status', target: 'dev' });
     assert.equal(ready.isError, false);
     assert.deepEqual(ready.structuredContent, reply);
-    assert.deepEqual(asked[0], { target: 'dev', app: undefined });
+    assert.deepEqual(asked[0], { target: 'dev', part: undefined });
     assert.match(ready.content[0].text, /^overlay status: ready/);
     assert.equal(spawned.length, 0);
     reply = Object.assign(new Error('Kein Ziel'), { code: 'usage' });
@@ -344,7 +353,8 @@ test('caw_overlay status: overlayStatus in-process, as data; errors come back as
     assert.equal(failed.isError, true);
     assert.deepEqual(failed.structuredContent, { state: 'error', code: 'usage', message: 'Kein Ziel' });
     assert.equal((await call('caw_overlay', { action: 'restart' })).isError, true);
-    assert.equal((await call('caw_overlay', { action: 'status', app: '--x' })).isError, true);
+    assert.equal((await call('caw_overlay', { action: 'status', part: '--x' })).isError, true);
+    assert.equal((await call('caw_overlay', { action: 'status', app: 'web' })).isError, true, 'app is no field any more');
 });
 
 test('caw_overlay check/apply: runs the CLI with --json, returns its result; falls back to the file; timeout is an error', async (t) => {
@@ -354,8 +364,8 @@ test('caw_overlay check/apply: runs the CLI with --json, returns its result; fal
     let reply = { code: 0, out: `[caw] noise\n${JSON.stringify(result)}\n`, err: '' };
     const execCli = async (args, options) => { calls.push({ args, options }); return typeof reply === 'function' ? reply() : reply; };
     const { call } = session(root, { execCli });
-    const checked = await call('caw_overlay', { action: 'apply', target: 'dev', app: 'antrag' });
-    assert.deepEqual(calls[0].args, ['overlay', 'check', '--json', '--env', 'dev', '--app', 'antrag', '--apply']);
+    const checked = await call('caw_overlay', { action: 'apply', target: 'dev', part: 'antrag' });
+    assert.deepEqual(calls[0].args, ['overlay', 'check', '--json', '--env', 'dev', '--part', 'antrag', '--apply']);
     assert.equal(calls[0].options.timeoutMs, 180_000);
     assert.deepEqual(checked.structuredContent, { ...result, exit: 0 });
     assert.match(checked.content[0].text, /overlay check: ready/);

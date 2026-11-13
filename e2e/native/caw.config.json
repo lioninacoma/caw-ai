@@ -16,11 +16,9 @@
     },
     "apps": {
         "site": {
-            "dir": "site",
             "startUrl": "/"
         },
         "aria": {
-            "dir": "site",
             "startUrl": "/aria.html"
         }
     },

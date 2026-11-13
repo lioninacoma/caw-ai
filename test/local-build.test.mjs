@@ -20,8 +20,8 @@ const build = (t, files) => {
 /** A project with a build under dist, the overlay on top and the route's answer as in the browser. */
 const overlayOf = async (t, files, { command } = {}) => {
     const root = build(t, Object.fromEntries(Object.entries(files).map(([name, text]) => [`dist/${name}`, text])));
-    const checked = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [], ...(command === undefined ? {} : { command }) } } };
-    const overlay = await prepareOverlay({ root, config: { apps: { web: { dir: '.' } } }, checked });
+    const checked = { url: 'https://app.example', parts: { web: { kind: 'build', dir: 'dist', statics: [], ...(command === undefined ? {} : { command }) } } };
+    const overlay = await prepareOverlay({ root, config: { overlay: { parts: { web: { dir: '.' } } } }, checked });
     let handler;
     await routeOverlay({ route: async (match, handle) => { handler = handle; }, routeWebSocket: async () => { throw new Error('no WebSocket without a dev server'); } }, overlay);
     const answer = async (url, type = 'script') => {
@@ -111,17 +111,17 @@ test('contentTypeOf and hasBuild', (t) => {
 
 test('Overlay build: without a build, too far up or stale, the run ends before the browser with the reason', async (t) => {
     const root = build(t, { 'src/x.js': 'x', 'dist/app/browser/index.html': 'x', 'dist/app/browser/main-A1B2C3D4.js': 'x' });
-    const config = { apps: { web: { dir: '.' } } };
-    const checked = (dir, command) => ({ url: 'https://app.example', apps: { web: { kind: 'build', dir, statics: [], ...(command === undefined ? {} : { command }) } } });
+    const config = { overlay: { parts: { web: { dir: '.' } } } };
+    const checked = (dir, command) => ({ url: 'https://app.example', parts: { web: { kind: 'build', dir, statics: [], ...(command === undefined ? {} : { command }) } } });
     await assert.rejects(prepareOverlay({ root, config, checked: checked('local') }), (error) => error.code === 'overlay-not-ready' && /Im Build-Ordner local liegt kein Build/.test(error.message));
-    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist') }), (error) => /Setze "overlay": \{ "build": "dist\/app\/browser" \}/.test(error.message));
+    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist') }), (error) => /Setze "build": "dist\/app\/browser" beim Teil in overlay\.parts/.test(error.message));
     await prepareOverlay({ root, config, checked: checked('dist/app/browser') });
     const past = Date.now() / 1000 - 600;
     utimesSync(join(root, 'dist/app/browser/main-A1B2C3D4.js'), past, past);
     utimesSync(join(root, 'dist/app/browser/index.html'), past, past);
-    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist/app/browser') }), (error) => /ist älter als deine letzte Änderung \(src\/x\.js/.test(error.message) && /apps\.web\.overlay\.start ein und starte mit --start/.test(error.message));
+    await assert.rejects(prepareOverlay({ root, config, checked: checked('dist/app/browser') }), (error) => /ist älter als deine letzte Änderung \(src\/x\.js/.test(error.message) && /overlay\.parts\.web\.start ein und starte mit --start/.test(error.message));
     // overlay.start known, but no --start: caw names it and builds nothing.
-    const named = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist/app/browser', statics: [], start: 'npm run build' } } };
+    const named = { url: 'https://app.example', parts: { web: { kind: 'build', dir: 'dist/app/browser', statics: [], start: 'npm run build' } } };
     await assert.rejects(prepareOverlay({ root, config, checked: named }), (error) => error.code === 'overlay-not-ready' && /Baue neu mit npm run build oder starte den Lauf mit --start/.test(error.message));
 });
 
@@ -130,11 +130,11 @@ test('Overlay build: if the build is stale and the run has --start, caw builds w
     const past = Date.now() / 1000 - 600;
     utimesSync(join(root, 'dist/main.js'), past, past);
     const lines = [];
-    const config = { apps: { web: { dir: '.' } } };
+    const config = { overlay: { parts: { web: { dir: '.' } } } };
     const command = `node -e "require('fs').writeFileSync('dist/main.js','neu')"`;
-    await prepareOverlay({ root, config, checked: { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [], command } } }, info: (text) => lines.push(text) });
+    await prepareOverlay({ root, config, checked: { url: 'https://app.example', parts: { web: { kind: 'build', dir: 'dist', statics: [], command } } }, info: (text) => lines.push(text) });
     assert.match(lines.join('\n'), /Baue mit node -e/);
-    const failing = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [], command: 'node -e "process.exit(3)"' } } };
+    const failing = { url: 'https://app.example', parts: { web: { kind: 'build', dir: 'dist', statics: [], command: 'node -e "process.exit(3)"' } } };
     utimesSync(join(root, 'dist/main.js'), past, past);
     await assert.rejects(prepareOverlay({ root, config, checked: failing }), (error) => error.code === 'overlay-not-ready' && /ist gescheitert/.test(error.message));
 });

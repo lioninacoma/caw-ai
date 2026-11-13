@@ -21,7 +21,7 @@ const project = (t, roles = { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEn
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify({
         environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, prod: { url: 'https://example.com', production: true } },
         auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#me' },
-        apps: { web: { dir: '.', startUrl: '/' } },
+        apps: { web: { startUrl: '/' } },
         roles,
     }, null, 4)}\n`);
     return root;

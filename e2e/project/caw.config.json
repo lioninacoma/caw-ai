@@ -4,12 +4,10 @@
     "agent": {
         "sandbox": "docker"
     },
-    "assetUrlPattern": "DataProxy(?:\\.|[^#]*?[?&])url=repo:/{3}Root/([^&#]*)",
     "environments": {
         "dev": {
             "url": "https://portal.localhost:8453",
             "claude": true,
-            "overlay": true,
             "writable": true,
             "insecureTls": true
         }
@@ -31,9 +29,17 @@
     ],
     "apps": {
         "bestellung": {
-            "dir": ".",
-            "startUrl": "/app",
-            "overlay": {
+            "startUrl": "/app"
+        }
+    },
+    "overlay": {
+        "environments": [
+            "dev"
+        ],
+        "assetUrlPattern": "DataProxy(?:\\.|[^#]*?[?&])url=repo:/{3}Root/([^&#]*)",
+        "parts": {
+            "bestellung": {
+                "dir": ".",
                 "statics": [
                     {
                         "name": "Fx/Static.js",

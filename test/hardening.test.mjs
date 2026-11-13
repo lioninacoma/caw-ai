@@ -116,8 +116,8 @@ test('build: a lazy chunk named only by the entry stays itself, even if the page
 
 test('overlay.statics: if a file is missing, the run names it before the browser starts', async (t) => {
     const root = folder(t, { 'gen/const.js': '' });
-    const config = { apps: { web: { dir: '.' } } };
-    const checked = (path) => ({ url: 'https://app.example', apps: { web: { kind: 'files', statics: [{ name: 'Const.js', path }] } } });
+    const config = { overlay: { parts: { web: { dir: '.' } } } };
+    const checked = (path) => ({ url: 'https://app.example', parts: { web: { kind: 'files', statics: [{ name: 'Const.js', path }] } } });
     await prepareOverlay({ root, config, checked: checked('gen/const.js') });
     await assert.rejects(prepareOverlay({ root, config, checked: checked('gen/x.js') }), (error) => error.code === 'overlay-not-ready' && /gen[\\/]x\.js/.test(error.message));
 });
@@ -128,8 +128,8 @@ test('overlay: overlay.statics wins, then the build up to the hash; never pages 
         mkdirSync(join(root, name, '..'), { recursive: true });
         writeFileSync(join(root, name), text);
     }
-    const config = { apps: { web: { dir: '.' } } };
-    const checked = { url: 'https://app.example', apps: { web: { kind: 'build', dir: 'dist', statics: [{ name: 'assets/index-OLD00000.js', path: 'fixed/index.js' }] } } };
+    const config = { overlay: { parts: { web: { dir: '.' } } } };
+    const checked = { url: 'https://app.example', parts: { web: { kind: 'build', dir: 'dist', statics: [{ name: 'assets/index-OLD00000.js', path: 'fixed/index.js' }] } } };
     const overlay = await prepareOverlay({ root, config, checked });
     assert.equal((await overlay.resolve('https://app.example/assets/index-OLD00000.js', 'script')).file, join(root, 'fixed/index.js'));
     assert.equal((await overlay.resolve('https://app.example/assets/style-OLD00000.css', 'stylesheet')).file, join(root, 'dist/assets/style-NEW11111.css'));
