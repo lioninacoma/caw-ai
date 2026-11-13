@@ -1,0 +1,5 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Pay</title></head><body>
+<form aria-label="Card"><label>Amount <input name="amount"></label><button type="button" onclick="document.getElementById('st').textContent='Paid '+this.form.amount.value">Pay</button></form>
+<p role="status" id="st"></p>
+<iframe title="Bank" src="/inner.html" width="300" height="80"></iframe>
+</body></html>

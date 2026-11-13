@@ -271,26 +271,6 @@ export const frameView = (page, first) => {
         frames: () => descendants(current()),
         context: () => page.context(),
         bringToFront: () => page.bringToFront(),
-        /**
-         * An action in the application without taking the chat away from the human: clicking and filling focus the target in the
-         * application. If they were typing in the chat, their keys would then land in the form and trigger shortcuts there. If the
-         * chat had focus, it gets it back right afterwards.
-         */
-        keepChatFocus: async (action) => {
-            const inChat = await page.evaluate((name) => document.activeElement?.tagName === 'IFRAME' && document.activeElement.name === name, CHAT_FRAME_NAME).catch(() => false);
-            // The focused element inside the chat, usually the input: it loses focus too and gets it back explicitly afterwards.
-            const chat = inChat ? page.frame({ name: CHAT_FRAME_NAME }) : null;
-            const held = chat === null ? null : await chat.evaluateHandle(() => document.activeElement).catch(() => null);
-            try {
-                return await action();
-            } finally {
-                if (inChat) {
-                    await page.locator(`iframe[name="${CHAT_FRAME_NAME}"]`).focus().catch(() => {});
-                    await held?.asElement()?.focus().catch(() => {});
-                }
-                await held?.dispose().catch(() => {});
-            }
-        },
         isClosed: () => page.isClosed() || current().isDetached(),
         keyboard: {
             // A real key press: focus the iframe first, then the element that last had focus.

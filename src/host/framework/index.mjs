@@ -1,9 +1,11 @@
-// The seam to the framework of the application under test: describing and finding targets, page state, readiness. Chosen via
+// The seam to the framework of the application under test: judging the elements a locator finds, page state, readiness. Chosen via
 // `framework` in the config; `web` is the default and needs no framework knowledge. Everything else in the tool is neutral.
 //
 // An adapter is an object with:
-// - `targets(element, { mode, target })`: runs in the browser; `describe` returns a stable target (with `index` as soon as several
-//   elements match), `find` the matching element, `ambiguity` { count, candidates } of all matches
+// - `targets(element, { mode, target })`: runs in the browser on an element a locator found: `reachable` (visible and not covered),
+//   `blocked` (why not: { hidden } | { covered } | null), `near` ({ x, y, near }: where it is and the text around it); without an
+//   element: `names` (names of visible elements with role target.role) and `scroll` (a virtual list one step further)
+// - `hint(element)`: optional, runs in the browser: { component, source? } for a recorded element, a hint for diagnosis only
 // - `pageState({ marker, selectors })`: runs in the browser; { appLoaded, signedIn, loading, path, messages }
 // - `probe(store)`: runs in the browser; { pendingAjax, loadingStores, counts, appReady }. With `readyIgnore` it gets { store, ignore }
 //   instead: CSS selectors of areas whose changes and progress indicators do not count (live ticker, clock, permanent spinner)
@@ -24,8 +26,8 @@
 
 import { extjs } from './extjs.mjs';
 import { angular, react, vue } from './spa.mjs';
-import { web, webTargets } from './web.mjs';
-import { patternLabel } from '../patterns.mjs';
+import { web } from './web.mjs';
+import { buildLocator, locatorLabel, parseLocator } from '../locator.mjs';
 import { t } from '../../shared/i18n.mjs';
 
 export const FRAMEWORKS = { web, extjs, react, vue, angular };
@@ -35,101 +37,95 @@ export const frameworkOf = (config) => FRAMEWORKS[config?.framework ?? DEFAULT_F
 
 const sleepMs = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
-/** Describes the element behind a locator as a stable target, or null. */
-export const describeLocator = (framework, locator, options) => locator.evaluate(framework.targets, { mode: 'describe' }, options);
+// How long a locator may match several reachable elements before an action gives up. Briefly two hits are normal, e.g. while a
+// dialog closes and the next one opens with the same button.
+export const AMBIGUOUS_MS = 2000;
 
-const findExpression = (framework, target) => `(${framework.targets})(null, ${JSON.stringify({ mode: 'find', target })})`;
-// How many elements match a target without `index`, with the first three as { index, x, y, near }.
-const ambiguityExpression = (framework, target) => `(${framework.targets})(null, ${JSON.stringify({ mode: 'ambiguity', target })})`;
+// Roles of list entries: a locator that names one may need a virtual list scrolled before its element exists.
+const LISTISH = new Set(['row', 'listitem', 'option', 'gridcell', 'cell', 'treeitem']);
 
-// iframes: a target in a frame of the application carries the iframe element under `frame`, described in the document above,
-// with nested frames again under `frame`. The `web` adapter always describes and finds the iframe: a framework adapter like
-// ExtJS does not know it as a component.
+const isNested = (value) => value !== null && typeof value === 'object' && Array.isArray(value.chain);
 
-/**
- * The frame for a `frame` entry: find the iframe in the document above, then its content. Without an entry the page itself; null
- * while the iframe is missing or has not loaded anything yet.
- */
-export const frameOf = async (page, frameTarget) => {
-    if (frameTarget === undefined) return page;
-    const { frame: outer, ...own } = frameTarget;
-    const parent = await frameOf(page, outer);
-    if (parent === null) return null;
-    const handle = await parent.evaluateHandle(`(${webTargets})(null, ${JSON.stringify({ mode: 'find', target: own, exact: true })})`).catch(() => null);
-    const element = handle?.asElement() ?? null;
-    if (element === null) {
-        await handle?.dispose().catch(() => {});
-        return null;
+/** The roles of getByRole calls in the chain, nested locators (has, and, or) included. */
+const rolesIn = (chain) => chain.flatMap(({ method, args }) => [
+    ...(method === 'getByRole' && typeof args[0] === 'string' ? [args[0]] : []),
+    ...args.flatMap((argument) => {
+        if (isNested(argument)) return rolesIn(argument.chain);
+        if (argument !== null && typeof argument === 'object' && !(argument instanceof RegExp)) return Object.values(argument).filter(isNested).flatMap((inner) => rolesIn(inner.chain));
+        return [];
+    }),
+]);
+
+const rootOf = (root) => (typeof root === 'function' ? root() : root);
+const dispose = (handles) => Promise.all(handles.map((handle) => handle.dispose().catch(() => {})));
+const handlesOf = async (root, ast) => {
+    try {
+        return await buildLocator(root, ast).elementHandles();
+    } catch {
+        return [];
     }
-    const frame = await element.contentFrame().catch(() => null);
-    await element.dispose().catch(() => {});
-    return frame;
 };
 
 /**
- * The `frame` entry for an element in `frame`: the iframes from that frame up to the application, each described in the document
- * above. undefined in the main frame; null if an iframe cannot be described or the frame does not belong to the application.
+ * The frame the chain's contentFrame() calls lead to: root itself without any. { frame }, or { missing: label } for the first
+ * iframe on the way that is missing or has not loaded anything yet.
  */
-export const frameTargetOf = async (page, frame) => {
-    const top = page.mainFrame();
-    const levels = [];
-    let current = frame;
-    for (; current !== null && current !== top; current = current.parentFrame()) {
-        const element = await current.frameElement().catch(() => null);
-        if (element === null) return null;
-        const described = await element.evaluate(webTargets, { mode: 'describe', exact: true }).catch(() => null);
-        await element.dispose().catch(() => {});
-        if (described === null) return null;
-        levels.push(described);
+const frameOfChain = async (root, ast) => {
+    let frame = root;
+    for (const [index, { method }] of ast.entries()) {
+        if (method !== 'contentFrame') continue;
+        const handles = await handlesOf(root, ast.slice(0, index));
+        const content = handles.length === 0 ? null : await handles[0].contentFrame().catch(() => null);
+        await dispose(handles);
+        if (content === null) return { missing: locatorLabel(ast.slice(0, index)) };
+        frame = content;
     }
-    if (current === null) return null;
-    let chain;
-    for (const level of levels.reverse()) chain = chain === undefined ? level : { ...level, frame: chain };
-    return chain;
+    return { frame };
 };
-
-/** Describes an element with its frame: the target as in `describeLocator`, from an iframe with `frame`. null if that fails. */
-export const describeElement = async (framework, page, element, options) => {
-    const described = await element.evaluate(framework.targets, { mode: 'describe' }, options);
-    if (described === null || described === undefined) return null;
-    const frame = await element.ownerFrame().catch(() => null);
-    if (frame === null || frame === page.mainFrame()) return described;
-    const chain = await frameTargetOf(page, frame);
-    return chain === null ? null : chain === undefined ? described : { ...described, frame: chain };
-};
-
-// How long a target may stay ambiguous before an action that requires a unique one gives up. Briefly two hits are normal, e.g.
-// while a dialog closes and the next one opens.
-const AMBIGUOUS_MS = 2000;
 
 /**
- * Waits until the target is clickable. Evaluation fails during navigation, which is expected.
- * @param unique  for a target without `index`: 'fail' waits for a single hit and returns null if several stay (`report.ambiguous`
- *                then holds { count, candidates }); 'warn' takes the first hit and only notes the ambiguity in `report`
+ * Waits until the locator matches exactly one reachable element (visible and not covered, as the adapter judges it). Covered or
+ * hidden matches do not count, so a step waits for load masks and hits the topmost dialog. Several reachable matches are
+ * tolerated for AMBIGUOUS_MS, e.g. while one dialog fades out and the next opens; if they stay, the result names them. No match:
+ * keeps polling, and a locator for list entries scrolls a virtual list one step further each time.
+ * @param root  Page or Frame the locator starts at (the application's main frame), or a function returning it on every poll
+ * @param code  locator code or its AST
+ * @returns { element } (an ElementHandle, or null after the timeout) and, if several matched, ambiguous: { count, candidates }
  */
-export const waitForTarget = async (framework, page, target, { timeoutMs, pollMs = 150, sleep = sleepMs, now = Date.now, unique, report } = {}) => {
+export const waitForLocator = async (framework, root, code, { timeoutMs, pollMs = 150, sleep = sleepMs, now = Date.now } = {}) => {
+    const ast = typeof code === 'string' ? parseLocator(code) : code;
+    const scrolls = rolesIn(ast).some((role) => LISTISH.has(role));
     const deadline = now() + timeoutMs;
-    const { frame: frameTarget, ...own } = target;
-    const checkUnique = (unique === 'fail' || unique === 'warn') && own.index === undefined;
     let ambiguousSince = null;
     for (;;) {
-        const scope = await frameOf(page, frameTarget);
-        const handle = scope === null ? null : await scope.evaluateHandle(findExpression(framework, own)).catch(() => null);
-        const found = handle?.asElement() ?? null;
-        if (found !== null) {
-            const ambiguity = checkUnique ? await (async () => scope.evaluate(ambiguityExpression(framework, own)))().catch(() => null) : null;
-            const several = ambiguity !== null && typeof ambiguity === 'object' && ambiguity.count > 1;
-            if (report !== undefined) report.ambiguous = several ? ambiguity : undefined;
-            if (!several || unique === 'warn') return found;
-            await found.dispose().catch(() => {});
+        const scope = rootOf(root);
+        const handles = await handlesOf(scope, ast);
+        const reachable = [];
+        for (const handle of handles) {
+            if (await handle.evaluate(framework.targets, { mode: 'reachable' }).catch(() => false) === true) reachable.push(handle);
+            else await handle.dispose().catch(() => {});
+        }
+        if (reachable.length === 1) return { element: reachable[0] };
+        if (reachable.length > 1) {
             ambiguousSince ??= now();
-            if (now() - ambiguousSince >= AMBIGUOUS_MS) return null;
+            if (now() - ambiguousSince >= AMBIGUOUS_MS || now() >= deadline) {
+                const candidates = [];
+                for (const [index, handle] of reachable.slice(0, 3).entries()) {
+                    const near = await handle.evaluate(framework.targets, { mode: 'near' }).catch(() => null);
+                    candidates.push({ index, ...(near !== null && typeof near === 'object' ? near : {}) });
+                }
+                await dispose(reachable);
+                return { element: null, ambiguous: { count: reachable.length, candidates } };
+            }
+            await dispose(reachable);
         } else {
             ambiguousSince = null;
-            if (report !== undefined) report.ambiguous = undefined;
-            await handle?.dispose().catch(() => {});
+            if (handles.length === 0 && scrolls) {
+                const { frame } = await frameOfChain(scope, ast).catch(() => ({}));
+                await frame?.evaluate(`(${framework.targets})(null, { mode: 'scroll' })`).catch(() => {});
+            }
         }
-        if (now() >= deadline) return null;
+        if (now() >= deadline) return { element: null };
         await sleep(pollMs);
     }
 };
@@ -142,20 +138,53 @@ export const ambiguityText = ({ count, candidates = [] }) => candidates.slice(0,
     near: typeof near === 'string' && near !== '' ? t('session.replay.ambiguousNear', { text: near }) : '',
 })).join('; ') + (count > 3 ? t('session.replay.ambiguousMore', { count: count - 3 }) : '');
 
+const NARROWING = new Set(['filter', 'nth', 'first', 'last', 'visible']);
+
 /**
- * Why a target was not clickable, if the adapter can tell: { missing } | { hidden } | { covered: { role|tag, name?, messages? } }.
- * Adapters without that information return null.
+ * Why a locator found nothing clickable: { frameMissing: label } | { missing, similar? } | { hidden } | { covered: { role|tag,
+ * name?, messages? } }, or null if the adapter cannot tell. `similar` names elements of the same role whose name is close, e.g. a
+ * renamed button.
+ * @param root Page or Frame the locator starts at, or a function returning it
  */
-export const explainTarget = async (framework, page, target) => {
-    const { frame: frameTarget, ...own } = target;
-    const scope = await frameOf(page, frameTarget).catch(() => null);
-    if (scope === null) return { frameMissing: targetLabel(frameTarget) };
-    const why = await (async () => scope.evaluate(`(${framework.targets})(null, ${JSON.stringify({ mode: 'explain', target: own })})`))().catch(() => null);
-    if (why === null || typeof why !== 'object' || Array.isArray(why) || !(why.missing || why.hidden || why.covered)) return null;
-    if (!why.missing) return why;
-    const { names, ...rest } = why;
-    const similar = closestNames(target.name ?? target.text ?? target.label, Array.isArray(names) ? names : []);
-    return similar.length === 0 ? rest : { ...rest, similar: similar.map((name) => ({ role: target.role, name })) };
+export const explainLocator = async (framework, root, code) => {
+    const ast = typeof code === 'string' ? parseLocator(code) : code;
+    const scope = rootOf(root);
+    const reached = await frameOfChain(scope, ast).catch(() => null);
+    if (reached === null) return null;
+    if (reached.missing !== undefined) return { frameMissing: reached.missing };
+    const handles = await handlesOf(scope, ast);
+    if (handles.length === 0) {
+        const at = ast.findLastIndex(({ method }) => !NARROWING.has(method));
+        const last = ast[at];
+        const role = last?.method === 'getByRole' ? last.args[0] : undefined;
+        // Roles only count visible elements: with includeHidden the element may be there, but hidden.
+        if (role !== undefined && last.args[1]?.includeHidden !== true) {
+            const options = { ...(last.args[1] ?? {}), includeHidden: true };
+            const hidden = await handlesOf(scope, [...ast.slice(0, at), { method: 'getByRole', args: [role, options] }, ...ast.slice(at + 1)]);
+            await dispose(hidden);
+            if (hidden.length > 0) return { hidden: true };
+        }
+        const name = role === undefined ? undefined : last.args[1]?.name;
+        if (typeof name !== 'string') return { missing: true };
+        const names = await reached.frame.evaluate(`(${framework.targets})(null, ${JSON.stringify({ mode: 'names', target: { role } })})`).catch(() => []);
+        const similar = closestNames(name, Array.isArray(names) ? names : []);
+        return similar.length === 0 ? { missing: true } : { missing: true, similar: similar.map((found) => ({ role, name: found })) };
+    }
+    try {
+        // A covered match explains more than a hidden twin, e.g. the mobile navigation.
+        const reasons = [];
+        for (const handle of handles) reasons.push(await handle.evaluate(framework.targets, { mode: 'blocked' }).catch(() => null));
+        return reasons.find((why) => why?.covered !== undefined) ?? reasons.find((why) => why?.hidden === true) ?? null;
+    } finally {
+        await dispose(handles);
+    }
+};
+
+/** The adapter's hint for a recorded element ({ component, source? } in React/Vue/Angular dev builds), or null. */
+export const elementHint = async (framework, element) => {
+    if (typeof framework.hint !== 'function') return null;
+    const found = await element.evaluate(framework.hint).catch(() => null);
+    return found !== null && typeof found === 'object' && typeof found.component === 'string' ? found : null;
 };
 
 const editDistance = (a, b) => {
@@ -204,12 +233,6 @@ export const explainText = (why) => {
 export const DEFAULT_SELECTORS = ['[role=alert]', '[role=alertdialog]'];
 
 export const readPageState = async (framework, page, marker, selectors = DEFAULT_SELECTORS) => page.evaluate(framework.pageState, { marker, selectors });
-
-/** Short form for messages, e.g. actionbutton "Weiter" or button "Senden". */
-export const targetLabel = ({ xtype, role, tag, text, label, name, own, testid, part, component }) => {
-    const shown = text ?? label ?? name ?? own ?? (testid === undefined ? undefined : `#${testid}`);
-    return `${xtype ?? role ?? part ?? tag ?? 'Element'}${shown === undefined ? '' : ` "${patternLabel(shown)}"`}${component === undefined ? '' : ` in <${component}>`}`;
-};
 
 const READY = { timeout: 15_000, quietMs: 250, pollMs: 100 };
 

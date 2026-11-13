@@ -63,7 +63,7 @@ test('MCP: commands as in the sandbox, files as content, host commands rejected'
     assert.throws(() => commandLine({ args: ['finish'] }, write), /needs the content in file/);
     assert.throws(() => commandLine({ args: ['snapshot'], file: 'x' }, write), /takes no file/);
     assert.throws(() => commandLine({ args: [] }, write), /args must/);
-    for (const host of ['init', 'record', 'fix', 'auth', 'doctor', 'mcp-agent', 'firewall-check']) assert.ok(!AGENT_COMMANDS.has(host), host);
+    for (const host of ['init', 'record', 'open', 'repair', 'auth', 'doctor', 'mcp-agent', 'firewall-check']) assert.ok(!AGENT_COMMANDS.has(host), host);
 });
 
 test('MCP: protocol with initialize, tools/list and tools/call; files are deleted afterwards', async (t) => {

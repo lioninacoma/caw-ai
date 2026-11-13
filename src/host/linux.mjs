@@ -43,16 +43,15 @@ export const parseEnvFile = (text) => {
 const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--overlay', '--start'];
 const COMMAND_OPTIONS = {
     // --timeout and --max-steps apply to Claude when clarifying, advising and fixing; playback itself is limited by --step-timeout.
-    run: ['--target', '--until', '--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay', '--start'],
+    run: ['--target', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay', '--start'],
     record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
-    fix: CLAUDE_OPTIONS,
-    open: ['--target', '--role', '--app', '--overlay', '--start', '--agent', '--timeout', '--max-steps'],
+    open: ['--target', '--role', '--app', '--overlay', '--start', '--agent', '--timeout', '--max-steps', '--step-timeout'],
 };
 // --start: caw may run overlay.start itself when the local code server is not ready (CI); otherwise it only names the command.
-const SWITCHES = new Set(['--handover', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--read-only', '--start']);
+const SWITCHES = new Set(['--advise', '--headless', '--no-chat', '--no-learn', '--all', '--read-only', '--start']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
-    '--target': 'local', '--until': 'S4', '--role': 'admin', '--app': 'web', '--also': 'admin', '--agent': 'local', '--timeout': '60',
+    '--target': 'local', '--role': 'admin', '--app': 'web', '--also': 'admin', '--agent': 'local', '--timeout': '60',
     '--max-steps': '100', '--step-timeout': '30', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
@@ -88,22 +87,40 @@ const checkTestId = (test) => {
 };
 
 /**
+ * `<test>` or `<test>@S<n>` for record and open. Test ids cannot contain @ (checkTestId), so the first @ separates the step.
+ * @returns { test, step }; step undefined without @
+ */
+export const splitStep = (arg) => {
+    const at = arg.indexOf('@');
+    if (at === -1) return { test: arg };
+    const test = arg.slice(0, at);
+    const step = arg.slice(at + 1);
+    if (test === '' || !STEP_ID.test(step)) throw new CawError('usage', t('session.args.stepForm', { arg }));
+    return { test, step };
+};
+
+/**
  * Each command only knows its own options. --target may be omitted: then the command picks the only matching target.
  * run also takes several tests or --all; they then run one after another without chat, with a table at the end.
- * @param command run, record, fix or open
+ * record and open take one test, optionally with a step: `<test>@S<n>`.
+ * @param command run, record or open
  */
 export const parseRunArgs = (command, args) => {
     const allowed = COMMAND_OPTIONS[command];
-    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { handover: false, advise: false, headless: false, noChat: false, learn: true, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }), ...(command === 'record' ? { also: [] } : {}) };
+    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { advise: false, headless: false, noChat: false, learn: true, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }), ...(command === 'record' ? { also: [] } : {}) };
     const rest = [...args];
     while (rest.length > 0) {
         const arg = rest.shift();
         if (!arg.startsWith('--')) {
-            if (command === 'open') throw new CawError('usage', t('session.args.unexpected', { arg }));
-            if (command === 'run') options.tests.push(arg);
-            if (options.test === undefined) options.test = arg;
-            else if (command === 'fix' && options.step === undefined) options.step = arg;
-            else if (command !== 'run') throw new CawError('usage', t('session.args.unexpected', { arg }));
+            if (command === 'run') {
+                options.tests.push(arg);
+                options.test ??= arg;
+                continue;
+            }
+            if (options.test !== undefined) throw new CawError('usage', t('session.args.unexpected', { arg }));
+            const { test, step } = splitStep(arg);
+            options.test = test;
+            if (step !== undefined) options.step = step;
             continue;
         }
         const [flag, inline] = arg.split(/=(.*)/s);
@@ -118,7 +135,6 @@ export const parseRunArgs = (command, args) => {
         }
         const value = SWITCHES.has(flag) ? true : requireValue(flag, inline ?? rest.shift());
         if (flag === '--target') options.target = value;
-        else if (flag === '--handover') options.handover = true;
         else if (flag === '--advise') options.advise = true;
         else if (flag === '--headless') options.headless = true;
         else if (flag === '--no-chat') options.noChat = true;
@@ -127,7 +143,6 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--read-only') options.readOnly = true;
         else if (flag === '--start') options.start = true;
         else if (flag === '--max-steps') options.maxSteps = Number(value);
-        else if (flag === '--until') options.until = value;
         else if (flag === '--role') options.role = value;
         else if (flag === '--app') options.app = value;
         else if (flag === '--also') options.also.push(value);
@@ -146,26 +161,29 @@ export const parseRunArgs = (command, args) => {
     if (options.all && options.test !== undefined) throw new CawError('usage', t('session.args.allWithTests'));
     if (options.start && options.overlay === undefined) throw new CawError('usage', t('session.args.startWithoutOverlay'));
     if (command !== 'open' && options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
-    for (const test of command === 'run' ? options.tests : command === 'open' ? [] : [options.test]) checkTestId(test);
-    if (command === 'fix' && !STEP_ID.test(options.step ?? '')) throw new CawError('usage', t('session.args.fixStep'));
+    for (const test of command === 'run' ? options.tests : options.test === undefined ? [] : [options.test]) checkTestId(test);
+    // A test brings its role and app; with a step it also exists already, so its metadata stays as it is.
+    if (command === 'open' && options.test !== undefined) {
+        const clash = [['--role', options.role], ['--app', options.app]].find(([, value]) => value !== undefined);
+        if (clash !== undefined) throw new CawError('usage', t('session.args.openWithTest', { flag: clash[0] }));
+    }
+    if (command === 'record' && options.step !== undefined) {
+        const clash = [['--role', options.role], ['--app', options.app], ['--also', options.also.length > 0 ? true : undefined], ['--read-only', options.readOnly]].find(([, value]) => value !== undefined);
+        if (clash !== undefined) throw new CawError('usage', t('session.args.recordStepMeta', { flag: clash[0] }));
+    }
     if (options.timeoutMin !== undefined && (!Number.isFinite(options.timeoutMin) || options.timeoutMin <= 0)) throw new CawError('usage', t('session.args.timeout'));
     if (!Number.isFinite(options.stepTimeoutSec) || options.stepTimeoutSec <= 0) throw new CawError('usage', t('session.args.stepTimeout'));
     if (options.maxSteps !== undefined && (!Number.isInteger(options.maxSteps) || options.maxSteps <= 0)) throw new CawError('usage', t('session.args.maxSteps'));
-    if (options.until !== undefined && !STEP_ID.test(options.until)) throw new CawError('usage', t('session.args.until'));
-    // Several tests are meant for CI: no chat and no handover, otherwise every test would wait for a human.
+    // Several tests are meant for CI: no chat, otherwise every test would wait for a human.
     if (command === 'run' && (options.all || options.tests.length > 1)) {
-        const clash = [['--advise', options.advise], ['--handover', options.handover], ['--until', options.until !== undefined]].find(([, set]) => set);
-        if (clash !== undefined) throw new CawError('usage', t('session.args.batchClash', { other: clash[0] }));
+        if (options.advise) throw new CawError('usage', t('session.args.batchClash', { other: '--advise' }));
         options.batch = true;
         options.noChat = true;
     }
-    // Without a window there is nothing to hand over, without chat nothing to fix.
+    // Without a window there is nothing to advise on in the chat.
     if (options.headless) options.noChat = true;
     const without = options.headless ? '--headless' : '--no-chat';
-    if (options.noChat) {
-        const clash = [['--advise', options.advise], ['--handover', options.handover], ['--until', options.until !== undefined]].find(([, set]) => set);
-        if (clash !== undefined) throw new CawError('usage', t('session.args.clash', { without, other: clash[0] }));
-    }
+    if (options.noChat && options.advise) throw new CawError('usage', t('session.args.clash', { without, other: '--advise' }));
     return options;
 };
 

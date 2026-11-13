@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>ARIA fixture</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 16px; }
+  section, fieldset, [role=group] { border: 1px solid #ccc; margin: 8px 0; padding: 8px; }
+  [role=grid] { display: table; border: 1px solid #888; }
+  [role=row] { display: table-row; }
+  [role=columnheader], [role=gridcell] { display: table-cell; padding: 3px 8px; border-top: 1px solid #ddd; }
+  [role=columnheader] { font-weight: bold; }
+  .vorgang, .fenster { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); background: #fff; border: 1px solid #444; box-shadow: 0 4px 16px rgba(0, 0, 0, .4); padding: 10px; min-width: 300px; z-index: 40; }
+  .backdrop { position: fixed; inset: 0; background: #0003; z-index: 30; }
+  .feld { position: relative; display: inline-block; }
+  .liste { position: absolute; z-index: 50; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #666; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); }
+  .liste [role=option] { padding: 4px 8px; cursor: pointer; }
+  .liste [role=option]:hover { background: #def; }
+</style>
+</head>
+<body>
+<!-- N10d/N10e: plain HTML with ARIA, no framework, for the generic recording rules (accessible-name.mjs, record-locator.mjs):
+     a native <dialog> named only by its heading, an ARIA dialog named by aria-labelledby and one whose title carries a record
+     number, each with a "Speichern" like the page's own; a grid whose rows repeat their first cell; a combobox whose options are rendered at the end of the
+     body; fields without a label of their own in named groups. Every id is generated and differs on each load. All data is
+     fictitious. -->
+<h1>Vorgänge</h1>
+<p role="status" id="status">bereit</p>
+
+<section aria-label="Notizen">
+  <button type="button" data-id="notiz-neu">Notiz anlegen</button>
+  <button type="button" data-id="vermerk-neu">Vermerk anlegen</button>
+  <button type="button" data-id="speichern">Speichern</button>
+</section>
+
+<div role="grid" aria-label="Vorgangsliste" data-id="grid">
+  <div role="row"><span role="columnheader">Nummer</span><span role="columnheader">Name</span><span role="columnheader">Status</span><span role="columnheader">Aktion</span></div>
+</div>
+
+<section aria-label="Zuordnung">
+  <label data-for="sachgebiet">Sachgebiet</label>
+  <span class="feld"><input data-id="sachgebiet" role="combobox" aria-autocomplete="list" aria-expanded="false" autocomplete="off"></span>
+</section>
+
+<fieldset><legend>Lieferadresse</legend><input data-id="ort-liefer"></fieldset>
+<fieldset><legend>Rechnungsadresse</legend><input data-id="ort-rechnung"></fieldset>
+<div role="group" aria-label="Ansprechpartner Fachabteilung"><input data-id="ap-fach"></div>
+<div role="group" aria-label="Ansprechpartner Verwaltung"><input data-id="ap-verwaltung"></div>
+
+<div role="dialog" aria-labelledby="vermerk-titel" data-id="vermerk" class="fenster" hidden>
+  <h2 data-id="vermerk-titel">Vermerk anlegen</h2>
+  <button type="button" data-id="vermerk-speichern">Speichern</button>
+</div>
+
+<dialog data-id="notiz">
+  <h2>Notiz anlegen</h2>
+  <label data-for="notiz-text">Notiz</label> <input data-id="notiz-text">
+  <button type="button" data-id="notiz-speichern">Speichern</button>
+</dialog>
+
+<script>
+(() => {
+  // Generated like a hash, letters and digits alternating: Playwright's generator then never proposes the id (isGuidLike), as with
+  // most frameworks' generated ids. A recording that still holds an id fails on the next load.
+  const random = () => Array.from({ length: 10 }, (_, i) => (i % 2 === 0 ? 'abcdefghijklmnopqrstuvwxyz' : '0123456789')[Math.floor(Math.random() * (i % 2 === 0 ? 26 : 10))]).join('');
+  const byData = {};
+  for (const node of document.querySelectorAll('[data-id]')) {
+    node.id = random();
+    byData[node.dataset.id] = node;
+    node.removeAttribute('data-id');
+  }
+  byData.vermerk.setAttribute('aria-labelledby', byData['vermerk-titel'].id);
+  for (const label of document.querySelectorAll('label[data-for]')) {
+    label.htmlFor = byData[label.dataset.for].id;
+    label.removeAttribute('data-for');
+  }
+  const status = document.getElementById('status');
+  const state = document.body.dataset;
+
+  // The page's own "Speichern".
+  byData.speichern.addEventListener('click', () => { state.seite = 'gespeichert'; status.textContent = 'Seite gespeichert'; });
+
+  // A native modal <dialog>, named only by its heading.
+  byData['notiz-neu'].addEventListener('click', () => { byData['notiz-text'].value = ''; byData.notiz.showModal(); });
+  byData['notiz-speichern'].addEventListener('click', () => {
+    state.notiz = byData['notiz-text'].value;
+    status.textContent = 'Notiz gespeichert';
+    byData.notiz.close();
+  });
+
+  // An ARIA dialog named by aria-labelledby; Speichern closes it.
+  byData['vermerk-neu'].addEventListener('click', () => { byData.vermerk.hidden = false; });
+  byData['vermerk-speichern'].addEventListener('click', () => {
+    state.vermerk = 'gespeichert';
+    status.textContent = 'Vermerk gespeichert';
+    byData.vermerk.hidden = true;
+  });
+
+  // A grid whose first cells repeat: 1000001 twice, Muster, Erika twice, Beispiel, Max twice.
+  const ROWS = [['1000001', 'Muster, Erika'], ['1000001', 'Beispiel, Max'], ['9000001', 'Muster, Erika'], ['9000002', 'Beispiel, Max']];
+  for (const [nummer, name] of ROWS) {
+    const row = document.createElement('div');
+    row.setAttribute('role', 'row');
+    row.id = random();
+    for (const text of [nummer, name, 'offen']) {
+      const cell = document.createElement('span');
+      cell.setAttribute('role', 'gridcell');
+      cell.textContent = text;
+      row.append(cell);
+    }
+    const action = document.createElement('span');
+    action.setAttribute('role', 'gridcell');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.id = random();
+    open.textContent = 'Öffnen';
+    open.addEventListener('click', () => openRecord(nummer, name));
+    action.append(open);
+    row.append(action);
+    byData.grid.append(row);
+  }
+
+  // An ARIA dialog named by aria-labelledby; its title carries the record number. Speichern keeps it open, Schließen removes it.
+  const openRecord = (nummer, name) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'backdrop';
+    const dialog = document.createElement('div');
+    dialog.className = 'vorgang';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.id = random();
+    const title = random();
+    dialog.setAttribute('aria-labelledby', title);
+    dialog.innerHTML = `<h2 id="${title}">Vorgang ${nummer} bearbeiten</h2><p>${name}</p><p class="hinweis"></p>`;
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.id = random();
+    save.textContent = 'Speichern';
+    save.addEventListener('click', () => {
+      state.vorgang = `${nummer} ${name}`;
+      dialog.querySelector('.hinweis').textContent = 'Gespeichert';
+    });
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.id = random();
+    close.textContent = 'Schließen';
+    close.addEventListener('click', () => { dialog.remove(); backdrop.remove(); state.geschlossen = 'ja'; });
+    dialog.append(save, close);
+    document.body.append(backdrop, dialog);
+  };
+
+  // A combobox whose options are rendered at the end of the body, outside the field's container, filtered while typing; a
+  // click on an option takes it and removes the list.
+  const OPTIONS = ['Beihilfe', 'Beitrag', 'Beitragsrückstand', 'Bescheid', 'Sonstiges'];
+  const field = byData.sachgebiet;
+  let list = null;
+  const closeList = () => {
+    list?.remove();
+    list = null;
+    field.setAttribute('aria-expanded', 'false');
+    field.removeAttribute('aria-controls');
+  };
+  const openList = () => {
+    closeList();
+    const typed = field.value.trim().toLowerCase();
+    const hits = OPTIONS.filter((option) => option.toLowerCase().startsWith(typed));
+    if (hits.length === 0) return;
+    list = document.createElement('ul');
+    list.className = 'liste';
+    list.setAttribute('role', 'listbox');
+    list.id = random();
+    const box = field.getBoundingClientRect();
+    list.style.left = `${box.left + window.scrollX}px`;
+    list.style.top = `${box.bottom + window.scrollY}px`;
+    list.style.minWidth = `${box.width}px`;
+    for (const option of hits) {
+      const item = document.createElement('li');
+      item.setAttribute('role', 'option');
+      item.id = random();
+      item.textContent = option;
+      item.addEventListener('click', () => {
+        field.value = option;
+        state.sachgebiet = option;
+        closeList();
+      });
+      list.append(item);
+    }
+    document.body.append(list);
+    field.setAttribute('aria-expanded', 'true');
+    field.setAttribute('aria-controls', list.id);
+  };
+  field.addEventListener('input', () => { delete state.sachgebiet; openList(); });
+  document.addEventListener('mousedown', (event) => {
+    if (list !== null && !list.contains(event.target) && event.target !== field) closeList();
+  });
+
+  for (const [key, name] of [['ort-rechnung', 'rechnung'], ['ap-verwaltung', 'verwaltung'], ['ort-liefer', 'liefer'], ['ap-fach', 'fach']]) {
+    byData[key].addEventListener('input', () => { state[name] = byData[key].value; });
+  }
+})();
+</script>
+</body>
+</html>

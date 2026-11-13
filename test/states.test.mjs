@@ -10,7 +10,7 @@ import { composeTest } from '../src/host/test-plan.mjs';
 
 const step = (id) => {
     const plain = { id, name: `Step ${id}`, do: `Do ${id}`, expect: `${id} is there` };
-    return { ...plain, recording: { hash: stepHash(plain), recordedOn: 'dev', recordedAt: '2026-11-11T09:00:00.000Z', actions: [{ action: 'click', target: { role: 'button', name: 'Weiter' } }], check: 'true' } };
+    return { ...plain, recording: { hash: stepHash(plain), recordedOn: 'dev', recordedAt: '2026-11-11T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [{ action: 'click', target: "getByRole('button', { name: 'Weiter', exact: true })" }], check: 'true' } };
 };
 const save = (root, id, role, app) => writeTest(root, composeTest({ id, app, role, targets: ['dev'], source: 'deployed', mutates: false, also: [] }, { notes: '', steps: [step('S1')] }));
 const CONFIG = {

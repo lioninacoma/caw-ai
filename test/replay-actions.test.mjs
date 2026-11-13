@@ -6,9 +6,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { buildReplay, playReplay, stepLabel } from '../src/host/replay.mjs';
-import { targetLabel } from '../src/host/framework/index.mjs';
 
-const BUTTON = { role: 'button', name: 'Dateien wählen' };
+const BUTTON = "getByRole('button', { name: 'Dateien wählen', exact: true })";
 const healthy = { appLoaded: true, signedIn: true, loading: false, path: '/app', messages: [] };
 const clock = () => {
     let time = 0;
@@ -19,12 +18,16 @@ const clock = () => {
 const sessionWith = ({ fileInput = false, events = {}, state = healthy, hidden } = {}) => {
     const calls = [];
     const element = {
-        evaluate: async () => fileInput,
+        // The adapter finds it reachable; the upload asks whether it is a file input.
+        evaluate: async (_fn, argument) => (argument?.mode === undefined ? fileInput : argument.mode === 'reachable'),
         setInputFiles: async (files) => { calls.push(['setInputFiles', files]); },
         click: async () => { calls.push(['click']); },
+        dispose: async () => {},
     };
+    // Every locator method answers with the same locator, which finds the one element.
+    const locator = new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : key === 'elementHandles' ? async () => [element] : () => locator) });
     const page = {
-        evaluateHandle: async () => ({ asElement: () => element, dispose: async () => {} }),
+        mainFrame: () => locator,
         evaluate: async () => state,
         waitForLoadState: async () => {},
         waitForEvent: async (name) => {
@@ -50,7 +53,7 @@ const cawDir = (t) => {
 test('upload: a file input gets the files directly, paths relative to the caw folder', async (t) => {
     const dir = cawDir(t);
     const { calls, session } = sessionWith({ fileInput: true });
-    const { broken } = await play([{ action: 'upload', target: { role: 'textbox', name: 'Datei' }, files: ['fixtures/brief.pdf'] }], session, { filesDir: dir });
+    const { broken } = await play([{ action: 'upload', target: "getByRole('textbox', { name: 'Datei', exact: true })", files: ['fixtures/brief.pdf'] }], session, { filesDir: dir });
     assert.equal(broken, null);
     assert.deepEqual(calls, [['setInputFiles', [join(dir, 'fixtures', 'brief.pdf')]]]);
 });
@@ -85,14 +88,14 @@ const downloadOf = (name, content) => (dir) => () => {
 test('download: the click starts a download with a matching name and content', async (t) => {
     const dir = cawDir(t);
     const { calls, session } = sessionWith({ events: { download: downloadOf('akte-7.zip', 'PK')(dir) } });
-    const { broken } = await play([{ action: 'download', target: { role: 'button', name: 'Exportieren' }, file: '^akte-\\d+\\.zip$' }], session);
+    const { broken } = await play([{ action: 'download', target: "getByRole('button', { name: 'Exportieren', exact: true })", file: '^akte-\\d+\\.zip$' }], session);
     assert.equal(broken, null);
     assert.deepEqual(calls.map(([name]) => name), ['waitForEvent', 'click']);
 });
 
 test('download: wrong name, empty file or no download fail the step, without a second click', async (t) => {
     const dir = cawDir(t);
-    const step = { action: 'download', target: { role: 'button', name: 'Exportieren' }, file: '^akte-\\d+\\.zip$' };
+    const step = { action: 'download', target: "getByRole('button', { name: 'Exportieren', exact: true })", file: '^akte-\\d+\\.zip$' };
     const cases = [
         [{ download: downloadOf('bericht.pdf', 'x')(dir) }, /bericht\.pdf/],
         [{ download: downloadOf('akte-7.zip', '')(dir) }, /leer/],
@@ -157,10 +160,6 @@ test('buildReplay: a remember manually marked secret stays secret when Claude re
     const draft = { ...spec, steps: [{ ...spec.steps[0], recording: { actions: [{ action: 'remember', name: 'pw', code: 'alt', secret: true }] } }] };
     const { candidate } = buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, draft, target: 'local' });
     assert.deepEqual(candidate.steps[0].recording.actions[0], { action: 'remember', name: 'pw', code: 'neu', secret: true });
-});
-
-test('targetLabel: a pattern appears as /expression/', () => {
-    assert.equal(targetLabel({ role: 'button', name: { pattern: '^Prüfen' } }), 'button "/^Prüfen/"');
 });
 
 test('buildReplay: when re-recorded, an existing test keeps its patterns, secret values and timeouts, not its old fixed texts', () => {

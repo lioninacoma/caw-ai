@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { authOf, environmentDefs, loadConfig } from '../shared/config.mjs';
+import { authOf, loadConfig, resolveTarget } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { createUi } from '../shared/ui.mjs';
@@ -79,14 +79,24 @@ export const sendPhase = (page, detail) =>
  * @param setPhase   (detail) => shows the phase on the card and answers the phase binding
  * @param signOut    async () => fresh session on the sign-in page for the next account
  * @param fixedRole  this role is needed (record, run): prefilled, and after saving the run goes on
+ * @param givenRole  named on the command line (role add mitglied): saved under it right after the sign-in, without asking
  * @param closed     a promise that settles when the window closes
  * @returns the saved role names
  */
-export const roleRounds = async ({ root, page, capture, setPhase, signOut, fixedRole, taken = [], closed }) => {
+export const roleRounds = async ({ root, page, capture, setPhase, signOut, fixedRole, givenRole, taken = [], closed }) => {
     const saved = [];
     for (;;) {
         const credentials = capture.credentials;
         if (credentials === null) return saved;
+        // The name is known for the first account: asking again would only repeat it.
+        if (givenRole !== undefined && saved.length === 0) {
+            const result = saveTestUser(root, { role: givenRole, ...credentials });
+            saved.push(result.role);
+            ui.success(t('cli.roleSaved', { role: result.role, file: ENV_PATH, names: `${result.loginEnv}, ${result.passwordEnv}` }));
+            if (result.gitignore) ui.note(t('cli.roleGitignore', { file: ENV_PATH }));
+            await setPhase({ phase: 'done', role: result.role });
+            return saved;
+        }
         const suggestion = fixedRole ?? suggestRole([...taken, ...saved]);
         const named = new Promise((done) => {
             capture.onRole = async (role) => {
@@ -146,13 +156,8 @@ export const hasTestUser = (root, config, role, env = process.env) => {
     return [entry.loginEnv, entry.passwordEnv].every((name) => name !== undefined && (env[name] || fromFile[name]));
 };
 
-/** Where the window signs in: the environment's address plus the sign-in path of the config. */
-const signInUrl = (config, target) => {
-    const urls = environmentDefs(config)[target]?.urls ?? {};
-    const base = urls[''] ?? Object.values(urls)[0];
-    if (base === undefined) throw new CawError('target-invalid', t('cli.roleTargetUnknown', { target, environments: Object.keys(config.environments ?? {}).join(', ') }));
-    return new URL(authOf(config).path ?? '/', base).href;
-};
+/** Where the window signs in: the target's address (with sites the site's) plus the sign-in path of the config. */
+const signInUrl = (config, target) => new URL(authOf(config).path ?? '/', resolveTarget(config, target).url).href;
 
 const openWindow = async ({ url, insecureTls }) => {
     const { exploreBrowser } = await import('./browser-session.mjs');
@@ -224,6 +229,7 @@ export const captureTestUsers = async (root, { target, role, needed = false, rea
             setPhase,
             signOut: freshSession(page, url),
             fixedRole: needed ? role : undefined,
+            givenRole: needed ? undefined : role,
             taken: Object.keys(config.roles ?? {}).filter((name) => name !== role),
             closed,
         });
@@ -237,7 +243,7 @@ export const captureTestUsers = async (root, { target, role, needed = false, rea
 
 /**
  * Before record, run or open: if the test's role has no test user, the human signs in once in a window and the run goes on.
- * Without a person (CI, --headless, no window) nothing happens and the run reports credentials-missing as before.
+ * Without a person (CI, --headless, no window) nothing happens and the run reports credentials-missing.
  * @returns true if a test user was saved
  */
 export const ensureTestUser = async (root, config, { role, target, test, interactive, capture = captureTestUsers }) => {

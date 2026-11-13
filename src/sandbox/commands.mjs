@@ -51,7 +51,7 @@ export const finish = async (file) => {
         throw new CawError('finish-rejected', `Results file not readable: ${error.message}`);
     }
     const { status } = await sendCommand(join(agentDir(), CHANNEL_DIR), { action: 'finish', results });
-    // e2e/steps-e2e.mjs matches this line.
+    // e2e/scenarios/portal.mjs matches this line.
     console.log(`Verdict accepted: ${status}`);
     return EXIT.pass;
 };
@@ -189,7 +189,7 @@ export const writeLocalSetup = (dir, env = process.env) => {
 
 /**
  * Main process of the container: check, then let Claude work on the open run.
- * @param mode run (record, fix), advise (advice only), talk (clarify with the human) or develop (help while the human develops)
+ * @param mode run (record, repair), advise (advice only), talk (clarify with the human) or develop (help while the human develops)
  */
 export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
     const dir = agentDir();

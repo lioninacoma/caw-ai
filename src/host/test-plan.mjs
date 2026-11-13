@@ -53,10 +53,18 @@ export const sessionFollowsOwnPlan = ({ agent, previous, proposed }) => agent ==
     && previous.mutates === false && proposed.mutates === false && proposed.steps.length === previous.steps.length
     && proposed.steps.every((step, index) => samePlanStep(step, previous.steps[index]));
 
-/** What the plan card in the chat shows: plan fields only. */
-export const planView = ({ notes, steps }, { repairing = false, rerecord = false, previous } = {}) => ({
+/**
+ * What the plan card in the chat shows: plan fields only.
+ * @param previous Map step id -> step as it was: a changed expectation shows the old one struck through
+ * @param from     re-recording from this step on: the title names it
+ */
+export const planView = ({ notes, steps }, { repairing = false, rerecord = false, from, previous } = {}) => ({
     repairing,
-    title: repairing ? t(rerecord ? 'config.plan.rerecord' : 'config.plan.fix', { id: String(steps[0]?.id) }) : t('config.plan.title'),
+    title: (() => {
+        if (!repairing) return t('config.plan.title');
+        if (from !== undefined) return t('config.plan.rerecordFrom', { id: String(from) });
+        return t(rerecord ? 'config.plan.rerecord' : 'config.plan.fix', { id: String(steps[0]?.id) });
+    })(),
     notes: repairing ? '' : notes,
     steps: steps.map(({ id, name, do: action, expect, note, retry }) => ({
         id,
@@ -65,6 +73,6 @@ export const planView = ({ notes, steps }, { repairing = false, rerecord = false
         expect,
         ...(note === undefined ? {} : { note }),
         ...(retry === undefined ? {} : { retry }),
-        ...(previous !== undefined && previous.expect !== expect ? { previousExpect: previous.expect } : {}),
+        ...(previous?.has(id) && previous.get(id).expect !== expect ? { previousExpect: previous.get(id).expect } : {}),
     })),
 });

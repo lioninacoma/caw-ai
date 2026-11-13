@@ -70,13 +70,11 @@ test('overlayStatus: no app, no overlay environment, down, wrong app, stale, mov
     const down = await status({ target: 'dev' }, noWatch);
     assert.deepEqual({ ...down, message: undefined }, { state: 'down', framework: 'extjs', app: 'web', appDir: 'app', url: WATCH, start: null, message: undefined });
     assert.match(down.message, /Der lokale Code-Server http:\/\/localhost:1841\/ antwortet nicht\. Starte ihn und trage seinen Befehl in apps\.web\.overlay\.start ein/);
-    // The configured address and start command; the earlier names are read as well.
+    // The configured address and start command.
     const own = config({ apps: { web: { dir: 'app', startUrl: '/start', overlay: { url: 'http://localhost:1842/', start: 'pnpm run watch' } } } });
     const named = await status({ target: 'dev' }, noWatch, own);
     assert.deepEqual([named.url, named.start], ['http://localhost:1842/', 'pnpm run watch']);
     assert.match(named.message, /Starte pnpm run watch in app oder starte den Lauf mit --start/);
-    const old = config({ apps: { web: { dir: 'app', startUrl: '/start', overlay: { devCommand: 'npx sencha app watch' } } } });
-    assert.equal((await status({ target: 'dev' }, noWatch, old)).start, 'npx sencha app watch');
     // Found on another port.
     const moved = await status({ target: 'dev' }, { ...noWatch, discover: async ({ url }) => (url === WATCH ? 'http://localhost:52775/' : null) });
     assert.deepEqual([moved.state, moved.foundUrl, overlayStatusExit(moved)], ['moved', 'http://localhost:52775/', 0]);

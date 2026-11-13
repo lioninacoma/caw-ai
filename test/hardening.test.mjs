@@ -40,17 +40,17 @@ test('effect: recognised as the cause also after retries and with a failed check
     assert.match(found.findings.join(' '), /Datenstand/);
 });
 
-test('swapToken: also in the name of enclosing iframes, nested', () => {
-    const step = { action: 'click', target: { role: 'button', name: 'Zahlen', frame: { tag: 'iframe', name: 'Bestellung 4711', frame: { tag: 'iframe', name: 'Kasse 4711' } } } };
+test('swapToken: also in the title of enclosing iframes, nested', () => {
+    const target = "locator('iframe[title=\"Bestellung 4711\"]').contentFrame().locator('iframe[title=\"Kasse 4711\"]').contentFrame().getByRole('button', { name: 'Zahlen', exact: true })";
+    const step = { action: 'click', target };
     const swapped = swapToken(step, '4711', '{{nummer}}');
-    assert.equal(swapped.target.frame.name, 'Bestellung {{nummer}}');
-    assert.equal(swapped.target.frame.frame.name, 'Kasse {{nummer}}');
-    assert.equal(step.target.frame.name, 'Bestellung 4711', 'the original stays');
+    assert.equal(swapped.target, "locator('iframe[title=\"Bestellung {{nummer}}\"]').contentFrame().locator('iframe[title=\"Kasse {{nummer}}\"]').contentFrame().getByRole('button', { name: 'Zahlen', exact: true })");
+    assert.equal(step.target, target, 'the original stays');
 });
 
 test('demonstration: a password in a visible field counts as secret input, otherwise it is redacted', () => {
     const session = { secrets: () => ['Geheim-1234', ''] };
-    assert.deepEqual(hideSecrets(session, { action: 'fill', target: { role: 'textbox', name: 'Passwort' }, value: 'Geheim-1234' }), { action: 'fill', target: { role: 'textbox', name: 'Passwort' }, secret: true });
+    assert.deepEqual(hideSecrets(session, { action: 'fill', target: "getByLabel('Passwort')", value: 'Geheim-1234' }), { action: 'fill', target: "getByLabel('Passwort')", secret: true });
     assert.deepEqual(hideSecrets(session, { action: 'fill', target: null, value: 'Max' }), { action: 'fill', target: null, value: 'Max' }, 'an empty secret does not match everything');
     assert.doesNotMatch(JSON.stringify(hideSecrets(session, { action: 'note', text: 'mit Geheim-1234 angemeldet' })), /Geheim-1234/);
     assert.deepEqual(hideSecrets({ secrets: () => [] }, { action: 'fill', value: 'x' }), { action: 'fill', value: 'x' });

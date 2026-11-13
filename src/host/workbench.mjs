@@ -3,7 +3,7 @@
 // own (srcdoc); its page is the one from chat.mjs.
 //
 // Look and glyphs come from the active theme package (src/shared/theme-package.mjs): colours, marks, spinner, tree, progress,
-// legends, raven. The logo is the ASCII raven: it blinks now and then, a click sends up hearts. It no longer flies.
+// legends, raven. The logo is the ASCII raven: it blinks now and then, a click sends up hearts.
 // F7 picks and edits themes (built-in ones stay as they are; the first change creates an own copy), F8 shows only the
 // application, F10 stops all animation.
 //
@@ -21,7 +21,7 @@ import { language, t, texts } from '../shared/i18n.mjs';
 import { readPrefs, writePagePref, writePref } from '../shared/prefs.mjs';
 import { LONG_NAME } from '../shared/raven.mjs';
 import { BUILTIN_THEMES, THEME_KEYS, activeTheme, deleteTheme, listThemes, loadTheme, readThemePackage, renameTheme, saveTheme } from '../shared/theme-package.mjs';
-import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, clientTheme, ravenLogo, themeAttr, themeCss, themeStyle } from './theme.mjs';
+import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, applyThemeSheets, clientTheme, ravenLogo, themeAttr, themeCss, themeStyle } from './theme.mjs';
 
 export const CHAT_FRAME = CHAT_FRAME_NAME;
 export const PREF_BINDING = 'cawPref';
@@ -584,7 +584,8 @@ $('tdup').addEventListener('click',()=>{const base=isBuiltin()?TH.name:TH.base;c
 $('treset').addEventListener('click',()=>{if(isBuiltin())return;const p=ownPkg();call('save',{themeApi:1,name:p.name,base:p.base,...(p.label?{label:p.label}:{})});});
 $('tdelete').addEventListener('click',()=>{if(isBuiltin())return;if(!confirmDelete){confirmDelete=true;renderDialog();return;}confirmDelete=false;call('delete',TH.name);});
 let themeFocus=null;
-// Pick a state (F1): only after the hand-over, when the host offers tests. Without a step the test runs up to the last reachable one.
+// Pick a state (F1): only after the hand-over, when the host offers tests. A picked step opens at its entry; without a step the
+// test runs up to the last reachable one.
 let STATES=[],sTest=null,sStep=null;
 const stateDlg=$('stateDlg');
 const okSteps=(test)=>test.steps.filter((step)=>step.ok);
@@ -602,12 +603,12 @@ const renderStates=()=>{
   const last=okSteps(test).at(-1);
   const all=sRow('all',sStep===null?'▸':' ',fill('workbench.page.stateAll',{id:last.id}),null,sStep===null);
   all.addEventListener('click',()=>{sStep=null;renderStates();});
-  const rows=test.steps.map((step,i,list)=>{const row=sRow('',(i===list.length-1?'└':'├'),step.id+'  '+step.name,step.ok?null:{text:T['workbench.page.stateWhy.'+step.why]??'',warn:true},sStep===step.id,!step.ok);
+  const rows=test.steps.map((step,i,list)=>{const row=sRow('',(i===list.length-1?'└':'├'),fill('workbench.page.stateStep',{id:step.id,name:step.name}),step.ok?null:{text:T['workbench.page.stateWhy.'+step.why]??'',warn:true},sStep===step.id,!step.ok);
     if(sStep===step.id)row.querySelector('.mk').textContent='▸';
     row.addEventListener('click',()=>{sStep=step.id;renderStates();});return row;});
   $('ssteps').replaceChildren(all,...rows);
   $('sgo').disabled=false;
-  $('sfoot').textContent=fill('workbench.page.stateFoot',{test:test.id,step:sStep??last.id})+(test.role?fill('workbench.page.stateFootRole',{role:test.role}):'')+(test.mutates?T['workbench.page.stateFootWrites']:'');
+  $('sfoot').textContent=(sStep===null?fill('workbench.page.stateFoot',{test:test.id,step:last.id}):fill('workbench.page.stateFootEntry',{test:test.id,step:sStep}))+(test.role?fill('workbench.page.stateFootRole',{role:test.role}):'')+(test.mutates?T['workbench.page.stateFootWrites']:'');
 };
 let stateFocus=null;
 const openStates=(on=stateDlg.hidden)=>{if(on&&STATES.length===0)return;if(on&&!$('themeDlg').hidden)openTheme(false);stateDlg.hidden=!on;
@@ -705,8 +706,6 @@ window.workbench={
   states:(list)=>{STATES=Array.isArray(list)?list.filter((test)=>Array.isArray(test?.steps)&&test.steps.some((step)=>step.ok)):[];for(const b of document.querySelectorAll('[data-states]'))b.hidden=STATES.length===0;if(!stateDlg.hidden)renderStates();},
   // Refresh only works if the host allows it; otherwise the button is locked.
   refreshable:(on)=>{refreshOn=on===true;$('reload').disabled=!refreshOn||refreshing;$('reload').title=refreshOn?REFRESH_TITLE:T['workbench.page.refreshLockedTitle'];summarize();},
-  // A message from the human arrived. The raven no longer flies; nothing to do.
-  nod:()=>{},
   // After a reload the page is no longer reliably in the run's state; "restore state" brings it back.
   left:(on,text)=>{document.body.classList.toggle('left-state',on);const box=$('leftNote');box.hidden=!on;const title=document.createElement('strong');title.textContent=T['workbench.page.pageReloaded'];box.replaceChildren(title,text||'');summarize();},
 };
@@ -766,10 +765,12 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             }
         });
         // Themes: only the workbench itself. saveTheme validates what is saved (page schema: no css, no files).
-        await page.exposeBinding(THEME_BINDING, ({ frame }, action, payload) => {
+        await page.exposeBinding(THEME_BINDING, async ({ frame }, action, payload) => {
             if (frame !== page.mainFrame()) return { ok: false, error: 'frame' };
             try {
                 const theme = themeAction(action, payload);
+                // The theme's stylesheet and fonts come from disk and only through the host; colours and texts the page sets itself.
+                await applyThemeSheets([page.mainFrame(), holder.chat], theme);
                 return { ok: true, list: themeList(), theme: clientTheme(theme) };
             } catch (error) {
                 return { ok: false, error: String(error?.message ?? error).slice(0, 200) };
@@ -950,8 +951,6 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             shown.transport = kind;
             return call('transport', kind);
         },
-        /** A message from the human arrived: the raven nods. */
-        nod: () => call('nod'),
         /** The page is no longer reliably in the run's state (true, with text) or back in it (false). */
         left: (on, text = '') => {
             shown.left = on ? [true, text] : null;
@@ -968,15 +967,16 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', 
             return call('states', catalog);
         },
         /**
-         * Who reaches a state picked with F1: (test, step | undefined, { name, role, until }); null: off. Only tests and reachable
-         * steps from the catalogue get through, so the question in the chat never shows text from the page.
+         * Who reaches a state picked with F1: (test, step | undefined, { name, role, until }); null: off. A picked step means its
+         * entry; without one `until` is the last reachable step, the end of the whole test. Only tests and reachable steps from the
+         * catalogue get through, so the question in the chat never shows text from the page.
          */
         onState: (handler) => {
             bench.state = typeof handler !== 'function' ? null : (test, step) => {
                 const entry = shown.catalog?.find(({ id }) => id === test);
                 const reachable = entry?.steps.filter(({ ok }) => ok) ?? [];
                 if (reachable.length === 0 || (step !== undefined && !reachable.some(({ id }) => id === step))) return undefined;
-                return handler(test, step, { name: entry.name, role: entry.role, until: step ?? reachable.at(-1).id });
+                return handler(test, step, { name: entry.name, role: entry.role, ...(step === undefined ? { until: reachable.at(-1).id } : {}) });
             };
         },
         /** Application only (F8) on or off, e.g. automatically after the hand-over for developing. The window stays as it is. */

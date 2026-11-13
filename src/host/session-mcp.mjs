@@ -15,21 +15,20 @@ import { findSessionAgent } from '../shared/session-agent.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
 
 const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
-const START_COMMANDS = ['run', 'record', 'fix', 'open'];
+const START_COMMANDS = ['run', 'record', 'open'];
 const LOG_PREFIX = 'session-';
 const TAIL_LINES = 40;
 const EXPLORE_FILE = 'caw/.explore.json';
 const LAST_RUN_FILE = 'last-run.json';
 const OVERLAY_CHECK_FILE = 'overlay-check.json';
 const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
-/** Typed fields of caw_start: which command takes which, and which it needs. */
+/** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
-    run: { needs: ['test'], takes: ['test', 'target', 'until', 'overlay', 'headless'] },
-    record: { needs: ['test'], takes: ['test', 'target', 'overlay'] },
-    fix: { needs: ['test', 'step'], takes: ['test', 'step', 'target', 'overlay'] },
-    open: { needs: [], takes: ['target', 'overlay'] },
+    run: { needs: ['test'], takes: ['test', 'target', 'overlay', 'headless'] },
+    record: { needs: ['test'], takes: ['test', 'step', 'target', 'overlay'] },
+    open: { needs: [], takes: ['test', 'step', 'target', 'overlay'] },
 };
-const TYPED = ['test', 'target', 'step', 'until', 'overlay', 'headless'];
+const TYPED = ['test', 'target', 'step', 'overlay', 'headless'];
 const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings'];
 const RUN_ARTEFACTS = ['report.md', 'result.json', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
@@ -151,20 +150,21 @@ export const startArgs = (input) => {
         return input.args;
     }
     const { needs, takes } = FIELDS[command];
-    const extra = given.find((field) => !takes.includes(field));
+    // A field that no command takes is refused rather than silently dropped.
+    const extra = [...given, ...Object.keys(input).filter((key) => input[key] !== undefined && !['command', 'args', ...TYPED].includes(key))].find((field) => !takes.includes(field));
     if (extra !== undefined) throw new Error(t('run.mcp.fieldNotFor', { field: extra, command }));
     const missing = needs.find((field) => !given.includes(field));
     if (missing !== undefined) throw new Error(t('run.mcp.fieldMissing', { field: missing, command }));
-    for (const field of ['test', 'target', 'step', 'until']) {
+    for (const field of ['test', 'target', 'step']) {
         if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field] === '' || input[field].startsWith('-'))) throw new Error(t('run.mcp.fieldText', { field }));
     }
+    // A step without its test: open would open without a test and drop it.
+    if (input.step !== undefined && input.test === undefined) throw new Error(t('run.mcp.fieldMissing', { field: 'test', command }));
     if (given.includes('overlay') && !isOverlayValue(input.overlay)) throw new Error(t('run.mcp.overlayInvalid'));
     if (given.includes('headless') && input.headless !== true) throw new Error(t('run.mcp.fieldText', { field: 'headless' }));
     const args = [];
-    if (input.test !== undefined) args.push(input.test);
-    if (input.step !== undefined) args.push(input.step);
+    if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
     if (input.target !== undefined) args.push('--target', input.target);
-    if (input.until !== undefined) args.push('--until', input.until);
     if (given.includes('overlay')) args.push(input.overlay === true ? '--overlay' : `--overlay=${input.overlay}`);
     if (input.headless === true) args.push('--headless');
     return args;
@@ -179,7 +179,7 @@ const overlayAt = (args) => {
     return isOverlayValue(next) ? { index, length: 2, value: next } : { index, length: 1, value: true };
 };
 
-/** --target, whether --overlay is set (and its value) and the test (first word), from a command line. */
+/** --target, whether --overlay is set (and its value) and the test (first word, without `@<step>`), from a command line. */
 const fromArgs = (args) => {
     const inline = args.find((arg) => arg.startsWith('--target='));
     const position = args.indexOf('--target');
@@ -188,7 +188,7 @@ const fromArgs = (args) => {
         target: inline?.slice('--target='.length) ?? (position === -1 ? undefined : args[position + 1]),
         overlay: overlay !== undefined,
         overlayValue: overlay?.value,
-        test: args[0]?.startsWith('-') ? undefined : args[0],
+        test: args[0] === undefined || args[0].startsWith('-') ? undefined : args[0].split('@')[0],
     };
 };
 
@@ -317,7 +317,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_start',
         description: 'Starts a caw-ai command in the background with you as the agent (--agent session); the window opens for the human. '
-            + 'command: run, record, fix or open. Typed fields: test, target, step (fix, e.g. "S3"), until (run: a state to develop from, e.g. "S4"), '
+            + 'command: run, record or open. Typed fields: test, target, step (record: re-record from this step to the end; open: stop at the '
+            + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
             + 'overlay (true, "build", "dev" or a dev server URL: local code on a deployed environment, only if the human wants it), headless (run). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
             + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
@@ -330,8 +331,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 command: { type: 'string', enum: START_COMMANDS },
                 test: { type: 'string' },
                 target: { type: 'string' },
-                step: { type: 'string', description: 'fix: the step, e.g. S3' },
-                until: { type: 'string', description: 'run: stop after this step and hand over, e.g. S4' },
+                step: { type: 'string', description: 'record: re-record from this step to the end; open: hand over at the entry of this step. E.g. S3, needs test' },
                 overlay: { type: ['boolean', 'string'], description: 'true, "build", "dev" or a dev server URL' },
                 headless: { type: 'boolean' },
                 args: { type: 'array', items: { type: 'string' }, description: 'Raw command line instead of the typed fields' },
@@ -359,7 +359,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 const check = overlayPreconditions ?? await defaultOverlayPreconditions();
                 let found;
                 try {
-                    found = await check?.(root, config, { target: given.target, app: await appOf(root, config, input.command === 'open' ? undefined : given.test) });
+                    found = await check?.(root, config, { target: given.target, app: await appOf(root, config, given.test) });
                 } catch {
                     // The command itself reports what is wrong with the overlay.
                 }
@@ -421,7 +421,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_selection',
-        description: 'The element the human last selected with the element button in the chat while developing in a state: label, target, component or source, page and requests.',
+        description: 'The element the human last selected with the element button in the chat while developing in a state: label, target (a Playwright locator as code, null if there is no stable one), component or source, page and requests.',
         inputSchema: EMPTY,
         call: () => {
             const file = join(root, RUN_DIR, SELECTION_FILE);

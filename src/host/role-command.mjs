@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { authOf, environmentDefs, loadConfig, writeConfig } from '../shared/config.mjs';
+import { allTargets, authOf, loadConfig, resolveTarget, writeConfig } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { ENV_FILE, TEST_DIR } from '../shared/names.mjs';
@@ -70,18 +70,21 @@ export const removeRole = (root, name) => {
     return { role: name, removed: drop };
 };
 
-/** Where `role add` signs in: --target, else the only environment, else the only one Claude may work on. */
+/**
+ * Where `role add` signs in: --target, else the only target, else the only one Claude may work on. With sites a target is
+ * `site/environment`.
+ */
 export const roleTarget = (config, given) => {
-    const defs = environmentDefs(config);
+    const targets = allTargets(config);
     if (given !== undefined) {
-        if (defs[given] === undefined) throw new CawError('target-invalid', t('cli.roleTargetUnknown', { target: given, environments: Object.keys(defs).join(', ') }));
+        if (!targets.includes(given)) throw new CawError('target-invalid', t('cli.roleTargetUnknown', { target: given, environments: targets.join(', ') }));
         return given;
     }
-    const names = Object.keys(defs).filter((name) => !defs[name].production);
-    if (names.length === 1) return names[0];
-    const claude = names.filter((name) => defs[name].agent);
+    const open = targets.filter((target) => !resolveTarget(config, target).production);
+    if (open.length === 1) return open[0];
+    const claude = open.filter((target) => resolveTarget(config, target).claude);
     if (claude.length === 1) return claude[0];
-    throw new CawError('usage', t('cli.roleTargetMissing', { environments: names.join(', ') }));
+    throw new CawError('usage', t('cli.roleTargetMissing', { environments: open.join(', ') }));
 };
 
 const optionsOf = (rest) => {

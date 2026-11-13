@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AUTH_DIR, agentSandbox, allTargets, authOf, browserLaunch, loadConfig, overlaySettings, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, agentSandbox, allTargets, authOf, browserLaunch, loadConfig, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
 import { ago } from './code-source.mjs';
@@ -71,7 +71,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
         add({ ok: false, text: t('cli.doctorBrowserFail', { browser: browserName(config), error: String(error?.message ?? error).split('\n')[0] }), next: t('cli.doctorBrowserNext') });
     }
 
-    // Claude is only needed for record, fix and the chat; locally Claude Code suffices, Docker also needs Docker and the token.
+    // Claude is only needed for record and the chat; locally Claude Code suffices, Docker also needs Docker and the token.
     const sandbox = agent ?? agentSandbox(config ?? {}, env);
     if (sandbox === 'session') {
         // The developer's own Claude Code session takes over via caw-ai mcp: that only needs the entry in .mcp.json.
@@ -181,7 +181,7 @@ const overlayLines = async (root, config, probes, now = Date.now()) => {
     const lines = [];
     for (const target of targets) {
         for (const [app, { dir, overlay }] of apps) {
-            const start = overlaySettings(overlay).start;
+            const start = overlay?.start;
             const next = start === undefined ? t('cli.doctorOverlayStartUnknown', { app }) : t('cli.doctorOverlayStartNext', { start, dir: dir.replaceAll('\\', '/') });
             try {
                 adapter.overlay.checkAppFiles(join(root, dir), '');

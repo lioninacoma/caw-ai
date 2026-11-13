@@ -8,11 +8,11 @@ import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, 
 import { brokenChain, loadTest, parsePlan, parseRecordings, parseTest, recordingHints, recordingPath, renderPlan, renderTest, staleSteps, stepHash, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
 
-const NEXT = { xtype: 'app_actionButton', text: 'Next', part: 'button.x-button-el' };
+const NEXT = "getByRole('button', { name: 'Next', exact: true })";
 const plain = (id, extra = {}) => ({ id, name: `Step ${id}`, do: `Do ${id}`, expect: `${id} is there`, ...extra });
 const recorded = (id, actions = [], { after, check = `check${id}()` } = {}) => {
     const step = plain(id);
-    return { ...step, recording: { hash: stepHash(step), ...(after === undefined ? {} : { after }), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', actions, check } };
+    return { ...step, recording: { hash: stepHash(step), ...(after === undefined ? {} : { after }), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions, check } };
 };
 const meta = { id: 't', app: 'a', role: 'r', targets: ['a/dev'], mutates: true, also: [], notes: '' };
 const spec = (...steps) => composeTest(meta, { notes: '', steps });
@@ -104,7 +104,7 @@ test('test file: recordings are read strictly', () => {
     const round = parseTest(withActions([
         { action: 'wait-ready' },
         { action: 'click', target: NEXT, path: '/a' },
-        { action: 'fill', target: { ...NEXT, inside: { xtype: 'p' } }, value: '' },
+        { action: 'fill', target: "getByRole('dialog', { name: 'New todo' }).getByRole('textbox', { name: 'Title' })", value: '' },
         { action: 'press', key: 'Tab' },
         { action: 'goto', url: 'https://x/', denied: true },
         { action: 'reload' },
@@ -120,7 +120,9 @@ test('test file: recordings are read strictly', () => {
     const bad = renderTest(spec(recorded('S1', [{ action: 'reload' }])));
     assert.throws(() => parseTest(bad.replace('reload: {}', 'cdp: {}')), /genau eine/);
     assert.throws(() => parseTest(bad.replace('check: checkS1()', '')), /recording.check/);
-    assert.throws(() => parseTest(bad.replace('reload: {}', 'click: text-only')), /Ziel/);
+    assert.throws(() => parseTest(bad.replace('reload: {}', 'click: {role: button}')), /Playwright-Locator/);
+    assert.throws(() => parseTest(bad.replace('reload: {}', 'click: "getByRole(\'button\'"')), /click: Locator/);
+    assert.throws(() => parseTest(bad.replace('reload: {}', 'click: aria-ref=e5')), /click: Locator/);
     assert.throws(() => parseTest(bad.replace('recordedOn:', 'foreign: 1\n      recordedOn:')), /Unbekanntes Feld foreign/);
 });
 
@@ -141,10 +143,15 @@ test('plan: Claude cannot set recordings or metadata', () => {
 
 test('plan card: plan fields only, a changed expectation is marked', () => {
     const before = recorded('S1');
-    const view = planView({ notes: 'n', steps: [{ ...plain('S1'), expect: 'Different' }] }, { repairing: true, previous: before });
+    const previous = new Map([['S1', before], ['S2', recorded('S2')]]);
+    const view = planView({ notes: 'n', steps: [{ ...plain('S1'), expect: 'Different' }] }, { repairing: true, previous });
     assert.deepEqual(view.steps[0], { id: 'S1', name: 'Step S1', do: 'Do S1', expect: 'Different', previousExpect: 'S1 is there' });
     assert.equal(view.notes, '');
-    assert.equal(planView({ notes: 'n', steps: [plain('S1')] }, { repairing: true, previous: before }).steps[0].previousExpect, undefined);
+    assert.equal(planView({ notes: 'n', steps: [plain('S1')] }, { repairing: true, previous }).steps[0].previousExpect, undefined);
+    // Re-recorded from a step on: each step against its own old expectation, a new step has none.
+    const range = planView({ steps: [{ ...plain('S2'), expect: 'Other' }, plain('S1'), plain('S5')] }, { repairing: true, rerecord: true, from: 'S2', previous });
+    assert.equal(range.title, 'Ab S2 neu aufnehmen');
+    assert.deepEqual(range.steps.map(({ previousExpect }) => previousExpect), ['S2 is there', undefined, undefined]);
     assert.equal(planView({ notes: 'n', steps: [plain('S1')] }).notes, 'n');
 });
 
@@ -157,10 +164,10 @@ test('hash: per step, metadata and recording do not count', () => {
     assert.deepEqual(staleSteps(spec(plain('S1'))).map(({ why }) => why), ['hat keine Aufzeichnung']);
 });
 
-test('stale: --until before it runs, the full run suggests fix', () => {
+test('stale: the steps before it still play, the full run suggests re-recording from the stale step', () => {
     const changed = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }), { ...recorded('S3', [], { after: 'S2' }), do: 'new' });
     assertPlayable(changed, 'a/dev', 'S2');
-    assert.throws(() => assertPlayable(changed, 'a/dev'), (error) => error.code === 'replay-stale' && /fix t S3 --target a\/dev/.test(error.message));
+    assert.throws(() => assertPlayable(changed, 'a/dev'), (error) => error.code === 'replay-stale' && /S3 .*Neu aufnehmen ab dort: caw-ai record t@S3 --target a\/dev$/.test(error.message));
     assert.throws(() => assertPlayable(spec(plain('S1')), 'a/dev'), (error) => error.code === 'replay-missing' && /record t/.test(error.message));
 });
 
@@ -170,7 +177,7 @@ test('deleted or moved steps require re-recording, inserted ones do not', () => 
     assert.match(brokenChain(spec(s1, s3)), /S3 baut auf S2/);
     assert.match(brokenChain(spec(s1, s3, s2)), /S3 baut auf S2/);
     assert.equal(brokenChain(spec(s1, plain('S4'), s2, s3)), null);
-    assert.throws(() => assertPlayable(spec(s1, s3), 'a/dev'), (error) => error.code === 'replay-stale' && /record t/.test(error.message));
+    assert.throws(() => assertPlayable(spec(s1, s3), 'a/dev'), (error) => error.code === 'replay-stale' && /S3 baut auf S2.*caw-ai record t@S3 --target a\/dev$/.test(error.message));
 });
 
 test('replay form: actions and check in sequence, cut per step', () => {
@@ -234,6 +241,34 @@ test('buildReplay when fixing: only this step changes, new messages are reported
     assert.deepEqual(staleSteps(candidate), []);
 });
 
+test('buildReplay from a step on: the steps before stay, the range replaces the rest, hand-set values survive per step', () => {
+    const network = [{ name: 'GET /a', status: 200, ms: 1, count: 1 }];
+    const effects = { runs: 2, actions: [] };
+    const first = { ...recorded('S1', [{ action: 'remember', name: 'nr', code: 'x()', secret: true }]), retry: { times: 1 } };
+    first.recording = { ...first.recording, network, effects };
+    const second = recorded('S2', [], { after: 'S1' });
+    second.recording = { ...second.recording, timeoutMs: 9000, network, effects };
+    const draft = { ...spec(first, second, recorded('S3', [], { after: 'S2' }), recorded('S4', [], { after: 'S3' })), knownMessages: ['Known'] };
+    // Claude re-records from S2: S2 unchanged, S3 removed, S5 new; S4 now comes before S5.
+    const range = spec(plain('S2'), { ...plain('S4'), expect: 'changed' }, plain('S5'));
+    const recorder = { problems: [], messages: new Set(), steps: [
+        { action: 'remember', name: 'nr', code: 'y()' }, { action: 'check', id: 'S2', code: 'b' },
+        { action: 'check', id: 'S4', code: 'd' },
+        { action: 'check', id: 'S5', code: 'e' },
+    ] };
+    const { candidate, problems } = buildReplay({ recorder, outcome: { status: 'pass' }, spec: range, draft, from: 'S2', target: 'a/dev' });
+    assert.deepEqual(problems, []);
+    assert.deepEqual(candidate.steps.map(({ id }) => id), ['S1', 'S2', 'S4', 'S5']);
+    assert.equal(candidate.steps[0], draft.steps[0], 'the step before stays as it is, baselines and effects included');
+    assert.deepEqual(candidate.steps.slice(1).map(({ recording }) => recording.after), ['S1', 'S2', 'S4'], 'the first new step builds on the last kept one');
+    assert.deepEqual(candidate.steps.slice(1).map(({ recording }) => [recording.network, recording.effects]), [[undefined, undefined], [undefined, undefined], [undefined, undefined]], 'learned anew on the next healthy run');
+    assert.equal(candidate.steps[1].recording.timeoutMs, 9000, 'same expectation: the hand-set check timeout stays');
+    assert.equal(candidate.steps[1].recording.actions[0].secret, true, 'a value marked secret stays secret');
+    assert.deepEqual(candidate.expectations.map(({ id }) => id), ['S1', 'S2', 'S4', 'S5']);
+    assert.deepEqual(candidate.knownMessages, ['Known']);
+    assert.deepEqual(staleSteps(candidate), []);
+});
+
 test('remember: a value needed later must not be lost when fixing', () => {
     const remembers = recorded('S1', [{ action: 'remember', name: 'nr', code: 'x()' }]);
     const uses = recorded('S2', [{ action: 'fill', target: NEXT, value: '{{nr}}' }], { after: 'S1', check: "x === '{{nr}} {{runTag}}'" });
@@ -278,7 +313,7 @@ steps:
 `;
     const root = testRoot(t, original);
     const loaded = loadTest(root, 't');
-    const fixed = { ...loaded.steps[1], do: 'new', recording: { hash: 'h', after: 'S1', recordedOn: 'a/dev', recordedAt: 'z', actions: [{ action: 'click', target: NEXT, path: '/a' }, { action: 'fill', target: NEXT, value: '' }], check: 'x()' } };
+    const fixed = { ...loaded.steps[1], do: 'new', recording: { hash: 'h', after: 'S1', recordedOn: 'a/dev', recordedAt: 'z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [{ action: 'click', target: NEXT, path: '/a' }, { action: 'fill', target: NEXT, value: '' }], check: 'x()' } };
     const relative = writeTest(root, { ...replaceStep(loaded, fixed), knownMessages: ['Yes No'] }, new Set(['S2']));
     assert.equal(relative, 'caw/tests/t.yaml, caw/recordings/t.yaml');
     const text = readFileSync(testPath(root, 't'), 'utf8');
@@ -288,7 +323,7 @@ steps:
     assert.match(text, /# Above the second\n {2}- id: S2/);
     assert.match(text, /Stays\./);
     assert.doesNotMatch(text, /recording|knownMessages/, 'the description stays without recordings');
-    assert.match(readFileSync(recordingPath(root, 't'), 'utf8'), /click: \{/, 'targets are on one line');
+    assert.match(readFileSync(recordingPath(root, 't'), 'utf8'), /- \{click: "getByRole\('button', \{ name: 'Next', exact: true \}\)", path: \/a\}/, 'one action per line');
     const read = loadTest(root, 't');
     assert.equal(read.steps[0].recording, undefined);
     assert.equal(read.steps[1].do, 'new');
@@ -351,6 +386,52 @@ test('writing: a new file is readable, an inserted step lands at its position', 
     assert.deepEqual(loadTest(root, 't').steps.map(({ id }) => id), ['S1', 'S3', 'S2']);
 });
 
+test('writing with prune: the steps before stay byte for byte, removed steps go, comments of kept steps stay', (t) => {
+    const original = `id: t
+app: a
+role: r
+targets: [a/dev]
+mutates: true
+steps:
+  # Above the first, by the human
+  - id: S1
+    name:   First   # oddly indented
+    do: ""
+    expect: S1 is there
+  # Above the second
+  - id: S2
+    name: Step S2
+    do: Do S2
+    expect: S2 is there
+  - id: S3
+    name: Step S3
+    do: Do S3
+    expect: S3 is there
+`;
+    const root = testRoot(t, original);
+    const loaded = loadTest(root, 't');
+    writeTest(root, { ...loaded, steps: loaded.steps.map((step) => recorded(step.id)) });
+    const before = readFileSync(testPath(root, 't'), 'utf8');
+    const head = before.slice(0, before.indexOf('  # Above the second'));
+    // Re-recorded from S2: S2 with a new expectation, S3 removed, S4 new.
+    const kept = loadTest(root, 't').steps[0];
+    const next = { ...loaded, steps: [kept, { ...recorded('S2', [], { after: 'S1' }), expect: 'New' }, recorded('S4', [], { after: 'S2' })] };
+    writeTest(root, next, new Set(['S2', 'S4']), { prune: true });
+    const text = readFileSync(testPath(root, 't'), 'utf8');
+    assert.ok(text.startsWith(head), 'everything up to S2 is unchanged');
+    assert.match(text, /# Above the second\n {2}- id: S2\n/);
+    assert.doesNotMatch(text, /S3/);
+    const read = loadTest(root, 't');
+    assert.deepEqual(read.steps.map(({ id }) => id), ['S1', 'S2', 'S4']);
+    assert.equal(read.steps[1].expect, 'New');
+    assert.equal(read.steps[0].recording.check, 'checkS1()', 'the recording of the step before stays');
+    assert.doesNotMatch(readFileSync(recordingPath(root, 't'), 'utf8'), /id: S3/);
+    // Without prune a removed step would linger in the description.
+    const lingering = testRoot(t, original);
+    writeTest(lingering, { ...loaded, steps: [loaded.steps[0], loaded.steps[1]] }, new Set(['S2']));
+    assert.deepEqual(loadTest(lingering, 't').steps.map(({ id }) => id), ['S1', 'S2', 'S3']);
+});
+
 test('loadTest: missing file and mismatched id', (t) => {
     const root = testRoot(t, YAML.replace('id: t', 'id: other'));
     assert.throws(() => loadTest(root, 'missing'), { code: 'test-missing' });
@@ -370,16 +451,14 @@ test('loadTest: id, app, role and targets may be missing, a given id must match'
     assert.equal(loaded.targets, undefined);
 });
 
-test('two files: locale and timezone of the recording browser round-trip; older recordings without them stay valid', (t) => {
+test('two files: locale and timezone of the recording browser round-trip and are required', (t) => {
     const root = testRoot(t);
-    const withRegion = recorded('S1');
-    withRegion.recording = { ...withRegion.recording, locale: 'de-DE', timezone: 'Europe/Berlin' };
-    writeTest(root, spec(withRegion, recorded('S2', [], { after: 'S1' })));
+    writeTest(root, spec(recorded('S1'), recorded('S2', [], { after: 'S1' })));
     const text = readFileSync(recordingPath(root, 't'), 'utf8');
     assert.match(text, /recordedAt: .*\n {4}locale: de-DE\n {4}timezone: Europe\/Berlin\n/);
     const loaded = loadTest(root, 't');
     assert.equal(loaded.steps[0].recording.locale, 'de-DE');
-    assert.equal(loaded.steps[0].recording.timezone, 'Europe/Berlin');
-    assert.equal(loaded.steps[1].recording.locale, undefined, 'a step without the fields stays without them');
-    assert.throws(() => parseRecordings(text.replace('locale: de-DE', 'locale: 7')), /recording.locale muss ein Text sein/);
+    assert.equal(loaded.steps[1].recording.timezone, 'Europe/Berlin');
+    assert.throws(() => parseRecordings(text.replace('locale: de-DE', 'locale: 7')), /recording.locale fehlt/);
+    assert.throws(() => parseRecordings(text.replace(/ {4}timezone: Europe\/Berlin\n/, '')), /recording.timezone fehlt/);
 });

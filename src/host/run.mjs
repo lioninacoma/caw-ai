@@ -27,7 +27,7 @@ import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
 import { fillDates, zonedNow } from './dates.mjs';
-import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayVerdict, stepGroups, stepLabel, tidyNumbers, trailingNumbers } from './replay.mjs';
+import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, tidyNumbers, trailingNumbers } from './replay.mjs';
 import { canRestore, loadStateTest, stateCatalog } from './states.mjs';
 import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
@@ -48,18 +48,18 @@ const ADVICE_LOG = 'claude-advice.log';
 const DRAFT_FILE = 'test-draft.yaml';
 // Changes the page state or proves a step: only allowed once the plan is approved.
 // eval too: it runs any script in the page and can change it just like a click. Reading stays allowed via snapshot.
-export const NEEDS_PLAN = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember', 'eval']);
+export const NEEDS_PLAN = new Set(['click', 'dblclick', 'upload', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember', 'eval']);
 // While advising Claude only reads: the page should stay as the run left it.
 const ADVISE_READS = new Set(['task', 'snapshot', 'url', 'eval', 'console', 'network', 'screenshot', 'say', 'advise']);
 // A conversation only adds waiting for the human.
 const TALK_READS = new Set([...ADVISE_READS, 'chat']);
 // While developing the window belongs to the human, who can ask Claude to operate it: click, fill, reproduce a bug.
 // Only on request (see skill); no test results from it, so there is no `check` or `remember` here.
-const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
+const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'dblclick', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
 /**
  * The chip at the top right of the workbench while something runs: record while Claude records or fixes (no replay), play while
- * replaying (run, check run, --until; restoring a state sets play itself). Nothing for open: it replays nothing and hands over at
- * once. The page shows pause while a running run is paused (F9); once the run is over the chip goes away.
+ * replaying (run, check run, open with a test; restoring a state sets play itself). Nothing for open without a test: it replays
+ * nothing and hands over at once. The page shows pause while a running run is paused (F9); once the run is over the chip goes away.
  */
 export const transportOf = (replay) => (replay === undefined ? 'record' : replay.steps.length === 0 ? null : 'play');
 /** What Claude may do in the browser while advising, talking after a failure, or developing. */
@@ -226,7 +226,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         const { isLoginFailure, offerAuthRepair } = await import('./login-repair.mjs');
         if (isLoginFailure(error)) {
             // Spend tokens only where Claude runs anyway: with a chat and on a target with claude. Otherwise just point the way.
-            if (interactive && checked.agent) await offerAuthRepair({ root, config, error }).catch(() => false);
+            if (interactive && checked.claude) await offerAuthRepair({ root, config, error }).catch(() => false);
             else error.message = `${error.message} ${t('repair.hint')}`;
         }
         throw error;
@@ -273,17 +273,29 @@ const knownTests = (root, ownId) => {
 
 /**
  * A new plan version invalidates checks: those of removed steps and, from the first changed step on, all later ones, since
- * the recording is a sequence. Otherwise a reworded step would keep the check of its old expectation.
+ * the recording is a sequence. A step counts as changed if it is new or its expected result changed, or if the steps kept from
+ * before are in another order. Rewording only its name, action or note keeps the check: the recorded actions are what happened,
+ * the check proved the expected result.
  * @returns the ids that need to be checked again
  */
 export const invalidatedChecks = (before, after, recorder) => {
     const previous = new Map(before.steps.map((step) => [step.id, step]));
     const order = after.steps.map(({ id }) => id);
     const checked = new Set(recorder.steps.filter(({ action }) => action === 'check').map(({ id }) => id));
-    const changedAt = after.steps.findIndex((step) => !previous.has(step.id) || !samePlanStep(step, previous.get(step.id)));
+    const keptBefore = before.steps.map(({ id }) => id).filter((id) => order.includes(id));
+    const keptAfter = order.filter((id) => previous.has(id));
+    const movedAt = keptAfter.findIndex((id, index) => id !== keptBefore[index]);
+    const changedAt = after.steps.findIndex((step) => !previous.has(step.id) || (step.expect ?? '') !== (previous.get(step.id).expect ?? '')
+        || (movedAt !== -1 && step.id === keptAfter[movedAt]));
     const removed = before.steps.map(({ id }) => id).filter((id) => !order.includes(id));
     const later = changedAt === -1 ? [] : order.slice(changedAt);
     return [...removed, ...later].filter((id) => checked.has(id));
+};
+
+/** What a step's check proved, together with everything before it: ids and expected results up to the step, in order. */
+export const checkBasis = (plan, id) => {
+    const at = plan.steps.findIndex((step) => step.id === id);
+    return at === -1 ? null : JSON.stringify(plan.steps.slice(0, at + 1).map((step) => [step.id, step.expect ?? '']));
 };
 
 /** The fields of a step the agent gets to see. */
@@ -307,21 +319,29 @@ export const readContext = (root) => {
  *                 `handover` decides from the result whether the window is handed to the human;
  *                 with `replay` and `stepTimeoutMs` the recording plays instead of the container, otherwise Claude works;
  *                 `repair` { id, reason } has Claude fix only that step, the steps before it are replayed first without him;
+ *                 with `from` Claude re-records from that step to the end of the test;
+ *                 `command` names the run in .caw/last-run.json (open), otherwise it follows from replay and repair;
  *                 when recording, `previous` gives Claude the old test plan, `demonstration` the demonstration; `maxSteps` caps its actions;
  *                 `conversation` { transcript, onChatOpen, lazy, alsoOnWarnings } opens the chat; with `lazy` only once a step
  *                 failed, with `alsoOnWarnings` also for failures and warnings of an otherwise passed run;
  *                 `conclude` runs while the chat is still open and gets `advise`, which lets Claude give advice;
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
- * @returns { exitCode, verdict, failed, candidate, fresh, expectChange }
+ * @returns { exitCode, verdict, failed, candidate, fresh, expectChange, ids, removed }
  */
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxSteps, demonstration, previous, conversation, conclude, develop, headless = false }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxSteps, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
-    // With --until only the steps on the way there count, when repairing only that one, and a plan being created has none yet.
-    const reached = replay?.until === undefined ? null : new Set(replay.steps.filter(({ action }) => action === 'check').map(({ id }) => id));
+    // Re-recording from a step on: that step and all after it, as they are in the test file.
+    const range = repair?.from === true ? givenSpec.steps.slice(givenSpec.steps.indexOf(repairing)) : undefined;
+    // Up to a state only the steps on the way there count (at the entry of a step not that step), when repairing only the steps
+    // being repaired, and a plan being created has none yet.
+    const reached = replay?.until === undefined && replay?.entry === undefined ? null : new Set(replay.steps.filter(({ action }) => action === 'check').map(({ id }) => id));
     let spec = givenSpec;
     if (reached !== null) spec = { ...givenSpec, expectations: givenSpec.expectations.filter(({ id }) => reached.has(id)) };
-    if (repairing !== undefined) spec = { ...givenSpec, steps: [repairing], expectations: givenSpec.expectations.filter(({ id }) => id === repair.id) };
+    if (repairing !== undefined) {
+        const repaired = new Set((range ?? [repairing]).map(({ id }) => id));
+        spec = { ...givenSpec, steps: range ?? [repairing], expectations: givenSpec.expectations.filter(({ id }) => repaired.has(id)) };
+    }
     const runTag = newRunTag();
     const creating = replay === undefined && repair === undefined;
     const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${spec.id}`;
@@ -330,15 +350,21 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const agentDir = join(runDir, AGENT_DIR);
     const channel = join(agentDir, CHANNEL_DIR);
     mkdirSync(channel, { recursive: true });
-    const runCommand = repair !== undefined ? 'fix' : creating ? 'record' : replay.steps.length === 0 && replay.until === undefined ? 'open' : 'run';
+    let runCommand = 'run';
+    if (repair !== undefined) runCommand = range === undefined ? 'repair' : 'record';
+    else if (creating) runCommand = 'record';
+    else if (runAs !== undefined) runCommand = runAs;
+    else if (replay.entry !== undefined || (replay.steps.length === 0 && replay.until === undefined)) runCommand = 'open';
     writeLastRun(root, { runId, runDir: relativeRun, command: runCommand, test: spec.id, target });
 
     const startedAt = Date.now();
     let modeLabel = t('run.mode.record');
     if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) modeLabel = t('run.mode.verify');
-    else if (replay?.until !== undefined) modeLabel = t('run.mode.until', { until: replay.until });
+    else if (replay?.entry !== undefined) modeLabel = t('run.mode.entry', { id: replay.entry.id });
     else if (replay !== undefined && replay.steps.length === 0) modeLabel = t('run.mode.open');
+    else if (replay !== undefined && runAs === 'open') modeLabel = t('run.mode.openTest');
     else if (replay !== undefined) modeLabel = t('run.mode.replay');
+    else if (range !== undefined) modeLabel = t('run.mode.recordFrom', { id: repair.id });
     else if (repair !== undefined) modeLabel = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
     // Which code runs, always on one line, also in CI: otherwise a silently deployed version would only show in the result.
     const codeLine = describeCode(config, spec, checked, { root });
@@ -370,6 +396,14 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         return EXIT[verdict.status];
     };
 
+    /** After a replay up to the entry of a step: its entry points passed, or the last one failed if the entry broke. */
+    const markEntry = async (plan, failed) => {
+        if (plan?.entry === undefined) return;
+        const broke = failed?.id === plan.entry.id;
+        for (const position of entryPoints) await session.workbench?.point(plan.entry.id, `a${position}`, broke && position === entryPoints.at(-1) ? 'fail' : 'pass');
+        if (broke) await session.workbench?.step(plan.entry.id, 'fail');
+        entryPoints = [];
+    };
     const factsOf = (phase) => [
         [t('run.fact.phase'), phase],
         [t('run.fact.test'), spec.id],
@@ -377,10 +411,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         ...(spec.role ? [[t('run.fact.role'), spec.role]] : []),
         [t('run.fact.code'), checked.source === 'overlay' ? t('run.fact.local') : codeLine],
     ];
+    // The entry actions of the current replay (replayToEntry) that ran: the step itself is not judged, its points are.
+    let entryPoints = [];
     // Every recorded action is a point of its step. Without an action, the replay reports a new attempt.
     const showAction = ({ owner, position, step, label }) => {
         const bench = session?.workbench;
         if (bench === undefined || bench === null) return;
+        if (step?.entry !== undefined) {
+            entryPoints.push(position);
+            bench.point(owner, `a${position}`, 'running');
+            return;
+        }
         bench.step(owner, 'running');
         if (step === undefined) bench.point(owner, `v${position}-${Date.now()}`, 'pass', { kind: t('run.point.attempt'), label: label.replace(/^\S+: /, '').replace(/^(neuer Versuch|attempt) /, '') });
         else bench.point(owner, `a${position}`, 'running');
@@ -474,6 +515,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             run: task,
             hosts: browserHosts(config, checked),
             agentDir,
+            filesDir: join(root, PROJECT_DIR),
             expand: fillSecrets,
             onVerdict: (outcome) => { writeResult(outcome); verdictSignal(); },
         });
@@ -574,9 +616,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     /** Adds the advice to report and result. The verdict itself stays as it was. */
     const writeAdvice = () => {
         if (decided.length === 0 && adviceNotes.length === 0) return;
-        verdict = { ...verdict, ...adviceOf() };
-        writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
-        writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
+        if (verdict !== null) verdict = { ...verdict, ...adviceOf() };
+        // Before a verdict the run is still open; its result replaces this when the run ends.
+        const shown = verdict ?? redactDeep({ ...reportBase, status: 'open', ...adviceOf() }, session?.secrets?.() ?? []);
+        writeFileSync(join(runDir, 'result.json'), JSON.stringify(shown, null, 2));
+        writeFileSync(join(runDir, 'report.md'), renderReport(shown));
     };
     /**
      * Presents advice as cards and applies each decision: knowledge, config and code at once, the test only in the result.
@@ -649,7 +693,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             ...(talking ? { question } : {}),
             // The element the human picked for the question: target, label, component or source. Its text is never an instruction.
             ...(element === undefined ? {} : { element }),
-            ...(mode === 'develop' ? { develop: { test: chosen.spec.id, until: chosen.replay?.until ?? null, url: session.page().url(), source: checked.source } } : {}),
+            ...(mode === 'develop' ? { develop: { test: chosen.spec.id, until: chosen.replay?.until ?? null, ...(chosen.replay?.entry === undefined ? {} : { entry: chosen.replay.entry.id }), url: session.page().url(), source: checked.source } } : {}),
             runId,
             language: language(),
             target,
@@ -785,16 +829,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
      */
     const restoreState = async () => restoreWith(chosen);
     /**
-     * Another state, picked with F1 in the workbench: a test of the same role, app and target up to a step.
-     * The step list then shows that test.
+     * Another state, picked with F1 in the workbench: a test of the same role, app and target, at the entry of a step (`entry`)
+     * or up to its last restorable step. The step list then shows that test.
      */
-    const choose = (other, until) => {
-        const end = other.steps.findIndex(({ id }) => id === until);
-        const cut = { ...other, steps: other.steps.slice(0, end + 1), expectations: other.expectations.slice(0, end + 1) };
-        chosen = { spec: cut, replay: cutReplay(other, until) };
+    const choose = (other, stepId, { entry = false } = {}) => {
+        const end = other.steps.findIndex(({ id }) => id === stepId);
+        // At the entry of a step that step is shown, but not judged.
+        const cut = { ...other, steps: other.steps.slice(0, end + 1), expectations: other.expectations.slice(0, entry ? end : end + 1) };
+        chosen = { spec: cut, replay: entry ? replayToEntry(other, stepId) : cutReplay(other, stepId) };
     };
-    const restoreOther = async (other, until) => {
-        choose(other, until);
+    const restoreOther = async (other, stepId, options) => {
+        choose(other, stepId, options);
         await session.workbench?.steps(stepGroups(chosen.spec.steps, chosen.replay));
         return restoreWith(chosen);
     };
@@ -823,6 +868,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const tag = newRunTag();
         // Restoring replays the test: play while it runs, nothing afterwards.
         await session.workbench?.transport?.('play')?.catch?.(() => {});
+        entryPoints = [];
         let again;
         try {
             again = await playReplay({
@@ -862,17 +908,18 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const status = again.results?.get(id)?.status;
             await session.workbench?.step(id, id === failed?.id ? 'fail' : status === 'pass' ? 'pass' : 'skipped');
         }
+        await markEntry(plan, failed);
         // Then it is the human's turn again: the raven flies to the chat, on failure it stays on the step.
         await session.workbench?.mood?.(failed === null ? 'ask' : 'fail');
-        const until = plan.until === undefined ? t('run.restore.atEnd') : shownSpec === spec ? plan.until : `${shownSpec.id} ${plan.until}`;
-        return failed === null
-            ? t('run.restore.done', { until, tag })
-            : t('run.restore.failed', { id: failed.id, reason: failed.reason.replace(/\.$/, '') });
+        if (failed !== null) return t('run.restore.failed', { id: failed.id, reason: failed.reason.replace(/\.$/, '') });
+        const named = (id) => (shownSpec === spec ? id : `${shownSpec.id} ${id}`);
+        if (plan.entry !== undefined) return t('run.restore.doneEntry', { id: named(plan.entry.id), tag });
+        return t('run.restore.done', { until: plan.until === undefined ? t('run.restore.atEnd') : named(plan.until), tag });
     };
     /** The picked element with page and recent requests, for the human's own Claude Code session (tool caw_selection). */
     const handToCode = (element) => {
         const recent = session.network === undefined ? [] : session.network.since(Math.max(0, session.network.mark() - 20));
-        const selection = { at: new Date().toISOString(), runId, test: chosen.spec.id, target, until: chosen.replay?.until ?? null, url: session.page().url(), source: checked.source, element, requests: recent };
+        const selection = { at: new Date().toISOString(), runId, test: chosen.spec.id, target, until: chosen.replay?.until ?? null, ...(chosen.replay?.entry === undefined ? {} : { entry: chosen.replay.entry.id }), url: session.page().url(), source: checked.source, element, requests: recent };
         writeFileSync(join(root, RUN_DIR, SELECTION_FILE), JSON.stringify(selection, null, 2));
         return selection;
     };
@@ -945,11 +992,16 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         if (handing) {
             // The header says what applies now: the replay is over, it is the human's turn.
             let phase = t('run.phase.handedOver');
-            if (developing) phase = replay?.until !== undefined && verdict.status === 'pass' ? t('run.phase.developIn', { until: replay.until }) : t('run.phase.develop');
+            const state = replay?.entry?.id ?? replay?.until;
+            if (developing) phase = state !== undefined && verdict.status === 'pass' ? t('run.phase.developIn', { until: state }) : t('run.phase.develop');
             await session.workbench?.facts(factsOf(phase)).catch(() => {});
             await session.workbench?.transport?.(null).catch(() => {});
-            if (replay?.until !== undefined && verdict.status === 'pass') {
-                ui.success(t('run.handover.state', { until: replay.until, local: checked.source === 'overlay' ? t('run.handover.local') : '' }));
+            const local = checked.source === 'overlay' ? t('run.handover.local') : '';
+            if (replay?.entry !== undefined && verdict.status === 'pass') {
+                // Names the step about to start; if a guard kept its entry back, also why.
+                const { id, name, skipped } = replay.entry;
+                const step = `${id} ${name}`.trim();
+                ui.success(skipped === undefined ? t('run.handover.state', { step, local }) : t('run.handover.stateSkipped', { step, why: t(`run.handover.why.${skipped}`, { id }), local }));
             } else {
                 ui.note(t('run.handover.window'));
             }
@@ -982,7 +1034,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                         if (!human) return;
                         await listener();
                     });
-                    // After the handover (open, --until) the workbench shows only the application full-screen; F8 brings the workbench back.
+                    // After the handover (open) the workbench shows only the application full-screen; F8 brings the workbench back.
                     await bench?.solo?.(true);
                     // F1: states from all tests of this target, each in its role's account. Without a step the test runs to the last
                     // restorable one. With basic auth the account is tied to the browser: only the own role.
@@ -992,18 +1044,20 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     afterSave = async (testId) => {
                         catalog = stateCatalog(root, config, scope);
                         await bench?.states?.(catalog);
-                        const until = chosen.replay?.until;
-                        const fresh = chosen.spec.id === testId && until !== undefined ? loadStateTest(root, config, testId) : undefined;
-                        if (fresh !== undefined && canRestore(catalog, testId, until)) choose(fresh, until);
+                        const atEntry = chosen.replay?.entry !== undefined;
+                        const stepId = chosen.replay?.entry?.id ?? chosen.replay?.until;
+                        const fresh = chosen.spec.id === testId && stepId !== undefined ? loadStateTest(root, config, testId) : undefined;
+                        if (fresh !== undefined && canRestore(catalog, testId, stepId)) choose(fresh, stepId, { entry: atEntry });
                     };
+                    // A picked step: at its entry, like open <test>@<step>. Without a step: up to the last restorable step.
                     const restoreTo = async (testId, stepId) => {
                         const entry = catalog.find(({ id }) => id === testId);
                         const until = stepId ?? entry?.steps.filter(({ ok }) => ok).at(-1)?.id;
                         if (entry === undefined || until === undefined || !canRestore(catalog, testId, until)) throw new CawError('step-unknown', t('run.develop.cannotRestore', { test: testId, step: stepId ?? '' }));
-                        return restoreOther(loadStateTest(root, config, testId), until);
+                        return restoreOther(loadStateTest(root, config, testId), until, { entry: stepId !== undefined });
                     };
                     const restore = () => (chosen.replay === undefined ? reloadApp() : restoreState());
-                    await Promise.race([develop({ chat, talk: ask, until: replay?.until, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
+                    await Promise.race([develop({ chat, talk: ask, until: replay?.entry?.id ?? replay?.until, entry: replay?.entry !== undefined, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
                 } catch (error) {
                     ui.warn(t('run.develop.error', { message: String(error?.message ?? error).split(/\r?\n/)[0] }));
                 } finally {
@@ -1032,7 +1086,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // For Claude: secret values stay placeholders that the handler fills in on execution (fillSecrets).
         // Only for check code: values are escaped for a string literal.
         const fillIn = (value) => fillDates(openRemembered().reduce((current, [placeholder, real]) => current.split(placeholder).join(codeText(real)), fillRun(value, runTag)), zonedNow(session.browser?.timezone));
-        if (repairing !== undefined) {
+        if (range !== undefined) {
+            // From a step to the end: the old recording of each step as orientation; the steps before have run without Claude.
+            run.repair = {
+                reason: repair.reason,
+                rerecord: true,
+                from: true,
+                steps: range.map(({ id, recording }) => ({ id, actions: recording?.actions.map(stepLabel) ?? [], ...(recording === undefined ? {} : { check: fillIn(recording.check) }) })),
+                remembered: [...remembered].map(([placeholder, value]) => ({ name: placeholder.slice(2, -2), ...(isSecret(value) ? { secret: true, value: placeholder } : { value }) })),
+                before: givenSpec.steps.slice(0, givenSpec.steps.indexOf(repairing)).map(({ id, name }) => ({ id, name })),
+            };
+        } else if (repairing !== undefined) {
             const position = givenSpec.steps.indexOf(repairing);
             run.repair = {
                 reason: repair.reason,
@@ -1062,29 +1126,62 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const budget = withStepBudget(agentHandler, maxSteps ?? Number.POSITIVE_INFINITY);
         let recorder = null;
         let plan = null;
+        // Checks a plan change took back, with what they proved: a later version that proves the same brings them back.
+        let forgotten = { entries: [], checks: 0 };
         /** The plan becomes the test file. Only the human's approval makes it the yardstick of the run. */
         const proposePlan = async ({ text }) => {
             if (typeof text !== 'string' || text.trim() === '') throw new CawError('plan-invalid', 'The plan is empty.');
             const { problems, plan: parsed } = readPlan(text);
             if (problems.length > 0) throw new CawError('plan-invalid', problems.join(' '));
-            if (repairing !== undefined && (parsed.steps.length !== 1 || parsed.steps[0].id !== repair.id)) {
+            const fixed = range === undefined ? [] : givenSpec.steps.slice(0, givenSpec.steps.indexOf(repairing));
+            if (range !== undefined) {
+                // From a step on: the steps before it stay; the plan holds the steps from there to the end, at least one.
+                const taken = parsed.steps.filter(({ id }) => fixed.some((step) => step.id === id)).map(({ id }) => id);
+                if (parsed.steps.length === 0 || taken.length > 0) {
+                    throw new CawError('plan-invalid', `When re-recording from ${repair.id}, the plan contains the steps from there to the end, at least one, and none of the steps before it${taken.length > 0 ? ` (not ${taken.join(', ')})` : ''}.`);
+                }
+            } else if (repairing !== undefined && (parsed.steps.length !== 1 || parsed.steps[0].id !== repair.id)) {
                 throw new CawError('plan-invalid', `When repairing, the plan contains exactly step ${repair.id}.`);
             }
-            // A manually set retry survives the repair even if Claude does not repeat it.
-            const steps = repairing?.retry === undefined ? parsed.steps : parsed.steps.map((step) => ({ retry: repairing.retry, ...step }));
-            const retryIssues = retryProblems(repairing === undefined ? steps : replaceStep(givenSpec, steps[0]).steps);
+            // A manually set retry survives the repair even if Claude does not repeat it, per step.
+            const retryOf = (id) => (range ?? (repairing === undefined ? [] : [repairing])).find((step) => step.id === id)?.retry;
+            const steps = parsed.steps.map((step) => (retryOf(step.id) === undefined ? step : { retry: retryOf(step.id), ...step }));
+            let whole = steps;
+            if (range !== undefined) whole = [...fixed, ...steps];
+            else if (repairing !== undefined) whole = replaceStep(givenSpec, steps[0]).steps;
+            const retryIssues = retryProblems(whole);
             if (retryIssues.length > 0) throw new CawError('plan-invalid', retryIssues.join(' '));
             const composed = repairing === undefined ? composeTest(givenSpec, parsed) : { ...spec, steps, expectations: steps.map(({ id, expect }) => ({ id, text: expect })) };
             // Same plan as in the test file: the human already adopted it, nothing to approve. The human can still write.
-            const unchanged = repairing !== undefined && samePlanStep(steps[0], repairing);
-            if (unchanged) chat.notice(t(repair.rerecord ? 'run.plan.unchangedRerecord' : 'run.plan.unchangedRepair', { id: repair.id }));
+            const unchanged = range === undefined
+                ? repairing !== undefined && samePlanStep(steps[0], repairing)
+                : steps.length === range.length && steps.every((step, index) => samePlanStep(step, range[index]));
+            if (unchanged && range !== undefined) chat.notice(t('run.plan.unchangedFrom', { id: repair.id }));
+            else if (unchanged) chat.notice(t(repair.rerecord ? 'run.plan.unchangedRerecord' : 'run.plan.unchangedRepair', { id: repair.id }));
             // A read-only test the developer's own session wrote and now follows unchanged: no approval up front. The human still
             // decides at the end whether the proven test is adopted; a changed or writing plan gets the card as always.
             const ownReadOnly = repairing === undefined && plan === null && sessionFollowsOwnPlan({ agent: box?.kind, previous, proposed: composed });
             if (ownReadOnly) chat.notice(t('run.plan.sessionReadOnly'));
-            const answer = unchanged || ownReadOnly ? { approved: true } : await chat.plan(planView(composed, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, previous: repairing }));
+            const previousSteps = new Map((range ?? (repairing === undefined ? [] : [repairing])).map((step) => [step.id, step]));
+            const answer = unchanged || ownReadOnly ? { approved: true } : await chat.plan(planView(composed, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, ...(range === undefined ? {} : { from: repair.id }), previous: previousSteps }));
             if (!answer.approved) return answer;
             const redo = plan === null ? [] : invalidatedChecks(plan, composed, recorder);
+            const checksNow = () => recorder.steps.filter(({ action }) => action === 'check').length;
+            // A check made since then replaces what was taken back: nothing comes back after it.
+            if (forgotten.checks !== checksNow()) forgotten = { entries: [], checks: checksNow() };
+            if (redo.length > 0) {
+                const entries = recorder.forgetChecks(new Set(redo)).map((entry) => ({ ...entry, basis: checkBasis(plan, entry.step.id), order: plan.steps.findIndex((step) => step.id === entry.step.id) }));
+                forgotten = { entries: [...forgotten.entries, ...entries].sort((a, b) => a.order - b.order), checks: checksNow() };
+            }
+            // Back to what the taken-back checks proved (e.g. the earlier expected result): they apply again, in their order, as
+            // long as each one fits.
+            const fitting = [];
+            for (const entry of forgotten.entries) {
+                if (redo.includes(entry.step.id) || checkBasis(composed, entry.step.id) !== entry.basis) break;
+                fitting.push(entry);
+            }
+            const restored = fitting.length === 0 ? [] : recorder.restoreChecks(fitting);
+            forgotten = { entries: forgotten.entries.filter((entry) => !restored.includes(entry.step.id)), checks: checksNow() };
             plan = composed;
             writeFileSync(join(runDir, PLAN_FILE), text.replaceAll('\r\n', '\n'));
             spec = composed;
@@ -1092,13 +1189,12 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             run.notes = composed.notes;
             run.steps = composed.steps.map(planStep);
             reportBase.expectations = composed.expectations;
-            if (redo.length === 0) return { approved: true };
-            recorder.forgetChecks(new Set(redo));
-            return {
-                approved: true,
-                invalidated: redo,
-                note: `The checks of ${redo.join(', ')} no longer apply because the plan changed from there on. Walk the path so that you check these steps again, and drop outdated actions with omit.`,
-            };
+            const notes = [
+                ...(restored.length === 0 ? [] : [`The checks of ${restored.join(', ')} apply again: the plan proves the same as when they passed.`]),
+                ...(redo.length === 0 ? [] : [`The checks of ${redo.join(', ')} no longer apply because the expected results or the order changed from there on. Walk the path so that you check these steps again, and drop outdated actions with omit. Rewording a step's name, action or note alone keeps its check.`]),
+            ];
+            if (notes.length === 0) return { approved: true };
+            return { approved: true, ...(redo.length === 0 ? {} : { invalidated: redo }), ...(restored.length === 0 ? {} : { restored }), note: notes.join(' ') };
         };
         /** The verdict refers to the approved plan, and every passed step must be in it. */
         const checkAgainstPlan = (results) => {
@@ -1113,11 +1209,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const missing = [...known].filter((id) => !groups.has(id) && !failed.has(id));
             if (missing.length > 0) throw new CawError('finish-rejected', `Without a passed check: ${missing.join(', ')}.`);
             if (repairing === undefined || failed.size > 0) return;
-            const same = plan.steps[0].expect === repairing.expect;
-            if (same && repairing.recording !== undefined && groups.get(repair.id).check !== repairing.recording.check) {
-                throw new CawError('finish-rejected', `The expected result of ${repair.id} is unchanged, so the check must stay the same too: ${fillIn(repairing.recording.check)}. To change it, submit a plan with a changed expect.`);
+            // Per step: an unchanged expected result keeps its check.
+            for (const step of plan.steps) {
+                const old = (range ?? [repairing]).find(({ id }) => id === step.id);
+                if (old?.recording !== undefined && step.expect === old.expect && groups.get(step.id).check !== old.recording.check) {
+                    throw new CawError('finish-rejected', `The expected result of ${step.id} is unchanged, so the check must stay the same too: ${fillIn(old.recording.check)}. To change it, submit a plan with a changed expect.`);
+                }
             }
-            const lost = missingRemembered(replaceStep(givenSpec, { ...plan.steps[0], recording: { actions: groups.get(repair.id).actions, check: groups.get(repair.id).check } }));
+            const withRecording = (step) => ({ ...step, recording: { actions: groups.get(step.id).actions, check: groups.get(step.id).check } });
+            const lost = missingRemembered(range === undefined
+                ? replaceStep(givenSpec, withRecording(plan.steps[0]))
+                : { ...givenSpec, steps: [...givenSpec.steps.slice(0, givenSpec.steps.indexOf(repairing)), ...plan.steps.map(withRecording)] });
             if (lost.length > 0) throw new CawError('finish-rejected', lost.join(' '));
         };
         /** Actions since the last check belong to the next step, so the order must be right. */
@@ -1145,7 +1247,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const captureHuman = async (kind) => {
             chat.enter(kind);
             try {
-                const items = await demonstrate({ session, operator: chat.operator, ui, dir: agentDir, onItem: (item) => { const line = feedLabel(item); if (line !== null) chat.progress(t('run.recorded', { line })); }, onFailure: (item) => chat.notice(t('run.recordedFailure', { item: itemLabel(item) })) });
+                const items = await demonstrate({ session, operator: chat.operator, ui, dir: agentDir, filesDir: join(root, PROJECT_DIR), onItem: (item) => { const line = feedLabel(item); if (line !== null) chat.progress(t('run.recorded', { line })); }, onFailure: (item) => chat.notice(t('run.recordedFailure', { item: itemLabel(item) })) });
                 const { steps, problems } = recordableSteps(items);
                 recorder.addSteps(steps);
                 recorder.problems.push(...problems);
@@ -1251,7 +1353,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
 
         if (budget.used() > 0) ui.info(t('run.budget', { used: budget.used(), max: maxSteps ?? t('run.budget.unlimited') }));
 
-        const built = buildReplay({ recorder, outcome: verdict, spec, target, browser: session.browser ?? {}, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(creating && previous !== undefined ? { previous } : {}) });
+        const built = buildReplay({ recorder, outcome: verdict, spec, target, browser: session.browser ?? {}, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(range === undefined ? {} : { from: repair.id }), ...(creating && previous !== undefined ? { previous } : {}) });
         let { candidate } = built;
         // Created as read-only but it wrote: then the test mutates, otherwise it would run on targets without writable.
         const written = verdict?.writes ?? [];
@@ -1266,14 +1368,22 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         } else {
             writeFileSync(join(runDir, DRAFT_FILE), renderTest(candidate));
         }
-        const changed = repairing !== undefined && candidate !== undefined && plan.steps[0].expect !== repairing.expect;
+        // The steps whose expected result changed: the human sees the old one before deciding.
+        const expectChange = repairing === undefined || candidate === undefined ? [] : plan.steps.flatMap((step) => {
+            const old = (range ?? [repairing]).find(({ id }) => id === step.id);
+            return old === undefined || old.expect === step.expect ? [] : [{ id: step.id, before: old.expect, after: step.expect }];
+        });
         return {
             ended,
             found: {
                 candidate,
                 fresh: built.fresh,
                 ...(repairReviewer === null ? {} : { repairAdvice: repairReviewer.result }),
-                ...(changed ? { expectChange: { id: repair.id, before: repairing.expect, after: plan.steps[0].expect } } : {}),
+                ...(expectChange.length === 0 ? {} : { expectChange }),
+                ...(range === undefined || candidate === undefined ? {} : {
+                    ids: plan.steps.map(({ id }) => id),
+                    removed: range.map(({ id }) => id).filter((id) => !plan.steps.some((step) => step.id === id)),
+                }),
             },
         };
     };
@@ -1339,6 +1449,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const status = ended.results?.get(id)?.status;
             await session.workbench?.step(id, id === failed?.id || (status !== undefined && status !== 'pass') ? 'fail' : status === 'pass' ? 'pass' : 'skipped');
         }
+        await markEntry(replay, failed);
         if (failed !== null) {
             // Test, application or environment: evidence from the browser and the comparison with the step's recording.
             const requests = ended.requests?.get(failed.id) ?? [];
@@ -1375,7 +1486,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         });
         const deviating = ended.deviations?.size ?? 0;
         await session.workbench?.point(END, 'effects', 'pass', { label: deviating === 0 ? t('run.effects.asRecorded') : t('run.effects.deviations', { count: deviating }) });
-        if (baselines.size + effects.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
+        // Only a run that writes them shows learning: open and --no-learn compute them but keep the file as it is.
+        if (learns && baselines.size + effects.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
         return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }) });
     }
 

@@ -1,5 +1,5 @@
 # Starts the E2E and aborts it when the log has been silent for too long.
-# Usage: pwsh watchdog.ps1 <filter> <log> [silentSeconds]
+# Usage: pwsh watchdog.ps1 <ids> <log> [silentSeconds], e.g. pwsh watchdog.ps1 N1,A e2e.log (ids: see native-e2e.mjs)
 param([string]$Filter = '', [string]$Log = 'e2e.log', [int]$SilentSeconds = 180, [string[]]$NodeArgs = @(), [string]$Folder = $PSScriptRoot)
 Set-Location $PSScriptRoot
 $Log = Join-Path $PSScriptRoot $Log
@@ -8,7 +8,7 @@ $status = "$Log.status"
 $resultFile = "$Log.result"
 Remove-Item $Log, $status, $resultFile -ErrorAction SilentlyContinue
 $env:CAW_E2E_RESULT = $resultFile
-if ($NodeArgs.Count -gt 0) { $nodeArgs = $NodeArgs } else { $nodeArgs = @('steps-e2e.mjs'); if ($Filter -ne '') { $nodeArgs += $Filter } }
+if ($NodeArgs.Count -gt 0) { $nodeArgs = $NodeArgs } else { $nodeArgs = @('native-e2e.mjs'); if ($Filter -ne '') { $nodeArgs += $Filter } }
 $proc = Start-Process node -ArgumentList $nodeArgs -RedirectStandardOutput $Log -RedirectStandardError "$Log.err" -WorkingDirectory $Folder -PassThru -NoNewWindow
 $null = $proc.Handle  # otherwise ExitCode stays empty
 $lastChange = Get-Date

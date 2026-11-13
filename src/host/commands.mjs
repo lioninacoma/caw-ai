@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentDefs, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
-import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { closest } from '../shared/suggest.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { selectDocker } from './docker.mjs';
@@ -321,7 +321,7 @@ export const init = (root, answers = {}) => {
     const detected = detectApp(root);
     const config = starterConfig({ framework: detected.framework, appDir: detected.dir, ...answers });
     write(CONFIG_FILE, `${JSON.stringify(config, null, 4)}\n`);
-    // No example test: it never fit the application and broke validate once roles were renamed. record creates the first test.
+    // No example test: it would not fit the application. record creates the first test.
     if (config.auth?.type === 'form' || config.auth?.type === 'basic') {
         // The names come from the config roles so example and config match.
         const names = Object.values(config.roles ?? {}).flatMap(({ loginEnv, passwordEnv }) => [loginEnv, passwordEnv]).filter(Boolean);
@@ -523,10 +523,10 @@ const onlyKey = (map) => {
     return keys.length === 1 ? keys[0] : undefined;
 };
 
-/** The targets Claude may work on (environments with agent), one per tenant where there are tenants. */
+/** The targets Claude may work on (environments with claude), one per tenant where there are tenants. */
 const claudeTargets = (config) => allTargets(config).filter((name) => {
     try {
-        return resolveTarget(config, name).agent;
+        return resolveTarget(config, name).claude;
     } catch {
         return false;
     }
@@ -589,7 +589,7 @@ const stepUnknown = (key, spec, step, extra = {}) => new CawError('step-unknown'
 }));
 
 /**
- * The target when --target is missing: the test's only target; for record and fix the only one of them Claude may work on;
+ * The target when --target is missing: the test's only target; for record the only one of them Claude may work on;
  * for a new test the only environment Claude may work on. The choice is logged; ambiguity is a usage error.
  * @param spec the test, null for a new one
  */
@@ -605,7 +605,7 @@ export const chooseTarget = (config, spec, { target, command, log = ui.info }) =
         why = t('cli.targetWhyTest', { test: spec.id });
         const claude = new Set(claudeTargets(config));
         const narrowed = choices.filter((name) => claude.has(name));
-        if ((command === 'record' || command === 'fix') && choices.length > 1 && narrowed.length === 1) {
+        if (command === 'record' && choices.length > 1 && narrowed.length === 1) {
             choices = narrowed;
             why = t('cli.targetWhyTestAgent', { test: spec.id });
         }
@@ -712,11 +712,11 @@ export const list = (root, args, { out = console.log } = {}) => {
     return EXIT.pass;
 };
 /** The environments Claude may work on, as text: "dev" or "dev, local". */
-const agentEnvironments = (config) => environmentsWith(config, 'agent').join(', ') || t('cli.noEnvironment');
+const agentEnvironments = (config) => environmentsWith(config, 'claude').join(', ') || t('cli.noEnvironment');
 
-/** Claude only works on environments with `agent`: the others are meant to fail when something is off. */
+/** Claude only works on environments with `claude`: the others are meant to fail when something is off. */
 const requireAgent = (config, checked, target, verb) => {
-    if (!checked.agent) throw new CawError('write-protected', t('cli.agentOnly', { verb, environments: agentEnvironments(config), target, environment: checked.environment }));
+    if (!checked.claude) throw new CawError('write-protected', t('cli.agentOnly', { verb, environments: agentEnvironments(config), target, environment: checked.environment }));
 };
 
 /**
@@ -811,7 +811,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
         ui.note(t('cli.demoNote'));
         for (;;) {
             chat.enter('showing');
-            const items = await demonstrate({ session, operator: chat.operator, ui, dir, onItem: (item) => { const line = feedLabel(item); if (line !== null) chat.progress(t('cli.demoRecorded', { line })); }, onFailure: (item) => chat.notice(t('cli.demoFailure', { label: itemLabel(item) })) });
+            const items = await demonstrate({ session, operator: chat.operator, ui, dir, filesDir: join(root, PROJECT_DIR), onItem: (item) => { const line = feedLabel(item); if (line !== null) chat.progress(t('cli.demoRecorded', { line })); }, onFailure: (item) => chat.notice(t('cli.demoFailure', { label: itemLabel(item) })) });
             if (!chat.available() || windowClosed) throw aborted();
             if (items.length > 0) {
                 writeFileSync(join(dir, 'demonstration.json'), JSON.stringify(items, null, 2));
@@ -861,18 +861,20 @@ const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeo
     };
 };
 
-/** Recording and fixing need a human for demonstration, plan and decisions. CI has none: reject instead of waiting. */
+/** Recording and opening need a human for demonstration, plan, decisions or the window. CI has none: reject instead of waiting. */
 const requireHuman = (command, interactive) => {
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     if (inCi) throw new CawError('usage', t('cli.ciNeedsHuman', { command }));
 };
 
 /** A line at the start of the run: what the run may do and why, so no mode silently follows from the environment. */
-export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environments, learn = true, file = RECORDING_DIR }) => {
+export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environments, learn = true, opened = false, file = RECORDING_DIR }) => {
     if (!withAgent) return t('cli.modeNoAgent', { environments });
     if (headless) return t('cli.modeHeadless');
     if (noChat) return t('cli.modeNoChat');
     if (inCi) return t('cli.modeCi');
+    // open never learns: saying "--no-learn" would name an option nobody passed.
+    if (opened) return t('cli.modeOpen');
     const advice = withAdvice ? t('cli.modeAdvice') : '';
     return learn ? t('cli.modeChat', { advice, file }) : t('cli.modeChatNoLearn', { advice });
 };
@@ -913,26 +915,29 @@ export const changeTracker = (root) => {
 
 /**
  * A test run by plan, without Claude, Docker or token. On environments Claude may work on, the chat is there from the start,
- * except in CI (variable CI); if a step fails, the human clarifies it there and can have it fixed. With --until the run
- * prepares a state and hands over the window, to continue working on the local build from there. With --advise Claude
- * advises on errors and warnings, which costs tokens. --no-chat runs as in CI, --headless additionally without a window.
- * --no-learn keeps the chat but learns no baselines.
+ * except in CI (variable CI); if a step fails, the human clarifies it there and can have it fixed. For open (`handover`) the
+ * run prepares a state and hands over the window, to continue working on the local build from there: with `entry` at the
+ * entry of that step, otherwise after the whole test. With --advise Claude advises on errors and warnings, which costs
+ * tokens. --no-chat runs as in CI, --headless additionally without a window. --no-learn keeps the chat but learns no baselines.
  * @param quiet in a batch: no mode line, the batch prints it once
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}, loaded = undefined) => {
-    const { test, handover, stepTimeoutSec, until, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, start, quiet = false } = options;
+    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, start, quiet = false } = options;
     let { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
-    if (until !== undefined && !spec.steps.some(({ id }) => id === until)) throw stepUnknown('cli.stepUnknown', spec, until);
+    const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
+    if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
     const { assertPlayable } = await import('./replay.mjs');
-    // open has no steps: nothing to play back, just log in and hand over.
-    if (loaded === undefined) assertPlayable(spec, target, until);
+    // open without a test has no steps: nothing to play back, just log in and hand over. At the entry of a step the steps before
+    // it must be playable; the step itself only leads in, and if it is stale, nothing of it runs.
+    if (loaded === undefined && entry === undefined) assertPlayable(spec, target);
+    else if (loaded === undefined && position > 0) assertPlayable(spec, target, spec.steps[position - 1].id);
     // Only once the run could start, with a window and a person: a role without a test user gets one in a sign-in window.
     const attended = (interactive ?? (process.env.CI === undefined || process.env.CI === '')) && !headless;
     if (loaded === undefined && attended && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
         ({ config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { overlay, start }));
     }
-    const withAgent = checked.agent;
+    const withAgent = checked.claude;
     // The chat lives in the workbench and needs no terminal. Only in CI nobody waits for it.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     const canFix = withAgent && !noChat && !inCi;
@@ -940,8 +945,8 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     if (withAdvice && !withAgent) throw new CawError('usage', t('cli.adviseAgentOnly', { environments: agentEnvironments(config), target }));
     if (withAdvice && !canFix) throw new CawError('usage', t('cli.adviseNeedsChat'));
     // Nobody waits in CI: a handover would keep the job open until the runner times out.
-    if (inCi && (handover || until !== undefined)) throw new CawError('usage', t('cli.ciHandover', { option: until !== undefined ? '--until' : '--handover' }));
-    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), learn, file: `${RECORDING_DIR}/${test}.yaml` }));
+    if (inCi && handover) throw new CawError('usage', t('cli.ciHandover', { option: 'open' }));
+    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), learn, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
     const tracker = changeTracker(root);
@@ -951,8 +956,8 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     const chatTarget = spec.targets.find((name) => claude.has(name));
     const code = await runFlow({
         spec,
-        until,
-        handover: handover || until !== undefined,
+        entry,
+        handover,
         canFix,
         advise: withAdvice,
         // The developer's Claude Code session is there at once and costs nothing here: it may read the page in the state right away.
@@ -964,15 +969,15 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         adopt: tracker.adopt,
         log: ui.info,
         onPlayed: (played) => { failed = played.failed; },
-        // Cause first, then change: `fix` re-records the step without looking for a cause, which only suits an intended change.
+        // Cause first, then change: `record <test>@<step>` re-records without looking for a cause, which only suits an intended change.
         hint: (step, { canFix: hadChat }) => {
             if (!hadChat) {
                 if (withAgent) ui.info(t('cli.failedHintAgent', { step: step.id, test, target }));
                 else if (chatTarget !== undefined) ui.info(t('cli.failedHint', { step: step.id, test, target: chatTarget }));
                 else ui.info(t('cli.failedHintNoAgent', { step: step.id, environments: agentEnvironments(config) }));
             }
-            const position = spec.steps.findIndex(({ id }) => id === step.id);
-            if (position > 0) ui.info(t('cli.untilHint', { test, target, step: spec.steps[position - 1].id }));
+            // open lands at the entry of the failed step: everything before it done, the step itself still open.
+            if (spec.steps.some(({ id }) => id === step.id)) ui.info(t('cli.untilHint', { test, target, step: step.id }));
         },
     });
     if (canFix) ui.info(tracker.summary());
@@ -1083,20 +1088,62 @@ export const contradicts = (spec, { role, app, also = [], readOnly = false }) =>
     || (readOnly && spec.mutates !== false);
 
 /**
- * Records a new test plan or replaces one, always with chat. `containerCommand` replaces Claude with a scripted flow so
- * the path through container, channel and browser can be tested without model or token.
+ * Re-records a test from a step to its end, always with chat: the steps before it replay without Claude, then Claude follows the
+ * old plan from there, the human steers in the chat. Claude may add, remove, rename or reorder steps from there on; the steps
+ * before stay as they are. Without a demonstration: it would start at the sign-in, not at the step.
  */
-export const record = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}) => {
-    const { test, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, overlay, start } = parseRunArgs('record', args);
+const recordFrom = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}) => {
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, agent, overlay, start } = options;
+    let { config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start });
+    const position = spec.steps.findIndex(({ id }) => id === step);
+    if (position === -1) throw stepUnknown('cli.recordStepUnknown', spec, step, { file: `${TEST_DIR}/${test}.yaml` });
+    requireAgent(config, checked, target, t('cli.verbRecord'));
+    requireHuman('record', interactive);
+    // Before any Claude cost: the steps before must replay. The steps from here on may be stale or not recorded at all.
+    const { assertPlayable } = await import('./replay.mjs');
+    assertPlayable(spec, target, spec.steps[position - 1].id);
+    // A role without a test user: the human signs in once in a window, then it goes on.
+    if (await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
+        ({ config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start }));
+    }
+    const { fixFlow } = await import('./flows.mjs');
+    const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
+    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen });
+    return fixFlow({
+        draft: spec,
+        target: { id: step, reason: t('cli.recordFromReason', { step }), rerecord: true, from: true },
+        sandbox,
+        execute,
+        adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
+        log: ui.info,
+    });
+};
+
+/**
+ * Records a new test plan or replaces one, always with chat. `containerCommand` replaces Claude with a scripted flow so
+ * the path through container, channel and browser can be tested without model or token. `<test>@S<n>` re-records from that
+ * step to the end (recordFrom); at the first step that is the same as the whole test.
+ */
+export const record = async (root, args, deps = {}) => {
+    const options = parseRunArgs('record', args);
+    const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = deps;
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, overlay, start } = options;
     let config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
+    if (step !== undefined) {
+        if (!exists) throw testMissing(root, config, test, given);
+        const known = withDefaults(loadTest(root, test), config);
+        const position = known.steps.findIndex(({ id }) => id === step);
+        if (position === -1) throw stepUnknown('cli.recordStepUnknown', known, step, { file: `${TEST_DIR}/${test}.yaml` });
+        if (position > 0) return recordFrom(root, options, deps);
+    }
     const known = exists ? withDefaults(loadTest(root, test), config) : null;
     const target = chooseTarget(config, known, { target: given, command: 'record' });
     const spec = known ?? draftTest(root, config, { id: test, target, role, app, also, readOnly });
     if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
     requireHuman('record', interactive);
     // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
-    if (environmentDefs(config)[target]?.agent && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
+    if (resolveTarget(config, target).claude && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
     const checked = checkTest(spec, target, config, { overlay, start });
     requireAgent(config, checked, target, t('cli.verbRecord'));
 
@@ -1110,30 +1157,27 @@ export const record = async (root, args, { containerCommand, adviseCommand, talk
     const demonstration = agent === 'session' && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
     return recordFlow({
         sandbox,
-        execute: (options) => execute({ ...options, ...(options.replay === undefined && options.repair === undefined ? { demonstration } : {}) }),
-        adopt: (draft, only, options) => writeTest(root, draft, only, options),
+        execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
+        adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
         log: ui.info,
     });
-};
-
-const playable = (assertPlayable, spec, target, step) => {
-    try {
-        assertPlayable(spec, target, step);
-        return true;
-    } catch {
-        return false;
-    }
 };
 
 /** The name open runs under: report and window title. A test of that name stays untouched, open reads and writes none. */
 const OPEN_ID = 'open';
 
 /**
- * Opens the application logged in, without a test: workbench with chat, for navigating and developing. Like run --until, just without
- * steps before; with --overlay on local code. Learns nothing and writes no test file.
+ * Opens the application logged in: workbench with chat, for navigating and developing. Without a test just signed in on the
+ * app's start page; with --overlay on local code. `open <test>` replays the whole test first, `open <test>@S<n>` the steps
+ * before S<n> and the entry of S<n> (replayToEntry). Learns nothing and writes no test file.
  */
 export const open = async (root, args, deps = {}) => {
     const options = parseRunArgs('open', args);
+    if (options.test !== undefined) {
+        requireHuman('open', deps.interactive);
+        const runOptions = { ...options, entry: options.step, handover: true, learn: false, advise: false, headless: false, noChat: false };
+        return (await runOne(root, runOptions, deps)).code;
+    }
     let config = loadConfig(root);
     const target = chooseTarget(config, null, { target: options.target, command: 'open' });
     // The run is named after the app, e.g. in the window title.
@@ -1143,48 +1187,4 @@ export const open = async (root, args, deps = {}) => {
     const checked = checkTest(spec, target, config, { overlay: options.overlay, start: options.start });
     const runOptions = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
     return (await runOne(root, runOptions, deps, { config, spec, target, checked })).code;
-};
-
-/** Changes exactly this step, even if it does not fail. That way a hand-edited or new step gets its recording. */
-export const fix = async (root, args, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, agent, overlay, start } = parseRunArgs('fix', args);
-    const { config, spec, target, checked } = loadChecked(root, test, given, 'fix', { overlay, start });
-    requireAgent(config, checked, target, t('cli.verbFix'));
-    requireHuman('fix', interactive);
-    const position = spec.steps.findIndex(({ id }) => id === step);
-    if (position === -1) throw stepUnknown('cli.fixStepUnknown', spec, step, { file: `${TEST_DIR}/${test}.yaml` });
-    const { assertPlayable } = await import('./replay.mjs');
-    if (position > 0) assertPlayable(spec, target, spec.steps[position - 1].id);
-    const { fixFlow, runFlow } = await import('./flows.mjs');
-    const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
-    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen });
-    const [stale] = staleSteps(spec).filter(({ id }) => id === step);
-    // Cause first: a recorded step is played back first. If it fails, the cause matters as with run, and a new recording
-    // could work around an application bug. Only a passing or stale step is re-recorded.
-    if (stale === undefined && spec.steps[position].recording !== undefined && playable(assertPlayable, spec, target, step)) {
-        ui.info(t('cli.fixReplayFirst', { step }));
-        let clean = false;
-        const code = await runFlow({
-            spec,
-            until: step,
-            handover: false,
-            canFix: true,
-            openSandbox: async () => sandbox,
-            execute,
-            adopt: (draft, only, options) => writeTest(root, draft, only, options),
-            log: ui.info,
-            onPlayed: (played) => { clean = !played.failed && played.exitCode === EXIT.pass; },
-        });
-        if (!clean || code !== EXIT.pass) return code;
-        ui.info(t('cli.fixPassed', { step }));
-    }
-    return fixFlow({
-        draft: spec,
-        // Not failed: the human wants to re-record the step, e.g. after a manual change.
-        target: { id: step, reason: stale === undefined ? 'The human wants to re-record this step; it did not fail' : `${step} ${stale.why}`, rerecord: true },
-        sandbox,
-        execute,
-        adopt: (draft, only, options) => writeTest(root, draft, only, options),
-        log: ui.info,
-    });
 };

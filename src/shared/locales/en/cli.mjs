@@ -1,7 +1,7 @@
 // Texts: cli (en). Keys prefixed with "cli.".
 export default {
     // bin/caw-ai.mjs and help.mjs: help, one block per command. caw-ai --help shows all blocks, caw-ai <command> --help only its own.
-    'cli.help.intro': `caw-ai - Context-Aware Workflows: AI-powered E2E testing, workflow automation and application debugging
+    'cli.help.intro': `caw-ai - Context-Aware Web Testing: AI-powered E2E testing, development and debugging for web apps
 
 Getting started (in the project folder, with the app running):
   1. npx caw-ai init --url http://localhost:5173      sign in with a test account in the window, "Done", save it as a role:
@@ -53,13 +53,11 @@ On the host (in the project folder):`,
     'cli.help.run': `  run <test> [--target <env>]            Run the test by plan, without Claude. On environments where Claude may
                                          work{here}, the chat sits alongside: if a step fails, sort it out there with
                                          Claude
-      [--until <S4>]                     Stop after S4, the window stays open (implies --handover)
       [--overlay [build|dev|<url>]]      Lay local code over the deployed environment: local build or dev server (Sencha:
                                          the watch's server), or the server at <url>; without a value the one configured source.
                                          Only on environments with overlay. Without the option the deployed version always runs
       [--start]                          With --overlay: if the local code server doesn't answer, caw runs overlay.start and
                                          stops it at the end (CI). Without it caw starts nothing and names the command
-      [--handover]                       Keep the Chrome window open after the run and hand it to you
       [--advise]                         On errors or warnings Claude offers advice unasked, costs tokens; only on
                                          environments where Claude may work
       [--no-chat]                        No chat and no Claude, like in CI
@@ -77,7 +75,11 @@ On the host (in the project folder):`,
       [--report junit=<file>]            Also write the result as JUnit XML`,
     'cli.help.record': `  record <test> [--target <env>]         Record a test plan or replace its recording, always with chat; only on environments where
                                          Claude may work{here}
-      [--role <role> --app <app>]        First time only; not needed if the config has just one
+  record <test>@<S4>                     Re-record from S4 to the end: the steps before it replay without Claude, then
+                                         Claude follows the old plan from S4 while you steer in the chat. From S4 on the
+                                         plan may change (add, remove, reorder steps), the steps before it stay. @S1
+                                         records the whole test
+      [--role <role> --app <app>]        First time only, not with @<S4>; not needed if the config has just one
       [--also <app>]                     First time only: the flow leads into another app of the project
       [--read-only]                      First time only: the test doesn't write (mutates: false); if it does, it's
                                          marked as writing
@@ -86,14 +88,15 @@ On the host (in the project folder):`,
       [--overlay [build|dev|<url>]]      as for run, also [--start]
       [--max-steps <n>]                  Limit on Claude's actions, else maxSteps from the config, else 100
       [--step-timeout <seconds>]         Time limit per step in the check run, default 30`,
-    'cli.help.fix': `  fix <test> <S4> [--target <env>]       Change exactly this step, always with chat; only on environments where Claude
-                                         may work{here}
-      [--timeout <minutes>] [--max-steps <n>] [--step-timeout <seconds>] [--agent local|docker|session]
-      [--overlay [build|dev|<url>]] [--start]`,
     'cli.help.open': `  open [--target <env>]                  Open the app signed in, with workbench and chat, without a test: navigate, try
                                          things, develop with Claude. Learns nothing, writes no test file
-      [--role <role>] [--app <app>]      Not needed if the config has just one
+  open <test> [--target <env>]           Replay the whole test first, then the window is yours
+  open <test>@<S4>                       Up to the entry of S4: the steps before it completely, of S4 only its navigation
+                                         (goto, clicks); its inputs and its check stay open. If S4 has no inputs or one of
+                                         its clicks writes, none of it runs or only up to that click
+      [--role <role>] [--app <app>]      Without a test only; not needed if the config has just one
       [--overlay [build|dev|<url>]]      as for run, also [--start]
+      [--step-timeout <seconds>]         Time limit per step while replaying, default 30
       [--agent local|docker|session] [--timeout <minutes>] [--max-steps <n>]`,
     'cli.help.overlay': `  overlay status [--target <env>]        Is the local code server ready (overlay.url)? No browser, starts nothing: ready,
                                          moved (runs on another port), down, wrong-app, stale
@@ -110,12 +113,14 @@ test's only target (for record of a new test the only environment where Claude m
 
 Help on one command: caw-ai <command> --help. Commands for the agent: caw-ai help agent.
 
-Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs recording (record or fix).`,
+Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs recording (record).`,
     'cli.help.agent': `For the agent (sandbox, local, or your session with --agent session), drives the browser:
   task                                   Show the task of the open run
   snapshot                               Page structure with references (e1, e2, ...)
   url                                    Current URL
-  click <target> [--optional]            Target: reference or selector; --optional: skip if absent
+  click <target> [--optional]            Target: reference, locator code or CSS selector; --optional: skip if absent
+  dblclick <target>                      Double-click, e.g. a grid row that opens on double-click
+  upload <target> <file>...              Files from caw/fixtures (fixtures/brief.pdf) into a file field or the chooser its button opens
   fill <target> <text>                   Set a field; a select list: the option with this value or label
   type <target> <text>                   Type character by character
   press <key>                            Press a key, e.g. Enter
@@ -143,9 +148,8 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.synopsis.doctor': 'caw-ai doctor [--agent local|docker|session]',
     'cli.synopsis.auth': 'caw-ai auth <role> --target <env>',
     'cli.synopsis.run': 'caw-ai run <test> [--target <env>]  or  caw-ai run <test> <test> … | --all [--target <env>]',
-    'cli.synopsis.record': 'caw-ai record <test> [--target <env>] [--role <role>] [--app <app>]',
-    'cli.synopsis.fix': 'caw-ai fix <test> <S4> [--target <env>]',
-    'cli.synopsis.open': 'caw-ai open [--target <env>] [--role <role>] [--overlay]',
+    'cli.synopsis.record': 'caw-ai record <test> [--target <env>] [--role <role>] [--app <app>]  or  caw-ai record <test>@<S4> [--target <env>]',
+    'cli.synopsis.open': 'caw-ai open [--target <env>] [--role <role>] [--overlay]  or  caw-ai open <test>[@<S4>] [--target <env>] [--overlay]',
     'cli.synopsis.overlay': 'caw-ai overlay status|check [--target <env>] [--app <app>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
@@ -229,10 +233,10 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.noTests': 'There are no tests in caw/tests yet.',
     'cli.knownSteps': 'Steps: {steps}.',
 
-    // commands.mjs: sandbox, run, record, fix
+    // commands.mjs: sandbox, run, record, open
     'cli.imageBuilding': 'Building the sandbox image (only on the first run and after tool changes) ...',
     'cli.imageBuildFailed': "Couldn't build the sandbox image (exit {code}). Missing registry login for {image}?",
-    'cli.testMissing': 'Test not found: {file}.{suggestion} {known} Record it: {hint}',
+    'cli.testMissing': 'Test not found: {file}. {known} Record it: {hint}',
     'cli.testMissingNear': 'Test not found: {file}. Did you mean {name}? {known} To record a new test of this name: {hint}',
     'cli.targetChosen': 'Target: {target} ({why})',
     'cli.targetWhyTest': 'only target of {test}',
@@ -241,7 +245,6 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.targetWhyTests': 'only target of the tests',
     'cli.noEnvironment': 'no environment',
     'cli.verbRecord': 'Recording',
-    'cli.verbFix': 'Fixing',
     'cli.agentOnly': '{verb} needs environments.{environment}.claude: true (currently only: {environments}).',
     'cli.agentNotInCi': "--agent {agent} doesn't work in CI (variable CI set), there Claude runs in Docker only.",
     'cli.sessionAgent': 'Claude works in your Claude Code session: tell it "take over the caw run". It finds the run via the caw tool (caw-ai mcp) or caw-ai <command>.',
@@ -269,6 +272,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.modeNoChat': 'Mode: no chat (--no-chat). The test file stays unchanged.',
     'cli.modeCi': 'Mode: no chat, because the variable CI is set. The test file stays unchanged.',
     'cli.modeChat': 'Mode: with chat{advice}. The run learns missing baselines in {file} (turn off with --no-learn).',
+    'cli.modeOpen': 'Mode: with chat. open learns nothing; the test file only changes if you adopt something in the chat.',
     'cli.modeChatNoLearn': 'Mode: with chat{advice}, no learning (--no-learn). The test file only changes if you adopt something in the chat.',
     'cli.modeAdvice': ' and advice from Claude (--advise, costs tokens)',
     'cli.changed': 'Changed: {files}',
@@ -294,14 +298,13 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.ciHandover': '{option} hands the browser to a person; in CI (variable CI set) there is none.',
     'cli.ciNeedsHuman': 'caw-ai {command} needs a person in the chat (demonstration, plan, decisions); in CI (variable CI set) there is none.',
     'cli.adviseNeedsChat': "--advise needs the chat; in CI (variable CI set) Claude doesn't advise.",
-    'cli.failedHintAgent': '{step} failed. Find the cause: caw-ai run {test} --target {target} in the terminal, the chat shows the assessment and lets Claude investigate. Only if the app changed on purpose: caw-ai fix {test} {step} --target {target}',
+    'cli.failedHintAgent': '{step} failed. Find the cause: caw-ai run {test} --target {target} in the terminal, the chat shows the assessment and lets Claude investigate. Only if the app changed on purpose, re-record from there: caw-ai record {test}@{step} --target {target}',
     'cli.failedHint': '{step} failed. Find the cause in a run with chat: caw-ai run {test} --target {target}',
     'cli.failedHintNoAgent': '{step} failed. A run with chat finds the cause, on an environment where Claude may work (here: {environments}).',
-    'cli.untilHint': 'Up to just before the failure: caw-ai run {test} --target {target} --until {step}',
+    'cli.untilHint': 'Up to the entry of the step: caw-ai open {test}@{step} --target {target}',
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role, --app, --also and --read-only must match the file or be left out.',
-    'cli.fixStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
-    'cli.fixReplayFirst': 'Replaying up to {step} first. If the step fails, the chat finds the cause instead of re-recording.',
-    'cli.fixPassed': '{step} passes. Claude now records it again.',
+    'cli.recordStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
+    'cli.recordFromReason': 'Re-recording from {step} on was requested',
 
     // doctor.mjs
     'cli.doctorNodeOld': 'Node {version} is too old',
@@ -320,7 +323,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 input rejected, 4 needs rec
     'cli.doctorClaudeMissing': 'Claude Code (claude) is not in PATH',
     'cli.doctorClaudeNext': 'Only for runs with Claude: install Claude Code and sign in once, or agent.sandbox "docker".',
     'cli.doctorDockerOk': 'Docker: {label}',
-    'cli.doctorDockerNext': 'Only needed for record, fix and Claude in the chat: start Docker (Linux containers).',
+    'cli.doctorDockerNext': 'Only needed for record and Claude in the chat: start Docker (Linux containers).',
     'cli.doctorTokenOk': 'Access for Claude in Docker: {name}',
     'cli.doctorTokenMissing': 'No access for Claude in Docker (ANTHROPIC_API_KEY)',
     'cli.doctorTokenNext': 'Only for runs with Claude in Docker: set an API key from the Claude Console as ANTHROPIC_API_KEY. Locally Claude uses your Claude Code login.',

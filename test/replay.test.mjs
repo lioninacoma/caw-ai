@@ -1,22 +1,24 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReplay, createRecorder, failedStep, playReplay, replayVerdict, isPositional, positionalActions, stepLabel, swapToken } from '../src/host/replay.mjs';
-import { targetLabel } from '../src/host/framework/index.mjs';
+import { buildReplay, createRecorder, failedStep, fillTarget, playReplay, replayToEntry, replayVerdict, positionalActions, stepGroups, stepLabel, swapToken } from '../src/host/replay.mjs';
+import { stepHash } from '../src/host/test-file.mjs';
 import { extjs } from '../src/host/framework/extjs.mjs';
 import { classifyFailure, renderReport, stackOrigin } from '../src/shared/report.mjs';
 import { controlsProbe } from '../src/host/effects.mjs';
 
 const runbook = { expectations: [{ id: 'S1', text: 'a' }, { id: 'S2', text: 'b' }] };
-const NEXT_BUTTON = { xtype: 'app_actionButton', text: 'Weiter', part: 'button.x-button-el' };
+const NEXT_BUTTON = "locator('extjs=app_actionButton[text=\"Weiter\"]')";
 
-// A locator whose description the test decides. describeLocator calls locator.evaluate.
-const pageWith = (describe) => ({ locator: (selector) => ({ evaluate: async () => describe(selector) }) });
+// A page whose locators only carry their selector; the test decides which locator code each one records (recordTarget).
+const pageWith = () => ({ locator: (selector) => ({ selector }) });
+const recordWith = (describe) => async (locator) => describe(locator.selector.replace(/^aria-ref=/, ''));
 
 const recorderWith = (describe, handler = async () => 'ok') => createRecorder({
     handler,
-    session: { page: () => pageWith(describe) },
+    session: { page: () => pageWith() },
     base: 'https://portal.example',
+    recordTarget: recordWith(describe),
 });
 
 test('Recorder: references become stable targets, reads and failed attempts stay out', async () => {
@@ -58,28 +60,50 @@ test('Recorder: two wait-ready merge into one with the more specific wait and th
 });
 
 test('Recorder: dates close to the recording day become relative', async () => {
-    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => pageWith(() => NEXT_BUTTON) }, base: 'https://portal.example', now: () => new Date(2026, 10, 7) });
+    const field = "getByRole('textbox', { name: 'Frist 21.11.2026', exact: true })";
+    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => pageWith() }, base: 'https://portal.example', now: () => new Date(2026, 10, 7), recordTarget: recordWith(() => field) });
     await recorder.handler({ action: 'fill', target: 'e1', value: '21.11.2026' });
-    assert.deepEqual(recorder.steps, [{ action: 'fill', target: NEXT_BUTTON, value: '{{today+14}}' }]);
+    assert.deepEqual(recorder.steps, [{ action: 'fill', target: "getByRole('textbox', { name: 'Frist {{today+14}}', exact: true })", value: '{{today+14}}' }]);
 });
 
 test('swapToken: remembered values only as whole tokens and only in inputs, checks, URLs and target texts', () => {
-    const step = { action: 'click', value: '2026', code: "t === 'Nr 2026' && d === '07.11.2026' && k === 'VG-2026' && 'x2026'", url: '/vorgang/2026?a=2026', target: { css: '#v2026', own: 'Vorgang 2026.', inside: { role: 'row', name: '2026 offen' } } };
+    const target = "locator('#v2026').filter({ hasText: '2026 offen' }).getByRole('link', { name: 'Vorgang 2026.', exact: true })";
+    const step = { action: 'click', value: '2026', code: "t === 'Nr 2026' && d === '07.11.2026' && k === 'VG-2026' && 'x2026'", url: '/vorgang/2026?a=2026', target };
     assert.deepEqual(swapToken(step, '2026', '{{nr}}'), {
         action: 'click',
         value: '{{nr}}',
         code: "t === 'Nr {{nr}}' && d === '07.11.2026' && k === 'VG-2026' && 'x2026'",
         url: '/vorgang/{{nr}}?a={{nr}}',
-        target: { css: '#v2026', own: 'Vorgang {{nr}}.', inside: { role: 'row', name: '{{nr}} offen' } },
-    });
+        target: "locator('#v2026').filter({ hasText: '{{nr}} offen' }).getByRole('link', { name: 'Vorgang {{nr}}.', exact: true })",
+    }, 'texts and selectors of the target, only whole tokens: #v2026 stays');
+});
+
+test('swapToken: also in a regular expression of the target, as written there, so the next run fills in its own value', () => {
+    const cell = (text) => `locator('extjs=grid gridrow').locator('extjs=gridcell').filter({ hasText: /^${text}$/ })`;
+    const step = { action: 'dblclick', target: cell('9990001234567890001') };
+    const swapped = swapToken(step, '9990001234567890001', '{{vorgangsnr}}');
+    assert.equal(swapped.target, cell('{{vorgangsnr}}'));
+    assert.equal(fillTarget(swapped.target, () => '9990001234567890002'), cell('9990001234567890002'));
+    // Escaped as the regular expression has it; a longer number or a date with it stays.
+    assert.equal(swapToken({ action: 'click', target: cell('A\\.1 \\(x\\)') }, 'A.1 (x)', '{{nr}}').target, cell('{{nr}}'));
+    assert.equal(swapToken({ action: 'click', target: cell('99900012345678900011') }, '9990001234567890001', '{{nr}}').target, cell('99900012345678900011'));
+    assert.equal(swapToken({ action: 'click', target: cell('07\\.11\\.2026') }, '2026', '{{nr}}').target, cell('07\\.11\\.2026'));
+});
+
+test('fillTarget: placeholders through the string arguments: quotes stay one string, a regular expression gets the value escaped', () => {
+    const lookup = (placeholder) => ({ '{{name}}': "O'Brien (Kunde)", '{{runTag}}': 'CAW-1' })[placeholder];
+    assert.equal(fillTarget("getByRole('row').filter({ hasText: '{{name}} {{runTag}}' }).getByRole('button', { name: /^Öffnen {{name}}$/ })", lookup),
+        "getByRole('row').filter({ hasText: 'O\\'Brien (Kunde) CAW-1' }).getByRole('button', { name: /^Öffnen O'Brien \\(Kunde\\)$/ })");
+    assert.equal(fillTarget("getByText('{{unknown}}')", lookup), "getByText('{{unknown}}')", 'an unknown placeholder stays');
 });
 
 test('Recorder: messages belong to the action before them and are dropped with it', async () => {
     const shown = ['Willkommen'];
     const recorder = createRecorder({
         handler: async () => 'ok',
-        session: { page: () => ({ ...pageWith(() => NEXT_BUTTON), evaluate: async () => ({ messages: [...shown] }) }) },
+        session: { page: () => ({ ...pageWith(), evaluate: async () => ({ messages: [...shown] }) }) },
         base: 'https://portal.example',
+        recordTarget: recordWith(() => NEXT_BUTTON),
     });
     await recorder.handler({ action: 'click', target: 'e1' });
     shown.push('Pflichtfeld fehlt');
@@ -91,23 +115,23 @@ test('Recorder: messages belong to the action before them and are dropped with i
     assert.deepEqual([...recorder.messages], ['Willkommen'], 'the misclick takes its dialog with it');
 });
 
-test('positionalActions: targets chosen only by position or as a later equal match are listed', () => {
+test('positionalActions: targets chosen by position or by a bare tag are listed', () => {
     const spec = { steps: [
-        { id: 'S1', recording: { actions: [{ action: 'click', target: { role: 'button', name: 'Weiter', index: 0 } }] } },
-        { id: 'S2', recording: { actions: [{ action: 'click', target: { xtype: 'button', part: 'button.x-button-el', index: 5 } }] } },
-        { id: 'S3', recording: { actions: [{ action: 'click', target: { role: 'button', name: 'Bearbeiten', index: 2 } }] } },
+        { id: 'S1', recording: { actions: [{ action: 'click', target: "getByRole('button', { name: 'Weiter', exact: true })" }] } },
+        { id: 'S2', recording: { actions: [{ action: 'click', target: "locator('extjs=button').nth(5)" }] } },
+        { id: 'S3', recording: { actions: [{ action: 'click', target: "getByRole('button', { name: 'Bearbeiten' }).nth(2)" }, { action: 'click', target: "locator('div')" }] } },
     ] };
-    assert.equal(isPositional(spec.steps[0].recording.actions[0].target), false, 'the first of several equal ones is a name');
-    assert.equal(isPositional(spec.steps[2].recording.actions[0].target), true, 'the third "Bearbeiten" depends on the order');
-    assert.deepEqual(positionalActions(spec).map((line) => line.split(' ')[0]), ['S2', 'S3']);
+    assert.deepEqual(positionalActions(spec), ['S2 click button [6]', 'S3 click button "Bearbeiten" [3]', 'S3 click div']);
     assert.deepEqual(positionalActions(spec, new Set(['S1'])), []);
 });
 
-test('Recorder: a target that cannot be described is reported, not silently skipped', async () => {
+test('Recorder: a target without a stable locator is reported, not silently skipped', async () => {
     const recorder = recorderWith(() => null);
     await recorder.handler({ action: 'click', target: 'e1' });
+    await recorder.handler({ action: 'click', target: "getByRole('button'" });
     assert.equal(recorder.steps.length, 0);
     assert.match(recorder.problems[0], /e1.*nicht stabil/);
+    assert.match(recorder.problems[1], /nicht stabil/, 'code that does not parse is no stable target either');
 });
 
 test('Recorder: goto becomes portable, denied targets are recorded as such', async () => {
@@ -129,17 +153,27 @@ const fakeClock = () => {
     return { now: () => time, sleep: async (ms) => { time += ms; } };
 };
 
-/** Page with elements that only become clickable after a number of queries. */
+/**
+ * Page with elements that only become clickable after a number of queries. Its main frame answers every locator method with the
+ * same locator; elementHandles() counts the queries. The adapter finds every element reachable.
+ */
 const fakeSession = ({ findAfter = 0, click = async () => {}, ready } = {}) => {
     let polls = 0;
-    const element = { click, fill: async () => {}, type: async () => {} };
-    const page = {
-        evaluateHandle: async () => {
-            polls += 1;
-            return { asElement: () => (polls > findAfter ? element : null), dispose: async () => {} };
+    const element = { click, fill: async () => {}, type: async () => {}, evaluate: async (_fn, argument) => argument?.mode === 'reachable', dispose: async () => {} };
+    const locator = new Proxy({}, {
+        get: (_target, key) => {
+            if (key === 'then') return undefined;
+            if (key === 'elementHandles') {
+                return async () => {
+                    polls += 1;
+                    return polls > findAfter ? [element] : [];
+                };
+            }
+            if (key === 'evaluate') return async () => null;
+            return () => locator;
         },
-        waitForLoadState: async () => {},
-    };
+    });
+    const page = { mainFrame: () => locator, waitForLoadState: async () => {} };
     return { page: () => page, waitReady: ready ?? (async () => ({ settled: true })), polls: () => polls };
 };
 
@@ -504,17 +538,17 @@ test('replayVerdict: an abort after proven points does not end as pass', () => {
 });
 
 test('Recorder: visible messages and the page path are recorded', async () => {
-    const page = { ...pageWith(() => NEXT_BUTTON), url: () => 'https://portal.example/app?x=1#start', evaluate: async () => ({ ...healthy, messages: ['Wirklich abbrechen? Ja Nein'] }) };
-    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => page }, base: 'https://portal.example' });
+    const page = { ...pageWith(), url: () => 'https://portal.example/app?x=1#start', evaluate: async () => ({ ...healthy, messages: ['Wirklich abbrechen? Ja Nein'] }) };
+    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => page }, base: 'https://portal.example', recordTarget: recordWith(() => NEXT_BUTTON) });
     await recorder.handler({ action: 'click', target: 'e1' });
     assert.deepEqual([...recorder.messages], ['Wirklich abbrechen? Ja Nein']);
     assert.equal(recorder.steps[0].path, '/app');
 });
 
-test('Names in messages', () => {
-    assert.equal(targetLabel(NEXT_BUTTON), 'app_actionButton "Weiter"');
-    assert.equal(targetLabel({ part: 'a', own: 'Link' }), 'a "Link"');
+test('Names in messages: the visible format stays click <kind> "<name>"', () => {
     assert.equal(stepLabel({ action: 'click', target: NEXT_BUTTON }), 'click app_actionButton "Weiter"');
+    assert.equal(stepLabel({ action: 'click', target: "getByRole('dialog', { name: 'Neue Akte' }).getByRole('button', { name: 'Speichern', exact: true })", optional: true }), 'click button "Speichern" in dialog "Neue Akte" (optional)');
+    assert.equal(stepLabel({ action: 'download', target: "getByText('Export')", file: '\\.csv$' }), 'download text "Export" /\\.csv$/');
     assert.equal(stepLabel({ action: 'check', id: 'S1', code: 'x' }), 'check S1');
     assert.equal(stepLabel({ action: 'reload' }), 'reload');
 });
@@ -554,8 +588,27 @@ test('Plan change: checks from the first changed step on and of removed steps no
     assert.deepEqual(invalidatedChecks(before, plan([['S1', 'a'], ['S2', 'b'], ['S3', 'c'], ['S4', 'd']]), recorder), [], 'only appended');
     assert.deepEqual(invalidatedChecks(before, plan([['S1', 'a'], ['S2', 'B'], ['S3', 'c']]), recorder), ['S2', 'S3']);
     assert.deepEqual(invalidatedChecks(before, plan([['S1', 'a'], ['S3', 'c']]), recorder), ['S2'], 'S3 stays valid, the actions of S2 now belong to it');
-    recorder.forgetChecks(new Set(['S2', 'S3']));
-    assert.deepEqual(recorder.steps.map(({ action, id }) => (id === undefined ? action : `${action} ${id}`)), ['click', 'check S1', 'click', 'click']);
+    // Only reworded (name, action, note): the recorded actions are what happened, the check proved the same expected result.
+    const reworded = { steps: before.steps.map((step) => (step.id === 'S2' ? { ...step, name: 'Anders', do: 'Button statt Doppelklick', note: 'n' } : step)) };
+    assert.deepEqual(invalidatedChecks(before, reworded, recorder), [], 'rewording keeps the checks');
+    assert.deepEqual(invalidatedChecks(before, plan([['S1', 'a'], ['S3', 'c'], ['S2', 'b']]), recorder), ['S3', 'S2'], 'another order');
+    assert.deepEqual(invalidatedChecks(before, plan([['S1', 'a'], ['S1b', 'x'], ['S2', 'b'], ['S3', 'c']]), recorder), ['S2', 'S3'], 'a step inserted');
+    const shown = () => recorder.steps.map(({ action, id }) => (id === undefined ? action : `${action} ${id}`));
+    const taken = recorder.forgetChecks(new Set(['S2', 'S3']));
+    assert.deepEqual(shown(), ['click', 'check S1', 'click', 'click']);
+    assert.deepEqual(taken.map(({ step }) => step.id), ['S2', 'S3'], 'in their order');
+    // Back to the plan they were checked under: they return behind the actions they followed.
+    assert.deepEqual(recorder.restoreChecks(taken), ['S2', 'S3']);
+    assert.deepEqual(shown(), ['click', 'check S1', 'click', 'check S2', 'click', 'check S3']);
+});
+
+test('Plan change: checkBasis is what a check proved, the expected results up to its step', async () => {
+    const { checkBasis } = await import('../src/host/run.mjs');
+    const plan = (steps) => ({ steps: steps.map(([id, expect, name = id]) => ({ id, name, do: 'x', expect })) });
+    const basis = checkBasis(plan([['S1', 'a'], ['S2', 'b'], ['S3', 'c']]), 'S2');
+    assert.equal(checkBasis(plan([['S1', 'a', 'neu'], ['S2', 'b'], ['S3', 'C']]), 'S2'), basis, 'names and later steps do not count');
+    assert.notEqual(checkBasis(plan([['S1', 'A'], ['S2', 'b']]), 'S2'), basis, 'an earlier expected result counts');
+    assert.equal(checkBasis(plan([['S1', 'a']]), 'S2'), null);
 });
 
 test('Playback: a lost sign-in also appears in the reason of an unmet check and of a hard failure', async () => {
@@ -644,11 +697,10 @@ test('retry: a script error hidden by the new attempt remains as a warning', asy
 });
 
 test('Step list: every recorded action becomes a point of its step, without entered values', async () => {
-    const { stepGroups } = await import('../src/host/replay.mjs');
     const steps = [{ id: 'S1', name: 'Anmelden', expect: 'Startseite offen' }, { id: 'S2', name: 'Akte', expect: 'Akte steht da' }, { id: 'S3', name: 'Noch offen', expect: 'x' }];
     const replay = { steps: [
-        { action: 'fill', target: { label: 'Passwort' }, value: 'geheim' },
-        { action: 'click', target: { role: 'button', text: 'Anmelden' } },
+        { action: 'fill', target: "getByLabel('Passwort')", value: 'geheim' },
+        { action: 'click', target: "getByRole('button', { name: 'Anmelden', exact: true })" },
         { action: 'wait-ready' },
         { action: 'check', id: 'S1' },
         { action: 'press', key: 'Enter' },
@@ -658,6 +710,7 @@ test('Step list: every recorded action becomes a point of its step, without ente
     const groups = stepGroups(steps, replay);
     assert.deepEqual(groups.map(({ id, points }) => [id, points.map(({ id: point }) => point)]), [['S1', ['a1', 'a2', 'a3', 'a4']], ['S2', ['a5', 'a6', 'a7']], ['S3', []]]);
     assert.deepEqual(groups[0].points.map(({ kind, label }) => `${kind} ${label}`), ['Eingabe „Passwort“', 'Klick „Anmelden“', 'Warten Seite ruhig', 'Prüfung Startseite offen']);
+    assert.equal(stepGroups(steps, { steps: [{ action: 'click', target: "getByRole('button').nth(1)" }, { action: 'check', id: 'S1' }] })[0].points[0].label, 'button [2]', 'without a name its kind');
     assert.ok(!JSON.stringify(groups).includes('geheim'), 'no entered value');
     assert.deepEqual(stepGroups(steps, undefined).map(({ points }) => points.length), [0, 0, 0]);
 });
@@ -673,9 +726,9 @@ test('Severity: an error caught by the framework with a stack in the console cou
 });
 
 test('Recording: click --optional is recorded as optional; if the target was missing, nothing is recorded', async () => {
-    const page = { locator: () => ({ evaluate: async () => ({ role: 'button', name: 'Alle akzeptieren' }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
+    const page = { ...pageWith(), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
     let absent = false;
-    const recorder = createRecorder({ handler: async () => (absent ? 'absent' : 'ok'), session: { page: () => page }, base: 'https://p.example' });
+    const recorder = createRecorder({ handler: async () => (absent ? 'absent' : 'ok'), session: { page: () => page }, base: 'https://p.example', recordTarget: recordWith(() => "getByRole('button', { name: 'Alle akzeptieren', exact: true })") });
     await recorder.handler({ action: 'click', target: 'e1', optional: true });
     absent = true;
     await recorder.handler({ action: 'click', target: 'e1', optional: true });
@@ -684,6 +737,20 @@ test('Recording: click --optional is recorded as optional; if the target was mis
     assert.equal(recorder.steps.length, 2);
     assert.equal(recorder.steps[0].optional, true);
     assert.equal(recorder.steps[1].optional, undefined);
+});
+
+test('Recording: the run tag in a regular expression of the target becomes its placeholder, escaped as written there', async () => {
+    const cellOf = (text) => `locator('extjs=grid gridrow').locator('extjs=gridcell').filter({ hasText: /^Anliegen ${text}$/ })`;
+    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => pageWith() }, base: 'https://portal.example', runTag: 'CAW-20261113.1', recordTarget: recordWith(() => cellOf('CAW-20261113\\.1')) });
+    await recorder.handler({ action: 'click', target: 'e1' });
+    assert.equal(recorder.steps[0].target, cellOf('{{runTag}}'));
+});
+
+test('Recording: upload and dblclick are recorded with their target; upload with the files the host checked', async () => {
+    const recorder = recorderWith(() => NEXT_BUTTON, async (command) => (command.action === 'upload' ? { files: ['fixtures/brief.pdf'] } : 'ok'));
+    await recorder.handler({ action: 'upload', target: 'e1', files: ['fixtures/./brief.pdf'] });
+    await recorder.handler({ action: 'dblclick', target: 'e2' });
+    assert.deepEqual(recorder.steps.map(({ action, target, files }) => [action, target, files]), [['upload', NEXT_BUTTON, ['fixtures/brief.pdf']], ['dblclick', NEXT_BUTTON, undefined]]);
 });
 
 test('Check: if evaluation keeps failing until the timeout, the message names the error instead of just "not met"', async () => {
@@ -701,7 +768,7 @@ test('Check: if evaluation keeps failing until the timeout, the message names th
 
 test('Claude at the browser: while developing it may operate on request, while advising and in the conversation after a failure it may only read', async () => {
     const { consultAllowed } = await import('../src/host/run.mjs');
-    for (const action of ['click', 'fill', 'type', 'press', 'goto', 'reload']) {
+    for (const action of ['click', 'dblclick', 'fill', 'type', 'press', 'goto', 'reload']) {
         assert.equal(consultAllowed('develop').has(action), true, action);
         assert.equal(consultAllowed('talk').has(action), false, action);
         assert.equal(consultAllowed('advise').has(action), false, action);
@@ -714,6 +781,89 @@ test('workbench chip: recording shows REC, replaying PLAY, open without steps PA
     const { transportOf } = await import('../src/host/run.mjs');
     assert.equal(transportOf(undefined), 'record', 'record, fix and rerecord replay nothing');
     assert.equal(transportOf({ steps: [{ id: 'S1' }] }), 'play', 'run and check run');
-    assert.equal(transportOf({ steps: [{ id: 'S1' }], until: 'S1' }), 'play', '--until replays first');
+    assert.equal(transportOf({ steps: [{ id: 'S1' }], until: 'S1', entry: { id: 'S2' } }), 'play', 'open with a step replays first');
+    assert.equal(transportOf({ steps: [], entry: { id: 'S1' } }), null, 'at the entry of S1 without navigation nothing runs');
     assert.equal(transportOf({ steps: [] }), null, 'open runs nothing and hands over at once: no chip');
+});
+
+/** A recorded step for replayToEntry: actions as given, recorded after the step before it. */
+const entryStep = (id, actions, { after, effects, name = `Name ${id}` } = {}) => {
+    const plan = { id, name, do: `Do ${id}`, expect: `${id} da` };
+    return { ...plan, recording: { hash: stepHash(plan), ...(after === undefined ? {} : { after }), recordedOn: 'a/dev', recordedAt: `t-${id}`, actions, check: `check${id}()`, ...(effects === undefined ? {} : { effects }) } };
+};
+const CLICK = { action: 'click', target: NEXT_BUTTON };
+const FILL = { action: 'fill', target: "getByLabel('Name')", value: 'x' };
+const entryTest = (...third) => ({ id: 't', steps: [entryStep('S1', [CLICK]), entryStep('S2', [FILL], { after: 'S1' }), entryStep('S3', third, { after: 'S2' })] });
+const shape = (replay) => replay.steps.map(({ action, id, entry }) => `${action}${id === undefined ? '' : ` ${id}`}${entry === undefined ? '' : ` @${entry}`}`);
+
+test('replayToEntry: the steps before completely, then the leading navigation of the step up to its first input', () => {
+    const replay = replayToEntry(entryTest(CLICK, { ...CLICK, optional: true }, FILL, { action: 'click', target: "getByText('Senden')" }), 'S3');
+    assert.equal(replay.until, 'S2');
+    assert.deepEqual(replay.entry, { id: 'S3', name: 'Name S3' });
+    assert.deepEqual(shape(replay), ['click', 'check S1', 'fill', 'check S2', 'click @S3', 'click @S3']);
+    assert.equal(replay.steps.at(-1).optional, true, 'an optional click is navigation too');
+    assert.deepEqual(shape(replayToEntry(entryTest({ action: 'goto', url: '/antrag' }, { action: 'wait-ready' }, FILL), 'S3')).slice(4), ['goto @S3', 'wait-ready @S3']);
+    // Anything else ends the entry: a key, a download, a remembered value.
+    assert.deepEqual(shape(replayToEntry(entryTest({ action: 'press', key: 'Enter' }, CLICK, FILL), 'S3')).slice(4), []);
+    assert.deepEqual(shape(replayToEntry(entryTest(CLICK, { action: 'remember', name: 'nr', code: 'x' }, CLICK, FILL), 'S3')).slice(4), ['click @S3']);
+    // The entry of the first step: nothing before it.
+    const first = replayToEntry({ id: 't', steps: [entryStep('S1', [CLICK, FILL])] }, 'S1');
+    assert.equal(first.until, undefined);
+    assert.deepEqual(shape(first), ['click @S1']);
+    assert.equal(first.recordedOn, 'a/dev');
+    assert.throws(() => replayToEntry(entryTest(FILL), 'S9'), { code: 'step-unknown' });
+});
+
+test('replayToEntry: guards keep a step without inputs, a writing click and a stale step back', () => {
+    // Only a submit click: no input at all, so none of it runs.
+    const submit = replayToEntry(entryTest(CLICK), 'S3');
+    assert.deepEqual([shape(submit).slice(4), submit.entry.skipped], [[], 'inputs']);
+    // The second click wrote in healthy runs: stop before it.
+    const effects = { runs: 2, actions: [{ action: 1, requests: ['GET /api/antrag 200'] }, { action: 2, requests: ['POST /api/antrag 201', 'GET /api/liste 200'] }] };
+    const test3 = { id: 't', steps: [entryStep('S1', [CLICK]), entryStep('S2', [FILL], { after: 'S1' }), entryStep('S3', [CLICK, CLICK, FILL], { after: 'S2', effects })] };
+    const writing = replayToEntry(test3, 'S3');
+    assert.deepEqual([shape(writing).slice(4), writing.entry.skipped], [['click @S3'], 'write']);
+    // Effects learned in another state no longer apply.
+    const outdated = { ...test3, steps: [...test3.steps.slice(0, 2), entryStep('S3', [CLICK, CLICK, FILL], { after: 'S2', effects: { ...effects, basis: 'older' } })] };
+    assert.deepEqual(shape(replayToEntry(outdated, 'S3')).slice(4), ['click @S3', 'click @S3']);
+    // Changed by hand since recording, or never recorded: nothing of it runs.
+    const stale = entryTest(CLICK, FILL);
+    stale.steps[2] = { ...stale.steps[2], do: 'anders' };
+    assert.deepEqual([shape(replayToEntry(stale, 'S3')).slice(4), replayToEntry(stale, 'S3').entry.skipped], [[], 'recording']);
+    const bare = { ...stale.steps[2], recording: undefined };
+    assert.equal(replayToEntry({ ...stale, steps: [...stale.steps.slice(0, 2), bare] }, 'S3').entry.skipped, 'recording');
+});
+
+test('Playback at the entry of a step: its actions belong to it, are neither compared nor learned, and it is not judged', async () => {
+    const effects = { S1: { runs: 2, actions: [{ action: 1, controls: ['+ input "Kategorie" disabled'] }] }, S2: { runs: 2, actions: [{ action: 1, controls: ['+ button "Absenden"'] }] } };
+    const steps = [CLICK, { action: 'check', id: 'S1', code: 'x' }, { ...CLICK, entry: 'S2' }];
+    const session = fakeSession();
+    const page = session.page();
+    let reads = 0;
+    page.evaluate = async (fn) => {
+        if (fn !== controlsProbe) return healthy;
+        reads += 1;
+        return reads > 1 ? ['button "Weiter"', 'input "Kategorie" disabled'] : ['button "Weiter"'];
+    };
+    page.locator = () => ({ ariaSnapshot: async () => '- main' });
+    const clock = fakeClock();
+    const out = await playReplay({
+        replay: { steps, effects },
+        handler: async ({ action }) => (action === 'check' ? { pass: true, value: true } : 'ok'),
+        session: { ...session, page: () => page, trail: { mark: () => 0, since: () => [] } },
+        base: 'https://portal.example',
+        stepTimeoutMs: 1000,
+        sleep: clock.sleep,
+        now: clock.now,
+    });
+    assert.equal(out.broken, null);
+    assert.deepEqual([...out.results.keys()], ['S1'], 'S2 is not judged');
+    assert.deepEqual([...out.effects.keys()], ['S1'], 'the entry click is not measured, so nothing to learn');
+    assert.equal(out.deviations.size, 0);
+    // An entry action that fails names its step, and nothing of it ran before: the page is right before it.
+    const failing = await play([{ action: 'check', id: 'S1', code: 'x' }, { ...CLICK, entry: 'S2' }], fakeSession({ findAfter: Number.POSITIVE_INFINITY }), async ({ action }) => (action === 'check' ? { pass: true, value: true } : 'ok'));
+    assert.deepEqual([failing.broken.step, failing.broken.clean], ['S2', true]);
+    // The step list shows the entry under its step.
+    const groups = stepGroups([{ id: 'S1', name: 'A' }, { id: 'S2', name: 'B' }], { steps });
+    assert.deepEqual(groups.map(({ id, points }) => [id, points.map(({ id: point }) => point)]), [['S1', ['a1', 'a2']], ['S2', ['a3']]]);
 });

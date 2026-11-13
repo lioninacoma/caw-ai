@@ -3,13 +3,13 @@
 
 import { t } from './i18n.mjs';
 import { closest } from './suggest.mjs';
-import { colorEnabled, nightPainter } from './color.mjs';
+import { colorEnabled, themePainter } from './color.mjs';
 import { ravenBanner } from './raven.mjs';
 
 /** The host commands, in help order. */
-export const HOST_COMMANDS = ['skill', 'explore', 'init', 'validate', 'list', 'doctor', 'overlay', 'auth', 'role', 'theme', 'mcp', 'run', 'record', 'fix', 'open'];
+export const HOST_COMMANDS = ['skill', 'explore', 'init', 'validate', 'list', 'doctor', 'overlay', 'auth', 'role', 'theme', 'mcp', 'run', 'record', 'open'];
 /** The agent commands; their help is under caw-ai help agent. */
-export const AGENT_COMMANDS = ['task', 'snapshot', 'url', 'click', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload', 'wait-ready', 'console', 'network', 'plan', 'ask-operator', 'remember', 'chat', 'say', 'recording', 'finish', 'advise'];
+export const AGENT_COMMANDS = ['task', 'snapshot', 'url', 'click', 'dblclick', 'upload', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload', 'wait-ready', 'console', 'network', 'plan', 'ask-operator', 'remember', 'chat', 'say', 'recording', 'finish', 'advise'];
 const OTHER = ['help', '--help', '-h', '--version', '-v'];
 
 /** A command's block; `here` names the environments Claude may work on, if the config knows them. */
@@ -17,8 +17,8 @@ const block = (command, here) => t(`cli.help.${command}`, { here: here === undef
 
 /** The raven as banner of the full help: name and long form sit next to it, replacing the intro's first line. */
 const banner = (intro) => {
-    const paint = nightPainter(colorEnabled());
-    const raven = ravenBanner('caw-ai', { bold: (text) => paint.bold(paint.text(text)), dim: paint.muted, frame: paint.frame, beak: paint.beak, eye: paint.text });
+    const paint = themePainter(colorEnabled());
+    const raven = ravenBanner('caw-ai', { bold: (text) => paint.bold(paint.text(text)), dim: paint.muted, frame: paint.frame, beak: paint.accent, eye: paint.text });
     return [...raven, ...intro.split('\n').slice(1)].join('\n');
 };
 

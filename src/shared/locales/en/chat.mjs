@@ -53,6 +53,7 @@ export default {
     'chat.page.inputLabel': 'Message to Claude',
     'chat.page.placeholder': 'Answer or give Claude an instruction',
     'chat.page.planPlaceholder': 'What should change?',
+    'chat.page.lockedPlaceholder': 'Claude is working in the application. Pause to write.',
     'chat.page.showPlaceholder': 'What should be visible here? → “Add checkpoint” · Enter = note to Claude',
     'chat.page.element': 'Element',
     'chat.page.pickTitle': 'Mark an element in the app',

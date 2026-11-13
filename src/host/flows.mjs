@@ -4,7 +4,7 @@
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE } from '../shared/names.mjs';
-import { cutReplay, positionalActions, replayOf, replayUpToStale, withBaselines, withEffects, withoutEffects } from './replay.mjs';
+import { positionalActions, replayOf, replayToEntry, replayUpToStale, withBaselines, withEffects, withoutEffects } from './replay.mjs';
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { staleSteps } from './test-file.mjs';
 
@@ -63,8 +63,22 @@ const noticeFiles = (files, chat) => {
 /** The changed files of the app, without the caw-ai config and project context. */
 const appFilesOf = (files) => files.filter((file) => file !== CONFIG_FILE && file !== CONTEXT_FILE);
 
-/** What a fix produced, as the check run and the decision need it. */
-const changeOf = ({ id, reason, rerecord, fresh, expectChange }) => ({ id, reason, fresh: fresh ?? [], ...(rerecord ? { rerecord } : {}), ...(expectChange === undefined ? {} : { expectChange }) });
+/**
+ * What a fix produced, as the check run and the decision need it. Re-recorded from a step on, `ids` lists the steps from there
+ * and `removed` those no longer in the plan; `expectChange` lists the steps whose expected result changed.
+ */
+const changeOf = ({ id, reason, rerecord, fresh, expectChange, ids, removed }) => ({
+    id,
+    reason,
+    fresh: fresh ?? [],
+    ...(rerecord ? { rerecord } : {}),
+    ...((expectChange ?? []).length === 0 ? {} : { expectChange }),
+    ...(ids === undefined ? {} : { ids, removed: removed ?? [] }),
+});
+/** The steps a change wrote: one, or all from where re-recording started. */
+const changedIds = (changes) => changes.flatMap(({ id, ids }) => ids ?? [id]);
+/** Each changed expected result in one sentence. */
+const expectTexts = (changes) => changes.flatMap(({ expectChange }) => (expectChange ?? []).map(({ id, before, after }) => t('run.flow.decisionExpect', { id, after, before })));
 
 /**
  * A step fixed in the same browser is built from the test as it was at the start of the run. What the human has adopted
@@ -210,7 +224,12 @@ const forgottenText = (id) => t('run.flow.forgotten', { id, runs: LEARN_RUNS });
 const adoptedText = (current, changes, whole) => {
     if (whole) return t('run.flow.adoptWhole', { count: current.steps.length });
     if (changes.length === 0) return '';
-    return t('run.flow.adoptChanges', { list: changes.map(({ id, reason, rerecord }) => t(rerecord ? 'run.flow.adoptRerecorded' : 'run.flow.adoptFixed', { id, reason: withoutDot(reason) })).join('; ') });
+    return t('run.flow.adoptChanges', {
+        list: changes.map(({ id, ids, removed = [], reason, rerecord }) => {
+            const what = t(rerecord ? 'run.flow.adoptRerecorded' : 'run.flow.adoptFixed', { id: (ids ?? [id]).join(', '), reason: withoutDot(reason) });
+            return removed.length === 0 ? what : `${what}, ${t('run.flow.adoptRemoved', { ids: removed.join(', ') })}`;
+        }).join('; '),
+    });
 };
 
 const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole = false } = {}) => [
@@ -223,10 +242,10 @@ const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole
         return known.length === 0 ? [] : [t('run.flow.decisionKnown', { list: known.join('; ') })];
     })(),
     ...(() => {
-        const positional = positionalActions(current, whole ? undefined : new Set(changes.map(({ id }) => id)));
+        const positional = positionalActions(current, whole ? undefined : new Set(changedIds(changes)));
         return positional.length === 0 ? [] : [t('run.flow.decisionPositional', { list: positional.join(', ') })];
     })(),
-    ...changes.flatMap(({ expectChange }) => (expectChange === undefined ? [] : [t('run.flow.decisionExpect', { id: expectChange.id, after: expectChange.after, before: expectChange.before })])),
+    ...expectTexts(changes),
     ...(staleSteps(current).length === 0 ? [] : [t('run.flow.decisionStale', { ids: staleSteps(current).map(({ id }) => id).join(', ') })]),
     t('run.flow.decisionQuestion'),
 ].join(' ');
@@ -243,14 +262,14 @@ const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole
         title: t('run.flow.decisionTitle'),
         facts: [
             ...(adopted === '' ? [] : [adopted]),
-            ...changes.flatMap(({ expectChange }) => (expectChange === undefined ? [] : [t('run.flow.decisionExpect', { id: expectChange.id, after: expectChange.after, before: expectChange.before })])),
+            ...expectTexts(changes),
             ...(stale.length === 0 ? [] : [t('run.flow.decisionStale', { ids: stale.map(({ id }) => id).join(', ') })]),
         ],
         ...(seen.length === 0 ? {} : { warn: t('run.flow.decisionSeen', { list: [...new Set(seen)].join('; ') }) }),
         details: [
             { title: t('run.flow.decisionWarningsTitle'), items: warnings.map(({ text }) => withoutDot(text)) },
             { title: t('run.flow.decisionKnownTitle'), items: known },
-            { title: t('run.flow.decisionPositionalTitle'), items: positionalActions(current, whole ? undefined : new Set(changes.map(({ id }) => id))) },
+            { title: t('run.flow.decisionPositionalTitle'), items: positionalActions(current, whole ? undefined : new Set(changedIds(changes))) },
         ].filter(({ items }) => items.length > 0),
         question: t('run.flow.decisionQuestion'),
     };
@@ -258,14 +277,14 @@ const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole
 
 const changeNote = (changes) => {
     if (changes.length === 0) return undefined;
-    return changes.map(({ id, reason, rerecord, expectChange }) => `${t(rerecord ? 'run.flow.noteRerecorded' : 'run.flow.noteFixed', { id, reason: withoutDot(reason) })}${expectChange === undefined ? '' : t('run.flow.noteBefore', { before: expectChange.before })}`).join(' ');
+    return changes.map(({ id, ids, reason, rerecord, expectChange = [] }) => `${t(rerecord ? 'run.flow.noteRerecorded' : 'run.flow.noteFixed', { id: (ids ?? [id]).join(', '), reason: withoutDot(reason) })}${expectChange.map(({ id: changed, before }) => t('run.flow.noteBefore', { id: changed, before })).join('')}`).join(' ');
 };
 
 /**
  * Fixes a step and checks the whole test without Claude until it passes or the human stops. If another step fails on the
  * way, the human clarifies it in the chat. Only what was really fixed changes in the file.
  * @param draft        the test, in memory: the file or a recording not adopted yet
- * @param target       { id, reason }; null checks first
+ * @param target       { id, reason, rerecord, from }; with `from` re-recorded from that step to the end; null checks first
  * @param changes      steps already fixed, e.g. in the same browser after a test run
  * @param whole        the whole plan is new and is adopted as a whole
  * @param discardCode  exit code on discard, otherwise that of the check run
@@ -319,14 +338,14 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
     };
     for (;;) {
         if (next !== null) {
-            const { id, reason, rerecord, diagnosis, evidence, agreed, failures } = next;
+            const { id, reason, rerecord, from, diagnosis, evidence, agreed, failures } = next;
             advising = true;
             let offered = null;
             let rechecking = false;
             const repaired = await execute({
                 sandbox: fixer.sandbox(),
                 spec: current,
-                repair: { id, reason, ...(rerecord ? { rerecord } : {}), ...(diagnosis === undefined ? {} : { diagnosis, evidence }), ...(agreed === undefined ? {} : { agreed }), ...(failures === undefined ? {} : { failures }) },
+                repair: { id, reason, ...(rerecord ? { rerecord } : {}), ...(from ? { from } : {}), ...(diagnosis === undefined ? {} : { diagnosis, evidence }), ...(agreed === undefined ? {} : { agreed }), ...(failures === undefined ? {} : { failures }) },
                 conclude: async (concluded) => {
                     const { verdict, candidate, failed, chat, repairAdvice } = concluded;
                     // Next, a run without Claude checks, in a new window.
@@ -379,8 +398,10 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                         return { next: 'claude' };
                     }
                     if (choice === ADOPT.id) {
-                        const only = whole ? undefined : new Set([...changes.map(({ id }) => id), ...advised]);
-                        saved = adopt(current, only, { withNotes: advisedNotes });
+                        const only = whole ? undefined : new Set([...changedIds(changes), ...advised]);
+                        // Re-recorded from a step on: steps no longer in the plan go, the steps before stay as they are.
+                        const prune = changes.some(({ ids }) => ids !== undefined);
+                        saved = adopt(current, only, { withNotes: advisedNotes, ...(prune ? { prune } : {}) });
                         return { outcome: t('run.flow.saved', { file: saved }) };
                     }
                     return { outcome: t('run.flow.discarded') };
@@ -455,13 +476,14 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * fails, the human clarifies it there right away. Docker and tokens only start on their message or click.
  * @param canFix    on dev, with terminal and chat
  * @param advise    --advise: on failures or warnings Claude advises on its own, even in a passed run. Costs tokens
- * @param handover  the human wants the window afterwards
+ * @param handover  the human wants the window afterwards (open)
+ * @param entry     open at the entry of this step: the steps before it, then its leading navigation (replayToEntry)
  * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  */
 export const runFlow = async (options) => {
-    const { spec, until, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, openSandbox, execute, adopt, log, hint } = options;
+    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, openSandbox, execute, adopt, log, hint } = options;
     const fixer = createFixer({ openSandbox });
     let target = null;
     let repaired = null;
@@ -484,8 +506,10 @@ export const runFlow = async (options) => {
     };
     const played = await execute({
         spec,
-        replay: until === undefined ? replayOf(spec) : cutReplay(spec, until),
+        replay: entry === undefined ? replayOf(spec) : replayToEntry(spec, entry),
         handover: () => handover && target === null && repaired === null && !rerun,
+        ...(handover ? { command: 'open' } : {}),
+        learns: fillBaselines,
         ...(canFix ? {
             testing: true,
             /**
@@ -496,13 +520,13 @@ export const runFlow = async (options) => {
              * @param onRefresh  tells the workbench who refreshes (null: locked)
              * @param onReload   after reloading the whole workbench; returns the unsubscribe function
              */
-            develop: async ({ chat, talk, until: state, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState }) => {
+            develop: async ({ chat, talk, until: state, entry: atEntry = false, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState }) => {
                 let talker = null;
                 const at = state === undefined ? t('run.develop.atEnd') : t('run.develop.atState', { state });
                 // open: no steps, so nothing to restore; only refresh and questions.
                 const opened = spec.steps.length === 0;
                 let question = opened ? t('run.develop.opened', { agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens') }) : t('run.develop.intro', {
-                    start: state === undefined ? t('run.develop.runDone') : t('run.develop.stateReady', { state }),
+                    start: state === undefined ? t('run.develop.runDone') : t(atEntry ? 'run.develop.entryReady' : 'run.develop.stateReady', { state }),
                     at,
                     restore: RESTORE.label,
                     agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens'),
@@ -526,23 +550,26 @@ export const runFlow = async (options) => {
                 onRefresh?.(() => attempt(t('run.develop.refresh'), refresh));
                 // Reloading is part of developing (F5, hard reload with empty cache): no warning, the state is your working state.
                 const offReload = onReload?.(() => {});
-                // F1 in the workbench: pick a test (and optionally the step), caw-ai restores the state here once the human confirms
-                // in the chat. The workbench shares its origin with the application, so the pick alone may come from the application
-                // or from Claude's eval; the chat cannot be scripted by either. One question at a time, further picks meanwhile drop.
+                // F1 in the workbench: pick a test (and optionally a step, then at its entry), caw-ai restores the state here once the
+                // human confirms in the chat. The workbench shares its origin with the application, so the pick alone may come from the
+                // application or from Claude's eval; the chat cannot be scripted by either. One question at a time, further picks
+                // meanwhile drop.
                 let confirming = false;
                 onPickState?.(async (test, step, { role, until: last } = {}) => {
                     if (confirming) return;
                     confirming = true;
                     let answer;
                     try {
-                        const about = { test, step: last ?? step ?? t('run.develop.allSteps'), role };
-                        answer = await chat.choose('deciding', t(role ? 'run.develop.confirmRestore' : 'run.develop.confirmRestoreNoRole', about), [RESTORE_PICKED, CANCEL_RESTORE]);
+                        // A picked step: its entry, everything before it done. Without a step the whole test up to its last restorable step.
+                        const about = { test, step: step ?? last ?? t('run.develop.allSteps'), role };
+                        const key = step === undefined ? 'run.develop.confirmRestore' : 'run.develop.confirmEntry';
+                        answer = await chat.choose('deciding', t(role ? key : `${key}NoRole`, about), [RESTORE_PICKED, CANCEL_RESTORE]);
                     } finally {
                         confirming = false;
                     }
                     if (answer !== RESTORE_PICKED.id) return;
                     await serial(async () => {
-                        chat.progress(t('run.develop.restoringOther', { test, step: step ?? t('run.develop.allSteps') }));
+                        chat.progress(step === undefined ? t('run.develop.restoringOther', { test, step: t('run.develop.allSteps') }) : t('run.develop.restoringEntry', { test, step }));
                         await attempt(RESTORE.label, () => restoreTo(test, step));
                     });
                 });

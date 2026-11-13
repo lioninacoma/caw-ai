@@ -11,6 +11,12 @@ e2e/project/tmp/
 e2e/project/caw/.env
 e2e/project/sub/
 e2e/project/caw/recordings/
+# Native fixture site: tests and recordings are written by e2e/native/project.mjs (and by N1, N2, N5) before every run.
+e2e/native/.caw/
+e2e/native/caw/tests/
+e2e/native/caw/recordings/
+e2e/native/ext/.caw/
+e2e/native/ext/caw/
 e2e/.caw-home/
 
 # Framework test projects (e2e/frameworks): dependencies, builds, run data

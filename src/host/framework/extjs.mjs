@@ -101,19 +101,50 @@ export function extjsTargets(element, { mode, target }) {
             .map(([node]) => node);
     };
 
+    // The title of the window or panel around an element, so a human can tell several matches apart.
+    const nearOf = (node) => {
+        for (let current = componentOf(node.parentElement); current !== null; current = componentOf(rootOf(current)?.parentElement ?? null)) {
+            const title = current.getTitle?.();
+            const text = clean(typeof title === 'string' ? title : title?.getText?.() ?? '');
+            if (text !== '') return text.slice(0, 60);
+        }
+        return '';
+    };
+    // Why an element that is there cannot be clicked: invisible, or covered by a floating window such as a message box. null if free.
+    const blockOf = (node) => {
+        const box = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.display === 'none') return { hidden: true };
+        const hit = keepScroll(node, () => {
+            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            const now = node.getBoundingClientRect();
+            return document.elementFromPoint(now.left + now.width / 2, now.top + now.height / 2);
+        });
+        if (hit === null || node.contains(hit) || hit.contains(node)) return null;
+        const layer = hit.closest('.x-messagebox, .x-dialog, .x-sheet, .x-floated, [role=dialog], [role=alertdialog]');
+        if (layer === null) return { covered: { tag: hit.tagName.toLowerCase() } };
+        const title = componentOf(layer)?.getTitle?.();
+        const name = clean(typeof title === 'string' ? title : title?.getText?.() ?? '');
+        const messages = [...layer.querySelectorAll('[role=alert], [role=status], .x-messagebox .x-innerhtml, .x-msgbox-text')]
+            .map((entry) => clean(entry.innerText).slice(0, 200)).filter((text) => text !== '' && text !== name);
+        return { covered: { role: 'dialog', ...(name === '' ? {} : { name }), ...(messages.length === 0 ? {} : { messages: [...new Set(messages)].slice(0, 3) }) } };
+    };
+
+    // Modes for native locators (see `web`): the element is given. ExtJS has no virtual lists to scroll here and no role names.
+    if (mode === 'reachable') return reachable(element, componentOf(element));
+    if (mode === 'blocked') return blockOf(element);
+    if (mode === 'near') {
+        const box = element.getBoundingClientRect();
+        return { x: box.left + box.width / 2 + window.scrollX, y: box.top + box.height / 2 + window.scrollY, near: nearOf(element) };
+    }
+    if (mode === 'names') return [];
+    if (mode === 'scroll') return null;
+
     if (mode === 'find') return matches(target)[target.index ?? 0] ?? null;
 
     // Several matches of a target without `index`: where they are and the title of the window or panel around them.
     if (mode === 'ambiguity') {
         const all = matches(target);
-        const nearOf = (node) => {
-            for (let current = componentOf(node.parentElement); current !== null; current = componentOf(rootOf(current)?.parentElement ?? null)) {
-                const title = current.getTitle?.();
-                const text = clean(typeof title === 'string' ? title : title?.getText?.() ?? '');
-                if (text !== '') return text.slice(0, 60);
-            }
-            return '';
-        };
         return {
             count: all.length,
             candidates: all.slice(0, 3).map((node, index) => {
@@ -128,22 +159,7 @@ export function extjsTargets(element, { mode, target }) {
         const candidates = matches(target, true);
         const node = candidates[target.index ?? 0] ?? candidates[0];
         if (node === undefined) return { missing: true };
-        const box = node.getBoundingClientRect();
-        const style = getComputedStyle(node);
-        if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.display === 'none') return { hidden: true };
-        const hit = keepScroll(node, () => {
-            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-            const now = node.getBoundingClientRect();
-            return document.elementFromPoint(now.left + now.width / 2, now.top + now.height / 2);
-        });
-        if (hit === null || node.contains(hit) || hit.contains(node)) return { elsewhere: false };
-        const layer = hit.closest('.x-messagebox, .x-dialog, .x-sheet, .x-floated, [role=dialog], [role=alertdialog]');
-        if (layer === null) return { covered: { tag: hit.tagName.toLowerCase() } };
-        const title = componentOf(layer)?.getTitle?.();
-        const name = clean(typeof title === 'string' ? title : title?.getText?.() ?? '');
-        const messages = [...layer.querySelectorAll('[role=alert], [role=status], .x-messagebox .x-innerhtml, .x-msgbox-text')]
-            .map((entry) => clean(entry.innerText).slice(0, 200)).filter((text) => text !== '' && text !== name);
-        return { covered: { role: 'dialog', ...(name === '' ? {} : { name }), ...(messages.length === 0 ? {} : { messages: [...new Set(messages)].slice(0, 3) }) } };
+        return blockOf(node) ?? { elsewhere: false };
     }
 
     const component = componentOf(element);

@@ -234,27 +234,32 @@ test('caw_explore: its result shows up in caw_status once written', async (t) =>
 });
 
 test('caw_start: typed fields build the command line, mixing with args and wrong fields are refused', async (t) => {
-    assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', target: 'dev', until: 'S4', overlay: 'dev', headless: true }),
-        ['bestellung', '--target', 'dev', '--until', 'S4', '--overlay=dev', '--headless']);
-    assert.deepEqual(startArgs({ command: 'fix', test: 'bestellung', step: 'S3', overlay: true }), ['bestellung', 'S3', '--overlay']);
+    assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', target: 'dev', overlay: 'dev', headless: true }),
+        ['bestellung', '--target', 'dev', '--overlay=dev', '--headless']);
+    assert.deepEqual(startArgs({ command: 'record', test: 'bestellung', step: 'S3', overlay: true }), ['bestellung@S3', '--overlay']);
+    assert.deepEqual(startArgs({ command: 'record', test: 'bestellung' }), ['bestellung']);
+    assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', target: 'dev' }), ['bestellung@S2', '--target', 'dev']);
+    assert.deepEqual(startArgs({ command: 'open', test: 'bestellung' }), ['bestellung']);
     assert.deepEqual(startArgs({ command: 'open', target: 'dev', overlay: 'http://localhost:1841' }), ['--target', 'dev', '--overlay=http://localhost:1841']);
     assert.deepEqual(startArgs({ command: 'record', args: ['x', '--target', 'local'] }), ['x', '--target', 'local']);
     assert.throws(() => startArgs({ command: 'run', test: 'x', args: ['x'] }), /nicht beides/);
-    assert.throws(() => startArgs({ command: 'record', test: 'x', until: 'S2' }), /until gilt nicht für record/);
-    assert.throws(() => startArgs({ command: 'fix', test: 'x' }), /fix braucht step/);
-    assert.throws(() => startArgs({ command: 'open', test: 'x' }), /test gilt nicht für open/);
+    assert.throws(() => startArgs({ command: 'run', test: 'x', zzz: 'S2' }), /zzz gilt nicht für run/, 'a field no command takes');
+    assert.throws(() => startArgs({ command: 'run', test: 'x', step: 'S2' }), /step gilt nicht für run/);
+    assert.throws(() => startArgs({ command: 'qqqq', test: 'x', step: 'S2' }), /run, record, open/, 'an unknown command');
+    assert.throws(() => startArgs({ command: 'open', step: 'S2' }), /open braucht test/, 'a step needs its test');
+    assert.throws(() => startArgs({ command: 'open', test: 'x', step: '--S2' }), /ungültigen Wert/);
     assert.throws(() => startArgs({ command: 'run', test: 'x', overlay: 'irgendwo' }), /overlay muss/);
     assert.throws(() => startArgs({ command: 'run', test: '--all' }), /ungültigen Wert/);
 
     const root = project(t);
     const { call, spawned } = session(root, { overlayPreconditions: () => ({ state: 'ready' }) });
-    const started = await call('caw_start', { command: 'run', test: 'bestellung', target: 'local', until: 'S2' });
+    const started = await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', target: 'local' });
     assert.equal(started.isError, false);
     assert.equal(started.structuredContent.state, 'started');
-    assert.deepEqual(spawned[0].args.slice(1), ['run', 'bestellung', '--target', 'local', '--until', 'S2', '--agent', 'session']);
+    assert.deepEqual(spawned[0].args.slice(1), ['open', 'bestellung@S2', '--target', 'local', '--agent', 'session']);
     assert.ok(started.content[0].text.startsWith('Gestartet'));
     const meta = JSON.parse(readFileSync(join(root, started.structuredContent.log.replace(/\.log$/, '.log.json')), 'utf8'));
-    assert.equal(meta.command, 'run');
+    assert.equal(meta.command, 'open');
 });
 
 test('caw_start: open is allowed, config problems come back with their code', async (t) => {
@@ -284,6 +289,10 @@ test('caw_start with overlay: a local code server that is not ready returns its 
     assert.deepEqual(result.structuredContent, { state: 'down', url: 'http://localhost:1841/', start: 'pnpm run watch', appDir: 'projects/apps/App', framework: 'extjs' });
     assert.match(result.content[0].text, /Nicht gestartet \(down\).*http:\/\/localhost:1841\/.*projects\/apps\/App: pnpm run watch/);
     assert.deepEqual(asked[0].options, { target: 'local', app: 'web' });
+    // open with a test: the overlay of that test's app; the step does not belong to the test name.
+    await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', target: 'local', overlay: true });
+    assert.deepEqual(asked.at(-1).options, { target: 'local', app: 'web' });
+    asked.pop();
     // Raw args with --overlay are checked as well; without overlay there is no check.
     await call('caw_start', { command: 'record', args: ['bestellung', '--target=local', '--overlay=build'] });
     assert.equal(asked.length, 2);

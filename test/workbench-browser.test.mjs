@@ -14,6 +14,7 @@ import { WORKBENCH_MARK_SCRIPT, interceptDocuments } from '../src/host/app-view.
 import { withoutIntegrity } from '../src/host/local-build.mjs';
 import { CHAT_FRAME, openWorkbench } from '../src/host/workbench.mjs';
 import { readPrefs } from '../src/shared/prefs.mjs';
+import { loadTheme } from '../src/shared/theme-package.mjs';
 import { launchChrome } from './chrome.mjs';
 
 let browser = null;
@@ -176,6 +177,9 @@ test('chat: Esc first clears the field, then only asks to abort, only a second E
     if (browser === null) return t.skip('no Chrome');
     const { bench, aborts } = await open(t);
     const frame = bench.chatFrame();
+    // While Claude works the input is locked; paused, the human writes.
+    await frame.waitForFunction(() => typeof window.setStatus === 'function');
+    await frame.evaluate(() => window.setStatus('paused', 'Pausiert', '', 'Weiter'));
     await frame.fill('#input', 'halb getippt');
     await frame.focus('#input');
     await bench.page.keyboard.press('Escape');
@@ -330,20 +334,44 @@ test('workbench: the pill top right shows only the four chat header labels, with
     }
 });
 
-test('workbench: if Claude fills an application field while the human types in the chat, focus stays in the chat', async (t) => {
+test('workbench: while Claude works the chat input is locked and the application keeps its focus; pausing unlocks it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     const frame = bench.chatFrame();
     await bench.page.waitForSelector('iframe[name="caw-app"]');
     assert.ok(await until(async () => (await bench.view.locator('#feld').count()) === 1), 'application loaded');
-    await frame.waitForSelector('#input');
-    await frame.click('#input');
-    await bench.page.keyboard.type('Hal');
-    // Claude fills in the application, as in a run via keepChatFocus.
-    await bench.view.keepChatFocus(() => bench.view.locator('#feld').fill('Meier'));
-    await bench.page.keyboard.type('lo');
-    assert.equal(await frame.inputValue('#input'), 'Hallo', 'kept typing in the chat');
-    assert.equal(await bench.view.locator('#feld').inputValue(), 'Meier', 'none of it in the form');
+    await frame.waitForFunction(() => typeof window.setStatus === 'function');
+    await frame.evaluate(() => window.setStatus('running', 'Claude arbeitet', '', 'Anhalten'));
+    assert.ok(await until(() => frame.locator('#input').isDisabled()), 'locked while Claude works');
+    // Claude fills in the application: the field keeps the focus, an open list there would stay open.
+    await bench.view.locator('#feld').fill('Meier');
+    assert.equal(await bench.view.locator('#feld').evaluate((node) => node.ownerDocument.activeElement === node), true);
+    await frame.evaluate(() => window.setStatus('paused', 'Pausiert', '', 'Weiter'));
+    assert.ok(await until(async () => !(await frame.locator('#input').isDisabled())), 'unlocked when paused');
+    return undefined;
+});
+
+test('workbench: a theme chosen in the dialog brings its own stylesheet and fonts at once, in workbench and chat, without reloading the app', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const chatFrame = bench.page.frames().find((frame) => frame !== bench.page.mainFrame() && frame.parentFrame() === bench.page.mainFrame() && frame.name() !== 'caw-app');
+    const own = (frame) => frame.evaluate(() => document.querySelector('style[data-caw-theme-css]')?.textContent ?? '');
+    // The app iframe keeps its document: a marker set now must still be there afterwards.
+    const app = bench.page.frame({ name: 'caw-app' }) ?? bench.page.mainFrame().childFrames()[0];
+    await app.evaluate(() => { window.cawStays = true; });
+    try {
+        for (const name of ['kachel', 'nacht']) {
+            const result = await bench.page.evaluate((theme) => window.cawTheme('use', theme), name);
+            assert.equal(result.ok, true, name);
+            const { css } = loadTheme(name);
+            assert.equal(await own(bench.page.mainFrame()), css ?? '', `workbench: ${name}`);
+            assert.equal(await own(chatFrame), css ?? '', `chat: ${name}`);
+            assert.equal(await bench.page.evaluate(() => document.querySelector('style[data-caw-theme-live]')?.textContent.includes(':root{')), true);
+        }
+        assert.equal(await app.evaluate(() => window.cawStays === true), true, 'the app was not reloaded');
+    } finally {
+        await bench.page.evaluate(() => window.cawTheme('use', 'nacht')).catch(() => {});
+    }
     return undefined;
 });
 
@@ -399,6 +427,10 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     assert.equal(await page.isVisible('#stateDlg'), false);
     await page.keyboard.press('F1');
     await page.click('#ssteps .srow >> text=S1');
+    // A picked step means its entry: the steps before it completely, of the step only its navigation.
+    assert.match(await page.textContent('#ssteps .srow[aria-selected=true]'), /S1 {2}Personensuche$/);
+    assert.match(await page.textContent('#sfoot'), /^Spielt sb-antrag-abbrechen bis zum Einstieg in S1 ab: die Schritte davor ganz, von S1 nur die Navigation, ohne Claude\./);
+    assert.match(await page.textContent('#sgo'), /ÖFFNEN/);
     await page.click('#sgo');
     await until(() => picked.length === 2);
     assert.deepEqual(picked[1], ['sb-antrag-abbrechen', 'S1']);

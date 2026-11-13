@@ -72,7 +72,6 @@ const main = async ([command, ...args]) => {
         case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);
         case 'run': return (await host()).run(root, args);
         case 'record': return (await host()).record(root, args);
-        case 'fix': return (await host()).fix(root, args);
         case 'open': return (await host()).open(root, args);
         case 'plan': return (await sandbox()).plan(option(args, '--file'));
         case 'sandbox-run': return (await sandbox()).sandboxRun({ root, runId: option(args, '--run-id'), timeoutMin: Number(option(args, '--timeout')), mode: args.includes('--develop') ? 'develop' : args.includes('--talk') ? 'talk' : args.includes('--advise') ? 'advise' : 'run' });
@@ -104,6 +103,8 @@ const main = async ([command, ...args]) => {
         case 'chat': return (await sandbox()).browserCommand({ action: command }, { timeoutMs: 60 * 60 * 1000 });
         case 'say': return browser({ action: command, text: args[0] });
         case 'click': return browser({ action: command, target: args.find((arg) => !arg.startsWith('--')), ...(args.includes('--optional') ? { optional: true } : {}) });
+        case 'dblclick': return browser({ action: command, target: args[0] });
+        case 'upload': return browser({ action: command, target: args[0], files: args.slice(1) });
         case 'fill':
         case 'type':
             return browser({ action: command, target: args[0], value: args[1] });

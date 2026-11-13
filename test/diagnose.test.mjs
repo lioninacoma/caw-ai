@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { diagnose, paramChange } from '../src/host/diagnose.mjs';
-import { createNetworkLog, neutralName, outcomeText, parameterNames, requestName, summarizeRequests } from '../src/host/network-log.mjs';
+import { createNetworkLog, outcomeText, parameterNames, requestName, summarizeRequests } from '../src/host/network-log.mjs';
 import { missingBaselines, withBaselines } from '../src/host/replay.mjs';
 import { parseTest, renderTest, stepHash } from '../src/host/test-file.mjs';
 import { composeTest } from '../src/host/test-plan.mjs';
@@ -223,7 +223,7 @@ test('baselines: only passed steps without a baseline, recorded on the same targ
 test('test file: recording.network is read and written, the hash stays', () => {
     const step = { id: 'S1', name: 'Load', do: 'Load it', expect: 'There' };
     const network = [{ name: FEES, status: 200, ms: 850, params: ['orderUUID'] }, { name: 'GET /a', status: 200, ms: 30, count: 3, params: [] }];
-    const recording = { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', actions: [], check: 'true', network };
+    const recording = { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: 'true', network };
     const spec = composeTest({ id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'overlay', mutates: false, also: [] }, { steps: [{ ...step, recording }] });
     const text = renderTest(spec);
     assert.match(text, /network:\n\s+- \{name: POST \/o\/proxy connector=HTTP-X-Preise, status: 200, ms: 850, params: \[orderUUID\]\}/);
@@ -288,8 +288,7 @@ test('diagnosis: superseded aborts, ids in the path, persistent connections, int
     // Ids in the path: /1001 at recording time and /1002 now are the same request.
     assert.equal(requestName({ method: 'get', url: 'https://x.example/api/case/1002/parts/3f2b8c1e-1a2b-4c3d-9e8f-001122334455?x=1' }), 'GET /api/case/:id/parts/:id');
     assert.equal(requestName({ method: 'get', url: 'https://x.example/api/order/CAW-20261107120000' }), 'GET /api/order/:id');
-    assert.equal(neutralName('GET /api/case/1001 connector=x'), 'GET /api/case/:id connector=x');
-    const ids = diagnose({ failed: failed(), requests: [{ name: 'GET /api/case/:id', outcome: 'ok', status: 200, ms: 50 }], baseline: [{ name: 'GET /api/case/1001', status: 200, ms: 40 }] });
+    const ids = diagnose({ failed: failed(), requests: [{ name: 'GET /api/case/:id', outcome: 'ok', status: 200, ms: 50 }], baseline: [{ name: 'GET /api/case/:id', status: 200, ms: 40 }] });
     assert.doesNotMatch(ids.findings.join(), /kam bei der Aufnahme/);
     // A missing read is only a note, a missing write a finding.
     const cached = diagnose({ failed: failed(), requests: [], baseline: [{ name: 'GET /api/token', status: 200, ms: 40 }] });

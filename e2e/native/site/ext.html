@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Ext fixture</title>
+<style>
+  body { font-family: sans-serif; margin: 24px; }
+  .x-button { position: relative; display: inline-flex; align-items: center; margin: 8px; padding: 6px 12px; border: 1px solid #888; border-radius: 4px; }
+  /* Like ExtJS Modern: the real <button> lies empty and transparent over the whole component. */
+  .x-button button { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .x-messagebox { position: fixed; inset: 0; background: rgba(0, 0, 0, .4); display: flex; align-items: center; justify-content: center; }
+  .x-messagebox .x-panel-body { background: #fff; padding: 24px; }
+</style>
+</head>
+<body>
+<!-- N10: a fake ExtJS Modern application. Buttons are an empty <button> with the text in a sibling span, every id is generated
+     and differs on each load. GET /api/cover tells whether a message box covers the page. -->
+<p id="status">bereit</p>
+<script>
+(() => {
+  const all = [];
+  let next = 1000 + Math.floor(Math.random() * 9000);
+  const make = (xtype, { text, title, itemId, parent = null, inner = '', onClick } = {}) => {
+    next += 1;
+    const dom = document.createElement('div');
+    dom.id = `ext-${xtype}-${next}`;
+    dom.className = `x-${xtype}`;
+    dom.innerHTML = inner;
+    (parent?.el.dom ?? document.body).append(dom);
+    if (onClick) dom.addEventListener('click', onClick);
+    const component = {
+      xtype, ownerCt: parent, el: { dom }, config: itemId === undefined ? {} : { itemId }, itemId: itemId ?? dom.id, destroyed: false,
+      getText: text === undefined ? undefined : () => text,
+      getTitle: title === undefined ? undefined : () => title,
+      isVisible: () => dom.isConnected && getComputedStyle(dom).display !== 'none',
+    };
+    all.push(component);
+    return component;
+  };
+  const value = (component, name) => {
+    const getter = component[`get${name[0].toUpperCase()}${name.slice(1)}`];
+    return typeof getter === 'function' ? getter() : component[name];
+  };
+  const PART = /[\w.-]+(?:\[\w+=(?:"[^"]*"|'[^']*')\])*/g;
+  const simple = (part) => {
+    const match = /^([\w.-]+)((?:\[\w+=(?:"[^"]*"|'[^']*')\])*)$/.exec(part);
+    if (!match) throw new Error(`Invalid ComponentQuery selector: "${part}"`);
+    const attributes = [...match[2].matchAll(/\[(\w+)=(?:"([^"]*)"|'([^']*)')\]/g)].map(([, name, a, b]) => [name, a ?? b]);
+    return (component) => component.xtype === match[1] && attributes.every(([name, wanted]) => value(component, name) === wanted);
+  };
+  const one = (selector) => {
+    const parts = selector.match(PART) ?? [];
+    if (parts.join(' ') !== selector.replace(/\s+/g, ' ').trim()) throw new Error(`Invalid ComponentQuery selector: "${selector}"`);
+    const tests = parts.map(simple);
+    const under = (component, index) => {
+      for (let parent = component.ownerCt; parent !== null; parent = parent.ownerCt) if (tests[index](parent) && (index === 0 || under(parent, index - 1))) return true;
+      return false;
+    };
+    return all.filter((component) => tests.at(-1)(component) && (tests.length === 1 || under(component, tests.length - 2)));
+  };
+  const query = (selector) => [...new Set(selector.split(',').flatMap((part) => one(part.trim())))];
+  window.Ext = {
+    getCmp: (id) => all.find((component) => component.el.dom.id === id) ?? null,
+    ComponentQuery: { query },
+    Ajax: { isLoading: () => false },
+    data: { StoreManager: { each: () => {}, lookup: () => null } },
+  };
+  const status = (text) => { document.getElementById('status').textContent = text; };
+  const button = (text, options = {}) => make('button', { text, inner: `<button type="button"></button><span>${text}</span>`, ...options });
+  const form = make('formpanel', { title: 'Anliegen' });
+  button('Weiter', { parent: form, onClick: () => status('Weiter geklickt') });
+  button('Abbrechen', { parent: form, itemId: 'abortButton', onClick: () => status('Abgebrochen') });
+  fetch('/api/cover').then((response) => response.json()).then(({ on }) => {
+    if (!on) return;
+    // Without a text: a message box with text is an unexpected message, reported before any click; this one only covers.
+    const box = make('messagebox', { title: 'Hinweis', inner: '<div class="x-panel-body"></div>' });
+    box.el.dom.setAttribute('role', 'dialog');
+  });
+})();
+</script>
+</body>
+</html>

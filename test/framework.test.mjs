@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { DEFAULT_FRAMEWORK, FRAMEWORKS, frameworkOf, targetLabel, waitQuiet } from '../src/host/framework/index.mjs';
+import { DEFAULT_FRAMEWORK, FRAMEWORKS, closestNames, explainText, frameworkOf, waitQuiet } from '../src/host/framework/index.mjs';
 import { FRAMEWORK_NAMES, validateConfig } from '../src/shared/config.mjs';
 
 const fakeClock = () => {
@@ -31,11 +31,13 @@ test('Framework: web is the default, extjs on request, the config knows exactly 
     assert.doesNotMatch(validateConfig({ framework: 'extjs' }).issues.join('\n'), /framework/);
 });
 
-test('Framework: short form for messages, ExtJS and neutral', () => {
-    assert.equal(targetLabel({ xtype: 'app_actionButton', text: 'Weiter' }), 'app_actionButton "Weiter"');
-    assert.equal(targetLabel({ role: 'button', name: 'Senden' }), 'button "Senden"');
-    assert.equal(targetLabel({ testid: 'speichern' }), 'Element "#speichern"');
-    assert.equal(targetLabel({ tag: 'div', own: 'Kachel' }), 'div "Kachel"');
+test('Framework: why a locator found nothing, as a sentence; a renamed name is suggested', () => {
+    assert.deepEqual(closestNames('Speichern', ['Sichern', 'Abbrechen', 'Speichern']), ['Sichern']);
+    assert.deepEqual(closestNames('Akte anlegen', ['Neue Akte anlegen', 'Hilfe']), ['Neue Akte anlegen']);
+    assert.match(explainText({ frameMissing: 'iframe "Zahlung"' }), /iframe "Zahlung"/);
+    assert.match(explainText({ missing: true, similar: [{ role: 'button', name: 'Sichern' }] }), /button „Sichern“/);
+    assert.match(explainText({ covered: { role: 'dialog', name: 'Hinweis', messages: ['Sitzung abgelaufen.'] } }), /„Hinweis“.*„Sitzung abgelaufen\.“/);
+    assert.equal(explainText(null), '');
 });
 
 test('Waiting: quiet only after quietMs in a row, open requests only count with countNetwork', async () => {
@@ -64,13 +66,17 @@ test('Waiting: failed evaluation (navigation) is not quiet, minCount waits for h
     assert.match(never.reason, /500ms/);
 });
 
-test('extjs: identical buttons get their enclosing component, even if the twin is covered, and replay never hits the twin', async () => {
+test('extjs: a button under a sheet is not reachable, the one on the sheet is; a hidden one is explained as hidden', async () => {
     const { extjsTargets } = await import('../src/host/framework/extjs.mjs');
     const node = (id, parent, text = '') => {
         const element = { id, parentElement: parent, tagName: 'DIV', classList: [], innerText: text, visible: true, children: [] };
         element.getBoundingClientRect = () => (element.visible ? { left: 0, top: 0, width: 10, height: 10 } : { left: 0, top: 0, width: 0, height: 0 });
         element.contains = (other) => other === element || element.children.some((child) => child.contains(other));
         element.querySelectorAll = () => [];
+        element.closest = () => null;
+        element.scrollIntoView = () => {};
+        element.scrollTop = 0;
+        element.scrollLeft = 0;
         parent?.children.push(element);
         return element;
     };
@@ -80,31 +86,20 @@ test('extjs: identical buttons get their enclosing component, even if the twin i
     const formButton = node('bf', formEl, 'Speichern');
     const sheetButton = node('bs', sheetEl, 'Speichern');
     const cmp = (xtype, dom, extra) => ({ xtype, el: { dom }, ...extra });
-    const components = {
-        f: cmp('formpanel', formEl, { getLabel: () => 'Antrag' }),
-        s: cmp('sheet', sheetEl, { getLabel: () => 'Preis' }),
-        bf: cmp('button', formButton, { getText: () => 'Speichern' }),
-        bs: cmp('button', sheetButton, { getText: () => 'Speichern' }),
-    };
-    let top = sheetButton;
+    const components = { f: cmp('formpanel', formEl), s: cmp('sheet', sheetEl), bf: cmp('button', formButton), bs: cmp('button', sheetButton) };
     const saved = { window: globalThis.window, document: globalThis.document, getComputedStyle: globalThis.getComputedStyle };
-    globalThis.window = { Ext: { getCmp: (id) => components[id] ?? null, ComponentQuery: { query: (xtype) => Object.values(components).filter((component) => component.xtype === xtype) } } };
-    globalThis.document = { elementFromPoint: () => top };
+    globalThis.window = { Ext: { getCmp: (id) => components[id] ?? null }, scrollX: 0, scrollY: 0, scrollTo: () => {} };
+    globalThis.document = { elementFromPoint: () => sheetButton };
     globalThis.getComputedStyle = () => ({ visibility: 'visible', display: 'block' });
     try {
-        // Recording: the sheet covers the form, only its button is reachable.
-        const target = extjsTargets(sheetButton, { mode: 'describe' });
-        assert.deepEqual(target, { xtype: 'button', text: 'Speichern', inside: { xtype: 'sheet', label: 'Preis' }, own: 'Speichern' });
-        // Replay before the sheet is open: the form button is free but is not hit.
+        // The sheet covers the form: of the two "Speichern" only its own counts, so a locator matching both is not ambiguous.
+        assert.equal(extjsTargets(sheetButton, { mode: 'reachable' }), true);
+        assert.equal(extjsTargets(formButton, { mode: 'reachable' }), false);
+        assert.deepEqual(extjsTargets(formButton, { mode: 'blocked' }), { covered: { tag: 'div' } });
+        assert.equal(extjsTargets(sheetButton, { mode: 'blocked' }), null);
         sheetButton.visible = false;
-        top = formButton;
-        assert.equal(extjsTargets(null, { mode: 'find', target }), null);
-        sheetButton.visible = true;
-        top = sheetButton;
-        assert.equal(extjsTargets(null, { mode: 'find', target }), sheetButton);
-        // Without a twin the description stays short as before.
-        delete components.bf;
-        assert.deepEqual(extjsTargets(sheetButton, { mode: 'describe' }), { xtype: 'button', text: 'Speichern', own: 'Speichern' });
+        assert.deepEqual(extjsTargets(sheetButton, { mode: 'blocked' }), { hidden: true });
+        assert.deepEqual(extjsTargets(null, { mode: 'names', target: { role: 'button' } }), []);
     } finally {
         Object.assign(globalThis, saved);
     }

@@ -141,8 +141,8 @@ test('Diagnosis: SSR, nothing local and scripts from the local asset folder serv
     overlay.served.server.set(`${ENV}/env.js`, 'script');
     assert.deepEqual(overlay.diagnose().mixed, [`${ENV}/assets/legacy-OLD77777.js`], 'env.js in the root folder is not a mixed state');
     const { renderReport } = await import('../src/shared/report.mjs');
-    const report = renderReport({ status: 'pass', testId: 'smoke', target: 'staging', source: 'overlay', overlay: { label: 'dist', local: 3, server: 1, swapped: true } });
-    assert.match(report, /Getesteter Stand: lokaler Code über der Umgebung \(--overlay\)\nOverlay: dist; 3 Datei\(en\) lokal, 1 Skript\(e\)\/Stylesheet\(s\) vom Server; Seite getauscht: ja/);
+    const report = renderReport({ status: 'pass', testId: 'smoke', target: 'staging', testedCode: 'dist über staging', overlay: { label: 'dist', local: 3, server: 1, swapped: true } });
+    assert.match(report, /Getesteter Stand: dist über staging\nOverlay: dist; 3 Datei\(en\) lokal, 1 Skript\(e\)\/Stylesheet\(s\) vom Server; Seite getauscht: ja/);
 });
 
 test('Overlay dev: tags from the dev server HTML, project copies and foreign scripts stay', async (t) => {

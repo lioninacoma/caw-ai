@@ -7,26 +7,28 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { isCaughtScriptError } from '../shared/report.mjs';
-import { CLICK_DELAY_MS, codeText, fillField, locatorFor } from './agent-commands.mjs';
-import { patternLabel, textMatcher } from './patterns.mjs';
+import { CLICK_DELAY_MS, codeText, fillField, leaveForDisabled, locatorFor, setFiles } from './agent-commands.mjs';
+import { textMatcher } from './patterns.mjs';
 import { redactDeep } from './secrets.mjs';
 import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
 import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
-import { ambiguityText, describeElement, describeLocator, explainTarget, explainText, frameworkOf, readPageState, targetLabel, waitForTarget } from './framework/index.mjs';
-import { brokenChain, staleSteps, stepHash, withExpectations } from './test-file.mjs';
+import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
+import { escapeRegex, isPositional, locatorLabel, locatorText, mapStrings, parseLocator, printLocator } from './locator.mjs';
+import { recordLocator } from './record-locator.mjs';
+import { brokenChain, brokenChainAt, staleSteps, stepHash, withExpectations } from './test-file.mjs';
 
-const DESCRIBE_TIMEOUT_MS = 5000;
+const HINT_TIMEOUT_MS = 5000;
 const CHECK_POLL_MS = 250;
 const DEFAULT_RETRY_WAIT_MS = 10_000;
-const TARGETED = new Set(['click', 'fill', 'type', 'upload', 'download']);
+const TARGETED = new Set(['click', 'dblclick', 'fill', 'type', 'upload', 'download']);
 // How long a repeated click may wait for its target before a dialog on top makes it skip.
 const REPEAT_CLICK_MS = 1500;
 // How long an optional click (e.g. a cookie banner) waits for its target; if it does not appear, the click is dropped.
 const OPTIONAL_CLICK_MS = 3000;
-const CHANGES_PAGE = new Set(['click', 'press', 'goto', 'reload']);
-const EFFECT_ACTIONS = new Set(['click', 'fill', 'type', 'press', 'upload', 'download']);
+const CHANGES_PAGE = new Set(['click', 'dblclick', 'press', 'goto', 'reload']);
+const EFFECT_ACTIONS = new Set(['click', 'dblclick', 'fill', 'type', 'press', 'upload', 'download']);
 // How much of a message goes into reasons and reports. Comparisons always use the full text.
 const MESSAGE_SHOWN = 300;
 const EFFECT_SETTLE_MS = 5000;
@@ -72,29 +74,44 @@ export const fillRun = (value, runTag) => swapText(swapText(value, RUN_TAG_PLACE
 
 // `path`: the page an action ran on. With a remembered id in it (/todos/1045) the next run is on another page (/todos/1046).
 const TOKEN_FIELDS = ['value', 'code', 'url', 'path'];
-const TARGET_FIELDS = ['own', 'text', 'label', 'name'];
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Replaces a remembered value with its placeholder, only as a whole token and only in inputs, checks, URLs and the visible
- * texts of a target. A number 2026 thus matches neither the date 07.11.2026 nor VG-2026 nor a selector.
+ * The locator code with fn applied to each of its string arguments (see mapStrings), printed again. Placeholders in a target are
+ * always filled this way, never by replacing text in the code: a value with a quote (O'Brien) stays one string, a value in a
+ * regular expression is escaped.
+ */
+export const mapTarget = (code, fn) => printLocator(mapStrings(parseLocator(code), fn));
+
+/** The value as a whole token: a number 2026 matches neither the date 07.11.2026 nor VG-2026 nor #v2026. */
+const tokenPattern = (value) => new RegExp(`(?<![\\p{L}\\p{N}._\\\\-])${escapeRegExp(value)}(?![\\p{L}\\p{N}_-]|\\\\?\\.[\\p{L}\\p{N}])`, 'gu');
+
+/**
+ * Replaces a remembered value with its placeholder, only as a whole token and only in inputs, checks, URLs and the target's
+ * texts, selectors and regular expressions (an iframe with an order number in its title needs the new one on the next run; a
+ * grid cell found by its exact text /^4711$/ too). In a regular expression the value is matched as written there, escaped;
+ * replay fills it in escaped again (fillTarget).
  */
 export const swapToken = (step, value, placeholder) => {
-    const pattern = new RegExp(`(?<![\\p{L}\\p{N}._-])${escapeRegExp(value)}(?![\\p{L}\\p{N}_-]|\\.[\\p{L}\\p{N}])`, 'gu');
-    const swap = (text) => (typeof text === 'string' ? text.replace(pattern, () => placeholder) : text);
+    const plain = tokenPattern(value);
+    const escaped = tokenPattern(escapeRegex(value));
+    const swap = (text, pattern = plain) => (typeof text === 'string' ? text.replace(pattern, () => placeholder) : text);
     const next = { ...step };
     for (const key of TOKEN_FIELDS) if (key in next) next[key] = swap(next[key]);
-    // Also the enclosing iframe: a frame with an order number in its title needs the new one on the next run.
-    const swapTarget = (given) => {
-        const target = { ...given };
-        for (const key of TARGET_FIELDS) if (key in target) target[key] = swap(target[key]);
-        if (typeof target.inside?.name === 'string') target.inside = { ...target.inside, name: swap(target.inside.name) };
-        if (target.frame !== null && typeof target.frame === 'object') target.frame = swapTarget(target.frame);
-        return target;
-    };
-    if (next.target !== null && typeof next.target === 'object') next.target = swapTarget(next.target);
+    if (typeof next.target === 'string') next.target = mapTarget(next.target, (text, kind) => swap(text, kind === 'regex' ? escaped : plain));
     return next;
 };
+
+const ANY_PLACEHOLDER = /\{\{[A-Za-z][A-Za-z0-9]*(?:[+-]\d{1,3})?\}\}/g;
+
+/**
+ * Fills the placeholders of a target: `lookup(placeholder)` returns the value, or undefined to leave it as it is. In a regular
+ * expression the value is escaped.
+ */
+export const fillTarget = (code, lookup) => mapTarget(code, (text, _kind, escape) => text.replace(ANY_PLACEHOLDER, (found) => {
+    const value = lookup(found);
+    return value === undefined ? found : escape(value);
+}));
 
 /**
  * Is the page the recorded one? A placeholder segment ({{orderId}}, {{runTagLower}}, {{today}}) stands for any value: the
@@ -113,26 +130,12 @@ const relativeUrl = (url, base) => {
     return parsed.origin === new URL(base).origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
 };
 
-/** With `page` also inside iframes: if the element is in a frame of the app, the target carries `frame`. */
-export const describeSafely = async (locator, framework = frameworkOf(), page = undefined) => {
-    try {
-        if (typeof page?.mainFrame !== 'function' || typeof locator.elementHandle !== 'function') return await describeLocator(framework, locator, { timeout: DESCRIBE_TIMEOUT_MS });
-        const element = await locator.elementHandle({ timeout: DESCRIBE_TIMEOUT_MS });
-        try {
-            return await describeElement(framework, page, element, { timeout: DESCRIBE_TIMEOUT_MS });
-        } finally {
-            await element.dispose().catch(() => {});
-        }
-    } catch {
-        return null;
-    }
-};
-
 /**
  * Records what actually moved the run forward: successful steps, no failed attempts and nothing read-only. The target is
  * resolved before the action, because afterwards the element is often gone.
+ * @param recordTarget (locator, framework) => the locator code to record, or null; recordLocator on the application's main frame
  */
-export const createRecorder = ({ handler, session, base, authMarker, runTag, remembered = new Map(), now = () => new Date() }) => {
+export const createRecorder = ({ handler, session, base, authMarker, runTag, remembered = new Map(), now = () => new Date(), recordTarget = (locator, framework) => recordLocator(session.page().mainFrame(), locator, { framework: framework.name }) }) => {
     const steps = [];
     const problems = [];
     // Messages belong to the action after which they were visible and are dropped with it. Otherwise e.g. a validation dialog
@@ -157,8 +160,20 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
     // would fail the next day.
     const add = (step) => {
         const named = [...placeholders].sort(([a], [b]) => b.length - a.length).reduce((current, [value, placeholder]) => swapToken(current, value, placeholder), step);
-        const tagged = runTag === undefined ? named : tagRun(named, runTag);
-        keep(markDates(tagged, now()));
+        const { target, ...rest } = named;
+        const today = now();
+        const marked = markDates(runTag === undefined ? rest : tagRun(rest, runTag), today);
+        if (target === undefined) {
+            keep(marked);
+            return;
+        }
+        // The target only through its string arguments: the run tag in names, texts and selectors, dates near today too.
+        // In a regular expression the run tag as written there, escaped; dates there stay as they are.
+        const markedTarget = mapTarget(target, (text, kind) => {
+            if (kind === 'regex') return runTag === undefined ? text : swapText(swapText(text, escapeRegex(runTag), RUN_TAG_PLACEHOLDER), escapeRegex(runTag.toLowerCase()), RUN_TAG_LOWER_PLACEHOLDER);
+            return markDates(runTag === undefined ? text : tagRun(text, runTag), today);
+        });
+        keep({ action: marked.action, target: markedTarget, ...marked });
     };
     const currentPath = () => {
         try {
@@ -179,14 +194,35 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
         addSteps: (shown) => shown.forEach(add),
         /** The numbered list from which the agent names its detours. */
         list: () => steps.map((step, index) => `${index + 1} ${stepLabel(step)}`),
-        /** Forgets the checks of these steps; their actions then belong to the next check. */
+        /**
+         * Forgets the checks of these steps; their actions then belong to the next check.
+         * @returns what restoreChecks needs to put them back, in their order: [{ step, anchor (the step before it or null), seen }]
+         */
         forgetChecks: (ids) => {
+            const taken = [];
             for (let index = steps.length - 1; index >= 0; index -= 1) {
                 if (steps[index].action !== 'check' || !ids.has(steps[index].id)) continue;
-                steps.splice(index, 1);
+                const [step] = steps.splice(index, 1);
                 const [seen] = seenAfter.splice(index, 1);
                 for (const message of seen) (index === 0 ? initial : seenAfter[index - 1]).add(message);
+                taken.unshift({ step, anchor: index === 0 ? null : steps[index - 1], seen: [...seen] });
             }
+            return taken;
+        },
+        /**
+         * Puts forgotten checks back behind the step they followed, in order, as long as that step is still there (an omit may
+         * have dropped it). @returns the ids put back
+         */
+        restoreChecks: (entries) => {
+            const restored = [];
+            for (const { step, anchor, seen } of entries) {
+                const at = anchor === null ? 0 : steps.indexOf(anchor) + 1;
+                if (anchor !== null && at === 0) break;
+                steps.splice(at, 0, step);
+                seenAfter.splice(at, 0, new Set(seen));
+                restored.push(step.id);
+            }
+            return restored;
         },
         /** Drops steps. Afterwards two wait-ready may follow each other; one is enough. */
         drop: (numbers) => {
@@ -203,9 +239,24 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
             const state = await readPageState(session.framework ?? frameworkOf(), session.page(), authMarker, session.messageSelectors).catch(() => null);
             // Status notes too: a banner that is always there should not warn as new on every run.
             for (const message of [...(state?.messages ?? []), ...(state?.notes ?? [])]) (steps.length === 0 ? initial : seenAfter.at(-1)).add(message);
-            const target = TARGETED.has(command?.action) && typeof command.target === 'string'
-                ? await describeSafely(locatorFor(session.page(), command.target), session.framework, session.page())
-                : undefined;
+            const framework = session.framework ?? frameworkOf();
+            let target;
+            let hint = null;
+            if (TARGETED.has(command?.action) && typeof command.target === 'string') {
+                let locator = null;
+                try {
+                    locator = locatorFor(session.page(), command.target);
+                } catch {
+                    locator = null;
+                }
+                // Before the action: afterwards the element is often gone.
+                target = locator === null ? null : await recordTarget(locator, framework);
+                if (target !== null && framework.hint !== undefined) {
+                    const element = await locator.elementHandle({ timeout: HINT_TIMEOUT_MS }).catch(() => null);
+                    if (element !== null) hint = await elementHint(framework, element);
+                    await element?.dispose().catch(() => {});
+                }
+            }
             const path = currentPath();
             let value;
             try {
@@ -216,12 +267,17 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
             }
             switch (command.action) {
                 case 'click':
+                case 'dblclick':
                 case 'fill':
                 case 'type':
                     // An optional click without a target did nothing: nothing to record.
                     if (value === 'absent') break;
                     if (target === null) problems.push(t('session.replay.unstableTarget', { action: command.action, target: command.target }));
-                    else add({ action: command.action, target, ...path, ...(command.value === undefined ? {} : { value: command.value }), ...(command.action === 'click' && command.optional === true ? { optional: true } : {}) });
+                    else add({ action: command.action, target, ...(hint ?? {}), ...path, ...(command.value === undefined ? {} : { value: command.value }), ...(command.action === 'click' && command.optional === true ? { optional: true } : {}) });
+                    break;
+                case 'upload':
+                    if (target === null) problems.push(t('session.replay.unstableTarget', { action: command.action, target: command.target }));
+                    else add({ action: 'upload', target, ...(hint ?? {}), ...path, files: value.files });
                     break;
                 case 'press': add({ action: 'press', key: command.key }); break;
                 case 'goto': add({ action: 'goto', url: relativeUrl(command.url, base) }); break;
@@ -336,10 +392,12 @@ export const missingRemembered = (spec) => {
  * Only a passed run that proves every step itself becomes repeatable.
  * @param spec   the approved plan
  * @param draft  when fixing, the whole test in which exactly this one step is replaced
+ * @param from   with `draft`: re-recorded from this step on. The steps before it stay as they are, `spec` replaces all steps
+ *               from it to the end (added, removed, reordered)
  * @param browser { locale, timezone } of the recording browser, stored with every step
  * @returns { problems, candidate, fresh }; `fresh` lists messages the recording did not know so far
  */
-export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, browser = {}, now = new Date() }) => {
+export const buildReplay = ({ recorder, outcome, spec, target, draft, from, previous, browser = {}, now = new Date() }) => {
     const problems = [...recorder.problems];
     // All steps proven, only a hard failure on the way, e.g. in a dropped failed attempt: the check run without Claude settles that.
     const onlyHardFailures = outcome?.status === 'fail' && outcome.failures?.length > 0 && outcome.results.every(({ status }) => status === 'pass');
@@ -352,7 +410,9 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, 
     if (strays.length > 0) problems.push(t('session.replay.strays', { ids: strays.join(', ') }));
     if (problems.length > 0) return { problems };
 
-    const order = (draft ?? spec).steps.map(({ id }) => id);
+    // Re-recorded from a step on: the steps before it are kept, recordings, baselines and effects included.
+    const kept = draft !== undefined && from !== undefined ? draft.steps.slice(0, Math.max(0, draft.steps.findIndex(({ id }) => id === from))) : undefined;
+    const order = (kept === undefined ? (draft ?? spec).steps : [...kept, ...spec.steps]).map(({ id }) => id);
     // Manual settings survive fixing (draft) as well as re-recording an existing test (previous): Claude does not know them.
     const prior = draft ?? previous;
     // A value manually marked secret stays secret, even if Claude re-records the step.
@@ -389,7 +449,7 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, 
     const texts = given.filter((entry) => typeof entry === 'string');
     const candidate = withExpectations({
         ...(draft ?? spec),
-        steps: draft === undefined ? recorded : draft.steps.map((step) => recorded.find(({ id }) => id === step.id) ?? step),
+        steps: kept !== undefined ? [...kept, ...recorded] : draft === undefined ? recorded : draft.steps.map((step) => recorded.find(({ id }) => id === step.id) ?? step),
         knownMessages: [...[...new Set([...texts, ...fresh])].sort(), ...given.filter((entry) => typeof entry !== 'string')],
     });
     const lost = missingRemembered(candidate);
@@ -397,15 +457,20 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, previous, 
 };
 
 /**
- * A target chosen by position: only by it, or as the second or later of several equal matches. With one more match or a
- * different order it hits another element, and a generic check still passes.
+ * A target chosen by position (nth, first, last, or a bare tag name): with one more match or a different order it hits another
+ * element, and a generic check still passes.
  */
-const POSITION_FREE = ['text', 'label', 'own', 'name', 'testid', 'inside', 'id', 'itemId', 'reference'];
-export const isPositional = (target) => target?.index !== undefined && (target.index > 0 || POSITION_FREE.every((key) => target[key] === undefined));
+const positional = (target) => {
+    try {
+        return typeof target === 'string' && isPositional(target);
+    } catch {
+        return false;
+    }
+};
 
-/** Actions of the given steps whose target is chosen only by position, e.g. ['S2 click button']. */
+/** Actions of the given steps whose target is chosen by position, e.g. ['S2 click button [2]']. */
 export const positionalActions = (spec, ids) => spec.steps.filter(({ id }) => ids === undefined || ids.has(id)).flatMap(({ id, recording }) => (recording?.actions ?? [])
-    .filter(({ target }) => isPositional(target)).map((action) => `${id} ${stepLabel(action)}`));
+    .filter(({ target }) => positional(target)).map((action) => `${id} ${stepLabel(action)}`));
 
 /** Checks before a browser opens: anything stale names the command that fixes it. */
 export const assertPlayable = (spec, target, until) => {
@@ -415,7 +480,7 @@ export const assertPlayable = (spec, target, until) => {
     const end = until === undefined ? spec.steps.length : spec.steps.findIndex(({ id }) => id === until) + 1;
     const reached = { ...spec, steps: spec.steps.slice(0, end) };
     const chain = brokenChain(reached);
-    if (chain !== null) throw new CawError('replay-stale', t('session.replay.chainStale', { chain, id: spec.id, target }));
+    if (chain !== null) throw new CawError('replay-stale', t('session.replay.chainStale', { chain, id: spec.id, step: brokenChainAt(reached).id, target }));
     const [stale] = staleSteps(reached);
     if (stale !== undefined) throw new CawError('replay-stale', t('session.replay.stepStale', { step: stale.id, why: stale.why, id: spec.id, target }));
 };
@@ -437,19 +502,13 @@ const withBasis = (spec, step, effects) => {
 };
 
 /**
- * Language and time zone the steps were recorded in, from the newest step that stores them; {} for recordings from before that.
- * The browser of a replay gets them, so dates and numbers look as they did while recording.
+ * Language and time zone the steps were recorded in, from the newest recorded step; {} while nothing is recorded. The browser of
+ * a replay gets them, so dates and numbers look as they did while recording.
  */
 export const recordedBrowser = (steps) => {
     const recording = steps.map((step) => step.recording).filter((entry) => entry?.locale !== undefined || entry?.timezone !== undefined).at(-1);
     return recording === undefined ? {} : { ...(recording.locale === undefined ? {} : { locale: recording.locale }), ...(recording.timezone === undefined ? {} : { timezone: recording.timezone }) };
 };
-
-/**
- * Recordings that store the language also store `index` for every target several elements matched. A target without index there
- * must be unique on replay (`unique`); older recordings keep taking the first match.
- */
-const markUnique = (recording) => recording.actions.map((action) => (recording.locale !== undefined && TARGETED.has(action.action) && action.target?.index === undefined ? { ...action, unique: true } : action));
 
 const flatten = (spec, steps, until) => ({
     test: spec.id,
@@ -463,7 +522,7 @@ const flatten = (spec, steps, until) => ({
     // Effects per action from healthy runs: they show the first action after which the app behaves differently.
     effects: Object.fromEntries(steps.filter((step) => currentEffects(spec, step) !== undefined).map((step) => [step.id, currentEffects(spec, step)])),
     steps: steps.flatMap(({ id, recording }) => [
-        ...markUnique(recording),
+        ...recording.actions,
         { action: 'check', id, code: recording.check, ...(recording.timeoutMs === undefined ? {} : { timeoutMs: recording.timeoutMs }) },
     ]),
 });
@@ -487,6 +546,56 @@ export const replayBefore = (spec, id) => {
     return flatten(spec, spec.steps.slice(0, end));
 };
 
+// The actions that only lead into a step; the first other action (an input, a key, a download, remember, a check) starts its work.
+const ENTRY_ACTIONS = new Set(['goto', 'click', 'dblclick', 'wait-ready']);
+const INPUT_ACTIONS = new Set(['fill', 'type', 'upload']);
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+/** Did the action send a write request in healthy runs? Learned effects name requests as `METHOD path status`. */
+const writesIn = (effect) => (effect?.requests ?? []).some((line) => !READ_METHODS.has(String(line).split(' ')[0].toUpperCase()));
+
+/**
+ * At the entry of a step: all steps before it completely, with their checks, then the step's leading navigation (goto, click,
+ * wait-ready) up to its first other action. Its inputs, its check and everything after it stay open. The entry actions are
+ * marked with `entry` (the step's id): playback attributes them to that step but neither compares nor learns their effects.
+ * Guards, in `entry.skipped`: `inputs` (the step has no input at all, e.g. only a submit click: nothing of it runs), `write` (stops
+ * before an entry click whose learned effects write) and `recording` (the step is not recorded or stale: nothing of it runs).
+ * `until` is the last step played completely, if any.
+ */
+export const replayToEntry = (spec, id) => {
+    const end = spec.steps.findIndex((step) => step.id === id);
+    if (end === -1) throw new CawError('step-unknown', t('session.replay.stepUnknown', { id: spec.id, until: id }));
+    const step = spec.steps[end];
+    const before = flatten(spec, spec.steps.slice(0, end), spec.steps[end - 1]?.id);
+    const entry = { id, name: String(step.name ?? '') };
+    const actions = [];
+    let usable = step.recording !== undefined;
+    try {
+        if (usable) assertPlayable(spec, spec.steps[0]?.recording?.recordedOn, id);
+    } catch {
+        usable = false;
+    }
+    if (!usable) entry.skipped = 'recording';
+    else if (!step.recording.actions.some(({ action }) => INPUT_ACTIONS.has(action))) entry.skipped = 'inputs';
+    else {
+        const effects = currentEffects(spec, step);
+        for (const [index, action] of step.recording.actions.entries()) {
+            if (!ENTRY_ACTIONS.has(action.action)) break;
+            if ((action.action === 'click' || action.action === 'dblclick') && writesIn(effects?.actions?.find((effect) => effect.action === index + 1))) {
+                entry.skipped = 'write';
+                break;
+            }
+            actions.push({ ...action, entry: id });
+        }
+    }
+    return {
+        ...before,
+        recordedOn: before.recordedOn ?? step.recording?.recordedOn,
+        browser: recordedBrowser(spec.steps.slice(0, actions.length > 0 ? end + 1 : end)),
+        entry,
+        steps: [...before.steps, ...actions],
+    };
+};
+
 /** The check run: up to the first step that is still stale. That one gets fixed next anyway. */
 export const replayUpToStale = (spec) => {
     const [stale] = staleSteps(spec);
@@ -497,11 +606,12 @@ export const replayUpToStale = (spec) => {
 
 export const stepLabel = (step) => {
     switch (step.action) {
-        case 'click': return `click ${targetLabel(step.target)}${step.optional === true ? ' (optional)' : ''}`;
+        case 'click': return `click ${locatorLabel(step.target)}${step.optional === true ? ' (optional)' : ''}`;
+        case 'dblclick':
         case 'fill':
-        case 'type': return `${step.action} ${targetLabel(step.target)}`;
-        case 'upload': return `upload ${targetLabel(step.target)} ${step.files.join(', ')}`;
-        case 'download': return `download ${targetLabel(step.target)} /${step.file}/`;
+        case 'type': return `${step.action} ${locatorLabel(step.target)}`;
+        case 'upload': return `upload ${locatorLabel(step.target)} ${step.files.join(', ')}`;
+        case 'download': return `download ${locatorLabel(step.target)} /${step.file}/`;
         case 'press': return `press ${step.key}`;
         case 'goto': return `goto ${step.url}`;
         case 'screenshot': return `screenshot ${step.name}`;
@@ -511,10 +621,10 @@ export const stepLabel = (step) => {
     }
 };
 
-/** How the workbench names an element: its text in quotes, otherwise role or tag. */
-const shownTarget = (target = {}) => {
-    const shown = target.text ?? target.label ?? target.name ?? target.own;
-    return shown === undefined ? targetLabel(target) : t('session.point.quoted', { text: patternLabel(shown) });
+/** How the workbench names an element: its text in quotes, otherwise its kind, e.g. button [2]. */
+const shownTarget = (target) => {
+    const shown = locatorText(target);
+    return shown === undefined ? locatorLabel(target) : t('session.point.quoted', { text: shown });
 };
 
 /**
@@ -526,6 +636,7 @@ const shownTarget = (target = {}) => {
 export const stepPoint = (step, expects = new Map()) => {
     switch (step.action) {
         case 'click': return { kind: t('session.point.click'), label: shownTarget(step.target) };
+        case 'dblclick': return { kind: t('session.point.dblclick'), label: shownTarget(step.target) };
         case 'fill':
         case 'type': return { kind: t('session.point.type'), label: shownTarget(step.target) };
         case 'upload': return { kind: t('session.point.upload'), label: shownTarget(step.target) };
@@ -550,8 +661,9 @@ export const stepGroups = (steps, replay) => {
     const points = new Map(steps.map(({ id }) => [id, []]));
     let owner = null;
     (replay?.steps ?? []).forEach((step, index) => {
-        // As on playback: an action belongs to the next check; what comes after the last one belongs to the last.
-        owner = replay.steps.slice(index).find(({ action }) => action === 'check')?.id ?? owner;
+        // As on playback: an action belongs to the next check; what comes after the last one belongs to the last, the entry of a
+        // step (replayToEntry) to that step.
+        owner = step.entry ?? replay.steps.slice(index).find(({ action }) => action === 'check')?.id ?? owner;
         points.get(owner)?.push({ id: `a${index + 1}`, ...stepPoint(step, expects) });
     });
     return steps.map(({ id, name }) => ({ id, name, points: points.get(id) ?? [] }));
@@ -641,8 +753,6 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     // Steps whose wait for a quiet page ran out: the report says so once per step instead of every action silently waiting.
     const unsettled = new Set();
     let activeOwner;
-    // Ambiguous targets of older recordings, each warned about once.
-    const guessed = new Set();
     const settle = async (timeoutMs) => {
         await session.page().waitForLoadState('load', { timeout: timeoutMs }).catch(() => {});
         const ready = await session.waitReady({ timeout: timeoutMs }).catch(() => null);
@@ -665,29 +775,16 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
     /** A file input gets the files directly. A button in front opens the file chooser on click, which then gets them. */
     const upload = async (element, step, files, remaining) => {
-        if (await element.evaluate((node) => node instanceof globalThis.HTMLInputElement && node.type === 'file')) {
-            await element.setInputFiles(files, { timeout: remaining });
-            return;
+        if (!await setFiles(element, files, { page: await pageOf(element), timeout: remaining })) {
+            throw finalError(t('session.replay.noChooser', { target: locatorLabel(step.target) }));
         }
-        const chooser = (await pageOf(element)).waitForEvent('filechooser', { timeout: remaining }).catch(() => null);
-        // Do not wait for the click first: on Windows it sometimes only returns once the file chooser has been handled.
-        const clicked = element.click({ timeout: remaining, delay: CLICK_DELAY_MS }).then(() => null, (error) => error);
-        const picker = await Promise.race([chooser, clicked.then((error) => (error === null ? chooser : null))]);
-        if (picker === null) {
-            const error = await clicked;
-            if (error !== null) throw error;
-            throw finalError(t('session.replay.noChooser', { target: targetLabel(step.target) }));
-        }
-        await picker.setFiles(files, { timeout: remaining });
-        // The files are set; a click still hanging afterwards changes nothing.
-        await clicked;
     };
     /** The click starts a download: its name matches the pattern and the file is not empty. */
     const download = async (element, step, remaining) => {
         const started = (await pageOf(element)).waitForEvent('download', { timeout: remaining }).catch(() => null);
         await element.click({ timeout: remaining, delay: CLICK_DELAY_MS });
         const file = await started;
-        if (file === null) throw finalError(t('session.replay.noDownload', { target: targetLabel(step.target), seconds: Math.round(remaining / 1000) }), 'check');
+        if (file === null) throw finalError(t('session.replay.noDownload', { target: locatorLabel(step.target), seconds: Math.round(remaining / 1000) }), 'check');
         const name = file.suggestedFilename();
         const path = await file.path().catch(() => null);
         const size = path === null || !existsSync(path) ? 0 : statSync(path).size;
@@ -705,51 +802,53 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const act = async (step, timeoutMs, previous) => {
         const deadline = now() + timeoutMs;
         const files = step.action === 'upload' ? uploadFiles(step.files) : [];
-        if (step.action === 'click' && previous?.action === 'click' && JSON.stringify(previous.target) === JSON.stringify(step.target)) {
-            const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: Math.min(timeoutMs, REPEAT_CLICK_MS), sleep, now });
-            if (element === null && (await explainTarget(session.framework ?? frameworkOf(), session.page(), step.target))?.covered !== undefined) return 'skipped';
+        const framework = session.framework ?? frameworkOf();
+        // The application's main frame, fresh on every poll: with the workbench the frame in its iframe, which a reload replaces.
+        const root = () => session.page().mainFrame();
+        const label = locatorLabel(step.target);
+        if (step.action === 'click' && previous?.action === 'click' && previous.target === step.target) {
+            const { element } = await waitForLocator(framework, root, step.target, { timeoutMs: Math.min(timeoutMs, REPEAT_CLICK_MS), sleep, now });
+            if (element !== null) await element.dispose().catch(() => {});
+            else if ((await explainLocator(framework, root, step.target).catch(() => null))?.covered !== undefined) return 'skipped';
         }
         // Optional, e.g. the cookie banner on the first visit: if the target is not there, there is nothing to do ('absent').
         if (step.optional === true) {
-            const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: Math.min(timeoutMs, OPTIONAL_CLICK_MS), sleep, now });
+            const { element } = await waitForLocator(framework, root, step.target, { timeoutMs: Math.min(timeoutMs, OPTIONAL_CLICK_MS), sleep, now });
             if (element === null) return 'absent';
+            await element.dispose().catch(() => {});
         }
+        // A disabled target can also be covered by the field that unlocks it (the open list of an ExtJS combobox): it only
+        // becomes reachable once that field is left, so leave it before waiting, as the recording did.
+        await leaveForDisabled(locatorFor(session.page(), step.target));
         for (;;) {
             const remaining = Math.max(deadline - now(), 1);
-            // A target without index that several elements match: a recording that stores the index for ambiguous targets (`unique`)
-            // fails instead of guessing; an older one keeps taking the first, as before, with a warning.
-            const seen = {};
-            const element = await waitForTarget(session.framework ?? frameworkOf(), session.page(), step.target, { timeoutMs: remaining, sleep, now, unique: step.unique === true ? 'fail' : 'warn', report: seen });
-            if (seen.ambiguous !== undefined && element === null) {
-                throw finalError(t('session.replay.ambiguous', { target: targetLabel(step.target), count: seen.ambiguous.count, candidates: ambiguityText(seen.ambiguous) }), 'target');
-            }
-            if (seen.ambiguous !== undefined && !guessed.has(targetLabel(step.target))) {
-                guessed.add(targetLabel(step.target));
-                session.warn?.({ type: 'note', text: t('session.replay.ambiguousFirst', { target: targetLabel(step.target), count: seen.ambiguous.count, step: activeOwner ?? '?' }) });
+            // Exactly one reachable element: several that stay longer than a dialog transition fail instead of guessing.
+            const { element, ambiguous } = await waitForLocator(framework, root, step.target, { timeoutMs: remaining, sleep, now });
+            if (element === null && ambiguous !== undefined) {
+                throw finalError(t('session.replay.ambiguous', { target: label, count: ambiguous.count, candidates: ambiguityText(ambiguous) }), 'target');
             }
             if (element === null) {
                 // Is the target missing, or is something on top of it? An open dialog with a message explains more than "missing".
-                const why = await explainTarget(session.framework ?? frameworkOf(), session.page(), step.target);
-                const error = new Error(t('session.replay.notClickable', { target: targetLabel(step.target), seconds: Math.round(timeoutMs / 1000), why: explainText(why) }));
+                const why = await explainLocator(framework, root, step.target).catch(() => null);
+                const error = new Error(t('session.replay.notClickable', { target: label, seconds: Math.round(timeoutMs / 1000), why: explainText(why) }));
                 if (why !== null) error.blocker = why;
                 throw error;
             }
             try {
-                const perform = async () => {
-                    if (step.action === 'click') await element.click({ timeout: remaining, delay: CLICK_DELAY_MS });
-                    else if (step.action === 'fill') await fillField(element, step.value, { timeout: remaining });
-                    else if (step.action === 'upload') await upload(element, step, files, remaining);
-                    else if (step.action === 'download') await download(element, step, remaining);
-                    else await element.type(step.value, { timeout: remaining });
-                };
-                // If the human is typing in the chat, they get the focus back after the action (see frameView).
-                const view = session.page();
-                await (typeof view?.keepChatFocus === 'function' ? view.keepChatFocus(perform) : perform());
+                await leaveForDisabled(element);
+                if (step.action === 'click') await element.click({ timeout: remaining, delay: CLICK_DELAY_MS });
+                else if (step.action === 'dblclick') await element.dblclick({ timeout: remaining, delay: CLICK_DELAY_MS });
+                else if (step.action === 'fill') await fillField(element, step.value, { timeout: remaining });
+                else if (step.action === 'upload') await upload(element, step, files, remaining);
+                else if (step.action === 'download') await download(element, step, remaining);
+                else await element.type(step.value, { timeout: remaining });
                 return;
             } catch (error) {
                 // ExtJS rebuilds elements. As long as time remains, the target is looked up again.
                 if (error.final || now() >= deadline) throw error;
                 await sleep(CHECK_POLL_MS);
+            } finally {
+                await element.dispose().catch(() => {});
             }
         }
     };
@@ -830,7 +929,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (CHANGES_PAGE.has(step.action) && !step.denied) await settle(timeoutMs);
     };
 
-    const ownerOf = (index) => replay.steps.slice(index).find(({ action }) => action === 'check')?.id ?? replay.steps.findLast(({ action }) => action === 'check')?.id;
+    // The entry of a step (replayToEntry) belongs to that step, although its check does not follow.
+    const ownerOf = (index) => replay.steps[index]?.entry ?? replay.steps.slice(index).find(({ action }) => action === 'check')?.id ?? replay.steps.findLast(({ action }) => action === 'check')?.id;
     let broken = null;
     const stop = async (position, label, kind, given, blocker) => {
         const message = await withSignIn(given);
@@ -851,6 +951,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         starts.set(id, segment);
         segment = index + 1;
     });
+    const entryAt = replay.steps.findIndex(({ entry }) => entry !== undefined);
+    if (entryAt !== -1) starts.set(replay.steps[entryAt].entry, entryAt);
     const marks = new Map();
     const netMarks = new Map();
     // How many write requests there were at the start of each step: a new attempt after a write would create things twice.
@@ -960,6 +1062,23 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         return start;
     };
 
+    /** Placeholders filled: run tag, remembered values and dates; in the target only through its string arguments. */
+    const fillStep = (recorded) => {
+        const today = zonedNow(session.browser?.timezone);
+        const { target, ...rest } = recorded;
+        const tagged = runTag === undefined ? rest : fillRun(rest, runTag);
+        const filled = fillDates([...remembered].reduce((current, [placeholder, value]) => swapText(current, placeholder, value), tagged), today);
+        if (typeof target !== 'string') return filled;
+        const lookup = (placeholder) => {
+            if (runTag !== undefined && placeholder === RUN_TAG_PLACEHOLDER) return runTag;
+            if (runTag !== undefined && placeholder === RUN_TAG_LOWER_PLACEHOLDER) return runTag.toLowerCase();
+            if (remembered.has(placeholder)) return remembered.get(placeholder);
+            const date = fillDates(placeholder, today);
+            return date === placeholder ? undefined : date;
+        };
+        return { action: filled.action, target: fillTarget(target, lookup), ...filled };
+    };
+
     let index = 0;
     while (index < replay.steps.length) {
         const position = index + 1;
@@ -967,8 +1086,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const owner = ownerOf(index);
         const opensStep = index === starts.get(owner);
         activeOwner = owner;
-        const tagged = runTag === undefined ? recorded : fillRun(recorded, runTag);
-        const step = fillDates([...remembered].reduce((current, [placeholder, value]) => swapText(current, placeholder, value), tagged), zonedNow(session.browser?.timezone));
+        const step = fillStep(recorded);
         const problem = await externalProblem();
         if (problem !== null) {
             // At the start of a step the failure comes from the previous step; a new attempt here would not reach it.
@@ -990,12 +1108,13 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         // error does not affect the run.
         // Before a check, measure only after it: some things load while it waits, so the state it sees is what counts.
         if (step.action !== 'wait-ready' && step.action !== 'screenshot' && step.action !== 'check') await settleEffect();
-        if (measure !== null && EFFECT_ACTIONS.has(step.action)) {
+        // The entry of a step is only navigation towards it: its effects are neither compared nor learned.
+        if (measure !== null && EFFECT_ACTIONS.has(step.action) && recorded.entry === undefined) {
             await measure.before().catch(() => {});
             pending = { owner, number: index - starts.get(owner) + 1, label: stepLabel(step) };
         }
         try {
-            const outcome = await run(step, step.timeoutMs ?? stepTimeoutMs, index > 0 ? replay.steps[index - 1] : undefined);
+            const outcome = await run(step, step.timeoutMs ?? stepTimeoutMs, index > 0 ? fillStep(replay.steps[index - 1]) : undefined);
             if (outcome === 'skipped' || outcome === 'absent') {
                 repeatSkipped.set(owner, [...(repeatSkipped.get(owner) ?? []), { label: stepLabel(step), outcome }]);
                 if (EFFECT_ACTIONS.has(step.action)) pending = null;

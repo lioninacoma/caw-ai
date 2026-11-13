@@ -218,6 +218,7 @@ const createDevlinkHost = (config, deps, options) => {
 
 // host/playwright-adapter
 import { chromium } from "playwright-core";
+import { registerEngines } from "./framework/extjs-engine.mjs";
 const wrapPage = (page) => ({
   goto: async (url) => {
     await page.goto(url);
@@ -268,6 +269,7 @@ const createPlaywrightLauncher = (launchPersistentContext = (userDataDir, option
       options.executablePath = opts.executablePath;
     }
     let context;
+    await registerEngines();
     try {
       context = await launchPersistentContext(opts.profileDir, options);
     } catch (launchError) {

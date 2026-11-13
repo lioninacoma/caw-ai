@@ -101,6 +101,8 @@ export const react = {
     name: 'react',
     label: () => t('session.app.react'),
     targets: withComponent(reactComponent),
+    // Runs in the browser on a recorded element: { component, source? } or null, a hint for diagnosis only.
+    hint: reactComponent,
     probe: probeWith(REACT_MOUNTED),
     // The login page is usually part of the app and not usable before hydration with SSR; login waits for the mount.
     hydrates: true,
@@ -117,6 +119,8 @@ export const vue = {
     name: 'vue',
     label: () => t('session.app.vue'),
     targets: withComponent(vueComponent),
+    // Runs in the browser on a recorded element: { component, source? } or null, a hint for diagnosis only.
+    hint: vueComponent,
     probe: probeWith(VUE_MOUNTED),
     hydrates: true,
     stackSkip: /\/(@vue|vue|vue-router|pinia)[\w./-]*\.js|\/node_modules\/\.vite\/deps\/(vue|@vue|pinia)|\/node_modules\/(@vue|vue|vue-router|pinia)\//,
@@ -132,6 +136,8 @@ export const angular = {
     name: 'angular',
     label: () => t('session.app.angular'),
     targets: withComponent(angularComponent),
+    // Runs in the browser on a recorded element: { component, source? } or null, a hint for diagnosis only.
+    hint: angularComponent,
     probe: probeWith(ANGULAR_MOUNTED, ANGULAR_STABLE),
     hydrates: true,
     stackSkip: /\/(zone|polyfills)[\w.-]*\.js|\/@angular\/|\/node_modules\/\.vite\/deps\/(@angular|zone|rxjs)|\/node_modules\/(@angular|zone\.js|rxjs)\//,

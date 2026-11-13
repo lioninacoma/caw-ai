@@ -77,15 +77,15 @@ Tips:
 Each step has a hash over `name`, `do`, `expect` and `note`. Change one of them and only that step is outdated:
 
 ```bash
-npx caw-ai run create-ticket --target local       # exit 4: S2 changed, prints the fix command
-npx caw-ai fix create-ticket S2 --target local    # re-record S2 only
+npx caw-ai run create-ticket --target local       # exit 4: S2 changed, prints the record command
+npx caw-ai record create-ticket@S2 --target local # re-record from S2 to the end, S1 stays
 ```
 
-`notes`, metadata, `retry` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `fix` it. Deleting or reordering steps needs a new `record`.
+`notes`, metadata, `retry` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.
 
 ## Recording
 
-Written by `record` and `fix`. Review it; change it only for the [hand-written additions](#hand-written-additions). An excerpt:
+Written by `record` and by "Fix step" in a run's chat. Review it; change it only for the [hand-written additions](#hand-written-additions). An excerpt:
 
 ```yaml
 # caw/recordings/create-ticket.yaml
@@ -98,60 +98,55 @@ steps:
     after: S1
     recordedOn: local
     recordedAt: 2026-11-09T09:31:28.406Z
+    locale: en-US
+    timezone: Europe/Berlin
     actions:
-      - click: {role: button, name: New ticket}
-        path: /tickets
-      - wait-ready: {}
-      - fill: {role: textbox, name: Title, inside: {role: dialog, name: New ticket}}
-        value: Printer offline {{runTag}}
-        path: /tickets
-      - type: {role: combobox, name: Customer, inside: {role: dialog, name: New ticket}}
-        value: Acme
-        path: /tickets
-      - type: {role: combobox, name: Priority, inside: {role: dialog, name: New ticket}}
-        value: High
-        path: /tickets
-      - click: {role: button, name: Create ticket, inside: {role: dialog, name: New ticket}}
-        path: /tickets
-      - wait-ready: {}
-      - remember: {name: ticketnr, code: "(document.querySelector('[role=status]').textContent.match(/#(\d+)/)||[])[1]"}
-    check: "(()=>{const s=document.querySelector('[role=status]');if(!s||!/^Ticket #\d+ created$/.test(s.textContent.trim()))return false;const n=s.textContent.match(/#(\d+)/)[1];return n==='{{ticketnr}}' && [...document.querySelectorAll('table[aria-label=\"Tickets\"] tbody tr')].some(r=>r.cells[0].textContent.trim()===n && r.cells[1].textContent.trim()==='Printer offline {{runTag}}');})()"
+      - {click: "getByRole('button', { name: 'New ticket', exact: true })", path: /tickets}
+      - {wait-ready: {}}
+      - {fill: "getByRole('dialog', { name: 'New ticket' }).getByRole('textbox', { name: 'Title', exact: true })", value: "Printer offline {{runTag}}", path: /tickets}
+      - {fill: "getByRole('combobox', { name: 'Priority', exact: true })", value: high, path: /tickets}
+      - {click: "getByRole('button', { name: 'Create ticket', exact: true })", path: /tickets}
+      - {wait-ready: {}}
+      - {remember: {name: ticketnr, code: "(document.querySelector('[role=status]').textContent.match(/#(\\d+)/)||[])[1]"}}
+      - {click: "getByRole('row').filter({ hasText: 'Printer offline {{runTag}}' }).getByRole('link', { name: 'Open', exact: true })", path: /tickets}
+    check: "document.querySelector('h1')?.textContent === 'Ticket #{{ticketnr}}'"
     network:
-      - {name: GET /api/customers, status: 200, ms: 54, params: []}
-      - {name: POST /api/tickets, status: 201, ms: 269, params: [json.customer, json.description, json.priority, json.title]}
+      - {name: POST /api/tickets, status: 201, ms: 269, params: [json.customer, json.priority, json.title]}
       - {name: GET /api/tickets, status: 200, ms: 274, params: [q]}
     effects:
       runs: 1
       actions:
-        - action: 4
+        - action: 5
           controls:
-            - + select "Customer" required,filled
             - + button "Create ticket"
-            - '- select "Customer" required,empty'
             - '- button "Create ticket" disabled'
 ```
 
 | Field | |
 |---|---|
-| `actions` | What to do, with targets the way a human finds them: role and name, label, `data-testid`, the dialog around it. Never generated class names. |
+| `actions` | What to do. `dblclick` is one double-click, e.g. on a grid row that only opens that way; a double-click you demonstrate is recorded as one. The target of `click`, `dblclick`, `fill`, `type`, `upload` and `download` is one Playwright locator, written as Playwright prints it, without `page.`: role and full name with `exact: true`, label, text, `data-testid`, the row or dialog around it, `contentFrame()` for an iframe. caw parses it and never runs it as code; `validate` rejects anything else, snapshot references (`aria-ref=`), `:nth-child` and, for ExtJS, generated ids like `#button-1023`. ExtJS components can also be found with `locator('extjs=button[text="Save"]')` (`Ext.ComponentQuery`); a text or title with a comma never goes into such a query, because ComponentQuery splits at every comma. |
 | `path` | The page the action was recorded on. If a target is missing, the run tells you it is on a different page. |
+| `locale`, `timezone` | Language and time zone of the recording browser; replay uses them unless the config sets `browser.locale`/`browser.timezone`. |
 | `check` | A JavaScript expression that must return `true`. It runs in the signed-in page, so read it before you commit. |
 | `remember` | Reads a value the run creates, here the ticket number. Later steps use it as `{{ticketnr}}`. |
 | `network` | Requests per step from a healthy run. Used to tell app bugs from environment problems. |
 | `effects` | What each action changed on the page, learned from healthy runs (`runs` counts them). A change fails the step or shows as a warning. |
 | `knownMessages` | Messages that were visible during recording and are not errors. |
 
+On replay a locator must find exactly one element that is visible and not covered. Two matches are tolerated for two seconds, e.g. while one dialog closes and the next opens with the same button; then the step fails and names both. A locator chosen by position (`nth()`, `first()`) is listed after recording so you can check it.
+
 ## Hand-written additions
 
-Claude doesn't record these; you add them to `caw/recordings/<id>.yaml` yourself. `validate` checks them. A new recording of the step by Claude replaces its actions, so add `upload` and `download` again afterwards; `secret` on a `remember` survives it.
+Claude doesn't record `download` and `secret`; you add them to `caw/recordings/<id>.yaml` yourself. `validate` checks them. A new recording of the step by Claude replaces its actions, so add `download` again afterwards; `secret` on a `remember` survives it.
+
+`upload` is recorded, but only with files from `caw/fixtures`: when you demonstrate, caw compares the file you choose by name, size and SHA-256 with the files there. A match turns the click that opened the file chooser into the `upload`; a file from anywhere else is named in the chat and not recorded, and nothing is copied. Put test files without personal data into `caw/fixtures` and choose them from there. Claude uploads with `upload <target> fixtures/<file>`, also only from there.
 
 | Syntax | Meaning |
 |---|---|
-| `- upload: {role: button, name: Choose files}`<br>`  files: [fixtures/brief.pdf]` | Sets files on a file field. If the target is the field itself (`role: textbox` with its label), it gets the files directly; if it is a button in front of a hidden field, its click opens the file chooser and that gets them. Paths are relative to the `caw` folder, never absolute and never outside it; a missing file stops the step before the click |
-| `- download: {role: button, name: Export}`<br>`  file: "^report-.*\\.zip$"` | The click must start a download within the step's time limit, its file name must match the regular expression in `file` and the file must not be empty. Otherwise the step fails like an unmet check, without a second click. The tool deletes the file right after |
+| `- upload: "getByRole('button', { name: 'Choose files', exact: true })"`<br>`  files: [fixtures/brief.pdf]` | Sets files on a file field. If the target is the field itself (e.g. `getByLabel('Attachment')`), it gets the files directly; if it is a button in front of a hidden field, its click opens the file chooser and that gets them. Paths are relative to the `caw` folder, never absolute and never outside it; a missing file stops the step before the click |
+| `- download: "getByRole('button', { name: 'Export', exact: true })"`<br>`  file: "^report-.*\\.zip$"` | The click must start a download within the step's time limit, its file name must match the regular expression in `file` and the file must not be empty. Otherwise the step fails like an unmet check, without a second click. The tool deletes the file right after |
 | `- remember: {name: davPassword, code: "...", secret: true}` | Like `remember`, but from then on the value is masked as `••••` in the terminal, the workbench, `result.json`, `report.md` and everything Claude gets, like the role's password. The run itself keeps using the real value |
-| `name: {pattern: "^Review( \\d+)?$"}` | In a target, also under `inside`: a regular expression instead of the exact name, for a live count or a changing part. The pattern sees the full name. A fixed name over 80 characters is empty on the page and never matches; `validate` rejects it and suggests a pattern for its start |
-| `frame: {tag: iframe, name: Payment}` | In a target: the element lies in an iframe of the application. `frame` describes the iframe in the document above it, like a target (usually `tag: iframe` and its `title` as `name`); nested iframes carry `frame` again. Recording adds it by itself. If the iframe is missing, the step says which one. An iframe from another host needs it in `extraAllowedHosts` |
+| `getByRole('button', { name: /^Review( \\d+)?$/ })` | A regular expression instead of the exact name, for a live count or a changing part |
 | `knownMessages:`<br>`  - {pattern: "^Checksum \\S+ copied$"}` | Next to fixed texts: a pattern for a message with changing content, such as a checksum or a time. Like fixed texts it sees the message with digits as `#`, always in full; only the report shortens long messages. A new recording keeps patterns and adds no fixed text a pattern already covers |
 
 A check can read the clipboard: the browser has `clipboard-read` and `clipboard-write` for the environment's origin, e.g. `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (an expression that returns a promise is awaited).
@@ -165,4 +160,4 @@ A check can read the clipboard: the browser has `clipboard-read` and `clipboard-
 | `{{today}}`, `{{today+7}}`, `{{todayIso-1}}` | Dates relative to the day of the run |
 | `{{ticketnr}}` | A value read during the run with `remember` |
 
-Claude adds these while recording. In the test plan you only need `{{runTag}}`.
+Claude adds these while recording. In the test plan you only need `{{runTag}}`. In a locator they are filled per text, so a value with a quote stays one string and a value inside a regular expression is escaped.

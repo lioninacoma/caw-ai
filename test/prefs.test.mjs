@@ -37,7 +37,6 @@ test('prefs: animations stay off, foreign values are rejected', (t) => {
     assert.throws(() => writePref('theme', 'Nacht!', env), /Unknown setting/);
     assert.throws(() => writePref('animations', '<script>', env), /Unknown setting/);
     assert.throws(() => writePref('token', 'x', env), /Unknown setting/);
-    assert.throws(() => writePref('fed', '7', env), /Unknown setting/, 'nobody feeds the raven any more');
     writeFileSync(join(dir, 'prefs.json'), '{"animations":"wild","raven":"caged","x":1}');
     assert.deepEqual(readPrefs(env), {});
     writeFileSync(join(dir, 'prefs.json'), 'kaputt');

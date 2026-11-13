@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { stepHash } from '../../src/host/test-file.mjs';
 
 const yamlString = (value) => JSON.stringify(value);
+// Targets are Playwright locators as code, as `record` writes them (one string per target, scoped by dialog or navigation).
+const NEW_TICKET = "getByRole('dialog', { name: 'New ticket' })";
+const NAVIGATION = "getByRole('navigation', { name: 'Main navigation' })";
 
 /**
  * @param root      project folder
@@ -34,9 +37,9 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
         {
             id: 'S1', name: 'Create ticket', do: 'Create a ticket "Monitor {{runTag}}".', expect: 'The ticket is in the list, the build is right.',
             actions: [
-                { click: { role: 'button', name: 'New ticket' }, path: '/' },
-                { fill: { role: 'textbox', name: 'Title', inside: { role: 'dialog', name: 'New ticket' } }, value: 'Monitor {{runTag}}', path: '/' },
-                { click: { role: 'button', name: 'Create', inside: { role: 'dialog', name: 'New ticket' } }, path: '/' },
+                { click: "getByRole('button', { name: 'New ticket', exact: true })", path: '/' },
+                { fill: `${NEW_TICKET}.getByRole('textbox', { name: 'Title', exact: true })`, value: 'Monitor {{runTag}}', path: '/' },
+                { click: `${NEW_TICKET}.getByRole('button', { name: 'Create', exact: true })`, path: '/' },
                 { 'wait-ready': {} },
             ],
             check: `(()=>{const s=document.querySelector('[role=status]');const b=document.querySelector('[data-testid=build]');return !!s&&/^Ticket #\\d+ created$/.test(s.textContent.trim())&&b.textContent.trim()==='Build: ${build}'&&[...document.querySelectorAll('table[aria-label="Ticket list"] tbody tr')].some(r=>r.cells[1].textContent.trim()==='Monitor {{runTag}}');})()`,
@@ -44,7 +47,7 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
         {
             id: 'S2', name: 'Open info', do: 'Open Info in the navigation.', expect: 'The info page shows, with the same build.',
             actions: [
-                { click: { role: 'link', name: 'Info', inside: { role: 'navigation', name: 'Main navigation' } }, path: '/' },
+                { click: `${NAVIGATION}.getByRole('link', { name: 'Info', exact: true })`, path: '/' },
                 { 'wait-ready': {} },
             ],
             // The info page is a lazy chunk: with local code it must come from the local build as well.
@@ -55,28 +58,27 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
     writeTest(root, 'error', { mutates: false }, [
         {
             id: 'S1', name: 'Trigger error', do: 'Click "Trigger error".', expect: 'Nothing happens.',
-            actions: [{ click: { role: 'button', name: 'Trigger error' }, path: '/' }, { 'wait-ready': {} }],
+            actions: [{ click: "getByRole('button', { name: 'Trigger error', exact: true })", path: '/' }, { 'wait-ready': {} }],
             check: 'true',
         },
     ]);
 };
 
-// A field and a button in an iframe (target with `frame`) and in a web component with an open shadow root.
-const PAYMENT = { tag: 'iframe', name: 'Payment' };
+// A field and a button in an iframe (the locator goes through contentFrame()) and in a web component with an open shadow root.
+const PAYMENT = "locator('iframe[title=\"Payment\"]').contentFrame().getByRole('form', { name: 'Card' })";
+const RATING = "getByRole('group', { name: 'Rating' })";
 const EMBED_STEP = {
     id: 'S3', name: 'Pay and rate', do: 'Pay 12 euros in the Payment area and rate it "Good".', expect: 'Payment and rating are confirmed.',
     actions: [
-        { click: { role: 'link', name: 'Tickets', inside: { role: 'navigation', name: 'Main navigation' } }, path: '/info' },
-        { fill: { role: 'textbox', name: 'Amount', inside: { role: 'form', name: 'Card' }, frame: PAYMENT }, value: '12', path: '/' },
-        { click: { role: 'button', name: 'Pay', inside: { role: 'form', name: 'Card' }, frame: PAYMENT }, path: '/' },
-        { fill: { role: 'textbox', name: 'Comment', inside: { role: 'group', name: 'Rating' } }, value: 'Good', path: '/' },
-        { click: { role: 'button', name: 'Rate', inside: { role: 'group', name: 'Rating' } }, path: '/' },
+        { click: `${NAVIGATION}.getByRole('link', { name: 'Tickets', exact: true })`, path: '/info' },
+        { fill: `${PAYMENT}.getByRole('textbox', { name: 'Amount', exact: true })`, value: '12', path: '/' },
+        { click: `${PAYMENT}.getByRole('button', { name: 'Pay', exact: true })`, path: '/' },
+        { fill: `${RATING}.getByRole('textbox', { name: 'Comment', exact: true })`, value: 'Good', path: '/' },
+        { click: `${RATING}.getByRole('button', { name: 'Rate', exact: true })`, path: '/' },
         { 'wait-ready': {} },
     ],
     check: `document.querySelector('iframe[title=Payment]')?.contentDocument?.querySelector('[role=status]')?.textContent.trim()==='Payment of 12 EUR confirmed'&&document.querySelector('caw-rating')?.shadowRoot?.querySelector('[role=status]')?.textContent.trim()==='Thanks for your rating: Good'`,
 };
-
-const renderTarget = (target) => `{${Object.entries(target).map(([key, value]) => `${key}: ${typeof value === 'object' ? renderTarget(value) : yamlString(value)}`).join(', ')}}`;
 
 const writeTest = (root, id, { mutates = true }, steps) => {
     const plan = [
@@ -92,10 +94,12 @@ const writeTest = (root, id, { mutates = true }, steps) => {
             ...(index === 0 ? [] : [`    after: ${steps[index - 1].id}`]),
             '    recordedOn: test',
             '    recordedAt: 2026-11-09T10:00:00.000Z',
+            '    locale: en-US',
+            '    timezone: Europe/Berlin',
             '    actions:',
             ...step.actions.flatMap((action) => {
                 const [name, payload] = Object.entries(action)[0];
-                const head = `      - ${name}: ${renderTarget(payload)}`;
+                const head = `      - ${name}: ${yamlString(payload)}`;
                 return [head, ...Object.entries(action).slice(1).map(([key, value]) => `        ${key}: ${yamlString(value)}`)];
             }),
             `    check: ${yamlString(step.check)}`,

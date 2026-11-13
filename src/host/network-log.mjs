@@ -27,12 +27,6 @@ const decodeURIComponentSafe = (part) => {
     }
 };
 
-/** A name as stored in older recordings, with a neutral path: "GET /a/1001 x=1" becomes "GET /a/:id x=1". */
-export const neutralName = (name) => {
-    const [method, path, ...rest] = String(name).split(' ');
-    return path === undefined || !path.startsWith('/') ? name : [method, neutralPath(path), ...rest].join(' ');
-};
-
 /**
  * The name of a request: method and path, IDs in the path as `:id`. If an app routes everything through one path, `keys` names the parameters that tell requests apart.
  * @param keys names of query parameters whose value belongs to the name, e.g. ["action"]

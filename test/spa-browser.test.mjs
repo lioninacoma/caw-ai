@@ -3,8 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
-
-import { FRAMEWORKS, targetLabel } from '../src/host/framework/index.mjs';
+import { FRAMEWORKS, elementHint } from '../src/host/framework/index.mjs';
 import { launchChrome } from './chrome.mjs';
 
 let browser = null;
@@ -16,7 +15,8 @@ before(async () => {
 after(async () => { await browser?.close(); });
 
 const FORM = '<div id="root"><form aria-label="Bestellung"><button id="b"><span>Senden</span></button></form></div>';
-const describe = (adapter) => page.locator('#b span').evaluate(adapter.targets, { mode: 'describe' });
+// The hint for the recorded element: the locator itself stays native, the component only helps diagnosis.
+const hint = async (adapter) => elementHint(adapter, await page.locator('#b').elementHandle());
 const probe = (adapter) => page.evaluate(adapter.probe, null);
 
 test('react: component from the fiber, also behind memo; readiness at the root container', async (t) => {
@@ -30,11 +30,7 @@ test('react: component from the fiber, also behind memo; readiness at the root c
         document.getElementById('b')['__reactFiber$abc'] = host;
         document.getElementById('root')['__reactContainer$abc'] = {};
     });
-    const described = await describe(FRAMEWORKS.react);
-    assert.deepEqual(described, { role: 'button', name: 'Senden', inside: { role: 'form', name: 'Bestellung' }, component: 'OrderForm' });
-    assert.equal(targetLabel(described), 'button "Senden" in <OrderForm>');
-    const found = await page.evaluateHandle(`(${FRAMEWORKS.react.targets})(null, ${JSON.stringify({ mode: 'find', target: { ...described, component: 'Umbenannt' } })})`);
-    assert.ok(found.asElement() !== null, 'component is only a hint, find ignores it');
+    assert.deepEqual(await hint(FRAMEWORKS.react), { component: 'OrderForm' });
     assert.equal((await probe(FRAMEWORKS.react)).appReady, true);
     // React 19 dev build: owner chain. The button alone says little; the screen rendering it leads to the file.
     await page.evaluate(() => {
@@ -46,7 +42,7 @@ test('react: component from the fiber, also behind memo; readiness at the root c
         const button = { type: Button, _debugOwner: screen };
         document.getElementById('b')['__reactFiber$abc'] = { type: 'button', _debugOwner: button, return: button };
     });
-    assert.equal((await describe(FRAMEWORKS.react)).component, 'App › OrdersScreen › Button');
+    assert.equal((await hint(FRAMEWORKS.react)).component, 'App › OrdersScreen › Button');
     return undefined;
 });
 
@@ -57,7 +53,7 @@ test('vue: component and file of the SFC; readiness via data-v-app', async (t) =
         document.getElementById('b').__vueParentComponent = { type: { __name: 'OrderForm', __file: 'src/components/OrderForm.vue' }, parent: null };
         document.getElementById('root').setAttribute('data-v-app', '');
     });
-    assert.deepEqual(await describe(FRAMEWORKS.vue), { role: 'button', name: 'Senden', inside: { role: 'form', name: 'Bestellung' }, component: 'OrderForm', source: 'src/components/OrderForm.vue' });
+    assert.deepEqual(await hint(FRAMEWORKS.vue), { component: 'OrderForm', source: 'src/components/OrderForm.vue' });
     assert.equal((await probe(FRAMEWORKS.vue)).appReady, true);
     return undefined;
 });
@@ -71,21 +67,21 @@ test('angular: component via ng, minified names are dropped; unstable Zone.js me
         window.__stable = false;
         window.getAllAngularTestabilities = () => [{ isStable: () => window.__stable }];
     });
-    assert.equal((await describe(FRAMEWORKS.angular)).component, 'OrderFormComponent');
+    assert.deepEqual(await hint(FRAMEWORKS.angular), { component: 'OrderFormComponent' });
     await page.waitForTimeout(200);
     const unstable = await probe(FRAMEWORKS.angular);
     assert.equal(unstable.appReady, true);
     assert.equal(unstable.loadingStores, 1, 'Zone.js still has tasks');
     await page.evaluate(() => { window.__stable = true; window.ng.getOwningComponent = () => new (class a {})(); });
     assert.equal((await probe(FRAMEWORKS.angular)).loadingStores, 0);
-    assert.equal((await describe(FRAMEWORKS.angular)).component, undefined, 'production build: no hint, no error');
+    assert.equal(await hint(FRAMEWORKS.angular), null, 'production build: no hint, no error');
     return undefined;
 });
 
-test('Production build without traces: describes like web, no error', async (t) => {
+test('Production build without traces: no hint, no error; web has none at all', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     await page.setContent(FORM);
-    for (const name of ['react', 'vue', 'angular']) assert.deepEqual(await describe(FRAMEWORKS[name]), await describe(FRAMEWORKS.web), name);
+    for (const name of ['react', 'vue', 'angular', 'web']) assert.equal(await hint(FRAMEWORKS[name]), null, name);
     return undefined;
 });
 

@@ -149,7 +149,7 @@ Required. Usually one app; monorepos can list several.
 
 caw-ai knows two modes:
 
-- **E2E** (default, CI, nightly, every plain `run`): always the deployed code of the environment, also with `--until`.
+- **E2E** (default, CI, nightly, every plain `run`): always the deployed code of the environment, also with `open <test>`.
 - **Development:** your local code, only with `--overlay`. Nothing switches to it silently.
 
 Every run names the code in its first lines, in CI too:
@@ -205,7 +205,7 @@ It needs `"overlay": true` on the environment and a source on the app. One model
 | `statics` | Fixed names served live from disk: `name` is the name in the request, `path` the file relative to the app folder. `path` may leave the app folder with `..`, e.g. into a neighbouring package of a monorepo (`../../packages/Model/resources/Const.js`), but must stay inside the workspace: the nearest folder from the project upwards with `pnpm-workspace.yaml` or a `package.json` with `workspaces`, at most up to the repository root, otherwise the project folder. Symlinks are resolved; secret files (`.env`, keys, credentials) are never served. For every framework and every source. |
 | `assetUrlPattern` | Extra patterns for this app only, in addition to the top-level `assetUrlPattern`: for an app whose files come from somewhere else. String or list. |
 
-Unknown fields are an error. You need only one of `build` and `url`. Earlier names still work with a note from `validate`: `dev` is `url`, `devCommand` and `buildCommand` are `start`. Setting both an old and a new name is an error.
+Unknown fields are an error. You need only one of `build` and `url`.
 
 | Call | Source |
 |---|---|
@@ -214,7 +214,7 @@ Unknown fields are an error. You need only one of `build` and `url`. Earlier nam
 | `--overlay dev` | The server at `url`. |
 | `--overlay http://localhost:5174` | The server at this address. Overrides `url`, needs no `overlay` on the app. Only for a test with one app (exit 3 with `also`). |
 
-`--overlay` works on `run`, `record`, `fix` and `open`. It is rejected (exit 3) with the reason on an environment without `"overlay": true`, on an environment that is itself a dev server on your machine, and for an app without a source. Apps from `also` use their own source; without one they stay deployed.
+`--overlay` works on `run`, `record` and `open`. It is rejected (exit 3) with the reason on an environment without `"overlay": true`, on an environment that is itself a dev server on your machine, and for an app without a source. Apps from `also` use their own source; without one they stay deployed.
 
 **caw starts nothing by itself.** Before Chrome opens it checks the source:
 
@@ -222,7 +222,7 @@ Unknown fields are an error. You need only one of `build` and `url`. Earlier nam
 - **Build** missing or older than the newest source file of the app: exit 2 with `start`. Not counted as source: `node_modules`, the build folder, folders starting with a dot, common build folders (`dist`, `build`, `out`, `coverage`, …), `caw/`, Markdown files and `caw.config.json`; at most 5000 files are looked at.
 - `npx caw-ai overlay status` shows the same without a browser: `ready`, `moved`, `down`, `wrong-app` or `stale`.
 
-**`--start`** (on `run`, `record`, `fix`, `open` and `overlay check`, only together with `--overlay`) is for CI and scripts, like Playwright's `webServer`: caw runs `start` in the app folder when the server doesn't answer, waits up to 60 s (Sencha watch: 180 s, until it serves this app), logs to `.caw/<app>-dev-server.log` or `.caw/<app>-watch.log` and stops the whole process tree at the end of the run; for `open` and `--until` when you close the window. With `build` it runs `start` once (`.caw/<app>-build.log`) and checks again. The source never switches: a failed build doesn't fall back to the dev server or the deployed version.
+**`--start`** (on `run`, `record`, `open` and `overlay check`, only together with `--overlay`) is for CI and scripts, like Playwright's `webServer`: caw runs `start` in the app folder when the server doesn't answer, waits up to 60 s (Sencha watch: 180 s, until it serves this app), logs to `.caw/<app>-dev-server.log` or `.caw/<app>-watch.log` and stops the whole process tree at the end of the run; for `open` when you close the window. With `build` it runs `start` once (`.caw/<app>-build.log`) and checks again. The source never switches: a failed build doesn't fall back to the dev server or the deployed version.
 
 **How the local code gets into the page:**
 
@@ -245,7 +245,7 @@ Unknown fields are an error. You need only one of `build` and `url`. Earlier nam
 
 `report.md` names what happened: `Overlay: dist; 14 file(s) local, 2 script(s)/stylesheet(s) from the server; page swapped: yes`.
 
-**ExtJS:** With `"framework": "extjs"` the local code comes from the web server of the Sencha watch, by default `http://localhost:1841/`. `init` writes `"overlay": { "url": "http://localhost:1841/" }`; add `start` with your project's watch command (e.g. `"pnpm run watch"` or `"sencha app watch"`), optionally `statics`. caw checks that the server at `url` serves *this* app (`app.json` name, `bootstrap.json` with a load order). A theme package that extends an SDK theme (e.g. `"extend": "theme-material"`) is replaced together with the JS of the themes it extends, like its build; otherwise Material's overrides (flat dialog buttons, `Ext.theme.name`) would be missing. If the port was taken, the watch picks a random one: caw finds it among the running watch processes, uses it and tells you to set `url`. `build` and `buildCommand` are errors there. Details: [Guide](guide.md#how-local-code-gets-into-the-application).
+**ExtJS:** With `"framework": "extjs"` the local code comes from the web server of the Sencha watch, by default `http://localhost:1841/`. `init` writes `"overlay": { "url": "http://localhost:1841/" }`; add `start` with your project's watch command (e.g. `"pnpm run watch"` or `"sencha app watch"`), optionally `statics`. caw checks that the server at `url` serves *this* app (`app.json` name, `bootstrap.json` with a load order). A theme package that extends an SDK theme (e.g. `"extend": "theme-material"`) is replaced together with the JS of the themes it extends, like its build; otherwise Material's overrides (flat dialog buttons, `Ext.theme.name`) would be missing. If the port was taken, the watch picks a random one: caw finds it among the running watch processes, uses it and tells you to set `url`. `build` is an error there. Details: [Guide](guide.md#how-local-code-gets-into-the-application).
 
 **Several asset sources.** A page may load its code from more than one place. caw names each request by the path below the environment URL and by every `assetUrlPattern`; the first name a source knows wins. `assetUrlPattern` is a string or a list, one pattern per source, group 1 the file name. A typical portal loads the theme by a plain path (covered by the default) and app and packages through a proxy servlet:
 
@@ -280,7 +280,7 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `extraAllowedHosts` | `[]` | More hosts Chrome may reach, e.g. login or CDN. Everything else is blocked. |
 | `insecureTls` | `false` | Accept self-signed certificates. |
 | `browser` | system Chrome | `{ "channel": "msedge" }` or `{ "executablePath": "/path/to/chromium" }` |
-| `browser.locale`, `browser.timezone` | as recorded | Language and time zone of the test browser, e.g. `"de-DE"` and `"Europe/Berlin"`. Without them a replay uses the values stored with the recording, and a recording (or an older recording) uses the host's. Dates, numbers and translations then look the same on every machine and CI runner. |
+| `browser.locale`, `browser.timezone` | as recorded | Language and time zone of the test browser, e.g. `"de-DE"` and `"Europe/Berlin"`. Without them a replay uses the values stored with the recording, and a recording uses the host's. Dates, numbers and translations then look the same on every machine and CI runner. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS selectors for error messages without ARIA roles. |
 | `consoleIgnore` | `[]` | Regexes for known, harmless console errors. Keep them narrow. |
 | `foreignCode` | `[]` | Regexes for third-party scripts, e.g. `"/vendor/"`. Their errors become warnings. |

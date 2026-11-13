@@ -1,4 +1,4 @@
-// States on click: after the handover (open, run --until) the workbench offers via F1 every test that matches the
+// States on click: after the handover (open) the workbench offers via F1 every test that matches the
 // signed-in role, the app and the target. A step can be restored if it and all steps before it are recorded and current.
 
 import { existsSync, readdirSync } from 'node:fs';

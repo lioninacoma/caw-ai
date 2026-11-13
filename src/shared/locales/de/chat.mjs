@@ -54,6 +54,7 @@ export default {
     'chat.page.inputLabel': 'Nachricht an Claude',
     'chat.page.placeholder': 'Antworte oder gib Claude eine Anweisung',
     'chat.page.planPlaceholder': 'Was soll anders sein?',
+    'chat.page.lockedPlaceholder': 'Claude arbeitet in der Anwendung. Zum Schreiben erst anhalten.',
     'chat.page.showPlaceholder': 'Was soll hier zu sehen sein? → „Als Prüfpunkt setzen“ · Enter = Hinweis an Claude',
     'chat.page.element': 'Element',
     'chat.page.pickTitle': 'Element in der Anwendung markieren',

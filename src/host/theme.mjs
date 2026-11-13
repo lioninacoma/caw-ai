@@ -37,9 +37,6 @@ export const fontFaces = (theme = activeTheme()) => [...fontList(theme.fonts?.di
     return src === null ? '' : `@font-face{font-family:"${font.family}";src:url(${src}) format("woff2");font-weight:${weight};font-style:normal;font-display:block}`;
 }).join('');
 
-/** Old name: the active theme's fonts. */
-export const FONT_FACES = fontFaces();
-
 const family = (entry, fallback) => {
     const name = fontList(entry).find((font) => FAMILY.test(font?.family ?? ''))?.family;
     return name === undefined ? fallback : `"${name}",${fallback}`;
@@ -57,7 +54,7 @@ export const crtVars = (crt = {}) => [
     `--text-glow:${num(crt.textGlow?.px, 0, 8)}px`, `--text-glow-alpha:${num(crt.textGlow?.alpha, 0, 1) * 100}%`,
 ].join(';');
 
-// Derived from the base colours, plus the names that pages from before the redesign still use.
+// Derived from the base colours.
 const DERIVED = `--page:color-mix(in srgb,var(--screen) 55%,#000);
 --case:color-mix(in srgb,var(--frame) 24%,var(--screen));--case-hi:color-mix(in srgb,var(--frame) 42%,var(--screen));
 --pane-2:color-mix(in srgb,var(--frame) 16%,var(--pane));--line:color-mix(in srgb,var(--frame) 55%,var(--pane));
@@ -65,11 +62,7 @@ const DERIVED = `--page:color-mix(in srgb,var(--screen) 55%,#000);
 --scan:color-mix(in srgb,var(--scan-color) calc(var(--scan-alpha) * 100%),transparent);
 --text-shine:color-mix(in srgb,var(--text) var(--text-glow-alpha),transparent);
 --fail-tint:color-mix(in srgb,var(--fail) 14%,var(--pane));--fail-line:color-mix(in srgb,var(--fail) 35%,var(--pane));
---drop-shadow:rgba(0,0,0,.45);
---bg:var(--page);--surface:var(--pane);--surface-2:var(--pane-2);--shadow:var(--drop-shadow);--rail:var(--line);--subtle:var(--faint);
---ok-text:var(--ok);--fail-text:var(--fail);--pending:var(--faint);--icon-ink:var(--ink);--auto:var(--claude);
---primary:var(--info);--primary-hover:color-mix(in srgb,var(--info) 85%,#000);--primary-ink:var(--ink);--primary-text:var(--info);
---primary-deep:var(--screen);--primary-soft:color-mix(in srgb,var(--info) 40%,var(--pane));--bubble-frame:var(--frame)`;
+--drop-shadow:rgba(0,0,0,.45)`;
 
 const SIZES = `--fs-label:12px;--fs-meta:11px;--fs-small:13px;--fs-body:14px;--fs-step:15px;--fs-logo:24px;--fs-crt:20px;
 --gap-page:16px;--gap-card:14px;--pad-card:16px 12px 10px;--frame-w:2px;--frame-w-sm:2px`;
@@ -177,9 +170,6 @@ ${GLYPH_CSS}`;
 
 /** The background of a whole page. */
 export const PAGE_BG = 'background:var(--page)';
-
-/** Old name of the building blocks, for pages that already include them. */
-export const PIXEL_CSS = CONSOLE_CSS;
 
 /**
  * The raven's lines as HTML, coloured via the parts' variables (body, eye, beak). Everything escaped.
@@ -312,6 +302,30 @@ function cawApplyTheme(root, theme) {
 
 /** The theme script to embed: defines cawApplyTheme(root, theme). */
 export const APPLY_THEME_SCRIPT = cawApplyTheme.toString();
+
+/**
+ * Runs in the workbench or chat page, called by the host only: a theme's fonts and variables (`vars`, themeCss) and its own
+ * stylesheet (`css`, from disk; '' removes it). The page itself never gets either (clientTheme), so it cannot set any CSS.
+ */
+function cawThemeSheets([vars, css]) {
+    const sheet = (attribute) => {
+        let style = document.head.querySelector(`style[${attribute}]`);
+        if (style === null) {
+            style = document.createElement('style');
+            style.setAttribute(attribute, '');
+        }
+        // After everything built with the page, and the theme's own stylesheet last, as when the page is built.
+        document.head.append(style);
+        return style;
+    };
+    sheet('data-caw-theme-live').textContent = vars;
+    if (css === '') document.head.querySelector('style[data-caw-theme-css]')?.remove();
+    else sheet('data-caw-theme-css').textContent = css;
+}
+
+/** A theme chosen while the page is open: fonts, variables and its own stylesheet in these frames, as on a reload. */
+export const applyThemeSheets = (frames, theme) => Promise.all(frames.filter((frame) => frame !== null && frame !== undefined)
+    .map((frame) => frame.evaluate(cawThemeSheets, [themeCss(theme), theme.css ?? '']).catch(() => {})));
 
 /**
  * The favicon: the raven's head "(•>" on the theme's screen colour, as SVG. No file; the colours are validated.

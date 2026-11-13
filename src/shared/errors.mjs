@@ -1,6 +1,6 @@
 /**
  * Exit codes: 0 = pass, 1 = fail, 2 = error (environment), 3 = input rejected, 4 = recording needed (recording missing or
- * stale: record or fix, not a typo).
+ * stale: record, not a typo).
  */
 export const EXIT = { pass: 0, fail: 1, error: 2, rejected: 3, needsRecording: 4 };
 
@@ -10,7 +10,7 @@ export const worstExit = (codes) => codes.reduce((worst, code) => (SEVERITY.inde
 
 // Error codes for which nothing ran: a call, config or test file that is not right.
 const REJECTED = new Set(['usage', 'auth-missing', 'finish-rejected', 'test-invalid', 'test-missing', 'write-protected', 'target-invalid', 'config-invalid', 'config-missing', 'target-denied', 'unknown-command', 'command-invalid', 'step-limit', 'step-order', 'step-unknown', 'human-message', 'plan-required', 'plan-invalid', 'advice-invalid', 'advise-only']);
-// The test needs a (new) recording first: not a bad call, but work for record or fix.
+// The test needs a (new) recording first: not a bad call, but work for record.
 const NEEDS_RECORDING = new Set(['replay-missing', 'replay-stale']);
 
 /** The exit code for an error code; anything that is neither input nor recording is an environment error. */

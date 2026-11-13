@@ -111,7 +111,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         note: (text) => pointed('warn', text),
         /**
          * Abort: the message first, for a usage error the command synopsis, last the code (muted) for search and docs.
-         * @param synopsis e.g. "caw-ai fix <test> <S4> [--target <umgebung>]"
+         * @param synopsis e.g. "caw-ai open <test>@<S4> [--target <umgebung>]"
          */
         fatal: (code, text, { synopsis, exit } = {}) => {
             marked('fail', text, err, paint.fail);

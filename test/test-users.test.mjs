@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { parseEnvFile } from '../src/host/linux.mjs';
-import { ensureTestUser, hasTestUser } from '../src/host/role-capture.mjs';
+import { ensureTestUser, hasTestUser, roleRounds } from '../src/host/role-capture.mjs';
 import { removeRole, roleCommand, roleOverview, roleTarget } from '../src/host/role-command.mjs';
 import { envLiteral, ignoreEnvFile, roleEnvNames, saveTestUser, suggestRole } from '../src/host/test-users.mjs';
 import { loadConfig } from '../src/shared/config.mjs';
@@ -90,6 +90,15 @@ test('role list, remove and target choice', async (t) => {
     const config = loadConfig(root);
     assert.equal(roleTarget(config, undefined), 'local', 'the only environment that is not production');
     assert.throws(() => roleTarget(config, 'nowhere'), /Unbekannte Umgebung/);
+    // With sites a target is site/environment; the plain environment name is not one.
+    const sites = {
+        ...config,
+        sites: ['north', 'south'],
+        environments: { dev: { urls: { north: 'https://n.example.com', south: 'https://s.example.com' }, claude: true }, prod: { urls: { north: 'https://n.prod.example.com' }, production: true } },
+    };
+    assert.equal(roleTarget(sites, 'north/dev'), 'north/dev');
+    assert.throws(() => roleTarget(sites, 'dev'), /Unbekannte Umgebung dev\. Bekannt: north\/dev, south\/dev, north\/prod/);
+    assert.throws(() => roleTarget(sites, undefined), /north\/dev, south\/dev/, 'two open targets: ask');
     const lines = [];
     assert.equal(await roleCommand(root, ['list', '--json'], { out: (line) => lines.push(line) }), 0);
     assert.equal(JSON.parse(lines[0]).roles.length, 1);
@@ -147,4 +156,14 @@ test('sessionFollowsOwnPlan: only the session, only read-only, only the plan it 
     assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous: { ...previous, mutates: true }, proposed: { ...same, mutates: true } }), false, 'writing test');
     assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { mutates: false, steps: [{ ...steps[0], expect: 'Something else.' }] } }), false, 'changed plan');
     assert.equal(sessionFollowsOwnPlan({ agent: 'session', previous, proposed: { mutates: false, steps: [...steps, { id: 'S2', name: 'x', do: 'y', expect: 'z' }] } }), false, 'added step');
+});
+
+test('roleRounds: a role named on the command line is saved right after the sign-in, without asking for the name', async (t) => {
+    const root = project(t);
+    const phases = [];
+    const capture = { credentials: { user: 'mia', password: 'pw' }, onRole: null, onNext: null };
+    const saved = await roleRounds({ root, page: null, capture, setPhase: async (detail) => { phases.push(detail); }, signOut: async () => {}, givenRole: 'member', closed: new Promise(() => {}) });
+    assert.deepEqual(saved, ['member']);
+    assert.deepEqual(phases, [{ phase: 'done', role: 'member' }], 'no role card');
+    assert.equal(env(root).CAW_LOGIN_MEMBER, 'mia');
 });

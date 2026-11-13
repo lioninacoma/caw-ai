@@ -15,6 +15,7 @@ import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig
 import { fileVersion, incompleteText, routeOverlay } from './overlay.mjs';
 import { DEFAULT_MESSAGE_SELECTORS, authOf, browserLaunch, isLoopback } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
+import { registerEngines } from './framework/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
@@ -103,8 +104,8 @@ const isAliveProcess = (pid) => {
 
 /**
  * Cleans up profiles of earlier runs that could not be deleted, e.g. after an abort. They contain the test account's
- * login cookies. A running session is left alone: every profile names its process. Without that entry it comes from an
- * older tool version and only counts as orphaned after a day.
+ * login cookies. A running session is left alone: every profile names its process. A profile without that entry (e.g. one
+ * whose entry was not written yet) only counts as orphaned after a day.
  */
 export const sweepStaleProfiles = ({ dir = tmpdir(), isAlive = isAliveProcess, remove = rmSync, now = Date.now } = {}) => {
     let removed = 0;
@@ -503,7 +504,7 @@ const validTimezone = (value) => {
  * Language and time zone of the browser: from the config (`browser.locale`, `browser.timezone`), else as recorded, else the
  * host's. Recording on de-DE/Europe/Berlin and replaying on an en-US/UTC runner would otherwise change dates, numbers and texts.
  * An invalid value is skipped in favour of the next source.
- * @param recorded { locale, timezone } stored with the recording (recordedBrowser), {} for older recordings
+ * @param recorded { locale, timezone } stored with the recording (recordedBrowser), {} while nothing is recorded
  */
 export const browserRegion = (config, recorded = {}, host = Intl.DateTimeFormat().resolvedOptions()) => {
     const browser = config?.browser !== null && typeof config?.browser === 'object' ? config.browser : {};
@@ -562,6 +563,8 @@ const HEADLESS_VIEWPORT = { width: 1920, height: 1080 };
  */
 const launchChrome = async (profileDir, hosts, { headless = false, insecureTls = false, embed = false, httpCredentials, launch = { channel: 'chrome' }, region, ownSignals = false } = {}) => {
     quietProfile(profileDir);
+    // Before every launch: recordings may use the extjs= selector engine (a no-op without Ext).
+    await registerEngines();
     try {
         return await chromium.launchPersistentContext(profileDir, {
             // The system Chrome, or whatever the config names under browser (Edge, a fixed path).

@@ -3,7 +3,7 @@
 
 import { language, t } from '../shared/i18n.mjs';
 import { deviationText, isEffectCause } from './effects.mjs';
-import { JSON_PREFIX, neutralName, neutralPath, outcomeText } from './network-log.mjs';
+import { JSON_PREFIX, neutralPath, outcomeText } from './network-log.mjs';
 import { isCaughtScriptError } from '../shared/report.mjs';
 
 const QUICK_ABORT_MS = 1000;
@@ -72,7 +72,7 @@ export const paramChange = (given, then) => {
  * @returns the sentence for the report, or null
  */
 export const selfAbort = (requests = [], baseline = []) => {
-    const before = new Map((baseline ?? []).map((entry) => [neutralName(entry.name), entry]));
+    const before = new Map((baseline ?? []).map((entry) => [entry.name, entry]));
     const hit = requests.find((request) => quickAbort(request, before.get(request.name), requests));
     return hit === undefined ? null : t('config.diag.selfAbort', { name: hit.name, time: seconds(hit.ms ?? 0) });
 };
@@ -82,7 +82,7 @@ export const selfAbort = (requests = [], baseline = []) => {
  * @param broken    why replay stopped, or null if a check was not met
  * @param failures  the run's hard failures
  * @param requests  the failed step's requests during replay
- * @param baseline  the step's recording.network, missing in older recordings
+ * @param baseline  the step's recording.network, missing until a healthy run recorded it
  * @param deviation the first action up to this step whose effect differs from what was learned, or null
  * @param earlier   { id, requests } of the previous step: the cause may lie there even if its check passed
  * @returns { side, strength, findings, text }
@@ -109,7 +109,7 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
     } else if (deviation !== null && deviation.fails) add('app', 'clear', deviationText(deviation));
     else if (deviation !== null && deviation.learned === true && !uiChanged) add('app', 'likely', deviationText(deviation));
     else if (deviation !== null) notes.push(deviationText(deviation));
-    const before = new Map((baseline ?? []).map((entry) => [neutralName(entry.name), entry]));
+    const before = new Map((baseline ?? []).map((entry) => [entry.name, entry]));
     const own = requests.filter((request) => !(request.outcome === 'aborted' && request.navigated));
     const covered = broken?.kind === 'target' ? broken.blocker?.covered : undefined;
 
@@ -172,7 +172,7 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
     if (ranThrough && baseline !== undefined) {
         const now = new Set(own.map(({ name }) => name));
         for (const entry of baseline) {
-            const name = neutralName(entry.name);
+            const { name } = entry;
             if (now.has(name)) continue;
             const text = t('config.diag.missingRequest', { name, status: String(entry.status), time: seconds(entry.ms) });
             if (/^(GET|HEAD|OPTIONS) /.test(name)) notes.push(text);

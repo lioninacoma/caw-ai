@@ -67,4 +67,4 @@ createServer({ key: readFileSync('key.pem'), cert: readFileSync('cert.pem') }, (
     // Like a real portal: embedding forbidden. The workbench lifts that only in the test browser.
     res.writeHead(200, { 'content-type': 'text/html', 'x-frame-options': 'SAMEORIGIN', 'content-security-policy': "frame-ancestors 'self'; object-src 'none'" });
     res.end(authed ? appPage.replace('</body>', `${appCode()}</body>`) : loginPage);
-}).listen(8443, '127.0.0.1');
+}).listen(Number(process.argv[2] ?? 8453), '127.0.0.1');

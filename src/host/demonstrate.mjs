@@ -1,5 +1,6 @@
-// The human demonstrates in the visible Chrome, the tool records. Steps use the recorder format, because targets are described
-// by the same function as for the agent. Passwords never leave the page.
+// The human demonstrates in the visible Chrome, the tool records. Steps use the recorder format: the page marks the element a
+// pointer or key went to, the host turns the mark into the same locator a step of Claude's gets (recordLocator). Passwords never
+// leave the page.
 
 import { lstatSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,7 +9,12 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { isWorkbenchDocument } from './app-view.mjs';
 import { redactDeep } from './secrets.mjs';
-import { frameTargetOf, frameworkOf, targetLabel } from './framework/index.mjs';
+import { elementHint, frameworkOf } from './framework/index.mjs';
+import { locatorLabel } from './locator.mjs';
+import { webPick } from './accessible-name.mjs';
+import { extjsCandidates, extjsMatches } from './framework/extjs-query.mjs';
+import { MARK_ATTRIBUTE, recordLocator, roleAndName } from './record-locator.mjs';
+import { HASH_LIMIT_BYTES, matchFixture } from './fixtures.mjs';
 
 const BINDING = '__cawCapture';
 const SETTLE_MS = 300;
@@ -17,49 +23,142 @@ const OWN_NAVIGATION_MS = 3000;
 // How often to check for new application failures during a demonstration.
 const FAILURE_POLL_MS = 500;
 const NOT_TYPED = new Set(['checkbox', 'radio', 'file', 'button', 'submit', 'hidden']);
+// How long the host may take to read a mark; then the page removes it itself.
+const MARK_MS = 10_000;
+const HINT_TIMEOUT_MS = 2000;
 
-/** Runs in the browser. Capture phase: the target must be described before the application reacts to it. */
-export function captureInPage(binding, describeTarget, notTyped) {
+/**
+ * Runs in the browser. Capture phase, on pointerdown and keydown: the element is marked before the application reacts to it
+ * (a click often removes what was clicked). The host turns the mark into a locator and removes it again. A click also sends
+ * the element's role and name as they are before the application reacts (nameOf: roleAndName from accessible-name.mjs), and
+ * a locator chain that is unique right now (pick: pickAtPointerdown; ExtJS components, else role and name), while a list or
+ * dialog is still open.
+ * A field counts as typed only after trusted input: a value the application sets itself (a combobox taking the entry clicked in
+ * its list) is no fill. Files chosen for a file field are reported by name, size and SHA-256 (up to hashLimit bytes), never
+ * their content: the host only records files that come from caw/fixtures.
+ */
+export function captureInPage(binding, notTyped, markAttribute, markMs, nameOf, pick, hashLimit) {
     if (window.__cawCaptureOn) return;
     window.__cawCaptureOn = true;
     // The workbench marks itself only after this script runs (tab script vs. this context script): so check here, not at start.
     const send = (event) => { if (window.__cawWorkbench !== true) window[binding]?.({ ...event, path: location.pathname }); };
-    const describe = (element) => {
-        try {
-            return describeTarget(element, { mode: 'describe' });
-        } catch {
-            return null;
-        }
+    let next = 0;
+    const mark = (element) => {
+        const value = `${Date.now().toString(36)}-${next += 1}`;
+        element.setAttribute(markAttribute, value);
+        setTimeout(() => { if (element.getAttribute(markAttribute) === value) element.removeAttribute(markAttribute); }, markMs);
+        return value;
+    };
+    // The control the pointer went to, e.g. the button around an icon; across open shadow roots.
+    const CONTROL = 'button, a[href], input, select, textarea, summary, [data-testid], [role]';
+    const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
+    const controlOf = (start) => {
+        for (let current = start; current !== null; current = parentOf(current)) if (current.matches?.(CONTROL)) return current;
+        return start;
     };
     const isField = (element) => (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && !notTyped.includes(element.type);
     const flush = (element) => {
-        if (!isField(element) || element.cawValue === element.value) return;
+        if (!isField(element) || element.cawTyped !== true || element.cawValue === element.value) return;
         element.cawValue = element.value;
-        if (element.type === 'password') send({ action: 'fill', secret: true, target: describe(element) });
-        else send({ action: 'fill', target: describe(element), value: element.value });
+        element.cawTyped = false;
+        if (element.type === 'password') send({ action: 'fill', secret: true, mark: mark(element) });
+        else send({ action: 'fill', mark: mark(element), value: element.value });
     };
     addEventListener('focusin', ({ target }) => {
         if (isField(target) && target.cawValue === undefined) target.cawValue = target.value;
     }, true);
-    addEventListener('change', ({ target }) => { if (!window.__cawPicking) flush(target); }, true);
+    addEventListener('input', ({ isTrusted, target }) => { if (isTrusted && isField(target)) target.cawTyped = true; }, true);
+    const describeFiles = (input) => Promise.all([...(input.files ?? [])].map(async (file) => {
+        let sha256;
+        try {
+            // eslint-disable-next-line n/no-unsupported-features/node-builtins -- runs in the browser, not in Node
+            const subtle = window.crypto?.subtle;
+            if (file.size <= hashLimit && subtle) {
+                const digest = await subtle.digest('SHA-256', await file.arrayBuffer());
+                sha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+            }
+        } catch { /* compared by name and size only */ }
+        return { name: file.name, size: file.size, ...(sha256 === undefined ? {} : { sha256 }) };
+    }));
+    addEventListener('change', ({ isTrusted, target }) => {
+        if (window.__cawPicking) return;
+        if (isTrusted && target instanceof HTMLInputElement && target.type === 'file') {
+            const marked = mark(target);
+            describeFiles(target).then((files) => send({ action: 'upload', mark: marked, files }));
+            return;
+        }
+        // A choice in a <select>: fill picks the option by its value, as replay does.
+        if (isTrusted && target instanceof HTMLSelectElement && !target.multiple) send({ action: 'fill', mark: mark(target), value: target.value });
+        else flush(target);
+    }, true);
+    // Arrow keys choose in a combobox, list, grid, tab bar or radio group; the application then sets the value itself, so no
+    // fill would tell it. Not in a <select>: its choice already becomes a fill.
+    const ARROWS = ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'];
     addEventListener('keydown', ({ isTrusted, key, target }) => {
-        if (!isTrusted || window.__cawPicking || !['Enter', 'Tab', 'Escape'].includes(key)) return;
+        if (!isTrusted || window.__cawPicking) return;
+        if (!['Enter', 'Tab', 'Escape'].includes(key) && !(ARROWS.includes(key) && !(target instanceof HTMLSelectElement))) return;
         flush(target);
         send({ action: 'press', key });
     }, true);
-    addEventListener('click', ({ isTrusted, target }) => {
-        if (!isTrusted || window.__cawPicking || !(target instanceof Element)) return;
+    addEventListener('pointerdown', (event) => {
+        const [target] = event.composedPath();
+        if (!event.isTrusted || window.__cawPicking || event.button !== 0 || !(target instanceof Element)) return;
         flush(document.activeElement);
-        const described = describe(target);
-        send({ action: 'click', target: described, ...(described === null ? { hint: target.tagName.toLowerCase() } : {}) });
+        const control = controlOf(target);
+        let seen = null;
+        try { seen = nameOf(control); } catch { /* the locator is then built from the element as it is afterwards */ }
+        let proposal = null;
+        try { proposal = typeof pick === 'function' ? pick(control) : null; } catch { /* no component chain */ }
+        send({ action: 'click', mark: mark(control), seen, proposal, hint: target.tagName.toLowerCase() });
+    }, true);
+    // The browser's own double-click after two clicks: the host turns those two clicks into one dblclick.
+    addEventListener('dblclick', (event) => {
+        if (event.isTrusted && !window.__cawPicking && event.button === 0) send({ action: 'dblclick' });
     }, true);
 }
+
+/**
+ * Files chosen in the page (the page reports name, size, SHA-256): recorded as an upload only if every one comes from
+ * caw/fixtures. The click that opened the file chooser just before becomes the upload, so replay clicks it and hands the
+ * chooser the files; without such a click the file field itself is the target. Files from elsewhere are named, not recorded.
+ * @returns { item, replaced } (replaced: the click before became this item in items) or null if no file was chosen
+ */
+export const uploadItem = (items, event, filesDir) => {
+    const chosen = Array.isArray(event.files) ? event.files.filter((file) => typeof file?.name === 'string').slice(0, 20) : [];
+    if (chosen.length === 0) return null;
+    const files = chosen.map((file) => (filesDir === undefined ? null : matchFixture(filesDir, file)));
+    if (files.includes(null)) return { item: { action: 'upload', target: null, files: [], outside: chosen.filter((_file, index) => files[index] === null).map(({ name }) => name), path: event.path }, replaced: false };
+    const actions = items.map((item, index) => [item, index]).filter(([item]) => item.action !== 'failure');
+    const [last, at] = actions.at(-1) ?? [];
+    if (last?.action === 'click' && last.target !== null) {
+        const item = { ...last, action: 'upload', files };
+        items.splice(at, 1, item);
+        return { item, replaced: true };
+    }
+    return { item: { ...event, files }, replaced: false };
+};
+
+/**
+ * A dblclick event from the page ends the two clicks just before it: they become one dblclick on the first click's target (read
+ * before the application reacted). An application failure noted in between stays where it is. Without two clicks right before
+ * it, nothing changes.
+ * @returns the dblclick item, which replaced the clicks in `items`, or null
+ */
+export const mergeDoubleClick = (items) => {
+    const actions = items.map((item, index) => [item, index]).filter(([item]) => item.action !== 'failure').slice(-2);
+    if (actions.length < 2 || actions.some(([item]) => item.action !== 'click')) return null;
+    const [[first, at], [second, secondAt]] = actions;
+    const merged = { ...first, action: 'dblclick', target: first.target ?? second.target };
+    items.splice(secondAt, 1);
+    items.splice(at, 1, merged);
+    return merged;
+};
 
 /**
  * Runs in the browser. The next click picks an element instead of triggering anything: it stops at window and reaches
  * neither the application nor the recording. Escape cancels.
  */
-export function pickInPage(describeTarget) {
+export function pickInPage(markAttribute) {
     return new Promise((resolve) => {
         const mark = document.createElement('div');
         mark.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;display:none';
@@ -74,17 +173,22 @@ export function pickInPage(describeTarget) {
             const { left, top, width, height } = target.getBoundingClientRect();
             mark.style.cssText += `;display:block;left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
         };
+        const CONTROL = 'button, a[href], input, select, textarea, summary, [data-testid], [role]';
+        const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
+        const controlOf = (start) => {
+            for (let current = start; current !== null; current = parentOf(current)) if (current.matches?.(CONTROL)) return current;
+            return start;
+        };
         const click = (event) => {
             if (!event.isTrusted) return;
             swallow(event);
-            const { target } = event;
-            let described = null;
-            try {
-                described = describeTarget(target, { mode: 'describe' });
-            } catch {
-                described = null;
-            }
-            done({ target: described, tag: target.tagName.toLowerCase(), text: (target.innerText ?? target.value ?? '').trim().slice(0, 120) });
+            const [target] = event.composedPath();
+            if (!(target instanceof Element)) return;
+            const control = controlOf(target);
+            // The host turns the mark into a locator and removes it.
+            const value = `pick-${Date.now().toString(36)}`;
+            control.setAttribute(markAttribute, value);
+            done({ mark: value, tag: target.tagName.toLowerCase(), text: (target.innerText ?? target.value ?? '').trim().slice(0, 120) });
         };
         const key = (event) => {
             if (event.key !== 'Escape' || !event.isTrusted) return;
@@ -111,25 +215,41 @@ export function pickInPage(describeTarget) {
 }
 
 /**
- * A target from a frame of the application gets `frame`: the iframes up to the main frame. If an iframe cannot be described,
- * the target is not stable (null), like an element without a name.
+ * The application's main frame for an element in `frame`: with the workbench the frame in its iframe, otherwise the main frame of
+ * the page the event came from. Not session.page(): that is the most recently opened window, and a click in the first tab with
+ * an open popup belongs there.
  */
-const withFrame = async (session, frame, target) => {
-    if (target === null || target === undefined || frame === undefined || frame === null) return target ?? null;
-    // The application's main frame on the page the event came from: with the workbench its iframe, otherwise this page's main
-    // frame. Not session.page(): that is the most recently opened window, and a click in the first tab with an open popup belongs there.
+const appFrameOf = (session, frame) => {
     const page = frame.page();
-    const top = session.workbench?.page === page ? session.workbench.view.frame : page.mainFrame();
-    if (frame === top) return target;
-    const chain = await frameTargetOf({ mainFrame: () => top }, frame).catch(() => null);
-    return chain === null ? null : chain === undefined ? target : { ...target, frame: chain };
+    return session.workbench?.page === page ? session.workbench.view.frame : page.mainFrame();
+};
+
+/**
+ * The locator for the element the page marked, relative to the application's main frame, frames included: { target } with null
+ * if there is no stable one, plus the framework's component hint if any. The mark is removed again.
+ */
+export const markedTarget = async (session, frame, mark, seen = null, proposal = null) => {
+    const framework = session.framework ?? frameworkOf();
+    const locator = frame.locator(`[${MARK_ATTRIBUTE}="${String(mark).replace(/["\\]/g, '')}"]`);
+    try {
+        const target = await recordLocator(appFrameOf(session, frame), locator, { framework: framework.name, timeout: HINT_TIMEOUT_MS, seen, proposal });
+        if (target === null || framework.hint === undefined) return { target };
+        const element = await locator.elementHandle({ timeout: HINT_TIMEOUT_MS }).catch(() => null);
+        const hint = element === null ? null : await elementHint(framework, element);
+        await element?.dispose().catch(() => {});
+        return { target, ...(hint ?? {}) };
+    } catch {
+        return { target: null };
+    } finally {
+        await locator.evaluate((node, name) => node.removeAttribute(name), MARK_ATTRIBUTE, { timeout: HINT_TIMEOUT_MS }).catch(() => {});
+    }
 };
 
 /** In every frame, because forms are sometimes inside iframes. The first click wins, the other frames cancel. */
 export const cancelPick = (session) => Promise.all(session.page().frames().map((frame) => frame.evaluate('window.__cawCancelPick?.()').catch(() => {})));
 
 export const pickElement = async (session) => {
-    const script = `(${pickInPage})(${(session.framework ?? frameworkOf()).targets})`;
+    const script = `(${pickInPage})(${JSON.stringify(MARK_ATTRIBUTE)})`;
     const picked = await new Promise((resolve) => {
         const frames = session.page().frames();
         let open = frames.length;
@@ -140,17 +260,34 @@ export const pickElement = async (session) => {
                 else if (open === 0) resolve(null);
             });
         }
-    }).then(async (hit) => (hit === null ? null : { ...hit.value, target: await withFrame(session, hit.frame, hit.value.target) }));
+    }).then(async (hit) => {
+        if (hit === null) return null;
+        const { mark, ...rest } = hit.value;
+        return { ...rest, ...await markedTarget(session, hit.frame, mark) };
+    });
     await cancelPick(session);
     if (picked === null) return null;
-    const label = picked.target === null ? `${picked.tag}${picked.text === '' ? '' : ` "${picked.text.slice(0, 40)}"`}` : targetLabel(picked.target);
+    const label = picked.target === null ? `${picked.tag}${picked.text === '' ? '' : ` "${picked.text.slice(0, 40)}"`}` : locatorLabel(picked.target);
     return { label, ...picked };
 };
 
-// Never in the workbench itself: there the human types into the chat, which is not an application step.
-const captureScript = (framework) => `if (!(${isWorkbenchDocument}) && location.href !== 'about:srcdoc') (${captureInPage})(${JSON.stringify(BINDING)}, ${framework.targets}, ${JSON.stringify([...NOT_TYPED])});`;
+// In the page at the pointerdown: the first ExtJS chain that finds exactly the element right now.
+// Otherwise, for any framework, role and name if exactly this element has them right now (webPick).
+const pickAtPointerdown = `(element) => { const found = (${extjsCandidates})(element); for (const chain of found.chains) if ((${extjsMatches})(element, chain)) return chain; return (${webPick})(element, ${roleAndName}); }`;
 
-// During the run the folder also belongs to the container: a link inside it, e.g. fehler.json -> ~/.bashrc, must not make the host
+/** A chain the page sent, checked for shape: only known links with string values; anything else is dropped. */
+const chainOf = (value) => {
+    if (!Array.isArray(value) || value.length === 0 || value.length > 8) return null;
+    const known = (link) => link !== null && typeof link === 'object' && Object.values(link).every((part) => typeof part === 'string')
+        && ((Object.keys(link).length === 1 && ['extjs', 'text', 'exact', 'has', 'css'].includes(Object.keys(link)[0]))
+            || (Object.keys(link).length === 1 && ['dialog', 'alertdialog'].includes(link.role))
+            || (Object.keys(link).length === 2 && typeof link.role === 'string' && typeof link.name === 'string'));
+    return value.every(known) ? value : null;
+};
+// Never in the workbench itself: there the human types into the chat, which is not an application step.
+const captureScript = () => `if (!(${isWorkbenchDocument}) && location.href !== 'about:srcdoc') (${captureInPage})(${JSON.stringify(BINDING)}, ${JSON.stringify([...NOT_TYPED])}, ${JSON.stringify(MARK_ATTRIBUTE)}, ${MARK_MS}, ${roleAndName}, ${pickAtPointerdown}, ${HASH_LIMIT_BYTES});`;
+
+// During the run the folder also belongs to the container: a link inside it, e.g. e1.png -> ~/.bashrc, must not make the host
 // write elsewhere. So never follow a link: lstat instead of exists, and only create new files ('wx'), never overwrite.
 const taken = (path) => {
     try {
@@ -193,15 +330,18 @@ const captureOf = async (session) => {
     captures.set(session.context, state);
     // Only frames of the application count; in the workbench the chat sees the binding too.
     const owns = ({ page, frame }) => (session.ownsFrame === undefined ? session.ownsPage(page) : session.ownsFrame(frame));
-    // A target's frame is resolved on the host, i.e. asynchronously; the queue keeps events in order.
+    // A mark is turned into a locator right away, while the element still exists; the queue keeps the events in order.
     await session.context.exposeBinding(BINDING, (source, event) => {
         if (state.listener === null || !owns(source)) return;
+        const { mark, seen, proposal, ...rest } = event ?? {};
+        const valid = typeof seen?.role === 'string' && typeof seen?.name === 'string' ? { role: seen.role, name: seen.name } : null;
+        const resolving = mark === undefined ? Promise.resolve(null) : markedTarget(session, source.frame, mark, valid, chainOf(proposal));
         state.queue = state.queue.then(async () => {
-            const target = event?.target === undefined ? undefined : await withFrame(session, source.frame, event.target);
-            state.listener?.(hideSecrets(session, target === undefined ? event : { ...event, target }));
+            const found = await resolving;
+            state.listener?.(hideSecrets(session, found === null ? rest : { ...rest, ...found }));
         }).catch(() => {});
     });
-    const script = captureScript(session.framework ?? frameworkOf());
+    const script = captureScript();
     await session.context.addInitScript({ content: script });
     // In every frame, not just the main frame: with the workbench the main frame is the workbench, the application already runs in the iframe.
     await Promise.all(session.context.pages().flatMap((page) => page.frames()).map((frame) => frame.evaluate(script).catch(() => {})));
@@ -230,10 +370,11 @@ export const itemLabel = (item) => {
         case 'checkpoint': return t('run.item.checkpoint', { about: aboutOf(item), text: item.text });
         case 'note': return t('run.item.note', { about: aboutOf(item), text: item.text });
         case 'press': return `press ${item.key}`;
+        case 'upload': return item.outside !== undefined ? t('run.item.uploadOutside', { names: item.outside.join(', ') }) : `upload ${item.target === null ? unstable(item) : locatorLabel(item.target)} ${item.files.join(', ')}`;
         case 'navigated': return t('run.item.navigated', { url: item.url });
         case 'reloaded': return t('run.item.reloaded', { url: item.url });
         case 'failure': return t('run.item.failure', { type: item.type, text: item.text, url: item.url === undefined ? '' : ` (${item.url})` });
-        default: return `${item.action} ${item.target === null ? unstable(item) : targetLabel(item.target)}`;
+        default: return `${item.action} ${item.target === null ? unstable(item) : locatorLabel(item.target)}`;
     }
 };
 
@@ -249,7 +390,8 @@ export const feedLabel = (item) => {
     if (item.secret) return t('run.item.secret', { verb: verbOf(item.action) });
     const verb = verbOf(item.action);
     if (item.action === 'press') return `${verb} ${item.key}`;
-    return `${verb} ${item.target === null ? unstable(item) : targetLabel(item.target)}`;
+    if (item.action === 'upload') return itemLabel(item);
+    return `${verb} ${item.target === null ? unstable(item) : locatorLabel(item.target)}`;
 };
 
 /**
@@ -258,9 +400,10 @@ export const feedLabel = (item) => {
  * @param operator { nextLine({ page }) } returns the next line, { note } for a note or { checkpoint }, both optionally with element
  * @param onItem   receives every recorded item, e.g. for the chat
  * @param dir      folder for the checkpoint screenshots
+ * @param filesDir the project's caw folder: a file chosen for upload is recorded only if it comes from its fixtures folder
  * @returns the steps and checkpoints in order
  */
-export const demonstrate = async ({ session, operator, ui, dir, now = Date.now, onFailure, onItem, pollMs = FAILURE_POLL_MS }) => {
+export const demonstrate = async ({ session, operator, ui, dir, filesDir, now = Date.now, onFailure, onItem, pollMs = FAILURE_POLL_MS }) => {
     const state = await captureOf(session);
     const items = [];
     // Application failures (console, script, network) are detected during the demonstration: they appear in place in the
@@ -287,7 +430,27 @@ export const demonstrate = async ({ session, operator, ui, dir, now = Date.now, 
     };
     state.listener = (event) => {
         lastAction = now();
-        push(event);
+        if (event.action === 'upload') {
+            const upload = uploadItem(items, event, filesDir);
+            if (upload === null) return;
+            if (!upload.replaced) {
+                push(upload.item);
+                return;
+            }
+            // The click that opened the file chooser was already shown; the upload that replaces it follows as its own line.
+            ui.step({ number: items.length, total: items.length, label: itemLabel(upload.item), elapsed: 0 });
+            onItem?.(upload.item);
+            return;
+        }
+        if (event.action !== 'dblclick') {
+            push(event);
+            return;
+        }
+        // The two clicks were already shown; the double-click that replaces them follows as its own line.
+        const merged = mergeDoubleClick(items);
+        if (merged === null) return;
+        ui.step({ number: items.length, total: items.length, label: itemLabel(merged), elapsed: 0 });
+        onItem?.(merged);
     };
     let lastUrl = (() => {
         try {
@@ -395,6 +558,7 @@ export const recordableSteps = (items) => {
     for (const item of items) {
         if (['checkpoint', 'note', 'navigated', 'reloaded', 'failure'].includes(item.action)) continue;
         if (item.secret) problems.push(t('run.demo.secret'));
+        else if (item.outside !== undefined) problems.push(itemLabel(item));
         else if (item.target === null) problems.push(t('run.demo.unstable', { item: itemLabel(item) }));
         else {
             const step = { ...item };

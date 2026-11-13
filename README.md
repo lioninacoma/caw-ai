@@ -6,13 +6,13 @@ English · [Deutsch](README.de.md)
 [![npm](https://img.shields.io/npm/v/caw-ai)](https://www.npmjs.com/package/caw-ai)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> `caw-ai` · *Context-Aware Workflows* · **Show it. Understand it. Replay it.**
+> `caw-ai` · *Context-Aware Web Testing*
 >
-> AI-powered E2E testing, workflow automation and application debugging.
+> AI-powered E2E testing, development and debugging for web apps.
 >
-> Show or describe a workflow, Claude walks it once in your real app with its context (user, role, state), and from then on it replays without AI: fast, repeatable, token-free, with Claude back in the chat only when a step breaks.
+> Show or describe what a user does, Claude walks it once in your real app with its context (user, role, state), and from then on it replays without AI: fast, repeatable, token-free, with Claude back in the chat only when a step breaks.
 
-- **Capture:** demonstrate a real user workflow in your app, or let Claude walk a plan you describe.
+- **Capture:** demonstrate what a real user does in your app, or let Claude walk a plan you describe.
 - **Understand:** the AI interprets each action in its context: signed-in user, role, application state and goal, not just a click sequence.
 - **Replay:** reusable recordings, replayed with Playwright, without AI: deterministic and token-free, locally and in CI.
 - **Debug:** investigate and fix issues in the chat next to the running app.
@@ -41,8 +41,8 @@ npx caw-ai run first-errand --target local      # replays the recording, without
 
 - Tests are YAML files with steps in plain language. While recording, Claude performs each step in Chrome and stores the targets by role, label and text, not as CSS selectors.
 - A replay uses only the recording. It is deterministic and uses no tokens, locally and in CI.
-- If a step fails, the chat next to the app shows the cause. `fix` re-records only that step.
-- After a run the window is yours: F1 restores the state of any test in a fresh session, and Claude in the chat can use the page, reproduce a pasted bug ticket and propose the fix in your code.
+- If a step fails, the chat next to the app shows the cause. "Fix step" there repairs only that step; `record <test>@S3` re-records from S3 on after an intended change.
+- `open` hands you the window, signed in, at any step of a test: F1 opens any test at any step in a fresh session, and Claude in the chat can use the page, reproduce a pasted bug ticket and propose the fix in your code.
 - Failures are classified as test, app or environment, based on requests, console output and the page changes seen during recording.
 - Claude drives the browser only through a fixed set of commands and reaches only the hosts in your config. Test accounts are entered in the sign-in window and go straight to `caw/.env`; Claude never sees them. You approve plans that write data and decide whether a recording is adopted.
 - Supported: plain web apps, React, Vue, Angular and ExtJS.
@@ -111,8 +111,8 @@ npx caw-ai run smoke --target local
 | Run a test | `caw-ai run <test> --target local` |
 | Run it like CI | `caw-ai run <test> --target local --headless` |
 | Record a new test | `caw-ai record <test> --target local` |
-| Update one changed step | `caw-ai fix <test> S3 --target local` |
-| Get the app into a state and keep coding there | `caw-ai run <test> --target local --until S3` |
+| Re-record from a changed step to the end | `caw-ai record <test>@S3 --target local` |
+| Get the app to the start of a step and keep coding there | `caw-ai open <test>@S3 --target local` |
 | Open the app signed in, without a test | `caw-ai open --target local` |
 | Test local code inside a deployed environment | `caw-ai run <test> --target dev --overlay` |
 | Let Claude explain failures right away | `caw-ai run <test> --target local --advise` |
@@ -128,7 +128,7 @@ Exit codes: `0` pass, `1` fail, `2` environment error, `3` invalid input, `4` ne
 - run: npx caw-ai run smoke --target staging --headless
 ```
 
-With `CI` set there is no chat and Claude is not started. Record and fix locally, commit the files, replay in CI. Pass the test users as environment variables (CI secrets), with the names from `roles` in the config, e.g. `CAW_LOGIN_TESTER` and `CAW_PW_TESTER`.
+With `CI` set there is no chat and Claude is not started. Record locally, commit the files, replay in CI. Pass the test users as environment variables (CI secrets), with the names from `roles` in the config, e.g. `CAW_LOGIN_TESTER` and `CAW_PW_TESTER`.
 
 ### From Claude Code
 
@@ -139,15 +139,15 @@ With `CI` set there is no chat and Claude is not started. Record and fix locally
 /caw-ai take me to the ticket detail page, I want to work on the status field
 ```
 
-## After the run
+## Working in the window
 
-The window stays open, signed in, in the state the test reached. From there:
+`caw-ai open <test>@S3` replays a test up to the entry of S3 and hands you the window, signed in; `caw-ai open <test>` runs the whole test first. From there:
 
-### Restore a state
+### Open a test at a step
 
-F1 lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account and replays up to there.
+F1 ("Open…") lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account, replays the steps before it and stops at the step's entry: its navigation done, its inputs open. Without a step the whole test runs. From the terminal: `caw-ai open <test>@S3`.
 
-<img src="docs/media/states.webp" width="100%" alt="The F1 dialog &quot;Choose state&quot; lists the test first-errand with its steps S1 to S4">
+<img src="docs/media/states.webp" width="100%" alt="The F1 dialog lists the test first-errand with its steps S1 to S4">
 
 ### Develop
 
@@ -187,7 +187,7 @@ Login can be a form (with optional TOTP), HTTP Basic, or a stored session for SS
 
 ## Data and privacy
 
-**When Claude runs** (`record`, `fix`, the chat, `--advise`), Claude Code sends to Anthropic what Claude works with: page contents (accessibility snapshots, `eval` results, screenshots), console and network summaries, the project source it reads and your chat messages. Your Claude Code account and its terms apply.
+**When Claude runs** (`record`, the chat, `--advise`), Claude Code sends to Anthropic what Claude works with: page contents (accessibility snapshots, `eval` results, screenshots), console and network summaries, the project source it reads and your chat messages. Your Claude Code account and its terms apply.
 
 **Masked or blocked:** caw-ai signs in itself; the role's password and values marked `secret: true` are replaced with `••••` before Claude sees text. `caw/.env`, `.env*`, `caw/.auth` and typical key files are blocked for Claude (Claude Code deny rules locally, hidden in the Docker container). Other secrets in project files Claude may read are not, and Claude sees everything the test user sees in the app: use test accounts and test data. Details: [Sandbox boundaries](docs/guide.md#sandbox-boundaries).
 
@@ -199,7 +199,7 @@ Login can be a form (with optional TOTP), HTTP Basic, or a stored session for SS
 
 ## Status and roadmap
 
-Beta. Minor versions may break things before 1.0; the [changelog](CHANGELOG.md) lists each break with upgrade notes ([from 0.1.0](docs/upgrading.md)).
+Beta. Minor versions may break things before 1.0; the [changelog](CHANGELOG.md) lists the changes.
 
 Supported: Google Chrome or another Chromium-based browser (`browser` in the config), Windows and Linux, Node 22.4+. macOS is untested.
 
@@ -215,7 +215,7 @@ Not yet, or not planned:
 ## FAQ
 
 **Does every run cost tokens?**
-No. Recording, `fix` and the chat use Claude tokens, billed through your Claude Code account; replays use none, locally and in CI. Before Claude starts, the chat asks once per run (not when your own Claude Code session is the agent); you can turn that notice off. The run log shows the cost Claude Code reports.
+No. Recording and the chat use Claude tokens, billed through your Claude Code account; replays use none, locally and in CI. Before Claude starts, the chat asks once per run (not when your own Claude Code session is the agent); you can turn that notice off. The run log shows the cost Claude Code reports.
 
 **Does Claude see my passwords?**
 No. caw-ai signs in itself before Claude starts. Claude can't read `caw/.env` and only drives the browser through fixed commands. Use test accounts anyway: Claude acts as that user.
@@ -235,7 +235,6 @@ It uses Playwright to drive your installed Chrome. You don't write Playwright co
 - [Configuration](docs/configuration.md): `caw.config.json`, login types, `caw/.env`, `caw/caw.md`
 - [Test files](docs/test-files.md): test plan and recording format, placeholders
 - [Guide](docs/guide.md): agents, workbench, chat, failure assessment, sandbox
-- [Upgrading from 0.1.0](docs/upgrading.md): renamed config keys, exit codes and files
 - [Themes](themes/README.md): built-in themes, own theme packages, `caw-ai theme`
 
 ## Contributing

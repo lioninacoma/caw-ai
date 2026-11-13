@@ -8,7 +8,7 @@ import { CawError, EXIT } from '../src/shared/errors.mjs';
 
 const stepOf = (id) => {
     const step = { id, name: id, do: '', expect: `${id} da` };
-    return { ...step, recording: { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: 'z', actions: [{ action: 'reload' }], check: 'c' } };
+    return { ...step, recording: { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: 'z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [{ action: 'reload' }], check: 'c' } };
 };
 const spec = { id: 't', steps: [stepOf('S1'), stepOf('S2')], expectations: [{ id: 'S1' }, { id: 'S2' }] };
 const pass = { exitCode: EXIT.pass, verdict: { status: 'pass' } };
@@ -167,7 +167,7 @@ test('Fix: Claude does not make it, the test plan stays', async () => {
 test('Fix: the decision names a changed result, new messages and what is still stale', async () => {
     const stale = { ...spec, steps: [spec.steps[0], { ...spec.steps[1], do: 'von Hand' }] };
     const h = harness({
-        outcomes: [{ ...pass, candidate: stale, fresh: ['Sicher?'], expectChange: { id: 'S1', before: 'alt', after: 'neu' } }, pass],
+        outcomes: [{ ...pass, candidate: stale, fresh: ['Sicher?'], expectChange: [{ id: 'S1', before: 'alt', after: 'neu' }] }, pass],
     });
     assert.equal(await fixFlow({ draft: spec, target: { id: 'S1', reason: 'Grund' }, sandbox: 's', ...h }), EXIT.pass);
     const { text } = h.questions[0];
@@ -175,7 +175,27 @@ test('Fix: the decision names a changed result, new messages and what is still s
     assert.match(text, /Geändertes Ergebnis in S1: „neu“ statt „alt“/);
     assert.match(text, /Noch veraltet und nicht geprüft: S2/);
     assert.equal(h.calls[1].replay.until, 'S1');
-    assert.match(h.calls[1].note, /Erwartet vorher: alt/);
+    assert.match(h.calls[1].note, /Erwartet vorher in S1: alt/);
+});
+
+test('Re-recording from a step: Claude gets the range, the decision lists every changed step, adopting prunes', async () => {
+    const step3 = { id: 'S3', name: 'S3', do: '', expect: 'S3 da' };
+    const whole = { ...spec, steps: [...spec.steps, { ...step3, recording: { ...spec.steps[0].recording, hash: stepHash(step3) } }], expectations: [{ id: 'S1' }, { id: 'S2' }, { id: 'S3' }] };
+    const renamed = { id: 'S2', name: 'Neu', do: '', expect: 'S2 neu da' };
+    const candidate = { ...spec, steps: [spec.steps[0], { ...renamed, recording: { ...spec.steps[0].recording, hash: stepHash(renamed), after: 'S1' } }] };
+    const h = harness({
+        outcomes: [{ ...pass, candidate, fresh: [], expectChange: [{ id: 'S2', before: 'S2 da', after: 'S2 neu da' }], ids: ['S2'], removed: ['S3'] }, pass],
+    });
+    const adopted = [];
+    const adopt = (draft, only, options) => { adopted.push({ only: [...only], options }); return 'caw/tests/t.yaml'; };
+    assert.equal(await fixFlow({ draft: whole, target: { id: 'S2', reason: 'Neu aufnehmen ab S2 ist gewünscht', rerecord: true, from: true }, sandbox: 's', ...h, adopt }), EXIT.pass);
+    assert.deepEqual(h.calls[0].repair, { id: 'S2', reason: 'Neu aufnehmen ab S2 ist gewünscht', rerecord: true, from: true });
+    const { text, card } = h.questions[0];
+    assert.match(text, /Übernommen würde: S2 neu aufgenommen \(Anlass: Neu aufnehmen ab S2 ist gewünscht\), entfernt: S3\./);
+    assert.match(text, /Geändertes Ergebnis in S2: „S2 neu da“ statt „S2 da“/);
+    assert.ok(card.facts.some((fact) => /entfernt: S3/.test(fact)));
+    assert.match(h.calls[1].note, /S2 wurde neu aufgenommen, Anlass: .* Erwartet vorher in S2: S2 da/);
+    assert.deepEqual(adopted, [{ only: ['S2'], options: { withNotes: false, prune: true } }], 'only the range, removed steps go');
 });
 
 test('Test run: a pass is only announced in the open chat, without Docker, without waiting, and the window goes as requested', async () => {
@@ -264,11 +284,20 @@ test('Test run: without --advise Claude looks for the cause on click, as the mai
     assert.deepEqual(fixed.questions[0].options, ['fix', 'close']);
 });
 
-test('Test run: up to a step', async () => {
+test('open at the entry of a step: the steps before it count, the step itself is not judged', async () => {
     const h = harness({ outcomes: [pass] });
-    await runFlow({ spec, until: 'S1', handover: true, canFix: true, openSandbox: async () => 's', ...h });
-    assert.equal(h.calls[0].replay.until, 'S1');
-    assert.deepEqual(h.calls[0].replay.steps.map(({ action }) => action), ['reload', 'check']);
+    await runFlow({ spec, entry: 'S2', handover: true, canFix: true, openSandbox: async () => 's', ...h });
+    const { replay, command } = h.calls[0];
+    assert.equal(command, 'open');
+    assert.equal(replay.until, 'S1', 'S1 completely');
+    assert.deepEqual(replay.entry, { id: 'S2', name: 'S2', skipped: 'inputs' }, 'S2 only reloads: no input, so none of it runs');
+    assert.deepEqual(replay.steps.map(({ action, id }) => `${action}${id === undefined ? '' : ` ${id}`}`), ['reload', 'check S1']);
+    const whole = harness({ outcomes: [pass] });
+    await runFlow({ spec, handover: true, canFix: true, openSandbox: async () => 's', ...whole });
+    assert.deepEqual([whole.calls[0].command, whole.calls[0].replay.until, whole.calls[0].replay.entry], ['open', undefined, undefined], 'open <test>: the whole test');
+    const plain = harness({ outcomes: [pass] });
+    await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...plain });
+    assert.equal(plain.calls[0].command, undefined, 'a test run is no open');
 });
 
 test('Test run: step failed, nothing starts without a click', async () => {
@@ -354,7 +383,7 @@ test('Test run: a clean step is fixed in the same browser, then only the check r
 test('Developing in a state with the Claude Code session as agent: it is there right away, not only after the first question', async () => {
     const h = harness({ outcomes: [pass] });
     let opened = 0;
-    await runFlow({ spec, until: 'S2', handover: true, canFix: true, sessionAgent: true, openSandbox: async () => { opened += 1; return 'box'; }, ...h });
+    await runFlow({ spec, entry: 'S2', handover: true, canFix: true, sessionAgent: true, openSandbox: async () => { opened += 1; return 'box'; }, ...h });
     const { develop } = h.calls[0];
     const sent = [];
     const answers = [{ message: 'Was siehst du?' }, { choice: 'end' }];
@@ -382,10 +411,10 @@ test('Developing in a state with the Claude Code session as agent: it is there r
 test('Developing in a state: refresh without state, restore state, crosshair to Claude Code, questions to Claude', async () => {
     const h = harness({ outcomes: [pass] });
     let opened = 0;
-    await runFlow({ spec, until: 'S2', handover: true, canFix: true, openSandbox: async () => { opened += 1; return 'box'; }, ...h });
+    await runFlow({ spec, entry: 'S2', handover: true, canFix: true, openSandbox: async () => { opened += 1; return 'box'; }, ...h });
     const { develop } = h.calls[0];
     assert.equal(typeof develop, 'function');
-    const element = { label: 'button "Senden"', target: { role: 'button' } };
+    const element = { label: 'button "Senden"', target: "getByRole('button', { name: 'Senden', exact: true })" };
     let refresher = 'never set';
     let reloaded = null;
     let picked = null;
@@ -430,7 +459,11 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
         onReload: (listener) => { reloaded = listener; return () => { reloaded = 'unsubscribed'; }; },
         toCode: (value) => handed.push(value),
     });
-    assert.match(shown[0].question, /^Zustand S2 steht\. .*Neu laden.*Zustand neu herstellen.*Fadenkreuz.*kosten Token/);
+    assert.match(shown[0].question, /^Zustand S2 steht\. .*Neu laden.*Neu öffnen.*Fadenkreuz.*kosten Token/);
+    // At the entry of a step the introduction says so.
+    const entered = [];
+    await develop({ chat: { ...chat, develop: async (question) => { entered.push(question); return { choice: 'end' }; } }, talk, until: 'S3', entry: true, refresh: async () => '', restore: async () => '', toCode: () => {} });
+    assert.match(entered[0], /^Bereit für S3: Die Schritte davor sind ausgeführt, seine Eingaben offen\. /);
     assert.deepEqual(shown[0].options, ['restore', 'end']);
     assert.equal(shown[1].question, undefined, 'the introduction comes only once');
     assert.equal(refreshed, 1, 'refresh only reloads the page, without a message');
@@ -458,7 +491,7 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
         restore: async () => { throw new Error('net::ERR_CONNECTION_REFUSED at http://app.localhost:5173/\nCall log: ...'); },
         toCode: () => {},
     });
-    assert.match(said[0], /^Zustand neu herstellen ging nicht: net::ERR_CONNECTION_REFUSED at http:\/\/app\.localhost:5173\/\. Läuft der Dev-Server/);
+    assert.match(said[0], /^Neu öffnen ging nicht: net::ERR_CONNECTION_REFUSED at http:\/\/app\.localhost:5173\/\. Läuft der Dev-Server/);
     assert.equal(stopped, 1, 'closing the window ends a running conversation');
 });
 
@@ -546,7 +579,7 @@ test('Check run: if the human adopts an ignore advice in the conversation that a
 
 test('Developing: a pick with F1 restores the state, one after another with restore', async () => {
     const h = harness({ outcomes: [pass] });
-    await runFlow({ spec, until: 'S2', handover: true, canFix: true, openSandbox: async () => 'box', ...h });
+    await runFlow({ spec, entry: 'S2', handover: true, canFix: true, openSandbox: async () => 'box', ...h });
     const { develop } = h.calls[0];
     let pick = null;
     const restored = [];
@@ -582,7 +615,7 @@ test('Developing: a pick with F1 restores the state, one after another with rest
 
 test('Developing: a state picked with F1 is restored only after the human confirms it in the chat', async () => {
     const h = harness({ outcomes: [pass] });
-    await runFlow({ spec, until: 'S2', handover: true, canFix: true, openSandbox: async () => 'box', ...h });
+    await runFlow({ spec, entry: 'S2', handover: true, canFix: true, openSandbox: async () => 'box', ...h });
     const { develop } = h.calls[0];
     let pick = null;
     const restored = [];
@@ -624,7 +657,7 @@ test('Developing: a state picked with F1 is restored only after the human confir
     });
     assert.deepEqual(asked, [
         ['deciding', 'anderer-test bis S3 als sachbearbeiter herstellen?', ['restore-picked:Herstellen', 'cancel-restore:Abbrechen']],
-        ['deciding', 'anderer-test bis S1 herstellen?', ['restore-picked:Herstellen', 'cancel-restore:Abbrechen']],
+        ['deciding', 'anderer-test bis zum Einstieg in S1 öffnen?', ['restore-picked:Herstellen', 'cancel-restore:Abbrechen']],
     ]);
     assert.deepEqual(restored, [['anderer-test', 'S1']], 'cancelled is not restored, confirmed is');
 });

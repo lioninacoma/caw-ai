@@ -1,6 +1,6 @@
 // The raven in the terminal: three lines of ASCII with the name and its long form to the right. For the help and command headers.
 
-export const LONG_NAME = 'Context-Aware Workflows';
+export const LONG_NAME = 'Context-Aware Web Testing';
 
 const plain = (text) => text;
 

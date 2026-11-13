@@ -52,12 +52,7 @@ export const themePainter = (enabled, { full = truecolor(), theme = activeTheme(
     const paint = Object.fromEntries([...Object.entries(ROLES), ['faint', 'faint']].map(([role, key]) => [role, wrap(code(colors[key]), '\u001b[39m')]));
     return {
         ...paint,
-        // Names from before the redesign.
-        beak: paint.accent, auto: paint.claude, dot: paint.faint,
         bold: wrap('\u001b[1m', '\u001b[22m'),
         failTag: wrap(`${code(colors.fail, 48)}${code(colors.screen)}`, '\u001b[49m\u001b[39m'),
     };
 };
-
-/** Old name. */
-export const nightPainter = themePainter;

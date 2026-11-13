@@ -56,7 +56,7 @@ test('a reported environment error gives error and needs a reason', () => {
 
 test('the report names status, expectations, evidence and console errors', () => {
     const r = finish({ expectations: [ok('E1'), { ...ok('E2'), status: 'fail', note: 'leer' }] }, [{ type: 'pageerror', text: 'boom' }]);
-    const md = renderReport({ ...r, testId: 'smoke', target: 'shop/dev', source: 'overlay', expectations: rb.expectations });
+    const md = renderReport({ ...r, testId: 'smoke', target: 'shop/dev', testedCode: 'local code', expectations: rb.expectations });
     for (const part of ['fail', 'smoke', 'shop/dev', 'E1', 'E2', 'leer', 'boom']) assert.ok(md.includes(part), part);
 });
 
@@ -76,9 +76,8 @@ test('the report links screenshots in agent/ and marks steps never reached as sk
     assert.equal(isSkipped({ id: 'S2', status: 'fail', note: 'anderer Grund' }, results), false);
 });
 
-test('the tested version is the line the terminal prints; older results keep the label', () => {
-    const base = { status: 'pass', testId: 'x', target: 'local', source: 'deployed' };
+test('the tested version is the line the terminal prints', () => {
+    const base = { status: 'pass', testId: 'x', target: 'local' };
     assert.match(renderReport({ ...base, testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174, dein aktueller Stand/);
-    assert.match(renderReport(base), /Getesteter Stand: ausgelieferter Stand/);
     assert.match(renderReport({ ...base, status: 'error', code: 'unreachable', testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174/, 'the error code stays separate from the tested version');
 });

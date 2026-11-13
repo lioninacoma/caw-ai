@@ -6,7 +6,7 @@ step() { echo; echo "--- $1"; }
 step "Wer bin ich"; id -u; grep CapEff /proc/self/status
 step "Firewall-Pruefung"; $A firewall-check | tr -d '\n '; echo " exit=$?"
 step "Netz aus dem Container"
-for u in https://localhost:8443 https://example.com https://host.docker.internal:8443; do
+for u in https://localhost:8453 https://example.com https://host.docker.internal:8453; do
   printf '%s -> %s\n' "$u" "$(curl -sk -o /dev/null -m 4 -w '%{http_code}' "$u")"
 done
 

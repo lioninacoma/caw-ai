@@ -5,7 +5,7 @@ import { CawError } from '../shared/errors.mjs';
 
 export const DEFAULT_MAX_STEPS = 100;
 
-const STEPS = new Set(['click', 'fill', 'type', 'press', 'goto', 'reload']);
+const STEPS = new Set(['click', 'dblclick', 'upload', 'fill', 'type', 'press', 'goto', 'reload']);
 
 export const withStepBudget = (handler, maxSteps) => {
     let used = 0;

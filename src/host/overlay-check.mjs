@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-import { allTargets, authOf, isLoopback, loadConfig, overlaySettings, patternList, resolveTarget, writeConfig } from '../shared/config.mjs';
+import { allTargets, authOf, isLoopback, loadConfig, patternList, resolveTarget, writeConfig } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { RUN_DIR } from '../shared/names.mjs';
@@ -60,7 +60,7 @@ export const overlayStatus = async (root, { target, app, config: given, deps = {
         return { state: 'no-app', framework, app: name ?? null, appDir: null, url: null, start: null, message };
     }
     const appDir = String(config.apps[name].dir).replaceAll('\\', '/');
-    const settings = overlaySettings(config.apps[name].overlay);
+    const settings = config.apps[name].overlay ?? {};
     const base = { framework, app: name, appDir, url: settings.url ?? null, start: settings.start ?? null };
     const resolved = resolveTarget(config, target ?? overlayTarget(config));
     const { protocol, hostname } = new URL(resolved.url);

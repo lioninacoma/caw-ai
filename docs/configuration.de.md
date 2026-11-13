@@ -149,7 +149,7 @@ Pflicht. Meist eine App; Monorepos können mehrere nennen.
 
 caw-ai kennt zwei Modi:
 
-- **E2E** (Standard, CI, nightly, jedes einfache `run`): immer der ausgelieferte Code der Umgebung, auch mit `--until`.
+- **E2E** (Standard, CI, nightly, jedes einfache `run`): immer der ausgelieferte Code der Umgebung, auch mit `open <test>`.
 - **Entwicklung:** dein lokaler Code, nur mit `--overlay`. Nichts schaltet still darauf um.
 
 Jeder Lauf nennt den Code in seinen ersten Zeilen, auch in CI:
@@ -205,7 +205,7 @@ Dafür braucht die Umgebung `"overlay": true` und die App eine Quelle. Ein Model
 | `statics` | Feste Namen, bei jedem Laden frisch von der Platte: `name` ist der Name im Request, `path` die Datei relativ zum App-Ordner. `path` darf den App-Ordner mit `..` verlassen, etwa in ein Nachbar-Package eines Monorepos (`../../packages/Model/resources/Const.js`), muss aber im Workspace bleiben: dem nächsten Ordner vom Projekt aufwärts mit `pnpm-workspace.yaml` oder einer `package.json` mit `workspaces`, höchstens bis zur Repository-Wurzel, sonst dem Projektordner. Symlinks werden aufgelöst; geheime Dateien (`.env`, Schlüssel, Zugangsdaten) werden nie ausgeliefert. Für jedes Framework und jede Quelle. |
 | `assetUrlPattern` | Weitere Muster nur für diese App, zusätzlich zum `assetUrlPattern` oben: für eine App, deren Dateien von anderswo kommen. Text oder Liste. |
 
-Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins. Frühere Namen gelten weiter, `validate` gibt einen Hinweis: `dev` ist `url`, `devCommand` und `buildCommand` sind `start`. Alter und neuer Name zugleich sind ein Fehler.
+Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins.
 
 | Aufruf | Quelle |
 |---|---|
@@ -214,7 +214,7 @@ Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins. Frühere N
 | `--overlay dev` | Der Server unter `url`. |
 | `--overlay http://localhost:5174` | Der Server unter dieser Adresse. Geht vor `url`, braucht kein `overlay` an der App. Nur für einen Test mit einer App (mit `also` Exit 3). |
 
-`--overlay` gibt es bei `run`, `record`, `fix` und `open`. Abgelehnt wird es (Exit 3) mit Grund auf einer Umgebung ohne `"overlay": true`, auf einer Umgebung, die selbst ein Dev-Server auf deinem Rechner ist, und für eine App ohne Quelle. Apps aus `also` nehmen ihre eigene Quelle; ohne eine bleiben sie ausgeliefert.
+`--overlay` gibt es bei `run`, `record` und `open`. Abgelehnt wird es (Exit 3) mit Grund auf einer Umgebung ohne `"overlay": true`, auf einer Umgebung, die selbst ein Dev-Server auf deinem Rechner ist, und für eine App ohne Quelle. Apps aus `also` nehmen ihre eigene Quelle; ohne eine bleiben sie ausgeliefert.
 
 **caw startet nichts selbst.** Bevor Chrome startet, prüft es die Quelle:
 
@@ -222,7 +222,7 @@ Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins. Frühere N
 - **Build** fehlt oder ist älter als die jüngste Quelldatei der App: Exit 2 mit `start`. Nicht als Quelle zählen: `node_modules`, der Build-Ordner, Ordner mit Punkt, übliche Build-Ordner (`dist`, `build`, `out`, `coverage`, …), `caw/`, Markdown-Dateien und `caw.config.json`; angesehen werden höchstens 5000 Dateien.
 - `npx caw-ai overlay status` zeigt dasselbe ohne Browser: `ready`, `moved`, `down`, `wrong-app` oder `stale`.
 
-**`--start`** (bei `run`, `record`, `fix`, `open` und `overlay check`, nur zusammen mit `--overlay`) ist für CI und Skripte, wie `webServer` bei Playwright: caw führt `start` im App-Ordner aus, wenn der Server nicht antwortet, wartet bis zu 60 s (Sencha-Watch: 180 s, bis er diese App ausliefert), schreibt die Ausgabe nach `.caw/<app>-dev-server.log` oder `.caw/<app>-watch.log` und beendet am Ende des Laufs den ganzen Prozessbaum; bei `open` und `--until`, wenn du das Fenster schließt. Mit `build` führt es `start` einmal aus (`.caw/<app>-build.log`) und prüft erneut. Die Quelle wechselt nie: Ein gescheiterter Build weicht nicht auf den Dev-Server oder den ausgelieferten Stand aus.
+**`--start`** (bei `run`, `record`, `open` und `overlay check`, nur zusammen mit `--overlay`) ist für CI und Skripte, wie `webServer` bei Playwright: caw führt `start` im App-Ordner aus, wenn der Server nicht antwortet, wartet bis zu 60 s (Sencha-Watch: 180 s, bis er diese App ausliefert), schreibt die Ausgabe nach `.caw/<app>-dev-server.log` oder `.caw/<app>-watch.log` und beendet am Ende des Laufs den ganzen Prozessbaum; bei `open`, wenn du das Fenster schließt. Mit `build` führt es `start` einmal aus (`.caw/<app>-build.log`) und prüft erneut. Die Quelle wechselt nie: Ein gescheiterter Build weicht nicht auf den Dev-Server oder den ausgelieferten Stand aus.
 
 **Wie der lokale Code in die Seite kommt:**
 
@@ -245,7 +245,7 @@ Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins. Frühere N
 
 `report.md` nennt, was geschah: `Overlay: dist; 14 Datei(en) lokal, 2 Skript(e)/Stylesheet(s) vom Server; Seite getauscht: ja`.
 
-**ExtJS:** Mit `"framework": "extjs"` kommt der lokale Code vom Webserver des Sencha-Watch, standardmäßig `http://localhost:1841/`. `init` schreibt `"overlay": { "url": "http://localhost:1841/" }`; ergänze `start` mit dem Watch-Befehl deines Projekts (etwa `"pnpm run watch"` oder `"sencha app watch"`), optional `statics`. caw prüft, dass der Server unter `url` *diese* App ausliefert (Name aus `app.json`, `bootstrap.json` mit Ladereihenfolge). Ein Theme-Package, das ein SDK-Theme erweitert (etwa `"extend": "theme-material"`), wird zusammen mit dem JS der erweiterten Themes ersetzt, wie sein Build; sonst fehlten die Overrides von Material (flache Dialog-Buttons, `Ext.theme.name`). War der Port belegt, nimmt der Watch einen zufälligen: caw findet ihn unter den laufenden Watch-Prozessen, nutzt ihn und sagt dir, dass du `url` anpassen sollst. `build` und `buildCommand` sind dort Fehler. Einzelheiten: [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
+**ExtJS:** Mit `"framework": "extjs"` kommt der lokale Code vom Webserver des Sencha-Watch, standardmäßig `http://localhost:1841/`. `init` schreibt `"overlay": { "url": "http://localhost:1841/" }`; ergänze `start` mit dem Watch-Befehl deines Projekts (etwa `"pnpm run watch"` oder `"sencha app watch"`), optional `statics`. caw prüft, dass der Server unter `url` *diese* App ausliefert (Name aus `app.json`, `bootstrap.json` mit Ladereihenfolge). Ein Theme-Package, das ein SDK-Theme erweitert (etwa `"extend": "theme-material"`), wird zusammen mit dem JS der erweiterten Themes ersetzt, wie sein Build; sonst fehlten die Overrides von Material (flache Dialog-Buttons, `Ext.theme.name`). War der Port belegt, nimmt der Watch einen zufälligen: caw findet ihn unter den laufenden Watch-Prozessen, nutzt ihn und sagt dir, dass du `url` anpassen sollst. `build` ist dort ein Fehler. Einzelheiten: [Leitfaden](guide.de.md#wie-der-lokale-code-in-die-anwendung-kommt).
 
 **Mehrere Quellen für Skripte.** Eine Seite kann ihren Code von mehr als einer Stelle laden. caw benennt jeden Request über den Pfad unterhalb der Umgebungs-URL und über jedes `assetUrlPattern`; der erste Name, den eine Quelle kennt, gilt. `assetUrlPattern` ist ein Text oder eine Liste, ein Muster je Quelle, Gruppe 1 der Dateiname. Ein typisches Portal lädt das Theme über einen normalen Pfad (deckt der Standard ab) und App und Pakete über ein Proxy-Servlet:
 
@@ -280,7 +280,7 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `extraAllowedHosts` | `[]` | Weitere Hosts, die Chrome erreichen darf, etwa Anmeldung oder CDN. Alles andere ist gesperrt. |
 | `insecureTls` | `false` | Selbstsignierte Zertifikate annehmen. |
 | `browser` | Chrome des Systems | `{ "channel": "msedge" }` oder `{ "executablePath": "/pfad/zu/chromium" }` |
-| `browser.locale`, `browser.timezone` | wie aufgezeichnet | Sprache und Zeitzone des Testbrowsers, z. B. `"de-DE"` und `"Europe/Berlin"`. Ohne sie nimmt eine Wiedergabe die Werte, die mit der Aufzeichnung gespeichert sind, eine Aufnahme (oder eine ältere Aufzeichnung) die des Rechners. Datum, Zahlen und Übersetzungen sehen dann auf jedem Rechner und CI-Runner gleich aus. |
+| `browser.locale`, `browser.timezone` | wie aufgezeichnet | Sprache und Zeitzone des Testbrowsers, z. B. `"de-DE"` und `"Europe/Berlin"`. Ohne sie nimmt eine Wiedergabe die Werte, die mit der Aufzeichnung gespeichert sind, eine Aufnahme die des Rechners. Datum, Zahlen und Übersetzungen sehen dann auf jedem Rechner und CI-Runner gleich aus. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS-Selektoren für Fehlermeldungen ohne ARIA-Rolle. |
 | `consoleIgnore` | `[]` | Reguläre Ausdrücke für bekannte, harmlose Konsolenfehler. Eng halten. |
 | `foreignCode` | `[]` | Reguläre Ausdrücke für fremde Skripte, etwa `"/vendor/"`. Deren Fehler werden zu Warnungen. |

@@ -161,13 +161,12 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, source, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis, overlay }) => {
-    const sourceLabel = source === 'overlay' ? t('config.report.source.overlay') : t('config.report.source.deployed');
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis, overlay }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
-        // The same line the terminal prints (describeCode); older results only have source.
-        t('config.report.source', { source: typeof testedCode === 'string' && testedCode !== '' ? testedCode : sourceLabel }),
+        // The same line the terminal prints (describeCode).
+        t('config.report.source', { source: String(testedCode) }),
         ...(overlay === undefined ? [] : [t('config.report.overlay', { label: String(overlay.label), local: String(overlay.local), server: String(overlay.server), swapped: t(overlay.swapped ? 'config.report.overlay.yes' : 'config.report.overlay.no') })]),
     ];
     if (reason !== undefined) lines.push('', t('config.report.reason', { reason: String(reason) }));

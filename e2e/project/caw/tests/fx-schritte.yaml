@@ -1,10 +1,10 @@
-# Kopf vom Menschen
+# Header by the human
 id: fx-schritte
 app: bestellung
 role: kunde
 targets: [local/dev]
 mutates: true
-notes: Bleibe bei deinem Vorgang.
+notes: Stay with your case.
 steps:
   - id: S1
     name: Ziel erreichen

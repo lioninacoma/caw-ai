@@ -254,14 +254,8 @@ export const themeWarnings = (theme) => {
     return warnings;
 };
 
-// Built-in fonts in assets/fonts. Old names stay valid for themes made before IBM's own Plex files replaced the Fontsource subsets.
-const FONT_ALIASES = { 'ibm-plex-mono-latin-400-normal.woff2': 'ibm-plex-mono-400.woff2', 'ibm-plex-mono-latin-500-normal.woff2': 'ibm-plex-mono-500.woff2' };
-
-/** The file of a `builtin:` font, aliases resolved. */
-export const builtinFontUrl = (file) => {
-    const name = file.slice('builtin:'.length);
-    return new URL(`../../assets/fonts/${FONT_ALIASES[name] ?? name}`, import.meta.url);
-};
+/** The file of a `builtin:` font in assets/fonts. */
+export const builtinFontUrl = (file) => new URL(`../../assets/fonts/${file.slice('builtin:'.length)}`, import.meta.url);
 
 /** A package's missing font files. */
 export const missingFonts = (theme, env = process.env) => {

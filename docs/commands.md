@@ -4,7 +4,7 @@ English · [Deutsch](commands.de.md)
 
 Run every command from your project root: `npx caw-ai <command>` (or `pnpm exec`, `yarn`). `<env>` is a name from `environments` in `caw.config.json`, e.g. `local`. With tenants (`sites`) it is `tenant/env`, e.g. `north/dev`.
 
-`--target` may be left out when the choice is clear: `run`, `record` and `fix` then take the test's only target (for `record` and `fix`, the only one of them where Claude may work; for `record` of a new test, the only environment where Claude may work). The terminal names the choice, e.g. `› Target: local (only target of create-ticket)`. If it is ambiguous, the command stops and lists the choices: `--target is missing: local, dev`.
+`--target` may be left out when the choice is clear: `run`, `record` and `open <test>` then take the test's only target (for `record`, the only one of them where Claude may work; for `record` of a new test, the only environment where Claude may work). The terminal names the choice, e.g. `› Target: local (only target of create-ticket)`. If it is ambiguous, the command stops and lists the choices: `--target is missing: local, dev`.
 
 | Command | What it does | Claude? |
 |---|---|---|
@@ -16,10 +16,9 @@ Run every command from your project root: `npx caw-ai <command>` (or `pnpm exec`
 | [`overlay check`](#overlay-check) | Check that `--overlay` replaces everything it should | no |
 | [`validate`](#validate) | Check config and tests offline | no |
 | [`list`](#list) | List tests and steps with their recording status | no |
-| [`record`](#record) | Record a test or replace its recording | yes |
+| [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
-| [`fix`](#fix) | Re-record one step | yes |
-| [`open`](#open) | Open the app signed in, with workbench and chat, without a test | only if you ask |
+| [`open`](#open) | Open the app signed in, with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
 | [`auth`](#auth) | Sign in by hand and store the session (SSO) | no |
 | [`role`](#role) | List, add or remove roles and their test users | no |
 | [`theme`](#theme) | List, pick or check workbench themes | no |
@@ -30,8 +29,8 @@ Run every command from your project root: `npx caw-ai <command>` (or `pnpm exec`
 When a command stops, the terminal shows the reason first, then for an invalid call the command's short form, then the code and exit code:
 
 ```
-✗ fix expects a step like S4.
-  Usage: caw-ai fix <test> <S4> [--target <env>]
+✗ create-ticket@s2: a step goes after the test as <test>@S<n>, e.g. order@S3.
+  Usage: caw-ai record <test> [--target <env>] [--role <role>] [--app <app>]  or  caw-ai record <test>@<S4> [--target <env>]
   (code: usage, exit 3)
 ```
 
@@ -147,7 +146,7 @@ npx caw-ai validate
 
 Checks `caw.config.json` and every file in `caw/tests/` without browser or Claude. Errors name file and line, all of them at once. Use it in CI and pre-commit hooks.
 
-`auth` values still `TODO` fail validation (exit 3, code `config-invalid`): each one says what belongs there. Config keys from 0.1.0 (`agent` and `localCode` on an environment, `statics`, `redirects` and `constants` on an app) name their new place, see [Upgrading](upgrading.md).
+`auth` values still `TODO` fail validation (exit 3, code `config-invalid`): each one says what belongs there.
 
 Per test and target it prints which code runs there and where `--overlay` would apply, e.g. `smoke (staging): deployed` or `smoke (dev): deployed; with --overlay: overlay, build dist`. Notes that don't fail validation: settings without effect, such as an app with `overlay` while no environment allows it (see [Testing local code](configuration.md#testing-local-code)).
 
@@ -191,6 +190,16 @@ Runs only on environments where Claude may work (`"claude": true`). `--target` c
 | `--max-steps <n>` | Limit on Claude's browser actions, default `maxSteps` or 100. |
 | `--step-timeout <seconds>` | Time limit per step in the check run, default 30. |
 
+### From a step on
+
+```bash
+npx caw-ai record create-ticket@S3 --target local
+```
+
+Re-records the test from S3 to the end. Use it when the app changed on purpose from there on, after you changed a step's text by hand, or to add steps at the end. S1 and S2 replay without Claude, then Claude follows the old plan from S3 while you steer in the chat; there is no demonstration. From S3 on the plan may change: Claude can add, remove, rename or reorder steps. The steps before S3 and their recordings stay exactly as they are; steps no longer in the plan are deleted when you adopt. Baselines and network effects from S3 on are learned again on the next healthy run. `@S1` records the whole test, like `record create-ticket`.
+
+There is no check run first: if a step fails because of a bug in the app, find the cause with `run` instead. To repair just the one step that failed, use "Fix step" in the chat of a run. `--role`, `--app`, `--also` and `--read-only` don't apply here (exit 3): the test keeps its metadata.
+
 ## run
 
 ```bash
@@ -199,14 +208,12 @@ npx caw-ai run create-ticket --target local
 
 Replays the recording. No Claude, no tokens. On environments where Claude may work (`claude`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
 
-With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml`. At the end it says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `--until` up to the step before the failure. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
+With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml`. At the end it says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
 
 | Option | |
 |---|---|
-| `--until <S4>` | Stop after S4, the window stays open. Implies `--handover`. Runs the deployed version like every run, unless you add `--overlay`. |
 | `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment: the build folder, the local code server at `overlay.url` (dev server, Sencha watch), or the server at `<url>`; without a value the one configured source. Only on environments with `"overlay": true`. Without the option the deployed version always runs. See [Testing local code](configuration.md#testing-local-code). |
 | `--start` | As for `record`. |
-| `--handover` | Leave the window open after the run. |
 | `--advise` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
 | `--no-chat` | Visible window, no chat, no Claude. Like CI. |
 | `--headless` | No window, no chat. 1920×1080. |
@@ -216,7 +223,7 @@ With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml
 | `--max-steps <n>` | Limit on Claude's actions when fixing. |
 | `--agent local\|docker\|session` | As for `record`. |
 
-With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`; `--until` and `--handover` are rejected (exit 3), since nobody would take over the browser. `record`, `fix` and `open` need a person and are rejected in CI too. On runners without a display add `--headless` or use `xvfb-run`.
+With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`. `record` and `open` need a person and are rejected in CI (exit 3), since nobody would take over the browser. On runners without a display add `--headless` or use `xvfb-run`.
 
 ### Several tests (CI)
 
@@ -225,33 +232,34 @@ npx caw-ai run --all --target dev --headless --report junit=caw-junit.xml
 npx caw-ai run create-ticket close-ticket --target dev
 ```
 
-Runs the tests one after another, without chat (`--advise`, `--handover` and `--until` are rejected). `--all` takes every test that lists the target. Without `--target` the only target of the tests is used. A test that can't run (missing recording, typo) doesn't stop the others. At the end a table shows `PASS`, `FAIL`, `ERROR`, `NEEDS RECORDING` or `REJECTED` per test. The exit code is that of the worst run, in this order: `2` error > `1` fail > `4` needs recording > `3` rejected > `0` pass.
+Runs the tests one after another, without chat (`--advise` is rejected). `--all` takes every test that lists the target. Without `--target` the only target of the tests is used. A test that can't run (missing recording, typo) doesn't stop the others. At the end a table shows `PASS`, `FAIL`, `ERROR`, `NEEDS RECORDING` or `REJECTED` per test. The exit code is that of the worst run, in this order: `2` error > `1` fail > `4` needs recording > `3` rejected > `0` pass.
 
 `--report junit=<file>` also writes the table as JUnit XML (relative to the project folder): `fail` as `<failure>`, everything else that didn't pass as `<error>`.
-
-## fix
-
-```bash
-npx caw-ai fix create-ticket S2 --target local
-```
-
-Re-records exactly one step. Use it after you changed a step's text by hand, or added a new step at the end. Steps before it replay without Claude. The other steps stay untouched. Options: `--agent`, `--overlay`, `--start`, `--timeout`, `--max-steps`, `--step-timeout`.
 
 ## open
 
 ```bash
 npx caw-ai open --target dev --overlay
+npx caw-ai open create-ticket --target local
+npx caw-ai open create-ticket@S3 --target local --overlay
 ```
 
-Opens the app signed in, with workbench and chat, without a test: navigate, try things, develop with Claude. Like `run --until` without steps before it. Learns nothing and writes no test file. Without `--target` it takes the only environment where Claude may work.
+Opens the app signed in, with workbench and chat: navigate, try things, develop with Claude. Learns nothing and writes no test file.
+
+- **Without a test** it opens the app's start page. Without `--target` it takes the only environment where Claude may work.
+- **`open <test>`** replays the whole test first, then the window is yours.
+- **`open <test>@S3`** stops at the entry of S3: S1 and S2 replay completely, of S3 only its navigation (`goto`, clicks, waiting for the page). Its inputs and its check stay open for you; the terminal says `Ready for S3 …: navigation done, inputs open`. If S3 has no inputs at all (e.g. only a submit click), none of S3 runs; if one of its clicks wrote data in earlier runs, it stops before that click; if S3 isn't recorded or is stale, none of it runs. The terminal names the reason.
+
+With a test, `open` signs in with the test's role and replays without Claude; the step it stops at isn't judged. It runs the deployed version, unless you add `--overlay`.
 
 | Option | |
 |---|---|
-| `--role <role>`, `--app <app>` | Not needed if the config has only one. |
+| `--role <role>`, `--app <app>` | Without a test only; not needed if the config has only one. A test brings its own. |
 | `--overlay [build\|dev\|<url>]`, `--start` | As for `run`. |
+| `--step-timeout <seconds>` | Time limit per step while replaying, default 30. |
 | `--agent local\|docker\|session`, `--timeout <minutes>`, `--max-steps <n>` | As for `record`. |
 
-After the handover, **F1** in the workbench chooses a state: any test for this environment (and optionally the step to stop at). caw-ai starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
+After the handover, **F1** in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw-ai starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
 
 If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
 
@@ -300,7 +308,7 @@ Started by Claude Code through `.mcp.json`. You don't call it yourself. It gives
 | `caw_validate` | `validate` as data | no |
 | `caw_list` | `list` as data | no |
 | `caw_overlay` | `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `target`, `app` | no |
-| `caw_start` | Start `run`, `record`, `fix` or `open` with `--agent session` (`test`, `target`, `step`, `until`, `overlay`, `headless`, or `args`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `appDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start`: the session starts the server itself after asking you | none beyond your session |
+| `caw_start` | Start `run`, `record` or `open` with `--agent session` (`test`, `target`, `step`, `overlay`, `headless`, or `args`; `step` for `record` and `open`, only with `test`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `appDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start`: the session starts the server itself after asking you | none beyond your session |
 | `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with the crosshair in the workbench | no |
@@ -311,7 +319,7 @@ Results come as short text plus `structuredContent` (JSON).
 
 `snapshot`, `click`, `fill`, `type`, `press`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
 
-These are the only way Claude can touch the browser. They exist for the agent during `record` and `fix`; you won't need them. `npx caw-ai help agent` lists their arguments.
+These are the only way Claude can touch the browser. They exist for the agent during `record` and in the chat; you won't need them. `npx caw-ai help agent` lists their arguments.
 
 ## Exit codes
 
@@ -321,7 +329,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `1` | fail: the app didn't do what the test expects |
 | `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …), or an unexpected internal error (the stack is printed) |
 | `3` | rejected: invalid call, config (also `TODO` values left from `init`) or test file. Nothing ran. |
-| `4` | needs recording: the recording is missing (`record`) or a step changed since it was recorded (`fix`). Nothing ran. |
+| `4` | needs recording: the recording is missing (`record`) or a step changed since it was recorded (`record <test>@<step>`). Nothing ran. |
 
 ## Environment variables
 
@@ -332,7 +340,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `ANTHROPIC_API_KEY` | API key from the Claude Console for the `docker` agent. `local` and `session` use your Claude Code login. |
 | `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
-| `CI` | Set: no chat, `docker` agent only; `record`, `fix`, `open`, `--until` and `--handover` are rejected. |
+| `CI` | Set: no chat, `docker` agent only; `record` and `open` are rejected. |
 | `NO_COLOR`, `FORCE_COLOR` | Terminal colors off or on. |
 | `MCP_TOOL_TIMEOUT` | In Claude Code's environment: raise it if `plan` or `chat` time out in your session. |
 
@@ -347,7 +355,7 @@ When caw-ai stops, or a run ends with `error`, it prints the reason and then the
 | `config-invalid` | 3 | Fix the field named in the message or fill in the `TODO` values, then `doctor` |
 | `test-missing`, `test-invalid` | 3 | Create or fix the test file, then `validate` |
 | `replay-missing` | 4 | `record` the test |
-| `replay-stale` | 4 | A step changed since recording: `fix <test> <step>` |
+| `replay-stale` | 4 | A step changed since recording: `record <test>@<step>` |
 | `step-unknown` | 3 | Use a step ID from the test file (`list <test>`) |
 | `target-invalid`, `target-denied` | 3 | Use an environment from the config; production can't be recorded |
 | `write-protected` | 3 | Recording and writing tests need `claude` / `writable` on the environment |

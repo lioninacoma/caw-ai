@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Native fixture</title>
+<style>
+body{font:14px system-ui,sans-serif;margin:16px}
+section{border:1px solid #ccc;margin:8px 0;padding:8px}
+.vlist{height:200px;overflow-y:auto;border:1px solid #888;position:relative}
+.vrow{position:absolute;left:0;right:0;height:30px}
+.box{position:fixed;top:30%;left:30%;padding:20px;background:#fff;border:1px solid #000;transition:opacity .6s}
+.backdrop{position:fixed;inset:0;background:#0003}
+li.done span{text-decoration:line-through}
+</style></head>
+<body>
+<!-- Fixture of the native e2e (e2e/native-e2e.mjs): one page with the cases a Playwright locator must hold up against. -->
+<nav aria-label="Main"><a href="#orders">Orders</a> <a href="#customers">Customers</a></nav>
+<main>
+<h1>Errands</h1>
+<p role="status" id="status"></p>
+
+<!-- N1: a list whose entries share their buttons; a new entry carries the run tag. -->
+<section aria-label="Errand list">
+  <label>New errand <input id="new-errand"></label>
+  <button id="add">Add</button>
+  <button id="save">Save</button>
+  <ul id="errands">
+    <li><span>Errand Water the plants</span> <button>Complete</button></li>
+    <li><span>Errand Buy bread</span> <button>Complete</button></li>
+  </ul>
+</section>
+
+<!-- N2: fields for the demonstration: Enter in a field, a select inside its label, a checkbox. -->
+<section aria-label="Search">
+  <label>Customer <input id="customer"></label>
+  <label>Kind <select id="kind"><option value="a">Alpha</option><option value="b">Beta</option></select></label>
+  <input type="checkbox" id="agree"><label for="agree">I agree</label>
+</section>
+
+<!-- N3: loading, counting, upload, download, a code to remember. -->
+<section aria-label="Tools">
+  <button id="load">Load prices</button> <span id="prices"></span>
+  <button id="plus">Add one</button> <output id="count">0</output>
+  <label>Attachment <input type="file" id="file"></label> <span id="file-name"></span>
+  <a href="/report.csv" download>Download report</a>
+  <button id="issue">Issue code</button> <code id="code"></code>
+  <label>Confirmation code <input id="confirm"></label>
+  <button id="verify">Verify</button>
+</section>
+
+<!-- N6: a wizard whose dialogs overlap while one fades out, and two identical buttons. -->
+<section aria-label="Wizard">
+  <button id="wizard">Start wizard</button>
+  <div class="twins"><div><button>Retry</button></div><div><button>Retry</button></div></div>
+</section>
+
+<!-- N7: a virtual list, only the visible rows exist. -->
+<div class="vlist" role="list" aria-label="Many items" id="vlist"><div id="spacer" style="position:relative"></div></div>
+
+<!-- N9: a web component with an open shadow root. -->
+<caw-rating></caw-rating>
+
+<!-- N11: an action covered by a message box, and a button whose name changes. -->
+<section aria-label="Danger">
+  <button id="message">Show message</button>
+  <button id="delete-all">Delete all</button>
+  <button id="archive">Archive</button>
+</section>
+
+<!-- N8: an iframe with an iframe inside. -->
+<iframe title="Payment" src="/frame.html" width="420" height="200"></iframe>
+<div id="layer"></div>
+</main>
+<script>
+const status = (text) => { document.getElementById('status').textContent = text; };
+const list = document.getElementById('errands');
+const complete = (button) => {
+  button.onclick = () => { const li = button.closest('li'); li.classList.add('done'); status('Completed: ' + li.querySelector('span').textContent); };
+};
+list.querySelectorAll('button').forEach(complete);
+// Added errands live on the server (serve.mjs), like in a real application: a later run sees the earlier runs' entries.
+const show = (text) => {
+  const li = document.createElement('li');
+  li.innerHTML = '<span></span> <button>Complete</button>';
+  li.querySelector('span').textContent = 'Errand ' + text;
+  complete(li.querySelector('button'));
+  list.prepend(li);
+};
+fetch('/api/errands').then((answer) => answer.json()).then((texts) => texts.forEach(show));
+document.getElementById('add').onclick = () => {
+  const text = document.getElementById('new-errand').value;
+  fetch('/api/errands?text=' + encodeURIComponent(text), { method: 'POST' }).then(() => { show(text); status('Added'); });
+};
+document.getElementById('save').onclick = () => status('Saved');
+document.getElementById('customer').onkeydown = (event) => { if (event.key === 'Enter') status('Searched: ' + event.target.value); };
+document.getElementById('kind').onchange = (event) => status('Kind: ' + event.target.value);
+document.getElementById('load').onclick = () => {
+  document.getElementById('prices').textContent = 'loading';
+  fetch('/api/slow?ms=800').then((answer) => answer.json()).then(({ value }) => { document.getElementById('prices').textContent = value; });
+};
+let count = 0;
+document.getElementById('plus').onclick = () => { count += 1; document.getElementById('count').textContent = String(count); };
+document.getElementById('file').onchange = (event) => { document.getElementById('file-name').textContent = [...event.target.files].map((file) => file.name).join(','); };
+// Always the same code: the e2e looks for it in the run's files, where a secret remembered value must never appear.
+document.getElementById('issue').onclick = () => { document.getElementById('code').textContent = '482913'; };
+document.getElementById('verify').onclick = () => status(document.getElementById('confirm').value === document.getElementById('code').textContent ? 'Verified' : 'Wrong code');
+// Wizard: "Next" opens the next dialog while the current one fades out for 600 ms and is still visible meanwhile.
+const openPage = (n) => {
+  const box = document.createElement('div'); box.className = 'box'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Wizard');
+  box.style.top = (30 + n * 10) + '%';
+  box.innerHTML = '<p>Page ' + n + '</p><button>Next</button>';
+  box.querySelector('button').onclick = () => { box.style.opacity = '0'; setTimeout(() => box.remove(), 600); if (n < 3) openPage(n + 1); else status('Wizard done'); };
+  document.body.append(box);
+};
+document.getElementById('wizard').onclick = () => openPage(1);
+document.querySelectorAll('.twins button').forEach((button, index) => { button.onclick = () => status('Retry ' + (index + 1)); });
+const vl = document.getElementById('vlist'), sp = document.getElementById('spacer');
+sp.style.height = (1000 * 30) + 'px';
+const draw = () => {
+  const first = Math.floor(vl.scrollTop / 30); sp.innerHTML = '';
+  for (let i = first; i <= first + 8 && i < 1000; i++) {
+    const row = document.createElement('div'); row.className = 'vrow'; row.setAttribute('role', 'listitem'); row.style.top = (i * 30) + 'px';
+    row.innerHTML = '<span>Item ' + i + '</span> <button>Pick</button>';
+    row.querySelector('button').onclick = () => status('Picked Item ' + i);
+    sp.append(row);
+  }
+};
+vl.addEventListener('scroll', draw); draw();
+customElements.define('caw-rating', class extends HTMLElement {
+  connectedCallback() {
+    const root = this.attachShadow({ mode: 'open' });
+    root.innerHTML = '<div role="group" aria-label="Rating"><label>Comment <input></label><button>Rate</button><p role="status"></p></div>';
+    root.querySelector('button').onclick = () => { root.querySelector('[role=status]').textContent = 'Thanks: ' + root.querySelector('input').value; };
+  }
+});
+document.getElementById('message').onclick = () => {
+  document.getElementById('layer').innerHTML = '<div class="backdrop"></div><div class="box" role="alertdialog" aria-label="Error"><p role="alert">Session expired.</p><button>Close</button></div>';
+};
+document.getElementById('delete-all').onclick = () => status('Deleted');
+document.getElementById('archive').onclick = () => status('Archived');
+// ?rename=1 renames the button: the recording then misses it, a similar name is offered.
+if (new URLSearchParams(location.search).has('rename')) document.getElementById('archive').textContent = 'Archive all';
+</script>
+</body></html>

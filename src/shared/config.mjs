@@ -55,32 +55,6 @@ const TOP_FIELDS = ['framework', 'extends', 'environments', 'sites', 'auth', 'ap
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone'];
 
-// Keys of earlier versions: for one release a hint instead of a bare "unknown field" (see docs/upgrading.md).
-// `renamed`: same meaning under a new name in 0.3.0; `instead`: removed, this field covers it now; neither: removed without successor.
-const OLD_TOP = {
-    portals: { instead: 'environments, sites' },
-    customPortals: { instead: 'environments.<name>.url' },
-    stages: { instead: 'environments' },
-    login: { instead: 'auth' },
-    authMarker: { instead: 'auth.signedInSelector' },
-    preset: { instead: 'extends' },
-    writableStages: { instead: 'environments.<name>.writable' },
-    ui: {},
-};
-const OLD_ENVIRONMENT = { agent: { renamed: 'claude' }, localCode: { renamed: 'overlay' } };
-const OLD_APP = { statics: { renamed: 'overlay.statics' }, redirects: {}, constants: {} };
-/**
- * The hint for an old key, or undefined for an unknown one.
- * @param path  the key with its place, e.g. environments.dev.agent
- * @param place the new name with its place, e.g. apps.web.overlay.statics
- */
-const oldKeyHint = (old, key, path, place = (name) => name) => {
-    if (!Object.hasOwn(old, key)) return undefined;
-    const { renamed, instead } = old[key];
-    if (renamed !== undefined) return t('config.old.renamed', { key: path, name: place(renamed) });
-    return t('config.old.removed', { key: path, instead: instead === undefined ? '' : t('config.old.instead', { name: instead }) });
-};
-
 /** Where Claude runs: locally with restricted tools (default) or isolated in Docker. */
 export const AGENT_SANDBOXES = ['local', 'docker'];
 const AGENT_KEYS = ['sandbox', 'model', 'maxBudgetUsd'];
@@ -194,8 +168,7 @@ export const effectiveConfig = (config, root = process.cwd()) => {
 export const environmentDefs = (config) => Object.fromEntries(Object.entries(config.environments ?? {}).map(([name, raw]) => {
     const entry = raw ?? {};
     const urls = config.sites === undefined ? (entry.url === undefined ? {} : { '': entry.url }) : Object.fromEntries((config.sites ?? []).filter((site) => entry.urls?.[site] !== undefined).map((site) => [site, entry.urls[site]]));
-    // Internally the ability is still called `agent`: Claude may work here.
-    return [name, { agent: entry.claude === true, overlay: entry.overlay === true, writable: entry.writable === true, production: entry.production === true, urls }];
+    return [name, { claude: entry.claude === true, overlay: entry.overlay === true, writable: entry.writable === true, production: entry.production === true, urls }];
 }));
 
 /** Environments with an ability, for messages like "only on dev". */
@@ -239,8 +212,7 @@ const checkEnvironments = (config, issues) => {
             continue;
         }
         for (const unknown of Object.keys(raw).filter((key) => !['url', 'urls', ...ENVIRONMENT_FLAGS].includes(key))) {
-            issues.push(oldKeyHint(OLD_ENVIRONMENT, unknown, `environments.${name}.${unknown}`)
-                ?? t('config.env.unknown', { name, key: unknown, flags: ENVIRONMENT_FLAGS.join(', '), hint: hintFor(unknown, ['url', 'urls', ...ENVIRONMENT_FLAGS]) }));
+            issues.push(t('config.env.unknown', { name, key: unknown, flags: ENVIRONMENT_FLAGS.join(', '), hint: hintFor(unknown, ['url', 'urls', ...ENVIRONMENT_FLAGS]) }));
         }
         const notBoolean = ENVIRONMENT_FLAGS.find((key) => raw[key] !== undefined && typeof raw[key] !== 'boolean');
         if (notBoolean !== undefined) issues.push(t('config.env.notBoolean', { name, key: notBoolean }));
@@ -330,7 +302,7 @@ export const validateConfig = (given, root = process.cwd()) => {
     // Notes that block nothing: settings that have no effect as they are.
     const notes = [];
     for (const key of Object.keys(given)) {
-        if (!TOP_FIELDS.includes(key)) issues.push(oldKeyHint(OLD_TOP, key, key) ?? t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
+        if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
     }
     if (given.language !== undefined && !['de', 'en'].includes(given.language)) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
     const { config, issues: loaded } = effectiveConfig(given, root);
@@ -420,10 +392,9 @@ export const validateConfig = (given, root = process.cwd()) => {
         // Without startUrl the app is only reached along the way, e.g. via a task.
         if (app.startUrl !== undefined && (typeof app.startUrl !== 'string' || !app.startUrl.startsWith('/'))) issues.push(t('config.app.startUrl', { name }));
         for (const unknown of Object.keys(app).filter((key) => !APP_KEYS.includes(key))) {
-            issues.push(oldKeyHint(OLD_APP, unknown, `apps.${name}.${unknown}`, (place) => `apps.${name}.${place}`) ?? t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) }));
+            issues.push(t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) }));
         }
         if (app.overlay !== undefined) issues.push(...overlayIssues(name, app.overlay, extjs));
-        notes.push(...overlayRenamed(name, app.overlay));
     }
     if (issues.length === 0) notes.push(...overlayNotes(config));
     // Gaps from init: not wrong, but nothing that signs in can run until they are filled in.
@@ -533,19 +504,7 @@ export const isServerUrl = (value) => {
         return false;
     }
 };
-const OVERLAY_KEYS = ['url', 'start', 'build', 'statics', 'assetUrlPattern', 'dev', 'devCommand', 'buildCommand'];
-// Earlier names, still read: dev is the address (url), devCommand and buildCommand the start command (start).
-const OVERLAY_ALIASES = [['dev', 'url'], ['devCommand', 'start'], ['buildCommand', 'start']];
-
-/** apps.<app>.overlay with the earlier names resolved: { url, start, build, statics, assetUrlPattern }. */
-export const overlaySettings = (overlay = {}) => {
-    const settings = { ...overlay };
-    for (const key of ['dev', 'devCommand', 'buildCommand']) delete settings[key];
-    settings.url = overlay.url ?? overlay.dev;
-    settings.start = overlay.start ?? overlay.devCommand ?? overlay.buildCommand;
-    for (const key of Object.keys(settings)) if (settings[key] === undefined) delete settings[key];
-    return settings;
-};
+const OVERLAY_KEYS = ['url', 'start', 'build', 'statics', 'assetUrlPattern'];
 
 /** assetUrlPattern as a list: one pattern or several, one per asset source (plain path, proxy parameter, CDN). */
 export const patternList = (value) => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.filter((pattern) => typeof pattern === 'string') : []);
@@ -577,16 +536,10 @@ const overlayIssues = (name, overlay, extjs) => {
     const unknown = Object.keys(overlay).find((key) => !OVERLAY_KEYS.includes(key));
     if (unknown !== undefined) issues.push(t('config.overlay.unknown', { name, key: unknown, hint: hintFor(unknown, OVERLAY_KEYS) }));
     if (overlay.build !== undefined && !relativePath(overlay.build)) issues.push(t('config.overlay.build', { name }));
-    for (const key of ['url', 'dev']) if (overlay[key] !== undefined && !isServerUrl(overlay[key])) issues.push(t('config.overlay.dev', { name, key }));
-    for (const [old, now] of OVERLAY_ALIASES) if (overlay[old] !== undefined && overlay[now] !== undefined) issues.push(t('config.overlay.both', { name, old, now }));
-    if (extjs && (overlay.build !== undefined || overlay.buildCommand !== undefined)) issues.push(t('config.overlay.extjs', { name }));
-    for (const key of ['start', 'buildCommand', 'devCommand']) {
-        if (overlay[key] !== undefined && (typeof overlay[key] !== 'string' || overlay[key].trim() === '')) issues.push(t('config.overlay.command', { name, key }));
-    }
-    const server = overlay.url !== undefined || overlay.dev !== undefined;
-    if (overlay.buildCommand !== undefined && overlay.build === undefined) issues.push(t('config.overlay.commandWithout', { name, key: 'buildCommand', needs: 'build' }));
-    if (overlay.devCommand !== undefined && !server && !extjs) issues.push(t('config.overlay.commandWithout', { name, key: 'devCommand', needs: 'url' }));
-    if (overlay.start !== undefined && !server && overlay.build === undefined && !extjs) issues.push(t('config.overlay.commandWithout', { name, key: 'start', needs: 'url' }));
+    if (overlay.url !== undefined && !isServerUrl(overlay.url)) issues.push(t('config.overlay.dev', { name }));
+    if (extjs && overlay.build !== undefined) issues.push(t('config.overlay.extjs', { name }));
+    if (overlay.start !== undefined && (typeof overlay.start !== 'string' || overlay.start.trim() === '')) issues.push(t('config.overlay.command', { name }));
+    if (overlay.start !== undefined && overlay.url === undefined && overlay.build === undefined && !extjs) issues.push(t('config.overlay.commandWithout', { name }));
     if (overlay.assetUrlPattern !== undefined) issues.push(...assetPatternIssues(`apps.${name}.overlay.assetUrlPattern`, overlay.assetUrlPattern));
     if (overlay.statics !== undefined && !Array.isArray(overlay.statics)) issues.push(t('config.overlay.statics', { name }));
     else (overlay.statics ?? []).forEach((entry, index) => {
@@ -597,10 +550,6 @@ const overlayIssues = (name, overlay, extjs) => {
     });
     return issues;
 };
-
-/** Earlier overlay names still in use: read as before, with a note naming the new one. */
-const overlayRenamed = (name, overlay) => (isObject(overlay) ? OVERLAY_ALIASES.filter(([old, now]) => overlay[old] !== undefined && overlay[now] === undefined)
-    .map(([old, now]) => t('config.note.overlayRenamed', { name, old, now })) : []);
 
 /** Without `assetUrlPattern`: the path below the environment URL, e.g. `assets/index-X.js` from `https://host/app/assets/index-X.js`. */
 export const defaultAssetPattern = (url) => {

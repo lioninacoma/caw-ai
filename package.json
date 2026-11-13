@@ -1,7 +1,7 @@
 {
     "name": "caw-ai",
     "version": "0.3.0",
-    "description": "caw-ai, Context-Aware Workflows: AI-powered E2E testing, workflow automation and application debugging for web apps. Show it, understand it, replay it without AI.",
+    "description": "caw-ai, Context-Aware Web Testing: AI-powered E2E testing, development and debugging for web apps, replayed without AI.",
     "keywords": [
         "testing",
         "integration-testing",
@@ -11,7 +11,6 @@
         "playwright",
         "chrome",
         "web-testing",
-        "workflow",
         "context-aware"
     ],
     "author": "Frederick Schubert",
@@ -46,7 +45,7 @@
     "scripts": {
         "lint": "eslint .",
         "test": "node --import ./test/setup-de.mjs --test \"test/*.test.mjs\"",
-        "e2e": "node e2e/steps-e2e.mjs",
+        "e2e": "node e2e/native-e2e.mjs",
         "pack:check": "node scripts/pack-check.mjs",
         "prepack": "node scripts/pack-check.mjs"
     },

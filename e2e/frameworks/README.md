@@ -1,6 +1,6 @@
 # Framework matrix
 
-Test projects that check whether caw-ai works with the major frameworks: locally on the dev server, deployed as a production build, and with local code laid over the deployed version (`--overlay`). Claude is never started. `project.mjs` writes the recordings by hand, as `record` would write them; `caw-ai run` replays them.
+Test projects that check whether caw-ai works with the major frameworks: locally on the dev server, deployed as a production build, and with local code laid over the deployed version (`--overlay`). Claude is never started. `project.mjs` writes the recordings by hand, as `record` would write them (one Playwright locator per target); `caw-ai run` replays them. The e2e runs the matrix as scenario N14 (`pwsh e2e/watchdog.ps1 N14 e2e.log`).
 
 | Project | Framework | caw-ai adapter |
 |---|---|---|
@@ -23,14 +23,14 @@ Each scenario is named `<variant>/<scenario>`, e.g. `react/dev` or `angular-zone
 | `deployed` | production build behind HTTPS (`https://<name>.localhost:844x`, `insecureTls`) | as `dev` |
 | `no-option` | deployed build "deployed" plus a running build watch "local", run without `--overlay` | `smoke` passes against the deployed version |
 | `overlay-build` | as `no-option`, with `--overlay build`; for React and webpack the local build has a different chunk split (`CAW_SPLIT=1`). The Angular production build has `subresourceIntegrity`: the local code only arrives because caw-ai takes the `integrity` attributes from the deployed HTML. | `smoke` passes with the page swapped, `error` fails in the app |
-| `build-missing` | `--overlay build` without a local build and without `buildCommand` | exit 2 |
-| `overlay-build-command` | `--overlay build` without a local build, with `buildCommand`: caw builds once itself | `smoke` passes |
-| `build-stale` | `--overlay build` after a source changed since the build, without `buildCommand` | exit 2 |
-| `overlay-dev` | `--overlay dev` with `devCommand`: caw starts the dev server and stops it at the end | `smoke` passes |
-| `dev-server-down` | `--overlay dev` without `devCommand` and without a running dev server | exit 2 |
+| `build-missing` | `--overlay build` without a local build and without `overlay.start` | exit 2 |
+| `overlay-build-command` | `--overlay build --start` without a local build, with `overlay.start`: caw builds once itself | `smoke` passes |
+| `build-stale` | `--overlay build` after a source changed since the build, without `overlay.start` | exit 2 |
+| `overlay-dev` | `--overlay dev --start` with `overlay.url` and `overlay.start`: caw starts the dev server and stops it at the end | `smoke` passes |
+| `dev-server-down` | `--overlay dev` without a running dev server (caw starts nothing without `--start`) | exit 2 |
 | `overlay-ssr` | only next and nuxt: `--overlay dev` over the SSR production server | exit 2 with the hint to use the dev server as the environment |
 
-The overlay scenarios run for react, webpack, vue, angular and angular-zone. Two tests exist: `smoke` must pass; `error` must fail as an application error, and the `source` column shows whether it points to `explode.ts`. `smoke` creates a ticket and checks the build id (S1), opens Info and checks the id there again, since Info is a lazy chunk (S2). For react and webpack S3 also fills a field in an iframe (`frame` in the target) and one in a web component with an open shadow root.
+The overlay scenarios run for react, webpack, vue, angular and angular-zone. Two tests exist: `smoke` must pass; `error` must fail as an application error, and the `source` column shows whether it points to `explode.ts`. `smoke` creates a ticket and checks the build id (S1), opens Info and checks the id there again, since Info is a lazy chunk (S2). For react and webpack S3 also fills a field in an iframe (the locator goes through `contentFrame()`) and one in a web component with an open shadow root.
 
 ## Running
 

@@ -44,10 +44,10 @@ test('replay fills remembered values into check code escaped', async () => {
 });
 
 test('ids in paths: the recording keeps a placeholder, the page comparison tolerates placeholder segments', async () => {
-    assert.deepEqual(swapToken({ action: 'click', target: { role: 'button', name: 'Save' }, path: '/todos/1045/edit' }, '1045', '{{todoId}}').path, '/todos/{{todoId}}/edit');
+    assert.deepEqual(swapToken({ action: 'click', target: "getByRole('button', { name: 'Save', exact: true })", path: '/todos/1045/edit' }, '1045', '{{todoId}}').path, '/todos/{{todoId}}/edit');
     assert.equal(swapToken({ action: 'click', path: '/todos/10456' }, '1045', '{{todoId}}').path, '/todos/10456', 'only whole tokens');
-    const page = { locator: () => ({ evaluate: async () => ({ role: 'button', name: 'Save' }) }), url: () => 'https://p.example/todos/1045', evaluate: async () => ({ messages: [] }) };
-    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => page }, base: 'https://p.example', remembered: new Map([['{{todoId}}', '1045']]) });
+    const page = { locator: () => ({}), url: () => 'https://p.example/todos/1045', evaluate: async () => ({ messages: [] }) };
+    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => page }, base: 'https://p.example', remembered: new Map([['{{todoId}}', '1045']]), recordTarget: async () => "getByRole('button', { name: 'Save', exact: true })" });
     await recorder.handler({ action: 'click', target: 'e1' });
     assert.equal(recorder.steps[0].path, '/todos/{{todoId}}');
     assert.equal(samePath('/todos/1046', '/todos/{{todoId}}'), true);
@@ -67,7 +67,7 @@ test('language and time zone: config first, then the recording, then the host; i
     assert.deepEqual(readyIgnoreOf({}), []);
 });
 
-test('language and time zone: stored with every recorded step and handed to replay; older recordings have none', () => {
+test('language and time zone: stored with every recorded step and handed to replay; nothing recorded yet has none', () => {
     const recorder = { problems: [], steps: [{ action: 'check', id: 'S1', code: 'true' }], messages: new Set() };
     const spec = { id: 't', steps: [{ id: 'S1', name: 'a', do: 'b', expect: 'c' }] };
     const { candidate } = buildReplay({ recorder, outcome: { status: 'pass', results: [] }, spec, target: 'local', browser: { locale: 'de-DE', timezone: 'Europe/Berlin' } });
@@ -85,16 +85,6 @@ test('the browser\'s today: dates are filled in the pinned time zone, not the ho
     assert.equal(zonedNow('UTC', late).getDate(), 5);
     assert.equal(zonedNow(undefined, late), late);
     assert.equal(zonedNow('Mars/Base', late), late);
-});
-
-test('ambiguity: only new recordings (with locale) require a unique target; an index is a deliberate choice', () => {
-    const target = { role: 'button', name: 'Delete' };
-    const step = (recording) => ({ id: 'S1', name: 'a', do: 'b', expect: 'c', recording: { recordedOn: 'l', recordedAt: 'x', actions: [{ action: 'click', target }, { action: 'click', target: { ...target, index: 0 } }, { action: 'press', key: 'Enter' }], check: 'true', ...recording } });
-    const fresh = replayOf({ id: 't', steps: [step({ locale: 'de-DE' })] }).steps;
-    assert.equal(fresh[0].unique, true);
-    assert.equal(fresh[1].unique, undefined, 'with an index nothing is ambiguous');
-    assert.equal(fresh[2].unique, undefined);
-    assert.equal(replayOf({ id: 't', steps: [step({})] }).steps[0].unique, undefined, 'older recordings keep taking the first match');
 });
 
 test('a page that never gets quiet: one warning per step naming readyIgnore, replay goes on', async () => {

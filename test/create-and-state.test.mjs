@@ -35,13 +35,14 @@ test('Run tag: the recording keeps the placeholder, every replay inserts its own
     assert.equal(id, 'CAW-2026110518523312039');
     assert.match(newRunTag(), /^CAW-\d{19}$/);
     assert.notEqual(newRunTag(new Date(0), () => 0.1), newRunTag(new Date(0), () => 0.2));
-    const page = { locator: () => ({ evaluate: async () => ({ xtype: 'liste', own: `Vorgang ${id}` }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
-    const recorder = createRecorder({ handler: async (command) => (command.action === 'check' ? { pass: true } : 'ok'), session: { page: () => page }, base: 'https://p.example', runTag: id });
+    const page = { locator: () => ({}), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
+    const row = `getByRole('listitem').filter({ hasText: 'Vorgang ${id}' }).getByRole('button', { name: 'Öffnen', exact: true })`;
+    const recorder = createRecorder({ handler: async (command) => (command.action === 'check' ? { pass: true } : 'ok'), session: { page: () => page }, base: 'https://p.example', runTag: id, recordTarget: async () => row });
     await recorder.handler({ action: 'fill', target: 'e1', value: `Anliegen ${id}` });
     await recorder.handler({ action: 'click', target: 'e2' });
     await recorder.handler({ action: 'check', id: 'S1', code: `text.includes('${id}')` });
     assert.equal(recorder.steps[0].value, `Anliegen ${RUN_TAG_PLACEHOLDER}`);
-    assert.equal(recorder.steps[1].target.own, `Vorgang ${RUN_TAG_PLACEHOLDER}`);
+    assert.equal(recorder.steps[1].target, "getByRole('listitem').filter({ hasText: 'Vorgang {{runTag}}' }).getByRole('button', { name: 'Öffnen', exact: true })");
     assert.equal(recorder.steps[2].code, `text.includes('${RUN_TAG_PLACEHOLDER}')`);
     // Baseline values come from the first healthy run, never from Claude's session with its misclicks.
     const withNet = createRecorder({ handler: async () => ({ pass: true }), session: { page: () => page, network: { mark: () => 0, since: () => [{ name: 'GET /umweg', outcome: 'ok', status: 200, ms: 1 }] } }, base: 'https://p.example' });
@@ -66,15 +67,16 @@ test('Run tag: the recording keeps the placeholder, every replay inserts its own
 });
 
 test('Recording: a status note present while recording counts as known and does not warn in every run', async () => {
-    const page = { locator: () => ({ evaluate: async () => ({ xtype: 'a', own: 'A' }) }), url: () => 'https://p.example/a', evaluate: async () => ({ appLoaded: true, signedIn: true, messages: [], notes: ['EULA nicht angenommen.'] }) };
+    const page = { locator: () => ({}), url: () => 'https://p.example/a', evaluate: async () => ({ appLoaded: true, signedIn: true, messages: [], notes: ['EULA nicht angenommen.'] }) };
     const recorder = createRecorder({ handler: async () => ({ pass: true }), session: { page: () => page }, base: 'https://p.example' });
     await recorder.handler({ action: 'check', id: 'S1', code: 'true' });
     assert.ok([...recorder.messages].includes('EULA nicht angenommen.'));
 });
 
 test('Demonstration: the chat echoes every recorded action; checkpoints and failures it shows anyway', () => {
-    assert.equal(feedLabel({ action: 'click', target: { role: 'link', name: 'Alle Akten' } }), 'Klick link "Alle Akten"');
-    assert.equal(feedLabel({ action: 'fill', target: { role: 'textbox', name: 'Passwort' }, secret: true }), 'Eingabe in ein Passwortfeld, wird nicht aufgezeichnet');
+    assert.equal(feedLabel({ action: 'click', target: "getByRole('link', { name: 'Alle Akten', exact: true })" }), 'Klick link "Alle Akten"');
+    assert.equal(feedLabel({ action: 'fill', target: "getByLabel('Passwort')", secret: true }), 'Eingabe in ein Passwortfeld, wird nicht aufgezeichnet');
+    assert.match(feedLabel({ action: 'click', target: null, hint: 'div' }), /ohne stabile/);
     assert.equal(feedLabel({ action: 'press', key: 'Enter' }), 'Taste Enter');
     assert.match(feedLabel({ action: 'navigated', url: '/b' }), /Seitenwechsel nach \/b/);
     for (const action of ['checkpoint', 'note', 'failure']) assert.equal(feedLabel({ action, text: 'x' }), null);
@@ -82,7 +84,7 @@ test('Demonstration: the chat echoes every recorded action; checkpoints and fail
 
 test('Lower-case run tag: URLs derived from names get their own placeholder', async () => {
     const id = 'CAW-20261108172351';
-    const page = { locator: () => ({ evaluate: async () => ({ xtype: 'a', own: 'Akte' }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
+    const page = { locator: () => ({}), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
     const recorder = createRecorder({ handler: async () => ({ pass: true }), session: { page: () => page }, base: 'https://p.example', runTag: id });
     const code = `location.pathname.startsWith('/akten/akte-caw-20261108172351') && h1 === 'Akte ${id}'`;
     await recorder.handler({ action: 'check', id: 'S1', code });
@@ -92,11 +94,11 @@ test('Lower-case run tag: URLs derived from names get their own placeholder', as
 });
 
 test('Demonstration: only actions with a stable target and no secret are directly replayable', () => {
-    const target = { xtype: 'b', text: 'Weiter' };
+    const target = "locator('extjs=b[text=\"Weiter\"]')";
     const { steps, problems } = recordableSteps([
-        { action: 'click', target, path: '/a' },
+        { action: 'click', target, hint: 'span', path: '/a' },
         { action: 'checkpoint', text: 'Maske da', path: '/a' },
-        { action: 'fill', target: { xtype: 'p' }, secret: true, path: '/a' },
+        { action: 'fill', target: "getByLabel('Passwort')", secret: true, path: '/a' },
         { action: 'click', target: null, hint: 'div', path: '/a' },
         { action: 'navigated', url: '/b#vorgang/4711', path: '/b' },
     ]);
@@ -128,13 +130,14 @@ test('Demonstration: text becomes a checkpoint with screenshot; an empty line en
         dir,
         operator: {
             nextLine: async () => {
-                bindings.__cawCapture({ page }, { action: 'click', target: { xtype: 'b' }, path: '/a' });
-                bindings.__cawCapture({ page: {} }, { action: 'click', target: { xtype: 'fremder-tab' }, path: '/a' });
+                bindings.__cawCapture({ page }, { action: 'press', key: 'Enter', path: '/a' });
+                bindings.__cawCapture({ page: {} }, { action: 'press', key: 'Tab', path: '/a' });
                 return lines.shift();
             },
         },
     });
-    assert.deepEqual(items.map(({ action }) => action), ['click', 'checkpoint', 'click']);
+    assert.deepEqual(items.map(({ action }) => action), ['press', 'checkpoint', 'press']);
+    assert.ok(items.every(({ key }) => key === undefined || key === 'Enter'), 'not the foreign tab');
     assert.deepEqual(items[1], { action: 'checkpoint', text: 'Maske da', path: '/a', screenshot: 'point-1.png' });
 
     const closing = { ...session, context: { ...context }, closed: Promise.resolve() };
@@ -146,7 +149,10 @@ test('Demonstration in the browser: passwords stay in the page, fields come befo
     const sent = [];
     const listeners = {};
     class Field {
-        constructor(type, value) { Object.assign(this, { type, value }); }
+        constructor(type, value) { Object.assign(this, { type, value, tagName: 'INPUT', attributes: {} }); }
+        setAttribute(name, value) { this.attributes[name] = value; }
+        getAttribute(name) { return this.attributes[name] ?? null; }
+        removeAttribute(name) { delete this.attributes[name]; }
     }
     const scope = {
         window: { __cawCapture: (event) => sent.push(event) },
@@ -154,37 +160,54 @@ test('Demonstration in the browser: passwords stay in the page, fields come befo
         document: { activeElement: null },
         HTMLInputElement: Field,
         HTMLTextAreaElement: class {},
+        HTMLSelectElement: class {},
+        ShadowRoot: class {},
         Element: Field,
+        setTimeout: () => {},
         addEventListener: (name, callback) => { listeners[name] = callback; },
     };
-    const run = new Function(...Object.keys(scope), `(${captureInPage})('__cawCapture', (element) => ({ part: element.type }), ['checkbox']);`);
+    const run = new Function(...Object.keys(scope), `(${captureInPage})('__cawCapture', ['checkbox'], 'data-caw-mark', 10000);`);
     run(...Object.values(scope));
 
     const secret = new Field('password', 'geheim');
     listeners.focusin({ target: secret });
     secret.value = 'noch geheimer';
+    listeners.input({ isTrusted: true, target: secret });
     listeners.change({ target: secret });
     assert.equal(JSON.stringify(sent).includes('geheim'), false);
     assert.equal(sent[0].secret, true);
+    assert.equal(secret.getAttribute('data-caw-mark'), sent[0].mark, 'the field carries the mark the host resolves');
 
     sent.length = 0;
     const field = new Field('text', '');
     listeners.focusin({ target: field });
     field.value = 'Text';
+    listeners.input({ isTrusted: true, target: field });
     listeners.keydown({ isTrusted: true, key: 'Enter', target: field });
     listeners.change({ target: field });
     assert.deepEqual(sent.map(({ action, value, key }) => [action, value ?? key]), [['fill', 'Text'], ['press', 'Enter']], 'no duplicate from the late change event');
 
+    // A value the application sets itself (a combobox taking the entry clicked in its list) is no fill.
     sent.length = 0;
-    listeners.click({ isTrusted: false, target: field });
+    field.value = 'Sonstiges';
+    listeners.change({ target: field });
+    listeners.keydown({ isTrusted: true, key: 'Tab', target: field });
+    assert.deepEqual(sent.map(({ action, key }) => [action, key]), [['press', 'Tab']], 'no fill without typing');
+
+    sent.length = 0;
+    listeners.pointerdown({ isTrusted: false, button: 0, composedPath: () => [field] });
+    listeners.pointerdown({ isTrusted: true, button: 2, composedPath: () => [field] });
     listeners.keydown({ isTrusted: true, key: 'a', target: field });
-    assert.deepEqual(sent, [], 'synthetic clicks and ordinary keys do not count');
+    assert.deepEqual(sent, [], 'synthetic clicks, other buttons and ordinary keys do not count');
+    listeners.pointerdown({ isTrusted: true, button: 0, composedPath: () => [field] });
+    assert.deepEqual(sent.map(({ action, hint }) => [action, hint]), [['click', 'input']]);
+    assert.equal(typeof sent[0].mark, 'string', 'the click is marked on pointerdown, before the application reacts');
 });
 
 test('Report: lists writing calls, not their parameters', () => {
-    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay', writes: [{ label: 'connector HTTP-X', count: 2 }] });
+    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', testedCode: 'deployed', writes: [{ label: 'connector HTTP-X', count: 2 }] });
     assert.match(report, /## Schreibende Aufrufe[\s\S]*connector HTTP-X \(2x\)/);
-    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay' }), /Schreibende/);
+    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'r', target: 'a/dev', testedCode: 'deployed' }), /Schreibende/);
 });
 
 test('Demonstration: a reload is a hint in the recording; refresh only reloads the page', async (t) => {
@@ -267,7 +290,7 @@ test('Demonstration: Ctrl+C aborts instead of continuing with half a demonstrati
 const RECORDED = [
     { action: 'goto', url: '/a' },
     { action: 'wait-ready' },
-    { action: 'click', target: { xtype: 'tab', text: 'Falsch' } },
+    { action: 'click', target: "getByRole('tab', { name: 'Falsch', exact: true })" },
     { action: 'wait-ready' },
     { action: 'check', id: 'S1', code: 'a' },
 ];
@@ -293,7 +316,7 @@ test('Detours: dropping lists the steps, shortens them and leaves no duplicate w
 });
 
 test('Report: dropped steps are listed', () => {
-    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', source: 'overlay', dropped: ['3 click tab "Falsch"'] });
+    const report = renderReport({ status: 'pass', testId: 'r', target: 'a/dev', testedCode: 'deployed', dropped: ['3 click tab "Falsch"'] });
     assert.match(report, /## Aus der Aufzeichnung gestrichen[\s\S]*3 click tab "Falsch"/);
 });
 
@@ -319,8 +342,9 @@ test('consoleIgnore: allows known messages, but never HTTP 500 and above', () =>
     assert.equal(isAllowedFailure({ type: 'http', text: 'HTTP 500' }, 'https://p/o/DataProxy', patterns), false);
 });
 
-const rememberPage = { locator: () => ({ evaluate: async () => ({ xtype: 'gridcell', own: 'Nr 20262140000260' }) }), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
+const rememberPage = { locator: () => ({}), url: () => 'https://p.example/a', evaluate: async () => ({ messages: [] }) };
 const rememberRecorder = () => createRecorder({
+    recordTarget: async () => "getByRole('gridcell', { name: 'Nr 20262140000260', exact: true })",
     handler: async (command) => {
         if (command.action === 'remember') return { name: command.name, value: '20262140000260' };
         return command.action === 'check' ? { pass: true } : 'ok';
@@ -337,7 +361,7 @@ test('remember: later steps store the placeholder, earlier ones stay, even after
     await recorder.handler({ action: 'click', target: 'e3' });
     await recorder.handler({ action: 'check', id: 'S1', code: "x === '20262140000260'" });
     assert.equal(recorder.steps[2].value, '{{vorgangsnr}}');
-    assert.equal(recorder.steps[3].target.own, 'Nr {{vorgangsnr}}');
+    assert.equal(recorder.steps[3].target, "getByRole('gridcell', { name: 'Nr {{vorgangsnr}}', exact: true })");
     assert.equal(recorder.steps[4].code, "x === '{{vorgangsnr}}'");
     recorder.drop([4]);
     assert.equal(recorder.steps[0].value, 'vorher 20262140000260');
@@ -465,7 +489,7 @@ test('Chat: while demonstrating, the human separates context and checkpoint', as
 test('Chat: a picked element attaches to the next message and is not lost without text', async () => {
     const shown = [];
     const chat = createChat({ show: (who, text, about) => shown.push([who, text, about]) });
-    const element = { label: 'button "Weiter"', target: { xtype: 'button', text: 'Weiter' }, tag: 'button', text: 'Weiter' };
+    const element = { label: 'button "Weiter"', target: "getByRole('button', { name: 'Weiter', exact: true })", tag: 'button', text: 'Weiter' };
     assert.equal(chat.canPick(), false, 'not while Claude is working');
     chat.enter('paused');
     assert.equal(chat.canPick(), true);
@@ -496,8 +520,8 @@ test('Demonstration: notes keep their order but create neither a step nor a chec
 test('Chat: the Claude log becomes messages and actions, the conversation itself is not duplicated', () => {
     assert.deepEqual(parseClaudeLog('[+47.0s] Suche ist da. ⏎ Ich suche.'), { kind: 'text', text: 'Suche ist da. Ich suche.' });
     assert.equal(parseClaudeLog('[+143.7s] Claude finished after 142 s.'), null);
-    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Wege"; caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Wege"; press Enter' });
-    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Wege" && caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Wege" && press Enter' });
+    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Muster"; caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Muster"; press Enter' });
+    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Muster" && caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Muster" && press Enter' });
     assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai say "Hallo"'), null);
     // The local agent calls caw via MCP: the human reads the same command, without internal names and JSON.
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["snapshot"]}'), { kind: 'activity', text: 'snapshot' });
@@ -620,16 +644,16 @@ test('Verification run in the chat: progress only, the button does nothing', () 
 });
 
 test('Tidying by the tool: screenshots and the first of two fills on the same field', () => {
-    const field = { xtype: 'textfield', label: 'A' };
+    const field = "getByLabel('A')";
     const steps = [
         { action: 'click', target: field },
         { action: 'fill', target: field, value: 'x' },
         { action: 'wait-ready' },
         { action: 'fill', target: field, value: 'y' },
         { action: 'screenshot', name: 'a.png' },
-        { action: 'fill', target: { xtype: 'textfield', label: 'B' }, value: 'z' },
+        { action: 'fill', target: "getByLabel('B')", value: 'z' },
         { action: 'click', target: field },
-        { action: 'fill', target: { xtype: 'textfield', label: 'B' }, value: 'zz' },
+        { action: 'fill', target: "getByLabel('B')", value: 'zz' },
     ];
     assert.deepEqual(tidyNumbers(steps), [2, 5]);
     assert.deepEqual(tidyNumbers(steps, [7]), [2, 5, 6], 'what Claude drops no longer sits in between');
@@ -695,6 +719,7 @@ test('remember: a remembered value containing the run tag becomes the placeholde
         session: { page: () => rememberPage },
         base: 'https://p.example',
         runTag: 'CAW-7',
+        recordTarget: async () => "getByRole('textbox', { name: 'Betreff', exact: true })",
     });
     await recorder.handler({ action: 'fill', target: 'e1', value: 'Vorgang CAW-7' });
     await recorder.handler({ action: 'remember', name: 'nr', code: 'lies()' });

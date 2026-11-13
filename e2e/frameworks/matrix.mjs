@@ -91,7 +91,7 @@ const APPS = [
     { name: 'webpack', dir: 'react-webpack', framework: 'react', embed: true, devPort: 5175, deployPort: 8447, ...webpack(5175) },
     { name: 'vue', dir: 'vue-vite', framework: 'vue', devPort: 5174, deployPort: 8442, ...vite(5174) },
     {
-        name: 'angular', dir: 'angular', framework: 'angular', devPort: 4200, deployPort: 8443,
+        name: 'angular', dir: 'angular', framework: 'angular', devPort: 4200, deployPort: 8448,
         dev: [npx, ['ng', 'serve', '--port', '4200']], build: [npx, ['ng', 'build', '--output-path', 'dist/app']], out: 'dist/app/browser',
         localBuild: ng('production'),
     },

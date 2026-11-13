@@ -77,15 +77,15 @@ Tipps:
 Jeder Schritt hat einen Hash über `name`, `do`, `expect` und `note`. Änderst du eins davon, ist nur dieser Schritt veraltet:
 
 ```bash
-npx caw-ai run create-ticket --target local       # Exit 4: S2 geändert, nennt den fix-Befehl
-npx caw-ai fix create-ticket S2 --target local    # nur S2 neu aufnehmen
+npx caw-ai run create-ticket --target local       # Exit 4: S2 geändert, nennt den record-Befehl
+npx caw-ai record create-ticket@S2 --target local # ab S2 bis zum Ende neu aufnehmen, S1 bleibt
 ```
 
-`notes`, Metadaten, `retry` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende ergänzt du per Schreiben und `fix`. Schritte löschen oder umsortieren braucht ein neues `record`.
+`notes`, Metadaten, `retry` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
 
 ## Aufzeichnung
 
-Schreiben `record` und `fix`. Ansehen ja, ändern nur für die [Ergänzungen von Hand](#von-hand-ergänzen). Ein Auszug:
+Schreiben `record` und „Schritt beheben“ im Chat eines Laufs. Ansehen ja, ändern nur für die [Ergänzungen von Hand](#von-hand-ergänzen). Ein Auszug:
 
 ```yaml
 # caw/recordings/create-ticket.yaml
@@ -98,60 +98,55 @@ steps:
     after: S1
     recordedOn: local
     recordedAt: 2026-11-09T09:31:28.406Z
+    locale: en-US
+    timezone: Europe/Berlin
     actions:
-      - click: {role: button, name: New ticket}
-        path: /tickets
-      - wait-ready: {}
-      - fill: {role: textbox, name: Title, inside: {role: dialog, name: New ticket}}
-        value: Printer offline {{runTag}}
-        path: /tickets
-      - type: {role: combobox, name: Customer, inside: {role: dialog, name: New ticket}}
-        value: Acme
-        path: /tickets
-      - type: {role: combobox, name: Priority, inside: {role: dialog, name: New ticket}}
-        value: High
-        path: /tickets
-      - click: {role: button, name: Create ticket, inside: {role: dialog, name: New ticket}}
-        path: /tickets
-      - wait-ready: {}
-      - remember: {name: ticketnr, code: "(document.querySelector('[role=status]').textContent.match(/#(\d+)/)||[])[1]"}
-    check: "(()=>{const s=document.querySelector('[role=status]');if(!s||!/^Ticket #\d+ created$/.test(s.textContent.trim()))return false;const n=s.textContent.match(/#(\d+)/)[1];return n==='{{ticketnr}}' && [...document.querySelectorAll('table[aria-label=\"Tickets\"] tbody tr')].some(r=>r.cells[0].textContent.trim()===n && r.cells[1].textContent.trim()==='Printer offline {{runTag}}');})()"
+      - {click: "getByRole('button', { name: 'New ticket', exact: true })", path: /tickets}
+      - {wait-ready: {}}
+      - {fill: "getByRole('dialog', { name: 'New ticket' }).getByRole('textbox', { name: 'Title', exact: true })", value: "Printer offline {{runTag}}", path: /tickets}
+      - {fill: "getByRole('combobox', { name: 'Priority', exact: true })", value: high, path: /tickets}
+      - {click: "getByRole('button', { name: 'Create ticket', exact: true })", path: /tickets}
+      - {wait-ready: {}}
+      - {remember: {name: ticketnr, code: "(document.querySelector('[role=status]').textContent.match(/#(\\d+)/)||[])[1]"}}
+      - {click: "getByRole('row').filter({ hasText: 'Printer offline {{runTag}}' }).getByRole('link', { name: 'Open', exact: true })", path: /tickets}
+    check: "document.querySelector('h1')?.textContent === 'Ticket #{{ticketnr}}'"
     network:
-      - {name: GET /api/customers, status: 200, ms: 54, params: []}
-      - {name: POST /api/tickets, status: 201, ms: 269, params: [json.customer, json.description, json.priority, json.title]}
+      - {name: POST /api/tickets, status: 201, ms: 269, params: [json.customer, json.priority, json.title]}
       - {name: GET /api/tickets, status: 200, ms: 274, params: [q]}
     effects:
       runs: 1
       actions:
-        - action: 4
+        - action: 5
           controls:
-            - + select "Customer" required,filled
             - + button "Create ticket"
-            - '- select "Customer" required,empty'
             - '- button "Create ticket" disabled'
 ```
 
 | Feld | |
 |---|---|
-| `actions` | Was zu tun ist, mit Zielen so, wie ein Mensch sie findet: Rolle und Name, Beschriftung, `data-testid`, der Dialog drumherum. Nie generierte Klassennamen. |
+| `actions` | Was zu tun ist. `dblclick` ist ein Doppelklick, etwa auf eine Tabellenzeile, die nur so öffnet; einen vorgeführten Doppelklick zeichnet caw als einen auf. Das Ziel von `click`, `dblclick`, `fill`, `type`, `upload` und `download` ist ein Playwright-Locator, geschrieben, wie Playwright ihn ausgibt, ohne `page.`: Rolle und voller Name mit `exact: true`, Beschriftung, Text, `data-testid`, die Zeile oder der Dialog drumherum, `contentFrame()` für ein iframe. caw liest ihn, führt ihn aber nie als Code aus; `validate` weist alles andere ab, ebenso Snapshot-Referenzen (`aria-ref=`), `:nth-child` und bei ExtJS generierte IDs wie `#button-1023`. ExtJS-Komponenten findet auch `locator('extjs=button[text="Speichern"]')` (`Ext.ComponentQuery`); ein Text oder Titel mit Komma kommt nie in eine solche Abfrage, weil ComponentQuery an jedem Komma trennt. |
 | `path` | Die Seite, auf der die Aktion aufgenommen wurde. Fehlt ein Ziel, sagt der Lauf, dass er auf einer anderen Seite ist. |
+| `locale`, `timezone` | Sprache und Zeitzone des Aufnahme-Browsers; die Wiedergabe nimmt sie, sofern die Config nicht `browser.locale`/`browser.timezone` setzt. |
 | `check` | Ein JavaScript-Ausdruck, der `true` liefern muss. Er läuft in der angemeldeten Seite, also vor dem Commit lesen. |
 | `remember` | Liest einen Wert, den der Lauf erzeugt, hier die Ticketnummer. Spätere Schritte nutzen ihn als `{{ticketnr}}`. |
 | `network` | Requests je Schritt aus einem gesunden Lauf. Damit trennt caw-ai App-Fehler von Umgebungsproblemen. |
 | `effects` | Was jede Aktion an der Seite geändert hat, gelernt aus gesunden Läufen (`runs` zählt sie). Eine Abweichung lässt den Schritt scheitern oder erscheint als Warnung. |
 | `knownMessages` | Meldungen, die beim Aufnehmen sichtbar waren und keine Fehler sind. |
 
+Bei der Wiedergabe muss ein Locator genau ein Element finden, das sichtbar und nicht verdeckt ist. Zwei Treffer duldet sie zwei Sekunden lang, etwa während ein Dialog schließt und der nächste mit demselben Knopf aufgeht; danach scheitert der Schritt und nennt beide. Ein Locator, der nach Position wählt (`nth()`, `first()`), wird nach der Aufnahme zum Prüfen aufgelistet.
+
 ## Von Hand ergänzen
 
-Diese Angaben nimmt Claude nicht auf; du trägst sie selbst in `caw/recordings/<id>.yaml` ein. `validate` prüft sie. Nimmt Claude den Schritt neu auf, ersetzt das seine Aktionen: `upload` und `download` danach wieder eintragen; `secret` an einem `remember` bleibt erhalten.
+`download` und `secret` nimmt Claude nicht auf; du trägst sie selbst in `caw/recordings/<id>.yaml` ein. `validate` prüft sie. Nimmt Claude den Schritt neu auf, ersetzt das seine Aktionen: `download` danach wieder eintragen; `secret` an einem `remember` bleibt erhalten.
+
+`upload` wird aufgezeichnet, aber nur mit Dateien aus `caw/fixtures`: Beim Vorführen vergleicht caw die gewählte Datei per Name, Größe und SHA-256 mit den Dateien dort. Passt sie, wird der Klick, der die Dateiauswahl geöffnet hat, zum `upload`; eine Datei von anderswo nennt der Chat, sie wird nicht aufgezeichnet und nichts wird kopiert. Leg Testdateien ohne personenbezogene Daten in `caw/fixtures` ab und wähle sie von dort. Claude lädt mit `upload <ziel> fixtures/<datei>` hoch, ebenfalls nur von dort.
 
 | Angabe | Bedeutung |
 |---|---|
-| `- upload: {role: button, name: Dateien wählen}`<br>`  files: [fixtures/brief.pdf]` | Setzt Dateien in ein Dateifeld. Ist das Ziel das Feld selbst (`role: textbox` mit seiner Beschriftung), bekommt es die Dateien direkt; ist es ein Knopf vor einem versteckten Feld, öffnet sein Klick die Dateiauswahl, und die bekommt sie. Pfade gelten relativ zum Ordner `caw`, nie absolut und nie darüber hinaus; fehlt eine Datei, bricht der Schritt vor dem Klick ab |
-| `- download: {role: button, name: Exportieren}`<br>`  file: "^akte-.*\\.zip$"` | Der Klick muss im Zeitlimit des Schritts einen Download starten, sein Dateiname muss zum regulären Ausdruck in `file` passen, und die Datei darf nicht leer sein. Sonst scheitert der Schritt wie eine nicht erfüllte Prüfung, ohne zweiten Klick. Das Tool löscht die Datei gleich danach |
+| `- upload: "getByRole('button', { name: 'Dateien wählen', exact: true })"`<br>`  files: [fixtures/brief.pdf]` | Setzt Dateien in ein Dateifeld. Ist das Ziel das Feld selbst (etwa `getByLabel('Anhang')`), bekommt es die Dateien direkt; ist es ein Knopf vor einem versteckten Feld, öffnet sein Klick die Dateiauswahl, und die bekommt sie. Pfade gelten relativ zum Ordner `caw`, nie absolut und nie darüber hinaus; fehlt eine Datei, bricht der Schritt vor dem Klick ab |
+| `- download: "getByRole('button', { name: 'Exportieren', exact: true })"`<br>`  file: "^akte-.*\\.zip$"` | Der Klick muss im Zeitlimit des Schritts einen Download starten, sein Dateiname muss zum regulären Ausdruck in `file` passen, und die Datei darf nicht leer sein. Sonst scheitert der Schritt wie eine nicht erfüllte Prüfung, ohne zweiten Klick. Das Tool löscht die Datei gleich danach |
 | `- remember: {name: davPassword, code: "...", secret: true}` | Wie `remember`, aber der Wert steht ab dann als `••••` im Terminal, in der Werkbank, in `result.json`, `report.md` und allem, was Claude bekommt, wie das Passwort der Rolle. Der Lauf selbst arbeitet mit dem echten Wert |
-| `name: {pattern: "^Prüfen( \\d+)?$"}` | In einem Ziel, auch unter `inside`: ein regulärer Ausdruck statt des genauen Namens, für einen mitlaufenden Zähler oder einen wechselnden Teil. Das Muster sieht den ganzen Namen. Ein fester Name über 80 Zeichen ist auf der Seite leer und trifft nie; `validate` weist ihn ab und schlägt ein Muster für seinen Anfang vor |
-| `frame: {tag: iframe, name: Zahlung}` | In einem Ziel: Das Element liegt in einem iframe der Anwendung. `frame` beschreibt das iframe im Dokument darüber, wie ein Ziel (meist `tag: iframe` und sein `title` als `name`); verschachtelte iframes tragen wieder `frame`. Die Aufzeichnung setzt es selbst. Fehlt das iframe, sagt der Schritt welches. Ein iframe von einem anderen Host braucht ihn in `extraAllowedHosts` |
+| `getByRole('button', { name: /^Prüfen( \\d+)?$/ })` | Ein regulärer Ausdruck statt des genauen Namens, für einen mitlaufenden Zähler oder einen wechselnden Teil |
 | `knownMessages:`<br>`  - {pattern: "^Prüfsumme \\S+ kopiert$"}` | Neben festen Texten: ein Muster für eine Meldung mit wechselndem Inhalt, etwa einer Prüfsumme oder Uhrzeit. Wie feste Texte sieht es die Meldung mit Ziffern als `#`, immer ganz; nur der Bericht kürzt lange Meldungen. Eine neue Aufnahme behält Muster und ergänzt keinen festen Text, den ein Muster schon deckt |
 
 Eine Prüfung kann die Zwischenablage lesen: Der Browser hat `clipboard-read` und `clipboard-write` für den Origin der Umgebung, etwa `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (ein Ausdruck, der ein Promise liefert, wird abgewartet).
@@ -165,4 +160,4 @@ Eine Prüfung kann die Zwischenablage lesen: Der Browser hat `clipboard-read` un
 | `{{today}}`, `{{today+7}}`, `{{todayIso-1}}` | Datumswerte relativ zum Tag des Laufs |
 | `{{ticketnr}}` | Einen Wert, den der Lauf per `remember` gelesen hat |
 
-Claude setzt sie beim Aufnehmen ein. Im Testplan brauchst du nur `{{runTag}}`.
+Claude setzt sie beim Aufnehmen ein. Im Testplan brauchst du nur `{{runTag}}`. In einem Locator füllt caw sie je Text ein: Ein Wert mit Anführungszeichen bleibt ein Text, ein Wert in einem regulären Ausdruck wird maskiert.

@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { evaluateFinish } from '../shared/report.mjs';
+import { fixtureFiles, fixturePath } from './fixtures.mjs';
+import { buildLocator, parseLocator } from './locator.mjs';
 import { passwordValues, redactDeep } from './secrets.mjs';
 
 const ACTION_TIMEOUT_MS = 15_000;
@@ -45,8 +47,18 @@ export const isAllowedUrl = (url, hosts) => {
 export const codeText = (value) => String(value).replace(/[\\'"`$]/g, '\\$&').replaceAll('\n', '\\n').replaceAll('\r', '\\r')
     .replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
 
-/** A reference from the snapshot, or a CSS selector. */
-export const locatorFor = (page, target) => page.locator(ARIA_REF.test(target) ? `aria-ref=${target}` : target);
+// Locator code starts with a method call, e.g. getByRole('button', { name: 'Save' }); a CSS selector never does.
+const LOCATOR_CODE = /^\s*[A-Za-z_$][\w$]*\s*\(/;
+
+/**
+ * A reference from the snapshot (e12, f2e5), Playwright locator code without `page.` (parsed, never evaluated) or a CSS
+ * selector. Code starts at the application's main frame, with the workbench the frame in its iframe.
+ */
+export const locatorFor = (page, target) => {
+    if (ARIA_REF.test(target)) return page.locator(`aria-ref=${target}`);
+    if (LOCATOR_CODE.test(target)) return buildLocator(page.mainFrame(), parseLocator(target));
+    return page.locator(target);
+};
 
 /**
  * Sets a field to `value`. A <select> cannot be filled: there the value picks the option by its value, otherwise by its label,
@@ -63,16 +75,62 @@ export const fillField = async (element, value, { timeout }) => {
     await element.selectOption(byValue ? { value } : { label: value }, { timeout });
 };
 
+/**
+ * Before an action on a disabled target: leaves the field that still has the focus, as the pointer going down beside it would.
+ * Some fields unlock the next one only when they are left (an ExtJS combobox takes its entry on blur), and Playwright waits for
+ * an enabled target without ever leaving the field. Nothing happens if the target is enabled, holds the focus or contains it:
+ * typing a filter and then clicking an entry of the open list keeps the field focused.
+ * @param element a Playwright Locator or ElementHandle
+ */
+export const leaveForDisabled = async (element) => {
+    const enabled = await Promise.resolve().then(() => element.isEnabled({ timeout: 1000 })).catch(() => true);
+    if (enabled) return false;
+    return element.evaluate((node) => {
+        const focused = node.ownerDocument.activeElement;
+        if (focused === null || focused === node.ownerDocument.body || focused === node || focused.contains(node) || node.contains(focused)) return false;
+        focused.blur();
+        return true;
+    }).catch(() => false);
+};
+
+/**
+ * Sets files for upload: a file input gets them directly, a button in front of a hidden one opens the file chooser on click,
+ * which then gets them. The same for Claude and for replay.
+ * @param target a Playwright Locator or ElementHandle
+ * @param page   the page whose file chooser belongs to the target
+ * @returns false if the click opened no file chooser
+ */
+export const setFiles = async (target, files, { page, timeout }) => {
+    if (await target.evaluate((node) => node instanceof globalThis.HTMLInputElement && node.type === 'file')) {
+        await target.setInputFiles(files, { timeout });
+        return true;
+    }
+    const chooser = page.waitForEvent('filechooser', { timeout }).catch(() => null);
+    // Do not wait for the click first: on Windows it sometimes only returns once the file chooser has been handled.
+    const clicked = target.click({ timeout, delay: CLICK_DELAY_MS }).then(() => null, (error) => error);
+    const picker = await Promise.race([chooser, clicked.then((error) => (error === null ? chooser : null))]);
+    if (picker === null) {
+        const error = await clicked;
+        if (error !== null) throw error;
+        return false;
+    }
+    await picker.setFiles(files, { timeout });
+    // The files are set; a click still hanging afterwards changes nothing.
+    await clicked;
+    return true;
+};
+
 // How long an optional click waits for its target.
 const OPTIONAL_WAIT_MS = 3000;
-// These commands move focus into the application.
-const FOCUSING = new Set(['click', 'fill', 'type', 'press', 'upload', 'download']);
 
 /**
  * @param expand optional: fills placeholders of secret remembered values ({{iban}}) into fill/type values; code with one is refused.
  *   Claude never sees them in plain text and works with the placeholder; only the host fills it in.
  */
-export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, expand = (value) => value, commandTimeoutMs = COMMAND_TIMEOUT_MS }) => {
+/**
+ * @param filesDir the project's caw folder: upload takes files from its fixtures folder only
+ */
+export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, onVerdict, expand = (value) => value, commandTimeoutMs = COMMAND_TIMEOUT_MS }) => {
     const screenshots = new Set();
     let finished = false;
 
@@ -85,16 +143,43 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
         click: async (command) => {
             // Optional, e.g. a cookie banner: if the target is not (or no longer) there, there is nothing to do. Replay skips it the same way.
             if (command.optional === true && !await locate(command).waitFor({ state: 'visible', timeout: OPTIONAL_WAIT_MS }).then(() => true, () => false)) return 'absent';
+            await leaveForDisabled(locate(command));
             await locate(command).click({ timeout: ACTION_TIMEOUT_MS, delay: CLICK_DELAY_MS });
+            return 'ok';
+        },
+        // Files from caw/fixtures only, named relative to the caw folder as the recording stores them (fixtures/brief.pdf).
+        upload: async (command) => {
+            const files = Array.isArray(command.files) ? command.files : [];
+            const paths = files.map((file) => (filesDir === undefined ? null : fixturePath(filesDir, file)));
+            if (files.length === 0 || paths.includes(null)) {
+                const known = filesDir === undefined ? [] : fixtureFiles(filesDir);
+                throw usage(t('run.agent.uploadFiles', { files: files.join(', ') || '–', known: known.join(', ') || '–' }));
+            }
+            await leaveForDisabled(locate(command));
+            if (!await setFiles(locate(command), paths.map((path) => join(filesDir, path)), { page: session.page(), timeout: ACTION_TIMEOUT_MS })) {
+                throw usage(t('session.replay.noChooser', { target: text(command, 'target') }));
+            }
+            return { files: paths };
+        },
+        // Two clicks as one gesture, e.g. a grid row that opens on double-click: two separate click commands lie seconds apart,
+        // so the browser never fires a dblclick for them.
+        dblclick: async (command) => {
+            await leaveForDisabled(locate(command));
+            await locate(command).dblclick({ timeout: ACTION_TIMEOUT_MS, delay: CLICK_DELAY_MS });
             return 'ok';
         },
         // Empty is allowed: it clears a field regardless of its content. Clicking a clear button fails when the field is empty.
         fill: async (command) => {
             if (typeof command.value !== 'string') throw usage(t('run.agent.missing', { field: 'value' }));
+            await leaveForDisabled(locate(command));
             await fillField(locate(command), command.value, { timeout: ACTION_TIMEOUT_MS });
             return 'ok';
         },
-        type: async (command) => { await locate(command).pressSequentially(text(command, 'value'), { timeout: ACTION_TIMEOUT_MS }); return 'ok'; },
+        type: async (command) => {
+            await leaveForDisabled(locate(command));
+            await locate(command).pressSequentially(text(command, 'value'), { timeout: ACTION_TIMEOUT_MS });
+            return 'ok';
+        },
         press: async (command) => { await session.page().keyboard.press(text(command, 'key')); return 'ok'; },
         eval: (command) => session.page().evaluate(text(command, 'code')),
         // A repeatable check. Only exactly true passes, not any truthy value.
@@ -184,11 +269,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, onVerdict, e
             timer = setTimeout(() => reject(new CawError('command-timeout', t('run.agent.timeout', { action: command.action }))), commandTimeoutMs);
         });
         try {
-            // Actions that focus the application hand focus back to the chat if the human is typing there.
-            const view = session.page?.();
-            const act = () => commands[command.action](command);
-            const work = FOCUSING.has(command.action) && typeof view?.keepChatFocus === 'function' ? view.keepChatFocus(act) : act();
-            const result = await Promise.race([work, limit]);
+            const result = await Promise.race([commands[command.action](command), limit]);
             return PAGE_TEXT.has(command.action) && !reveal ? await hideSecrets(result) : result;
         } finally {
             clearTimeout(timer);

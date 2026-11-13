@@ -1,0 +1,30 @@
+{
+    "language": "de",
+    "framework": "extjs",
+    "agent": {
+        "sandbox": "docker"
+    },
+    "environments": {
+        "test": {
+            "url": "http://native.localhost:8451",
+            "claude": true,
+            "writable": true
+        }
+    },
+    "auth": {
+        "type": "none"
+    },
+    "apps": {
+        "ext": {
+            "dir": ".",
+            "startUrl": "/ext.html"
+        },
+        "extdata": {
+            "dir": ".",
+            "startUrl": "/ext-data.html"
+        }
+    },
+    "roles": {
+        "visitor": {}
+    }
+}

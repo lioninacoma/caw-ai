@@ -1,0 +1,30 @@
+{
+    "language": "de",
+    "framework": "web",
+    "agent": {
+        "sandbox": "docker"
+    },
+    "environments": {
+        "test": {
+            "url": "http://native.localhost:8451",
+            "claude": true,
+            "writable": true
+        }
+    },
+    "auth": {
+        "type": "none"
+    },
+    "apps": {
+        "site": {
+            "dir": "site",
+            "startUrl": "/"
+        },
+        "aria": {
+            "dir": "site",
+            "startUrl": "/aria.html"
+        }
+    },
+    "roles": {
+        "visitor": {}
+    }
+}

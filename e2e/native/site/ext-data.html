@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Ext data fixture</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; font-size: 14px; }
+  .x-formpanel { display: flex; flex-direction: column; gap: 8px; max-width: 560px; }
+  .x-combobox, .x-textfield { display: flex; align-items: center; gap: 6px; }
+  .x-body-el { position: relative; display: inline-flex; align-items: center; border: 1px solid #888; border-radius: 3px; }
+  .x-input-el { border: 0; padding: 4px 6px; width: 220px; }
+  .x-disabled { opacity: .5; }
+  .x-expandtrigger { width: 22px; height: 24px; cursor: pointer; border-left: 1px solid #ccc; }
+  .x-expandtrigger::before { content: "\25BE"; display: block; text-align: center; line-height: 24px; }
+  .x-boundlist { position: absolute; z-index: 30; background: #fff; border: 1px solid #666; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); }
+  .x-simplelistitem { padding: 4px 8px; cursor: pointer; }
+  .x-simplelistitem:hover { background: #def; }
+  .x-button { position: relative; display: inline-flex; align-items: center; margin: 4px; padding: 4px 10px; border: 1px solid #888; border-radius: 4px; }
+  /* Like ExtJS Modern: the real <button> lies empty and transparent over the whole component. */
+  .x-button button { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .x-icon-el.fa-trash::before { content: "\2715"; }
+  .x-grid { border: 1px solid #888; }
+  .x-gridrow { display: flex; cursor: pointer; border-top: 1px solid #ddd; }
+  .x-gridrow.x-selected { background: #cde; }
+  .x-gridcell { padding: 3px 8px; width: 120px; }
+  .x-auswahl { border: 1px solid #ccc; padding: 6px; }
+  .x-auswahl .x-container { display: flex; align-items: center; gap: 6px; }
+  .x-list .x-listitem { display: flex; align-items: center; gap: 6px; }
+  .x-dialog, .x-messagebox { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); background: #fff; border: 1px solid #444; box-shadow: 0 4px 16px rgba(0, 0, 0, .4); padding: 0 0 6px; min-width: 300px; }
+  .x-dialog { z-index: 40; }
+  .x-messagebox { z-index: 50; top: 45%; }
+  .x-header { background: #357; color: #fff; padding: 6px 10px; }
+  .x-dialog .x-body, .x-msgbox-text { padding: 12px 10px; }
+</style>
+</head>
+<body>
+<!-- N10b/N10c: a fake ExtJS Modern application with input components as measured on a real one: comboboxes whose list floats
+     at the end of the body (filtered while typing, an entry is taken on mousedown, forceSelection on blur), fields disabled until
+     the one before has a selection, a grid whose rows repeat cells, two pickers named only by the heading beside them, list
+     entries with an icon-only remove button, a dialog with a message box above it. No role=dialog; every id is generated and
+     differs on each load. -->
+<p id="status">bereit</p>
+<script>
+(() => {
+  const all = [];
+  let next = 1000 + Math.floor(Math.random() * 9000);
+  const elementId = () => `ext-element-${next += 1}`;
+  /**
+   * A component: root element with a generated id, getParent/getFloated/getItems/isVisible, getters for the given props
+   * (text, title, label, html, iconCls). Floating ones go to the end of the body, others into their parent's element.
+   */
+  const make = (xtype, { parent = null, inner = '', floated = false, cls = `x-${xtype}`, ...props } = {}) => {
+    const dom = document.createElement('div');
+    dom.id = `ext-${xtype}-${next += 1}`;
+    dom.className = cls;
+    dom.innerHTML = inner;
+    (floated || parent === null ? document.body : parent.el.dom).append(dom);
+    const component = {
+      xtype, el: { dom }, config: props.itemId === undefined ? {} : { itemId: props.itemId }, itemId: props.itemId ?? dom.id,
+      hidden: false, destroyed: false,
+      getParent: () => parent,
+      getFloated: () => floated,
+      getItems: () => ({ items: all.filter((other) => other.getParent() === component) }),
+      isVisible: (deep) => {
+        if (component.destroyed || component.hidden || !dom.isConnected) return false;
+        if (deep) for (let at = parent; at !== null; at = at.getParent()) if (at.hidden || at.destroyed) return false;
+        return true;
+      },
+    };
+    for (const [key, value] of Object.entries(props)) if (key !== 'itemId') component[`get${key[0].toUpperCase()}${key.slice(1)}`] = () => value;
+    all.push(component);
+    return component;
+  };
+  const show = (component) => { component.hidden = false; component.el.dom.style.display = ''; };
+  const hide = (component) => { component.hidden = true; component.el.dom.style.display = 'none'; };
+  const destroy = (component) => {
+    for (const child of component.getItems().items) destroy(child);
+    component.destroyed = true;
+    component.el.dom.remove();
+    all.splice(all.indexOf(component), 1);
+  };
+
+  // ComponentQuery: xtype, [attr="v"] / [attr='v'] (getter first, then the property), the descendant combinator, comma lists.
+  const value = (component, name) => {
+    const getter = component[`get${name[0].toUpperCase()}${name.slice(1)}`];
+    return typeof getter === 'function' ? getter() : component[name];
+  };
+  const PART = /[\w.-]+(?:\[\w+=(?:"[^"]*"|'[^']*')\])*/g;
+  const simple = (part) => {
+    const match = /^([\w.-]+)((?:\[\w+=(?:"[^"]*"|'[^']*')\])*)$/.exec(part);
+    if (!match) throw new Error(`Invalid ComponentQuery selector: "${part}"`);
+    const attributes = [...match[2].matchAll(/\[(\w+)=(?:"([^"]*)"|'([^']*)')\]/g)].map(([, name, a, b]) => [name, a ?? b]);
+    return (component) => component.xtype === match[1] && attributes.every(([name, wanted]) => value(component, name) === wanted);
+  };
+  const one = (selector) => {
+    const parts = selector.match(PART) ?? [];
+    if (parts.join(' ') !== selector.replace(/\s+/g, ' ').trim()) throw new Error(`Invalid ComponentQuery selector: "${selector}"`);
+    const tests = parts.map(simple);
+    const under = (component, index) => {
+      for (let at = component.getParent(); at !== null; at = at.getParent()) if (tests[index](at) && (index === 0 || under(at, index - 1))) return true;
+      return false;
+    };
+    return all.filter((component) => tests.at(-1)(component) && (tests.length === 1 || under(component, tests.length - 2)));
+  };
+  const query = (selector) => [...new Set(selector.split(',').flatMap((part) => one(part.trim())))];
+  window.Ext = {
+    getCmp: (id) => all.find((component) => component.el.dom.id === id) ?? null,
+    ComponentQuery: { query },
+    Ajax: { isLoading: () => false },
+    data: { StoreManager: { each: () => {}, lookup: () => null } },
+  };
+
+  const status = (text) => { document.getElementById('status').textContent = text; };
+  const note = (key, text) => { document.body.dataset[key] = text; };
+  // A Modern button: the empty <button> takes the click, the text is a sibling.
+  const button = (text, { handler, ...options } = {}) => {
+    const component = make('button', { text, inner: `<button type="button" class="x-button-el"></button><span class="x-button-label">${text}</span>`, ...options });
+    component.isButton = true;
+    component.el.dom.addEventListener('click', () => handler?.());
+    return component;
+  };
+  const iconButton = (iconCls, { handler, ...options } = {}) => {
+    const component = make('button', { iconCls, inner: `<button type="button" class="x-button-el"></button><div class="x-icon-el ${iconCls}"></div>`, ...options });
+    component.isButton = true;
+    component.el.dom.addEventListener('click', () => handler?.());
+    return component;
+  };
+
+  /**
+   * A combobox as ExtJS Modern builds it: input and expand trigger in the body, the list (boundlist) a floating component of its
+   * own, created on first use. Typing filters it (starts with, ignoring case); mousedown on an entry takes it (preventDefault:
+   * the focus stays in the field) and closes the list; on blur a text that is no entry is cleared (forceSelection).
+   */
+  const combobox = ({ parent, placeholder = '', entries, onSelect = () => {} }) => {
+    const id = elementId();
+    const field = make('combobox', { parent, inner: `<div class="x-body-el"><input class="x-input-el" type="text" role="combobox" aria-expanded="false" autocomplete="off" id="${id}"${placeholder === '' ? '' : ` placeholder="${placeholder}"`}></div>` });
+    field.isField = true;
+    field.isFormField = true;
+    const input = field.el.dom.querySelector('input');
+    const trigger = make('expandtrigger', { parent: field });
+    field.el.dom.querySelector('.x-body-el').append(trigger.el.dom);
+    let list = null;
+    let selection = null;
+    const close = () => {
+      if (list !== null) hide(list);
+      input.setAttribute('aria-expanded', 'false');
+    };
+    const take = (entry) => {
+      selection = entry;
+      input.value = entry;
+      onSelect(entry);
+    };
+    const open = (filter) => {
+      const shown = entries.filter((entry) => entry.toLowerCase().startsWith(filter.toLowerCase()));
+      if (shown.length === 0) { close(); return; }
+      if (list === null) {
+        list = make('boundlist', { floated: true });
+        hide(list);
+      }
+      // The store is filtered: the entries are rendered anew.
+      for (const old of list.getItems().items) destroy(old);
+      for (const entry of shown) {
+        const item = make('simplelistitem', { parent: list, cls: 'x-simplelistitem x-listitem x-boundlistitem', inner: `<span class="x-list-label">${entry}</span>` });
+        item.el.dom.setAttribute('role', 'option');
+        item.el.dom.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          take(entry);
+          close();
+        });
+      }
+      const box = field.el.dom.querySelector('.x-body-el').getBoundingClientRect();
+      Object.assign(list.el.dom.style, { left: `${box.left + scrollX}px`, top: `${box.bottom + scrollY}px`, minWidth: `${box.width}px` });
+      show(list);
+      input.setAttribute('aria-expanded', 'true');
+    };
+    input.addEventListener('input', () => {
+      selection = null;
+      if (input.value === '') close();
+      else open(input.value);
+    });
+    input.addEventListener('blur', () => {
+      close();
+      const entry = entries.find((candidate) => candidate === input.value);
+      if (entry === undefined) {
+        input.value = '';
+        selection = null;
+      } else if (entry !== selection) take(entry);
+    });
+    trigger.el.dom.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      if (input.disabled) return;
+      if (list !== null && !list.hidden) { close(); return; }
+      input.focus();
+      open('');
+    });
+    field.setDisabled = (disabled) => {
+      input.disabled = disabled;
+      field.el.dom.classList.toggle('x-disabled', disabled);
+    };
+    field.getValue = () => selection;
+    field.clearValue = () => { selection = null; input.value = ''; };
+    return field;
+  };
+
+  const form = make('formpanel', { title: 'Anliegen', inner: '<h3 class="x-paneltitle">Anliegen</h3>' });
+
+  // Bereich, then Unterbereich, then Betreff: each one is disabled until the one before has a selection.
+  const betreffId = elementId();
+  const betreff = make('textfield', { parent: form, label: 'Betreff', inner: `<label class="x-label-el" for="${betreffId}">Betreff</label><div class="x-body-el"><input class="x-input-el" type="text" id="${betreffId}"></div>` });
+  betreff.isField = true;
+  const betreffInput = betreff.el.dom.querySelector('input');
+  betreffInput.disabled = true;
+  betreff.el.dom.classList.add('x-disabled');
+  betreffInput.addEventListener('change', () => note('betreff', betreffInput.value));
+  const unterbereich = combobox({
+    parent: form, placeholder: 'Unterbereich*', entries: ['Allgemeine Anfrage', 'Beschwerde', 'Sonstiges'],
+    onSelect: (entry) => {
+      note('unterbereich', entry);
+      status(`Unterbereich: ${entry}`);
+      betreffInput.disabled = false;
+      betreff.el.dom.classList.remove('x-disabled');
+    },
+  });
+  unterbereich.setDisabled(true);
+  const bereich = combobox({
+    parent: form, placeholder: 'Bereich*', entries: ['Ausbildung', 'Fortbildung', 'Sonstiges', 'Sonstiges Weiteres'],
+    onSelect: (entry) => {
+      note('bereich', entry);
+      status(`Bereich: ${entry}`);
+      unterbereich.setDisabled(false);
+    },
+  });
+  // In page order: Bereich, Unterbereich, Betreff.
+  form.el.dom.append(bereich.el.dom, unterbereich.el.dom, betreff.el.dom);
+
+  // A grid: rows 1 and 2 share number and name.
+  const grid = make('grid', { parent: form });
+  grid.el.dom.setAttribute('role', 'grid');
+  for (const cells of [['1000001', 'Muster Erika', 'P'], ['1000001', 'Muster Erika', 'D'], ['9000001', 'Muster Erika', 'D']]) {
+    const row = make('gridrow', { parent: grid, cls: 'x-listitem x-gridrow' });
+    row.el.dom.setAttribute('role', 'row');
+    for (const text of cells) make('gridcell', { parent: row, inner: text }).el.dom.setAttribute('role', 'gridcell');
+    row.el.dom.addEventListener('click', () => {
+      for (const other of grid.el.dom.querySelectorAll('.x-gridrow')) other.classList.remove('x-selected');
+      row.el.dom.classList.add('x-selected');
+      note('zeile', cells[0]);
+      status(`Zeile ${cells[0]} gewählt`);
+    });
+  }
+
+  // Two pickers named only by the heading beside them (a label component): an unlabeled combobox, "Hinzufügen" and the chosen
+  // entries, each with an icon-only remove button.
+  const auswahl = (heading, key, entries, initial) => {
+    const box = make('auswahl', { parent: form });
+    make('label', { parent: box, html: heading }).el.dom.textContent = heading;
+    const row = make('container', { parent: box });
+    const field = combobox({ parent: row, entries });
+    const chosen = make('list', { parent: box });
+    const update = () => note(key, chosen.getItems().items.map((item) => item.el.dom.querySelector('.x-list-label').textContent).join('|'));
+    const add = (text) => {
+      const item = make('listitem', { parent: chosen, cls: 'x-listitem', inner: `<span class="x-list-label">${text}</span>` });
+      iconButton('x-fa fa-trash', { parent: item, handler: () => { destroy(item); update(); status(`${text} entfernt`); } });
+      update();
+    };
+    button('Hinzufügen', {
+      parent: row,
+      handler: () => {
+        const entry = field.getValue();
+        if (entry === null) return;
+        add(entry);
+        field.clearValue();
+        status(`${entry} hinzugefügt`);
+      },
+    });
+    initial.forEach(add);
+  };
+  auswahl('Zielgruppe*', 'zielgruppe', ['Ärzte', 'Medizinische Fachangestellte', 'Psychotherapeuten'], ['Ärzte']);
+  auswahl('Fachgebiete*', 'fachgebiete', ['Allgemeinmedizin', 'Innere Medizin', 'Kinderheilkunde'], ['Innere Medizin']);
+
+  // A dialog with Prüfen and Abbrechen; Prüfen asks in a message box (one for the whole application, hidden after an answer).
+  // The page has an Abbrechen of its own.
+  let messagebox = null;
+  const ask = () => {
+    if (messagebox === null) {
+      messagebox = make('messagebox', { title: 'Fenster Schließen', floated: true, inner: '<div class="x-header"><span class="x-title">Fenster Schließen</span></div><div class="x-msgbox-text">Wollen Sie das Fenster schließen?</div>' });
+      const bar = make('toolbar', { parent: messagebox });
+      button('Ja', { parent: bar, itemId: 'yes', handler: () => { hide(messagebox); note('geprueft', 'ja'); status('Termin geprüft'); } });
+      button('Nein', { parent: bar, itemId: 'no', handler: () => { hide(messagebox); status('Nicht geprüft'); } });
+    }
+    show(messagebox);
+  };
+  const termin = () => {
+    const dialog = make('dialog', { title: 'Termin anlegen', floated: true, inner: '<div class="x-header"><span class="x-title">Termin anlegen</span></div><div class="x-body">Termin zum Anliegen anlegen.</div>' });
+    const bar = make('toolbar', { parent: dialog });
+    button('Prüfen', { parent: bar, handler: ask });
+    // A dialog is destroyed when it closes (closeAction 'destroy').
+    button('Abbrechen', { parent: bar, handler: () => { destroy(dialog); note('termin', 'abgebrochen'); status('Termin abgebrochen'); } });
+  };
+  const bar = make('toolbar', { parent: form });
+  button('Termin', { parent: bar, handler: termin });
+  button('Abbrechen', { parent: bar, handler: () => status('Abgebrochen') });
+})();
+</script>
+</body>
+</html>

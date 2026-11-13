@@ -3,12 +3,13 @@
 // The page is ready when no application request is open, nothing has `aria-busy`, no indeterminate progress is running and the
 // DOM has been still for a moment. Open shadow roots (web components, Angular with ShadowDom, Lit, Ionic) are included.
 import { t } from '../../shared/i18n.mjs';
+import { roleAndName } from '../accessible-name.mjs';
 
 /**
  * Runs in the browser, so it must not use anything from outside. `describe` describes an element, `find` finds it again. Hits only
  * count if they are really clickable: visible and not covered.
  */
-export function webTargets(element, { mode, target, exact = false }) {
+function webTargetsWith(element, { mode, target, exact = false }, nameFrom) {
     const clean = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
     // Like TARGET_TEXT_MAX: longer texts would not be a stable target. A pattern, however, checks the whole text.
     const short = (text) => (text.length <= 80 ? text : '');
@@ -40,7 +41,7 @@ export function webTargets(element, { mode, target, exact = false }) {
         for (let current = inner; current !== null; current = parentOf(current)) if (current === outer) return true;
         return false;
     };
-    const byId = (node, id) => node.getRootNode?.().getElementById?.(id) ?? document.getElementById(id);
+
     const INPUT_ROLES = { checkbox: 'checkbox', radio: 'radio', button: 'button', submit: 'button', reset: 'button', image: 'button', search: 'searchbox', range: 'slider', number: 'spinbutton' };
     const TAG_ROLES = { BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', H1: 'heading', H2: 'heading', H3: 'heading', H4: 'heading', H5: 'heading', H6: 'heading', DIALOG: 'dialog', FORM: 'form', NAV: 'navigation', TABLE: 'table', TR: 'row', LI: 'listitem', OPTION: 'option', SUMMARY: 'button' };
     const roleOf = (node) => {
@@ -50,24 +51,8 @@ export function webTargets(element, { mode, target, exact = false }) {
         if (node.tagName === 'INPUT') return INPUT_ROLES[node.type] ?? 'textbox';
         return TAG_ROLES[node.tagName] ?? null;
     };
-    // Roles whose name comes from their content; for fields only the label counts, never the value.
-    const CONTENT_NAMED = new Set(['button', 'link', 'tab', 'menuitem', 'option', 'heading', 'checkbox', 'radio', 'switch', 'treeitem', 'cell', 'gridcell', 'columnheader']);
-    // The label without the fields inside: a <select> in a <label> would otherwise put all options into the name, and every new
-    // option would break finding it again.
-    const labelText = (label) => {
-        if (!label) return '';
-        const copy = label.cloneNode(true);
-        for (const inner of copy.querySelectorAll('select, textarea, datalist, [role=listbox]')) inner.remove();
-        return copy.textContent ?? '';
-    };
-    const fullNameOf = (node) => {
-        const role = roleOf(node);
-        const labelledBy = (node.getAttribute('aria-labelledby') ?? '').split(' ').filter((id) => id !== '').map((id) => byId(node, id)?.innerText ?? '').join(' ');
-        const forLabel = node.id ? labelText((node.getRootNode?.() ?? document).querySelector?.(`label[for="${CSS.escape(node.id)}"]`)) : '';
-        return clean(node.getAttribute('aria-label') || labelledBy || forLabel || labelText(node.closest('label'))
-            || (CONTENT_NAMED.has(role) ? node.innerText ?? node.textContent : '')
-            || node.getAttribute('placeholder') || node.getAttribute('title') || node.getAttribute('alt') || '');
-    };
+    // The accessible name as the recording computes it (roleAndName in accessible-name.mjs): a failure suggests the same names.
+    const fullNameOf = (node) => nameFrom(node)?.name ?? '';
     const nameOf = (node) => short(fullNameOf(node));
     const fullOwnText = (node) => clean(node.innerText ?? node.textContent);
     const ownText = (node) => short(fullOwnText(node));
@@ -167,18 +152,66 @@ export function webTargets(element, { mode, target, exact = false }) {
         list.scrollTop += Math.max(40, Math.floor(list.clientHeight * 0.8));
     };
 
+    // The text around an element, so a human can tell several matches apart.
+    const nearOf = (node) => {
+        const own = fullNameOf(node) || fullOwnText(node);
+        let at = parentOf(node);
+        for (let depth = 0; at !== null && at !== document.body && depth < 6; depth += 1, at = parentOf(at)) {
+            const line = clean((at.innerText ?? '').split('\n').find((text) => clean(text) !== '' && clean(text) !== own) ?? '');
+            if (line !== '') return line.slice(0, 60);
+        }
+        return '';
+    };
+    // Why an element that is there cannot be clicked: invisible ({ hidden }), or covered by something such as an open dialog with
+    // a message ({ covered }). null if it is free.
+    const blockOf = (node) => {
+        const box = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.display === 'none') return { hidden: true };
+        const hit = keepScroll(node, () => {
+            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            const now = node.getBoundingClientRect();
+            return hitAt(now.left + now.width / 2, now.top + now.height / 2);
+        });
+        if (hit === null || deepContains(node, hit) || deepContains(hit, node)) return null;
+        const layer = deepClosest(hit, 'dialog, [role=dialog], [role=alertdialog], [aria-modal=true]');
+        const cover = layer ?? hit;
+        const heading = deepAll('h1, h2, h3, [role=heading]', cover)[0] ?? null;
+        const coverName = nameOf(cover) || (heading === null ? '' : short(clean(heading.innerText)));
+        // Even without a role: the backdrop of a modal dialog covers the whole page.
+        const scope = layer ?? deepAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]').find((dialog) => dialog.getClientRects().length > 0) ?? null;
+        const messages = scope === null ? [] : deepAll('[role=alert], [role=status], [aria-live=assertive]', scope)
+            .map((entry) => clean(entry.innerText).slice(0, 200)).filter((text) => text !== '');
+        return {
+            covered: {
+                ...(scope === null ? { tag: cover.tagName.toLowerCase() } : { role: 'dialog' }),
+                ...(coverName === '' && scope !== null ? { name: short(clean(deepAll('h1, h2, h3, [role=heading]', scope)[0]?.innerText ?? '')) } : coverName === '' ? {} : { name: coverName }),
+                ...(messages.length === 0 ? {} : { messages: [...new Set(messages)].slice(0, 3) }),
+            },
+        };
+    };
+
+    // Modes for native locators (framework/index.mjs): Playwright finds the elements, the adapter judges the one it is given.
+    // `reachable`: visible and not covered. `blocked`: why not (see blockOf). `near`: position and surrounding text. `names`: the
+    // names of visible elements with the role `target.role`, to suggest a renamed one. `scroll`: one step further in a virtual list.
+    if (mode === 'reachable') return reachable(element);
+    if (mode === 'blocked') return blockOf(element);
+    if (mode === 'near') {
+        const box = element.getBoundingClientRect();
+        return { x: box.left + box.width / 2 + window.scrollX, y: box.top + box.height / 2 + window.scrollY, near: nearOf(element) };
+    }
+    if (mode === 'names') {
+        return [...new Set(deepAll(ACTIONABLE).filter((node) => node.getClientRects().length > 0)
+            .filter((node) => roleOf(node) === target?.role).map(fullNameOf).filter((name) => name !== ''))].slice(0, 80);
+    }
+    if (mode === 'scroll') {
+        scrollOn();
+        return null;
+    }
+
     // Several matches of a target without `index`: where they are and the text around them, so a human can tell them apart.
     if (mode === 'ambiguity') {
         const all = matches(target);
-        const nearOf = (node) => {
-            const own = fullNameOf(node) || fullOwnText(node);
-            let at = parentOf(node);
-            for (let depth = 0; at !== null && at !== document.body && depth < 6; depth += 1, at = parentOf(at)) {
-                const line = clean((at.innerText ?? '').split('\n').find((text) => clean(text) !== '' && clean(text) !== own) ?? '');
-                if (line !== '') return line.slice(0, 60);
-            }
-            return '';
-        };
         return {
             count: all.length,
             candidates: all.slice(0, 3).map((node, index) => {
@@ -207,30 +240,7 @@ export function webTargets(element, { mode, target, exact = false }) {
             return { missing: true, names };
         }
         const node = inArea[target.index ?? 0] ?? inArea[0];
-        const box = node.getBoundingClientRect();
-        const style = getComputedStyle(node);
-        if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.display === 'none') return { hidden: true };
-        const hit = keepScroll(node, () => {
-            node.scrollIntoView?.({ block: 'center', inline: 'nearest' });
-            const now = node.getBoundingClientRect();
-            return hitAt(now.left + now.width / 2, now.top + now.height / 2);
-        });
-        if (hit === null || deepContains(node, hit) || deepContains(hit, node)) return { elsewhere: candidates.length > 0 && target.inside !== undefined };
-        const layer = deepClosest(hit, 'dialog, [role=dialog], [role=alertdialog], [aria-modal=true]');
-        const cover = layer ?? hit;
-        const heading = deepAll('h1, h2, h3, [role=heading]', cover)[0] ?? null;
-        const coverName = nameOf(cover) || (heading === null ? '' : short(clean(heading.innerText)));
-        // Even without a role: the backdrop of a modal dialog covers the whole page.
-        const scope = layer ?? deepAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]').find((dialog) => dialog.getClientRects().length > 0) ?? null;
-        const messages = scope === null ? [] : deepAll('[role=alert], [role=status], [aria-live=assertive]', scope)
-            .map((entry) => clean(entry.innerText).slice(0, 200)).filter((text) => text !== '');
-        return {
-            covered: {
-                ...(scope === null ? { tag: cover.tagName.toLowerCase() } : { role: 'dialog' }),
-                ...(coverName === '' && scope !== null ? { name: short(clean(deepAll('h1, h2, h3, [role=heading]', scope)[0]?.innerText ?? '')) } : coverName === '' ? {} : { name: coverName }),
-                ...(messages.length === 0 ? {} : { messages: [...new Set(messages)].slice(0, 3) }),
-            },
-        };
+        return blockOf(node) ?? { elsewhere: candidates.length > 0 && target.inside !== undefined };
     }
 
     // The control the click belongs to, e.g. the button around an icon. With `exact` the element itself, e.g. an iframe: otherwise
@@ -244,6 +254,11 @@ export function webTargets(element, { mode, target, exact = false }) {
     return index === -1 ? null : { ...described, ...(index === 0 && all.length === 1 ? {} : { index }) };
 }
 
+/**
+ * Runs in the browser, so it must not use anything from outside: webTargetsWith with the shared name computation embedded.
+ * `describe` describes an element, `find` finds it again; the native locator modes judge a given element (see below).
+ */
+export const webTargets = new Function('element', 'options', `return (${webTargetsWith})(element, options, ${roleAndName});`);
 /**
  * Runs in the browser: what is loading right now, also in open shadow roots. `aria-busy`, indeterminate progress (`role=progressbar`
  * without `aria-valuenow`, which is how Material, MUI and Vuetify draw spinners) and, with `domQuietMs`, a DOM that is changing.

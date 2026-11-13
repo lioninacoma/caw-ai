@@ -181,9 +181,9 @@ test('doctor: names the next step per problem, optional items do not block, neve
     assert.ok(checks.some(({ ok, text }) => ok && /caw\.config\.json ist gültig/.test(text)));
     assert.ok(checks.some(({ ok, text }) => !ok && text === 'auth.path, auth.userSelector stehen noch auf TODO'), JSON.stringify(checks));
     // An invalid config: the first real finding, not just "caw.config.json:".
-    writeFileSync(configPath, saved.replace('"local": {', '"local": { "agent": true, "localCode": true,'));
+    writeFileSync(configPath, saved.replace('"local": {', '"local": { "robot": true, "zzz": true,'));
     const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
-    assert.equal(broken.text, 'caw.config.json: environments.local.agent heißt seit 0.3.0 claude, siehe docs/upgrading.md');
+    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, urls, claude, overlay, writable, production)');
     assert.equal(broken.next, 'caw-ai validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.
@@ -217,7 +217,7 @@ test('init: detects the framework, takes answers, no role without login', async 
     assert.equal(detectFramework(project()), 'web');
     // Repo with backend and frontend/ (no framework in the root, e.g. only caw-ai): folder and framework come from there.
     const { detectApp } = await import('../src/host/commands.mjs');
-    const polyglot = project({ devDependencies: { 'caw-ai': '0.1.0' } });
+    const polyglot = project({ devDependencies: { 'caw-ai': '1.0.0' } });
     for (const [dir, pkg] of [['frontend', { dependencies: { react: '19' } }], ['node_modules/x', { dependencies: { vue: '3' } }], ['backend', {}]]) {
         mkdirSync(join(polyglot, dir), { recursive: true });
         writeFileSync(join(polyglot, dir, 'package.json'), JSON.stringify(pkg));
@@ -385,7 +385,7 @@ test('validate: code per test and target, where an overlay is possible, and TODO
     assert.match(out, /lesen \(dev\): ausgelieferter Stand; mit --overlay: Overlay, Build dist\n/);
     assert.match(out, /und 1 Test\(s\) sind gültig/);
     // Build and dev server on the app: a bare --overlay requires a choice, validate names both.
-    config.apps.web.overlay.dev = 'http://localhost:5173';
+    config.apps.web.overlay.url = 'http://localhost:5173';
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
     const again = [];
     const write2 = t.mock.method(process.stdout, 'write', (chunk) => { again.push(String(chunk)); return true; });

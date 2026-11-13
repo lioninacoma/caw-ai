@@ -694,7 +694,9 @@ window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textCont
 const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return false;choice.classList.add('sure');choice.textContent=option.confirm;const no=document.createElement('button');no.type='button';no.className='no';no.textContent=T['chat.page.no'];
   let timer=0;const reset=()=>{clearTimeout(timer);choice.classList.remove('sure');choice.textContent=option.label;no.remove();};no.addEventListener('click',()=>{reset();choice.focus();});choice.after(no);timer=setTimeout(reset,4000);choice.disarm=()=>{clearTimeout(timer);no.remove();};return true;};
 const COMPACT=['discussing','deciding','reviewing'];
-window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=text;}input.placeholder=state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:hint;fit();
+window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=text;}// While Claude works in the application the input is locked: typing here would take the focus from the application (an open
+// list closes when its field loses the focus). Pausing unlocks it.
+const locked=state==='running';input.disabled=locked;input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:hint;fit();
 if(state==='showing'&&group)group.details.open=true;
 const list=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
 const buttons=list.map((option)=>{const choice=document.createElement('button');choice.type='button';choice.textContent=option.label;if(option.primary)choice.className=option.big?'primary big':'primary';if(option.big){choice.id='approve';const key=document.createElement('kbd');key.setAttribute('aria-hidden','true');key.textContent=KEY;choice.append(key);}
@@ -810,8 +812,6 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         if (bench !== null && (source.frame !== doc() || event?.nonce !== nonce)) return;
         if (event?.type === 'message') {
             chat.human.message(event.text, { checkpoint: event.checkpoint === true });
-            // The raven nods: received.
-            if (String(event.text ?? '').trim() !== '') bench.nod?.().catch?.(() => {});
             quiet(doc().evaluate(() => window.setChip(null)));
         } else if (event?.type === 'pick') quiet(pick());
         else if (event?.type === 'unpick') chat.detach();

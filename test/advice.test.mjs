@@ -12,7 +12,7 @@ import { composeTest } from '../src/host/test-plan.mjs';
 const plain = (id) => ({ id, name: `Step ${id}`, do: `Do ${id}`, expect: `${id} is there` });
 const recorded = (id) => {
     const step = plain(id);
-    return { ...step, recording: { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', actions: [], check: `check${id}()` } };
+    return { ...step, recording: { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: `check${id}()` } };
 };
 const meta = { id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'overlay', mutates: true, also: [], notes: 'Old.' };
 const SPEC = composeTest(meta, { notes: 'Old.', steps: [recorded('S1'), recorded('S2')] });
@@ -181,7 +181,7 @@ test('advice: knowledge, config and test file are extended, comments and line en
 });
 
 test('advice: a recorded click becomes optional without making the step stale, and is saved that way', () => {
-    const clicks = { ...recorded('S1'), recording: { ...recorded('S1').recording, actions: [{ action: 'click', target: { role: 'button', name: 'Accept all' } }, { action: 'fill', target: { role: 'textbox', name: 'Name' }, value: 'x' }] } };
+    const clicks = { ...recorded('S1'), recording: { ...recorded('S1').recording, actions: [{ action: 'click', target: "getByRole('button', { name: 'Accept all', exact: true })" }, { action: 'fill', target: "getByRole('textbox', { name: 'Name', exact: true })", value: 'x' }] } };
     const spec = composeTest(meta, { notes: 'Old.', steps: [clicks, recorded('S2')] });
     const local = (raw) => {
         try {
