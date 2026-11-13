@@ -19,6 +19,10 @@ export default {
 
     // config.mjs: targets and tenants
     'config.env.missing': 'environments is missing, e.g. { "local": { "url": "http://localhost:5173", "claude": true, "writable": true } }',
+    'config.env.unknownName': 'Environment "{name}" doesn\'t exist (environments: {names}){hint}.',
+    'config.env.extendsCycle': 'environments: extends goes in a circle: {chain}',
+    'config.credentials.missing': 'Test user for {who} is missing: set {names} in caw/.env (or in the process environment, e.g. as CI secrets).',
+    'config.credentials.missingEnv': 'Test user for {who} on {env} is incomplete: {names} is missing. The account for {env} is taken as a whole from the __ variables once one of them is set.',
     'config.sites.invalid': 'sites must be a list of names (lowercase letters, digits, - and _), e.g. ["nord", "sued"]',
     'config.env.name': 'Environment "{name}": only lowercase letters, digits, - and _',
     'config.env.notObject': 'Environment {name} must be an object',

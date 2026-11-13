@@ -70,6 +70,7 @@ export default {
     'session.args.openWithTest': '{flag} gilt nur für open ohne Test; ein Test bringt Rolle und App mit.',
     'session.args.recordStepMeta': '{flag} gilt nur beim ersten Aufnehmen; ab einem Schritt bleiben die Metadaten des Tests, wie sie sind.',
     'session.args.targetMissing': '--env fehlt: {choices}',
+    'session.args.envNone': '{command}: Keine Umgebung passt. Nenne eine mit --env.',
     'session.args.renamedOption': '{flag} heißt jetzt {now}.',
     'session.args.durationUnit': '{flag} {value}: Gib eine Einheit an, etwa {flag} {example} (ms, s, m, h).',
     'session.args.durationForm': '{flag} {value} ist keine Dauer. Schreib eine Zahl mit Einheit, etwa {flag} {example} (ms, s, m, h).',
