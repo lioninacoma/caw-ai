@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-import { changeTracker, chooseTarget, init, junitXml, list, open, record, run, runMode, stepsText, validate } from '../src/host/commands.mjs';
+import { changeTracker, chooseEnv, init, junitXml, list, open, record, run, runMode, stepsText, validate } from '../src/host/commands.mjs';
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
@@ -81,20 +81,25 @@ test('parseRunArgs: several tests or --all run without chat, --explain only for 
     assert.equal(parseRunArgs('run', ['a']).batch, undefined);
 });
 
-test('chooseTarget: the only target, for record the only one with Claude, otherwise the choices', () => {
-    const config = { environments: { local: { url: 'http://localhost:1', claude: true }, dev: { url: 'https://dev.example', claude: true }, staging: { url: 'https://s.example' } } };
+test('chooseEnv: the only candidate, for run outside CI the only one with Claude, otherwise the choices; logged', () => {
+    const config = { environments: { local: { url: 'http://localhost:1', claude: true, writable: true }, dev: { url: 'https://dev.example', claude: true, writable: true }, staging: { url: 'https://s.example' } } };
     const said = [];
     const log = (text) => said.push(text);
-    assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { command: 'run', log }), 'dev');
-    assert.match(said.at(-1), /Ziel: dev \(einziges Ziel von x\)/);
-    assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { target: 'local', command: 'run', log }), 'local', 'a given target wins');
-    assert.throws(() => chooseTarget(config, { id: 'x', targets: ['local', 'staging'] }, { command: 'run', log }), /--env fehlt: local, staging/);
-    assert.equal(chooseTarget(config, { id: 'x', targets: ['local', 'staging'] }, { command: 'record', log }), 'local');
-    assert.match(said.at(-1), /auf dem Claude arbeiten darf/);
-    assert.throws(() => chooseTarget(config, null, { command: 'record', log }), /--env fehlt: local, dev/);
+    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['dev'] }], { command: 'run', log }), 'dev');
+    assert.match(said.at(-1), /Umgebung: dev \(einzige Umgebung von x\)/);
+    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['dev'] }], { env: 'local', command: 'run', log }), 'local', 'a given environment wins');
+    // Two candidates, one of them with Claude: the developer's own outside CI; in CI nobody guesses.
+    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['local', 'staging'] }], { command: 'run', ci: false, log }), 'local');
+    assert.match(said.at(-1), /die einzige, auf der Claude arbeiten darf/);
+    assert.throws(() => chooseEnv(config, [{ id: 'x', targets: ['local', 'staging'] }], { command: 'run', ci: true, log }), /--env fehlt: local, staging/);
+    assert.equal(chooseEnv(config, [{ id: 'x', targets: ['local', 'staging'] }], { command: 'record', log }), 'local', 'record: only where Claude may work');
+    assert.throws(() => chooseEnv(config, [], { command: 'record', log }), /--env fehlt: local, dev/);
     const one = { environments: { local: config.environments.local, staging: config.environments.staging } };
-    assert.equal(chooseTarget(one, null, { command: 'record', log }), 'local');
+    assert.equal(chooseEnv(one, [], { command: 'record', log }), 'local');
     assert.match(said.at(-1), /einzige Umgebung, auf der Claude arbeiten darf/);
+    // Several tests: the union of their environments.
+    assert.equal(chooseEnv(config, [{ id: 'a', targets: ['dev'] }, { id: 'b', targets: ['dev'] }], { command: 'run', ci: true, log }), 'dev');
+    assert.match(said.at(-1), /einzige Umgebung der Tests/);
 });
 
 test('list: per test targets, recording state and writes; with a test one line per step', (t) => {
@@ -133,7 +138,7 @@ test('validate: all problems of a test at once, YAML positions only once', (t) =
         assert.equal(error.code, 'test-invalid');
         assert.match(error.message, /kaputt\.yaml: Unbekannte App: gibtsnicht/);
         assert.match(error.message, /kaputt\.yaml: Unbekannte Rolle: geist/);
-        assert.match(error.message, /kaputt\.yaml \(qa\): Umgebung "qa" gibt es nicht/);
+        assert.match(error.message, /kaputt\.yaml \(qa\): Umgebung „qa“ gibt es nicht/);
         return true;
     });
     writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'mutates: false\nsteps:\n  - id: S1\n    do: a: b\n');
@@ -144,10 +149,22 @@ test('validate: all problems of a test at once, YAML positions only once', (t) =
     });
 });
 
-test('run: without --env the only target, typos get a suggestion and the choices', async (t) => {
+/** Runs fn with CI set: there nobody picks the developer's own environment. */
+const inCi = async (fn) => {
+    const before = process.env.CI;
+    process.env.CI = '1';
+    try {
+        return await fn();
+    } finally {
+        if (before === undefined) delete process.env.CI;
+        else process.env.CI = before;
+    }
+};
+
+test('run: without --env the only environment, typos get a suggestion and the choices', async (t) => {
     const root = project(t);
     await assert.rejects(run(root, ['anmeldn']), (error) => error.code === 'test-missing' && /Meintest du anmelden\?/.test(error.message) && /caw record anmeldn$/.test(error.message));
-    await assert.rejects(run(root, ['bestellen']), (error) => error.code === 'usage' && /--env fehlt: local, staging/.test(error.message));
+    await inCi(() => assert.rejects(run(root, ['bestellen']), (error) => error.code === 'usage' && /--env fehlt: local, staging/.test(error.message)));
     await assert.rejects(open(root, ['anmelden@S9'], { interactive: true }), (error) => error.code === 'step-unknown' && /Schritte: S1, S2\./.test(error.message));
     // A missing recording is exit 4 (needs recording), not 3.
     await assert.rejects(run(root, ['neu']), (error) => error.code === 'replay-missing' && exitOf(error.code) === 4);
@@ -179,8 +196,8 @@ test('run with several tests: each runs, the table shows the outcome, the exit i
     assert.match(text, /AUFNAHME NÖTIG\s+neu/);
     assert.match(text, /ABGELEHNT\s+gibtsnicht/);
     assert.match(text, /JUnit-Bericht: out\/junit\.xml/);
-    // --all only takes tests with the target; without --env the tests' only target is needed, but there are two here.
-    await assert.rejects(run(root, ['--all']), /--env fehlt: local, staging/);
+    // --all only takes tests with the environment; in CI without --env the tests' only environment is needed, but there are two here.
+    await inCi(() => assert.rejects(run(root, ['--all']), /--env fehlt: local, staging/));
     said.length = 0;
     // Only bestellen names staging; it must not write there: rejected.
     assert.equal(await run(root, ['--all', '--env', 'staging']), EXIT.rejected);
@@ -313,7 +330,7 @@ test('run tracks changes to the test files: baselines per step, otherwise "uncha
 
 test('help texts: English examples in English, record replaces the recording', async () => {
     const { default: en } = await import('../src/shared/locales/en/cli.mjs');
-    assert.match(en['cli.help.footer'], /e\.g\. north\/dev/);
+    assert.match(en['cli.help.footer'], /production only when named/);
     assert.match(en['cli.help.record'], /Record a test plan or replace its recording/);
     assert.match(en['cli.doctorTodoNext'], /signedInSelector from the page after signing in/);
 });

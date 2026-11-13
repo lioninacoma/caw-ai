@@ -186,7 +186,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     // An invalid config: the first real finding, not just "caw.config.json:".
     writeFileSync(configPath, saved.replace('"local": {', '"local": { "robot": true, "zzz": true,'));
     const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
-    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, urls, claude, overlay, writable, production)');
+    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, extends, allowHosts, claude, overlay, writable, production, insecureTls, allowHttp)');
     assert.equal(broken.next, 'caw validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.

@@ -4,7 +4,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { AUTH_DIR, authOf, loadConfig, loadConfigWithNotes, resolveTarget, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, authOf, loadConfig, loadConfigWithNotes, todoFields } from '../shared/config.mjs';
+import { effectiveEnvironment } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -61,7 +62,7 @@ const validateTest = (root, id, config) => {
         const spec = withDefaults(loadTest(root, id), config);
         const badTargets = spec.targets.flatMap((target) => {
             try {
-                resolveTarget(config, target);
+                effectiveEnvironment(config, target);
                 return [];
             } catch (error) {
                 return [`${target}: ${error.message}`];

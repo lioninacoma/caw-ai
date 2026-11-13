@@ -9,7 +9,8 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-import { allTargets, authOf, isLoopback, loadConfig, patternList, resolveTarget, writeConfig } from '../shared/config.mjs';
+import { authOf, isLoopback, loadConfig, patternList, writeConfig } from '../shared/config.mjs';
+import { effectiveEnvironment, effectiveEnvironments, environmentNames } from '../shared/environments.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { RUN_DIR } from '../shared/names.mjs';
@@ -28,16 +29,10 @@ const onlyKey = (map) => {
     return keys.length === 1 ? keys[0] : undefined;
 };
 
-/** The target without --env: the only one whose environment allows the overlay. */
+/** The environment without --env: the only one that allows the overlay. */
 export const overlayTarget = (config) => {
-    const choices = allTargets(config).filter((name) => {
-        try {
-            return resolveTarget(config, name).overlay;
-        } catch {
-            return false;
-        }
-    });
-    if (choices.length !== 1) throw new CawError('usage', t('cli.overlayCheck.target', { choices: (choices.length > 0 ? choices : allTargets(config)).join(', ') }));
+    const choices = Object.values(effectiveEnvironments(config)).filter((env) => env.overlay).map((env) => env.name);
+    if (choices.length !== 1) throw new CawError('usage', t('cli.overlayCheck.target', { choices: (choices.length > 0 ? choices : environmentNames(config)).join(', ') }));
     return choices[0];
 };
 
@@ -62,10 +57,10 @@ export const overlayStatus = async (root, { target, app, config: given, deps = {
     const appDir = String(config.apps[name].dir).replaceAll('\\', '/');
     const settings = config.apps[name].overlay ?? {};
     const base = { framework, app: name, appDir, url: settings.url ?? null, start: settings.start ?? null };
-    const resolved = resolveTarget(config, target ?? overlayTarget(config));
+    const resolved = effectiveEnvironment(config, target ?? overlayTarget(config));
     const { protocol, hostname } = new URL(resolved.url);
     if (!resolved.overlay || (protocol === 'http:' && isLoopback(hostname))) {
-        return { state: 'not-overlay', ...base, message: t('config.overlay.environment', { environment: resolved.environment }) };
+        return { state: 'not-overlay', ...base, message: t('config.overlay.environment', { environment: resolved.name }) };
     }
     let choice;
     try {

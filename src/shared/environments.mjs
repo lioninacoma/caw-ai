@@ -60,6 +60,8 @@ export const effectiveEnvironment = (config, name) => {
         allowHosts: Array.isArray(keys.allowHosts) ? keys.allowHosts : [],
         insecureTls: keys.insecureTls === true,
         allowHttp: keys.allowHttp === true,
+        // Until the overlay block owns its environments (P2.3).
+        overlay: keys.overlay === true,
         ...(isObject(keys.gate) ? { gate: keys.gate } : {}),
     };
 };

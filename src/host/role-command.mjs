@@ -4,7 +4,8 @@
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { allTargets, authOf, loadConfig, resolveTarget, writeConfig } from '../shared/config.mjs';
+import { authOf, loadConfig, writeConfig } from '../shared/config.mjs';
+import { chooseEnvironment, environmentNames } from '../shared/environments.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { ENV_FILE, TEST_DIR } from '../shared/names.mjs';
@@ -70,21 +71,16 @@ export const removeRole = (root, name) => {
     return { role: name, removed: drop };
 };
 
-/**
- * Where `role add` signs in: --target, else the only target, else the only one Claude may work on. With sites a target is
- * `site/environment`.
- */
+/** Where `role add` signs in: --env, else the only non-production environment, else the only one Claude may work on. */
 export const roleTarget = (config, given) => {
-    const targets = allTargets(config);
-    if (given !== undefined) {
-        if (!targets.includes(given)) throw new CawError('env-invalid', t('cli.roleTargetUnknown', { target: given, environments: targets.join(', ') }));
-        return given;
+    const names = environmentNames(config);
+    if (given !== undefined && !names.includes(given)) throw new CawError('env-invalid', t('cli.roleTargetUnknown', { target: given, environments: names.join(', ') }));
+    try {
+        return chooseEnvironment(config, { given, candidates: names, command: 'run' }).name;
+    } catch (error) {
+        if (error.code !== 'usage') throw error;
+        throw new CawError('usage', t('cli.roleTargetMissing', { environments: names.join(', ') }));
     }
-    const open = targets.filter((target) => !resolveTarget(config, target).production);
-    if (open.length === 1) return open[0];
-    const claude = open.filter((target) => resolveTarget(config, target).claude);
-    if (claude.length === 1) return claude[0];
-    throw new CawError('usage', t('cli.roleTargetMissing', { environments: open.join(', ') }));
 };
 
 const optionsOf = (rest) => {

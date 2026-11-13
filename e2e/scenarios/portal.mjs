@@ -33,7 +33,7 @@ const group = {
         writeFileSync(join(fake, 'sub/.env'), 'NUR_FUER_DIE_SANDBOX_PRUEFUNG=1\n');
         configBefore = readFileSync(mainConfig, 'utf8');
         const config = JSON.parse(configBefore);
-        config.environments.dev.urls.local = PORTAL_URL;
+        config.environments.dev.url = PORTAL_URL;
         writeFileSync(mainConfig, JSON.stringify(config, null, 4));
         portal = await startServer(join(here, 'portal.mjs'), [String(PORTAL_PORT)], { cwd: fake, port: PORTAL_PORT });
     },
@@ -55,8 +55,8 @@ let configBefore = null;
 
 const ID = 'fx-schritte';
 const file = join(fake, 'caw/tests', `${ID}.yaml`);
-const opts = ['--env', 'local/dev', '--claude-timeout', '3m', '--step-timeout', '5s'];
-const short = ['--env', 'local/dev', '--step-timeout', '4s'];
+const opts = ['--env', 'dev', '--claude-timeout', '3m', '--step-timeout', '5s'];
+const short = ['--env', 'dev', '--step-timeout', '4s'];
 const S1 = '  - id: S1\n    name: Ziel erreichen\n    do: Klicke Weiter.\n    expect: Das Ziel erscheint.';
 const S2 = (action = 'Fuelle das Anliegen und sende es.', expect = 'Der Vorgang steht da.') => `  - id: S2\n    name: Vorgang anlegen\n    do: ${action}\n    expect: ${expect}`;
 const S3 = (expect = 'Der Vorgang ist fertig.') => `  - id: S3\n    name: Abschliessen\n    do: Schliesse den Vorgang ab.\n    expect: ${expect}`;
@@ -169,7 +169,7 @@ ${finishOf(['S1', 'S2', 'S3'])}`;
     good = `${ORIGINAL_HEAD}${read()}`;
     restore();
     const spec = parseTest(read());
-    verify('Metadata from the tool', spec.id === ID && spec.role === 'kunde' && spec.targets[0] === 'local/dev');
+    verify('Metadata from the tool', spec.id === ID && spec.role === 'kunde' && spec.targets[0] === 'dev');
     verify('Three steps with recording', spec.steps.every(({ recording }) => recording !== undefined));
     verify('Actions at the right step', spec.steps[0].recording.actions.some(({ action }) => action === 'click') && spec.steps[1].recording.actions.filter(({ action }) => action === 'fill').length === 1 && spec.steps[2].recording.actions.some(({ action }) => action === 'click'), JSON.stringify(spec.steps.map(({ recording }) => recording.actions.map(({ action }) => action))));
     verify('Screenshot removed', !JSON.stringify(spec.steps).includes('screenshot'));
@@ -417,7 +417,7 @@ scenario('J', 'retry: pageerror without stack, reload, second attempt passes and
     const stepOf = (retry) => {
         const step = { id: 'S4', name: 'Wackelt', do: '', expect: 'Besteht nach dem Neuladen.' };
         const check = "(()=>{if(!sessionStorage.v){sessionStorage.v='1';window.__a=1;Promise.reject({a:1});return false}return !window.__a})()";
-        return `  - id: S4\n    name: Wackelt\n    do: ""\n    expect: Besteht nach dem Neuladen.\n${retry}    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: local/dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      locale: de-DE\n      timezone: Europe/Berlin\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
+        return `  - id: S4\n    name: Wackelt\n    do: ""\n    expect: Besteht nach dem Neuladen.\n${retry}    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      locale: de-DE\n      timezone: Europe/Berlin\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
     };
     const at = good.indexOf('knownMessages');
     const withStep = (retry) => (at === -1 ? `${good}${stepOf(retry)}` : `${good.slice(0, at)}${stepOf(retry)}${good.slice(at)}`);
@@ -444,7 +444,7 @@ scenario('J', 'retry: pageerror without stack, reload, second attempt passes and
 scenario('L', 'Error from foreign code: warning instead of abort, without foreignCode it stays hard', async () => {
     const step = { id: 'S4', name: 'Fremd', do: '', expect: 'Fremder Fehler stoert nicht.' };
     const check = "(()=>{if(!sessionStorage.w){sessionStorage.w='1';const s=document.createElement('script');s.src='/public/fremd.js';document.head.append(s);return false}return true})()";
-    const stepYaml = `  - id: S4\n    name: Fremd\n    do: ""\n    expect: Fremder Fehler stoert nicht.\n    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: local/dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      locale: de-DE\n      timezone: Europe/Berlin\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
+    const stepYaml = `  - id: S4\n    name: Fremd\n    do: ""\n    expect: Fremder Fehler stoert nicht.\n    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      locale: de-DE\n      timezone: Europe/Berlin\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
     const at = good.indexOf('knownMessages');
     restore(at === -1 ? `${good}${stepYaml}` : `${good.slice(0, at)}${stepYaml}${good.slice(at)}`);
     const configPath = join(fake, 'caw.config.json');
@@ -478,7 +478,7 @@ const newestRun = () => {
 };
 const card = (page, n) => page.locator('.message.advice').nth(n);
 const withS4 = (step, check, retry = '') => {
-    const text = `  - id: S4\n    name: ${step.name}\n    do: ""\n    expect: ${step.expect}\n${retry}    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: local/dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      locale: de-DE\n      timezone: Europe/Berlin\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
+    const text = `  - id: S4\n    name: ${step.name}\n    do: ""\n    expect: ${step.expect}\n${retry}    recording:\n      hash: ${stepHash(step)}\n      after: S3\n      recordedOn: dev\n      recordedAt: 2026-11-06T09:00:00.000Z\n      locale: de-DE\n      timezone: Europe/Berlin\n      actions: []\n      check: ${JSON.stringify(check)}\n`;
     const at = good.indexOf('knownMessages');
     return at === -1 ? `${good}${text}` : `${good.slice(0, at)}${text}${good.slice(at)}`;
 };
@@ -992,7 +992,7 @@ ${finishOf(['S1'])}`;
 scenario('1', 'Workbench: application in an iframe, chat next to it, repair in the frame', async () => {
     const back = keep(configPath);
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
-    config.environments.dev.urls.local = PORTAL_URL;
+    config.environments.dev.url = PORTAL_URL;
     writeFileSync(configPath, JSON.stringify(config, null, 4));
     const broken = breakStep(good, 'Senden');
     restore(broken);

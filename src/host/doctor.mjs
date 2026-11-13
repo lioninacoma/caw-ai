@@ -4,7 +4,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AUTH_DIR, agentSandbox, allTargets, authOf, browserLaunch, loadConfig, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, agentSandbox, authOf, browserLaunch, loadConfig, sessionPath, todoFields } from '../shared/config.mjs';
+import { effectiveEnvironments } from '../shared/environments.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
 import { ago } from './code-source.mjs';
@@ -129,7 +130,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     }
     if (auth.type === 'storageState') {
         for (const name of Object.keys(config.roles ?? {})) {
-            for (const target of allTargets(config).filter((candidate) => !resolveTarget(config, candidate).production)) {
+            for (const target of Object.values(effectiveEnvironments(config)).filter((candidate) => !candidate.production).map((candidate) => candidate.name)) {
                 add(existsSync(join(root, sessionPath(target, name)))
                     ? { ok: true, text: t('cli.doctorSessionSaved', { name, target }) }
                     : { ok: false, optional: true, text: t('cli.doctorSessionNone', { name, target }), next: `caw role login ${name} --env ${target}` });
@@ -138,8 +139,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     }
 
     const reach = probes.reachable ?? (async (url) => (await import('./run.mjs')).reachable(url));
-    for (const target of allTargets(config)) {
-        const { url, production } = resolveTarget(config, target);
+    for (const { name: target, url, production } of Object.values(effectiveEnvironments(config))) {
         // The tool never contacts production, not even to probe it.
         if (production) continue;
         // A placeholder such as staging.example.com never answers: say so instead of probing it.
@@ -164,10 +164,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
 const overlayLines = async (root, config, probes, now = Date.now()) => {
     const adapter = frameworkOf(config);
     if (adapter.watch === undefined || adapter.overlay === undefined) return [];
-    const targets = allTargets(config).filter((target) => {
-        const resolved = resolveTarget(config, target);
-        return resolved.overlay && !resolved.production;
-    });
+    const targets = Object.values(effectiveEnvironments(config)).filter((env) => env.overlay && !env.production).map((env) => env.name);
     const apps = Object.entries(config.apps ?? {}).filter(([, app]) => typeof app?.dir === 'string' && existsSync(join(root, app.dir, 'app.json')));
     if (targets.length === 0 || apps.length === 0) return [];
     const status = probes.overlay ?? ((dir, options) => overlayStatus(dir, { ...options, config }));

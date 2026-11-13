@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, allTargets, authOf, browserHosts, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, resolveTarget, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, authOf, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
+import { chooseEnvironment, effectiveEnvironment, environmentCandidates } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -360,17 +361,17 @@ export const roleLogin = async (root, { role: roleName, target }, { capture } = 
     if (type !== 'storageState') throw new CawError('usage', t('cli.authStorageOnly', { type }));
     if (signedInSelector === undefined) throw new CawError('config-invalid', t('cli.authNeedsSelector'));
     if (config.roles?.[roleName] === undefined) throw new CawError('usage', t('cli.authRoleUnknown', { role: roleName, roles: Object.keys(config.roles ?? {}).join(', ') }));
-    const resolved = resolveTarget(config, target);
+    const resolved = effectiveEnvironment(config, target);
     if (resolved.production) throw new CawError('env-denied', t('cli.targetProduction', { target }));
-    const file = join(root, sessionPath(resolved.target, roleName));
+    const file = join(root, sessionPath(target, roleName));
     const save = capture ?? (await import('./browser-session.mjs')).captureSession;
     ui.info(t('cli.authSignIn', { role: roleName, selector: signedInSelector }));
-    const saved = await save({ url: `${resolved.url}${path}`, signedInSelector, hosts: browserHosts(config, resolved), insecureTls: config.insecureTls === true, file, launch: browserLaunch(config) });
+    const saved = await save({ url: `${resolved.url}${path}`, signedInSelector, hosts: navigationHosts(config, target), insecureTls: resolved.insecureTls, file, launch: browserLaunch(config) });
     if (!saved) {
         ui.info(t('cli.authClosed'));
         return EXIT.error;
     }
-    ui.success(t('cli.authSaved', { file: sessionPath(resolved.target, roleName) }));
+    ui.success(t('cli.authSaved', { file: sessionPath(target, roleName) }));
     return EXIT.pass;
 };
 
@@ -391,12 +392,14 @@ export const validate = (root) => {
             const basics = testBasics(spec, config);
             const badTargets = spec.targets.flatMap((target) => {
                 try {
-                    resolveTarget(config, target);
+                    effectiveEnvironment(config, target);
                     return [];
                 } catch (error) {
                     return [`${file} (${target}): ${error.message}`];
                 }
             });
+            // A writing test in a project without a writable environment: valid on its own, but it runs nowhere.
+            if (spec.targets.length === 0) badTargets.push(`${file}: ${t('cli.validateNowhere', { id: spec.id })}`);
             if (basics.length > 0 || badTargets.length > 0) {
                 problems.push(...basics.map((text) => `${file}: ${text}`), ...badTargets);
                 continue;
@@ -521,19 +524,10 @@ const onlyKey = (map) => {
     return keys.length === 1 ? keys[0] : undefined;
 };
 
-/** The targets Claude may work on (environments with claude), one per tenant where there are tenants. */
-const claudeTargets = (config) => allTargets(config).filter((name) => {
-    try {
-        return resolveTarget(config, name).claude;
-    } catch {
-        return false;
-    }
-});
-
 /** The command that records the test anew: flags only for what the config does not determine. */
 const recordHint = (config, id, target) => {
     // Without --env the command needs none if there is only one environment for Claude; otherwise list the choices.
-    const choices = claudeTargets(config);
+    const choices = environmentCandidates(config, { command: 'record' });
     let targetFlag = [];
     if (target !== undefined) targetFlag = [`--env ${target}`];
     else if (choices.length !== 1) targetFlag = [`--env <${choices.join('|') || 'env'}>`];
@@ -587,37 +581,28 @@ const stepUnknown = (key, spec, step, extra = {}) => new CawError('step-unknown'
 }));
 
 /**
- * The target when --env is missing: the test's only target; for record the only one of them Claude may work on;
- * for a new test the only environment Claude may work on. The choice is logged; ambiguity is a usage error.
- * @param spec the test, null for a new one
+ * The environment when --env is missing (see chooseEnvironment): the only candidate, for run outside CI the only one with Claude.
+ * The choice is logged; ambiguity is a usage error listing the candidates.
+ * @param specs the tests of the call; none for a new test (record) or open without a test
+ * @param writes record of a new test: whether it may write (not --read-only)
  */
-export const chooseTarget = (config, spec, { target, command, log = ui.info }) => {
-    if (target !== undefined) return target;
-    let choices;
-    let why;
-    if (spec === null) {
-        choices = claudeTargets(config);
-        why = t('cli.targetWhyAgent');
-    } else {
-        choices = spec.targets;
-        why = t('cli.targetWhyTest', { test: spec.id });
-        const claude = new Set(claudeTargets(config));
-        const narrowed = choices.filter((name) => claude.has(name));
-        if (command === 'record' && choices.length > 1 && narrowed.length === 1) {
-            choices = narrowed;
-            why = t('cli.targetWhyTestAgent', { test: spec.id });
-        }
+export const chooseEnv = (config, specs, { env, command, writes = true, ci = Boolean(process.env.CI), log = ui.info }) => {
+    // Until the test fields are renamed (P2.5): targets and mutates are environments and writes.
+    const model = specs.map((spec) => ({ id: spec.id, writes: spec.mutates === true, ...(Array.isArray(spec.targets) ? { environments: spec.targets } : {}) }));
+    const candidates = environmentCandidates(config, { command, specs: model, writes });
+    const { name, why } = chooseEnvironment(config, { given: env, candidates, command, ci });
+    if (why !== 'given') {
+        const reason = why === 'onlyClaude' ? t('cli.envWhyOnlyClaude') : specs.length === 1 ? t('cli.envWhyTest', { test: specs[0].id }) : specs.length > 1 ? t('cli.envWhyTests') : t('cli.envWhyNew');
+        log(t('cli.envChosen', { env: name, why: reason }));
     }
-    if (choices.length !== 1) throw new CawError('usage', t('session.args.targetMissing', { choices: (choices.length > 0 ? choices : allTargets(config)).join(', ') }));
-    log(t('cli.targetChosen', { target: choices[0], why }));
-    return choices[0];
+    return name;
 };
 
 const loadChecked = (root, id, given, command, { overlay, start } = {}) => {
     const config = loadConfig(root);
     if (!existsSync(testPath(root, id))) throw testMissing(root, config, id, given);
     const spec = withDefaults(loadTest(root, id), config);
-    const target = chooseTarget(config, spec, { target: given, command });
+    const target = chooseEnv(config, [spec], { env: given, command });
     return { config, spec, target, checked: checkTest(spec, target, config, { overlay, start }) };
 };
 
@@ -950,7 +935,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     const tracker = changeTracker(root);
     let failed;
     // Where the human can clarify the failure in the chat: the test's first target Claude may work on.
-    const claude = new Set(claudeTargets(config));
+    const claude = new Set(environmentsWith(config, 'claude'));
     const chatTarget = spec.targets.find((name) => claude.has(name));
     const code = await runFlow({
         spec,
@@ -1026,13 +1011,7 @@ const runMany = async (root, options, deps) => {
             // A broken file is reported as rejected by its own run.
         }
     }
-    let { target } = options;
-    if (target === undefined) {
-        const union = [...new Set([...specs.values()].flatMap((spec) => spec.targets ?? []))];
-        if (union.length !== 1) throw new CawError('usage', t('session.args.targetMissing', { choices: (union.length > 0 ? union : allTargets(loadConfig(root))).join(', ') }));
-        [target] = union;
-        ui.info(t('cli.targetChosen', { target, why: t('cli.targetWhyTests') }));
-    }
+    const target = chooseEnv(loadConfig(root), [...specs.values()], { env: options.target, command: 'run' });
     // --all: every test naming the target; an unreadable one stays in and shows up as rejected.
     if (options.all) tests = tests.filter((id) => !specs.has(id) || (specs.get(id).targets ?? []).includes(target));
     if (tests.length === 0) throw new CawError('usage', t('cli.batchNone', { target }));
@@ -1136,12 +1115,12 @@ export const record = async (root, args, deps = {}) => {
         if (position > 0) return recordFrom(root, options, deps);
     }
     const known = exists ? withDefaults(loadTest(root, test), config) : null;
-    const target = chooseTarget(config, known, { target: given, command: 'record' });
+    const target = chooseEnv(config, known === null ? [] : [known], { env: given, command: 'record', writes: !readOnly });
     const spec = known ?? draftTest(root, config, { id: test, target, role, app, also, readOnly });
     if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
     requireHuman('record', interactive);
     // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
-    if (resolveTarget(config, target).claude && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
+    if (effectiveEnvironment(config, target).claude && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
     const checked = checkTest(spec, target, config, { overlay, start });
     requireAgent(config, checked, target, t('cli.verbRecord'));
 
@@ -1177,7 +1156,7 @@ export const open = async (root, args, deps = {}) => {
         return (await runOne(root, runOptions, deps)).code;
     }
     let config = loadConfig(root);
-    const target = chooseTarget(config, null, { target: options.target, command: 'open' });
+    const target = chooseEnv(config, [], { env: options.target, command: 'open' });
     // The run is named after the app, e.g. in the window title.
     const spec = draftTest(root, config, { id: options.app ?? onlyKey(config.apps) ?? OPEN_ID, target, role: options.role, app: options.app, also: [], readOnly: true });
     requireHuman('open', deps.interactive);

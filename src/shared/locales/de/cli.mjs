@@ -90,8 +90,8 @@ Befehle:`,
                                          richtet Claude Code caw mit dir ein („Richte caw ein“)`,
     'cli.help.version': '  --version                              Version des Pakets',
     'cli.help.here': ' (hier: {names})',
-    'cli.help.footer': `--env <name>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Entfällt, wenn die Wahl
-klar ist: die einzige Umgebung des Tests (bei record eines neuen Tests die einzige, auf der Claude arbeiten darf).
+    'cli.help.footer': `--env <name>: ein Name aus environments, etwa local. Entfällt, wenn die Wahl klar ist: die einzige, die passt, oder bei run
+außerhalb von CI die einzige, auf der Claude arbeiten darf; Produktion nur, wenn genannt.
 Dauern mit Einheit: --step-timeout 30s, --claude-timeout 60m.
 
 caw <befehl> --help für Details.
@@ -224,11 +224,12 @@ Browser:
     'cli.imageBuildFailed': 'Das Sandbox-Image ließ sich nicht bauen (Exit {code}). Fehlt der Registry-Login für {image}?',
     'cli.testMissing': 'Test nicht gefunden: {file}. {known} Neu aufnehmen: {hint}',
     'cli.testMissingNear': 'Test nicht gefunden: {file}. Meintest du {name}? {known} Einen neuen Test unter diesem Namen nimmt auf: {hint}',
-    'cli.targetChosen': 'Ziel: {target} ({why})',
-    'cli.targetWhyTest': 'einziges Ziel von {test}',
-    'cli.targetWhyTestAgent': 'einziges Ziel von {test}, auf dem Claude arbeiten darf',
-    'cli.targetWhyAgent': 'einzige Umgebung, auf der Claude arbeiten darf',
-    'cli.targetWhyTests': 'einziges Ziel der Tests',
+    'cli.envChosen': 'Umgebung: {env} ({why})',
+    'cli.envWhyTest': 'einzige Umgebung von {test}',
+    'cli.envWhyTests': 'einzige Umgebung der Tests',
+    'cli.envWhyNew': 'einzige Umgebung, auf der Claude arbeiten darf',
+    'cli.envWhyOnlyClaude': 'die einzige, auf der Claude arbeiten darf',
+    'cli.validateNowhere': '{id} läuft nirgends: Keine Umgebung passt (ein schreibender Test braucht eine beschreibbare Umgebung)',
     'cli.noEnvironment': 'keiner Umgebung',
     'cli.verbRecord': 'Aufgenommen wird',
     'cli.agentOnly': '{verb} braucht environments.{environment}.claude: true (zurzeit nur: {environments}).',
@@ -390,7 +391,7 @@ Browser:
     'cli.exploreWhyNeutral': 'kein Framework erkannt, neutraler Adapter',
     'cli.exploreWhyPackage': 'aus der package.json',
     'cli.exploreMismatch': 'Laufzeit zeigt {runtime}, die package.json {detected}.',
-    'cli.exploreForeign': 'Die Anmeldung wollte auf {hosts}; das Tool ließ das nicht zu. Für SSO: auth.type storageState, Sitzung einmal mit caw role login speichern; den Anmeldedienst ggf. in extraAllowedHosts.',
+    'cli.exploreForeign': 'Die Anmeldung wollte auf {hosts}; das Tool ließ das nicht zu. Für SSO: auth.type storageState, Sitzung einmal mit caw role login speichern; den Anmeldedienst ggf. in allowHosts.',
     'cli.exploreNoFieldSelector': 'Für Name oder Passwort fand sich kein eindeutiger Selektor; eine data-testid an den Feldern hilft.',
     'cli.exploreNoSignedIn': 'Nach der Anmeldung kam kein neues Element mit stabilem Selektor dazu; signedInSelector bitte von Hand setzen.',
     'cli.exploreNoLogin': 'Kein Anmeldeformular gesehen. Braucht die Anwendung doch eine Anmeldung, explore erneut starten und dabei anmelden.',

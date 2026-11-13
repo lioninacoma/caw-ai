@@ -97,7 +97,7 @@ test('caw_validate and caw_list without a config: config error as data, tests as
     assert.equal(listed.tests[0].app, null);
 });
 
-test('caw_config: read returns raw and effective config, patch goes through writeConfig and refuses an invalid result', async (t) => {
+test('caw_config: read returns raw config and effective environments, patch goes through writeConfig and refuses an invalid result', async (t) => {
     const root = project(t);
     const patches = [];
     const writeConfig = (dir, patch, { dryRun }) => {
@@ -111,7 +111,8 @@ test('caw_config: read returns raw and effective config, patch goes through writ
     assert.match(read.content[0].text, /caw\.config\.json ist gültig/);
     assert.equal(read.structuredContent.state, 'ok');
     assert.deepEqual(read.structuredContent.raw, JSON.parse(TEMPLATE));
-    assert.equal(read.structuredContent.effective.framework, 'web');
+    assert.deepEqual(Object.keys(read.structuredContent.environments), Object.keys(JSON.parse(TEMPLATE).environments));
+    assert.equal(typeof Object.values(read.structuredContent.environments)[0].url, 'string', 'with extends resolved and defaults filled in');
 
     const refused = await call('caw_config', { patch: { framework: 'cobol' } });
     assert.equal(refused.isError, true);

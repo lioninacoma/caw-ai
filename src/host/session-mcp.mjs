@@ -8,7 +8,8 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, 
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_FILE, effectiveConfig, loadConfig, validateConfig } from '../shared/config.mjs';
+import { CONFIG_FILE, loadConfig, validateConfig } from '../shared/config.mjs';
+import { effectiveEnvironments } from '../shared/environments.mjs';
 import { t } from '../shared/i18n.mjs';
 import { RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
@@ -495,11 +496,11 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             } catch (error) {
                 return answer(t('run.mcp.configInvalid', { file: CONFIG_FILE, count: 1 }), { state: 'invalid', file: CONFIG_FILE, issues: [error.message] });
             }
-            const { issues, notes, todo } = validateConfig(raw, root);
-            const effective = effectiveConfig(raw, root);
-            const all = [...issues, ...effective.issues];
+            const { issues, notes, todo } = validateConfig(raw);
+            const all = issues;
             return answer(all.length === 0 ? t('run.mcp.configOk', { file: CONFIG_FILE }) : t('run.mcp.configInvalid', { file: CONFIG_FILE, count: all.length }), {
-                state: all.length === 0 ? 'ok' : 'invalid', file: CONFIG_FILE, raw, effective: effective.config, issues: all, notes, todo,
+                // The environments as runs see them: extends resolved, defaults filled in.
+                state: all.length === 0 ? 'ok' : 'invalid', file: CONFIG_FILE, raw, environments: effectiveEnvironments(raw), issues: all, notes, todo,
             });
         },
     },

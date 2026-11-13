@@ -90,8 +90,8 @@ Commands:`,
                                          sets up caw with you ("Set up caw")`,
     'cli.help.version': '  --version                              Package version',
     'cli.help.here': ' (here: {names})',
-    'cli.help.footer': `--env <name>: a name from environments, e.g. local; with sites tenant/env, e.g. north/dev. Left out when the choice is
-clear: the test's only environment (for record of a new test the only one where Claude may work).
+    'cli.help.footer': `--env <name>: a name from environments, e.g. local. Left out when the choice is clear: the only one that fits, or for run
+outside CI the only one where Claude may work; production only when named.
 Durations take units: --step-timeout 30s, --claude-timeout 60m.
 
 caw <command> --help for details.
@@ -223,11 +223,12 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.imageBuildFailed': "Couldn't build the sandbox image (exit {code}). Missing registry login for {image}?",
     'cli.testMissing': 'Test not found: {file}. {known} Record it: {hint}',
     'cli.testMissingNear': 'Test not found: {file}. Did you mean {name}? {known} To record a new test of this name: {hint}',
-    'cli.targetChosen': 'Target: {target} ({why})',
-    'cli.targetWhyTest': 'only target of {test}',
-    'cli.targetWhyTestAgent': 'only target of {test} where Claude may work',
-    'cli.targetWhyAgent': 'only environment where Claude may work',
-    'cli.targetWhyTests': 'only target of the tests',
+    'cli.envChosen': 'Environment: {env} ({why})',
+    'cli.envWhyTest': 'only environment of {test}',
+    'cli.envWhyTests': 'only environment of the tests',
+    'cli.envWhyNew': 'only environment where Claude may work',
+    'cli.envWhyOnlyClaude': 'the only one where Claude may work',
+    'cli.validateNowhere': '{id} runs nowhere: no environment fits (a writing test needs a writable environment)',
     'cli.noEnvironment': 'no environment',
     'cli.verbRecord': 'Recording',
     'cli.agentOnly': '{verb} needs environments.{environment}.claude: true (currently only: {environments}).',
@@ -389,7 +390,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.exploreWhyNeutral': 'no framework detected, neutral adapter',
     'cli.exploreWhyPackage': 'from package.json',
     'cli.exploreMismatch': 'Runtime shows {runtime}, package.json {detected}.',
-    'cli.exploreForeign': 'The sign-in tried to go to {hosts}; the tool blocked it. For SSO: auth.type storageState, save the session once with caw role login; add the sign-in service to extraAllowedHosts if needed.',
+    'cli.exploreForeign': 'The sign-in tried to go to {hosts}; the tool blocked it. For SSO: auth.type storageState, save the session once with caw role login; add the sign-in service to allowHosts if needed.',
     'cli.exploreNoFieldSelector': 'No unique selector found for name or password; a data-testid on the fields helps.',
     'cli.exploreNoSignedIn': 'No new element with a stable selector appeared after sign-in; please set signedInSelector by hand.',
     'cli.exploreNoLogin': 'No login form seen. If the app does need a sign-in, run explore again and sign in.',

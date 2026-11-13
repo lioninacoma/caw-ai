@@ -9,7 +9,8 @@ import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
-import { allTargets, authOf, isLoopback, isServerUrl, loadConfig, resolveTarget } from '../shared/config.mjs';
+import { authOf, isLoopback, isServerUrl, loadConfig } from '../shared/config.mjs';
+import { effectiveEnvironment, testEnvironments } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -428,13 +429,13 @@ const onlyKey = (map) => {
 };
 
 /**
- * Whatever the test omits comes from the config: app and role when there is exactly one (role only with sign-in), targets all
- * non-production targets. Anything still missing is reported by checkTest.
+ * Whatever the test omits comes from the config: app and role when there is exactly one (role only with sign-in), environments
+ * per testEnvironments (non-production, writable ones for a writing test). Anything still missing is reported by checkTest.
  */
 export const withDefaults = (spec, config) => {
     const app = spec.app ?? onlyKey(config.apps);
     const role = spec.role ?? (authOf(config).type === 'none' ? undefined : onlyKey(config.roles));
-    const targets = spec.targets ?? allTargets(config).filter((target) => !resolveTarget(config, target).production);
+    const targets = spec.targets ?? testEnvironments(config, { writes: spec.mutates === true });
     return { ...spec, ...(app === undefined ? {} : { app }), ...(role === undefined ? {} : { role }), targets };
 };
 
@@ -458,13 +459,13 @@ export const recordingHints = (root) => {
 };
 
 /**
- * May this test run on this target? Write protection lives here, deterministic and before any browser starts. Also decides
+ * May this test run on this environment? Write protection lives here, deterministic and before any browser starts. Also decides
  * which code runs: without --overlay always the deployed code.
  * @param overlay from --overlay: true, 'build', 'dev', a dev server URL, or undefined
  * @param start   from --start: caw may run overlay.start when the source is not ready
  */
 export const checkTest = (given, target, config, { overlay, start = false } = {}) => {
-    const resolved = resolveTarget(config, target);
+    const resolved = effectiveEnvironment(config, target);
     const spec = withDefaults(given, config);
     const bad = (message) => new CawError('test-invalid', message);
     const file = `${TEST_DIR}/${spec.id}.yaml`;
@@ -478,7 +479,7 @@ export const checkTest = (given, target, config, { overlay, start = false } = {}
     if (spec.role === undefined && authOf(config).type !== 'none') throw bad(t('config.test.check.role', { id: String(spec.id), type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.role !== undefined && config.roles?.[spec.role] === undefined) throw bad(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.mutates && !resolved.writable) {
-        throw new CawError('write-protected', t('config.test.check.writeProtected', { id: String(spec.id), target: String(target), environment: resolved.environment }));
+        throw new CawError('write-protected', t('config.test.check.writeProtected', { id: String(spec.id), target: String(target), environment: resolved.name }));
     }
     return { ...resolved, mutates: spec.mutates, ...codeFor(spec, resolved, config, overlay, start) };
 };
@@ -492,8 +493,8 @@ export const checkTest = (given, target, config, { overlay, start = false } = {}
 const codeFor = (spec, resolved, config, overlay, start) => {
     if (overlay === undefined) return { source: 'deployed' };
     const { host, hostname, protocol } = new URL(resolved.url);
-    if (protocol === 'http:' && isLoopback(hostname)) throw new CawError('usage', t('config.overlay.devServer', { environment: resolved.environment, host }));
-    if (!resolved.overlay) throw new CawError('usage', t('config.overlay.environment', { environment: resolved.environment }));
+    if (protocol === 'http:' && isLoopback(hostname)) throw new CawError('usage', t('config.overlay.devServer', { environment: resolved.name, host }));
+    if (!resolved.overlay) throw new CawError('usage', t('config.overlay.environment', { environment: resolved.name }));
     const names = [spec.app, ...(spec.also ?? [])];
     const url = isServerUrl(overlay) ? overlay : undefined;
     if (url !== undefined && names.length > 1) throw new CawError('usage', t('config.overlay.urlApps', { apps: names.join(', ') }));

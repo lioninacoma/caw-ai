@@ -1,16 +1,5 @@
-// The environments come from the project config, optionally extended by a fragment in the project (`extends`). The tool itself
-// knows no environment, portal or customer.
-//
-// The normal case is flat: one application, a few environments with one URL each.
-//   "environments": { "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
-//                     "staging": { "url": "https://staging.example.com" } }
-//   Target: "local"
-// A local dev server serves the local code itself: that is the environment "local", without any option. The overlay puts local
-// code on top of a deployed environment (portal, shell, backend only on staging), only with --overlay and only where the
-// environment allows it: "dev": { "url": "https://dev.example.com", "claude": true, "overlay": true }
-// If the same application runs for several sites (tenants) under their own URLs, `sites` names them and each environment has `urls`:
-//   "sites": ["nord", "sued"], "environments": { "dev": { "urls": { "nord": "https://…", "sued": "https://…" }, "claude": true } }
-//   Target: "nord/dev"
+// The project config caw.config.json: one application, its environments (src/shared/environments.mjs), sign-in, roles and
+// what replays need to know. The tool itself knows no environment, portal or customer.
 
 import { createHash } from 'node:crypto';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -21,15 +10,17 @@ import { t } from './i18n.mjs';
 import { CONFIG_FILE } from './names.mjs';
 import { projectThemeProblems, setProjectTheme } from './theme-package.mjs';
 import { didYouMean } from './suggest.mjs';
+import { NAME, effectiveEnvironment, environmentNames } from './environments.mjs';
 
 export { CONFIG_FILE } from './names.mjs';
+export { environmentsWith } from './environments.mjs';
 
-const ENVIRONMENT_FLAGS = ['claude', 'overlay', 'writable', 'production'];
+const ENVIRONMENT_FLAGS = ['claude', 'overlay', 'writable', 'production', 'insecureTls', 'allowHttp'];
+const ENVIRONMENT_KEYS = ['url', 'extends', 'allowHosts', ...ENVIRONMENT_FLAGS];
 // A production environment must be declared explicitly, and then has no Claude, no local code and no writing.
 // Names containing it count too, e.g. prod-de or live_eu. If such an environment is not production, say so with "production": false.
 const PRODUCTION_NAME = /(^|[-_.])(prod|production|produktion|produktiv|prd|live)([-_.]|\d|$)/i;
 const PRODUCTION_EXACT = /^(prod|production|produktion|produktiv|prd|live)$/i;
-const NAME = /^[a-z][\w-]*$/;
 export const DEFAULT_MESSAGE_SELECTORS = ['[role=alert]', '[role=alertdialog]'];
 /** The framework adapters in src/host/framework/; `web` is the default. */
 export const FRAMEWORK_NAMES = ['web', 'extjs', 'react', 'vue', 'angular'];
@@ -47,13 +38,27 @@ export const AUTH_DIR = 'caw/.auth';
 export const TODO = 'TODO';
 /** The login fields still TODO since init, as "auth.<field>". */
 export const todoFields = (config) => Object.entries(isObject(config?.auth) ? config.auth : {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
-/** The saved session of a role on a target, relative to the project: caw/.auth/<environment>/<role>.json, with sites caw/.auth/<site>/<environment>/<role>.json. */
-export const sessionPath = (target, role) => posix.join(AUTH_DIR, ...String(target).split('/'), `${role}.json`);
+/** The saved session of a role on an environment, relative to the project: caw/.auth/<environment>/<role>.json. */
+export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
-const TOP_FIELDS = ['framework', 'extends', 'environments', 'sites', 'auth', 'apps', 'roles', 'messageSelectors', 'insecureTls', 'requestKeys',
-    'consoleIgnore', 'foreignCode', 'extraAllowedHosts', 'assetUrlPattern', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
+const TOP_FIELDS = ['framework', 'environments', 'auth', 'apps', 'roles', 'messageSelectors', 'requestKeys',
+    'consoleIgnore', 'foreignCode', 'allowHosts', 'assetUrlPattern', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone'];
+
+/**
+ * Keys that existed before 1.0. They are not read: the message says what replaced them or why they went. A static table, so
+ * an old config fails with a clear message instead of an "unknown key".
+ */
+export const REMOVED_KEYS = {
+    sites: { why: 'config.removed.sites' },
+    extends: { why: 'config.removed.extends' },
+    insecureTls: { now: 'environments.<env>.insecureTls' },
+    extraAllowedHosts: { now: 'allowHosts' },
+};
+const ENVIRONMENT_REMOVED = { urls: { why: 'config.removed.urls' } };
+/** The message for a removed key: renamed (now) or gone (why). */
+const removedKey = (path, entry) => (entry.now === undefined ? t('config.removed.gone', { key: path, why: t(entry.why) }) : t('config.removed.renamed', { key: path, now: entry.now }));
 
 /** Where Claude runs: locally with restricted tools (default) or isolated in Docker. */
 export const AGENT_SANDBOXES = ['local', 'docker'];
@@ -131,64 +136,20 @@ const hintFor = (key, allowed) => {
 };
 
 /**
- * Reads the fragment from `extends` (`"extends": "./caw/presets/basis.json"`): fields as in the config, without its own `extends`.
- * @returns the fragment or a text describing the problem
- */
-const loadFragment = (spec, root) => {
-    if (typeof spec !== 'string' || !(spec.startsWith('./') || spec.startsWith('../') || isAbsolute(spec)) || !spec.endsWith('.json')) {
-        return t('config.fragment.path', { spec: String(spec) });
-    }
-    let raw;
-    try {
-        raw = JSON.parse(readFileSync(isAbsolute(spec) ? spec : join(root, spec), 'utf8'));
-    } catch (error) {
-        return t('config.fragment.unreadable', { spec, error: error.message.split('\n')[0] });
-    }
-    if (!isObject(raw)) return t('config.fragment.notObject', { spec });
-    if (raw.extends !== undefined) return t('config.fragment.nested', { spec });
-    return raw;
-};
-
-/**
- * The effective config: the fragment from `extends`, with the project config on top. Environments are merged by name with
- * project fields winning; everything else the project replaces entirely.
- * @returns { config, issues }
- */
-export const effectiveConfig = (config, root = process.cwd()) => {
-    if (config.extends === undefined) return { config, issues: [] };
-    const fragment = loadFragment(config.extends, root);
-    if (typeof fragment === 'string') return { config, issues: [fragment] };
-    const environments = { ...(fragment.environments ?? {}) };
-    for (const [name, entry] of Object.entries(config.environments ?? {})) environments[name] = { ...(environments[name] ?? {}), ...(entry ?? {}) };
-    const merged = { ...fragment, ...config, ...(Object.keys(environments).length === 0 ? {} : { environments }) };
-    return { config: merged, issues: [] };
-};
-
-/** The environments with abilities and URLs; without `sites` the URL is stored under the empty site. */
-export const environmentDefs = (config) => Object.fromEntries(Object.entries(config.environments ?? {}).map(([name, raw]) => {
-    const entry = raw ?? {};
-    const urls = config.sites === undefined ? (entry.url === undefined ? {} : { '': entry.url }) : Object.fromEntries((config.sites ?? []).filter((site) => entry.urls?.[site] !== undefined).map((site) => [site, entry.urls[site]]));
-    return [name, { claude: entry.claude === true, overlay: entry.overlay === true, writable: entry.writable === true, production: entry.production === true, urls }];
-}));
-
-/** Environments with an ability, for messages like "only on dev". */
-export const environmentsWith = (config, ability) => Object.entries(environmentDefs(config)).filter(([, entry]) => entry[ability]).map(([name]) => name);
-
-/**
  * This machine: localhost, 127.0.0.1 and names under .localhost (RFC 6761). They always point to loopback and Chrome treats them
  * as secure, so http is allowed there too, e.g. for a local dev server.
  */
 export const isLoopback = (hostname) => hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
 
-/** Why an address is not an allowed origin, or null. http only on this machine (isLoopback), otherwise https. */
-const originProblem = (value) => {
+/** Why an address is not an allowed origin, or null. http only on this machine (isLoopback) or with allowHttp, otherwise https. */
+const originProblem = (value, { allowHttp = false } = {}) => {
     let url;
     try {
         url = new URL(value);
     } catch {
         return t('config.origin.invalid', { value: String(value ?? '') });
     }
-    if (url.protocol === 'http:' && !isLoopback(url.hostname)) {
+    if (url.protocol === 'http:' && !isLoopback(url.hostname) && !allowHttp) {
         return t('config.origin.http', { value: String(value) });
     }
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return t('config.origin.protocol', { value: String(value) });
@@ -196,46 +157,77 @@ const originProblem = (value) => {
     return null;
 };
 
-const checkEnvironments = (config, issues) => {
+/** A list of host names (allowHosts): a full address is an error that suggests its host. */
+const hostListIssues = (key, value) => {
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) return [t('config.allowHosts', { key })];
+    return value.flatMap((entry) => {
+        if (typeof entry === 'string' && HOST.test(entry)) return [];
+        const host = hostOf(entry);
+        return [host === null ? t('config.allowHosts.entry', { key, value: JSON.stringify(entry) }) : t('config.allowHosts.url', { key, value: JSON.stringify(entry), host })];
+    });
+};
+
+const checkEnvironments = (config, issues, notes) => {
     if (!isObject(config.environments) || Object.keys(config.environments).length === 0) {
         issues.push(t('config.env.missing'));
         return;
     }
-    const sites = config.sites;
-    if (sites !== undefined && !(Array.isArray(sites) && sites.length > 0 && sites.every((site) => typeof site === 'string' && NAME.test(site)))) {
-        issues.push(t('config.sites.invalid'));
-    }
+    const names = environmentNames(config);
     for (const [name, raw] of Object.entries(config.environments)) {
         if (!NAME.test(name)) issues.push(t('config.env.name', { name }));
         if (!isObject(raw)) {
             issues.push(t('config.env.notObject', { name }));
             continue;
         }
-        for (const unknown of Object.keys(raw).filter((key) => !['url', 'urls', ...ENVIRONMENT_FLAGS].includes(key))) {
-            issues.push(t('config.env.unknown', { name, key: unknown, flags: ENVIRONMENT_FLAGS.join(', '), hint: hintFor(unknown, ['url', 'urls', ...ENVIRONMENT_FLAGS]) }));
+        for (const key of Object.keys(raw).filter((candidate) => !ENVIRONMENT_KEYS.includes(candidate))) {
+            const removed = ENVIRONMENT_REMOVED[key];
+            issues.push(removed === undefined
+                ? t('config.env.unknown', { name, key, keys: ENVIRONMENT_KEYS.join(', '), hint: hintFor(key, ENVIRONMENT_KEYS) })
+                : removedKey(`environments.${name}.${key}`, removed));
         }
         const notBoolean = ENVIRONMENT_FLAGS.find((key) => raw[key] !== undefined && typeof raw[key] !== 'boolean');
         if (notBoolean !== undefined) issues.push(t('config.env.notBoolean', { name, key: notBoolean }));
-        if (sites === undefined) {
-            if (raw.urls !== undefined) issues.push(t('config.env.urlsWithoutSites', { name }));
-            else if (originProblem(raw.url) !== null) issues.push(t('config.env.url', { name, problem: originProblem(raw.url) }));
-        } else if (raw.url !== undefined) {
-            issues.push(t('config.env.urlWithSites', { name }));
-        } else if (!isObject(raw.urls)) {
-            issues.push(t('config.env.urlsMissing', { name, site: String((Array.isArray(sites) ? sites[0] : undefined) ?? 'nord') }));
-        } else {
-            for (const [site, url] of Object.entries(raw.urls)) {
-                if (!NAME.test(site)) issues.push(t('config.env.siteName', { name, site }));
-                if (originProblem(url) !== null) issues.push(t('config.env.siteUrl', { name, site, problem: originProblem(url) }));
-            }
+        if (raw.extends !== undefined && (typeof raw.extends !== 'string' || !names.includes(raw.extends))) {
+            issues.push(t('config.env.extendsUnknown', { name, parent: String(raw.extends), names: names.filter((other) => other !== name).join(', ') || '–' }));
         }
+        issues.push(...hostListIssues(`environments.${name}.allowHosts`, raw.allowHosts));
         if (PRODUCTION_EXACT.test(name) && raw.production !== true) issues.push(t('config.env.productionExact', { name }));
         else if (PRODUCTION_NAME.test(name) && raw.production === undefined) issues.push(t('config.env.productionLike', { name }));
-        if (raw.production === true && (raw.claude === true || raw.overlay === true || raw.writable === true)) issues.push(t('config.env.productionFlags', { name }));
     }
-    for (const site of Array.isArray(sites) ? sites : []) {
-        if (PRODUCTION_NAME.test(site)) issues.push(t('config.site.production', { site: String(site) }));
-        if (!Object.values(config.environments).some((raw) => isObject(raw?.urls) && raw.urls[site] !== undefined)) issues.push(t('config.site.noUrl', { site: String(site) }));
+    // What a run sees: after extends. Cycles and unknown parents are reported above or here, once.
+    const effective = [];
+    for (const name of names) {
+        if (!isObject(config.environments[name])) continue;
+        try {
+            effective.push({ raw: config.environments[name], env: effectiveEnvironment(config, name) });
+        } catch (error) {
+            if (error.code === 'config-invalid' && !issues.includes(error.message)) issues.push(error.message);
+        }
+    }
+    const productionHosts = new Map();
+    for (const { env } of effective.filter(({ env: candidate }) => candidate.production)) {
+        try {
+            productionHosts.set(new URL(env.url).hostname, env.name);
+        } catch {
+            // reported below
+        }
+    }
+    for (const { raw, env } of effective) {
+        const { name } = env;
+        if (env.url === undefined) issues.push(t('config.env.urlMissing', { name }));
+        else {
+            const problem = originProblem(env.url, { allowHttp: env.allowHttp });
+            if (problem !== null) issues.push(t('config.env.url', { name, problem }));
+            else {
+                const { hostname, protocol } = new URL(env.url);
+                if (env.allowHttp && (protocol !== 'http:' || isLoopback(hostname))) notes.push(t('config.note.allowHttp', { name }));
+                const production = productionHosts.get(hostname);
+                if (!env.production && production !== undefined) issues.push(t('config.env.productionHost', { name, host: hostname, production }));
+            }
+        }
+        const overlay = (raw.overlay ?? (raw.extends === undefined ? undefined : config.environments[raw.extends]?.overlay)) === true;
+        if (env.production && (env.claude || env.writable || overlay)) issues.push(t('config.env.productionFlags', { name }));
     }
 };
 
@@ -292,31 +284,26 @@ const checkRoles = (config, issues) => {
     }
 };
 
-/**
- * Checks a config and collects all findings, so `validate` can report them in one pass.
- * @param given the config as in the file; the fragment from `extends` is read relative to `root`
- */
-export const validateConfig = (given, root = process.cwd()) => {
+/** Checks a config and collects all findings, so `validate` can report them in one pass. */
+export const validateConfig = (given) => {
     if (!isObject(given)) return { ok: false, issues: [t('config.notObject')], notes: [], todo: [] };
     const issues = [];
     // Notes that block nothing: settings that have no effect as they are.
     const notes = [];
     for (const key of Object.keys(given)) {
-        if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
+        if (REMOVED_KEYS[key] !== undefined) issues.push(removedKey(key, REMOVED_KEYS[key]));
+        else if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
     }
     if (given.language !== undefined && !['de', 'en'].includes(given.language)) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
-    const { config, issues: loaded } = effectiveConfig(given, root);
-    issues.push(...loaded);
-    if (config.extends !== undefined && given.extends === undefined) issues.push(t('config.extendsOnlyProject'));
+    const config = given;
 
-    checkEnvironments(config, issues);
+    checkEnvironments(config, issues, notes);
     checkAuth(config, issues);
     checkRoles(config, issues);
     if (!isObject(config.apps) || Object.keys(config.apps).length === 0) issues.push(t('config.apps.missing'));
     if (config.messageSelectors !== undefined && !(Array.isArray(config.messageSelectors) && config.messageSelectors.every((selector) => typeof selector === 'string' && selector !== ''))) {
         issues.push(t('config.messageSelectors'));
     }
-    if (config.insecureTls !== undefined && typeof config.insecureTls !== 'boolean') issues.push(t('config.insecureTls'));
     if (config.theme !== undefined) for (const { key } of projectThemeProblems(config.theme)) issues.push(t('config.theme', { key }));
     if (config.framework !== undefined && !FRAMEWORK_NAMES.includes(config.framework)) issues.push(t('config.framework', { names: FRAMEWORK_NAMES.join(', ') }));
     for (const key of ['sandboxImage', 'sandboxUser', 'lintCommand']) {
@@ -348,13 +335,7 @@ export const validateConfig = (given, root = process.cwd()) => {
     if (config.sandboxUser !== undefined && !/^[a-z_][a-z0-9_-]*$/.test(config.sandboxUser)) issues.push(t('config.sandboxUser'));
     if (config.maxSteps !== undefined && (!Number.isInteger(config.maxSteps) || config.maxSteps <= 0)) issues.push(t('config.maxSteps'));
     if (config.readyTimeoutMs !== undefined && (!Number.isInteger(config.readyTimeoutMs) || config.readyTimeoutMs <= 0)) issues.push(t('config.readyTimeoutMs'));
-    if (config.extraAllowedHosts !== undefined && !Array.isArray(config.extraAllowedHosts)) issues.push(t('config.extraAllowedHosts'));
-    else for (const value of config.extraAllowedHosts ?? []) {
-        if (typeof value === 'string' && HOST.test(value)) continue;
-        // Usually a full address was given: then suggest its host.
-        const host = hostOf(value);
-        issues.push(host === null ? t('config.extraAllowedHosts.entry', { value: JSON.stringify(value) }) : t('config.extraAllowedHosts.url', { value: JSON.stringify(value), host }));
-    }
+    issues.push(...hostListIssues('allowHosts', config.allowHosts));
     for (const key of ['consoleIgnore', 'foreignCode']) {
         if (config[key] !== undefined && !(Array.isArray(config[key]) && config[key].every((pattern) => typeof pattern === 'string'))) {
             issues.push(t('config.patterns.list', { key }));
@@ -407,7 +388,7 @@ export const validateConfig = (given, root = process.cwd()) => {
  */
 const overlayNotes = (config) => {
     const apps = Object.keys(config.apps ?? {});
-    const environments = environmentsWith(config, 'overlay');
+    const environments = environmentNames(config).filter((name) => config.environments[name]?.overlay === true);
     const notes = [];
     if (environments.length === 0) {
         for (const name of apps.filter((app) => config.apps[app]?.overlay !== undefined)) notes.push(t('config.note.overlayNoEnv', { name }));
@@ -432,12 +413,11 @@ export const loadConfigWithNotes = (root) => {
     } catch (error) {
         throw new CawError('config-invalid', t('config.load.invalidJson', { file: CONFIG_FILE, error: error.message }));
     }
-    const { issues, notes, todo } = validateConfig(config, root);
+    const { issues, notes, todo } = validateConfig(config);
     if (issues.length > 0) throw configInvalid(issues);
-    const effective = effectiveConfig(config, root).config;
     // The team default theme applies to everything this process shows: workbench, chat, card, terminal.
-    setProjectTheme(effective.theme);
-    return { config: effective, notes, todo };
+    setProjectTheme(config.theme);
+    return { config, notes, todo };
 };
 
 export const loadConfig = (root) => loadConfigWithNotes(root).config;
@@ -481,7 +461,7 @@ export const writeConfig = (root, patch, { dryRun = false } = {}) => {
         return { ok: false, issues: [error?.code === 'ENOENT' ? t('config.load.missing', { file: CONFIG_FILE, root }) : t('config.load.invalidJson', { file: CONFIG_FILE, error: error.message })], config: null };
     }
     const config = mergePatch(raw, patch);
-    const { issues } = validateConfig(config, root);
+    const { issues } = validateConfig(config);
     if (issues.length > 0 || dryRun) return { ok: issues.length === 0, issues, config };
     // One temp file per process, so two concurrent writers never leave a half-written file.
     const temp = `${file}.${process.pid}.tmp`;
@@ -559,48 +539,8 @@ export const defaultAssetPattern = (url) => {
     return `^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/([^?#]+)`;
 };
 
-/** How a target is written: `environment`, with sites `site/environment`. */
-export const targetForm = (config) => (config.sites === undefined ? t('config.targetForm.plain') : t('config.targetForm.sites'));
-
-/** All targets the config knows, for messages and `init`. */
-export const allTargets = (config) => Object.entries(environmentDefs(config))
-    .flatMap(([name, entry]) => Object.keys(entry.urls).map((site) => (site === '' ? name : `${site}/${name}`)));
-
-/** Resolves a target: the environment (and the site, with sites), with URL and abilities. */
-export const resolveTarget = (config, target) => {
-    const text = String(target);
-    const parts = text.split('/');
-    const withSites = config.sites !== undefined;
-    if (parts.length !== (withSites ? 2 : 1) || parts.some((part) => part === '')) {
-        throw new CawError('env-invalid', t('config.target.form', { target: text, form: targetForm(config), hint: withSites ? '' : t('config.target.formHint') }));
-    }
-    const [site, environment] = withSites ? parts : ['', parts[0]];
-    const defs = environmentDefs(config);
-    if (defs[environment] === undefined) throw new CawError('env-invalid', t('config.target.environment', { environment, names: Object.keys(defs).join(', ') }));
-    if (withSites && !config.sites.includes(site)) throw new CawError('env-invalid', t('config.target.site', { site, sites: config.sites.join(', ') }));
-    const url = defs[environment].urls[site];
-    if (url === undefined) throw new CawError('env-invalid', t('config.target.siteUrl', { site, environment }));
-    const abilities = { ...defs[environment] };
-    delete abilities.urls;
-    return { target: text, ...(withSites ? { site } : {}), environment, url, ...abilities };
-};
-
-/**
- * What Chrome may reach: the environment hosts and project-specific exceptions, e.g. a login service.
- * Never production unless the run targets it: otherwise a run on dev could reach production via goto, eval or a link,
- * possibly with a shared login.
- * @param target the resolved target of the run (resolveTarget); without a target only non-production environments
- */
-export const browserHosts = (config, target) => {
-    const hosts = Object.values(environmentDefs(config)).filter(({ production }) => !production)
-        .flatMap(({ urls }) => Object.values(urls).map((url) => new URL(url).hostname));
-    const own = target?.url === undefined ? [] : [new URL(target.url).hostname];
-    const production = new Set(Object.values(environmentDefs(config)).filter(({ production: isProduction }) => isProduction)
-        .flatMap(({ urls }) => Object.values(urls).map((url) => new URL(url).hostname)));
-    // An exception must not re-enable production.
-    const extra = (config.extraAllowedHosts ?? []).filter((host) => target?.production === true || !production.has(host));
-    return [...new Set([...own, ...hosts, ...extra])];
-};
+/** The environments a run's browser may reach, see navigationHosts. */
+export { navigationHosts } from './environments.mjs';
 
 /** Stable, unique UUID-shaped id per entry; devlink requires identities, but they carry no meaning. */
 const uuidOf = (seed) => {
@@ -614,13 +554,13 @@ const uuidOf = (seed) => {
  */
 export const buildDevlinkConfig = (config, resolved, appName) => {
     const app = config.apps[appName];
-    const siteUuid = uuidOf(`portal:${resolved.target}`);
+    const siteUuid = uuidOf(`portal:${resolved.name}`);
     const signedIn = authOf(config).signedInSelector;
     return {
         activePortal: siteUuid,
         ...(config.assetUrlPattern === undefined ? {} : { assetUrlPattern: config.assetUrlPattern }),
         authMarker: signedIn ?? null,
-        portals: [{ uuid: siteUuid, name: resolved.target, url: resolved.url }],
+        portals: [{ uuid: siteUuid, name: resolved.name, url: resolved.url }],
         projects: [{
             uuid: uuidOf(`project:${appName}`),
             name: appName,

@@ -5,17 +5,13 @@
         "sandbox": "docker"
     },
     "assetUrlPattern": "DataProxy(?:\\.|[^#]*?[?&])url=repo:/{3}Root/([^&#]*)",
-    "sites": [
-        "local"
-    ],
     "environments": {
         "dev": {
-            "urls": {
-                "local": "https://portal.localhost:8453"
-            },
+            "url": "https://portal.localhost:8453",
             "claude": true,
             "overlay": true,
-            "writable": true
+            "writable": true,
+            "insecureTls": true
         }
     },
     "auth": {
@@ -55,6 +51,5 @@
     },
     "requestKeys": [
         "connector"
-    ],
-    "insecureTls": true
+    ]
 }

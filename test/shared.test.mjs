@@ -4,28 +4,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { allTargets, assetPatterns, browserHosts, buildDevlinkConfig, defaultAssetPattern, effectiveConfig, environmentsWith, resolveTarget, validateConfig, writeConfig } from '../src/shared/config.mjs';
+import { assetPatterns, buildDevlinkConfig, defaultAssetPattern, environmentsWith, navigationHosts, validateConfig, writeConfig } from '../src/shared/config.mjs';
+import { effectiveEnvironment } from '../src/shared/environments.mjs';
 import { deriveName } from '../src/host/overlay.mjs';
 import { checkTest, withDefaults } from '../src/host/test-file.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 
-// A fragment for `extends` lives in the project; here in its own folder, with an absolute path.
-const fragmentDir = mkdtempSync(join(tmpdir(), 'caw-fragment-'));
-const FRAGMENT = join(fragmentDir, 'basis.json');
-writeFileSync(FRAGMENT, JSON.stringify({
+// Tenants as environments: the south ones extend the north ones and only change the address.
+const multiRaw = () => ({
     environments: {
-        dev: { urls: { nord: 'https://dev.nord.example', sued: 'https://dev.sued.example', west: 'https://dev.west.example' }, claude: true, overlay: true, writable: true },
-        test: { urls: { nord: 'https://test.nord.example', sued: 'https://test.sued.example' }, writable: true },
-        abnahme: { urls: { nord: 'https://abnahme.nord.example', sued: 'https://abnahme.sued.example' } },
+        'nord-dev': { url: 'https://dev.nord.example', claude: true, overlay: true, writable: true },
+        'sued-dev': { extends: 'nord-dev', url: 'https://dev.sued.example' },
+        'nord-test': { url: 'https://test.nord.example', writable: true },
+        'sued-test': { extends: 'nord-test', url: 'https://test.sued.example' },
+        'nord-abnahme': { url: 'https://abnahme.nord.example' },
+        'sued-abnahme': { extends: 'nord-abnahme', url: 'https://abnahme.sued.example' },
     },
     auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'body.signed-in' },
     assetUrlPattern: 'proxy\\?file=([^&#]*)',
-}));
-
-// Several sites with their own URLs, environments from the fragment.
-const multiRaw = () => ({
-    extends: FRAGMENT,
-    sites: ['nord', 'sued'],
     apps: {
         antrag: {
             dir: 'projects/apps/App',
@@ -35,7 +31,7 @@ const multiRaw = () => ({
     },
     roles: { kunde: { loginEnv: 'L', passwordEnv: 'P' } },
 });
-const multi = () => effectiveConfig(multiRaw()).config;
+const multi = multiRaw;
 
 // The usual case: one application, a few environments, flat.
 const simple = () => ({
@@ -58,7 +54,7 @@ const withoutAuth = () => {
 
 const issues = (config) => validateConfig(config).issues.join('\n');
 
-test('valid configs: flat, with sites, without login, with a stored session', () => {
+test('valid configs: flat, tenants as environments, without login, with a stored session', () => {
     assert.deepEqual(validateConfig(multiRaw()).issues, []);
     assert.deepEqual(validateConfig(simple()).issues, []);
     const open = withoutAuth();
@@ -91,7 +87,7 @@ test('config: browser.locale, browser.timezone and readyIgnore', () => {
     assert.match(issues({ ...simple(), readyIgnore: [''] }), /readyIgnore/);
 });
 
-test('config: required fields, login per type, fragment only as a file in the project', () => {
+test('config: required fields, login per type', () => {
     assert.match(issues({}), /environments fehlt/);
     assert.match(issues({}), /apps fehlt/);
     assert.match(issues({ ...simple(), auth: { type: 'form', path: '/login' } }), /braucht userSelector, passwordSelector, signedInSelector/);
@@ -101,34 +97,46 @@ test('config: required fields, login per type, fragment only as a file in the pr
     assert.match(issues({ ...simple(), roles: undefined }), /roles fehlt/);
     assert.match(issues({ ...simple(), roles: { kaeufer: {} } }), /loginEnv und passwordEnv/);
     assert.match(issues({ ...simple(), auth: { type: 'storageState' }, roles: { kaeufer: { loginEnv: 'A' } } }), /caw\/\.auth\/<ziel>\/kaeufer\.json/);
-    assert.match(issues({ ...multiRaw(), extends: 'basis' }), /Das Fragment liegt im Projekt/);
-    assert.match(issues({ ...multiRaw(), extends: './fehlt.json' }), /lässt sich nicht lesen/);
     assert.match(issues({ ...simple(), messageSelectors: [''] }), /messageSelectors/);
     assert.match(issues({ ...simple(), sandboxUser: 'Root User' }), /sandboxUser/);
     assert.match(issues({ ...simple(), readyTimeoutMs: '5s' }), /readyTimeoutMs/);
     assert.equal(issues({ ...simple(), readyTimeoutMs: 20000 }), '');
 });
 
-test('config: the fragment sets defaults, the project wins, environments merged by name', () => {
-    const { config } = effectiveConfig({ ...multiRaw(), auth: { ...multi().auth, signedInSelector: '#eigen' }, environments: { test: { writable: false } } });
-    assert.equal(config.auth.signedInSelector, '#eigen');
-    assert.equal(config.environments.dev.urls.nord, 'https://dev.nord.example');
-    assert.equal(config.environments.test.writable, false);
-    assert.equal(config.environments.test.urls.sued, 'https://test.sued.example');
+test('config: keys from before 1.0 name what replaced them; extends between environments is checked', () => {
+    assert.match(issues({ ...simple(), sites: ['nord'] }), /sites gibt es nicht mehr: Mandanten sind jetzt Umgebungen/);
+    assert.match(issues({ ...simple(), extends: './basis.json' }), /extends gibt es nicht mehr: eine Config je Projekt/);
+    assert.match(issues({ ...simple(), insecureTls: true }), /insecureTls heißt jetzt environments\.<env>\.insecureTls/);
+    assert.match(issues({ ...simple(), extraAllowedHosts: ['sso.example'] }), /extraAllowedHosts heißt jetzt allowHosts/);
+    assert.match(issues({ ...simple(), environments: { dev: { urls: { a: 'https://a.example' } } } }), /environments\.dev\.urls gibt es nicht mehr/);
+    const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
+    assert.match(at({ sued: { extends: 'nord', url: 'https://s.example' } }), /extends „nord“ ist keine Umgebung/);
+    assert.match(at({ a: { extends: 'b', url: 'https://a.example' }, b: { extends: 'a', url: 'https://b.example' } }), /extends läuft im Kreis: a → b → a/);
+    assert.match(at({ kopie: { extends: 'staging' } }), /^$/, 'the url comes through extends');
+    assert.match(at({ leer: { claude: true } }), /Umgebung leer hat keine url/);
+    assert.match(at({ nord_dev: { url: 'https://n.example' } }), /Umgebung „nord_dev“: Kleinbuchstaben, Ziffern und -/);
+    // A production child must say so itself; a non-production environment on a production host is refused.
+    assert.match(at({ live: { url: 'https://www.shop.example', production: true }, kopie: { extends: 'live', url: 'https://www.shop.example' } }), /Umgebung kopie nutzt den Host www\.shop\.example der Produktionsumgebung live/);
+    assert.equal(effectiveEnvironment(multi(), 'sued-dev').claude, true);
+    assert.equal(effectiveEnvironment(multi(), 'sued-dev').url, 'https://dev.sued.example');
 });
 
-test('sites: target site/environment, only sites from sites', () => {
-    assert.deepEqual(allTargets(multi()), ['nord/dev', 'sued/dev', 'nord/test', 'sued/test', 'nord/abnahme', 'sued/abnahme']);
-    assert.match(issues({ ...multiRaw(), sites: ['ost'] }), /Mandant ost hat in keiner Umgebung eine Adresse/);
-    assert.match(issues({ ...simple(), sites: ['nord'] }), /Mit sites steht die Adresse je Mandant in urls/);
-    assert.match(issues({ ...simple(), environments: { dev: { urls: { a: 'https://a.example' } } } }), /urls gibt es nur mit sites/);
+test('config: insecureTls, allowHttp and allowHosts per environment', () => {
+    const at = (environments, more = {}) => issues({ ...simple(), ...more, environments: { ...simple().environments, ...environments } });
+    assert.equal(at({ intern: { url: 'https://intern.example', insecureTls: true } }), '');
+    assert.equal(at({ box: { url: 'http://box.intern.example', allowHttp: true } }), '');
+    assert.match(at({ box: { url: 'http://box.intern.example' } }), /allowHttp": true an der Umgebung/);
+    assert.match(validateConfig({ ...simple(), environments: { ...simple().environments, local2: { url: 'http://localhost:5174', allowHttp: true } } }).notes.join('\n'), /Umgebung local2: allowHttp wirkt hier nicht/);
+    assert.equal(at({ staging: { url: 'https://staging.shop.example', allowHosts: ['sso.example'] } }, { allowHosts: ['cdn.example'] }), '');
+    assert.match(at({}, { allowHosts: ['https://login.example.com/'] }), /allowHosts: "https:\/\/login\.example\.com\/" ist eine Adresse; der Hostname reicht: "login\.example\.com"/);
+    assert.match(at({ staging: { url: 'https://staging.shop.example', allowHosts: ['a b'] } }), /environments\.staging\.allowHosts: "a b" ist kein Hostname/);
 });
 
 test('environments: capabilities from the config, production only explicitly and without Claude', () => {
-    assert.deepEqual(environmentsWith(multi(), 'claude'), ['dev']);
-    assert.deepEqual(environmentsWith(multi(), 'writable'), ['dev', 'test']);
+    assert.deepEqual(environmentsWith(multi(), 'claude'), ['nord-dev', 'sued-dev']);
+    assert.deepEqual(environmentsWith(multi(), 'writable'), ['nord-dev', 'sued-dev', 'nord-test', 'sued-test']);
     assert.deepEqual(environmentsWith(simple(), 'overlay'), ['local']);
-    assert.equal(resolveTarget(simple(), 'local').claude, true);
+    assert.equal(effectiveEnvironment(simple(), 'local').claude, true);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
     assert.match(at({ prod: { url: 'https://www.shop.example' } }), /Produktion/);
     assert.match(at({ live: { url: 'https://www.shop.example', production: true, claude: true } }), /Produktion: claude/);
@@ -168,41 +176,30 @@ test('consoleIgnore must contain valid regular expressions', () => {
     assert.match(issues({ ...simple(), consoleIgnore: ['('] }), /consoleIgnore/);
 });
 
-test('resolveTarget returns URL and capabilities', () => {
-    assert.deepEqual(resolveTarget(multi(), 'nord/test'), {
-        target: 'nord/test', site: 'nord', environment: 'test',
-        url: 'https://test.nord.example', writable: true, claude: false, overlay: false, production: false,
+test('effectiveEnvironment returns URL and capabilities; unknown names are rejected', () => {
+    assert.deepEqual(effectiveEnvironment(multi(), 'sued-test'), {
+        name: 'sued-test', url: 'https://test.sued.example', claude: false, writable: true, production: false,
+        signIn: { type: 'none' }, allowHosts: [], insecureTls: false, allowHttp: false, overlay: false,
     });
-    assert.deepEqual(resolveTarget(simple(), 'staging'), {
-        target: 'staging', environment: 'staging',
-        url: 'https://staging.shop.example', writable: false, claude: false, overlay: false, production: false,
-    });
-    assert.equal(resolveTarget(multi(), 'sued/abnahme').writable, false);
+    assert.equal(effectiveEnvironment(multi(), 'sued-abnahme').writable, false);
+    for (const bad of ['west-dev', 'north-dev', 'prod', '']) assert.throws(() => effectiveEnvironment(multi(), bad), CawError, bad);
 });
 
-test('resolveTarget rejects: unknown, not in sites, malformed', () => {
-    for (const bad of ['west/dev', 'nord/prod', 'x/dev', 'nord', 'nord/dev/x']) {
-        assert.throws(() => resolveTarget(multi(), bad), CawError, bad);
-    }
-    for (const bad of ['nord/local', 'prod', '']) assert.throws(() => resolveTarget(simple(), bad), CawError, bad);
-});
-
-test('browserHosts takes only URLs of the sites and own exceptions, not Anthropic', () => {
-    const hosts = browserHosts({ ...multi(), extraAllowedHosts: ['cdn.example'] });
+test('navigationHosts: every non-production environment and the allowed hosts, not Anthropic', () => {
+    const hosts = navigationHosts({ ...multi(), allowHosts: ['cdn.example'] }, 'nord-dev');
     assert.ok(!hosts.includes('api.anthropic.com'));
     assert.ok(hosts.includes('dev.nord.example'));
     assert.ok(hosts.includes('abnahme.sued.example'));
     assert.ok(hosts.includes('cdn.example'));
-    assert.ok(!hosts.some((h) => h.includes('west')));
-    assert.deepEqual(browserHosts(simple()), ['app.localhost', 'staging.shop.example']);
+    assert.deepEqual(navigationHosts(simple(), 'local'), ['app.localhost', 'staging.shop.example']);
 });
 
-const SPEC = { id: 'smoke', app: 'antrag', role: 'kunde', targets: ['nord/dev', 'sued/test'], mutates: false, also: [] };
+const SPEC = { id: 'smoke', app: 'antrag', role: 'kunde', targets: ['nord-dev', 'sued-test'], mutates: false, also: [] };
 
 test('checkTest: valid; without --overlay always the deployed code, even where the overlay would work', () => {
-    assert.equal(checkTest(SPEC, 'nord/dev', multi()).source, 'deployed');
-    assert.equal(checkTest(SPEC, 'nord/dev', multi(), { overlay: true }).source, 'overlay');
-    assert.equal(checkTest(SPEC, 'sued/test', multi()).source, 'deployed');
+    assert.equal(checkTest(SPEC, 'nord-dev', multi()).source, 'deployed');
+    assert.equal(checkTest(SPEC, 'nord-dev', multi(), { overlay: true }).source, 'overlay');
+    assert.equal(checkTest(SPEC, 'sued-test', multi()).source, 'deployed');
 });
 
 test('checkTest: a role only with a login; with exactly one role it applies', () => {
@@ -254,28 +251,26 @@ test('which code runs: deployed unless --overlay; if the overlay is not possible
 });
 
 test('config: suggestions for typos, notes on settings without effect', () => {
-    assert.match(issues({ ...simple(), insecureTLS: true }), /Unbekanntes Feld: insecureTLS \(meintest du insecureTls\?\)/);
+    assert.match(issues({ ...simple(), allowHost: ['x.example'] }), /Unbekanntes Feld: allowHost \(meintest du allowHosts\?\)/);
     assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', overlya: true } } }), /overlya gibt es dort nicht.*\(meintest du overlay\?\)/);
     assert.doesNotMatch(issues({ ...simple(), zzz: 1 }), /meintest/);
-    assert.match(issues({ ...simple(), extraAllowedHosts: ['https://login.example.com/'] }), /"https:\/\/login\.example\.com\/" ist kein Hostname; gemeint ist wohl "login\.example\.com"/);
-    assert.match(issues({ ...simple(), extraAllowedHosts: ['a b'] }), /"a b" ist kein Hostname, etwa/);
     const claude = { ...simple(), environments: { local: { url: 'http://app.localhost:5173', claude: true, writable: true } } };
     assert.deepEqual(validateConfig(claude), { ok: true, issues: [], notes: [], todo: [] });
-    assert.equal(resolveTarget(claude, 'local').claude, true);
+    assert.equal(effectiveEnvironment(claude, 'local').claude, true);
     const buildOnly = { ...claude, apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { build: 'dist' } } } };
     assert.match(validateConfig(buildOnly).notes.join('\n'), /App shop hat overlay, aber keine Umgebung hat "overlay": true/);
 });
 
 test('overlay config: pattern and statics; without a source on the app only the deployed code', () => {
     const noEntries = { ...multi(), apps: { antrag: { dir: 'app', startUrl: '/a' } } };
-    assert.equal(checkTest(SPEC, 'nord/dev', noEntries).source, 'deployed');
+    assert.equal(checkTest(SPEC, 'nord-dev', noEntries).source, 'deployed');
     const own = { ...simple(), assetUrlPattern: '/static/js/(.+\\.js)', apps: { shop: { dir: 'shop', startUrl: '/shop', overlay: { statics: [{ name: 'main.js', path: 'dist/main.js' }] } } } };
     assert.deepEqual(validateConfig(own).issues, []);
     const { assetUrlPattern, ...withoutPattern } = own;
     assert.deepEqual(validateConfig(withoutPattern).issues, [], 'without a pattern the name is the path under the environment');
     assert.match(issues({ ...own, assetUrlPattern: '/static/js/.+' }), /braucht eine Gruppe/);
     assert.match(issues({ ...own, assetUrlPattern: '(' }), /kein gültiger/);
-    const built = buildDevlinkConfig(own, resolveTarget(own, 'local'), 'shop');
+    const built = buildDevlinkConfig(own, effectiveEnvironment(own, 'local'), 'shop');
     assert.equal(built.assetUrlPattern, assetUrlPattern);
     assert.equal(built.authMarker, '#menu');
     assert.deepEqual(built.projects[0], { uuid: built.projects[0].uuid, name: 'shop', active: true, startUrl: '/shop' }, 'the overlay applies the local code');
@@ -364,47 +359,46 @@ test('writeConfig: merges into the file, validates first, writes atomically with
 });
 
 test('checkTest: the target must be listed in the test', () => {
-    assert.throws(() => checkTest(SPEC, 'nord/test', multi()), /targets/);
+    assert.throws(() => checkTest(SPEC, 'nord-test', multi()), /targets/);
 });
 
 test('checkTest: unknown app or role', () => {
-    assert.throws(() => checkTest({ ...SPEC, app: 'x' }, 'nord/dev', multi()), /App/);
-    assert.throws(() => checkTest({ ...SPEC, role: 'x' }, 'nord/dev', multi()), /Rolle/);
+    assert.throws(() => checkTest({ ...SPEC, app: 'x' }, 'nord-dev', multi()), /App/);
+    assert.throws(() => checkTest({ ...SPEC, role: 'x' }, 'nord-dev', multi()), /Rolle/);
 });
 
 test('checkTest: mutates is rejected on environments without writable', () => {
-    const spec = { ...SPEC, mutates: true, targets: ['nord/dev', 'nord/test', 'nord/abnahme'] };
-    assert.equal(checkTest(spec, 'nord/dev', multi()).mutates, true);
-    assert.equal(checkTest(spec, 'nord/test', multi()).mutates, true);
-    assert.throws(() => checkTest(spec, 'nord/abnahme', multi()), /schreibgeschützt/);
+    const spec = { ...SPEC, mutates: true, targets: ['nord-dev', 'nord-test', 'nord-abnahme'] };
+    assert.equal(checkTest(spec, 'nord-dev', multi()).mutates, true);
+    assert.equal(checkTest(spec, 'nord-test', multi()).mutates, true);
+    assert.throws(() => checkTest(spec, 'nord-abnahme', multi()), /schreibgeschützt/);
 });
 
 test('buildDevlinkConfig: environment and start page, no marker without login', () => {
-    const cfg = buildDevlinkConfig(multi(), resolveTarget(multi(), 'nord/dev'), 'antrag');
+    const cfg = buildDevlinkConfig(multi(), effectiveEnvironment(multi(), 'nord-dev'), 'antrag');
     assert.equal(cfg.portals[0].url, 'https://dev.nord.example');
     assert.equal(cfg.activePortal, cfg.portals[0].uuid);
     assert.equal(cfg.projects[0].startUrl, '/app#start');
     assert.notEqual(cfg.projects[0].uuid, cfg.portals[0].uuid);
     const open = withoutAuth();
-    assert.equal(buildDevlinkConfig(open, resolveTarget(open, 'local'), 'shop').authMarker, null);
+    assert.equal(buildDevlinkConfig(open, effectiveEnvironment(open, 'local'), 'shop').authMarker, null);
 });
 
-test('browserHosts: production only if the run itself targets it', () => {
-    const config = { ...simple(), environments: { ...simple().environments, live: { url: 'https://www.shop.example', production: true } }, extraAllowedHosts: ['www.shop.example', 'sso.example'] };
+test('navigationHosts: production only if the run itself is on production, not even via allowHosts', () => {
+    const config = { ...simple(), environments: { ...simple().environments, live: { url: 'https://www.shop.example', production: true } }, allowHosts: ['www.shop.example', 'sso.example'] };
     assert.deepEqual(validateConfig(config).issues, []);
-    const onLocal = browserHosts(config, resolveTarget(config, 'local'));
-    assert.ok(!onLocal.includes('www.shop.example'), 'not even via extraAllowedHosts');
+    const onLocal = navigationHosts(config, 'local');
+    assert.ok(!onLocal.includes('www.shop.example'), 'not even via allowHosts');
     assert.ok(onLocal.includes('sso.example') && onLocal.includes('staging.shop.example'));
-    assert.ok(browserHosts(config, resolveTarget(config, 'live')).includes('www.shop.example'));
-    assert.ok(!browserHosts(config).includes('www.shop.example'));
+    assert.ok(navigationHosts(config, 'live').includes('www.shop.example'));
+    assert.ok(!navigationHosts(config).includes('www.shop.example'));
 });
 
 test('production: also detected as part of a name, explicit false allowed', () => {
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
-    for (const name of ['prod-de', 'live_eu', 'prd2', 'produktiv-at']) assert.match(at({ [name]: { url: 'https://www.shop.example', claude: true } }), /sieht nach Produktion aus/, name);
+    for (const name of ['prod-de', 'live-eu', 'prd2', 'produktiv-at']) assert.match(at({ [name]: { url: 'https://www.shop.example', claude: true } }), /sieht nach Produktion aus/, name);
     assert.equal(at({ 'live-preview': { url: 'https://preview.shop.example', production: false, claude: true } }), '');
     assert.equal(at({ delivery: { url: 'https://d.shop.example' } }), '', 'no match in the middle of a word');
-    assert.match(issues({ ...multiRaw(), sites: ['nord', 'live'] }), /Mandant live sieht nach Produktion aus/);
 });
 
 test('production: the exact names cannot be bypassed with false', () => {
@@ -419,7 +413,7 @@ test('config: broken values lead to messages, not crashes', () => {
     assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', roles: {} } } }), /roles gibt es dort nicht/);
     const open = withoutAuth();
     assert.match(issues({ ...open, roles: {} }), /Ohne Anmeldung \(auth\) lass roles weg/);
-    assert.match(issues({ ...simple(), auth: { ...simple().auth, path: 'https://sso.example/login' } }), /extraAllowedHosts/);
+    assert.match(issues({ ...simple(), auth: { ...simple().auth, path: 'https://sso.example/login' } }), /allowHosts/);
 });
 
 test('config: browser picks a Chromium browser, default Chrome', async () => {

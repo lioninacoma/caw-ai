@@ -5,7 +5,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { authOf, loadConfig, resolveTarget } from '../shared/config.mjs';
+import { authOf, loadConfig } from '../shared/config.mjs';
+import { effectiveEnvironment } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { createUi } from '../shared/ui.mjs';
@@ -157,7 +158,7 @@ export const hasTestUser = (root, config, role, env = process.env) => {
 };
 
 /** Where the window signs in: the target's address (with sites the site's) plus the sign-in path of the config. */
-const signInUrl = (config, target) => new URL(authOf(config).path ?? '/', resolveTarget(config, target).url).href;
+const signInUrl = (config, target) => new URL(authOf(config).path ?? '/', effectiveEnvironment(config, target).url).href;
 
 const openWindow = async ({ url, insecureTls }) => {
     const { exploreBrowser } = await import('./browser-session.mjs');
@@ -176,7 +177,7 @@ export const captureTestUsers = async (root, { target, role, needed = false, rea
     const auth = authOf(config);
     if (auth.type !== 'form' && auth.type !== 'basic') throw new CawError('usage', t('cli.roleAuthType', { type: auth.type }));
     const url = signInUrl(config, target);
-    const browser = await open({ url, insecureTls: config.insecureTls === true });
+    const browser = await open({ url, insecureTls: effectiveEnvironment(config, target).insecureTls });
     const { page } = browser;
     const context = page.context();
     let phase = 'wait';

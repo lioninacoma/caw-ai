@@ -22,11 +22,10 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
     const config = {
         language: 'en',
         framework,
-        environments: { test: { url, claude: true, writable: true, ...(overlay ? { overlay: true } : {}) } },
+        environments: { test: { url, claude: true, writable: true, ...(overlay ? { overlay: true } : {}), ...(url.startsWith('https:') ? { insecureTls: true } : {}) } },
         auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
         apps: { web: { dir: '.', startUrl: '/', ...(overlay ? { overlay } : {}) } },
         roles: { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEnv: 'CAW_PW_TESTER' } },
-        ...(url.startsWith('https:') ? { insecureTls: true } : {}),
     };
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify(config, null, 4)}\n`);
     mkdirSync(join(root, 'caw/tests'), { recursive: true });

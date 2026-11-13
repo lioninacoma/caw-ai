@@ -90,15 +90,15 @@ test('role list, remove and target choice', async (t) => {
     const config = loadConfig(root);
     assert.equal(roleTarget(config, undefined), 'local', 'the only environment that is not production');
     assert.throws(() => roleTarget(config, 'nowhere'), /Unbekannte Umgebung/);
-    // With sites a target is site/environment; the plain environment name is not one.
-    const sites = {
+    // Tenants are environments: two open ones and no single one for Claude means asking; production is never chosen by itself.
+    const tenants = {
         ...config,
-        sites: ['north', 'south'],
-        environments: { dev: { urls: { north: 'https://n.example.com', south: 'https://s.example.com' }, claude: true }, prod: { urls: { north: 'https://n.prod.example.com' }, production: true } },
+        environments: { 'north-dev': { url: 'https://n.example.com', claude: true }, 'south-dev': { extends: 'north-dev', url: 'https://s.example.com' }, prod: { url: 'https://n.prod.example.com', production: true } },
     };
-    assert.equal(roleTarget(sites, 'north/dev'), 'north/dev');
-    assert.throws(() => roleTarget(sites, 'dev'), /Unbekannte Umgebung dev\. Bekannt: north\/dev, south\/dev, north\/prod/);
-    assert.throws(() => roleTarget(sites, undefined), /north\/dev, south\/dev/, 'two open targets: ask');
+    assert.equal(roleTarget(tenants, 'south-dev'), 'south-dev');
+    assert.throws(() => roleTarget(tenants, 'dev'), /Unbekannte Umgebung dev\. Bekannt: north-dev, south-dev, prod/);
+    assert.throws(() => roleTarget(tenants, undefined), /north-dev, south-dev/, 'two open environments: ask');
+    assert.equal(roleTarget({ ...tenants, environments: { 'north-dev': tenants.environments['north-dev'], prod: tenants.environments.prod } }, undefined), 'north-dev');
     const lines = [];
     assert.equal(await roleCommand(root, ['list', '--json'], { out: (line) => lines.push(line) }), 0);
     assert.equal(JSON.parse(lines[0]).roles.length, 1);

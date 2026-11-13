@@ -116,7 +116,7 @@ export const offerAuthRepair = async ({ root, config, error, ask = askYes, claud
     const path = join(root, CONFIG_FILE);
     const raw = readFileSync(path, 'utf8');
     const updated = { ...JSON.parse(raw), auth: next };
-    const issues = validateConfig(updated, root).issues.filter((issue) => /auth/.test(issue));
+    const issues = validateConfig(updated).issues.filter((issue) => /auth/.test(issue));
     if (issues.length > 0) {
         ui.note(t('repair.invalid', { issues: issues.join('; ') }));
         return false;

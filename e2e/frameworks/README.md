@@ -20,7 +20,7 @@ Each scenario is named `<variant>/<scenario>`, e.g. `react/dev` or `angular-zone
 | Scenario | Environment | Expected |
 |---|---|---|
 | `dev` | dev server with HMR on `http://localhost:<port>` | `smoke` passes, `error` fails in the app |
-| `deployed` | production build behind HTTPS (`https://<name>.localhost:844x`, `insecureTls`) | as `dev` |
+| `deployed` | production build behind HTTPS (`https://<name>.localhost:844x`, `insecureTls` on the environment) | as `dev` |
 | `no-option` | deployed build "deployed" plus a running build watch "local", run without `--overlay` | `smoke` passes against the deployed version |
 | `overlay-build` | as `no-option`, with `--overlay build`; for React and webpack the local build has a different chunk split (`CAW_SPLIT=1`). The Angular production build has `subresourceIntegrity`: the local code only arrives because caw-ai takes the `integrity` attributes from the deployed HTML. | `smoke` passes with the page swapped, `error` fails in the app |
 | `build-missing` | `--overlay build` without a local build and without `overlay.start` | exit 2 |

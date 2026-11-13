@@ -2,7 +2,7 @@
 id: fx-schritte
 app: bestellung
 role: kunde
-targets: [local/dev]
+targets: [dev]
 mutates: true
 notes: Stay with your case.
 steps:

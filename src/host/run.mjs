@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 
 import { colorEnabled } from '../shared/color.mjs';
 import { createUi } from '../shared/ui.mjs';
-import { TODO, authOf, browserHosts, buildDevlinkConfig, claudeLimits, isLoopback, sessionPath } from '../shared/config.mjs';
+import { TODO, authOf, buildDevlinkConfig, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
@@ -187,7 +187,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
-    const credentials = readCredentials(root, config, spec.role, checked.target);
+    const credentials = readCredentials(root, config, spec.role, checked.name);
     if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
     const app = config.apps[spec.app];
     // The overlay source must be ready before Chrome starts, otherwise the run would silently test something else. Whatever
@@ -202,7 +202,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             config,
             resolved: checked,
             credentials,
-            hosts: browserHosts(config, checked),
+            hosts: navigationHosts(config, checked.name),
             startUrl: app.startUrl,
             devlinkConfig: buildDevlinkConfig(config, checked, spec.app),
             devlinkConfigPath: join(runDir, 'devlink-config.json'),
@@ -513,7 +513,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         return createAgentHandler({
             session,
             run: task,
-            hosts: browserHosts(config, checked),
+            hosts: navigationHosts(config, checked.name),
             agentDir,
             filesDir: join(root, PROJECT_DIR),
             expand: fillSecrets,
@@ -718,7 +718,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             ...(context === undefined ? {} : { context }),
             ...(config.lintCommand === undefined ? {} : { lintCommand: config.lintCommand }),
         };
-        const reader = createAgentHandler({ session, run: task, hosts: browserHosts(config, checked), agentDir, onVerdict: () => {} });
+        const reader = createAgentHandler({ session, run: task, hosts: navigationHosts(config, checked.name), agentDir, onVerdict: () => {} });
         let doneSignal;
         const done = new Promise((ok) => { doneSignal = ok; });
         let submitted = false;
@@ -860,7 +860,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         else {
             await session.signInAgain({
                 // Always explicit: after a test of another role, that role's account is still signed in.
-                as: readCredentials(root, config, shownSpec.role, checked.target),
+                as: readCredentials(root, config, shownSpec.role, checked.name),
                 start: config.apps[shownSpec.app].startUrl,
             });
         }
@@ -1505,7 +1505,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     handler: createAgentHandler({
                         session,
                         run: { expectations },
-                        hosts: browserHosts(config, checked),
+                        hosts: navigationHosts(config, checked.name),
                         agentDir,
                         onVerdict: (outcome) => { reportBase.expectations = expectations; writeResult(outcome); },
                     }),

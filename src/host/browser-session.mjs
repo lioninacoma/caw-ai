@@ -814,7 +814,7 @@ export const openBrowserSession = async (spec) => {
         // The devlink host only starts the browser after its preflight. That is why sign-in hangs off the launcher.
         const launcher = createPlaywrightLauncher(async (dir) => {
             const httpCredentials = auth.type === 'basic' ? { username: credentials.login, password: credentials.password, origin: new URL(resolved.url).origin } : undefined;
-            raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: config.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
+            raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: resolved.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
             raw.on('close', closedSignal);
             await grantClipboard(raw, resolved.url);
             timing.chrome = Date.now();

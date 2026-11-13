@@ -78,7 +78,7 @@ test('parseRunArgs: each command only knows its own options', () => {
     const created = parseRunArgs('record', [...base, '--role', 'r', '--app', 'a', '--also', 'b', '--also=c', '--claude-timeout=2h', '--max-actions=30']);
     assert.deepEqual([created.role, created.app, created.also, created.timeoutMin, created.maxSteps], ['r', 'a', ['b', 'c'], 120, 30]);
     assert.throws(() => parseRunArgs('run', ['--env', 'x']), /Name des Tests/);
-    // Without --env the command chooses, see chooseTarget.
+    // Without --env the command chooses, see chooseEnv.
     assert.equal(parseRunArgs('run', ['smoke']).target, undefined);
     assert.throws(() => parseRunArgs('record', [...base, 'one-more']), /one-more/);
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '0s']), /--step-timeout muss zwischen 1s und 10m liegen/);
