@@ -35,14 +35,14 @@ const scenario = (id, title, body) => scenarios.push({ id, title, group, body })
  * Every target of a test's recording, in order. Without a written recording (the check run after recording failed) those of the
  * newest draft the recording run left.
  */
-const draftText = (id) => {
-    const runs = join(native, '.caw/runs');
+const draftText = (id, root = native) => {
+    const runs = join(root, '.caw/runs');
     const draft = existsSync(runs) ? readdirSync(runs).filter((name) => name.endsWith(`Z-${id}`) && existsSync(join(runs, name, 'test-draft.yaml'))).sort().at(-1) : undefined;
     return draft === undefined ? '' : readFileSync(join(runs, draft, 'test-draft.yaml'), 'utf8');
 };
-const written = (id) => existsSync(join(native, 'caw/recordings', `${id}.yaml`));
-const targetsOf = (id) => {
-    const steps = written(id) ? loadTest(native, id).steps : (draftText(id) === '' ? [] : parseTest(draftText(id)).steps);
+const written = (id, root = native) => existsSync(join(root, 'caw/recordings', `${id}.yaml`));
+const targetsOf = (id, root = native) => {
+    const steps = written(id, root) ? loadTest(root, id).steps : (draftText(id, root) === '' ? [] : parseTest(draftText(id, root)).steps);
     return steps.flatMap((step) => (step.recording?.actions ?? []).filter(({ target: code }) => code !== undefined).map(({ target: code }) => code));
 };
 const recordingText = (id) => (written(id) ? readFileSync(join(native, 'caw/recordings', `${id}.yaml`), 'utf8') : '');
@@ -56,14 +56,14 @@ const stepBlock = (text, id) => {
     return start === -1 ? '' : text.slice(start, end === -1 ? undefined : end);
 };
 /** What a failed run says about its step: the note of the first failed result. */
-const failureOf = (id) => {
-    const { result } = newestRunOf(native, id);
+const failureOf = (id, root = native) => {
+    const { result } = newestRunOf(root, id);
     return (result?.results ?? []).find(({ status }) => status === 'fail')?.note ?? JSON.stringify(result?.failures ?? result);
 };
 /** A run without chat (as in CI): exit code and the failure note. */
-const runQuietly = async (id, extra = []) => {
-    const code = await run(native, [id, ...target, ...extra]).catch((error) => `error ${error.code}: ${error.message}`);
-    return { code, note: typeof code === 'number' && code !== 0 ? failureOf(id) : '' };
+const runQuietly = async (id, extra = [], root = native) => {
+    const code = await run(root, [id, ...target, ...extra]).catch((error) => `error ${error.code}: ${error.message}`);
+    return { code, note: typeof code === 'number' && code !== 0 ? failureOf(id, root) : '' };
 };
 /**
  * The human for a recording window: follows the test plan when asked, approves the plan, adopts the result. Ends when the
@@ -132,7 +132,7 @@ ${LATER_COMMANDS}
 ${finishOf(['S1', 'S2', 'S3'])}`;
     // The description exists, the recording does not: the human lets Claude follow the plan instead of demonstrating.
     rmSync(join(native, 'caw/recordings', `${ERRANDS}.yaml`), { force: true });
-    writeFileSync(join(native, 'caw/tests', `${ERRANDS}.yaml`), `id: ${ERRANDS}\napp: site\nrole: visitor\ntargets: [test]\nmutates: false\n${ERRANDS_PLAN}\n`);
+    writeFileSync(join(native, 'caw/tests', `${ERRANDS}.yaml`), `id: ${ERRANDS}\nrole: visitor\ntargets: [test]\nmutates: false\n${ERRANDS_PLAN}\n`);
     const h = humans(followAndAdopt, followAndAdopt, followAndAdopt);
     const code = await record(native, [ERRANDS, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
     await h.done();
@@ -184,7 +184,7 @@ ${finishOf(['S1'])}`;
         await page.waitForTimeout(800);
         await page.locator('#toggle').click();
     }, followAndAdopt, followAndAdopt);
-    const recorded = await record(native, [id, ...recordArgs, '--app', 'site'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+    const recorded = await record(native, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
     await h.done();
     verify('N2 recording: Exit 0', recorded === 0, String(recorded));
     const items = lastDemonstration(native, id)?.items ?? [];
@@ -349,7 +349,7 @@ scenario('N10', 'ExtJS: empty Modern buttons recorded as extjs= components (text
     rmSync(join(extRoot, '.caw'), { recursive: true, force: true });
     rmSync(join(extRoot, 'caw'), { recursive: true, force: true });
     mkdirSync(join(extRoot, 'caw/tests'), { recursive: true });
-    writeFileSync(join(extRoot, 'caw/tests', `${EXT}.yaml`), `id: ${EXT}\napp: ext\nrole: visitor\ntargets: [test]\nmutates: false\n${EXT_PLAN}\n`);
+    writeFileSync(join(extRoot, 'caw/tests', `${EXT}.yaml`), `id: ${EXT}\nstart: /ext.html\nrole: visitor\ntargets: [test]\nmutates: false\n${EXT_PLAN}\n`);
     await setCover(false);
     const agent = `A='caw agent'
 ${planOf(EXT_PLAN)}
@@ -456,7 +456,7 @@ steps:
 
 scenario('N10b', 'ExtJS input components (Claude): filtered floating list, disabled fields, grid row, picker by heading, icon button, stacked dialogs; replayed with new ids', async () => {
     freshExt(EXT_DATA);
-    writeFileSync(join(extRoot, 'caw/tests', `${EXT_DATA}.yaml`), `id: ${EXT_DATA}\napp: extdata\nrole: visitor\ntargets: [test]\nmutates: false\n${EXT_DATA_PLAN}\n`);
+    writeFileSync(join(extRoot, 'caw/tests', `${EXT_DATA}.yaml`), `id: ${EXT_DATA}\nrole: visitor\ntargets: [test]\nmutates: false\n${EXT_DATA_PLAN}\n`);
     // Betreff is disabled until Unterbereich is left with an entry: fill on it has to leave Unterbereich first (leaveForDisabled).
     // The filter typed into Bereich must keep its list open for the click on the entry.
     const agent = `A='caw agent'
@@ -561,7 +561,7 @@ ${finishOf(['S1'])}`;
         await page.waitForTimeout(800);
         await page.locator('#toggle').click();
     }, followAndAdopt, followAndAdopt);
-    const code = await record(extRoot, [EXT_DEMO, ...recordArgs, '--app', 'extdata'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+    const code = await record(extRoot, [EXT_DEMO, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
     await h.done();
     verify('N10c recording: Exit 0', code === 0, String(code));
     const acts = (lastDemonstration(extRoot, EXT_DEMO)?.items ?? []).filter(({ action }) => ['click', 'fill', 'press'].includes(action));
@@ -595,6 +595,8 @@ ${finishOf(['S1'])}`;
 // are rendered at the end of the body; unlabelled fields in named groups. Every id differs on each load.
 const ARIA = 'rec-aria';
 const ARIA_DEMO = 'rec-aria-demo';
+// One application per project: a new recording begins at the start path, so the demonstration on aria.html has a project of its own.
+const ariaRoot = join(native, 'aria');
 const SAVE = "getByRole('button', { name: 'Speichern', exact: true })";
 // The recorded shapes (record-locator.mjs, accessible-name.mjs): a row by the cells only it has, everything in a dialog scoped by
 // it (by the beginning of its name when the name holds a record number), an option by role and name, an unnamed field by its group.
@@ -644,18 +646,18 @@ steps:
     name: Seite
     do: Speichere die Seite.
     expect: Die Seite ist gespeichert.`;
-/** Removes what an earlier e2e run left of a test in the native project: its files, its runs and demonstrations. */
-const freshNative = (id) => {
-    mkdirSync(join(native, 'caw/tests'), { recursive: true });
-    rmSync(join(native, 'caw/tests', `${id}.yaml`), { force: true });
-    rmSync(join(native, 'caw/recordings', `${id}.yaml`), { force: true });
-    const runs = join(native, '.caw/runs');
+/** Removes what an earlier e2e run left of a test in the native project (or another root): its files, its runs and demonstrations. */
+const freshNative = (id, root = native) => {
+    mkdirSync(join(root, 'caw/tests'), { recursive: true });
+    rmSync(join(root, 'caw/tests', `${id}.yaml`), { force: true });
+    rmSync(join(root, 'caw/recordings', `${id}.yaml`), { force: true });
+    const runs = join(root, '.caw/runs');
     for (const name of existsSync(runs) ? readdirSync(runs) : []) if (name.endsWith(`Z-${id}`) || name.endsWith(`Z-${id}-demonstration`)) rmSync(join(runs, name), { recursive: true, force: true });
 };
 
 scenario('N10d', 'Plain ARIA (Claude): buttons in named dialogs scoped by them (record number as prefix), grid row by its unique cells, option of a portal list, unnamed fields by their group; replayed with new ids', async () => {
     freshNative(ARIA);
-    writeFileSync(join(native, 'caw/tests', `${ARIA}.yaml`), `id: ${ARIA}\napp: aria\nrole: visitor\ntargets: [test]\nmutates: false\n${ARIA_PLAN}\n`);
+    writeFileSync(join(native, 'caw/tests', `${ARIA}.yaml`), `id: ${ARIA}\nstart: /aria.html\nrole: visitor\ntargets: [test]\nmutates: false\n${ARIA_PLAN}\n`);
     // CSS targets as Claude might write them; the recording names each element by role, name and context instead.
     const agent = `A='caw agent'
 ${planOf(ARIA_PLAN)}
@@ -709,7 +711,7 @@ ${finishOf(['S1', 'S2', 'S3', 'S4', 'S5', 'S6'])}`;
 });
 
 scenario('N10e', 'Plain ARIA (human): the demonstration records dialog buttons, grid row, portal option and grouped fields stably; the recording replays', async () => {
-    freshNative(ARIA_DEMO);
+    freshNative(ARIA_DEMO, ariaRoot);
     // As N10c: the human's demonstration comes first, the scripted agent then does exactly what was demonstrated, with the
     // demonstrated locators, and the check run replays what it recorded.
     const replay = `const { execFileSync } = require('node:child_process');
@@ -758,10 +760,10 @@ ${finishOf(['S1'])}`;
         await page.waitForTimeout(800);
         await page.locator('#toggle').click();
     }, followAndAdopt, followAndAdopt);
-    const code = await record(native, [ARIA_DEMO, ...recordArgs, '--app', 'aria'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+    const code = await record(ariaRoot, [ARIA_DEMO, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
     await h.done();
     verify('N10e recording: Exit 0', code === 0, String(code));
-    const acts = (lastDemonstration(native, ARIA_DEMO)?.items ?? []).filter(({ action }) => ['click', 'fill', 'press'].includes(action));
+    const acts = (lastDemonstration(ariaRoot, ARIA_DEMO)?.items ?? []).filter(({ action }) => ['click', 'fill', 'press'].includes(action));
     print(`     demonstration: ${acts.map(({ action, target: code2, key, value }) => `${action} ${code2 ?? key}${value === undefined ? '' : `=${value}`}`).join(' | ')}`);
     const clicks = acts.filter(({ action }) => action === 'click').map(({ target: code2 }) => code2);
     const fills = acts.filter(({ action }) => action === 'fill');
@@ -780,13 +782,13 @@ ${finishOf(['S1'])}`;
         JSON.stringify(fills.map(({ value }) => value)) === JSON.stringify(['Rueckruf', 'Bei', 'Musterstadt', 'Beispiel, Max']), JSON.stringify(fills.map(({ target: code2, value }) => `${code2}=${value}`)));
     verify('Every action has a stable locator: no id, marker or position', acts.length > 0 && acts.every((item) => item.action === 'press' || (typeof item.target === 'string' && !ARIA_UNSTABLE(item.target))),
         JSON.stringify(acts.filter((item) => item.action !== 'press' && (typeof item.target !== 'string' || ARIA_UNSTABLE(item.target)))));
-    const replayLog = runDirsOf(native, ARIA_DEMO).map((name) => join(native, '.caw/runs', name, 'agent/n10e.txt')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('');
+    const replayLog = runDirsOf(ariaRoot, ARIA_DEMO).map((name) => join(ariaRoot, '.caw/runs', name, 'agent/n10e.txt')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('');
     verify('The agent replayed every demonstrated action', /REPLAY-EXIT=0/.test(replayLog) && !/SKIP /.test(replayLog), replayLog.slice(-600));
-    verify('Recording written: the check run after recording replayed it', written(ARIA_DEMO));
-    const recorded = targetsOf(ARIA_DEMO);
+    verify('Recording written: the check run after recording replayed it', written(ARIA_DEMO, ariaRoot));
+    const recorded = targetsOf(ARIA_DEMO, ariaRoot);
     print(`     recorded: ${recorded.join(' | ')}`);
     verify('The recording uses the demonstrated locators', recorded.length > 0 && recorded.every((code2) => acts.some((item) => item.target === code2)), recorded.filter((code2) => !acts.some((item) => item.target === code2)).join(' | '));
-    const again = await runQuietly(ARIA_DEMO);
+    const again = await runQuietly(ARIA_DEMO, [], ariaRoot);
     verify('Headless run passes with new ids', again.code === 0, `${again.code} ${again.note}`);
 });
 

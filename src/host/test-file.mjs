@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
-import { OVERLAY_KINDS, authOf, isLoopback, isServerUrl, loadConfig, overlayEnvironments, overlayParts } from '../shared/config.mjs';
+import { OVERLAY_KINDS, authOf, isLoopback, isServerUrl, isStartPath, loadConfig, overlayEnvironments, overlayParts } from '../shared/config.mjs';
 import { effectiveEnvironment, testEnvironments } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -23,7 +23,9 @@ import { isPattern } from './patterns.mjs';
 export { RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
 const STEP_ID = /^S[1-9]\d*$/;
-const TOP_FIELDS = ['id', 'app', 'role', 'targets', 'mutates', 'also', 'notes', 'steps', 'knownMessages'];
+const TOP_FIELDS = ['id', 'role', 'targets', 'mutates', 'start', 'notes', 'steps', 'knownMessages'];
+/** Fields from before 1.0: rejected with what replaced them. */
+const TEST_REMOVED = { app: 'config.removed.testApp', also: 'config.removed.also' };
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
@@ -312,12 +314,14 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     if (problems.length > 0) throw invalid(label, problems);
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!isObject(value)) throw invalid(label, [t('config.test.file.object')]);
-    for (const key of Object.keys(value)) if (!TOP_FIELDS.includes(key)) report([key], t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }));
-    // id, app, role and targets may be missing: defaults come from the file name and the config (withDefaults).
-    for (const key of ['id', 'app', 'role']) if (value[key] !== undefined && !isText(value[key])) report([key], t('config.test.text', { key }));
+    for (const key of Object.keys(value).filter((candidate) => !TOP_FIELDS.includes(candidate))) {
+        report([key], TEST_REMOVED[key] === undefined ? t('config.test.unknown', { key, hint: hintFor(key, TOP_FIELDS) }) : t('config.removed.gone', { key, why: t(TEST_REMOVED[key]) }));
+    }
+    // id, role and targets may be missing: defaults come from the file name and the config (withDefaults).
+    for (const key of ['id', 'role']) if (value[key] !== undefined && !isText(value[key])) report([key], t('config.test.text', { key }));
+    if (value.start !== undefined && !isStartPath(value.start)) report(['start'], t('config.test.start'));
     if (value.targets !== undefined && (!Array.isArray(value.targets) || value.targets.length === 0 || !value.targets.every(isText))) report(['targets'], t('config.test.targets'));
     if (typeof value.mutates !== 'boolean') report(['mutates'], t('config.test.mutates'));
-    if (value.also !== undefined && (!Array.isArray(value.also) || !value.also.every(isText))) report(['also'], t('config.test.also'));
     if (value.notes !== undefined && value.notes !== null && typeof value.notes !== 'string') report(['notes'], t('config.test.text', { key: 'notes' }));
     if (description && value.knownMessages !== undefined) report(['knownMessages'], t('config.test.recordingOnly', { key: 'knownMessages' }));
     else if (!knownMessagesOk(value.knownMessages)) report(['knownMessages'], t('config.test.knownMessages'));
@@ -327,11 +331,10 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     if (problems.length > 0) throw invalid(label, problems);
     return withExpectations({
         ...(value.id === undefined ? {} : { id: value.id }),
-        ...(value.app === undefined ? {} : { app: value.app }),
         ...(value.role === undefined ? {} : { role: value.role }),
         ...(value.targets === undefined ? {} : { targets: value.targets }),
         mutates: value.mutates,
-        also: value.also ?? [],
+        ...(value.start === undefined ? {} : { start: value.start }),
         notes: clean(value.notes),
         steps,
         ...(value.knownMessages === undefined ? {} : { knownMessages: value.knownMessages }),
@@ -429,14 +432,14 @@ const onlyKey = (map) => {
 };
 
 /**
- * Whatever the test omits comes from the config: app and role when there is exactly one (role only with sign-in), environments
- * per testEnvironments (non-production, writable ones for a writing test). Anything still missing is reported by checkTest.
+ * Whatever the test omits comes from the config: the role when there is exactly one (only with sign-in), environments per
+ * testEnvironments (non-production, writable ones for a writing test). Anything still missing is reported by checkTest. The start
+ * path stays as written: startPath falls back to the config's.
  */
 export const withDefaults = (spec, config) => {
-    const app = spec.app ?? onlyKey(config.apps);
     const role = spec.role ?? (authOf(config).type === 'none' ? undefined : onlyKey(config.roles));
     const targets = spec.targets ?? testEnvironments(config, { writes: spec.mutates === true });
-    return { ...spec, ...(app === undefined ? {} : { app }), ...(role === undefined ? {} : { role }), targets };
+    return { ...spec, ...(role === undefined ? {} : { role }), targets };
 };
 
 /** The names in a config map for messages, e.g. "admin, tester". */
@@ -470,12 +473,6 @@ export const checkTest = (given, target, config, { overlay, start = false } = {}
     const bad = (message) => new CawError('test-invalid', message);
     const file = `${TEST_DIR}/${spec.id}.yaml`;
     if (!spec.targets.includes(target)) throw bad(t('config.test.check.target', { target: String(target), id: String(spec.id), targets: spec.targets.join(', ') || '–', file }));
-    if (spec.app === undefined) throw bad(t('config.test.check.appMissing', { id: String(spec.id), apps: namesIn(config.apps), config: CONFIG_FILE }));
-    if (config.apps[spec.app] === undefined) throw bad(t('config.test.check.app', { app: String(spec.app), apps: namesIn(config.apps), config: CONFIG_FILE }));
-    if (config.apps[spec.app].startUrl === undefined) throw bad(t('config.test.check.startUrl', { app: String(spec.app) }));
-    for (const name of spec.also ?? []) {
-        if (config.apps[name] === undefined) throw bad(t('config.test.check.also', { app: String(name), apps: namesIn(config.apps), config: CONFIG_FILE }));
-    }
     if (spec.role === undefined && authOf(config).type !== 'none') throw bad(t('config.test.check.role', { id: String(spec.id), type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.role !== undefined && config.roles?.[spec.role] === undefined) throw bad(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.mutates && !resolved.writable) {
@@ -700,16 +697,14 @@ const setSteps = (doc, spec, only, { prune = false, ...options } = {}) => {
 export const renderTest = (spec) => {
     const doc = new Document({
         id: spec.id,
-        app: spec.app,
         role: spec.role,
         targets: spec.targets,
         mutates: spec.mutates,
-        ...(spec.also?.length > 0 ? { also: spec.also } : {}),
+        ...(spec.start === undefined ? {} : { start: spec.start }),
         ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),
     });
     const targets = doc.get('targets', true);
     if (targets !== undefined) targets.flow = true;
-    if (spec.also?.length > 0) doc.get('also', true).flow = true;
     setSteps(doc, spec);
     if (spec.knownMessages !== undefined) doc.set('knownMessages', spec.knownMessages);
     return doc.toString(STRINGIFY);

@@ -67,7 +67,7 @@ export default {
     'session.args.allWithTests': '--all runs every test; name either tests or --all.',
     'session.args.startWithoutOverlay': '--start only works with --overlay: it starts the local code server (overlay.parts.<part>.start).',
     'session.args.stepForm': '{arg}: a step goes after the test as <test>@S<n>, e.g. order@S3.',
-    'session.args.openWithTest': '{flag} only applies to open without a test; a test brings its role and app.',
+    'session.args.openWithTest': '{flag} only applies to open without a test; a test brings its role.',
     'session.args.recordStepMeta': '{flag} only applies when recording for the first time; from a step on the test keeps its metadata.',
     'session.args.targetMissing': '--env is missing: {choices}',
     'session.args.envNone': '{command}: no environment fits. Name one with --env.',

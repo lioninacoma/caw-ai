@@ -38,7 +38,7 @@ const NEIGHBOUR = '../../packages/Model/resources/Const.js';
 test('config: a statics path may leave the app folder with .., but is never absolute', () => {
     const config = (path) => ({
         environments: { dev: { url: 'https://dev.example' } },
-        apps: { web: { startUrl: '/' } },
+        start: '/',
         overlay: { environments: ['dev'], parts: { web: { dir: '.', statics: [{ name: 'Fx/Const.js', path }] } } },
     });
     assert.deepEqual(validateConfig(config(NEIGHBOUR)).issues, []);
@@ -96,7 +96,7 @@ test('overlay status: lists every static with its state; a broken one is static-
     const config = (statics) => ({
         framework: 'web',
         environments: { dev: { url: 'https://dev.example' } },
-        apps: { web: { startUrl: '/' } },
+        start: '/',
         overlay: { environments: ['dev'], parts: { web: { dir: '.', statics } } },
     });
     const fine = await overlayStatus(app, { config: config([{ name: 'Fx/Const.js', path: NEIGHBOUR }]) });

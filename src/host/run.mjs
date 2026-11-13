@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 
 import { colorEnabled } from '../shared/color.mjs';
 import { createUi } from '../shared/ui.mjs';
+import { startPath } from '../shared/environments.mjs';
 import { TODO, authOf, buildDevlinkConfig, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
@@ -189,7 +190,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
     const credentials = readCredentials(root, config, spec.role, checked.name);
     if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
-    const app = config.apps[spec.app];
+    const start = startPath(config, spec);
     // The overlay source must be ready before Chrome starts, otherwise the run would silently test something else. Whatever
     // caw starts for it (dev server, watch) ends with the session.
     const overlay = checked.source === 'overlay' ? await prepareOverlay({ root, config, checked, info }) : null;
@@ -203,8 +204,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             resolved: checked,
             credentials,
             hosts: navigationHosts(config, checked.name),
-            startUrl: app.startUrl,
-            devlinkConfig: buildDevlinkConfig(config, checked, spec.app),
+            startUrl: start,
+            devlinkConfig: buildDevlinkConfig(config, checked, start),
             devlinkConfigPath: join(runDir, 'devlink-config.json'),
             tracePath: join(runDir, 'trace.zip'),
             floatsLogPath: join(runDir, 'floats.log'),
@@ -487,7 +488,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         maxSteps,
         ...(others.length === 0 ? {} : { knownTests: others }),
         ...(context === undefined ? {} : { context }),
-        ...(creating ? { create: { app: spec.app, role: spec.role } } : {}),
+        ...(creating ? { create: { role: spec.role ?? null } } : {}),
         ...(!creating || previous === undefined ? {} : {
             previous: {
                 plan: renderPlan(previous),
@@ -861,7 +862,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             await session.signInAgain({
                 // Always explicit: after a test of another role, that role's account is still signed in.
                 as: readCredentials(root, config, shownSpec.role, checked.name),
-                start: config.apps[shownSpec.app].startUrl,
+                start: startPath(config, shownSpec),
             });
         }
         agentHandler = newAgentHandler({ ...run, expectations: shownSpec.expectations });

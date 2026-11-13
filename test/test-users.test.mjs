@@ -21,7 +21,7 @@ const project = (t, roles = { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEn
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify({
         environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, prod: { url: 'https://example.com', production: true } },
         auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#me' },
-        apps: { web: { startUrl: '/' } },
+        start: '/',
         roles,
     }, null, 4)}\n`);
     return root;
@@ -76,7 +76,7 @@ test('suggestRole and hasTestUser', (t) => {
 test('role list, remove and target choice', async (t) => {
     const root = project(t, { tester: roleEnvNames('tester'), clerk: roleEnvNames('clerk') });
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
-    writeFileSync(join(root, 'caw/tests/order.yaml'), 'app: web\nrole: tester\ntargets: [local]\nmutates: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the start page.\n    expect: The start page is visible.\n');
+    writeFileSync(join(root, 'caw/tests/order.yaml'), 'role: tester\ntargets: [local]\nmutates: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the start page.\n    expect: The start page is visible.\n');
     saveTestUser(root, { role: 'tester', user: 'a', password: 'b' });
     const overview = roleOverview(root, { env: {} });
     assert.deepEqual(overview.roles.map(({ name, testUser, tests }) => [name, testUser, tests]), [['clerk', false, []], ['tester', true, ['order']]]);
@@ -129,7 +129,7 @@ test('record: a test plan with a new role opens the sign-in window first, then t
     const { record } = await import('../src/host/commands.mjs');
     const root = project(t);
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
-    writeFileSync(join(root, 'caw/tests/review.yaml'), 'app: web\nrole: clerk\ntargets: [local]\nmutates: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the review list.\n    expect: The review list is visible.\n');
+    writeFileSync(join(root, 'caw/tests/review.yaml'), 'role: clerk\ntargets: [local]\nmutates: false\nsteps:\n  - id: S1\n    name: Open\n    do: Open the review list.\n    expect: The review list is visible.\n');
     t.mock.method(console, 'log', () => {});
     const stop = new Error('stop after the window');
     let asked;

@@ -29,8 +29,8 @@ const project = (t, { built, changed }) => {
     return root;
 };
 
-const CONFIG = { apps: { web: { startUrl: '/' } }, overlay: { environments: ['dev'], parts: { web: { dir: '.', build: 'dist/local' } } } };
-const SPEC = { id: 'smoke', app: 'web', also: [] };
+const CONFIG = { start: '/', overlay: { environments: ['dev'], parts: { web: { dir: '.', build: 'dist/local' } } } };
+const SPEC = { id: 'smoke' };
 const BUILD = { source: 'overlay', parts: { web: { kind: 'build', dir: 'dist/local', statics: [] } } };
 
 test('Code line: overlay names the source (a server by its address), a build with its time; otherwise the deployed state; validate without time', (t) => {

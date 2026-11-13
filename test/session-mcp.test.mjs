@@ -77,7 +77,7 @@ test('caw_doctor, caw_validate and caw_list: data with counts, problems and reco
     const listed = (await call('caw_list')).structuredContent;
     assert.equal(listed.config, 'ok');
     assert.deepEqual(listed.tests[0], {
-        id: 'bestellung', app: 'web', role: 'tester', targets: ['local'], mutates: false, recording: { state: 'none', stale: [] },
+        id: 'bestellung', start: '/', role: 'tester', targets: ['local'], mutates: false, recording: { state: 'none', stale: [] },
         steps: [{ id: 'S1', name: 'Öffnen', recording: 'none' }, { id: 'S2', name: 'Bestellen', recording: 'none' }],
     });
 
@@ -101,7 +101,7 @@ test('caw_validate and caw_list without a config: config error as data, tests as
     assert.equal(validated.config.issues.length, 1);
     const listed = (await call('caw_list')).structuredContent;
     assert.equal(listed.config, 'missing');
-    assert.equal(listed.tests[0].app, null);
+    assert.equal(listed.tests[0].start, null, 'without a config only what the test says');
 });
 
 test('caw_config: read returns raw config and effective environments, patch goes through writeConfig and refuses an invalid result', async (t) => {
@@ -354,7 +354,7 @@ test('caw_overlay status: overlayStatus in-process, as data; errors come back as
     assert.deepEqual(failed.structuredContent, { state: 'error', code: 'usage', message: 'Kein Ziel' });
     assert.equal((await call('caw_overlay', { action: 'restart' })).isError, true);
     assert.equal((await call('caw_overlay', { action: 'status', part: '--x' })).isError, true);
-    assert.equal((await call('caw_overlay', { action: 'status', app: 'web' })).isError, true, 'app is no field any more');
+    assert.equal((await call('caw_overlay', { action: 'status' })).isError, true, 'app is no field any more');
 });
 
 test('caw_overlay check/apply: runs the CLI with --json, returns its result; falls back to the file; timeout is an error', async (t) => {

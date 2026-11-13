@@ -14,14 +14,6 @@
     "auth": {
         "type": "none"
     },
-    "apps": {
-        "site": {
-            "startUrl": "/"
-        },
-        "aria": {
-            "startUrl": "/aria.html"
-        }
-    },
     "roles": {
         "visitor": {}
     }

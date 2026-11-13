@@ -1,6 +1,7 @@
 {
     "language": "de",
     "framework": "extjs",
+    "start": "/app",
     "agent": {
         "sandbox": "docker"
     },
@@ -27,11 +28,6 @@
         "undefined",
         "favicon"
     ],
-    "apps": {
-        "bestellung": {
-            "startUrl": "/app"
-        }
-    },
     "overlay": {
         "environments": [
             "dev"

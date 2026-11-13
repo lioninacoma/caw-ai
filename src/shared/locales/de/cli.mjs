@@ -26,8 +26,7 @@ Befehle:`,
   record <test>@<S4>                     Ab S4 bis zum Ende neu aufnehmen: Die Schritte davor laufen ohne Claude, dann folgt
                                          Claude dem alten Plan ab S4, du lenkst im Chat. Ab S4 darf sich der Plan ändern,
                                          die Schritte davor bleiben. @S1 nimmt den ganzen Test auf
-      [--role <rolle> --app <app>]       Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
-      [--also <app>]                     Nur beim ersten Mal: Der Weg führt in eine weitere App des Projekts
+      [--role <rolle>]                   Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch,
                                          wird er schreibend
       [--claude-timeout <dauer>]         Zeitlimit für Claude, Standard 60m
@@ -60,7 +59,7 @@ Befehle:`,
                                          ausprobieren, mit Claude entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
                                          zum Einstieg in S4 (seine Navigation läuft, Eingaben und Prüfung bleiben offen).
                                          Lernt nichts, schreibt keine Testdatei
-      [--role <rolle>] [--app <app>]     Nur ohne Test; nicht nötig, wenn die Config nur eine hat
+      [--role <rolle>]                   Nur ohne Test; nicht nötig, wenn die Config nur eine hat
       [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
       [--agent local|docker|session] [--claude-timeout <dauer>] [--max-actions <n>]
       [--overlay[=<teile>]]              wie bei run, auch [--start]`,
@@ -132,7 +131,7 @@ Browser:
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session]',
     'cli.synopsis.role': 'caw role [list [--json] | add [<rolle>] [--env <name>] | remove <rolle> | login <rolle> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>]',
-    'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>] [--app <app>]  oder  caw record <test>@<S4> [--env <name>]',
+    'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Aufruf: {synopsis}',
@@ -214,7 +213,7 @@ Browser:
     'cli.listStepRecorded': 'aufgenommen',
     'cli.listStepStale': 'veraltet',
     'cli.listStepNotRecorded': 'nicht aufgenommen',
-    'cli.listTestHead': '{test}: {app}, Rolle {role}, Ziele {targets}, {mutates}',
+    'cli.listTestHead': '{test}: Start {start}, Rolle {role}, Ziele {targets}, {mutates}',
     'cli.knownTests': 'Bekannte Tests: {tests}.',
     'cli.noTests': 'In caw/tests gibt es noch keine Tests.',
     'cli.knownSteps': 'Schritte: {steps}.',
@@ -241,7 +240,6 @@ Browser:
     'cli.tokenMissing': '{hint} Claude in Docker braucht einen API-Schlüssel aus der Claude Console. Ohne Schlüssel --agent local nutzen: Das läuft mit deiner eigenen Claude-Code-Anmeldung.',
     'cli.and': ' und ',
     'cli.draftMissing': 'Für den neuen Test {id} fehlt {missing}. Aufruf: {hint}',
-    'cli.unknownApp': 'Unbekannte App: {name} (Apps in {config}: {apps})',
     'cli.choiceShow': 'Selbst vorführen',
     'cli.choiceFollow': 'Claude geht dem Testplan nach',
     'cli.choiceReuse': 'Letzte Vorführung verwenden ({time}, {count} Einträge)',
@@ -289,7 +287,7 @@ Browser:
     'cli.failedHint': '{step} ist gescheitert. Ursache klären im Lauf mit Chat: caw run {test} --env {target}',
     'cli.failedHintNoAgent': '{step} ist gescheitert. Die Ursache klärt ein Lauf mit Chat, auf einer Umgebung, auf der Claude arbeiten darf (hier: {environments}).',
     'cli.untilHint': 'Bis zum Einstieg in den Schritt: caw open {test}@{step} --env {target}',
-    'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role, --app, --also und --read-only müssen zur Datei passen oder entfallen.',
+    'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role und --read-only müssen zur Datei passen oder entfallen.',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
     'cli.recordFromReason': 'Neu aufnehmen ab {step} ist gewünscht',
 

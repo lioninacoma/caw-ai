@@ -17,6 +17,8 @@ e2e/native/caw/tests/
 e2e/native/caw/recordings/
 e2e/native/ext/.caw/
 e2e/native/ext/caw/
+e2e/native/aria/.caw/
+e2e/native/aria/caw/
 e2e/.caw-home/
 e2e/.pack/
 

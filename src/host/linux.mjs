@@ -46,16 +46,18 @@ const COMMAND_OPTIONS = {
     // --claude-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
     run: ['--env', '--explain', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--claude-timeout', '--max-actions', '--agent', '--overlay', '--start'],
-    record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
-    open: ['--env', '--role', '--app', '--overlay', '--start', '--agent', '--claude-timeout', '--max-actions', '--step-timeout'],
+    record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
+    open: ['--env', '--role', '--overlay', '--start', '--agent', '--claude-timeout', '--max-actions', '--step-timeout'],
 };
 /** Flags that were renamed before 1.0: the message names the new one instead of listing every allowed option. */
 export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--claude-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
+/** Options from before 1.0 that have no successor: the message says why. */
+export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'config.removed.also' };
 // --start: caw may run overlay.start itself when the local code server is not ready (CI); otherwise it only names the command.
 const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--no-learn', '--all', '--read-only', '--start']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
-    '--env': 'local', '--role': 'admin', '--app': 'web', '--also': 'admin', '--agent': 'local', '--claude-timeout': '60m',
+    '--env': 'local', '--role': 'admin', '--agent': 'local', '--claude-timeout': '60m',
     '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
@@ -109,7 +111,7 @@ export const splitStep = (arg) => {
  */
 export const parseRunArgs = (command, args) => {
     const allowed = COMMAND_OPTIONS[command];
-    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { advise: false, headless: false, noChat: false, learn: true, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }), ...(command === 'record' ? { also: [] } : {}) };
+    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { advise: false, headless: false, noChat: false, learn: true, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }) };
     const rest = [...args];
     while (rest.length > 0) {
         const arg = rest.shift();
@@ -127,6 +129,7 @@ export const parseRunArgs = (command, args) => {
         }
         const [flag, inline] = arg.split(/=(.*)/s);
         if (RENAMED_FLAGS[flag] !== undefined) throw new CawError('usage', t('session.args.renamedOption', { flag, now: RENAMED_FLAGS[flag] }));
+        if (REMOVED_FLAGS[flag] !== undefined) throw new CawError('usage', t('config.removed.gone', { key: flag, why: t(REMOVED_FLAGS[flag]) }));
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
         // --overlay may stand without a value: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. Parts
         // only with =: --overlay=orders,admin:dev, since --overlay orders reads the test orders. checkTest validates the items.
@@ -147,8 +150,6 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--start') options.start = true;
         else if (flag === '--max-actions') options.maxSteps = Number(value);
         else if (flag === '--role') options.role = value;
-        else if (flag === '--app') options.app = value;
-        else if (flag === '--also') options.also.push(value);
         else if (flag === '--step-timeout') options.stepTimeoutSec = parseDuration(flag, value) / 1000;
         else if (flag === '--report') {
             const match = /^junit=(.+)$/.exec(value);
@@ -165,13 +166,13 @@ export const parseRunArgs = (command, args) => {
     if (options.start && options.overlay === undefined) throw new CawError('usage', t('session.args.startWithoutOverlay'));
     if (command !== 'open' && options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
     for (const test of command === 'run' ? options.tests : options.test === undefined ? [] : [options.test]) checkTestId(test);
-    // A test brings its role and app; with a step it also exists already, so its metadata stays as it is.
+    // A test brings its role; with a step it also exists already, so its metadata stays as it is.
     if (command === 'open' && options.test !== undefined) {
-        const clash = [['--role', options.role], ['--app', options.app]].find(([, value]) => value !== undefined);
+        const clash = [['--role', options.role]].find(([, value]) => value !== undefined);
         if (clash !== undefined) throw new CawError('usage', t('session.args.openWithTest', { flag: clash[0] }));
     }
     if (command === 'record' && options.step !== undefined) {
-        const clash = [['--role', options.role], ['--app', options.app], ['--also', options.also.length > 0 ? true : undefined], ['--read-only', options.readOnly]].find(([, value]) => value !== undefined);
+        const clash = [['--role', options.role], ['--read-only', options.readOnly]].find(([, value]) => value !== undefined);
         if (clash !== undefined) throw new CawError('usage', t('session.args.recordStepMeta', { flag: clash[0] }));
     }
     if (options.maxSteps !== undefined && (!Number.isInteger(options.maxSteps) || options.maxSteps <= 0)) throw new CawError('usage', t('session.args.maxActions'));

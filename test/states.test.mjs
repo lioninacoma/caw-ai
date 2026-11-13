@@ -12,22 +12,21 @@ const step = (id) => {
     const plain = { id, name: `Step ${id}`, do: `Do ${id}`, expect: `${id} is there` };
     return { ...plain, recording: { hash: stepHash(plain), recordedOn: 'dev', recordedAt: '2026-11-11T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [{ action: 'click', target: "getByRole('button', { name: 'Weiter', exact: true })" }], check: 'true' } };
 };
-const save = (root, id, role, app) => writeTest(root, composeTest({ id, app, role, targets: ['dev'], source: 'deployed', mutates: false, also: [] }, { notes: '', steps: [step('S1')] }));
+const save = (root, id, role, start) => writeTest(root, composeTest({ id, role, targets: ['dev'], source: 'deployed', mutates: false, ...(start === undefined ? {} : { start }) }, { notes: '', steps: [step('S1')] }));
 const CONFIG = {
     auth: { type: 'form' },
-    apps: { antrag: { startUrl: '/antrag' }, pruefen: { startUrl: '/pruefen' } },
+    start: '/antrag',
     roles: { arzt: { loginEnv: 'L_A', passwordEnv: 'P_A' }, sachbearbeiter: { loginEnv: 'L_S', passwordEnv: 'P_S' } },
 };
 
-test('F1 catalog: tests of all roles and apps of the target, with role; not without an account for the role or the app', (t) => {
+test('F1 catalog: tests of all roles of the target, with role and start path; not without an account for the role', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-states-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    save(root, 'a-arzt', 'arzt', 'antrag');
-    save(root, 'b-sb', 'sachbearbeiter', 'pruefen');
-    save(root, 'c-gast', 'gast', 'antrag');
-    save(root, 'd-fremd', 'arzt', 'unbekannt');
+    save(root, 'a-arzt', 'arzt');
+    save(root, 'b-sb', 'sachbearbeiter', '/pruefen');
+    save(root, 'c-gast', 'gast');
     const all = stateCatalog(root, CONFIG, { target: 'dev' });
-    assert.deepEqual(all.map(({ id, role, app }) => [id, role, app]), [['a-arzt', 'arzt', 'antrag'], ['b-sb', 'sachbearbeiter', 'pruefen']]);
+    assert.deepEqual(all.map(({ id, role, start }) => [id, role, start]), [['a-arzt', 'arzt', '/antrag'], ['b-sb', 'sachbearbeiter', '/pruefen']]);
     assert.deepEqual(stateCatalog(root, CONFIG, { target: 'dev', role: 'sachbearbeiter' }).map(({ id }) => id), ['b-sb']);
     assert.deepEqual(stateCatalog(root, CONFIG, { target: 'prod' }), []);
 });

@@ -1,5 +1,6 @@
 {
     "framework": "web",
+    "start": "/",
     "environments": {
         "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
     },
@@ -9,9 +10,6 @@
         "userSelector": "#username",
         "passwordSelector": "#password",
         "signedInSelector": "[data-testid=user-menu]"
-    },
-    "apps": {
-        "web": { "startUrl": "/" }
     },
     "roles": {
         "tester": { "loginEnv": "CAW_LOGIN_TESTER", "passwordEnv": "CAW_PW_TESTER" }

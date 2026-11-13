@@ -11,7 +11,7 @@ import { claudeLimits, validateConfig } from '../src/shared/config.mjs';
 const BASE = {
     environments: { local: { url: 'http://localhost:5173', claude: true, writable: true } },
     auth: { type: 'none' },
-    apps: { web: { startUrl: '/' } },
+    start: '/',
 };
 
 test('claudeLimits: config agent.model and agent.maxBudgetUsd, the environment wins, invalid values are left out', () => {

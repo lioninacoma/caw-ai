@@ -29,11 +29,10 @@ export const readPlan = (text) => {
 /** Metadata from the tool, content from the agent. Recordings only exist after the run. */
 export const composeTest = (meta, { notes, steps }) => withExpectations({
     id: meta.id,
-    app: meta.app,
     role: meta.role,
     targets: meta.targets,
     mutates: meta.mutates,
-    also: meta.also ?? [],
+    ...(meta.start === undefined ? {} : { start: meta.start }),
     notes,
     steps,
 });

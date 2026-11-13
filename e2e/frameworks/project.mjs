@@ -24,7 +24,6 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
         framework,
         environments: { test: { url, claude: true, writable: true, ...(url.startsWith('https:') ? { insecureTls: true } : {}) } },
         auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
-        apps: { web: { startUrl: '/' } },
         ...(overlay ? { overlay: { environments: ['test'], parts: { web: { dir: '.', ...overlay } } } } : {}),
         roles: { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEnv: 'CAW_PW_TESTER' } },
     };

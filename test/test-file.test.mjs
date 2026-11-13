@@ -14,11 +14,10 @@ const recorded = (id, actions = [], { after, check = `check${id}()` } = {}) => {
     const step = plain(id);
     return { ...step, recording: { hash: stepHash(step), ...(after === undefined ? {} : { after }), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions, check } };
 };
-const meta = { id: 't', app: 'a', role: 'r', targets: ['a/dev'], mutates: true, also: [], notes: '' };
+const meta = { id: 't', role: 'r', targets: ['a/dev'], mutates: true, notes: '' };
 const spec = (...steps) => composeTest(meta, { notes: '', steps });
 
 const YAML = `id: t
-app: a
 role: r
 targets: [a/dev, a/test]
 mutates: false
@@ -76,8 +75,13 @@ test('retry: invalid values are rejected', () => {
 
 test('test file: every shape violation is rejected with its line', () => {
     const cases = [
-        [YAML.replace('mutates: false', 'mutates: maybe'), /Zeile 5: mutates/],
-        [YAML.replace('app: a', 'app: a\nextra: 1'), /Zeile 3: Unbekanntes Feld extra/],
+        [YAML.replace('mutates: false', 'mutates: maybe'), /Zeile 4: mutates/],
+        [YAML.replace('role: r', 'role: r\nextra: 1'), /Zeile 3: Unbekanntes Feld extra/],
+        // Fields from before 1.0: one application per project, overlay parts in the config.
+        [YAML.replace('role: r', 'role: r\napp: web'), /Zeile 3: app gibt es nicht mehr: eine Anwendung je Projekt; ein Test, der auf einer anderen Seite beginnt, setzt „start“/],
+        [YAML.replace('role: r', 'role: r\nalso: [admin]'), /Zeile 3: also gibt es nicht mehr: --overlay bringt jeden Teil/],
+        [YAML.replace('role: r', 'role: r\nstart: orders'), /Zeile 3: start muss ein Pfad sein, der mit \/ beginnt/],
+        [YAML.replace('role: r', 'role: r\nstart: //cdn.example/x'), /start muss ein Pfad sein/],
         [YAML.replace('- id: S2', '- id: S1'), /S1 ist doppelt/],
         [YAML.replace('- id: S2', '- id: 2'), /ID muss wie S1/],
         [YAML.replace('- id: S2', '- id: S2\n    foo: bar'), /Unbekanntes Feld foo im Schritt/],
@@ -92,7 +96,7 @@ test('test file: every shape violation is rejected with its line', () => {
         ['not: [yaml', /Zeile/],
         ['- just\n- a list\n', /Objekt/],
         [YAML.replace('role: r', 'role: r\nrole: x'), /Zeile/],
-        [YAML.replace('app: a', 'app: !!js/function x'), /Zeile/],
+        [YAML.replace('role: r', 'role: !!js/function x'), /Zeile/],
         [`${YAML}---\nid: second\n`, /Zeile/],
         [YAML.replace('expect: There.', 'expect: &m There.').replace('expect: Also there.', 'expect: *m'), /Aliase/],
     ];
@@ -292,7 +296,6 @@ const testRoot = (t, text) => {
 test('writing: only the fixed step changes, comments and other steps stay', (t) => {
     const original = `# Header by the human
 id: t
-app: a
 role: r
 targets: [a/dev]
 mutates: true
@@ -365,7 +368,7 @@ test('two files: the recording shape is checked, orphaned recordings are a hint'
 });
 
 test('writing: re-recording replaces all steps, header and metadata stay, line endings too', (t) => {
-    const root = testRoot(t, `# Header\nid: t\napp: a\nrole: r\ntargets: [a/dev]\nmutates: true\nnotes: old\nsteps:\n  - id: S1\n    name: Old\n    do: ""\n    expect: Old.\n  - id: S2\n    name: Gone\n    do: ""\n    expect: Gone.\n`.replaceAll('\n', '\r\n'));
+    const root = testRoot(t, `# Header\nid: t\nrole: r\ntargets: [a/dev]\nmutates: true\nnotes: old\nsteps:\n  - id: S1\n    name: Old\n    do: ""\n    expect: Old.\n  - id: S2\n    name: Gone\n    do: ""\n    expect: Gone.\n`.replaceAll('\n', '\r\n'));
     const loaded = loadTest(root, 't');
     writeTest(root, { ...loaded, notes: 'new', steps: [recorded('S1')], expectations: [] });
     const raw = readFileSync(testPath(root, 't'), 'utf8');
@@ -388,7 +391,6 @@ test('writing: a new file is readable, an inserted step lands at its position', 
 
 test('writing with prune: the steps before stay byte for byte, removed steps go, comments of kept steps stay', (t) => {
     const original = `id: t
-app: a
 role: r
 targets: [a/dev]
 mutates: true
@@ -444,7 +446,7 @@ test('which code runs is never stored in the test file: the invocation decides (
 });
 
 test('loadTest: id, app, role and targets may be missing, a given id must match', (t) => {
-    const root = testRoot(t, YAML.replace('id: t\n', '').replace('app: a\n', '').replace('role: r\n', '').replace('targets: [a/dev, a/test]\n', ''));
+    const root = testRoot(t, YAML.replace('id: t\n', '').replace('role: r\n', '').replace('targets: [a/dev, a/test]\n', ''));
     const loaded = loadTest(root, 't');
     assert.equal(loaded.id, 't');
     assert.equal(loaded.app, undefined);

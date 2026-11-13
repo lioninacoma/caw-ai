@@ -5,7 +5,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, write
 import { join, resolve } from 'node:path';
 
 import { AUTH_DIR, authOf, loadConfig, loadConfigWithNotes, todoFields } from '../shared/config.mjs';
-import { effectiveEnvironment } from '../shared/environments.mjs';
+import { effectiveEnvironment, startPath } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -24,16 +24,10 @@ const testIds = (root) => {
 
 const namesIn = (map) => Object.keys(map ?? {}).join(', ') || '–';
 
-/** What makes a test unrunnable on every target: app, its startUrl, also and role. Same texts as `testBasics` in commands.mjs. */
+/** What makes a test unrunnable on every environment: its role. Same texts as `testBasics` in commands.mjs. */
 const testBasics = (spec, config) => {
     const problems = [];
     const id = String(spec.id);
-    if (spec.app === undefined) problems.push(t('config.test.check.appMissing', { id, apps: namesIn(config.apps), config: CONFIG_FILE }));
-    else if (config.apps[spec.app] === undefined) problems.push(t('config.test.check.app', { app: String(spec.app), apps: namesIn(config.apps), config: CONFIG_FILE }));
-    else if (config.apps[spec.app].startUrl === undefined) problems.push(t('config.test.check.startUrl', { app: String(spec.app) }));
-    for (const name of spec.also ?? []) {
-        if (config.apps[name] === undefined) problems.push(t('config.test.check.also', { app: String(name), apps: namesIn(config.apps), config: CONFIG_FILE }));
-    }
     if (spec.role === undefined && authOf(config).type !== 'none') problems.push(t('config.test.check.role', { id, type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.role !== undefined && config.roles?.[spec.role] === undefined) problems.push(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     return problems;
@@ -142,7 +136,7 @@ export const listProject = (root) => {
             const stale = new Set(recording.stale);
             return {
                 id,
-                app: spec.app ?? null,
+                start: config === null ? (spec.start ?? null) : startPath(config, spec),
                 role: spec.role ?? null,
                 targets: spec.targets ?? [],
                 mutates: spec.mutates !== false,

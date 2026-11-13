@@ -200,7 +200,7 @@ const pathOf = (address) => new URL(address).pathname + new URL(address).search;
  * Where tests start: the page the human chose at the end. If that still shows a sign-in form (nobody signed in, e.g. with
  * --yes), it is no start page: then the given address, unless that is the sign-in page itself, else "/".
  */
-export const startUrlOf = (url, after) => {
+export const startOf = (url, after) => {
     if (after.login === null || after.login === undefined) return pathOf(after.url);
     const given = pathOf(url);
     return given === pathOf(after.url) ? '/' : given;
@@ -253,7 +253,7 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
         notes.push(t('cli.exploreNoLogin'));
     }
     if (signedIn !== null) suggestion.signedIn = signedIn;
-    if (after !== undefined && after !== null) suggestion.startUrl = startUrlOf(url, after);
+    if (after !== undefined && after !== null) suggestion.start = startOf(url, after);
     const messages = [...new Set([...(before?.messages ?? []), ...(after?.messages ?? [])])];
     if (messages.length > 0) suggestion.messageSelectors = messages;
     const ignore = suggestConsoleIgnore(consoleErrors);
@@ -453,6 +453,6 @@ export const summaryLines = (suggestion) => [
     t('cli.exploreFoundFramework', { framework: suggestion.framework.value }),
     suggestion.auth.type === 'none' ? t('cli.exploreFoundNoLogin') : t('cli.exploreFoundLogin', { type: suggestion.auth.type }),
     ...(suggestion.signedIn === undefined ? [] : [t('cli.exploreFoundSignedIn', { selector: suggestion.signedIn.selector, why: suggestion.signedIn.why })]),
-    ...(suggestion.startUrl === undefined ? [] : [t('cli.exploreFoundStart', { path: suggestion.startUrl })]),
+    ...(suggestion.start === undefined ? [] : [t('cli.exploreFoundStart', { path: suggestion.start })]),
     t('cli.exploreSavedTo', { file: EXPLORE_FILE }),
 ];

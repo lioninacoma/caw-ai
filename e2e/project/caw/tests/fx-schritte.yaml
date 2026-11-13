@@ -1,6 +1,5 @@
 # Header by the human
 id: fx-schritte
-app: bestellung
 role: kunde
 targets: [dev]
 mutates: true

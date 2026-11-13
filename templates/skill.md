@@ -40,13 +40,12 @@ verdict. There are three ways:
   only up to that click runs. If the state is the end of the test, `open <test>` without a step replays the whole test and then
   hands over. Tell the human when the state is reached: The window then belongs to them.
 - **Record or replace** (also when no test matches a state): `record <test> --env <environment>` (an environment with `claude: true`), the first
-  time with `--role <role> --app <app>` (not needed if the config knows only one role or app) and `--also <app>` if the
-  path leads into a second app. Ask for role and app if they are not clear. Start it in the background: The human sits at the chat window, demonstrates, approves the plan and
+  time with `--role <role>` (not needed if the config knows only one role). Ask for the role if it is not clear. Start it in the background: The human sits at the chat window, demonstrates, approves the plan and
   decides at the end. The run writes in the application and costs tokens, so only start it if the human wants it.
 - **Change from a step on:** `record <test>@S<n> --env <environment>` re-records from `S<n>` to the end, even if nothing fails,
   e.g. after a step was changed by hand or newly added, or the application changed on purpose. The steps before replay without
-  Claude and stay as they are; from `S<n>` on steps may be added, removed or reordered. No demonstration, no `--role`, `--app`,
-  `--also` or `--read-only`; `@S1` records the whole test. This too with the human at the chat. A single failed step is fixed
+  Claude and stay as they are; from `S<n>` on steps may be added, removed or reordered. No demonstration, no `--role` or
+  `--read-only`; `@S1` records the whole test. This too with the human at the chat. A single failed step is fixed
   in the run's chat instead ("Fix step").
 
 ### Local code
@@ -112,7 +111,7 @@ you add what can only be learned from the code or from the human:
    role still has no test user.
 6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
    and a running server the overlay check is green. List the parts' `url` and `start` you set under "how I set it up".
-7. **First test, then run it:** write a short read-only test (`caw/tests/<test>.yaml`: `id`, `app`, `role`, `targets`,
+7. **First test, then run it:** write a short read-only test (`caw/tests/<test>.yaml`: `id`, `role`, `targets`,
    `mutates: false`, `steps` with `id`, `name`, `do`, `expect`), e.g. "Sign in and see the start page", check it with `caw_validate`
    and record it with `caw_start` (`command: record`) as the agent in your session (below). Then show the closing list and the result.
 
@@ -137,7 +136,8 @@ its own Claude (`--agent session`). With the tools from `caw mcp` (in `.mcp.json
    `headless` only for `run`. With `overlay` it checks the local code server first and, if it is not ready, returns `state`, `url`,
    `start` and `partDir` instead of starting (then proceed as under "Local code"). You are the agent: caw asks
    neither about tokens nor who demonstrates. `caw_status` also returns the last run's result, step and artefacts.
-5. **Create tests yourself:** Write the test plan `caw/tests/<test>.yaml` (`id`, `app`, `role`, `targets`, `mutates`, `steps` with `id`,
+5. **Create tests yourself:** Write the test plan `caw/tests/<test>.yaml` (`id`, `role`, `targets`, `mutates`, optional `start` when the test
+   begins on another page than the config's `start`, `steps` with `id`,
    `name`, `do`, `expect`; never a recording), check it with `caw_validate`, then `caw_start` with `command: record`: you follow the
    plan. Submit it unchanged with `plan`: a read-only plan (`mutates: false`) you wrote needs no approval, the human only decides at the
    end whether the proven test is adopted; a writing or changed plan gets the approval card. Without a plan file `record` starts with
@@ -293,7 +293,7 @@ between or another order takes back the checks from there on; a later version wi
 
 ## Record a test plan
 
-If `task` contains the field `create`, a new test plan is created. Role and app are fixed. The run writes in the application: Work only
+If `task` contains the field `create`, a new test plan is created. The role is fixed. The run writes in the application: Work only
 with records you created yourself, never with other people's, even if you see them.
 
 1. **Present the plan**, from `demonstration` or `previous`, see below. For that, look at the page via `snapshot` and at the source code.

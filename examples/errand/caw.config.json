@@ -16,11 +16,6 @@
         "submitSelector": "[data-testid=\"login\"]",
         "signedInSelector": "[data-testid=\"user-menu\"]"
     },
-    "apps": {
-        "web": {
-            "startUrl": "/"
-        }
-    },
     "roles": {
         "user": {
             "loginEnv": "CAW_LOGIN_USER",

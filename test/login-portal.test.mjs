@@ -111,7 +111,7 @@ test('explore: sign-in with a random button and a marker for every account, done
     assert.equal(suggestion.auth.userSelector, '#login_user');
     assert.equal(suggestion.auth.submitSelector, undefined, 'suffix changes, Enter submits');
     assert.equal(suggestion.auth.signedInSelector, 'body.signed-in', 'not the admin menu');
-    assert.equal(suggestion.startUrl, '/home');
+    assert.equal(suggestion.start, '/home');
 });
 
 test('loginSteps: wrong password and wrong marker show up after seconds', async (t) => {

@@ -41,7 +41,7 @@ export const todoFields = (config) => Object.entries(isObject(config?.auth) ? co
 /** The saved session of a role on an environment, relative to the project: caw/.auth/<environment>/<role>.json. */
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
-const TOP_FIELDS = ['framework', 'environments', 'auth', 'apps', 'roles', 'messageSelectors', 'requestKeys',
+const TOP_FIELDS = ['framework', 'start', 'environments', 'auth', 'roles', 'messageSelectors', 'requestKeys',
     'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone'];
@@ -56,9 +56,9 @@ export const REMOVED_KEYS = {
     insecureTls: { now: 'environments.<env>.insecureTls' },
     extraAllowedHosts: { now: 'allowHosts' },
     assetUrlPattern: { now: 'overlay.assetUrlPattern' },
+    apps: { why: 'config.removed.apps' },
 };
 const ENVIRONMENT_REMOVED = { urls: { why: 'config.removed.urls' }, overlay: { now: 'overlay.environments' } };
-const APP_REMOVED = { dir: { now: 'overlay.parts.<part>.dir' }, overlay: { now: 'overlay.parts.<part>' } };
 /** The message for a removed key: renamed (now) or gone (why). */
 const removedKey = (path, entry) => (entry.now === undefined ? t('config.removed.gone', { key: path, why: t(entry.why) }) : t('config.removed.renamed', { key: path, now: entry.now }));
 
@@ -301,7 +301,7 @@ export const validateConfig = (given) => {
     checkEnvironments(config, issues, notes);
     checkAuth(config, issues);
     checkRoles(config, issues);
-    if (!isObject(config.apps) || Object.keys(config.apps).length === 0) issues.push(t('config.apps.missing'));
+    if (config.start !== undefined && !isStartPath(config.start)) issues.push(t('config.start'));
     if (config.messageSelectors !== undefined && !(Array.isArray(config.messageSelectors) && config.messageSelectors.every((selector) => typeof selector === 'string' && selector !== ''))) {
         issues.push(t('config.messageSelectors'));
     }
@@ -360,19 +360,6 @@ export const validateConfig = (given) => {
     if (config.effects !== undefined && !(isObject(config.effects) && Object.keys(config.effects).every((key) => key === 'fail')
         && (config.effects.fail === undefined || (Array.isArray(config.effects.fail) && config.effects.fail.every((list) => effectLists.includes(list)))))) {
         issues.push(t('config.effects', { lists: effectLists.join(', ') }));
-    }
-    for (const [name, app] of Object.entries(isObject(config.apps) ? config.apps : {})) {
-        if (!isObject(app)) {
-            issues.push(t('config.app.notObject', { name }));
-            continue;
-        }
-        // Without startUrl the app is only reached along the way, e.g. via a task.
-        if (app.startUrl !== undefined && (typeof app.startUrl !== 'string' || !app.startUrl.startsWith('/'))) issues.push(t('config.app.startUrl', { name }));
-        for (const unknown of Object.keys(app).filter((key) => !APP_KEYS.includes(key))) {
-            issues.push(APP_REMOVED[unknown] === undefined
-                ? t('config.app.unknown', { name, key: unknown, hint: hintFor(unknown, APP_KEYS) })
-                : removedKey(`apps.${name}.${unknown}`, APP_REMOVED[unknown]));
-        }
     }
     if (config.overlay !== undefined) checkOverlay(config, issues);
     // Gaps from init: not wrong, but nothing that signs in can run until they are filled in.
@@ -457,7 +444,8 @@ export const writeConfig = (root, patch, { dryRun = false } = {}) => {
 const relativePath = (value) => typeof value === 'string' && value !== '' && !/^([\\/]|[A-Za-z]:)/.test(value) && !value.split(/[\\/]/).includes('..');
 /** A part's statics path: relative, may leave the part folder with .. (a neighbouring package); the workspace bound is checked at run time. */
 const staticPath = (value) => typeof value === 'string' && value.trim() !== '' && !/^([\\/]|[A-Za-z]:)/.test(value);
-const APP_KEYS = ['startUrl'];
+/** A start path: from the root of the environment, not protocol-relative; query and hash allowed. */
+export const isStartPath = (value) => typeof value === 'string' && value.startsWith('/') && !value.startsWith('//');
 /** A server address: http(s), with host. Like --overlay <url>. */
 export const isServerUrl = (value) => {
     if (typeof value !== 'string' || !/^https?:\/\/[^\s/]+/i.test(value)) return false;
@@ -588,11 +576,10 @@ const uuidOf = (seed) => {
 };
 
 /**
- * Builds the config the devlink host expects from project config and target: environment, start page, login marker. It does not
- * inject local code; the overlay (src/host/overlay.mjs) does that with its own route.
+ * Builds the config the devlink host expects from project config and environment: environment, start path, login marker. It
+ * does not inject local code; the overlay (src/host/overlay.mjs) does that with its own route.
  */
-export const buildDevlinkConfig = (config, resolved, appName) => {
-    const app = config.apps[appName];
+export const buildDevlinkConfig = (config, resolved, start) => {
     const siteUuid = uuidOf(`portal:${resolved.name}`);
     const signedIn = authOf(config).signedInSelector;
     return {
@@ -601,10 +588,10 @@ export const buildDevlinkConfig = (config, resolved, appName) => {
         authMarker: signedIn ?? null,
         portals: [{ uuid: siteUuid, name: resolved.name, url: resolved.url }],
         projects: [{
-            uuid: uuidOf(`project:${appName}`),
-            name: appName,
+            uuid: uuidOf('project:app'),
+            name: 'app',
             active: true,
-            startUrl: app.startUrl,
+            startUrl: start,
         }],
     };
 };

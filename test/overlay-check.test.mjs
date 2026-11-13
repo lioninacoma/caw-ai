@@ -14,7 +14,7 @@ const PATTERN = '[?&]url=repo:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)';
 const config = (part = {}, extra = {}) => ({
     framework: 'extjs',
     environments: { local: { url: 'http://localhost:1841' }, dev: { url: 'https://dev.firma.intern' }, test: { url: 'https://test.firma.intern' } },
-    apps: { web: { startUrl: '/start' } },
+    start: '/start',
     overlay: { environments: ['dev'], parts: { web: { dir: 'app', ...part } } },
     ...extra,
 });

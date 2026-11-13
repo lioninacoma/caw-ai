@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { assetPatterns, buildDevlinkConfig, defaultAssetPattern, environmentsWith, navigationHosts, validateConfig, writeConfig } from '../src/shared/config.mjs';
-import { effectiveEnvironment } from '../src/shared/environments.mjs';
+import { effectiveEnvironment, startPath } from '../src/shared/environments.mjs';
 import { deriveName } from '../src/host/overlay.mjs';
 import { checkTest, withDefaults } from '../src/host/test-file.mjs';
 import { CawError } from '../src/shared/errors.mjs';
@@ -21,7 +21,7 @@ const multiRaw = () => ({
         'sued-abnahme': { extends: 'nord-abnahme', url: 'https://abnahme.sued.example' },
     },
     auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'body.signed-in' },
-    apps: { antrag: { startUrl: '/app#start' } },
+    start: '/app#start',
     overlay: {
         environments: ['nord-dev', 'sued-dev'],
         assetUrlPattern: 'proxy\\?file=([^&#]*)',
@@ -38,7 +38,7 @@ const simple = () => ({
         staging: { url: 'https://staging.shop.example' },
     },
     auth: { type: 'form', path: '/anmelden', userSelector: '#mail', passwordSelector: '#pw', submitSelector: 'button[type=submit]', signedInSelector: '#menu' },
-    apps: { shop: { startUrl: '/shop' } },
+    start: '/shop',
     roles: { kaeufer: { loginEnv: 'A', passwordEnv: 'B' } },
 });
 
@@ -87,7 +87,7 @@ test('config: browser.locale, browser.timezone and readyIgnore', () => {
 
 test('config: required fields, login per type', () => {
     assert.match(issues({}), /environments fehlt/);
-    assert.match(issues({}), /apps fehlt/);
+    assert.doesNotMatch(issues({}), /start/, 'start has a default');
     assert.match(issues({ ...simple(), auth: { type: 'form', path: '/login' } }), /braucht userSelector, passwordSelector, signedInSelector/);
     assert.match(issues({ ...simple(), auth: { ...simple().auth, path: 'ohne-slash' } }), /auth\.path/);
     assert.match(issues({ ...simple(), auth: { type: 'sso' } }), /auth\.type/);
@@ -110,8 +110,10 @@ test('config: keys from before 1.0 name what replaced them; extends between envi
     // The overlay moved into its own block.
     assert.match(issues({ ...simple(), environments: { local: { url: 'https://app.localhost:8443', overlay: true } } }), /environments\.local\.overlay heißt jetzt overlay\.environments/);
     assert.match(issues({ ...simple(), assetUrlPattern: 'a/(.+)' }), /assetUrlPattern heißt jetzt overlay\.assetUrlPattern/);
-    assert.match(issues({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop' } } }), /apps\.shop\.dir heißt jetzt overlay\.parts\.<part>\.dir/);
-    assert.match(issues({ ...simple(), apps: { shop: { startUrl: '/shop', overlay: { build: 'dist' } } } }), /apps\.shop\.overlay heißt jetzt overlay\.parts\.<part>/);
+    // One application per project: apps went, its start path is the top-level start.
+    assert.match(issues({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop' } } }), /apps gibt es nicht mehr: eine Anwendung je Projekt: ihr Startpfad ist „start“/);
+    for (const bad of ['shop', '//cdn.example/x', 3, '']) assert.match(issues({ ...simple(), start: bad }), /start muss ein Pfad sein, der mit \/ beginnt/, String(bad));
+    for (const good of ['/', '/app#orders', '/shop?tab=2']) assert.equal(issues({ ...simple(), start: good }), '', good);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
     assert.match(at({ sued: { extends: 'nord', url: 'https://s.example' } }), /extends „nord“ ist keine Umgebung/);
     assert.match(at({ a: { extends: 'b', url: 'https://a.example' }, b: { extends: 'a', url: 'https://b.example' } }), /extends läuft im Kreis: a → b → a/);
@@ -196,7 +198,7 @@ test('navigationHosts: every non-production environment and the allowed hosts, n
     assert.deepEqual(navigationHosts(simple(), 'local'), ['app.localhost', 'staging.shop.example']);
 });
 
-const SPEC = { id: 'smoke', app: 'antrag', role: 'kunde', targets: ['nord-dev', 'sued-test'], mutates: false, also: [] };
+const SPEC = { id: 'smoke', role: 'kunde', targets: ['nord-dev', 'sued-test'], mutates: false };
 
 test('checkTest: valid; without --overlay always the deployed code, even where the overlay would work', () => {
     assert.equal(checkTest(SPEC, 'nord-dev', multi()).source, 'deployed');
@@ -206,7 +208,7 @@ test('checkTest: valid; without --overlay always the deployed code, even where t
 
 test('checkTest: a role only with a login; with exactly one role it applies', () => {
     const open = withoutAuth();
-    const spec = { id: 'offen', app: 'shop', targets: ['local'], mutates: false, also: [] };
+    const spec = { id: 'offen', targets: ['local'], mutates: false };
     assert.equal(checkTest(spec, 'local', open).source, 'deployed');
     assert.equal(withDefaults(spec, simple()).role, 'kaeufer');
     const two = { ...simple(), roles: { kaeufer: { loginEnv: 'A', passwordEnv: 'B' }, admin: { loginEnv: 'C', passwordEnv: 'D' } } };
@@ -217,12 +219,12 @@ test('checkTest: a role only with a login; with exactly one role it applies', ()
 test('which code runs: deployed unless --overlay; if the overlay is not possible, a usage error with the reason', () => {
     const withParts = (parts, extra = {}) => ({ ...simple(), ...extra, overlay: { environments: ['local'], parts } });
     const own = withParts({ shop: { dir: 'shop', build: 'dist' } });
-    const spec = { id: 'smoke', mutates: false, also: [] };
+    const spec = { id: 'smoke', mutates: false };
     const code = (config, overlay, options = {}) => {
         const { source, parts, skipped } = checkTest(spec, 'local', config, { overlay, ...options });
         return { source, parts, skipped };
     };
-    assert.deepEqual(withDefaults(spec, own), { ...spec, app: 'shop', role: 'kaeufer', targets: ['local', 'staging'] }, 'app, role and targets from the config');
+    assert.deepEqual(withDefaults(spec, own), { ...spec, role: 'kaeufer', targets: ['local', 'staging'] }, 'role and targets from the config');
     assert.equal(checkTest(spec, 'local', own).source, 'deployed', 'never silently local');
     const build = { kind: 'build', dir: 'dist', statics: [] };
     assert.deepEqual(code(own, true), { source: 'overlay', parts: { shop: build }, skipped: [] });
@@ -267,9 +269,6 @@ test('which code runs: deployed unless --overlay; if the overlay is not possible
     assert.throws(() => checkTest(spec, 'box', at('http://localhost:5173'), { overlay: true }), (error) => error.code === 'usage' && /Umgebung box ist ein Dev-Server \(localhost:5173\)/.test(error.message));
     assert.equal(checkTest(spec, 'box', at('https://shop.localhost:8443'), { overlay: true }).source, 'overlay');
     assert.throws(() => checkTest({ ...spec, targets: ['local'] }, 'staging', own), /Trage staging in targets in caw\/tests\/smoke\.yaml ein/);
-    const twoApps = { ...own, apps: { ...own.apps, admin: { startUrl: '/' } } };
-    assert.throws(() => checkTest(spec, 'local', twoApps), /smoke nennt keine app.*\(shop, admin\)/);
-    assert.throws(() => checkTest({ ...spec, app: 'web' }, 'local', twoApps), /Unbekannte App: web \(Apps in caw\.config\.json: shop, admin\)/);
 });
 
 test('config: suggestions for typos, notes on settings without effect', () => {
@@ -290,10 +289,10 @@ test('overlay config: environments, parts, pattern and statics; without --overla
     const pattern = (assetUrlPattern) => issues({ ...own, overlay: { ...own.overlay, assetUrlPattern } });
     assert.match(pattern('/static/js/.+'), /overlay\.assetUrlPattern: "\/static\/js\/\.\+" braucht eine Gruppe/);
     assert.match(pattern('('), /kein gültiger/);
-    const built = buildDevlinkConfig(own, effectiveEnvironment(own, 'local'), 'shop');
+    const built = buildDevlinkConfig(own, effectiveEnvironment(own, 'local'), '/shop');
     assert.equal(built.assetUrlPattern, own.overlay.assetUrlPattern);
     assert.equal(built.authMarker, '#menu');
-    assert.deepEqual(built.projects[0], { uuid: built.projects[0].uuid, name: 'shop', active: true, startUrl: '/shop' }, 'the overlay applies the local code');
+    assert.deepEqual(built.projects[0], { uuid: built.projects[0].uuid, name: 'app', active: true, startUrl: '/shop' }, 'the overlay applies the local code');
     // The block: environments that exist, are not production and not a dev server here; at least one part with a valid name.
     const block = (overlay, environments = {}) => issues({ ...simple(), environments: { ...simple().environments, ...environments }, overlay });
     assert.match(block('x'), /overlay muss ein Objekt mit environments und parts sein/);
@@ -334,7 +333,6 @@ test('overlay config: a part\'s url, start, build and statics are checked up fro
     assert.equal(app({ start: 'npm run watch' }, 'extjs'), '', 'ExtJS: start without url, the watch at its usual address');
     assert.match(app({ url: 'localhost:1841' }, 'extjs'), /overlay\.parts\.shop\.url muss die Adresse/);
     assert.match(app({ build: 'build' }, 'extjs'), /Bei ExtJS kommt der lokale Code vom Sencha-Watch/);
-    assert.match(issues({ ...simple(), apps: { shop: { startUrl: '/shop', localBuild: 'dist' } } }), /App shop: unbekanntes Feld localBuild\. Eine App kennt startUrl/);
 });
 
 test('overlay: file name from the URL, via assetUrlPattern or as the path under the environment', () => {
@@ -400,8 +398,7 @@ test('checkTest: the target must be listed in the test', () => {
     assert.throws(() => checkTest(SPEC, 'nord-test', multi()), /targets/);
 });
 
-test('checkTest: unknown app or role', () => {
-    assert.throws(() => checkTest({ ...SPEC, app: 'x' }, 'nord-dev', multi()), /App/);
+test('checkTest: unknown role', () => {
     assert.throws(() => checkTest({ ...SPEC, role: 'x' }, 'nord-dev', multi()), /Rolle/);
 });
 
@@ -413,13 +410,14 @@ test('checkTest: mutates is rejected on environments without writable', () => {
 });
 
 test('buildDevlinkConfig: environment and start page, no marker without login', () => {
-    const cfg = buildDevlinkConfig(multi(), effectiveEnvironment(multi(), 'nord-dev'), 'antrag');
+    const cfg = buildDevlinkConfig(multi(), effectiveEnvironment(multi(), 'nord-dev'), startPath(multi(), {}));
     assert.equal(cfg.portals[0].url, 'https://dev.nord.example');
     assert.equal(cfg.activePortal, cfg.portals[0].uuid);
     assert.equal(cfg.projects[0].startUrl, '/app#start');
     assert.notEqual(cfg.projects[0].uuid, cfg.portals[0].uuid);
     const open = withoutAuth();
-    assert.equal(buildDevlinkConfig(open, effectiveEnvironment(open, 'local'), 'shop').authMarker, null);
+    assert.equal(buildDevlinkConfig(open, effectiveEnvironment(open, 'local'), '/shop').authMarker, null);
+    assert.equal(startPath(multi(), { start: '/pruefen' }), '/pruefen', 'a test may begin elsewhere');
 });
 
 test('navigationHosts: production only if the run itself is on production, not even via allowHosts', () => {
@@ -445,7 +443,7 @@ test('production: the exact names cannot be bypassed with false', () => {
 
 test('config: broken values lead to messages, not crashes', () => {
     assert.match(validateConfig(null).issues.join(), /JSON-Objekt/);
-    assert.match(issues({ ...simple(), apps: { web: null } }), /App web muss ein Objekt sein/);
+    assert.match(issues({ ...simple(), start: null }), /start muss ein Pfad sein/);
     assert.match(issues({ ...simple(), consoleIgnore: 'foo' }), /consoleIgnore muss eine Liste/);
     assert.match(issues({ ...simple(), sandboxImage: 'node:22\nRUN curl x' }), /Image-Referenz/);
     assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', roles: {} } } }), /roles gibt es dort nicht/);

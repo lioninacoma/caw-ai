@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, authOf, browserLaunch, environmentsWith, loadConfig, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
-import { chooseEnvironment, effectiveEnvironment, environmentCandidates } from '../shared/environments.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, authOf, browserLaunch, environmentsWith, loadConfig, isStartPath, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
+import { chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -126,7 +126,7 @@ export const detectFramework = (root) => detectApp(root).framework;
 
 /**
  * Answers for `init` from the suggestions of `explore` (caw/.explore.json). What explore is unsure about stays at the template default.
- * @returns { framework, url, auth, login, startUrl, messageSelectors, consoleIgnore }
+ * @returns { framework, url, auth, login, start, messageSelectors, consoleIgnore }
  */
 export const answersFromExplore = (suggestion) => {
     if (suggestion === null || typeof suggestion !== 'object' || typeof suggestion.url !== 'string') throw new CawError('usage', t('cli.notExploreResult'));
@@ -138,7 +138,7 @@ export const answersFromExplore = (suggestion) => {
         auth: type,
         login,
         explored: true,
-        ...(suggestion.startUrl === undefined ? {} : { startUrl: suggestion.startUrl }),
+        ...(suggestion.start === undefined ? {} : { start: suggestion.start }),
         ...(suggestion.messageSelectors === undefined ? {} : { messageSelectors: suggestion.messageSelectors }),
         ...(suggestion.consoleIgnore === undefined ? {} : { consoleIgnore: suggestion.consoleIgnore }),
         // Roles the human saved test users for in the explore window.
@@ -223,7 +223,7 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
 };
 
 /** The first config from the answers of `init`; without answers the template with the detected framework. */
-export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), url, auth = 'form', login = {}, explored = false, offline = false, roles, startUrl, messageSelectors, consoleIgnore } = {}) => {
+export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), url, auth = 'form', login = {}, explored = false, offline = false, roles, start, messageSelectors, consoleIgnore } = {}) => {
     if (!FRAMEWORK_NAMES.includes(framework)) throw new CawError('usage', t('cli.unknownFramework', { framework, names: FRAMEWORK_NAMES.join(', ') }));
     if (!['form', 'storageState', 'none'].includes(auth)) throw new CawError('usage', t('cli.initAuthUnknown', { auth }));
     const names = roles ?? [DEFAULT_ROLE];
@@ -252,7 +252,7 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
             else if ((explored || offline) && key !== 'submitSelector') config.auth[key] = TODO;
         }
     }
-    if (typeof startUrl === 'string' && startUrl.startsWith('/')) config.apps.web.startUrl = startUrl;
+    if (isStartPath(start)) config.start = start;
     // Never an overlay block: the overlay is an extension the team adds when it wants local code on a deployed environment.
     if (Array.isArray(messageSelectors) && messageSelectors.length > 0) config.messageSelectors = messageSelectors;
     if (Array.isArray(consoleIgnore) && consoleIgnore.length > 0) config.consoleIgnore = consoleIgnore;
@@ -449,16 +449,10 @@ export const validate = (root) => {
 
 const namesIn = (map) => Object.keys(map ?? {}).join(', ') || '–';
 
-/** What makes a test unrunnable on every target: app, its startUrl, also and role. Texts as in checkTest. */
+/** What makes a test unrunnable on every environment: its role. Texts as in checkTest. */
 const testBasics = (spec, config) => {
     const problems = [];
     const id = String(spec.id);
-    if (spec.app === undefined) problems.push(t('config.test.check.appMissing', { id, apps: namesIn(config.apps), config: CONFIG_FILE }));
-    else if (config.apps[spec.app] === undefined) problems.push(t('config.test.check.app', { app: String(spec.app), apps: namesIn(config.apps), config: CONFIG_FILE }));
-    else if (config.apps[spec.app].startUrl === undefined) problems.push(t('config.test.check.startUrl', { app: String(spec.app) }));
-    for (const name of spec.also ?? []) {
-        if (config.apps[name] === undefined) problems.push(t('config.test.check.also', { app: String(name), apps: namesIn(config.apps), config: CONFIG_FILE }));
-    }
     if (spec.role === undefined && authOf(config).type !== 'none') problems.push(t('config.test.check.role', { id, type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.role !== undefined && config.roles?.[spec.role] === undefined) problems.push(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     return problems;
@@ -530,7 +524,6 @@ const recordHint = (config, id, target) => {
         `caw record ${id}`,
         ...targetFlag,
         ...(onlyKey(config.roles) === undefined ? [`--role <${Object.keys(config.roles ?? {}).join('|') || 'role'}>`] : []),
-        ...(onlyKey(config.apps) === undefined ? [`--app <${Object.keys(config.apps ?? {}).join('|') || 'app'}>`] : []),
     ].join(' ');
 };
 
@@ -604,6 +597,15 @@ const loadChecked = (root, id, given, command, { overlay, start } = {}) => {
 /**
  * Loads tests with the config defaults (id, app, role, targets). Without a readable config as written: list works without one.
  */
+/** The config for display, or {} if it is missing or invalid. */
+const displayConfig = (root) => {
+    try {
+        return loadConfig(root);
+    } catch {
+        return {};
+    }
+};
+
 const testLoader = (root) => {
     let config = null;
     try {
@@ -652,7 +654,7 @@ export const list = (root, args, { out = console.log } = {}) => {
         }
         const spec = testLoader(root)(test);
         const stale = new Set(staleSteps(spec).map(({ id }) => id));
-        out(t('cli.listTestHead', { test: spec.id, app: spec.app, role: spec.role ?? '–', targets: (spec.targets ?? []).join(', '), mutates: mutatesText(spec) }));
+        out(t('cli.listTestHead', { test: spec.id, start: startPath(displayConfig(root), spec), role: spec.role ?? '–', targets: (spec.targets ?? []).join(', '), mutates: mutatesText(spec) }));
         const rows = spec.steps.map((step) => {
             let state = 'cli.listStepRecorded';
             if (step.recording === undefined) state = 'cli.listStepNotRecorded';
@@ -724,24 +726,18 @@ const openSandbox = async (root, { config, containerCommand, adviseCommand, talk
 };
 
 /** A test in the making. The metadata is fixed before Claude starts: the human decides role and target. */
-const draftTest = (root, config, { id, target, role: chosenRole, app: chosenApp, also, readOnly = false }) => {
+const draftTest = (root, config, { id, target, role: chosenRole, readOnly = false }) => {
+    // Without sign-in there is no role; with one, a single role applies, several need --role.
     const role = chosenRole ?? onlyKey(config.roles);
-    const app = chosenApp ?? onlyKey(config.apps);
-    if (role === undefined || app === undefined) {
-        const missing = [...(role === undefined ? ['--role'] : []), ...(app === undefined ? ['--app'] : [])];
-        throw new CawError('usage', t('cli.draftMissing', { id, missing: missing.join(t('cli.and')), hint: recordHint(config, id, target) }));
-    }
-    for (const name of [app, ...also]) {
-        if (config.apps[name] === undefined) throw new CawError('test-invalid', t('cli.unknownApp', { name, apps: Object.keys(config.apps).join(', '), config: CONFIG_FILE }));
+    if (role === undefined && authOf(config).type !== 'none') {
+        throw new CawError('usage', t('cli.draftMissing', { id, missing: '--role', hint: recordHint(config, id, target) }));
     }
     return {
         id,
-        app,
-        role,
+        ...(role === undefined ? {} : { role }),
         targets: [target],
         // Writing unless the human says otherwise; a read-only test that does write becomes writing on adoption.
         mutates: !readOnly,
-        also,
         notes: '',
         steps: [],
         expectations: [],
@@ -1051,12 +1047,10 @@ export const run = async (root, args, deps = {}) => {
 };
 
 /**
- * Do --role, --app, --also or --read-only contradict a test already in the file (e.g. described by Claude)?
- * Repeated matching values are no contradiction.
+ * Do --role or --read-only contradict a test already in the file (e.g. described by Claude)? Repeated matching values are no
+ * contradiction.
  */
-export const contradicts = (spec, { role, app, also = [], readOnly = false }) => (role !== undefined && role !== spec.role)
-    || (app !== undefined && app !== spec.app)
-    || also.some((name) => !(spec.also ?? []).includes(name))
+export const contradicts = (spec, { role, readOnly = false }) => (role !== undefined && role !== spec.role)
     || (readOnly && spec.mutates !== false);
 
 /**
@@ -1099,7 +1093,7 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
 export const record = async (root, args, deps = {}) => {
     const options = parseRunArgs('record', args);
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = deps;
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, app, also, readOnly, agent, overlay, start } = options;
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, readOnly, agent, overlay, start } = options;
     let config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
     if (step !== undefined) {
@@ -1111,8 +1105,8 @@ export const record = async (root, args, deps = {}) => {
     }
     const known = exists ? withDefaults(loadTest(root, test), config) : null;
     const target = chooseEnv(config, known === null ? [] : [known], { env: given, command: 'record', writes: !readOnly });
-    const spec = known ?? draftTest(root, config, { id: test, target, role, app, also, readOnly });
-    if (exists && contradicts(spec, { role, app, also, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
+    const spec = known ?? draftTest(root, config, { id: test, target, role, readOnly });
+    if (exists && contradicts(spec, { role, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
     requireHuman('record', interactive);
     // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
     if (effectiveEnvironment(config, target).claude && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
@@ -1152,8 +1146,7 @@ export const open = async (root, args, deps = {}) => {
     }
     let config = loadConfig(root);
     const target = chooseEnv(config, [], { env: options.target, command: 'open' });
-    // The run is named after the app, e.g. in the window title.
-    const spec = draftTest(root, config, { id: options.app ?? onlyKey(config.apps) ?? OPEN_ID, target, role: options.role, app: options.app, also: [], readOnly: true });
+    const spec = draftTest(root, config, { id: OPEN_ID, target, role: options.role, readOnly: true });
     requireHuman('open', deps.interactive);
     if (await ensureTestUser(root, config, { role: spec.role, target, test: spec.id, interactive: true, capture: deps.captureTestUsers })) config = loadConfig(root);
     const checked = checkTest(spec, target, config, { overlay: options.overlay, start: options.start });

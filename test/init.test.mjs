@@ -96,7 +96,7 @@ test('auth: saves a role\'s session, only with storageState and never on product
     const write = (authConfig) => writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
         environments: { local: { url: 'http://app.localhost:5173', claude: true }, live: { url: 'https://www.shop.example', production: true } },
         auth: authConfig,
-        apps: { web: { startUrl: '/' } },
+        start: '/',
         roles: { kunde: authConfig.type === 'form' ? { loginEnv: 'L', passwordEnv: 'P' } : {} },
     }));
     write({ type: 'storageState', path: '/sso', signedInSelector: '#menu' });
@@ -231,7 +231,9 @@ test('init: detects the framework, takes answers, no role without login', async 
     writeFileSync(join(mono, 'apps', 'web', 'package.json'), JSON.stringify({ dependencies: { '@angular/core': '19' } }));
     assert.deepEqual(detectApp(mono), { framework: 'angular', dir: 'apps/web' });
     init(polyglot, { auth: 'none' });
-    assert.deepEqual(JSON.parse(readFileSync(join(polyglot, 'caw.config.json'), 'utf8')).apps.web, { startUrl: '/' }, 'the folder only matters for an overlay part');
+    const written = JSON.parse(readFileSync(join(polyglot, 'caw.config.json'), 'utf8'));
+    assert.equal(written.start, '/', 'the folder only matters for an overlay part');
+    assert.equal(written.apps, undefined);
     assert.throws(() => starterConfig({ framework: 'svelte' }), /svelte/);
     assert.throws(() => starterConfig({ auth: 'oauth' }), /oauth/);
 
@@ -258,10 +260,10 @@ test('missing test: the record hint only names flags the config does not determi
     const config = JSON.parse(readFileSync(file, 'utf8'));
     const target = Object.keys(config.environments)[0];
     const keep = (map) => Object.fromEntries(Object.entries(map).slice(0, 1));
-    writeFileSync(file, JSON.stringify({ ...config, roles: keep(config.roles), apps: keep(config.apps) }));
+    writeFileSync(file, JSON.stringify({ ...config, roles: keep(config.roles) }));
     await assert.rejects(run(root, ['gibtsnicht', '--env', target]), (error) => error.code === 'test-missing' && error.message.endsWith(`caw record gibtsnicht --env ${target}`));
     const two = { ...config.roles, zweite: Object.values(config.roles)[0] };
-    writeFileSync(file, JSON.stringify({ ...config, roles: two, apps: keep(config.apps) }));
+    writeFileSync(file, JSON.stringify({ ...config, roles: two }));
     await assert.rejects(run(root, ['gibtsnicht', '--env', target]), (error) => error.message.endsWith(`--role <${Object.keys(two).join('|')}>`));
     await assert.rejects(record(root, ['neu', '--env', target]), (error) => error.code === 'usage' && /fehlt --role\. Aufruf: caw record neu/.test(error.message));
 });
@@ -286,13 +288,11 @@ test('skill: only skill and MCP entry, no config; updates an old skill', async (
 
 test('record: options for an already described test may match, only contradictions abort', async () => {
     const { contradicts } = await import('../src/host/commands.mjs');
-    const spec = { role: 'nutzer', app: 'web', also: [], mutates: false };
+    const spec = { role: 'nutzer', mutates: false };
     assert.equal(contradicts(spec, { readOnly: true }), false, 'as in the npm script Claude created');
-    assert.equal(contradicts(spec, { role: 'nutzer', app: 'web' }), false);
+    assert.equal(contradicts(spec, { role: 'nutzer' }), false);
     assert.equal(contradicts(spec, {}), false);
     assert.equal(contradicts(spec, { role: 'admin' }), true);
-    assert.equal(contradicts(spec, { app: 'admin' }), true);
-    assert.equal(contradicts(spec, { also: ['zweite'] }), true);
     assert.equal(contradicts({ ...spec, mutates: true }, { readOnly: true }), true);
 });
 
@@ -357,7 +357,7 @@ test('validate: code per test and target, where an overlay is possible, and TODO
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
         environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true } },
         auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
-        apps: { web: { startUrl: '/' } },
+        start: '/',
         overlay: { environments: ['dev'], parts: { web: { dir: '.', build: 'dist' } } },
         roles: { tester: { loginEnv: 'A', passwordEnv: 'B' } },
     }));
@@ -403,7 +403,7 @@ test('validate: code per test and target, where an overlay is possible, and TODO
 
 test('run and record: TODO in the login aborts before Chrome and Claude', async () => {
     const { openRunSession } = await import('../src/host/run.mjs');
-    const config = { auth: { type: 'form', path: '/', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'TODO' }, roles: { tester: {} }, apps: {} };
+    const config = { auth: { type: 'form', path: '/', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'TODO' }, roles: { tester: {} } };
     await assert.rejects(openRunSession({ root: tmpdir(), config, spec: { role: 'tester' }, checked: { target: 'local', url: 'http://localhost:1' } }),
         (error) => error.code === 'config-invalid' && /auth\.signedInSelector steht noch auf TODO/.test(error.message));
 });
@@ -412,7 +412,8 @@ test('init never writes an overlay block, not even for ExtJS: the overlay is an 
     const config = starterConfig({ framework: 'extjs', url: 'https://dev.firma.intern', auth: 'none' });
     assert.equal(config.framework, 'extjs');
     assert.equal(config.overlay, undefined);
-    assert.deepEqual(config.apps.web, { startUrl: '/' });
+    assert.equal(config.start, '/');
+    assert.equal(config.apps, undefined);
     assert.equal(starterConfig({ framework: 'react' }).overlay, undefined);
 });
 
@@ -424,7 +425,7 @@ test('doctor: overlay lines for ExtJS (bootstrap.json, local code server, last o
     const config = {
         framework: 'extjs',
         environments: { dev: { url: 'https://dev.firma.intern' } },
-        apps: { web: { startUrl: '/' } },
+        start: '/',
         overlay: { environments: ['dev'], parts: { web: { dir: 'app', url: 'http://localhost:1841/', start: 'npm run watch' } } },
     };
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));

@@ -117,7 +117,7 @@ test('Test file: recording.effects is read and written, the hash stays', () => {
     const step = { id: 'S1', name: 'Laden', do: 'Lade', expect: 'Da' };
     const effects = { runs: 2, actions: [{ action: 1, controls: ['+ input "Bereich*" filled', '- input "Bereich*" empty'], requests: ['GET /a 200'] }] };
     const recording = { hash: stepHash(step), recordedOn: 'a/dev', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: 'true', effects };
-    const spec = composeTest({ id: 't', app: 'a', role: 'r', targets: ['a/dev'], source: 'overlay', mutates: false, also: [] }, { steps: [{ ...step, recording }] });
+    const spec = composeTest({ id: 't', role: 'r', targets: ['a/dev'], source: 'overlay', mutates: false }, { steps: [{ ...step, recording }] });
     const text = renderTest(spec);
     const back = parseTest(text);
     assert.deepEqual(back.steps[0].recording.effects, effects);

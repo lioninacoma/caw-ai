@@ -1,0 +1,21 @@
+{
+    "language": "de",
+    "framework": "web",
+    "start": "/aria.html",
+    "agent": {
+        "sandbox": "docker"
+    },
+    "environments": {
+        "test": {
+            "url": "http://native.localhost:8451",
+            "claude": true,
+            "writable": true
+        }
+    },
+    "auth": {
+        "type": "none"
+    },
+    "roles": {
+        "visitor": {}
+    }
+}

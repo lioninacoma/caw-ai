@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
 
-import { buildSuggestions, explore, keepStable, startUrlOf, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
+import { buildSuggestions, explore, keepStable, startOf, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
 import { answersFromExplore, starterConfig } from '../src/host/commands.mjs';
 import { validateConfig } from '../src/shared/config.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -81,7 +81,7 @@ test('explore: suggestions for form, SSO and no sign-in; console noise without n
     assert.equal(form.url, 'http://app.localhost:5173');
     assert.deepEqual(form.framework, { value: 'react', confidence: 'certain', why: 'zur Laufzeit erkannt' });
     assert.deepEqual(form.auth, { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' });
-    assert.equal(form.startUrl, '/decks');
+    assert.equal(form.start, '/decks');
     assert.equal(form.consoleIgnore, undefined, 'HTTP errors before sign-in do not become consoleIgnore, that would hide them all');
     const sso = buildSuggestions({ url: 'https://app.example.com', seen: { before: { ...home, markers: [] }, loginPage: null, after: home }, foreignHosts: ['login.microsoftonline.com'] });
     assert.equal(sso.auth.type, 'storageState');
@@ -105,12 +105,12 @@ test('explore: suggestions for form, SSO and no sign-in; console noise without n
 });
 
 test('init --from: suggestions from explore yield a valid config', () => {
-    const suggestion = { url: 'http://app.localhost:5173', framework: { value: 'react' }, auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', submitSelector: '[data-testid="login-submit"]', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' }, startUrl: '/decks', messageSelectors: ['[role=status]'] };
+    const suggestion = { url: 'http://app.localhost:5173', framework: { value: 'react' }, auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', submitSelector: '[data-testid="login-submit"]', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' }, start: '/decks', messageSelectors: ['[role=status]'] };
     const config = starterConfig(answersFromExplore(suggestion));
     assert.equal(config.framework, 'react');
     assert.equal(config.environments.local.url, 'http://app.localhost:5173');
     assert.deepEqual(config.auth, { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', signedInSelector: '[data-testid="user-menu"]', submitSelector: '[data-testid="login-submit"]' });
-    assert.equal(config.apps.web.startUrl, '/decks');
+    assert.equal(config.start, '/decks');
     assert.deepEqual(config.messageSelectors, ['[role=status]']);
     assert.deepEqual(validateConfig(config, tmpdir()).issues.filter((issue) => !/dir|environments\.staging/.test(issue)), []);
     const without = starterConfig(answersFromExplore({ url: 'http://app.localhost:5173', framework: { value: 'web' }, auth: { type: 'none' } }));
@@ -156,12 +156,12 @@ test('explore without signing in (--yes on an app with a login): the sign-in pag
     const loginPage = { url: 'http://localhost:4174/login', login: { userSelector: '#user', passwordSelector: '#password', submitSelector: null }, markers: [], messages: [] };
     // Nobody signed in: the page at the end is still the sign-in page.
     const unattended = buildSuggestions({ url: 'http://localhost:4174', seen: { before: loginPage, loginPage, after: loginPage } });
-    assert.equal(unattended.startUrl, '/');
+    assert.equal(unattended.start, '/');
     assert.equal(unattended.auth.path, '/login');
-    assert.equal(startUrlOf('http://localhost:4174/app/', loginPage), '/app/', 'the given address, if it is not the sign-in page');
-    assert.equal(startUrlOf('http://localhost:4174/login', loginPage), '/');
+    assert.equal(startOf('http://localhost:4174/app/', loginPage), '/app/', 'the given address, if it is not the sign-in page');
+    assert.equal(startOf('http://localhost:4174/login', loginPage), '/');
     // Signed in: the page the human chose.
-    assert.equal(startUrlOf('http://localhost:4174', { url: 'http://localhost:4174/todos?day=1', login: null }), '/todos?day=1');
-    // init then writes "/" as startUrl.
-    assert.equal(starterConfig({ ...answersFromExplore(unattended), language: 'de' }).apps.web.startUrl, '/');
+    assert.equal(startOf('http://localhost:4174', { url: 'http://localhost:4174/todos?day=1', login: null }), '/todos?day=1');
+    // init then writes "/" as start.
+    assert.equal(starterConfig({ ...answersFromExplore(unattended), language: 'de' }).start, '/');
 });

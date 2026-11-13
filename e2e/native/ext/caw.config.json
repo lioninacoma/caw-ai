@@ -1,6 +1,7 @@
 {
     "language": "de",
     "framework": "extjs",
+    "start": "/ext-data.html",
     "agent": {
         "sandbox": "docker"
     },
@@ -13,14 +14,6 @@
     },
     "auth": {
         "type": "none"
-    },
-    "apps": {
-        "ext": {
-            "startUrl": "/ext.html"
-        },
-        "extdata": {
-            "startUrl": "/ext-data.html"
-        }
     },
     "roles": {
         "visitor": {}

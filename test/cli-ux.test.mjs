@@ -32,7 +32,7 @@ const project = (t) => {
     config.environments.staging = { url: 'https://staging.shop.intern' };
     writeFileSync(configFile, JSON.stringify(config, null, 4));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
-    const base = { app: 'web', role: 'tester', source: 'deployed', also: [], notes: '', knownMessages: undefined };
+    const base = { role: 'tester', source: 'deployed', notes: '', knownMessages: undefined };
     writeTest(root, { ...base, id: 'anmelden', targets: ['local'], mutates: false, steps: [recorded(step('S1', 'Maske')), recorded(step('S2', 'Start'))] });
     writeTest(root, { ...base, id: 'bestellen', targets: ['local', 'staging'], mutates: true, steps: [recorded(step('S1', 'Liste')), { ...recorded(step('S2', 'Neu')), name: 'geaendert' }, step('S3', 'Ende')] });
     writeTest(root, { ...base, id: 'neu', targets: ['local'], mutates: true, steps: [step('S1', 'Eins')] });
@@ -113,7 +113,7 @@ test('list: per test targets, recording state and writes; with a test one line p
     assert.match(lines.find((line) => line.startsWith('neu')), /nicht aufgenommen/);
     lines.length = 0;
     list(root, ['bestellen'], { out });
-    assert.match(lines[0], /bestellen: web, Rolle tester, Ziele local, staging, schreibt/);
+    assert.match(lines[0], /bestellen: Start \/, Rolle tester, Ziele local, staging, schreibt/);
     assert.match(lines[1], /^\s+S1\s+Liste\s+\(aufgenommen\)$/);
     assert.match(lines[2], /^\s+S2\s+geaendert\s+\(veraltet\)$/);
     assert.match(lines[3], /^\s+S3\s+Ende\s+\(nicht aufgenommen\)$/);
@@ -132,11 +132,10 @@ test('list without caw.config.json reports the missing config like every other c
 
 test('validate: all problems of a test at once, YAML positions only once', (t) => {
     const root = project(t);
-    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'app: gibtsnicht\nrole: geist\ntargets: [qa]\nmutates: false\nsteps:\n  - id: S1\n    name: Eins\n    do: a\n    expect: b\n');
+    writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'role: geist\ntargets: [qa]\nmutates: false\nsteps:\n  - id: S1\n    name: Eins\n    do: a\n    expect: b\n');
     t.mock.method(process.stdout, 'write', () => true);
     assert.throws(() => validate(root), (error) => {
         assert.equal(error.code, 'test-invalid');
-        assert.match(error.message, /kaputt\.yaml: Unbekannte App: gibtsnicht/);
         assert.match(error.message, /kaputt\.yaml: Unbekannte Rolle: geist/);
         assert.match(error.message, /kaputt\.yaml \(qa\): Umgebung „qa“ gibt es nicht/);
         return true;
@@ -307,7 +306,7 @@ test('CLI: unknown command with suggestion, help everywhere with -h, exit codes'
     assert.match(renamed.stderr, /--target heißt jetzt --env\./);
     const usage = cli('record', 'x@s3');
     assert.equal(usage.status, 3);
-    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] \[--app <app>\] {2}oder {2}caw record <test>@<S4> \[--env <name>\]\n\[caw\] \(code: usage, exit 3\)/);
+    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] {2}oder {2}caw record <test>@<S4> \[--env <name>\]\n\[caw\] \(code: usage, exit 3\)/);
     const unknown = cli('qqqq', 'x', 'S2');
     assert.equal(unknown.status, 3);
     assert.match(unknown.stderr, /Unbekannter Befehl: qqqq\./);

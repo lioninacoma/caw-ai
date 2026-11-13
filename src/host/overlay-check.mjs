@@ -138,9 +138,7 @@ export const overlayCheck = async (root, { target, part, role, apply = false, st
         return save(root, { ...base, state: 'no-expected', ...EMPTY(), message: t('cli.overlayCheck.noExpected', { framework: status.framework }), ...server });
     }
     const chosenRole = role ?? deps.role ?? (authOf(config).type === 'none' ? undefined : Object.keys(config.roles ?? {})[0]);
-    // The page to open: the app named like the part, otherwise the only app (until the config has one start path).
-    const chosenApp = config.apps?.[chosenPart] === undefined ? onlyKey(config.apps) : chosenPart;
-    const spec = { id: CHECK_ID, app: chosenApp, ...(chosenRole === undefined ? {} : { role: chosenRole }), targets: [chosenTarget], mutates: false, also: [], notes: '', steps: [], expectations: [] };
+    const spec = { id: CHECK_ID, ...(chosenRole === undefined ? {} : { role: chosenRole }), targets: [chosenTarget], mutates: false, notes: '', steps: [], expectations: [] };
     // Only this part comes from local code; a watch found on another port is used directly.
     const checked = checkTest(spec, chosenTarget, config, { overlay: chosenPart, start });
     if (status.foundUrl !== undefined) checked.parts[chosenPart] = overlayChoice(config, chosenPart, status.foundUrl, { start });

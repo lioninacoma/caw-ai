@@ -461,7 +461,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_list',
-        description: 'caw list as data: per test app, role, targets, whether it writes, and the recording state of each step. No tokens.',
+        description: 'caw list as data: per test the start path, role, targets, whether it writes, and the recording state of each step. No tokens.',
         inputSchema: EMPTY,
         call: async () => {
             const { listProject } = await import('./project-data.mjs');
