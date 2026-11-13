@@ -16,6 +16,7 @@ const target = ['--target', 'test', '--step-timeout', '5'];
 const recordArgs = ['--target', 'test', '--timeout', '3', '--step-timeout', '5'];
 let server = null;
 const group = {
+    language: 'de',
     setup: async () => {
         // Old runs would offer their demonstration to a new recording; old rec-* tests would be re-recorded instead of created.
         rmSync(join(native, '.caw/runs'), { recursive: true, force: true });

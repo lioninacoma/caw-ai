@@ -28,6 +28,7 @@ const matrix = () => new Promise((resolve) => {
 
 export const scenarios = [{
     id: 'N14',
+    group: { language: 'de' },
     title: 'Framework matrix with recordings as locators: dev, deployed and overlay per framework',
     body: async () => {
         const { code, lines } = await matrix();

@@ -18,6 +18,7 @@ e2e/native/caw/recordings/
 e2e/native/ext/.caw/
 e2e/native/ext/caw/
 e2e/.caw-home/
+e2e/.pack/
 
 # Framework test projects (e2e/frameworks): dependencies, builds, run data
 e2e/frameworks/**/node_modules/

@@ -1,0 +1,10 @@
+# The smallest stack: proves the Docker route, port publishing to 127.0.0.1 and teardown (scenario INF1).
+services:
+  web:
+    image: nginx:1.27.3-alpine
+    ports:
+      - "127.0.0.1:18099:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 2s
+      retries: 15

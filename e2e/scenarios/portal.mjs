@@ -19,6 +19,7 @@ const PORTAL_URL = `https://portal.localhost:${PORTAL_PORT}`;
 const hits = join(here, 'portal-hits.log');
 let portal = null;
 const group = {
+    language: 'de',
     setup: async () => {
         rmSync(join(fake, 'caw/runbooks'), { recursive: true, force: true });
         rmSync(join(fake, 'caw/replays'), { recursive: true, force: true });

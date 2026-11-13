@@ -2,9 +2,10 @@
 // chat; Claude never runs.
 //   node e2e/native-e2e.mjs [ids]      e.g. "N1", "A,B,N6", "N*"; without ids every scenario
 // Usually started through the watchdog, which aborts a hanging run: pwsh e2e/watchdog.ps1 N1 e2e.log
-// Scenarios: scenarios/native.mjs (N…, the native fixture site e2e/native), scenarios/portal.mjs (letters and digits, the fake
+// Scenarios: scenarios/infra.mjs (INF…, the harness: Docker stacks, ports, packed package, MCP), scenarios/native.mjs (N…, the native fixture site e2e/native), scenarios/portal.mjs (letters and digits, the fake
 // portal e2e/portal.mjs), scenarios/matrix.mjs (N14, the framework matrix e2e/frameworks).
 import { print, runScenarios, tally } from './harness.mjs';
+import { scenarios as infra } from './scenarios/infra.mjs';
 import { scenarios as matrix } from './scenarios/matrix.mjs';
 import { scenarios as native } from './scenarios/native.mjs';
 import { scenarios as portal } from './scenarios/portal.mjs';
@@ -16,6 +17,6 @@ setTimeout(() => {
     process.exit(9);
 }, LIMIT_MS).unref();
 
-await runScenarios([...native, ...portal, ...matrix], process.argv.slice(2).join(','));
-print(`RESULT OK=${tally.ok} FAIL=${tally.fail}`);
+await runScenarios([...infra, ...native, ...portal, ...matrix], process.argv.slice(2).join(','));
+print(`RESULT OK=${tally.ok} FAIL=${tally.fail} SKIP=${tally.skip}`);
 process.exit(tally.fail > 0 ? 1 : 0);

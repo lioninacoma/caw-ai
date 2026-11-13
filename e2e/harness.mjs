@@ -6,10 +6,12 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { portTaken } from './infra.mjs';
+
 // Runs without `interactive: true` behave like CI: no chat. The chat is no longer tied to the terminal.
 process.env.CI ??= '1';
-// The checks read the German texts; child processes inherit the language.
-process.env.CAW_LANG = 'de';
+// The language of a group's checks (`language`, default English); child processes inherit it. Set again per group.
+process.env.CAW_LANG = 'en';
 export const here = dirname(fileURLToPath(import.meta.url));
 // Never write personal settings (e.g. animations off) to the real user folder.
 process.env.CAW_AI_HOME = join(here, '.caw-home');
@@ -37,7 +39,7 @@ export const print = (line) => {
     console.log(line);
     appendFileSync(results, `${line}\n`);
 };
-export const tally = { ok: 0, fail: 0 };
+export const tally = { ok: 0, fail: 0, skip: 0 };
 export const verify = (name, ok, detail = '') => {
     tally[ok ? 'ok' : 'fail'] += 1;
     print(`${ok ? 'OK  ' : 'FAIL'} ${name} ${detail}`);
@@ -50,12 +52,6 @@ export const freePort = () => new Promise((resolve) => {
         const { port } = server.address();
         server.close(() => resolve(port));
     });
-});
-/** Whether something already listens on 127.0.0.1:port. */
-const portTaken = (port) => new Promise((resolve) => {
-    const socket = createServer();
-    socket.once('error', () => resolve(true));
-    socket.listen(port, '127.0.0.1', () => socket.close(() => resolve(false)));
 });
 /** Waits until something answers on 127.0.0.1:port. */
 export const waitForPort = async (port, timeoutMs = 15000) => {
@@ -181,9 +177,12 @@ export const finishOf = (ids, omit = '[]') => `echo '{"expectations":[${ids.map(
 // ---- Scenarios
 
 /**
- * Runs the chosen scenarios one after another, in the given order. A scenario is { id, title, body, group }; a group is
- * { setup, teardown }: set up before its first scenario and torn down before the next group starts (servers of different groups
- * may share a port). A failing scenario is reported and the next one runs.
+ * Runs the chosen scenarios one after another, in the given order. A scenario is { id, title, body, group, gated }; a group is
+ * { setup, teardown, language }: set up before its first scenario and torn down before the next group starts (servers of
+ * different groups may share a port). `language` is the UI language its checks read ('en' unless given). A scenario with
+ * `gated: '<open point>'` waits for an owner decision: it is counted as SKIP and does not run. `optIn: 'CAW_E2E_…'` runs only when
+ * that variable is "1" (e.g. CAW_E2E_LAN for a listener on the network interface), otherwise SKIP. A failing scenario is
+ * reported and the next one runs.
  * @param filter ids separated by commas or spaces (e.g. "A,N1"); a trailing * matches a prefix ("N*"); empty runs all
  */
 export const runScenarios = async (scenarios, filter = '') => {
@@ -199,10 +198,23 @@ export const runScenarios = async (scenarios, filter = '') => {
     try {
         for (const scenario of scenarios.filter(({ id }) => wanted.length === 0 || wanted.some((want) => matches(id, want)))) {
             print(`##### ${scenario.id} ${scenario.title}`);
+            if (scenario.gated !== undefined) {
+                tally.skip += 1;
+                print(`SKIP ${scenario.id} gated by ${scenario.gated}`);
+                continue;
+            }
+            if (scenario.optIn !== undefined && process.env[scenario.optIn] !== '1') {
+                tally.skip += 1;
+                print(`SKIP ${scenario.id} needs ${scenario.optIn}=1`);
+                continue;
+            }
             try {
                 if (scenario.group !== current) {
                     await leave();
                     current = scenario.group ?? null;
+                    const language = current?.language ?? 'en';
+                    process.env.CAW_LANG = language;
+                    setLanguage(language);
                     await current?.setup?.();
                 }
                 await scenario.body();
