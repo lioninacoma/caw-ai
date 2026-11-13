@@ -1,5 +1,5 @@
 // The tests of the native fixture site, recordings written by hand as `record` writes them: one Playwright locator per target.
-// writeTests() rewrites them before the scenarios; `caw-ai run` replays them without Claude.
+// writeTests() rewrites them before the scenarios; `caw run` replays them without Claude.
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 

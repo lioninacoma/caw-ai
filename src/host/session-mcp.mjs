@@ -1,4 +1,4 @@
-// `caw-ai mcp`: tools for the developer's Claude Code session. It sets up the project, checks it, starts runs, takes over the
+// `caw mcp`: tools for the developer's Claude Code session. It sets up the project, checks it, starts runs, takes over the
 // agent role (--agent session) and reads what the human selected in the workbench. Registered in the project's .mcp.json.
 // stdout and stdin are the protocol channel: nothing here prints or asks. Commands that print or open a browser run as a
 // spawned CLI; everything else uses data functions.
@@ -14,7 +14,7 @@ import { RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
 
-const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
+const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
 const START_COMMANDS = ['run', 'record', 'open'];
 const LOG_PREFIX = 'session-';
 const TAIL_LINES = 40;
@@ -164,7 +164,7 @@ export const startArgs = (input) => {
     if (given.includes('headless') && input.headless !== true) throw new Error(t('run.mcp.fieldText', { field: 'headless' }));
     const args = [];
     if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
-    if (input.target !== undefined) args.push('--target', input.target);
+    if (input.target !== undefined) args.push('--env', input.target);
     if (given.includes('overlay')) args.push(input.overlay === true ? '--overlay' : `--overlay=${input.overlay}`);
     if (input.headless === true) args.push('--headless');
     return args;
@@ -179,13 +179,13 @@ const overlayAt = (args) => {
     return isOverlayValue(next) ? { index, length: 2, value: next } : { index, length: 1, value: true };
 };
 
-/** --target, whether --overlay is set (and its value) and the test (first word, without `@<step>`), from a command line. */
+/** --env, whether --overlay is set (and its value) and the test (first word, without `@<step>`), from a command line. */
 const fromArgs = (args) => {
-    const inline = args.find((arg) => arg.startsWith('--target='));
-    const position = args.indexOf('--target');
+    const inline = args.find((arg) => arg.startsWith('--env='));
+    const position = args.indexOf('--env');
     const overlay = overlayAt(args);
     return {
-        target: inline?.slice('--target='.length) ?? (position === -1 ? undefined : args[position + 1]),
+        target: inline?.slice('--env='.length) ?? (position === -1 ? undefined : args[position + 1]),
         overlay: overlay !== undefined,
         overlayValue: overlay?.value,
         test: args[0] === undefined || args[0].startsWith('-') ? undefined : args[0].split('@')[0],
@@ -284,7 +284,8 @@ const statusData = (root, { waiting, running, log }) => {
         }
         data.artefacts = artefactsOf(root, run.runDir);
     }
-    if (meta?.command === 'explore') {
+    // An explore run: `caw init --explore-only`.
+    if (meta?.command === 'init' && meta.args?.includes('--explore-only')) {
         const explored = join(root, EXPLORE_FILE);
         // File times can be coarser than the clock (ext4 jiffies, FAT 2 s): allow 2 s before the start.
         if ((mtime(explored) ?? 0) >= Date.parse(meta.startedAt) - 2000) data.explore = readJson(explored);
@@ -305,7 +306,7 @@ const textField = (input, field) => {
 };
 
 /**
- * The tools of `caw-ai mcp`.
+ * The tools of `caw mcp`.
  * @param spawnRun   tests only: replaces spawn for detached commands
  * @param run        tests only: replaces the CLI call of the caw tool
  * @param execCli    tests only: (args, { timeoutMs }) -> { code, out, err, timedOut }, replaces the awaited CLI call
@@ -400,11 +401,11 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                     ? (running === undefined
                         ? t(log === undefined ? 'run.mcp.noneWaiting' : 'run.mcp.ended')
                         : t('run.mcp.busy', { pid: running.pid }))
-                    : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Work according to the caw-ai skill, section "Flow in the sandbox", using the caw tool. ${DATA_NOTE}`;
+                    : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Work according to the caw skill, section "Flow in the sandbox", using the caw tool. ${DATA_NOTE}`;
                 const data = statusData(root, { waiting, running, log });
                 const result = data.result?.status === undefined ? '' : `\n${t('run.mcp.lastRun', { runId: data.runId, status: data.result.status })}`;
                 // What counts as a change for `wait`: the run state and result, and caw-ai's own last message (not every replay step).
-                const mark = JSON.stringify([data.state, data.runId, data.result?.status, lines.filter((line) => line.startsWith('[caw-ai]')).at(-1)]);
+                const mark = JSON.stringify([data.state, data.runId, data.result?.status, lines.filter((line) => line.startsWith('[caw]')).at(-1)]);
                 return { mark, text: `${head}${result}${tail === '' ? '' : `\n\n${t('run.mcp.output', { log })}\n${tail}`}`, data };
             };
             // wait: return as soon as something changes, at the latest after `wait` seconds; one call instead of many polls.
@@ -431,7 +432,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_doctor',
-        description: 'caw-ai doctor as data: every check with ok, text, next step and whether it is optional (only needed for runs with Claude). No tokens.',
+        description: 'caw doctor as data: every check with ok, text, next step and whether it is optional (only needed for runs with Claude). No tokens.',
         inputSchema: { type: 'object', properties: { agent: { type: 'string', enum: ['local', 'docker', 'session'] } }, additionalProperties: false },
         call: async (input) => {
             const { doctorChecks } = await import('./doctor.mjs');
@@ -446,7 +447,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_validate',
-        description: 'caw-ai validate as data: config issues, TODO fields and notes; per test problems, hints and which code runs per target. No browser, no tokens.',
+        description: 'caw validate as data: config issues, TODO fields and notes; per test problems, hints and which code runs per target. No browser, no tokens.',
         inputSchema: EMPTY,
         call: async () => {
             const { validateProject } = await import('./project-data.mjs');
@@ -457,7 +458,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_list',
-        description: 'caw-ai list as data: per test app, role, targets, whether it writes, and the recording state of each step. No tokens.',
+        description: 'caw list as data: per test app, role, targets, whether it writes, and the recording state of each step. No tokens.',
         inputSchema: EMPTY,
         call: async () => {
             const { listProject } = await import('./project-data.mjs');
@@ -504,7 +505,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_init',
-        description: 'caw-ai init without questions: config, .env example, skill, caw/caw.md, .mcp.json and .gitignore entries; existing files stay. '
+        description: 'caw init without questions: config, .env example, skill, caw/caw.md, .mcp.json and .gitignore entries; existing files stay. '
             + 'fromExplore: take the suggestions from caw/.explore.json (run caw_explore first); offline: the template with TODO in the login. '
             + 'roles: role names, e.g. ["admin", "clerk"]. Returns created and skipped files and the TODO fields. No tokens.',
         inputSchema: {
@@ -529,7 +530,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_explore',
-        description: 'Runs caw-ai explore: a window opens for the human, who signs in, picks the start page, clicks "Done" and names the role of '
+        description: 'Runs caw init --explore-only: a window opens for the human, who signs in, picks the start page, clicks "Done" and names the role of '
             + 'the test user. Needs login (true/false: does the app have a sign-in?) or yes (unattended, only the page is looked at). Waits until '
             + 'the window is done (up to 20 minutes) and returns the suggestions from caw/.explore.json, including the saved roles; then call '
             + 'caw_init with fromExplore. wait: false only starts it (caw_status shows the result later). No tokens.',
@@ -544,13 +545,13 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             if (input.login === undefined && input.yes !== true) throw new Error(t('run.mcp.exploreLogin'));
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
-            const args = ['--url', input.url];
+            const args = ['--explore-only', '--url', input.url];
             if (input.login !== undefined) args.push(input.login ? '--login' : '--no-login');
             if (input.yes === true) args.push('--yes');
             if (input.insecureTls === true) args.push('--insecure-tls');
             const startedAt = Date.now();
-            const { log, pid } = spawnDetached({ root, command: 'explore', args, spawnRun });
-            const started = { command: 'explore', args, pid, log: shown(root, log) };
+            const { log, pid } = spawnDetached({ root, command: 'init', args, spawnRun });
+            const started = { command: 'init', args, pid, log: shown(root, log) };
             if (input.wait === false) return answer(t('run.mcp.exploreStarted', { pid, log }), { state: 'started', ...started });
             const ended = await waitForExit(pid, windowWait);
             if (!ended) return answer(t('run.mcp.stillOpen', { pid }), { state: 'running', ...started });
@@ -589,7 +590,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             }
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
-            const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.target === undefined ? [] : ['--target', input.target])];
+            const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.target === undefined ? [] : ['--env', input.target])];
             const before = new Set(roleOverview(root).roles.filter(({ testUser }) => testUser).map(({ name }) => name));
             const { log, pid } = spawnDetached({ root, command: 'role', args, spawnRun });
             const started = { command: 'role', args, pid, log: shown(root, log) };
@@ -632,7 +633,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 return answer(`${t('run.mcp.overlayStatus', { state: data.state })}${data.message === undefined ? '' : ` ${data.message}`}`, data);
             }
             const args = ['overlay', 'check', '--json'];
-            for (const field of ['target', 'app']) if (input[field] !== undefined) args.push(`--${field}`, input[field]);
+            for (const [field, flag] of [['target', '--env'], ['app', '--app']]) if (input[field] !== undefined) args.push(flag, input[field]);
             if (input.action === 'apply') args.push('--apply');
             const startedAt = Date.now();
             const { code, out = '', err = '', timedOut } = await execCli(args, { timeoutMs: OVERLAY_CHECK_TIMEOUT_MS });

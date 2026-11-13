@@ -26,7 +26,7 @@ test('without a terminal: plain lines without control characters and symbols', (
     ui.step({ number: 3, total: 9, label: 'click', elapsed: 1.25 });
     ui.verdict(VERDICT, { report: 'r.md', elapsed: 2 });
     ui.fatal('usage', 'Falsch');
-    assert.deepEqual(lines, ['[caw-ai] Hallo', '[+1.3s] 3/9 click', '[caw-ai] r1 auf a/dev: fail', '[caw-ai] E2: Liste leer', '[caw-ai] Bericht: r.md', '[caw-ai] Falsch', '[caw-ai] (code: usage, exit ?)']);
+    assert.deepEqual(lines, ['[caw] Hallo', '[+1.3s] 3/9 click', '[caw] r1 auf a/dev: fail', '[caw] E2: Liste leer', '[caw] Bericht: r.md', '[caw] Falsch', '[caw] (code: usage, exit ?)']);
 });
 
 test('without a terminal (headless, CI): the reason of the failed step, never of a step not reached', () => {
@@ -37,13 +37,13 @@ test('without a terminal (headless, CI): the reason of the failed step, never of
         expectations: [{ id: 'S1', text: 'a' }, { id: 'S2', text: 'b' }],
         results: [{ id: 'S1', status: 'fail', note: long }, { id: 'S2', status: 'fail', note: t('session.replay.notReachedBecause', { owner: 'S1' }) }],
     }, { report: 'r.md', elapsed: 1 });
-    const reason = lines.find((line) => line.startsWith('[caw-ai] S1: '));
+    const reason = lines.find((line) => line.startsWith('[caw] S1: '));
     assert.ok(reason !== undefined && reason.length < 260 && reason.endsWith('…'), reason);
     assert.ok(!lines.some((line) => line.includes('S2:')));
     // Without a failed step: the first hard error.
     const hard = capture(false);
     hard.ui.verdict({ ...VERDICT, results: [{ id: 'E1', status: 'pass' }, { id: 'E2', status: 'pass' }], failures: [{ type: 'http', text: 'POST /api 500' }] }, { report: 'r.md', elapsed: 1 });
-    assert.ok(hard.lines.includes('[caw-ai] http: POST /api 500'), hard.lines.join('\n'));
+    assert.ok(hard.lines.includes('[caw] http: POST /api 500'), hard.lines.join('\n'));
 });
 
 test('an error names its code, also in the verdict line', () => {

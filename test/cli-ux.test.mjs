@@ -16,7 +16,7 @@ import { helpText, synopsisOf, unknownCommandText } from '../src/shared/help.mjs
 import { closest, editDistance } from '../src/shared/suggest.mjs';
 import { createUi } from '../src/shared/ui.mjs';
 
-const BIN = fileURLToPath(new URL('../bin/caw-ai.mjs', import.meta.url));
+const BIN = fileURLToPath(new URL('../bin/caw.mjs', import.meta.url));
 const step = (id, name) => ({ id, name, do: `${name} tun`, expect: `${name} sichtbar` });
 const recorded = (plain) => ({ ...plain, recording: { hash: stepHash(plain), recordedOn: 'local', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: 'true' } });
 
@@ -60,22 +60,22 @@ test('exit codes: needs recording is 4, the worst run decides the batch', () => 
 });
 
 test('parseRunArgs: an option without a value does not swallow the next one', () => {
-    assert.throws(() => parseRunArgs('run', ['t', '--target', '--headless']), /--target braucht einen Wert, etwa --target local/);
-    assert.throws(() => parseRunArgs('open', ['t', '--step-timeout']), /--step-timeout braucht einen Wert, etwa --step-timeout 30/);
-    assert.throws(() => parseRunArgs('run', ['t', '--target=']), /--target braucht einen Wert/);
+    assert.throws(() => parseRunArgs('run', ['t', '--env', '--headless']), /--env braucht einen Wert, etwa --env local/);
+    assert.throws(() => parseRunArgs('open', ['t', '--step-timeout']), /--step-timeout braucht einen Wert, etwa --step-timeout 30s/);
+    assert.throws(() => parseRunArgs('run', ['t', '--env=']), /--env braucht einen Wert/);
     assert.throws(() => parseRunArgs('record', ['t', '--role', '--app', 'web']), /--role braucht einen Wert/);
     assert.throws(() => parseRunArgs('record', ['t@S2', '--agent']), /--agent braucht einen Wert/);
-    assert.throws(() => parseRunArgs('open', ['t@S1', '--timeout', '--x']), /--timeout braucht einen Wert/);
+    assert.throws(() => parseRunArgs('open', ['t@S1', '--claude-timeout', '--x']), /--claude-timeout braucht einen Wert, etwa --claude-timeout 60m/);
 });
 
-test('parseRunArgs: several tests or --all run without chat, --advise only for one test', () => {
-    const many = parseRunArgs('run', ['a', 'b', '--target', 'local']);
+test('parseRunArgs: several tests or --all run without chat, --explain only for one test', () => {
+    const many = parseRunArgs('run', ['a', 'b', '--env', 'local']);
     assert.deepEqual([many.tests, many.batch, many.noChat], [['a', 'b'], true, true]);
     const all = parseRunArgs('run', ['--all', '--headless', '--report', 'junit=out/x.xml']);
     assert.deepEqual([all.all, all.batch, all.junit, all.test], [true, true, 'out/x.xml', undefined]);
     assert.throws(() => parseRunArgs('run', ['--all', 'a']), /--all/);
     assert.throws(() => parseRunArgs('run', ['a', 'b', '--zzz', 'S2']), /run kennt die Option --zzz nicht/);
-    assert.throws(() => parseRunArgs('run', ['--all', '--advise']), /--advise gilt nur/);
+    assert.throws(() => parseRunArgs('run', ['--all', '--explain']), /--explain gilt nur/);
     assert.throws(() => parseRunArgs('run', ['a', '--report', 'xml']), /junit=<datei>/);
     assert.equal(parseRunArgs('run', ['a', '--no-learn']).learn, false);
     assert.equal(parseRunArgs('run', ['a']).batch, undefined);
@@ -88,10 +88,10 @@ test('chooseTarget: the only target, for record the only one with Claude, otherw
     assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { command: 'run', log }), 'dev');
     assert.match(said.at(-1), /Ziel: dev \(einziges Ziel von x\)/);
     assert.equal(chooseTarget(config, { id: 'x', targets: ['dev'] }, { target: 'local', command: 'run', log }), 'local', 'a given target wins');
-    assert.throws(() => chooseTarget(config, { id: 'x', targets: ['local', 'staging'] }, { command: 'run', log }), /--target fehlt: local, staging/);
+    assert.throws(() => chooseTarget(config, { id: 'x', targets: ['local', 'staging'] }, { command: 'run', log }), /--env fehlt: local, staging/);
     assert.equal(chooseTarget(config, { id: 'x', targets: ['local', 'staging'] }, { command: 'record', log }), 'local');
     assert.match(said.at(-1), /auf dem Claude arbeiten darf/);
-    assert.throws(() => chooseTarget(config, null, { command: 'record', log }), /--target fehlt: local, dev/);
+    assert.throws(() => chooseTarget(config, null, { command: 'record', log }), /--env fehlt: local, dev/);
     const one = { environments: { local: config.environments.local, staging: config.environments.staging } };
     assert.equal(chooseTarget(one, null, { command: 'record', log }), 'local');
     assert.match(said.at(-1), /einzige Umgebung, auf der Claude arbeiten darf/);
@@ -114,8 +114,8 @@ test('list: per test targets, recording state and writes; with a test one line p
     assert.match(lines[3], /^\s+S3\s+Ende\s+\(nicht aufgenommen\)$/);
     // A typo gets the closest name; recording under the typo is only offered as a new test.
     assert.throws(() => list(root, ['bestelen'], { out }), (error) => error.code === 'test-missing'
-        && /Meintest du bestellen\? Bekannte Tests: anmelden, bestellen, neu\. Einen neuen Test unter diesem Namen nimmt auf: caw-ai record bestelen/.test(error.message));
-    assert.throws(() => list(root, ['zzzzzz'], { out }), (error) => /Neu aufnehmen: caw-ai record zzzzzz/.test(error.message) && !/Meintest/.test(error.message));
+        && /Meintest du bestellen\? Bekannte Tests: anmelden, bestellen, neu\. Einen neuen Test unter diesem Namen nimmt auf: caw record bestelen/.test(error.message));
+    assert.throws(() => list(root, ['zzzzzz'], { out }), (error) => /Neu aufnehmen: caw record zzzzzz/.test(error.message) && !/Meintest/.test(error.message));
     assert.throws(() => list(root, ['a', 'b'], { out }), /Unerwartetes Argument: b/);
 });
 
@@ -144,10 +144,10 @@ test('validate: all problems of a test at once, YAML positions only once', (t) =
     });
 });
 
-test('run: without --target the only target, typos get a suggestion and the choices', async (t) => {
+test('run: without --env the only target, typos get a suggestion and the choices', async (t) => {
     const root = project(t);
-    await assert.rejects(run(root, ['anmeldn']), (error) => error.code === 'test-missing' && /Meintest du anmelden\?/.test(error.message) && /caw-ai record anmeldn$/.test(error.message));
-    await assert.rejects(run(root, ['bestellen']), (error) => error.code === 'usage' && /--target fehlt: local, staging/.test(error.message));
+    await assert.rejects(run(root, ['anmeldn']), (error) => error.code === 'test-missing' && /Meintest du anmelden\?/.test(error.message) && /caw record anmeldn$/.test(error.message));
+    await assert.rejects(run(root, ['bestellen']), (error) => error.code === 'usage' && /--env fehlt: local, staging/.test(error.message));
     await assert.rejects(open(root, ['anmelden@S9'], { interactive: true }), (error) => error.code === 'step-unknown' && /Schritte: S1, S2\./.test(error.message));
     // A missing recording is exit 4 (needs recording), not 3.
     await assert.rejects(run(root, ['neu']), (error) => error.code === 'replay-missing' && exitOf(error.code) === 4);
@@ -156,15 +156,15 @@ test('run: without --target the only target, typos get a suggestion and the choi
 test('open and record with a step: a stale step before it names record <test>@<step>, CI has nobody for the window', async (t) => {
     const root = project(t);
     // bestellen: S2 changed by hand since recording. Up to the entry of S3, S2 must replay: re-record from S2.
-    await assert.rejects(open(root, ['bestellen@S3', '--target', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /S2 .*Neu aufnehmen ab dort: caw-ai record bestellen@S2 --target local/.test(error.message));
-    await assert.rejects(record(root, ['bestellen@S3', '--target', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /caw-ai record bestellen@S2 --target local/.test(error.message));
-    await assert.rejects(record(root, ['bestellen@S7', '--target', 'local'], { interactive: true }), (error) => error.code === 'step-unknown' && /bestellen hat keinen Schritt S7\..*caw\/tests\/bestellen\.yaml/.test(error.message));
+    await assert.rejects(open(root, ['bestellen@S3', '--env', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /S2 .*Neu aufnehmen ab dort: caw record bestellen@S2 --env local/.test(error.message));
+    await assert.rejects(record(root, ['bestellen@S3', '--env', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /caw record bestellen@S2 --env local/.test(error.message));
+    await assert.rejects(record(root, ['bestellen@S7', '--env', 'local'], { interactive: true }), (error) => error.code === 'step-unknown' && /bestellen hat keinen Schritt S7\..*caw\/tests\/bestellen\.yaml/.test(error.message));
     await assert.rejects(record(root, ['gibtsnicht@S2']), (error) => error.code === 'test-missing' && !/\{\w+\}/.test(error.message));
     // Nobody in CI takes the window or steers the recording.
-    await assert.rejects(open(root, ['anmelden'], { interactive: false }), (error) => error.code === 'usage' && /caw-ai open braucht einen Menschen/.test(error.message));
-    await assert.rejects(record(root, ['bestellen@S2', '--target', 'local'], { interactive: false }), (error) => error.code === 'usage' && /caw-ai record braucht einen Menschen/.test(error.message));
+    await assert.rejects(open(root, ['anmelden'], { interactive: false }), (error) => error.code === 'usage' && /caw open braucht einen Menschen/.test(error.message));
+    await assert.rejects(record(root, ['bestellen@S2', '--env', 'local'], { interactive: false }), (error) => error.code === 'usage' && /caw record braucht einen Menschen/.test(error.message));
     // The entry of the first step needs no step before it, a full open the whole test.
-    await assert.rejects(open(root, ['bestellen', '--target', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /record bestellen@S2/.test(error.message));
+    await assert.rejects(open(root, ['bestellen', '--env', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /record bestellen@S2/.test(error.message));
 });
 
 test('run with several tests: each runs, the table shows the outcome, the exit is the worst, JUnit on request', async (t) => {
@@ -172,18 +172,18 @@ test('run with several tests: each runs, the table shows the outcome, the exit i
     const said = [];
     t.mock.method(console, 'log', (text) => said.push(text));
     // neu is not recorded (4), gibtsnicht is missing (3), bestellen is stale (4): no browser starts.
-    const code = await run(root, ['neu', 'gibtsnicht', 'bestellen', '--target', 'local', '--report', 'junit=out/junit.xml']);
+    const code = await run(root, ['neu', 'gibtsnicht', 'bestellen', '--env', 'local', '--report', 'junit=out/junit.xml']);
     assert.equal(code, EXIT.needsRecording);
     const text = said.join('\n');
     assert.match(text, /Ergebnis: 3 Tests auf local/);
     assert.match(text, /AUFNAHME NÖTIG\s+neu/);
     assert.match(text, /ABGELEHNT\s+gibtsnicht/);
     assert.match(text, /JUnit-Bericht: out\/junit\.xml/);
-    // --all only takes tests with the target; without --target the tests' only target is needed, but there are two here.
-    await assert.rejects(run(root, ['--all']), /--target fehlt: local, staging/);
+    // --all only takes tests with the target; without --env the tests' only target is needed, but there are two here.
+    await assert.rejects(run(root, ['--all']), /--env fehlt: local, staging/);
     said.length = 0;
     // Only bestellen names staging; it must not write there: rejected.
-    assert.equal(await run(root, ['--all', '--target', 'staging']), EXIT.rejected);
+    assert.equal(await run(root, ['--all', '--env', 'staging']), EXIT.rejected);
     assert.match(said.join('\n'), /Ergebnis: 1 Test auf staging/);
 });
 
@@ -193,8 +193,8 @@ test('junitXml: fail as failure, needs recording and errors as error, text safel
         { test: 'b', exit: 1, seconds: 2, note: 'at S2 <x> & "y"' },
         { test: 'c', exit: 4, seconds: 0, note: 'no recording' },
     ] });
-    assert.match(xml, /<testsuite name="caw-ai local" tests="3" failures="1" errors="1"/);
-    assert.match(xml, /<testcase classname="caw-ai.local" name="a" time="1.000"\/>/);
+    assert.match(xml, /<testsuite name="caw local" tests="3" failures="1" errors="1"/);
+    assert.match(xml, /<testcase classname="caw\.local" name="a" time="1.000"\/>/);
     assert.match(xml, /<failure type="fail" message="at S2 &lt;x&gt; &amp; &quot;y&quot;"\/>/);
     assert.match(xml, /<error type="needs-recording" message="no recording"\/>/);
 });
@@ -205,26 +205,37 @@ test('runMode: --no-learn keeps the chat and says the file stays; otherwise it n
     assert.match(runMode({ ...base, learn: false }), /mit Chat, ohne Lernen \(--no-learn\)/);
 });
 
-test('help: per command only its block, agent commands under help agent, synopsis for usage errors', () => {
+test('help: per command only its block, agent commands under caw agent --help, synopsis for usage errors', () => {
     const all = helpText(undefined, { here: 'local' });
     assert.match(all, /list \[<test>\]/);
-    assert.match(all, /run <test> \[--target <umgebung>\]/);
-    assert.match(all, /auf denen Claude\s+arbeiten\s+darf \(hier: local\)/);
+    assert.match(all, /run <test> \[--env <name>\]/);
+    assert.match(all, /auf denen Claude arbeiten darf \(hier: local\)/);
     assert.match(all, /4 Aufnahme nötig/);
-    assert.doesNotMatch(all, /fill <ziel> <text>/, 'agent commands are under help agent');
+    assert.match(all, /Dauern mit Einheit: --step-timeout 30s/);
+    assert.doesNotMatch(all, /fill <ziel> <text>/, 'agent commands are under caw agent --help');
+    // Hidden from people: the session MCP server, Claude's namespace and the commands that moved.
+    assert.doesNotMatch(all, /^ {2}(mcp|agent|explore|auth)\b/m);
+    assert.match(all, /^ {2}role login <rolle> --env <name>/m);
     const opened = helpText('open');
-    assert.match(opened, /^ {2}open \[--target <umgebung>\]/);
-    assert.match(opened, /^ {2}open <test>@<S4>\s+Bis zum Einstieg in S4/m);
-    assert.doesNotMatch(opened, /record|Erste Schritte/);
+    assert.match(opened, /^ {2}open \[<test>\[@<S4>\]\] \[--env <name>\]/);
+    assert.match(opened, /Mit @<S4>: bis\s+zum Einstieg in S4/);
+    assert.doesNotMatch(opened, /record|Einrichten/);
     assert.doesNotMatch(opened, /\{here\}|\(hier:/);
     assert.match(helpText('record'), /^ {2}record <test>@<S4>\s+Ab S4 bis zum Ende neu aufnehmen/m);
+    assert.match(helpText('agent'), /^caw agent <befehl>/);
     assert.match(helpText('agent'), /fill <ziel> <text>/);
-    assert.match(helpText('click'), /snapshot/);
+    assert.match(helpText('agent'), /wait-ready \[--for <selektor>\] \[--min-count <n>\] \[--timeout <dauer>\]/);
     assert.equal(synopsisOf('qqqq'), undefined);
-    assert.equal(synopsisOf('open'), 'caw-ai open [--target <umgebung>] [--role <rolle>] [--overlay]  oder  caw-ai open <test>[@<S4>] [--target <umgebung>] [--overlay]');
+    assert.equal(synopsisOf('open'), 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>]');
     assert.equal(synopsisOf('click'), undefined);
-    assert.equal(unknownCommandText('lsit'), 'Unbekannter Befehl: lsit. Meintest du list? Siehe caw-ai --help.');
-    assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw-ai --help.');
+    assert.equal(unknownCommandText('lsit'), 'Unbekannter Befehl: lsit. Meintest du list? Siehe caw --help.');
+    assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw --help.');
+    // Moved commands name where they are now, instead of a suggestion.
+    assert.equal(unknownCommandText('explore'), 'caw explore heißt jetzt caw init --explore-only.');
+    assert.equal(unknownCommandText('auth'), 'caw auth heißt jetzt caw role login.');
+    assert.equal(unknownCommandText('click'), 'caw click heißt jetzt caw agent click.');
+    assert.equal(unknownCommandText('mcp-agent'), 'caw mcp-agent heißt jetzt caw agent mcp.');
+    assert.equal(unknownCommandText('clik', { agent: true }), 'Unbekannter Befehl: caw agent clik. Meintest du click? Siehe caw agent --help.');
 });
 
 // Strips ANSI colour codes.
@@ -234,11 +245,11 @@ const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
 test('fatal error in the terminal: first the message, then the synopsis, last code and exit dimmed', () => {
     const lines = [];
     const ui = createUi({ fancy: true, out: (text) => lines.push(text), err: (text) => lines.push(text) });
-    ui.fatal('usage', 'Name des Tests fehlt.', { synopsis: 'caw-ai open <test>@<S4>', exit: 3 });
+    ui.fatal('usage', 'Name des Tests fehlt.', { synopsis: 'caw open <test>@<S4>', exit: 3 });
     assert.equal(lines.length, 3);
     assert.match(plain(lines[0]), /^ {2}\[FEHLER\] Name des Tests fehlt\.$/);
     // Aligned with the message text, not the mark.
-    assert.equal(lines[1], '           Aufruf: caw-ai open <test>@<S4>');
+    assert.equal(lines[1], '           Aufruf: caw open <test>@<S4>');
     assert.match(lines[2], /\(code: usage, exit 3\)/);
 });
 
@@ -260,16 +271,26 @@ test('CLI: unknown command with suggestion, help everywhere with -h, exit codes'
     const cli = (...args) => spawnSync(process.execPath, [BIN, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CAW_LANG: 'de', NO_COLOR: '1', INIT_CWD: root } });
     const typo = cli('lsit');
     assert.equal(typo.status, 3);
-    assert.match(typo.stderr, /Unbekannter Befehl: lsit\. Meintest du list\? Siehe caw-ai --help\./);
-    assert.doesNotMatch(typo.stderr + typo.stdout, /Erste Schritte/, 'no full help after a typo');
+    assert.match(typo.stderr, /Unbekannter Befehl: lsit\. Meintest du list\? Siehe caw --help\./);
+    assert.doesNotMatch(typo.stderr + typo.stdout, /Einrichten/, 'no full help after a typo');
     const help = cli('run', 'x', '-h');
     assert.equal(help.status, 0);
     assert.match(help.stdout, /^ {2}run <test>/);
     assert.doesNotMatch(help.stdout, /record <test>/);
-    assert.match(cli('help', 'agent').stdout, /finish --file/);
+    assert.match(cli('agent', '--help').stdout, /finish --file/);
+    assert.match(cli('agent', 'click', '--help').stdout, /finish --file/);
+    // The old places name the new ones, with exit 3; nothing runs.
+    for (const [args, now] of [[['help', 'agent'], 'caw agent --help'], [['explore', '--url', 'http://localhost:1'], 'caw init --explore-only'], [['auth', 'kunde'], 'caw role login'], [['snapshot'], 'caw agent snapshot']]) {
+        const moved = cli(...args);
+        assert.equal(moved.status, 3, args.join(' '));
+        assert.match(moved.stderr, new RegExp(`heißt jetzt ${now}\\.`), args.join(' '));
+    }
+    const renamed = cli('run', 'x', '--target', 'local');
+    assert.equal(renamed.status, 3);
+    assert.match(renamed.stderr, /--target heißt jetzt --env\./);
     const usage = cli('record', 'x@s3');
     assert.equal(usage.status, 3);
-    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw-ai\] Aufruf: caw-ai record <test> \[--target <umgebung>\] \[--role <rolle>\] \[--app <app>\] {2}oder {2}caw-ai record <test>@<S4> \[--target <umgebung>\]\n\[caw-ai\] \(code: usage, exit 3\)/);
+    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] \[--app <app>\] {2}oder {2}caw record <test>@<S4> \[--env <name>\]\n\[caw\] \(code: usage, exit 3\)/);
     const unknown = cli('qqqq', 'x', 'S2');
     assert.equal(unknown.status, 3);
     assert.match(unknown.stderr, /Unbekannter Befehl: qqqq\./);

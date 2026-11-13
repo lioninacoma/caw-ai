@@ -72,7 +72,7 @@ test('newestFile: limits the walk, skips dot folders and builds', (t) => {
 test('Run header: the code line also shows without a terminal', () => {
     const lines = [];
     createUi({ fancy: false, out: (text) => lines.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'staging', source: 'deployed', code: 'ausgelieferter Stand' });
-    assert.deepEqual(lines, ['[caw-ai] Testlauf: smoke auf staging', '[caw-ai] Code: ausgelieferter Stand']);
+    assert.deepEqual(lines, ['[caw] Testlauf: smoke auf staging', '[caw] Code: ausgelieferter Stand']);
     const fancy = [];
     createUi({ fancy: true, out: (text) => fancy.push(text) }).header({ mode: 'Testlauf', test: 'smoke', target: 'local', source: 'overlay', code: 'Overlay, Build dist' });
     assert.match(fancy.join('\n'), /Code: Overlay, Build dist/);

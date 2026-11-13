@@ -1,5 +1,5 @@
 // Test users in the window: the human signs in, the card asks for the role name, caw-ai writes caw/.env (test-users.mjs).
-// "+ Another role" signs out and starts again with the next account. Used by explore, `caw-ai role add` and by record, run and
+// "+ Another role" signs out and starts again with the next account. Used by explore, `caw role add` and by record, run and
 // open when a test's role has no test user yet. Claude never sees the values: they go from the page to this process to the file.
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -165,7 +165,7 @@ const openWindow = async ({ url, insecureTls }) => {
 };
 
 /**
- * Opens a window on the sign-in page and saves test users under roles. Used by `caw-ai role add` and when a test needs a role
+ * Opens a window on the sign-in page and saves test users under roles. Used by `caw role add` and when a test needs a role
  * without a test user.
  * @param role      prefilled name; with `needed` the only name accepted
  * @param reason    the first card text, e.g. which test needs the role

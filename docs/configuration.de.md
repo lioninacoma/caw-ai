@@ -55,11 +55,11 @@ CAW_PW_USER=geheim
 
 `caw/.env` wird gelesen wie bei dotenv: `NAME=Wert`, gern in Anführungszeichen; ein Kommentar hinter dem Wert braucht ein Leerzeichen vor `#` (`NAME=Wert # Notiz`). Ein `#` ohne Leerzeichen davor gehört zum Wert; Werte mit ` #` in Anführungszeichen setzen.
 
-`npx caw-ai init` schreibt dir so eine Config, dazu die Rolle mit ihrem Testnutzer: Nach **Fertig** nennst du im Fenster die Rolle, **Speichern** schreibt die Variablen in `caw/.env`. Umgebungsvariablen gleichen Namens gehen vor `caw/.env`, etwa in CI.
+`npx caw init` schreibt dir so eine Config, dazu die Rolle mit ihrem Testnutzer: Nach **Fertig** nennst du im Fenster die Rolle, **Speichern** schreibt die Variablen in `caw/.env`. Umgebungsvariablen gleichen Namens gehen vor `caw/.env`, etwa in CI.
 
 ## environments
 
-Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du an `--target` übergibst.
+Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du an `--env` übergibst.
 
 ```json
 "environments": {
@@ -89,7 +89,7 @@ Weglassen, wenn deine App keine Anmeldung hat.
 |---|---|---|
 | `form` | Anmeldeseite mit Benutzer und Passwort | `path`, `userSelector`, `passwordSelector`, `signedInSelector`, optional `submitSelector` (sonst schickt Enter ab), optional `codeSelector` für einen TOTP-Code als zweiten Faktor |
 | `basic` | HTTP Basic Auth | `signedInSelector` (optional) |
-| `storageState` | SSO, OAuth, MFA: du meldest dich einmal mit `caw-ai auth` an | `signedInSelector`, optional `path` |
+| `storageState` | SSO, OAuth, MFA: du meldest dich einmal mit `caw role login` an | `signedInSelector`, optional `path` |
 | `none` | Keine Anmeldung (wie `auth` weglassen) | – |
 
 `signedInSelector` ist ein CSS-Selektor, den es nur im angemeldeten Zustand gibt. Verschwindet er während eines Laufs, meldet caw-ai eine verlorene Anmeldung.
@@ -111,7 +111,7 @@ Beispiel mit SSO:
 ```
 
 ```bash
-npx caw-ai auth user --target dev   # einmal von Hand anmelden, die Sitzung landet in caw/.auth/dev/user.json
+npx caw role login user --env dev   # einmal von Hand anmelden, die Sitzung landet in caw/.auth/dev/user.json
 ```
 
 ## roles
@@ -124,7 +124,7 @@ Ein Eintrag je Art von Nutzer, als der sich deine Tests anmelden. Ein Test wähl
 | `storageState` | `{}`: die Sitzung liegt je Umgebung in `caw/.auth/` |
 | keine | `roles` weglassen |
 
-Eine Rolle fügst du mit `npx caw-ai role add <rolle> --target <env>` hinzu: im Fenster mit dem Testkonto anmelden, Rolle benennen, **Speichern**. caw-ai schreibt den Eintrag oben, die Werte in `caw/.env` und `caw/.env` in `.gitignore`. Ohne Fenster (CI) setzt du die Variablen in der Umgebung. Siehe [role](commands.de.md#role).
+Eine Rolle fügst du mit `npx caw role add <rolle> --env <env>` hinzu: im Fenster mit dem Testkonto anmelden, Rolle benennen, **Speichern**. caw-ai schreibt den Eintrag oben, die Werte in `caw/.env` und `caw/.env` in `.gitignore`. Ohne Fenster (CI) setzt du die Variablen in der Umgebung. Siehe [role](commands.de.md#role).
 
 Nimm Testkonten mit so wenig Rechten wie möglich. Claude steuert einen Browser, der als dieser Nutzer angemeldet ist.
 
@@ -172,7 +172,7 @@ Gegen deinen lokalen Dev-Server testest du ohne Option. Der Dev-Server ist eine 
 }
 ```
 
-`--target local` testet dann, was in deinem Editor steht (Vite, `ng serve`, webpack-Dev-Server, Next.js, Nuxt). `--overlay` wird dort abgelehnt (Exit 3): Es ist für ausgelieferte Umgebungen.
+`--env local` testet dann, was in deinem Editor steht (Vite, `ng serve`, webpack-Dev-Server, Next.js, Nuxt). `--overlay` wird dort abgelehnt (Exit 3): Es ist für ausgelieferte Umgebungen.
 
 ### `--overlay`: lokaler Code über einer ausgelieferten Umgebung
 
@@ -220,7 +220,7 @@ Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins.
 
 - **Server** unter `url` antwortet nicht: Exit 2 (`overlay-not-ready`) mit Adresse und `start`: `Der lokale Code-Server http://localhost:5173 antwortet nicht. Starte npm run dev in . oder starte den Lauf mit --start …`. Starte ihn selbst oder lass Claude ihn in seiner Session starten (es fragt vorher).
 - **Build** fehlt oder ist älter als die jüngste Quelldatei der App: Exit 2 mit `start`. Nicht als Quelle zählen: `node_modules`, der Build-Ordner, Ordner mit Punkt, übliche Build-Ordner (`dist`, `build`, `out`, `coverage`, …), `caw/`, Markdown-Dateien und `caw.config.json`; angesehen werden höchstens 5000 Dateien.
-- `npx caw-ai overlay status` zeigt dasselbe ohne Browser: `ready`, `moved`, `down`, `wrong-app` oder `stale`.
+- `npx caw overlay status` zeigt dasselbe ohne Browser: `ready`, `moved`, `down`, `wrong-app` oder `stale`.
 
 **`--start`** (bei `run`, `record`, `open` und `overlay check`, nur zusammen mit `--overlay`) ist für CI und Skripte, wie `webServer` bei Playwright: caw führt `start` im App-Ordner aus, wenn der Server nicht antwortet, wartet bis zu 60 s (Sencha-Watch: 180 s, bis er diese App ausliefert), schreibt die Ausgabe nach `.caw/<app>-dev-server.log` oder `.caw/<app>-watch.log` und beendet am Ende des Laufs den ganzen Prozessbaum; bei `open`, wenn du das Fenster schließt. Mit `build` führt es `start` einmal aus (`.caw/<app>-build.log`) und prüft erneut. Die Quelle wechselt nie: Ein gescheiterter Build weicht nicht auf den Dev-Server oder den ausgelieferten Stand aus.
 
@@ -236,8 +236,8 @@ Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins.
 
 | Befund | Folge |
 |---|---|
-| Serverseitig gerenderte Seite (Next.js, Nuxt, SvelteKit, Angular SSR) | Exit 2 (`overlay-ssr`). Lokalen Code testest du dort mit dem Dev-Server als Umgebung (`--target local`). |
-| Erwartete Teile kamen vom Server (ExtJS: App oder eigenes Paket) | Exit 2 (`overlay-incomplete`): ein Mischstand. Die Meldung nennt die Teile, bis zu fünf URLs und das `assetUrlPattern`, das sie abfängt. `caw-ai overlay check --apply` trägt es ein. |
+| Serverseitig gerenderte Seite (Next.js, Nuxt, SvelteKit, Angular SSR) | Exit 2 (`overlay-ssr`). Lokalen Code testest du dort mit dem Dev-Server als Umgebung (`--env local`). |
+| Erwartete Teile kamen vom Server (ExtJS: App oder eigenes Paket) | Exit 2 (`overlay-incomplete`): ein Mischstand. Die Meldung nennt die Teile, bis zu fünf URLs und das `assetUrlPattern`, das sie abfängt. `caw overlay check --apply` trägt es ein. |
 | Nichts kam aus dem lokalen Code | Exit 2 (`overlay-unused`). |
 | Erwartete Teile nie angefragt | Hinweis „Nicht geladen“: vielleicht lädt die App sie erst später. |
 | Skripte aus dem lokalen Asset-Ordner kamen vom Server | Warnung „Mischstand“: neu bauen oder prüfen, ob der Build zur ausgelieferten Version passt. |
@@ -256,7 +256,7 @@ Unbekannte Felder sind ein Fehler. Von `build` und `url` reicht eins.
 ]
 ```
 
-Von Hand schreiben musst du sie nicht: `npx caw-ai overlay check` lädt die App einmal, zeigt je Teil, ob er lokal oder ausgeliefert kam, und schlägt je fehlender Quelle ein Muster vor; `--apply` trägt sie ein. Das Overlay für ExtJS ist eingerichtet, wenn `overlay check` vollständig meldet. caw startet den Sencha-Watch nie selbst, nur mit `--start`.
+Von Hand schreiben musst du sie nicht: `npx caw overlay check` lädt die App einmal, zeigt je Teil, ob er lokal oder ausgeliefert kam, und schlägt je fehlender Quelle ein Muster vor; `--apply` trägt sie ein. Das Overlay für ExtJS ist eingerichtet, wenn `overlay check` vollständig meldet. caw startet den Sencha-Watch nie selbst, nur mit `--start`.
 
 **`validate`** nennt den Code je Test und Ziel und wo `--overlay` ginge:
 
@@ -290,7 +290,7 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `readyTimeoutMs` | | Wie lange auf eine ruhige App gewartet wird. |
 | `readyIgnore` | `[]` | CSS-Selektoren von Bereichen, die sich von selbst ändern, z. B. `["#ticker", ".clock", "footer [role=progressbar]"]`. Ihre DOM-Änderungen und Fortschrittsanzeigen zählen beim Warten auf eine ruhige Seite nicht. Spinner ohne Größe, versteckt oder außerhalb des sichtbaren Bereichs zählen nie. Wird eine Seite nie ruhig, sagt der Bericht das einmal je Schritt. |
 | `lintCommand` | | Dein Prüfbefehl, etwa `npm run lint`. Claude nennt ihn bei Code-Vorschlägen. |
-| `assetUrlPattern` | | Regulärer Ausdruck oder eine Liste davon (einer je Quelle) für Requests, die App-Code laden; Gruppe 1 ist der Name für `overlay.statics`, der Pfad in `overlay.build` oder der Build-Name einer ExtJS-App oder eines Pakets. Gilt mit `--overlay` zusätzlich zum Pfad unterhalb der Umgebungs-URL. Fehlende schlägt `caw-ai overlay check` vor. |
+| `assetUrlPattern` | | Regulärer Ausdruck oder eine Liste davon (einer je Quelle) für Requests, die App-Code laden; Gruppe 1 ist der Name für `overlay.statics`, der Pfad in `overlay.build` oder der Build-Name einer ExtJS-App oder eines Pakets. Gilt mit `--overlay` zusätzlich zum Pfad unterhalb der Umgebungs-URL. Fehlende schlägt `caw overlay check` vor. |
 | `sites` | | Dieselbe App für mehrere Mandanten: `["nord", "sued"]`, dann `urls` je Umgebung. |
 | `extends` | | Gemeinsame Vorgaben aus einer Datei, etwa `"./caw/basis.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den Agenten `docker`. Sonst `image` aus `.devcontainer/devcontainer.json`. |

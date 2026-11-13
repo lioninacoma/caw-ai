@@ -215,7 +215,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             recordedBrowser: recorded,
             headless,
             embed: !headless && embedsApp(interactive),
-            title: `caw-ai · ${spec.id}`,
+            title: `caw · ${spec.id}`,
             role: spec.role,
             overlay,
             // strict false: a mixed or unused overlay is reported via diagnose instead of ending the session (overlay check).
@@ -232,7 +232,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         throw error;
     }
     if (overlay === null) return session;
-    // The overlay's full diagnosis after loading, for caw-ai overlay check.
+    // The overlay's full diagnosis after loading, for caw overlay check.
     session.diagnose = () => overlay.diagnose();
     const close = session.close;
     session.close = async (...args) => {
@@ -753,8 +753,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         ui.info(t(mode === 'develop' ? 'run.consult.develop' : talking ? 'run.consult.talk' : 'run.consult.advise'));
         const stopPump = startPump(handler);
         const command = talking
-            ? talkCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin ?? CLAUDE_TIMEOUT_MIN), mode === 'develop' ? '--develop' : '--talk']
-            : adviseCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin ?? CLAUDE_TIMEOUT_MIN), '--advise'];
+            ? talkCommand ?? ['caw', 'agent', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin ?? CLAUDE_TIMEOUT_MIN), mode === 'develop' ? '--develop' : '--talk']
+            : adviseCommand ?? ['caw', 'agent', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin ?? CLAUDE_TIMEOUT_MIN), '--advise'];
         let agent = IDLE_AGENT;
         const finished = (async () => {
             // Token notice first; if the human declines, continue without Claude.
@@ -973,7 +973,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const results = verdict.results ?? [];
             const passed = results.filter((result) => result.status === 'pass').length;
             const text = results.length > 0 ? t('run.finished.steps', { passed, total: results.length }) : t(verdict.status === 'pass' ? 'run.finished.passed' : 'run.finished.failed');
-            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command: `caw-ai run ${spec.id}` });
+            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command: `caw run ${spec.id}` });
             // The window changes: chat and terminal say so before it closes.
             if (after.next !== undefined) {
                 const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
@@ -1201,7 +1201,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // If the application is at fault, Claude only reports fail when repairing: that changes nothing in the test and needs no plan.
             const onlyFail = Array.isArray(results.expectations) && results.expectations.length > 0 && results.expectations.every(({ status }) => status === 'fail');
             if (plan === null && repairing !== undefined && onlyFail) return;
-            if (plan === null) throw new CawError('plan-required', `There is no approved plan yet. Submit it with caw-ai plan --file <${PLAN_FILE}>.`);
+            if (plan === null) throw new CawError('plan-required', `There is no approved plan yet. Submit it with caw agent plan --file <${PLAN_FILE}>.`);
             const known = new Set(spec.expectations.map(({ id }) => id));
             const { groups } = groupSteps(recorder.steps);
             const failed = new Set((results.expectations ?? []).filter(({ status }) => status === 'fail').map(({ id }) => id));
@@ -1293,7 +1293,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             if (command?.action === 'chat') return readChat();
             if (command?.action !== 'task') chat.gate();
             if (command?.action === 'plan') return proposePlan(command);
-            if (plan === null && NEEDS_PLAN.has(command?.action)) throw new CawError('plan-required', `Submit the plan first: caw-ai plan --file <${PLAN_FILE}>. Reading works without it, e.g. snapshot.`);
+            if (plan === null && NEEDS_PLAN.has(command?.action)) throw new CawError('plan-required', `Submit the plan first: caw agent plan --file <${PLAN_FILE}>. Reading works without it, e.g. snapshot.`);
             if (command?.action === 'check') checkOrder(command);
             if (command?.action === 'ask-operator') return askOperator(command);
             if (command?.action === 'recording') return recorder.list();
@@ -1318,7 +1318,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // If the human declines the token notice, the run is aborted before Claude starts.
         const willing = await claudeMayStart(box, { decline: t('run.tokens.cancelRun') });
         if (!willing) abortSignal();
-        const agent = willing ? startAgent(box, containerCommand ?? ['caw-ai', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin)], CLAUDE_LOG) : IDLE_AGENT;
+        const agent = willing ? startAgent(box, containerCommand ?? ['caw', 'agent', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin)], CLAUDE_LOG) : IDLE_AGENT;
         // How the run ended; declared outside the try because the return below needs it.
         let ended;
         // Also on an unexpected error: otherwise Claude and its container keep running until their time limit.

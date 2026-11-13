@@ -262,7 +262,7 @@ test('Test run: after a change to the app there is "test again" instead of "fix 
     assert.equal(closed.calls.length, 1);
 });
 
-test('Test run: without --advise Claude looks for the cause on click, as the main button for an app failure', async () => {
+test('Test run: without --explain Claude looks for the cause on click, as the main button for an app failure', async () => {
     const advice = { spec, touched: [], stale: [], files: ['src/app.js'], notes: false };
     let advised = 0;
     const app = { side: 'app', text: 'Einschätzung: Fehler der Anwendung (eindeutig).', findings: ['HTTP 500.'] };
@@ -278,7 +278,7 @@ test('Test run: without --advise Claude looks for the cause on click, as the mai
     await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...other });
     assert.deepEqual(other.questions[0].options, ['fix', 'ask', 'close']);
 
-    // With --advise Claude already advised: do not ask a second time.
+    // With --explain Claude already advised: do not ask a second time.
     const fixed = harness({ outcomes: [{ ...failing('S2', { diagnosis: app }), concluded: { flawed: true, advise: async () => null } }], answers: ['close'] });
     await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', ...fixed });
     assert.deepEqual(fixed.questions[0].options, ['fix', 'close']);

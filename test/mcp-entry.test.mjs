@@ -13,7 +13,7 @@ test('mcpEntry: points to the hoisted install of a monorepo, relative to the pro
     mkdirSync(app, { recursive: true });
     assert.deepEqual(mcpEntry(app), MCP_ENTRY);
     mkdirSync(join(repo, 'node_modules', 'caw-ai', 'bin'), { recursive: true });
-    writeFileSync(join(repo, 'node_modules', 'caw-ai', 'bin', 'caw-ai.mjs'), '');
-    assert.deepEqual(mcpEntry(app), { command: 'node', args: ['../../../node_modules/caw-ai/bin/caw-ai.mjs', 'mcp'] });
+    writeFileSync(join(repo, 'node_modules', 'caw-ai', 'bin', 'caw.mjs'), '');
+    assert.deepEqual(mcpEntry(app), { command: 'node', args: ['../../../node_modules/caw-ai/bin/caw.mjs', 'mcp'] });
     assert.deepEqual(mcpEntry(repo), MCP_ENTRY);
 });

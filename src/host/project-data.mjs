@@ -1,4 +1,4 @@
-// Project data for the Claude Code session (caw-ai mcp): what validate, list and init do, as plain data. Nothing here prints
+// Project data for the Claude Code session (caw mcp): what validate, list and init do, as plain data. Nothing here prints
 // or reads stdin, because in the MCP process stdout and stdin are the protocol channel.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -88,7 +88,7 @@ const validateTest = (root, id, config) => {
 };
 
 /**
- * `caw-ai validate` as data. `ok` is false when the config is invalid or has TODO values, or a test has a problem.
+ * `caw validate` as data. `ok` is false when the config is invalid or has TODO values, or a test has a problem.
  * @returns { ok, config: { issues, todo, notes }, tests: [{ id, problems, hints, code: [{ target, code, overlay }] }], recordings: { problems, hints } }
  */
 export const validateProject = (root) => {
@@ -121,7 +121,7 @@ const recordingState = (spec) => {
 };
 
 /**
- * `caw-ai list` as data: per test app, role, targets, whether it writes and the recording state per step. Without a readable
+ * `caw list` as data: per test app, role, targets, whether it writes and the recording state per step. Without a readable
  * config the tests are listed as written (no defaults for app, role and targets).
  * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, app, role, targets, mutates, recording, steps: [{ id, name, recording }] } | { id, error }] }
  */
@@ -176,7 +176,7 @@ const ensureMcpEntry = (root) => {
 };
 
 /**
- * `caw-ai init` without questions and without explore: from caw/.explore.json (fromExplore: true or a path), otherwise offline
+ * `caw init` without questions and without explore: from caw/.explore.json (fromExplore: true or a path), otherwise offline
  * (template, TODO in the login). Existing files stay untouched.
  * @returns { state: 'done', created, skipped, todo, explored } or { state: 'explore-first' } when a URL is given but nothing was explored yet
  */

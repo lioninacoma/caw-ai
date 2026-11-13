@@ -179,7 +179,7 @@ test('Overlay watch: diagnose names parts from the server (missed), parts never 
     assert.deepEqual(seen.suggestions.map(({ pattern }) => pattern), ['[?&]url=repo:///Root/Fa/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)']);
     const text = incompleteText(seen);
     assert.match(text, /^Mischstand: 1 Skript\(e\) von Bestellung kamen vom Server statt aus dem lokalen Code:\n {2}https:\/\/portal\.example\/o\/Proxy/);
-    assert.match(text, /caw-ai overlay check --apply/);
+    assert.match(text, /caw overlay check --apply/);
     assert.match(incompleteText({ ...seen, suggestions: [] }), /assetUrlPattern, dessen Gruppe 1 der Dateiname ist/);
 });
 

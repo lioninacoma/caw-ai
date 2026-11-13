@@ -12,21 +12,21 @@ Where Claude runs when a run needs it is set by `agent.sandbox` in the config (`
 |---|---|---|
 | `local` | `claude -p` on your machine with your login. Only the tools `Read`, `Grep`, `Glob` and the caw tool: no shell, no writing, no web, no hooks, no other MCP servers. | everyday work on your own machine |
 | `docker` | `claude` in a container with a firewall, only with an API key (`ANTHROPIC_API_KEY`) | anyone who doesn't want Claude on their own system |
-| `session` | No Claude process of its own. Your open Claude Code session takes the role via the MCP server `caw-ai mcp`. | recording, fixing and developing in your usual IDE session |
+| `session` | No Claude process of its own. Your open Claude Code session takes the role via the MCP server `caw mcp`. | recording, fixing and developing in your usual IDE session |
 
 In all three cases the browser is the actual boundary: Claude sees the application only through the fixed commands and can navigate only to allowed hosts (see [Sandbox boundaries](#sandbox-boundaries)).
 
 ```json
-"caw:shop:smoke": "caw-ai run shop-smoke --target local",
-"caw:shop:smoke:record": "caw-ai record shop-smoke --target local",
-"caw:shop:smoke:rerecord-docker": "caw-ai record shop-smoke@S2 --target local --agent docker"
+"caw:shop:smoke": "caw run shop-smoke --env local",
+"caw:shop:smoke:record": "caw record shop-smoke --env local",
+"caw:shop:smoke:rerecord-docker": "caw record shop-smoke@S2 --env local --agent docker"
 ```
 
 In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` only applies there if a run does need Claude, and then always as `docker`.
 
 **Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: the raven stops blinking, no spinner, no blinking cursor), collapsed steps or chat, and the theme (F7, see [Themes](../themes/README.md)).
 
-**Token notice:** Before Claude works (record, fix a step, investigate a failure, questions in the chat, `--advise`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix a step). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--agent session` there is no notice: your session is already running.
+**Token notice:** Before Claude works (record, fix a step, investigate a failure, questions in the chat, `--explain`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix a step). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--agent session` there is no notice: your session is already running.
 
 **Try it** without a project of your own: [`examples/errand`](../examples/errand) in the repository, a small app with login and one test.
 
@@ -75,11 +75,11 @@ This check runs before anything else and aborts with its own message (exit 2):
 
 | Command | What happens | AI and chat | Environment |
 |---|---|---|---|
-| `record <test> --target <env>` | Record a new test plan or replace one | always | only environments with `claude` |
-| `run <test> --target <env>` | Test run by plan | On environments with `claude` the chat sits alongside from the start; Claude only after your message, your click on "Let Claude find the cause" or "Fix step", or with `--advise` | all |
-| `record <test>@S4 --target <env>` | Re-record from S4 to the end. S1 to S3 replay without Claude, then Claude follows the old plan from S4 on; there is no check run first, so look for causes with `run` | always | only environments with `claude` |
+| `record <test> --env <env>` | Record a new test plan or replace one | always | only environments with `claude` |
+| `run <test> --env <env>` | Test run by plan | On environments with `claude` the chat sits alongside from the start; Claude only after your message, your click on "Let Claude find the cause" or "Fix step", or with `--explain` | all |
+| `record <test>@S4 --env <env>` | Re-record from S4 to the end. S1 to S3 replay without Claude, then Claude follows the old plan from S4 on; there is no check run first, so look for causes with `run` | always | only environments with `claude` |
 
-`open --target <env>` opens the app signed in, with workbench and chat but without a test, see [Commands](commands.md#open). `open <test>` replays a test first, `open <test>@S4` stops at the entry of S4, see [Reaching a state and taking over](#reaching-a-state-and-taking-over).
+`open --env <env>` opens the app signed in, with workbench and chat but without a test, see [Commands](commands.md#open). `open <test>` replays a test first, `open <test>@S4` stops at the entry of S4, see [Reaching a state and taking over](#reaching-a-state-and-taking-over).
 
 `<env>` is a name from `environments`, e.g. `local`. With tenants (`sites`) the target is `tenant/env`, e.g. `nord/dev`.
 
@@ -88,23 +88,23 @@ This check runs before anything else and aborts with its own message (exit 2):
 ```bash
 # New test: demonstrate, approve the plan, adopt at the end
 # (--role and --app can be omitted if caw.config.json has only one role or app)
-caw-ai record bestellung --target local --role kunde --app shop --also backoffice
+caw record bestellung --env local --role kunde --app shop --also backoffice
 
 # Test without AI
-caw-ai run bestellung --target local
+caw run bestellung --env local
 
 # Test; on errors or warnings Claude advises in the chat (costs tokens)
-caw-ai run bestellung --target local --advise
+caw run bestellung --env local --explain
 
 # Test without chat as in CI, with or without a visible window
-caw-ai run bestellung --target local --no-chat
-caw-ai run bestellung --target local --headless
+caw run bestellung --env local --no-chat
+caw run bestellung --env local --headless
 
 # Up to the entry of S4 (S1 to S3 done, its inputs open) and keep working on local code there
-caw-ai open bestellung@S4 --target local
+caw open bestellung@S4 --env local
 
 # Re-record from S4 to the end
-caw-ai record bestellung@S4 --target local
+caw record bestellung@S4 --env local
 ```
 
 In Claude Code one sentence is enough: `/caw-ai take me to where the cart is filled`. The skill finds test and step and starts `open`. If nothing fits, it suggests `record`.
@@ -119,7 +119,7 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 
 ### Take over and keep developing
 
-`npx caw-ai open my-app-smoke` replays the test and leaves the window open after the verdict:
+`npx caw open my-app-smoke` replays the test and leaves the window open after the verdict:
 
 - **Keep clicking:** You continue in the same page and the same form state, including unsaved input and DevTools.
 - **Keep developing:** Against your dev server as the environment, F5 loads your current code. With `--overlay` the local code stays in place until you close the window, and F5 loads the current state of the build folder or dev server. There is no automatic reload apart from the dev server's hot reload.
@@ -207,7 +207,7 @@ On the right of the workbench, even in a test run without Claude. The history ca
 - **Step back:** There is no rewind. Tell Claude what was wrong: it goes to the right state and drops the detour with `omit`. What was submitted stays in the application; then only a new run helps.
 - **Cancel:** Esc (or "Cancel" in the key bar) asks "Really cancel? (Esc)"; a second Esc or a click on it within 4 seconds confirms and ends everything immediately with `error`. Closing the chat has the same effect; without it there is neither approval nor decision.
 
-The human's time counts toward Claude's limit, so the default here is 60 minutes (`--timeout`).
+The human's time counts toward Claude's limit, so the default here is 60 minutes (`--claude-timeout 60m`).
 
 ### What goes into the recording
 
@@ -224,7 +224,7 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 **Limits:**
 
 - **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `claude` and only with test accounts, the skill rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every call other than GET, HEAD and OPTIONS and every one with a key from `requestKeys`, without parameter values. Sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count: they don't make a test a writing one.
-- **Step budget:** `--max-steps` (else `maxSteps` from the config, else 100) counts Claude's `click`, `fill`, `type`, `press`, `goto` and `reload`, failed ones included. What you demonstrate yourself doesn't count.
+- **Step budget:** `--max-actions` (else `maxSteps` from the config, else 100) counts Claude's `click`, `fill`, `type`, `press`, `goto` and `reload`, failed ones included. What you demonstrate yourself doesn't count.
 - **Claude doesn't react instantly:** `claude -p` runs without input; message and pause take effect before the next action. "Cancel" takes effect immediately.
 
 ## Test run: `run`
@@ -232,18 +232,18 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 Replays the recording without model, Docker or token. On environments with `claude` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines (`--no-learn` turns that off), the last one what changed in the test files. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with [`open <test>`](#reaching-a-state-and-taking-over), stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 4 and names `record`. If a step is outdated, it ends with exit 4 and names `record <test>@<step>` to re-record from that step.
 
 - **Waiting:** There are no fixed pauses. A step waits until its target is visible and not covered. That covers load masks, overlays and dialogs within dialogs, since only the topmost dialog is clickable. `check` retries until it holds or the time limit expires.
-- **Time limits:** 30 seconds per step by default, changeable with `--step-timeout`, or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--timeout <minutes>` (default 60) and `--max-steps <n>` apply as for `record`.
+- **Time limits:** 30 seconds per step by default, changeable with `--step-timeout` (e.g. `--step-timeout 45s`), or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--timeout <minutes>` (default 60) and `--max-actions <n>` apply as for `record`.
 - **Errors:** If a step fails, the report names the test step with its action and points to a screenshot. Cleanup steps like "Cancel" then no longer run; a created record may stay open.
 - **Failures:** Console errors, script errors, failed requests and HTTP status 500 and above stop replay at the next step. So do visible dialogs, error messages and messages from `messageSelectors` that didn't occur during recording (numbers in the text don't count). With the `web` adapter a status notice (`role=status`, `aria-live=polite`, e.g. a success toast) is not a failure: it appears or not depending on timing; an unknown one appears once as a warning in the report. A dialog with input fields is interaction, not a message. Also: lost login, an application that didn't load (`extjs`: no ExtJS on the page), a stuck load mask (`aria-busy`, with `extjs` the load mask), a different page than recorded, and every unmet `check`.
 - **Fixing:** If a step fails, see [Fixing a step](#fixing-a-step).
-- **Without chat:** `--no-chat` replays in a visible window as in CI, without chat and without Claude: report, screenshot, a hint to run with chat to find the cause (`record <test>@<step>` only for an intended change), exit code. `--headless` likewise, but without a window, at a fixed 1920×1080. Neither works with `--advise` (exit 3). Whether an application accepts headless mode only shows in the run; otherwise use `--no-chat`.
+- **Without chat:** `--no-chat` replays in a visible window as in CI, without chat and without Claude: report, screenshot, a hint to run with chat to find the cause (`record <test>@<step>` only for an intended change), exit code. `--headless` likewise, but without a window, at a fixed 1920×1080. Neither works with `--explain` (exit 3). Whether an application accepts headless mode only shows in the run; otherwise use `--no-chat`.
 - **Limits:** Only what was recorded is replayed. Claude's eye for anything odd is missing, and write protection and host lock apply here too. Toasts that disappear between two steps are not seen by replay.
 
 ### Reaching a state and taking over
 
 ```bash
-caw-ai open <test> --target local
-caw-ai open <test>@S4 --target local
+caw open <test> --env local
+caw open <test>@S4 --env local
 ```
 
 `open <test>` replays the whole test and then hands over the window. `open <test>@S4` stops at the entry of `S4`: S1 to S3 run completely with their checks, of S4 only its leading navigation (`goto`, clicks, `wait-ready`). Its inputs and its check stay open, so you continue right where S4's work starts, e.g. in the form it fills in. The terminal says "Ready for S4 <name>: navigation done, inputs open." S4 itself is not judged; later steps don't run, so they may be outdated. `@S1` signs in, opens the app and does S1's navigation.
@@ -281,7 +281,7 @@ If a step fails in `run` or in the check run of `record`, replay stops and the b
 - **Ask:** Only your message starts Claude, in the same browser and read-only as with [advice](#advice-on-errors-and-warnings). It answers in the chat, names cause, file and line, and can give advice cards. Each further message continues the same conversation until you press a button. The log is in `agent/claude-talk.log`. Without a message or click, no tokens are spent.
 - **Fix in the same browser:** If nothing of the failed step has run yet, i.e. its first action failed without a hard error from outside, Claude fixes it right there, without a lead-in. The test run's report is kept as `report-test-run.md`. Otherwise, e.g. after half a sequence of actions or an unmet check, it proceeds as below with a lead-in in a fresh browser. The chat says beforehand which way it will be.
 
-`record <test>@S4 --target <env>` re-records from S4 to the end, e.g. after an intended change in the application, or for a step changed by hand or newly added. The steps before S4 must be current; from S4 on steps may be outdated or not yet recorded. There is no check run first and no demonstration: S1 to S3 replay without Claude, then Claude follows the old plan from S4 on, you steer in the chat, and Claude looks for no cause. From S4 on Claude may add, remove, rename or reorder steps; the steps before stay as they are. If Claude presents the plan from S4 on unchanged, it applies without approval: the chat says so, and you can still write if something should change. The approval card appears only if something changes, likewise when fixing a failure. `@S1` is the same as `record <test>`. `--role`, `--app`, `--also` and `--read-only` don't go with a step (exit 3): the test keeps its metadata. Exactly one step is fixed only with "Fix step" in a run's chat.
+`record <test>@S4 --env <env>` re-records from S4 to the end, e.g. after an intended change in the application, or for a step changed by hand or newly added. The steps before S4 must be current; from S4 on steps may be outdated or not yet recorded. There is no check run first and no demonstration: S1 to S3 replay without Claude, then Claude follows the old plan from S4 on, you steer in the chat, and Claude looks for no cause. From S4 on Claude may add, remove, rename or reorder steps; the steps before stay as they are. If Claude presents the plan from S4 on unchanged, it applies without approval: the chat says so, and you can still write if something should change. The approval card appears only if something changes, likewise when fixing a failure. `@S1` is the same as `record <test>`. `--role`, `--app`, `--also` and `--read-only` don't go with a step (exit 3): the test keeps its metadata. Exactly one step is fixed only with "Fix step" in a run's chat.
 
 Only what Claude tells you with `say` appears as a message in the chat. Its other notes are collapsed with the actions. If you cancel, the report says "Aborted by you."
 
@@ -348,8 +348,8 @@ Without fix parameters nothing costs tokens as long as you don't write or click:
 
 | Run | When |
 |---|---|
-| `run` and "Let Claude find the cause" | A step failed and you click the button in the chat. If the assessment is "application", it is the main button, otherwise it sits next to "Fix step". Then as with `--advise`: cards, and "Test again" after an adopted application change |
-| `run … --advise` | Without a click: a step fails, a hard error occurs or there are warnings, even in a passed run. For runs whose result you only look at later. Only on environments with `claude` and with chat (not in CI), otherwise exit 3 |
+| `run` and "Let Claude find the cause" | A step failed and you click the button in the chat. If the assessment is "application", it is the main button, otherwise it sits next to "Fix step". Then as with `--explain`: cards, and "Test again" after an adopted application change |
+| `run … --explain` | Without a click: a step fails, a hard error occurs or there are warnings, even in a passed run. For runs whose result you only look at later. Only on environments with `claude` and with chat (not in CI), otherwise exit 3 |
 | `record <test>@<S4>` and "Fix step" | Errors or warnings while re-recording or fixing and in the check run afterwards |
 | `record` | only once you choose "Fix step" in the check run |
 
@@ -372,7 +372,7 @@ The "Recommendations" section in `report.md` lists each piece of advice with evi
 
 ## Console output
 
-In a terminal the tool shows colors, symbols and, at the end, a result block with every step. In files and pipes it stays plain lines prefixed with `[caw-ai]`. `NO_COLOR` turns this off, `FORCE_COLOR` forces it.
+In a terminal the tool shows colors, symbols and, at the end, a result block with every step. In files and pipes it stays plain lines prefixed with `[caw]`. `NO_COLOR` turns this off, `FORCE_COLOR` forces it.
 
 ## How local code gets into the application
 
@@ -403,8 +403,8 @@ Set up the overlay in this order:
 
 1. Set `overlay.url` and `overlay.start` on the app (`init` writes the ExtJS default `http://localhost:1841/`; the skill derives both from `vite.config`, `angular.json`, `package.json` scripts or the README).
 2. Start the server yourself with `start` in the app folder, or let your Claude Code session do it (it asks first and runs it in the background).
-3. `npx caw-ai overlay status` until `ready` (`moved`: set `url` to the address it names).
-4. `npx caw-ai overlay check` until it reports complete (`--apply` adds suggested patterns).
+3. `npx caw overlay status` until `ready` (`moved`: set `url` to the address it names).
+4. `npx caw overlay check` until it reports complete (`--apply` adds suggested patterns).
 
 `doctor` shows the server, `bootstrap.json` and the last check per part.
 
@@ -416,7 +416,7 @@ Almost everything in the tool is framework-agnostic: snapshot, clicks, console, 
 |---|---|---|---|
 | Stored target | Role and accessible name (`aria-label`, label, text), plus `data-testid` and the nearest named region as `inside` (dialog, form, row). Without a role: tag and own text. Never field values. Open shadow roots count (closed ones can't be reached); in an iframe of the application the target carries the iframe as `frame` | like `web`, plus `component`: the components from outside in, e.g. `GroupsScreen › Button`; for Vue also `source`, the SFC file. Dev build only, irrelevant for finding the target again | Component: `xtype`, label, `itemId`, sub-element |
 | Ready | Document loaded, no page request open (requests open longer than 10 s, like long polling, don't count), nothing with `aria-busy`, no indeterminate progress (`role=progressbar` without `aria-valuenow`), DOM quiet for 150 ms | like `web`, plus mounted: React root container, Vue `data-v-app`, Angular `[ng-version]`; Angular also stable according to Zone.js if the app offers Testability (with `bootstrapApplication` only with `provideProtractorTestingSupport()`) | No `Ext.Ajax` request open, no store loading |
-| `wait-ready --store` | CSS selector, `--min-count` counts visible matches | like `web` | `storeId` or ComponentQuery, counts records |
+| `wait-ready --for` | CSS selector, `--min-count` counts visible matches | like `web` | `storeId` or ComponentQuery, counts records |
 | Messages | modal dialogs without input fields, `role=alert`, `role=alertdialog`, or `messageSelectors`; `role=status` (toasts, snackbars) only as a notice | like `web` | modal dialogs, `messageSelectors`, plus ExtJS dialogs and toasts |
 | Stack origin | top entry | top entry outside `react-dom`, `@vue/*`, `@angular/*`, `zone.js` | top entry outside `ext-*.js` |
 
@@ -451,7 +451,7 @@ For `web` and the SPA adapters an accessible UI helps: buttons with text or `ari
 
 **Chrome (on the host, outside the Docker firewall):**
 
-- **Control:** The agent never gets CDP. There are only the fixed commands from `caw-ai help`, as files in the agent folder. Navigation via `goto` only goes to allowed hosts.
+- **Control:** The agent never gets CDP. There are only the fixed commands from `caw help`, as files in the agent folder. Navigation via `goto` only goes to allowed hosts.
 - **Network:** `--host-resolver-rules` allows only the hosts from `environments` and `extraAllowedHosts`; IP addresses are blocked too. Plus `--no-proxy-server` and a WebRTC lock.
 - **Workbench:** The tool answers the top window's document itself, at the application's address. The application thus shares the origin with the workbench and can modify its page; decisions are made only in the chat, which it can't reach (separate, opaque origin). A POST into the top window is sent once by the tool via the browser context (same cookies, same host lock).
 - **Limit of the lock:** It knows hosts, not ports. Other services on an allowed host are reachable from the page.

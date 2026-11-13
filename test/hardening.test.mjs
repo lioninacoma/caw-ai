@@ -62,9 +62,9 @@ test('caw/.env like dotenv: trailing comment, quotes, whitespace; # without whit
 });
 
 test('usage: the test name is a file name in caw/tests, not a path', () => {
-    for (const name of ['login', 'order-2', 'a_b.c', 'kündigung', 'überweisung.2']) assert.equal(parseRunArgs('run', [name, '--target', 'shop/dev']).test, name);
+    for (const name of ['login', 'order-2', 'a_b.c', 'kündigung', 'überweisung.2']) assert.equal(parseRunArgs('run', [name, '--env', 'shop/dev']).test, name);
     for (const name of ['team/login', '../x', '..', 'x.', '-x', 'a b', 'a\\b', 'a:b', 'ü/x']) {
-        assert.throws(() => parseRunArgs('record', [name, '--target', 'shop/dev']), { code: 'usage' }, name);
+        assert.throws(() => parseRunArgs('record', [name, '--env', 'shop/dev']), { code: 'usage' }, name);
     }
 });
 

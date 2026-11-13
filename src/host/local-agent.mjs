@@ -10,7 +10,7 @@ import { resolveClaude } from '../shared/claude-bin.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 
-const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
+const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
 
 /** The local counterpart to prepareSandbox: needs neither image nor token, only Claude Code on the PATH. */
 export const localBox = () => ({ kind: 'local', label: t('session.local.label') });
@@ -30,15 +30,15 @@ export const requireClaude = (run = spawnSync, bin = resolveClaude()) => {
     return version;
 };
 
-/** A command as in the container: `caw-ai ...` maps to this package so it need not be installed globally. */
-export const localCommand = (command) => (command[0] === 'caw-ai' ? [process.execPath, BIN, ...command.slice(1)] : command);
+/** A command as in the container: `caw ...` maps to this package so it need not be installed globally. */
+export const localCommand = (command) => (command[0] === 'caw' ? [process.execPath, BIN, ...command.slice(1)] : command);
 
-/** Small `caw-ai` launchers on the agent's PATH, for fixed flows (E2E) that call `caw-ai` as in the container. */
+/** Small `caw` launchers on the agent's PATH, for fixed flows (E2E) that call `caw` as in the container. */
 const writeShims = (dir) => {
     const bin = join(dir, '.bin');
     mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, 'caw-ai'), `#!/bin/sh\nexec "${process.execPath.replaceAll('\\', '/')}" "${BIN.replaceAll('\\', '/')}" "$@"\n`, { mode: 0o755 });
-    writeFileSync(join(bin, 'caw-ai.cmd'), `@"${process.execPath}" "${BIN}" %*\r\n`);
+    writeFileSync(join(bin, 'caw'), `#!/bin/sh\nexec "${process.execPath.replaceAll('\\', '/')}" "${BIN.replaceAll('\\', '/')}" "$@"\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'caw.cmd'), `@"${process.execPath}" "${BIN}" %*\r\n`);
     return bin;
 };
 

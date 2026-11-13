@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { auth, init, record, run, starterConfig, validate } from '../src/host/commands.mjs';
+import { init, record, run, starterConfig, validate } from '../src/host/commands.mjs';
+import { roleCommand } from '../src/host/role-command.mjs';
 import { exitOf } from '../src/shared/errors.mjs';
 
 test('init: passes validate at once, creates no example test, credentials are git-ignored', (t) => {
@@ -16,7 +17,7 @@ test('init: passes validate at once, creates no example test, credentials are gi
     assert.equal(validate(root), 0);
     assert.deepEqual(readdirSync(join(root, 'caw', 'tests')), ['.gitkeep'], 'no unrequested example test, but the folder');
     assert.match(readFileSync(join(root, 'caw', 'caw.md'), 'utf8'), /^# Notizen für Claude\n[\s\S]*\n- Beispiel:/);
-    assert.match(said.join('\n'), /den ersten Test aufnehmen: caw-ai record <test> --target local\. Ohne passende Selektoren erst caw-ai explore/);
+    assert.match(said.join('\n'), /den ersten Test aufnehmen: caw record <test> --env local\. Ohne passende Selektoren erst caw init --explore-only/);
     // If explore just ran, init does not advise running it first.
     const explored = mkdtempSync(join(tmpdir(), 'caw-init-explored-'));
     t.after(() => rmSync(explored, { recursive: true, force: true }));
@@ -29,7 +30,7 @@ test('init: passes validate at once, creates no example test, credentials are gi
     assert.equal(readFileSync(join(explored, 'caw', 'caw.md'), 'utf8'), 'eigen');
     const ignore = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/);
     assert.ok(ignore.includes('.caw/') && ignore.includes('caw/.env') && ignore.includes('caw/.auth/'));
-    assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers['caw-ai'], { command: 'node', args: ['node_modules/caw-ai/bin/caw-ai.mjs', 'mcp'] });
+    assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers['caw-ai'], { command: 'node', args: ['node_modules/caw-ai/bin/caw.mjs', 'mcp'] });
 });
 
 test('init: extends an existing .mcp.json, leaves the rest alone, and skips it without mcp', (t) => {
@@ -60,7 +61,7 @@ test('readCredentials: environment before caw/.env, session per target', async (
     assert.deepEqual(readCredentials(root, form, 'kunde', 'local', { CAW_LOGIN_KUNDE: 'aus-ci' }), { login: 'aus-ci', password: 'pw-datei' });
     const stored = { auth: { type: 'storageState' }, roles: { kunde: {} } };
     assert.equal(sessionPath('nord/staging', 'kunde'), 'caw/.auth/nord/staging/kunde.json');
-    assert.throws(() => readCredentials(root, stored, 'kunde', 'staging', {}), /auf staging keine gespeicherte Sitzung.*--target staging/);
+    assert.throws(() => readCredentials(root, stored, 'kunde', 'staging', {}), /auf staging keine gespeicherte Sitzung.*--env staging/);
     mkdirSync(join(root, 'caw', '.auth', 'staging'), { recursive: true });
     writeFileSync(join(root, sessionPath('staging', 'kunde')), '{}');
     assert.equal(readCredentials(root, stored, 'kunde', 'staging', {}).storageState, join(root, 'caw', '.auth', 'staging', 'kunde.json'));
@@ -81,7 +82,7 @@ test('runMode names the mode and the reason, no mode follows silently from the e
     const { runMode } = await import('../src/host/commands.mjs');
     const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'dev' };
     assert.match(runMode(base), /mit Chat\. Fehlende Vergleichswerte lernt/);
-    assert.match(runMode({ ...base, withAdvice: true }), /--advise, kostet Token/);
+    assert.match(runMode({ ...base, withAdvice: true }), /--explain, kostet Token/);
     assert.match(runMode({ ...base, inCi: true }), /Variable CI.*unverändert/);
     assert.match(runMode({ ...base, noChat: true }), /--no-chat/);
     assert.match(runMode({ ...base, headless: true, noChat: true }), /--headless/);
@@ -104,17 +105,19 @@ test('auth: saves a role\'s session, only with storageState and never on product
         calls.push(options);
         return true;
     };
-    assert.equal(await auth(root, ['kunde', '--target', 'local'], { capture }), 0);
+    const login = (args, captureSession) => roleCommand(root, ['login', ...args], { captureSession });
+    assert.equal(await login(['kunde', '--env', 'local'], capture), 0);
     assert.equal(calls[0].url, 'http://app.localhost:5173/sso');
     assert.equal(calls[0].signedInSelector, '#menu');
     assert.equal(calls[0].file, join(root, 'caw', '.auth', 'local', 'kunde.json'));
     assert.deepEqual(calls[0].hosts, ['app.localhost'], 'production never in another target\'s host lock');
-    assert.equal(await auth(root, ['kunde', '--target', 'local'], { capture: async () => false }), 2, 'window closed: nothing saved');
-    await assert.rejects(auth(root, ['kunde', '--target', 'live'], { capture }), /Produktion/);
-    await assert.rejects(auth(root, ['gast', '--target', 'local'], { capture }), /Rolle gast/);
-    await assert.rejects(auth(root, ['kunde'], { capture }), /Aufruf/);
+    assert.equal(await login(['kunde', '--env', 'local'], async () => false), 2, 'window closed: nothing saved');
+    await assert.rejects(login(['kunde', '--env', 'live'], capture), (error) => error.code === 'env-denied' && /Produktion/.test(error.message));
+    await assert.rejects(login(['gast', '--env', 'local'], capture), /Rolle gast/);
+    await assert.rejects(login(['kunde'], capture), /Aufruf: caw role login <rolle> --env <umgebung>/);
+    await assert.rejects(login(['kunde', '--target', 'local'], capture), /--target heißt jetzt --env/);
     write({ type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#menu' });
-    await assert.rejects(auth(root, ['kunde', '--target', 'local'], { capture }), /nur mit auth.type storageState/);
+    await assert.rejects(login(['kunde', '--env', 'local'], capture), /nur mit auth.type storageState/);
     assert.equal(calls.length, 1);
 });
 
@@ -137,7 +140,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     const probed = [];
     const probes = { chrome: async () => {}, claude: () => '2.1.0', docker: async () => { throw new Error('Kein Docker gefunden'); }, reachable: async (url) => { probed.push(url); return url.startsWith('http://'); } };
     const missing = await doctorChecks(root, { env: {}, probes });
-    assert.match(missing.find(({ ok }) => !ok).next, /caw-ai init/);
+    assert.match(missing.find(({ ok }) => !ok).next, /caw init/);
     init(root);
     const initial = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
     assert.deepEqual(Object.keys(initial.environments), ['local'], 'no placeholder environment from the template');
@@ -184,7 +187,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     writeFileSync(configPath, saved.replace('"local": {', '"local": { "robot": true, "zzz": true,'));
     const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
     assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, urls, claude, overlay, writable, production)');
-    assert.equal(broken.next, 'caw-ai validate zeigt alle 2 Befunde.');
+    assert.equal(broken.next, 'caw validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.
     const inCi = await doctorChecks(root, { env: { CI: 'true', ANTHROPIC_API_KEY: 'sk-geheim' }, nodeVersion: '22.4.0', probes });
@@ -196,7 +199,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     assert.ok(!docker.some(({ text }) => /Claude Code 2/.test(text)));
     rmSync(join(root, '.mcp.json'), { force: true });
     const session = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' });
-    assert.match(session.find(({ text }) => /mcp\.json/.test(text)).next, /caw-ai skill/);
+    assert.match(session.find(({ text }) => /mcp\.json/.test(text)).next, /caw skill/);
     writeFileSync(join(root, '.mcp.json'), '{ "mcpServers": { "caw-ai": { "command": "npx", "args": ["caw-ai", "mcp"] } } }');
     assert.ok((await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' })).find(({ text }) => /mcp\.json/.test(text)).ok);
 });
@@ -256,11 +259,11 @@ test('missing test: the record hint only names flags the config does not determi
     const target = Object.keys(config.environments)[0];
     const keep = (map) => Object.fromEntries(Object.entries(map).slice(0, 1));
     writeFileSync(file, JSON.stringify({ ...config, roles: keep(config.roles), apps: keep(config.apps) }));
-    await assert.rejects(run(root, ['gibtsnicht', '--target', target]), (error) => error.code === 'test-missing' && error.message.endsWith(`caw-ai record gibtsnicht --target ${target}`));
+    await assert.rejects(run(root, ['gibtsnicht', '--env', target]), (error) => error.code === 'test-missing' && error.message.endsWith(`caw record gibtsnicht --env ${target}`));
     const two = { ...config.roles, zweite: Object.values(config.roles)[0] };
     writeFileSync(file, JSON.stringify({ ...config, roles: two, apps: keep(config.apps) }));
-    await assert.rejects(run(root, ['gibtsnicht', '--target', target]), (error) => error.message.endsWith(`--role <${Object.keys(two).join('|')}>`));
-    await assert.rejects(record(root, ['neu', '--target', target]), (error) => error.code === 'usage' && /fehlt --role\. Aufruf: caw-ai record neu/.test(error.message));
+    await assert.rejects(run(root, ['gibtsnicht', '--env', target]), (error) => error.message.endsWith(`--role <${Object.keys(two).join('|')}>`));
+    await assert.rejects(record(root, ['neu', '--env', target]), (error) => error.code === 'usage' && /fehlt --role\. Aufruf: caw record neu/.test(error.message));
 });
 
 test('skill: only skill and MCP entry, no config; updates an old skill', async (t) => {
@@ -439,7 +442,7 @@ test('doctor: overlay lines for ExtJS (bootstrap.json, local code server, last o
     assert.match(lines[0].text, /bootstrap\.json fehlt/);
     assert.equal(lines[0].next, 'Starte npm run watch in app; caw startet ihn nur mit --start.');
     assert.equal(lines[1].text, 'dev, App web: lokaler Code unter http://localhost:1841/ antwortet nicht');
-    assert.equal(lines[2].next, 'caw-ai overlay check --target dev');
+    assert.equal(lines[2].next, 'caw overlay check --env dev');
     state = { state: 'moved', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/' };
     lines = await overlayLines();
     assert.equal(lines[1].text, 'dev, App web: lokaler Code läuft unter http://localhost:52775/, nicht unter http://localhost:1841/');

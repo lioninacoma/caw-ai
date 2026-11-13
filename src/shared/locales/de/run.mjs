@@ -55,7 +55,7 @@ export default {
     'run.phase.handedOver': 'Übergeben',
 
     // Run
-    'run.error.authMissing': 'Für die Rolle {role} gibt es auf {target} keine gespeicherte Sitzung. Melde dich einmal an: caw-ai auth {role} --target {target}',
+    'run.error.authMissing': 'Für die Rolle {role} gibt es auf {target} keine gespeicherte Sitzung. Melde dich einmal an: caw role login {role} --env {target}',
     'run.tokens.question': 'Jetzt arbeitet Claude, das kostet Token.',
     'run.tokens.go': 'Weiter',
     'run.tokens.always': 'Nicht mehr fragen',
@@ -63,7 +63,7 @@ export default {
     'run.tokens.cancelRun': 'Lauf abbrechen',
     'run.tokens.remembered': 'Gemerkt, der Hinweis kommt nicht mehr',
     'run.tokens.declined': 'Ohne Claude weiter',
-    'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} stehen noch auf TODO. Trag sie in caw.config.json ein; npx caw-ai doctor zeigt, was noch fehlt.` : `${keys} steht noch auf TODO. Trag es in caw.config.json ein; npx caw-ai doctor zeigt, was noch fehlt.`),
+    'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} stehen noch auf TODO. Trag sie in caw.config.json ein; npx caw doctor zeigt, was noch fehlt.` : `${keys} steht noch auf TODO. Trag es in caw.config.json ein; npx caw doctor zeigt, was noch fehlt.`),
     'run.error.credentialsMissing': ({ names, file }) => `${names} ${String(names).includes(',') ? 'fehlen: als Umgebungsvariablen' : 'fehlt: als Umgebungsvariable'} oder in ${file} setzen.`,
     'run.error.unreachable': '{url} ist nicht erreichbar.',
     'run.openingChrome': 'Öffne Chrome und melde an ...',
@@ -284,7 +284,7 @@ export default {
     // MCP tools of the Claude Code session
     'run.mcp.noRun': 'Kein Lauf wartet auf dich als Agent. Starte einen mit caw_start (record oder run mit Chat), oder der Lauf ist schon beendet: caw_status zeigt seine Ausgabe.',
     'run.mcp.commandInvalid': 'command muss einer von {list} sein.',
-    'run.mcp.argsInvalid': 'args muss eine Liste von Texten sein, etwa ["bestellung", "--target", "local"].',
+    'run.mcp.argsInvalid': 'args muss eine Liste von Texten sein, etwa ["bestellung", "--env", "local"].',
     'run.mcp.agentFlag': '--agent setzt caw_start selbst (session).',
     'run.mcp.alreadyWaiting': 'Lauf {runId} wartet schon auf dich ({mode}). Bearbeite ihn mit dem Tool caw oder lass den Menschen ihn beenden, dann starte den nächsten.',
     'run.mcp.stillRunning': 'Ein Lauf läuft noch (pid {pid}, Ausgabe {log}). Warte, bis er endet, oder lass den Menschen ihn im Fenster beenden, dann starte den nächsten.',

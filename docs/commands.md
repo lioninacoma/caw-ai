@@ -2,14 +2,13 @@ English · [Deutsch](commands.de.md)
 
 # Commands
 
-Run every command from your project root: `npx caw-ai <command>` (or `pnpm exec`, `yarn`). `<env>` is a name from `environments` in `caw.config.json`, e.g. `local`. With tenants (`sites`) it is `tenant/env`, e.g. `north/dev`.
+Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `yarn`). `<env>` is a name from `environments` in `caw.config.json`, e.g. `local`. With tenants (`sites`) it is `tenant/env`, e.g. `north/dev`.
 
-`--target` may be left out when the choice is clear: `run`, `record` and `open <test>` then take the test's only target (for `record`, the only one of them where Claude may work; for `record` of a new test, the only environment where Claude may work). The terminal names the choice, e.g. `› Target: local (only target of create-ticket)`. If it is ambiguous, the command stops and lists the choices: `--target is missing: local, dev`.
+`--env` may be left out when the choice is clear: `run`, `record` and `open <test>` then take the test's only target (for `record`, the only one of them where Claude may work; for `record` of a new test, the only environment where Claude may work). The terminal names the choice, e.g. `› Target: local (only target of create-ticket)`. If it is ambiguous, the command stops and lists the choices: `--env is missing: local, dev`.
 
 | Command | What it does | Claude? |
 |---|---|---|
-| [`init`](#init) | Set up a project: look at the app, write config, skill, `.mcp.json` | no |
-| [`explore`](#explore) | Look at the app and suggest settings, write nothing else | no |
+| [`init`](#init) | Set up a project: look at the app, write config, skill, `.mcp.json`; with `--explore-only` only suggest settings | no |
 | [`skill`](#skill) | Create or update the Claude Code skill and `.mcp.json` | no |
 | [`doctor`](#doctor) | Check machine, config, credentials and environments | no |
 | [`overlay status`](#overlay-status) | Is the local code server for `--overlay` ready? | no |
@@ -19,27 +18,26 @@ Run every command from your project root: `npx caw-ai <command>` (or `pnpm exec`
 | [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
 | [`open`](#open) | Open the app signed in, with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
-| [`auth`](#auth) | Sign in by hand and store the session (SSO) | no |
-| [`role`](#role) | List, add or remove roles and their test users | no |
+| [`role`](#role) | List, add or remove roles and their test users; `role login` stores a session (SSO) | no |
 | [`theme`](#theme) | List, pick or check workbench themes | no |
-| [`mcp`](#mcp) | MCP server for your own Claude Code session | – |
+| [`mcp`](#mcp) | MCP server for your own Claude Code session (started by Claude Code, not in `--help`) | – |
 
-`npx caw-ai help` prints the same overview in the terminal. `npx caw-ai <command> --help` (or `-h`, anywhere on the line) prints only that command, `npx caw-ai help agent` the agent commands. `npx caw-ai --version` prints the version.
+`npx caw help` prints the same overview in the terminal. `npx caw <command> --help` (or `-h`, anywhere on the line) prints only that command, `npx caw agent --help` the agent commands. `npx caw --version` prints the version.
 
 When a command stops, the terminal shows the reason first, then for an invalid call the command's short form, then the code and exit code:
 
 ```
 ✗ create-ticket@s2: a step goes after the test as <test>@S<n>, e.g. order@S3.
-  Usage: caw-ai record <test> [--target <env>] [--role <role>] [--app <app>]  or  caw-ai record <test>@<S4> [--target <env>]
+  Usage: caw record <test> [--env <env>] [--role <role>] [--app <app>]  or  caw record <test>@<S4> [--env <env>]
   (code: usage, exit 3)
 ```
 
-An option that needs a value never takes the next option as its value: `--target --headless` stops with `--target needs a value, e.g. --target local`.
+An option that needs a value never takes the next option as its value: `--env --headless` stops with `--env needs a value, e.g. --env local`.
 
 ## init
 
 ```bash
-npx caw-ai init --url http://localhost:5173
+npx caw init --url http://localhost:5173
 ```
 
 Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. Sign in with a test account (caw-ai notices when the sign-in form is gone), go to the page where tests should start and click **Done** in the card at the bottom right of the window. caw-ai detects framework, login form and a "signed in" marker and creates:
@@ -56,27 +54,27 @@ Anything it couldn't detect is set to `TODO`. `doctor` lists it, `validate` fail
 |---|---|
 | `--url <address>` | The app's address. Without it, `init` asks. |
 | `--yes` | Don't wait for you to sign in, ask no questions. Good for apps without login. With a login nobody signs in: `signedInSelector` stays `TODO` and `startUrl` stays `/` (or the path of `--url`). |
-| `--from <file>` | Use an existing `explore` result instead of opening the app. If `caw/.explore.json` exists, `init` uses it automatically. |
+| `--from <file>` | Use an existing `--explore-only` result instead of opening the app. If `caw/.explore.json` exists, `init` uses it automatically. |
 | `--no-mcp` | Don't touch `.mcp.json`. |
 | `--offline` | Don't open the app: write the template with `TODO` for the sign-in. Without a terminal and without `--url`, `init` does this by itself. |
 | `--insecure-tls` | Accept self-signed certificates (local environments only). |
 
-## explore
+### Only look: `--explore-only`
 
 ```bash
-npx caw-ai explore --url http://localhost:5173
+npx caw init --explore-only --url http://localhost:5173
 ```
 
-Like `init`, but only writes suggestions to `caw/.explore.json`: framework, login type and selectors, signed-in marker, start page, messages and console noise. Each suggestion has `confidence: certain` or `likely`. Pass the file to `init --from` later.
+Looks at the app like `init`, but only writes suggestions to `caw/.explore.json`: framework, login type and selectors, signed-in marker, start page, messages and console noise. Each suggestion has `confidence: certain` or `likely`. Pass the file to `init --from` later.
 
-Options: `--yes`, `--insecure-tls` (as for `init`); `--login` or `--no-login` answer the sign-in question for scripts.
+With it: `--yes`, `--insecure-tls` (as for `init`); `--login` or `--no-login` answer the sign-in question for scripts.
 
 With a sign-in, the card then asks for the role of the account you used and saves it as a test user (see [role](#role)); `init` takes the roles from there.
 
 ## skill
 
 ```bash
-npx caw-ai skill
+npx caw skill
 ```
 
 Creates or updates `.claude/skills/caw-ai/SKILL.md` and the `.mcp.json` entry. Run it after updating caw-ai. Then tell Claude Code "Set up caw-ai" and it walks you through `init` and `doctor`.
@@ -84,8 +82,8 @@ Creates or updates `.claude/skills/caw-ai/SKILL.md` and the `.mcp.json` entry. R
 ## doctor
 
 ```bash
-npx caw-ai doctor
-npx caw-ai doctor --agent docker
+npx caw doctor
+npx caw doctor --agent docker
 ```
 
 Checks Node, Chrome, Claude Code (agent `local`) or Docker and token (agent `docker`), the config, `TODO` values, credentials per role and whether each environment answers. Every failed check comes with the next step. For an invalid config it shows the first finding; `validate` lists them all. Placeholder addresses (`example.com`, `.test`, `.invalid`) are reported, never contacted.
@@ -95,8 +93,8 @@ For ExtJS with an environment that has `overlay: true`, doctor adds optional lin
 ## overlay status
 
 ```bash
-npx caw-ai overlay status
-npx caw-ai overlay status --target dev --app web --json
+npx caw overlay status
+npx caw overlay status --env dev --app web --json
 ```
 
 Is the local code server of the app ready for `--overlay`? No browser, no sign-in, starts nothing. It requests `overlay.url`; for ExtJS it checks that the server is the watch of *this* app (`app.json` name, `bootstrap.json` with a load order) and, if not, looks for the app's watch on another port.
@@ -117,9 +115,9 @@ Is the local code server of the app ready for `--overlay`? No browser, no sign-i
 ## overlay check
 
 ```bash
-npx caw-ai overlay check
-npx caw-ai overlay check --target dev --apply
-npx caw-ai overlay check --json
+npx caw overlay check
+npx caw overlay check --env dev --apply
+npx caw overlay check --json
 ```
 
 Opens the app headless with `--overlay` (signed in, no steps, no Claude) and compares the page's script requests with what the overlay should replace. For ExtJS that is the app and every own package from `bootstrap.json`, `x.js` and `x-debug.js` counting as one part. Per part it prints `local`, `deployed` or `not loaded` (maybe loaded later).
@@ -136,12 +134,12 @@ A part that came `deployed` means a mixed version: the page ran partly on your c
 
 Before the browser it runs `overlay status`. If the server isn't ready it stops with that state, the address and the `start` command, and starts nothing. `--start` runs `start` in the app folder in that case and stops it afterwards (CI).
 
-`--target` defaults to the only environment with `overlay: true`; `--app` and `--role` to the only app and the first role. The result always goes to `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `url`, `start`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, with `overlay.statics` also `statics` with `status` `local`, `deployed` or `not-loaded` per entry, after `--apply` also `applied`). A static that came from the server makes the check `incomplete`. `--json` prints it as the only line on stdout. Exit 0 complete, 2 incomplete or server problem (`down`, `wrong-app`, `stale`), 3 no overlay environment or no app.
+`--env` defaults to the only environment with `overlay: true`; `--app` and `--role` to the only app and the first role. The result always goes to `.caw/overlay-check.json` (`at`, `target`, `app`, `state`, `url`, `start`, `parts`, `missed`, `notLoaded`, `suggestions`, `unresolved`, with `overlay.statics` also `statics` with `status` `local`, `deployed` or `not-loaded` per entry, after `--apply` also `applied`). A static that came from the server makes the check `incomplete`. `--json` prints it as the only line on stdout. Exit 0 complete, 2 incomplete or server problem (`down`, `wrong-app`, `stale`), 3 no overlay environment or no app.
 
 ## validate
 
 ```bash
-npx caw-ai validate
+npx caw validate
 ```
 
 Checks `caw.config.json` and every file in `caw/tests/` without browser or Claude. Errors name file and line, all of them at once. Use it in CI and pre-commit hooks.
@@ -153,8 +151,8 @@ Per test and target it prints which code runs there and where `--overlay` would 
 ## list
 
 ```bash
-npx caw-ai list
-npx caw-ai list create-ticket
+npx caw list
+npx caw list create-ticket
 ```
 
 Without a test: one row per test with its targets, its recording status (`recorded`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)`. No browser, no Claude.
@@ -164,7 +162,7 @@ Without `caw.config.json` it stops like every other command (`config-missing`). 
 ## record
 
 ```bash
-npx caw-ai record create-ticket --target local
+npx caw record create-ticket --env local
 ```
 
 Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test if the file doesn't exist. Chrome opens with the workbench and a chat:
@@ -175,7 +173,7 @@ Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test i
 4. caw-ai replays the recording without Claude.
 5. You choose "Adopt test plan". Only then are files written.
 
-Runs only on environments where Claude may work (`"claude": true`). `--target` can be left out if there is only one.
+Runs only on environments where Claude may work (`"claude": true`). `--env` can be left out if there is only one.
 
 | Option | |
 |---|---|
@@ -186,14 +184,14 @@ Runs only on environments where Claude may work (`"claude": true`). `--target` c
 | `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment, see [Testing local code](configuration.md#testing-local-code). |
 | `--start` | With `--overlay`: run `overlay.start` if the local code server doesn't answer, stop it at the end (CI). Without it caw starts nothing and names the command. |
 | `--agent local\|docker\|session` | Where Claude runs. Default: `agent.sandbox` from the config, else `local`. |
-| `--timeout <minutes>` | Time limit for Claude, default 60. |
-| `--max-steps <n>` | Limit on Claude's browser actions, default `maxSteps` or 100. |
-| `--step-timeout <seconds>` | Time limit per step in the check run, default 30. |
+| `--claude-timeout <duration>` | Time limit for Claude, default `60m`. |
+| `--max-actions <n>` | Limit on Claude's browser actions, default `maxSteps` or 100. |
+| `--step-timeout <duration>` | Time limit per step in the check run, default `30s`. |
 
 ### From a step on
 
 ```bash
-npx caw-ai record create-ticket@S3 --target local
+npx caw record create-ticket@S3 --env local
 ```
 
 Re-records the test from S3 to the end. Use it when the app changed on purpose from there on, after you changed a step's text by hand, or to add steps at the end. S1 and S2 replay without Claude, then Claude follows the old plan from S3 while you steer in the chat; there is no demonstration. From S3 on the plan may change: Claude can add, remove, rename or reorder steps. The steps before S3 and their recordings stay exactly as they are; steps no longer in the plan are deleted when you adopt. Baselines and network effects from S3 on are learned again on the next healthy run. `@S1` records the whole test, like `record create-ticket`.
@@ -203,7 +201,7 @@ There is no check run first: if a step fails because of a bug in the app, find t
 ## run
 
 ```bash
-npx caw-ai run create-ticket --target local
+npx caw run create-ticket --env local
 ```
 
 Replays the recording. No Claude, no tokens. On environments where Claude may work (`claude`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
@@ -214,13 +212,13 @@ With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml
 |---|---|
 | `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment: the build folder, the local code server at `overlay.url` (dev server, Sencha watch), or the server at `<url>`; without a value the one configured source. Only on environments with `"overlay": true`. Without the option the deployed version always runs. See [Testing local code](configuration.md#testing-local-code). |
 | `--start` | As for `record`. |
-| `--advise` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
+| `--explain` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
 | `--no-chat` | Visible window, no chat, no Claude. Like CI. |
 | `--headless` | No window, no chat. 1920×1080. |
 | `--no-learn` | Keep the chat, but learn no baselines: the test file only changes if you adopt something in the chat. |
-| `--step-timeout <seconds>` | Time limit per step, default 30. |
-| `--timeout <minutes>` | Time limit for Claude when it investigates or fixes, default 60. |
-| `--max-steps <n>` | Limit on Claude's actions when fixing. |
+| `--step-timeout <duration>` | Time limit per step, default `30s`. |
+| `--claude-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
+| `--max-actions <n>` | Limit on Claude's actions when fixing. |
 | `--agent local\|docker\|session` | As for `record`. |
 
 With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`. `record` and `open` need a person and are rejected in CI (exit 3), since nobody would take over the browser. On runners without a display add `--headless` or use `xvfb-run`.
@@ -228,25 +226,25 @@ With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`. `rec
 ### Several tests (CI)
 
 ```bash
-npx caw-ai run --all --target dev --headless --report junit=caw-junit.xml
-npx caw-ai run create-ticket close-ticket --target dev
+npx caw run --all --env dev --headless --report junit=caw-junit.xml
+npx caw run create-ticket close-ticket --env dev
 ```
 
-Runs the tests one after another, without chat (`--advise` is rejected). `--all` takes every test that lists the target. Without `--target` the only target of the tests is used. A test that can't run (missing recording, typo) doesn't stop the others. At the end a table shows `PASS`, `FAIL`, `ERROR`, `NEEDS RECORDING` or `REJECTED` per test. The exit code is that of the worst run, in this order: `2` error > `1` fail > `4` needs recording > `3` rejected > `0` pass.
+Runs the tests one after another, without chat (`--explain` is rejected). `--all` takes every test that lists the target. Without `--env` the only target of the tests is used. A test that can't run (missing recording, typo) doesn't stop the others. At the end a table shows `PASS`, `FAIL`, `ERROR`, `NEEDS RECORDING` or `REJECTED` per test. The exit code is that of the worst run, in this order: `2` error > `1` fail > `4` needs recording > `3` rejected > `0` pass.
 
 `--report junit=<file>` also writes the table as JUnit XML (relative to the project folder): `fail` as `<failure>`, everything else that didn't pass as `<error>`.
 
 ## open
 
 ```bash
-npx caw-ai open --target dev --overlay
-npx caw-ai open create-ticket --target local
-npx caw-ai open create-ticket@S3 --target local --overlay
+npx caw open --env dev --overlay
+npx caw open create-ticket --env local
+npx caw open create-ticket@S3 --env local --overlay
 ```
 
 Opens the app signed in, with workbench and chat: navigate, try things, develop with Claude. Learns nothing and writes no test file.
 
-- **Without a test** it opens the app's start page. Without `--target` it takes the only environment where Claude may work.
+- **Without a test** it opens the app's start page. Without `--env` it takes the only environment where Claude may work.
 - **`open <test>`** replays the whole test first, then the window is yours.
 - **`open <test>@S3`** stops at the entry of S3: S1 and S2 replay completely, of S3 only its navigation (`goto`, clicks, waiting for the page). Its inputs and its check stay open for you; the terminal says `Ready for S3 …: navigation done, inputs open`. If S3 has no inputs at all (e.g. only a submit click), none of S3 runs; if one of its clicks wrote data in earlier runs, it stops before that click; if S3 isn't recorded or is stale, none of it runs. The terminal names the reason.
 
@@ -256,40 +254,35 @@ With a test, `open` signs in with the test's role and replays without Claude; th
 |---|---|
 | `--role <role>`, `--app <app>` | Without a test only; not needed if the config has only one. A test brings its own. |
 | `--overlay [build\|dev\|<url>]`, `--start` | As for `run`. |
-| `--step-timeout <seconds>` | Time limit per step while replaying, default 30. |
-| `--agent local\|docker\|session`, `--timeout <minutes>`, `--max-steps <n>` | As for `record`. |
+| `--step-timeout <duration>` | Time limit per step while replaying, default `30s`. |
+| `--agent local\|docker\|session`, `--claude-timeout <duration>`, `--max-actions <n>` | As for `record`. |
 
 After the handover, **F1** in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw-ai starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
 
 If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
 
-## auth
-
-```bash
-npx caw-ai auth user --target dev
-```
-
-For `auth.type: storageState` (SSO, OAuth, MFA). Opens Chrome on the login. Sign in by hand. As soon as `signedInSelector` shows up, caw-ai stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
-
 ## role
 
 ```bash
-npx caw-ai role                          # roles, whether a test user is set (never the values), tests per role
-npx caw-ai role list --json              # the same as one JSON line
-npx caw-ai role add clerk --target dev   # window on the sign-in page: sign in, save the role
-npx caw-ai role remove clerk             # only if no test uses it; also drops its lines in caw/.env
+npx caw role                          # roles, whether a test user is set (never the values), tests per role
+npx caw role list --json              # the same as one JSON line
+npx caw role add clerk --env dev   # window on the sign-in page: sign in, save the role
+npx caw role remove clerk             # only if no test uses it; also drops its lines in caw/.env
+npx caw role login clerk --env dev    # auth.type storageState: sign in by hand, store the session
 ```
 
 A role is a test user. `role add` opens the sign-in page of the environment. You sign in with the test account; the card names the role (prefilled, editable) and **Save** writes user name and password to `caw/.env`, the role with its variable names to `caw.config.json` and `caw/.env` to `.gitignore`. **+ Another role** signs out and takes the next account. The values go from the page straight to the file: not to Claude, not to the terminal, not into `caw/.explore.json`.
 
-`explore` and `init` end the same way: after **Done** the card asks for the role of the account you signed in with. When `record`, `run` or `open` needs a role without a test user, the window opens first and the run goes on after **Save**; in CI and with `--headless` it ends with `credentials-missing`. For `auth.type: storageState` use `auth`.
+`init` (also with `--explore-only`) ends the same way: after **Done** the card asks for the role of the account you signed in with. When `record`, `run` or `open` needs a role without a test user, the window opens first and the run goes on after **Save**; in CI and with `--headless` it ends with `credentials-missing`. For `auth.type: storageState` use `role login`.
+
+`role login` is for `auth.type: storageState` (SSO, OAuth, MFA). It opens Chrome on the login and you sign in by hand. As soon as `signedInSelector` shows up, caw-ai stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
 
 ## theme
 
 ```bash
-npx caw-ai theme                 # list themes, the active one marked
-npx caw-ai theme use phosphor    # pick one
-npx caw-ai theme check my-theme  # schema, contrast, mark width, fonts
+npx caw theme                 # list themes, the active one marked
+npx caw theme use phosphor    # pick one
+npx caw theme check my-theme  # schema, contrast, mark width, fonts
 ```
 
 The theme is yours, stored in `prefs.json`, and applies in every project. Built in: `nacht` (default), `bernstein`, `phosphor`, `kachel`, `cockpit`. Change colours, glyphs, raven and CRT look with F7 in the workbench; own themes are folders next to `prefs.json`. Details: [themes/README.md](../themes/README.md).
@@ -317,9 +310,9 @@ Results come as short text plus `structuredContent` (JSON).
 
 ## Agent commands
 
-`snapshot`, `click`, `fill`, `type`, `press`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
+`caw agent <command>` with `snapshot`, `click`, `dblclick`, `fill`, `type`, `press`, `upload`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
 
-These are the only way Claude can touch the browser. They exist for the agent during `record` and in the chat; you won't need them. `npx caw-ai help agent` lists their arguments.
+These are the only way Claude can touch the browser. They exist for the agent during `record` and in the chat; you won't need them. `npx caw agent --help` lists their arguments.
 
 ## Exit codes
 
@@ -350,23 +343,23 @@ When caw-ai stops, or a run ends with `error`, it prints the reason and then the
 
 | Code | Exit | Fix |
 |---|---|---|
-| `usage`, `unknown-command` | 3 | `npx caw-ai <command> --help` |
-| `config-missing` | 3 | `npx caw-ai init --url <address>` |
+| `usage`, `unknown-command` | 3 | `npx caw <command> --help` |
+| `config-missing` | 3 | `npx caw init --url <address>` |
 | `config-invalid` | 3 | Fix the field named in the message or fill in the `TODO` values, then `doctor` |
 | `test-missing`, `test-invalid` | 3 | Create or fix the test file, then `validate` |
 | `replay-missing` | 4 | `record` the test |
 | `replay-stale` | 4 | A step changed since recording: `record <test>@<step>` |
 | `step-unknown` | 3 | Use a step ID from the test file (`list <test>`) |
-| `target-invalid`, `target-denied` | 3 | Use an environment from the config; production can't be recorded |
+| `env-invalid`, `env-denied` | 3 | Use an environment from the config; production can't be recorded |
 | `write-protected` | 3 | Recording and writing tests need `claude` / `writable` on the environment |
 | `auth-missing` | 3 | Delete the file under `caw/.auth/` and run `auth` again |
-| `credentials-missing` | 2 | `role add <role> --target <env>` (sign in in the window), or set the variables in the environment or `caw/.env` (CI) |
+| `credentials-missing` | 2 | `role add <role> --env <env>` (sign in in the window), or set the variables in the environment or `caw/.env` (CI) |
 | `login-form-missing`, `login-failed` | 2 | Is the backend up? Are `auth` selectors and credentials right? |
-| `target-unreachable`, `unreachable` | 2 | Start the dev server, check the URL |
+| `env-unreachable`, `unreachable` | 2 | Start the dev server, check the URL |
 | `app-not-loaded`, `app-not-settled` | 2 | Open the page by hand, check the console |
 | `browser-missing` | 2 | Install Google Chrome, or set `browser` in the config |
 | `overlay-not-ready` | 2 | The local code server at `overlay.url` doesn't answer, serves another app, or the build is missing: run the `start` command the message names in the app folder, or add `--start` |
-| `overlay-ssr` | 2 | Server-rendered page: test local code with the dev server as the environment (`--target local`) |
+| `overlay-ssr` | 2 | Server-rendered page: test local code with the dev server as the environment (`--env local`) |
 | `overlay-incomplete` | 2 | Parts came from the server instead of local code (mixed version): add the suggested `assetUrlPattern`, or run `overlay check --apply` |
 | `overlay-unused` | 2 | Nothing came from local code: do build or dev server match the app, does `assetUrlPattern` cover its requests? |
 | `overlay-ambiguous` | 2 | ExtJS: give one app its own `output.js.path` in `app.json` |

@@ -20,8 +20,8 @@ A theme is a folder with a `theme.json`. The five built-in themes live here; you
 Press **F7** in the workbench. Pick a theme, change colours, glyphs, the raven or the CRT look, and see it live. Editing a built-in theme saves a copy under a new name. Your choice is stored in `prefs.json`, so it is yours alone, across all projects.
 
 ```sh
-caw-ai theme                 # list themes, mark the active one
-caw-ai theme use phosphor    # switch
+caw theme                 # list themes, mark the active one
+caw theme use phosphor    # switch
 ```
 
 ## Write one by hand
@@ -58,7 +58,7 @@ Text values may be given per language: `{ "de": "[FEHLER]", "en": "[ FAIL ]" }`.
 Check a theme before sharing it:
 
 ```sh
-caw-ai theme check hafen     # schema, contrast, mark widths, fonts
+caw theme check hafen     # schema, contrast, mark widths, fonts
 ```
 
 To share a theme, copy its folder.

@@ -9,23 +9,26 @@ const HELP = new Set(['-h', '--help']);
 const claudeEnvironments = async (root) => {
     try {
         const { environmentsWith, loadConfig } = await import('../src/shared/config.mjs');
-        return environmentsWith(loadConfig(root), 'agent').join(', ') || undefined;
+        return environmentsWith(loadConfig(root), 'claude').join(', ') || undefined;
     } catch {
         return undefined;
     }
 };
 
-/** -h and --help work everywhere: alone for everything, after a command for its block; `help agent` shows the agent commands. */
+/**
+ * -h and --help work everywhere: alone for everything, after a command for its block. `caw agent --help` shows the agent
+ * commands; they take arbitrary text, so there --help counts only right after `agent` or the agent command.
+ */
 const helpFor = async (root, command, args) => {
     if (command === undefined || HELP.has(command)) return helpText(undefined, { here: await claudeEnvironments(root) });
     if (command === 'help') {
         const [topic] = args;
-        if (topic !== undefined && topic !== 'agent' && !HOST_COMMANDS.includes(topic) && !AGENT_COMMANDS.includes(topic)) throw new CawError('unknown-command', unknownCommandText(topic));
+        if (topic === 'agent') throw new CawError('unknown-command', t('cli.movedCommand', { command: 'help agent', now: 'agent --help' }));
+        if (topic !== undefined && !HOST_COMMANDS.includes(topic)) throw new CawError('unknown-command', unknownCommandText(topic));
         return helpText(topic, { here: await claudeEnvironments(root) });
     }
+    if (command === 'agent') return args.length === 0 || HELP.has(args[0]) || (AGENT_COMMANDS.includes(args[0]) && HELP.has(args[1])) ? helpText('agent') : undefined;
     if (HOST_COMMANDS.includes(command) && args.some((arg) => HELP.has(arg))) return helpText(command, { here: await claudeEnvironments(root) });
-    // Agent commands take arbitrary text: --help is the help only right after the command.
-    if (AGENT_COMMANDS.includes(command) && HELP.has(args[0])) return helpText(command);
     return undefined;
 };
 
@@ -34,57 +37,19 @@ const option = (args, name) => {
     return index === -1 ? undefined : args[index + 1];
 };
 
-const main = async ([command, ...args]) => {
-    const root = process.env.INIT_CWD ?? process.cwd();
-    setLanguage(detectLanguage({ root }));
-    const help = await helpFor(root, command, args);
-    if (help !== undefined) {
-        console.log(help);
-        return EXIT.pass;
-    }
-    const host = () => import('../src/host/commands.mjs');
+/** `caw agent <command>`: what Claude calls during a run (sandbox, local or the developer's session), and the run plumbing. */
+const agentCommand = async (root, [command, ...args]) => {
     const sandbox = () => import('../src/sandbox/commands.mjs');
     const browser = async (payload) => (await sandbox()).browserCommand(payload);
     switch (command) {
-        case 'init': {
-            const commands = await host();
-            // init explores the application first; in a terminal it asks for address and roles, not with --yes or in CI.
-            const ask = process.stdin.isTTY && !args.includes('--yes') && !process.env.CI;
-            const prepared = await commands.initAnswers(root, args, { interactive: ask });
-            if (prepared.code !== undefined) return prepared.code;
-            return commands.init(root, prepared.answers);
-        }
-        case 'explore': return (await import('../src/host/explore.mjs')).explore(root, args);
-        case 'skill': return (await host()).installSkill(root);
-        case 'validate': return (await host()).validate(root);
-        case 'list': return (await host()).list(root, args);
-        case 'auth': return (await host()).auth(root, args);
-        case 'theme': return (await import('../src/host/theme-command.mjs')).themeCommand(root, args);
-        case 'doctor': {
-            const [{ doctor }, { createUi }, { optionValue }] = await Promise.all([import('../src/host/doctor.mjs'), import('../src/shared/ui.mjs'), import('../src/host/linux.mjs')]);
-            const unknown = args.filter((arg, index) => arg !== '--agent' && !arg.startsWith('--agent=') && args[index - 1] !== '--agent');
-            if (unknown.length > 0) throw new CawError('usage', t('cli.doctorUnknownArg', { arg: unknown[0] }));
-            const agent = optionValue(args, '--agent');
-            if (agent !== undefined && !['local', 'docker', 'session'].includes(agent)) throw new CawError('usage', t('cli.doctorAgentValue'));
-            return doctor(root, { ui: createUi(), agent });
-        }
-        case 'overlay': return (await import('../src/host/overlay-check.mjs')).overlayCommand(root, args);
-        case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);
-        case 'run': return (await host()).run(root, args);
-        case 'record': return (await host()).record(root, args);
-        case 'open': return (await host()).open(root, args);
         case 'plan': return (await sandbox()).plan(option(args, '--file'));
-        case 'sandbox-run': return (await sandbox()).sandboxRun({ root, runId: option(args, '--run-id'), timeoutMin: Number(option(args, '--timeout')), mode: args.includes('--develop') ? 'develop' : args.includes('--talk') ? 'talk' : args.includes('--advise') ? 'advise' : 'run' });
         case 'advise': return (await sandbox()).advise(option(args, '--file'));
+        case 'finish': return (await sandbox()).finish(option(args, '--file'));
+        // Plumbing: the agent's process in the container (or locally), the firewall probe and the local agent's MCP server.
+        case 'sandbox-run': return (await sandbox()).sandboxRun({ root, runId: option(args, '--run-id'), timeoutMin: Number(option(args, '--timeout')), mode: args.includes('--develop') ? 'develop' : args.includes('--talk') ? 'talk' : args.includes('--advise') ? 'advise' : 'run' });
         case 'firewall-check': return (await sandbox()).firewallCheck();
-        // Tools for the developer's Claude Code session, registered in .mcp.json.
+        // Tool server for Claude without a container, started by Claude Code itself.
         case 'mcp': {
-            const [{ serveMcp }, { sessionMcpHandler }] = await Promise.all([import('../src/sandbox/mcp.mjs'), import('../src/host/session-mcp.mjs')]);
-            await serveMcp(sessionMcpHandler({ root }));
-            return EXIT.pass;
-        }
-        // Internal: tool server for Claude without a container, started by Claude Code itself.
-        case 'mcp-agent': {
             const { createMcpHandler, serveMcp } = await import('../src/sandbox/mcp.mjs');
             if (process.env.CAW_SANDBOX !== '1' || !process.env.CAW_AGENT_DIR) throw new CawError('not-in-sandbox', t('cli.mcpAgentOnly'));
             await serveMcp(createMcpHandler({ agentDir: process.env.CAW_AGENT_DIR }));
@@ -115,15 +80,66 @@ const main = async ([command, ...args]) => {
         case 'screenshot': return browser({ action: command, name: args[0] });
         case 'goto': return browser({ action: command, url: args[0] });
         case 'wait-ready': {
+            if (args.some((arg) => arg === '--store' || arg.startsWith('--store='))) throw new CawError('usage', t('session.args.renamedOption', { flag: '--store', now: '--for' }));
             const minCount = option(args, '--min-count');
             const timeout = option(args, '--timeout');
+            const { parseDuration } = await import('../src/shared/duration.mjs');
             return (await sandbox()).waitReady({
-                store: option(args, '--store'),
+                store: option(args, '--for'),
                 ...(minCount === undefined ? {} : { minCount: Number(minCount) }),
-                ...(timeout === undefined ? {} : { timeout: Number(timeout) }),
+                ...(timeout === undefined ? {} : { timeout: parseDuration('--timeout', timeout) }),
             });
         }
-        case 'finish': return (await sandbox()).finish(option(args, '--file'));
+        default:
+            throw new CawError('unknown-command', unknownCommandText(command, { agent: true }));
+    }
+};
+
+const main = async ([command, ...args]) => {
+    const root = process.env.INIT_CWD ?? process.cwd();
+    setLanguage(detectLanguage({ root }));
+    const help = await helpFor(root, command, args);
+    if (help !== undefined) {
+        console.log(help);
+        return EXIT.pass;
+    }
+    const host = () => import('../src/host/commands.mjs');
+    switch (command) {
+        case 'init': {
+            // --explore-only: look at the app and write only caw/.explore.json (and caw/.env via the role card), no config.
+            if (args.includes('--explore-only')) return (await import('../src/host/explore.mjs')).explore(root, args.filter((arg) => arg !== '--explore-only'));
+            const commands = await host();
+            // init explores the application first; in a terminal it asks for address and roles, not with --yes or in CI.
+            const ask = process.stdin.isTTY && !args.includes('--yes') && !process.env.CI;
+            const prepared = await commands.initAnswers(root, args, { interactive: ask });
+            if (prepared.code !== undefined) return prepared.code;
+            return commands.init(root, prepared.answers);
+        }
+        case 'skill': return (await host()).installSkill(root);
+        case 'validate': return (await host()).validate(root);
+        case 'list': return (await host()).list(root, args);
+        case 'theme': return (await import('../src/host/theme-command.mjs')).themeCommand(root, args);
+        case 'doctor': {
+            const [{ doctor }, { createUi }, { optionValue }] = await Promise.all([import('../src/host/doctor.mjs'), import('../src/shared/ui.mjs'), import('../src/host/linux.mjs')]);
+            const unknown = args.filter((arg, index) => arg !== '--agent' && !arg.startsWith('--agent=') && args[index - 1] !== '--agent');
+            if (unknown.length > 0) throw new CawError('usage', t('cli.doctorUnknownArg', { arg: unknown[0] }));
+            const agent = optionValue(args, '--agent');
+            if (agent !== undefined && !['local', 'docker', 'session'].includes(agent)) throw new CawError('usage', t('cli.doctorAgentValue'));
+            return doctor(root, { ui: createUi(), agent });
+        }
+        case 'overlay': return (await import('../src/host/overlay-check.mjs')).overlayCommand(root, args);
+        case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);
+        case 'run': return (await host()).run(root, args);
+        case 'record': return (await host()).record(root, args);
+        case 'open': return (await host()).open(root, args);
+        // Tools for the developer's Claude Code session, registered in .mcp.json. Not in the human help.
+        case 'mcp': {
+            const [{ serveMcp }, { sessionMcpHandler }] = await Promise.all([import('../src/sandbox/mcp.mjs'), import('../src/host/session-mcp.mjs')]);
+            await serveMcp(sessionMcpHandler({ root }));
+            return EXIT.pass;
+        }
+        // Claude's browser commands and the run plumbing: `caw agent <command>`, see agentCommand.
+        case 'agent': return agentCommand(root, args);
         case '--version':
         case '-v': {
             const { readFileSync } = await import('node:fs');

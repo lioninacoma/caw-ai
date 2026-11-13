@@ -167,7 +167,7 @@ test('hash: per step, metadata and recording do not count', () => {
 test('stale: the steps before it still play, the full run suggests re-recording from the stale step', () => {
     const changed = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }), { ...recorded('S3', [], { after: 'S2' }), do: 'new' });
     assertPlayable(changed, 'a/dev', 'S2');
-    assert.throws(() => assertPlayable(changed, 'a/dev'), (error) => error.code === 'replay-stale' && /S3 .*Neu aufnehmen ab dort: caw-ai record t@S3 --target a\/dev$/.test(error.message));
+    assert.throws(() => assertPlayable(changed, 'a/dev'), (error) => error.code === 'replay-stale' && /S3 .*Neu aufnehmen ab dort: caw record t@S3 --env a\/dev$/.test(error.message));
     assert.throws(() => assertPlayable(spec(plain('S1')), 'a/dev'), (error) => error.code === 'replay-missing' && /record t/.test(error.message));
 });
 
@@ -177,7 +177,7 @@ test('deleted or moved steps require re-recording, inserted ones do not', () => 
     assert.match(brokenChain(spec(s1, s3)), /S3 baut auf S2/);
     assert.match(brokenChain(spec(s1, s3, s2)), /S3 baut auf S2/);
     assert.equal(brokenChain(spec(s1, plain('S4'), s2, s3)), null);
-    assert.throws(() => assertPlayable(spec(s1, s3), 'a/dev'), (error) => error.code === 'replay-stale' && /S3 baut auf S2.*caw-ai record t@S3 --target a\/dev$/.test(error.message));
+    assert.throws(() => assertPlayable(spec(s1, s3), 'a/dev'), (error) => error.code === 'replay-stale' && /S3 baut auf S2.*caw record t@S3 --env a\/dev$/.test(error.message));
 });
 
 test('replay form: actions and check in sequence, cut per step', () => {

@@ -55,7 +55,7 @@ export default {
     'run.phase.handedOver': 'Handed over',
 
     // Run
-    'run.error.authMissing': 'No saved session for role {role} on {target}. Sign in once: caw-ai auth {role} --target {target}',
+    'run.error.authMissing': 'No saved session for role {role} on {target}. Sign in once: caw role login {role} --env {target}',
     'run.tokens.question': 'Claude works now, this uses tokens.',
     'run.tokens.go': 'Continue',
     'run.tokens.always': 'Don\'t ask again',
@@ -63,7 +63,7 @@ export default {
     'run.tokens.cancelRun': 'Cancel run',
     'run.tokens.remembered': 'Noted, this notice won\'t show again',
     'run.tokens.declined': 'Continuing without Claude',
-    'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} are still TODO. Enter them in caw.config.json; npx caw-ai doctor shows what is still missing.` : `${keys} is still TODO. Enter it in caw.config.json; npx caw-ai doctor shows what is still missing.`),
+    'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} are still TODO. Enter them in caw.config.json; npx caw doctor shows what is still missing.` : `${keys} is still TODO. Enter it in caw.config.json; npx caw doctor shows what is still missing.`),
     'run.error.credentialsMissing': ({ names, file }) => `${names} missing: set ${String(names).includes(',') ? 'them as environment variables' : 'it as an environment variable'} or in ${file}.`,
     'run.error.unreachable': '{url} is not reachable.',
     'run.openingChrome': 'Opening Chrome and signing in ...',
@@ -284,7 +284,7 @@ export default {
     // MCP tools of the Claude Code session
     'run.mcp.noRun': 'No run is waiting for you as agent. Start one with caw_start (record or run with chat), or the run has already ended: caw_status shows its output.',
     'run.mcp.commandInvalid': 'command must be one of {list}.',
-    'run.mcp.argsInvalid': 'args must be a list of strings, e.g. ["order", "--target", "local"].',
+    'run.mcp.argsInvalid': 'args must be a list of strings, e.g. ["order", "--env", "local"].',
     'run.mcp.agentFlag': 'caw_start sets --agent itself (session).',
     'run.mcp.alreadyWaiting': 'Run {runId} is already waiting for you ({mode}). Handle it with the caw tool or have the human end it, then start the next one.',
     'run.mcp.stillRunning': 'A run is still going (pid {pid}, output {log}). Wait until it ends or have the human end it in the window, then start the next one.',

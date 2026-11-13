@@ -1,6 +1,6 @@
 #!/bin/bash
 # Plays the agent in the container: normal commands, then attempts to break out of the limits.
-A=caw-ai
+A='caw agent'
 step() { echo; echo "--- $1"; }
 
 step "Wer bin ich"; id -u; grep CapEff /proc/self/status
@@ -25,7 +25,7 @@ step "Snapshot"; $A snapshot
 step "Stand"; $A eval 'window.STAND'; $A eval 'window.CAW_MARKE'
 step "Klick per Referenz"
 REF=$($A snapshot | grep -i 'Weiter' | grep -oE 'ref=[a-z0-9]+' | head -1 | cut -d= -f2)
-echo "Referenz $REF"; $A click "$REF"; $A wait-ready --timeout 5000 | grep -c '"settled": true'
+echo "Referenz $REF"; $A click "$REF"; $A wait-ready --timeout 5s | grep -c '"settled": true'
 $A eval "document.getElementById('ziel').textContent"
 step "Screenshot"; $A screenshot e1.png; ls -la "$CAW_AGENT_DIR/e1.png" | awk '{print $5" Bytes"}'
 

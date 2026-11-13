@@ -55,8 +55,8 @@ let configBefore = null;
 
 const ID = 'fx-schritte';
 const file = join(fake, 'caw/tests', `${ID}.yaml`);
-const opts = ['--target', 'local/dev', '--timeout', '3', '--step-timeout', '5'];
-const short = ['--target', 'local/dev', '--step-timeout', '4'];
+const opts = ['--env', 'local/dev', '--claude-timeout', '3m', '--step-timeout', '5s'];
+const short = ['--env', 'local/dev', '--step-timeout', '4s'];
 const S1 = '  - id: S1\n    name: Ziel erreichen\n    do: Klicke Weiter.\n    expect: Das Ziel erscheint.';
 const S2 = (action = 'Fuelle das Anliegen und sende es.', expect = 'Der Vorgang steht da.') => `  - id: S2\n    name: Vorgang anlegen\n    do: ${action}\n    expect: ${expect}`;
 const S3 = (expect = 'Der Vorgang ist fertig.') => `  - id: S3\n    name: Abschliessen\n    do: Schliesse den Vorgang ab.\n    expect: ${expect}`;
@@ -111,7 +111,7 @@ const mainConfig = join(fake, 'caw.config.json');
 const recordGood = async () => {
     rmSync(file, { force: true });
     rmSync(recordingFile, { force: true });
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${count("$A click '#weiter'", 'plan-required', 'BLOCKED')}
 echo 'broken: [' > /tmp/k.yaml; ${count('$A plan --file /tmp/k.yaml', 'plan-invalid', 'INVALID')}
 printf 'steps:\\n  - id: S1\\n    name: A\\n    expect: B\\n' > /tmp/k.yaml; $A plan --file /tmp/k.yaml 2>&1 | grep -c 'Zeile 2: do fehlt' | sed 's/^/LINE=/'
@@ -229,7 +229,7 @@ scenario('C', 'Failed run: offer, no Docker without a click', async () => {
 scenario('D', 'Repair replaces exactly this step', async () => {
     const broken = breakStep(good, 'Senden');
     restore(broken);
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 $A task > /tmp/t.json; echo "REPAIR=$(grep -c '"repair"' /tmp/t.json) REASON=$(grep -c 'Verschwunden' /tmp/t.json) ONLY-S2=$(grep -c '"id": "S2"' /tmp/t.json) S3-AS-AFTER=$(grep -c '"after"' /tmp/t.json)"
 ${tag}
 ${planOf(WHOLE)}
@@ -275,7 +275,7 @@ ${finishOf(['S2'])}`;
 
 scenario('E', 'record @S3: changed result is marked, values from the steps before count, discarding leaves everything', async () => {
     restore();
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 $A task > /tmp/t.json
 NR=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/t.json','utf8')).repair.remembered[0].value)")
 echo "REMEMBERED=$NR"
@@ -306,7 +306,7 @@ scenario('F', 'Check run fails in the re-recorded range: the step is offered for
     restore();
     // record @S2 re-records S2 and S3. S3's check only holds while recording: the flag set with eval is not recorded, so the
     // check run without Claude fails at S3 and offers to fix that one step.
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${tag}
 ${planOf(`steps:\n${S2('Noch einmal anders.')}\n${S3('Der Vorgang ist fertig, nur beim Aufnehmen markiert.')}`)}
 $A plan --file /tmp/p.yaml >/dev/null
@@ -345,7 +345,7 @@ scenario('H', 'Fix step: dropped remembered value is rejected, environment error
     // record @S<n> re-records every step after it as well. --no-learn: the run does not add comparison values to the file.
     const broken = breakStep(good, 'Senden');
     restore(broken);
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(`steps:\n${S2('Ohne Merken.', 'Etwas anderes steht da.')}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 $A click '#senden'
@@ -368,7 +368,7 @@ echo '{"status":"error","reason":"Does not work this way"}' > /tmp/e.json; $A fi
 scenario('I', 'Unchanged plan applies without approval, the card says re-record', async () => {
     restore();
     // record @S2 re-records S2 and S3. Their expected results stay, so their checks must stay the same: same commands as in A.
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 $A task > /tmp/t.json; echo "RERECORD=$(grep -c '"rerecord": true' /tmp/t.json) FROM=$(grep -c '"from": true' /tmp/t.json)" >> "$CAW_AGENT_DIR/i.txt"
 ${tag}
 ${planOf(`steps:\n${S2()}\n${S3()}`)}
@@ -400,7 +400,7 @@ ${finishOf(['S2', 'S3'])}`;
 
 scenario('I2', 'Closing the chat cancels', async () => {
     restore();
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(`steps:\n${S2('Fuelle das Anliegen aus und sende es.')}\n${S3()}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 sleep 60`;
@@ -485,7 +485,7 @@ const withS4 = (step, check, retry = '') => {
 const FOREIGN_CHECK = "(()=>{if(!sessionStorage.w){sessionStorage.w='1';const s=document.createElement('script');s.src='/public/fremd.js';document.head.append(s);return false}return true})()";
 const FOREIGN_STEP = { id: 'S4', name: 'Fremd', do: '', expect: 'Fremder Fehler stoert nicht.' };
 
-scenario('M', 'run without --advise: chat next to the application, no advice, no Docker', async () => {
+scenario('M', 'run without --explain: chat next to the application, no advice, no Docker', async () => {
     const broken = breakStep(good, 'Senden');
     restore(broken);
     let dockerUsed = 0;
@@ -505,8 +505,8 @@ scenario('M', 'run without --advise: chat next to the application, no advice, no
     restore();
 });
 
-scenario('N', '--advise in CI is rejected', async () => {
-    const error = await run(fake, [ID, ...short, '--advise'], { interactive: false }).then(() => null, (failure) => failure);
+scenario('N', '--explain in CI is rejected', async () => {
+    const error = await run(fake, [ID, ...short, '--explain'], { interactive: false }).then(() => null, (failure) => failure);
     verify('usage with reason', error?.code === 'usage' && /CI/.test(error.message), error?.message);
 });
 
@@ -514,7 +514,7 @@ scenario('O', 'run --fix: apply cards, discard, copy prompt, read only', async (
     const broken = breakStep(good, 'Senden');
     restore(broken);
     const back = [keep(configPath), keep(knowledgePath)];
-    const advice = `A=caw-ai
+    const advice = `A='caw agent'
 $A task > /tmp/t.json; echo "MODE=$(grep -c '"mode": "advise"' /tmp/t.json) FAILED=$(grep -c '"failed"' /tmp/t.json) ACTIONS=$(grep -c '"actions"' /tmp/t.json) RULES=$(grep -c '"foreignCode"' /tmp/t.json)"
 ${count("$A click '#weiter'", 'advise-only', 'CLICK-REJECTED')}
 ${count("$A finish --file /tmp/t.json", 'advise-only', 'FINISH-REJECTED')}
@@ -528,7 +528,7 @@ cat > /tmp/a.json <<'EOF'
  {"about":"S2","side":"test","title":"Add a note","evidence":"console","reason":"Unnecessary.","change":{"kind":"step","id":"S2","fields":{"note":"Please discard"}}},
  {"side":"test","title":"Portal scripts as foreign","evidence":"failure 1","reason":"Comes from the portal.","change":{"kind":"config","key":"foreignCode","pattern":"/public/extra/"}},
  {"side":"test","title":"Button has another name","evidence":"snapshot","reason":"Applies to all tests.","change":{"kind":"context","section":"E2E","text":"The Senden button may be renamed."}},
- {"about":"failure 1","side":"app","title":"Button renamed","evidence":"index.html","reason":"The button is no longer called Senden.","prompt":"In index.html the button is no longer called Senden.\\nRename it back and check with caw-ai run fx-schritte."}
+ {"about":"failure 1","side":"app","title":"Button renamed","evidence":"index.html","reason":"The button is no longer called Senden.","prompt":"In index.html the button is no longer called Senden.\\nRename it back and check with caw run fx-schritte."}
 ]}
 EOF
 $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\\n ' < /tmp/answer.json; echo`;
@@ -555,7 +555,7 @@ $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\
         await decide(page, 'Close');
     });
     try {
-        const code = await run(fake, [ID, ...short, '--advise'], { interactive: true, onChatOpen: h.onChatOpen, adviseCommand: ['bash', '-c', advice] });
+        const code = await run(fake, [ID, ...short, '--explain'], { interactive: true, onChatOpen: h.onChatOpen, adviseCommand: ['bash', '-c', advice] });
         await h.done();
         const after = parseTest(read());
         const s2 = after.steps.find(({ id }) => id === 'S2');
@@ -578,7 +578,7 @@ scenario('P', 'run --fix passed with warning: text change makes the step stale, 
     restore(withS4(FOREIGN_STEP, FOREIGN_CHECK));
     const back = keep(configPath);
     writeFileSync(configPath, JSON.stringify({ ...JSON.parse(readFileSync(configPath, 'utf8')), foreignCode: ['.'] }, null, 4));
-    const advice = `A=caw-ai
+    const advice = `A='caw agent'
 $A task > /tmp/t.json; echo "WARNING=$(grep -c 'fremd' /tmp/t.json) STATUS-PASS=$(grep -c '"status": "pass"' /tmp/t.json)"
 echo '{"items":[{"about":"S4","side":"test","title":"More precise result","evidence":"warning 1","reason":"The warning belongs to it.","change":{"kind":"step","id":"S4","fields":{"expect":"Der fremde Fehler erscheint nur als Warnung."}}}]}' > /tmp/a.json
 $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
@@ -593,7 +593,7 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         await decide(page, 'Close');
     });
     try {
-        const code = await run(fake, [ID, ...short, '--advise'], { interactive: true, onChatOpen: h.onChatOpen, adviseCommand: ['bash', '-c', advice] });
+        const code = await run(fake, [ID, ...short, '--explain'], { interactive: true, onChatOpen: h.onChatOpen, adviseCommand: ['bash', '-c', advice] });
         verify('One window', await h.done() === 1);
         const s4 = parseTest(read()).steps.find(({ id }) => id === 'S4');
         verify('Exit 0', code === 0, String(code));
@@ -605,11 +605,11 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
 });
 
 scenario('Q', 'record @S3: Claude fails, advice stays in the draft, file unchanged', async () => {
-    const repair = `A=caw-ai
+    const repair = `A='caw agent'
 ${planOf(`steps:\n${S3()}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 echo '{"expectations":[{"id":"S3","status":"fail","note":"Does not work","evidence":{"type":"eval","value":"no"}}]}' > /tmp/e.json; $A finish --file /tmp/e.json; echo "finish Exit=$?"`;
-    const advice = `A=caw-ai
+    const advice = `A='caw agent'
 $A task > /tmp/t.json; echo "FAIL=$(grep -c '"status": "fail"' /tmp/t.json)"
 echo '{"items":[{"about":"S3","side":"test","title":"Note","evidence":"S3 fail","reason":"r","change":{"kind":"step","id":"S3","fields":{"note":"Only in the draft"}}}]}' > /tmp/a.json
 $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
@@ -680,7 +680,7 @@ scenario('3', 'English UI: workbench, chat, steps and result in English', async 
 scenario('S', 'Clarify a failure: only the message starts Claude, read only, conversation back and forth', async () => {
     const broken = breakStep(good, 'Senden');
     restore(broken);
-    const talk = `A=caw-ai
+    const talk = `A='caw agent'
 $A task > /tmp/t.json; echo "MODE=$(grep -c '"mode": "talk"' /tmp/t.json) QUESTION=$(grep -c 'Why' /tmp/t.json)"
 ${count("$A click '#weiter'", 'advise-only', 'CLICK-REJECTED')}
 $A say "The Senden button is missing, MODE=$(grep -c '"mode": "talk"' /tmp/t.json)."
@@ -728,7 +728,7 @@ scenario('T', 'Clean step: repair in the same browser, without lead-in run, then
     const broken = breakStep(good, 'Abschliessen');
     restore(broken);
     const before = new Set(runDirs());
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 $A task > /tmp/t.json
 NR=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/t.json','utf8')).repair.remembered[0].value)")
 echo "REMEMBERED=$NR SHOWN=$($A eval "${CASE_TEXT}")"
@@ -764,7 +764,7 @@ scenario('U', '--no-chat: failed without chat and without Docker', async () => {
     const h = humans();
     const code = await run(fake, [ID, ...short, '--no-chat'], { interactive: true, docker, onChatOpen: h.onChatOpen });
     verify('Exit 1, no window, no Docker', code === 1 && await h.done() === 0 && dockerUsed === 0, `${code} ${dockerUsed}`);
-    const error = await run(fake, [ID, ...short, '--no-chat', '--advise'], { interactive: true }).then(() => null, (failure) => failure);
+    const error = await run(fake, [ID, ...short, '--no-chat', '--explain'], { interactive: true }).then(() => null, (failure) => failure);
     verify('--no-chat --fix rejected', error?.code === 'usage', error?.message);
     restore();
 });
@@ -842,7 +842,7 @@ const ensureFees = async () => {
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
     writeFileSync(configPath, JSON.stringify({ ...config, requestKeys: ['connector'] }, null, 4));
     restore(plainS4());
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(`steps:\n${S4_PLAIN.trimEnd()}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 $A click '#laden'
@@ -871,7 +871,7 @@ ${finishOf(['S4'])}`;
 scenario('X', 'Assessment: abort after 1 ms is an application error, in the chat, in the report and for Claude', async () => {
     await ensureFees();
     writeFileSync(appFile, pricesScript(1));
-    const talk = `A=caw-ai
+    const talk = `A='caw agent'
 $A task > /tmp/t.json
 $A network > /tmp/n.json
 $A say "APP=$(grep -c '"side": "app"' /tmp/t.json) EVIDENCE=$(grep -c '"evidence"' /tmp/t.json) ABORTED=$(grep -c 'aborted' /tmp/n.json) NAME=$(grep -c 'connector=HTTP-X-Preise' /tmp/n.json)"
@@ -906,10 +906,10 @@ scenario('Y', 'Repair on application error: code change checked, written on clic
         about: 'S4', side: 'app', title: 'Loading timeout too short',
         evidence: `request ${FEES} aborted after 1 ms; prices.js:5`,
         reason: 'The application aborts the request itself after 1 ms.',
-        prompt: 'In prices.js ladePreise aborts after 1 ms. Set the timeout to 40 s and check with caw-ai run fx-schritte.',
+        prompt: 'In prices.js ladePreise aborts after 1 ms. Set the timeout to 40 s and check with caw run fx-schritte.',
         edits: [{ file: 'prices.js', find: 'setTimeout(() => controller.abort(), 1);', replace: 'setTimeout(() => controller.abort(), 40000);', why: 'Timeout as for the other calls' }],
     }] });
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 {
 $A task > /tmp/t.json; echo "REPAIR-APP=$(grep -c '"side": "app"' /tmp/t.json)"
 echo '${bad}' > /tmp/bad.json
@@ -960,7 +960,7 @@ scenario('Z', 'Abort through a page change is no finding', async () => {
 
 scenario('K', 'Hard error during recording: check run decides, human sees it', async () => {
     rmSync(file, { force: true });
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(`steps:\n${S1}`)}
 $A plan --file /tmp/p.yaml >/dev/null
 $A eval "Promise.reject({a:1});1" >/dev/null
@@ -996,7 +996,7 @@ scenario('1', 'Workbench: application in an iframe, chat next to it, repair in t
     writeFileSync(configPath, JSON.stringify(config, null, 4));
     const broken = breakStep(good, 'Senden');
     restore(broken);
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 $A task > /tmp/t.json; echo "FRAMEWORK=$(grep -c '"framework": "extjs"' /tmp/t.json)"
 ${tag}
 ${planOf(`steps:\n${S2('Fuelle das Anliegen neu und sende es.')}`)}

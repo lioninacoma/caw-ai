@@ -19,8 +19,8 @@ RUN npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2
 
 # The container part of the tool uses only Node built-ins; the browser runs on the host.
 COPY tool /opt/caw-ai
-RUN printf '#!/bin/sh\nexec node /opt/caw-ai/bin/caw-ai.mjs "$@"\n' > /usr/local/bin/caw-ai \
-    && chmod 0755 /usr/local/bin/caw-ai
+RUN printf '#!/bin/sh\nexec node /opt/caw-ai/bin/caw.mjs "$@"\n' > /usr/local/bin/caw \
+    && chmod 0755 /usr/local/bin/caw
 
 COPY skill.md /home/{{user}}/.claude/skills/caw-ai/SKILL.md
 RUN chown -R {{user}}: /home/{{user}}/.claude

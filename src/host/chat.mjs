@@ -52,7 +52,7 @@ export const parseClaudeLog = (line) => {
     if (match[1] === undefined && match[2].startsWith('Claude finished after')) return null;
     // Free text is Claude's notes to itself. It addresses the human only via say.
     if (match[1] === undefined) return { kind: 'text', text: match[2].replaceAll(' ⏎ ', ' ').slice(0, MAX_ACTIVITY) };
-    const text = readableCommand(match[2]).replace(/^Bash: /, '').replace(/(^|[\s;&|(])caw-ai /g, '$1').replaceAll(' ⏎ ', '; ').trim();
+    const text = readableCommand(match[2]).replace(/^Bash: /, '').replace(/(^|[\s;&|(])caw agent /g, '$1').replaceAll(' ⏎ ', '; ').trim();
     if (/^(say|chat|plan)\b/.test(text) && !/[;&|]/.test(text)) return null;
     return { kind: 'activity', text: text.slice(0, MAX_ACTIVITY) };
 };
@@ -367,7 +367,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         },
         /** Before every browser command: while the human has something to say, nothing more happens in the application. */
         gate: () => {
-            if (paused || unread.length > 0) throw new CawError('human-message', 'The human has written in the chat. Call caw-ai chat before you continue.');
+            if (paused || unread.length > 0) throw new CawError('human-message', 'The human has written in the chat. Call caw agent chat before you continue.');
         },
         canPick: () => !ended && (capturing !== null || planAnswer !== null || TALK_KINDS.includes(choice?.kind)),
         attach: (picked) => { element = picked; },

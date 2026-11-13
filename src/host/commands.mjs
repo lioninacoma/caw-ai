@@ -23,15 +23,15 @@ import { brokenChain, checkTest, loadTest, recordingHints, staleSteps, testPath,
 
 const SKILL_DIR = '.claude/skills/caw-ai';
 /** Entry for .mcp.json: node instead of npx works the same on every system and needs no cmd /c on Windows. */
-export const MCP_ENTRY = { command: 'node', args: ['node_modules/caw-ai/bin/caw-ai.mjs', 'mcp'] };
+export const MCP_ENTRY = { command: 'node', args: ['node_modules/caw-ai/bin/caw.mjs', 'mcp'] };
 /**
  * The MCP entry for a project folder. In a monorepo caw-ai is often installed in a parent folder (hoisted): the path then
  * points there, relative to the project folder, where Claude Code starts the server.
  */
 export const mcpEntry = (root) => {
     for (let dir = resolve(root); ; dir = dirname(dir)) {
-        if (existsSync(join(dir, 'node_modules', 'caw-ai', 'bin', 'caw-ai.mjs'))) {
-            const path = relative(root, join(dir, 'node_modules', 'caw-ai', 'bin', 'caw-ai.mjs')).split(sep).join('/');
+        if (existsSync(join(dir, 'node_modules', 'caw-ai', 'bin', 'caw.mjs'))) {
+            const path = relative(root, join(dir, 'node_modules', 'caw-ai', 'bin', 'caw.mjs')).split(sep).join('/');
             return { ...MCP_ENTRY, args: [path, 'mcp'] };
         }
         if (dirname(dir) === dir) return MCP_ENTRY;
@@ -256,7 +256,7 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     if (typeof appDir === 'string' && appDir !== '') config.apps.web.dir = appDir;
     // ExtJS: the Sencha watch's web server is the overlay source, at its usual address; the start command (overlay.start) is the
     // project's own and is added later (Claude reads it from package.json). No environment gets "overlay": true automatically:
-    // validate notes that --overlay works nowhere until a deployed environment allows it; caw-ai overlay status confirms the server.
+    // validate notes that --overlay works nowhere until a deployed environment allows it; caw overlay status confirms the server.
     if (framework === 'extjs') config.apps.web.overlay = { url: FRAMEWORKS.extjs.overlay.defaultUrl };
     if (Array.isArray(messageSelectors) && messageSelectors.length > 0) config.messageSelectors = messageSelectors;
     if (Array.isArray(consoleIgnore) && consoleIgnore.length > 0) config.consoleIgnore = consoleIgnore;
@@ -286,7 +286,7 @@ const addMcpEntry = (root) => {
 };
 
 /**
- * `caw-ai skill`: only the skill (and the MCP entry), without a config, so Claude Code can guide the setup itself
+ * `caw skill`: only the skill (and the MCP entry), without a config, so Claude Code can guide the setup itself
  * ("set up caw"). An existing skill is updated to this version.
  */
 export const installSkill = (root) => {
@@ -353,17 +353,15 @@ export const init = (root, answers = {}) => {
  * the session goes to caw/.auth/<role>.json. Without Claude and Docker.
  * @param capture tests only: replaces Chrome
  */
-export const auth = async (root, args, { capture } = {}) => {
-    const [roleName] = args;
-    const target = optionValue(args, '--target');
-    if (roleName === undefined || roleName.startsWith('--') || target === undefined) throw new CawError('usage', t('cli.authUsage'));
+export const roleLogin = async (root, { role: roleName, target }, { capture } = {}) => {
+    if (roleName === undefined || target === undefined) throw new CawError('usage', t('cli.authUsage'));
     const config = loadConfig(root);
     const { type, path = '/', signedInSelector } = authOf(config);
     if (type !== 'storageState') throw new CawError('usage', t('cli.authStorageOnly', { type }));
     if (signedInSelector === undefined) throw new CawError('config-invalid', t('cli.authNeedsSelector'));
     if (config.roles?.[roleName] === undefined) throw new CawError('usage', t('cli.authRoleUnknown', { role: roleName, roles: Object.keys(config.roles ?? {}).join(', ') }));
     const resolved = resolveTarget(config, target);
-    if (resolved.production) throw new CawError('target-denied', t('cli.targetProduction', { target }));
+    if (resolved.production) throw new CawError('env-denied', t('cli.targetProduction', { target }));
     const file = join(root, sessionPath(resolved.target, roleName));
     const save = capture ?? (await import('./browser-session.mjs')).captureSession;
     ui.info(t('cli.authSignIn', { role: roleName, selector: signedInSelector }));
@@ -534,13 +532,13 @@ const claudeTargets = (config) => allTargets(config).filter((name) => {
 
 /** The command that records the test anew: flags only for what the config does not determine. */
 const recordHint = (config, id, target) => {
-    // Without --target the command needs none if there is only one environment for Claude; otherwise list the choices.
+    // Without --env the command needs none if there is only one environment for Claude; otherwise list the choices.
     const choices = claudeTargets(config);
     let targetFlag = [];
-    if (target !== undefined) targetFlag = [`--target ${target}`];
-    else if (choices.length !== 1) targetFlag = [`--target <${choices.join('|') || 'env'}>`];
+    if (target !== undefined) targetFlag = [`--env ${target}`];
+    else if (choices.length !== 1) targetFlag = [`--env <${choices.join('|') || 'env'}>`];
     return [
-        `caw-ai record ${id}`,
+        `caw record ${id}`,
         ...targetFlag,
         ...(onlyKey(config.roles) === undefined ? [`--role <${Object.keys(config.roles ?? {}).join('|') || 'role'}>`] : []),
         ...(onlyKey(config.apps) === undefined ? [`--app <${Object.keys(config.apps ?? {}).join('|') || 'app'}>`] : []),
@@ -589,7 +587,7 @@ const stepUnknown = (key, spec, step, extra = {}) => new CawError('step-unknown'
 }));
 
 /**
- * The target when --target is missing: the test's only target; for record the only one of them Claude may work on;
+ * The target when --env is missing: the test's only target; for record the only one of them Claude may work on;
  * for a new test the only environment Claude may work on. The choice is logged; ambiguity is a usage error.
  * @param spec the test, null for a new one
  */
@@ -652,7 +650,7 @@ const columns = (rows) => {
 };
 
 /**
- * `caw-ai list`: per test its targets, recording state and whether it writes; `caw-ai list <test>` one line per step. Without browser,
+ * `caw list`: per test its targets, recording state and whether it writes; `caw list <test>` one line per step. Without browser,
  * Claude or config.
  */
 export const list = (root, args, { out = console.log } = {}) => {
@@ -917,7 +915,7 @@ export const changeTracker = (root) => {
  * A test run by plan, without Claude, Docker or token. On environments Claude may work on, the chat is there from the start,
  * except in CI (variable CI); if a step fails, the human clarifies it there and can have it fixed. For open (`handover`) the
  * run prepares a state and hands over the window, to continue working on the local build from there: with `entry` at the
- * entry of that step, otherwise after the whole test. With --advise Claude advises on errors and warnings, which costs
+ * entry of that step, otherwise after the whole test. With --explain Claude advises on errors and warnings, which costs
  * tokens. --no-chat runs as in CI, --headless additionally without a window. --no-learn keeps the chat but learns no baselines.
  * @param quiet in a batch: no mode line, the batch prints it once
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
@@ -941,7 +939,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     // The chat lives in the workbench and needs no terminal. Only in CI nobody waits for it.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     const canFix = withAgent && !noChat && !inCi;
-    // Reject right away rather than run silently without advice: whoever passes --advise expects it.
+    // Reject right away rather than run silently without advice: whoever passes --explain expects it.
     if (withAdvice && !withAgent) throw new CawError('usage', t('cli.adviseAgentOnly', { environments: agentEnvironments(config), target }));
     if (withAdvice && !canFix) throw new CawError('usage', t('cli.adviseNeedsChat'));
     // Nobody waits in CI: a handover would keep the job open until the runner times out.
@@ -996,15 +994,15 @@ export const junitXml = ({ target, rows }) => {
     const errors = rows.filter(({ exit }) => exit !== EXIT.fail && exit !== EXIT.pass).length;
     const time = rows.reduce((sum, { seconds = 0 }) => sum + seconds, 0).toFixed(3);
     const cases = rows.map(({ test, exit, seconds = 0, note = '' }) => {
-        const open = `    <testcase classname="caw-ai.${xmlText(target)}" name="${xmlText(test)}" time="${seconds.toFixed(3)}"`;
+        const open = `    <testcase classname="caw.${xmlText(target)}" name="${xmlText(test)}" time="${seconds.toFixed(3)}"`;
         if (exit === EXIT.pass) return `${open}/>`;
         const tag = exit === EXIT.fail ? 'failure' : 'error';
         return `${open}>\n      <${tag} type="${JUNIT_TYPES[exit] ?? 'error'}" message="${xmlText(note)}"/>\n    </testcase>`;
     });
     return [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        `<testsuites name="caw-ai" tests="${rows.length}" failures="${failures}" errors="${errors}" time="${time}">`,
-        `  <testsuite name="caw-ai ${xmlText(target)}" tests="${rows.length}" failures="${failures}" errors="${errors}" skipped="0" time="${time}">`,
+        `<testsuites name="caw" tests="${rows.length}" failures="${failures}" errors="${errors}" time="${time}">`,
+        `  <testsuite name="caw ${xmlText(target)}" tests="${rows.length}" failures="${failures}" errors="${errors}" skipped="0" time="${time}">`,
         ...cases,
         '  </testsuite>',
         '</testsuites>',
@@ -1014,7 +1012,7 @@ export const junitXml = ({ target, rows }) => {
 
 /**
  * Several tests one after another, for CI: no chat, one test does not abort the others, at the end the table and the exit code of
- * the worst run (see worstExit). Without --target the tests' only target applies.
+ * the worst run (see worstExit). Without --env the tests' only target applies.
  */
 const runMany = async (root, options, deps) => {
     const known = testIds(root);
@@ -1049,7 +1047,7 @@ const runMany = async (root, options, deps) => {
             exit = result.code;
             if (result.failed !== undefined && exit !== EXIT.pass) note = t('cli.batchAt', { step: result.failed.id });
         } catch (error) {
-            // As in bin/caw-ai.mjs: an expected error by its code, an unexpected one is error.
+            // As in bin/caw.mjs: an expected error by its code, an unexpected one is error.
             exit = error instanceof CawError ? exitOf(error.code) : EXIT.error;
             note = String(error?.message ?? error).split('\n')[0];
         }
@@ -1066,7 +1064,7 @@ const runMany = async (root, options, deps) => {
 };
 
 /**
- * `caw-ai run`: one test as usual; several tests or --all run one after another without chat (runMany). With --report junit=<file>
+ * `caw run`: one test as usual; several tests or --all run one after another without chat (runMany). With --report junit=<file>
  * a single test takes that path too, so CI always gets the file.
  * @param interactive   tests only: replaces CI detection
  * @param adviseCommand tests only: replaces Claude when advising

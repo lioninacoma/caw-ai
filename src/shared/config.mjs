@@ -572,14 +572,14 @@ export const resolveTarget = (config, target) => {
     const parts = text.split('/');
     const withSites = config.sites !== undefined;
     if (parts.length !== (withSites ? 2 : 1) || parts.some((part) => part === '')) {
-        throw new CawError('target-invalid', t('config.target.form', { target: text, form: targetForm(config), hint: withSites ? '' : t('config.target.formHint') }));
+        throw new CawError('env-invalid', t('config.target.form', { target: text, form: targetForm(config), hint: withSites ? '' : t('config.target.formHint') }));
     }
     const [site, environment] = withSites ? parts : ['', parts[0]];
     const defs = environmentDefs(config);
-    if (defs[environment] === undefined) throw new CawError('target-invalid', t('config.target.environment', { environment, names: Object.keys(defs).join(', ') }));
-    if (withSites && !config.sites.includes(site)) throw new CawError('target-invalid', t('config.target.site', { site, sites: config.sites.join(', ') }));
+    if (defs[environment] === undefined) throw new CawError('env-invalid', t('config.target.environment', { environment, names: Object.keys(defs).join(', ') }));
+    if (withSites && !config.sites.includes(site)) throw new CawError('env-invalid', t('config.target.site', { site, sites: config.sites.join(', ') }));
     const url = defs[environment].urls[site];
-    if (url === undefined) throw new CawError('target-invalid', t('config.target.siteUrl', { site, environment }));
+    if (url === undefined) throw new CawError('env-invalid', t('config.target.siteUrl', { site, environment }));
     const abilities = { ...defs[environment] };
     delete abilities.urls;
     return { target: text, ...(withSites ? { site } : {}), environment, url, ...abilities };

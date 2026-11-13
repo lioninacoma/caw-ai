@@ -1,126 +1,110 @@
 // Texts: cli (de). Keys prefixed with "cli.".
 export default {
-    // bin/caw-ai.mjs and help.mjs: help, one block per command. caw-ai --help shows all blocks, caw-ai <command> --help only its own.
-    'cli.help.intro': `caw-ai - Context-Aware Web Testing: KI-gestütztes E2E-Testen, Entwickeln und Debuggen für Webanwendungen
+    // bin/caw.mjs and help.mjs: help, one block per command. caw --help shows all blocks, caw <command> --help only its own.
+    'cli.help.intro': `caw - Context-Aware Web Testing
+End-to-End-Regressionstests für deine Webanwendung: Schritte in Alltagssprache, einmal mit Claude oder per
+Vorführung aufgenommen, mit Playwright lokal und in CI ohne KI abgespielt.
 
-Erste Schritte (im Projektordner, die Anwendung läuft):
-  1. npx caw-ai init --url http://localhost:5173      im Fenster mit Testkonto anmelden, „Fertig“, als Rolle speichern: legt
-                                                      caw.config.json, caw/.env und den Skill an; was TODO bleibt, selbst eintragen
-  2. weitere Testnutzer: npx caw-ai role add <rolle> --target <umgebung> (Anmeldefenster, „Speichern“)
-  3. npx caw-ai doctor                                bis nichts mehr FEHLT
-  4. Einen Test beschreiben (siehe Testplan), dann record <test>, danach run <test>
+Einrichten (im Projektordner, die Anwendung läuft):
+  npx caw init --url http://localhost:5173       im Fenster einmal anmelden; schreibt caw.config.json, caw/.env (Testnutzer),
+                                                 den Skill und .mcp.json; was TODO bleibt, selbst eintragen
+  npx caw doctor                                 bis nichts mehr FEHLT
 
-Testplan caw/tests/<test>.yaml (je Schritt eine Aktion und genau ein prüfbares Ergebnis):
-  id: akten-liste
-  app: web                 # ein Name aus apps in caw.config.json
-  role: admin              # ein Name aus roles
-  targets: [local]         # Umgebungen aus environments
-  mutates: false           # true, wenn der Test Daten anlegt oder ändert
-  steps:
-    - id: S1
-      name: Liste offen
-      do: Öffne in der Navigation „Alle Akten“.
-      expect: Die Liste „Alle Akten“ ist sichtbar.
-  Die Aufzeichnung schreibt record nach caw/recordings/, von Hand bearbeitet wird nur der Testplan.
-
-Auf dem Host (im Projektordner):`,
-    'cli.help.skill': `  skill                                  Nur den Skill für Claude Code (und .mcp.json) anlegen oder aktualisieren; danach
-                                         richtet Claude Code caw-ai mit dir ein („Richte caw-ai ein“)`,
-    'cli.help.explore': `  explore --url <adresse>                Anwendung einmal öffnen, du meldest dich an; schlägt Framework, Anmeldung, Marke
-                                         für angemeldet, Startseite und Meldungen vor (caw/.explore.json), schreibt keine Config
-      [--login] [--no-login]             die Frage nach der Anmeldung vorab beantworten (Skripte)
-      [--yes]                            ohne Anmeldung und ohne Rückfrage, nur die Seite ansehen
-      [--insecure-tls]                   selbstsignierte Zertifikate annehmen (nur lokale Umgebungen)`,
-    'cli.help.init': `  init [--url <adresse>]                 Einrichten: sieht die Anwendung an (du meldest dich im Fenster an), legt Config,
-                                         Skill und .mcp.json an; ohne --url fragt es nach der Adresse
+Befehle:`,
+    'cli.help.init': `  init [--url <adresse>]                 Projekt einrichten: sieht die Anwendung an (du meldest dich im Fenster an), schreibt
+                                         Config, Skill und .mcp.json; ohne --url fragt es nach der Adresse
+      [--explore-only]                   nur die Anwendung ansehen: Vorschläge in caw/.explore.json, keine Config
+      [--login | --no-login]             mit --explore-only: die Frage nach der Anmeldung vorab beantworten (Skripte)
+      [--insecure-tls]                   mit --explore-only: selbstsignierte Zertifikate annehmen (nur lokale Umgebungen)
       [--yes]                            ohne Anmeldung und ohne Fragen
-      [--from <datei>]                   ein vorhandenes Ergebnis von explore übernehmen
+      [--from <datei>]                   ein vorhandenes Ergebnis von --explore-only übernehmen
       [--no-mcp]                         ohne Eintrag in .mcp.json
       [--offline]                        ohne die Anwendung anzusehen: Vorlage mit TODO in der Anmeldung (auch ohne
                                          Terminal und --url)`,
-    'cli.help.validate': '  validate                               Config und Tests prüfen, ohne Browser und ohne Claude',
-    'cli.help.list': `  list [<test>]                          Tests mit Zielen, Stand der Aufnahme (aufgenommen, veraltet, nicht aufgenommen) und
-                                         ob sie schreiben; mit <test> je Schritt eine Zeile`,
-    'cli.help.doctor': `  doctor [--agent local|docker|session]  Node, Chrome, Claude Code (local) bzw. Docker und Token (docker), Zugangsdaten und
-                                         Umgebungen prüfen, mit nächstem Schritt`,
-    'cli.help.theme': `  theme [use <name> | check <name>]      Themes auflisten, eines wählen (gilt für dich, in allen Projekten) oder prüfen:
-                                         Schema, Kontrast, Markenbreite, Schriften. Ändern in der Werkbank mit F7`,
-    'cli.help.auth': `  auth <rolle> --target <umgebung>       Bei auth.type storageState: einmal von Hand anmelden (etwa SSO), die Sitzung
-                                         landet in caw/.auth/<umgebung>/<rolle>.json`,
-    'cli.help.version': '  --version                              Version des Pakets',
-    'cli.help.mcp': `  mcp                                    Werkzeuge für deine Claude-Code-Session (in .mcp.json eintragen): Läufe starten,
-                                         als Agent arbeiten (--agent session), gewähltes Element lesen`,
-    'cli.help.run': `  run <test> [--target <umgebung>]       Testlauf nach Plan, ohne Claude. Auf Umgebungen, auf denen Claude arbeiten
-                                         darf{here}, steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort
-                                         mit Claude
-      [--overlay [build|dev|<url>]]      Lokalen Code über die ausgelieferte Umgebung legen: lokaler Build oder Dev-Server
-                                         (Sencha: der Server des Watch) oder der Server unter <url>; ohne Wert die eine
-                                         konfigurierte Quelle. Nur auf Umgebungen mit overlay. Ohne die Option läuft immer der
-                                         ausgelieferte Stand
-      [--start]                          Mit --overlay: Antwortet der lokale Code-Server nicht, startet caw overlay.start und
-                                         beendet ihn am Ende (CI). Ohne die Option startet caw nichts und nennt den Befehl
-      [--advise]                         Bei Fehlern oder Warnungen gibt Claude von sich aus Empfehlungen, kostet Token; nur auf
+    'cli.help.record': `  record <test> [--env <name>]           Testplan aufnehmen oder Aufnahme ersetzen, mit Claude im Chat; nur auf
+                                         Umgebungen, auf denen Claude arbeiten darf{here}
+  record <test>@<S4>                     Ab S4 bis zum Ende neu aufnehmen: Die Schritte davor laufen ohne Claude, dann folgt
+                                         Claude dem alten Plan ab S4, du lenkst im Chat. Ab S4 darf sich der Plan ändern,
+                                         die Schritte davor bleiben. @S1 nimmt den ganzen Test auf
+      [--role <rolle> --app <app>]       Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
+      [--also <app>]                     Nur beim ersten Mal: Der Weg führt in eine weitere App des Projekts
+      [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch,
+                                         wird er schreibend
+      [--claude-timeout <dauer>]         Zeitlimit für Claude, Standard 60m
+      [--max-actions <n>]                Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
+      [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
+      [--agent local|docker|session]     wie bei run
+      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]`,
+    'cli.help.run': `  run <test> [--env <name>]              Test ohne KI abspielen. Auf Umgebungen, auf denen Claude arbeiten darf{here},
+                                         steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort mit Claude
+      [--explain]                        Bei Fehlern oder Warnungen erklärt Claude von sich aus, kostet Token; nur auf
                                          Umgebungen, auf denen Claude arbeiten darf
       [--no-chat]                        Ohne Chat und ohne Claude, wie in CI
       [--headless]                       Ohne Fenster und ohne Chat
       [--no-learn]                       Mit Chat, aber ohne gelernte Vergleichswerte: Die Testdatei ändert sich nur, wenn du
                                          im Chat etwas übernimmst
-      [--step-timeout <sekunden>]        Zeitlimit je Schritt, Standard 30
-      [--timeout <minuten>]              Zeitlimit für Claude beim Klären und Beheben, Standard 60
-      [--max-steps <n>]                  Grenze für Aktionen von Claude beim Beheben, sonst maxSteps aus der Config, sonst 100
+      [--step-timeout <dauer>]           Zeitlimit je Schritt, Standard 30s
+      [--claude-timeout <dauer>]         Zeitlimit für Claude beim Klären und Beheben, Standard 60m
+      [--max-actions <n>]                Grenze für Aktionen von Claude beim Beheben, sonst maxSteps aus der Config, sonst 100
       [--agent local|docker|session]     Wo Claude arbeitet; Standard aus agent.sandbox der Config (local). session: deine
-                                         Claude-Code-Session übernimmt über caw-ai mcp, caw startet keinen Claude
+                                         Claude-Code-Session übernimmt über ihre caw-Werkzeuge, caw startet keinen Claude
+      [--overlay [build|dev|<url>]]      Lokalen Code über die ausgelieferte Umgebung legen: lokaler Build oder Dev-Server
+                                         oder der Server unter <url>; ohne Wert die eine konfigurierte Quelle. Nur auf
+                                         Umgebungen mit overlay
+      [--start]                          Mit --overlay: overlay.start starten, wenn der lokale Code-Server nicht antwortet
   run <test> <test> … | --all            Mehrere Tests nacheinander, für CI: ohne Chat, am Ende eine Tabelle, Exit-Code des
-      [--target <umgebung>]              schlimmsten Laufs. --all nimmt jeden Test, der das Ziel nennt
+      [--env <name>]                     schlimmsten Laufs. --all nimmt jeden Test, der die Umgebung nennt
       [--headless]                       Ohne Fenster
       [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML`,
-    'cli.help.record': `  record <test> [--target <umgebung>]    Testplan aufnehmen oder Aufnahme ersetzen, immer mit Chat; nur auf Umgebungen, auf denen
-                                         Claude arbeiten darf{here}
-  record <test>@<S4>                     Ab S4 bis zum Ende neu aufnehmen: Die Schritte davor laufen ohne Claude, dann folgt
-                                         Claude dem alten Plan ab S4, du lenkst im Chat. Ab S4 darf sich der Plan ändern
-                                         (Schritte ergänzen, entfernen, umstellen), die Schritte davor bleiben. @S1 nimmt den
-                                         ganzen Test auf
-      [--role <rolle> --app <app>]       Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
-      [--also <app>]                     Nur beim ersten Mal: Der Weg führt in eine weitere App des Projekts
-      [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (mutates: false); schreibt er doch, wird er schreibend
-      [--timeout <minuten>]              Zeitlimit für Claude, Standard 60
-      [--agent local|docker|session]     wie bei run
-      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]
-      [--max-steps <n>]                  Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
-      [--step-timeout <sekunden>]        Zeitlimit je Schritt im Prüfdurchlauf, Standard 30`,
-    'cli.help.open': `  open [--target <umgebung>]             Die Anwendung angemeldet öffnen, mit Werkbank und Chat, ohne Test: navigieren,
-                                         ausprobieren, mit Claude entwickeln. Lernt nichts, schreibt keine Testdatei
-  open <test> [--target <umgebung>]      Erst den ganzen Test abspielen, dann gehört dir das Fenster
-  open <test>@<S4>                       Bis zum Einstieg in S4: die Schritte davor ganz, von S4 nur die Navigation (goto,
-                                         Klicks), seine Eingaben und seine Prüfung bleiben offen. Hat S4 keine Eingaben oder
-                                         schreibt ein Klick davon, läuft davon nichts bzw. nur bis davor
+    'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Die Anwendung angemeldet öffnen, mit Werkbank und Chat. Ohne Test: navigieren,
+                                         ausprobieren, mit Claude entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
+                                         zum Einstieg in S4 (seine Navigation läuft, Eingaben und Prüfung bleiben offen).
+                                         Lernt nichts, schreibt keine Testdatei
       [--role <rolle>] [--app <app>]     Nur ohne Test; nicht nötig, wenn die Config nur eine hat
-      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]
-      [--step-timeout <sekunden>]        Zeitlimit je Schritt beim Abspielen, Standard 30
-      [--agent local|docker|session] [--timeout <minuten>] [--max-steps <n>]`,
-    'cli.help.overlay': `  overlay status [--target <umgebung>]   Ist der lokale Code-Server bereit (overlay.url)? Ohne Browser, startet nichts:
+      [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
+      [--agent local|docker|session] [--claude-timeout <dauer>] [--max-actions <n>]
+      [--overlay [build|dev|<url>]]      wie bei run, auch [--start]`,
+    'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
+                                         aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
+    'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne Claude (CI, Pre-Commit)',
+    'cli.help.doctor': `  doctor [--agent local|docker|session]  Node, Chrome, Claude Code (local) bzw. Docker und Token (docker), Testnutzer und
+                                         Umgebungen prüfen, jeweils mit nächstem Schritt`,
+    'cli.help.role': `  role [list] [--json]                   Rollen, ob ein Testnutzer gesetzt ist (nie die Werte), und welche Tests sie nutzen
+  role add [<rolle>] [--env <name>]      Im Fenster mit einem Testkonto anmelden und die Rolle benennen; caw schreibt
+                                         caw/.env und die Config. „+ Weitere Rolle“ für das nächste Konto
+  role remove <rolle>                    Eine Rolle entfernen, die kein Test nutzt, samt ihren Zeilen in caw/.env
+  role login <rolle> --env <name>        Bei auth.type storageState: einmal von Hand anmelden (etwa SSO), die Sitzung
+                                         landet in caw/.auth/<umgebung>/<rolle>.json`,
+    'cli.help.theme': `  theme [use <name> | check <name>]      Themes auflisten, eines wählen (gilt für dich, in allen Projekten) oder prüfen:
+                                         Schema, Kontrast, Markenbreite, Schriften. Ändern in der Werkbank mit F7`,
+    'cli.help.overlay': `  overlay status [--env <name>]          Ist der lokale Code-Server bereit (overlay.url)? Ohne Browser, startet nichts:
                                          ready, moved (läuft auf anderem Port), down, wrong-app, stale
       [--app <app>] [--json]             Nicht nötig, wenn die Config nur eine kennt; --json: der Status als eine JSON-Zeile
-  overlay check [--target <umgebung>]    Prüft ohne Token, ob das Overlay alles ersetzt, was es soll: lädt die App
+  overlay check [--env <name>]           Prüft ohne Token, ob das Overlay alles ersetzt, was es soll: lädt die App
                                          headless mit --overlay, je Teil lokal, ausgeliefert oder nicht geladen
       [--app <app>] [--role <rolle>]     Nicht nötig, wenn die Config nur eine kennt
       [--apply]                          Vorgeschlagene assetUrlPattern eintragen und erneut prüfen
       [--start]                          overlay.start starten, wenn der Server nicht antwortet, danach beenden
       [--json]                           Ergebnis als eine JSON-Zeile (auch in .caw/overlay-check.json)`,
+    'cli.help.skill': `  skill                                  Nur den Skill für Claude Code (und .mcp.json) anlegen oder aktualisieren; danach
+                                         richtet Claude Code caw mit dir ein („Richte caw ein“)`,
+    'cli.help.version': '  --version                              Version des Pakets',
     'cli.help.here': ' (hier: {names})',
-    'cli.help.footer': `<umgebung>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Ohne --target nimmt caw-ai
-das einzige Ziel des Tests (bei record eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf).
+    'cli.help.footer': `--env <name>: ein Name aus environments, etwa local; mit sites mandant/umgebung, etwa nord/dev. Entfällt, wenn die Wahl
+klar ist: die einzige Umgebung des Tests (bei record eines neuen Tests die einzige, auf der Claude arbeiten darf).
+Dauern mit Einheit: --step-timeout 30s, --claude-timeout 60m.
 
-Hilfe zu einem Befehl: caw-ai <befehl> --help. Befehle für den Agenten: caw-ai help agent.
-
-Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme nötig (record).`,
-    'cli.help.agent': `Für den Agenten (Sandbox, lokal oder deine Session bei --agent session), steuert den Browser:
+caw <befehl> --help für Details.
+Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 abgelehnt (Eingabe), 4 Aufnahme nötig.`,
+    'cli.help.agent': `caw agent <befehl>: für Claude während eines Laufs (Sandbox, lokal oder deine Session bei --agent session), steuert den
+Browser:
   task                                   Auftrag des offenen Laufs anzeigen
   snapshot                               Seitenstruktur mit Referenzen (e1, e2, ...)
   url                                    Aktuelle URL
   click <ziel> [--optional]              Ziel: Referenz, Locator-Code oder CSS-Selektor; --optional: fehlt es, nichts tun
   dblclick <ziel>                        Doppelklick, z. B. eine Tabellenzeile, die per Doppelklick öffnet
-  upload <ziel> <datei>...               Dateien aus caw/fixtures (fixtures/brief.pdf) in ein Dateifeld oder die Auswahl hinter seinem Knopf
+  upload <ziel> <datei>...               Dateien aus caw/fixtures (fixtures/brief.pdf) in ein Dateifeld oder die Auswahl
+                                         hinter seinem Knopf
   fill <ziel> <text>                     Feld setzen; Auswahlliste: die Option mit diesem Wert oder Text
   type <ziel> <text>                     Zeichenweise tippen
   press <taste>                          Taste drücken, z. B. Enter
@@ -129,7 +113,8 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
   screenshot <name.png>                  Screenshot im Agent-Ordner ablegen
   goto <url>                             Zu einem erlaubten Host navigieren
   reload                                 Seite neu laden
-  wait-ready [--store <id>] [--min-count <n>] [--timeout <ms>]
+  wait-ready [--for <selektor>] [--min-count <n>] [--timeout <dauer>]
+                                         Warten, bis die Seite ruhig ist, auf Wunsch bis genug Einträge da sind
   console                                Neue harte Konsolenfehler abholen
   network                                Letzte Requests der Anwendung mit Ausgang und Dauer, ohne Parameterwerte
   plan --file <plan.yaml>                Ablaufplan im Chat vorlegen, wartet auf Freigabe oder Anpassung
@@ -138,30 +123,31 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
   chat                                   Nachrichten lesen, wartet während einer Pause und im Gespräch auf den Menschen
   say <text>                             Dem Menschen schreiben, wartet nicht auf Antwort
   recording                              Bisher aufgezeichnete Schritte nummeriert anzeigen
-  finish --file <result.json>          Urteil einreichen; aufgezeichnet wird nur mit "omit"
-  advise --file <advice.json>        Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
+  finish --file <result.json>            Urteil einreichen; aufgezeichnet wird nur mit "omit"
+  advise --file <advice.json>            Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
     // The synopsis per command, shown below a usage error.
-    'cli.synopsis.init': 'caw-ai init [--url <adresse>] [--yes] [--from <datei>] [--no-mcp] [--offline]',
-    'cli.synopsis.explore': 'caw-ai explore --url <adresse> [--login | --no-login] [--yes] [--insecure-tls]',
-    'cli.synopsis.theme': 'caw-ai theme [use <name> | check <name>]',
-    'cli.synopsis.list': 'caw-ai list [<test>]',
-    'cli.synopsis.doctor': 'caw-ai doctor [--agent local|docker|session]',
-    'cli.synopsis.auth': 'caw-ai auth <rolle> --target <umgebung>',
-    'cli.synopsis.run': 'caw-ai run <test> [--target <umgebung>]  oder  caw-ai run <test> <test> … | --all [--target <umgebung>]',
-    'cli.synopsis.record': 'caw-ai record <test> [--target <umgebung>] [--role <rolle>] [--app <app>]  oder  caw-ai record <test>@<S4> [--target <umgebung>]',
-    'cli.synopsis.open': 'caw-ai open [--target <umgebung>] [--role <rolle>] [--overlay]  oder  caw-ai open <test>[@<S4>] [--target <umgebung>] [--overlay]',
-    'cli.synopsis.overlay': 'caw-ai overlay status|check [--target <umgebung>] [--app <app>] [--apply] [--start] [--json]',
+    'cli.synopsis.init': 'caw init [--url <adresse>] [--explore-only] [--yes] [--from <datei>] [--no-mcp] [--offline]',
+    'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
+    'cli.synopsis.list': 'caw list [<test>]',
+    'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session]',
+    'cli.synopsis.role': 'caw role [list [--json] | add [<rolle>] [--env <name>] | remove <rolle> | login <rolle> --env <name>]',
+    'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>]',
+    'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>] [--app <app>]  oder  caw record <test>@<S4> [--env <name>]',
+    'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>]',
+    'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--app <app>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
     'cli.doctorUnknownArg': 'doctor kennt {arg} nicht. Erlaubt: --agent local|docker|session',
     'cli.doctorAgentValue': '--agent erwartet local, docker oder session.',
-    'cli.mcpAgentOnly': 'mcp-agent startet nur für den Agenten eines Laufs.',
-    'cli.unknownCommand': 'Unbekannter Befehl: {command}.{suggestion} Siehe caw-ai --help.',
+    'cli.mcpAgentOnly': 'caw agent mcp startet nur für den Agenten eines Laufs.',
+    'cli.unknownCommand': 'Unbekannter Befehl: {command}.{suggestion} Siehe caw --help.',
+    'cli.movedCommand': 'caw {command} heißt jetzt caw {now}.',
+    'cli.unknownAgentCommand': 'Unbekannter Befehl: caw agent {command}.{suggestion} Siehe caw agent --help.',
     'cli.didYouMean': ' Meintest du {name}?',
 
     // commands.mjs: explore file, config, skill, init
-    'cli.notExploreResult': 'Die Datei sieht nicht nach einem Ergebnis von caw-ai explore aus.',
+    'cli.notExploreResult': 'Die Datei sieht nicht nach einem Ergebnis von caw init --explore-only aus.',
     'cli.unknownFramework': 'Framework "{framework}" kennt caw-ai nicht ({names}).',
     'cli.initAuthUnknown': 'Anmeldung "{auth}" gibt es bei init nicht (form, storageState, none).',
     'cli.badRoleName': 'Rolle "{name}": nur Kleinbuchstaben, Ziffern und Bindestrich, mit einem Buchstaben vorn (etwa admin, editor).',
@@ -172,16 +158,16 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.skillNext': 'Weiter in Claude Code: „Richte caw-ai ein“. Der Skill führt durch explore, init und doctor.',
     'cli.initCreated': 'Angelegt: {files}',
     'cli.initAlready': 'Bereits eingerichtet.',
-    'cli.initNeedsUrl': 'Aufruf: npx caw-ai init --url <adresse>. init sieht sich die Anwendung zuerst an; du meldest dich im Fenster an.',
+    'cli.initNeedsUrl': 'Aufruf: npx caw init --url <adresse>. init sieht sich die Anwendung zuerst an; du meldest dich im Fenster an.',
     'cli.initUsesExplore': 'Nutze die Vorschläge aus {file}.',
     'cli.envExampleHead': '# Nach caw/.env kopieren (gitignored) und Testkonten mit wenig Rechten eintragen.\n# Der Agent sieht diese Datei nicht, steuert aber einen angemeldeten Browser: Keine persönlichen Konten verwenden.',
     'cli.initTodo': 'Noch einzutragen in caw.config.json: {keys} (von explore nicht gefunden, siehe notes in caw/.explore.json).',
-    'cli.initTodoOffline': 'Noch einzutragen in caw.config.json: {keys}. Die Selektoren findet caw-ai explore --url <adresse>, sobald die Anwendung läuft.',
+    'cli.initTodoOffline': 'Noch einzutragen in caw.config.json: {keys}. Die Selektoren findet caw init --explore-only --url <adresse>, sobald die Anwendung läuft.',
     'cli.doctorTodo': ({ keys, count }) => `${keys} ${count > 1 ? 'stehen' : 'steht'} noch auf TODO`,
-    'cli.doctorTodoNext': 'In caw.config.json eintragen: path und Feld-Selektoren von der Anmeldeseite, signedInSelector von der Seite nach der Anmeldung. caw-ai explore --url <adresse> findet sie.',
-    'cli.initNext': 'Weiter: caw-ai doctor, dann den ersten Test aufnehmen: caw-ai record <test> --target {target}.',
-    'cli.initNextExplore': ' Ohne passende Selektoren erst caw-ai explore --url <adresse>.',
-    'cli.initOfflineFallback': 'Kein Terminal und keine --url: init schreibt die Vorlage, die Anmeldung bleibt TODO. Später: caw-ai explore --url <adresse>.',
+    'cli.doctorTodoNext': 'In caw.config.json eintragen: path und Feld-Selektoren von der Anmeldeseite, signedInSelector von der Seite nach der Anmeldung. caw init --explore-only --url <adresse> findet sie.',
+    'cli.initNext': 'Weiter: caw doctor, dann den ersten Test aufnehmen: caw record <test> --env {target}.',
+    'cli.initNextExplore': ' Ohne passende Selektoren erst caw init --explore-only --url <adresse>.',
+    'cli.initOfflineFallback': 'Kein Terminal und keine --url: init schreibt die Vorlage, die Anmeldung bleibt TODO. Später: caw init --explore-only --url <adresse>.',
     'cli.contextTemplate': '# Notizen für Claude\n\nWas Claude in jedem Test wissen sollte, aber nicht im Code sieht. Keine personenbezogenen Daten.\n\n- Beispiel: Die Suche merkt sich die letzte Eingabe. Erst „Filter löschen“ klicken.\n',
 
     // commands.mjs: init dialog
@@ -192,9 +178,9 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.askRolesBad': '„{name}“: nur Kleinbuchstaben, Ziffern und Bindestrich, etwa admin, editor.',
 
     // commands.mjs: auth
-    'cli.authUsage': 'Aufruf: caw-ai auth <rolle> --target <umgebung>',
-    'cli.authStorageOnly': 'caw-ai auth gibt es nur mit auth.type storageState; hier ist es {type}.',
-    'cli.authNeedsSelector': 'caw-ai auth braucht auth.signedInSelector: Daran erkennt es, dass die Anmeldung fertig ist.',
+    'cli.authUsage': 'Aufruf: caw role login <rolle> --env <umgebung>',
+    'cli.authStorageOnly': 'caw role login gibt es nur mit auth.type storageState; hier ist es {type}.',
+    'cli.authNeedsSelector': 'caw role login braucht auth.signedInSelector: Daran erkennt es, dass die Anmeldung fertig ist.',
     'cli.authRoleUnknown': 'Rolle {role} steht nicht in roles ({roles}).',
     'cli.targetProduction': '{target} ist Produktion.',
     'cli.authSignIn': 'Melde dich im Chrome-Fenster als {role} an. Sobald {selector} erscheint, speichert caw-ai die Sitzung.',
@@ -217,7 +203,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.validateTodo.signedInSelector': 'trage einen CSS-Selektor ein, den es nur angemeldet gibt, etwa das Benutzermenü',
 
     // commands.mjs: list
-    'cli.listNone': 'Noch keine Tests in {dir}. Den ersten nimmt caw-ai record <test> auf.',
+    'cli.listNone': 'Noch keine Tests in {dir}. Den ersten nimmt caw record <test> auf.',
     'cli.listHead': 'Test|Ziele|Aufnahme|Daten',
     'cli.listRecorded': 'aufgenommen',
     'cli.listStale': 'veraltet ({ids})',
@@ -247,7 +233,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.verbRecord': 'Aufgenommen wird',
     'cli.agentOnly': '{verb} braucht environments.{environment}.claude: true (zurzeit nur: {environments}).',
     'cli.agentNotInCi': '--agent {agent} geht nicht in CI (Variable CI gesetzt), dort läuft Claude nur in Docker.',
-    'cli.sessionAgent': 'Claude arbeitet in deiner Claude-Code-Session: Sage ihr „übernimm den caw-Lauf“. Sie findet ihn über das Tool caw (caw-ai mcp) oder caw-ai <befehl>.',
+    'cli.sessionAgent': 'Claude arbeitet in deiner Claude-Code-Session: Sage ihr „übernimm den caw-Lauf“. Sie findet ihn über das Tool caw (caw mcp) oder caw <befehl>.',
     'cli.sessionLabel': 'deine Claude-Code-Session',
     'cli.localAgent': 'Claude läuft lokal ohne Docker, nur mit Lesen und dem Browser-Werkzeug (Claude Code {version}). Abgeschottet: agent.sandbox "docker".',
     'cli.usingDocker': 'Nutze {label}.',
@@ -274,7 +260,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.modeChat': 'Modus: mit Chat{advice}. Fehlende Vergleichswerte lernt der Lauf in {file} (abschalten mit --no-learn).',
     'cli.modeOpen': 'Modus: mit Chat. open lernt nichts; die Testdatei ändert sich nur, wenn du im Chat etwas übernimmst.',
     'cli.modeChatNoLearn': 'Modus: mit Chat{advice}, ohne Lernen (--no-learn). Die Testdatei ändert sich nur, wenn du im Chat etwas übernimmst.',
-    'cli.modeAdvice': ' und Empfehlungen von Claude (--advise, kostet Token)',
+    'cli.modeAdvice': ' und Empfehlungen von Claude (--explain, kostet Token)',
     'cli.changed': 'Geändert: {files}',
     'cli.changedWhat': '{file} ({what})',
     'cli.changedBaselines': 'Vergleichswerte {ids}',
@@ -294,14 +280,14 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.batchAt': 'bei {step}',
     'cli.junitWritten': 'JUnit-Bericht: {file}',
     'cli.stepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps}',
-    'cli.adviseAgentOnly': '--advise nur auf Umgebungen, auf denen Claude arbeiten darf (hier: {environments}), nicht auf {target}.',
+    'cli.adviseAgentOnly': '--explain nur auf Umgebungen, auf denen Claude arbeiten darf (hier: {environments}), nicht auf {target}.',
     'cli.ciHandover': '{option} übergibt den Browser an einen Menschen; in CI (Variable CI gesetzt) ist keiner da.',
-    'cli.ciNeedsHuman': 'caw-ai {command} braucht einen Menschen im Chat (Vorführung, Plan, Entscheidungen); in CI (Variable CI gesetzt) ist keiner da.',
-    'cli.adviseNeedsChat': '--advise braucht den Chat, in CI (Variable CI gesetzt) empfiehlt Claude nicht.',
-    'cli.failedHintAgent': '{step} ist gescheitert. Ursache klären: caw-ai run {test} --target {target} im Terminal, der Chat zeigt die Einschätzung und lässt Claude suchen. Nur wenn sich die Anwendung gewollt geändert hat, ab dort neu aufnehmen: caw-ai record {test}@{step} --target {target}',
-    'cli.failedHint': '{step} ist gescheitert. Ursache klären im Lauf mit Chat: caw-ai run {test} --target {target}',
+    'cli.ciNeedsHuman': 'caw {command} braucht einen Menschen im Chat (Vorführung, Plan, Entscheidungen); in CI (Variable CI gesetzt) ist keiner da.',
+    'cli.adviseNeedsChat': '--explain braucht den Chat, in CI (Variable CI gesetzt) empfiehlt Claude nicht.',
+    'cli.failedHintAgent': '{step} ist gescheitert. Ursache klären: caw run {test} --env {target} im Terminal, der Chat zeigt die Einschätzung und lässt Claude suchen. Nur wenn sich die Anwendung gewollt geändert hat, ab dort neu aufnehmen: caw record {test}@{step} --env {target}',
+    'cli.failedHint': '{step} ist gescheitert. Ursache klären im Lauf mit Chat: caw run {test} --env {target}',
     'cli.failedHintNoAgent': '{step} ist gescheitert. Die Ursache klärt ein Lauf mit Chat, auf einer Umgebung, auf der Claude arbeiten darf (hier: {environments}).',
-    'cli.untilHint': 'Bis zum Einstieg in den Schritt: caw-ai open {test}@{step} --target {target}',
+    'cli.untilHint': 'Bis zum Einstieg in den Schritt: caw open {test}@{step} --env {target}',
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role, --app, --also und --read-only müssen zur Datei passen oder entfallen.',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
     'cli.recordFromReason': 'Neu aufnehmen ab {step} ist gewünscht',
@@ -310,15 +296,15 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.doctorNodeOld': 'Node {version} ist zu alt',
     'cli.doctorNodeNext': 'Node {min} oder neuer installieren.',
     'cli.doctorConfigOk': '{file} ist gültig',
-    'cli.doctorConfigNextValidate': ({ count }) => (count > 1 ? `caw-ai validate zeigt alle ${count} Befunde.` : 'caw-ai validate zeigt alle Befunde.'),
+    'cli.doctorConfigNextValidate': ({ count }) => (count > 1 ? `caw validate zeigt alle ${count} Befunde.` : 'caw validate zeigt alle Befunde.'),
     'cli.doctorConfigMissing': '{file} fehlt',
-    'cli.doctorConfigNextInit': 'caw-ai init legt sie an.',
+    'cli.doctorConfigNextInit': 'caw init legt sie an.',
     'cli.doctorBrowserOk': 'Browser startet ({browser})',
     'cli.doctorBrowserFail': 'Browser startet nicht ({browser}): {error}',
     'cli.doctorBrowserNext': 'Google Chrome installieren (Stable), caw-ai nutzt das Chrome des Systems; oder in der Config browser.channel bzw. browser.executablePath setzen.',
     'cli.doctorSessionOk': 'Deine Claude-Code-Session übernimmt (Eintrag caw-ai in .mcp.json)',
     'cli.doctorSessionMissing': 'Eintrag caw-ai in .mcp.json fehlt',
-    'cli.doctorSessionNext': 'caw-ai skill legt ihn an; danach Claude Code im Projekt neu starten.',
+    'cli.doctorSessionNext': 'caw skill legt ihn an; danach Claude Code im Projekt neu starten.',
     'cli.doctorClaudeOk': 'Claude Code {version} (Claude läuft lokal, ohne Docker)',
     'cli.doctorClaudeMissing': 'Claude Code (claude) ist nicht im PATH',
     'cli.doctorClaudeNext': 'Nur für Läufe mit Claude: Claude Code installieren und einmal anmelden, oder agent.sandbox "docker".',
@@ -329,10 +315,10 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.doctorTokenNext': 'Nur für Läufe mit Claude in Docker: einen API-Schlüssel aus der Claude Console als ANTHROPIC_API_KEY setzen. Lokal nutzt Claude deine Claude-Code-Anmeldung.',
     'cli.doctorIgnoreOk': '.gitignore schützt Läufe, Zugangsdaten und Sitzungen',
     'cli.doctorIgnoreMissing': '.gitignore fehlt: {lines}',
-    'cli.doctorIgnoreNext': 'caw-ai init ergänzt die Einträge.',
+    'cli.doctorIgnoreNext': 'caw init ergänzt die Einträge.',
     'cli.doctorRoleOk': 'Rolle {name}: Zugangsdaten gesetzt',
     'cli.doctorRoleMissing': ({ name, missing, count, file }) => `Rolle ${name}: ${missing} ${count > 1 ? 'fehlen' : 'fehlt'} in ${file}`,
-    'cli.doctorRoleNext': 'caw-ai role add <rolle> --target <umgebung> öffnet das Anmeldefenster; in CI die Variablen als Umgebungsvariablen setzen ({file}.example nennt sie).',
+    'cli.doctorRoleNext': 'caw role add <rolle> --env <umgebung> öffnet das Anmeldefenster; in CI die Variablen als Umgebungsvariablen setzen ({file}.example nennt sie).',
     'cli.doctorSessionSaved': 'Rolle {name} auf {target}: Sitzung gespeichert',
     'cli.doctorSessionNone': 'Rolle {name} auf {target}: keine Sitzung',
     'cli.doctorReachOk': '{target}: {url} antwortet',
@@ -343,7 +329,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     // overlay-check.mjs
     'cli.overlayCheck.usage': 'overlay kennt status und check, nicht "{sub}".',
     'cli.overlayCheck.unknownArg': 'overlay {sub} kennt {arg} nicht. Erlaubt: {allowed}',
-    'cli.overlayCheck.target': 'Welche Umgebung? Nimm --target, zur Wahl: {choices}',
+    'cli.overlayCheck.target': 'Welche Umgebung? Nimm --env, zur Wahl: {choices}',
     'cli.overlayCheck.noApp': 'Keine App "{app}" in caw.config.json. Nimm --app, zur Wahl: {apps}',
     'cli.overlayCheck.noAppJson': 'App {app}: In {dir} liegt keine app.json. Stimmt apps.{app}.dir?',
     'cli.overlayCheck.noExpected': 'Für {framework} gibt es keine erwartete Liste: Die Prüfung entfällt.',
@@ -365,7 +351,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.overlayCheck.static.deployed': 'static {name}: kam vom Server; das Asset-Muster ergibt diesen Namen nicht',
     'cli.overlayCheck.static.not-loaded': 'static {name}: von der Seite nicht geladen',
     'cli.overlayCheck.incomplete': 'Unvollständig: {count} Skript(e) kamen vom Server.',
-    'cli.overlayCheck.incompleteApply': 'Unvollständig: {count} Skript(e) kamen vom Server. caw-ai overlay check --apply trägt die Muster ein.',
+    'cli.overlayCheck.incompleteApply': 'Unvollständig: {count} Skript(e) kamen vom Server. caw overlay check --apply trägt die Muster ein.',
     'cli.overlayStatus.ready': 'Lokaler Code für {app} ist bereit: {url}',
     'cli.overlayStatus.readyNoServer': 'Lokaler Code für {app} ist bereit (kein Server nötig)',
     'cli.overlayStatus.moved': 'Der lokale Code-Server von {app} läuft unter {found}, nicht unter {url}. caw nimmt ihn; trage {found} in apps.{app}.overlay.url ein.',
@@ -382,15 +368,15 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.doctorOverlayStatus.local': 'lokal',
     'cli.doctorOverlayStatus.deployed': 'ausgeliefert',
     'cli.doctorOverlayStatus.not-loaded': 'nicht geladen',
-    'cli.doctorOverlayPartNext': 'caw-ai overlay check zeigt das fehlende Muster, --apply trägt es ein.',
+    'cli.doctorOverlayPartNext': 'caw overlay check zeigt das fehlende Muster, --apply trägt es ein.',
     'cli.doctorOverlayNoCheck': '{target}, App {app}: Overlay noch nicht geprüft',
-    'cli.doctorOverlayNoCheckNext': 'caw-ai overlay check --target {target}',
+    'cli.doctorOverlayNoCheckNext': 'caw overlay check --env {target}',
     'cli.doctorMarkOk': 'OK        ',
     'cli.doctorMarkOptional': 'OPTIONAL  ',
     'cli.doctorMarkMissing': 'FEHLT     ',
     'cli.doctorSummary': ({ ok, blocking, optional }) => `${ok} in Ordnung, ${blocking} ${blocking === 1 ? 'fehlt' : 'fehlen'}, ${optional} optional offen`,
-    'cli.doctorReadyFirst': 'Bereit. Nächster Schritt: den ersten Test aufnehmen, caw-ai record <test> --target <umgebung>.',
-    'cli.doctorReady': 'Bereit für caw-ai run.',
+    'cli.doctorReadyFirst': 'Bereit. Nächster Schritt: den ersten Test aufnehmen, caw record <test> --env <umgebung>.',
+    'cli.doctorReady': 'Bereit für caw run.',
     'cli.doctorFixFirst': '{summary}. Erst die mit FEHLT beheben.',
 
     // explore.mjs
@@ -404,7 +390,7 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.exploreWhyNeutral': 'kein Framework erkannt, neutraler Adapter',
     'cli.exploreWhyPackage': 'aus der package.json',
     'cli.exploreMismatch': 'Laufzeit zeigt {runtime}, die package.json {detected}.',
-    'cli.exploreForeign': 'Die Anmeldung wollte auf {hosts}; das Tool ließ das nicht zu. Für SSO: auth.type storageState, Sitzung einmal mit caw-ai auth speichern; den Anmeldedienst ggf. in extraAllowedHosts.',
+    'cli.exploreForeign': 'Die Anmeldung wollte auf {hosts}; das Tool ließ das nicht zu. Für SSO: auth.type storageState, Sitzung einmal mit caw role login speichern; den Anmeldedienst ggf. in extraAllowedHosts.',
     'cli.exploreNoFieldSelector': 'Für Name oder Passwort fand sich kein eindeutiger Selektor; eine data-testid an den Feldern hilft.',
     'cli.exploreNoSignedIn': 'Nach der Anmeldung kam kein neues Element mit stabilem Selektor dazu; signedInSelector bitte von Hand setzen.',
     'cli.exploreNoLogin': 'Kein Anmeldeformular gesehen. Braucht die Anwendung doch eine Anmeldung, explore erneut starten und dabei anmelden.',
@@ -442,10 +428,10 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.exploreLoginNotFound': 'Du sagtest, es gibt eine Anmeldung, aber ich habe kein Anmeldeformular gesehen. Prüfe auth in der Config.',
     'cli.yesNoDefaultYes': '[J/n]',
     'cli.yesNoDefaultNo': '[j/N]',
-    'cli.exploreUsage': 'Aufruf: caw-ai explore --url <adresse>, etwa --url http://app.localhost:5173',
+    'cli.exploreUsage': 'Aufruf: caw init --explore-only --url <adresse>, etwa --url http://app.localhost:5173',
     'cli.exploreNeedsTty': 'explore braucht ein Terminal für die Frage nach der Anmeldung. Ohne Terminal: --yes.',
     'cli.exploreUnreachable': '{url} antwortet nicht. Läuft der Dev-Server, stimmt die Adresse?',
-    'cli.exploreNext': 'Weiter: npx caw-ai init übernimmt {file}. Was dort TODO bleibt, trägst du in caw.config.json ein.',
+    'cli.exploreNext': 'Weiter: npx caw init übernimmt {file}. Was dort TODO bleibt, trägst du in caw.config.json ein.',
 
     // ui.mjs
     'cli.uiOn': 'auf',
@@ -477,24 +463,18 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.themeHeading': 'Themes',
     'cli.themeOwn': 'eigenes, auf {base}',
     'cli.themeActive': '(aktiv)',
-    'cli.themeHint': 'Wählen: caw-ai theme use <name>. Ändern: F7 in der Werkbank.',
+    'cli.themeHint': 'Wählen: caw theme use <name>. Ändern: F7 in der Werkbank.',
     'cli.themeUsed': 'Theme {name} gewählt.',
     'cli.themeUnknown': 'Theme {name} gibt es nicht. Vorhanden: {names}',
-    'cli.themeUsage': 'Aufruf: caw-ai theme [use <name> | check <name>]',
+    'cli.themeUsage': 'Aufruf: caw theme [use <name> | check <name>]',
     'cli.themeCheck': 'Theme {name} prüfen',
     'cli.themeSchemaOk': 'Schema passt',
     'cli.themeWidth': 'Die Marken sind unterschiedlich breit; Texte dahinter stehen dann nicht untereinander.',
     'cli.themeContrast': 'Kontrast {pair} nur {ratio}:1, unter 4,5:1 schwer lesbar.',
     'cli.themeFontMissing': 'Schrift fehlt: {file}',
     'cli.themeLooksOk': 'Kontrast, Marken und Schriften in Ordnung',
-    'cli.help.role': `  role [list] [--json]                   Rollen mit Testnutzer (gesetzt oder fehlt, nie die Werte) und die Tests dazu
-  role add [<rolle>] [--target <umgebung>]
-                                         Fenster auf der Anmeldeseite: anmelden, Rolle benennen, caw-ai schreibt caw/.env und
-                                         die Config; „+ Weitere Rolle“ für das nächste Konto
-  role remove <rolle>                    Rolle entfernen, die kein Test nutzt, samt ihren Zeilen in caw/.env`,
-    'cli.synopsis.role': 'caw-ai role [list [--json] | add [<rolle>] [--target <umgebung>] | remove <rolle>]',
-    'cli.roleSynopsis': 'Aufruf: caw-ai role [list [--json] | add [<rolle>] [--target <umgebung>] | remove <rolle>]',
-    'cli.roleUnknownArg': 'role kennt {arg} nicht. Erlaubt: --target, --json',
+    'cli.roleSynopsis': 'Aufruf: caw role [list [--json] | add [<rolle>] [--env <name>] | remove <rolle> | login <rolle> --env <name>]',
+    'cli.roleUnknownArg': 'role kennt {arg} nicht. Erlaubt: --env, --json',
     'cli.testUserMultiline': 'Benutzername oder Passwort enthält einen Zeilenumbruch; caw/.env kann das nicht aufnehmen.',
     'cli.testUserQuotes': 'Das Passwort enthält alle Anführungszeichen; trage es selbst in caw/.env ein.',
     'cli.envFileHead': '# Testnutzer für caw-ai. Nie einchecken.',
@@ -513,21 +493,21 @@ Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 Eingabe abgelehnt, 4 Aufnahme 
     'cli.roleSaved': 'Rolle {role} gespeichert: {names} in {file}',
     'cli.roleGitignore': '{file} in .gitignore eingetragen.',
     'cli.roleTargetUnknown': 'Unbekannte Umgebung {target}. Bekannt: {environments}',
-    'cli.roleTargetMissing': 'Auf welcher Umgebung soll sich das Fenster anmelden? --target <umgebung> ({environments})',
-    'cli.roleAuthType': 'Testnutzer mit Passwort nur bei auth.type form oder basic (hier: {type}). Bei storageState: caw-ai auth <rolle> --target <umgebung>.',
+    'cli.roleTargetMissing': 'Auf welcher Umgebung soll sich das Fenster anmelden? --env <umgebung> ({environments})',
+    'cli.roleAuthType': 'Testnutzer mit Passwort nur bei auth.type form oder basic (hier: {type}). Bei storageState: caw role login <rolle> --env <umgebung>.',
     'cli.roleSignIn': 'Melde dich im Fenster mit dem Testnutzer an ({target}).',
     'cli.roleNoCredentials': 'Angemeldet, aber im Formular wurden kein Benutzername und Passwort gesehen (SSO?). Nichts gespeichert.',
     'cli.roleNeeded': 'Test {test} meldet sich als Rolle {role} an, die noch keinen Testnutzer hat: Melde dich im Fenster damit an.',
-    'cli.roleNotSaved': 'Kein Testnutzer für Rolle {role} gespeichert. caw-ai role add {role} --target <umgebung> legt einen an.',
+    'cli.roleNotSaved': 'Kein Testnutzer für Rolle {role} gespeichert. caw role add {role} --env <umgebung> legt einen an.',
     'cli.exploreRoleStep': 'Im Fenster: Benenne die Rolle für den Testnutzer, mit dem du dich angemeldet hast.',
     'cli.roleUnknown': 'Unbekannte Rolle {role}. Bekannt: {roles}',
     'cli.roleInUse': 'Rolle {role} wird noch genutzt von: {tests}',
-    'cli.roleNone': 'Noch keine Rollen. caw-ai role add <rolle> --target <umgebung>',
+    'cli.roleNone': 'Noch keine Rollen. caw role add <rolle> --env <umgebung>',
     'cli.roleStateMissing': 'nicht in der Config',
     'cli.roleStateSet': 'Testnutzer gesetzt',
     'cli.roleStateNoUser': 'kein Testnutzer',
     'cli.roleStateNoPassword': 'kein Passwort nötig',
-    'cli.roleAddHint': 'Testnutzer anlegen: caw-ai role add {role} --target <umgebung>',
+    'cli.roleAddHint': 'Testnutzer anlegen: caw role add {role} --env <umgebung>',
     'cli.roleNothingSaved': 'Nichts gespeichert.',
     'cli.roleNext': 'Gespeichert: {roles}. Tests nutzen sie mit role: <name>.',
     'cli.roleRemoved': 'Rolle {role} aus der Config und {file} entfernt.',

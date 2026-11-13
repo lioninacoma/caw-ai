@@ -21,10 +21,10 @@ To try your changes in a real project, link the checkout there:
 
 ```bash
 npm i -D ../caw-ai    # or pnpm add -D link:../caw-ai
-npx caw-ai doctor
+npx caw doctor
 ```
 
-`examples/errand` is a small todo app with a recorded test you can replay right away (`run first-errand --target local`).
+`examples/errand` is a small todo app with a recorded test you can replay right away (`run first-errand --env local`).
 
 ## Layout
 

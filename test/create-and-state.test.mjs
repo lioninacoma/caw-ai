@@ -520,9 +520,9 @@ test('Demonstration: notes keep their order but create neither a step nor a chec
 test('Chat: the Claude log becomes messages and actions, the conversation itself is not duplicated', () => {
     assert.deepEqual(parseClaudeLog('[+47.0s] Suche ist da. ⏎ Ich suche.'), { kind: 'text', text: 'Suche ist da. Ich suche.' });
     assert.equal(parseClaudeLog('[+143.7s] Claude finished after 142 s.'), null);
-    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Muster"; caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Muster"; press Enter' });
-    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw-ai fill f4 "Muster" && caw-ai press Enter'), { kind: 'activity', text: 'fill f4 "Muster" && press Enter' });
-    assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai say "Hallo"'), null);
+    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw agent fill f4 "Muster"; caw agent press Enter'), { kind: 'activity', text: 'fill f4 "Muster"; press Enter' });
+    assert.deepEqual(parseClaudeLog('[+47.6s] > Bash: caw agent fill f4 "Muster" && caw agent press Enter'), { kind: 'activity', text: 'fill f4 "Muster" && press Enter' });
+    assert.equal(parseClaudeLog('[+1.0s] > Bash: caw agent say "Hallo"'), null);
     // The local agent calls caw via MCP: the human reads the same command, without internal names and JSON.
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["snapshot"]}'), { kind: 'activity', text: 'snapshot' });
     assert.deepEqual(parseClaudeLog('[+2.0s] > mcp__caw__caw: {"args":["click","button \\"Senden\\""]}'), { kind: 'activity', text: 'click button "Senden"' });
@@ -534,8 +534,8 @@ test('Chat: the Claude log becomes messages and actions, the conversation itself
     assert.deepEqual(parseClaudeLog('[+2.0s] > Read: caw/caw.md'), { kind: 'activity', text: 'Read: caw/caw.md' });
     assert.deepEqual(parseClaudeLog('[+1.0s] > Bash: grep x mein-caw.log'), { kind: 'activity', text: 'grep x mein-caw.log' }, 'only the command, not every word');
     assert.deepEqual(parseClaudeLog('[+1.0s] > Read: /a.md'),{ kind: 'activity', text: 'Read: /a.md' });
-    assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai chat'), null);
-    assert.equal(parseClaudeLog('[+1.0s] > Bash: caw-ai chat; caw-ai click e1').kind, 'activity');
+    assert.equal(parseClaudeLog('[+1.0s] > Bash: caw agent chat'), null);
+    assert.equal(parseClaudeLog('[+1.0s] > Bash: caw agent chat; caw agent click e1').kind, 'activity');
     assert.equal(parseClaudeLog('irgendwas'), null);
     assert.equal(parseClaudeLog('[+1.0s] '), null);
 });
@@ -558,7 +558,7 @@ test('Chat: log and questions appear in the window, nothing after the end', () =
     const shown = [];
     const chat = createChat({ show: (who, text) => shown.push([who, text]) });
     chat.logLine('[+1.0s] Ich schaue.');
-    chat.logLine('[+1.2s] > Bash: caw-ai snapshot');
+    chat.logLine('[+1.2s] > Bash: caw agent snapshot');
     chat.ask('Welcher Bereich?');
     chat.human.closed();
     chat.logLine('[+2.0s] Zu spät.');

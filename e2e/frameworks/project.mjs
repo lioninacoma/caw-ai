@@ -1,5 +1,5 @@
 // Writes caw-ai project files into a framework test project: config, test plans and recordings by hand, as `record` would write
-// them. So `caw-ai run` runs against every variant without Claude and without a token.
+// them. So `caw run` runs against every variant without Claude and without a token.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 

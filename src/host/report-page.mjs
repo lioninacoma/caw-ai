@@ -80,7 +80,7 @@ export const reportBody = (markdown, { marks = {}, failInverted = true } = {}) =
 export const reportPage = ({ markdown, path = '', theme = activeTheme() }) => {
     const title = t('workbench.report.title');
     const legend = text(theme.legend, '┤ {title} ├').split('{title}').join(title.toUpperCase());
-    return `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw-ai · ${escape(title)}</title>${FAVICON}<style>
+    return `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw · ${escape(title)}</title>${FAVICON}<style>
 ${themeCss(theme)}${CONSOLE_CSS}
 *{box-sizing:border-box}
 html{background:var(--page)}

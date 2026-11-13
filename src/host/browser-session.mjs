@@ -449,7 +449,7 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
 };
 
 /**
- * A saved session (`auth.type: storageState`, recorded with `caw-ai auth`): cookies into the context, localStorage and
+ * A saved session (`auth.type: storageState`, recorded with `caw role login`): cookies into the context, localStorage and
  * sessionStorage via a script before every load, only for the origins in the file. Then the same check applies as after a sign-in.
  */
 const applyStorageState = async (context, path) => {
@@ -717,7 +717,7 @@ export const captureSession = async ({ url, signedInSelector, hosts, insecureTls
 };
 
 /**
- * For `caw-ai explore`: a window for the address's host only, without sign-in by the tool. Collects console errors and the
+ * For `caw init --explore-only`: a window for the address's host only, without sign-in by the tool. Collects console errors and the
  * hosts a page tried to open that stayed blocked (e.g. an SSO service).
  */
 export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
@@ -1075,7 +1075,7 @@ export const openBrowserSession = async (spec) => {
         const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
             // Embed only documents of the application itself, not further allowed hosts such as a sign-in service.
-            bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw-ai', rewrite });
+            bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite });
             pages.embed(bench.page, bench.view);
             bench.view.on('domcontentloaded', () => network.replaced(bench.view));
             const signIn = auth.type === 'form' || auth.type === 'basic' ? t('session.prep.signIn') : auth.type === 'storageState' ? t('session.prep.takeSession') : null;
@@ -1097,7 +1097,7 @@ export const openBrowserSession = async (spec) => {
         const waitReady = (args = {}) => waitQuiet(framework, pages.current(), { ...args, ignore, pending: (page) => network.pending(page) });
         const ready = await waitReady({ timeout: spec.readyTimeoutMs });
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
-        // overlayStrict false (caw-ai overlay check): report instead of throwing, the check reads the diagnosis itself. A broken
+        // overlayStrict false (caw overlay check): report instead of throwing, the check reads the diagnosis itself. A broken
         // app is often just what a mixed state causes.
         const strict = spec.overlayStrict !== false;
         let loadProblem = null;

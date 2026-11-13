@@ -105,7 +105,7 @@ test('overlayStatus: no app, no overlay environment, down, wrong app, stale, mov
     assert.deepEqual([none.state, overlayStatusExit(none)], ['not-overlay', 3]);
     rmSync(join(root, 'app', 'app.json'));
     assert.equal((await status({ target: 'dev' })).state, 'no-app');
-    await assert.rejects(status({ target: 'prod' }), (error) => error.code === 'target-invalid');
+    await assert.rejects(status({ target: 'prod' }), (error) => error.code === 'env-invalid');
 });
 
 test('overlay check: headless, not strict; complete and incomplete; always .caw/overlay-check.json and last-run.json', async (t) => {
@@ -167,12 +167,12 @@ test('overlay check: server down without a browser, with --start the run starts 
     assert.ok(existsSync(join(root, '.caw', 'overlay-check.json')));
 });
 
-test('caw-ai overlay check --json: the result is the only stdout line; unknown arguments are usage errors', async (t) => {
+test('caw overlay check --json: the result is the only stdout line; unknown arguments are usage errors', async (t) => {
     const root = project(t);
     const { openSession } = sessions(missedDiagnosis);
     const out = [];
     t.mock.method(console, 'error', () => {});
-    const exit = await overlayCommand(root, ['check', '--json', '--target', 'dev'], { out: (line) => out.push(line), deps: { openSession, ...watching(root), now } });
+    const exit = await overlayCommand(root, ['check', '--json', '--env', 'dev'], { out: (line) => out.push(line), deps: { openSession, ...watching(root), now } });
     assert.equal(exit, 2);
     assert.equal(out.length, 1);
     assert.equal(JSON.parse(out[0]).state, 'incomplete');
@@ -190,15 +190,15 @@ test('caw-ai overlay check --json: the result is the only stdout line; unknown a
     assert.match(text, /--apply trägt die Muster ein/);
 });
 
-test('caw-ai overlay status: --json is the status as one line; exit 0 ready or moved, 2 server, 3 config', async (t) => {
+test('caw overlay status: --json is the status as one line; exit 0 ready or moved, 2 server, 3 config', async (t) => {
     const root = project(t);
     t.mock.method(console, 'error', () => {});
     const out = [];
     assert.equal(await overlayCommand(root, ['status', '--json'], { out: (line) => out.push(line), deps: watching(root) }), 0);
     assert.deepEqual(JSON.parse(out[0]), { state: 'ready', framework: 'extjs', app: 'web', appDir: 'app', url: WATCH, start: null });
-    assert.equal(await overlayCommand(root, ['status', '--json', '--target', 'dev'], { out: (line) => out.push(line), deps: noWatch }), 2);
+    assert.equal(await overlayCommand(root, ['status', '--json', '--env', 'dev'], { out: (line) => out.push(line), deps: noWatch }), 2);
     assert.equal(JSON.parse(out[1]).state, 'down');
-    assert.equal(await overlayCommand(root, ['status', '--json', '--target', 'test'], { out: (line) => out.push(line), deps: noWatch }), 3);
+    assert.equal(await overlayCommand(root, ['status', '--json', '--env', 'test'], { out: (line) => out.push(line), deps: noWatch }), 3);
     const lines = [];
     t.mock.method(console, 'log', (text) => lines.push(text));
     assert.equal(await overlayCommand(root, ['status'], { deps: watching(root) }), 0);

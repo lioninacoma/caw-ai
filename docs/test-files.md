@@ -77,8 +77,8 @@ Tips:
 Each step has a hash over `name`, `do`, `expect` and `note`. Change one of them and only that step is outdated:
 
 ```bash
-npx caw-ai run create-ticket --target local       # exit 4: S2 changed, prints the record command
-npx caw-ai record create-ticket@S2 --target local # re-record from S2 to the end, S1 stays
+npx caw run create-ticket --env local       # exit 4: S2 changed, prints the record command
+npx caw record create-ticket@S2 --env local # re-record from S2 to the end, S1 stays
 ```
 
 `notes`, metadata, `retry` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.

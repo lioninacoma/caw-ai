@@ -17,7 +17,7 @@ import { writeProject } from './project.mjs';
 import { ensureCert } from './shared/cert.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const bin = join(here, '../../bin/caw-ai.mjs');
+const bin = join(here, '../../bin/caw.mjs');
 const out = join(here, 'result');
 mkdirSync(out, { recursive: true });
 const filter = process.argv[2];
@@ -53,10 +53,10 @@ const build = (cwd, command, args, env = {}) => {
     if (result.status !== 0) throw new Error(`Build ${args.join(' ')} in ${cwd}:\n${result.stdout}\n${result.stderr}`);
 };
 
-/** One caw-ai run in the project, as in CI. Returns exit code, output and, if written, result.json and report.md. */
+/** One caw run in the project, as in CI. Returns exit code, output and, if written, result.json and report.md. */
 const cawRun = (root, test, extra = [], env = {}) => {
     rmSync(join(root, '.caw/runs'), { recursive: true, force: true });
-    const result = spawnSync(process.execPath, [bin, 'run', test, '--target', 'test', '--headless', ...extra], {
+    const result = spawnSync(process.execPath, [bin, 'run', test, '--env', 'test', '--headless', ...extra], {
         cwd: root, encoding: 'utf8', timeout: 180_000,
         env: { ...process.env, ...env, CI: '1', CAW_LANG: 'en', CAW_AI_HOME: join(here, '.caw-home'), NO_COLOR: '1' },
     });
@@ -85,7 +85,7 @@ const ng = (configs) => ({
     watch: [npx, ['ng', 'build', '-c', `${configs},local`, '--watch', '--output-path', 'local']], dir: 'local/browser',
 });
 
-// Every variant: project, framework for caw-ai, and how it runs locally (dev server) and deployed.
+// Every variant: project, framework for caw, and how it runs locally (dev server) and deployed.
 const APPS = [
     { name: 'react', dir: 'react-vite', framework: 'react', embed: true, devPort: 5173, deployPort: 8441, ...vite(5173) },
     { name: 'webpack', dir: 'react-webpack', framework: 'react', embed: true, devPort: 5175, deployPort: 8447, ...webpack(5175) },
@@ -170,7 +170,7 @@ for (const app of APPS) {
     });
 
     const expectEnvError = (pattern) => (run) => run.code === 2 && pattern.test(run.output);
-    const envHint = (run) => (run.output.match(/\[caw-ai\][^\n]*(overlay|build|dev server|server-side|local)[^\n]*/i) ?? [''])[0].slice(0, 160);
+    const envHint = (run) => (run.output.match(/\[caw\][^\n]*(overlay|build|dev server|server-side|local)[^\n]*/i) ?? [''])[0].slice(0, 160);
     const deployedUrl = `https://${app.name.split('-')[0]}.localhost:${app.deployPort}`;
     const serveDeployed = async () => {
         rmSync(join(root, 'deploy'), { recursive: true, force: true });

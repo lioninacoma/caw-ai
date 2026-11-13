@@ -22,19 +22,19 @@ test('parseEnvFile reads values with and without quotes and ignores comments', (
 
 test('claudeFailureReason names token, time limit and other causes', () => {
     assert.match(claudeFailureReason(1, 'Failed to authenticate. API Error: 401 Invalid bearer token'), /ANTHROPIC_API_KEY/);
-    assert.match(claudeFailureReason(124, ''), /--timeout/);
+    assert.match(claudeFailureReason(124, ''), /--claude-timeout 120m/);
     assert.match(claudeFailureReason(7, 'whatever'), /Exit 7/);
 });
 
 test('parseRunArgs: --overlay with and without source for run, record and open; no option means no overlay', () => {
-    assert.equal(parseRunArgs('run', ['smoke', '--target', 'dev']).overlay, undefined);
+    assert.equal(parseRunArgs('run', ['smoke', '--env', 'dev']).overlay, undefined);
     assert.equal(parseRunArgs('run', ['smoke', '--overlay']).overlay, true);
     assert.equal(parseRunArgs('run', ['--overlay', 'smoke']).test, 'smoke', 'a test name is not a source');
     assert.equal(parseRunArgs('run', ['--overlay', 'smoke']).overlay, true);
     assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'build']).overlay, 'build');
     assert.equal(parseRunArgs('record', ['smoke@S2', '--overlay=dev']).overlay, 'dev');
     assert.equal(parseRunArgs('open', ['smoke@S2', '--overlay']).overlay, true);
-    assert.equal(parseRunArgs('record', ['smoke', '--overlay', 'dev', '--target', 'dev']).overlay, 'dev');
+    assert.equal(parseRunArgs('record', ['smoke', '--overlay', 'dev', '--env', 'dev']).overlay, 'dev');
     assert.deepEqual(parseRunArgs('run', ['--overlay=build', 'build']).tests, ['build'], 'a test named build with --overlay=…');
     assert.equal(parseRunArgs('run', ['smoke', '--overlay', 'http://localhost:5174']).overlay, 'http://localhost:5174', 'the address of a dev server');
     assert.equal(parseRunArgs('run', ['--overlay=https://box.local:8443/', 'smoke']).overlay, 'https://box.local:8443/');
@@ -48,7 +48,7 @@ test('parseRunArgs: --start lets caw run overlay.start, only together with --ove
     const run = parseRunArgs('run', ['smoke', '--overlay', '--start']);
     assert.deepEqual([run.tests, run.overlay, run.start], [['smoke'], true, true], '--start is no overlay source');
     assert.equal(parseRunArgs('run', ['--start', '--overlay', 'dev', 'smoke']).overlay, 'dev');
-    assert.equal(parseRunArgs('record', ['smoke', '--overlay', '--start', '--target', 'dev']).start, true);
+    assert.equal(parseRunArgs('record', ['smoke', '--overlay', '--start', '--env', 'dev']).start, true);
     assert.equal(parseRunArgs('record', ['smoke@S2', '--overlay=build', '--start']).start, true);
     assert.equal(parseRunArgs('open', ['--overlay', '--start']).start, true);
     assert.throws(() => parseRunArgs('run', ['smoke', '--start']), (error) => error.code === 'usage' && /--start geht nur mit --overlay/.test(error.message));
@@ -56,38 +56,54 @@ test('parseRunArgs: --start lets caw run overlay.start, only together with --ove
 });
 
 test('parseRunArgs: each command only knows its own options', () => {
-    const base = ['smoke', '--target', 'shop/dev'];
+    const base = ['smoke', '--env', 'shop/dev'];
     assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', advise: false, headless: false, noChat: false, learn: true, all: false, stepTimeoutSec: 30 });
-    assert.equal(parseRunArgs('run', [...base, '--advise']).advise, true);
+    assert.equal(parseRunArgs('run', [...base, '--explain']).advise, true);
     // Limit Claude when clarifying and fixing, as for record and fix.
-    assert.deepEqual((({ timeoutMin, maxSteps }) => [timeoutMin, maxSteps])(parseRunArgs('run', [...base, '--timeout', '5', '--max-steps=20'])), [5, 20]);
-    assert.throws(() => parseRunArgs('run', [...base, '--max-steps', '0']), /--max-steps muss/);
+    assert.deepEqual((({ timeoutMin, maxSteps }) => [timeoutMin, maxSteps])(parseRunArgs('run', [...base, '--claude-timeout', '5m', '--max-actions=20'])), [5, 20]);
+    assert.throws(() => parseRunArgs('run', [...base, '--max-actions', '0']), /--max-actions muss/);
     assert.equal(parseRunArgs('record', [...base, '--read-only']).readOnly, true);
     assert.throws(() => parseRunArgs('run', [...base, '--read-only']), /kennt die Option --read-only nicht/);
     assert.deepEqual([parseRunArgs('run', [...base, '--headless']).noChat, parseRunArgs('run', [...base, '--no-chat']).headless], [true, false]);
-    assert.throws(() => parseRunArgs('run', [...base, '--headless', '--advise']), /--headless geht nicht zusammen mit --advise/);
-    assert.throws(() => parseRunArgs('run', [...base, '--no-chat', '--advise']), /--no-chat geht nicht zusammen mit --advise/);
-    assert.throws(() => parseRunArgs('record', [...base, '--advise']), /kennt die Option --advise nicht/);
-    assert.throws(() => parseRunArgs('record', ['smoke@S4', '--target', 'shop/dev', '--advise']), /kennt die Option --advise nicht/);
+    assert.throws(() => parseRunArgs('run', [...base, '--headless', '--explain']), /--headless geht nicht zusammen mit --explain/);
+    assert.throws(() => parseRunArgs('run', [...base, '--no-chat', '--explain']), /--no-chat geht nicht zusammen mit --explain/);
+    assert.throws(() => parseRunArgs('record', [...base, '--explain']), /kennt die Option --explain nicht/);
+    assert.throws(() => parseRunArgs('record', ['smoke@S4', '--env', 'shop/dev', '--explain']), /kennt die Option --explain nicht/);
     assert.deepEqual(parseRunArgs('record', base), { test: 'smoke', target: 'shop/dev', stepTimeoutSec: 30, timeoutMin: 60, also: [] });
-    assert.deepEqual(parseRunArgs('record', ['smoke@S4', '--target', 'shop/dev']), { test: 'smoke', step: 'S4', target: 'shop/dev', stepTimeoutSec: 30, timeoutMin: 60, also: [] });
-    assert.deepEqual(parseRunArgs('open', ['smoke@S4', '--target', 'shop/dev', '--step-timeout', '45']), { test: 'smoke', step: 'S4', target: 'shop/dev', stepTimeoutSec: 45, timeoutMin: 60 });
-    assert.throws(() => parseRunArgs('record', ['smoke@E4', '--target', 'shop/dev']), /etwa bestellung@S3/);
-    assert.throws(() => parseRunArgs('record', ['smoke@S4', 'S5', '--target', 'shop/dev']), /S5/);
-    assert.equal(parseRunArgs('run', ['smoke', '--target=shop/dev', '--step-timeout', '60']).stepTimeoutSec, 60);
-    const created = parseRunArgs('record', [...base, '--role', 'r', '--app', 'a', '--also', 'b', '--also=c', '--timeout', '5', '--max-steps=30']);
-    assert.deepEqual([created.role, created.app, created.also, created.timeoutMin, created.maxSteps], ['r', 'a', ['b', 'c'], 5, 30]);
-    assert.throws(() => parseRunArgs('run', ['--target', 'x']), /Name des Tests/);
-    // Without --target the command chooses, see chooseTarget.
+    assert.deepEqual(parseRunArgs('record', ['smoke@S4', '--env', 'shop/dev']), { test: 'smoke', step: 'S4', target: 'shop/dev', stepTimeoutSec: 30, timeoutMin: 60, also: [] });
+    assert.deepEqual(parseRunArgs('open', ['smoke@S4', '--env', 'shop/dev', '--step-timeout', '45s']), { test: 'smoke', step: 'S4', target: 'shop/dev', stepTimeoutSec: 45, timeoutMin: 60 });
+    assert.throws(() => parseRunArgs('record', ['smoke@E4', '--env', 'shop/dev']), /etwa bestellung@S3/);
+    assert.throws(() => parseRunArgs('record', ['smoke@S4', 'S5', '--env', 'shop/dev']), /S5/);
+    assert.equal(parseRunArgs('run', ['smoke', '--env=shop/dev', '--step-timeout', '1m']).stepTimeoutSec, 60);
+    const created = parseRunArgs('record', [...base, '--role', 'r', '--app', 'a', '--also', 'b', '--also=c', '--claude-timeout=2h', '--max-actions=30']);
+    assert.deepEqual([created.role, created.app, created.also, created.timeoutMin, created.maxSteps], ['r', 'a', ['b', 'c'], 120, 30]);
+    assert.throws(() => parseRunArgs('run', ['--env', 'x']), /Name des Tests/);
+    // Without --env the command chooses, see chooseTarget.
     assert.equal(parseRunArgs('run', ['smoke']).target, undefined);
     assert.throws(() => parseRunArgs('record', [...base, 'one-more']), /one-more/);
-    assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '0']), /--step-timeout/);
-    assert.throws(() => parseRunArgs('record', [...base, '--max-steps=0']), /--max-steps/);
-    assert.throws(() => parseRunArgs('record', [...base, '--timeout', 'x']), /--timeout/);
+    assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '0s']), /--step-timeout muss zwischen 1s und 10m liegen/);
+    assert.throws(() => parseRunArgs('record', [...base, '--max-actions=0']), /--max-actions/);
+    assert.throws(() => parseRunArgs('record', [...base, '--claude-timeout', 'x']), /--claude-timeout x ist keine Dauer/);
+});
+
+test('parseRunArgs: durations need a unit and stay in range; renamed flags name their new name', () => {
+    const base = ['smoke', '--env', 'shop/dev'];
+    assert.equal(parseRunArgs('run', [...base, '--step-timeout', '1500ms']).stepTimeoutSec, 1.5);
+    assert.equal(parseRunArgs('run', [...base, '--step-timeout', '1.5s']).stepTimeoutSec, 1.5);
+    assert.equal(parseRunArgs('record', [...base, '--claude-timeout', '1.5h']).timeoutMin, 90);
+    // A bare number: seconds or minutes? Never guessed.
+    assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '30']), (error) => error.code === 'usage' && /--step-timeout 30: Gib eine Einheit an, etwa --step-timeout 30s/.test(error.message));
+    assert.throws(() => parseRunArgs('record', [...base, '--claude-timeout', '60']), /etwa --claude-timeout 60m/);
+    assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '11m']), /zwischen 1s und 10m/);
+    assert.throws(() => parseRunArgs('record', [...base, '--claude-timeout', '30s']), /zwischen 1m und 24h/);
+    assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '30 s']), /keine Dauer/);
+    for (const [old, now] of [['--target', '--env'], ['--timeout', '--claude-timeout'], ['--max-steps', '--max-actions'], ['--advise', '--explain']]) {
+        assert.throws(() => parseRunArgs('run', ['smoke', old, '1']), (error) => error.code === 'usage' && error.message === `${old} heißt jetzt ${now}.`, old);
+    }
 });
 
 test('parseRunArgs: test runs never use Claude, unknown options are refused', () => {
-    const base = ['smoke', '--target', 'shop/dev'];
+    const base = ['smoke', '--env', 'shop/dev'];
     for (const command of ['run', 'record', 'open']) assert.throws(() => parseRunArgs(command, [...base, '--foo']), /kennt die Option/);
     for (const claudeOnly of ['--role', '--app', '--also']) assert.throws(() => parseRunArgs('run', [...base, claudeOnly, '1']), /kennt die Option/);
 });
@@ -114,7 +130,7 @@ test('splitStep and <test>@S<n>: the step goes with the test for record and open
 });
 
 test('parseRunArgs: open with or without a test, with target, role, app and overlay', () => {
-    assert.deepEqual((({ target, role, app, overlay }) => ({ target, role, app, overlay }))(parseRunArgs('open', ['--target', 'dev', '--role', 'customer', '--app', 'shop', '--overlay', 'build'])), { target: 'dev', role: 'customer', app: 'shop', overlay: 'build' });
+    assert.deepEqual((({ target, role, app, overlay }) => ({ target, role, app, overlay }))(parseRunArgs('open', ['--env', 'dev', '--role', 'customer', '--app', 'shop', '--overlay', 'build'])), { target: 'dev', role: 'customer', app: 'shop', overlay: 'build' });
     assert.equal(parseRunArgs('open', []).overlay, undefined);
     assert.deepEqual((({ test: id, step }) => [id, step])(parseRunArgs('open', ['smoke'])), ['smoke', undefined], 'open takes a test');
     assert.throws(() => parseRunArgs('open', ['smoke', 'other']), (error) => error.code === 'usage' && /other/.test(error.message), 'one test');

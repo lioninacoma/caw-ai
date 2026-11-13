@@ -33,7 +33,7 @@ test('local: setup in the agent folder, the guide is the skill with a preamble',
     const dir = tempDir(t);
     const setup = writeLocalSetup(dir, { CAW_COLOR: '1' });
     const mcp = JSON.parse(readFileSync(setup.mcpConfig, 'utf8')).mcpServers.caw;
-    assert.deepEqual(mcp.args.slice(-1), ['mcp-agent']);
+    assert.deepEqual(mcp.args.slice(-2), ['agent', 'mcp']);
     assert.equal(mcp.env.CAW_AGENT_DIR, dir);
     assert.equal(mcp.env.CAW_SANDBOX, '1');
     assert.equal(JSON.parse(readFileSync(setup.settings, 'utf8')).disableAllHooks, true);
@@ -113,12 +113,12 @@ test('MCP: one message per line over stdio', async () => {
     assert.equal(answers.find(({ id }) => id === null).error.code, -32700);
 });
 
-test('local agent: caw-ai from this package, agent markers, Claude Code on the PATH', (t) => {
+test('local agent: caw from this package, agent markers, Claude Code on the PATH', (t) => {
     const dir = tempDir(t);
-    const [node, bin, ...rest] = localCommand(['caw-ai', 'sandbox-run', '--run-id', 'x']);
+    const [node, bin, ...rest] = localCommand(['caw', 'agent', 'sandbox-run', '--run-id', 'x']);
     assert.equal(node, process.execPath);
-    assert.match(bin, /caw-ai\.mjs$/);
-    assert.deepEqual(rest, ['sandbox-run', '--run-id', 'x']);
+    assert.match(bin, /bin[\\/]caw\.mjs$/);
+    assert.deepEqual(rest, ['agent', 'sandbox-run', '--run-id', 'x']);
     assert.deepEqual(localCommand(['bash', '-c', 'x']), ['bash', '-c', 'x']);
     const env = localAgentEnv(dir, { color: true, env: { Path: 'C:\\bin' } });
     assert.equal(env.CAW_SANDBOX, '1');
@@ -126,7 +126,7 @@ test('local agent: caw-ai from this package, agent markers, Claude Code on the P
     assert.equal(env.CAW_AGENT_DIR, dir);
     assert.equal(env.CAW_COLOR, '1');
     assert.ok(env.Path.startsWith(join(dir, '.bin')) && env.Path.endsWith('C:\\bin'), 'the Windows spelling of PATH is kept');
-    assert.ok(existsSync(join(dir, '.bin', 'caw-ai')) && existsSync(join(dir, '.bin', 'caw-ai.cmd')));
+    assert.ok(existsSync(join(dir, '.bin', 'caw')) && existsSync(join(dir, '.bin', 'caw.cmd')));
     const found = { file: 'claude', args: [] };
     assert.equal(claudeVersion(() => ({ status: 0, stdout: '2.1.319 (Claude Code)\n' }), found), '2.1.319');
     assert.equal(claudeVersion(() => ({ error: new Error('ENOENT') }), found), undefined);
@@ -169,7 +169,7 @@ test('session as agent: marker only during the run, another run\'s marker stays,
     assert.equal(findSessionAgent(root), undefined, 'process no longer exists');
 });
 
-test('caw-ai mcp: start a run with --agent session, status, selection, caw only with a waiting run', async (t) => {
+test('caw mcp: start a run with --agent session, status, selection, caw only with a waiting run', async (t) => {
     const { sessionMcpHandler, startRun } = await import('../src/host/session-mcp.mjs');
     const { announceSessionAgent } = await import('../src/shared/session-agent.mjs');
     const root = tempDir(t);
@@ -185,9 +185,9 @@ test('caw-ai mcp: start a run with --agent session, status, selection, caw only 
     assert.ok(list.result.tools.every((tool) => tool.call === undefined && tool.inputSchema !== undefined));
 
     assert.match((await call('caw_status', {})).content[0].text, /Kein Lauf wartet/);
-    const started = await call('caw_start', { command: 'record', args: ['bestellung', '--target', 'local'] });
+    const started = await call('caw_start', { command: 'record', args: ['bestellung', '--env', 'local'] });
     assert.match(started.content[0].text, /Gestartet \(pid 999999\)/);
-    assert.deepEqual(spawned[0].args.slice(-5), ['record', 'bestellung', '--target', 'local', '--agent', 'session'].slice(-5));
+    assert.deepEqual(spawned[0].args.slice(-5), ['record', 'bestellung', '--env', 'local', '--agent', 'session'].slice(-5));
     assert.equal(spawned[0].args.at(-1), 'session');
     assert.equal(spawned[0].options.cwd, root);
     assert.equal((await call('caw_start', { command: 'init', args: [] })).isError, true);

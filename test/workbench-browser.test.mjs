@@ -305,7 +305,7 @@ test('chat: after the run the window stays open until the human closes it or the
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat } = await open(t);
     const frame = bench.chatFrame();
-    await chat.finished({ report: join(dir, 'x.md'), text: '2 von 2 Schritten bestanden.', command: 'caw-ai run t' });
+    await chat.finished({ report: join(dir, 'x.md'), text: '2 von 2 Schritten bestanden.', command: 'caw run t' });
     chat.notice('Gespeichert: caw/tests/t.yaml');
     chat.human.closed();
     let done = false;

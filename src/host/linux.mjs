@@ -1,3 +1,4 @@
+import { parseDuration } from '../shared/duration.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 
@@ -40,19 +41,22 @@ export const parseEnvFile = (text) => {
     return env;
 };
 
-const CLAUDE_OPTIONS = ['--target', '--timeout', '--max-steps', '--step-timeout', '--agent', '--overlay', '--start'];
+const CLAUDE_OPTIONS = ['--env', '--claude-timeout', '--max-actions', '--step-timeout', '--agent', '--overlay', '--start'];
 const COMMAND_OPTIONS = {
-    // --timeout and --max-steps apply to Claude when clarifying, advising and fixing; playback itself is limited by --step-timeout.
-    run: ['--target', '--advise', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--timeout', '--max-steps', '--agent', '--overlay', '--start'],
+    // --claude-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
+    // --step-timeout.
+    run: ['--env', '--explain', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--claude-timeout', '--max-actions', '--agent', '--overlay', '--start'],
     record: [...CLAUDE_OPTIONS, '--role', '--app', '--also', '--read-only'],
-    open: ['--target', '--role', '--app', '--overlay', '--start', '--agent', '--timeout', '--max-steps', '--step-timeout'],
+    open: ['--env', '--role', '--app', '--overlay', '--start', '--agent', '--claude-timeout', '--max-actions', '--step-timeout'],
 };
+/** Flags that were renamed before 1.0: the message names the new one instead of listing every allowed option. */
+export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--claude-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
 // --start: caw may run overlay.start itself when the local code server is not ready (CI); otherwise it only names the command.
-const SWITCHES = new Set(['--advise', '--headless', '--no-chat', '--no-learn', '--all', '--read-only', '--start']);
+const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--no-learn', '--all', '--read-only', '--start']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
-    '--target': 'local', '--role': 'admin', '--app': 'web', '--also': 'admin', '--agent': 'local', '--timeout': '60',
-    '--max-steps': '100', '--step-timeout': '30', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
+    '--env': 'local', '--role': 'admin', '--app': 'web', '--also': 'admin', '--agent': 'local', '--claude-timeout': '60m',
+    '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
 export const AGENT_CHOICES = ['local', 'docker', 'session'];
@@ -64,7 +68,7 @@ const overlayValue = (value) => OVERLAY_CHOICES.includes(value) || /^https?:\/\/
 export const CLAUDE_TIMEOUT_MIN = 60;
 const STEP_ID = /^S[1-9]\d*$/;
 
-/** A missing option value, or the next option in its place (--target --headless), is a usage error with an example. */
+/** A missing option value, or the next option in its place (--env --headless), is a usage error with an example. */
 const requireValue = (flag, value) => {
     if (value === undefined || value === '' || value.startsWith('--')) throw new CawError('usage', t('session.args.valueMissing', { flag, example: VALUE_EXAMPLES[flag] ?? '…' }));
     return value;
@@ -100,7 +104,7 @@ export const splitStep = (arg) => {
 };
 
 /**
- * Each command only knows its own options. --target may be omitted: then the command picks the only matching target.
+ * Each command only knows its own options. --env may be omitted: then the command picks the only matching environment.
  * run also takes several tests or --all; they then run one after another without chat, with a table at the end.
  * record and open take one test, optionally with a step: `<test>@S<n>`.
  * @param command run, record or open
@@ -124,6 +128,7 @@ export const parseRunArgs = (command, args) => {
             continue;
         }
         const [flag, inline] = arg.split(/=(.*)/s);
+        if (RENAMED_FLAGS[flag] !== undefined) throw new CawError('usage', t('session.args.renamedOption', { flag, now: RENAMED_FLAGS[flag] }));
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
         // --overlay may stand without a value: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. A test
         // named build needs --overlay=…
@@ -134,19 +139,19 @@ export const parseRunArgs = (command, args) => {
             continue;
         }
         const value = SWITCHES.has(flag) ? true : requireValue(flag, inline ?? rest.shift());
-        if (flag === '--target') options.target = value;
-        else if (flag === '--advise') options.advise = true;
+        if (flag === '--env') options.target = value;
+        else if (flag === '--explain') options.advise = true;
         else if (flag === '--headless') options.headless = true;
         else if (flag === '--no-chat') options.noChat = true;
         else if (flag === '--no-learn') options.learn = false;
         else if (flag === '--all') options.all = true;
         else if (flag === '--read-only') options.readOnly = true;
         else if (flag === '--start') options.start = true;
-        else if (flag === '--max-steps') options.maxSteps = Number(value);
+        else if (flag === '--max-actions') options.maxSteps = Number(value);
         else if (flag === '--role') options.role = value;
         else if (flag === '--app') options.app = value;
         else if (flag === '--also') options.also.push(value);
-        else if (flag === '--step-timeout') options.stepTimeoutSec = Number(value);
+        else if (flag === '--step-timeout') options.stepTimeoutSec = parseDuration(flag, value) / 1000;
         else if (flag === '--report') {
             const match = /^junit=(.+)$/.exec(value);
             if (match === null) throw new CawError('usage', t('session.args.report'));
@@ -156,7 +161,7 @@ export const parseRunArgs = (command, args) => {
             if (!AGENT_CHOICES.includes(value)) throw new CawError('usage', t('session.args.agentChoice', { choices: AGENT_CHOICES.join(', ') }));
             options.agent = value;
         }
-        else options.timeoutMin = Number(value);
+        else options.timeoutMin = parseDuration(flag, value) / 60000;
     }
     if (options.all && options.test !== undefined) throw new CawError('usage', t('session.args.allWithTests'));
     if (options.start && options.overlay === undefined) throw new CawError('usage', t('session.args.startWithoutOverlay'));
@@ -171,19 +176,17 @@ export const parseRunArgs = (command, args) => {
         const clash = [['--role', options.role], ['--app', options.app], ['--also', options.also.length > 0 ? true : undefined], ['--read-only', options.readOnly]].find(([, value]) => value !== undefined);
         if (clash !== undefined) throw new CawError('usage', t('session.args.recordStepMeta', { flag: clash[0] }));
     }
-    if (options.timeoutMin !== undefined && (!Number.isFinite(options.timeoutMin) || options.timeoutMin <= 0)) throw new CawError('usage', t('session.args.timeout'));
-    if (!Number.isFinite(options.stepTimeoutSec) || options.stepTimeoutSec <= 0) throw new CawError('usage', t('session.args.stepTimeout'));
-    if (options.maxSteps !== undefined && (!Number.isInteger(options.maxSteps) || options.maxSteps <= 0)) throw new CawError('usage', t('session.args.maxSteps'));
+    if (options.maxSteps !== undefined && (!Number.isInteger(options.maxSteps) || options.maxSteps <= 0)) throw new CawError('usage', t('session.args.maxActions'));
     // Several tests are meant for CI: no chat, otherwise every test would wait for a human.
     if (command === 'run' && (options.all || options.tests.length > 1)) {
-        if (options.advise) throw new CawError('usage', t('session.args.batchClash', { other: '--advise' }));
+        if (options.advise) throw new CawError('usage', t('session.args.batchClash', { other: '--explain' }));
         options.batch = true;
         options.noChat = true;
     }
     // Without a window there is nothing to advise on in the chat.
     if (options.headless) options.noChat = true;
     const without = options.headless ? '--headless' : '--no-chat';
-    if (options.noChat && options.advise) throw new CawError('usage', t('session.args.clash', { without, other: '--advise' }));
+    if (options.noChat && options.advise) throw new CawError('usage', t('session.args.clash', { without, other: '--explain' }));
     return options;
 };
 

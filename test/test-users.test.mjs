@@ -1,4 +1,4 @@
-// Test users as roles: caw/.env writing, quoting, .gitignore, config, `caw-ai role` and the window before record/run.
+// Test users as roles: caw/.env writing, quoting, .gitignore, config, `caw role` and the window before record/run.
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -139,7 +139,7 @@ test('record: a test plan with a new role opens the sign-in window first, then t
         return [options.role];
     };
     // The run would go on to Claude; a failing sandbox ends it right after the role was saved.
-    await assert.rejects(record(root, ['review', '--target', 'local', '--agent', 'docker'], { interactive: true, captureTestUsers, docker: { label: 'x', hasToken: async () => { throw stop; } } }), (error) => error === stop);
+    await assert.rejects(record(root, ['review', '--env', 'local', '--agent', 'docker'], { interactive: true, captureTestUsers, docker: { label: 'x', hasToken: async () => { throw stop; } } }), (error) => error === stop);
     assert.equal(asked.role, 'clerk');
     assert.equal(asked.needed, true);
     assert.deepEqual(loadConfig(root).roles.clerk, roleEnvNames('clerk'));

@@ -20,8 +20,8 @@ Ein Theme ist ein Ordner mit einer `theme.json`. Die fünf eingebauten liegen hi
 **F7** in der Werkbank. Theme wählen, Farben, Zeichen, Rabe oder CRT-Look ändern, alles sofort sichtbar. Wer ein eingebautes Theme ändert, speichert eine Kopie unter neuem Namen. Die Wahl steht in `prefs.json`, gilt also nur für dich, in allen Projekten.
 
 ```sh
-caw-ai theme                 # Themes auflisten, aktives markiert
-caw-ai theme use phosphor    # wechseln
+caw theme                 # Themes auflisten, aktives markiert
+caw theme use phosphor    # wechseln
 ```
 
 ## Von Hand schreiben
@@ -58,7 +58,7 @@ Texte gehen auch je Sprache: `{ "de": "[FEHLER]", "en": "[ FAIL ]" }`.
 Vor dem Weitergeben prüfen:
 
 ```sh
-caw-ai theme check hafen     # Schema, Kontrast, Markenbreite, Schriften
+caw theme check hafen     # Schema, Kontrast, Markenbreite, Schriften
 ```
 
 Weitergeben heißt: Ordner kopieren.

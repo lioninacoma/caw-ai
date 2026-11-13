@@ -129,7 +129,7 @@ export default {
     'config.note.overlayNoEnv': 'App {name} hat overlay, aber keine Umgebung hat "overlay": true: --overlay geht nirgends.',
 
     // config.mjs: loading and targets
-    'config.load.missing': '{file} fehlt in {root}. Einrichten mit: npx caw-ai init --url <adresse>',
+    'config.load.missing': '{file} fehlt in {root}. Einrichten mit: npx caw init --url <adresse>',
     'config.load.invalidJson': '{file} ist kein gültiges JSON: {error}',
     'config.targetForm.plain': 'umgebung',
     'config.targetForm.sites': 'mandant/umgebung',

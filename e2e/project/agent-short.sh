@@ -1,4 +1,4 @@
 #!/bin/bash
-caw-ai click '#weiter'
+caw agent click '#weiter'
 echo '{"expectations":[{"id":"E1","status":"pass","evidence":{"type":"eval","value":"Ziel erreicht"}}]}' > /tmp/e.json
-caw-ai finish --file /tmp/e.json
+caw agent finish --file /tmp/e.json

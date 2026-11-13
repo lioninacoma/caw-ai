@@ -1,4 +1,4 @@
-// caw-ai theme: list themes, pick one, check one. The theme is personal (prefs.json), so it applies to all projects.
+// caw theme: list themes, pick one, check one. The theme is personal (prefs.json), so it applies to all projects.
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,7 +28,7 @@ const requireKnownTheme = (name, env) => {
 };
 
 /**
- * caw-ai theme [use <name> | check <name>]
+ * caw theme [use <name> | check <name>]
  * @returns exit code
  */
 export const themeCommand = (root, args, { ui = createUi(), env = process.env } = {}) => {

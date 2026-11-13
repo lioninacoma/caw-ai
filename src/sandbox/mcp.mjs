@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
+const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
 const PROTOCOL = '2025-06-18';
 const MAX_OUTPUT = 200_000;
 
@@ -21,13 +21,13 @@ const FILE_COMMANDS = new Set(['plan', 'finish', 'advise']);
 
 export const TOOL = {
     name: 'caw',
-    description: 'Controls the test run\'s browser like `caw-ai <command>` in the sandbox. args are the arguments without caw-ai, '
+    description: 'Controls the test run\'s browser like `caw agent <command>` in the sandbox. args are the arguments after `caw agent`, '
         + 'e.g. ["snapshot"], ["click", "e12"], ["fill", "e3", "text"], ["check", "S1", "<expression>"]. For plan, finish and advise '
         + 'the file content goes in file (YAML or JSON), without --file.',
     inputSchema: {
         type: 'object',
         properties: {
-            args: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Command and arguments, without caw-ai' },
+            args: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Command and arguments, after `caw agent`' },
             file: { type: 'string', description: 'File content for plan, finish or advise' },
         },
         required: ['args'],
@@ -50,7 +50,7 @@ export const commandLine = (input, writeFile) => {
 };
 
 const runCli = (args, env) => new Promise((resolveRun) => {
-    const child = spawn(process.execPath, [BIN, ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [BIN, 'agent', ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     const take = (chunk) => { if (out.length < MAX_OUTPUT) out += chunk; };
     child.stdout.on('data', take);

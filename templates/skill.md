@@ -27,23 +27,23 @@ Check `echo $CAW_SANDBOX` (without a shell you are the local agent of a run, the
 Start the tool in the project folder and report the result including the path to the report (on Windows from PowerShell, see README). The exit code is the
 verdict. There are three ways:
 
-- **Test:** `npx caw-ai run <test> --target <environment>`. Runs without AI. If the
+- **Test:** `npx caw run <test> --env <environment>`. Runs without AI. If the
   recording is missing, it ends with exit 4 (recording needed) and names `record`; if a step is outdated, it names `record <test>@S<n>` from that step on. If a
   step fails on an environment with Claude (in the config `environments.<name>.claude: true`) and not in CI, the chat offers "Fix step". Only a message from the human, "Let Claude find the cause" or "Fix step" starts Claude.
-  With `--advise` (only on such environments, not in CI) Claude gives recommendations in the chat right away on errors or warnings, even in a
+  With `--explain` (only on such environments, not in CI) Claude gives recommendations in the chat right away on errors or warnings, even in a
   passed run. That costs tokens, so only add it if the human wants it.
 - **Restore a state** ("take me to where the shopping cart is filled"): Read the tests under `caw/tests/` and
   look for the step `S<n>` the human wants to work in, i.e. the one after the step whose `expect` describes the state reached. Start
-  `open <test>@S<n> --target <environment>` in the background, because the command only ends when the human closes the window.
+  `open <test>@S<n> --env <environment>` in the background, because the command only ends when the human closes the window.
   It replays the steps before `S<n>` completely and of `S<n>` only its navigation (goto, clicks), so the human is at that step with
   its inputs still open; `S<n>` itself is not judged. If `S<n>` has no inputs at all or one of its clicks writes, nothing of it or
   only up to that click runs. If the state is the end of the test, `open <test>` without a step replays the whole test and then
   hands over. Tell the human when the state is reached: The window then belongs to them.
-- **Record or replace** (also when no test matches a state): `record <test> --target <environment>` (an environment with `claude: true`), the first
+- **Record or replace** (also when no test matches a state): `record <test> --env <environment>` (an environment with `claude: true`), the first
   time with `--role <role> --app <app>` (not needed if the config knows only one role or app) and `--also <app>` if the
   path leads into a second app. Ask for role and app if they are not clear. Start it in the background: The human sits at the chat window, demonstrates, approves the plan and
   decides at the end. The run writes in the application and costs tokens, so only start it if the human wants it.
-- **Change from a step on:** `record <test>@S<n> --target <environment>` re-records from `S<n>` to the end, even if nothing fails,
+- **Change from a step on:** `record <test>@S<n> --env <environment>` re-records from `S<n>` to the end, even if nothing fails,
   e.g. after a step was changed by hand or newly added, or the application changed on purpose. The steps before replay without
   Claude and stay as they are; from `S<n>` on steps may be added, removed or reordered. No demonstration, no `--role`, `--app`,
   `--also` or `--read-only`; `@S1` records the whole test. This too with the human at the chat. A single failed step is fixed
@@ -54,7 +54,7 @@ verdict. There are three ways:
 Use the overlay (`--overlay`, `caw_start` with `overlay`) only when the human asks to test or develop their local code on an
 environment; otherwise runs use the deployed code. caw starts no process for it: the project's local code server must run.
 
-1. **Check:** `caw_overlay` with `action: status` (or `npx caw-ai overlay status --json`), with `target` and `app` as for the run.
+1. **Check:** `caw_overlay` with `action: status` (or `npx caw overlay status --json`), with `target` and `app` as for the run.
    - `ready`: start the run.
    - `moved`: the server of this app runs at `foundUrl`. Set `apps.<app>.overlay.url` to it with `caw_config` and tell the human.
    - `down`: ask the human "Start `<start>` in `<appDir>`?". On yes run it in your own session in the background (never through caw),
@@ -79,7 +79,7 @@ you add what can only be learned from the code or from the human:
    Webpack config, README, deployed environments named in configs and docs. Ask the human for a target URL only if none of that names
    one.
 2. **Explore:** With the tools: `caw_explore` with `login: true` (or `yes` without a sign-in). Without them the human runs
-   `npx caw-ai init --url <address>` in their terminal. A window opens: the human signs in with a test account, picks the start page and
+   `npx caw init --url <address>` in their terminal. A window opens: the human signs in with a test account, picks the start page and
    clicks Done; the card then asks for the role of that account and saves it as a test user in `caw/.env`, "+ Another role" for more
    accounts. http only works on the own machine (`localhost`, `127.0.0.1`, `*.localhost`). `caw_explore` waits until the human is
    done and returns the result (also in `caw/.explore.json`): framework, login form, marker for "signed in", start page, messages, console noise, each with `confidence`, `notes`,
@@ -105,7 +105,7 @@ you add what can only be learned from the code or from the human:
 5. **Test users:** never ask for user names or passwords and never write `caw/.env`. Roles come from the explore window; more with
    `caw_role` (`add`, `name` from the code, `target`): the window opens, the human signs in and saves, and the tool returns the saved roles. `caw_role list` shows which
    role still has no test user.
-6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw-ai doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
+6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
    and a running server the overlay check is green. List the overlay `url` and `start` you set under "how I set it up".
 7. **First test, then run it:** write a short read-only test (`caw/tests/<test>.yaml`: `id`, `app`, `role`, `targets`,
    `mutates: false`, `steps` with `id`, `name`, `do`, `expect`), e.g. "Sign in and see the start page", check it with `caw_validate`
@@ -114,16 +114,16 @@ you add what can only be learned from the code or from the human:
 ### As the agent in your session
 
 The human wants to record tests, re-record them or develop in a state without switching sessions. Then you are the agent, caw does not start
-its own Claude (`--agent session`). With the tools from `caw-ai mcp` (in `.mcp.json`):
+its own Claude (`--agent session`). With the tools from `caw mcp` (in `.mcp.json`):
 
-1. **Start:** `caw_start` with `command` `record`, `run` or `open` and the arguments as above, e.g. `["order", "--target", "local"]`.
-   Without the tools: `npx caw-ai record ... --agent session` in the background.
+1. **Start:** `caw_start` with `command` `record`, `run` or `open` and the arguments as above, e.g. `["order", "--env", "local"]`.
+   Without the tools: `npx caw record ... --agent session` in the background.
 2. **Wait:** `caw_status` with `wait: 120`, again and again, until the run waits for you or ends. It returns early as soon as
    something changes, so don't poll it without `wait` or read the log in between. It names the task. With `run` it only waits once
    the human chooses "Fix step" or a question to Claude in the chat. While the window waits for the human's decision, say once
    what they have to choose and keep waiting with `wait`.
-3. **Work** according to "Flow in the sandbox" and the following sections, with the tool `caw` (`args` like `caw-ai <command>`; for `plan`,
-   `finish` and `advise` the content goes in `file`). Without the tools: `npx caw-ai <command>` in the project folder. The human sees plan,
+3. **Work** according to "Flow in the sandbox" and the following sections, with the tool `caw` (`args` like `caw agent <command>` without `caw agent`; for `plan`,
+   `finish` and `advise` the content goes in `file`). Without the tools: `npx caw agent <command>` in the project folder. The human sees plan,
    questions and decisions in the workbench chat and answers there.
 4. **Setup and checks without tokens:** `caw_doctor`, `caw_validate`, `caw_list`, `caw_config` (`read`, or `patch` with `dryRun`;
    it writes only a valid config), `caw_init`, `caw_explore` (needs `login` or `yes`), `caw_role` (`list`, `add`, `remove`) and `caw_overlay` (`status`, `check`, `apply`).
@@ -150,7 +150,7 @@ only by the tool; as the session you may write a new test plan (step 5), an exis
 ## Flow in the sandbox
 
 The browser runs outside the container and is already logged in and open. You control it only
-with `caw-ai <command>`. The project is read-only; only `$CAW_AGENT_DIR`
+with `caw agent <command>`. The project is read-only; only `$CAW_AGENT_DIR`
 and `/tmp` are writable. You reach the application only through these commands, not via curl.
 
 1. **Read the task:** `task` shows `notes`, `steps` and whether the run may write (`mutates`). If it contains `create`,
@@ -181,9 +181,9 @@ and `/tmp` are writable. You reach the application only through these commands, 
    application remembers across sessions may then be filled differently, and a button that only exists with certain content is missing. Therefore always set fields
    with `fill`, even if the value is already right, and empty them with `fill <target> ""`, never with a click on the X in the field.
 4. **Wait before every check:** `wait-ready`. Directly after a click, "nothing is loading" is trivially true;
-   only this command holds the quiet over a time window. With `--store` and `--min-count` you wait specifically until enough
-   entries are there. With `framework: extjs`, `--store` is a `storeId` or a ComponentQuery (otherwise waiting does not see stores without `storeId`),
-   with `web` a CSS selector for the entries, e.g. `--store "#orders [role=row]"`.
+   only this command holds the quiet over a time window. With `--for` and `--min-count` you wait specifically until enough
+   entries are there. With `framework: extjs`, `--for` is a `storeId` or a ComponentQuery (otherwise waiting does not see stores without `storeId`),
+   with `web` a CSS selector for the entries, e.g. `--for "#orders [role=row]"`.
 5. **Check and prove.** You read the state precisely via `eval "<expression>"`, with `web` through the DOM
    (`document.querySelector(...)`, texts, `aria-*`), with `extjs` through `Ext.ComponentQuery.query('...')`. The result
    must be serialisable, so read individual values instead of whole objects. Fragments can be hidden, so check
@@ -458,7 +458,7 @@ recommend what to do. The browser is still as the run left it.
     reports them as nonexistent. After 5 rejected submissions with `edits` a run accepts no more edits, so check `find` against
     the file with Read before you submit.
   - `prompt`: for a Claude Code session of the human, even if there are `edits`: the error verbatim, file and line, the
-    cause, the change and how to check it (`lintCommand` from the task, if set, and `caw-ai run <test>` again). It must be understandable without this
+    cause, the change and how to check it (`lintCommand` from the task, if set, and `caw run <test>` again). It must be understandable without this
     run.
 - **Submit:** Write `/tmp/advice.json` and call `advise --file /tmp/advice.json`. At most 10 entries, the
   most important recommendation first, without e-mail addresses and credentials:

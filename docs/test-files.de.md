@@ -77,8 +77,8 @@ Tipps:
 Jeder Schritt hat einen Hash über `name`, `do`, `expect` und `note`. Änderst du eins davon, ist nur dieser Schritt veraltet:
 
 ```bash
-npx caw-ai run create-ticket --target local       # Exit 4: S2 geändert, nennt den record-Befehl
-npx caw-ai record create-ticket@S2 --target local # ab S2 bis zum Ende neu aufnehmen, S1 bleibt
+npx caw run create-ticket --env local       # Exit 4: S2 geändert, nennt den record-Befehl
+npx caw record create-ticket@S2 --env local # ab S2 bis zum Ende neu aufnehmen, S1 bleibt
 ```
 
 `notes`, Metadaten, `retry` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.

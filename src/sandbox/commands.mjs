@@ -26,7 +26,7 @@ const agentDir = () => {
     if (process.env.CAW_SANDBOX === '1' && dir) return dir;
     const waiting = findSessionAgent(process.env.INIT_CWD ?? process.cwd());
     if (waiting !== undefined) return waiting.agentDir;
-    throw new CawError('not-in-sandbox', 'No run is waiting for an agent. In your session: start caw-ai record <test> --target <environment> --agent session (in the background), then use these commands.');
+    throw new CawError('not-in-sandbox', 'No run is waiting for an agent. In your session: start caw record <test> --env <environment> --agent session (in the background), then use these commands.');
 };
 
 /** Passes a command to the browser on the host and prints the answer. */
@@ -129,7 +129,7 @@ export const limitArgs = (env = process.env) => [
 ];
 
 const SKILL_FILE = fileURLToPath(new URL('../../templates/skill.md', import.meta.url));
-const BIN = fileURLToPath(new URL('../../bin/caw-ai.mjs', import.meta.url));
+const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
 // Reading yes; shell, writing and network never. The browser is reachable only through the caw tool.
 export const LOCAL_TOOLS = ['Read', 'Grep', 'Glob'];
 // Only in the project folder (Claude's working directory): without a path Read, Grep and Glob could read the whole machine, e.g. ~/.ssh.
@@ -142,8 +142,8 @@ export const LOCAL_DENY = ['.env', '.env.*', '**/.env', '**/.env.*', '.git/**', 
     .flatMap((pattern) => LOCAL_TOOLS.map((tool) => `${tool}(${pattern})`));
 // Prepended to the skill: locally there is no shell, the commands go through a tool.
 export const LOCAL_PREAMBLE = `You are running locally, not in the container. You have no shell and cannot write files. Every command
-\`caw-ai <command> ...\` in the following guide is a call of the tool mcp__caw__caw with args, e.g. args ["snapshot"] or
-["click", "e12"]. Where the guide writes a file and passes --file (plan, finish, advise), pass its content in file instead.
+\`caw agent <command> ...\` in the following guide is a call of the tool mcp__caw__caw with args (what follows \`caw agent\`), e.g.
+args ["snapshot"] or ["click", "e12"]. Where the guide writes a file and passes --file (plan, finish, advise), pass its content in file instead.
 Read the source code with Read, Grep and Glob. Do not read files outside the project.
 
 `;
@@ -181,7 +181,7 @@ export const writeLocalSetup = (dir, env = process.env) => {
     const mcpConfig = join(dir, 'mcp.json');
     const settings = join(dir, 'settings.json');
     const systemPromptFile = join(dir, 'instructions.md');
-    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { caw: { command: process.execPath, args: [BIN, 'mcp-agent'], env: { CAW_SANDBOX: '1', CAW_AGENT_DIR: dir, ...(env.CAW_COLOR ? { CAW_COLOR: env.CAW_COLOR } : {}) } } } }, null, 2));
+    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { caw: { command: process.execPath, args: [BIN, 'agent', 'mcp'], env: { CAW_SANDBOX: '1', CAW_AGENT_DIR: dir, ...(env.CAW_COLOR ? { CAW_COLOR: env.CAW_COLOR } : {}) } } } }, null, 2));
     writeFileSync(settings, JSON.stringify({ ...connectionSettings(env), permissions: { deny: LOCAL_DENY }, disableAllHooks: true }, null, 2));
     writeFileSync(systemPromptFile, `${LOCAL_PREAMBLE}${readFileSync(SKILL_FILE, 'utf8').replace(/^---[\s\S]*?---\s*/, '')}`);
     return { mcpConfig, settings, systemPromptFile };

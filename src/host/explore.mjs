@@ -1,4 +1,4 @@
-// `caw-ai explore --url <address>`: opens the application once, the human signs in, and the tool derives what the config needs:
+// `caw init --explore-only --url <address>`: opens the application once, the human signs in, and the tool derives what the config needs:
 // framework, sign-in form, how to recognise "signed in", start page, message containers and console noise. It only writes
 // suggestions to caw/.explore.json, never the config; `init --from` or the skill (after asking) takes them over.
 // No Claude, no tokens. The browser only reaches the host of the address.
@@ -309,8 +309,8 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
     if (asks && !process.stdin.isTTY) throw new CawError('usage', t('cli.exploreNeedsTty'));
     const { detectFramework } = await import('./commands.mjs');
     const { reachable } = await import('./run.mjs');
-    ui.banner({ title: 'caw-ai explore' });
-    if (!await reachable(url)) throw new CawError('target-unreachable', t('cli.exploreUnreachable', { url }));
+    ui.banner({ title: 'caw init --explore-only' });
+    if (!await reachable(url)) throw new CawError('env-unreachable', t('cli.exploreUnreachable', { url }));
 
     // No guessing: the human knows whether there is a sign-in. --login/--no-login for scripts; without a human the page decides.
     let withLogin = args.includes('--login') ? true : args.includes('--no-login') ? false : null;

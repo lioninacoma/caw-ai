@@ -1,4 +1,4 @@
-// `caw-ai doctor`: checks whether the project can run and names the next step for each problem. Never reads secret values:
+// `caw doctor`: checks whether the project can run and names the next step for each problem. Never reads secret values:
 // for the token and credentials only their presence counts.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -74,7 +74,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     // Claude is only needed for record and the chat; locally Claude Code suffices, Docker also needs Docker and the token.
     const sandbox = agent ?? agentSandbox(config ?? {}, env);
     if (sandbox === 'session') {
-        // The developer's own Claude Code session takes over via caw-ai mcp: that only needs the entry in .mcp.json.
+        // The developer's own Claude Code session takes over via caw mcp: that only needs the entry in .mcp.json.
         const mcp = join(root, '.mcp.json');
         let listed = false;
         try {
@@ -132,7 +132,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
             for (const target of allTargets(config).filter((candidate) => !resolveTarget(config, candidate).production)) {
                 add(existsSync(join(root, sessionPath(target, name)))
                     ? { ok: true, text: t('cli.doctorSessionSaved', { name, target }) }
-                    : { ok: false, optional: true, text: t('cli.doctorSessionNone', { name, target }), next: `caw-ai auth ${name} --target ${target}` });
+                    : { ok: false, optional: true, text: t('cli.doctorSessionNone', { name, target }), next: `caw role login ${name} --env ${target}` });
             }
         }
     }
@@ -157,7 +157,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
 
 /**
  * The overlay lines for ExtJS: per environment with overlay and app with app.json, bootstrap.json on disk, the local code server
- * (overlay.url: the watch of this app, or found on another port) and the last `caw-ai overlay check`. All optional: only runs
+ * (overlay.url: the watch of this app, or found on another port) and the last `caw overlay check`. All optional: only runs
  * with --overlay need them. Never starts anything.
  * @param probes.overlay tests only: (root, { target, app }) -> the result of overlayStatus
  */

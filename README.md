@@ -33,8 +33,8 @@ steps:
 Record once, then replay:
 
 ```bash
-npx caw-ai record first-errand --target local   # Claude performs the steps in Chrome, you approve the result
-npx caw-ai run first-errand --target local      # replays the recording, without Claude
+npx caw record first-errand --env local   # Claude performs the steps in Chrome, you approve the result
+npx caw run first-errand --env local      # replays the recording, without Claude
 ```
 
 ## How it works
@@ -76,8 +76,8 @@ npm i -D caw-ai
 Start your app, then:
 
 ```bash
-npx caw-ai init --url http://localhost:5173   # opens the app; sign in with a test account, click Done, save it as a role
-npx caw-ai doctor                             # lists what is still missing
+npx caw init --url http://localhost:5173   # opens the app; sign in with a test account, click Done, save it as a role
+npx caw doctor                             # lists what is still missing
 ```
 
 Describe a test in `caw/tests/smoke.yaml`:
@@ -98,8 +98,8 @@ steps:
 Record it once, replay it from then on:
 
 ```bash
-npx caw-ai record smoke --target local
-npx caw-ai run smoke --target local
+npx caw record smoke --env local
+npx caw run smoke --env local
 ```
 
 [`examples/errand`](examples/errand) is a small todo app with sign-in and a recorded test you can replay right away; see [`examples`](examples).
@@ -108,24 +108,24 @@ npx caw-ai run smoke --target local
 
 | Task | Command |
 |---|---|
-| Run a test | `caw-ai run <test> --target local` |
-| Run it like CI | `caw-ai run <test> --target local --headless` |
-| Record a new test | `caw-ai record <test> --target local` |
-| Re-record from a changed step to the end | `caw-ai record <test>@S3 --target local` |
-| Get the app to the start of a step and keep coding there | `caw-ai open <test>@S3 --target local` |
-| Open the app signed in, without a test | `caw-ai open --target local` |
-| Test local code inside a deployed environment | `caw-ai run <test> --target dev --overlay` |
-| Let Claude explain failures right away | `caw-ai run <test> --target local --advise` |
-| Check config and tests | `caw-ai validate` |
-| Pick a theme (F7 in the workbench to change one) | `caw-ai theme use phosphor` |
+| Run a test | `caw run <test> --env local` |
+| Run it like CI | `caw run <test> --env local --headless` |
+| Record a new test | `caw record <test> --env local` |
+| Re-record from a changed step to the end | `caw record <test>@S3 --env local` |
+| Get the app to the start of a step and keep coding there | `caw open <test>@S3 --env local` |
+| Open the app signed in, without a test | `caw open --env local` |
+| Test local code inside a deployed environment | `caw run <test> --env dev --overlay` |
+| Let Claude explain failures right away | `caw run <test> --env local --explain` |
+| Check config and tests | `caw validate` |
+| Pick a theme (F7 in the workbench to change one) | `caw theme use phosphor` |
 
 Exit codes: `0` pass, `1` fail, `2` environment error, `3` invalid input, `4` needs recording. All commands and options: [docs/commands.md](docs/commands.md).
 
 ### In CI
 
 ```yaml
-- run: npx caw-ai validate
-- run: npx caw-ai run smoke --target staging --headless
+- run: npx caw validate
+- run: npx caw run smoke --env staging --headless
 ```
 
 With `CI` set there is no chat and Claude is not started. Record locally, commit the files, replay in CI. Pass the test users as environment variables (CI secrets), with the names from `roles` in the config, e.g. `CAW_LOGIN_TESTER` and `CAW_PW_TESTER`.
@@ -135,17 +135,17 @@ With `CI` set there is no chat and Claude is not started. Record locally, commit
 `init` also adds a skill and an MCP server. Then, in Claude Code:
 
 ```
-/caw-ai record a test for creating a ticket
+/caw record a test for creating a ticket
 /caw-ai take me to the ticket detail page, I want to work on the status field
 ```
 
 ## Working in the window
 
-`caw-ai open <test>@S3` replays a test up to the entry of S3 and hands you the window, signed in; `caw-ai open <test>` runs the whole test first. From there:
+`caw open <test>@S3` replays a test up to the entry of S3 and hands you the window, signed in; `caw open <test>` runs the whole test first. From there:
 
 ### Open a test at a step
 
-F1 ("Open…") lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account, replays the steps before it and stops at the step's entry: its navigation done, its inputs open. Without a step the whole test runs. From the terminal: `caw-ai open <test>@S3`.
+F1 ("Open…") lists every test of the environment, for any role. Pick a test and a step; caw-ai signs in fresh with that role's account, replays the steps before it and stops at the step's entry: its navigation done, its inputs open. Without a step the whole test runs. From the terminal: `caw open <test>@S3`.
 
 <img src="docs/media/states.webp" width="100%" alt="The F1 dialog lists the test first-errand with its steps S1 to S4">
 
@@ -187,7 +187,7 @@ Login can be a form (with optional TOTP), HTTP Basic, or a stored session for SS
 
 ## Data and privacy
 
-**When Claude runs** (`record`, the chat, `--advise`), Claude Code sends to Anthropic what Claude works with: page contents (accessibility snapshots, `eval` results, screenshots), console and network summaries, the project source it reads and your chat messages. Your Claude Code account and its terms apply.
+**When Claude runs** (`record`, the chat, `--explain`), Claude Code sends to Anthropic what Claude works with: page contents (accessibility snapshots, `eval` results, screenshots), console and network summaries, the project source it reads and your chat messages. Your Claude Code account and its terms apply.
 
 **Masked or blocked:** caw-ai signs in itself; the role's password and values marked `secret: true` are replaced with `••••` before Claude sees text. `caw/.env`, `.env*`, `caw/.auth` and typical key files are blocked for Claude (Claude Code deny rules locally, hidden in the Docker container). Other secrets in project files Claude may read are not, and Claude sees everything the test user sees in the app: use test accounts and test data. Details: [Sandbox boundaries](docs/guide.md#sandbox-boundaries).
 
@@ -235,7 +235,7 @@ It uses Playwright to drive your installed Chrome. You don't write Playwright co
 - [Configuration](docs/configuration.md): `caw.config.json`, login types, `caw/.env`, `caw/caw.md`
 - [Test files](docs/test-files.md): test plan and recording format, placeholders
 - [Guide](docs/guide.md): agents, workbench, chat, failure assessment, sandbox
-- [Themes](themes/README.md): built-in themes, own theme packages, `caw-ai theme`
+- [Themes](themes/README.md): built-in themes, own theme packages, `caw theme`
 
 ## Contributing
 

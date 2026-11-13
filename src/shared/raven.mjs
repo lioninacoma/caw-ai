@@ -5,7 +5,7 @@ export const LONG_NAME = 'Context-Aware Web Testing';
 const plain = (text) => text;
 
 /**
- * @param name  shown next to the beak, e.g. "caw-ai" or "caw-ai explore"
+ * @param name  shown next to the beak, e.g. "caw" or "caw init --explore-only"
  * @param paint optional { bold, dim, frame, beak, eye }: name, long form, body, beak, eye
  * @returns three lines
  */

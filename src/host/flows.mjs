@@ -128,7 +128,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
          * A step failed: the human can ask Claude, in the failure state, and have it fixed. Only their message or
          * click starts Claude.
          * @param spec the test that advice in the conversation refers to
-         * @param canAsk the "ask Claude for the cause" button: Claude advises as with --advise, only on click
+         * @param canAsk the "ask Claude for the cause" button: Claude advises as with --explain, only on click
          * @returns { advice, target, repaired, ask, forget }: `advice` from the conversation or null; `forget`: forget the learned effects of this step; `target` is fixed with a warm-up; `repaired`
          *          is already fixed in the same browser; `ask`: Claude should find the cause and advise
          */
@@ -475,7 +475,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * Test run by plan, without Claude. On dev with a terminal the chat is there from the start and shows the steps; if one
  * fails, the human clarifies it there right away. Docker and tokens only start on their message or click.
  * @param canFix    on dev, with terminal and chat
- * @param advise    --advise: on failures or warnings Claude advises on its own, even in a passed run. Costs tokens
+ * @param advise    --explain: on failures or warnings Claude advises on its own, even in a passed run. Costs tokens
  * @param handover  the human wants the window afterwards (open)
  * @param entry     open at the entry of this step: the steps before it, then its leading navigation (replayToEntry)
  * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens
@@ -638,7 +638,7 @@ export const runFlow = async (options) => {
                     else await chat.choose('deciding', summary, [ONLY_CLOSE]);
                     return;
                 }
-                // With --advise Claude already advised; otherwise Claude looks for the cause only on click, same as --advise, just on demand.
+                // With --explain Claude already advised; otherwise Claude looks for the cause only on click, same as --explain, just on demand.
                 let settled = await fixer.settle(concluded, current, { canAsk: !advise });
                 if (settled.ask) {
                     await keep(settled.advice, chat, { offer: false });

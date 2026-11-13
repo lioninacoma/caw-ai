@@ -1,6 +1,6 @@
 # Framework matrix
 
-Test projects that check whether caw-ai works with the major frameworks: locally on the dev server, deployed as a production build, and with local code laid over the deployed version (`--overlay`). Claude is never started. `project.mjs` writes the recordings by hand, as `record` would write them (one Playwright locator per target); `caw-ai run` replays them. The e2e runs the matrix as scenario N14 (`pwsh e2e/watchdog.ps1 N14 e2e.log`).
+Test projects that check whether caw-ai works with the major frameworks: locally on the dev server, deployed as a production build, and with local code laid over the deployed version (`--overlay`). Claude is never started. `project.mjs` writes the recordings by hand, as `record` would write them (one Playwright locator per target); `caw run` replays them. The e2e runs the matrix as scenario N14 (`pwsh e2e/watchdog.ps1 N14 e2e.log`).
 
 | Project | Framework | caw-ai adapter |
 |---|---|---|

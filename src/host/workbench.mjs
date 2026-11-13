@@ -104,7 +104,7 @@ export const workbenchHtml = ({ appUrl, title, prefs = {}, theme = activeTheme()
     const still = prefs.animations === 'off';
     const classes = [still ? 'still' : '', prefs.steps === 'closed' ? 'fold-steps' : '', prefs.chat === 'closed' ? 'fold-chat' : ''].filter(Boolean).join(' ');
     const refreshTitle = t('workbench.refreshTitle');
-    const test = String(title ?? '').replace(/^caw-ai\s*·?\s*/, '');
+    const test = String(title ?? '').replace(/^caw\s*·?\s*/, '');
     const key = (name, label, attrs = '', cls = '') => `<button type="button" class="fk${cls}"${attrs}><b>${name}</b>${label}</button>`;
     const lg = (label) => `<span class="lg glow" data-title="${esc(label.toUpperCase())}">${legend(theme, label.toUpperCase())}</span>`;
     return `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${FAVICON}<style>
@@ -288,7 +288,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>${themeStyle(theme)}</head><body class="${classes}"><div class="pa crt-case"><div class="crt" id="bench">
 <div class="soloBar">${ravenLogo(theme, { size: 11, label: 'caw' })}<span id="soloTag" hidden>${esc(t('workbench.handedOver'))}</span><span id="soloState"></span><span id="soloUrl"></span><button class="solo-btn" type="button" data-states hidden><b>F1</b>${t('workbench.stateTitle')}</button><button class="solo-btn" type="button" data-solo><b>F8</b>${t('workbench.bench')}</button></div>
-<header class="top">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="id"><b class="glow">caw-ai <span class="cmd" id="cmd"></span> <span id="testName">${esc(test)}</span></b><span>${LONG_NAME}</span></div>
+<header class="top">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="id"><b class="glow">caw <span class="cmd" id="cmd"></span> <span id="testName">${esc(test)}</span></b><span>${LONG_NAME}</span></div>
 <ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
 <div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinf" aria-hidden="true" hidden></span><span id="state" class="px-pill glow" role="status"></span><span id="transport" class="px-pill glow" role="img"><i></i><span></span></span></div></header>
 <main class="panes">
@@ -398,7 +398,7 @@ const summarize=()=>{
   // If the chat waits for the human, the application bar says so; the pill does not, the chat already does.
   if(!aborted&&asking){browserText=T['workbench.page.browserYourTurn'];tone='ask';}
   if(!aborted&&chatState==='showing'){browserText=T['workbench.page.recording'];tone='rec';}
-  // The pill top right: only the four chat header labels (Claude working, caw-ai working, pausing …, paused), no step.
+  // The pill top right: only the four chat header labels (Claude working, caw working, pausing …, paused), no step.
   // States without a label show no pill. The step list shows the current step.
   const label=aborted||chatState===null?undefined:PILL['chat.status.'+chatState+'.label'];
   const claudeWorks=chatState==='running'||chatState==='advising',cawWorks=label!==undefined&&!claudeWorks&&chatState!=='pausing'&&chatState!=='paused';
@@ -660,7 +660,7 @@ const follow=()=>{cancelAnimationFrame(followFrame);followFrame=requestAnimation
 new MutationObserver(follow).observe($('steps'),{subtree:true,childList:true,attributes:true,attributeFilter:['data-state']});
 new ResizeObserver(follow).observe(track);
 window.workbench={
-  // The first entry is the mode (header: caw-ai <mode> <test>), the test is already in the title; the rest goes into the facts.
+  // The first entry is the mode (header: caw <mode> <test>), the test is already in the title; the rest goes into the facts.
   facts:(entries)=>{const [first,...rest]=entries;$('cmd').textContent=first?String(first[1]).toLowerCase():'';
     const test=$('testName').textContent;
     $('facts').replaceChildren(...rest.filter(([,value])=>String(value)!==test).map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;const b=document.createElement('b');b.textContent=String(value);li.append(label,b);return li;}));},
@@ -731,7 +731,7 @@ summarize();${sourceTag}</script></body></html>`;
  * @param hosts  hosts whose documents may be embedded: those of the application
  * @returns { page, view, show } `view` is the application in the iframe with the interface of a page
  */
-export const openWorkbench = async (context, { appUrl, hosts, title = 'caw-ai', rewrite }) => {
+export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rewrite }) => {
     const page = context.pages()[0];
     // Only the workbench itself may save and refresh, not the application in the iframe and not the chat. writePref validates the values.
     // The frame check is a mitigation, not an isolation: the application shares the workbench's origin (it must, see forward()),

@@ -85,7 +85,7 @@ test('explore: suggestions for form, SSO and no sign-in; console noise without n
     assert.equal(form.consoleIgnore, undefined, 'HTTP errors before sign-in do not become consoleIgnore, that would hide them all');
     const sso = buildSuggestions({ url: 'https://app.example.com', seen: { before: { ...home, markers: [] }, loginPage: null, after: home }, foreignHosts: ['login.microsoftonline.com'] });
     assert.equal(sso.auth.type, 'storageState');
-    assert.match(sso.notes.join(' '), /login\.microsoftonline\.com.*caw-ai auth/);
+    assert.match(sso.notes.join(' '), /login\.microsoftonline\.com.*caw role login/);
     const none = buildSuggestions({ url: 'http://app.localhost:5173', seen: { before: home, loginPage: null, after: home }, detected: 'web' });
     assert.equal(none.auth.type, 'none');
     // http on the local machine stays as it is; other http hosts get a note.
@@ -149,7 +149,7 @@ test('explore: flow with a fake browser writes only caw/.explore.json', async (t
     assert.equal(written.auth.signedInSelector, '#logout');
     assert.equal(written.framework.value, 'vue');
     assert.ok(!existsSync(join(root, 'caw.config.json')), 'no config');
-    await assert.rejects(explore(root, ['--url', 'ftp://x'], { wait: async () => {} }), /Aufruf: caw-ai explore/);
+    await assert.rejects(explore(root, ['--url', 'ftp://x'], { wait: async () => {} }), /Aufruf: caw init --explore-only/);
 });
 
 test('explore without signing in (--yes on an app with a login): the sign-in page is never the start page', () => {

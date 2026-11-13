@@ -1,4 +1,4 @@
-// `caw-ai overlay status` and `caw-ai overlay check`.
+// `caw overlay status` and `caw overlay check`.
 // status: is the local code server ready, without a browser? Asks the server at overlay.url (ExtJS: is it the watch of this app,
 // with a current bootstrap.json; if not, is it running on another port). Starts nothing.
 // check: does the overlay replace everything it should? Opens the app headless with the overlay like a run without steps, signs
@@ -28,7 +28,7 @@ const onlyKey = (map) => {
     return keys.length === 1 ? keys[0] : undefined;
 };
 
-/** The target without --target: the only one whose environment allows the overlay. */
+/** The target without --env: the only one whose environment allows the overlay. */
 export const overlayTarget = (config) => {
     const choices = allTargets(config).filter((name) => {
         try {
@@ -228,14 +228,14 @@ export const printOverlayCheck = (result, ui) => {
 
 // The options per subcommand: with a value, then switches.
 const OPTIONS = {
-    status: { values: ['--target', '--app'], flags: ['--json'] },
-    check: { values: ['--target', '--app', '--role'], flags: ['--apply', '--start', '--json'] },
+    status: { values: ['--env', '--app'], flags: ['--json'] },
+    check: { values: ['--env', '--app', '--role'], flags: ['--apply', '--start', '--json'] },
 };
-const EXAMPLES = { '--target': 'dev', '--app': 'web', '--role': 'tester' };
+const EXAMPLES = { '--env': 'dev', '--app': 'web', '--role': 'tester' };
 
 /**
- * `caw-ai overlay status [--target <env>] [--app <app>] [--json]` and
- * `caw-ai overlay check [--target <env>] [--app <app>] [--role <role>] [--apply] [--start] [--json]`.
+ * `caw overlay status [--env <env>] [--app <app>] [--json]` and
+ * `caw overlay check [--env <env>] [--app <app>] [--role <role>] [--apply] [--start] [--json]`.
  */
 export const overlayCommand = async (root, args, { out = (text) => console.log(text), deps = {} } = {}) => {
     const [sub, ...rest] = args;
@@ -244,6 +244,7 @@ export const overlayCommand = async (root, args, { out = (text) => console.log(t
     const options = {};
     for (let index = 0; index < rest.length; index += 1) {
         const arg = rest[index];
+        if (arg === '--target') throw new CawError('usage', t('session.args.renamedOption', { flag: arg, now: '--env' }));
         if (known.flags.includes(arg)) options[arg.slice(2)] = true;
         else if (known.values.includes(arg)) {
             const value = rest[index + 1];
@@ -258,12 +259,12 @@ export const overlayCommand = async (root, args, { out = (text) => console.log(t
     // With --json the result is the only line on stdout; progress goes to stderr.
     const ui = createUi(options.json ? { out: (text) => console.error(text) } : {});
     if (sub === 'status') {
-        const status = await overlayStatus(root, { target: options.target, app: options.app, deps });
+        const status = await overlayStatus(root, { target: options.env, app: options.app, deps });
         if (options.json) out(JSON.stringify(status));
         else printOverlayStatus(status, ui);
         return overlayStatusExit(status);
     }
-    const result = await overlayCheck(root, { target: options.target, app: options.app, role: options.role, apply: options.apply === true, start: options.start === true, deps: { info: (text) => ui.info(text), ...deps } });
+    const result = await overlayCheck(root, { target: options.env, app: options.app, role: options.role, apply: options.apply === true, start: options.start === true, deps: { info: (text) => ui.info(text), ...deps } });
     if (options.json) out(JSON.stringify(result));
     else printOverlayCheck(result, ui);
     return overlayCheckExit(result);

@@ -12,8 +12,8 @@ import {
 
 const native = join(here, 'native');
 const PORT = 8451;
-const target = ['--target', 'test', '--step-timeout', '5'];
-const recordArgs = ['--target', 'test', '--timeout', '3', '--step-timeout', '5'];
+const target = ['--env', 'test', '--step-timeout', '5s'];
+const recordArgs = ['--env', 'test', '--claude-timeout', '3m', '--step-timeout', '5s'];
 let server = null;
 const group = {
     language: 'de',
@@ -123,7 +123,7 @@ $A click 'button#save'
 $A check S3 "document.getElementById('status').textContent==='Saved'"`;
 
 const recordErrands = async () => {
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${tag}
 ${planOf(ERRANDS_PLAN)}
 $A plan --file /tmp/p.yaml > /dev/null
@@ -161,7 +161,7 @@ scenario('N1', 'Record via snapshot references and CSS: full names exact, {{runT
 
 scenario('N2', 'Demonstration (pointerdown, Enter, select, frames, shadow DOM) yields locators; the crosshair hands a locator to caw_selection', async () => {
     const id = 'rec-demo';
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf('steps:\n  - id: S1\n    name: Speichern\n    do: Speichere.\n    expect: Gespeichert.')}
 $A plan --file /tmp/p.yaml > /dev/null
 $A click 'button#save'
@@ -276,7 +276,7 @@ const RANGE = 'rec-range';
 scenario('N5', 'record <test>@S2: S2 recorded again after S1 replayed, S1 byte for byte the same', async () => {
     writeTest(native, { ...parseTest(testText(RANGE, TESTS['n9-shadow'])), id: RANGE });
     const before = recordingText(RANGE);
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf('steps:\n  - id: S2\n    name: "Speichern"\n    do: ""\n    expect: "Gespeichert."')}
 $A plan --file /tmp/p.yaml > /dev/null
 $A eval "document.querySelector('caw-rating').shadowRoot.querySelector('[role=status]').textContent" > /tmp/s1.txt; echo "S1-REPLAYED=$(grep -c 'Thanks: Good' /tmp/s1.txt)" >> "$CAW_AGENT_DIR/n5.txt"
@@ -302,7 +302,7 @@ scenario('N6', 'Dialog transition passes; a true twin fails after the 2 s tolera
     const wizard = await runQuietly('n6-wizard');
     verify('Wizard with overlapping dialogs passes', wizard.code === 0, `${wizard.code} ${wizard.note}`);
     const started = Date.now();
-    const twins = await runQuietly('n6-twins', ['--step-timeout', '20']);
+    const twins = await runQuietly('n6-twins', ['--step-timeout', '20s']);
     const took = Date.now() - started;
     verify('Twins fail', twins.code === 1, String(twins.code));
     verify('Failure names both candidates', /trifft 2 Elemente/.test(twins.note) && /#1 bei \d+,\d+/.test(twins.note) && /#2 bei \d+,\d+/.test(twins.note), twins.note);
@@ -311,7 +311,7 @@ scenario('N6', 'Dialog transition passes; a true twin fails after the 2 s tolera
 });
 
 scenario('N7', 'Virtual list: the row is found by scrolling', async () => {
-    const { code, note } = await runQuietly('n7-vlist', ['--step-timeout', '20']);
+    const { code, note } = await runQuietly('n7-vlist', ['--step-timeout', '20s']);
     verify('Row 150 of a virtual list: passes', code === 0, `${code} ${note}`);
 });
 
@@ -351,7 +351,7 @@ scenario('N10', 'ExtJS: empty Modern buttons recorded as extjs= components (text
     mkdirSync(join(extRoot, 'caw/tests'), { recursive: true });
     writeFileSync(join(extRoot, 'caw/tests', `${EXT}.yaml`), `id: ${EXT}\napp: ext\nrole: visitor\ntargets: [test]\nmutates: false\n${EXT_PLAN}\n`);
     await setCover(false);
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(EXT_PLAN)}
 $A plan --file /tmp/p.yaml > /dev/null
 $A click '.x-formpanel > div:first-child > button'
@@ -459,7 +459,7 @@ scenario('N10b', 'ExtJS input components (Claude): filtered floating list, disab
     writeFileSync(join(extRoot, 'caw/tests', `${EXT_DATA}.yaml`), `id: ${EXT_DATA}\napp: extdata\nrole: visitor\ntargets: [test]\nmutates: false\n${EXT_DATA_PLAN}\n`);
     // Betreff is disabled until Unterbereich is left with an entry: fill on it has to leave Unterbereich first (leaveForDisabled).
     // The filter typed into Bereich must keep its list open for the click on the entry.
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(EXT_DATA_PLAN)}
 $A plan --file /tmp/p.yaml > /dev/null
 $A type 'input[placeholder="Bereich*"]' 'Sons'
@@ -518,9 +518,9 @@ for (const item of items) {
     const args = item.action === 'click' ? ['click', item.target] : item.action === 'fill' ? ['fill', item.target, item.value] : item.action === 'press' ? ['press', item.key] : null;
     if (args === null || typeof args[1] !== 'string') { console.log('SKIP ' + JSON.stringify(item)); continue; }
     console.log('DO ' + args.join(' '));
-    execFileSync('caw-ai', args, { stdio: 'inherit' });
+    execFileSync('caw', ['agent', ...args], { stdio: 'inherit' });
 }`;
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(`steps:\n  - id: S1\n    name: Anliegen\n    do: Fuehre die Vorfuehrung aus.\n    expect: Anliegen erfasst, Termin geprueft und abgebrochen.`)}
 $A plan --file /tmp/p.yaml > /dev/null
 $A task > /tmp/task.json
@@ -657,7 +657,7 @@ scenario('N10d', 'Plain ARIA (Claude): buttons in named dialogs scoped by them (
     freshNative(ARIA);
     writeFileSync(join(native, 'caw/tests', `${ARIA}.yaml`), `id: ${ARIA}\napp: aria\nrole: visitor\ntargets: [test]\nmutates: false\n${ARIA_PLAN}\n`);
     // CSS targets as Claude might write them; the recording names each element by role, name and context instead.
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(ARIA_PLAN)}
 $A plan --file /tmp/p.yaml > /dev/null
 $A click 'section[aria-label="Notizen"] button:text-is("Notiz anlegen")'
@@ -719,9 +719,9 @@ for (const item of items) {
     const args = item.action === 'click' ? ['click', item.target] : item.action === 'fill' ? ['fill', item.target, item.value] : item.action === 'press' ? ['press', item.key] : null;
     if (args === null || typeof args[1] !== 'string') { console.log('SKIP ' + JSON.stringify(item)); continue; }
     console.log('DO ' + args.join(' '));
-    execFileSync('caw-ai', args, { stdio: 'inherit' });
+    execFileSync('caw', ['agent', ...args], { stdio: 'inherit' });
 }`;
-    const agent = `A=caw-ai
+    const agent = `A='caw agent'
 ${planOf(`steps:\n  - id: S1\n    name: Vorgang\n    do: Fuehre die Vorfuehrung aus.\n    expect: Notiz, Vermerk, Vorgang, Sachgebiet, Adressen und Seite gespeichert.`)}
 $A plan --file /tmp/p.yaml > /dev/null
 $A task > /tmp/task.json

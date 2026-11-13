@@ -77,7 +77,7 @@ export const removeRole = (root, name) => {
 export const roleTarget = (config, given) => {
     const targets = allTargets(config);
     if (given !== undefined) {
-        if (!targets.includes(given)) throw new CawError('target-invalid', t('cli.roleTargetUnknown', { target: given, environments: targets.join(', ') }));
+        if (!targets.includes(given)) throw new CawError('env-invalid', t('cli.roleTargetUnknown', { target: given, environments: targets.join(', ') }));
         return given;
     }
     const open = targets.filter((target) => !resolveTarget(config, target).production);
@@ -92,9 +92,10 @@ const optionsOf = (rest) => {
     for (let index = 0; index < rest.length; index += 1) {
         const arg = rest[index];
         if (arg === '--json') options.json = true;
-        else if (arg === '--target') {
+        else if (arg === '--target') throw new CawError('usage', t('session.args.renamedOption', { flag: arg, now: '--env' }));
+        else if (arg === '--env') {
             options.target = rest[index + 1];
-            if (options.target === undefined || options.target.startsWith('--')) throw new CawError('usage', t('session.args.valueMissing', { flag: '--target', example: 'dev' }));
+            if (options.target === undefined || options.target.startsWith('--')) throw new CawError('usage', t('session.args.valueMissing', { flag: '--env', example: 'dev' }));
             index += 1;
         } else if (arg.startsWith('--')) throw new CawError('usage', t('cli.roleUnknownArg', { arg }));
         else options.names.push(arg);
@@ -103,13 +104,19 @@ const optionsOf = (rest) => {
 };
 
 /**
- * caw-ai role [list] [--json] | add [<role>] [--target <env>] | remove <role>
+ * caw role [list] [--json] | add [<role>] [--env <env>] | remove <role> | login <role> --env <env>
  * @param deps.capture tests only: replaces the sign-in window
+ * @param deps.captureSession tests only: replaces Chrome for login
  */
-export const roleCommand = async (root, args, { out = (text) => console.log(text), capture = captureTestUsers } = {}) => {
+export const roleCommand = async (root, args, { out = (text) => console.log(text), capture = captureTestUsers, captureSession } = {}) => {
     const [sub = 'list', ...rest] = args;
     const options = optionsOf(rest);
     const ui = createUi();
+    if (sub === 'login') {
+        if (options.names.length !== 1) throw new CawError('usage', t('cli.authUsage'));
+        const { roleLogin } = await import('./commands.mjs');
+        return roleLogin(root, { role: options.names[0], target: options.target }, { capture: captureSession });
+    }
     if (sub === 'list') {
         const overview = roleOverview(root);
         if (options.json) {

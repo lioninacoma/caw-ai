@@ -29,7 +29,7 @@ for (const path of paths) {
     }
 }
 const TEMPLATES = ['caw.config.example.json', 'Dockerfile.tpl', 'entrypoint.sh', 'init-firewall.sh', 'skill.md'].map((name) => `templates/${name}`);
-for (const needed of ['bin/caw-ai.mjs', ...TEMPLATES, 'package.json', 'README.md', 'NOTICE.md', 'LICENSE', 'CHANGELOG.md']) {
+for (const needed of ['bin/caw.mjs', ...TEMPLATES, 'package.json', 'README.md', 'NOTICE.md', 'LICENSE', 'CHANGELOG.md']) {
     if (!paths.includes(needed)) problems.push(`${needed} is missing from the package`);
 }
 if (problems.length > 0) {

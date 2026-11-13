@@ -1,6 +1,6 @@
 // The tool's console output in workbench style: colours and glyphs from the active theme, boot-log style status marks
 // ([  OK  ] [ WARN ] [FEHLER]), sections as rules (── 1 ANMELDEN ───), results in a box (┌─┤ ERGEBNIS ├─┐).
-// In files and pipes it stays plain, greppable lines prefixed with [caw-ai].
+// In files and pipes it stays plain, greppable lines prefixed with [caw].
 
 import { colorEnabled, themePainter } from './color.mjs';
 import { exitOf } from './errors.mjs';
@@ -68,10 +68,10 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         return ({ ok: paint.ok, warn: paint.warn, run: paint.info, ask: paint.info, open: paint.faint })[kind]?.(text) ?? paint.faint(text);
     };
     const bullet = (kind) => ({ ok: paint.ok, warn: paint.warn, fail: paint.fail, run: paint.info, info: paint.info })[kind](marks.bullet(kind));
-    /** Line with a mark in front; without a terminal [caw-ai] in front. */
-    const marked = (kind, text, write = out, color = paint.text) => write(fancy ? `  ${tag(kind)} ${color(safe(text))}` : `[caw-ai] ${safe(text)}`);
+    /** Line with a mark in front; without a terminal [caw] in front. */
+    const marked = (kind, text, write = out, color = paint.text) => write(fancy ? `  ${tag(kind)} ${color(safe(text))}` : `[caw] ${safe(text)}`);
     /** Line with a bullet in front, for hints and instructions. */
-    const pointed = (kind, text, write = out, color = paint.muted) => write(fancy ? `  ${bullet(kind)} ${color(safe(text))}` : `[caw-ai] ${safe(text)}`);
+    const pointed = (kind, text, write = out, color = paint.muted) => write(fancy ? `  ${bullet(kind)} ${color(safe(text))}` : `[caw] ${safe(text)}`);
     /** Sub-item under a mark: tree, bullet, text. */
     const sub = (kind, text, last = true, color = paint.muted) => `  ${blank} ${paint.faint(last ? marks.tree.end : marks.tree.mid)} ${bullet(kind)} ${color(safe(text))}`;
     /** Section: ── TITLE ─────── in faint, the title in accent. */
@@ -111,19 +111,19 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         note: (text) => pointed('warn', text),
         /**
          * Abort: the message first, for a usage error the command synopsis, last the code (muted) for search and docs.
-         * @param synopsis e.g. "caw-ai open <test>@<S4> [--target <umgebung>]"
+         * @param synopsis e.g. "caw open <test>@<S4> [--env <umgebung>]"
          */
         fatal: (code, text, { synopsis, exit } = {}) => {
             marked('fail', text, err, paint.fail);
-            if (synopsis !== undefined) err(`${fancy ? `  ${blank}` : '[caw-ai]'} ${t('cli.usageLine', { synopsis })}`);
+            if (synopsis !== undefined) err(`${fancy ? `  ${blank}` : '[caw]'} ${t('cli.usageLine', { synopsis })}`);
             const label = t('cli.errorCode', { code, exit: exit ?? '?' });
-            err(fancy ? `  ${blank} ${paint.muted(label)}` : `[caw-ai] ${label}`);
+            err(fancy ? `  ${blank} ${paint.muted(label)}` : `[caw] ${label}`);
         },
 
         /** Command header: the ASCII raven with the name and its long form. In pipes only the name. */
         banner: ({ title }) => {
             if (!fancy) {
-                out(`[caw-ai] ${safe(title)}`);
+                out(`[caw] ${safe(title)}`);
                 return;
             }
             for (const row of ravenBanner(safe(title), { bold: (text) => paint.bold(paint.text(text)), dim: paint.muted, frame: paint.frame, beak: paint.accent, eye: paint.text })) out(row);
@@ -132,7 +132,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         /** A section of a guided flow. */
         section: (number, title) => {
             if (!fancy) {
-                out(`[caw-ai] ${number}. ${safe(title)}`);
+                out(`[caw] ${number}. ${safe(title)}`);
                 return;
             }
             out('');
@@ -144,8 +144,8 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
          */
         box: (title, items) => {
             if (!fancy) {
-                out(`[caw-ai] ${safe(title)}`);
-                for (const { text } of items) out(`[caw-ai] ${safe(text)}`);
+                out(`[caw] ${safe(title)}`);
+                for (const { text } of items) out(`[caw] ${safe(text)}`);
                 return;
             }
             out('');
@@ -160,8 +160,8 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         /** A line that stays until done() ticks it off; in a terminal with the spinner in the mark. */
         pending: (text) => {
             if (!fancy || !process.stdout.isTTY) {
-                out(`[caw-ai] ${safe(text)} …`);
-                return { done: (final = text) => out(`[caw-ai] ✓ ${safe(final)}`), fail: (final = text) => out(`[caw-ai] ✗ ${safe(final)}`) };
+                out(`[caw] ${safe(text)} …`);
+                return { done: (final = text) => out(`[caw] ✓ ${safe(final)}`), fail: (final = text) => out(`[caw] ✗ ${safe(final)}`) };
             }
             let frame = 0;
             const { frames, ms } = marks.spinner;
@@ -183,8 +183,8 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         header: ({ mode, test, target, source, code, maxSteps }) => {
             const codeLine = t('cli.uiCode', { code: code ?? (source === 'overlay' ? t('cli.uiLocal') : t('cli.uiDeployed')) });
             if (!fancy) {
-                out(`[caw-ai] ${mode}: ${test} ${t('cli.uiOn')} ${target}`);
-                out(`[caw-ai] ${safe(codeLine)}`);
+                out(`[caw] ${mode}: ${test} ${t('cli.uiOn')} ${target}`);
+                out(`[caw] ${safe(codeLine)}`);
                 return;
             }
             out('');
@@ -211,11 +211,11 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             const codeLabel = status === 'error' && isErrorCode(code) ? t('cli.errorCode', { code, exit: exitOf(code) }) : '';
             const why = failedReason({ results, failures });
             if (!fancy) {
-                out(`[caw-ai] ${testId} ${t('cli.uiOn')} ${target}: ${status}${reason ? ` (${safe(reason)})` : ''}${codeLabel ? ` ${codeLabel}` : ''}`);
+                out(`[caw] ${testId} ${t('cli.uiOn')} ${target}: ${status}${reason ? ` (${safe(reason)})` : ''}${codeLabel ? ` ${codeLabel}` : ''}`);
                 // Without a window or in CI this is all there is: the reason belongs in the terminal, not only in report.md.
-                if (status === 'fail' && why !== undefined) out(`[caw-ai] ${safe(why)}`);
-                if (warnings.length > 0) out(`[caw-ai] ${t('cli.uiWarnings', { count: warnings.length })}`);
-                out(`[caw-ai] ${t('cli.uiReport')} ${report}`);
+                if (status === 'fail' && why !== undefined) out(`[caw] ${safe(why)}`);
+                if (warnings.length > 0) out(`[caw] ${t('cli.uiWarnings', { count: warnings.length })}`);
+                out(`[caw] ${t('cli.uiReport')} ${report}`);
                 return;
             }
             out('');
@@ -262,7 +262,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             const size = Math.max(...titles.map((title) => title.length));
             const nameWidth = Math.max(...rows.map(({ test }) => test.length));
             const heading = t('cli.batchHeading', { count: rows.length, target });
-            if (!fancy) out(`[caw-ai] ${heading}`);
+            if (!fancy) out(`[caw] ${heading}`);
             else {
                 out('');
                 out(rule(heading.toUpperCase()));
@@ -271,13 +271,13 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
                 const [kind, color] = look[LABEL[exit]];
                 const time = took === undefined ? '' : seconds(took);
                 const text = `${titles[index].padEnd(size)}  ${safe(test).padEnd(nameWidth)}  ${time.padStart(7)}${note ? `  ${safe(note)}` : ''}`;
-                out(fancy ? `  ${tag(kind)} ${color(titles[index].padEnd(size))}  ${paint.text(safe(test).padEnd(nameWidth))}  ${paint.muted(time.padStart(7))}${note ? `  ${paint.muted(safe(note))}` : ''}` : `[caw-ai] ${text}`);
+                out(fancy ? `  ${tag(kind)} ${color(titles[index].padEnd(size))}  ${paint.text(safe(test).padEnd(nameWidth))}  ${paint.muted(time.padStart(7))}${note ? `  ${paint.muted(safe(note))}` : ''}` : `[caw] ${text}`);
             });
         },
 
         heading: (text) => {
             if (!fancy) {
-                out(`[caw-ai] ${safe(text)}`);
+                out(`[caw] ${safe(text)}`);
                 return;
             }
             out('');
