@@ -351,6 +351,8 @@ When caw-ai stops, or a run ends with `error`, it prints the reason and then the
 | `replay-stale` | 4 | A step changed since recording: `record <test>@<step>` |
 | `step-unknown` | 3 | Use a step ID from the test file (`list <test>`) |
 | `env-invalid`, `env-denied` | 3 | Use an environment from the config; production can't be recorded |
+| `host-blocked` | 3 | `goto` to a host that is no app host: add it to `allowHosts` if the app really navigates there. In a run the same block is a failure of the step |
+| `env-certificate` | 2 | The environment's certificate is not trusted: for an internal certificate authority set `environments.<env>.insecureTls: true` |
 | `write-protected` | 3 | Recording and writing tests need `claude` / `writable` on the environment |
 | `auth-missing` | 3 | Delete the file under `caw/.auth/` and run `auth` again |
 | `credentials-missing` | 2 | `role add <role> --env <env>` (sign in in the window), or set the variables in the environment or `caw/.env` (CI) |

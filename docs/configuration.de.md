@@ -76,7 +76,7 @@ Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du a
 | `claude` | `true`: Claude darf hier aufnehmen, reparieren und untersuchen. |
 | `writable` | `true`: Tests mit `mutates: true` dürfen hier laufen. |
 | `overlay` | `true`: `--overlay` darf deinen lokalen Code über diese ausgelieferte Umgebung legen. Das erlaubt es nur und schaltet nichts ein. Für einen Dev-Server auf deinem Rechner unnötig. Siehe [Lokalen Code testen](#lokalen-code-testen). |
-| `production` | Pflicht für Namen wie `prod` oder `live`. Eine solche Umgebung kann kein `claude`, `overlay` oder `writable` haben. |
+| `production` | Pflicht für Namen wie `prod` oder `live`. Eine solche Umgebung kann kein `claude`, `overlay` oder `writable` haben. Ein Lauf dort schickt keine schreibenden Requests: Jeder wird abgebrochen und lässt den Schritt mit `write-blocked` scheitern (`reads` nennt Requests, die nur lesen). Läufe auf anderen Umgebungen erreichen ihren Host nie. |
 | `urls` | Statt `url`, wenn du `sites` nutzt: `{ "nord": "https://nord.example.com", … }`. |
 
 Was nicht auf `true` steht, ist aus. Gegen `staging` oben läuft also nur Abspielen, nur lesende Tests, gegen den ausgelieferten Stand.

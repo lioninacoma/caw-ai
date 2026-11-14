@@ -76,7 +76,7 @@ Required. One entry per place your app runs. The name is what you pass to `--env
 | `claude` | `true`: Claude may record, fix and investigate here. |
 | `writable` | `true`: tests with `mutates: true` may run here. |
 | `overlay` | `true`: `--overlay` may lay your local code over this deployed environment. It only allows it and switches nothing on. Not needed for a dev server on your machine. See [Testing local code](#testing-local-code). |
-| `production` | Required for names like `prod` or `live`. Such an environment can't have `claude`, `overlay` or `writable`. |
+| `production` | Required for names like `prod` or `live`. Such an environment can't have `claude`, `overlay` or `writable`. A run there sends no write requests: each one is aborted and fails the step with `write-blocked` (`reads` names requests that only read). Runs on other environments never reach its host. |
 | `urls` | Instead of `url` when you use `sites`: `{ "north": "https://north.example.com", … }`. |
 
 Anything not set to `true` is off. A run against `staging` above replays only, read-only tests only, against the deployed version.

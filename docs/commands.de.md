@@ -351,6 +351,8 @@ Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und 
 | `replay-stale` | 4 | Ein Schritt hat sich seit der Aufnahme geändert: `record <test>@<schritt>` |
 | `step-unknown` | 3 | Eine Schritt-ID aus der Testdatei nehmen (`list <test>`) |
 | `env-invalid`, `env-denied` | 3 | Eine Umgebung aus der Config nehmen; Produktion lässt sich nicht aufnehmen |
+| `host-blocked` | 3 | `goto` zu einem Host, der kein Host der Anwendung ist: in `allowHosts` eintragen, wenn die Anwendung wirklich dorthin navigiert. In einem Lauf ist dieselbe Sperre ein Fehler des Schritts |
+| `env-certificate` | 2 | Dem Zertifikat der Umgebung wird nicht vertraut: bei einer internen Zertifizierungsstelle `environments.<env>.insecureTls: true` setzen |
 | `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `claude` / `writable` an der Umgebung |
 | `auth-missing` | 3 | Datei unter `caw/.auth/` löschen und `auth` erneut ausführen |
 | `credentials-missing` | 2 | `role add <rolle> --env <env>` (im Fenster anmelden), oder die Variablen in der Umgebung oder in `caw/.env` setzen (CI) |
