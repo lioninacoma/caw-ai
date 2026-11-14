@@ -71,7 +71,8 @@ Befehle:`,
                                          aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne Claude (CI, Pre-Commit)',
     'cli.help.doctor': `  doctor [--agent local|docker|session]  Node, Chrome, Claude Code (local) bzw. Docker und Token (docker), Testnutzer und
-                                         Umgebungen prüfen, jeweils mit nächstem Schritt`,
+                                         Umgebungen prüfen, jeweils mit nächstem Schritt
+      [--env <name>]                     nur Testnutzer und Adresse dieser Umgebung`,
     'cli.help.role': `  role [list] [--json]                   Rollen, ob ein Testnutzer gesetzt ist (nie die Werte), und welche Tests sie nutzen
   role add [<rolle>] [--env <name>]      Im Fenster mit einem Testkonto anmelden und die Rolle benennen; caw schreibt
                                          caw/.env und die Config. „+ Weitere Rolle“ für das nächste Konto
@@ -132,7 +133,7 @@ Browser:
     'cli.synopsis.init': 'caw init [--url <adresse>] [--env <name>] [--language <kürzel>] [--explore-only] [--login | --no-login] [--yes] [--from <datei>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
     'cli.synopsis.list': 'caw list [<test>]',
-    'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session]',
+    'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session] [--env <name>]',
     'cli.synopsis.role': 'caw role [list [--json] | add [<rolle>] [--env <name>] | remove <rolle> | login <rolle> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>]',
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>]',
@@ -141,7 +142,7 @@ Browser:
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
-    'cli.doctorUnknownArg': 'doctor kennt {arg} nicht. Erlaubt: --agent local|docker|session',
+    'cli.doctorUnknownArg': 'doctor kennt {arg} nicht. Erlaubt: --agent local|docker|session, --env <name>',
     'cli.doctorAgentValue': '--agent erwartet local, docker oder session.',
     'cli.mcpAgentOnly': 'caw agent mcp startet nur für den Agenten eines Laufs.',
     'cli.unknownCommand': 'Unbekannter Befehl: {command}.{suggestion} Siehe caw --help.',

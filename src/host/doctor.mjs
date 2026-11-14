@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { AUTH_DIR, agentMode, browserLaunch, loadConfig, overlayEnvironments, overlayParts, sessionPath, todoFields } from '../shared/config.mjs';
 import { credentialState, knownCredentialPattern } from '../shared/credentials.mjs';
 import { effectiveEnvironments, usesCredentials, usesTotp } from '../shared/environments.mjs';
+import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
 import { ago } from './code-source.mjs';
@@ -38,7 +39,7 @@ export const isPlaceholderHost = (url) => {
  * @param probes tests only: replaces Chrome, Docker and network
  * @param agent where Claude should run (local, docker, session), otherwise from the config as for run
  */
-export const doctorChecks = async (root, { env = process.env, nodeVersion = process.versions.node, probes = {}, agent } = {}) => {
+export const doctorChecks = async (root, { env = process.env, nodeVersion = process.versions.node, probes = {}, agent, environment } = {}) => {
     const results = [];
     const add = (entry) => results.push(entry);
     const major = Number(nodeVersion.split('.')[0]);
@@ -123,7 +124,11 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     const values = existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {};
     const sources = { processEnv: env, fileEnv: values };
     const roles = Object.keys(config.roles ?? {});
-    for (const { name: target, signIn, gate, production } of Object.values(effectiveEnvironments(config))) {
+    // --env: only that environment (an unknown name is a usage error, so a typo does not look like "all fine").
+    const all = effectiveEnvironments(config);
+    if (environment !== undefined && all[environment] === undefined) throw new CawError('usage', t('config.env.unknownName', { name: environment, names: Object.keys(all).join(', '), hint: '' }));
+    const checked = Object.values(all).filter(({ name }) => environment === undefined || name === environment);
+    for (const { name: target, signIn, gate, production } of checked) {
         if (production) continue;
         if (gate !== undefined) {
             const { missing } = credentialState({ who: 'gate', env: target, sources });
@@ -150,7 +155,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     if (unknown.length > 0) add({ ok: false, optional: true, text: t('cli.doctorEnvUnknown', { file: ENV_FILE, names: unknown.join(', ') }), next: t('cli.doctorEnvUnknownNext', { roles: roles.join(', ') || '–' }) });
 
     const reach = probes.reachable ?? (async (url) => (await import('./run.mjs')).reachable(url));
-    for (const { name: target, url, production } of Object.values(effectiveEnvironments(config))) {
+    for (const { name: target, url, production } of checked) {
         // The tool never contacts production, not even to probe it.
         if (production) continue;
         // A placeholder such as staging.example.com never answers: say so instead of probing it.

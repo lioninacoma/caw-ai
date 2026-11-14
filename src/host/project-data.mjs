@@ -33,7 +33,7 @@ const testBasics = (spec, config) => {
     return problems;
 };
 
-/** Which code runs per target: deployed, and what an overlay would bring (null: no overlay possible; several: a choice is needed). */
+/** Which code runs per environment: deployed, and what an overlay would bring (null: no overlay possible; several: a choice is needed). */
 const codeOn = (spec, target, config) => {
     const code = describeCode(config, spec, checkTest(spec, target, config));
     const overlayWith = (flag) => {
@@ -45,10 +45,10 @@ const codeOn = (spec, target, config) => {
     };
     const plain = overlayWith(true);
     const choices = ['build', 'dev'].map((flag) => ({ flag, code: overlayWith(flag) })).filter(({ code: text }) => text !== null);
-    return { target, code, overlay: plain ?? (choices.length === 0 ? null : Object.fromEntries(choices.map(({ flag, code: text }) => [flag, text]))) };
+    return { env: target, code, overlay: plain ?? (choices.length === 0 ? null : Object.fromEntries(choices.map(({ flag, code: text }) => [flag, text]))) };
 };
 
-/** One test for validate: problems (unrunnable), hints (stale or unrecorded steps) and the code per target. */
+/** One test for validate: problems (unrunnable), hints (stale or unrecorded steps) and the code per environment. */
 const validateTest = (root, id, config) => {
     const file = `${id}.yaml`;
     const entry = { id, problems: [], hints: [], code: [] };
@@ -77,7 +77,7 @@ const validateTest = (root, id, config) => {
 
 /**
  * `caw validate` as data. `ok` is false when the config is invalid or has TODO values, or a test has a problem.
- * @returns { ok, config: { issues, todo, notes }, tests: [{ id, problems, hints, code: [{ target, code, overlay }] }], recordings: { problems, hints } }
+ * @returns { ok, config: { issues, todo, notes }, tests: [{ id, problems, hints, code: [{ env, code, overlay }] }], recordings: { problems, hints } }
  */
 export const validateProject = (root) => {
     const recordings = { problems: [], hints: [] };

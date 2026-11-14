@@ -13,7 +13,7 @@ export default {
     'config.origin.protocol': '"{value}" is not an https origin',
     'config.origin.path': '"{value}": origin only, no path and no trailing / ({origin}); the path goes in "start"',
 
-    // config.mjs: targets and tenants
+    // config.mjs: environments
     'config.removed.renamed': '{key} was renamed to {now}.',
     'config.removed.gone': '{key} was removed: {why}',
     'config.removed.sites': 'tenants are environments now, e.g. "north-dev" and "south-dev" with "extends": "north-dev" and their own url.',
@@ -150,7 +150,7 @@ export default {
     'config.overlay.statics': 'overlay.parts.{name}.statics must be a list, e.g. [{ "name": "Fx/Static.js", "path": "static.js" }]',
     'config.overlay.static': 'overlay.parts.{name}.statics[{index}] needs name and path, nothing else. path is relative to the part\'s dir and may leave it with .. (e.g. a neighbouring package), but must stay inside the project or its workspace; no absolute path',
 
-    // config.mjs: loading and targets
+    // config.mjs: loading and environments
     'config.load.missing': '{file} is missing in {root}. Set up with: npx caw init --url <address>',
     'config.load.invalidJson': '{file} is not valid JSON: {error}',
 

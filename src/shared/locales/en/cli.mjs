@@ -71,7 +71,8 @@ Commands:`,
                                          whether they write; with <test> one line per step`,
     'cli.help.validate': '  validate                               Check config and tests offline, without browser or Claude (CI, pre-commit)',
     'cli.help.doctor': `  doctor [--agent local|docker|session]  Check Node, Chrome, Claude Code (local) or Docker and token (docker),
-                                         test users and environments, each with the next step`,
+                                         test users and environments, each with the next step
+      [--env <name>]                     only this environment's test users and address`,
     'cli.help.role': `  role [list] [--json]                   Roles, whether a test user is set (never the values), and which tests use them
   role add [<role>] [--env <name>]       Sign in with a test account in the window and name the role; caw writes caw/.env
                                          and the config. "+ Another role" for the next account
@@ -131,7 +132,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.init': 'caw init [--url <address>] [--env <name>] [--language <code>] [--explore-only] [--login | --no-login] [--yes] [--from <file>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
     'cli.synopsis.list': 'caw list [<test>]',
-    'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session]',
+    'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session] [--env <name>]',
     'cli.synopsis.role': 'caw role [list [--json] | add [<role>] [--env <name>] | remove <role> | login <role> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  or  caw run <test> <test> … | --all [--env <name>]',
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <role>]  or  caw record <test>@<S4> [--env <name>]',
@@ -140,7 +141,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
     'cli.fromUnreadable': "Can't read {from}: {message}",
-    'cli.doctorUnknownArg': "doctor doesn't know {arg}. Allowed: --agent local|docker|session",
+    'cli.doctorUnknownArg': "doctor doesn't know {arg}. Allowed: --agent local|docker|session, --env <name>",
     'cli.doctorAgentValue': '--agent expects local, docker or session.',
     'cli.mcpAgentOnly': 'caw agent mcp only starts for the agent of a run.',
     'cli.unknownCommand': 'Unknown command: {command}.{suggestion} See caw --help.',

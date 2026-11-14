@@ -71,7 +71,7 @@ test('caw_doctor, caw_validate and caw_list: data with counts, problems and reco
     assert.deepEqual(data.config, { issues: [], todo: [], notes: data.config.notes });
     assert.equal(data.tests[0].id, 'bestellung');
     assert.deepEqual(data.tests[0].problems, []);
-    assert.equal(data.tests[0].code[0].target, 'local');
+    assert.equal(data.tests[0].code[0].env, 'local');
     assert.match(data.tests[0].hints[0], /bestellung\.yaml/);
 
     const listed = (await call('caw_list')).structuredContent;
@@ -219,7 +219,7 @@ test('caw_role add waits for the window and names the roles that got a test user
         return polls < 3;
     };
     const { call, spawned } = session(root, { windowWait: { alive, pollMs: 1 } });
-    const done = await call('caw_role', { action: 'add', name: 'clerk', target: 'local' });
+    const done = await call('caw_role', { action: 'add', name: 'clerk', env: 'local' });
     assert.deepEqual(spawned.at(-1).args.slice(1), ['role', 'add', 'clerk', '--env', 'local']);
     assert.equal(done.structuredContent.state, 'done');
     assert.deepEqual(done.structuredContent.saved, ['clerk']);
@@ -242,13 +242,14 @@ test('caw_explore: its result shows up in caw_status once written', async (t) =>
 });
 
 test('caw_start: typed fields build the command line, mixing with args and wrong fields are refused', async (t) => {
-    assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', target: 'dev', overlay: 'dev', headless: true }),
+    assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', env: 'dev', overlay: 'dev', headless: true }),
         ['bestellung', '--env', 'dev', '--overlay=dev', '--headless']);
     assert.deepEqual(startArgs({ command: 'record', test: 'bestellung', step: 'S3', overlay: true }), ['bestellung@S3', '--overlay']);
     assert.deepEqual(startArgs({ command: 'record', test: 'bestellung' }), ['bestellung']);
-    assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', target: 'dev' }), ['bestellung@S2', '--env', 'dev']);
+    assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', env: 'dev' }), ['bestellung@S2', '--env', 'dev']);
     assert.deepEqual(startArgs({ command: 'open', test: 'bestellung' }), ['bestellung']);
-    assert.deepEqual(startArgs({ command: 'open', target: 'dev', overlay: 'http://localhost:1841' }), ['--env', 'dev', '--overlay=http://localhost:1841']);
+    assert.throws(() => startArgs({ command: 'run', test: 'bestellung', target: 'dev' }), /target heißt jetzt env/);
+    assert.deepEqual(startArgs({ command: 'open', env: 'dev', overlay: 'http://localhost:1841' }), ['--env', 'dev', '--overlay=http://localhost:1841']);
     assert.deepEqual(startArgs({ command: 'record', args: ['x', '--env', 'local'] }), ['x', '--env', 'local']);
     assert.throws(() => startArgs({ command: 'run', test: 'x', args: ['x'] }), /nicht beides/);
     assert.throws(() => startArgs({ command: 'run', test: 'x', zzz: 'S2' }), /zzz gilt nicht für run/, 'a field no command takes');
@@ -263,7 +264,7 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
 
     const root = project(t);
     const { call, spawned } = session(root, { overlayPreconditions: () => ({ state: 'ready' }) });
-    const started = await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', target: 'local' });
+    const started = await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', env: 'local' });
     assert.equal(started.isError, false);
     assert.equal(started.structuredContent.state, 'started');
     assert.deepEqual(spawned[0].args.slice(1), ['open', 'bestellung@S2', '--env', 'local', '--agent', 'session']);
@@ -275,14 +276,14 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
 test('caw_start: open is allowed, config problems come back with their code', async (t) => {
     const root = project(t, { config: null });
     const { call, spawned } = session(root);
-    const missing = await call('caw_start', { command: 'open', target: 'local' });
+    const missing = await call('caw_start', { command: 'open', env: 'local' });
     assert.equal(missing.isError, true);
     assert.equal(missing.structuredContent.code, 'config-missing');
     assert.equal(spawned.length, 0);
     writeFileSync(join(root, 'caw.config.json'), '{ kaputt');
     assert.equal((await call('caw_start', { command: 'open' })).structuredContent.code, 'config-invalid');
     writeFileSync(join(root, 'caw.config.json'), TEMPLATE);
-    await call('caw_start', { command: 'open', target: 'local' });
+    await call('caw_start', { command: 'open', env: 'local' });
     assert.deepEqual(spawned[0].args.slice(1), ['open', '--env', 'local', '--agent', 'session']);
 });
 
@@ -294,13 +295,13 @@ test('caw_start with overlay: a local code server that is not ready returns its 
         return { state: 'down', framework: 'extjs', part: 'web', partDir: 'projects/apps/App', url: 'http://localhost:1841/', start: 'pnpm run watch' };
     };
     const { call, spawned } = session(root, { overlayPreconditions });
-    const result = await call('caw_start', { command: 'run', test: 'bestellung', target: 'local', overlay: true });
+    const result = await call('caw_start', { command: 'run', test: 'bestellung', env: 'local', overlay: true });
     assert.equal(spawned.length, 0, 'nothing started');
     assert.deepEqual(result.structuredContent, { state: 'down', part: 'web', url: 'http://localhost:1841/', start: 'pnpm run watch', partDir: 'projects/apps/App', framework: 'extjs' });
     assert.match(result.content[0].text, /Nicht gestartet \(down\).*http:\/\/localhost:1841\/.*projects\/apps\/App: pnpm run watch/);
     assert.deepEqual(asked[0].options, { target: 'local', part: 'web' });
     // open with a test: every part of overlay.parts; the step does not matter.
-    await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', target: 'local', overlay: true });
+    await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', env: 'local', overlay: true });
     assert.deepEqual(asked.at(-1).options, { target: 'local', part: 'web' });
     asked.pop();
     // Raw args with --overlay are checked as well; without overlay there is no check.
@@ -321,7 +322,7 @@ test('caw_start with overlay: the server on another port starts the run against 
     const root = project(t, { config: OVERLAY_CONFIG });
     const overlayPreconditions = () => ({ state: 'moved', framework: 'extjs', part: 'web', partDir: 'App', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/', start: 'pnpm run watch' });
     const { call, spawned } = session(root, { overlayPreconditions });
-    const typed = await call('caw_start', { command: 'run', test: 'bestellung', target: 'local', overlay: true });
+    const typed = await call('caw_start', { command: 'run', test: 'bestellung', env: 'local', overlay: true });
     assert.equal(typed.structuredContent.state, 'started');
     assert.deepEqual(spawned[0].args.slice(1), ['run', 'bestellung', '--env', 'local', '--overlay=http://localhost:52775/', '--agent', 'session']);
     assert.deepEqual(typed.structuredContent.overlay, { state: 'moved', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/', part: 'web' });
@@ -342,7 +343,7 @@ test('caw_overlay status: overlayStatus in-process, as data; errors come back as
         return reply;
     };
     const { call, spawned } = session(root, { overlayPreconditions, execCli: async () => { throw new Error('no CLI for status'); } });
-    const ready = await call('caw_overlay', { action: 'status', target: 'dev' });
+    const ready = await call('caw_overlay', { action: 'status', env: 'dev' });
     assert.equal(ready.isError, false);
     assert.deepEqual(ready.structuredContent, reply);
     assert.deepEqual(asked[0], { target: 'dev', part: undefined });
@@ -364,7 +365,7 @@ test('caw_overlay check/apply: runs the CLI with --json, returns its result; fal
     let reply = { code: 0, out: `[caw] noise\n${JSON.stringify(result)}\n`, err: '' };
     const execCli = async (args, options) => { calls.push({ args, options }); return typeof reply === 'function' ? reply() : reply; };
     const { call } = session(root, { execCli });
-    const checked = await call('caw_overlay', { action: 'apply', target: 'dev', part: 'antrag' });
+    const checked = await call('caw_overlay', { action: 'apply', env: 'dev', part: 'antrag' });
     assert.deepEqual(calls[0].args, ['overlay', 'check', '--json', '--env', 'dev', '--part', 'antrag', '--apply']);
     assert.equal(calls[0].options.timeoutMs, 180_000);
     assert.deepEqual(checked.structuredContent, { ...result, exit: 0 });
@@ -384,7 +385,7 @@ test('caw_overlay check/apply: runs the CLI with --json, returns its result; fal
     const late = await call('caw_overlay', { action: 'check' });
     assert.equal(late.isError, true);
     assert.equal(late.structuredContent.state, 'timeout');
-    assert.equal((await call('caw_overlay', { action: 'check', target: '--apply' })).isError, true);
+    assert.equal((await call('caw_overlay', { action: 'check', env: '--apply' })).isError, true);
 });
 
 test('caw_status: last run from last-run.json with result, last step and artefacts; newer overlay check', async (t) => {
@@ -405,7 +406,7 @@ test('caw_status: last run from last-run.json with result, last step and artefac
     const data = status.structuredContent;
     assert.equal(data.state, 'ended');
     assert.equal(data.runDir, '.caw/runs/2026-11-11T12-00-00-000Z-bestellung');
-    assert.deepEqual([data.command, data.test, data.target], ['run', 'bestellung', 'local']);
+    assert.deepEqual([data.command, data.test, data.env], ['run', 'bestellung', 'local']);
     assert.deepEqual(data.result, { status: 'fail', code: 1, reason: 'S2: keine Bestätigung', results: verdict.results, failures: [], warnings: ['langsam'] });
     assert.deepEqual(data.lastStep, { id: 'S2', status: 'fail', note: 'keine Bestätigung' });
     const base = '.caw/runs/2026-11-11T12-00-00-000Z-bestellung';

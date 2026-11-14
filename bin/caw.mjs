@@ -121,11 +121,12 @@ const main = async ([command, ...args]) => {
         case 'theme': return (await import('../src/host/theme-command.mjs')).themeCommand(root, args);
         case 'doctor': {
             const [{ doctor }, { createUi }, { optionValue }] = await Promise.all([import('../src/host/doctor.mjs'), import('../src/shared/ui.mjs'), import('../src/host/linux.mjs')]);
-            const unknown = args.filter((arg, index) => arg !== '--agent' && !arg.startsWith('--agent=') && args[index - 1] !== '--agent');
+            const valued = ['--agent', '--env'];
+            const unknown = args.filter((arg, index) => !valued.some((flag) => arg === flag || arg.startsWith(`${flag}=`)) && !valued.includes(args[index - 1]));
             if (unknown.length > 0) throw new CawError('usage', t('cli.doctorUnknownArg', { arg: unknown[0] }));
             const agent = optionValue(args, '--agent');
             if (agent !== undefined && !['local', 'docker', 'session'].includes(agent)) throw new CawError('usage', t('cli.doctorAgentValue'));
-            return doctor(root, { ui: createUi(), agent });
+            return doctor(root, { ui: createUi(), agent, environment: optionValue(args, '--env') });
         }
         case 'overlay': return (await import('../src/host/overlay-check.mjs')).overlayCommand(root, args);
         case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);

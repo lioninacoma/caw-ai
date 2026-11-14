@@ -527,3 +527,23 @@ test('init: environment name and flags (SC-15), --language and --allow-http, exp
     assert.deepEqual(starterConfig(taken).environments.staging.allowHosts, ['login.example.com']);
     assert.equal((await initAnswers(root, ['--language', 'en'], { interactive: false })).answers.language, 'en');
 });
+
+test('doctor --env: only that environment\'s test users and address; an unknown name is a usage error', async (t) => {
+    const { doctorChecks } = await import('../src/host/doctor.mjs');
+    const root = mkdtempSync(join(tmpdir(), 'caw-doctor-env-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    t.mock.method(console, 'log', () => {});
+    init(root, { url: 'http://localhost:5173', signIn: 'form' });
+    const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
+    config.environments.staging = { url: 'https://staging.firma.intern' };
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config, null, 4));
+    const probes = { chrome: async () => {}, claude: () => '2.1.0', reachable: async () => true };
+    const texts = async (environment) => (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, environment })).map(({ text }) => text).join('\n');
+    const all = await texts();
+    assert.match(all, /Rolle tester auf local/);
+    assert.match(all, /Rolle tester auf staging/);
+    const only = await texts('staging');
+    assert.match(only, /Rolle tester auf staging/);
+    assert.doesNotMatch(only, /auf local|local: http/);
+    await assert.rejects(doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, environment: 'prod' }), (error) => error.code === 'usage' && /prod/.test(error.message));
+});

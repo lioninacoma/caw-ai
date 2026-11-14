@@ -56,7 +56,7 @@ config's `overlay` block lists the environments where it is allowed (`overlay.en
 (`overlay.parts.<part>`: `dir`, `url` or `build`, `start`, `statics`). `overlay: true` brings every part with a source;
 `"orders,admin:dev"` only those parts (on the command line `--overlay=orders,admin:dev`).
 
-1. **Check:** `caw_overlay` with `action: status` (or `npx caw overlay status --json`), with `target` as for the run and `part`
+1. **Check:** `caw_overlay` with `action: status` (or `npx caw overlay status --json`), with `env` as for the run and `part`
    when there are several parts.
    - `ready`: start the run.
    - `moved`: the part's server runs at `foundUrl`. Set `overlay.parts.<part>.url` to it with `caw_config` and tell the human.
@@ -111,7 +111,7 @@ you add what can only be learned from the code or from the human:
      check once more; several sources give several patterns. Only if a source stays unresolved, show the human its URLs.
    Ask only what you cannot decide from the code: an environment you cannot classify.
 5. **Test users:** never ask for user names or passwords and never write `caw/.env`. Roles come from the explore window; more with
-   `caw_role` (`add`, `name` from the code, `target`): the window opens, the human signs in and saves, and the tool returns the saved roles. `caw_role list` shows per
+   `caw_role` (`add`, `name` from the code, `env`): the window opens, the human signs in and saves, and the tool returns the saved roles. `caw_role list` shows per
    environment which role still has no test user. The names in `caw/.env` follow `CAW_<ROLE>_USER` and `CAW_<ROLE>_PASSWORD`
    (`__<ENV>` at the end for an account of one environment); the human enters them, in CI they are secrets with the same names.
 6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
@@ -136,7 +136,7 @@ its own Claude (`--agent session`). With the tools from `caw mcp` (in `.mcp.json
    questions and decisions in the workbench chat and answers there.
 4. **Setup and checks without tokens:** `caw_doctor`, `caw_validate`, `caw_list`, `caw_config` (`read`, or `patch` with `dryRun`;
    it writes only a valid config), `caw_init`, `caw_explore` (needs `login` or `yes`), `caw_role` (`list`, `add`, `remove`) and `caw_overlay` (`status`, `check`, `apply`).
-   Results come as JSON (`structuredContent`). `caw_start` takes typed fields (`command`, `test`, `target`, `step`, `overlay`,
+   Results come as JSON (`structuredContent`). `caw_start` takes typed fields (`command`, `test`, `env`, `step`, `overlay`,
    `headless`): `step` (e.g. `S3`, only with `test`) re-records from there for `record` and lands at its entry for `open`;
    `headless` only for `run`. With `overlay` it checks the local code server first and, if it is not ready, returns `state`, `url`,
    `start` and `partDir` instead of starting (then proceed as under "Local code"). You are the agent: caw asks

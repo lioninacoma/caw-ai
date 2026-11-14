@@ -25,11 +25,15 @@ const OVERLAY_CHECK_FILE = 'overlay-check.json';
 const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
 /** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
-    run: { needs: ['test'], takes: ['test', 'target', 'overlay', 'headless'] },
-    record: { needs: ['test'], takes: ['test', 'step', 'target', 'overlay'] },
-    open: { needs: [], takes: ['test', 'step', 'target', 'overlay'] },
+    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless'] },
+    record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay'] },
+    open: { needs: [], takes: ['test', 'step', 'env', 'overlay'] },
 };
-const TYPED = ['test', 'target', 'step', 'overlay', 'headless'];
+const TYPED = ['test', 'env', 'step', 'overlay', 'headless'];
+/** A field renamed before 1.0: named with its new name instead of "does not apply". */
+const renamedField = (input) => {
+    if (input?.target !== undefined) throw new Error(t('run.mcp.fieldRenamed', { field: 'target', now: 'env' }));
+};
 const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings'];
 const RUN_ARTEFACTS = ['report.md', 'result.json', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
@@ -144,6 +148,7 @@ const isOverlayInput = (value) => value === true || (typeof value === 'string' &
 
 /** The command line from the typed fields of caw_start, or the raw `args`. Throws with a message for Claude. */
 export const startArgs = (input) => {
+    renamedField(input);
     const { command } = input;
     if (!START_COMMANDS.includes(command)) throw new Error(t('run.mcp.commandInvalid', { list: START_COMMANDS.join(', ') }));
     const given = TYPED.filter((field) => input[field] !== undefined && input[field] !== false);
@@ -159,7 +164,7 @@ export const startArgs = (input) => {
     if (extra !== undefined) throw new Error(t('run.mcp.fieldNotFor', { field: extra, command }));
     const missing = needs.find((field) => !given.includes(field));
     if (missing !== undefined) throw new Error(t('run.mcp.fieldMissing', { field: missing, command }));
-    for (const field of ['test', 'target', 'step']) {
+    for (const field of ['test', 'env', 'step']) {
         if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field] === '' || input[field].startsWith('-'))) throw new Error(t('run.mcp.fieldText', { field }));
     }
     // A step without its test: open would open without a test and drop it.
@@ -168,7 +173,7 @@ export const startArgs = (input) => {
     if (given.includes('headless') && input.headless !== true) throw new Error(t('run.mcp.fieldText', { field: 'headless' }));
     const args = [];
     if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
-    if (input.target !== undefined) args.push('--env', input.target);
+    if (input.env !== undefined) args.push('--env', input.env);
     if (given.includes('overlay')) args.push(input.overlay === true ? '--overlay' : `--overlay=${input.overlay}`);
     if (input.headless === true) args.push('--headless');
     return args;
@@ -189,7 +194,7 @@ const fromArgs = (args) => {
     const position = args.indexOf('--env');
     const overlay = overlayAt(args);
     return {
-        target: inline?.slice('--env='.length) ?? (position === -1 ? undefined : args[position + 1]),
+        env: inline?.slice('--env='.length) ?? (position === -1 ? undefined : args[position + 1]),
         overlay: overlay !== undefined,
         overlayValue: overlay?.value,
         test: args[0] === undefined || args[0].startsWith('-') ? undefined : args[0].split('@')[0],
@@ -275,7 +280,8 @@ const statusData = (root, { waiting, running, log }) => {
     if (meta !== undefined) data.started = { command: meta.command, args: meta.args, pid: meta.pid, startedAt: meta.startedAt };
     if (run !== undefined) {
         Object.assign(data, { runId: run.runId, runDir: shown(root, run.runDir) });
-        for (const key of ['command', 'test', 'target', 'startedAt']) if (run[key] !== undefined) data[key] = run[key];
+        for (const key of ['command', 'test', 'startedAt']) if (run[key] !== undefined) data[key] = run[key];
+        if (run.target !== undefined) data.env = run.target;
         const result = readJson(join(run.runDir, 'result.json'));
         if (result !== undefined) {
             data.result = Object.fromEntries(RESULT_FIELDS.filter((key) => result[key] !== undefined).map((key) => [key, result[key]]));
@@ -318,7 +324,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_start',
         description: 'Starts a caw-ai command in the background with you as the agent (--agent session); the window opens for the human. '
-            + 'command: run, record or open. Typed fields: test, target, step (record: re-record from this step to the end; open: stop at the '
+            + 'command: run, record or open. Typed fields: test, env, step (record: re-record from this step to the end; open: stop at the '
             + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
             + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
@@ -331,7 +337,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             properties: {
                 command: { type: 'string', enum: START_COMMANDS },
                 test: { type: 'string' },
-                target: { type: 'string' },
+                env: { type: 'string', description: 'The environment (--env); without it caw picks the only fitting one or says which to choose' },
                 step: { type: 'string', description: 'record: re-record from this step to the end; open: hand over at the entry of this step. E.g. S3, needs test' },
                 overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
                 headless: { type: 'boolean' },
@@ -362,7 +368,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 for (const part of parts) {
                     let found;
                     try {
-                        found = await check?.(root, config, { target: given.target, part });
+                        found = await check?.(root, config, { target: given.env, part });
                     } catch {
                         // The command itself reports what is wrong with the overlay.
                     }
@@ -436,10 +442,10 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_doctor',
         description: 'caw doctor as data: every check with ok, text, next step and whether it is optional (only needed for runs with Claude). No tokens.',
-        inputSchema: { type: 'object', properties: { agent: { type: 'string', enum: ['local', 'docker', 'session'] } }, additionalProperties: false },
+        inputSchema: { type: 'object', properties: { agent: { type: 'string', enum: ['local', 'docker', 'session'] }, env: { type: 'string', description: 'Only this environment\'s test users and address' } }, additionalProperties: false },
         call: async (input) => {
             const { doctorChecks } = await import('./doctor.mjs');
-            const checks = await doctorChecks(root, { agent: input.agent, ...(probes === undefined ? {} : { probes }) });
+            const checks = await doctorChecks(root, { agent: input.agent, environment: input.env, ...(probes === undefined ? {} : { probes }) });
             const counts = {
                 ok: checks.filter(({ ok }) => ok).length,
                 blocking: checks.filter(({ ok, optional }) => !ok && !optional).length,
@@ -450,7 +456,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_validate',
-        description: 'caw validate as data: config issues, TODO fields and notes; per test problems, hints and which code runs per target. No browser, no tokens.',
+        description: 'caw validate as data: config issues, TODO fields and notes; per test problems, hints and which code runs per environment. No browser, no tokens.',
         inputSchema: EMPTY,
         call: async () => {
             const { validateProject } = await import('./project-data.mjs');
@@ -461,7 +467,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_list',
-        description: 'caw list as data: per test the start path, role, targets, whether it writes, and the recording state of each step. No tokens.',
+        description: 'caw list as data: per test the start path, role, the environments it runs on, whether it writes, and the recording state of each step. No tokens.',
         inputSchema: EMPTY,
         call: async () => {
             const { listProject } = await import('./project-data.mjs');
@@ -570,17 +576,18 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_role',
         description: 'Roles and their test users. action list: per role whether a test user is set (never the values) and which tests use it. '
-            + 'action add: opens a window on the sign-in page of target; the human signs in and saves the role (name prefilled), caw-ai writes '
+            + 'action add: opens a window on the sign-in page of env; the human signs in and saves the role (name prefilled), caw-ai writes '
             + 'caw/.env and the config; waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the saved roles. '
             + 'You never ask for or see user names or passwords. action remove: a role no test uses. Derive role names '
             + 'from the code (permissions, seed users). Not needed before record: a test whose role has no test user opens that window itself. No tokens.',
         inputSchema: {
             type: 'object',
-            properties: { action: { type: 'string', enum: ['list', 'add', 'remove'] }, name: { type: 'string' }, target: { type: 'string' }, wait: { type: 'boolean' } },
+            properties: { action: { type: 'string', enum: ['list', 'add', 'remove'] }, name: { type: 'string' }, env: { type: 'string' }, wait: { type: 'boolean' } },
             required: ['action'],
             additionalProperties: false,
         },
         call: async (input) => {
+            renamedField(input);
             const { roleOverview, removeRole } = await import('./role-command.mjs');
             if (input.action === 'list') {
                 const data = roleOverview(root);
@@ -593,7 +600,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             }
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
-            const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.target === undefined ? [] : ['--env', input.target])];
+            const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.env === undefined ? [] : ['--env', input.env])];
             const ready = (overview) => new Set(overview.roles.flatMap(({ name, environments }) => environments.filter(({ state }) => state === 'set').map(({ env }) => `${name}@${env}`)));
             const before = ready(roleOverview(root));
             const { log, pid } = spawnDetached({ root, command: 'role', args, spawnRun });
@@ -619,26 +626,27 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'suggested overlay.assetUrlPattern; action apply: the same and writes the suggestions into the config. check and apply wait up to 3 minutes. No tokens.',
         inputSchema: {
             type: 'object',
-            properties: { action: { type: 'string', enum: ['status', 'check', 'apply'] }, target: { type: 'string' }, part: { type: 'string' } },
+            properties: { action: { type: 'string', enum: ['status', 'check', 'apply'] }, env: { type: 'string' }, part: { type: 'string' } },
             required: ['action'],
             additionalProperties: false,
         },
         call: async (input) => {
             if (!['status', 'check', 'apply'].includes(input.action)) throw new Error(t('run.mcp.overlayAction'));
-            for (const field of ['target', 'part']) if (input[field] !== undefined) textField(input, field);
+            renamedField(input);
+            for (const field of ['env', 'part']) if (input[field] !== undefined) textField(input, field);
             if (input.action === 'status') {
                 // In-process and silent: the MCP stdout carries only JSON-RPC.
                 let data;
                 try {
                     const status = overlayPreconditions ?? await defaultOverlayPreconditions();
-                    data = await status(root, loadConfig(root), { target: input.target, part: input.part });
+                    data = await status(root, loadConfig(root), { target: input.env, part: input.part });
                 } catch (error) {
                     return answer(`${t('run.mcp.overlayStatus', { state: 'error' })} ${String(error.message).split('\n')[0]}`, { state: 'error', code: error.code ?? 'error', message: error.message }, true);
                 }
                 return answer(`${t('run.mcp.overlayStatus', { state: data.state })}${data.message === undefined ? '' : ` ${data.message}`}`, data);
             }
             const args = ['overlay', 'check', '--json'];
-            for (const [field, flag] of [['target', '--env'], ['part', '--part']]) if (input[field] !== undefined) args.push(flag, input[field]);
+            for (const [field, flag] of [['env', '--env'], ['part', '--part']]) if (input[field] !== undefined) args.push(flag, input[field]);
             if (input.action === 'apply') args.push('--apply');
             const startedAt = Date.now();
             const { code, out = '', err = '', timedOut } = await execCli(args, { timeoutMs: OVERLAY_CHECK_TIMEOUT_MS });
