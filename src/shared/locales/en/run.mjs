@@ -65,6 +65,8 @@ export default {
     'run.tokens.declined': 'Continuing without Claude',
     'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} are still TODO. Enter them in caw.config.json; npx caw doctor shows what is still missing.` : `${keys} is still TODO. Enter it in caw.config.json; npx caw doctor shows what is still missing.`),
     'run.error.unreachable': '{url} is not reachable.',
+    'run.error.certificate': 'The certificate of {host} is not trusted ({reason}). For an internal environment with its own certificate authority set environments.{env}.insecureTls: true in caw.config.json.',
+    'run.error.certificateAnyway': 'The certificate of {host} is not trusted ({reason}), although environments.{env}.insecureTls is set.',
     'run.openingChrome': 'Opening Chrome and signing in ...',
     'run.allowHttp': '{target} is plain http on {host} (allowHttp): everything, including the sign-in, travels unencrypted.',
     'run.channelError': 'Channel: {message}',

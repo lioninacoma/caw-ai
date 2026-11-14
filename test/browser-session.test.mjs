@@ -5,15 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { browserArgs, isBrowserClosedError, removeProfile, sweepStaleProfiles, trackAgentPages, unwrapLaunchError, watchBroken } from '../src/host/browser-session.mjs';
+import { browserArgs, isBrowserClosedError, removeProfile, sweepStaleProfiles, trackAgentPages, watchBroken } from '../src/host/browser-session.mjs';
+import { createPlaywrightLauncher } from '../src/host/devlink-core.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 
-test('unwrapLaunchError: the sign-in error surfaces, anything else stays as it is', () => {
-    const login = new CawError('login-failed', 'sign-in');
-    assert.equal(unwrapLaunchError(new Error('Could not launch', { cause: login })), login);
-    const other = new Error('Could not launch', { cause: new Error('no Chrome') });
-    assert.equal(unwrapLaunchError(other), other);
-    assert.equal(unwrapLaunchError(login), login);
+test('launcher: a failure after Chrome started (sign-in) keeps its own message; a real launch failure names Chrome', async () => {
+    const login = Object.assign(new CawError('login-failed', 'sign-in'), { afterLaunch: true });
+    await assert.rejects(createPlaywrightLauncher(async () => { throw login; }).launch({ profileDir: 'x' }), (error) => error === login);
+    const navigation = Object.assign(new Error('page.goto: net::ERR_CONNECTION_REFUSED at http://ci.localhost/login'), { afterLaunch: true });
+    await assert.rejects(createPlaywrightLauncher(async () => { throw navigation; }).launch({ profileDir: 'x' }), (error) => error === navigation);
+    await assert.rejects(createPlaywrightLauncher(async () => { throw new Error('no Chrome'); }).launch({ profileDir: 'x' }), /Could not launch the host's Chrome/);
 });
 
 test('removeProfile: retries while Chrome holds files, and never throws', async () => {
@@ -132,4 +133,17 @@ test('Writing calls: sign-in, sign-out, session and token do not count, business
     assert.equal(label('PUT', '/api/user/login-hint'), 'PUT /api/user/login-hint');
     assert.equal(label('GET', '/api/files'), null);
     assert.equal(writeLabel({ method: 'POST', url: 'http://x/c?action=login' }, ['action']), 'action login', 'requestKeys take precedence');
+});
+
+test('certificateError: an untrusted certificate becomes an environment error naming insecureTls; anything else stays', async () => {
+    const { certificateError } = await import('../src/host/run.mjs');
+    const { exitOf } = await import('../src/shared/errors.mjs');
+    const cert = new Error('page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://tls.localhost:18444/login\nCall log: ...');
+    const error = certificateError(cert, { name: 'tls', insecureTls: false });
+    assert.equal(error.code, 'env-certificate');
+    assert.equal(exitOf(error.code), 2);
+    assert.match(error.message, /tls\.localhost:18444.*ERR_CERT_AUTHORITY_INVALID.*environments\.tls\.insecureTls: true/);
+    assert.match(certificateError(cert, { name: 'tls', insecureTls: true }).message, /obwohl environments\.tls\.insecureTls gesetzt ist/);
+    assert.equal(certificateError(new Error('page.goto: net::ERR_CONNECTION_REFUSED at http://x/'), { name: 'tls' }), null);
+    assert.equal(certificateError(new CawError('login-failed', 'net::ERR_CERT_DATE_INVALID at https://x/'), { name: 'tls' }), null);
 });

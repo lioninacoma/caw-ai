@@ -40,3 +40,5 @@ e2e/frameworks/.caw-home/
 e2e/frameworks/result/
 e2e/frameworks/shared/.cert/
 
+# spa fixture: the project is written by e2e/spa/project.mjs before every group.
+e2e/spa/work/

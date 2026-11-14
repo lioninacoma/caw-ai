@@ -78,6 +78,28 @@ test('trace: a sign-in after the start is paused out of the trace, before and af
     assert.ok(countInZip(join(dir, 'trace.zip'), 'Application') > 0, 'what follows the sign-in is traced');
 });
 
+test('trace: Basic credentials in the context options are masked in the saved trace, the trace stays readable', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const dir = mkdtempSync(join(tmpdir(), 'caw-trace-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const context = await browser.newContext({ httpCredentials: { username: 'gate.user', password: PASSWORD, origin: base } });
+    const page = await context.newPage();
+    const raw = createTrace(context, { path: join(dir, 'raw.zip'), options: { screenshots: false, snapshots: false } });
+    await raw.start();
+    await page.goto(base);
+    await raw.stop();
+    assert.ok(countInZip(join(dir, 'raw.zip'), PASSWORD) > 0, 'without secrets Playwright keeps the password (the case this guards)');
+    const trace = createTrace(context, { path: join(dir, 'trace.zip'), options: { screenshots: true, snapshots: true }, secrets: () => [PASSWORD] });
+    await trace.start();
+    await page.goto(base);
+    await page.click('#app');
+    await trace.stop();
+    await context.close();
+    assert.equal(countInZip(join(dir, 'trace.zip'), PASSWORD), 0);
+    assert.ok(countInZip(join(dir, 'trace.zip'), 'gate.user') > 0, 'the rest of the options is kept');
+    assert.ok(countInZip(join(dir, 'trace.zip'), 'Application') > 0, 'the page is still in the trace');
+});
+
 test('readiness: a ticker and a permanent spinner settle with readyIgnore; spinners outside the view never count', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const page = await browser.newPage();

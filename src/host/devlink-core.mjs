@@ -273,7 +273,8 @@ const createPlaywrightLauncher = (launchPersistentContext = (userDataDir, option
     try {
       context = await launchPersistentContext(opts.profileDir, options);
     } catch (launchError) {
-      if (opts.executablePath === void 0) {
+      // Errors after Chrome started (the caller marks them) are not launch problems.
+      if (opts.executablePath === void 0 && launchError?.afterLaunch !== true) {
         throw new Error(
           `Could not launch the host's Chrome via channel '${channel}'. Install Chrome, or set LaunchOptions.executablePath to a Chrome/Chromium binary as the escape hatch.`,
           { cause: launchError }

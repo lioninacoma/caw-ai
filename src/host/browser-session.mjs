@@ -19,6 +19,7 @@ import { registerEngines } from './framework/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
+import { scrubTrace } from './trace-scrub.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
 import { PREP, openWorkbench } from './workbench.mjs';
 
@@ -593,9 +594,11 @@ export const readyIgnoreOf = (config) => (Array.isArray(config?.readyIgnore) ? c
  * The trace of a run, in parts if needed: `pause` stops it around a sign-in and starts a new one afterwards. What came before is
  * saved as trace-1.zip, trace-2.zip and so on next to trace.zip, which holds the last part. Playwright records network entries
  * across chunks, so only a full stop keeps the typed password, the field values and the POST body of a sign-in out of every part.
+ * Every saved part is scrubbed of the session's secrets: Playwright writes the context options, a Basic password among them.
  * @param options for tracing.start
+ * @param secrets the values to mask, read at each stop
  */
-export const createTrace = (context, { path, options }) => {
+export const createTrace = (context, { path, options, secrets = () => [] }) => {
     let running = false;
     let parts = 0;
     const partPath = () => (path.endsWith('.zip') ? `${path.slice(0, -'.zip'.length)}-${parts}.zip` : `${path}-${parts}`);
@@ -608,6 +611,7 @@ export const createTrace = (context, { path, options }) => {
             if (!running) return;
             running = false;
             await context.tracing.stop({ path }).catch(() => {});
+            scrubTrace(path, secrets());
         },
         /** Runs `work` without tracing. */
         pause: async (work) => {
@@ -615,6 +619,7 @@ export const createTrace = (context, { path, options }) => {
             running = false;
             parts += 1;
             await context.tracing.stop({ path: partPath() }).catch(() => {});
+            scrubTrace(partPath(), secrets());
             try {
                 return await work();
             } finally {
@@ -679,9 +684,6 @@ const launchChrome = async (profileDir, hosts, { headless = false, insecureTls =
  * "Copy" button. Other origins do not get it.
  */
 export const grantClipboard = (context, url) => context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(url).origin });
-
-/** devlink wraps every launch error as "Chrome could not be started". The real reason is in `cause`. */
-export const unwrapLaunchError = (error) => (error?.cause instanceof CawError ? error.cause : error);
 
 const FLOATS_BINDING = '__cawFloats';
 const FLOATS_MAX_LINES = 5000;
@@ -897,6 +899,16 @@ export const openBrowserSession = async (spec) => {
                 : credentials?.gate === undefined ? undefined : { ...credentials.gate, origin };
             raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: resolved.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
             raw.on('close', closedSignal);
+            // Chrome runs: whatever fails from here (sign-in, a session file) is not a launch problem and keeps its own message.
+            try {
+                await prepareSignedIn();
+            } catch (error) {
+                if (error !== null && typeof error === 'object') error.afterLaunch = true;
+                throw error;
+            }
+            return raw;
+        });
+        async function prepareSignedIn() {
             await grantClipboard(raw, resolved.url);
             timing.chrome = Date.now();
             // With the workbench: only its tab, not the application's popups (window.open, target=_blank), where the human demonstrates too.
@@ -906,8 +918,7 @@ export const openBrowserSession = async (spec) => {
             // Via the app's own sign-in page, so the application does not load once before the local code is injected.
             if (auth.type === 'form') await formLogin();
             timing.login = Date.now();
-            return raw;
-        });
+        }
         devlinkHost = createDevlinkHost(devlinkConfig, {
             launcher,
             now: () => Date.now(),
@@ -1144,7 +1155,7 @@ export const openBrowserSession = async (spec) => {
         // Snapshots put requests including headers into the trace; with basic auth the password would be in the Authorization header.
         // With the workbench a human is watching: continuous screenshots made the page noticeably sluggish (and the trace huge).
         // Every later sign-in (signInAgain) pauses it.
-        trace = createTrace(raw, { path: spec.tracePath, options: { screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' } });
+        trace = createTrace(raw, { path: spec.tracePath, options: { screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' }, secrets: () => [...passwords, ...codes, ...hidden] });
         await trace.start();
 
         // devlinkHost.start() only hooks in the interception after loading the start page; so this navigation is the first
@@ -1316,6 +1327,6 @@ export const openBrowserSession = async (spec) => {
         };
     } catch (error) {
         await close();
-        throw unwrapLaunchError(error);
+        throw error;
     }
 };

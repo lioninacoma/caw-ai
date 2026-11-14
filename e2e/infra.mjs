@@ -84,6 +84,25 @@ export const checkImages = async (images) => {
 export const imagesOf = (file) => [...readFileSync(file, 'utf8').matchAll(/^\s*image:\s*["']?([^"'\s#]+)/gm)].map((match) => match[1]);
 
 /**
+ * WSL stops its VM, and with it Docker and every container, once no wsl.exe process is left (measured: Keycloak exited 255
+ * seconds after the last docker command). While a stack is up one idle wsl.exe keeps it running; it ends with the last stack.
+ * A plain process, no setting changes.
+ */
+let keeper = null;
+let stacksUp = 0;
+const holdWsl = async () => {
+    stacksUp += 1;
+    if (keeper !== null || (await dockerRoute()).kind !== 'wsl') return;
+    keeper = spawn('wsl.exe', ['-e', 'sleep', 'infinity'], { stdio: 'ignore', windowsHide: true });
+    keeper.on('exit', () => { keeper = null; });
+    process.once('exit', () => keeper?.kill());
+};
+const releaseWsl = () => {
+    stacksUp = Math.max(0, stacksUp - 1);
+    if (stacksUp === 0) keeper?.kill();
+};
+
+/**
  * A compose stack under its own project name (caw-e2e-<name>), so groups never share containers. `down` removes volumes:
  * every group starts from the seeded state. CAW_E2E_KEEP=1 leaves the stack running for debugging.
  */
@@ -95,11 +114,13 @@ export const composeStack = (name, file) => {
         project,
         up: async () => {
             await checkImages(imagesOf(file));
+            await holdWsl();
             await run(['up', '-d', '--wait', '--wait-timeout', '240']);
         },
         down: async () => {
             if (process.env.CAW_E2E_KEEP === '1') return;
             await run(['down', '-v', '--remove-orphans']);
+            releaseWsl();
         },
         exec: (service, command) => run(['exec', '-T', service, ...command]),
     };

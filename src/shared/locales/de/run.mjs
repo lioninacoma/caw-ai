@@ -65,6 +65,8 @@ export default {
     'run.tokens.declined': 'Ohne Claude weiter',
     'run.error.todo': ({ keys }) => (String(keys).includes(',') ? `${keys} stehen noch auf TODO. Trag sie in caw.config.json ein; npx caw doctor zeigt, was noch fehlt.` : `${keys} steht noch auf TODO. Trag es in caw.config.json ein; npx caw doctor zeigt, was noch fehlt.`),
     'run.error.unreachable': '{url} ist nicht erreichbar.',
+    'run.error.certificate': 'Dem Zertifikat von {host} wird nicht vertraut ({reason}). Für eine interne Umgebung mit eigener Zertifizierungsstelle in caw.config.json environments.{env}.insecureTls: true setzen.',
+    'run.error.certificateAnyway': 'Dem Zertifikat von {host} wird nicht vertraut ({reason}), obwohl environments.{env}.insecureTls gesetzt ist.',
     'run.openingChrome': 'Öffne Chrome und melde an ...',
     'run.allowHttp': '{target} läuft über unverschlüsseltes http auf {host} (allowHttp): Alles, auch die Anmeldung, geht unverschlüsselt übers Netz.',
     'run.channelError': 'Kanal: {message}',

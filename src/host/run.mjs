@@ -184,6 +184,22 @@ export const ignorableFailures = (failures) => failures.length > 0 && failures.e
 export const embedsApp = (interactive) => interactive === true;
 
 /**
+ * A certificate Chrome does not trust (self-signed, an internal authority) while opening the environment or signing in: an
+ * environment error that names the switch, instead of Chrome's net::ERR_CERT_… line. null for anything else.
+ */
+export const certificateError = (error, checked) => {
+    const match = /net::(ERR_CERT_[A-Z_]+) at (\S+)/.exec(String(error?.message ?? ''));
+    if (match === null || error instanceof CawError) return null;
+    let host = match[2];
+    try {
+        host = new URL(match[2]).host;
+    } catch {
+        // keep the text
+    }
+    return new CawError('env-certificate', t(checked.insecureTls ? 'run.error.certificateAnyway' : 'run.error.certificate', { host, env: checked.name, reason: match[1] }));
+};
+
+/**
  * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
  * @param interactive with a chat, i.e. with a human in front of it
  */
@@ -230,6 +246,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         });
     } catch (error) {
         overlay?.stop();
+        const certificate = certificateError(error, checked);
+        if (certificate !== null) throw certificate;
         const { isLoginFailure, offerAuthRepair } = await import('./login-repair.mjs');
         if (isLoginFailure(error)) {
             // Spend tokens only where Claude runs anyway: with a chat and on a target with claude. Otherwise just point the way.

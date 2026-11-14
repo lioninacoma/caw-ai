@@ -7,6 +7,7 @@
 // portal e2e/portal.mjs), scenarios/matrix.mjs (N14, the framework matrix e2e/frameworks).
 import { print, runScenarios, tally } from './harness.mjs';
 import { scenarios as core } from './scenarios/core.mjs';
+import { scenarios as environments } from './scenarios/environments.mjs';
 import { scenarios as infra } from './scenarios/infra.mjs';
 import { scenarios as matrix } from './scenarios/matrix.mjs';
 import { scenarios as native } from './scenarios/native.mjs';
@@ -19,6 +20,6 @@ setTimeout(() => {
     process.exit(9);
 }, LIMIT_MS).unref();
 
-await runScenarios([...infra, ...core, ...native, ...portal, ...matrix], process.argv.slice(2).join(','));
+await runScenarios([...infra, ...core, ...environments, ...native, ...portal, ...matrix], process.argv.slice(2).join(','));
 print(`RESULT OK=${tally.ok} FAIL=${tally.fail} SKIP=${tally.skip}`);
 process.exit(tally.fail > 0 ? 1 : 0);

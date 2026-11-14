@@ -1,0 +1,39 @@
+{
+    "realm": "caw-e2e",
+    "enabled": true,
+    "sslRequired": "none",
+    "loginWithEmailAllowed": false,
+    "clients": [
+        {
+            "clientId": "spa-ci",
+            "enabled": true,
+            "protocol": "openid-connect",
+            "publicClient": false,
+            "secret": "e2e-spa-secret-fictitious",
+            "standardFlowEnabled": true,
+            "directAccessGrantsEnabled": false,
+            "redirectUris": ["http://ci.localhost:18080/callback"],
+            "webOrigins": ["http://ci.localhost:18080"]
+        }
+    ],
+    "users": [
+        {
+            "username": "qa.clerk",
+            "enabled": true,
+            "emailVerified": true,
+            "firstName": "QA",
+            "lastName": "Clerk",
+            "email": "qa.clerk@example.test",
+            "credentials": [{ "type": "password", "value": "qa-clerk-pw-e2e", "temporary": false }]
+        },
+        {
+            "username": "qa.admin",
+            "enabled": true,
+            "emailVerified": true,
+            "firstName": "QA",
+            "lastName": "Admin",
+            "email": "qa.admin@example.test",
+            "credentials": [{ "type": "password", "value": "qa-admin-pw-e2e", "temporary": false }]
+        }
+    ]
+}
