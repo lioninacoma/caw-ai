@@ -10,6 +10,8 @@ const FILE = 'prefs.json';
 // Allowed values or a check per key. `theme`: name of a built-in or custom theme.
 const KNOWN = {
     animations: ['on', 'off'], steps: ['open', 'closed'], chat: ['open', 'closed'], tokenNotice: ['on', 'off'],
+    // The personal UI language; CAW_LANG wins over it.
+    language: ['de', 'en'],
     theme: (value) => typeof value === 'string' && /^[a-z0-9-]{1,32}$/.test(value),
 };
 const allowed = (key, value) => (typeof KNOWN[key] === 'function' ? KNOWN[key](value) === true : KNOWN[key]?.includes(value) === true);

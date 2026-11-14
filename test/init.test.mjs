@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 import { init, record, run, starterConfig, validate } from '../src/host/commands.mjs';
 import { roleCommand } from '../src/host/role-command.mjs';
+import { validateConfig } from '../src/shared/config.mjs';
 import { exitOf } from '../src/shared/errors.mjs';
 
 test('init: passes validate at once, creates no example test, credentials are git-ignored', (t) => {
@@ -338,7 +339,7 @@ test('init: explore is required, asks for address and roles, checks every answer
     let shown = '';
     output.on('data', (chunk) => { shown += chunk; });
     const asked = initAnswers(root, ['--insecure-tls'], { interactive: true, runExplore, input, output });
-    for (const line of ['ftp://x', '', 'Admin', 'admin, sach-bearbeiter']) {
+    for (const line of ['ftp://x', '', 'Admin', 'admin, sach-bearbeiter', 'Deutsch', 'fr']) {
         await new Promise((resolveTick) => { setTimeout(resolveTick, 20); });
         input.write(`${line}\n`);
     }
@@ -346,6 +347,9 @@ test('init: explore is required, asks for address and roles, checks every answer
     assert.deepEqual(explored, [{ args: ['--url', 'http://localhost:5173', '--insecure-tls'], options: { next: false } }]);
     assert.equal(answers.framework, 'react');
     assert.deepEqual(answers.roles, ['admin', 'sach-bearbeiter']);
+    assert.equal(answers.language, 'fr', 'the team language is asked, any language code');
+    assert.match(shown, /Teamsprache „Deutsch“: ein Sprachkürzel/);
+    assert.equal(answers.env, undefined, 'no name asked on this machine: local');
     assert.match(shown, /http:\/\/ oder https:\/\//);
     assert.match(shown, /„Admin“: nur Kleinbuchstaben/);
     init(root, answers);
@@ -488,4 +492,38 @@ test('doctor: overlay lines for ExtJS (bootstrap.json, local code server, last o
         [false, 'dev, Teil web: modell ausgeliefert (geprüft vor 5 min)'],
     ]);
     assert.match(lines[3].next, /--apply/);
+});
+
+test('init: environment name and flags (SC-15), --language and --allow-http, explore suggests <html lang> and IdP hosts', async (t) => {
+    const { defaultEnvName, initAnswers } = await import('../src/host/commands.mjs');
+    t.mock.method(console, 'log', () => {});
+    assert.equal(defaultEnvName(undefined), 'local');
+    assert.equal(defaultEnvName('http://shop.localhost:3000'), 'local');
+    assert.equal(defaultEnvName('https://staging.example.com'), 'staging');
+    assert.equal(defaultEnvName('https://QA_1.example.com'), 'qa-1');
+    assert.equal(defaultEnvName('https://10.0.0.5'), 'app', 'an address without a usable label');
+    const environment = (answers) => Object.entries(starterConfig(answers).environments)[0];
+    assert.deepEqual(environment({ url: 'http://localhost:5173' }), ['local', { url: 'http://localhost:5173', claude: true, writable: true }]);
+    assert.deepEqual(environment({ url: 'https://staging.example.com', insecureTls: true, allowHosts: ['login.example.com'] }),
+        ['staging', { url: 'https://staging.example.com', claude: true, writable: false, insecureTls: true, allowHosts: ['login.example.com'] }]);
+    assert.deepEqual(environment({ url: 'https://www.shop.example', env: 'live' }), ['live', { url: 'https://www.shop.example', production: true }]);
+    assert.throws(() => starterConfig({ url: 'http://test.intern' }), /--allow-http/);
+    assert.deepEqual(environment({ url: 'http://test.intern', allowHttp: true }), ['test', { url: 'http://test.intern', claude: true, writable: false, allowHttp: true }]);
+    assert.equal(starterConfig({ language: 'fr' }).language, 'fr');
+    for (const config of [starterConfig({ url: 'https://staging.example.com' }), starterConfig({ url: 'http://test.intern', allowHttp: true })]) assert.deepEqual(validateConfig(config).issues, []);
+    // Flags up front, checked before anything opens.
+    const root = mkdtempSync(join(tmpdir(), 'caw-init-flags-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    await assert.rejects(initAnswers(root, ['--offline', '--env', 'Staging'], { interactive: false }), /Umgebung „Staging“/);
+    await assert.rejects(initAnswers(root, ['--offline', '--language', 'Deutsch'], { interactive: false }), /Teamsprache „Deutsch“/);
+    assert.deepEqual((await initAnswers(root, ['--offline', '--url', 'http://qa.intern', '--env', 'qa', '--language', 'de', '--allow-http', '--insecure-tls'], { interactive: false })).answers,
+        { url: 'http://qa.intern', offline: true, env: 'qa', language: 'de', insecureTls: true, allowHttp: true });
+    // explore's suggestions: the page language and the blocked sign-in hosts; flags win.
+    const suggestion = { url: 'https://staging.example.com', framework: { value: 'web' }, signIn: { type: 'session', signedInSelector: '#me' }, language: 'nl', allowHosts: ['login.example.com'] };
+    mkdirSync(join(root, 'caw'), { recursive: true });
+    writeFileSync(join(root, 'caw', '.explore.json'), JSON.stringify(suggestion));
+    const taken = (await initAnswers(root, [], { interactive: false })).answers;
+    assert.equal(taken.language, 'nl');
+    assert.deepEqual(starterConfig(taken).environments.staging.allowHosts, ['login.example.com']);
+    assert.equal((await initAnswers(root, ['--language', 'en'], { interactive: false })).answers.language, 'en');
 });

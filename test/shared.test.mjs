@@ -88,6 +88,10 @@ test('config: browser.locale, browser.timezone and readyIgnore', () => {
         assert.match(issues({ ...simple(), browser: { viewport } }), /browser\.viewport muss \{ "width": 320–7680, "height": 240–4320 \}/, JSON.stringify(viewport));
     }
     // Removed before 1.0, named with what replaced it.
+    assert.equal(issues({ ...simple(), language: 'fr' }), '', 'any team language');
+    for (const source of ['.', 'frontend', false]) assert.equal(issues({ ...simple(), source }), '', String(source));
+    for (const source of ['/abs', '../other', true, '']) assert.match(issues({ ...simple(), source }), /source muss der relative Pfad/, String(source));
+    for (const language of ['Deutsch', 'de-DE', 7]) assert.match(issues({ ...simple(), language }), /ist kein Sprachkürzel/, String(language));
     assert.match(issues({ ...simple(), maxSteps: 50 }), /maxSteps heißt jetzt maxActions/);
     assert.equal(issues({ ...simple(), maxActions: 50 }), '');
     assert.match(issues({ ...simple(), maxActions: 0 }), /maxActions muss eine positive ganze Zahl sein/);

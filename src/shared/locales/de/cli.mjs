@@ -14,8 +14,12 @@ Befehle:`,
     'cli.help.init': `  init [--url <adresse>]                 Projekt einrichten: sieht die Anwendung an (du meldest dich im Fenster an), schreibt
                                          Config, Skill und .mcp.json; ohne --url fragt es nach der Adresse
       [--explore-only]                   nur die Anwendung ansehen: Vorschläge in caw/.explore.json, keine Config
-      [--login | --no-login]             mit --explore-only: die Frage nach der Anmeldung vorab beantworten (Skripte)
-      [--insecure-tls]                   mit --explore-only: selbstsignierte Zertifikate annehmen (nur lokale Umgebungen)
+      [--env <name>]                     Name der Umgebung (Standard: local auf diesem Rechner, sonst der erste Teil
+                                         des Hostnamens)
+      [--language <kürzel>]              Teamsprache für Pläne und Texte von Claude (Standard: die der Anwendung, gefragt)
+      [--login | --no-login]             die Frage nach der Anmeldung vorab beantworten (Skripte)
+      [--insecure-tls]                   selbstsignierte Zertifikate annehmen; an der Umgebung gespeichert
+      [--allow-http]                     unverschlüsseltes http zu einem anderen Rechner erlauben; an der Umgebung gespeichert
       [--yes]                            ohne Anmeldung und ohne Fragen
       [--from <datei>]                   ein vorhandenes Ergebnis von --explore-only übernehmen
       [--no-mcp]                         ohne Eintrag in .mcp.json
@@ -125,7 +129,7 @@ Browser:
   finish --file <result.json>            Urteil einreichen; aufgezeichnet wird nur mit "omit"
   advise --file <advice.json>            Empfehlungen einreichen, auch beim Beheben; der Mensch entscheidet je Karte`,
     // The synopsis per command, shown below a usage error.
-    'cli.synopsis.init': 'caw init [--url <adresse>] [--explore-only] [--yes] [--from <datei>] [--no-mcp] [--offline]',
+    'cli.synopsis.init': 'caw init [--url <adresse>] [--env <name>] [--language <kürzel>] [--explore-only] [--login | --no-login] [--yes] [--from <datei>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session]',
@@ -165,6 +169,12 @@ Browser:
     'cli.doctorTodo': ({ keys, count }) => `${keys} ${count > 1 ? 'stehen' : 'steht'} noch auf TODO`,
     'cli.doctorTodoNext': 'In caw.config.json eintragen: path und Feld-Selektoren von der Anmeldeseite, signedInSelector von der Seite nach der Anmeldung. caw init --explore-only --url <adresse> findet sie.',
     'cli.initNext': 'Weiter: caw doctor, dann den ersten Test aufnehmen: caw record <test> --env {target}.',
+    'cli.askEnv': 'Name dieser Umgebung',
+    'cli.askLanguage': 'Teamsprache (Pläne und Texte von Claude), ein Kürzel wie de, en, fr',
+    'cli.initEnvBad': 'Umgebung „{env}“: Kleinbuchstaben, Ziffern und -, mit einem Buchstaben vorn, höchstens 32 Zeichen.',
+    'cli.initLanguageBad': 'Teamsprache „{language}“: ein Sprachkürzel wie de, en oder fr.',
+    'cli.initNeedsAllowHttp': '{host} ist unverschlüsseltes http und nicht auf diesem Rechner: --allow-http angeben, wenn das wirklich gewollt ist (alles, auch die Anmeldung, geht unverschlüsselt übers Netz).',
+    'cli.initProductionLike': 'Die Umgebung {env} sieht nach Produktion aus: mit production: true geschrieben, caw schreibt dort nie und Claude arbeitet dort nicht. Mit --env umbenennen, wenn es keine Produktion ist.',
     'cli.initNextExplore': ' Ohne passende Selektoren erst caw init --explore-only --url <adresse>.',
     'cli.initOfflineFallback': 'Kein Terminal und keine --url: init schreibt die Vorlage, die Anmeldung bleibt TODO. Später: caw init --explore-only --url <adresse>.',
     'cli.contextTemplate': '# Notizen für Claude\n\nWas Claude in jedem Test wissen sollte, aber nicht im Code sieht. Keine personenbezogenen Daten.\n\n- Beispiel: Die Suche merkt sich die letzte Eingabe. Erst „Filter löschen“ klicken.\n',
@@ -457,6 +467,7 @@ Browser:
     'cli.code.agoHours': 'vor {count} h',
     'cli.code.agoDays': 'vor {count} Tagen',
     'cli.uiMaxActions': 'bis {count} Aktionen',
+    'cli.uiLanguage': 'Teamsprache {language}',
     'cli.uiWarnings': '{count} Warnung(en) im Bericht.',
     'cli.uiReport': 'Bericht:',
     'cli.uiMoreFailures': 'und {count} weitere im Bericht',

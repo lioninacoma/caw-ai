@@ -180,16 +180,17 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
          * Header of a single run: what runs where, and who drives.
          * `code` is the "Code: …" line (describeCode); it is always shown, even without a terminal.
          */
-        header: ({ mode, test, target, source, code, maxActions }) => {
+        header: ({ mode, test, target, source, code, maxActions, language: team }) => {
             const codeLine = t('cli.uiCode', { code: code ?? (source === 'overlay' ? t('cli.uiLocal') : t('cli.uiDeployed')) });
             if (!fancy) {
-                out(`[caw] ${mode}: ${test} ${t('cli.uiOn')} ${target}`);
+                out(`[caw] ${mode}: ${test} ${t('cli.uiOn')} ${target}${team === undefined ? '' : ` · ${t('cli.uiLanguage', { language: team })}`}`);
                 out(`[caw] ${safe(codeLine)}`);
                 return;
             }
             out('');
             out(rule(`${safe(test).toUpperCase()} ${t('cli.uiOn')} ${safe(target)}`));
             const details = [mode];
+            if (team !== undefined) details.push(t('cli.uiLanguage', { language: team }));
             if (maxActions !== undefined) details.push(t('cli.uiMaxActions', { count: maxActions }));
             out(`  ${blank} ${paint.muted(details.map(safe).join(' · '))}`);
             out(`  ${blank} ${paint.muted(safe(codeLine))}`);

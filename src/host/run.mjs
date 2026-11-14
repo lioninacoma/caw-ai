@@ -13,7 +13,7 @@ import { resolveCredentials } from '../shared/credentials.mjs';
 import { effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
 import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
-import { language, t } from '../shared/i18n.mjs';
+import { inLanguage, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { renderReport } from '../shared/report.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
@@ -375,7 +375,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     else if (repair !== undefined) modeLabel = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
     // Which code runs, always on one line, also in CI: otherwise a silently deployed version would only show in the result.
     const codeLine = describeCode(config, spec, checked, { root });
-    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: codeLine, ...(replay === undefined ? { maxActions } : {}) });
+    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: codeLine, language: teamLanguage(config), ...(replay === undefined ? { maxActions } : {}) });
 
     // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
     const reportBase = { testId: spec.id, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
@@ -392,7 +392,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // Redacted as for Claude: the role password and secret remembered values never end up in result.json or report.md.
         verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
-        writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
+        // report.md is shared: in the team language if caw has it, whatever the reader's terminal speaks.
+        writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(verdict)));
         // The run is over: nothing runs any more, so the chip goes away.
         session?.workbench?.transport?.(null)?.catch?.(() => {});
     };
@@ -481,8 +482,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const context = readContext(root);
     const run = {
         runId,
-        // Project language: Claude talks to the human and writes steps and expectations in it.
-        language: language(),
+        // Team language: Claude talks to the human and writes steps and expectations in it.
+        language: teamLanguage(config),
         target,
         source: checked.source,
         framework: frameworkOf(config).name,
@@ -627,7 +628,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // Before a verdict the run is still open; its result replaces this when the run ends.
         const shown = verdict ?? redactDeep({ ...reportBase, status: 'open', ...adviceOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(shown, null, 2));
-        writeFileSync(join(runDir, 'report.md'), renderReport(shown));
+        writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(shown)));
     };
     /**
      * Presents advice as cards and applies each decision: knowledge, config and code at once, the test only in the result.
@@ -702,7 +703,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             ...(element === undefined ? {} : { element }),
             ...(mode === 'develop' ? { develop: { test: chosen.spec.id, until: chosen.replay?.until ?? null, ...(chosen.replay?.entry === undefined ? {} : { entry: chosen.replay.entry.id }), url: session.page().url(), source: checked.source } } : {}),
             runId,
-            language: language(),
+            language: teamLanguage(config),
             target,
             source: checked.source,
             outcome: {

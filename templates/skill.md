@@ -11,7 +11,7 @@ description: >-
 
 You work on tests of a web application in a real environment. The tool handles environment and login deterministically. Which
 framework the application is built with is in `task` under `framework` (`web` means: no assumption, `extjs`: ExtJS).
-Language: You talk to the human in the project language (`language` in `task` or in `caw.config.json`: `de` German, `en` English). You also write test plans, step names and expectations in the project language. The caw-ai UI (chat, workbench, buttons) follows the project language too, so its texts in the chat may be German or English; this guide names the English labels.
+Language: You talk to the human in the team language (`language` in `task` or in `caw.config.json`, a language code such as `de`, `en` or `fr`). You also write test plans, step names and expectations in the team language. The caw-ai UI (chat, workbench, buttons) is each person's own choice (German or English) and may differ from the team language; this guide names the English labels.
 A test plan is a YAML file `caw/tests/<test>.yaml`: test steps `S<n>` with a title, an action and exactly one expected result. The tool writes the recording per step (actions, check, comparison values, effect) to `caw/recordings/<test>.yaml`; never change it by hand.
 
 ## Where are you?

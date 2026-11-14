@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, loadConfig, isStartPath, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
 import { credentialNames } from '../shared/credentials.mjs';
-import { chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
+import { NAME, chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -127,7 +127,7 @@ export const detectFramework = (root) => detectApp(root).framework;
 
 /**
  * Answers for `init` from the suggestions of `explore` (caw/.explore.json). What explore is unsure about stays at the template default.
- * @returns { framework, url, signIn, login, start, messageSelectors, consoleIgnore }
+ * @returns { framework, url, signIn, login, start, messageSelectors, consoleIgnore, language, allowHosts }
  */
 export const answersFromExplore = (suggestion) => {
     if (suggestion === null || typeof suggestion !== 'object' || typeof suggestion.url !== 'string') throw new CawError('usage', t('cli.notExploreResult'));
@@ -142,6 +142,8 @@ export const answersFromExplore = (suggestion) => {
         ...(suggestion.start === undefined ? {} : { start: suggestion.start }),
         ...(suggestion.messageSelectors === undefined ? {} : { messageSelectors: suggestion.messageSelectors }),
         ...(suggestion.consoleIgnore === undefined ? {} : { consoleIgnore: suggestion.consoleIgnore }),
+        ...(typeof suggestion.language === 'string' ? { language: suggestion.language } : {}),
+        ...(Array.isArray(suggestion.allowHosts) && suggestion.allowHosts.length > 0 ? { allowHosts: suggestion.allowHosts } : {}),
         // Roles the human saved test users for in the explore window.
         ...(Array.isArray(suggestion.roles) && suggestion.roles.length > 0 ? { roles: suggestion.roles } : {}),
     };
@@ -149,6 +151,35 @@ export const answersFromExplore = (suggestion) => {
 
 /** Role when none is given. */
 const DEFAULT_ROLE = 'tester';
+/** A team language as the config takes it: a primary subtag. */
+const TEAM_LANGUAGE = /^[a-z]{2,3}$/;
+
+/**
+ * The name of the first environment (SC-15): on this machine "local", otherwise the first DNS label (staging.example.com →
+ * staging), made a valid environment name.
+ */
+export const defaultEnvName = (url) => {
+    if (url === undefined) return 'local';
+    const { hostname } = new URL(url);
+    if (isLoopback(hostname)) return 'local';
+    const label = hostname.split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^[^a-z]+/, '').slice(0, 32).replace(/-+$/, '');
+    return NAME.test(label) ? label : 'app';
+};
+
+/** The init flags that are no questions: --env, --language, --insecure-tls, --allow-http, checked up front. */
+const initFlags = (args) => {
+    const env = optionValue(args, '--env');
+    if (env !== undefined && !NAME.test(env)) throw new CawError('usage', t('cli.initEnvBad', { env }));
+    const team = optionValue(args, '--language');
+    if (team !== undefined && !TEAM_LANGUAGE.test(team)) throw new CawError('usage', t('cli.initLanguageBad', { language: team }));
+    return {
+        ...(env === undefined ? {} : { env }),
+        ...(team === undefined ? {} : { language: team }),
+        ...(args.includes('--insecure-tls') ? { insecureTls: true } : {}),
+        ...(args.includes('--allow-http') ? { allowHttp: true } : {}),
+        ...(args.includes('--no-mcp') ? { mcp: false } : {}),
+    };
+};
 const checkUrl = (value) => {
     try {
         return ['http:', 'https:'].includes(new URL(value).protocol) ? null : t('cli.askUrlProtocol');
@@ -188,13 +219,14 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
     let url = optionValue(args, '--url');
     let file = from;
     if (url !== undefined && checkUrl(url) !== null) throw new CawError('usage', checkUrl(url));
+    const flags = initFlags(args);
     // Without an application: the template with TODO in the login. Also without a terminal and --url, instead of aborting.
     const offline = args.includes('--offline') || (file === undefined && url === undefined && !interactive && !existsSync(join(root, EXPLORE_FILE)));
     if (offline && from === undefined) {
         if (!args.includes('--offline')) ui.info(t('cli.initOfflineFallback'));
-        const answers = { ...(url === undefined ? {} : { url }), offline: true };
+        const answers = { ...(url === undefined ? {} : { url }), offline: true, ...flags };
         if (interactive) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
-        if (args.includes('--no-mcp')) answers.mcp = false;
+        if (interactive) await askNaming(answers, { input, output }, flags);
         return { answers };
     }
     if (file === undefined && url === undefined && existsSync(join(root, EXPLORE_FILE))) {
@@ -205,7 +237,7 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
         if (url === undefined) {
             url = await askLine({ input, output }, t('cli.askUrl'), 'http://localhost:5173', checkUrl);
         }
-        const passed = ['--yes', '--insecure-tls'].filter((flag) => args.includes(flag));
+        const passed = ['--yes', '--insecure-tls', '--login', '--no-login'].filter((flag) => args.includes(flag));
         const code = await runExplore(root, ['--url', url, ...passed], { next: false });
         if (code !== undefined && code !== EXIT.pass) return { code };
         file = EXPLORE_FILE;
@@ -216,15 +248,26 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
     } catch (error) {
         throw new CawError('usage', t('cli.fromUnreadable', { from: file, message: error.message }));
     }
-    const answers = answersFromExplore(suggestion);
+    // The flags win over what explore suggested (e.g. --language over the page's <html lang>).
+    const answers = { ...answersFromExplore(suggestion), ...flags };
     // Roles come from the test users saved in the explore window; otherwise ask in the terminal or use a neutral default.
     if (interactive && answers.signIn !== 'none' && answers.roles === undefined) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
-    if (args.includes('--no-mcp')) answers.mcp = false;
+    if (interactive) await askNaming(answers, { input, output }, flags);
     return { answers };
 };
 
+/** In a terminal: the environment's name (if not on this machine) and the team language, unless given as flags. */
+const askNaming = async (answers, terminal, given = {}) => {
+    if (answers.env === undefined && answers.url !== undefined && defaultEnvName(answers.url) !== 'local') {
+        answers.env = await askLine(terminal, t('cli.askEnv'), defaultEnvName(answers.url), (value) => (NAME.test(value) ? null : t('cli.initEnvBad', { env: value })));
+    }
+    if (given.language === undefined) {
+        answers.language = await askLine(terminal, t('cli.askLanguage'), answers.language ?? language(), (value) => (TEAM_LANGUAGE.test(value) ? null : t('cli.initLanguageBad', { language: value })));
+    }
+};
+
 /** The first config from the answers of `init`; without answers the template with the detected framework. */
-export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), url, signIn = 'form', login = {}, explored = false, offline = false, roles, start, messageSelectors, consoleIgnore } = {}) => {
+export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), url, env, insecureTls = false, allowHttp = false, allowHosts, signIn = 'form', login = {}, explored = false, offline = false, roles, start, messageSelectors, consoleIgnore } = {}) => {
     if (!FRAMEWORK_NAMES.includes(framework)) throw new CawError('usage', t('cli.unknownFramework', { framework, names: FRAMEWORK_NAMES.join(', ') }));
     if (!['form', 'session', 'none'].includes(signIn)) throw new CawError('usage', t('cli.initAuthUnknown', { auth: signIn }));
     const names = roles ?? [DEFAULT_ROLE];
@@ -233,7 +276,22 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     // The language comes first: it applies to workbench, chat, output and report of this project.
     const config = { language: projectLanguage, ...JSON.parse(readFileSync(templatePath('caw.config.example.json'), 'utf8')) };
     config.framework = framework;
-    if (url !== undefined) config.environments = { local: { ...config.environments.local, url } };
+    // One environment (SC-15): on this machine Claude may work and write; elsewhere Claude may work but not write; a name that
+    // looks like production is production and nothing else.
+    const address = url ?? config.environments.local.url;
+    const { protocol, hostname } = new URL(address);
+    if (protocol === 'http:' && !isLoopback(hostname) && !allowHttp) throw new CawError('usage', t('cli.initNeedsAllowHttp', { host: hostname }));
+    const envName = env ?? defaultEnvName(url);
+    const flags = productionLike(envName) ? { production: true } : isLoopback(hostname) ? { claude: true, writable: true } : { claude: true, writable: false };
+    config.environments = {
+        [envName]: {
+            url: address,
+            ...flags,
+            ...(insecureTls ? { insecureTls: true } : {}),
+            ...(allowHttp ? { allowHttp: true } : {}),
+            ...(Array.isArray(allowHosts) && allowHosts.length > 0 ? { allowHosts } : {}),
+        },
+    };
     // A role is an empty object; its test user follows the naming convention (CAW_<ROLE>_USER …) in caw/.env.
     config.roles = Object.fromEntries(names.map((name) => [name, {}]));
     if (signIn === 'none') {
@@ -347,7 +405,9 @@ export const init = (root, answers = {}) => {
     const todo = todoFields(config);
     if (created.includes(CONFIG_FILE) && todo.length > 0) ui.warn(t(answers.offline ? 'cli.initTodoOffline' : 'cli.initTodo', { keys: todo.join(', ') }));
     // If explore just ran, advising to run it first would be confusing.
-    if (created.includes(CONFIG_FILE)) ui.note(`${t('cli.initNext', { target: Object.keys(config.environments)[0] })}${answers.explored ? '' : t('cli.initNextExplore')}`);
+    const first = Object.keys(config.environments)[0];
+    if (created.includes(CONFIG_FILE) && config.environments[first].production === true) ui.warn(t('cli.initProductionLike', { env: first }));
+    else if (created.includes(CONFIG_FILE)) ui.note(`${t('cli.initNext', { target: first })}${answers.explored ? '' : t('cli.initNextExplore')}`);
     return EXIT.pass;
 };
 

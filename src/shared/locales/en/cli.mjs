@@ -14,8 +14,12 @@ Commands:`,
     'cli.help.init': `  init [--url <address>]                 Set up the project: looks at the app (you sign in in the window), writes config,
                                          skill and .mcp.json; without --url it asks for the address
       [--explore-only]                   only look at the app: suggestions in caw/.explore.json, no config
-      [--login | --no-login]             with --explore-only: answer the sign-in question up front (scripts)
-      [--insecure-tls]                   with --explore-only: accept self-signed certificates (local environments only)
+      [--env <name>]                     name of the environment (default: local on this machine, else the first part
+                                         of the host name)
+      [--language <code>]                team language for plans and Claude's texts (default: the app's own, asked)
+      [--login | --no-login]             answer the sign-in question up front (scripts)
+      [--insecure-tls]                   accept self-signed certificates; stored on the environment
+      [--allow-http]                     allow plain http to another machine; stored on the environment
       [--yes]                            without sign-in and without questions
       [--from <file>]                    take an existing --explore-only result
       [--no-mcp]                         no entry in .mcp.json
@@ -124,7 +128,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
   finish --file <result.json>            Submit the verdict; recorded only with "omit"
   advise --file <advice.json>            Submit advice, also when fixing; the human decides per card`,
     // The synopsis per command, shown below a usage error.
-    'cli.synopsis.init': 'caw init [--url <address>] [--explore-only] [--yes] [--from <file>] [--no-mcp] [--offline]',
+    'cli.synopsis.init': 'caw init [--url <address>] [--env <name>] [--language <code>] [--explore-only] [--login | --no-login] [--yes] [--from <file>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session]',
@@ -164,6 +168,12 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorTodo': ({ keys, count }) => `${keys} ${count > 1 ? 'are' : 'is'} still TODO`,
     'cli.doctorTodoNext': 'Fill in caw.config.json: path and field selectors from the sign-in page, signedInSelector from the page after signing in. caw init --explore-only --url <address> finds them.',
     'cli.initNext': 'Next: caw doctor, then record the first test: caw record <test> --env {target}.',
+    'cli.askEnv': 'Name of this environment',
+    'cli.askLanguage': 'Team language (plans and Claude\'s texts), a code such as en, de, fr',
+    'cli.initEnvBad': 'Environment "{env}": lowercase letters, digits and -, starting with a letter, at most 32 characters.',
+    'cli.initLanguageBad': 'Team language "{language}": a language code such as en, de or fr.',
+    'cli.initNeedsAllowHttp': '{host} is plain http and not on this machine: add --allow-http if that is really meant (everything, also the sign-in, travels unencrypted).',
+    'cli.initProductionLike': 'Environment {env} looks like production: written with production: true, so caw never writes there and Claude does not work there. Rename it with --env if it is not production.',
     'cli.initNextExplore': ' No fitting selectors yet? Run caw init --explore-only --url <address> first.',
     'cli.initOfflineFallback': 'No terminal and no --url: init writes the template, the sign-in stays TODO. Later: caw init --explore-only --url <address>.',
     'cli.contextTemplate': '# Notes for Claude\n\nWhat Claude should know in every test but can\'t see in the code. No personal data.\n\n- Example: The search remembers the last input. Click "Clear filter" first.\n',
@@ -456,6 +466,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.code.agoHours': '{count} h ago',
     'cli.code.agoDays': '{count} days ago',
     'cli.uiMaxActions': 'up to {count} actions',
+    'cli.uiLanguage': 'team language {language}',
     'cli.uiWarnings': '{count} warning(s) in the report.',
     'cli.uiReport': 'Report:',
     'cli.uiMoreFailures': 'and {count} more in the report',

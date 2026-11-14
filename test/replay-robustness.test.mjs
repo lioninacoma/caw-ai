@@ -118,7 +118,6 @@ test('plan gate: eval changes the page like a click and needs the approved plan;
 });
 
 test('viewport: browser.viewport before the recorded one; recordedBrowser takes the newest recorded viewport', async () => {
-    const { recordedBrowser } = await import('../src/host/replay.mjs');
     const host = { locale: 'en-US', timeZone: 'UTC' };
     const recorded = { locale: 'de-DE', timezone: 'Europe/Berlin', viewport: { width: 1280, height: 800 } };
     assert.deepEqual(browserRegion({}, recorded, host).viewport, { width: 1280, height: 800 });

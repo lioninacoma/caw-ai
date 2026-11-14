@@ -97,7 +97,7 @@ const agentCommand = async (root, [command, ...args]) => {
 
 const main = async ([command, ...args]) => {
     const root = process.env.INIT_CWD ?? process.cwd();
-    setLanguage(detectLanguage({ root }));
+    setLanguage(detectLanguage());
     const help = await helpFor(root, command, args);
     if (help !== undefined) {
         console.log(help);

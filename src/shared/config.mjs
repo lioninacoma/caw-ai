@@ -22,6 +22,8 @@ const ENVIRONMENT_KEYS = ['url', 'extends', 'signIn', 'gate', 'allowHosts', ...E
 // Names containing it count too, e.g. prod-de or live_eu. If such an environment is not production, say so with "production": false.
 const PRODUCTION_NAME = /(^|[-_.])(prod|production|produktion|produktiv|prd|live)([-_.]|\d|$)/i;
 const PRODUCTION_EXACT = /^(prod|production|produktion|produktiv|prd|live)$/i;
+/** Does the name look like production (prod, live-eu …)? init then writes production: true and nothing else. */
+export const productionLike = (name) => PRODUCTION_NAME.test(String(name));
 export const DEFAULT_MESSAGE_SELECTORS = ['[role=alert]', '[role=alertdialog]'];
 /** The framework adapters in src/host/framework/; `web` is the default. */
 export const FRAMEWORK_NAMES = ['web', 'extjs', 'react', 'vue', 'angular'];
@@ -53,7 +55,7 @@ export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]
 /** The saved session of a role on an environment, relative to the project: caw/.auth/<environment>/<role>.json. */
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
-const TOP_FIELDS = ['framework', 'start', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys',
+const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys',
     'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxActions', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport'];
@@ -361,7 +363,8 @@ export const validateConfig = (given) => {
         if (REMOVED_KEYS[key] !== undefined) issues.push(removedKey(key, REMOVED_KEYS[key]));
         else if (!TOP_FIELDS.includes(key)) issues.push(t('config.unknownField', { key, hint: hintFor(key, TOP_FIELDS) }));
     }
-    if (given.language !== undefined && !['de', 'en'].includes(given.language)) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
+    // The team language: a primary language subtag (de, en, fr, pt …). caw's own texts stay de/en, Claude writes in it.
+    if (given.language !== undefined && !(typeof given.language === 'string' && /^[a-z]{2,3}$/.test(given.language))) issues.push(t('config.language', { value: String(JSON.stringify(given.language)) }));
     const config = given;
 
     checkEnvironments(config, issues, notes);
@@ -369,6 +372,8 @@ export const validateConfig = (given) => {
     if (config.signIn !== undefined && !isObject(config.signIn)) issues.push(t('config.signIn.notObject', { at: 'signIn' }));
     checkRoles(config, issues);
     if (config.start !== undefined && !isStartPath(config.start)) issues.push(t('config.start'));
+    // Where the application's source is, relative to the project (default "."); false: no source here (no code changes, no code advice).
+    if (config.source !== undefined && config.source !== false && !relativePath(config.source)) issues.push(t('config.source'));
     if (config.messageSelectors !== undefined && !(Array.isArray(config.messageSelectors) && config.messageSelectors.every((selector) => typeof selector === 'string' && selector !== ''))) {
         issues.push(t('config.messageSelectors'));
     }

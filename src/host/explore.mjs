@@ -108,7 +108,7 @@ export const surveyPage = (maxMarkers) => {
         .filter((cls) => !generated(cls))
         .map((cls) => `${el.tagName.toLowerCase()}.${CSS.escape(cls)}`)));
 
-    return { url: location.href, title: document.title, login, markers, stateClasses, messages: [...messages], framework: probe };
+    return { url: location.href, title: document.title, lang: document.documentElement.lang || '', login, markers, stateClasses, messages: [...messages], framework: probe };
 };
 
 /**
@@ -261,6 +261,11 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
         suggestion.consoleIgnore = ignore;
         notes.push(t('cli.exploreConsole'));
     }
+    // The page's own language as the suggested team language (primary subtag only: "de-DE" → "de").
+    const lang = String(after?.lang || before?.lang || loginPage?.lang || '').toLowerCase().split(/[-_]/)[0];
+    if (/^[a-z]{2,3}$/.test(lang)) suggestion.language = lang;
+    // Hosts the sign-in wanted to reach (an IdP): the new environment allows them as navigation hosts.
+    if (foreignHosts.length > 0) suggestion.allowHosts = [...foreignHosts];
     suggestion.notes = notes;
     return suggestion;
 };

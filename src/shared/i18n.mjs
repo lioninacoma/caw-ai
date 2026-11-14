@@ -1,16 +1,14 @@
-// UI language: German or English. Workbench, chat, CLI, error messages and report get their texts via t().
-// Prompts to Claude stay in one language; Claude answers in the project's language.
+// UI language: German or English. Workbench, chat, CLI and error messages get their texts via t(). It is personal: the
+// team language (config `language`) only decides what Claude writes and the language of report.md (teamLanguage, inLanguage).
 //
-// Order: CAW_LANG, then "language" in caw.config.json, then LC_ALL / LC_MESSAGES / LANG / LANGUAGE, then the system language
+// Order: CAW_LANG, then "language" in prefs.json, then LC_ALL / LC_MESSAGES / LANG / LANGUAGE, then the system language
 // (Intl), else English.
 //
 // Rule for modules: never call t() at module top level, because the language is not known yet at import time.
 // Texts belong inside functions or are fetched when used.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { CATALOGS } from './locales/index.mjs';
+import { readPrefs } from './prefs.mjs';
 
 export const LANGUAGES = ['de', 'en'];
 const FALLBACK = 'en';
@@ -21,18 +19,12 @@ const pick = (value) => {
     return LANGUAGES.includes(code) ? code : null;
 };
 
-/** The language from environment, config and system; root: project folder with caw.config.json, if known. */
-export const detectLanguage = ({ root, env = process.env, system = () => Intl.DateTimeFormat().resolvedOptions().locale } = {}) => {
+/** The personal UI language from the environment, prefs.json and the system; never from the project's config. */
+export const detectLanguage = ({ env = process.env, system = () => Intl.DateTimeFormat().resolvedOptions().locale, prefs = () => readPrefs(env) } = {}) => {
     const forced = pick(env.CAW_LANG);
     if (forced !== null) return forced;
-    if (root !== undefined) {
-        try {
-            const configured = pick(JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8')).language);
-            if (configured !== null) return configured;
-        } catch {
-            // Missing or broken config: loadConfig reports that itself later.
-        }
-    }
+    const chosen = pick(prefs().language);
+    if (chosen !== null) return chosen;
     for (const name of ['LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE']) {
         const found = pick(env[name]);
         if (found !== null) return found;
@@ -48,6 +40,26 @@ export const detectLanguage = ({ root, env = process.env, system = () => Intl.Da
 export const setLanguage = (value) => {
     current = pick(value) ?? FALLBACK;
     return current;
+};
+
+/**
+ * The team language: config `language` (a primary language subtag such as "de", "en", "fr"), else the UI language. Claude writes
+ * plans, notes and chat texts in it.
+ */
+export const teamLanguage = (config) => (typeof config?.language === 'string' && config.language !== '' ? config.language : language());
+
+/**
+ * Runs fn with the texts of another language, e.g. report.md in the team language (de/en, otherwise English). Synchronous only:
+ * the UI language is back before anything else runs.
+ */
+export const inLanguage = (value, fn) => {
+    const saved = language();
+    current = pick(value) ?? FALLBACK;
+    try {
+        return fn();
+    } finally {
+        current = saved;
+    }
 };
 
 /** The current language; without setLanguage it is detected from environment and system. */
