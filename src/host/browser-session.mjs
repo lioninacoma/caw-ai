@@ -20,7 +20,7 @@ import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { scrubTrace } from './trace-scrub.mjs';
-import { browserArgs, installHostLock } from './host-lock.mjs';
+import { browserArgs, installHostLock, withLoopbackPair } from './host-lock.mjs';
 import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { appHosts as appHostsOf, blockedHosts } from '../shared/environments.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
@@ -921,7 +921,18 @@ export const openBrowserSession = async (spec) => {
         // checked against consoleIgnore.
         let drained = 0;
         const warnings = [];
-        const rules = { ignored: consoleIgnore.map((pattern) => new RegExp(pattern)), foreign: (foreignCode ?? []).map((pattern) => new RegExp(pattern)), skip: framework.stackSkip };
+        // Hosts outside the navigation hosts (third-party): counted for the report, their errors only warnings (OPEN-9).
+        const navigation = new Set(withLoopbackPair(hosts));
+        const thirdPartyHosts = new Map();
+        const isThirdParty = (url) => {
+            try {
+                const { protocol, hostname } = new URL(url);
+                return /^(https?|wss?):$/.test(protocol) && !navigation.has(hostname);
+            } catch {
+                return false;
+            }
+        };
+        const rules = { ignored: consoleIgnore.map((pattern) => new RegExp(pattern)), foreign: (foreignCode ?? []).map((pattern) => new RegExp(pattern)), skip: framework.stackSkip, thirdParty: isThirdParty };
         const pages = trackAgentPages(raw.pages()[0]);
         const addWarning = (entry) => {
             const known = warnings.find(({ type, text }) => type === entry.type && text === entry.text);
@@ -1057,7 +1068,15 @@ export const openBrowserSession = async (spec) => {
             failures.push({ type: 'host-blocked', text: t(kind === 'production' ? 'session.browser.productionBlocked' : 'session.browser.hostBlocked', { host }), url });
         };
         for (const event of blockedEarly.splice(0)) blockedSink(event);
+        const tallyOf = (request) => {
+            if (!isThirdParty(request.url())) return null;
+            const host = new URL(request.url()).hostname;
+            if (!thirdPartyHosts.has(host)) thirdPartyHosts.set(host, { host, requests: 0, types: new Set(), failed: 0 });
+            return thirdPartyHosts.get(host);
+        };
         raw.on('requestfailed', (request) => {
+            const tally = tallyOf(request);
+            if (tally !== null) tally.failed += 1;
             if (blockedUrls.has(request.url())) return;
             observe(pageOfRequest(request), { type: 'requestfailed', text: request.failure()?.errorText ?? '' }, request.url());
         });
@@ -1074,7 +1093,7 @@ export const openBrowserSession = async (spec) => {
         const hidden = [];
         // Evidence for classifying a failure: only the application's own requests, no pages, scripts or images.
         const network = createNetworkLog();
-        const asked = (request) => ['xhr', 'fetch'].includes(request.resourceType());
+        const asked = (request) => ['xhr', 'fetch'].includes(request.resourceType()) && ownHosts.has(hostOfRequest(request));
         // What naming needs of a request; postData is null for a body Playwright cannot read as text.
         const hostOfRequest = (request) => {
             try {
@@ -1099,6 +1118,11 @@ export const openBrowserSession = async (spec) => {
         raw.on('request', (request) => {
             const page = pageOfRequest(request);
             if (page === false || (page !== null && !pages.owns(page))) return;
+            const tally = tallyOf(request);
+            if (tally !== null) {
+                tally.requests += 1;
+                tally.types.add(request.resourceType());
+            }
             if (!signingIn && ownHosts.has(hostOfRequest(request))) {
                 const label = requestName(describedRequest(request), config.requestKeys ?? []);
                 if (classifyRequest(label, reads) === 'write') writes.set(label, (writes.get(label) ?? 0) + 1);
@@ -1227,6 +1251,8 @@ export const openBrowserSession = async (spec) => {
 
         return {
             writes: () => [...writes].sort(([a], [b]) => a.localeCompare(b)).map(([label, count]) => ({ label, count })),
+            /** Hosts outside the navigation hosts the pages contacted: request count, resource types, failed requests. */
+            thirdParty: () => [...thirdPartyHosts.values()].sort((a, b) => a.host.localeCompare(b.host)).map(({ types, ...rest }) => ({ ...rest, types: [...types].sort() })),
             // Only for recording a demonstration; the agent never gets at it through the channel.
             context: raw,
             ownsPage: (page) => pages.owns(page),

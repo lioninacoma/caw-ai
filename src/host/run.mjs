@@ -408,7 +408,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // If Claude gives advice while repairing and then submits a verdict, the advice stays in the report.
     const writeResult = (outcome) => {
         // Redacted as for Claude: the role password and secret remembered values never end up in result.json or report.md.
-        verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
+        verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], thirdParty: session?.thirdParty?.() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         // report.md is shared: in the team language if caw has it, whatever the reader's terminal speaks.
         writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(verdict)));

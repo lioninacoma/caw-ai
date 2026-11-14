@@ -74,17 +74,20 @@ const isStaticFile = (url) => {
  * How serious is a hard console error? Only what is surely foreign or minor becomes a warning. Anything unknown, even
  * an error without a stack, stays an error: if foreign code really breaks something, the step's check fails anyway.
  * @param details { url, stack }
- * @param rules   { ignored, foreign, skip } regular expressions; `skip`: files that only pass errors on (from the framework adapter)
+ * @param rules   { ignored, foreign, skip, thirdParty }: regular expressions; `skip`: files that only pass errors on (from the
+ *                framework adapter); `thirdParty(url)`: is the URL on a host outside the navigation hosts? Errors and failed requests
+ *                from there are warnings, never a failed step (a CDN, an analytics script, a payment widget).
  * @returns 'ignore', 'warn' or 'fail'
  */
-export const classifyFailure = (observation, { url, stack } = {}, { ignored = [], foreign = [], skip = null } = {}) => {
+export const classifyFailure = (observation, { url, stack } = {}, { ignored = [], foreign = [], skip = null, thirdParty = () => false } = {}) => {
+    if (['http', 'requestfailed'].includes(observation.type) && url !== undefined && thirdParty(url)) return 'warn';
     if (observation.type === 'http') return 'fail';
     if (isAllowedFailure(observation, url, ignored)) return 'ignore';
     if (observation.type === 'requestfailed') return isStaticFile(url) ? 'warn' : 'fail';
     // A console error with a stack (caught by the framework) counts like a script error by its origin, not by the file
     // that called console.error: that is almost always the framework.
     const origin = observation.type === 'pageerror' ? stackOrigin(stack, skip) : (stack === undefined ? url : stackOrigin(stack, skip) ?? url);
-    return origin !== undefined && foreign.some((pattern) => pattern.test(origin)) ? 'warn' : 'fail';
+    return origin !== undefined && (thirdParty(origin) || foreign.some((pattern) => pattern.test(origin))) ? 'warn' : 'fail';
 };
 
 const cell = (text) => String(text ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ');
@@ -161,7 +164,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], dropped = [], advice, diagnosis, overlay }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -191,6 +194,10 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
     if (writes.length > 0) {
         lines.push('', `## ${t('config.report.writes')}`, '', t('config.report.writes.intro'), '');
         for (const { label, count } of writes) lines.push(`- ${label} (${count}x)`);
+    }
+    if (thirdParty.length > 0) {
+        lines.push('', `## ${t('config.report.thirdParty')}`, '', t('config.report.thirdParty.intro'), '', t('config.report.thirdParty.header'), '|---|---|---|---|');
+        for (const { host, requests, types, failed } of thirdParty) lines.push(`| ${cell(host)} | ${requests} | ${cell(types.join(', '))} | ${failed} |`);
     }
     if (dropped.length > 0) {
         lines.push('', `## ${t('config.report.dropped')}`, '', t('config.report.dropped.intro'), '');

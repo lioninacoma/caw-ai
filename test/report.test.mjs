@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { t } from '../src/shared/i18n.mjs';
-import { evaluateFinish, isSkipped, renderReport } from '../src/shared/report.mjs';
+import { classifyFailure, evaluateFinish, isSkipped, renderReport } from '../src/shared/report.mjs';
 
 const rb = { id: 'smoke', expectations: [{ id: 'E1', text: 'a' }, { id: 'E2', text: 'b' }] };
 const ok = (id) => ({ id, status: 'pass', evidence: { type: 'eval', value: 'true' } });
@@ -80,4 +80,19 @@ test('the tested version is the line the terminal prints', () => {
     const base = { status: 'pass', testId: 'x', target: 'local' };
     assert.match(renderReport({ ...base, testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174, dein aktueller Stand/);
     assert.match(renderReport({ ...base, status: 'error', code: 'unreachable', testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174/, 'the error code stays separate from the tested version');
+});
+
+test('third-party hosts: their errors and failed requests are warnings, the app host stays hard; the report lists them', () => {
+    const thirdParty = (url) => !url.startsWith('https://app.example/');
+    const rules = { thirdParty };
+    assert.equal(classifyFailure({ type: 'requestfailed', text: 'net::ERR_FAILED' }, { url: 'https://cdn.example/lib.js' }, rules), 'warn');
+    assert.equal(classifyFailure({ type: 'http', text: 'HTTP 500' }, { url: 'https://stats.example/collect' }, rules), 'warn');
+    assert.equal(classifyFailure({ type: 'pageerror', text: 'boom' }, { stack: 'Error: boom\n    at x (https://cdn.example/widget.js:1:2)' }, rules), 'warn');
+    assert.equal(classifyFailure({ type: 'http', text: 'HTTP 500' }, { url: 'https://app.example/api' }, rules), 'fail');
+    assert.equal(classifyFailure({ type: 'pageerror', text: 'boom' }, { stack: 'Error: boom\n    at x (https://app.example/main.js:1:2)' }, rules), 'fail');
+    assert.equal(classifyFailure({ type: 'requestfailed', text: 'net::ERR_FAILED' }, { url: 'https://app.example/api' }, rules), 'fail');
+    const md = renderReport({ status: 'pass', testId: 'x', target: 'local', thirdParty: [{ host: 'cdn.example', requests: 3, types: ['script', 'stylesheet'], failed: 1 }] });
+    assert.match(md, /## Fremde Hosts/);
+    assert.match(md, /\| cdn\.example \| 3 \| script, stylesheet \| 1 \|/);
+    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'x', target: 'local' }), /Fremde Hosts/);
 });
