@@ -13,7 +13,7 @@ import { t } from '../shared/i18n.mjs';
 import { totp } from '../shared/totp.mjs';
 import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig } from './devlink-core.mjs';
 import { fileVersion, incompleteText, routeOverlay } from './overlay.mjs';
-import { DEFAULT_MESSAGE_SELECTORS, browserLaunch, isLoopback } from '../shared/config.mjs';
+import { DEFAULT_MESSAGE_SELECTORS, browserLaunch, isLoopback, isViewport } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
 import { registerEngines } from './framework/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
@@ -571,16 +571,18 @@ const validTimezone = (value) => {
 };
 
 /**
- * Language and time zone of the browser: from the config (`browser.locale`, `browser.timezone`), else as recorded, else the
- * host's. Recording on de-DE/Europe/Berlin and replaying on an en-US/UTC runner would otherwise change dates, numbers and texts.
+ * Language, time zone and viewport of the browser: from the config (`browser.locale`, `browser.timezone`, `browser.viewport`),
+ * else as recorded, else the host's (no viewport: a headless browser gets the default size). Recording on de-DE/Europe/Berlin and
+ * replaying on an en-US/UTC runner would otherwise change dates, numbers and texts; a narrower window changes the layout.
  * An invalid value is skipped in favour of the next source.
- * @param recorded { locale, timezone } stored with the recording (recordedBrowser), {} while nothing is recorded
+ * @param recorded { locale, timezone, viewport } stored with the recording (recordedBrowser), {} while nothing is recorded
  */
 export const browserRegion = (config, recorded = {}, host = Intl.DateTimeFormat().resolvedOptions()) => {
     const browser = config?.browser !== null && typeof config?.browser === 'object' ? config.browser : {};
     return {
         locale: [browser.locale, recorded?.locale, host.locale, 'en-US'].find(validLocale),
         timezone: [browser.timezone, recorded?.timezone, host.timeZone, 'UTC'].find(validTimezone),
+        ...[browser.viewport, recorded?.viewport].filter(isViewport).slice(0, 1).map((viewport) => ({ viewport }))[0],
     };
 };
 
@@ -647,7 +649,8 @@ const launchChrome = async (profileDir, hosts, { headless = false, insecureTls =
             // Language and time zone of the recording, so dates, numbers and translations look the same on every machine.
             ...(region?.locale === undefined ? {} : { locale: region.locale }),
             ...(region?.timezone === undefined ? {} : { timezoneId: region.timezone }),
-            viewport: headless ? HEADLESS_VIEWPORT : null,
+            // Headless: the recorded (or configured) size. A window keeps its own size; the workbench scales the app frame (OPEN-15).
+            viewport: headless ? region?.viewport ?? HEADLESS_VIEWPORT : null,
             // No emulation: the page follows the system like in any Chrome. Otherwise Playwright pins it to light, and opening the
             // DevTools would drop that and switch everything to dark mode mid-run.
             colorScheme: null,
@@ -1274,6 +1277,8 @@ export const openBrowserSession = async (spec) => {
             framework,
             /** { locale, timezone } the browser runs with; stored with a recording. */
             browser: region,
+            /** The CSS size of the application view right now (the app frame in the workbench); stored with a recording. */
+            viewportSize: () => pages.main().evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })).catch(() => null),
             failures: () => failures,
             /** What must never leave the browser as text: the role's password and values remembered as secret. */
             secrets: () => [...passwords, ...codes, ...hidden],

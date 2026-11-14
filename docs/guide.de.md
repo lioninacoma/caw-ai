@@ -6,7 +6,7 @@ Wie caw-ai im Einzelnen arbeitet. Zum Nachschlagen: [Befehle](commands.de.md), [
 
 ## Agent: lokal, Docker oder deine Session
 
-Wo Claude läuft, wenn ein Lauf es braucht, legt `agent.sandbox` in der Config fest (`local` oder `docker`, Standard `local`). `--agent local|docker|session` überschreibt das für einen Lauf. In CI (`CI` gesetzt) gilt immer `docker`, andere Werte brechen ab.
+Wo Claude läuft, wenn ein Lauf es braucht, legt `agent.mode` in der Config fest (`local` oder `docker`, Standard `local`). `--agent local|docker|session` überschreibt das für einen Lauf. In CI (`CI` gesetzt) gilt immer `docker`, andere Werte brechen ab.
 
 | Agent | Wie Claude läuft | Gut für |
 |---|---|---|
@@ -22,7 +22,7 @@ In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die A
 "caw:shop:smoke:rerecord-docker": "caw record shop-smoke@S2 --env local --agent docker"
 ```
 
-In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.sandbox` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
+In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.mode` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
 
 **Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw-ai je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme (F7, siehe [Themes](../themes/README.de.md)).
 

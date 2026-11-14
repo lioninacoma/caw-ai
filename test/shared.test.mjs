@@ -82,7 +82,15 @@ test('config: browser.locale, browser.timezone and readyIgnore', () => {
     assert.match(issues({ ...simple(), browser: { locale: 'kein locale!' } }), /browser\.locale muss ein Sprachkürzel sein/);
     assert.match(issues({ ...simple(), browser: { locale: 7 } }), /browser\.locale/);
     assert.match(issues({ ...simple(), browser: { timezone: 'Mars/Olympus' } }), /browser\.timezone muss eine Zeitzone sein/);
-    assert.match(issues({ ...simple(), browser: { zone: 'UTC' } }), /browser\.zone gibt es nicht \(erlaubt: channel, executablePath, locale, timezone\)/);
+    assert.match(issues({ ...simple(), browser: { zone: 'UTC' } }), /browser\.zone gibt es nicht \(erlaubt: channel, executablePath, locale, timezone, viewport\)/);
+    assert.equal(issues({ ...simple(), browser: { viewport: { width: 1280, height: 800 } } }), '');
+    for (const viewport of [{ width: 100, height: 800 }, { width: 1280 }, { width: 1280.5, height: 800 }, { width: 1280, height: 800, scale: 2 }, '1280x800']) {
+        assert.match(issues({ ...simple(), browser: { viewport } }), /browser\.viewport muss \{ "width": 320–7680, "height": 240–4320 \}/, JSON.stringify(viewport));
+    }
+    // Removed before 1.0, named with what replaced it.
+    assert.match(issues({ ...simple(), maxSteps: 50 }), /maxSteps heißt jetzt maxActions/);
+    assert.equal(issues({ ...simple(), maxActions: 50 }), '');
+    assert.match(issues({ ...simple(), maxActions: 0 }), /maxActions muss eine positive ganze Zahl sein/);
     assert.match(issues({ ...simple(), readyIgnore: '.uhr' }), /readyIgnore muss eine Liste von CSS-Selektoren sein/);
     assert.match(issues({ ...simple(), readyIgnore: [''] }), /readyIgnore/);
 });

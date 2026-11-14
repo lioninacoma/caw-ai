@@ -216,7 +216,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
         },
         reload: async () => { await session.page().reload(); return session.page().url(); },
         'wait-ready': (command) => session.waitReady({
-            ...(typeof command.store === 'string' ? { store: command.store } : {}),
+            ...(typeof command.for === 'string' ? { store: command.for } : {}),
             ...(Number.isFinite(command.minCount) ? { minCount: command.minCount } : {}),
             ...(Number.isFinite(command.timeout) ? { timeout: command.timeout } : {}),
         }),

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
-import { OVERLAY_KINDS, isLoopback, isServerUrl, isStartPath, loadConfig, overlayEnvironments, overlayParts } from '../shared/config.mjs';
+import { OVERLAY_KINDS, isLoopback, isServerUrl, isStartPath, isViewport, loadConfig, overlayEnvironments, overlayParts } from '../shared/config.mjs';
 import { effectiveEnvironment, testEnvironments } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -31,8 +31,8 @@ const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
 const MAX_RETRY_WAIT_MS = 300_000;
 const STEP_FIELDS = [...PLAN_STEP_FIELDS, 'recording'];
-// `locale` and `timezone`: the recording browser's, pinned on replay.
-const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'actions', 'check', 'timeoutMs', 'network', 'effects'];
+// `locale`, `timezone` and `viewport`: the recording browser's, pinned on replay (the viewport headless, or browser.viewport).
+const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects'];
 const EFFECT_FIELDS = new Set(['action', ...EFFECT_LISTS]);
 
 /** The learned effects: how many runs they were learned from, and per action number lists of lines without values. */
@@ -174,21 +174,22 @@ const readAction = (raw, report, { framework }) => {
     }
     if (name === 'wait-ready') {
         const options = payload ?? {};
-        if (!isObject(options) || Object.keys(options).some((key) => !['store', 'minCount'].includes(key))) report(t('config.test.action.waitReady'));
+        if (isObject(options) && options.store !== undefined) report(t('config.test.action.waitReadyStore'));
+        else if (!isObject(options) || Object.keys(options).some((key) => !['for', 'minCount'].includes(key))) report(t('config.test.action.waitReady'));
         return { action: name, ...options, ...extras };
     }
     if (payload !== null && !(isObject(payload) && Object.keys(payload).length === 0)) report(t('config.test.action.reload'));
     return { action: name, ...extras };
 };
 
-const writeAction = ({ action, target, key, url, name, code, secret, store, minCount, value, files, file, denied, path, timeoutMs, optional, component, source }) => {
+const writeAction = ({ action, target, key, url, name, code, secret, for: waitFor, minCount, value, files, file, denied, path, timeoutMs, optional, component, source }) => {
     let payload = {};
     if (TARGETED.includes(action)) payload = target;
     else if (action === 'press') payload = key;
     else if (action === 'goto') payload = url;
     else if (action === 'screenshot') payload = name;
     else if (action === 'remember') payload = { name, code, ...(secret === true ? { secret } : {}) };
-    else if (action === 'wait-ready') payload = { ...(store === undefined ? {} : { store }), ...(minCount === undefined ? {} : { minCount }) };
+    else if (action === 'wait-ready') payload = { ...(waitFor === undefined ? {} : { for: waitFor }), ...(minCount === undefined ? {} : { minCount }) };
     return {
         [action]: payload,
         ...(value === undefined ? {} : { value }),
@@ -213,6 +214,7 @@ const readRecording = (raw, at, problems, lineOf, { framework }) => {
     for (const key of ['hash', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'check']) if (!isText(raw[key])) report([...at, key], t('config.test.recording.missing', { key }));
     if (raw.after !== undefined && !STEP_ID.test(String(raw.after))) report([...at, 'after'], t('config.test.recording.after'));
     if (raw.timeoutMs !== undefined && !(Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0)) report([...at, 'timeoutMs'], t('config.test.recording.timeout'));
+    if (raw.viewport !== undefined && !isViewport(raw.viewport)) report([...at, 'viewport'], t('config.test.recording.viewport'));
     if (raw.network !== undefined) checkNetwork(raw.network, [...at, 'network'], report);
     if (raw.effects !== undefined) checkEffects(raw.effects, [...at, 'effects'], report);
     if (!Array.isArray(raw.actions)) {
@@ -482,7 +484,10 @@ export const recordingHints = (root) => {
         if (!existsSync(testPath(root, id))) return [t('config.test.hint.noDescription', { file: `${RECORDING_DIR}/${name}`, test: `${TEST_DIR}/${name}` })];
         const recordings = readRecordingFile(root, id);
         const steps = new Set(loadTest(root, id).steps.map((step) => step.id));
-        return [...recordings.byId.keys()].filter((step) => !steps.has(step)).map((step) => t('config.test.hint.orphan', { file: `${RECORDING_DIR}/${name}`, step }));
+        const orphans = [...recordings.byId.keys()].filter((step) => !steps.has(step)).map((step) => t('config.test.hint.orphan', { file: `${RECORDING_DIR}/${name}`, step }));
+        // Recorded before the viewport was stored: replay keeps the default size until the test is recorded again.
+        const unpinned = [...recordings.byId.values()].some((recording) => recording?.viewport === undefined);
+        return [...orphans, ...(unpinned ? [t('config.test.hint.noViewport', { file: `${RECORDING_DIR}/${name}` })] : [])];
     });
 };
 
@@ -652,6 +657,7 @@ const recordingFields = (recording) => ({
     recordedAt: recording.recordedAt,
     ...(recording.locale === undefined ? {} : { locale: recording.locale }),
     ...(recording.timezone === undefined ? {} : { timezone: recording.timezone }),
+    ...(recording.viewport === undefined ? {} : { viewport: recording.viewport }),
     actions: recording.actions.map(writeAction),
     check: recording.check,
     ...(recording.timeoutMs === undefined ? {} : { timeoutMs: recording.timeoutMs }),

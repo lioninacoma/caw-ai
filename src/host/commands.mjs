@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, browserLaunch, environmentsWith, loadConfig, isStartPath, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, loadConfig, isStartPath, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
 import { credentialNames } from '../shared/credentials.mjs';
 import { chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
@@ -14,7 +14,7 @@ import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DI
 import { closest } from '../shared/suggest.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { selectDocker } from './docker.mjs';
-import { DEFAULT_MAX_STEPS } from './step-budget.mjs';
+import { DEFAULT_MAX_ACTIONS } from './step-budget.mjs';
 import { CLAUDE_TIMEOUT_MIN, optionValue, parseRunArgs, toWslPath } from './linux.mjs';
 import { EXPLORE_FILE, explore } from './explore.mjs';
 import { ensureTestUser } from './role-capture.mjs';
@@ -706,11 +706,12 @@ const openSandbox = async (root, { config, containerCommand, adviseCommand, talk
     const scripted = containerCommand !== undefined || adviseCommand !== undefined || talkCommand !== undefined;
     const inCi = process.env.CI !== undefined && process.env.CI !== '';
     if (agent !== undefined && agent !== 'docker' && inCi) throw new CawError('usage', t('cli.agentNotInCi', { agent }));
-    if (agent === 'session') {
+    const mode = agent ?? agentMode(config);
+    if (mode === 'session') {
         ui.info(t('cli.sessionAgent'));
         return { kind: 'session', label: t('cli.sessionLabel') };
     }
-    if (chosenDocker === undefined && (agent ?? agentSandbox(config)) === 'local') {
+    if (chosenDocker === undefined && mode === 'local') {
         const { localBox, requireClaude } = await import('./local-agent.mjs');
         if (!scripted) ui.info(t('cli.localAgent', { version: requireClaude() }));
         return localBox();
@@ -810,7 +811,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
  * `lazyChat` true opens it only on a failed step, 'warnings' also on errors and warnings; `testing` shows a test run in the
  * chat instead of a verification run.
  */
-const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen, ...rest }) => {
+const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, ...rest }) => {
     const conversation = { transcript: [], onChatOpen };
     return {
         conversation,
@@ -825,7 +826,7 @@ const claudeRuns = (root, config, { spec, checked, target, timeoutMin, stepTimeo
                 adviseCommand,
                 talkCommand,
                 stepTimeoutMs: stepTimeoutSec * 1000,
-                maxSteps: maxSteps ?? config.maxSteps ?? DEFAULT_MAX_STEPS,
+                maxActions: maxActions ?? config.maxActions ?? DEFAULT_MAX_ACTIONS,
                 ...rest,
                 ...options,
                 ...(options.conclude === undefined ? {} : { conversation: { ...conversation, lazy: lazyChat !== undefined, alsoOnWarnings: lazyChat === 'warnings', testing: testing === true } }),
@@ -896,7 +897,7 @@ export const changeTracker = (root) => {
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}, loaded = undefined) => {
-    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxSteps, overlay, start, quiet = false } = options;
+    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxActions, overlay, start, quiet = false } = options;
     let { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
@@ -921,7 +922,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     if (inCi && handover) throw new CawError('usage', t('cli.ciHandover', { option: 'open' }));
     if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), learn, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
-    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
+    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
     const tracker = changeTracker(root);
     let failed;
     // Where the human can clarify the failure in the chat: the test's first environment Claude may work on.
@@ -934,7 +935,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         canFix,
         advise: withAdvice,
         // The developer's Claude Code session is there at once and costs nothing here: it may read the page in the state right away.
-        sessionAgent: agent === 'session',
+        sessionAgent: (agent ?? agentMode(config)) === 'session',
         // Only with chat and without --no-learn: without chat, e.g. in CI, a run does not change the test file.
         fillBaselines: canFix && learn,
         openSandbox: () => openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent }),
@@ -1058,7 +1059,7 @@ export const contradicts = (spec, { role, readOnly = false }) => (role !== undef
  * before stay as they are. Without a demonstration: it would start at the sign-in, not at the step.
  */
 const recordFrom = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}) => {
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, agent, overlay, start } = options;
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, agent, overlay, start } = options;
     let { config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start });
     const position = spec.steps.findIndex(({ id }) => id === step);
     if (position === -1) throw stepUnknown('cli.recordStepUnknown', spec, step, { file: `${TEST_DIR}/${test}.yaml` });
@@ -1073,7 +1074,7 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
     }
     const { fixFlow } = await import('./flows.mjs');
     const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
-    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen });
+    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen });
     return fixFlow({
         draft: spec,
         target: { id: step, reason: t('cli.recordFromReason', { step }), rerecord: true, from: true },
@@ -1092,7 +1093,7 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
 export const record = async (root, args, deps = {}) => {
     const options = parseRunArgs('record', args);
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = deps;
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxSteps, role, readOnly, agent, overlay, start } = options;
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, overlay, start } = options;
     let config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
     if (step !== undefined) {
@@ -1116,10 +1117,10 @@ export const record = async (root, args, deps = {}) => {
     // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
     const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
     const previous = exists ? spec : undefined;
-    const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxSteps, containerCommand, adviseCommand, talkCommand, onChatOpen, previous });
+    const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous });
     // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
     // A new test without a plan still starts with the human's demonstration.
-    const demonstration = agent === 'session' && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
+    const demonstration = (agent ?? agentMode(config)) === 'session' && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
     return recordFlow({
         sandbox,
         execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),

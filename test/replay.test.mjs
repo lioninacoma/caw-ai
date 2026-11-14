@@ -48,14 +48,14 @@ test('Recorder: references become stable targets, reads and failed attempts stay
 test('Recorder: two wait-ready merge into one with the more specific wait and the longer timeout', async () => {
     const recorder = recorderWith(() => NEXT_BUTTON, async () => ({ settled: true }));
     await recorder.handler({ action: 'wait-ready', timeout: 60_000 });
-    await recorder.handler({ action: 'wait-ready', store: 'antraege', minCount: 1 });
+    await recorder.handler({ action: 'wait-ready', for: 'antraege', minCount: 1 });
     await recorder.handler({ action: 'click', target: 'e1' });
-    await recorder.handler({ action: 'wait-ready', store: 'liste' });
+    await recorder.handler({ action: 'wait-ready', for: 'liste' });
     await recorder.handler({ action: 'wait-ready' });
     assert.deepEqual(recorder.steps, [
-        { action: 'wait-ready', store: 'antraege', minCount: 1, timeoutMs: 60_000 },
+        { action: 'wait-ready', for: 'antraege', minCount: 1, timeoutMs: 60_000 },
         { action: 'click', target: NEXT_BUTTON },
-        { action: 'wait-ready', store: 'liste' },
+        { action: 'wait-ready', for: 'liste' },
     ]);
 });
 

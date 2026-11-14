@@ -116,3 +116,19 @@ test('plan gate: eval changes the page like a click and needs the approved plan;
     assert.ok(NEEDS_PLAN.has('eval'));
     assert.ok(!NEEDS_PLAN.has('snapshot'));
 });
+
+test('viewport: browser.viewport before the recorded one; recordedBrowser takes the newest recorded viewport', async () => {
+    const { recordedBrowser } = await import('../src/host/replay.mjs');
+    const host = { locale: 'en-US', timeZone: 'UTC' };
+    const recorded = { locale: 'de-DE', timezone: 'Europe/Berlin', viewport: { width: 1280, height: 800 } };
+    assert.deepEqual(browserRegion({}, recorded, host).viewport, { width: 1280, height: 800 });
+    assert.deepEqual(browserRegion({ browser: { viewport: { width: 1920, height: 1200 } } }, recorded, host).viewport, { width: 1920, height: 1200 });
+    assert.equal(browserRegion({}, { viewport: { width: 1, height: 1 } }, host).viewport, undefined, 'an invalid size is skipped');
+    const steps = [
+        { recording: { locale: 'de-DE', timezone: 'Europe/Berlin', viewport: { width: 1024, height: 768 } } },
+        { recording: { locale: 'de-DE', timezone: 'Europe/Berlin' } },
+        {},
+    ];
+    assert.deepEqual(recordedBrowser(steps), { locale: 'de-DE', timezone: 'Europe/Berlin', viewport: { width: 1024, height: 768 } });
+    assert.deepEqual(recordedBrowser([]), {});
+});

@@ -30,7 +30,7 @@ Befehle:`,
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (writes: false); schreibt er doch,
                                          wird er schreibend
       [--claude-timeout <dauer>]         Zeitlimit für Claude, Standard 60m
-      [--max-actions <n>]                Grenze für Aktionen von Claude, sonst maxSteps aus der Config, sonst 100
+      [--max-actions <n>]                Grenze für Aktionen von Claude, sonst maxActions aus der Config, sonst 100
       [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
       [--agent local|docker|session]     wie bei run
       [--overlay[=<teile>]]              wie bei run, auch [--start]`,
@@ -44,8 +44,8 @@ Befehle:`,
                                          im Chat etwas übernimmst
       [--step-timeout <dauer>]           Zeitlimit je Schritt, Standard 30s
       [--claude-timeout <dauer>]         Zeitlimit für Claude beim Klären und Beheben, Standard 60m
-      [--max-actions <n>]                Grenze für Aktionen von Claude beim Beheben, sonst maxSteps aus der Config, sonst 100
-      [--agent local|docker|session]     Wo Claude arbeitet; Standard aus agent.sandbox der Config (local). session: deine
+      [--max-actions <n>]                Grenze für Aktionen von Claude beim Beheben, sonst maxActions aus der Config, sonst 100
+      [--agent local|docker|session]     Wo Claude arbeitet; Standard aus agent.mode der Config (local). session: deine
                                          Claude-Code-Session übernimmt über ihre caw-Werkzeuge, caw startet keinen Claude
       [--overlay[=<teile>]]              Lokalen Code über die ausgelieferte Umgebung legen. Ohne Wert jeder Teil aus
                                          overlay.parts mit seiner Quelle; build oder dev für diese Quelle; <url> für den
@@ -234,7 +234,7 @@ Browser:
     'cli.agentNotInCi': '--agent {agent} geht nicht in CI (Variable CI gesetzt), dort läuft Claude nur in Docker.',
     'cli.sessionAgent': 'Claude arbeitet in deiner Claude-Code-Session: Sage ihr „übernimm den caw-Lauf“. Sie findet ihn über das Tool caw (caw mcp) oder caw <befehl>.',
     'cli.sessionLabel': 'deine Claude-Code-Session',
-    'cli.localAgent': 'Claude läuft lokal ohne Docker, nur mit Lesen und dem Browser-Werkzeug (Claude Code {version}). Abgeschottet: agent.sandbox "docker".',
+    'cli.localAgent': 'Claude läuft lokal ohne Docker, nur mit Lesen und dem Browser-Werkzeug (Claude Code {version}). Abgeschottet: agent.mode "docker".',
     'cli.usingDocker': 'Nutze {label}.',
     'cli.tokenMissing': '{hint} Claude in Docker braucht einen API-Schlüssel aus der Claude Console. Ohne Schlüssel --agent local nutzen: Das läuft mit deiner eigenen Claude-Code-Anmeldung.',
     'cli.and': ' und ',
@@ -305,7 +305,7 @@ Browser:
     'cli.doctorSessionNext': 'caw skill legt ihn an; danach Claude Code im Projekt neu starten.',
     'cli.doctorClaudeOk': 'Claude Code {version} (Claude läuft lokal, ohne Docker)',
     'cli.doctorClaudeMissing': 'Claude Code (claude) ist nicht im PATH',
-    'cli.doctorClaudeNext': 'Nur für Läufe mit Claude: Claude Code installieren und einmal anmelden, oder agent.sandbox "docker".',
+    'cli.doctorClaudeNext': 'Nur für Läufe mit Claude: Claude Code installieren und einmal anmelden, oder agent.mode "docker".',
     'cli.doctorDockerOk': 'Docker: {label}',
     'cli.doctorDockerNext': 'Nur für record und Claude im Chat nötig: Docker starten (Linux-Container).',
     'cli.doctorTokenOk': 'Zugang für Claude in Docker: {name}',
@@ -456,7 +456,7 @@ Browser:
     'cli.code.agoMinutes': 'vor {count} min',
     'cli.code.agoHours': 'vor {count} h',
     'cli.code.agoDays': 'vor {count} Tagen',
-    'cli.uiMaxSteps': 'bis {count} Schritte',
+    'cli.uiMaxActions': 'bis {count} Aktionen',
     'cli.uiWarnings': '{count} Warnung(en) im Bericht.',
     'cli.uiReport': 'Bericht:',
     'cli.uiMoreFailures': 'und {count} weitere im Bericht',

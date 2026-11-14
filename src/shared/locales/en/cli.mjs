@@ -30,7 +30,7 @@ Commands:`,
       [--read-only]                      First time only: the test doesn't write (writes: false); if it does, it's
                                          marked as writing
       [--claude-timeout <duration>]      Time limit for Claude, default 60m
-      [--max-actions <n>]                Limit on Claude's actions, else maxSteps from the config, else 100
+      [--max-actions <n>]                Limit on Claude's actions, else maxActions from the config, else 100
       [--step-timeout <duration>]        Time limit per step in the check run, default 30s
       [--agent local|docker|session]     as for run
       [--overlay[=<parts>]]              as for run, also [--start]`,
@@ -44,8 +44,8 @@ Commands:`,
                                          something in the chat
       [--step-timeout <duration>]        Time limit per step, default 30s
       [--claude-timeout <duration>]      Time limit for Claude when clarifying and fixing, default 60m
-      [--max-actions <n>]                Limit on Claude's actions when fixing, else maxSteps from the config, else 100
-      [--agent local|docker|session]     Where Claude works; default from agent.sandbox in the config (local). session:
+      [--max-actions <n>]                Limit on Claude's actions when fixing, else maxActions from the config, else 100
+      [--agent local|docker|session]     Where Claude works; default from agent.mode in the config (local). session:
                                          your Claude Code session takes over via its caw tools, caw starts no Claude
       [--overlay[=<parts>]]              Lay local code over the deployed environment. Without a value every part of
                                          overlay.parts with its source; build or dev for that source; <url> for the
@@ -233,7 +233,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.agentNotInCi': "--agent {agent} doesn't work in CI (variable CI set), there Claude runs in Docker only.",
     'cli.sessionAgent': 'Claude works in your Claude Code session: tell it "take over the caw run". It finds the run via the caw tool (caw mcp) or caw <command>.',
     'cli.sessionLabel': 'your Claude Code session',
-    'cli.localAgent': 'Claude runs locally without Docker, with read access and the browser tool only (Claude Code {version}). Isolated: agent.sandbox "docker".',
+    'cli.localAgent': 'Claude runs locally without Docker, with read access and the browser tool only (Claude Code {version}). Isolated: agent.mode "docker".',
     'cli.usingDocker': 'Using {label}.',
     'cli.tokenMissing': '{hint} Claude in Docker needs an API key from the Claude Console. Without one, use --agent local: it runs with your own Claude Code login.',
     'cli.and': ' and ',
@@ -304,7 +304,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorSessionNext': 'caw skill adds it; then restart Claude Code in the project.',
     'cli.doctorClaudeOk': 'Claude Code {version} (Claude runs locally, without Docker)',
     'cli.doctorClaudeMissing': 'Claude Code (claude) is not in PATH',
-    'cli.doctorClaudeNext': 'Only for runs with Claude: install Claude Code and sign in once, or agent.sandbox "docker".',
+    'cli.doctorClaudeNext': 'Only for runs with Claude: install Claude Code and sign in once, or agent.mode "docker".',
     'cli.doctorDockerOk': 'Docker: {label}',
     'cli.doctorDockerNext': 'Only needed for record and Claude in the chat: start Docker (Linux containers).',
     'cli.doctorTokenOk': 'Access for Claude in Docker: {name}',
@@ -455,7 +455,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.code.agoMinutes': '{count} min ago',
     'cli.code.agoHours': '{count} h ago',
     'cli.code.agoDays': '{count} days ago',
-    'cli.uiMaxSteps': 'up to {count} steps',
+    'cli.uiMaxActions': 'up to {count} actions',
     'cli.uiWarnings': '{count} warning(s) in the report.',
     'cli.uiReport': 'Report:',
     'cli.uiMoreFailures': 'and {count} more in the report',

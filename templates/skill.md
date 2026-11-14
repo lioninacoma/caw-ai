@@ -170,7 +170,7 @@ and `/tmp` are writable. You reach the application only through these commands, 
    files including their recording and the source code when you lack a path. They can be outdated; the page
    remains authoritative.
 
-   `maxSteps` limits your actions: Every `click`, `dblclick`, `fill`, `type`, `press`, `goto` and `reload` counts, also a
+   `maxActions` limits your actions: Every `click`, `dblclick`, `fill`, `type`, `press`, `goto` and `reload` counts, also a
    failed attempt. After that comes `step-limit`, and you submit what you have. `runTag` distinguishes this run
    from others: Write it into every free text by which you must later recognise your record, and search for your
    record by it, never simply the top one. When replaying, the tool inserts a new one each time.
@@ -412,7 +412,7 @@ If `task` contains the field `repair`, you change exactly the one step in `steps
   counterpart, ask the human.
 - At the end submit only this step with `finish`. The tool then replays the whole test without you.
 
-If a section is now somewhere else, you may search for it, also on other pages of the application, within `maxSteps`.
+If a section is now somewhere else, you may search for it, also on other pages of the application, within `maxActions`.
 
 ### Re-record from a step on
 

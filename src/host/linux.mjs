@@ -148,7 +148,7 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--all') options.all = true;
         else if (flag === '--read-only') options.readOnly = true;
         else if (flag === '--start') options.start = true;
-        else if (flag === '--max-actions') options.maxSteps = Number(value);
+        else if (flag === '--max-actions') options.maxActions = Number(value);
         else if (flag === '--role') options.role = value;
         else if (flag === '--step-timeout') options.stepTimeoutSec = parseDuration(flag, value) / 1000;
         else if (flag === '--report') {
@@ -175,7 +175,7 @@ export const parseRunArgs = (command, args) => {
         const clash = [['--role', options.role], ['--read-only', options.readOnly]].find(([, value]) => value !== undefined);
         if (clash !== undefined) throw new CawError('usage', t('session.args.recordStepMeta', { flag: clash[0] }));
     }
-    if (options.maxSteps !== undefined && (!Number.isInteger(options.maxSteps) || options.maxSteps <= 0)) throw new CawError('usage', t('session.args.maxActions'));
+    if (options.maxActions !== undefined && (!Number.isInteger(options.maxActions) || options.maxActions <= 0)) throw new CawError('usage', t('session.args.maxActions'));
     // Several tests are meant for CI: no chat, otherwise every test would wait for a human.
     if (command === 'run' && (options.all || options.tests.length > 1)) {
         if (options.advise) throw new CawError('usage', t('session.args.batchClash', { other: '--explain' }));

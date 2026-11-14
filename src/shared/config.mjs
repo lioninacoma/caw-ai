@@ -54,9 +54,14 @@ export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
 const TOP_FIELDS = ['framework', 'start', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys',
-    'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
+    'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxActions', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
-const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone'];
+const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport'];
+/** A CSS viewport { width, height } in whole pixels, as a recording stores it and browser.viewport sets it. */
+export const isViewport = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
+    && Object.keys(value).every((key) => key === 'width' || key === 'height')
+    && Number.isInteger(value.width) && value.width >= 320 && value.width <= 7680
+    && Number.isInteger(value.height) && value.height >= 240 && value.height <= 4320;
 
 /**
  * Keys that existed before 1.0. They are not read: the message says what replaced them or why they went. A static table, so
@@ -70,14 +75,15 @@ export const REMOVED_KEYS = {
     auth: { now: 'signIn' },
     assetUrlPattern: { now: 'overlay.assetUrlPattern' },
     apps: { why: 'config.removed.apps' },
+    maxSteps: { now: 'maxActions' },
 };
 const ENVIRONMENT_REMOVED = { urls: { why: 'config.removed.urls' }, overlay: { now: 'overlay.environments' } };
 /** The message for a removed key: renamed (now) or gone (why). */
 const removedKey = (path, entry) => (entry.now === undefined ? t('config.removed.gone', { key: path, why: t(entry.why) }) : t('config.removed.renamed', { key: path, now: entry.now }));
 
-/** Where Claude runs: locally with restricted tools (default) or isolated in Docker. */
-export const AGENT_SANDBOXES = ['local', 'docker'];
-const AGENT_KEYS = ['sandbox', 'model', 'maxBudgetUsd'];
+/** Where Claude runs: locally with restricted tools (default), isolated in Docker, or the developer's own Claude Code session. */
+export const AGENT_MODES = ['local', 'docker', 'session'];
+const AGENT_KEYS = ['mode', 'model', 'maxBudgetUsd'];
 /** A Claude Code model alias or name, e.g. "haiku" or "claude-sonnet-5-5": no spaces, no options. */
 const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,79}$/;
 
@@ -96,9 +102,9 @@ export const claudeLimits = (config, env = process.env) => {
     };
 };
 
-/** The sandbox for Claude from the config. Always Docker in CI: nobody is there to watch a local agent. */
-export const agentSandbox = (config, env = process.env) => {
-    const chosen = isObject(config?.agent) && typeof config.agent.sandbox === 'string' ? config.agent.sandbox : 'local';
+/** Where Claude runs by the config (`agent.mode`, default local). Always Docker in CI: nobody is there to watch a local agent or a session. */
+export const agentMode = (config, env = process.env) => {
+    const chosen = isObject(config?.agent) && typeof config.agent.mode === 'string' ? config.agent.mode : 'local';
     return env.CI !== undefined && env.CI !== '' ? 'docker' : chosen;
 };
 
@@ -374,9 +380,10 @@ export const validateConfig = (given) => {
     if (config.agent !== undefined) {
         if (!isObject(config.agent)) issues.push(t('config.agent.notObject'));
         else {
-            const unknown = Object.keys(config.agent).find((key) => !AGENT_KEYS.includes(key));
+            if (config.agent.sandbox !== undefined) issues.push(t('config.removed.renamed', { key: 'agent.sandbox', now: 'agent.mode' }));
+            const unknown = Object.keys(config.agent).find((key) => !AGENT_KEYS.includes(key) && key !== 'sandbox');
             if (unknown !== undefined) issues.push(t('config.agent.unknown', { key: unknown, hint: hintFor(unknown, AGENT_KEYS) }));
-            if (config.agent.sandbox !== undefined && !AGENT_SANDBOXES.includes(config.agent.sandbox)) issues.push(t('config.agent.sandbox', { names: AGENT_SANDBOXES.join(', ') }));
+            if (config.agent.mode !== undefined && !AGENT_MODES.includes(config.agent.mode)) issues.push(t('config.agent.mode', { names: AGENT_MODES.join(', ') }));
             if (config.agent.model !== undefined && (typeof config.agent.model !== 'string' || !MODEL_NAME.test(config.agent.model))) issues.push(t('config.agent.model'));
             if (config.agent.maxBudgetUsd !== undefined && !(typeof config.agent.maxBudgetUsd === 'number' && config.agent.maxBudgetUsd > 0)) issues.push(t('config.agent.budget'));
         }
@@ -388,6 +395,7 @@ export const validateConfig = (given) => {
             if (unknown !== undefined) issues.push(t('config.browser.unknown', { key: unknown, fields: BROWSER_FIELDS.join(', '), hint: hintFor(unknown, BROWSER_FIELDS) }));
             if (config.browser.locale !== undefined && !isLocale(config.browser.locale)) issues.push(t('config.browser.locale'));
             if (config.browser.timezone !== undefined && !isTimezone(config.browser.timezone)) issues.push(t('config.browser.timezone'));
+            if (config.browser.viewport !== undefined && !isViewport(config.browser.viewport)) issues.push(t('config.browser.viewport'));
             if (config.browser.channel !== undefined && !BROWSER_CHANNELS.includes(config.browser.channel)) issues.push(t('config.browser.channel', { names: BROWSER_CHANNELS.join(', ') }));
             if (config.browser.executablePath !== undefined && (typeof config.browser.executablePath !== 'string' || !isAbsolute(config.browser.executablePath))) issues.push(t('config.browser.executablePath'));
             if (config.browser.channel !== undefined && config.browser.executablePath !== undefined) issues.push(t('config.browser.both'));
@@ -395,7 +403,7 @@ export const validateConfig = (given) => {
     }
     if (typeof config.sandboxImage === 'string' && !/^[\w./:@-]+$/.test(config.sandboxImage)) issues.push(t('config.sandboxImage'));
     if (config.sandboxUser !== undefined && !/^[a-z_][a-z0-9_-]*$/.test(config.sandboxUser)) issues.push(t('config.sandboxUser'));
-    if (config.maxSteps !== undefined && (!Number.isInteger(config.maxSteps) || config.maxSteps <= 0)) issues.push(t('config.maxSteps'));
+    if (config.maxActions !== undefined && (!Number.isInteger(config.maxActions) || config.maxActions <= 0)) issues.push(t('config.maxActions'));
     if (config.readyTimeoutMs !== undefined && (!Number.isInteger(config.readyTimeoutMs) || config.readyTimeoutMs <= 0)) issues.push(t('config.readyTimeoutMs'));
     issues.push(...hostListIssues('allowHosts', config.allowHosts));
     for (const key of ['consoleIgnore', 'foreignCode']) {

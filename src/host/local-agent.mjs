@@ -1,5 +1,5 @@
 // Claude without a container: the same flow as in the sandbox, just as a process on the host. The boundary here is the tool set
-// (read-only plus the caw tool, see localClaudeArgs), not Docker. Chosen with agent.sandbox, default "local".
+// (read-only plus the caw tool, see localClaudeArgs), not Docker. Chosen with agent.mode, default "local".
 
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';

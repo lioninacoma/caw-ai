@@ -183,7 +183,7 @@ Runs only on environments where Claude may work (`"claude": true`). `--env` can 
 | `--read-only` | First recording only: the test doesn't write data (`mutates: false`). |
 | `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment, see [Testing local code](configuration.md#testing-local-code). |
 | `--start` | With `--overlay`: run `overlay.start` if the local code server doesn't answer, stop it at the end (CI). Without it caw starts nothing and names the command. |
-| `--agent local\|docker\|session` | Where Claude runs. Default: `agent.sandbox` from the config, else `local`. |
+| `--agent local\|docker\|session` | Where Claude runs. Default: `agent.mode` from the config, else `local`. |
 | `--claude-timeout <duration>` | Time limit for Claude, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's browser actions, default `maxSteps` or 100. |
 | `--step-timeout <duration>` | Time limit per step in the check run, default `30s`. |

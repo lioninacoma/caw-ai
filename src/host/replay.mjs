@@ -4,6 +4,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
+import { isViewport } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { isCaughtScriptError } from '../shared/report.mjs';
@@ -285,7 +286,7 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                 case 'screenshot': add({ action: 'screenshot', name: command.name }); break;
                 case 'wait-ready':
                     // A custom timeout also applies on playback: if the page needed longer while recording, it will again.
-                    if (value?.settled) add({ action: 'wait-ready', ...(command.store === undefined ? {} : { store: command.store }), ...(command.minCount === undefined ? {} : { minCount: command.minCount }), ...(Number.isFinite(command.timeout) ? { timeoutMs: command.timeout } : {}) });
+                    if (value?.settled) add({ action: 'wait-ready', ...(command.for === undefined ? {} : { for: command.for }), ...(command.minCount === undefined ? {} : { minCount: command.minCount }), ...(Number.isFinite(command.timeout) ? { timeoutMs: command.timeout } : {}) });
                     break;
                 case 'check':
                     if (value?.pass) add({ action: 'check', id: command.id, code: command.code });
@@ -394,7 +395,7 @@ export const missingRemembered = (spec) => {
  * @param draft  when fixing, the whole test in which exactly this one step is replaced
  * @param from   with `draft`: re-recorded from this step on. The steps before it stay as they are, `spec` replaces all steps
  *               from it to the end (added, removed, reordered)
- * @param browser { locale, timezone } of the recording browser, stored with every step
+ * @param browser { locale, timezone, viewport } of the recording browser, stored with every step
  * @returns { problems, candidate, fresh }; `fresh` lists messages the recording did not know so far
  */
 export const buildReplay = ({ recorder, outcome, spec, target, draft, from, previous, browser = {}, now = new Date() }) => {
@@ -434,6 +435,7 @@ export const buildReplay = ({ recorder, outcome, spec, target, draft, from, prev
                 // The browser's language and time zone: replay pins them, wherever it runs.
                 ...(typeof browser.locale === 'string' ? { locale: browser.locale } : {}),
                 ...(typeof browser.timezone === 'string' ? { timezone: browser.timezone } : {}),
+                ...(isViewport(browser.viewport) ? { viewport: { width: browser.viewport.width, height: browser.viewport.height } } : {}),
                 actions,
                 check,
                 ...(timeoutMs === undefined ? {} : { timeoutMs }),
@@ -502,12 +504,18 @@ const withBasis = (spec, step, effects) => {
 };
 
 /**
- * Language and time zone the steps were recorded in, from the newest recorded step; {} while nothing is recorded. The browser of
- * a replay gets them, so dates and numbers look as they did while recording.
+ * Language, time zone and viewport the steps were recorded in, from the newest recorded step that has them; {} while nothing is
+ * recorded. The browser of a replay gets them, so dates, numbers and layout look as they did while recording.
  */
 export const recordedBrowser = (steps) => {
-    const recording = steps.map((step) => step.recording).filter((entry) => entry?.locale !== undefined || entry?.timezone !== undefined).at(-1);
-    return recording === undefined ? {} : { ...(recording.locale === undefined ? {} : { locale: recording.locale }), ...(recording.timezone === undefined ? {} : { timezone: recording.timezone }) };
+    const recordings = steps.map((step) => step.recording).filter((entry) => entry !== undefined);
+    const recording = recordings.filter((entry) => entry.locale !== undefined || entry.timezone !== undefined).at(-1);
+    const viewport = recordings.map((entry) => entry.viewport).filter((entry) => entry !== undefined).at(-1);
+    return {
+        ...(recording?.locale === undefined ? {} : { locale: recording.locale }),
+        ...(recording?.timezone === undefined ? {} : { timezone: recording.timezone }),
+        ...(viewport === undefined ? {} : { viewport }),
+    };
 };
 
 const flatten = (spec, steps, until) => ({
@@ -924,7 +932,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             const denied = await handler({ action: 'goto', url: step.url }).then(() => false, (error) => error.code === 'target-denied');
             if (!denied) throw new Error(t('session.replay.notDenied', { url: step.url }));
         } else if (step.action === 'goto') await handler({ action: 'goto', url: new URL(step.url, base).href });
-        else if (step.action === 'wait-ready') await session.waitReady({ timeout: timeoutMs, ...(step.store === undefined ? {} : { store: step.store }), ...(step.minCount === undefined ? {} : { minCount: step.minCount }) }).catch(() => {});
+        else if (step.action === 'wait-ready') await session.waitReady({ timeout: timeoutMs, ...(step.for === undefined ? {} : { store: step.for }), ...(step.minCount === undefined ? {} : { minCount: step.minCount }) }).catch(() => {});
         else await handler(step);
         if (CHANGES_PAGE.has(step.action) && !step.denied) await settle(timeoutMs);
     };

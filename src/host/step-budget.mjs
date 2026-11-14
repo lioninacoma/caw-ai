@@ -3,18 +3,18 @@
 
 import { CawError } from '../shared/errors.mjs';
 
-export const DEFAULT_MAX_STEPS = 100;
+export const DEFAULT_MAX_ACTIONS = 100;
 
 const STEPS = new Set(['click', 'dblclick', 'upload', 'fill', 'type', 'press', 'goto', 'reload']);
 
-export const withStepBudget = (handler, maxSteps) => {
+export const withStepBudget = (handler, maxActions) => {
     let used = 0;
     return {
         used: () => used,
         handler: async (command) => {
             if (STEPS.has(command?.action)) {
-                if (used >= maxSteps) {
-                    throw new CawError('step-limit', `The budget of ${maxSteps} steps is used up. Submit the result: whatever you did not reach is a fail with a reason.`);
+                if (used >= maxActions) {
+                    throw new CawError('step-limit', `The budget of ${maxActions} actions is used up. Submit the result: whatever you did not reach is a fail with a reason.`);
                 }
                 used += 1;
             }

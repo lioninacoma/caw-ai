@@ -328,14 +328,14 @@ export const readContext = (root) => {
  *                 `repair` { id, reason } has Claude fix only that step, the steps before it are replayed first without him;
  *                 with `from` Claude re-records from that step to the end of the test;
  *                 `command` names the run in .caw/last-run.json (open), otherwise it follows from replay and repair;
- *                 when recording, `previous` gives Claude the old test plan, `demonstration` the demonstration; `maxSteps` caps its actions;
+ *                 when recording, `previous` gives Claude the old test plan, `demonstration` the demonstration; `maxActions` caps its actions;
  *                 `conversation` { transcript, onChatOpen, lazy, alsoOnWarnings } opens the chat; with `lazy` only once a step
  *                 failed, with `alsoOnWarnings` also for failures and warnings of an otherwise passed run;
  *                 `conclude` runs while the chat is still open and gets `advise`, which lets Claude give advice;
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
  * @returns { exitCode, verdict, failed, candidate, fresh, expectChange, ids, removed }
  */
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxSteps, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -375,7 +375,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     else if (repair !== undefined) modeLabel = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
     // Which code runs, always on one line, also in CI: otherwise a silently deployed version would only show in the result.
     const codeLine = describeCode(config, spec, checked, { root });
-    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: codeLine, ...(replay === undefined ? { maxSteps } : {}) });
+    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: codeLine, ...(replay === undefined ? { maxActions } : {}) });
 
     // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
     const reportBase = { testId: spec.id, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
@@ -491,7 +491,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         notes: spec.notes,
         steps: spec.steps.map(planStep),
         runTag,
-        maxSteps,
+        maxActions,
         ...(others.length === 0 ? {} : { knownTests: others }),
         ...(context === undefined ? {} : { context }),
         ...(creating ? { create: { role: spec.role ?? null } } : {}),
@@ -1130,7 +1130,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }
 
         let repairReviewer = null;
-        const budget = withStepBudget(agentHandler, maxSteps ?? Number.POSITIVE_INFINITY);
+        const budget = withStepBudget(agentHandler, maxActions ?? Number.POSITIVE_INFINITY);
         let recorder = null;
         let plan = null;
         // Checks a plan change took back, with what they proved: a later version that proves the same brings them back.
@@ -1358,9 +1358,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             await stopPump();
         }
 
-        if (budget.used() > 0) ui.info(t('run.budget', { used: budget.used(), max: maxSteps ?? t('run.budget.unlimited') }));
+        if (budget.used() > 0) ui.info(t('run.budget', { used: budget.used(), max: maxActions ?? t('run.budget.unlimited') }));
 
-        const built = buildReplay({ recorder, outcome: verdict, spec, target, browser: session.browser ?? {}, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(range === undefined ? {} : { from: repair.id }), ...(creating && previous !== undefined ? { previous } : {}) });
+        const viewport = await session.viewportSize?.();
+        const built = buildReplay({ recorder, outcome: verdict, spec, target, browser: { ...(session.browser ?? {}), ...(viewport ? { viewport } : {}) }, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(range === undefined ? {} : { from: repair.id }), ...(creating && previous !== undefined ? { previous } : {}) });
         let { candidate } = built;
         // Created as read-only but it wrote: then the test writes, otherwise it would run on environments without writable.
         const written = verdict?.writes ?? [];

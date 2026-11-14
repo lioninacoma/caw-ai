@@ -3,7 +3,7 @@
     "framework": "extjs",
     "start": "/ext-data.html",
     "agent": {
-        "sandbox": "docker"
+        "mode": "docker"
     },
     "environments": {
         "test": {

@@ -54,7 +54,7 @@ test('local agent: the limits reach the agent process environment', () => {
 
 test('config: agent.model and agent.maxBudgetUsd are checked up front', () => {
     const issues = (config) => validateConfig(config).issues;
-    assert.deepEqual(issues({ ...BASE, agent: { sandbox: 'local', model: 'haiku', maxBudgetUsd: 0.25 } }), []);
+    assert.deepEqual(issues({ ...BASE, agent: { mode: 'local', model: 'haiku', maxBudgetUsd: 0.25 } }), []);
     assert.match(issues({ ...BASE, agent: { model: 'haiku sonnet' } }).join('\n'), /agent\.model/);
     assert.match(issues({ ...BASE, agent: { maxBudgetUsd: 0 } }).join('\n'), /agent\.maxBudgetUsd/);
     assert.match(issues({ ...BASE, agent: { budget: 1 } }).join('\n'), /maxBudgetUsd/);

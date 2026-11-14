@@ -183,7 +183,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     const loose = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes });
     assert.ok(loose.find(({ text }) => text.startsWith('.gitignore')).ok, 'gitignore compared loosely');
     const withoutClaude = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes: { ...probes, claude: () => undefined } });
-    assert.match(withoutClaude.find(({ text }) => /claude/.test(text)).next, /agent\.sandbox "docker"/);
+    assert.match(withoutClaude.find(({ text }) => /claude/.test(text)).next, /agent\.mode "docker"/);
     // A selector explore did not find is TODO: doctor blocks until it is filled in.
     const configPath = join(root, 'caw.config.json');
     const saved = readFileSync(configPath, 'utf8');

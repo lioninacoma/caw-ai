@@ -3,7 +3,7 @@
     "framework": "extjs",
     "start": "/app",
     "agent": {
-        "sandbox": "docker"
+        "mode": "docker"
     },
     "environments": {
         "dev": {

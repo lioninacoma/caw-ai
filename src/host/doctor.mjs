@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AUTH_DIR, agentSandbox, browserLaunch, loadConfig, overlayEnvironments, overlayParts, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, agentMode, browserLaunch, loadConfig, overlayEnvironments, overlayParts, sessionPath, todoFields } from '../shared/config.mjs';
 import { credentialState, knownCredentialPattern } from '../shared/credentials.mjs';
 import { effectiveEnvironments, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -74,7 +74,7 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     }
 
     // Claude is only needed for record and the chat; locally Claude Code suffices, Docker also needs Docker and the token.
-    const sandbox = agent ?? agentSandbox(config ?? {}, env);
+    const sandbox = agent ?? agentMode(config ?? {}, env);
     if (sandbox === 'session') {
         // The developer's own Claude Code session takes over via caw mcp: that only needs the entry in .mcp.json.
         const mcp = join(root, '.mcp.json');

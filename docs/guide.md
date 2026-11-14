@@ -6,7 +6,7 @@ How caw-ai works in detail. For quick lookup see [Commands](commands.md), [Confi
 
 ## Agent: local, Docker or your session
 
-Where Claude runs when a run needs it is set by `agent.sandbox` in the config (`local` or `docker`, default `local`). `--agent local|docker|session` overrides it for one run. In CI (`CI` set) it is always `docker`; other values abort.
+Where Claude runs when a run needs it is set by `agent.mode` in the config (`local` or `docker`, default `local`). `--agent local|docker|session` overrides it for one run. In CI (`CI` set) it is always `docker`; other values abort.
 
 | Agent | How Claude runs | Good for |
 |---|---|---|
@@ -22,7 +22,7 @@ In all three cases the browser is the actual boundary: Claude sees the applicati
 "caw:shop:smoke:rerecord-docker": "caw record shop-smoke@S2 --env local --agent docker"
 ```
 
-In CI (`CI` set) `run` runs without chat and without Claude; `agent.sandbox` only applies there if a run does need Claude, and then always as `docker`.
+In CI (`CI` set) `run` runs without chat and without Claude; `agent.mode` only applies there if a run does need Claude, and then always as `docker`.
 
 **Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: the raven stops blinking, no spinner, no blinking cursor), collapsed steps or chat, and the theme (F7, see [Themes](../themes/README.md)).
 

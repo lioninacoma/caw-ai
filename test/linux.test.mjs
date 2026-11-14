@@ -62,7 +62,7 @@ test('parseRunArgs: each command only knows its own options', () => {
     assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', advise: false, headless: false, noChat: false, learn: true, all: false, stepTimeoutSec: 30 });
     assert.equal(parseRunArgs('run', [...base, '--explain']).advise, true);
     // Limit Claude when clarifying and fixing, as for record and fix.
-    assert.deepEqual((({ timeoutMin, maxSteps }) => [timeoutMin, maxSteps])(parseRunArgs('run', [...base, '--claude-timeout', '5m', '--max-actions=20'])), [5, 20]);
+    assert.deepEqual((({ timeoutMin, maxActions }) => [timeoutMin, maxActions])(parseRunArgs('run', [...base, '--claude-timeout', '5m', '--max-actions=20'])), [5, 20]);
     assert.throws(() => parseRunArgs('run', [...base, '--max-actions', '0']), /--max-actions muss/);
     assert.equal(parseRunArgs('record', [...base, '--read-only']).readOnly, true);
     assert.throws(() => parseRunArgs('run', [...base, '--read-only']), /kennt die Option --read-only nicht/);
@@ -78,7 +78,7 @@ test('parseRunArgs: each command only knows its own options', () => {
     assert.throws(() => parseRunArgs('record', ['smoke@S4', 'S5', '--env', 'shop/dev']), /S5/);
     assert.equal(parseRunArgs('run', ['smoke', '--env=shop/dev', '--step-timeout', '1m']).stepTimeoutSec, 60);
     const created = parseRunArgs('record', [...base, '--role', 'r', '--claude-timeout=2h', '--max-actions=30']);
-    assert.deepEqual([created.role, created.timeoutMin, created.maxSteps], ['r', 120, 30]);
+    assert.deepEqual([created.role, created.timeoutMin, created.maxActions], ['r', 120, 30]);
     // One application per project: --app and --also are gone, the message says why.
     for (const command of ['record', 'open', 'run']) {
         assert.throws(() => parseRunArgs(command, [...base, '--app', 'a']), (error) => error.code === 'usage' && /--app gibt es nicht mehr: eine Anwendung je Projekt/.test(error.message), command);

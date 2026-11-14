@@ -9,7 +9,7 @@ import { LOCAL_ALLOWED, LOCAL_DENY, localClaudeArgs, writeLocalSetup } from '../
 import { AGENT_COMMANDS, commandLine, createMcpHandler, serveMcp } from '../src/sandbox/mcp.mjs';
 import { claudeVersion, localAgentEnv, localCommand, requireClaude } from '../src/host/local-agent.mjs';
 import { resolveClaude } from '../src/shared/claude-bin.mjs';
-import { agentSandbox, validateConfig } from '../src/shared/config.mjs';
+import { agentMode, validateConfig } from '../src/shared/config.mjs';
 
 const tempDir = (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-local-'));
@@ -142,14 +142,18 @@ test('local agent: caw from this package, agent markers, Claude Code on the PATH
     assert.deepEqual(resolveClaude({ platform: 'linux' }), { file: 'claude', args: [] });
 });
 
-test('config: agent.sandbox, local by default, always Docker in CI', () => {
-    assert.equal(agentSandbox({}, {}), 'local');
-    assert.equal(agentSandbox({ agent: { sandbox: 'docker' } }, {}), 'docker');
-    assert.equal(agentSandbox({ agent: { sandbox: 'local' } }, { CI: 'true' }), 'docker');
+test('config: agent.mode, local by default, always Docker in CI', () => {
+    assert.equal(agentMode({}, {}), 'local');
+    assert.equal(agentMode({ agent: { mode: 'docker' } }, {}), 'docker');
+    assert.equal(agentMode({ agent: { mode: 'local' } }, { CI: 'true' }), 'docker');
+    assert.equal(agentMode({ agent: { mode: 'session' } }, {}), 'session');
+    assert.equal(agentMode({ agent: { mode: 'session' } }, { CI: 'true' }), 'docker', 'nobody watches a session in CI');
     const base = { framework: 'web', environments: { local: { url: 'http://app.localhost:5173', claude: true } }, signIn: { type: 'none' }, apps: { app: { path: '/' } } };
     const issues = (agent) => validateConfig({ ...base, agent }).issues.filter((issue) => issue.startsWith('agent')).join('\n');
-    assert.equal(issues({ sandbox: 'docker' }), '');
-    assert.match(issues({ sandbox: 'vm' }), /agent\.sandbox muss einer von local, docker/);
+    assert.equal(issues({ mode: 'docker' }), '');
+    assert.equal(issues({ mode: 'session' }), '');
+    assert.match(issues({ mode: 'vm' }), /agent\.mode muss einer von local, docker, session/);
+    assert.equal(issues({ sandbox: 'docker' }), 'agent.sandbox heißt jetzt agent.mode.', 'renamed before 1.0, no "unknown field" on top');
     assert.match(issues({ image: 'x' }), /agent\.image gibt es nicht/);
     assert.match(issues('docker'), /agent muss ein Objekt sein/);
 });

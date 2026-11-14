@@ -367,7 +367,11 @@ test('two files: the recording shape is checked, orphaned recordings are a hint'
     writeFileSync(recordingPath(root, 't'), text);
     writeFileSync(testPath(root, 't'), readFileSync(testPath(root, 't'), 'utf8').replace(/ {2}- id: S2[\s\S]*$/, ''));
     writeFileSync(recordingPath(root, 'unused'), text.replace('test: t', 'test: unused'));
-    assert.deepEqual(recordingHints(root), ['caw/recordings/t.yaml: S2 steht nicht mehr in der Beschreibung.', 'caw/recordings/unused.yaml: Es gibt keine Beschreibung caw/tests/unused.yaml.']);
+    assert.deepEqual(recordingHints(root), [
+        'caw/recordings/t.yaml: S2 steht nicht mehr in der Beschreibung.',
+        'caw/recordings/t.yaml: ohne Viewport aufgenommen; eine Wiedergabe ohne Fenster nimmt die Standardgröße, bis neu aufgenommen wird.',
+        'caw/recordings/unused.yaml: Es gibt keine Beschreibung caw/tests/unused.yaml.',
+    ]);
 });
 
 test('writing: re-recording replaces all steps, header and metadata stay, line endings too', (t) => {
@@ -466,4 +470,20 @@ test('two files: locale and timezone of the recording browser round-trip and are
     assert.equal(loaded.steps[1].recording.timezone, 'Europe/Berlin');
     assert.throws(() => parseRecordings(text.replace('locale: de-DE', 'locale: 7')), /recording.locale fehlt/);
     assert.throws(() => parseRecordings(text.replace(/ {4}timezone: Europe\/Berlin\n/, '')), /recording.timezone fehlt/);
+});
+
+test('recording viewport: stored, read back and checked; wait-ready waits with for (store renamed)', (t) => {
+    const root = testRoot(t);
+    const step = recorded('S1', [{ action: 'wait-ready', for: '#orders li', minCount: 2 }]);
+    step.recording.viewport = { width: 1280, height: 800 };
+    writeTest(root, spec(step));
+    const text = readFileSync(recordingPath(root, 't'), 'utf8');
+    assert.match(text, /viewport:\s*\{?\s*width: 1280/);
+    assert.match(text, /wait-ready: \{\s*for: "?#orders li"?, minCount: 2\s*\}/);
+    const loaded = loadTest(root, 't');
+    assert.deepEqual(loaded.steps[0].recording.viewport, { width: 1280, height: 800 });
+    assert.deepEqual(loaded.steps[0].recording.actions[0], { action: 'wait-ready', for: '#orders li', minCount: 2 });
+    assert.deepEqual(recordingHints(root), [], 'a pinned viewport: no hint');
+    assert.throws(() => parseRecordings(text.replace('width: 1280', 'width: 12')), /recording\.viewport muss \{ width, height \}/);
+    assert.throws(() => parseRecordings(text.replace(/for: "?#orders li"?/, 'store: liste')), /store heißt jetzt for/);
 });

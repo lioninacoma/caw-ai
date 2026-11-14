@@ -2,7 +2,7 @@
     "language": "de",
     "framework": "web",
     "agent": {
-        "sandbox": "docker"
+        "mode": "docker"
     },
     "environments": {
         "test": {

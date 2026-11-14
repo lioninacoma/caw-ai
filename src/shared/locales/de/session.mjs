@@ -54,7 +54,7 @@ export default {
 
     // local-agent
     'session.local.label': 'Claude lokal (ohne Docker)',
-    'session.local.claudeMissing': 'Claude Code (claude) ist nicht im PATH. Installieren: https://claude.com/claude-code, danach einmal claude starten und anmelden. Oder in der Config agent.sandbox: "docker".',
+    'session.local.claudeMissing': 'Claude Code (claude) ist nicht im PATH. Installieren: https://claude.com/claude-code, danach einmal claude starten und anmelden. Oder in der Config agent.mode: "docker".',
 
     // linux: arguments and why Claude ended
     'session.args.unexpected': 'Unerwartetes Argument: {arg}',

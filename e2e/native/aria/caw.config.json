@@ -3,7 +3,7 @@
     "framework": "web",
     "start": "/aria.html",
     "agent": {
-        "sandbox": "docker"
+        "mode": "docker"
     },
     "environments": {
         "test": {

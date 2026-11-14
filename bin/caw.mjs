@@ -85,7 +85,7 @@ const agentCommand = async (root, [command, ...args]) => {
             const timeout = option(args, '--timeout');
             const { parseDuration } = await import('../src/shared/duration.mjs');
             return (await sandbox()).waitReady({
-                store: option(args, '--for'),
+                for: option(args, '--for'),
                 ...(minCount === undefined ? {} : { minCount: Number(minCount) }),
                 ...(timeout === undefined ? {} : { timeout: parseDuration('--timeout', timeout) }),
             });
