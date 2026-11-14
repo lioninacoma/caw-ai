@@ -76,6 +76,17 @@ export const effectiveEnvironments = (config) => Object.fromEntries(environmentN
 /** Environments with an ability (claude, writable, production), for messages like "only on dev". */
 export const environmentsWith = (config, ability) => Object.values(effectiveEnvironments(config)).filter((env) => env[ability] === true).map(({ name }) => name);
 
+/** The sign-in on an environment (its own, inherited, else the top-level one, else none). */
+export const signInOf = (config, env) => effectiveEnvironment(config, env).signIn;
+/** Whether a sign-in needs a test user's name and password. */
+export const usesCredentials = (signIn) => signIn?.type === 'form' || signIn?.type === 'basic';
+/** Whether a sign-in also needs the secret for one-time codes. */
+export const usesTotp = (signIn) => signIn?.type === 'form' && (signIn.codeSelector !== undefined || (Array.isArray(signIn.steps) && signIn.steps.some((step) => step?.with === 'totp')));
+/** The sign-in types of all environments, without duplicates. */
+export const signInTypes = (config) => [...new Set(Object.values(effectiveEnvironments(config)).map(({ signIn }) => signIn.type))];
+/** Whether any environment signs in, so tests need roles. */
+export const needsRoles = (config) => signInTypes(config).some((type) => type !== 'none');
+
 /** The start path of a test: its own `start`, else the project's, else "/". */
 export const startPath = (config, spec) => spec?.start ?? config?.start ?? '/';
 

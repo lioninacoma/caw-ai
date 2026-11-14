@@ -13,7 +13,7 @@
             "insecureTls": true
         }
     },
-    "auth": {
+    "signIn": {
         "type": "form",
         "path": "/signin",
         "userSelector": "#login_login",
@@ -46,10 +46,7 @@
         }
     },
     "roles": {
-        "kunde": {
-            "loginEnv": "CAW_LOGIN_KUNDE",
-            "passwordEnv": "CAW_PW_KUNDE"
-        }
+        "kunde": {}
     },
     "requestKeys": [
         "connector"

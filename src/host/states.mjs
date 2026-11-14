@@ -5,12 +5,9 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { TEST_DIR } from '../shared/names.mjs';
-import { authOf } from '../shared/config.mjs';
-import { startPath } from '../shared/environments.mjs';
+import { effectiveEnvironment, startPath, usesCredentials } from '../shared/environments.mjs';
 import { assertPlayable } from './replay.mjs';
 import { loadTest, staleSteps, withDefaults, withExpectations } from './test-file.mjs';
-
-const authType = (config) => authOf(config).type;
 
 /** The ids of all tests in the project, sorted. */
 const testIds = (root) => {
@@ -38,7 +35,7 @@ export const stateCatalog = (root, config, { role, target }) => testIds(root).fl
     if (spec === undefined || !(spec.runsOn ?? []).includes(target)) return [];
     if (role !== undefined && spec.role !== role) return [];
     // Without an account for the role nothing can be restored.
-    if ((spec.role !== undefined && config.roles?.[spec.role] === undefined && authType(config) !== 'none' && authType(config) !== 'storageState')) return [];
+    if (spec.role !== undefined && config.roles?.[spec.role] === undefined && usesCredentials(effectiveEnvironment(config, target).signIn)) return [];
     const stale = new Set(staleSteps(spec).map((step) => step.id));
     let blocked = false;
     const steps = spec.steps.map((step) => {

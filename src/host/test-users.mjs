@@ -5,20 +5,16 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeF
 import { dirname, join } from 'node:path';
 
 import { writeConfig } from '../shared/config.mjs';
+import { credentialNames } from '../shared/credentials.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE } from '../shared/names.mjs';
+import { parseEnvFile } from './linux.mjs';
 
 export const ENV_PATH = ENV_FILE;
 /** Role names as `init` and the config accept them. */
 export const ROLE_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 /** The role a first test user gets unless the human names another. */
 export const FIRST_ROLE = 'tester';
-
-/** The variable names of a role in caw/.env, as `init` writes them into the config. */
-export const roleEnvNames = (role) => {
-    const name = role.toUpperCase().replaceAll('-', '_');
-    return { loginEnv: `CAW_LOGIN_${name}`, passwordEnv: `CAW_PW_${name}` };
-};
 
 /** A name for the next role that is not taken yet: tester, tester2, tester3 … */
 export const suggestRole = (taken = []) => {
@@ -75,26 +71,44 @@ const readConfigRoles = (root) => {
 };
 
 /**
- * Saves a test user under a role.
- * - caw/.env gets user name and password under the role's variable names (from the config if the role is there already).
- * - .gitignore covers caw/.env.
- * - An existing caw.config.json gets the role through the validating writer; without a config `init` adds it from the explore result.
- * @returns { role, loginEnv, passwordEnv, gitignore, config: 'added'|'present'|'none'|'refused' }
+ * Which variable set a captured account goes to (SC-7), from caw/.env alone (the process environment is for CI and never written):
+ * no default account yet → the default set CAW_<ROLE>_USER …, the default for every environment; the same user as the set that
+ * applies to the environment → that set, updated in place; a different user → the set of this environment, CAW_<ROLE>_USER__<ENV> ….
+ * @param env the environment signed in to; without one (explore before a config) always the default set
  */
-export const saveTestUser = (root, { role, user, password }) => {
+export const testUserSet = (fileEnv, role, env, user) => {
+    const names = credentialNames(role, env);
+    const has = (name) => typeof fileEnv[name] === 'string' && fileEnv[name] !== '';
+    if (!has(names.default.user) || names.env === undefined) return { set: 'default', names: names.default };
+    const applying = has(names.env.user) || has(names.env.password) ? 'env' : 'default';
+    if (fileEnv[names[applying].user] === user) return { set: applying, names: names[applying] };
+    return { set: 'env', names: names.env };
+};
+
+/**
+ * Saves a test user under a role.
+ * - caw/.env gets user name and password under the names of `testUserSet`.
+ * - .gitignore covers caw/.env.
+ * - An existing caw.config.json gets the role (an empty object) through the validating writer; without a config `init` adds it
+ *   from the explore result.
+ * @param env the environment the window signed in to
+ * @returns { role, set, names: [user, password], gitignore, config: 'added'|'present'|'none'|'refused' }
+ */
+export const saveTestUser = (root, { role, user, password, env }) => {
     if (!ROLE_NAME.test(String(role))) throw new Error(t('cli.testUserRoleBad', { role: String(role) }));
     if (typeof user !== 'string' || user === '' || typeof password !== 'string' || password === '') throw new Error(t('cli.testUserEmpty'));
-    const roles = readConfigRoles(root);
-    const known = roles?.[role];
-    const names = known?.loginEnv !== undefined && known?.passwordEnv !== undefined ? { loginEnv: known.loginEnv, passwordEnv: known.passwordEnv } : roleEnvNames(role);
-    setEnvValues(root, { [names.loginEnv]: user, [names.passwordEnv]: password });
+    const file = join(root, ENV_PATH);
+    const fileEnv = existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {};
+    const { set, names } = testUserSet(fileEnv, role, env, user);
+    setEnvValues(root, { [names.user]: user, [names.password]: password });
     const gitignore = ignoreEnvFile(root);
+    const roles = readConfigRoles(root);
     let config = 'none';
     if (roles !== null && existsSync(join(root, CONFIG_FILE))) {
-        if (known?.loginEnv !== undefined) config = 'present';
-        else config = writeConfig(root, { roles: { [role]: { ...known, ...names } } }).ok ? 'added' : 'refused';
+        if (roles[role] !== undefined) config = 'present';
+        else config = writeConfig(root, { roles: { [role]: {} } }).ok ? 'added' : 'refused';
     }
-    return { role, ...names, gitignore, config };
+    return { role, set, names: [names.user, names.password], gitignore, config };
 };
 
 /**

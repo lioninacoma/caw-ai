@@ -231,13 +231,13 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
 
     const signedIn = suggestSignedIn(loginPage ?? before, after);
     if (foreignHosts.length > 0) {
-        suggestion.auth = { type: 'storageState', confidence: 'likely', ...(signedIn === null ? {} : { signedInSelector: signedIn.selector }) };
+        suggestion.signIn = { type: 'session', confidence: 'likely', ...(signedIn === null ? {} : { signedInSelector: signedIn.selector }) };
         notes.push(t('cli.exploreForeign', { hosts: foreignHosts.join(', ') }));
     } else if (loginPage?.login !== null && loginPage?.login !== undefined) {
         const { userSelector, passwordSelector, submitsWithEnter } = loginPage.login;
         const submitSelector = submitsWithEnter === true ? null : loginPage.login.submitSelector;
         const path = new URL(loginPage.url).pathname;
-        suggestion.auth = {
+        suggestion.signIn = {
             type: 'form',
             path,
             ...(userSelector === null ? {} : { userSelector }),
@@ -249,7 +249,7 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
         if (userSelector === null || passwordSelector === null) notes.push(t('cli.exploreNoFieldSelector'));
         if (signedIn === null) notes.push(t('cli.exploreNoSignedIn'));
     } else {
-        suggestion.auth = { type: 'none', confidence: 'likely' };
+        suggestion.signIn = { type: 'none', confidence: 'likely' };
         notes.push(t('cli.exploreNoLogin'));
     }
     if (signedIn !== null) suggestion.signedIn = signedIn;
@@ -430,7 +430,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
         const sure = (confidence) => (confidence === 'likely' ? 'warn' : 'ok');
         ui.box(t('cli.exploreStepResult'), summaryLines(suggestion).map((text, index) => ({
             text,
-            status: index === 0 ? sure(suggestion.framework.confidence) : index === 1 ? sure(suggestion.auth.confidence) : 'ok',
+            status: index === 0 ? sure(suggestion.framework.confidence) : index === 1 ? sure(suggestion.signIn.confidence) : 'ok',
         })));
         for (const note of suggestion.notes) ui.note(note);
         // The test user the human signed in with: they name a role in the window, caw-ai writes caw/.env; then maybe more accounts.
@@ -451,7 +451,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
 /** What explore found, one line per item. */
 export const summaryLines = (suggestion) => [
     t('cli.exploreFoundFramework', { framework: suggestion.framework.value }),
-    suggestion.auth.type === 'none' ? t('cli.exploreFoundNoLogin') : t('cli.exploreFoundLogin', { type: suggestion.auth.type }),
+    suggestion.signIn.type === 'none' ? t('cli.exploreFoundNoLogin') : t('cli.exploreFoundLogin', { type: suggestion.signIn.type }),
     ...(suggestion.signedIn === undefined ? [] : [t('cli.exploreFoundSignedIn', { selector: suggestion.signedIn.selector, why: suggestion.signedIn.why })]),
     ...(suggestion.start === undefined ? [] : [t('cli.exploreFoundStart', { path: suggestion.start })]),
     t('cli.exploreSavedTo', { file: EXPLORE_FILE }),

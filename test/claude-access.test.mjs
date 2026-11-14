@@ -10,7 +10,7 @@ import { claudeLimits, validateConfig } from '../src/shared/config.mjs';
 
 const BASE = {
     environments: { local: { url: 'http://localhost:5173', claude: true, writable: true } },
-    auth: { type: 'none' },
+    signIn: { type: 'none' },
     start: '/',
 };
 

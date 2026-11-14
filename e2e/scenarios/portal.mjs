@@ -28,7 +28,7 @@ const group = {
         mkdirSync(join(fake, 'caw/tests'), { recursive: true });
         // Fake portal login: it only accepts the user fx-user, any password. Not checked in, so no .env lives in the repository;
         // sub/.env checks that the sandbox also hides nested .env files.
-        writeFileSync(join(fake, 'caw/.env'), 'CAW_LOGIN_KUNDE=fx-user\nCAW_PW_KUNDE=fx-passwort-e2e\n');
+        writeFileSync(join(fake, 'caw/.env'), 'CAW_KUNDE_USER=fx-user\nCAW_KUNDE_PASSWORD=fx-passwort-e2e\n');
         mkdirSync(join(fake, 'sub'), { recursive: true });
         writeFileSync(join(fake, 'sub/.env'), 'NUR_FUER_DIE_SANDBOX_PRUEFUNG=1\n');
         configBefore = readFileSync(mainConfig, 'utf8');

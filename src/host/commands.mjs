@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, authOf, browserLaunch, environmentsWith, loadConfig, isStartPath, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
-import { chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath } from '../shared/environments.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentSandbox, browserLaunch, environmentsWith, loadConfig, isStartPath, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
+import { credentialNames } from '../shared/credentials.mjs';
+import { chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -126,16 +127,16 @@ export const detectFramework = (root) => detectApp(root).framework;
 
 /**
  * Answers for `init` from the suggestions of `explore` (caw/.explore.json). What explore is unsure about stays at the template default.
- * @returns { framework, url, auth, login, start, messageSelectors, consoleIgnore }
+ * @returns { framework, url, signIn, login, start, messageSelectors, consoleIgnore }
  */
 export const answersFromExplore = (suggestion) => {
     if (suggestion === null || typeof suggestion !== 'object' || typeof suggestion.url !== 'string') throw new CawError('usage', t('cli.notExploreResult'));
-    const { type, ...login } = suggestion.auth ?? { type: 'form' };
+    const { type, ...login } = suggestion.signIn ?? { type: 'form' };
     delete login.confidence;
     return {
         framework: suggestion.framework?.value,
         url: suggestion.url,
-        auth: type,
+        signIn: type,
         login,
         explored: true,
         ...(suggestion.start === undefined ? {} : { start: suggestion.start }),
@@ -217,15 +218,15 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
     }
     const answers = answersFromExplore(suggestion);
     // Roles come from the test users saved in the explore window; otherwise ask in the terminal or use a neutral default.
-    if (interactive && answers.auth !== 'none' && answers.roles === undefined) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
+    if (interactive && answers.signIn !== 'none' && answers.roles === undefined) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
     if (args.includes('--no-mcp')) answers.mcp = false;
     return { answers };
 };
 
 /** The first config from the answers of `init`; without answers the template with the detected framework. */
-export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), url, auth = 'form', login = {}, explored = false, offline = false, roles, start, messageSelectors, consoleIgnore } = {}) => {
+export const starterConfig = ({ framework = 'web', language: projectLanguage = language(), url, signIn = 'form', login = {}, explored = false, offline = false, roles, start, messageSelectors, consoleIgnore } = {}) => {
     if (!FRAMEWORK_NAMES.includes(framework)) throw new CawError('usage', t('cli.unknownFramework', { framework, names: FRAMEWORK_NAMES.join(', ') }));
-    if (!['form', 'storageState', 'none'].includes(auth)) throw new CawError('usage', t('cli.initAuthUnknown', { auth }));
+    if (!['form', 'session', 'none'].includes(signIn)) throw new CawError('usage', t('cli.initAuthUnknown', { auth: signIn }));
     const names = roles ?? [DEFAULT_ROLE];
     const bad = names.find((name) => !/^[a-z][a-z0-9-]*$/.test(name));
     if (bad !== undefined || names.length === 0) throw new CawError('usage', t('cli.badRoleName', { name: bad ?? '' }));
@@ -233,23 +234,19 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     const config = { language: projectLanguage, ...JSON.parse(readFileSync(templatePath('caw.config.example.json'), 'utf8')) };
     config.framework = framework;
     if (url !== undefined) config.environments = { local: { ...config.environments.local, url } };
-    // Separate credential variables per role, e.g. CAW_LOGIN_ADMIN and CAW_PW_ADMIN.
-    const envName = (name) => name.toUpperCase().replaceAll('-', '_');
-    config.roles = Object.fromEntries(names.map((name) => [name, { loginEnv: `CAW_LOGIN_${envName(name)}`, passwordEnv: `CAW_PW_${envName(name)}` }]));
-    if (auth === 'none') {
-        delete config.auth;
+    // A role is an empty object; its test user follows the naming convention (CAW_<ROLE>_USER …) in caw/.env.
+    config.roles = Object.fromEntries(names.map((name) => [name, {}]));
+    if (signIn === 'none') {
+        delete config.signIn;
         delete config.roles;
     }
-    if (auth === 'storageState') {
-        config.auth = { type: 'storageState', signedInSelector: login.signedInSelector ?? config.auth.signedInSelector };
-        config.roles = Object.fromEntries(names.map((name) => [name, {}]));
-    }
+    if (signIn === 'session') config.signIn = { type: 'session', signedInSelector: login.signedInSelector ?? config.signIn.signedInSelector };
     // From explore: found selectors instead of the template placeholders.
-    if (auth === 'form') {
+    if (signIn === 'form') {
         for (const key of ['path', 'userSelector', 'passwordSelector', 'submitSelector', 'signedInSelector']) {
-            if (typeof login[key] === 'string' && login[key] !== '') config.auth[key] = login[key];
+            if (typeof login[key] === 'string' && login[key] !== '') config.signIn[key] = login[key];
             // What explore did not find gets no real-looking placeholder: doctor reports TODO until the human fills it in.
-            else if ((explored || offline) && key !== 'submitSelector') config.auth[key] = TODO;
+            else if ((explored || offline) && key !== 'submitSelector') config.signIn[key] = TODO;
         }
     }
     if (isStartPath(start)) config.start = start;
@@ -301,8 +298,21 @@ export const installSkill = (root) => {
 };
 
 /**
+ * caw/.env.example for a new config: the unsuffixed names of every role whose sign-in reads a test user, without values.
+ * @returns the file content, or null when nothing signs in with a password
+ */
+export const envExample = (config) => {
+    if (!usesCredentials(config.signIn)) return null;
+    const names = Object.keys(config.roles ?? {}).flatMap((role) => {
+        const { user, password, totp } = credentialNames(role).default;
+        return usesTotp(config.signIn) ? [user, password, totp] : [user, password];
+    });
+    return `${t('cli.envExampleHead')}\n${names.map((name) => `${name}=`).join('\n')}\n`;
+};
+
+/**
  * Creates config, .env example, skill, notes and .gitignore entries. Existing files stay untouched.
- * @param answers from the `init` dialog (`framework`, `url`, `auth`); without: template with the detected framework
+ * @param answers from the `init` dialog (`framework`, `url`, `signIn`); without: template with the detected framework
  */
 export const init = (root, answers = {}) => {
     const created = [];
@@ -318,11 +328,8 @@ export const init = (root, answers = {}) => {
     const config = starterConfig({ framework: detected.framework, ...answers });
     write(CONFIG_FILE, `${JSON.stringify(config, null, 4)}\n`);
     // No example test: it would not fit the application. record creates the first test.
-    if (config.auth?.type === 'form' || config.auth?.type === 'basic') {
-        // The names come from the config roles so example and config match.
-        const names = Object.values(config.roles ?? {}).flatMap(({ loginEnv, passwordEnv }) => [loginEnv, passwordEnv]).filter(Boolean);
-        write(`${ENV_FILE}.example`, `${t('cli.envExampleHead')}\n${names.map((name) => `${name}=`).join('\n')}\n`);
-    }
+    const example = envExample(config);
+    if (example !== null) write(`${ENV_FILE}.example`, example);
     write(`${SKILL_DIR}/SKILL.md`, template('skill.md'));
     // The folder for test plans and the notes for Claude: shows right away where things belong.
     if (!existsSync(join(root, TEST_DIR))) write(`${TEST_DIR}/.gitkeep`, '');
@@ -345,18 +352,18 @@ export const init = (root, answers = {}) => {
 };
 
 /**
- * Saves a role's session for `auth.type: storageState` (e.g. SSO): Chrome opens the login, the human signs in,
- * the session goes to caw/.auth/<role>.json. Without Claude and Docker.
+ * Saves a role's session for an environment with `signIn.type: session` (e.g. SSO): Chrome opens the sign-in, the human
+ * signs in, the session goes to caw/.auth/<env>/<role>.json. Without Claude and Docker.
  * @param capture tests only: replaces Chrome
  */
 export const roleLogin = async (root, { role: roleName, target }, { capture } = {}) => {
     if (roleName === undefined || target === undefined) throw new CawError('usage', t('cli.authUsage'));
     const config = loadConfig(root);
-    const { type, path = '/', signedInSelector } = authOf(config);
-    if (type !== 'storageState') throw new CawError('usage', t('cli.authStorageOnly', { type }));
-    if (signedInSelector === undefined) throw new CawError('config-invalid', t('cli.authNeedsSelector'));
-    if (config.roles?.[roleName] === undefined) throw new CawError('usage', t('cli.authRoleUnknown', { role: roleName, roles: Object.keys(config.roles ?? {}).join(', ') }));
     const resolved = effectiveEnvironment(config, target);
+    // The validator guarantees signedInSelector for a session sign-in.
+    const { type, path = '/', signedInSelector } = resolved.signIn;
+    if (type !== 'session') throw new CawError('usage', t('cli.authStorageOnly', { type, target }));
+    if (config.roles?.[roleName] === undefined) throw new CawError('usage', t('cli.authRoleUnknown', { role: roleName, roles: Object.keys(config.roles ?? {}).join(', ') }));
     if (resolved.production) throw new CawError('env-denied', t('cli.targetProduction', { target }));
     const file = join(root, sessionPath(target, roleName));
     const save = capture ?? (await import('./browser-session.mjs')).captureSession;
@@ -427,7 +434,7 @@ export const validate = (root) => {
         problems.push(error.message);
     }
     // A login value still TODO is no typo, but nothing that signs in can run: rejected like an invalid config, never "valid".
-    const todoLines = todo.map((key) => t('cli.validateTodo', { key, what: t(`cli.validateTodo.${key.slice('auth.'.length)}`) }));
+    const todoLines = todo.map((key) => t('cli.validateTodo', { key, what: t(`cli.validateTodo.${key.slice(key.lastIndexOf('.') + 1)}`) }));
     if (problems.length > 0 || todoLines.length > 0) {
         codeLines.forEach((line) => ui.info(line));
         hints.forEach((hint) => ui.note(hint));
@@ -446,7 +453,7 @@ const namesIn = (map) => Object.keys(map ?? {}).join(', ') || '–';
 const testBasics = (spec, config) => {
     const problems = [];
     const id = String(spec.id);
-    if (spec.role === undefined && authOf(config).type !== 'none') problems.push(t('config.test.check.role', { id, type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
+    if (spec.role === undefined && config.roles !== undefined) problems.push(t('config.test.check.role', { id, roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.role !== undefined && config.roles?.[spec.role] === undefined) problems.push(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     return problems;
 };
@@ -721,7 +728,7 @@ const openSandbox = async (root, { config, containerCommand, adviseCommand, talk
 const draftTest = (root, config, { id, target, role: chosenRole, readOnly = false }) => {
     // Without sign-in there is no role; with one, a single role applies, several need --role.
     const role = chosenRole ?? onlyKey(config.roles);
-    if (role === undefined && authOf(config).type !== 'none') {
+    if (role === undefined && config.roles !== undefined) {
         throw new CawError('usage', t('cli.draftMissing', { id, missing: '--role', hint: recordHint(config, id, target) }));
     }
     return {

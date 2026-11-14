@@ -23,14 +23,14 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
         language: 'en',
         framework,
         environments: { test: { url, claude: true, writable: true, ...(url.startsWith('https:') ? { insecureTls: true } : {}) } },
-        auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
+        signIn: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
         ...(overlay ? { overlay: { environments: ['test'], parts: { web: { dir: '.', ...overlay } } } } : {}),
-        roles: { tester: { loginEnv: 'CAW_LOGIN_TESTER', passwordEnv: 'CAW_PW_TESTER' } },
+        roles: { tester: {} },
     };
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify(config, null, 4)}\n`);
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
     mkdirSync(join(root, 'caw/recordings'), { recursive: true });
-    writeFileSync(join(root, 'caw/.env'), 'CAW_LOGIN_TESTER=tester@example.com\nCAW_PW_TESTER=secret\n');
+    writeFileSync(join(root, 'caw/.env'), 'CAW_TESTER_USER=tester@example.com\nCAW_TESTER_PASSWORD=secret\n');
     rmSync(join(root, 'caw/.auth'), { recursive: true, force: true });
     writeTest(root, 'smoke', {}, [
         {

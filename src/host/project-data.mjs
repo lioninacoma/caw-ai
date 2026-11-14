@@ -4,13 +4,13 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { AUTH_DIR, authOf, loadConfig, loadConfigWithNotes, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, loadConfig, loadConfigWithNotes, todoFields } from '../shared/config.mjs';
 import { startPath } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { describeCode } from './code-source.mjs';
-import { answersFromExplore, detectApp, mcpEntry, starterConfig } from './commands.mjs';
+import { answersFromExplore, detectApp, envExample, mcpEntry, starterConfig } from './commands.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
 import { templatePath } from './sandbox-config.mjs';
 import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
@@ -28,7 +28,7 @@ const namesIn = (map) => Object.keys(map ?? {}).join(', ') || '–';
 const testBasics = (spec, config) => {
     const problems = [];
     const id = String(spec.id);
-    if (spec.role === undefined && authOf(config).type !== 'none') problems.push(t('config.test.check.role', { id, type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
+    if (spec.role === undefined && config.roles !== undefined) problems.push(t('config.test.check.role', { id, roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.role !== undefined && config.roles?.[spec.role] === undefined) problems.push(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     return problems;
 };
@@ -199,10 +199,8 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
     const detected = detectApp(root);
     const config = starterConfig({ framework: detected.framework, ...answers });
     write(CONFIG_FILE, `${JSON.stringify(config, null, 4)}\n`);
-    if (config.auth?.type === 'form' || config.auth?.type === 'basic') {
-        const names = Object.values(config.roles ?? {}).flatMap(({ loginEnv, passwordEnv }) => [loginEnv, passwordEnv]).filter(Boolean);
-        write(`${ENV_FILE}.example`, `${t('cli.envExampleHead')}\n${names.map((name) => `${name}=`).join('\n')}\n`);
-    }
+    const example = envExample(config);
+    if (example !== null) write(`${ENV_FILE}.example`, example);
     write(SKILL_FILE, readFileSync(templatePath('skill.md'), 'utf8'));
     if (!existsSync(join(root, TEST_DIR))) write(`${TEST_DIR}/.gitkeep`, '');
     write(CONTEXT_FILE, t('cli.contextTemplate'));

@@ -99,18 +99,18 @@ test('explore: sign-in with a random button and a marker for every account, done
     }
     assert.equal(code, 0);
     const env = readFileSync(join(root, 'caw/.env'), 'utf8');
-    assert.match(env, /^CAW_LOGIN_ADMIN=admin$/m);
-    assert.match(env, /^CAW_PW_ADMIN=secret$/m);
+    assert.match(env, /^CAW_ADMIN_USER=admin$/m);
+    assert.match(env, /^CAW_ADMIN_PASSWORD=secret$/m);
     assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /^caw\/\.env$/m);
     const raw = readFileSync(join(root, 'caw/.explore.json'), 'utf8');
     assert.ok(!raw.includes('secret'), 'the password never reaches the explore result');
     const suggestion = JSON.parse(raw);
     assert.deepEqual(suggestion.roles, ['admin']);
     assert.deepEqual(answersFromExplore(suggestion).roles, ['admin']);
-    assert.equal(suggestion.auth.type, 'form');
-    assert.equal(suggestion.auth.userSelector, '#login_user');
-    assert.equal(suggestion.auth.submitSelector, undefined, 'suffix changes, Enter submits');
-    assert.equal(suggestion.auth.signedInSelector, 'body.signed-in', 'not the admin menu');
+    assert.equal(suggestion.signIn.type, 'form');
+    assert.equal(suggestion.signIn.userSelector, '#login_user');
+    assert.equal(suggestion.signIn.submitSelector, undefined, 'suffix changes, Enter submits');
+    assert.equal(suggestion.signIn.signedInSelector, 'body.signed-in', 'not the admin menu');
     assert.equal(suggestion.start, '/home');
 });
 

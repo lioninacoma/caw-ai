@@ -10,13 +10,14 @@ import { t } from './i18n.mjs';
 import { CONFIG_FILE } from './names.mjs';
 import { projectThemeProblems, setProjectTheme } from './theme-package.mjs';
 import { didYouMean } from './suggest.mjs';
-import { NAME, effectiveEnvironment, environmentNames } from './environments.mjs';
+import { RESERVED_ROLES } from './credentials.mjs';
+import { NAME, effectiveEnvironment, environmentNames, signInTypes } from './environments.mjs';
 
 export { CONFIG_FILE } from './names.mjs';
 export { environmentsWith } from './environments.mjs';
 
 const ENVIRONMENT_FLAGS = ['claude', 'writable', 'production', 'insecureTls', 'allowHttp'];
-const ENVIRONMENT_KEYS = ['url', 'extends', 'allowHosts', ...ENVIRONMENT_FLAGS];
+const ENVIRONMENT_KEYS = ['url', 'extends', 'signIn', 'gate', 'allowHosts', ...ENVIRONMENT_FLAGS];
 // A production environment must be declared explicitly, and then has no Claude, no local code and no writing.
 // Names containing it count too, e.g. prod-de or live_eu. If such an environment is not production, say so with "production": false.
 const PRODUCTION_NAME = /(^|[-_.])(prod|production|produktion|produktiv|prd|live)([-_.]|\d|$)/i;
@@ -24,24 +25,35 @@ const PRODUCTION_EXACT = /^(prod|production|produktion|produktiv|prd|live)$/i;
 export const DEFAULT_MESSAGE_SELECTORS = ['[role=alert]', '[role=alertdialog]'];
 /** The framework adapters in src/host/framework/; `web` is the default. */
 export const FRAMEWORK_NAMES = ['web', 'extjs', 'react', 'vue', 'angular'];
-/** Login types. */
-export const AUTH_TYPES = ['form', 'basic', 'storageState', 'none'];
-const AUTH_FIELDS = {
-    form: ['type', 'path', 'userSelector', 'passwordSelector', 'submitSelector', 'codeSelector', 'signedInSelector'],
-    basic: ['type', 'signedInSelector'],
-    storageState: ['type', 'path', 'signedInSelector'],
+/** Sign-in types: none, a form (with or without steps), HTTP Basic, or a saved session per environment and role. */
+export const SIGN_IN_TYPES = ['none', 'form', 'basic', 'session'];
+const SIGN_IN_FIELDS = {
     none: ['type'],
+    form: ['type', 'path', 'userSelector', 'passwordSelector', 'submitSelector', 'codeSelector', 'signedInSelector', 'steps'],
+    basic: ['type', 'signedInSelector'],
+    session: ['type', 'path', 'signedInSelector'],
 };
-/** Folder of saved sessions (`auth.type: storageState`): one file per role, never checked in. */
+/** The verbs of a sign-in step; each step has exactly one. */
+export const STEP_VERBS = ['fill', 'click', 'press', 'waitFor'];
+const STEP_KEYS = [...STEP_VERBS, 'with', 'value', 'on', 'optional', 'timeoutMs'];
+/** What a fill step may put in from the test user: user name, password or the current one-time code. */
+export const FILL_WITH = ['user', 'password', 'totp'];
+/** Folder of saved sessions (`signIn.type: session`): one file per environment and role, never checked in. */
 export const AUTH_DIR = 'caw/.auth';
-/** Value of a login selector explore did not find: doctor reports it until it is filled in. */
+/** Value of a sign-in selector explore did not find: doctor reports it until it is filled in. */
 export const TODO = 'TODO';
-/** The login fields still TODO since init, as "auth.<field>". */
-export const todoFields = (config) => Object.entries(isObject(config?.auth) ? config.auth : {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
+/** Every sign-in object as written, with where it stands: "signIn" or "environments.<env>.signIn". */
+const signInPlaces = (config) => [
+    ...(isObject(config?.signIn) ? [['signIn', config.signIn]] : []),
+    ...Object.entries(isObject(config?.environments) ? config.environments : {})
+        .filter(([, env]) => isObject(env) && isObject(env.signIn)).map(([name, env]) => [`environments.${name}.signIn`, env.signIn]),
+];
+/** The sign-in fields still TODO since init, as "signIn.<field>" or "environments.<env>.signIn.<field>". */
+export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]) => Object.entries(signIn).filter(([, value]) => value === TODO).map(([key]) => `${at}.${key}`));
 /** The saved session of a role on an environment, relative to the project: caw/.auth/<environment>/<role>.json. */
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
-const TOP_FIELDS = ['framework', 'start', 'environments', 'auth', 'roles', 'messageSelectors', 'requestKeys',
+const TOP_FIELDS = ['framework', 'start', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys',
     'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxSteps', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone'];
@@ -55,6 +67,7 @@ export const REMOVED_KEYS = {
     extends: { why: 'config.removed.extends' },
     insecureTls: { now: 'environments.<env>.insecureTls' },
     extraAllowedHosts: { now: 'allowHosts' },
+    auth: { now: 'signIn' },
     assetUrlPattern: { now: 'overlay.assetUrlPattern' },
     apps: { why: 'config.removed.apps' },
 };
@@ -194,6 +207,8 @@ const checkEnvironments = (config, issues, notes) => {
             issues.push(t('config.env.extendsUnknown', { name, parent: String(raw.extends), names: names.filter((other) => other !== name).join(', ') || '–' }));
         }
         issues.push(...hostListIssues(`environments.${name}.allowHosts`, raw.allowHosts));
+        if (raw.signIn !== undefined && !isObject(raw.signIn)) issues.push(t('config.signIn.notObject', { at: `environments.${name}.signIn` }));
+        if (raw.gate !== undefined && !(isObject(raw.gate) && raw.gate.type === 'basic' && Object.keys(raw.gate).length === 1)) issues.push(t('config.gate.shape', { name }));
         if (PRODUCTION_EXACT.test(name) && raw.production !== true) issues.push(t('config.env.productionExact', { name }));
         else if (PRODUCTION_NAME.test(name) && raw.production === undefined) issues.push(t('config.env.productionLike', { name }));
     }
@@ -229,59 +244,104 @@ const checkEnvironments = (config, issues, notes) => {
             }
         }
         if (env.production && (env.claude || env.writable)) issues.push(t('config.env.productionFlags', { name }));
+        // The gate's Basic credentials and a Basic sign-in would both be the browser's HTTP credentials: one would hide the other.
+        if (env.gate !== undefined && env.signIn.type === 'basic') issues.push(t('config.gate.withBasic', { name }));
     }
 };
 
-/** The login as the tool uses it. Without `auth`: no login. */
-export const authOf = (config) => (isObject(config.auth) ? config.auth : { type: 'none' });
-
-const checkAuth = (config, issues) => {
-    if (config.auth === undefined) return;
-    const auth = config.auth;
-    if (!isObject(auth) || !AUTH_TYPES.includes(auth.type)) {
-        issues.push(t('config.auth.type', { types: AUTH_TYPES.join(', ') }));
+/**
+ * One sign-in object (§2.5): its type's fields only, as text; a form with path and signedInSelector plus either the user and
+ * password selectors or steps; a session with signedInSelector.
+ * @param at where it stands, for the messages
+ */
+const checkSignIn = (at, signIn, issues) => {
+    if (signIn.type === 'storageState') {
+        issues.push(t('config.removed.renamed', { key: `${at}.type "storageState"`, now: `${at}.type "session"` }));
         return;
     }
-    const foreign = Object.keys(auth).find((key) => !AUTH_FIELDS[auth.type].includes(key) || typeof auth[key] !== 'string' || auth[key] === '');
-    if (foreign !== undefined) {
-        const hint = AUTH_FIELDS[auth.type].includes(foreign) ? '' : hintFor(foreign, AUTH_FIELDS[auth.type]);
-        issues.push(t('config.auth.foreign', { type: auth.type, key: foreign, fields: AUTH_FIELDS[auth.type].join(', '), hint }));
+    if (!SIGN_IN_TYPES.includes(signIn.type)) {
+        issues.push(t('config.signIn.type', { at, types: SIGN_IN_TYPES.join(', ') }));
+        return;
     }
-    if (auth.type === 'form') {
-        const missing = ['path', 'userSelector', 'passwordSelector', 'signedInSelector'].filter((key) => typeof auth[key] !== 'string' || auth[key] === '');
-        if (missing.length > 0) issues.push(t('config.auth.formMissing', { missing: missing.join(', ') }));
+    const allowed = SIGN_IN_FIELDS[signIn.type];
+    for (const key of Object.keys(signIn)) {
+        if (!allowed.includes(key)) issues.push(t('config.signIn.foreign', { at, type: signIn.type, key, fields: allowed.join(', '), hint: hintFor(key, allowed) }));
+        else if (key !== 'steps' && (typeof signIn[key] !== 'string' || signIn[key] === '')) issues.push(t('config.signIn.text', { at, key }));
     }
     // TODO is not a wrong path but a gap from init: validateConfig reports it under `todo`.
-    if (typeof auth.path === 'string' && auth.path !== TODO && !auth.path.startsWith('/')) issues.push(t('config.auth.path'));
+    if (typeof signIn.path === 'string' && signIn.path !== TODO && !isStartPath(signIn.path)) issues.push(t('config.signIn.path', { at }));
+    const absent = (keys) => keys.filter((key) => typeof signIn[key] !== 'string' || signIn[key] === '');
+    if (signIn.type === 'session' && absent(['signedInSelector']).length > 0) issues.push(t('config.signIn.missing', { at, type: 'session', missing: 'signedInSelector' }));
+    if (signIn.type !== 'form') return;
+    const withSteps = signIn.steps !== undefined;
+    const missing = absent(['path', 'signedInSelector', ...(withSteps ? [] : ['userSelector', 'passwordSelector'])]);
+    if (missing.length > 0) issues.push(t(withSteps ? 'config.signIn.missing' : 'config.signIn.formMissing', { at, type: 'form', missing: missing.join(', ') }));
+    if (!withSteps) return;
+    const both = ['userSelector', 'passwordSelector', 'submitSelector', 'codeSelector'].filter((key) => signIn[key] !== undefined);
+    if (both.length > 0) issues.push(t('config.signIn.stepsOr', { at, keys: both.join(', ') }));
+    checkSteps(at, signIn.steps, issues);
 };
 
-const ROLE_FIELDS = ['loginEnv', 'passwordEnv', 'totpEnv'];
+/** The steps of a form sign-in: 1–20, each with exactly one verb; fill takes `with` or `value`; at least one `with`. */
+const checkSteps = (at, steps, issues) => {
+    if (!Array.isArray(steps) || steps.length === 0 || steps.length > 20) {
+        issues.push(t('config.signIn.steps', { at }));
+        return;
+    }
+    steps.forEach((step, index) => {
+        const where = `${at}.steps[${index}]`;
+        if (!isObject(step)) {
+            issues.push(t('config.signIn.stepVerb', { at: where, verbs: STEP_VERBS.join(', ') }));
+            return;
+        }
+        for (const key of Object.keys(step).filter((candidate) => !STEP_KEYS.includes(candidate))) {
+            issues.push(t('config.signIn.stepUnknown', { at: where, key, keys: STEP_KEYS.join(', '), hint: hintFor(key, STEP_KEYS) }));
+        }
+        const verbs = STEP_VERBS.filter((verb) => step[verb] !== undefined);
+        if (verbs.length !== 1) {
+            issues.push(t('config.signIn.stepVerb', { at: where, verbs: STEP_VERBS.join(', ') }));
+            return;
+        }
+        const [verb] = verbs;
+        if (typeof step[verb] !== 'string' || step[verb] === '') issues.push(t('config.signIn.stepText', { at: where, key: verb }));
+        if (verb === 'fill') {
+            if ((step.with === undefined) === (step.value === undefined)) issues.push(t('config.signIn.stepFill', { at: where }));
+            else if (step.with !== undefined && !FILL_WITH.includes(step.with)) issues.push(t('config.signIn.stepWith', { at: where, values: FILL_WITH.join(', ') }));
+            else if (step.value !== undefined && typeof step.value !== 'string') issues.push(t('config.signIn.stepFill', { at: where }));
+        } else if (step.with !== undefined || step.value !== undefined) issues.push(t('config.signIn.stepFillOnly', { at: where }));
+        if (step.on !== undefined && (verb !== 'press' || typeof step.on !== 'string' || step.on === '')) issues.push(t('config.signIn.stepOn', { at: where }));
+        if (step.optional !== undefined && typeof step.optional !== 'boolean') issues.push(t('config.signIn.stepOptional', { at: where }));
+        if (step.timeoutMs !== undefined && !(Number.isInteger(step.timeoutMs) && step.timeoutMs >= 100 && step.timeoutMs <= 600000)) issues.push(t('config.signIn.stepTimeout', { at: where }));
+    });
+    if (!steps.some((step) => isObject(step) && step.with !== undefined)) issues.push(t('config.signIn.stepsWith', { at }));
+};
+
+const ROLE_REMOVED = { loginEnv: 'config.removed.roleEnv', passwordEnv: 'config.removed.roleEnv', totpEnv: 'config.removed.roleEnv' };
+/** Roles exactly when some environment signs in; each an empty object, named like an environment, never "gate". */
 const checkRoles = (config, issues) => {
-    const { type } = authOf(config);
+    const types = signInTypes(config).filter((type) => type !== 'none');
     if (config.roles === undefined) {
-        if (type !== 'none') issues.push(t('config.roles.missing', { type }));
+        if (types.length > 0) issues.push(t('config.roles.missing', { types: types.join(', ') }));
+        return;
+    }
+    if (types.length === 0) {
+        issues.push(t('config.roles.withoutSignIn'));
         return;
     }
     if (!isObject(config.roles) || Object.keys(config.roles).length === 0) {
-        issues.push(type === 'none' ? t('config.roles.withoutAuth') : t('config.roles.notObject'));
+        issues.push(t('config.roles.notObject'));
         return;
     }
     for (const [name, role] of Object.entries(config.roles)) {
         if (!NAME.test(name)) issues.push(t('config.role.name', { name }));
+        else if (RESERVED_ROLES.includes(name)) issues.push(t('config.role.reserved', { name }));
         if (!isObject(role)) {
             issues.push(t('config.role.notObject', { name }));
             continue;
         }
-        const needsSecrets = type === 'form' || type === 'basic';
-        if (needsSecrets && (!role.loginEnv || !role.passwordEnv)) issues.push(t('config.role.secrets', { name }));
-        if (needsSecrets) {
-            // Names of environment variables in caw/.env; a typo in the key (passwortEnv) would otherwise only show up at login.
-            for (const [key, value] of Object.entries(role)) {
-                if (!ROLE_FIELDS.includes(key)) issues.push(t('config.role.unknownField', { name, key, allowed: ROLE_FIELDS.join(', '), hint: hintFor(key, ROLE_FIELDS) }));
-                else if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) issues.push(t('config.role.envName', { name, key }));
-            }
+        for (const key of Object.keys(role)) {
+            issues.push(ROLE_REMOVED[key] === undefined ? t('config.role.unknownField', { name, key }) : removedKey(`roles.${name}.${key}`, { why: ROLE_REMOVED[key] }));
         }
-        if (!needsSecrets && Object.keys(role).length > 0) issues.push(t('config.role.noFields', { name, type, why: type === 'storageState' ? t('config.role.sessionFile', { dir: AUTH_DIR, name }) : t('config.role.noAuth') }));
     }
 };
 
@@ -299,7 +359,8 @@ export const validateConfig = (given) => {
     const config = given;
 
     checkEnvironments(config, issues, notes);
-    checkAuth(config, issues);
+    for (const [at, signIn] of signInPlaces(config)) checkSignIn(at, signIn, issues);
+    if (config.signIn !== undefined && !isObject(config.signIn)) issues.push(t('config.signIn.notObject', { at: 'signIn' }));
     checkRoles(config, issues);
     if (config.start !== undefined && !isStartPath(config.start)) issues.push(t('config.start'));
     if (config.messageSelectors !== undefined && !(Array.isArray(config.messageSelectors) && config.messageSelectors.every((selector) => typeof selector === 'string' && selector !== ''))) {
@@ -392,9 +453,9 @@ export const loadConfigWithNotes = (root) => {
 
 export const loadConfig = (root) => loadConfigWithNotes(root).config;
 
-// Keys that would hold a secret. Names of environment variables (loginEnv, passwordEnv) and selectors (passwordSelector) are fine.
+// Keys that would hold a secret. Selectors (passwordSelector) are fine.
 const SECRET_KEY = /(password|passwd|secret|token)/i;
-const NAMED_ONLY = /(Env|Selector)$/;
+const NAMED_ONLY = /Selector$/;
 
 /** The keys of a patch that would write a secret, as paths. */
 const secretKeys = (value, path = []) => (isObject(value) ? Object.entries(value).flatMap(([key, entry]) => [
@@ -581,7 +642,7 @@ const uuidOf = (seed) => {
  */
 export const buildDevlinkConfig = (config, resolved, start) => {
     const siteUuid = uuidOf(`portal:${resolved.name}`);
-    const signedIn = authOf(config).signedInSelector;
+    const signedIn = resolved.signIn?.signedInSelector;
     return {
         activePortal: siteUuid,
         ...(config.overlay?.assetUrlPattern === undefined ? {} : { assetUrlPattern: config.overlay.assetUrlPattern }),

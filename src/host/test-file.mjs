@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
-import { OVERLAY_KINDS, authOf, isLoopback, isServerUrl, isStartPath, loadConfig, overlayEnvironments, overlayParts } from '../shared/config.mjs';
+import { OVERLAY_KINDS, isLoopback, isServerUrl, isStartPath, loadConfig, overlayEnvironments, overlayParts } from '../shared/config.mjs';
 import { effectiveEnvironment, testEnvironments } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -441,7 +441,7 @@ const onlyKey = (map) => {
  * startPath falls back to the config's. Anything still missing is reported by checkTest.
  */
 export const withDefaults = (spec, config) => {
-    const role = spec.role ?? (authOf(config).type === 'none' ? undefined : onlyKey(config.roles));
+    const role = spec.role ?? (config.roles === undefined ? undefined : onlyKey(config.roles));
     const runsOn = spec.environments ?? testEnvironments(config, { writes: spec.writes === true });
     return { ...spec, ...(role === undefined ? {} : { role }), runsOn };
 };
@@ -503,7 +503,7 @@ export const checkTest = (given, target, config, { overlay, start = false } = {}
         throw new CawError('write-protected', t('config.test.check.writeProtected', { id: String(spec.id), target: String(target), environment: resolved.name }));
     }
     if (!spec.runsOn.includes(target)) throw bad(t('config.test.check.target', { target: String(target), id: String(spec.id), targets: spec.runsOn.join(', ') || '–', file }));
-    if (spec.role === undefined && authOf(config).type !== 'none') throw bad(t('config.test.check.role', { id: String(spec.id), type: authOf(config).type, roles: namesIn(config.roles), config: CONFIG_FILE }));
+    if (spec.role === undefined && config.roles !== undefined) throw bad(t('config.test.check.role', { id: String(spec.id), roles: namesIn(config.roles), config: CONFIG_FILE }));
     if (spec.role !== undefined && config.roles?.[spec.role] === undefined) throw bad(t('config.test.check.unknownRole', { role: String(spec.role), roles: namesIn(config.roles), config: CONFIG_FILE }));
     return { ...resolved, writes: spec.writes, ...codeFor(resolved, config, overlay, start) };
 };

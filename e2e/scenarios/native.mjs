@@ -132,7 +132,7 @@ ${LATER_COMMANDS}
 ${finishOf(['S1', 'S2', 'S3'])}`;
     // The description exists, the recording does not: the human lets Claude follow the plan instead of demonstrating.
     rmSync(join(native, 'caw/recordings', `${ERRANDS}.yaml`), { force: true });
-    writeFileSync(join(native, 'caw/tests', `${ERRANDS}.yaml`), `id: ${ERRANDS}\nrole: visitor\nenvironments: [test]\nwrites: false\n${ERRANDS_PLAN}\n`);
+    writeFileSync(join(native, 'caw/tests', `${ERRANDS}.yaml`), `id: ${ERRANDS}\nenvironments: [test]\nwrites: false\n${ERRANDS_PLAN}\n`);
     const h = humans(followAndAdopt, followAndAdopt, followAndAdopt);
     const code = await record(native, [ERRANDS, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
     await h.done();
@@ -258,7 +258,7 @@ scenario('N4', 'open <test>@S3: the steps before run, S3 does not; F1 "Öffnen�
         verify('F1 explains the entry', /bis zum Einstieg in S2/.test(await bench.locator('#sfoot').textContent()));
         await bench.locator('#sgo').click();
         // The chat asks before it replaces the state.
-        await chat.locator('.message.question', { hasText: 'bis zum Einstieg in S2 als visitor öffnen?' }).waitFor({ timeout: 30000 });
+        await chat.locator('.message.question', { hasText: 'bis zum Einstieg in S2 öffnen?' }).waitFor({ timeout: 30000 });
         await decide(chat, 'Herstellen');
         await chat.locator('.message', { hasText: 'Einstieg in n9-shadow S2 ist neu hergestellt' }).waitFor({ timeout: 60000 });
         const shadow = await appOf(bench).evaluate(() => `${document.querySelector('caw-rating').shadowRoot.querySelector('[role=status]').textContent}|${document.getElementById('status').textContent}`);
@@ -349,7 +349,7 @@ scenario('N10', 'ExtJS: empty Modern buttons recorded as extjs= components (text
     rmSync(join(extRoot, '.caw'), { recursive: true, force: true });
     rmSync(join(extRoot, 'caw'), { recursive: true, force: true });
     mkdirSync(join(extRoot, 'caw/tests'), { recursive: true });
-    writeFileSync(join(extRoot, 'caw/tests', `${EXT}.yaml`), `id: ${EXT}\nstart: /ext.html\nrole: visitor\nenvironments: [test]\nwrites: false\n${EXT_PLAN}\n`);
+    writeFileSync(join(extRoot, 'caw/tests', `${EXT}.yaml`), `id: ${EXT}\nstart: /ext.html\nenvironments: [test]\nwrites: false\n${EXT_PLAN}\n`);
     await setCover(false);
     const agent = `A='caw agent'
 ${planOf(EXT_PLAN)}
@@ -456,7 +456,7 @@ steps:
 
 scenario('N10b', 'ExtJS input components (Claude): filtered floating list, disabled fields, grid row, picker by heading, icon button, stacked dialogs; replayed with new ids', async () => {
     freshExt(EXT_DATA);
-    writeFileSync(join(extRoot, 'caw/tests', `${EXT_DATA}.yaml`), `id: ${EXT_DATA}\nrole: visitor\nenvironments: [test]\nwrites: false\n${EXT_DATA_PLAN}\n`);
+    writeFileSync(join(extRoot, 'caw/tests', `${EXT_DATA}.yaml`), `id: ${EXT_DATA}\nenvironments: [test]\nwrites: false\n${EXT_DATA_PLAN}\n`);
     // Betreff is disabled until Unterbereich is left with an entry: fill on it has to leave Unterbereich first (leaveForDisabled).
     // The filter typed into Bereich must keep its list open for the click on the entry.
     const agent = `A='caw agent'
@@ -657,7 +657,7 @@ const freshNative = (id, root = native) => {
 
 scenario('N10d', 'Plain ARIA (Claude): buttons in named dialogs scoped by them (record number as prefix), grid row by its unique cells, option of a portal list, unnamed fields by their group; replayed with new ids', async () => {
     freshNative(ARIA);
-    writeFileSync(join(native, 'caw/tests', `${ARIA}.yaml`), `id: ${ARIA}\nstart: /aria.html\nrole: visitor\nenvironments: [test]\nwrites: false\n${ARIA_PLAN}\n`);
+    writeFileSync(join(native, 'caw/tests', `${ARIA}.yaml`), `id: ${ARIA}\nstart: /aria.html\nenvironments: [test]\nwrites: false\n${ARIA_PLAN}\n`);
     // CSS targets as Claude might write them; the recording names each element by role, name and context instead.
     const agent = `A='caw agent'
 ${planOf(ARIA_PLAN)}

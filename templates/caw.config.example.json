@@ -4,7 +4,7 @@
     "environments": {
         "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
     },
-    "auth": {
+    "signIn": {
         "type": "form",
         "path": "/login",
         "userSelector": "#username",
@@ -12,6 +12,6 @@
         "signedInSelector": "[data-testid=user-menu]"
     },
     "roles": {
-        "tester": { "loginEnv": "CAW_LOGIN_TESTER", "passwordEnv": "CAW_PW_TESTER" }
+        "tester": {}
     }
 }

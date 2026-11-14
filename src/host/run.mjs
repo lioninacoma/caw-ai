@@ -9,8 +9,9 @@ import { pathToFileURL } from 'node:url';
 
 import { colorEnabled } from '../shared/color.mjs';
 import { createUi } from '../shared/ui.mjs';
-import { startPath } from '../shared/environments.mjs';
-import { TODO, authOf, buildDevlinkConfig, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
+import { resolveCredentials } from '../shared/credentials.mjs';
+import { effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
+import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
@@ -108,24 +109,26 @@ export const reachable = (url) => new Promise((ok) => {
 });
 
 /**
- * What signing in as a role needs: for `form` and `basic` login and password, from the process environment first
- * (CI secrets), otherwise from caw/.env; for `storageState` the saved session of the target; without sign-in nothing.
+ * What signing in as a role on an environment needs, by its sign-in: for `form` and `basic` the role's test user (and the code
+ * secret if the sign-in uses one), for `session` the saved session file, for `none` nothing. A gate in front of the environment
+ * adds its own account. Names follow CAW_<ROLE>_USER etc.; the process environment (CI secrets) wins over caw/.env.
+ * @returns null without anything to sign in with, else { login, password, totpSecret? } | { storageState }, plus { gate }
  */
 export const readCredentials = (root, config, roleName, target, env = process.env) => {
-    const auth = authOf(config);
-    if (auth.type === 'none') return null;
-    if (auth.type === 'storageState') {
+    const resolved = effectiveEnvironment(config, target);
+    const { signIn } = resolved;
+    const file = join(root, ENV_FILE);
+    const sources = { processEnv: env, fileEnv: existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {} };
+    const gateAccount = resolved.gate === undefined ? undefined : resolveCredentials({ who: 'gate', env: target, sources });
+    const gate = gateAccount === undefined ? {} : { gate: { username: gateAccount.user, password: gateAccount.password } };
+    if (signIn.type === 'none') return gateAccount === undefined ? null : gate;
+    if (signIn.type === 'session') {
         const storageState = join(root, sessionPath(target, roleName));
         if (!existsSync(storageState)) throw new CawError('auth-missing', t('run.error.authMissing', { role: roleName, target }));
-        return { storageState };
+        return { storageState, ...gate };
     }
-    const role = config.roles[roleName];
-    const file = join(root, ENV_FILE);
-    const fromFile = existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {};
-    const value = (name) => env[name] || fromFile[name];
-    const missing = [role.loginEnv, role.passwordEnv, role.totpEnv].filter((name) => name !== undefined && !value(name));
-    if (missing.length > 0) throw new CawError('credentials-missing', t('run.error.credentialsMissing', { names: missing.join(', '), file: ENV_FILE }));
-    return { login: value(role.loginEnv), password: value(role.passwordEnv), ...(role.totpEnv === undefined ? {} : { totpSecret: value(role.totpEnv) }) };
+    const account = resolveCredentials({ who: roleName, env: target, totp: usesTotp(signIn), sources });
+    return { login: account.user, password: account.password, ...(account.totp === undefined ? {} : { totpSecret: account.totp }), ...gate };
 };
 
 /** The log file belongs to the container: only read a regular file, never a link. */
@@ -186,7 +189,7 @@ export const embedsApp = (interactive) => interactive === true;
  */
 export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, info = (text) => ui.info(text) }) => {
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
-    const todo = Object.entries(config.auth ?? {}).filter(([, value]) => value === TODO).map(([key]) => `auth.${key}`);
+    const todo = todoFields(config);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
     const credentials = readCredentials(root, config, spec.role, checked.name);
     if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
@@ -227,7 +230,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         const { isLoginFailure, offerAuthRepair } = await import('./login-repair.mjs');
         if (isLoginFailure(error)) {
             // Spend tokens only where Claude runs anyway: with a chat and on a target with claude. Otherwise just point the way.
-            if (interactive && checked.claude) await offerAuthRepair({ root, config, error }).catch(() => false);
+            if (interactive && checked.claude) await offerAuthRepair({ root, config, target: checked.name, error }).catch(() => false);
             else error.message = `${error.message} ${t('repair.hint')}`;
         }
         throw error;
@@ -877,7 +880,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 handler: agentHandler,
                 session,
                 base: checked.url,
-                authMarker: authOf(config).signedInSelector,
+                authMarker: checked.signIn?.signedInSelector,
                 stepTimeoutMs,
                 filesDir: join(root, PROJECT_DIR),
                 runTag: tag,
@@ -1039,7 +1042,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     await bench?.solo?.(true);
                     // F1: states from all tests of this target, each in its role's account. Without a step the test runs to the last
                     // restorable one. With basic auth the account is tied to the browser: only the own role.
-                    const scope = authOf(config).type === 'basic' ? { role: spec.role, target } : { target };
+                    const scope = checked.signIn?.type === 'basic' ? { role: spec.role, target } : { target };
                     let catalog = stateCatalog(root, config, scope);
                     await bench?.states?.(catalog);
                     afterSave = async (testId) => {
@@ -1236,7 +1239,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             return budget.handler(command);
         };
         // Dates near today become placeholders relative to the browser's today, in its pinned time zone.
-        recorder = createRecorder({ handler, session, base: checked.url, authMarker: authOf(config).signedInSelector, runTag, remembered, now: () => zonedNow(session.browser?.timezone) });
+        recorder = createRecorder({ handler, session, base: checked.url, authMarker: checked.signIn?.signedInSelector, runTag, remembered, now: () => zonedNow(session.browser?.timezone) });
         /** The human shows in the same browser what Claude cannot find. The budget only counts Claude's own steps. */
         const askOperator = async ({ question }) => {
             ui.heading(t('run.ask.heading', { question: String(question ?? '').slice(0, 500) }));
@@ -1421,7 +1424,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             session,
             ...(config.effects?.fail === undefined ? {} : { effectFail: config.effects.fail }),
             base: checked.url,
-            authMarker: authOf(config).signedInSelector,
+            authMarker: checked.signIn?.signedInSelector,
             stepTimeoutMs,
             filesDir: join(root, PROJECT_DIR),
             runTag,
@@ -1512,7 +1515,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     }),
                     session,
                     base: checked.url,
-                    authMarker: authOf(config).signedInSelector,
+                    authMarker: checked.signIn?.signedInSelector,
                     stepTimeoutMs,
                     filesDir: join(root, PROJECT_DIR),
                     runTag,

@@ -94,6 +94,10 @@ you add what can only be learned from the code or from the human:
 4. **Decide, don't ask.** Set these yourself with `caw_config` (`patch`) and list them at the end as "how I set it up":
    - An environment on the own machine: `claude: true`, `writable: true`. dev/test/staging: `claude: true`, `writable: true` only if
      the code shows test data or seeds there. Anything named prod/live or with the public domain: `production: true`.
+   - Sign-in: `signIn` at the top level applies to every environment. An environment that signs in differently gets its own
+     `environments.<env>.signIn`, e.g. `{ "type": "none" }` where the code bypasses the login locally, or `{ "type": "session",
+     "signedInSelector": … }` for SSO (the human saves the session with `caw role login`). A Basic password prompt in front of
+     an environment: `gate: { "type": "basic" }`. Roles are empty objects (`{ "clerk": {} }`); `roles` only if something signs in.
    - Console noise and messages with `confidence: certain` are adopted; `likely` ones go into the closing list, not into a question.
    - Local code: the dev server on the own machine is simply an environment (`local`). Only if the app does not run locally as
      delivered (portal, shell, backend only on staging) prepare the overlay block: that environment in `overlay.environments` and
@@ -107,8 +111,9 @@ you add what can only be learned from the code or from the human:
      check once more; several sources give several patterns. Only if a source stays unresolved, show the human its URLs.
    Ask only what you cannot decide from the code: an environment you cannot classify.
 5. **Test users:** never ask for user names or passwords and never write `caw/.env`. Roles come from the explore window; more with
-   `caw_role` (`add`, `name` from the code, `target`): the window opens, the human signs in and saves, and the tool returns the saved roles. `caw_role list` shows which
-   role still has no test user.
+   `caw_role` (`add`, `name` from the code, `target`): the window opens, the human signs in and saves, and the tool returns the saved roles. `caw_role list` shows per
+   environment which role still has no test user. The names in `caw/.env` follow `CAW_<ROLE>_USER` and `CAW_<ROLE>_PASSWORD`
+   (`__<ENV>` at the end for an account of one environment); the human enters them, in CI they are secrets with the same names.
 6. **Check:** `caw_doctor` and `caw_validate` (or `npx caw doctor`, `validate`) until nothing is MISSING; with an ExtJS overlay
    and a running server the overlay check is green. List the parts' `url` and `start` you set under "how I set it up".
 7. **First test, then run it:** write a short read-only test (`caw/tests/<test>.yaml`: `id`, `role`,

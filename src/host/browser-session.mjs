@@ -13,7 +13,7 @@ import { t } from '../shared/i18n.mjs';
 import { totp } from '../shared/totp.mjs';
 import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig } from './devlink-core.mjs';
 import { fileVersion, incompleteText, routeOverlay } from './overlay.mjs';
-import { DEFAULT_MESSAGE_SELECTORS, authOf, browserLaunch, isLoopback } from '../shared/config.mjs';
+import { DEFAULT_MESSAGE_SELECTORS, browserLaunch, isLoopback } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
 import { registerEngines } from './framework/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
@@ -449,7 +449,7 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
 };
 
 /**
- * A saved session (`auth.type: storageState`, recorded with `caw role login`): cookies into the context, localStorage and
+ * A saved session (`signIn.type: session`, recorded with `caw role login`): cookies into the context, localStorage and
  * sessionStorage via a script before every load, only for the origins in the file. Then the same check applies as after a sign-in.
  */
 const applyStorageState = async (context, path) => {
@@ -676,7 +676,7 @@ export const writeLabel = ({ method, url }, keys = []) => {
 };
 
 /**
- * For `auth.type: storageState`: Chrome opens the sign-in, the human signs in (e.g. via SSO), and the tool saves the session as
+ * For `signIn.type: session`: Chrome opens the sign-in, the human signs in (e.g. via SSO), and the tool saves the session as
  * soon as `signedInSelector` appears: cookies, localStorage and the sessionStorage of the page where sign-in ended (Playwright
  * does not save that). The file contains the test account's credentials: on Unix readable only by the own user, on Windows the
  * project folder's permissions apply.
@@ -758,7 +758,8 @@ export const openBrowserSession = async (spec) => {
     if (!checkedDevlink.ok) throw new CawError('config-invalid', t('session.browser.devlinkRejected', { issues: JSON.stringify(checkedDevlink.issues) }));
 
     const startUrl = `${resolved.url}${spec.startUrl}`;
-    const auth = authOf(config);
+    // The environment's own sign-in: it may differ per environment (e.g. none on local, form with an IdP on staging).
+    const auth = resolved.signIn ?? { type: 'none' };
     const framework = frameworkOf(config);
     sweepStaleProfiles();
     // Every run gets a fresh profile; at the end it contains the test user's login cookies.
@@ -821,7 +822,7 @@ export const openBrowserSession = async (spec) => {
             // With the workbench: only its tab, not the application's popups (window.open, target=_blank), where the human demonstrates too.
             // Context scripts run before tab scripts; that is why they check the mark only when the event fires.
             if (spec.embed === true) await raw.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
-            if (auth.type === 'storageState') await applyStorageState(raw, credentials.storageState);
+            if (auth.type === 'session') await applyStorageState(raw, credentials.storageState);
             // Via the app's own sign-in page, so the application does not load once before the local code is injected.
             if (auth.type === 'form') await formLogin();
             timing.login = Date.now();
@@ -844,10 +845,10 @@ export const openBrowserSession = async (spec) => {
         await devlinkHost.start().catch(async (error) => {
             const message = String(error?.message ?? '');
             if (/not signed in/.test(message)) {
-                const next = auth.type === 'storageState'
+                const next = auth.type === 'session'
                     ? t('session.browser.sessionExpired')
                     : t('session.browser.checkSelector');
-                const failure = new CawError(auth.type === 'storageState' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
+                const failure = new CawError(auth.type === 'session' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
                 const page = raw?.pages()[0];
                 if (page !== undefined) failure.evidence = await loginEvidence(page, { marker: auth.signedInSelector });
                 throw failure;
@@ -1078,7 +1079,7 @@ export const openBrowserSession = async (spec) => {
             bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite });
             pages.embed(bench.page, bench.view);
             bench.view.on('domcontentloaded', () => network.replaced(bench.view));
-            const signIn = auth.type === 'form' || auth.type === 'basic' ? t('session.prep.signIn') : auth.type === 'storageState' ? t('session.prep.takeSession') : null;
+            const signIn = auth.type === 'form' || auth.type === 'basic' ? t('session.prep.signIn') : auth.type === 'session' ? t('session.prep.takeSession') : null;
             const points = [
                 { id: 'chrome', kind: t('session.prep.chrome'), label: t('session.prep.chromeStart'), ms: (timing.chrome ?? timing.start) - timing.start },
                 ...(signIn === null ? [] : [{ id: 'login', kind: signIn, label: spec.role === undefined ? '' : t('session.prep.asRole', { role: spec.role }), ms: (timing.login ?? timing.chrome) - (timing.chrome ?? timing.start) }]),
@@ -1183,7 +1184,7 @@ export const openBrowserSession = async (spec) => {
                 for (const popup of pages.popups()) await popup.close().catch(() => {});
                 const signIn = async () => {
                     await freshSession(raw, pages.main(), resolved.url);
-                    if (auth.type === 'storageState') await applyStorageState(raw, signedInAs.storageState);
+                    if (auth.type === 'session') await applyStorageState(raw, signedInAs.storageState);
                     if (auth.type === 'form') await formLogin(pages.main());
                 };
                 // The first sign-in happens before the trace starts; this one must not end up in it either.

@@ -4,13 +4,15 @@
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { authOf, loadConfig, writeConfig } from '../shared/config.mjs';
-import { chooseEnvironment, environmentNames } from '../shared/environments.mjs';
+import { loadConfig, sessionPath, writeConfig } from '../shared/config.mjs';
+import { credentialState, roleLinePattern } from '../shared/credentials.mjs';
+import { chooseEnvironment, effectiveEnvironments, environmentNames, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { ENV_FILE, TEST_DIR } from '../shared/names.mjs';
 import { createUi } from '../shared/ui.mjs';
-import { captureTestUsers, hasTestUser } from './role-capture.mjs';
+import { parseEnvFile } from './linux.mjs';
+import { captureTestUsers } from './role-capture.mjs';
 import { loadTest } from './test-file.mjs';
 import { ROLE_NAME } from './test-users.mjs';
 
@@ -31,23 +33,33 @@ const testsByRole = (root) => {
     return byRole;
 };
 
-/** The roles as data: variable names, whether a test user is set (never the values) and which tests use the role. */
+/**
+ * The roles as data, per environment caw may use (never production): the state of the test user or session (never values),
+ * the variable set that applies and which names are missing, and which tests use the role.
+ * state: set | missing (form, basic) · session | no-session (session) · none (no sign-in)
+ */
 export const roleOverview = (root, { env = process.env } = {}) => {
     const config = loadConfig(root);
     const byRole = testsByRole(root);
     const names = [...new Set([...Object.keys(config.roles ?? {}), ...Object.keys(byRole)])].sort();
+    const file = join(root, ENV_FILE);
+    const sources = { processEnv: env, fileEnv: existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {} };
+    const environments = Object.values(effectiveEnvironments(config)).filter(({ production }) => !production);
+    const stateOf = (name, { name: target, signIn }) => {
+        if (usesCredentials(signIn)) {
+            const { set, names: variables, missing } = credentialState({ who: name, env: target, totp: usesTotp(signIn), sources });
+            return { env: target, signIn: signIn.type, state: missing.length === 0 ? 'set' : 'missing', set, names: Object.values(variables), missing };
+        }
+        if (signIn.type === 'session') return { env: target, signIn: signIn.type, state: existsSync(join(root, sessionPath(target, name))) ? 'session' : 'no-session' };
+        return { env: target, signIn: signIn.type, state: 'none' };
+    };
     return {
-        auth: authOf(config).type,
-        roles: names.map((name) => {
-            const entry = config.roles?.[name];
-            return {
-                name,
-                configured: entry !== undefined,
-                ...(entry?.loginEnv === undefined ? {} : { loginEnv: entry.loginEnv, passwordEnv: entry.passwordEnv }),
-                testUser: entry !== undefined && hasTestUser(root, config, name, env),
-                tests: byRole[name] ?? [],
-            };
-        }),
+        roles: names.map((name) => ({
+            name,
+            configured: config.roles?.[name] !== undefined,
+            environments: config.roles?.[name] === undefined ? [] : environments.map((environment) => stateOf(name, environment)),
+            tests: byRole[name] ?? [],
+        })),
     };
 };
 
@@ -60,12 +72,14 @@ export const removeRole = (root, name) => {
     if (users.length > 0) throw new CawError('usage', t('cli.roleInUse', { role: name, tests: users.join(', ') }));
     const written = writeConfig(root, { roles: { [name]: null } });
     if (!written.ok) throw new CawError('config-invalid', written.issues.join('\n'));
+    // Every set of the role (default and per environment), by exact name: removing clerk never touches clerk-lead.
     const file = join(root, ENV_FILE);
-    const drop = [entry.loginEnv, entry.passwordEnv, entry.totpEnv].filter(Boolean);
-    if (existsSync(file) && drop.length > 0) {
-        const lines = readFileSync(file, 'utf8').split(/\r?\n/).filter((line) => !drop.some((key) => new RegExp(`^\\s*(?:export\\s+)?${key}=`).test(line)));
+    const pattern = roleLinePattern(name);
+    const lines = existsSync(file) ? readFileSync(file, 'utf8').split(/\r?\n/) : [];
+    const drop = lines.filter((line) => pattern.test(line)).map((line) => line.replace(/^\s*(?:export\s+)?/, '').split('=')[0].trim());
+    if (drop.length > 0) {
         const temp = `${file}.${process.pid}.tmp`;
-        writeFileSync(temp, lines.join('\n'), { mode: 0o600 });
+        writeFileSync(temp, lines.filter((line) => !pattern.test(line)).join('\n'), { mode: 0o600 });
         renameSync(temp, file);
     }
     return { role: name, removed: drop };
@@ -120,12 +134,15 @@ export const roleCommand = async (root, args, { out = (text) => console.log(text
             return EXIT.pass;
         }
         if (overview.roles.length === 0) ui.info(t('cli.roleNone'));
+        const label = { set: 'cli.roleStateSet', missing: 'cli.roleStateNoUser', session: 'cli.roleStateSession', 'no-session': 'cli.roleStateNoSession', none: 'cli.roleStateNoPassword' };
         for (const role of overview.roles) {
-            const state = !role.configured ? t('cli.roleStateMissing') : overview.auth === 'form' || overview.auth === 'basic' ? (role.testUser ? t('cli.roleStateSet') : t('cli.roleStateNoUser')) : t('cli.roleStateNoPassword');
-            out(`${role.name.padEnd(16)} ${state.padEnd(22)} ${role.tests.length === 0 ? '-' : role.tests.join(', ')}`);
+            const state = !role.configured ? t('cli.roleStateMissing') : role.environments.map(({ env, state: each }) => `${env}: ${t(label[each])}`).join(', ');
+            out(`${role.name.padEnd(16)} ${state.padEnd(40)} ${role.tests.length === 0 ? '-' : role.tests.join(', ')}`);
         }
-        const missing = overview.roles.filter((role) => !role.configured || ((overview.auth === 'form' || overview.auth === 'basic') && !role.testUser));
-        if (missing.length > 0) ui.note(t('cli.roleAddHint', { role: missing[0].name }));
+        const unconfigured = overview.roles.find((role) => !role.configured);
+        const missing = overview.roles.flatMap((role) => role.environments.filter(({ state }) => state === 'missing' || state === 'no-session').map((each) => ({ role: role.name, ...each })));
+        if (unconfigured !== undefined) ui.note(t('cli.roleAddHint', { role: unconfigured.name, target: '<env>' }));
+        else if (missing.length > 0) ui.note(missing[0].state === 'missing' ? t('cli.roleAddHint', { role: missing[0].role, target: missing[0].env }) : t('cli.roleLoginHint', { role: missing[0].role, target: missing[0].env }));
         return EXIT.pass;
     }
     if (sub === 'add') {

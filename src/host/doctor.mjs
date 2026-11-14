@@ -4,8 +4,9 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AUTH_DIR, agentSandbox, authOf, browserLaunch, loadConfig, overlayEnvironments, overlayParts, sessionPath, todoFields } from '../shared/config.mjs';
-import { effectiveEnvironments } from '../shared/environments.mjs';
+import { AUTH_DIR, agentSandbox, browserLaunch, loadConfig, overlayEnvironments, overlayParts, sessionPath, todoFields } from '../shared/config.mjs';
+import { credentialState, knownCredentialPattern } from '../shared/credentials.mjs';
+import { effectiveEnvironments, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
 import { ago } from './code-source.mjs';
@@ -117,26 +118,36 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
 
     if (config === null) return results;
 
-    const auth = authOf(config);
-    if (auth.type === 'form' || auth.type === 'basic') {
-        const file = join(root, ENV_FILE);
-        const values = existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {};
-        for (const [name, role] of Object.entries(config.roles ?? {})) {
-            const missing = [role.loginEnv, role.passwordEnv, role.totpEnv].filter((key) => key !== undefined && !env[key] && !values[key]);
+    // Test users by naming convention, per environment caw may use (never production) and role; values are never shown.
+    const file = join(root, ENV_FILE);
+    const values = existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {};
+    const sources = { processEnv: env, fileEnv: values };
+    const roles = Object.keys(config.roles ?? {});
+    for (const { name: target, signIn, gate, production } of Object.values(effectiveEnvironments(config))) {
+        if (production) continue;
+        if (gate !== undefined) {
+            const { missing } = credentialState({ who: 'gate', env: target, sources });
             add(missing.length === 0
-                ? { ok: true, text: t('cli.doctorRoleOk', { name }) }
-                : { ok: false, text: t('cli.doctorRoleMissing', { name, missing: missing.join(', '), count: missing.length, file: ENV_FILE }), next: t('cli.doctorRoleNext', { file: ENV_FILE }) });
+                ? { ok: true, text: t('cli.doctorGateOk', { target }) }
+                : { ok: false, text: t('cli.doctorGateMissing', { target, missing: missing.join(', '), count: missing.length, file: ENV_FILE }), next: t('cli.doctorGateNext', { file: ENV_FILE }) });
         }
-    }
-    if (auth.type === 'storageState') {
-        for (const name of Object.keys(config.roles ?? {})) {
-            for (const target of Object.values(effectiveEnvironments(config)).filter((candidate) => !candidate.production).map((candidate) => candidate.name)) {
+        for (const name of roles) {
+            if (usesCredentials(signIn)) {
+                const { missing } = credentialState({ who: name, env: target, totp: usesTotp(signIn), sources });
+                add(missing.length === 0
+                    ? { ok: true, text: t('cli.doctorRoleOk', { name, target }) }
+                    : { ok: false, text: t('cli.doctorRoleMissing', { name, target, missing: missing.join(', '), count: missing.length, file: ENV_FILE }), next: t('cli.doctorRoleNext', { file: ENV_FILE }) });
+            } else if (signIn.type === 'session') {
                 add(existsSync(join(root, sessionPath(target, name)))
                     ? { ok: true, text: t('cli.doctorSessionSaved', { name, target }) }
                     : { ok: false, optional: true, text: t('cli.doctorSessionNone', { name, target }), next: `caw role login ${name} --env ${target}` });
             }
         }
     }
+    // A CAW_ name in caw/.env that no role (and not the gate) reads is most likely a typo.
+    const known = knownCredentialPattern(roles);
+    const unknown = Object.keys(values).filter((key) => key.startsWith('CAW_') && !known.test(key));
+    if (unknown.length > 0) add({ ok: false, optional: true, text: t('cli.doctorEnvUnknown', { file: ENV_FILE, names: unknown.join(', ') }), next: t('cli.doctorEnvUnknownNext', { roles: roles.join(', ') || '–' }) });
 
     const reach = probes.reachable ?? (async (url) => (await import('./run.mjs')).reachable(url));
     for (const { name: target, url, production } of Object.values(effectiveEnvironments(config))) {

@@ -23,7 +23,7 @@ The role `user` has no test user yet, so the sign-in window opens first: sign in
 node ../../bin/caw-ai.mjs run first-errand --env local --headless   # no window, result in the terminal
 ```
 
-Without a window (`--headless`, CI) the account has to be there already: set `CAW_LOGIN_USER=demo` and `CAW_PW_USER=demo` in the environment or in `caw/.env`.
+Without a window (`--headless`, CI) the account has to be there already: set `CAW_USER_USER=demo` and `CAW_USER_PASSWORD=demo` (role `user`) in the environment or in `caw/.env`.
 
 The run adds a todo "Feed the raven CAW-…", finds it with the search, ticks it off and moves it to "Tomorrow". The report is in `.caw/runs/`.
 

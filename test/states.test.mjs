@@ -14,9 +14,10 @@ const step = (id) => {
 };
 const save = (root, id, role, start) => writeTest(root, composeTest({ id, role, environments: ['dev'], source: 'deployed', writes: false, ...(start === undefined ? {} : { start }) }, { notes: '', steps: [step('S1')] }));
 const CONFIG = {
-    auth: { type: 'form' },
+    environments: { dev: { url: 'https://dev.example.test', writable: true } },
+    signIn: { type: 'form' },
     start: '/antrag',
-    roles: { arzt: { loginEnv: 'L_A', passwordEnv: 'P_A' }, sachbearbeiter: { loginEnv: 'L_S', passwordEnv: 'P_S' } },
+    roles: { arzt: {}, sachbearbeiter: {} },
 };
 
 test('F1 catalog: tests of all roles of the target, with role and start path; not without an account for the role', (t) => {

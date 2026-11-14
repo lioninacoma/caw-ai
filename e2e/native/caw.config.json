@@ -10,11 +10,5 @@
             "claude": true,
             "writable": true
         }
-    },
-    "auth": {
-        "type": "none"
-    },
-    "roles": {
-        "visitor": {}
     }
 }

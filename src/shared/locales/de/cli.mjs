@@ -72,7 +72,7 @@ Befehle:`,
   role add [<rolle>] [--env <name>]      Im Fenster mit einem Testkonto anmelden und die Rolle benennen; caw schreibt
                                          caw/.env und die Config. „+ Weitere Rolle“ für das nächste Konto
   role remove <rolle>                    Eine Rolle entfernen, die kein Test nutzt, samt ihren Zeilen in caw/.env
-  role login <rolle> --env <name>        Bei auth.type storageState: einmal von Hand anmelden (etwa SSO), die Sitzung
+  role login <rolle> --env <name>        Bei signIn vom Typ session: einmal von Hand anmelden (etwa SSO), die Sitzung
                                          landet in caw/.auth/<umgebung>/<rolle>.json`,
     'cli.help.theme': `  theme [use <name> | check <name>]      Themes auflisten, eines wählen (gilt für dich, in allen Projekten) oder prüfen:
                                          Schema, Kontrast, Markenbreite, Schriften. Ändern in der Werkbank mit F7`,
@@ -148,7 +148,7 @@ Browser:
     // commands.mjs: explore file, config, skill, init
     'cli.notExploreResult': 'Die Datei sieht nicht nach einem Ergebnis von caw init --explore-only aus.',
     'cli.unknownFramework': 'Framework "{framework}" kennt caw-ai nicht ({names}).',
-    'cli.initAuthUnknown': 'Anmeldung "{auth}" gibt es bei init nicht (form, storageState, none).',
+    'cli.initAuthUnknown': 'Anmeldung "{auth}" gibt es bei init nicht (form, session, none).',
     'cli.badRoleName': 'Rolle "{name}": nur Kleinbuchstaben, Ziffern und Bindestrich, mit einem Buchstaben vorn (etwa admin, editor).',
     'cli.mcpInvalid': '.mcp.json ist kein gültiges JSON, den Eintrag für caw-ai bitte von Hand ergänzen (siehe README).',
     'cli.skillCreated': 'Angelegt: {file}',
@@ -178,8 +178,7 @@ Browser:
 
     // commands.mjs: auth
     'cli.authUsage': 'Aufruf: caw role login <rolle> --env <umgebung>',
-    'cli.authStorageOnly': 'caw role login gibt es nur mit auth.type storageState; hier ist es {type}.',
-    'cli.authNeedsSelector': 'caw role login braucht auth.signedInSelector: Daran erkennt es, dass die Anmeldung fertig ist.',
+    'cli.authStorageOnly': 'caw role login gibt es nur, wo die Anmeldung vom Typ session ist; auf {target} ist sie {type}.',
     'cli.authRoleUnknown': 'Rolle {role} steht nicht in roles ({roles}).',
     'cli.targetProduction': '{target} ist Produktion.',
     'cli.authSignIn': 'Melde dich im Chrome-Fenster als {role} an. Sobald {selector} erscheint, speichert caw-ai die Sitzung.',
@@ -315,9 +314,14 @@ Browser:
     'cli.doctorIgnoreOk': '.gitignore schützt Läufe, Zugangsdaten und Sitzungen',
     'cli.doctorIgnoreMissing': '.gitignore fehlt: {lines}',
     'cli.doctorIgnoreNext': 'caw init ergänzt die Einträge.',
-    'cli.doctorRoleOk': 'Rolle {name}: Zugangsdaten gesetzt',
-    'cli.doctorRoleMissing': ({ name, missing, count, file }) => `Rolle ${name}: ${missing} ${count > 1 ? 'fehlen' : 'fehlt'} in ${file}`,
+    'cli.doctorRoleOk': 'Rolle {name} auf {target}: Testnutzer gesetzt',
+    'cli.doctorRoleMissing': ({ name, target, missing, count, file }) => `Rolle ${name} auf ${target}: ${missing} ${count > 1 ? 'fehlen' : 'fehlt'} in ${file}`,
     'cli.doctorRoleNext': 'caw role add <rolle> --env <umgebung> öffnet das Anmeldefenster; in CI die Variablen als Umgebungsvariablen setzen ({file}.example nennt sie).',
+    'cli.doctorGateOk': 'Gate auf {target}: Zugang gesetzt',
+    'cli.doctorGateMissing': ({ target, missing, count, file }) => `Gate auf ${target}: ${missing} ${count > 1 ? 'fehlen' : 'fehlt'} in ${file}`,
+    'cli.doctorGateNext': 'Trage den Zugang des Basic-Gates in {file} ein (in CI als Umgebungsvariablen).',
+    'cli.doctorEnvUnknown': '{file}: {names} gehören zu keiner Rolle und nicht zum Gate (Tippfehler?)',
+    'cli.doctorEnvUnknownNext': 'Die Namen sind CAW_<ROLLE>_USER, CAW_<ROLLE>_PASSWORD, CAW_<ROLLE>_TOTP, wahlweise mit __<UMGEBUNG>; Rollen: {roles}',
     'cli.doctorSessionSaved': 'Rolle {name} auf {target}: Sitzung gespeichert',
     'cli.doctorSessionNone': 'Rolle {name} auf {target}: keine Sitzung',
     'cli.doctorReachOk': '{target}: {url} antwortet',
@@ -389,7 +393,7 @@ Browser:
     'cli.exploreWhyNeutral': 'kein Framework erkannt, neutraler Adapter',
     'cli.exploreWhyPackage': 'aus der package.json',
     'cli.exploreMismatch': 'Laufzeit zeigt {runtime}, die package.json {detected}.',
-    'cli.exploreForeign': 'Die Anmeldung wollte auf {hosts}; das Tool ließ das nicht zu. Für SSO: auth.type storageState, Sitzung einmal mit caw role login speichern; den Anmeldedienst ggf. in allowHosts.',
+    'cli.exploreForeign': 'Die Anmeldung wollte auf {hosts}; das Tool ließ das nicht zu. Für SSO: signIn vom Typ session, Sitzung einmal mit caw role login speichern; den Anmeldedienst ggf. in allowHosts.',
     'cli.exploreNoFieldSelector': 'Für Name oder Passwort fand sich kein eindeutiger Selektor; eine data-testid an den Feldern hilft.',
     'cli.exploreNoSignedIn': 'Nach der Anmeldung kam kein neues Element mit stabilem Selektor dazu; signedInSelector bitte von Hand setzen.',
     'cli.exploreNoLogin': 'Kein Anmeldeformular gesehen. Braucht die Anwendung doch eine Anmeldung, explore erneut starten und dabei anmelden.',
@@ -494,7 +498,7 @@ Browser:
     'cli.roleGitignore': '{file} in .gitignore eingetragen.',
     'cli.roleTargetUnknown': 'Unbekannte Umgebung {target}. Bekannt: {environments}',
     'cli.roleTargetMissing': 'Auf welcher Umgebung soll sich das Fenster anmelden? --env <umgebung> ({environments})',
-    'cli.roleAuthType': 'Testnutzer mit Passwort nur bei auth.type form oder basic (hier: {type}). Bei storageState: caw role login <rolle> --env <umgebung>.',
+    'cli.roleAuthType': 'Testnutzer mit Passwort nur bei signIn vom Typ form oder basic (auf {target}: {type}). Für session: caw role login <rolle> --env {target}.',
     'cli.roleSignIn': 'Melde dich im Fenster mit dem Testnutzer an ({target}).',
     'cli.roleNoCredentials': 'Angemeldet, aber im Formular wurden kein Benutzername und Passwort gesehen (SSO?). Nichts gespeichert.',
     'cli.roleNeeded': 'Test {test} meldet sich als Rolle {role} an, die noch keinen Testnutzer hat: Melde dich im Fenster damit an.',
@@ -507,7 +511,10 @@ Browser:
     'cli.roleStateSet': 'Testnutzer gesetzt',
     'cli.roleStateNoUser': 'kein Testnutzer',
     'cli.roleStateNoPassword': 'kein Passwort nötig',
-    'cli.roleAddHint': 'Testnutzer anlegen: caw role add {role} --env <umgebung>',
+    'cli.roleStateSession': 'Sitzung gespeichert',
+    'cli.roleStateNoSession': 'keine Sitzung',
+    'cli.roleAddHint': 'Testnutzer anlegen: caw role add {role} --env {target}',
+    'cli.roleLoginHint': 'Sitzung speichern: caw role login {role} --env {target}',
     'cli.roleNothingSaved': 'Nichts gespeichert.',
     'cli.roleNext': 'Gespeichert: {roles}. Tests nutzen sie mit role: <name>.',
     'cli.roleRemoved': 'Rolle {role} aus der Config und {file} entfernt.',

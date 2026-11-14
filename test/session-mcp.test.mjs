@@ -152,11 +152,11 @@ test('caw_init: offline without questions, existing files stay, explore first wh
     const data = first.structuredContent;
     assert.equal(data.state, 'done');
     assert.ok(['caw.config.json', 'caw/.env.example', '.claude/skills/caw-ai/SKILL.md', 'caw/caw.md', '.mcp.json', '.gitignore'].every((file) => data.created.includes(file)), data.created.join(', '));
-    assert.ok(data.todo.includes('auth.path'));
-    assert.match(first.content[0].text, /Noch TODO: auth\./);
+    assert.ok(data.todo.includes('signIn.path'));
+    assert.match(first.content[0].text, /Noch TODO: signIn\./);
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
     assert.deepEqual(Object.keys(config.roles), ['admin', 'sachbearbeiter']);
-    assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /CAW_PW_SACHBEARBEITER=/);
+    assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /CAW_SACHBEARBEITER_PASSWORD=/);
 
     const again = (await call('caw_init', { offline: true })).structuredContent;
     assert.deepEqual(again.created, []);
@@ -166,7 +166,7 @@ test('caw_init: offline without questions, existing files stay, explore first wh
     const fresh = tempDir(t);
     assert.equal(initProject(fresh, { url: 'http://localhost:5173' }).state, 'explore-first');
     assert.ok(!existsSync(join(fresh, 'caw.config.json')));
-    writeFileSync(join(fresh, 'x.json'), JSON.stringify({ url: 'http://localhost:5173', auth: { type: 'none' }, framework: { value: 'react' } }));
+    writeFileSync(join(fresh, 'x.json'), JSON.stringify({ url: 'http://localhost:5173', signIn: { type: 'none' }, framework: { value: 'react' } }));
     const explored = initProject(fresh, { fromExplore: 'x.json', noMcp: true });
     assert.equal(explored.explored, true);
     assert.ok(!explored.created.includes('.mcp.json'));

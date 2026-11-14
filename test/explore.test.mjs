@@ -70,8 +70,8 @@ test('explore: random ids are dropped on the second load, state on body beats me
     assert.equal(signedIn.why, 'Zustand an html/body, für jedes Konto gleich');
     // Enter submits the form: no submitSelector in the suggestion.
     const form = buildSuggestions({ url: 'https://portal.example/', seen: { before: first, loginPage: first, after: home } });
-    assert.equal(form.auth.submitSelector, undefined);
-    assert.equal(form.auth.signedInSelector, 'body.signed-in');
+    assert.equal(form.signIn.submitSelector, undefined);
+    assert.equal(form.signIn.signedInSelector, 'body.signed-in');
 });
 
 test('explore: suggestions for form, SSO and no sign-in; console noise without numbers', () => {
@@ -80,14 +80,14 @@ test('explore: suggestions for form, SSO and no sign-in; console noise without n
     const form = buildSuggestions({ url: 'http://app.localhost:5173/start', seen: { before: loginPage, loginPage, after: home }, consoleErrors: ['Failed to load resource: 404 (http://x/a.png)'], detected: 'react' });
     assert.equal(form.url, 'http://app.localhost:5173');
     assert.deepEqual(form.framework, { value: 'react', confidence: 'certain', why: 'zur Laufzeit erkannt' });
-    assert.deepEqual(form.auth, { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' });
+    assert.deepEqual(form.signIn, { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' });
     assert.equal(form.start, '/decks');
     assert.equal(form.consoleIgnore, undefined, 'HTTP errors before sign-in do not become consoleIgnore, that would hide them all');
     const sso = buildSuggestions({ url: 'https://app.example.com', seen: { before: { ...home, markers: [] }, loginPage: null, after: home }, foreignHosts: ['login.microsoftonline.com'] });
-    assert.equal(sso.auth.type, 'storageState');
+    assert.equal(sso.signIn.type, 'session');
     assert.match(sso.notes.join(' '), /login\.microsoftonline\.com.*caw role login/);
     const none = buildSuggestions({ url: 'http://app.localhost:5173', seen: { before: home, loginPage: null, after: home }, detected: 'web' });
-    assert.equal(none.auth.type, 'none');
+    assert.equal(none.signIn.type, 'none');
     // http on the local machine stays as it is; other http hosts get a note.
     const plain = buildSuggestions({ url: 'http://localhost:5173/x', seen: { before: home, loginPage: null, after: home } });
     assert.equal(plain.url, 'http://localhost:5173');
@@ -105,19 +105,19 @@ test('explore: suggestions for form, SSO and no sign-in; console noise without n
 });
 
 test('init --from: suggestions from explore yield a valid config', () => {
-    const suggestion = { url: 'http://app.localhost:5173', framework: { value: 'react' }, auth: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', submitSelector: '[data-testid="login-submit"]', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' }, start: '/decks', messageSelectors: ['[role=status]'] };
+    const suggestion = { url: 'http://app.localhost:5173', framework: { value: 'react' }, signIn: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', submitSelector: '[data-testid="login-submit"]', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' }, start: '/decks', messageSelectors: ['[role=status]'] };
     const config = starterConfig(answersFromExplore(suggestion));
     assert.equal(config.framework, 'react');
     assert.equal(config.environments.local.url, 'http://app.localhost:5173');
-    assert.deepEqual(config.auth, { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', signedInSelector: '[data-testid="user-menu"]', submitSelector: '[data-testid="login-submit"]' });
+    assert.deepEqual(config.signIn, { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', signedInSelector: '[data-testid="user-menu"]', submitSelector: '[data-testid="login-submit"]' });
     assert.equal(config.start, '/decks');
     assert.deepEqual(config.messageSelectors, ['[role=status]']);
     assert.deepEqual(validateConfig(config, tmpdir()).issues.filter((issue) => !/dir|environments\.staging/.test(issue)), []);
-    const without = starterConfig(answersFromExplore({ url: 'http://app.localhost:5173', framework: { value: 'web' }, auth: { type: 'none' } }));
-    assert.equal(without.auth, undefined);
+    const without = starterConfig(answersFromExplore({ url: 'http://app.localhost:5173', framework: { value: 'web' }, signIn: { type: 'none' } }));
+    assert.equal(without.signIn, undefined);
     // Without a signed-in marker (as with some apps): TODO instead of the template's real-looking placeholder.
-    const partial = starterConfig(answersFromExplore({ url: 'http://localhost:5173', framework: { value: 'react' }, auth: { type: 'form', path: '/', userSelector: '#user', passwordSelector: '#pass', confidence: 'likely' } }));
-    assert.deepEqual(partial.auth, { type: 'form', path: '/', userSelector: '#user', passwordSelector: '#pass', signedInSelector: 'TODO' });
+    const partial = starterConfig(answersFromExplore({ url: 'http://localhost:5173', framework: { value: 'react' }, signIn: { type: 'form', path: '/', userSelector: '#user', passwordSelector: '#pass', confidence: 'likely' } }));
+    assert.deepEqual(partial.signIn, { type: 'form', path: '/', userSelector: '#user', passwordSelector: '#pass', signedInSelector: 'TODO' });
     assert.throws(() => answersFromExplore({}), /explore/);
 });
 
@@ -146,7 +146,7 @@ test('explore: flow with a fake browser writes only caw/.explore.json', async (t
     assert.equal(code, 0);
     assert.ok(closed);
     const written = JSON.parse(readFileSync(join(root, 'caw/.explore.json'), 'utf8'));
-    assert.equal(written.auth.signedInSelector, '#logout');
+    assert.equal(written.signIn.signedInSelector, '#logout');
     assert.equal(written.framework.value, 'vue');
     assert.ok(!existsSync(join(root, 'caw.config.json')), 'no config');
     await assert.rejects(explore(root, ['--url', 'ftp://x'], { wait: async () => {} }), /Aufruf: caw init --explore-only/);
@@ -157,7 +157,7 @@ test('explore without signing in (--yes on an app with a login): the sign-in pag
     // Nobody signed in: the page at the end is still the sign-in page.
     const unattended = buildSuggestions({ url: 'http://localhost:4174', seen: { before: loginPage, loginPage, after: loginPage } });
     assert.equal(unattended.start, '/');
-    assert.equal(unattended.auth.path, '/login');
+    assert.equal(unattended.signIn.path, '/login');
     assert.equal(startOf('http://localhost:4174/app/', loginPage), '/app/', 'the given address, if it is not the sign-in page');
     assert.equal(startOf('http://localhost:4174/login', loginPage), '/');
     // Signed in: the page the human chose.

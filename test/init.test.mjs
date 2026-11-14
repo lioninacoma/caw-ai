@@ -47,19 +47,28 @@ test('init: extends an existing .mcp.json, leaves the rest alone, and skips it w
     assert.throws(() => readFileSync(join(other, '.mcp.json')), /ENOENT/);
 });
 
-test('readCredentials: environment before caw/.env, session per target', async (t) => {
+test('readCredentials: by naming convention, process environment before caw/.env, a set per environment, session per environment', async (t) => {
     const { readCredentials } = await import('../src/host/run.mjs');
     const { sessionPath } = await import('../src/shared/config.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-cred-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    const form = { auth: { type: 'form' }, roles: { kunde: { loginEnv: 'CAW_LOGIN_KUNDE', passwordEnv: 'CAW_PW_KUNDE' } } };
-    assert.throws(() => readCredentials(root, form, 'kunde', 'local', {}), /CAW_LOGIN_KUNDE, CAW_PW_KUNDE fehlen: als Umgebungsvariablen oder in caw\/\.env setzen/);
-    assert.throws(() => readCredentials(root, form, 'kunde', 'local', { CAW_LOGIN_KUNDE: 'x' }), /CAW_PW_KUNDE fehlt: als Umgebungsvariable oder/);
+    const environments = { local: { url: 'http://localhost:5173' }, staging: { url: 'https://staging.shop.example' } };
+    const form = { environments, signIn: { type: 'form' }, roles: { kunde: {} } };
+    assert.throws(() => readCredentials(root, form, 'kunde', 'local', {}), (error) => error.code === 'credentials-missing' && /CAW_KUNDE_USER, CAW_KUNDE_PASSWORD/.test(error.message));
+    assert.throws(() => readCredentials(root, form, 'kunde', 'local', { CAW_KUNDE_USER: 'x' }), (error) => /CAW_KUNDE_PASSWORD/.test(error.message) && !/CAW_KUNDE_USER/.test(error.message));
     mkdirSync(join(root, 'caw'), { recursive: true });
-    writeFileSync(join(root, 'caw', '.env'), 'CAW_LOGIN_KUNDE=aus-datei\nCAW_PW_KUNDE=pw-datei\n');
+    writeFileSync(join(root, 'caw', '.env'), 'CAW_KUNDE_USER=aus-datei\nCAW_KUNDE_PASSWORD=pw-datei\n');
     assert.deepEqual(readCredentials(root, form, 'kunde', 'local', {}), { login: 'aus-datei', password: 'pw-datei' });
-    assert.deepEqual(readCredentials(root, form, 'kunde', 'local', { CAW_LOGIN_KUNDE: 'aus-ci' }), { login: 'aus-ci', password: 'pw-datei' });
-    const stored = { auth: { type: 'storageState' }, roles: { kunde: {} } };
+    assert.deepEqual(readCredentials(root, form, 'kunde', 'local', { CAW_KUNDE_USER: 'aus-ci' }), { login: 'aus-ci', password: 'pw-datei' });
+    // A set for one environment is taken whole, never mixed with the default set.
+    assert.deepEqual(readCredentials(root, form, 'kunde', 'staging', { CAW_KUNDE_USER__STAGING: 'qa', CAW_KUNDE_PASSWORD__STAGING: 'qa-pw' }), { login: 'qa', password: 'qa-pw' });
+    assert.throws(() => readCredentials(root, form, 'kunde', 'staging', { CAW_KUNDE_USER__STAGING: 'qa' }), /CAW_KUNDE_PASSWORD__STAGING/);
+    // A gate in front of the environment adds its own account.
+    const gated = { ...form, environments: { ...environments, staging: { url: 'https://staging.shop.example', gate: { type: 'basic' } } } };
+    assert.deepEqual(readCredentials(root, gated, 'kunde', 'staging', { CAW_GATE_USER: 'g', CAW_GATE_PASSWORD: 'gp' }), { login: 'aus-datei', password: 'pw-datei', gate: { username: 'g', password: 'gp' } });
+    assert.throws(() => readCredentials(root, gated, 'kunde', 'staging', {}), /CAW_GATE_USER, CAW_GATE_PASSWORD/);
+    assert.deepEqual(readCredentials(root, { environments }, undefined, 'local', {}), null, 'no sign-in, no gate: nothing to read');
+    const stored = { environments, signIn: { type: 'session', signedInSelector: '#menu' }, roles: { kunde: {} } };
     assert.equal(sessionPath('nord/staging', 'kunde'), 'caw/.auth/nord/staging/kunde.json');
     assert.throws(() => readCredentials(root, stored, 'kunde', 'staging', {}), /auf staging keine gespeicherte Sitzung.*--env staging/);
     mkdirSync(join(root, 'caw', '.auth', 'staging'), { recursive: true });
@@ -68,14 +77,16 @@ test('readCredentials: environment before caw/.env, session per target', async (
     assert.throws(() => readCredentials(root, stored, 'kunde', 'local', {}), /auf local/, 'another target\'s session does not count');
 });
 
-test('readCredentials: a role with totpEnv yields its TOTP secret, and names it when missing', async (t) => {
+test('readCredentials: a sign-in with a code reads CAW_<ROLE>_TOTP, and names it when missing', async (t) => {
     const { readCredentials } = await import('../src/host/run.mjs');
     const root = mkdtempSync(join(tmpdir(), 'caw-cred-totp-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    const form = { auth: { type: 'form' }, roles: { admin: { loginEnv: 'CAW_LOGIN_ADMIN', passwordEnv: 'CAW_PW_ADMIN', totpEnv: 'CAW_TOTP_ADMIN' } } };
-    const env = { CAW_LOGIN_ADMIN: 'a', CAW_PW_ADMIN: 'p' };
-    assert.throws(() => readCredentials(root, form, 'admin', 'local', env), /CAW_TOTP_ADMIN fehlt/);
-    assert.deepEqual(readCredentials(root, form, 'admin', 'local', { ...env, CAW_TOTP_ADMIN: 'GEZDGNBV' }), { login: 'a', password: 'p', totpSecret: 'GEZDGNBV' });
+    const form = { environments: { local: { url: 'http://localhost:5173' } }, signIn: { type: 'form', codeSelector: '#code' }, roles: { admin: {} } };
+    const env = { CAW_ADMIN_USER: 'a', CAW_ADMIN_PASSWORD: 'p' };
+    assert.throws(() => readCredentials(root, form, 'admin', 'local', env), (error) => /CAW_ADMIN_TOTP/.test(error.message) && !/CAW_ADMIN_USER/.test(error.message));
+    assert.deepEqual(readCredentials(root, form, 'admin', 'local', { ...env, CAW_ADMIN_TOTP: 'GEZDGNBV' }), { login: 'a', password: 'p', totpSecret: 'GEZDGNBV' });
+    const steps = { ...form, signIn: { type: 'form', steps: [{ fill: '#u', with: 'user' }, { fill: '#c', with: 'totp' }] } };
+    assert.equal(readCredentials(root, steps, 'admin', 'local', { ...env, CAW_ADMIN_TOTP: 'GEZDGNBV' }).totpSecret, 'GEZDGNBV', 'a with: totp step needs the secret too');
 });
 
 test('runMode names the mode and the reason, no mode follows silently from the environment', async () => {
@@ -89,17 +100,17 @@ test('runMode names the mode and the reason, no mode follows silently from the e
     assert.match(runMode({ ...base, withAgent: false }), /nur auf dev/);
 });
 
-test('auth: saves a role\'s session, only with storageState and never on production', async (t) => {
+test('role login: saves a role\'s session, only where the sign-in is a session and never on production', async (t) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-auth-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
     const write = (authConfig) => writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
         environments: { local: { url: 'http://app.localhost:5173', claude: true }, live: { url: 'https://www.shop.example', production: true } },
-        auth: authConfig,
+        signIn: authConfig,
         start: '/',
-        roles: { kunde: authConfig.type === 'form' ? { loginEnv: 'L', passwordEnv: 'P' } : {} },
+        roles: { kunde: {} },
     }));
-    write({ type: 'storageState', path: '/sso', signedInSelector: '#menu' });
+    write({ type: 'session', path: '/sso', signedInSelector: '#menu' });
     const calls = [];
     const capture = async (options) => {
         calls.push(options);
@@ -117,7 +128,7 @@ test('auth: saves a role\'s session, only with storageState and never on product
     await assert.rejects(login(['kunde'], capture), /Aufruf: caw role login <rolle> --env <umgebung>/);
     await assert.rejects(login(['kunde', '--target', 'local'], capture), /--target heißt jetzt --env/);
     write({ type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#menu' });
-    await assert.rejects(login(['kunde', '--env', 'local'], capture), /nur mit auth.type storageState/);
+    await assert.rejects(login(['kunde', '--env', 'local'], capture), /nur, wo die Anmeldung vom Typ session ist; auf local ist sie form/);
     assert.equal(calls.length, 1);
 });
 
@@ -148,12 +159,13 @@ test('doctor: names the next step per problem, optional items do not block, neve
     initial.environments.staging = { url: 'https://staging.firma.intern' };
     initial.environments.demo = { url: 'https://demo.example.com' };
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(initial, null, 4));
-    writeFileSync(join(root, 'caw', '.env'), 'CAW_LOGIN_TESTER=geheim-login\nCAW_PW_TESTER=geheim-pw\n');
+    writeFileSync(join(root, 'caw', '.env'), 'CAW_TESTER_USER=geheim-login\nCAW_TESTER_PASSWORD=geheim-pw\n');
     const lines = [];
     const ui = { success: (text) => lines.push(`ok ${text}`), note: (text) => lines.push(`opt ${text}`), warn: (text) => lines.push(`warn ${text}`) };
     assert.equal(await doctor(root, { ui, env: { ANTHROPIC_API_KEY: 'sk-geheim' }, nodeVersion: '22.4.0', probes }), 0);
     const output = lines.join('\n');
-    assert.match(output, /ok OK +Rolle tester: Zugangsdaten gesetzt/);
+    assert.match(output, /ok OK +Rolle tester auf local: Testnutzer gesetzt/);
+    assert.match(output, /ok OK +Rolle tester auf staging: Testnutzer gesetzt/, 'the default set applies to every environment');
     assert.match(output, /ok OK +Claude Code 2\.1\.0 \(Claude läuft lokal, ohne Docker\)/);
     assert.doesNotMatch(output, /Docker gefunden|ANTHROPIC_API_KEY/, 'locally neither Docker nor key count');
     assert.match(output, /ok OK +local: http:\/\/localhost:5173 antwortet/);
@@ -177,16 +189,16 @@ test('doctor: names the next step per problem, optional items do not block, neve
     const saved = readFileSync(configPath, 'utf8');
     writeFileSync(configPath, saved.replace(/"signedInSelector": "[^"]*"/, '"signedInSelector": "TODO"'));
     const todo = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => /TODO/.test(text));
-    assert.ok(todo && !todo.ok && !todo.optional && /auth\.signedInSelector/.test(todo.text), JSON.stringify(todo));
+    assert.ok(todo && !todo.ok && !todo.optional && /signIn\.signedInSelector/.test(todo.text), JSON.stringify(todo));
     // Also a TODO path is a gap, not an invalid config: one line naming every TODO field.
     writeFileSync(configPath, saved.replace(/"path": "[^"]*"/, '"path": "TODO"').replace(/"userSelector": "[^"]*"/, '"userSelector": "TODO"'));
     const checks = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes });
     assert.ok(checks.some(({ ok, text }) => ok && /caw\.config\.json ist gültig/.test(text)));
-    assert.ok(checks.some(({ ok, text }) => !ok && text === 'auth.path, auth.userSelector stehen noch auf TODO'), JSON.stringify(checks));
+    assert.ok(checks.some(({ ok, text }) => !ok && text === 'signIn.path, signIn.userSelector stehen noch auf TODO'), JSON.stringify(checks));
     // An invalid config: the first real finding, not just "caw.config.json:".
     writeFileSync(configPath, saved.replace('"local": {', '"local": { "robot": true, "zzz": true,'));
     const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
-    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, extends, allowHosts, claude, writable, production, insecureTls, allowHttp)');
+    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, extends, signIn, gate, allowHosts, claude, writable, production, insecureTls, allowHttp)');
     assert.equal(broken.next, 'caw validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.
@@ -230,24 +242,27 @@ test('init: detects the framework, takes answers, no role without login', async 
     mkdirSync(join(mono, 'apps', 'web'), { recursive: true });
     writeFileSync(join(mono, 'apps', 'web', 'package.json'), JSON.stringify({ dependencies: { '@angular/core': '19' } }));
     assert.deepEqual(detectApp(mono), { framework: 'angular', dir: 'apps/web' });
-    init(polyglot, { auth: 'none' });
+    init(polyglot, { signIn: 'none' });
     const written = JSON.parse(readFileSync(join(polyglot, 'caw.config.json'), 'utf8'));
     assert.equal(written.start, '/', 'the folder only matters for an overlay part');
     assert.equal(written.apps, undefined);
     assert.throws(() => starterConfig({ framework: 'svelte' }), /svelte/);
-    assert.throws(() => starterConfig({ auth: 'oauth' }), /oauth/);
+    assert.throws(() => starterConfig({ signIn: 'oauth' }), /oauth/);
 
     const open = project({ dependencies: { vue: '3' } });
-    init(open, { url: 'http://shop.localhost:3000', auth: 'none' });
+    init(open, { url: 'http://shop.localhost:3000', signIn: 'none' });
     const config = JSON.parse(readFileSync(join(open, 'caw.config.json'), 'utf8'));
     assert.equal(config.framework, 'vue');
     assert.deepEqual(config.environments, { local: { url: 'http://shop.localhost:3000', claude: true, writable: true } });
-    assert.equal(config.auth, undefined);
+    assert.equal(config.signIn, undefined);
     assert.equal(validate(open), 0);
 
     const sso = project();
-    init(sso, { auth: 'storageState' });
-    assert.equal(JSON.parse(readFileSync(join(sso, 'caw.config.json'), 'utf8')).auth.type, 'storageState');
+    init(sso, { signIn: 'session' });
+    const session = JSON.parse(readFileSync(join(sso, 'caw.config.json'), 'utf8'));
+    assert.equal(session.signIn.type, 'session');
+    assert.deepEqual(session.roles, { tester: {} });
+    assert.ok(!existsSync(join(sso, 'caw', '.env.example')), 'a session reads no variables');
     assert.equal(validate(sso), 0);
 });
 
@@ -307,15 +322,15 @@ test('init: explore is required, asks for address and roles, checks every answer
     assert.deepEqual(await initAnswers(root, ['--offline', '--url', 'http://localhost:3000', '--no-mcp'], { interactive: false, runExplore: async () => { throw new Error('no explore'); } }),
         { answers: { offline: true, url: 'http://localhost:3000', mcp: false } });
     const offline = starterConfig({ offline: true });
-    assert.equal(offline.auth.passwordSelector, 'TODO');
-    assert.equal(offline.auth.submitSelector, undefined);
+    assert.equal(offline.signIn.passwordSelector, 'TODO');
+    assert.equal(offline.signIn.submitSelector, undefined);
     await assert.rejects(initAnswers(root, ['--url', 'ftp://x'], { interactive: false }), /http:\/\/ oder https:\/\//);
 
     const explored = [];
     const runExplore = async (dir, args, options) => {
         explored.push({ args, options });
         mkdirSync(join(dir, 'caw'), { recursive: true });
-        writeFileSync(join(dir, 'caw', '.explore.json'), JSON.stringify({ url: args[1], framework: { value: 'react' }, auth: { type: 'form', path: '/', userSelector: '#user', passwordSelector: '#pass' } }));
+        writeFileSync(join(dir, 'caw', '.explore.json'), JSON.stringify({ url: args[1], framework: { value: 'react' }, signIn: { type: 'form', path: '/', userSelector: '#user', passwordSelector: '#pass' } }));
         return 0;
     };
     const input = new PassThrough();
@@ -335,9 +350,9 @@ test('init: explore is required, asks for address and roles, checks every answer
     assert.match(shown, /„Admin“: nur Kleinbuchstaben/);
     init(root, answers);
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
-    assert.equal(config.auth.signedInSelector, 'TODO', 'what explore did not find');
-    assert.deepEqual(config.roles['sach-bearbeiter'], { loginEnv: 'CAW_LOGIN_SACH_BEARBEITER', passwordEnv: 'CAW_PW_SACH_BEARBEITER' });
-    assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /^# Nach caw\/\.env kopieren[^\n]*\n# [^\n]*\nCAW_LOGIN_ADMIN=\nCAW_PW_ADMIN=\nCAW_LOGIN_SACH_BEARBEITER=\nCAW_PW_SACH_BEARBEITER=\n$/);
+    assert.equal(config.signIn.signedInSelector, 'TODO', 'what explore did not find');
+    assert.deepEqual(config.roles['sach-bearbeiter'], {});
+    assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /^# Nach caw\/\.env kopieren[^\n]*\n# [^\n]*\nCAW_ADMIN_USER=\nCAW_ADMIN_PASSWORD=\nCAW_SACH_BEARBEITER_USER=\nCAW_SACH_BEARBEITER_PASSWORD=\n$/);
     assert.ok(existsSync(join(root, '.claude', 'skills', 'caw-ai', 'SKILL.md')));
 
     // If explore already ran, init takes its result without asking; the role is then neutral.
@@ -356,10 +371,10 @@ test('validate: code per test and target, where an overlay is possible, and TODO
     t.after(() => rmSync(root, { recursive: true, force: true }));
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
         environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true } },
-        auth: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
+        signIn: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
         start: '/',
         overlay: { environments: ['dev'], parts: { web: { dir: '.', build: 'dist' } } },
-        roles: { tester: { loginEnv: 'A', passwordEnv: 'B' } },
+        roles: { tester: {} },
     }));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
     const steps = 'steps:\n  - id: S1\n    name: A\n    do: ""\n    expect: B\n';
@@ -369,13 +384,13 @@ test('validate: code per test and target, where an overlay is possible, and TODO
     try {
         // A login value still TODO: rejected like an invalid config (exit 3), never "valid".
         assert.throws(() => validate(root), (error) => error.code === 'config-invalid' && exitOf(error.code) === 3
-            && /auth\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/.test(error.message));
+            && /signIn\.passwordSelector ist noch TODO: trage den CSS-Selektor des Passwortfelds ein/.test(error.message));
     } finally {
         write.mock.restore();
     }
     assert.doesNotMatch(chunks.join(''), /gültig/);
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
-    config.auth.passwordSelector = '#p';
+    config.signIn.passwordSelector = '#p';
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config));
     chunks.length = 0;
     const write1 = t.mock.method(process.stdout, 'write', (chunk) => { chunks.push(String(chunk)); return true; });
@@ -403,13 +418,13 @@ test('validate: code per test and target, where an overlay is possible, and TODO
 
 test('run and record: TODO in the login aborts before Chrome and Claude', async () => {
     const { openRunSession } = await import('../src/host/run.mjs');
-    const config = { auth: { type: 'form', path: '/', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'TODO' }, roles: { tester: {} } };
+    const config = { signIn: { type: 'form', path: '/', userSelector: '#u', passwordSelector: '#p', signedInSelector: 'TODO' }, roles: { tester: {} } };
     await assert.rejects(openRunSession({ root: tmpdir(), config, spec: { role: 'tester' }, checked: { target: 'local', url: 'http://localhost:1' } }),
-        (error) => error.code === 'config-invalid' && /auth\.signedInSelector steht noch auf TODO/.test(error.message));
+        (error) => error.code === 'config-invalid' && /signIn\.signedInSelector steht noch auf TODO/.test(error.message));
 });
 
 test('init never writes an overlay block, not even for ExtJS: the overlay is an extension the team adds', () => {
-    const config = starterConfig({ framework: 'extjs', url: 'https://dev.firma.intern', auth: 'none' });
+    const config = starterConfig({ framework: 'extjs', url: 'https://dev.firma.intern', signIn: 'none' });
     assert.equal(config.framework, 'extjs');
     assert.equal(config.overlay, undefined);
     assert.equal(config.start, '/');

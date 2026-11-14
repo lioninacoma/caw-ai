@@ -5,8 +5,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { authOf, loadConfig } from '../shared/config.mjs';
-import { effectiveEnvironment } from '../shared/environments.mjs';
+import { loadConfig } from '../shared/config.mjs';
+import { credentialState } from '../shared/credentials.mjs';
+import { effectiveEnvironment, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { createUi } from '../shared/ui.mjs';
@@ -81,19 +82,20 @@ export const sendPhase = (page, detail) =>
  * @param signOut    async () => fresh session on the sign-in page for the next account
  * @param fixedRole  this role is needed (record, run): prefilled, and after saving the run goes on
  * @param givenRole  named on the command line (role add mitglied): saved under it right after the sign-in, without asking
+ * @param env        the environment the window signs in to (undefined in explore, before there is a config)
  * @param closed     a promise that settles when the window closes
  * @returns the saved role names
  */
-export const roleRounds = async ({ root, page, capture, setPhase, signOut, fixedRole, givenRole, taken = [], closed }) => {
+export const roleRounds = async ({ root, page, capture, setPhase, signOut, fixedRole, givenRole, taken = [], env, closed }) => {
     const saved = [];
     for (;;) {
         const credentials = capture.credentials;
         if (credentials === null) return saved;
         // The name is known for the first account: asking again would only repeat it.
         if (givenRole !== undefined && saved.length === 0) {
-            const result = saveTestUser(root, { role: givenRole, ...credentials });
+            const result = saveTestUser(root, { role: givenRole, ...credentials, env });
             saved.push(result.role);
-            ui.success(t('cli.roleSaved', { role: result.role, file: ENV_PATH, names: `${result.loginEnv}, ${result.passwordEnv}` }));
+            ui.success(t('cli.roleSaved', { role: result.role, file: ENV_PATH, names: result.names.join(', ') }));
             if (result.gitignore) ui.note(t('cli.roleGitignore', { file: ENV_PATH }));
             await setPhase({ phase: 'done', role: result.role });
             return saved;
@@ -104,7 +106,7 @@ export const roleRounds = async ({ root, page, capture, setPhase, signOut, fixed
                 if (!ROLE_NAME.test(String(role))) return { ok: false, error: t('cli.testUserRoleBad', { role: String(role) }) };
                 if (fixedRole !== undefined && role !== fixedRole) return { ok: false, error: t('cli.roleCardFixed', { role: fixedRole }) };
                 try {
-                    const result = saveTestUser(root, { role, ...credentials });
+                    const result = saveTestUser(root, { role, ...credentials, env });
                     done(result);
                     return { ok: true };
                 } catch (error) {
@@ -117,7 +119,7 @@ export const roleRounds = async ({ root, page, capture, setPhase, signOut, fixed
         capture.onRole = null;
         if (result === null) return saved;
         saved.push(result.role);
-        ui.success(t('cli.roleSaved', { role: result.role, file: ENV_PATH, names: `${result.loginEnv}, ${result.passwordEnv}` }));
+        ui.success(t('cli.roleSaved', { role: result.role, file: ENV_PATH, names: result.names.join(', ') }));
         if (result.gitignore) ui.note(t('cli.roleGitignore', { file: ENV_PATH }));
         // A needed role: saved, the run goes on in its own window.
         if (fixedRole !== undefined) {
@@ -146,19 +148,24 @@ export const freshSession = (page, url) => async () => {
     await page.goto(url, { waitUntil: 'load' }).catch(() => {});
 };
 
-/** Has this role a test user (login and password) in the environment or in caw/.env? Without form or basic sign-in: true. */
-export const hasTestUser = (root, config, role, env = process.env) => {
-    const auth = authOf(config);
-    if (auth.type !== 'form' && auth.type !== 'basic') return true;
-    const entry = config.roles?.[role];
-    if (entry === undefined) return false;
+/**
+ * Has this role a complete test user for the environment, in the process environment or caw/.env (names by convention)?
+ * Where the environment's sign-in needs no password: true.
+ */
+export const hasTestUser = (root, config, role, target, env = process.env) => {
+    const { signIn } = effectiveEnvironment(config, target);
+    if (!usesCredentials(signIn)) return true;
+    if (config.roles?.[role] === undefined) return false;
     const file = join(root, ENV_PATH);
-    const fromFile = existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {};
-    return [entry.loginEnv, entry.passwordEnv].every((name) => name !== undefined && (env[name] || fromFile[name]));
+    const fileEnv = existsSync(file) ? parseEnvFile(readFileSync(file, 'utf8')) : {};
+    return credentialState({ who: role, env: target, totp: usesTotp(signIn), sources: { processEnv: env, fileEnv } }).missing.length === 0;
 };
 
-/** Where the window signs in: the target's address (with sites the site's) plus the sign-in path of the config. */
-const signInUrl = (config, target) => new URL(authOf(config).path ?? '/', effectiveEnvironment(config, target).url).href;
+/** Where the window signs in: the environment's address plus the path of its sign-in. */
+const signInUrl = (config, target) => {
+    const { url, signIn } = effectiveEnvironment(config, target);
+    return new URL(signIn.path ?? '/', url).href;
+};
 
 const openWindow = async ({ url, insecureTls }) => {
     const { exploreBrowser } = await import('./browser-session.mjs');
@@ -174,8 +181,8 @@ const openWindow = async ({ url, insecureTls }) => {
  */
 export const captureTestUsers = async (root, { target, role, needed = false, reason, open = openWindow } = {}) => {
     const config = loadConfig(root);
-    const auth = authOf(config);
-    if (auth.type !== 'form' && auth.type !== 'basic') throw new CawError('usage', t('cli.roleAuthType', { type: auth.type }));
+    const { signIn } = effectiveEnvironment(config, target);
+    if (!usesCredentials(signIn)) throw new CawError('usage', t('cli.roleAuthType', { type: signIn.type, target }));
     const url = signInUrl(config, target);
     const browser = await open({ url, insecureTls: effectiveEnvironment(config, target).insecureTls });
     const { page } = browser;
@@ -232,6 +239,7 @@ export const captureTestUsers = async (root, { target, role, needed = false, rea
             fixedRole: needed ? role : undefined,
             givenRole: needed ? undefined : role,
             taken: Object.keys(config.roles ?? {}).filter((name) => name !== role),
+            env: target,
             closed,
         });
         // The card shows the result for a moment before the window closes.
@@ -248,7 +256,7 @@ export const captureTestUsers = async (root, { target, role, needed = false, rea
  * @returns true if a test user was saved
  */
 export const ensureTestUser = async (root, config, { role, target, test, interactive, capture = captureTestUsers }) => {
-    if (!interactive || role === undefined || hasTestUser(root, config, role)) return false;
+    if (!interactive || role === undefined || hasTestUser(root, config, role, target)) return false;
     if (!ROLE_NAME.test(String(role))) return false;
     const reason = t('cli.roleNeeded', { role, test });
     const saved = await capture(root, { target, role, needed: true, reason });

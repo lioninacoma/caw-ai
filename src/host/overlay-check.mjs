@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-import { authOf, isLoopback, loadConfig, overlayEnvironments, overlayParts, patternList, writeConfig } from '../shared/config.mjs';
+import { isLoopback, loadConfig, overlayEnvironments, overlayParts, patternList, writeConfig } from '../shared/config.mjs';
 import { effectiveEnvironment } from '../shared/environments.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -137,7 +137,7 @@ export const overlayCheck = async (root, { target, part, role, apply = false, st
     if (frameworkOf(config).overlay?.expected === undefined) {
         return save(root, { ...base, state: 'no-expected', ...EMPTY(), message: t('cli.overlayCheck.noExpected', { framework: status.framework }), ...server });
     }
-    const chosenRole = role ?? deps.role ?? (authOf(config).type === 'none' ? undefined : Object.keys(config.roles ?? {})[0]);
+    const chosenRole = role ?? deps.role ?? (config.roles === undefined ? undefined : Object.keys(config.roles)[0]);
     const spec = { id: CHECK_ID, ...(chosenRole === undefined ? {} : { role: chosenRole }), environments: [chosenTarget], writes: false, notes: '', steps: [], expectations: [] };
     // Only this part comes from local code; a watch found on another port is used directly.
     const checked = checkTest(spec, chosenTarget, config, { overlay: chosenPart, start });

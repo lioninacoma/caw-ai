@@ -594,14 +594,15 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
             const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.target === undefined ? [] : ['--env', input.target])];
-            const before = new Set(roleOverview(root).roles.filter(({ testUser }) => testUser).map(({ name }) => name));
+            const ready = (overview) => new Set(overview.roles.flatMap(({ name, environments }) => environments.filter(({ state }) => state === 'set').map(({ env }) => `${name}@${env}`)));
+            const before = ready(roleOverview(root));
             const { log, pid } = spawnDetached({ root, command: 'role', args, spawnRun });
             const started = { command: 'role', args, pid, log: shown(root, log) };
             if (input.wait === false) return answer(t('run.mcp.roleStarted', { pid }), { state: 'started', ...started });
             if (!await waitForExit(pid, windowWait)) return answer(t('run.mcp.stillOpen', { pid }), { state: 'running', ...started });
             // The window is done: which roles got a test user now (never the values).
             const overview = roleOverview(root);
-            const saved = overview.roles.filter(({ name, testUser }) => testUser && !before.has(name)).map(({ name }) => name);
+            const saved = [...new Set([...ready(overview)].filter((pair) => !before.has(pair)).map((pair) => pair.split('@')[0]))];
             if (saved.length === 0) return answer(t('run.mcp.roleNothing', { tail: logTail(log) }), { state: 'ended', ...started, saved, roles: overview.roles }, true);
             return answer(t('run.mcp.roleDone', { roles: saved.join(', ') }), { state: 'done', ...started, saved, roles: overview.roles });
         },
