@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
-import { ENVIRONMENTS, ENV_FILE, SPA_PORT, baseConfig, writeProject, writeSpaTest } from '../spa/project.mjs';
+import { ENVIRONMENTS, ENV_FILE, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, writeProject, writeSpaTest } from '../spa/project.mjs';
 import { here, newestRunOf, print, run, runDirsOf, startServer, verify } from '../harness.mjs';
 import { composeStack, exec, httpAlias, installPacked, preflightPorts } from '../infra.mjs';
 
@@ -22,7 +22,7 @@ const { sessionTools } = await import('../../src/host/session-mcp.mjs');
 
 let server = null;
 const startSpa = async () => {
-    await preflightPorts([SPA_PORT, 18443, 18444]);
+    await preflightPorts([SPA_PORT, 18443, 18444, 18081, 18000, 18090]);
     server = await startServer(join(spaDir, 'serve.mjs'), [String(SPA_PORT)], { cwd: spaDir, port: SPA_PORT });
 };
 const stopSpa = () => { server?.kill(); server = null; };
@@ -272,4 +272,81 @@ scenario('B2', 'Setup with the packed CLI: init writes language and environment 
     } finally {
         rmSync(project, { recursive: true, force: true });
     }
+});
+
+// ---- P3: network and safety
+
+const networkConfig = (extra = {}) => setConfig({ ...baseConfig(NETWORK_ENVIRONMENTS), ...extra });
+const resultOf = (id) => newestRunOf(root, id).result ?? {};
+const writesOf = (id) => (resultOf(id).writes ?? []).map(({ label }) => label);
+const resultText = (id) => JSON.stringify(resultOf(id));
+
+scenario('S9', 'Write classification: GraphQL queries read, a mutation and a persisted query write, reads keeps a POST search read-only', spa, async () => {
+    networkConfig();
+    const list = await go(['gql-list', '--env', 'staging']);
+    verify('(1) only GraphQL queries: passes on read-only staging, no write request (the sign-in POST does not count either)', list.exit === 0 && writesOf('gql-list').length === 0, `${shown(list)} ${JSON.stringify(writesOf('gql-list'))}`);
+    const close = await go(['gql-close', '--env', 'local']);
+    verify('(2) a mutation is a write, named by type and operation', close.exit === 0 && JSON.stringify(writesOf('gql-close')) === '["POST /graphql mutation CloseTicket"]', `${shown(close)} ${JSON.stringify(writesOf('gql-close'))}`);
+    const persisted = await go(['gql-persisted', '--env', 'local']);
+    verify('(3) a persisted query without text is named unknown and counts as a write', persisted.exit === 0 && JSON.stringify(writesOf('gql-persisted')) === '["POST /graphql unknown Tickets"]', JSON.stringify(writesOf('gql-persisted')));
+    const plain = await go(['search', '--env', 'local']);
+    verify('(4) without reads a POST search is a write', plain.exit === 0 && JSON.stringify(writesOf('search')) === '["POST /api/search"]', JSON.stringify(writesOf('search')));
+    networkConfig({ reads: ['POST /api/search'] });
+    const named = await go(['search', '--env', 'local']);
+    verify('(4) with reads ["POST /api/search"] it stays read-only', named.exit === 0 && writesOf('search').length === 0, JSON.stringify(writesOf('search')));
+    print('     (2) promotion at adoption uses these write requests; (5) the open stop on a learned mutation: unit tests (replayToEntry)');
+});
+
+scenario('M3', 'Server-rendered app: a POST search with reads passes on a read-only environment; a 422 page is evidence', spa, async () => {
+    networkConfig({ reads: ['POST /notes/search'] });
+    const search = await go(['notes-search', '--env', 'mpa-staging']);
+    verify('the search test passes on read-only mpa-staging without a write request', search.exit === 0 && writesOf('notes-search').length === 0, `${shown(search)} ${failNote('notes-search')} ${JSON.stringify(writesOf('notes-search'))}`);
+    networkConfig();
+    const without = await go(['notes-search', '--env', 'mpa-staging']);
+    verify('without the pattern the form post is a write request', without.exit === 0 && JSON.stringify(writesOf('notes-search')) === '["POST /notes/search"]', JSON.stringify(writesOf('notes-search')));
+    const empty = await go(['notes-empty', '--env', 'mpa']);
+    verify('a page answering 422 is evidence of the failed step (OPEN-12)', empty.exit !== 0 && /POST \/notes/.test(resultText('notes-empty')) && /422/.test(resultText('notes-empty')), `${shown(empty)} ${failNote('notes-empty')}`);
+});
+
+scenario('D4', 'Third-party hosts and the host lock: subresources and iframes load and are listed, navigation elsewhere and production are blocked', spa, async () => {
+    networkConfig();
+    const page = await go(['third-party', '--env', 'tp']);
+    verify('(1) CDN style and script, beacon and payment iframe without allowHosts: passes', page.exit === 0, `${shown(page)} ${failNote('third-party')}`);
+    const hosts = (resultOf('third-party').thirdParty ?? []).map(({ host }) => host);
+    verify('(2) the report lists cdn, pay and stats as third-party hosts', ['cdn.localhost', 'pay.localhost', 'stats.localhost'].every((host) => hosts.includes(host)), JSON.stringify(hosts));
+    const report = readFileSync(join(newestRunOf(root, 'third-party').dir, 'report.md'), 'utf8');
+    verify('(2) report.md has the table', /## Third-party hosts/.test(report) && /\| cdn\.localhost \|/.test(report));
+    verify('(3) the analytics beacon (POST) does not make the test writing', writesOf('third-party').length === 0, JSON.stringify(writesOf('third-party')));
+    const link = await go(['leave-link', '--env', 'tp']);
+    verify('(4) a link to another host: the step fails with host-blocked naming the host and allowHosts', link.exit === 1 && /host-blocked/.test(resultText('leave-link')) && /elsewhere\.localhost.*allowHosts/.test(resultText('leave-link')), `${shown(link)} ${failNote('leave-link')}`);
+    const popup = await go(['leave-popup', '--env', 'tp']);
+    verify('(5) window.open to another host: blocked', popup.exit === 1 && /host-blocked/.test(resultText('leave-popup')) && /elsewhere\.localhost/.test(resultText('leave-popup')), `${shown(popup)} ${failNote('leave-popup')}`);
+    print('     (6) caw agent goto to another host is refused before navigating: unit test (agent-commands)');
+    const prod = await go(['call-prod', '--env', 'tp']);
+    verify('(7) an XHR from tp to the production host is blocked and named', /prod\.localhost/.test(resultText('call-prod')) && /host-blocked/.test(resultText('call-prod')), `${shown(prod)} ${failNote('call-prod')}`);
+    const fault = await go(['third-party', '--env', 'tpfault']);
+    verify('(8) a throwing third-party script is a warning, the run passes', fault.exit === 0 && /widget fault/.test(JSON.stringify(resultOf('third-party').warnings ?? [])), `${shown(fault)} ${failNote('third-party')}`);
+});
+
+scenario('D5', 'Production: a read-only test runs there, writing tests and recording are refused, write requests are blocked at runtime', spa, async () => {
+    networkConfig();
+    writeSpaTest(root, 'see-tickets', { environments: ['local', 'prod'] });
+    const read = await go(['see-tickets', '--env', 'prod']);
+    verify('a read-only test recorded on local passes on prod', read.exit === 0, `${shown(read)} ${failNote('see-tickets')}`);
+    writeSpaTest(root, 'create-ticket', { environments: ['local', 'prod'] });
+    const invalid = await captured(() => Promise.resolve().then(() => validate(root)).then((code) => ({ exit: code }), (error) => ({ exit: exitOf(error.code), message: error.message })));
+    verify('a writing test listing prod: validate exit 3', invalid.value.exit === 3 && /prod/.test(invalid.value.message ?? ''), `${invalid.value.exit} ${(invalid.value.message ?? '').split('\n')[0]}`);
+    writeSpaTest(root, 'create-ticket');
+    const cli = (args) => exec(process.execPath, [join(here, '..', 'bin', 'caw.mjs'), ...args], { cwd: root, env: { ...process.env, CAW_LANG: 'en', CI: '' } });
+    const record = await cli(['record', 'see-tickets', '--env', 'prod']);
+    verify('record --env prod: exit 3', record.code === 3, `${record.code} ${(record.stderr + record.stdout).split('\n').filter(Boolean).slice(-1)[0] ?? ''}`);
+    const open = await cli(['open', '--env', 'prod']);
+    verify('open --env prod: exit 3', open.code === 3, `${open.code} ${(open.stderr + open.stdout).split('\n').filter(Boolean).slice(-1)[0] ?? ''}`);
+    // Production runs only tests that list it.
+    writeSpaTest(root, 'search', { environments: ['local', 'prod'] });
+    const blocked = await go(['search', '--env', 'prod']);
+    verify('a write request on prod is aborted: the step fails with write-blocked naming it', blocked.exit === 1 && /write-blocked/.test(resultText('search')) && /POST \/api\/search/.test(resultText('search')), `${shown(blocked)} ${failNote('search')}`);
+    networkConfig({ reads: ['POST /api/search'] });
+    const allowed = await go(['search', '--env', 'prod']);
+    verify('named in reads it passes on prod', allowed.exit === 0, `${shown(allowed)} ${failNote('search')}`);
 });

@@ -31,6 +31,17 @@ export const ENVIRONMENTS = {
     gateform: { url: 'https://gateform.localhost:18443', writable: true, insecureTls: true, gate: { type: 'basic' } },
 };
 
+/** The environments of the network scenarios (P3): third-party content, a production stack and the server-rendered notes app. */
+export const NETWORK_ENVIRONMENTS = {
+    local: ENVIRONMENTS.local,
+    staging: ENVIRONMENTS.staging,
+    tp: { url: http('tp'), writable: true },
+    tpfault: { url: http('tpfault'), writable: true },
+    prod: { url: 'http://prod.localhost:18081', production: true },
+    mpa: { url: 'http://mpa.localhost:18000', writable: true },
+    'mpa-staging': { url: 'http://mpa-staging.localhost:18000' },
+};
+
 export const baseConfig = (environments = ENVIRONMENTS) => ({
     language: 'en',
     framework: 'web',
@@ -76,6 +87,23 @@ export const TESTS = {
     },
 };
 
+
+const textbox = (name) => `getByRole('textbox', { name: '${name}', exact: true })`;
+const link = (name) => `getByRole('link', { name: '${name}', exact: true })`;
+/** The network scenarios' tests (P3): GraphQL, search, third-party content, blocked navigation, production, the notes app. */
+export const NETWORK_TESTS = {
+    'gql-list': { role: 'clerk', writes: false, steps: [{ name: 'Load via GraphQL', expect: 'The list is loaded.', actions: [{ click: button('Load via GraphQL'), path: '/' }], check: "document.getElementById('status').textContent.startsWith('Loaded')" }] },
+    'gql-close': { role: 'clerk', writes: false, steps: [{ name: 'Close the first ticket', expect: 'It says Closed.', actions: [{ click: button('Close first'), path: '/' }], check: "document.getElementById('status').textContent==='Closed'" }] },
+    'gql-persisted': { role: 'clerk', writes: false, steps: [{ name: 'Refresh by persisted query', expect: 'The list is loaded.', actions: [{ click: button('Refresh'), path: '/' }], check: "document.getElementById('status').textContent.startsWith('Loaded')" }] },
+    search: { role: 'clerk', writes: false, steps: [{ name: 'Search', expect: 'The search answers.', actions: [{ fill: textbox('Search'), value: 'x', path: '/' }, { click: button('Search'), path: '/' }], check: "document.getElementById('status').textContent.startsWith('Found')" }] },
+    'third-party': { role: 'clerk', writes: false, steps: [{ name: 'Open the page', expect: 'CDN script and payment widget are there.', actions: [{ 'wait-ready': {} }], check: "window.widgetLoaded===true&&!!document.getElementById('pay')" }] },
+    'leave-link': { role: 'clerk', writes: false, steps: [{ name: 'Follow the foreign link', expect: 'Still on the app.', actions: [{ click: link('Elsewhere'), path: '/' }], check: "location.hostname.startsWith('tp')" }] },
+    'leave-popup': { role: 'clerk', writes: false, steps: [{ name: 'Open the foreign popup', expect: 'Still on the app.', actions: [{ click: button('Popup'), path: '/' }], check: "location.hostname.startsWith('tp')" }] },
+    'call-prod': { role: 'clerk', writes: false, steps: [{ name: 'Call production', expect: 'Production is not reached.', actions: [{ click: button('Call production'), path: '/' }], check: "document.getElementById('status').textContent==='Production blocked'" }] },
+    'notes-search': { role: 'clerk', writes: false, steps: [{ name: 'Search notes', expect: 'The search answers.', actions: [{ fill: textbox('Search'), value: 'x', path: '/' }, { click: button('Search'), path: '/' }], check: "document.getElementById('message').textContent.startsWith('Found')" }] },
+    'notes-empty': { role: 'clerk', writes: true, steps: [{ name: 'Add a note without title', expect: 'The note is in the list.', actions: [{ click: button('Add note'), path: '/' }], check: "document.querySelectorAll('#notes li').length>0" }] },
+};
+
 /** The single-file text of a test (description and recording), as parseTest reads it. */
 const testText = (id, { role, writes, steps, environments }) => {
     const lines = [`id: ${id}`, `role: ${role}`, `writes: ${writes}`, ...(environments === undefined ? [] : [`environments: [${environments.join(', ')}]`]), 'steps:'];
@@ -98,7 +126,7 @@ const testText = (id, { role, writes, steps, environments }) => {
 export const writeSpaTest = (root, id, extra = {}) => {
     rmSync(testPath(root, id), { force: true });
     rmSync(recordingPath(root, id), { force: true });
-    writeTest(root, { ...parseTest(testText(id, { ...TESTS[id], ...extra }), id), id });
+    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id]), ...extra }), id), id });
 };
 
 /** The whole project: config, caw/.env and every test; runs and sessions of earlier runs removed. */
@@ -108,5 +136,5 @@ export const writeProject = (root, config = baseConfig()) => {
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify(config, null, 4)}\n`);
     writeFileSync(join(root, 'caw/.env'), `${ENV_FILE}\n`);
-    for (const id of Object.keys(TESTS)) writeSpaTest(root, id);
+    for (const id of [...Object.keys(TESTS), ...Object.keys(NETWORK_TESTS)]) writeSpaTest(root, id);
 };
