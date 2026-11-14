@@ -107,6 +107,8 @@ export default {
     'repair.hint': 'With chat (record, run) Claude proposes a fix for the sign-in.',
     'session.browser.loginFailed': 'Sign-in on {url} failed (marker "{marker}" didn\'t appear, page: {path}).',
     'session.browser.authUnreadable': 'The saved session {path} can\'t be read: {error}',
+    'session.browser.hostBlocked': 'Navigation to {host} blocked: it is not an app host; add it to allowHosts if the app really navigates there',
+    'session.browser.productionBlocked': 'Request to {host} blocked: a production environment is never reached from a run on another environment',
     'session.browser.chromeFailed': 'Chrome failed to start: {error}',
     'session.browser.signInTimeout': '{selector} wasn\'t visible after {minutes} minutes.',
     'session.browser.devlinkRejected': 'devlink rejects the config: {issues}',

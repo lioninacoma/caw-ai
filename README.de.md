@@ -193,7 +193,7 @@ Die Anmeldung kann ein Formular sein (optional mit TOTP), HTTP Basic oder eine g
 
 **Wiedergaben** (`run` ohne Chat, CI) schicken nichts an eine KI.
 
-**Keine Telemetrie:** caw-ai selbst meldet nichts nach außen. Sein eigener Netzwerkverkehr geht an deine Umgebungen und `extraAllowedHosts`, dazu Paket-Downloads beim Bau des Docker-Images; in der Docker-Sandbox erreicht Claude Code nur die Anthropic-API (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
+**Keine Telemetrie:** caw-ai selbst meldet nichts nach außen. Sein eigener Netzwerkverkehr geht an deine Umgebungen und `allowHosts` und an das, was die Seiten der Anwendung selbst laden (Skripte, Fonts, Analytics), dazu Paket-Downloads beim Bau des Docker-Images; in der Docker-Sandbox erreicht Claude Code nur die Anthropic-API (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
 
 **Laufdaten** bleiben auf deinem Rechner in `.caw/runs/<lauf>/`: Bericht, `result.json`, Screenshots, Claudes Logs und `trace.zip`. Der Trace enthält Seiteninhalte und Netzwerkdaten samt Cookies; lade ihn und Lauf-Ordner nicht öffentlich hoch. `init` trägt `.caw/` in `.gitignore` ein.
 

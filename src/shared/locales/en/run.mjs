@@ -276,7 +276,7 @@ export default {
     'run.agent.rememberName': 'The name must look like orderno: letters and digits only, and not runTag or runTagLower.',
     'run.agent.rememberValue': '{name}: the expression must return a text or number of at least {min} characters, not {raw}.',
     'run.agent.screenshotName': 'The screenshot name must look like e1.png, without a path.',
-    'run.agent.targetDenied': 'Target not allowed: {url}',
+    'run.agent.hostBlocked': '{host} is not an app host; add it to allowHosts if the app really navigates there ({url})',
     'run.agent.resultMissing': 'Result missing.',
     'run.agent.finished': 'The verdict is in; the run accepts no more commands.',
     'run.agent.unknownCommand': 'Unknown command: {action}',

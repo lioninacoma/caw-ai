@@ -8,6 +8,7 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { evaluateFinish } from '../shared/report.mjs';
 import { fixtureFiles, fixturePath } from './fixtures.mjs';
+import { withLoopbackPair } from './host-lock.mjs';
 import { buildLocator, parseLocator } from './locator.mjs';
 import { passwordValues, redactDeep } from './secrets.mjs';
 
@@ -30,13 +31,20 @@ const text = (command, field) => {
     return value;
 };
 
-/** Navigation only to the hosts the Chrome block also lets through. */
+/** goto only to navigation hosts, checked before navigating: the same rule as the browser's host lock (host-lock.mjs). */
 export const isAllowedUrl = (url, hosts) => {
     try {
         const { protocol, hostname } = new URL(url);
-        return ['http:', 'https:'].includes(protocol) && hosts.includes(hostname);
+        return ['http:', 'https:'].includes(protocol) && withLoopbackPair(hosts).includes(hostname);
     } catch {
         return false;
+    }
+};
+const hostNameOf = (url) => {
+    try {
+        return new URL(url).hostname;
+    } catch {
+        return String(url);
     }
 };
 
@@ -210,7 +218,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
         },
         goto: async (command) => {
             const url = text(command, 'url');
-            if (!isAllowedUrl(url, hosts)) throw new CawError('target-denied', t('run.agent.targetDenied', { url }));
+            if (!isAllowedUrl(url, hosts)) throw new CawError('host-blocked', t('run.agent.hostBlocked', { host: hostNameOf(url), url }));
             await session.page().goto(url);
             return session.page().url();
         },

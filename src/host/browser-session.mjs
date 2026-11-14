@@ -20,8 +20,9 @@ import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { scrubTrace } from './trace-scrub.mjs';
+import { browserArgs, installHostLock } from './host-lock.mjs';
 import { classifyRequest, compileReads } from '../shared/requests.mjs';
-import { appHosts as appHostsOf } from '../shared/environments.mjs';
+import { appHosts as appHostsOf, blockedHosts } from '../shared/environments.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
 import { PREP, openWorkbench } from './workbench.mjs';
 
@@ -57,31 +58,6 @@ export const STREAM_TYPE = /text\/event-stream|application\/(x-)?ndjson|applicat
 const PROFILE_PREFIX = 'caw-profile-';
 const PROFILE_OWNER = 'caw-owner';
 const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
-
-// localhost and 127.0.0.1 are the same machine: a dev server under one name often opens its HMR socket under the other
-// (webpack-dev-server with host 127.0.0.1). Allowing both does not widen the boundary, localhost points to 127.0.0.1 anyway.
-const LOOPBACK_PAIR = ['localhost', '127.0.0.1'];
-const withLoopbackPair = (hosts) => (hosts.some((host) => LOOPBACK_PAIR.includes(host)) ? [...new Set([...hosts, ...LOOPBACK_PAIR])] : hosts);
-
-/**
- * The browser's network boundary. `--no-proxy-server` is part of it: through a proxy Chrome does not resolve names
- * itself, so the rules would not apply. WebRTC would otherwise bypass them via UDP.
- */
-export const browserArgs = (allowed) => {
-    const hosts = withLoopbackPair(allowed);
-    return [
-        // localhost and names under .localhost are loopback (RFC 6761); pinned to 127.0.0.1, where a dev server usually listens.
-        // With an EXCLUDE rule Chrome would ask the system instead, and Windows does not know .localhost. An IP address also matches
-        // `MAP *`: so 127.0.0.1, when allowed, needs an exception like any other host.
-        `--host-resolver-rules=${[
-            ...hosts.filter((host) => isLoopback(host) && host !== '127.0.0.1').map((host) => `MAP ${host} 127.0.0.1`),
-            'MAP * ~NOTFOUND',
-            ...hosts.filter((host) => !isLoopback(host) || host === '127.0.0.1').map((host) => `EXCLUDE ${host}`),
-        ].join(', ')}`,
-        '--no-proxy-server',
-        '--webrtc-ip-handling-policy=disable_non_proxied_udp',
-    ];
-};
 
 /**
  * Deletes the profile. On Windows, Chrome processes keep files locked briefly after closing, hence several attempts.
@@ -637,15 +613,17 @@ export const createTrace = (context, { path, options, secrets = () => [] }) => {
 const HEADLESS_VIEWPORT = { width: 1920, height: 1080 };
 
 /**
- * @param headless    no visible window, in Chrome's new headless mode: same engine, same host block
+ * @param lock        { navigation, blocked, onBlocked } for the host lock (host-lock.mjs), installed before any page loads
+ * @param headless    no visible window, in Chrome's new headless mode: same engine, same host lock
  * @param insecureTls skip certificate checks, for internal environments with their own CA (config `insecureTls`)
  */
-const launchChrome = async (profileDir, hosts, { headless = false, insecureTls = false, embed = false, httpCredentials, launch = { channel: 'chrome' }, region, ownSignals = false } = {}) => {
+const launchChrome = async (profileDir, lock, { headless = false, insecureTls = false, embed = false, httpCredentials, launch = { channel: 'chrome' }, region, ownSignals = false } = {}) => {
     quietProfile(profileDir);
     // Before every launch: recordings may use the extjs= selector engine (a no-op without Ext).
     await registerEngines();
+    let context;
     try {
-        return await chromium.launchPersistentContext(profileDir, {
+        context = await chromium.launchPersistentContext(profileDir, {
             // The system Chrome, or whatever the config names under browser (Edge, a fixed path).
             ...launch,
             headless,
@@ -661,7 +639,7 @@ const launchChrome = async (profileDir, hosts, { headless = false, insecureTls =
             // No emulation: the page follows the system like in any Chrome. Otherwise Playwright pins it to light, and opening the
             // DevTools would drop that and switch everything to dark mode mid-run.
             colorScheme: null,
-            // Opt-in only: internal environments often use certificates Chrome does not know; the host block limits the targets.
+            // Opt-in only: internal environments often use certificates Chrome does not know; the host lock limits navigation.
             ignoreHTTPSErrors: insecureTls,
             // For the download action: Playwright stores downloads in its own folder that disappears with the browser; the agent
             // never gets to it, and the action deletes its file right after the check.
@@ -671,14 +649,17 @@ const launchChrome = async (profileDir, hosts, { headless = false, insecureTls =
             ...(httpCredentials === undefined ? {} : { httpCredentials }),
             // Maximised instead of fullscreen: forms get the full width, and on handover tabs and address bar stay visible.
             // With the workbench: Playwright serves it, Chrome considers it public and would otherwise block the intranet application in the iframe.
-            // --test-type: without it Chrome shows a warning bar about --host-resolver-rules above the workbench (chromedriver does the same).
+            // --test-type: without it Chrome shows a warning bar about --host-resolver-rules (production hosts, .localhost) above the
+            // workbench (chromedriver does the same).
             // No "Translate this page?" bubble at the address bar when the app's language differs from Chrome's. Chrome only honours
             // the last --disable-features, so all features go into one flag.
-            args: [...(headless ? [] : ['--start-maximized', '--test-type']), ...browserArgs(hosts), `--disable-features=${['Translate', 'TranslateUI', ...(embed ? ['LocalNetworkAccessChecks'] : [])].join(',')}`],
+            args: [...(headless ? [] : ['--start-maximized', '--test-type']), ...browserArgs(lock.blocked ?? []), `--disable-features=${['Translate', 'TranslateUI', ...(embed ? ['LocalNetworkAccessChecks'] : [])].join(',')}`],
         });
     } catch (error) {
         throw new CawError('browser-missing', t('session.browser.chromeFailed', { error: error.message.split('\n')[0] }));
     }
+    await installHostLock(context, lock);
+    return context;
 };
 
 /**
@@ -740,11 +721,11 @@ const logFloats = async (context, path) => {
  * project folder's permissions apply.
  * @returns true if saved; false if the human closed the window first
  */
-export const captureSession = async ({ url, signedInSelector, hosts, insecureTls = false, file, timeoutMs = 10 * 60 * 1000, launch }) => {
+export const captureSession = async ({ url, signedInSelector, hosts, blocked = [], insecureTls = false, file, timeoutMs = 10 * 60 * 1000, launch }) => {
     sweepStaleProfiles();
     const profileDir = mkdtempSync(join(tmpdir(), PROFILE_PREFIX));
     writeFileSync(join(profileDir, PROFILE_OWNER), String(process.pid));
-    const context = await launchChrome(profileDir, hosts, { insecureTls, ...(launch === undefined ? {} : { launch }) });
+    const context = await launchChrome(profileDir, { navigation: hosts, blocked }, { insecureTls, ...(launch === undefined ? {} : { launch }) });
     try {
         const page = context.pages()[0] ?? await context.newPage();
         const closed = new Promise((ok) => { page.once('close', () => ok(false)); });
@@ -775,25 +756,21 @@ export const captureSession = async ({ url, signedInSelector, hosts, insecureTls
 };
 
 /**
- * For `caw init --explore-only`: a window for the address's host only, without sign-in by the tool. Collects console errors and the
- * hosts a page tried to open that stayed blocked (e.g. an SSO service).
+ * For `caw init --explore-only`: a window that navigates on the address's host only, without sign-in by the tool. Collects console
+ * errors and the hosts a page tried to navigate to, which the lock stopped (e.g. an SSO service).
  */
 export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
     sweepStaleProfiles();
     const profileDir = mkdtempSync(join(tmpdir(), PROFILE_PREFIX));
     writeFileSync(join(profileDir, PROFILE_OWNER), String(process.pid));
     const own = new URL(url).hostname;
-    const context = await launchChrome(profileDir, [own], { insecureTls, ...(launch === undefined ? {} : { launch }) });
+    const foreignHosts = new Set();
+    const onBlocked = ({ host, kind }) => { if (kind !== 'production' && host !== own) foreignHosts.add(host); };
+    const context = await launchChrome(profileDir, { navigation: [own], onBlocked }, { insecureTls, ...(launch === undefined ? {} : { launch }) });
     const page = context.pages()[0] ?? await context.newPage();
     const consoleErrors = [];
-    const foreignHosts = new Set();
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
     page.on('pageerror', (error) => consoleErrors.push(String(error?.message ?? error)));
-    context.on('requestfailed', (request) => {
-        if (!request.isNavigationRequest()) return;
-        const host = new URL(request.url()).hostname;
-        if (host !== own) foreignHosts.add(host);
-    });
     return {
         page,
         consoleErrors,
@@ -875,12 +852,15 @@ export const openBrowserSession = async (spec) => {
     });
     try {
         // The devlink host only starts the browser after its preflight. That is why sign-in hangs off the launcher.
+        // The lock reports from the first page on; until the failure list exists the events wait here.
+        const blockedEarly = [];
+        let blockedSink = (event) => blockedEarly.push(event);
         const launcher = createPlaywrightLauncher(async (dir) => {
             // HTTP Basic only to the environment's own origin: the basic sign-in, or the gate in front of the environment.
             const origin = new URL(resolved.url).origin;
             const httpCredentials = auth.type === 'basic' ? { username: credentials.login, password: credentials.password, origin }
                 : credentials?.gate === undefined ? undefined : { ...credentials.gate, origin };
-            raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: resolved.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
+            raw = await launchChrome(dir, { navigation: hosts, blocked: blockedHosts(config, resolved.name), onBlocked: (event) => blockedSink(event) }, { headless: spec.headless === true, insecureTls: resolved.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
             raw.on('close', closedSignal);
             // Chrome runs: whatever fails from here (sign-in, a session file) is not a launch problem and keeps its own message.
             try {
@@ -1063,7 +1043,24 @@ export const openBrowserSession = async (spec) => {
                 }, () => {});
             }
         });
-        raw.on('requestfailed', (request) => observe(pageOfRequest(request), { type: 'requestfailed', text: request.failure()?.errorText ?? '' }, request.url()));
+        // A navigation or production request the lock stopped: one failure naming the host, not also a failed request.
+        const blockedUrls = new Set();
+        blockedSink = ({ host, url, kind, request }) => {
+            blockedUrls.add(url);
+            let page = null;
+            try {
+                page = pageOfRequest(request);
+            } catch {
+                page = null;
+            }
+            if (page === false || (page !== null && !pages.owns(page))) return;
+            failures.push({ type: 'host-blocked', text: t(kind === 'production' ? 'session.browser.productionBlocked' : 'session.browser.hostBlocked', { host }), url });
+        };
+        for (const event of blockedEarly.splice(0)) blockedSink(event);
+        raw.on('requestfailed', (request) => {
+            if (blockedUrls.has(request.url())) return;
+            observe(pageOfRequest(request), { type: 'requestfailed', text: request.failure()?.errorText ?? '' }, request.url());
+        });
         raw.on('response', (response) => {
             if (response.status() >= 500) observe(pageOfRequest(response.request()), { type: 'http', text: `HTTP ${response.status()}` }, response.url());
         });

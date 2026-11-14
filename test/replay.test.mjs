@@ -136,11 +136,11 @@ test('Recorder: a target without a stable locator is reported, not silently skip
 
 test('Recorder: goto becomes portable, denied targets are recorded as such', async () => {
     const recorder = recorderWith(() => NEXT_BUTTON, async (command) => {
-        if (command.url.includes('evil')) throw Object.assign(new Error('nein'), { code: 'target-denied' });
+        if (command.url.includes('evil')) throw Object.assign(new Error('nein'), { code: 'host-blocked' });
         return 'ok';
     });
     await recorder.handler({ action: 'goto', url: 'https://portal.example/app?x=1#start' });
-    await assert.rejects(recorder.handler({ action: 'goto', url: 'https://evil.example/' }), { code: 'target-denied' });
+    await assert.rejects(recorder.handler({ action: 'goto', url: 'https://evil.example/' }), { code: 'host-blocked' });
     assert.deepEqual(recorder.steps, [
         { action: 'goto', url: '/app?x=1#start' },
         { action: 'goto', url: 'https://evil.example/', denied: true },
@@ -391,7 +391,7 @@ test('Playback: a denied target must stay denied, relative URLs are resolved aga
     const allow = async (command) => { urls.push(command.url); return 'ok'; };
     const denied = { action: 'goto', url: 'https://evil.example/', denied: true };
     assert.match((await play([denied], fakeSession(), allow)).broken.message, /abgelehnt/);
-    const deny = async () => { throw Object.assign(new Error('nein'), { code: 'target-denied' }); };
+    const deny = async () => { throw Object.assign(new Error('nein'), { code: 'host-blocked' }); };
     assert.equal((await play([denied], fakeSession(), deny)).broken, null);
     urls.length = 0;
     await play([{ action: 'goto', url: '/app#start' }], fakeSession(), allow);

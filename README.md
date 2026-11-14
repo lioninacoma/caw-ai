@@ -193,7 +193,7 @@ Login can be a form (with optional TOTP), HTTP Basic, or a stored session for SS
 
 **Replays** (`run` without chat, CI) send nothing to any AI.
 
-**No telemetry:** caw-ai itself reports nothing anywhere. Its own network traffic goes to your environments and `extraAllowedHosts`, plus package downloads when the Docker image is built; in the Docker sandbox, Claude Code reaches only the Anthropic API (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
+**No telemetry:** caw-ai itself reports nothing anywhere. Its own network traffic goes to your environments and `allowHosts` and to what the app's pages load themselves (scripts, fonts, analytics), plus package downloads when the Docker image is built; in the Docker sandbox, Claude Code reaches only the Anthropic API (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
 
 **Run data** stays on your machine in `.caw/runs/<run>/`: report, `result.json`, screenshots, Claude's logs and `trace.zip`. The trace contains page contents and network data including cookies; don't upload it or run folders publicly. `init` adds `.caw/` to `.gitignore`.
 

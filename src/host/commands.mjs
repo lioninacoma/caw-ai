@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
 import { credentialNames } from '../shared/credentials.mjs';
-import { NAME, chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
+import { NAME, blockedHosts, chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -428,7 +428,7 @@ export const roleLogin = async (root, { role: roleName, target }, { capture } = 
     const file = join(root, sessionPath(target, roleName));
     const save = capture ?? (await import('./browser-session.mjs')).captureSession;
     ui.info(t('cli.authSignIn', { role: roleName, selector: signedInSelector }));
-    const saved = await save({ url: `${resolved.url}${path}`, signedInSelector, hosts: navigationHosts(config, target), insecureTls: resolved.insecureTls, file, launch: browserLaunch(config) });
+    const saved = await save({ url: `${resolved.url}${path}`, signedInSelector, hosts: navigationHosts(config, target), blocked: blockedHosts(config, target), insecureTls: resolved.insecureTls, file, launch: browserLaunch(config) });
     if (!saved) {
         ui.info(t('cli.authClosed'));
         return EXIT.error;

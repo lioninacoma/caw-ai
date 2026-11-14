@@ -452,7 +452,7 @@ For `web` and the SPA adapters an accessible UI helps: buttons with text or `ari
 **Chrome (on the host, outside the Docker firewall):**
 
 - **Control:** The agent never gets CDP. There are only the fixed commands from `caw help`, as files in the agent folder. Navigation via `goto` only goes to allowed hosts.
-- **Network:** `--host-resolver-rules` allows only the hosts from `environments` and `extraAllowedHosts`; IP addresses are blocked too. Plus `--no-proxy-server` and a WebRTC lock.
+- **Network:** pages navigate only to the hosts of `environments` and `allowHosts` (a request route; a redirect onto another host fails the action as well). Subresources and iframes may go to any host and are listed in the report as third-party hosts. Production hosts of other environments are unresolvable in Chrome (`--host-resolver-rules`) for every request type. Plus `--no-proxy-server`, so the resolver rules apply, and a WebRTC lock.
 - **Workbench:** The tool answers the top window's document itself, at the application's address. The application thus shares the origin with the workbench and can modify its page; decisions are made only in the chat, which it can't reach (separate, opaque origin). A POST into the top window is sent once by the tool via the browser context (same cookies, same host lock).
 - **Limit of the lock:** It knows hosts, not ports. Other services on an allowed host are reachable from the page.
 - **Visibility:** `eval` runs in the signed-in page. Claude sees and can do everything the test user sees and can do in the application. So use only test accounts with few rights.

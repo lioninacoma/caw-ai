@@ -452,7 +452,7 @@ Für `web` und die SPA-Adapter hilft eine zugängliche Oberfläche: Knöpfe mit 
 **Chrome (auf dem Host, außerhalb der Docker-Firewall):**
 
 - **Steuerung:** Der Agent bekommt nie CDP. Es gibt nur die festen Befehle aus `caw help`, als Dateien im Agent-Ordner. Navigation per `goto` geht nur zu erlaubten Hosts.
-- **Netz:** `--host-resolver-rules` lässt nur die Hosts aus `environments` und `extraAllowedHosts` zu, auch IP-Adressen sind gesperrt. Dazu `--no-proxy-server` und eine WebRTC-Sperre.
+- **Netz:** Seiten navigieren nur zu den Hosts aus `environments` und `allowHosts` (eine Request-Route; eine Weiterleitung auf einen anderen Host lässt die Aktion ebenfalls scheitern). Unterressourcen und iframes dürfen jeden Host erreichen und stehen im Bericht als fremde Hosts. Produktions-Hosts anderer Umgebungen sind in Chrome für jeden Request-Typ nicht auflösbar (`--host-resolver-rules`). Dazu `--no-proxy-server`, damit die Resolver-Regeln greifen, und eine WebRTC-Sperre.
 - **Werkbank:** Das Dokument des obersten Fensters beantwortet das Tool selbst, unter der Adresse der Anwendung. Die Anwendung teilt sich damit den Origin mit der Werkbank und kann deren Seite verändern; Entscheidungen fallen nur im Chat, und den erreicht sie nicht (eigener, opaker Origin). Ein POST ins oberste Fenster schickt das Tool einmal über den Browser-Kontext (gleiche Cookies, gleiche Host-Sperre) ab.
 - **Grenze der Sperre:** Sie kennt Hosts, keine Ports. Andere Dienste auf einem erlaubten Host sind aus der Seite erreichbar.
 - **Einsicht:** `eval` läuft in der angemeldeten Seite. Claude sieht und kann also alles, was der Testnutzer in der Anwendung sieht und kann. Deshalb nur Testkonten mit wenig Rechten verwenden.

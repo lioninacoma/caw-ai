@@ -167,18 +167,10 @@ test('environments: capabilities from the config, production only explicitly and
 });
 
 test('config: http only on the own machine (localhost, 127.0.0.1, *.localhost), e.g. for a local Vite server', async () => {
-    const { browserArgs } = await import('../src/host/browser-session.mjs');
     const at = (url) => issues({ ...simple(), environments: { local: { url } } });
     for (const url of ['http://app.localhost:5173', 'https://app.localhost:5173', 'http://localhost:5173', 'http://127.0.0.1:5173']) assert.equal(at(url), '', url);
     assert.match(at('http://dev.shop.example'), /http nur auf dem eigenen Rechner.*sonst https/);
     assert.match(at('http://127.0.0.2:5173'), /sonst https/, 'only exactly 127.0.0.1');
-    // Chrome: localhost pinned to 127.0.0.1 (not ::1); the IP and foreign hosts are exclusions, because an IP also matches MAP *.
-    const rules = browserArgs(['localhost', '127.0.0.1', 'app.localhost', 'shop.example'])[0];
-    assert.equal(rules, '--host-resolver-rules=MAP localhost 127.0.0.1, MAP app.localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE shop.example');
-    // localhost implies 127.0.0.1 and vice versa: webpack-dev-server opens its socket under the host from its configuration.
-    assert.equal(browserArgs(['localhost'])[0], '--host-resolver-rules=MAP localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1');
-    assert.equal(browserArgs(['127.0.0.1'])[0], '--host-resolver-rules=MAP localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE 127.0.0.1');
-    assert.equal(browserArgs(['app.localhost'])[0], '--host-resolver-rules=MAP app.localhost 127.0.0.1, MAP * ~NOTFOUND', 'a name under .localhost does not open everything');
     assert.match(at('http://app.localhost:5173/pfad'), /nur der Origin, ohne Pfad/);
     assert.match(at('https://preview.shop.example/'), /ohne \/ am Ende \(https:\/\/preview\.shop\.example\)/);
 });

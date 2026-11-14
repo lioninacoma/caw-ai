@@ -68,7 +68,7 @@ test('unknown commands and inherited properties are rejected', async (t) => {
 
 test('goto checks the URL before the browser sees it', async (t) => {
     const { handler, calls } = setup(t);
-    await assert.rejects(handler({ action: 'goto', url: 'file:///C:/x' }), { code: 'target-denied' });
+    await assert.rejects(handler({ action: 'goto', url: 'file:///C:/x' }), { code: 'host-blocked' });
     assert.deepEqual(calls, []);
     await handler({ action: 'goto', url: 'https://portal.example/a' });
     assert.deepEqual(calls, [['goto', 'https://portal.example/a']]);

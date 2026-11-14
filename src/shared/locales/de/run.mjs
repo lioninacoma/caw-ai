@@ -276,7 +276,7 @@ export default {
     'run.agent.rememberName': 'Der Name muss wie bestellnr aussehen, nur Buchstaben und Ziffern, und darf nicht runTag oder runTagLower sein.',
     'run.agent.rememberValue': '{name}: Der Ausdruck muss einen Text oder eine Zahl mit mindestens {min} Zeichen liefern, nicht {raw}.',
     'run.agent.screenshotName': 'Der Screenshot-Name muss wie e1.png aussehen, ohne Pfad.',
-    'run.agent.targetDenied': 'Ziel nicht erlaubt: {url}',
+    'run.agent.hostBlocked': '{host} ist kein Host der Anwendung; trage ihn in allowHosts ein, wenn die Anwendung wirklich dorthin navigiert ({url})',
     'run.agent.resultMissing': 'Ergebnis fehlt.',
     'run.agent.finished': 'Das Urteil ist eingereicht, der Lauf nimmt keine Befehle mehr an.',
     'run.agent.unknownCommand': 'Unbekannter Befehl: {action}',

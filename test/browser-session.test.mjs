@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { browserArgs, isBrowserClosedError, removeProfile, sweepStaleProfiles, trackAgentPages, watchBroken } from '../src/host/browser-session.mjs';
+import { isBrowserClosedError, removeProfile, sweepStaleProfiles, trackAgentPages, watchBroken } from '../src/host/browser-session.mjs';
 import { createPlaywrightLauncher } from '../src/host/devlink-core.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 
@@ -68,14 +68,6 @@ test('isBrowserClosedError: only closing the browser counts as harmless', () => 
     assert.ok(isBrowserClosedError(new Error('route.fulfill: Target page, context or browser has been closed')));
     assert.ok(!isBrowserClosedError(new Error('Cannot read properties of undefined')));
     assert.ok(!isBrowserClosedError(undefined));
-});
-
-test('browserArgs: everything blocked except the hosts, no proxy, no WebRTC, never a CDP port', () => {
-    const args = browserArgs(['portal.example', 'sso.example']);
-    assert.ok(args.includes('--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE portal.example, EXCLUDE sso.example'));
-    assert.ok(args.includes('--no-proxy-server'));
-    assert.ok(args.includes('--webrtc-ip-handling-policy=disable_non_proxied_udp'));
-    assert.ok(!args.some((arg) => arg.includes('remote-debugging')));
 });
 
 test('trackAgentPages: a tab of the human does not count, popups of the application do', () => {

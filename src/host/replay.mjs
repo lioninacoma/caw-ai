@@ -264,7 +264,7 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
             try {
                 value = await handler(command);
             } catch (error) {
-                if (command?.action === 'goto' && error.code === 'target-denied') add({ action: 'goto', url: command.url, denied: true });
+                if (command?.action === 'goto' && error.code === 'host-blocked') add({ action: 'goto', url: command.url, denied: true });
                 throw error;
             }
             switch (command.action) {
@@ -931,7 +931,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         } else if (step.action === 'check') await check(step, timeoutMs);
         else if (step.action === 'remember') await remember(step, timeoutMs);
         else if (step.action === 'goto' && step.denied) {
-            const denied = await handler({ action: 'goto', url: step.url }).then(() => false, (error) => error.code === 'target-denied');
+            const denied = await handler({ action: 'goto', url: step.url }).then(() => false, (error) => error.code === 'host-blocked');
             if (!denied) throw new Error(t('session.replay.notDenied', { url: step.url }));
         } else if (step.action === 'goto') await handler({ action: 'goto', url: new URL(step.url, base).href });
         else if (step.action === 'wait-ready') await session.waitReady({ timeout: timeoutMs, ...(step.for === undefined ? {} : { store: step.for }), ...(step.minCount === undefined ? {} : { minCount: step.minCount }) }).catch(() => {});

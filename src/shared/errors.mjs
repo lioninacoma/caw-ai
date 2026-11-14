@@ -9,7 +9,7 @@ const SEVERITY = [EXIT.pass, EXIT.rejected, EXIT.needsRecording, EXIT.fail, EXIT
 export const worstExit = (codes) => codes.reduce((worst, code) => (SEVERITY.indexOf(code) > SEVERITY.indexOf(worst) ? code : worst), EXIT.pass);
 
 // Error codes for which nothing ran: a call, config or test file that is not right.
-const REJECTED = new Set(['usage', 'auth-missing', 'finish-rejected', 'test-invalid', 'test-missing', 'write-protected', 'target-invalid', 'env-invalid', 'config-invalid', 'config-missing', 'target-denied', 'env-denied', 'unknown-command', 'command-invalid', 'step-limit', 'step-order', 'step-unknown', 'human-message', 'plan-required', 'plan-invalid', 'advice-invalid', 'advise-only']);
+const REJECTED = new Set(['usage', 'auth-missing', 'finish-rejected', 'test-invalid', 'test-missing', 'write-protected', 'target-invalid', 'env-invalid', 'config-invalid', 'config-missing', 'env-denied', 'host-blocked', 'unknown-command', 'command-invalid', 'step-limit', 'step-order', 'step-unknown', 'human-message', 'plan-required', 'plan-invalid', 'advice-invalid', 'advise-only']);
 // The test needs a (new) recording first: not a bad call, but work for record.
 const NEEDS_RECORDING = new Set(['replay-missing', 'replay-stale']);
 

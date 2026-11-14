@@ -146,6 +146,17 @@ const hostOfUrl = (url) => {
 export const appHosts = (config) => [...new Set(Object.values(effectiveEnvironments(config)).map((env) => hostOfUrl(env.url)).filter(Boolean))];
 
 /**
+ * Production hosts a run on `envName` must never reach, with any request type: those of the production environments, unless the
+ * run is on production itself (SC-5).
+ */
+export const blockedHosts = (config, envName) => {
+    const own = envName === undefined ? undefined : effectiveEnvironment(config, envName);
+    if (own?.production === true) return [];
+    const ownHost = own === undefined ? null : hostOfUrl(own.url);
+    return [...new Set(Object.values(effectiveEnvironments(config)).filter((env) => env.production).map((env) => hostOfUrl(env.url)).filter((host) => host && host !== ownHost))];
+};
+
+/**
  * The hosts pages may navigate to during a run on `envName`: every non-production environment, the run's own environment, and
  * `allowHosts` (top level and the environment's). Never a production host unless the run is on production: otherwise a run on
  * dev could reach production via goto, eval or a link, possibly with a shared sign-in.

@@ -37,8 +37,8 @@ test('command and answer pass through the channel and leave nothing behind', asy
 
 test('host errors reach the client with their code', async (t) => {
     const dir = channel(t);
-    const failing = () => { throw Object.assign(new Error('no'), { code: 'target-denied' }); };
-    await serveUntil(dir, failing, assert.rejects(sendCommand(dir, { action: 'x' }), { code: 'target-denied', message: 'no' }));
+    const failing = () => { throw Object.assign(new Error('no'), { code: 'host-blocked' }); };
+    await serveUntil(dir, failing, assert.rejects(sendCommand(dir, { action: 'x' }), { code: 'host-blocked', message: 'no' }));
 });
 
 test('broken JSON: the answer does not quote the file content', async (t) => {

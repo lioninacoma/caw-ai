@@ -106,7 +106,7 @@ Beispiel mit SSO:
 
 ```json
 "auth": { "type": "storageState", "signedInSelector": "app-user-menu" },
-"extraAllowedHosts": ["login.example-idp.com"],
+"allowHosts": ["login.example-idp.com"],
 "roles": { "user": {} }
 ```
 
@@ -277,7 +277,7 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `agent.mode` | `local` | Wo Claude läuft: `local` (Claude Code auf deinem Rechner, nur lesende Werkzeuge) oder `docker`. In der CI immer `docker`. |
 | `agent.model` | Standard von Claude Code | Modell für Claude, weitergegeben als `--model`, z. B. `haiku` oder `sonnet`. `CAW_CLAUDE_MODEL` überschreibt es für einen Lauf. |
 | `agent.maxBudgetUsd` | keins | Beendet einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` überschreibt es. |
-| `extraAllowedHosts` | `[]` | Weitere Hosts, die Chrome erreichen darf, etwa Anmeldung oder CDN. Alles andere ist gesperrt. |
+| `allowHosts` | `[]` | Weitere Hosts, zu denen Seiten navigieren dürfen, etwa ein Anmeldedienst; auch pro Umgebung als `environments.<env>.allowHosts`. Seiten navigieren nur zu den Hosts der Umgebungen und zu diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Skripte, Styles, Fonts, Bilder, XHR/fetch, WebSockets und iframes dürfen jeden Host erreichen. Produktions-Hosts anderer Umgebungen bleiben für jeden Request unerreichbar. |
 | `insecureTls` | `false` | Selbstsignierte Zertifikate annehmen. |
 | `browser` | Chrome des Systems | `{ "channel": "msedge" }` oder `{ "executablePath": "/pfad/zu/chromium" }` |
 | `browser.locale`, `browser.timezone` | wie aufgezeichnet | Sprache und Zeitzone des Testbrowsers, z. B. `"de-DE"` und `"Europe/Berlin"`. Ohne sie nimmt eine Wiedergabe die Werte, die mit der Aufzeichnung gespeichert sind, eine Aufnahme die des Rechners. Datum, Zahlen und Übersetzungen sehen dann auf jedem Rechner und CI-Runner gleich aus. |

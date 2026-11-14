@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 
 import { embeddableHeaders, frameView, fromWorkbenchSource, postBody, rewriteBytes, sourceTag } from '../src/host/app-view.mjs';
-import { browserArgs, trackAgentPages } from '../src/host/browser-session.mjs';
+import { trackAgentPages } from '../src/host/browser-session.mjs';
 import { embedsApp } from '../src/host/run.mjs';
 
 test('Workbench scripts carry their own name: their messages never count for the application', () => {
@@ -39,11 +39,6 @@ test('embedsApp: with a human always the workbench, at any address; without one 
     assert.equal(embedsApp(true), true);
     assert.equal(embedsApp(false), false);
     assert.equal(embedsApp(undefined), false);
-});
-
-test('browserArgs: .localhost points to loopback instead of asking the system', () => {
-    const args = browserArgs(['portal.localhost', 'caw-ui.portal.localhost', 'sso.example']);
-    assert.ok(args.includes('--host-resolver-rules=MAP portal.localhost 127.0.0.1, MAP caw-ui.portal.localhost 127.0.0.1, MAP * ~NOTFOUND, EXCLUDE sso.example'));
 });
 
 // A frame as Playwright provides it: page and parent frame.
