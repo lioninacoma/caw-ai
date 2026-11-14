@@ -136,5 +136,14 @@ export const writeProject = (root, config = baseConfig()) => {
     mkdirSync(join(root, 'caw/tests'), { recursive: true });
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify(config, null, 4)}\n`);
     writeFileSync(join(root, 'caw/.env'), `${ENV_FILE}\n`);
-    for (const id of [...Object.keys(TESTS), ...Object.keys(NETWORK_TESTS)]) writeSpaTest(root, id);
+    for (const id of Object.keys(TESTS)) writeSpaTest(root, id);
+};
+
+/** The network scenarios' tests, written only for them: elsewhere --all would run them on every environment. */
+export const writeNetworkTests = (root) => { for (const id of Object.keys(NETWORK_TESTS)) writeSpaTest(root, id); };
+export const removeNetworkTests = (root) => {
+    for (const id of Object.keys(NETWORK_TESTS)) {
+        rmSync(testPath(root, id), { force: true });
+        rmSync(recordingPath(root, id), { force: true });
+    }
 };

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
-import { ENVIRONMENTS, ENV_FILE, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, writeProject, writeSpaTest } from '../spa/project.mjs';
+import { ENVIRONMENTS, ENV_FILE, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, removeNetworkTests, writeNetworkTests, writeProject, writeSpaTest } from '../spa/project.mjs';
 import { here, newestRunOf, print, run, runDirsOf, startServer, verify } from '../harness.mjs';
 import { composeStack, exec, httpAlias, installPacked, preflightPorts } from '../infra.mjs';
 
@@ -48,6 +48,7 @@ const fresh = () => {
     setConfig(baseConfig());
     writeFileSync(join(root, 'caw/.env'), `${ENV_FILE}\n`);
     for (const id of ['see-tickets', 'create-ticket']) writeSpaTest(root, id);
+    removeNetworkTests(root);
 };
 const scenario = (id, title, group, body, extra = {}) => scenarios.push({ id, title, group, body: async () => { fresh(); await body(); }, ...extra });
 
@@ -276,7 +277,10 @@ scenario('B2', 'Setup with the packed CLI: init writes language and environment 
 
 // ---- P3: network and safety
 
-const networkConfig = (extra = {}) => setConfig({ ...baseConfig(NETWORK_ENVIRONMENTS), ...extra });
+const networkConfig = (extra = {}) => {
+    setConfig({ ...baseConfig(NETWORK_ENVIRONMENTS), ...extra });
+    writeNetworkTests(root);
+};
 const resultOf = (id) => newestRunOf(root, id).result ?? {};
 const writesOf = (id) => (resultOf(id).writes ?? []).map(({ label }) => label);
 const resultText = (id) => JSON.stringify(resultOf(id));
@@ -347,6 +351,7 @@ scenario('D5', 'Production: a read-only test runs there, writing tests and recor
     const blocked = await go(['search', '--env', 'prod']);
     verify('a write request on prod is aborted: the step fails with write-blocked naming it', blocked.exit === 1 && /write-blocked/.test(resultText('search')) && /POST \/api\/search/.test(resultText('search')), `${shown(blocked)} ${failNote('search')}`);
     networkConfig({ reads: ['POST /api/search'] });
+    writeSpaTest(root, 'search', { environments: ['local', 'prod'] });
     const allowed = await go(['search', '--env', 'prod']);
     verify('named in reads it passes on prod', allowed.exit === 0, `${shown(allowed)} ${failNote('search')}`);
 });
