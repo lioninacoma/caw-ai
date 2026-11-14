@@ -146,6 +146,14 @@ export const createNetworkLog = ({ now = () => Date.now() } = {}) => {
                 finish(key, { outcome: 'failed', error: String(error).slice(0, 200) });
             }
         },
+        /**
+         * A page of the app answered with an HTTP error (a top-level document, as in a server-rendered app): evidence like a failed
+         * XHR, marked as `document`. Successful pages are not logged; they would only add noise to the comparison with the recording.
+         */
+        document: (page, name, status) => {
+            if (status < 400) return;
+            entries.push({ name, page, start: now(), outcome: 'http', status, kind: 'document', ms: 0 });
+        },
         /** The app changes route without loading a new document. */
         routed: (page) => {
             const list = routes.get(page) ?? [];

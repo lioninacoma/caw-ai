@@ -20,7 +20,7 @@ import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { scrubTrace } from './trace-scrub.mjs';
-import { browserArgs, installHostLock, withLoopbackPair } from './host-lock.mjs';
+import { browserArgs, installHostLock, isTopNavigation, withLoopbackPair } from './host-lock.mjs';
 import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { appHosts as appHostsOf, blockedHosts } from '../shared/environments.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
@@ -769,12 +769,20 @@ export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
     const context = await launchChrome(profileDir, { navigation: [own], onBlocked }, { insecureTls, ...(launch === undefined ? {} : { launch }) });
     const page = context.pages()[0] ?? await context.newPage();
     const consoleErrors = [];
+    // Write requests to the address's host while the person signs in and clicks: candidates for reads, never applied by themselves.
+    const writes = new Set();
+    context.on('request', (request) => {
+        if (new URL(request.url()).hostname !== own) return;
+        const name = requestName({ method: request.method(), url: request.url(), postData: request.postData(), contentType: request.headers()['content-type'] ?? '' });
+        if (classifyRequest(name) === 'write') writes.add(name);
+    });
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
     page.on('pageerror', (error) => consoleErrors.push(String(error?.message ?? error)));
     return {
         page,
         consoleErrors,
         foreignHosts,
+        writes,
         close: async () => {
             await context.close().catch(() => {});
             await removeProfile(profileDir);
@@ -1158,6 +1166,13 @@ export const openBrowserSession = async (spec) => {
         });
         raw.on('requestfinished', (request) => {
             request.response().then((response) => { if (response !== null) network.finished(request, response.status()); }, () => {});
+        });
+        raw.on('response', (response) => {
+            const request = response.request();
+            if (response.status() < 400 || !isTopNavigation(request) || !ownHosts.has(hostOfRequest(request))) return;
+            const page = pageOfRequest(request);
+            if (page === false || page === null || !pages.owns(page)) return;
+            network.document(page, requestName(describedRequest(request), config.requestKeys ?? []), response.status());
         });
 
         // Trail for an action's effect: console and shape of JSON responses, without values.

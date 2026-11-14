@@ -211,7 +211,7 @@ export const startOf = (url, after) => {
  * @param seen     { before, loginPage, after }: the page at the start, the page with the sign-in form (if any) and at the end
  * @param detected framework from package.json
  */
-export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts = [], detected = 'web' }) => {
+export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts = [], writes = [], detected = 'web' }) => {
     const { before, loginPage, after } = seen;
     const parsed = new URL(url);
     const notes = [];
@@ -266,6 +266,12 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
     if (/^[a-z]{2,3}$/.test(lang)) suggestion.language = lang;
     // Hosts the sign-in wanted to reach (an IdP): the new environment allows them as navigation hosts.
     if (foreignHosts.length > 0) suggestion.allowHosts = [...foreignHosts];
+    // Requests that looked like writes: if one only reads (a search sent as POST), it belongs in reads. Only a suggestion: init
+    // never writes it, the person decides.
+    if (writes.length > 0) {
+        suggestion.reads = { value: [...writes].sort(), confidence: 'likely' };
+        notes.push(t('cli.exploreReads', { requests: [...writes].sort().join(', ') }));
+    }
     suggestion.notes = notes;
     return suggestion;
 };
@@ -428,6 +434,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
             seen: { before, loginPage: withLogin ? loginPage : null, after },
             consoleErrors: browser.consoleErrors,
             foreignHosts: withLogin ? [...browser.foreignHosts] : [],
+            writes: [...(browser.writes ?? [])],
             detected: (detect ?? detectFramework)(root),
         });
         if (withLogin && loginPage === null && browser.foreignHosts.size === 0) suggestion.notes.unshift(t('cli.exploreLoginNotFound'));

@@ -376,3 +376,14 @@ test('diagnosis: a console error with a resolved source (Angular ErrorHandler) i
     assert.match(JSON.stringify(found), /explode\.ts:2:9/);
     assert.doesNotMatch(JSON.stringify(found), /main\.js:1:2/, 'only the first line of the message');
 });
+
+test('network log: a page answering with an HTTP error is evidence, marked as document; a good page is not logged', () => {
+    const log = createNetworkLog({ now: () => 0 });
+    const page = {};
+    log.document(page, 'POST /notes/search', 200);
+    log.document(page, 'POST /notes', 422);
+    assert.deepEqual(log.since(0), [{ name: 'POST /notes', outcome: 'http', status: 422, kind: 'document', ms: 0 }]);
+    const result = diagnose({ failed: failed(), requests: log.since(0) });
+    assert.equal(result.findings.length, 1);
+    assert.match(JSON.stringify(result.findings), /POST \/notes/);
+});

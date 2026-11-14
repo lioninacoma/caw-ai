@@ -88,6 +88,11 @@ test('explore: suggestions for form, SSO and no sign-in; console noise without n
     assert.match(sso.notes.join(' '), /login\.microsoftonline\.com.*caw role login/);
     const none = buildSuggestions({ url: 'http://app.localhost:5173', seen: { before: home, loginPage: null, after: home }, detected: 'web' });
     assert.equal(none.signIn.type, 'none');
+    assert.equal(none.reads, undefined, 'no write seen, no reads suggestion');
+    // Write requests seen while exploring become reads candidates, only as a likely suggestion with a note.
+    const searched = buildSuggestions({ url: 'http://app.localhost:5173', seen: { before: home, loginPage: null, after: home }, writes: ['POST /api/search', 'POST /api/audit'] });
+    assert.deepEqual(searched.reads, { value: ['POST /api/audit', 'POST /api/search'], confidence: 'likely' });
+    assert.match(searched.notes.join(' '), /POST \/api\/audit, POST \/api\/search.*reads/);
     // http on the local machine stays as it is; other http hosts get a note.
     const plain = buildSuggestions({ url: 'http://localhost:5173/x', seen: { before: home, loginPage: null, after: home } });
     assert.equal(plain.url, 'http://localhost:5173');
@@ -106,7 +111,8 @@ test('explore: suggestions for form, SSO and no sign-in; console noise without n
 
 test('init --from: suggestions from explore yield a valid config', () => {
     const suggestion = { url: 'http://app.localhost:5173', framework: { value: 'react' }, signIn: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', submitSelector: '[data-testid="login-submit"]', signedInSelector: '[data-testid="user-menu"]', confidence: 'certain' }, start: '/decks', messageSelectors: ['[role=status]'] };
-    const config = starterConfig(answersFromExplore(suggestion));
+    const config = starterConfig(answersFromExplore({ ...suggestion, reads: { value: ['POST /api/search'], confidence: 'likely' } }));
+    assert.equal(config.reads, undefined, 'reads candidates stay a suggestion');
     assert.equal(config.framework, 'react');
     assert.equal(config.environments.local.url, 'http://app.localhost:5173');
     assert.deepEqual(config.signIn, { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#pw', signedInSelector: '[data-testid="user-menu"]', submitSelector: '[data-testid="login-submit"]' });

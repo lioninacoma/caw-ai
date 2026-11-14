@@ -403,6 +403,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.exploreWhyNeutral': 'no framework detected, neutral adapter',
     'cli.exploreWhyPackage': 'from package.json',
     'cli.exploreMismatch': 'Runtime shows {runtime}, package.json {detected}.',
+    'cli.exploreReads': 'Write requests seen: {requests}. If one of them only reads (e.g. a search sent as POST), add it to reads in caw.config.json; otherwise tests that use it count as writing.',
     'cli.exploreForeign': 'The sign-in tried to go to {hosts}; the tool blocked it. For SSO: signIn type session, save the session once with caw role login; add the sign-in service to allowHosts if needed.',
     'cli.exploreNoFieldSelector': 'No unique selector found for name or password; a data-testid on the fields helps.',
     'cli.exploreNoSignedIn': 'No new element with a stable selector appeared after sign-in; please set signedInSelector by hand.',

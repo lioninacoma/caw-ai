@@ -404,6 +404,7 @@ Browser:
     'cli.exploreWhyNeutral': 'kein Framework erkannt, neutraler Adapter',
     'cli.exploreWhyPackage': 'aus der package.json',
     'cli.exploreMismatch': 'Laufzeit zeigt {runtime}, die package.json {detected}.',
+    'cli.exploreReads': 'Schreibende Requests gesehen: {requests}. Liest einer davon nur (etwa eine Suche per POST), trage ihn in caw.config.json unter reads ein; sonst gelten Tests, die ihn nutzen, als schreibend.',
     'cli.exploreForeign': 'Die Anmeldung wollte auf {hosts}; das Tool ließ das nicht zu. Für SSO: signIn vom Typ session, Sitzung einmal mit caw role login speichern; den Anmeldedienst ggf. in allowHosts.',
     'cli.exploreNoFieldSelector': 'Für Name oder Passwort fand sich kein eindeutiger Selektor; eine data-testid an den Feldern hilft.',
     'cli.exploreNoSignedIn': 'Nach der Anmeldung kam kein neues Element mit stabilem Selektor dazu; signedInSelector bitte von Hand setzen.',
