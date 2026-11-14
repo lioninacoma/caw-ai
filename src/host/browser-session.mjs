@@ -1103,6 +1103,21 @@ export const openBrowserSession = async (spec) => {
             }
         };
         const describedRequest = (request) => ({ method: request.method(), url: request.url(), postData: request.postData(), contentType: request.headers()['content-type'] ?? '' });
+        // On production nothing writes: a write request to the app's hosts (the same classifier as the report) is aborted and fails
+        // the step. Registered after the first sign-in; a later one (signInAgain) is let through by signingIn.
+        if (resolved.production === true) {
+            await raw.route((url) => ownHosts.has(url.hostname), async (route) => {
+                const request = route.request();
+                const name = requestName(describedRequest(request), config.requestKeys ?? []);
+                if (signingIn || classifyRequest(name, reads) !== 'write') {
+                    await route.fallback();
+                    return;
+                }
+                blockedUrls.add(request.url());
+                failures.push({ type: 'write-blocked', text: t('session.browser.writeBlocked', { name, env: resolved.name }), url: request.url() });
+                await route.abort('blockedbyclient').catch(() => {});
+            });
+        }
         const watchNavigation = (page) => {
             page.on('domcontentloaded', () => network.replaced(page));
             // Playwright also reports same-document changes (History API, hash), i.e. single-page app routes. Only the application's
