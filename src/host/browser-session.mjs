@@ -20,6 +20,8 @@ import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { scrubTrace } from './trace-scrub.mjs';
+import { classifyRequest, compileReads } from '../shared/requests.mjs';
+import { appHosts as appHostsOf } from '../shared/environments.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
 import { PREP, openWorkbench } from './workbench.mjs';
 
@@ -732,25 +734,6 @@ const logFloats = async (context, path) => {
 };
 
 /**
- * Sign-in and sign-out, sessions and tokens: these write no business data. A "wrong password" test thus stays read-only, and the
- * report only lists what the application may really have changed.
- */
-const AUTH_PATH = /(^|[/_.-])(log-?in|log-?out|sign-?in|sign-?out|sessions?|tokens?|refresh|auth|authenticate|anmelden|abmelden|csrf)$/i;
-
-/**
- * What the run may have written, for the report: every call except GET, HEAD and OPTIONS with its path, plus every call with a
- * parameter from `requestKeys` (e.g. `action`), since reading and writing calls look the same there. Never content.
- */
-export const writeLabel = ({ method, url }, keys = []) => {
-    const parsed = new URL(url);
-    const wanted = new Set(keys.map((key) => key.toLowerCase()));
-    const named = [...parsed.searchParams].filter(([key]) => wanted.has(key.toLowerCase()));
-    if (named.length > 0) return named.map(([key, value]) => `${key} ${value}`).join(', ');
-    if (['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) return null;
-    return AUTH_PATH.test(parsed.pathname.replace(/\/+$/, '')) ? null : `${method.toUpperCase()} ${parsed.pathname}`;
-};
-
-/**
  * For `signIn.type: session`: Chrome opens the sign-in, the human signs in (e.g. via SSO), and the tool saves the session as
  * soon as `signedInSelector` appears: cookies, localStorage and the sessionStorage of the page where sign-in ended (Playwright
  * does not save that). The file contains the test account's credentials: on Unix readable only by the own user, on Windows the
@@ -1085,12 +1068,24 @@ export const openBrowserSession = async (spec) => {
             if (response.status() >= 500) observe(pageOfRequest(response.request()), { type: 'http', text: `HTTP ${response.status()}` }, response.url());
         });
 
+        // What the run may have written, for the report and promotion: the app's write requests by name (src/shared/requests.mjs),
+        // never those to IdPs or third-party hosts and never caw's own sign-in.
         const writes = new Map();
+        const ownHosts = new Set(appHostsOf(config));
+        const reads = compileReads(config.reads);
+        let signingIn = false;
         const hidden = [];
         // Evidence for classifying a failure: only the application's own requests, no pages, scripts or images.
         const network = createNetworkLog();
         const asked = (request) => ['xhr', 'fetch'].includes(request.resourceType());
         // What naming needs of a request; postData is null for a body Playwright cannot read as text.
+        const hostOfRequest = (request) => {
+            try {
+                return new URL(request.url()).hostname;
+            } catch {
+                return '';
+            }
+        };
         const describedRequest = (request) => ({ method: request.method(), url: request.url(), postData: request.postData(), contentType: request.headers()['content-type'] ?? '' });
         const watchNavigation = (page) => {
             page.on('domcontentloaded', () => network.replaced(page));
@@ -1107,8 +1102,10 @@ export const openBrowserSession = async (spec) => {
         raw.on('request', (request) => {
             const page = pageOfRequest(request);
             if (page === false || (page !== null && !pages.owns(page))) return;
-            const label = writeLabel({ method: request.method(), url: request.url() }, config.requestKeys ?? []);
-            if (label !== null) writes.set(label, (writes.get(label) ?? 0) + 1);
+            if (!signingIn && ownHosts.has(hostOfRequest(request))) {
+                const label = requestName(describedRequest(request), config.requestKeys ?? []);
+                if (classifyRequest(label, reads) === 'write') writes.set(label, (writes.get(label) ?? 0) + 1);
+            }
             // A navigation starts with the main frame's request, before any abort it causes. Hash changes make no request.
             if (page !== null && request.isNavigationRequest() && request.frame() === page.mainFrame()) network.navigating(page);
             if (asked(request)) {
@@ -1281,8 +1278,13 @@ export const openBrowserSession = async (spec) => {
                     if (auth.type === 'form') await formLogin(pages.main());
                 };
                 // The first sign-in happens before the trace starts; this one must not end up in it either.
-                if (auth.type === 'form') await trace.pause(signIn);
-                else await signIn();
+                signingIn = true;
+                try {
+                    if (auth.type === 'form') await trace.pause(signIn);
+                    else await signIn();
+                } finally {
+                    signingIn = false;
+                }
                 await pages.main().goto(start === undefined ? startUrl : `${resolved.url}${start}`, { waitUntil: 'load' });
                 return waitReady({ timeout: spec.readyTimeoutMs });
             },

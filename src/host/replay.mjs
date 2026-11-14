@@ -11,6 +11,7 @@ import { isCaughtScriptError } from '../shared/report.mjs';
 import { CLICK_DELAY_MS, codeText, fillField, leaveForDisabled, locatorFor, setFiles } from './agent-commands.mjs';
 import { textMatcher } from './patterns.mjs';
 import { redactDeep } from './secrets.mjs';
+import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
 import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, withoutLate } from './effects.mjs';
@@ -557,9 +558,8 @@ export const replayBefore = (spec, id) => {
 // The actions that only lead into a step; the first other action (an input, a key, a download, remember, a check) starts its work.
 const ENTRY_ACTIONS = new Set(['goto', 'click', 'dblclick', 'wait-ready']);
 const INPUT_ACTIONS = new Set(['fill', 'type', 'upload']);
-const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-/** Did the action send a write request in healthy runs? Learned effects name requests as `METHOD path status`. */
-const writesIn = (effect) => (effect?.requests ?? []).some((line) => !READ_METHODS.has(String(line).split(' ')[0].toUpperCase()));
+/** Did the action send a write request in healthy runs? Learned effects name requests as `<request name> <status>`. */
+const writesIn = (effect, reads) => (effect?.requests ?? []).some((line) => classifyRequest(String(line), reads) === 'write');
 
 /**
  * At the entry of a step: all steps before it completely, with their checks, then the step's leading navigation (goto, click,
@@ -568,8 +568,10 @@ const writesIn = (effect) => (effect?.requests ?? []).some((line) => !READ_METHO
  * Guards, in `entry.skipped`: `inputs` (the step has no input at all, e.g. only a submit click: nothing of it runs), `write` (stops
  * before an entry click whose learned effects write) and `recording` (the step is not recorded or stale: nothing of it runs).
  * `until` is the last step played completely, if any.
+ * @param reads the config's `reads` patterns: what they name does not stop the entry
  */
-export const replayToEntry = (spec, id) => {
+export const replayToEntry = (spec, id, { reads = [] } = {}) => {
+    const readMatchers = compileReads(reads);
     const end = spec.steps.findIndex((step) => step.id === id);
     if (end === -1) throw new CawError('step-unknown', t('session.replay.stepUnknown', { id: spec.id, until: id }));
     const step = spec.steps[end];
@@ -588,7 +590,7 @@ export const replayToEntry = (spec, id) => {
         const effects = currentEffects(spec, step);
         for (const [index, action] of step.recording.actions.entries()) {
             if (!ENTRY_ACTIONS.has(action.action)) break;
-            if ((action.action === 'click' || action.action === 'dblclick') && writesIn(effects?.actions?.find((effect) => effect.action === index + 1))) {
+            if ((action.action === 'click' || action.action === 'dblclick') && writesIn(effects?.actions?.find((effect) => effect.action === index + 1), readMatchers)) {
                 entry.skipped = 'write';
                 break;
             }

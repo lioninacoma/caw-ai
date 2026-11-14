@@ -208,7 +208,7 @@ export default {
     'config.report.warnings': 'Warnings',
     'config.report.warnings.intro': 'Errors from third-party code, minor issues and new status messages. They don\'t affect the result.',
     'config.report.writes': 'Write requests',
-    'config.report.writes.intro': 'Everything except GET, HEAD and OPTIONS, plus requests with a key from requestKeys. Shows what the run may have triggered in the app.',
+    'config.report.writes.intro': 'Requests to the app\'s hosts other than GET, HEAD, OPTIONS, a GraphQL query, sign-in machinery or what reads names. Shows what the run may have triggered in the app.',
     'config.report.dropped': 'Dropped from the recording',
     'config.report.dropped.intro': 'These steps were executed but aren\'t part of the path. They still happened in the app.',
 

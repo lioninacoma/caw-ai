@@ -284,7 +284,8 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS selectors for error messages without ARIA roles. |
 | `consoleIgnore` | `[]` | Regexes for known, harmless console errors. Keep them narrow. |
 | `foreignCode` | `[]` | Regexes for third-party scripts, e.g. `"/vendor/"`. Their errors become warnings. |
-| `requestKeys` | `[]` | Query parameters that name a request, e.g. `["action"]` for single-endpoint APIs. |
+| `requestKeys` | `[]` | Parameters that name a request, for single-endpoint APIs: query parameters such as `["action"]`, or top-level JSON body fields as `json.<key>`, e.g. `["json.method"]` for JSON-RPC. A GraphQL request is named by its operation without this: `POST /graphql mutation CloseTicket`. |
+| `reads` | `[]` | Requests that only read although they are no GET, e.g. `["POST /api/search"]`. A pattern is a method (or `*`) and a path, then optionally key and GraphQL tokens: `*` matches within a path segment (any characters in the other tokens), `**` anything. `"POST /api/*/query"`, `"POST /api/proxy op=load*"`, `"POST /graphql mutation TrackView"`, `"* /api/telemetry/**"`. A pattern that ends in its path never matches a GraphQL request. Top level only: it is the same app in every environment. |
 | `effects.fail` | `["controls", "console"]` | Which learned effects fail a step when they change. `[]` makes all of them warnings. |
 | `maxSteps` | `100` | Claude's action budget when recording and fixing. |
 | `readyTimeoutMs` | | How long to wait for the app to settle. |

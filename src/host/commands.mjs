@@ -996,6 +996,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         advise: withAdvice,
         // The developer's Claude Code session is there at once and costs nothing here: it may read the page in the state right away.
         sessionAgent: (agent ?? agentMode(config)) === 'session',
+        reads: config.reads ?? [],
         // Only with chat and without --no-learn: without chat, e.g. in CI, a run does not change the test file.
         fillBaselines: canFix && learn,
         openSandbox: () => openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent }),

@@ -208,7 +208,7 @@ export default {
     'config.report.warnings': 'Warnungen',
     'config.report.warnings.intro': 'Fehler aus fremdem Code, Nebensächliches und neue Statushinweise. Sie entscheiden nicht über das Ergebnis.',
     'config.report.writes': 'Schreibende Aufrufe',
-    'config.report.writes.intro': 'Alles außer GET, HEAD und OPTIONS, dazu Requests mit einem Schlüssel aus requestKeys. So siehst du, was der Lauf in der Anwendung angestoßen haben kann.',
+    'config.report.writes.intro': 'Requests an die Hosts der Anwendung außer GET, HEAD, OPTIONS, einer GraphQL-Query, An- und Abmeldung und dem, was reads nennt. So siehst du, was der Lauf in der Anwendung angestoßen haben kann.',
     'config.report.dropped': 'Aus der Aufzeichnung gestrichen',
     'config.report.dropped.intro': 'Diese Schritte sind ausgeführt worden, gehören aber nicht zum Weg. In der Anwendung sind sie trotzdem passiert.',
 

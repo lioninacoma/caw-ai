@@ -823,6 +823,11 @@ test('replayToEntry: guards keep a step without inputs, a writing click and a st
     const test3 = { id: 't', steps: [entryStep('S1', [CLICK]), entryStep('S2', [FILL], { after: 'S1' }), entryStep('S3', [CLICK, CLICK, FILL], { after: 'S2', effects })] };
     const writing = replayToEntry(test3, 'S3');
     assert.deepEqual([shape(writing).slice(4), writing.entry.skipped], [['click @S3'], 'write']);
+    // The same classifier as everywhere: a reads pattern lets the entry pass, a GraphQL query reads, a mutation stops.
+    assert.deepEqual(shape(replayToEntry(test3, 'S3', { reads: ['POST /api/antrag'] })).slice(4), ['click @S3', 'click @S3']);
+    const graphql = (line) => ({ ...test3, steps: [...test3.steps.slice(0, 2), entryStep('S3', [CLICK, CLICK, FILL], { after: 'S2', effects: { runs: 2, actions: [{ action: 2, requests: [line] }] } })] });
+    assert.deepEqual(shape(replayToEntry(graphql('POST /graphql query Tickets 200'), 'S3')).slice(4), ['click @S3', 'click @S3']);
+    assert.equal(replayToEntry(graphql('POST /graphql mutation CloseTicket 200'), 'S3').entry.skipped, 'write');
     // Effects learned in another state no longer apply.
     const outdated = { ...test3, steps: [...test3.steps.slice(0, 2), entryStep('S3', [CLICK, CLICK, FILL], { after: 'S2', effects: { ...effects, basis: 'older' } })] };
     assert.deepEqual(shape(replayToEntry(outdated, 'S3')).slice(4), ['click @S3', 'click @S3']);

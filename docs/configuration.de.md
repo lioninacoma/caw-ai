@@ -284,7 +284,8 @@ Dazu weist es auf eine App mit `overlay` hin, während keine Umgebung `"overlay"
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS-Selektoren für Fehlermeldungen ohne ARIA-Rolle. |
 | `consoleIgnore` | `[]` | Reguläre Ausdrücke für bekannte, harmlose Konsolenfehler. Eng halten. |
 | `foreignCode` | `[]` | Reguläre Ausdrücke für fremde Skripte, etwa `"/vendor/"`. Deren Fehler werden zu Warnungen. |
-| `requestKeys` | `[]` | Query-Parameter, die einen Request benennen, etwa `["action"]` bei APIs mit nur einem Endpunkt. |
+| `requestKeys` | `[]` | Parameter, die einen Request benennen, bei APIs mit nur einem Endpunkt: Query-Parameter wie `["action"]` oder Felder der obersten Ebene eines JSON-Bodys als `json.<key>`, etwa `["json.method"]` bei JSON-RPC. Einen GraphQL-Request benennt seine Operation ohne diesen Schlüssel: `POST /graphql mutation CloseTicket`. |
+| `reads` | `[]` | Requests, die nur lesen, obwohl sie kein GET sind, etwa `["POST /api/search"]`. Ein Muster ist eine Methode (oder `*`) und ein Pfad, danach optional Schlüssel- und GraphQL-Teile: `*` passt innerhalb eines Pfadsegments (in den anderen Teilen auf beliebige Zeichen), `**` auf alles. `"POST /api/*/query"`, `"POST /api/proxy op=load*"`, `"POST /graphql mutation TrackView"`, `"* /api/telemetry/**"`. Ein Muster, das mit dem Pfad endet, passt nie auf einen GraphQL-Request. Nur auf oberster Ebene: Es ist in jeder Umgebung dieselbe Anwendung. |
 | `effects.fail` | `["controls", "console"]` | Welche gelernten Wirkungen einen Schritt scheitern lassen, wenn sie sich ändern. `[]` macht alle zu Warnungen. |
 | `maxSteps` | `100` | Aktionsbudget für Claude beim Aufnehmen und Reparieren. |
 | `readyTimeoutMs` | | Wie lange auf eine ruhige App gewartet wird. |

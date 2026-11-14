@@ -125,14 +125,16 @@ test('Sign-in: failed requests appear in the message, method and path only', () 
 });
 
 test('Writing calls: sign-in, sign-out, session and token do not count, business calls do', async () => {
-    const { writeLabel } = await import('../src/host/browser-session.mjs');
-    const label = (method, path) => writeLabel({ method, url: `http://localhost:5173${path}` });
-    for (const path of ['/api/login', '/api/auth/logout', '/api/session', '/api/v1/token/refresh', '/oauth/token', '/sign-in', '/j_spring_security_check/../login/', '/api/csrf']) assert.equal(label('POST', path), null, path);
-    assert.equal(label('POST', '/api/files'), 'POST /api/files');
-    assert.equal(label('DELETE', '/api/sessions-archive/3'), 'DELETE /api/sessions-archive/3', 'only the last segment counts');
-    assert.equal(label('PUT', '/api/user/login-hint'), 'PUT /api/user/login-hint');
-    assert.equal(label('GET', '/api/files'), null);
-    assert.equal(writeLabel({ method: 'POST', url: 'http://x/c?action=login' }, ['action']), 'action login', 'requestKeys take precedence');
+    const { requestName } = await import('../src/host/network-log.mjs');
+    const { classifyRequest } = await import('../src/shared/requests.mjs');
+    const kind = (method, path, keys = []) => classifyRequest(requestName({ method, url: `http://localhost:5173${path}` }, keys));
+    for (const path of ['/api/login', '/api/auth/logout', '/api/session', '/api/v1/token/refresh', '/oauth/token', '/sign-in', '/j_spring_security_check/../login/', '/api/csrf']) assert.equal(kind('POST', path), 'ignored', path);
+    assert.equal(kind('POST', '/api/files'), 'write');
+    assert.equal(kind('DELETE', '/api/sessions-archive/3'), 'write', 'only the last segment counts');
+    assert.equal(kind('PUT', '/api/user/login-hint'), 'write');
+    assert.equal(kind('GET', '/api/files'), 'read');
+    assert.equal(kind('GET', '/c?action=save', ['action']), 'read', 'a request key names a request, it does not make a GET writing');
+    assert.equal(kind('POST', '/c?action=load', ['action']), 'write', 'a POST through one endpoint writes unless reads names it');
 });
 
 test('certificateError: an untrusted certificate becomes an environment error naming insecureTls; anything else stays', async () => {

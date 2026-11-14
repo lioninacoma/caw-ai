@@ -483,7 +483,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  */
 export const runFlow = async (options) => {
-    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, openSandbox, execute, adopt, log, hint } = options;
+    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
     const fixer = createFixer({ openSandbox });
     let target = null;
     let repaired = null;
@@ -506,7 +506,7 @@ export const runFlow = async (options) => {
     };
     const played = await execute({
         spec,
-        replay: entry === undefined ? replayOf(spec) : replayToEntry(spec, entry),
+        replay: entry === undefined ? replayOf(spec) : replayToEntry(spec, entry, { reads }),
         handover: () => handover && target === null && repaired === null && !rerun,
         ...(handover ? { command: 'open' } : {}),
         learns: fillBaselines,

@@ -142,6 +142,9 @@ const hostOfUrl = (url) => {
     }
 };
 
+/** The app's hosts: those of every environment URL. Only their requests are classified as reads or writes (SC-25). */
+export const appHosts = (config) => [...new Set(Object.values(effectiveEnvironments(config)).map((env) => hostOfUrl(env.url)).filter(Boolean))];
+
 /**
  * The hosts pages may navigate to during a run on `envName`: every non-production environment, the run's own environment, and
  * `allowHosts` (top level and the environment's). Never a production host unless the run is on production: otherwise a run on

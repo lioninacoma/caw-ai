@@ -223,7 +223,7 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 
 **Limits:**
 
-- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `claude` and only with test accounts, the skill rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every call other than GET, HEAD and OPTIONS and every one with a key from `requestKeys`, without parameter values. Sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count: they don't make a test a writing one.
+- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `claude` and only with test accounts, the skill rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every write request to the app's hosts, by name without parameter values. A request is a read if it is GET, HEAD or OPTIONS, a GraphQL query, or matches a `reads` pattern; sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count; everything else writes. Requests to sign-in services in `allowHosts` and to third-party hosts (analytics, CDNs) never make a test a writing one.
 - **Step budget:** `--max-actions` (else `maxSteps` from the config, else 100) counts Claude's `click`, `fill`, `type`, `press`, `goto` and `reload`, failed ones included. What you demonstrate yourself doesn't count.
 - **Claude doesn't react instantly:** `claude -p` runs without input; message and pause take effect before the next action. "Cancel" takes effect immediately.
 
@@ -301,7 +301,7 @@ Only the fixed steps change in the file; comments and all other steps stay ident
 
 If a step fails, the tool classifies the failure without Claude and without tokens. It uses only what every browser provides, independent of framework and environment:
 
-- **Requests** of the application (`xhr`/`fetch`) with name, status, duration and outcome: answered, HTTP error, aborted, failed. The name is method and path; parameter values never appear in it, except for parameters from `requestKeys`. An abort caused by navigation doesn't count. Plus the **parameter names** without values, from the query and form bodies (`application/x-www-form-urlencoded`); JSON bodies are left out.
+- **Requests** of the application (`xhr`/`fetch`) with name, status, duration and outcome: answered, HTTP error, aborted, failed. The name is method and path, for GraphQL plus operation type and name; parameter values never appear in it, except for parameters from `requestKeys`. An abort caused by navigation doesn't count. Plus the **parameter names** without values, from the query, form bodies (`application/x-www-form-urlencoded`) and the top level of JSON bodies (as `json.<key>`).
 - **Hard errors** of the run: script errors, console errors, HTTP status.
 - **The baseline from recording:** `recording.network` stores per step which requests were answered during recording, how long they took and with which parameter names (`params`).
 

@@ -862,7 +862,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         const end = other.steps.findIndex(({ id }) => id === stepId);
         // At the entry of a step that step is shown, but not judged.
         const cut = { ...other, steps: other.steps.slice(0, end + 1), expectations: other.expectations.slice(0, entry ? end : end + 1) };
-        chosen = { spec: cut, replay: entry ? replayToEntry(other, stepId) : cutReplay(other, stepId) };
+        chosen = { spec: cut, replay: entry ? replayToEntry(other, stepId, { reads: config.reads ?? [] }) : cutReplay(other, stepId) };
     };
     const restoreOther = async (other, stepId, options) => {
         choose(other, stepId, options);
