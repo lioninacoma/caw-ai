@@ -8,6 +8,7 @@ import { isAbsolute, join, posix } from 'node:path';
 import { CawError } from './errors.mjs';
 import { t } from './i18n.mjs';
 import { CONFIG_FILE } from './names.mjs';
+import { compileRead } from './requests.mjs';
 import { projectThemeProblems, setProjectTheme } from './theme-package.mjs';
 import { didYouMean } from './suggest.mjs';
 import { RESERVED_ROLES } from './credentials.mjs';
@@ -55,7 +56,7 @@ export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]
 /** The saved session of a role on an environment, relative to the project: caw/.auth/<environment>/<role>.json. */
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
-const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys',
+const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys', 'reads',
     'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxActions', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport'];
@@ -205,6 +206,10 @@ const checkEnvironments = (config, issues, notes) => {
         }
         for (const key of Object.keys(raw).filter((candidate) => !ENVIRONMENT_KEYS.includes(candidate))) {
             const removed = ENVIRONMENT_REMOVED[key];
+            if (key === 'reads') {
+                issues.push(t('config.env.readsTopLevel', { name }));
+                continue;
+            }
             issues.push(removed === undefined
                 ? t('config.env.unknown', { name, key, keys: ENVIRONMENT_KEYS.join(', '), hint: hintFor(key, ENVIRONMENT_KEYS) })
                 : removedKey(`environments.${name}.${key}`, removed));
@@ -427,7 +432,11 @@ export const validateConfig = (given) => {
     if (config.readyIgnore !== undefined && !(Array.isArray(config.readyIgnore) && config.readyIgnore.every((selector) => typeof selector === 'string' && selector.trim() !== ''))) {
         issues.push(t('config.readyIgnore'));
     }
-    if (config.requestKeys !== undefined && (!Array.isArray(config.requestKeys) || !config.requestKeys.every((key) => typeof key === 'string' && /^[\w.-]+$/.test(key)))) {
+    if (config.reads !== undefined) {
+        if (!Array.isArray(config.reads)) issues.push(t('config.reads.notList'));
+        else for (const pattern of config.reads.filter((entry) => compileRead(entry) === null)) issues.push(t('config.reads.invalid', { pattern: String(pattern) }));
+    }
+    if (config.requestKeys !== undefined && (!Array.isArray(config.requestKeys) || !config.requestKeys.every((key) => typeof key === 'string' && /^(json\.)?[\w-]+$/.test(key)))) {
         issues.push(t('config.requestKeys'));
     }
     const effectLists = ['controls', 'view', 'requests', 'responses', 'console'];

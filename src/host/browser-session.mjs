@@ -1090,6 +1090,8 @@ export const openBrowserSession = async (spec) => {
         // Evidence for classifying a failure: only the application's own requests, no pages, scripts or images.
         const network = createNetworkLog();
         const asked = (request) => ['xhr', 'fetch'].includes(request.resourceType());
+        // What naming needs of a request; postData is null for a body Playwright cannot read as text.
+        const describedRequest = (request) => ({ method: request.method(), url: request.url(), postData: request.postData(), contentType: request.headers()['content-type'] ?? '' });
         const watchNavigation = (page) => {
             page.on('domcontentloaded', () => network.replaced(page));
             // Playwright also reports same-document changes (History API, hash), i.e. single-page app routes. Only the application's
@@ -1111,8 +1113,8 @@ export const openBrowserSession = async (spec) => {
             if (page !== null && request.isNavigationRequest() && request.frame() === page.mainFrame()) network.navigating(page);
             if (asked(request)) {
                 const keys = config.requestKeys ?? [];
-                const params = parameterNames({ url: request.url(), postData: request.postData(), contentType: request.headers()['content-type'] ?? '' }, keys);
-                network.started(request, { name: requestName({ method: request.method(), url: request.url() }, keys), page, params });
+                const described = describedRequest(request);
+                network.started(request, { name: requestName(described, keys), page, params: parameterNames(described, keys) });
             }
         });
         // Done only with the body, not with the headers: otherwise waiting would count a request as finished whose response the
@@ -1147,7 +1149,7 @@ export const openBrowserSession = async (spec) => {
             const entry = { kind: 'response', line: null };
             trail.push(entry);
             response.text().then((body) => {
-                entry.line = responseLine(requestName({ method: request.method(), url: request.url() }, config.requestKeys ?? []), JSON.parse(body));
+                entry.line = responseLine(requestName(describedRequest(request), config.requestKeys ?? []), JSON.parse(body));
             }).catch(() => {});
         });
         raw.on('requestfailed', (request) => network.failed(request, request.failure()?.errorText ?? ''));

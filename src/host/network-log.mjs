@@ -1,5 +1,6 @@
 // What the app requested during a run, independent of the framework: method, name, status, duration, outcome.
 import { t } from '../shared/i18n.mjs';
+import { graphqlOf, jsonKeyParts } from '../shared/requests.mjs';
 
 // Parameter values never end up here, only the names from `requestKeys` that identify a request.
 
@@ -28,19 +29,22 @@ const decodeURIComponentSafe = (part) => {
 };
 
 /**
- * The name of a request: method and path, IDs in the path as `:id`. If an app routes everything through one path, `keys` names the parameters that tell requests apart.
- * @param keys names of query parameters whose value belongs to the name, e.g. ["action"]
+ * The name of a request: method and path, IDs in the path as `:id`. If an app routes everything through one path, `keys` names the
+ * parameters that tell requests apart (query parameters, or top-level JSON body fields as `json.<key>`). A GraphQL request ends
+ * with its operation type and name: `POST /graphql mutation CloseTicket`.
+ * @param keys e.g. ["action"] or ["json.method"]
  */
-export const requestName = ({ method, url }, keys = []) => {
+export const requestName = ({ method, url, postData = null, contentType = '' }, keys = []) => {
     let parsed;
     try {
         parsed = new URL(url);
     } catch {
         return `${method.toUpperCase()} ?`;
     }
-    const wanted = new Set(keys.map((key) => key.toLowerCase()));
+    const wanted = new Set(keys.filter((key) => !/^json\./i.test(key)).map((key) => key.toLowerCase()));
     const parts = [...parsed.searchParams].filter(([key]) => wanted.has(key.toLowerCase())).map(([key, value]) => `${key}=${value.slice(0, 120)}`);
-    return [`${method.toUpperCase()} ${neutralPath(parsed.pathname)}`, ...parts].join(' ');
+    const graphql = graphqlOf(postData, contentType);
+    return [`${method.toUpperCase()} ${neutralPath(parsed.pathname)}`, ...parts, ...jsonKeyParts(postData, keys), ...(graphql === null ? [] : [graphql.type, graphql.name])].join(' ');
 };
 
 const MAX_PARAMS = 20;
