@@ -192,6 +192,9 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     const todo = todoFields(config);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
     const credentials = readCredentials(root, config, spec.role, checked.name);
+    // Plain http beyond this machine, allowed by allowHttp: said on every run, the traffic (and any sign-in) is readable on the way.
+    const address = new URL(checked.url);
+    if (address.protocol === 'http:' && !isLoopback(address.hostname)) ui.warn(t('run.allowHttp', { target: checked.name, host: address.host }));
     if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
     const start = startPath(config, spec);
     // The overlay source must be ready before Chrome starts, otherwise the run would silently test something else. Whatever

@@ -94,6 +94,7 @@ export default {
     'session.browser.failedRequestsMore': ' und {count} weitere',
     'session.browser.loginFormMissing': 'Weder Anmeldemaske noch Marker "{marker}" auf {url} gefunden.',
     'session.browser.codeWithoutSecret': 'Die Anmeldung verlangt einen Einmalcode ("{selector}"), die Anmeldung der Umgebung hat aber weder codeSelector noch einen Schritt mit with: totp; ohne den fehlt CAW_<ROLLE>_TOTP.',
+    'session.browser.stepMissing': 'Anmeldeschritt {step}: Das Element erschien nicht (auf {path}). Prüfe den Selektor in signIn.steps oder markiere den Schritt mit optional: true.',
     'session.browser.selectorMissing': '{key} "{selector}" steht nicht auf der Anmeldeseite.',
     'session.browser.loginRejected': 'Anmeldung auf {url} abgelehnt: Das Formular steht nach dem Absenden wieder da (Seite: {path}). Zugangsdaten falsch, oder das Absenden ging ins Leere.',
     'repair.asking': 'Anmeldung gescheitert. Claude prüft die Seite und schlägt eine Korrektur vor …',

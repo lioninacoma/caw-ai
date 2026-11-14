@@ -42,6 +42,9 @@ const LOGIN_REJECT_QUIET_MS = 3000;
 const LOGIN_MARKER_QUIET_MS = 5000;
 // After loading: how long a form may still appear (rendered by the framework) before the selector counts as wrong.
 const LOGIN_FORM_MS = 8000;
+// Sign-in steps (signIn.steps): how long a step waits for its element, an optional one only briefly ("Stay signed in?").
+const STEP_TIMEOUT_MS = 30_000;
+const OPTIONAL_STEP_MS = 3000;
 const LOGIN_POLL_MS = 250;
 // A request open longer than this no longer counts as sign-in work (long polling, streams).
 const LOGIN_STALE_REQUEST_MS = 10_000;
@@ -195,7 +198,7 @@ export const trackAgentPages = (first) => {
  * contains them.
  * @param on the page to sign in on; defaults to the first tab (before the workbench), when signing in again the application frame
  */
-const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, framework, on }) => {
+const ensureLoggedIn = async (context, { url, marker, login, password, totpSecret, selectors, steps, onCode, framework, on }) => {
     const page = on ?? context.pages()[0];
     const broken = watchBroken(page);
     // Only the SPA adapters: their sign-in page is usually part of the app. `web` and `extjs` (portal sign-in without Ext) skip this.
@@ -211,7 +214,8 @@ const ensureLoggedIn = async (context, { url, marker, login, password, totpSecre
         }
     } : undefined;
     try {
-        await loginSteps(page, { url, marker, login, password, totpSecret, selectors, ready });
+        if (steps === undefined) await loginSteps(page, { url, marker, login, password, totpSecret, selectors, ready, onCode });
+        else await stepSignIn(page, { url, marker, steps, login, password, totpSecret, ready, onCode });
     } catch (error) {
         const seen = broken.text();
         if (seen !== '' && error instanceof CawError) error.message = `${error.message} ${seen}`;
@@ -303,7 +307,7 @@ export const watchBroken = (page, limit = 3) => {
 // If the application asks for a one-time code after the password (`codeSelector`), the role enters it from its TOTP secret.
 // A code is only valid once: if the same account already signed in within the same 30 s window, e.g. in the previous test, the
 // application rejects it. Then exactly one retry with the next window's code; if that fails too, loginSteps reports the sign-in as failed.
-const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep }) => {
+const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep, onCode = () => {} }) => {
     if (selectors.code === undefined) return;
     const next = await Promise.race([
         page.waitForSelector(marker, { timeout: LOGIN_TIMEOUT_MS }).then(() => 'signed-in'),
@@ -313,7 +317,9 @@ const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep })
     if (totpSecret === undefined) throw new CawError('login-failed', t('session.browser.codeWithoutSecret', { selector: selectors.code }));
     const submit = async () => {
         const at = now();
-        await page.fill(selectors.code, totp(totpSecret, at));
+        const code = totp(totpSecret, at);
+        onCode(code);
+        await page.fill(selectors.code, code);
         await page.press(selectors.code, 'Enter');
         return at;
     };
@@ -400,7 +406,7 @@ export const loginEvidence = async (page, selectors) => {
     }
 };
 
-export const loginSteps = async (page, { url, marker, login, password, totpSecret, selectors, ready, now = Date.now, sleep = sleepMs }) => {
+export const loginSteps = async (page, { url, marker, login, password, totpSecret, selectors, ready, onCode, now = Date.now, sleep = sleepMs }) => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     // Load the page fully first, then only wait briefly for a form rendered by the framework: a wrong selector shows up
     // after seconds, not after the full timeout.
@@ -431,7 +437,7 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
     try {
         if (selectors.submit === undefined) await page.press(selectors.password, 'Enter');
         else await page.click(selectors.submit);
-        await secondFactor(page, { marker, totpSecret, selectors, now, sleep });
+        await secondFactor(page, { marker, totpSecret, selectors, now, sleep, onCode });
         let outcome = await waitForLoginOutcome(page, { marker, selectors, now, sleep, requests });
         // A cold portal redirects but does not finish rendering the next page in time: reload once, then the result counts.
         if (outcome === 'no-marker' || outcome === 'timeout') {
@@ -446,6 +452,70 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
     } finally {
         requests.stop();
     }
+};
+
+/** A step as the person wrote it, for messages: its verb and selector or key, never a value. */
+const stepLabel = (step, index) => {
+    const verb = ['fill', 'click', 'press', 'waitFor'].find((key) => step[key] !== undefined);
+    return `${index + 1} (${verb} ${step[verb]}${step.with === undefined ? '' : ` with ${step.with}`})`;
+};
+
+/**
+ * Sign-in by `signIn.steps` (multi-page, identifier first, an IdP, extra prompts): in order, from `<env url><path>`, on whatever
+ * page is current; a host outside the navigation lock fails the step. `fill` with `user`, `password` or `totp` takes the
+ * role's account (a fresh code each time), `value` a fixed text. An optional step is skipped when its element is not visible
+ * within 3 s. Afterwards signedInSelector must appear. A refused code (the account signed in within the same 30 s window) is
+ * sent once more with the next window's code, from the `with: totp` step on.
+ * @param onCode receives every code sent, so the session masks it like the password
+ */
+export const stepSignIn = async (page, { url, marker, steps, login, password, totpSecret, ready, onCode = () => {}, now = Date.now, sleep = sleepMs }) => {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('load', { timeout: LOGIN_TIMEOUT_MS }).catch(() => {});
+    if (ready !== undefined) await ready(page);
+    if (await page.$(marker) !== null) return;
+    let codeAt;
+    const valueOf = (step) => {
+        if (step.value !== undefined) return step.value;
+        if (step.with === 'user') return login;
+        if (step.with === 'password') return password;
+        if (totpSecret === undefined) throw new CawError('login-failed', t('session.browser.codeWithoutSecret', { selector: step.fill }));
+        codeAt = now();
+        const code = totp(totpSecret, codeAt);
+        onCode(code);
+        return code;
+    };
+    const run = async (from) => {
+        for (let index = from; index < steps.length; index += 1) {
+            const step = steps[index];
+            const timeout = step.optional === true ? OPTIONAL_STEP_MS : step.timeoutMs ?? STEP_TIMEOUT_MS;
+            const selector = step.fill ?? step.click ?? step.waitFor ?? step.on;
+            if (selector !== undefined) {
+                const visible = await page.locator(selector).first().waitFor({ state: 'visible', timeout }).then(() => true, () => false);
+                if (!visible) {
+                    if (step.optional === true) continue;
+                    // Path only: parameters could contain sign-in data.
+                    throw new CawError('login-failed', t('session.browser.stepMissing', { step: stepLabel(step, index), path: new URL(page.url()).pathname }));
+                }
+            }
+            if (step.fill !== undefined) await page.locator(step.fill).first().fill(valueOf(step));
+            else if (step.click !== undefined) await page.locator(step.click).first().click({ timeout });
+            else if (step.press !== undefined && step.on !== undefined) await page.locator(step.on).first().press(step.press);
+            else if (step.press !== undefined) await page.keyboard.press(step.press);
+        }
+    };
+    await run(0);
+    const codeStep = steps.findIndex((step) => step.with === 'totp');
+    const signedIn = (timeout) => page.waitForSelector(marker, { timeout }).then(() => true, () => false);
+    if (codeStep >= 0 && codeAt !== undefined && !await signedIn(CODE_ANSWER_MS)) {
+        const codeStays = await page.isVisible(steps[codeStep].fill).catch(() => false);
+        if (codeStays) {
+            const nextWindow = (Math.floor(codeAt / TOTP_WINDOW_MS) + 1) * TOTP_WINDOW_MS;
+            await sleep(Math.max(0, nextWindow - now()) + NEXT_WINDOW_MARGIN_MS);
+            await run(codeStep);
+        }
+    }
+    if (await signedIn(LOGIN_TIMEOUT_MS)) return;
+    throw new CawError('login-failed', t('session.browser.loginFailed', { url, marker, path: new URL(page.url()).pathname }));
 };
 
 /**
@@ -795,7 +865,9 @@ export const openBrowserSession = async (spec) => {
     // Who is signed in right now: restoring a state from a test of another role switches the account.
     let signedInAs = credentials;
     // All passwords of this session stay redacted, even after switching accounts.
-    const passwords = credentials?.password === undefined ? [] : [credentials.password];
+    const passwords = [credentials?.password, credentials?.gate?.password].filter((value) => value !== undefined);
+    // One-time codes sent during sign-in are masked like the password.
+    const codes = [];
     const formLogin = (on) => ensureLoggedIn(raw, {
         url: `${resolved.url}${auth.path}`,
         marker: auth.signedInSelector,
@@ -803,7 +875,9 @@ export const openBrowserSession = async (spec) => {
         password: signedInAs.password,
         totpSecret: signedInAs.totpSecret,
         framework,
-        selectors: {
+        onCode: (code) => codes.push(code),
+        ...(auth.steps === undefined ? {} : { steps: auth.steps }),
+        selectors: auth.steps !== undefined ? {} : {
             user: auth.userSelector,
             password: auth.passwordSelector,
             ...(auth.submitSelector === undefined ? {} : { submit: auth.submitSelector }),
@@ -814,7 +888,10 @@ export const openBrowserSession = async (spec) => {
     try {
         // The devlink host only starts the browser after its preflight. That is why sign-in hangs off the launcher.
         const launcher = createPlaywrightLauncher(async (dir) => {
-            const httpCredentials = auth.type === 'basic' ? { username: credentials.login, password: credentials.password, origin: new URL(resolved.url).origin } : undefined;
+            // HTTP Basic only to the environment's own origin: the basic sign-in, or the gate in front of the environment.
+            const origin = new URL(resolved.url).origin;
+            const httpCredentials = auth.type === 'basic' ? { username: credentials.login, password: credentials.password, origin }
+                : credentials?.gate === undefined ? undefined : { ...credentials.gate, origin };
             raw = await launchChrome(dir, hosts, { headless: spec.headless === true, insecureTls: resolved.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
             raw.on('close', closedSignal);
             await grantClipboard(raw, resolved.url);
@@ -1199,7 +1276,7 @@ export const openBrowserSession = async (spec) => {
             browser: region,
             failures: () => failures,
             /** What must never leave the browser as text: the role's password and values remembered as secret. */
-            secrets: () => [...passwords, ...hidden],
+            secrets: () => [...passwords, ...codes, ...hidden],
             /** A value redacted like the password from now on, e.g. from `remember` with `secret: true`. */
             hide: (value) => { if (typeof value === 'string' && !hidden.includes(value)) hidden.push(value); },
             warnings: () => warnings,

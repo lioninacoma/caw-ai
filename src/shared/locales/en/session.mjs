@@ -94,6 +94,7 @@ export default {
     'session.browser.failedRequestsMore': ' and {count} more',
     'session.browser.loginFormMissing': 'Found neither a login form nor marker "{marker}" on {url}.',
     'session.browser.codeWithoutSecret': 'Sign-in asks for a one-time code ("{selector}"), but the environment\'s sign-in has neither codeSelector nor a step with with: totp, so no CAW_<ROLE>_TOTP is read.',
+    'session.browser.stepMissing': 'Sign-in step {step}: the element did not appear (on {path}). Check the selector in signIn.steps, or mark the step optional: true.',
     'session.browser.selectorMissing': '{key} "{selector}" is not on the sign-in page.',
     'session.browser.loginRejected': 'Sign-in on {url} rejected: the form is back after submitting (page: {path}). Wrong credentials, or the submit went nowhere.',
     'repair.asking': 'Sign-in failed. Claude is checking the page and proposing a fix …',

@@ -67,6 +67,7 @@ export default {
     'run.error.credentialsMissing': ({ names, file }) => `${names} ${String(names).includes(',') ? 'fehlen: als Umgebungsvariablen' : 'fehlt: als Umgebungsvariable'} oder in ${file} setzen.`,
     'run.error.unreachable': '{url} ist nicht erreichbar.',
     'run.openingChrome': 'Öffne Chrome und melde an ...',
+    'run.allowHttp': '{target} läuft über unverschlüsseltes http auf {host} (allowHttp): Alles, auch die Anmeldung, geht unverschlüsselt übers Netz.',
     'run.channelError': 'Kanal: {message}',
     'run.waitingForSession': 'Wartet auf deine Claude-Code-Session: Sage ihr „übernimm den caw-Lauf“',
     'run.consult.develop': 'Claude beantwortet deine Fragen im Chat ...',

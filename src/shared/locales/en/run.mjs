@@ -67,6 +67,7 @@ export default {
     'run.error.credentialsMissing': ({ names, file }) => `${names} missing: set ${String(names).includes(',') ? 'them as environment variables' : 'it as an environment variable'} or in ${file}.`,
     'run.error.unreachable': '{url} is not reachable.',
     'run.openingChrome': 'Opening Chrome and signing in ...',
+    'run.allowHttp': '{target} is plain http on {host} (allowHttp): everything, including the sign-in, travels unencrypted.',
     'run.channelError': 'Channel: {message}',
     'run.waitingForSession': 'Waiting for your Claude Code session: tell it "take over the caw run"',
     'run.consult.develop': 'Claude answers your questions in the chat ...',
