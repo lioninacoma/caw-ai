@@ -161,7 +161,7 @@ grid-template-areas:"steps browser chat"}
 #steps>li[data-kind=phase]>.head .name{font:400 19px/1.2 var(--font-crt);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
 #steps>li[data-kind=phase][data-state=fail]>.head .name{color:var(--fail)}
 /* The heading of the test's steps, between preparation and wrap-up: a section like a phase, but no group of its own. */
-#steps>li[data-kind=section]>.head{display:block;margin-top:10px}
+#steps>li[data-kind=section]>.head{grid-template-columns:minmax(0,1fr) auto;margin-top:10px}
 #steps>li[data-kind=section]>.head .name{font:400 19px/1.2 var(--font-crt);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
 .pts>li{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:6px;align-items:baseline;padding:1px 4px 1px 0;font-size:12.5px;color:var(--muted)}
 #steps>li[data-kind=step]>.pts>li{padding-left:22px}
@@ -395,8 +395,11 @@ const trees=()=>{for(const ol of document.querySelectorAll('#steps .pts')){const
 // One heading "── RUN ──" right before the first step, none without steps.
 const section=()=>{const list=$('steps'),first=items().find((li)=>li.dataset.kind==='step');let sec=[...list.children].find((li)=>li.dataset.kind==='section');
   if(!first){sec?.remove();return;}
-  if(!sec){sec=document.createElement('li');sec.dataset.kind='section';sec.setAttribute('role','presentation');const head=document.createElement('div');head.className='head';const name=document.createElement('span');name.className='name';head.append(name);sec.append(head);}
+  if(!sec){sec=document.createElement('li');sec.dataset.kind='section';sec.setAttribute('role','presentation');const head=document.createElement('div');head.className='head';const name=document.createElement('span');name.className='name';const ms=document.createElement('span');ms.className='ms';head.append(name,ms);sec.append(head);}
   sec.querySelector('.name').textContent=ruleText(T['workbench.page.runSection'].toUpperCase());
+  // Total time like the phases: the measured steps, once none is running any more.
+  const steps=items().filter((li)=>li.dataset.kind==='step'),timed=steps.filter((li)=>li.dataset.ms!==undefined);
+  sec.querySelector('.ms').textContent=timed.length>0&&!steps.some((li)=>li.dataset.state==='running')?duration(timed.reduce((total,li)=>total+Number(li.dataset.ms),0)):'';
   if(sec.nextElementSibling!==first)list.insertBefore(sec,first);};
 const summarize=()=>{
   section();

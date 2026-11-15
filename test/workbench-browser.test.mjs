@@ -342,8 +342,14 @@ test('workbench: the steps get the heading "Durchführung" between preparation a
     assert.deepEqual(await headings(), ['phase:prep'], 'no heading without steps');
     await bench.steps([{ id: 'prep', name: 'Vorbereitung', kind: 'phase' }, { id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }, { id: 'end', name: 'Abschluss', kind: 'phase' }]);
     assert.deepEqual(await headings(), ['phase:prep', 'section:DURCHFÜHRUNG', 'step:S1', 'step:S2', 'phase:end']);
+    const total = () => bench.page.textContent('#steps>li[data-kind=section] .ms');
+    await bench.step('S1', 'running');
     await bench.step('S1', 'pass');
     assert.equal(await bench.page.textContent('#tally'), '1/2');
+    await bench.step('S2', 'running');
+    assert.equal(await total(), '', 'no total while a step runs');
+    await bench.step('S2', 'pass');
+    assert.match(await total(), /^\d+ ms$/, 'the total of the steps, like the phases');
     await bench.group({ id: 'claude', name: 'Fehler klären', kind: 'phase' });
     assert.equal((await headings()).filter((entry) => entry.startsWith('section:')).length, 1);
 });
