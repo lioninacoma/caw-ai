@@ -12,7 +12,7 @@ import {
     ACTION_ENVIRONMENTS, APP_TOTP, AUTH_ENVIRONMENTS, ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeActionTests, removeLifecycleTests, removeNetworkTests,
     writeNetworkTests, writeProject, writeSpaTest,
 } from '../spa/project.mjs';
-import { here, humans, loadTest, newestRunOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
+import { here, humans, loadTest, newestRunOf, stateOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
 import { composeStack, exec, httpAlias, installPacked, mcpClient, packTarball, preflightPorts } from '../infra.mjs';
 
 const spaDir = join(here, 'spa');
@@ -920,4 +920,118 @@ scenario('M1', 'MPA record and run: sign-in form with a CSRF token, a flash afte
     const again = await callWith({ CI: '1' }, () => run(root, ['notes-paged', '--env', 'notes', '--headless']));
     verify('the recording replays in CI with more notes than before', again.value.exit === 0, `${shown(again.value)} ${failNote('notes-paged')}`);
     print('     403/422 visible in the assessment: gated by OPEN-12');
+});
+
+// ---- P9: U5, live updates and route changes
+
+scenario('U5', 'Live updates: SSE and a WebSocket ticker never block, readyIgnore makes the page quiet, a request aborted by a route change is no finding', spa, async () => {
+    const live = { local: ENVIRONMENTS.local, stream: { url: `http://stream.localhost:${SPA_PORT}` } };
+    setConfig({ ...baseConfig(live), readyIgnore: ['#live'] });
+    writeSpaTest(root, 'live-view');
+    const started = Date.now();
+    const ignored = await go(['live-view', '--env', 'stream']);
+    const seconds = Math.round((Date.now() - started) / 1000);
+    const report = () => readFileSync(join(newestRunOf(root, 'live-view').dir, 'report.md'), 'utf8');
+    verify('with readyIgnore the run passes quickly: the event stream and the socket are no open requests', ignored.exit === 0 && seconds < 40, `${shown(ignored)} ${failNote('live-view')} ${seconds} s`);
+    verify('no "did not get quiet" note with readyIgnore', !/quiet/.test(report()), report().split('\n').find((line) => /quiet/.test(line)) ?? '');
+    verify('the aborted slow request of the old view is no finding', !/api\/slow/.test(report()), report().split('\n').find((line) => /api\/slow/.test(line)) ?? '');
+    setConfig(baseConfig(live));
+    const busy = await go(['live-view', '--env', 'stream']);
+    verify('without readyIgnore the start page never settles: app-not-settled, exit 2, naming readyIgnore', busy.exit === 2 && busy.code === 'app-not-settled' && /readyIgnore/.test(busy.message ?? ''), shown(busy));
+});
+
+// ---- P9: S2, recording by plan with the Claude Code session as the agent
+
+/** A plan written by hand, as a team writes one before recording: steps without recording. */
+const planText = (id, { role, writes, steps }) => `${[`id: ${id}`, `role: ${role}`, `writes: ${writes}`, 'steps:',
+    ...steps.flatMap((step, index) => [`  - id: S${index + 1}`, `    name: ${JSON.stringify(step.name)}`, `    do: ${JSON.stringify(step.do)}`, `    expect: ${JSON.stringify(step.expect)}`])].join('\n')}\n`;
+const stepsYaml = (steps) => `steps:\n${steps.map((step, index) => `  - id: S${index + 1}\n    name: ${JSON.stringify(step.name)}\n    do: ${JSON.stringify(step.do)}\n    expect: ${JSON.stringify(step.expect)}`).join('\n')}\n`;
+const PLANS = {
+    'list-plan': { role: 'clerk', writes: false, steps: [{ name: 'Open the list', do: 'Open the ticket list.', expect: 'The ticket list is there.' }] },
+    'create-plan': { role: 'admin', writes: true, steps: [{ name: 'Create a ticket', do: 'Create a ticket named with the run tag.', expect: 'It says Saved.' }] },
+    // Written as read-only, but closing sends a mutation: recording promotes it to writes: true (H1's server action is such a POST).
+    'close-plan': { role: 'clerk', writes: false, steps: [{ name: 'Close the first ticket', do: 'Click "Close first".', expect: 'It says Closed.' }] },
+};
+
+/**
+ * Records one hand-written plan with the session tools as Claude Code would call them over MCP: caw_start, caw_status, caw. The
+ * run itself starts in this process (instead of detached) so the stand-in for the person can use its chat window.
+ */
+const recordBySession = async (id, act, ...windows) => {
+    writeFileSync(join(root, `caw/tests/${id}.yaml`), planText(id, PLANS[id]));
+    rmSync(join(root, `caw/recordings/${id}.yaml`), { force: true });
+    const people = humans(...windows);
+    let finished = null;
+    const spawnRun = (node, argv) => {
+        finished = callWith({ CI: '' }, () => recordCommand(root, argv.slice(2), { interactive: true, onChatOpen: people.onChatOpen }));
+        return { pid: process.pid, unref: () => {} };
+    };
+    const tools = Object.fromEntries(sessionTools({ root, spawnRun }).map((tool) => [tool.name, tool]));
+    const started = await tools.caw_start.call({ command: 'record', test: id, env: 'local' });
+    // caw_status returns at every change (sign-in, page loaded): ask again until the run waits for the agent, as Claude does.
+    let waiting = await tools.caw_status.call({ wait: 120 });
+    for (let tries = 0; tries < 10 && waiting.data?.state === 'running'; tries += 1) waiting = await tools.caw_status.call({ wait: 120 });
+    const caw = (args, file) => tools.caw.call(file === undefined ? { args } : { args, file });
+    const steps = await act(caw);
+    const result = await finished;
+    await people.done();
+    // The run ran in this process, whose pid stays alive: drop its pid file as a detached run's would be stale now.
+    for (const name of readdirSync(join(root, '.caw')).filter((file) => /^session-.*\.log\.pid$/.test(file))) rmSync(join(root, '.caw', name));
+    return { started, waiting, steps, result };
+};
+/** The check run's window: the person adopts the test plan. */
+const adopt = (chat) => chat.locator('#choices button', { hasText: /Adopt test plan/ }).click({ timeout: 90000 });
+const finishAll = (ids) => JSON.stringify({ expectations: ids.map((sid) => ({ id: sid, status: 'pass', evidence: { type: 'eval', value: 'ok' } })), omit: [] });
+
+scenario('S2', 'Record by plan as the session agent: caw_start, caw_status names the guide topics, caw drives; a read-only plan needs no approval, a writing one does', spa, async () => {
+    setConfig(baseConfig({ local: ENVIRONMENTS.local }));
+    let readOnlyPlan = '';
+    let sawApproval = false;
+    const reading = await recordBySession('list-plan', async (caw) => {
+        await caw(['task']);
+        readOnlyPlan = (await caw(['plan'], stepsYaml(PLANS['list-plan'].steps))).text;
+        await caw(['wait-ready']);
+        await caw(['check', 'S1', "document.querySelector('h1').textContent==='Tickets'"]);
+        return (await caw(['finish'], finishAll(['S1']))).text;
+    }, async (chat) => {
+        // The recording window: an approval card would put the chat into planning; it closes when the agent finishes.
+        sawApproval = await chat.locator('body[data-state=planning]').waitFor({ state: 'attached', timeout: 60000 }).then(() => true, () => false);
+    }, adopt);
+    const guide = reading.waiting.data?.waiting?.guide ?? [];
+    verify('(1) caw_status: the run waits for the session, with the guide topics agent, plan and record', reading.waiting.data?.state === 'waiting' && ['agent', 'plan', 'record'].every((topic) => guide.includes(topic)), `${reading.waiting.data?.state} ${JSON.stringify(guide)}`);
+    verify('(2) the unchanged read-only plan is approved without a card', /"approved": true/.test(readOnlyPlan) && !sawApproval, readOnlyPlan.split('\n').slice(0, 3).join(' '));
+    const listed = loadTest(root, 'list-plan');
+    verify('(3) adopted by the person: exit 0, recorded, writes: false kept (only GET)', reading.result.value.exit === 0 && listed.writes === false && listed.steps[0].recording !== undefined, `${shown(reading.result.value)} writes=${listed.writes}`);
+    const meta = listed.steps[0].recording ?? {};
+    verify('(3) S1 portability: no environments in the test; the recording has viewport, recordedOn, locale and timezone', listed.environments === undefined && meta.viewport !== undefined && meta.recordedOn === 'local' && typeof meta.locale === 'string' && typeof meta.timezone === 'string', JSON.stringify({ environments: listed.environments, viewport: meta.viewport, recordedOn: meta.recordedOn, locale: meta.locale, timezone: meta.timezone }));
+    verify('(4) no token notice for the session agent', !/token/i.test(reading.result.output), reading.result.output.split('\n').find((line) => /token/i.test(line)) ?? '');
+
+    let approvedByPerson = false;
+    const writing = await recordBySession('create-plan', async (caw) => {
+        const task = (await caw(['task'])).text;
+        const tag = /CAW-\d+/.exec(task)?.[0] ?? 'CAW-0';
+        await caw(['plan'], stepsYaml(PLANS['create-plan'].steps));
+        await caw(['click', "getByRole('button', { name: 'New ticket', exact: true })"]);
+        await caw(['fill', "getByRole('textbox', { name: 'Title', exact: true })", `Ticket ${tag}`]);
+        await caw(['click', "getByRole('button', { name: 'Save', exact: true })"]);
+        await caw(['check', 'S1', "document.getElementById('status').textContent==='Saved'"]);
+        return (await caw(['finish'], finishAll(['S1']))).text;
+    }, async (chat) => {
+        await stateOf(chat, 'planning');
+        approvedByPerson = await chat.locator('#approve').isVisible();
+        await chat.locator('#approve').click();
+    }, adopt);
+    const created = loadTest(root, 'create-plan');
+    verify('(5) the writing plan shows the approval card; adopted, the test writes and replays', approvedByPerson && writing.result.value.exit === 0 && created.writes === true, `${shown(writing.result.value)} ${writing.steps.split('\n')[0]}`);
+    const replay = await go(['create-plan', '--env', 'local']);
+    verify('(6) the recording replays without Claude', replay.exit === 0, `${shown(replay)} ${failNote('create-plan')}`);
+    const closing = await recordBySession('close-plan', async (caw) => {
+        await caw(['task']);
+        await caw(['plan'], stepsYaml(PLANS['close-plan'].steps));
+        await caw(['click', "getByRole('button', { name: 'Close first', exact: true })"]);
+        await caw(['check', 'S1', "document.getElementById('status').textContent==='Closed'"]);
+        return (await caw(['finish'], finishAll(['S1']))).text;
+    }, async () => {}, adopt);
+    verify('(7) a read-only plan that sent a write while recording becomes writes: true, with a warning naming it', closing.result.value.exit === 0 && loadTest(root, 'close-plan').writes === true && /CloseTicket/.test(closing.result.output), `${shown(closing.result.value)} ${closing.result.output.split('\n').find((line) => /CloseTicket|writes/.test(line)) ?? ''}`);
+    for (const id of Object.keys(PLANS)) for (const path of [`caw/tests/${id}.yaml`, `caw/recordings/${id}.yaml`]) rmSync(join(root, path), { force: true });
 });

@@ -130,7 +130,7 @@ export default {
     'session.browser.sessionExpired': 'The saved session has probably expired: caw role login {role} --env {env}',
     'session.browser.checkSelector': 'Check signIn.signedInSelector: it must also appear on the environment\'s start page, not only in the app.',
     'session.browser.markerMissing': '"{selector}" is missing on {url} after sign-in. {next}',
-    'session.browser.notSettled': 'The app didn\'t settle: {reason}',
+    'session.browser.notSettled': 'The app didn\'t settle: {reason}. If an area keeps changing by itself (ticker, clock, spinner), add its selector to readyIgnore in caw.config.json.',
     'session.browser.notLoaded': '{framework} is not loaded on {url}.',
 
     // browser-session: preparation group in the workbench

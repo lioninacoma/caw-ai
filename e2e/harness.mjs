@@ -181,6 +181,17 @@ export const CATALOGUE_ALIASES = {
     U1: ['N6', 'N7', 'N8', 'N9', 'N10d', 'N10e', 'N11'],
     U2: ['N2', 'N3'],
     H2: ['N14'],
+    // Recording: by demonstration and Claude (portal A, refs N1, demonstration N2), by plan in the session with the portability
+    // and write checks (S2), the same recording on an environment caw starts (S4).
+    S1: ['A', 'N1', 'N2', 'S2', 'S4'],
+    // Triage and repair: offer (C), repair one step (D, H), run --fix (O, P), assessment (X, Y), backend faults (D3), explanations (N11).
+    S5: ['C', 'D', 'H', 'O', 'P', 'X', 'Y', 'D3', 'N11'],
+    // Re-recording from a step: stale (B), record @S3 (E, Q, N5), failing check run (F), unchanged plan (I).
+    S6: ['B', 'E', 'F', 'I', 'Q', 'N5'],
+    // Reaching a state: open @S3 (N4), developing there (2), passed run handed over (R).
+    S7: ['N4', '2', 'R'],
+    // SSR: hydration-aware sign-in on the Next dev server and production build (N14); a POST while recording promotes writes (S2).
+    H1: ['N14', 'S2'],
 };
 
 /**

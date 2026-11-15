@@ -214,6 +214,14 @@ export const MPA_TESTS = {
     ] },
 };
 
+/** U5 (P9): a page with server-sent events, a WebSocket ticker and a route change that aborts a slow request. */
+export const LIVE_TESTS = {
+    'live-view': { role: 'clerk', writes: false, steps: [
+        { name: 'Open the live page', expect: 'Events and ticker are running.', actions: [{ 'wait-ready': {} }], check: "Number(document.getElementById('sse').textContent)>0&&document.getElementById('ticker').textContent.startsWith('tick')" },
+        { name: 'Open the details', expect: 'The details view is shown.', actions: [{ click: "getByRole('link', { name: 'Details', exact: true })", path: '/' }], check: "location.pathname==='/details'&&document.getElementById('view').textContent==='Details'" },
+    ] },
+};
+
 /** The single-file text of a test (description and recording), as parseTest reads it. */
 const testText = (id, { role, writes, steps, environments, locale = 'en-US', viewport = { width: 1280, height: 800 }, recordedOn = 'local' }) => {
     const lines = [`id: ${id}`, `role: ${role}`, `writes: ${writes}`, ...(environments === undefined ? [] : [`environments: [${environments.join(', ')}]`]), 'steps:'];
@@ -237,7 +245,7 @@ const testText = (id, { role, writes, steps, environments, locale = 'en-US', vie
 export const writeSpaTest = (root, id, extra = {}) => {
     rmSync(testPath(root, id), { force: true });
     rmSync(recordingPath(root, id), { force: true });
-    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id] ?? LIFECYCLE_TESTS[id] ?? ACTION_TESTS[id] ?? MPA_TESTS[id]), ...extra }), id), id });
+    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id] ?? LIFECYCLE_TESTS[id] ?? ACTION_TESTS[id] ?? MPA_TESTS[id] ?? LIVE_TESTS[id]), ...extra }), id), id });
 };
 
 /** The whole project: config, caw/.env and every test; runs and sessions of earlier runs removed. */
@@ -275,7 +283,7 @@ export const makeStale = (root, id) => {
 
 /** The action scenarios' tests, written only for them. */
 export const removeActionTests = (root) => {
-    for (const id of [...Object.keys(ACTION_TESTS), ...Object.keys(MPA_TESTS)]) {
+    for (const id of [...Object.keys(ACTION_TESTS), ...Object.keys(MPA_TESTS), ...Object.keys(LIVE_TESTS)]) {
         rmSync(testPath(root, id), { force: true });
         rmSync(recordingPath(root, id), { force: true });
     }

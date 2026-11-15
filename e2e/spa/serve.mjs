@@ -9,7 +9,7 @@
 //
 // Test endpoints: POST /test/reset clears this environment's tickets (and re-arms cold), POST /test/abort-on and /test/abort-off
 // switch abortive's page between aborting its search request and not, GET /healthz answers ok.
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createServer as createHttps } from 'node:https';
 
@@ -75,6 +75,8 @@ const ENVIRONMENTS = {
     mpaus: { auth: 'form', accounts: FORM_ACCOUNTS, mpa: true, us: true },
     // P9 (M1): the notes app with a CSRF token on every form, a flash message after post/redirect/get and pages of three notes.
     notes: { auth: 'form', accounts: FORM_ACCOUNTS, mpa: true, csrf: true, paged: true },
+    // P9 (U5): server-sent events, a WebSocket ticker and a route change that aborts a slow request.
+    stream: { auth: 'form', accounts: FORM_ACCOUNTS, live: true },
     // Keycloak users of the realm caw-e2e; the role comes from this table.
     ci: { auth: 'oidc', roles: { 'qa.clerk': 'clerk', 'qa.admin': 'admin' } },
     // P9: a stored session against Keycloak (sso), identifier-first (idfirst, its own client), Keycloak on the app's host
@@ -193,13 +195,32 @@ document.getElementById('report').addEventListener('click', () => window.open('/
 if (${env.extras === 'fault'}) setTimeout(() => alert('Maintenance at 22:00'), 300);
 </script>`);
 
+/** live: a counter by server-sent events, a ticker by WebSocket, and two views switched by history.pushState. */
+const liveBody = (env) => (env.live !== true ? '' : `<section id="live" aria-label="Live"><p>Events <span id="sse">0</span></p><p>Ticker <span id="ticker">-</span></p>
+<a id="toDetails" href="/details">Details</a><p id="view">List</p></section>
+<script>
+const events = new EventSource('/events');
+events.onmessage = (event) => { document.getElementById('sse').textContent = event.data; };
+const socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ticker');
+socket.onmessage = (event) => { document.getElementById('ticker').textContent = event.data; };
+// The list view loads something slow; leaving the view aborts it, as SPA routers do.
+const pending = new AbortController();
+fetch('/api/slow', { signal: pending.signal }).catch(() => {});
+document.getElementById('toDetails').addEventListener('click', (event) => {
+    event.preventDefault();
+    pending.abort();
+    history.pushState({}, '', '/details');
+    document.getElementById('view').textContent = 'Details';
+});
+</script>`);
+
 const appPage = (user, env) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Tickets</title>
 <style>body{font-family:sans-serif}dialog::backdrop{background:#0004}</style>${thirdPartyHead(env)}</head>
 <body class="signed-in"><header><span id="user-menu">${escape(user.user)}</span> <a href="/logout">Sign out</a></header>
 <main><h1>Tickets</h1>${user.role === 'admin' ? '<button id="new">New ticket</button>' : ''}
 <button id="gql" type="button">Load via GraphQL</button> <button id="close" type="button">Close first</button> <button id="persisted" type="button">Refresh</button>
 <label>Search <input id="q"></label> <button id="search" type="button">Search</button>
-<p id="status" role="status"></p><ul id="tickets"></ul></main>${thirdPartyBody(env)}${extrasBody(env)}
+<p id="status" role="status"></p><ul id="tickets"></ul></main>${thirdPartyBody(env)}${extrasBody(env)}${liveBody(env)}
 <dialog id="dialog" aria-label="New ticket"><form method="dialog"><label>Title <input id="title" name="title"></label>
 <button id="save" value="save">Save</button> <button value="cancel">Cancel</button></form></dialog>
 <script>
@@ -385,6 +406,19 @@ const handler = async (req, res) => {
     const user = userOf(req, env);
     if (user === null) return url.pathname.startsWith('/api/') ? send(res, 401, '{}', 'application/json') : redirect(res, '/login');
     if (env.mpa) return notes(req, res, env, url);
+    if (env.live && url.pathname === '/events') {
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+        let count = 0;
+        const timer = setInterval(() => { count += 1; res.write(`data: ${count}\n\n`); }, 300);
+        req.on('close', () => clearInterval(timer));
+        return undefined;
+    }
+    if (env.live && url.pathname === '/api/slow') {
+        const timer = setTimeout(() => send(res, 200, '{}', 'application/json'), 20000);
+        req.on('close', () => clearTimeout(timer));
+        return undefined;
+    }
+    if (env.live && url.pathname === '/details') return send(res, 200, appPage(user, env));
     if (url.pathname === '/api/tickets' && req.method === 'GET' && env.shared) {
         // Someone else works here too: a look-alike without a run tag and one of another run, and the order changes every time.
         const own = store(env);
@@ -435,7 +469,26 @@ const handler = async (req, res) => {
     return send(res, 404, 'not found', 'text/plain');
 };
 
-createServer(handler).listen(PORT, '127.0.0.1');
+const ticker = (req, socket) => {
+    const env = envOf(req);
+    if (env?.live !== true || !req.url.startsWith('/ticker') || userOf(req, env) === null) {
+        socket.destroy();
+        return;
+    }
+    const accept = createHash('sha1').update(`${req.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    let tick = 0;
+    const timer = setInterval(() => {
+        tick += 1;
+        const payload = Buffer.from(`tick ${tick}`);
+        socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload]));
+    }, 300);
+    socket.on('close', () => clearInterval(timer));
+    socket.on('error', () => clearInterval(timer));
+    // Frames from the browser (pings, close) are not answered: closing the page ends the socket.
+    socket.on('data', () => {});
+};
+createServer(handler).on('upgrade', ticker).listen(PORT, '127.0.0.1');
 if (!ONLY) {
     const tls = readCert();
     createHttps(tls, handler).listen(GATE_PORT, '127.0.0.1');

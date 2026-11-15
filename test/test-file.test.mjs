@@ -349,6 +349,17 @@ test('two files: when the tool learns, only the recording changes', (t) => {
     assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung');
 });
 
+test('writeTest: a hand-written read-only plan that wrote while recording is saved as writes: true; never back to false', (t) => {
+    const root = testRoot(t);
+    const plan = { ...spec(recorded('S1')), writes: false };
+    writeTest(root, plan);
+    assert.equal(loadTest(root, 't').writes, false);
+    writeTest(root, { ...plan, writes: true });
+    assert.equal(loadTest(root, 't').writes, true);
+    writeTest(root, { ...plan, writes: false });
+    assert.equal(loadTest(root, 't').writes, true, 'a later save without the flag does not make it read-only again');
+});
+
 test('two files: recordings and knownMessages in the description are an error; a run draft carries both', (t) => {
     const single = renderTest({ ...spec(recorded('S1'), recorded('S2', [], { after: 'S1' })), knownMessages: ['Old'] });
     assert.equal(parseTest(single).steps[1].recording.after, 'S1', 'draft: one file with recordings');

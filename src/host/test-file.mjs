@@ -831,6 +831,8 @@ export const writeTest = (root, spec, only, { withNotes = false, prune = false }
             return step !== undefined && (node === undefined || !sameText(doc, node, step));
         }));
         setSteps(doc, spec, textChanged, { withRecording: false, prune: prune && only !== undefined });
+        // A test that wrote while recording counts as writing; the file must say so, or it would run on read-only environments.
+        if (spec.writes === true && doc.get('writes') !== true) doc.set('writes', true);
         if (only === undefined || withNotes) {
             if (spec.notes === '' || spec.notes === undefined) doc.delete('notes');
             else doc.set('notes', spec.notes);

@@ -130,7 +130,7 @@ export default {
     'session.browser.sessionExpired': 'Die gespeicherte Sitzung ist vermutlich abgelaufen: caw role login {role} --env {env}',
     'session.browser.checkSelector': 'Prüfe signIn.signedInSelector: Er muss auch auf der Startseite der Umgebung erscheinen, nicht nur in der Anwendung.',
     'session.browser.markerMissing': 'Auf {url} fehlt nach der Anmeldung "{selector}". {next}',
-    'session.browser.notSettled': 'Die App kam nicht zur Ruhe: {reason}',
+    'session.browser.notSettled': 'Die App kam nicht zur Ruhe: {reason}. Ändert sich ein Bereich von selbst (Ticker, Uhr, Spinner), trag seinen Selektor unter readyIgnore in caw.config.json ein.',
     'session.browser.notLoaded': 'Auf {url} ist {framework} nicht geladen.',
 
     // browser-session: preparation group in the workbench
