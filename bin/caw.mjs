@@ -119,7 +119,6 @@ const main = async ([command, ...args]) => {
             if (prepared.code !== undefined) return prepared.code;
             return commands.init(root, prepared.answers);
         }
-        case 'skill': return (await host()).installSkill(root);
         case 'validate': return (await host()).validate(root);
         case 'list': return (await host()).list(root, args);
         case 'theme': return (await import('../src/host/theme-command.mjs')).themeCommand(root, args);

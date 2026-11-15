@@ -32,26 +32,32 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.mode` only a
 
 ### From your Claude Code session
 
-`init` adds the MCP server to the project's `.mcp.json` (`node node_modules/caw-ai/bin/caw-ai.mjs mcp`). Your session then has these tools:
+Register caw once as an MCP server of the project:
+
+```bash
+claude mcp add caw --scope project -- npx caw-ai mcp
+```
+
+On Windows (not WSL) `npx` needs a wrapper: `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`. Once caw is
+installed in the project (`npm i -D caw-ai`), `init` points the entry at the installed copy
+(`node node_modules/caw-ai/bin/caw.mjs mcp`); restart Claude Code afterwards. Your session then has these tools:
 
 | Tool | Purpose | Tokens |
 |---|---|---|
-| `caw_doctor` | `doctor` as data: every check with next step, counts of blocking and optional ones | no |
-| `caw_init` | `init` without questions: `offline`, or `fromExplore` after `caw_explore`; `roles`, `noMcp`. Returns created files and TODO fields | no |
-| `caw_explore` | runs `explore` (`login: true/false` or `yes`), waits until you are done in the window and returns the suggestions with the saved roles | no |
-| `caw_role` | `list` roles and whether a test user is set; `add` opens the sign-in window for you, you save the role there, the tool returns it; `remove` | no |
+| `caw_guide` | How to work with caw, per topic (`setup`, `tests`, `run`, `session`, `config` …); without a topic the index | no |
+| `caw_init` | `mode: explore` opens the app for you to sign in and returns the suggestions with the saved roles; `mode: write` writes the config from them; `mode: offline` the template with TODO | no |
 | `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written | no |
-| `caw_validate` | `validate` as data: config findings, per test problems, hints and code per target | no |
-| `caw_list` | `list` as data: per test app, role, targets, writes, recording state per step | no |
-| `caw_overlay` | `action: status`: is the local code server ready (`ready`, `moved`, `down`, `wrong-app`, `stale`) with `url`, `start` and `appDir`, fast and without a browser; `check` and `apply`: `overlay check` (with `--apply`), waits up to 3 minutes | no |
-| `caw_start` | starts `run`, `record` or `open` with `--agent session`: fields `test`, `target`, `step`, `overlay`, `headless` (or `args`). `step` needs `test` and means `<test>@<step>`: `record` re-records from there, `open` stops at its entry. With `overlay` it checks the local code server first: if it isn't ready it returns `state`, `url`, `start` and `appDir` instead of starting; the session asks you, starts `start` in the background and polls `caw_overlay` status. On another port (`moved`) it starts against the found URL | none beyond your session |
-| `caw_status` | whether a run is waiting for the session, the last lines of output (`.caw/session-*.log`), and as data the last run: result, last step, artefacts (report, trace, logs) | no |
-| `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …), as described in the skill | as part of the run |
+| `caw_role` | `list` roles and whether a test user is set; `add` opens the sign-in window, you save the role there; `login` saves a session (SSO); `remove` | no |
+| `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
+| `caw_start` | starts `run`, `record` or `open` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset` (or `args`) | none beyond your session |
+| `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
+| `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |
 | `caw_selection` | the element you picked with the crosshair in the workbench while developing | no |
+| `caw_overlay` | only with an `overlay` block: is the local code server ready, `check` and `apply` | no |
 
-The data tools return a short text and the same result as `structuredContent` (JSON). None of them prints to the MCP channel or asks on stdin; `explore`, `overlay check` and runs run as separate processes. caw never starts your local code server from the session; Claude does that in its own session after asking you, unless your project's rules (e.g. `CLAUDE.md`) say otherwise.
+The server tells Claude Code what caw is for and to read `caw_guide` first; there is no skill file. The data tools return a short text and the same result as `structuredContent` (JSON). None of them prints to the MCP channel or asks on stdin; explore, `overlay check` and runs run as separate processes. caw never starts your local code server from the session; Claude does that in its own session after asking you, unless your project's rules (e.g. `CLAUDE.md`) say otherwise.
 
-So in your session you write "record a test for the order" or "take me to S4 of bestellung", and the skill does the rest. If you start the run yourself in the terminal with `--agent session`, the chat shows that it is waiting for the session; then tell it "take over the caw run" (it finds it with `caw_status`).
+So in your session you write "record a test for the order" or "take me to S4 of bestellung", and the session does the rest with the guide. If you start the run yourself in the terminal with `--agent session`, the chat shows that it is waiting for the session; then tell it "take over the caw run" (it finds it with `caw_status`).
 
 - **Fewer questions:** With your session as the agent there is no token notice, and `record` of an existing test plan starts without asking who demonstrates. A read-only plan that the session follows unchanged needs no plan approval; adopting the tested plan at the end always does.
 - **Waiting:** `plan` and `chat` wait for you for up to an hour. If Claude Code cancels the call earlier, raise `MCP_TOOL_TIMEOUT` (milliseconds) in Claude Code's environment.
@@ -107,7 +113,7 @@ caw open bestellung@S4 --env local
 caw record bestellung@S4 --env local
 ```
 
-In Claude Code one sentence is enough: `/caw-ai take me to where the cart is filled`. The skill finds test and step and starts `open`. If nothing fits, it suggests `record`.
+In Claude Code one sentence is enough: "take me to where the cart is filled". The session finds test and step and starts `open`. If nothing fits, it suggests `record`.
 
 ## How you work with it
 
@@ -401,7 +407,7 @@ A request matches by the last segment of its path; the folder in front of it is 
 
 Set up the overlay in this order:
 
-1. Set `overlay.url` and `overlay.start` on the app (`init` writes the ExtJS default `http://localhost:1841/`; the skill derives both from `vite.config`, `angular.json`, `package.json` scripts or the README).
+1. Set `overlay.url` and `overlay.start` on the app (`init` writes the ExtJS default `http://localhost:1841/`; your Claude Code session derives both from `vite.config`, `angular.json`, `package.json` scripts or the README).
 2. Start the server yourself with `start` in the app folder, or let your Claude Code session do it (it asks first and runs it in the background).
 3. `npx caw overlay status` until `ready` (`moved`: set `url` to the address it names).
 4. `npx caw overlay check` until it reports complete (`--apply` adds suggested patterns).

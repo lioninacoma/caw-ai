@@ -22,9 +22,6 @@ COPY tool /opt/caw-ai
 RUN printf '#!/bin/sh\nexec node /opt/caw-ai/bin/caw.mjs "$@"\n' > /usr/local/bin/caw \
     && chmod 0755 /usr/local/bin/caw
 
-COPY skill.md /home/{{user}}/.claude/skills/caw-ai/SKILL.md
-RUN chown -R {{user}}: /home/{{user}}/.claude
-
 COPY init-firewall.sh /usr/local/bin/caw-init-firewall
 COPY entrypoint.sh /usr/local/bin/caw-entrypoint
 RUN chmod 0755 /usr/local/bin/caw-init-firewall /usr/local/bin/caw-entrypoint

@@ -4,7 +4,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,14 @@ import { fileURLToPath } from 'node:url';
 const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
 const PROTOCOL = '2025-06-18';
 const MAX_OUTPUT = 200_000;
+/** The package version, as serverInfo.version. */
+const VERSION = (() => {
+    try {
+        return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version ?? '0';
+    } catch {
+        return '0';
+    }
+})();
 
 /** What the agent may run: exactly the sandbox commands, never the host ones (run, record, init ...). */
 export const AGENT_COMMANDS = new Set(['task', 'snapshot', 'url', 'click', 'dblclick', 'hover', 'drag', 'dialog', 'upload', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload',
@@ -83,26 +91,36 @@ export const cawTool = ({ agentDir, env = process.env, run = runCli }) => ({
 
 /**
  * Answers a JSON-RPC message; undefined for notifications.
- * @param tools entries { name, description, inputSchema, call(input) -> { text, data?, isError } }; by default only caw with `agentDir`.
- *              With `data` the result also carries it as `structuredContent`, next to the text.
+ * @param tools entries { name, description, inputSchema, call(input) -> { text, data?, isError, listChanged? } }, or a function
+ *              returning the entries currently offered; by default only caw with `agentDir`. With `data` the result also
+ *              carries it as `structuredContent`, next to the text. `listChanged` sends notifications/tools/list_changed.
+ * @param instructions the `instructions` of the initialize result
+ * @returns (message, notify?) -> answer; notify(message) sends a notification to the client
  */
-export const createMcpHandler = ({ agentDir, env = process.env, run = runCli, tools, name = 'caw' } = {}) => {
-    const all = tools ?? [cawTool({ agentDir, env, run })];
-    return async (message) => {
+export const createMcpHandler = ({ agentDir, env = process.env, run = runCli, tools, name = 'caw', instructions } = {}) => {
+    const offered = typeof tools === 'function' ? tools : () => tools ?? [cawTool({ agentDir, env, run })];
+    const dynamic = typeof tools === 'function';
+    return async (message, notify = () => {}) => {
         const { id, method, params } = message ?? {};
         const reply = (result) => ({ jsonrpc: '2.0', id, result });
         const failure = (code, text) => ({ jsonrpc: '2.0', id, error: { code, message: text } });
         if (id === undefined || id === null) return undefined;
         switch (method) {
             case 'initialize':
-                return reply({ protocolVersion: typeof params?.protocolVersion === 'string' ? params.protocolVersion : PROTOCOL, capabilities: { tools: {} }, serverInfo: { name, version: '1' } });
+                return reply({
+                    protocolVersion: typeof params?.protocolVersion === 'string' ? params.protocolVersion : PROTOCOL,
+                    capabilities: { tools: dynamic ? { listChanged: true } : {} },
+                    serverInfo: { name, version: VERSION },
+                    ...(instructions === undefined ? {} : { instructions }),
+                });
             case 'ping': return reply({});
-            case 'tools/list': return reply({ tools: all.map(({ call: _call, ...definition }) => definition) });
+            case 'tools/list': return reply({ tools: offered().map(({ call: _call, extension: _extension, ...definition }) => definition) });
             case 'tools/call': {
-                const tool = all.find((candidate) => candidate.name === params?.name);
+                const tool = offered().find((candidate) => candidate.name === params?.name);
                 if (tool === undefined) return failure(-32602, `Unknown tool: ${params?.name}`);
                 try {
-                    const { text, data, isError = false } = await tool.call(params.arguments ?? {});
+                    const { text, data, isError = false, listChanged = false } = await tool.call(params.arguments ?? {});
+                    if (listChanged) notify({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
                     return reply({ content: [{ type: 'text', text }], ...(data === undefined ? {} : { structuredContent: data }), isError });
                 } catch (error) {
                     return reply({ content: [{ type: 'text', text: error.message }], isError: true });
@@ -125,7 +143,8 @@ export const serveMcp = (handler, { input = process.stdin, output = process.stdo
             output.write(`${JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Invalid JSON.' } })}\n`);
             return;
         }
-        const answer = await handler(message);
+        const answer = await handler(message, (note) => output.write(`${JSON.stringify(note)}
+`));
         if (answer !== undefined) output.write(`${JSON.stringify(answer)}\n`);
     });
     lines.on('close', done);

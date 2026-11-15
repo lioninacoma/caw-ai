@@ -132,12 +132,19 @@ With `CI` set there is no chat and Claude is not started. Record locally, commit
 
 ### From Claude Code
 
-`init` also adds a skill and an MCP server. Then, in Claude Code:
+Register caw as an MCP server of the project, then just ask Claude Code:
+
+```bash
+claude mcp add caw --scope project -- npx caw-ai mcp
+```
 
 ```
-/caw record a test for creating a ticket
-/caw-ai take me to the ticket detail page, I want to work on the status field
+set up caw for this project
+record a test for creating a ticket
+take me to the ticket detail page, I want to work on the status field
 ```
+
+On Windows (not WSL): `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`.
 
 ## Working in the window
 

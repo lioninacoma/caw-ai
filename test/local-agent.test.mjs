@@ -9,6 +9,7 @@ import { LOCAL_ALLOWED, LOCAL_DENY, localClaudeArgs, writeLocalSetup } from '../
 import { AGENT_COMMANDS, commandLine, createMcpHandler, serveMcp } from '../src/sandbox/mcp.mjs';
 import { claudeVersion, localAgentEnv, localCommand, requireClaude } from '../src/host/local-agent.mjs';
 import { resolveClaude } from '../src/shared/claude-bin.mjs';
+import { agentGuide } from '../src/host/guide.mjs';
 import { agentMode, validateConfig } from '../src/shared/config.mjs';
 
 const tempDir = (t) => {
@@ -29,8 +30,9 @@ test('local: read-only plus the caw tool, no shell, nothing is asked, secrets de
     for (const pattern of ['Read(.env)', 'Grep(caw/.auth/**)', 'Glob(.git/**)', 'Read(.caw/**)', 'Read(**/.npmrc)', 'Read(**/.aws/**)', 'Grep(**/.ssh/**)', 'Read(**/*.env)', 'Glob(**/credentials.json)']) assert.ok(LOCAL_DENY.includes(pattern), pattern);
 });
 
-test('local: setup in the agent folder, the guide is the skill with a preamble', (t) => {
+test('local: setup in the agent folder, the system prompt is the run guide the host wrote, with a preamble', (t) => {
     const dir = tempDir(t);
+    writeFileSync(join(dir, 'guide.md'), agentGuide({ framework: 'web' }));
     const setup = writeLocalSetup(dir, { CAW_COLOR: '1' });
     const mcp = JSON.parse(readFileSync(setup.mcpConfig, 'utf8')).mcpServers.caw;
     assert.deepEqual(mcp.args.slice(-2), ['agent', 'mcp']);
@@ -47,8 +49,8 @@ test('local: setup in the agent folder, the guide is the skill with a preamble',
     assert.deepEqual(Object.keys(carried.permissions), ['deny']);
     const guide = readFileSync(setup.systemPromptFile, 'utf8');
     assert.match(guide, /^You are running locally/);
-    assert.match(guide, /## Flow in the sandbox/);
-    assert.doesNotMatch(guide, /^---/m, 'without the skill frontmatter');
+    assert.match(guide, /# caw: the flow of a run/);
+    assert.doesNotMatch(guide, /# caw: set up a project/, 'only the run topics');
 });
 
 test('MCP: commands as in the sandbox, files as content, host commands rejected', (t) => {
@@ -185,7 +187,14 @@ test('caw mcp: start a run with --agent session, status, selection, caw only wit
     const handler = sessionMcpHandler({ root, spawnRun, run: async (args, env) => { calls.push({ args, env }); return { code: 0, out: 'ok' }; } });
     const call = async (name, args) => (await handler({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })).result;
     const list = await handler({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_explore', 'caw_role', 'caw_overlay', 'caw']);
+    // Without an overlay block no caw_overlay; caw_explore is now caw_init with mode explore.
+    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_role', 'caw_guide', 'caw']);
+    const hello = (await handler({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })).result;
+    assert.equal(hello.serverInfo.name, 'caw');
+    assert.equal(hello.serverInfo.version, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+    assert.deepEqual(hello.capabilities.tools, { listChanged: true });
+    assert.match(hello.instructions, /caw_guide/);
+    assert.ok(hello.instructions.split('\n').length <= 12);
     assert.ok(list.result.tools.every((tool) => tool.call === undefined && tool.inputSchema !== undefined));
 
     assert.match((await call('caw_status', {})).content[0].text, /Kein Lauf wartet/);
@@ -204,9 +213,11 @@ test('caw mcp: start a run with --agent session, status, selection, caw only wit
     assert.match(denied.content[0].text, /caw_start/);
     assert.equal(calls.length, 0);
 
-    const agent = announceSessionAgent({ root, runId: 'r9', agentDir: join(root, 'agent'), mode: 'run', hint: 'Run r9 is open.' });
+    const agent = announceSessionAgent({ root, runId: 'r9', agentDir: join(root, 'agent'), mode: 'run', hint: 'Run r9 is open.', guide: ['agent', 'plan', 'record', 'chat', 'rules'] });
     t.after(() => agent.stop());
-    assert.match((await call('caw_status', {})).content[0].text, /Run r9 is waiting for you \(run\)/);
+    const waiting = await call('caw_status', {});
+    assert.match(waiting.content[0].text, /Run r9 is waiting for you \(run\)\. Task: Run r9 is open\. Read caw_guide with the topics agent, plan, record, chat, rules first/);
+    assert.deepEqual(waiting.structuredContent.waiting.guide, ['agent', 'plan', 'record', 'chat', 'rules']);
     assert.equal((await call('caw', { args: ['snapshot'] })).isError, false);
     assert.equal(calls[0].env.CAW_AGENT_DIR, join(root, 'agent'));
     assert.match((await call('caw_selection', {})).content[0].text, /Noch kein Element/);

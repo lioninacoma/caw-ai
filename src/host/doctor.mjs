@@ -14,6 +14,7 @@ import { ago } from './code-source.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { parseEnvFile } from './linux.mjs';
 import { claudeVersion } from './local-agent.mjs';
+import { MCP_NAME, isNpxEntry, mcpEntry } from './mcp-entry.mjs';
 import { OVERLAY_CHECK_FILE, overlayStatus } from './overlay-check.mjs';
 
 const browserName = (config) => {
@@ -79,15 +80,16 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     if (sandbox === 'session') {
         // The developer's own Claude Code session takes over via caw mcp: that only needs the entry in .mcp.json.
         const mcp = join(root, '.mcp.json');
-        let listed = false;
+        let entry;
         try {
-            listed = existsSync(mcp) && JSON.parse(readFileSync(mcp, 'utf8'))?.mcpServers?.['caw-ai'] !== undefined;
+            entry = existsSync(mcp) ? JSON.parse(readFileSync(mcp, 'utf8'))?.mcpServers?.[MCP_NAME] : undefined;
         } catch {
             // A broken .mcp.json counts as a missing entry.
         }
-        add(listed
-            ? { ok: true, optional: true, text: t('cli.doctorSessionOk') }
-            : { ok: false, optional: true, text: t('cli.doctorSessionMissing'), next: t('cli.doctorSessionNext') });
+        // npx although caw is installed: another version than the project's, and network on every start (OPEN-16).
+        if (entry === undefined) add({ ok: false, optional: true, text: t('cli.doctorSessionMissing'), next: t('cli.doctorSessionNext') });
+        else if (isNpxEntry(entry) && mcpEntry(root).command === 'node') add({ ok: false, optional: true, text: t('cli.doctorSessionNpx'), next: t('cli.doctorSessionNpxNext') });
+        else add({ ok: true, optional: true, text: t('cli.doctorSessionOk') });
     } else if (sandbox === 'local') {
         const version = (probes.claude ?? claudeVersion)();
         add(version !== undefined

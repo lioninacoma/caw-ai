@@ -34,7 +34,7 @@ npx caw doctor
 | `src/host/` | Everything on your machine: browser session, replay, workbench and chat UI, reports |
 | `src/sandbox/` | The commands Claude may use while recording |
 | `src/shared/` | Config, i18n (`locales/de`, `locales/en`), reports, helpers |
-| `templates/` | Files `init` writes into a project (config, skill, Docker sandbox) |
+| `templates/` | Config template, Docker sandbox and the guide topics `caw_guide` serves (`templates/guide/`) |
 | `test/` | Unit tests (`node --test`) |
 | `e2e/` | End-to-end run against a fake app in a real Chrome |
 | `assets/fonts/` | Fonts of the built-in themes (OFL) |

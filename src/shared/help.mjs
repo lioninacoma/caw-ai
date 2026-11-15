@@ -7,7 +7,7 @@ import { colorEnabled, themePainter } from './color.mjs';
 import { ravenBanner } from './raven.mjs';
 
 /** The commands for people, in help order. */
-export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'list', 'validate', 'doctor', 'role', 'theme', 'overlay', 'skill'];
+export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'list', 'validate', 'doctor', 'role', 'theme', 'overlay'];
 /** Commands that exist but are not in the human help: the session MCP server and Claude's namespace. */
 const HIDDEN_COMMANDS = ['mcp', 'agent'];
 /** Claude's commands, under `caw agent`; their help is `caw agent --help`. */
@@ -28,6 +28,9 @@ const MOVED = {
     'firewall-check': 'agent firewall-check',
     ...Object.fromEntries(AGENT_COMMANDS.map((name) => [name, `agent ${name}`])),
 };
+
+/** Commands removed before 1.0: the message says what replaces them. */
+const REMOVED = { skill: 'cli.removedSkill' };
 
 /** A command's block; `here` names the environments Claude may work on, if the config knows them. */
 const block = (command, here) => t(`cli.help.${command}`, { here: here === undefined || here === '' ? '' : t('cli.help.here', { names: here }) });
@@ -58,6 +61,7 @@ export const hasHelp = (command) => command === 'agent' || HOST_COMMANDS.include
  */
 export const unknownCommandText = (command, { agent = false } = {}) => {
     if (!agent && MOVED[command] !== undefined) return t('cli.movedCommand', { command, now: MOVED[command] });
+    if (!agent && REMOVED[command] !== undefined) return t(REMOVED[command]);
     const names = agent ? [...AGENT_COMMANDS, ...AGENT_PLUMBING] : [...HOST_COMMANDS, ...HIDDEN_COMMANDS, ...OTHER.filter((name) => !name.startsWith('-'))];
     const near = closest(command ?? '', names);
     return t(agent ? 'cli.unknownAgentCommand' : 'cli.unknownCommand', { command, suggestion: near === undefined ? '' : t('cli.didYouMean', { name: near }) });

@@ -2,7 +2,7 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
@@ -21,29 +21,14 @@ import { environmentLifecycle } from './lifecycle.mjs';
 import { ensureTestUser } from './role-capture.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
+import { ensureMcpEntry } from './mcp-entry.mjs';
 import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
-const SKILL_DIR = '.claude/skills/caw-ai';
-/** Entry for .mcp.json: node instead of npx works the same on every system and needs no cmd /c on Windows. */
-export const MCP_ENTRY = { command: 'node', args: ['node_modules/caw-ai/bin/caw.mjs', 'mcp'] };
-/**
- * The MCP entry for a project folder. In a monorepo caw-ai is often installed in a parent folder (hoisted): the path then
- * points there, relative to the project folder, where Claude Code starts the server.
- */
-export const mcpEntry = (root) => {
-    for (let dir = resolve(root); ; dir = dirname(dir)) {
-        if (existsSync(join(dir, 'node_modules', 'caw-ai', 'bin', 'caw.mjs'))) {
-            const path = relative(root, join(dir, 'node_modules', 'caw-ai', 'bin', 'caw.mjs')).split(sep).join('/');
-            return { ...MCP_ENTRY, args: [path, 'mcp'] };
-        }
-        if (dirname(dir) === dir) return MCP_ENTRY;
-    }
-};
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
 // Only what the container runs. Browser code and devlink stay out.
 // themes: the shared terminal output (also the error lines of caw-ai in the container) reads the built-in theme.
 const TOOL_PARTS = ['bin', 'src/sandbox', 'src/shared', 'themes', 'package.json'];
-const IMAGE_TEMPLATES = ['Dockerfile.tpl', 'init-firewall.sh', 'entrypoint.sh', 'skill.md'];
+const IMAGE_TEMPLATES = ['Dockerfile.tpl', 'init-firewall.sh', 'entrypoint.sh'];
 const SANDBOX_USER = 'devuser';
 /** Without a project image: Node LTS on Debian. Claude Code only needs Node. */
 export const DEFAULT_SANDBOX_IMAGE = 'node:22-bookworm-slim';
@@ -315,45 +300,12 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     return config;
 };
 
-/**
- * The tools for the developer's Claude Code session; the entry is added to .mcp.json unless it is already there or the file is invalid.
- * @returns true if the file was written
- */
+/** The caw entry in .mcp.json for init, with what the person needs to know. @returns true if the file was written */
 const addMcpEntry = (root) => {
-    const mcpFile = join(root, '.mcp.json');
-    let mcp = { mcpServers: {} };
-    try {
-        mcp = existsSync(mcpFile) ? JSON.parse(readFileSync(mcpFile, 'utf8')) : mcp;
-    } catch {
-        mcp = null;
-    }
-    if (mcp === null) {
-        ui.warn(t('cli.mcpInvalid'));
-        return false;
-    }
-    if (mcp.mcpServers?.['caw-ai'] !== undefined) return false;
-    mcp.mcpServers = { ...(mcp.mcpServers ?? {}), 'caw-ai': mcpEntry(root) };
-    writeFileSync(mcpFile, `${JSON.stringify(mcp, null, 2)}\n`);
-    return true;
-};
-
-/**
- * `caw skill`: only the skill (and the MCP entry), without a config, so Claude Code can guide the setup itself
- * ("set up caw"). An existing skill is updated to this version.
- */
-export const installSkill = (root) => {
-    const file = join(root, SKILL_DIR, 'SKILL.md');
-    const content = readFileSync(templatePath('skill.md'), 'utf8');
-    const before = existsSync(file) ? readFileSync(file, 'utf8') : null;
-    if (before !== content) {
-        mkdirSync(join(root, SKILL_DIR), { recursive: true });
-        writeFileSync(file, content);
-    }
-    const mcp = addMcpEntry(root);
-    const skillText = before === null ? t('cli.skillCreated', { file: `${SKILL_DIR}/SKILL.md` }) : before === content ? t('cli.skillCurrent') : t('cli.skillUpdated', { file: `${SKILL_DIR}/SKILL.md` });
-    ui.success(`${skillText}${mcp ? ', .mcp.json' : ''}.`);
-    if (!existsSync(join(root, CONFIG_FILE))) ui.note(t('cli.skillNext'));
-    return EXIT.pass;
+    const state = ensureMcpEntry(root);
+    if (state === 'invalid') ui.warn(t('cli.mcpInvalid'));
+    if (state === 'updated') ui.note(t('cli.mcpUpdated'));
+    return state === 'created' || state === 'updated';
 };
 
 /**
@@ -370,7 +322,7 @@ export const envExample = (config) => {
 };
 
 /**
- * Creates config, .env example, skill, notes and .gitignore entries. Existing files stay untouched.
+ * Creates config, .env example, notes, the MCP entry and .gitignore entries. Existing files stay untouched.
  * @param answers from the `init` dialog (`framework`, `url`, `signIn`); without: template with the detected framework
  */
 export const init = (root, answers = {}) => {
@@ -382,14 +334,12 @@ export const init = (root, answers = {}) => {
         writeFileSync(path, content);
         created.push(target);
     };
-    const template = (name) => readFileSync(templatePath(name), 'utf8');
     const detected = detectApp(root);
     const config = starterConfig({ framework: detected.framework, ...answers });
     write(CONFIG_FILE, `${JSON.stringify(config, null, 4)}\n`);
     // No example test: it would not fit the application. record creates the first test.
     const example = envExample(config);
     if (example !== null) write(`${ENV_FILE}.example`, example);
-    write(`${SKILL_DIR}/SKILL.md`, template('skill.md'));
     // The folder for test plans and the notes for Claude: shows right away where things belong.
     if (!existsSync(join(root, TEST_DIR))) write(`${TEST_DIR}/.gitkeep`, '');
     write(CONTEXT_FILE, t('cli.contextTemplate'));
@@ -530,7 +480,6 @@ const ensureImage = async (docker, baseImage, user) => {
         Dockerfile: renderDockerfile({ image: baseImage, user }),
         'init-firewall.sh': readFileSync(templatePath('init-firewall.sh'), 'utf8'),
         'entrypoint.sh': readFileSync(templatePath('entrypoint.sh'), 'utf8').replaceAll('{{user}}', user),
-        'skill.md': readFileSync(templatePath('skill.md'), 'utf8'),
     };
     // realpath: on Windows the temp path may contain a short name like FSCHUB~1 that WSL does not know.
     const context = mkdtempSync(join(realpathSync.native(tmpdir()), 'caw-build-'));

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { init, record, run, starterConfig, validate } from '../src/host/commands.mjs';
+import { npxEntry } from '../src/host/mcp-entry.mjs';
 import { roleCommand } from '../src/host/role-command.mjs';
 import { validateConfig } from '../src/shared/config.mjs';
 import { exitOf } from '../src/shared/errors.mjs';
@@ -31,7 +32,9 @@ test('init: passes validate at once, creates no example test, credentials are gi
     assert.equal(readFileSync(join(explored, 'caw', 'caw.md'), 'utf8'), 'eigen');
     const ignore = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/);
     assert.ok(ignore.includes('.caw/') && ignore.includes('caw/.env') && ignore.includes('caw/.auth/'));
-    assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers['caw-ai'], { command: 'node', args: ['node_modules/caw-ai/bin/caw.mjs', 'mcp'] });
+    // Not installed here: npx, the way claude mcp add writes it. No skill.
+    assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers.caw, npxEntry());
+    assert.ok(!existsSync(join(root, '.claude')));
 });
 
 test('init: extends an existing .mcp.json, leaves the rest alone, and skips it without mcp', (t) => {
@@ -41,7 +44,7 @@ test('init: extends an existing .mcp.json, leaves the rest alone, and skips it w
     writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { andere: { command: 'x' } } }));
     init(root);
     const mcp = JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8'));
-    assert.deepEqual(Object.keys(mcp.mcpServers), ['andere', 'caw-ai']);
+    assert.deepEqual(Object.keys(mcp.mcpServers), ['andere', 'caw']);
     const other = mkdtempSync(join(tmpdir(), 'caw-init-nomcp-'));
     t.after(() => rmSync(other, { recursive: true, force: true }));
     init(other, { mcp: false });
@@ -212,9 +215,16 @@ test('doctor: names the next step per problem, optional items do not block, neve
     assert.ok(!docker.some(({ text }) => /Claude Code 2/.test(text)));
     rmSync(join(root, '.mcp.json'), { force: true });
     const session = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' });
-    assert.match(session.find(({ text }) => /mcp\.json/.test(text)).next, /caw skill/);
-    writeFileSync(join(root, '.mcp.json'), '{ "mcpServers": { "caw-ai": { "command": "npx", "args": ["caw-ai", "mcp"] } } }');
-    assert.ok((await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' })).find(({ text }) => /mcp\.json/.test(text)).ok);
+    assert.match(session.find(({ text }) => /mcp\.json/.test(text)).next, /claude mcp add caw --scope project -- npx caw-ai mcp/);
+    writeFileSync(join(root, '.mcp.json'), '{ "mcpServers": { "caw": { "command": "npx", "args": ["caw-ai", "mcp"] } } }');
+    const sessionCheck = async () => (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' })).find(({ text }) => /mcp\.json/.test(text));
+    assert.ok((await sessionCheck()).ok);
+    // Installed in the project but still started through npx (OPEN-16): another version, so init switches it.
+    mkdirSync(join(root, 'node_modules', 'caw-ai', 'bin'), { recursive: true });
+    writeFileSync(join(root, 'node_modules', 'caw-ai', 'bin', 'caw.mjs'), '');
+    const npx = await sessionCheck();
+    assert.equal(npx.ok, false);
+    assert.match(npx.next, /npx caw init/);
 });
 
 test('init: detects the framework, takes answers, no role without login', async (t) => {
@@ -284,22 +294,10 @@ test('missing test: the record hint only names flags the config does not determi
     await assert.rejects(record(root, ['neu', '--env', target]), (error) => error.code === 'usage' && /fehlt --role\. Aufruf: caw record neu/.test(error.message));
 });
 
-test('skill: only skill and MCP entry, no config; updates an old skill', async (t) => {
-    const { installSkill } = await import('../src/host/commands.mjs');
-    const root = mkdtempSync(join(tmpdir(), 'caw-skill-'));
-    t.after(() => rmSync(root, { recursive: true, force: true }));
-    const said = [];
-    t.mock.method(console, 'log', (text) => said.push(text));
-    assert.equal(installSkill(root), 0);
-    const file = join(root, '.claude', 'skills', 'caw-ai', 'SKILL.md');
-    assert.match(readFileSync(file, 'utf8'), /### Set up a project/);
-    assert.ok(!existsSync(join(root, 'caw.config.json')), 'no config');
-    assert.match(said.join('\n'), /Angelegt: .*SKILL\.md, \.mcp\.json\.\n.*Weiter in Claude Code: „Richte caw-ai ein“/);
-    writeFileSync(file, 'old');
-    said.length = 0;
-    installSkill(root);
-    assert.match(said[0], /Aktualisiert:.*SKILL\.md\.$/);
-    assert.notEqual(readFileSync(file, 'utf8'), 'old');
+test('caw skill is removed: exit with what replaces it', async () => {
+    const { unknownCommandText } = await import('../src/shared/help.mjs');
+    assert.match(unknownCommandText('skill'), /caw skill gibt es nicht mehr: caw als MCP-Server anmelden \(claude mcp add caw --scope project -- npx caw-ai mcp\)/);
+    assert.match(unknownCommandText('skil'), /^Unbekannter Befehl: skil\./, 'no suggestion of a command that is gone');
 });
 
 test('record: options for an already described test may match, only contradictions abort', async () => {
@@ -357,7 +355,7 @@ test('init: explore is required, asks for address and roles, checks every answer
     assert.equal(config.signIn.signedInSelector, 'TODO', 'what explore did not find');
     assert.deepEqual(config.roles['sach-bearbeiter'], {});
     assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /^# Nach caw\/\.env kopieren[^\n]*\n# [^\n]*\nCAW_ADMIN_USER=\nCAW_ADMIN_PASSWORD=\nCAW_SACH_BEARBEITER_USER=\nCAW_SACH_BEARBEITER_PASSWORD=\n$/);
-    assert.ok(existsSync(join(root, '.claude', 'skills', 'caw-ai', 'SKILL.md')));
+    assert.ok(!existsSync(join(root, '.claude')), 'no skill');
 
     // If explore already ran, init takes its result without asking; the role is then neutral.
     const again = await initAnswers(root, [], { interactive: false, runExplore: async () => { throw new Error('no second explore'); } });

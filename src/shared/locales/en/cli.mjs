@@ -7,12 +7,12 @@ replayed with Playwright locally and in CI without AI.
 
 Set up (in the project folder, app running):
   npx caw init --url http://localhost:5173       sign in once in the window; writes caw.config.json, caw/.env (test user),
-                                                 the skill and .mcp.json; fill in anything left TODO
+                                                 and .mcp.json; fill in anything left TODO
   npx caw doctor                                 until nothing is MISSING
 
 Commands:`,
-    'cli.help.init': `  init [--url <address>]                 Set up the project: looks at the app (you sign in in the window), writes config,
-                                         skill and .mcp.json; without --url it asks for the address
+    'cli.help.init': `  init [--url <address>]                 Set up the project: looks at the app (you sign in in the window), writes config
+                                         and .mcp.json; without --url it asks for the address
       [--explore-only]                   only look at the app: suggestions in caw/.explore.json, no config
       [--env <name>]                     name of the environment (default: local on this machine, else the first part
                                          of the host name)
@@ -96,8 +96,6 @@ Commands:`,
       [--apply]                          Add the suggested overlay.assetUrlPattern entries and check again
       [--start]                          Run the part's start if the server doesn't answer, stop it afterwards
       [--json]                           Result as one JSON line (also in .caw/overlay-check.json)`,
-    'cli.help.skill': `  skill                                  Create or update only the Claude Code skill (and .mcp.json); then Claude Code
-                                         sets up caw with you ("Set up caw")`,
     'cli.help.version': '  --version                              Package version',
     'cli.help.here': ' (here: {names})',
     'cli.help.footer': `--env <name>: a name from environments, e.g. local. Left out when the choice is clear: the only one that fits, or for run
@@ -152,19 +150,17 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.mcpAgentOnly': 'caw agent mcp only starts for the agent of a run.',
     'cli.unknownCommand': 'Unknown command: {command}.{suggestion} See caw --help.',
     'cli.movedCommand': 'caw {command} is now caw {now}.',
+    'cli.removedSkill': 'caw skill was removed: register caw as an MCP server (claude mcp add caw --scope project -- npx caw-ai mcp); it brings the guidance itself. Delete .claude/skills/caw-ai/ by hand.',
     'cli.unknownAgentCommand': 'Unknown command: caw agent {command}.{suggestion} See caw agent --help.',
     'cli.didYouMean': ' Did you mean {name}?',
 
-    // commands.mjs: explore file, config, skill, init
+    // commands.mjs: explore file, config, init
     'cli.notExploreResult': "This file doesn't look like a caw init --explore-only result.",
     'cli.unknownFramework': 'caw-ai doesn\'t know framework "{framework}" ({names}).',
     'cli.initAuthUnknown': 'init has no sign-in type "{auth}" (form, session, none).',
     'cli.badRoleName': 'Role "{name}": lowercase letters, digits and hyphens only, starting with a letter (e.g. admin, clerk).',
-    'cli.mcpInvalid': '.mcp.json is not valid JSON, please add the caw-ai entry by hand (see README).',
-    'cli.skillCreated': 'Created: {file}',
-    'cli.skillCurrent': 'Skill is up to date',
-    'cli.skillUpdated': 'Updated: {file}',
-    'cli.skillNext': 'Next, in Claude Code: "Set up caw-ai". The skill walks you through explore, init and doctor.',
+    'cli.mcpInvalid': '.mcp.json is not valid JSON, please add the caw entry by hand (see README).',
+    'cli.mcpUpdated': '.mcp.json: the caw entry now starts the installed copy instead of npx. Restart Claude Code in the project.',
     'cli.initCreated': 'Created: {files}',
     'cli.initAlready': 'Already set up.',
     'cli.initNeedsUrl': 'Usage: npx caw init --url <address>. init looks at the app first; you sign in in the window.',
@@ -322,9 +318,11 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorBrowserOk': 'Browser starts ({browser})',
     'cli.doctorBrowserFail': "Browser doesn't start ({browser}): {error}",
     'cli.doctorBrowserNext': 'Install Google Chrome (Stable), caw-ai uses the system Chrome; or set browser.channel or browser.executablePath in the config.',
-    'cli.doctorSessionOk': 'Your Claude Code session takes over (caw-ai entry in .mcp.json)',
-    'cli.doctorSessionMissing': 'caw-ai entry in .mcp.json is missing',
-    'cli.doctorSessionNext': 'caw skill adds it; then restart Claude Code in the project.',
+    'cli.doctorSessionOk': 'Your Claude Code session takes over (caw entry in .mcp.json)',
+    'cli.doctorSessionMissing': 'caw entry in .mcp.json is missing',
+    'cli.doctorSessionNpx': 'The caw entry in .mcp.json starts caw through npx although caw is installed in the project',
+    'cli.doctorSessionNpxNext': 'npx caw init points it at the installed copy; then restart Claude Code in the project.',
+    'cli.doctorSessionNext': 'claude mcp add caw --scope project -- npx caw-ai mcp (or npx caw init) adds it; then restart Claude Code in the project.',
     'cli.doctorClaudeOk': 'Claude Code {version} (Claude runs locally, without Docker)',
     'cli.doctorClaudeMissing': 'Claude Code (claude) is not in PATH',
     'cli.doctorClaudeNext': 'Only for runs with Claude: install Claude Code and sign in once, or agent.mode "docker".',

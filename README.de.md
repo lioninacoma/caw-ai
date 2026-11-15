@@ -132,12 +132,19 @@ Mit gesetztem `CI` gibt es keinen Chat, und Claude wird nicht gestartet. Lokal a
 
 ### Aus Claude Code
 
-`init` legt auch einen Skill und einen MCP-Server an. Dann in Claude Code:
+Melde caw als MCP-Server des Projekts an und sag Claude Code einfach, was du willst:
+
+```bash
+claude mcp add caw --scope project -- npx caw-ai mcp
+```
 
 ```
-/caw-ai nimm einen Test fürs Anlegen eines Tickets auf
-/caw-ai bring mich zur Detailseite des Tickets, ich will am Statusfeld arbeiten
+richte caw für dieses Projekt ein
+nimm einen Test fürs Anlegen eines Tickets auf
+bring mich zur Detailseite des Tickets, ich will am Statusfeld arbeiten
 ```
+
+Unter Windows (nicht WSL): `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`.
 
 ## Im Fenster arbeiten
 

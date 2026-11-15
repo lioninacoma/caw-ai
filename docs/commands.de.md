@@ -8,8 +8,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 
 | Befehl | Was er tut | Claude? |
 |---|---|---|
-| [`init`](#init) | Projekt einrichten: App ansehen, Config, Skill und `.mcp.json` schreiben; mit `--explore-only` nur Einstellungen vorschlagen | nein |
-| [`skill`](#skill) | Skill für Claude Code und `.mcp.json` anlegen oder aktualisieren | nein |
+| [`init`](#init) | Projekt einrichten: App ansehen, Config und `.mcp.json` schreiben; mit `--explore-only` nur Einstellungen vorschlagen | nein |
 | [`doctor`](#doctor) | Rechner, Config, Zugangsdaten und Umgebungen prüfen | nein |
 | [`overlay status`](#overlay-status) | Ist der lokale Code-Server für `--overlay` bereit? | nein |
 | [`overlay check`](#overlay-check) | Prüfen, ob `--overlay` alles ersetzt, was es soll | nein |
@@ -44,7 +43,7 @@ Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Ch
 
 - `caw.config.json`
 - `caw/.env.example` mit den Variablen für die Zugangsdaten je Rolle
-- `.claude/skills/caw-ai/SKILL.md` und einen Eintrag `caw-ai` in `.mcp.json`
+- einen Eintrag `caw` in `.mcp.json` (auf die installierte Kopie, wenn caw in `node_modules` liegt, sonst `npx caw-ai mcp`; ein `npx`-Eintrag wird auf die installierte Kopie umgestellt, sobald es eine gibt)
 - `caw/tests/` für deine Testpläne und `caw/caw.md` für Notizen, die Claude in jedem Lauf liest
 - Einträge in `.gitignore` für `caw/.env`, `.caw/` und `caw/.auth/`
 
@@ -70,14 +69,6 @@ Sieht die App an wie `init`, schreibt aber nur Vorschläge nach `caw/.explore.js
 Dazu: `--yes`, `--insecure-tls` (wie bei `init`); `--login` oder `--no-login` beantworten die Frage nach der Anmeldung für Skripte.
 
 Mit Anmeldung fragt die Karte danach nach der Rolle des benutzten Kontos und speichert es als Testnutzer (siehe [role](#role)); `init` übernimmt die Rollen von dort.
-
-## skill
-
-```bash
-npx caw skill
-```
-
-Legt `.claude/skills/caw-ai/SKILL.md` und den Eintrag in `.mcp.json` an oder bringt sie auf den neuen Stand. Nach jedem Update von caw-ai ausführen. Danach in Claude Code „Richte caw-ai ein“ sagen, und es führt dich durch `init` und `doctor`.
 
 ## doctor
 
@@ -291,18 +282,18 @@ Das Theme gehört dir, steht in `prefs.json` und gilt in allen Projekten. Eingeb
 
 ## mcp
 
-Startet Claude Code über `.mcp.json`. Du rufst es nicht selbst auf. Deine Sitzung bekommt diese Tools:
+Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- npx caw-ai mcp`). Du rufst es nicht selbst auf. Der Server heißt `caw`; beim Start sagt er Claude, wofür caw da ist und dass es zuerst `caw_guide` liest. Deine Sitzung bekommt diese Tools:
 
 | Tool | | Tokens |
 |---|---|---|
-| `caw_doctor` | `doctor` als Daten | nein |
-| `caw_init` | `init` ohne Rückfragen (`offline`, `fromExplore`, `roles`, `noMcp`) | nein |
-| `caw_explore` | `explore` ausführen (`login` oder `yes`) und auf das Fenster warten; liefert Vorschläge und gespeicherte Rollen (`wait: false` startet nur) | nein |
-| `caw_role` | Rollen als Daten (`list`), das Anmeldefenster für eine neue (`add`, `name`, `target`; wartet und liefert die gespeicherten Rollen), `remove`; nie Benutzernamen oder Passwörter | nein |
-| `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`) | nein |
+| `caw_guide` | Die Anleitung je Thema (`topic`); ohne Thema die Übersicht. `overlay` und `extjs` nur, wenn das Projekt sie nutzt | nein |
+| `caw_doctor` | `doctor` als Daten (`agent`, `env`) | nein |
+| `caw_init` | `mode: explore` (`url`, `login` oder `yes`): das Fenster, wartet und liefert Vorschläge und gespeicherte Rollen (`wait: false` startet nur); `mode: write` (`fromExplore`) und `mode: offline` schreiben die Dateien; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | nein |
+| `caw_role` | Rollen als Daten (`list`), das Anmeldefenster für eine neue (`add`, `name`, `env`; wartet und liefert die gespeicherten Rollen), eine gespeicherte Sitzung (`login`), `remove`; nie Benutzernamen oder Passwörter | nein |
+| `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste | nein |
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |
-| `caw_overlay` | `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `target`, `app` | nein |
+| `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
 | `caw_start` | `run`, `record` oder `open` mit `--agent session` starten (`test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `appDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
 | `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |

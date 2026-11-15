@@ -145,20 +145,22 @@ test('caw_config: read returns raw config and effective environments, patch goes
     assert.equal((await call('caw_config', {})).structuredContent.state, 'missing');
 });
 
-test('caw_init: offline without questions, existing files stay, explore first when only a url is given', async (t) => {
+test('caw_init: mode offline without questions, existing files stay, no skill; explore first when only a url is given', async (t) => {
     const root = tempDir(t);
     const { call } = session(root);
-    const first = await call('caw_init', { offline: true, roles: ['admin', 'sachbearbeiter'] });
+    const first = await call('caw_init', { mode: 'offline', roles: ['admin', 'sachbearbeiter'] });
     const data = first.structuredContent;
     assert.equal(data.state, 'done');
-    assert.ok(['caw.config.json', 'caw/.env.example', '.claude/skills/caw-ai/SKILL.md', 'caw/caw.md', '.mcp.json', '.gitignore'].every((file) => data.created.includes(file)), data.created.join(', '));
+    assert.ok(['caw.config.json', 'caw/.env.example', 'caw/caw.md', '.mcp.json', '.gitignore'].every((file) => data.created.includes(file)), data.created.join(', '));
+    assert.ok(!existsSync(join(root, '.claude')), 'no skill');
+    assert.ok(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers.caw !== undefined);
     assert.ok(data.todo.includes('signIn.path'));
     assert.match(first.content[0].text, /Noch TODO: signIn\./);
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
     assert.deepEqual(Object.keys(config.roles), ['admin', 'sachbearbeiter']);
     assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /CAW_SACHBEARBEITER_PASSWORD=/);
 
-    const again = (await call('caw_init', { offline: true })).structuredContent;
+    const again = (await call('caw_init', { mode: 'offline' })).structuredContent;
     assert.deepEqual(again.created, []);
     assert.ok(again.skipped.includes('caw.config.json'));
     assert.deepEqual(again.todo, data.todo, 'TODO of the config on disk');
@@ -171,21 +173,32 @@ test('caw_init: offline without questions, existing files stay, explore first wh
     assert.equal(explored.explored, true);
     assert.ok(!explored.created.includes('.mcp.json'));
     assert.equal(JSON.parse(readFileSync(join(fresh, 'caw.config.json'), 'utf8')).environments.local.url, 'http://localhost:5173');
-    assert.equal((await session(fresh).call('caw_init', { url: 'ftp://x' })).isError, true);
+    assert.equal((await session(fresh).call('caw_init', { mode: 'write', url: 'ftp://x' })).isError, true);
+    assert.equal((await session(fresh).call('caw_init', { offline: true })).isError, true, 'mode is required');
+    assert.match((await session(fresh).call('caw_init', { mode: 'explore', url: 'http://localhost:5173', roles: ['x'] })).content[0].text, /roles/, 'fields of another mode are named');
+    // write with what the session decided: environment name, team language and the address switches on the environment.
+    const decided = tempDir(t);
+    writeFileSync(join(decided, 'x.json'), JSON.stringify({ url: 'http://staging.example.com:8080', signIn: { type: 'none' }, framework: { value: 'react' } }));
+    const written = await session(decided).call('caw_init', { mode: 'write', fromExplore: 'x.json', env: 'staging', language: 'fr', allowHttp: true, insecureTls: true, noMcp: true });
+    assert.equal(written.isError, false, written.content[0].text);
+    const staged = JSON.parse(readFileSync(join(decided, 'caw.config.json'), 'utf8'));
+    assert.equal(staged.language, 'fr');
+    assert.deepEqual(staged.environments.staging, { url: 'http://staging.example.com:8080', claude: true, writable: false, insecureTls: true, allowHttp: true });
+    assert.equal((await session(decided).call('caw_init', { mode: 'write', env: 'Staging_1' })).isError, true);
 });
 
-test('caw_explore: spawned detached with --login/--no-login or --yes, never asks on stdin', async (t) => {
+test('caw_init explore: spawned detached with --login/--no-login or --yes, never asks on stdin', async (t) => {
     const root = tempDir(t);
     const { call, spawned } = session(root);
-    assert.equal((await call('caw_explore', { url: 'http://localhost:5173' })).isError, true, 'login or yes is required');
-    const started = await call('caw_explore', { url: 'http://localhost:5173', login: false, insecureTls: true, wait: false });
+    assert.equal((await call('caw_init', { mode: 'explore', url: 'http://localhost:5173' })).isError, true, 'login or yes is required');
+    const started = await call('caw_init', { mode: 'explore', url: 'http://localhost:5173', login: false, insecureTls: true, wait: false });
     assert.match(started.content[0].text, /explore gestartet/);
     assert.deepEqual(spawned[0].args.slice(1), ['init', '--explore-only', '--url', 'http://localhost:5173', '--no-login', '--insecure-tls']);
     assert.equal(spawned[0].options.stdio[0], 'ignore');
     assert.equal(started.structuredContent.state, 'started');
 });
 
-test('caw_explore waits for the window and returns the suggestions with the saved roles', async (t) => {
+test('caw_init explore waits for the window and returns the suggestions with the saved roles', async (t) => {
     const root = tempDir(t);
     let polls = 0;
     // The window is open for two polls; meanwhile explore writes its result.
@@ -198,15 +211,15 @@ test('caw_explore waits for the window and returns the suggestions with the save
         return polls < 3;
     };
     const { call } = session(root, { windowWait: { alive, pollMs: 1 } });
-    const done = await call('caw_explore', { url: 'http://localhost:5173', login: true });
+    const done = await call('caw_init', { mode: 'explore', url: 'http://localhost:5173', login: true });
     assert.equal(done.structuredContent.state, 'done');
     assert.deepEqual(done.structuredContent.explore.roles, ['clerk']);
     assert.match(done.content[0].text, /clerk/);
     // Closed without a result: an error with the last output; still open after the time limit: running.
-    const closed = await session(tempDir(t), { windowWait: { alive: () => false } }).call('caw_explore', { url: 'http://localhost:5173', login: true });
+    const closed = await session(tempDir(t), { windowWait: { alive: () => false } }).call('caw_init', { mode: 'explore', url: 'http://localhost:5173', login: true });
     assert.equal(closed.isError, true);
     assert.equal(closed.structuredContent.state, 'ended');
-    const open = await session(tempDir(t), { windowWait: { alive: () => true, pollMs: 1, timeoutMs: 5 } }).call('caw_explore', { url: 'http://localhost:5173', yes: true });
+    const open = await session(tempDir(t), { windowWait: { alive: () => true, pollMs: 1, timeoutMs: 5 } }).call('caw_init', { mode: 'explore', url: 'http://localhost:5173', yes: true });
     assert.equal(open.structuredContent.state, 'running');
 });
 
@@ -227,12 +240,17 @@ test('caw_role add waits for the window and names the roles that got a test user
     const nothing = await session(root, { windowWait: { alive: () => false } }).call('caw_role', { action: 'add', name: 'auditor' });
     assert.equal(nothing.isError, true);
     assert.deepEqual(nothing.structuredContent.saved, []);
+    // login (SSO): the CLI's role login; name is required.
+    const logins = [];
+    await session(root, { spawnRun: (bin, args) => { logins.push(args); return { pid: 1, unref: () => {} }; }, windowWait: { alive: () => false } }).call('caw_role', { action: 'login', name: 'clerk', env: 'local' });
+    assert.deepEqual(logins[0].slice(1), ['role', 'login', 'clerk', '--env', 'local']);
+    assert.equal((await call('caw_role', { action: 'login' })).isError, true);
 });
 
-test('caw_explore: its result shows up in caw_status once written', async (t) => {
+test('caw_init explore: its result shows up in caw_status once written', async (t) => {
     const root = tempDir(t);
     const { call } = session(root);
-    await call('caw_explore', { url: 'http://localhost:5173', yes: true, wait: false });
+    await call('caw_init', { mode: 'explore', url: 'http://localhost:5173', yes: true, wait: false });
     mkdirSync(join(root, 'caw'), { recursive: true });
     writeFileSync(join(root, 'caw', '.explore.json'), JSON.stringify({ url: 'http://localhost:5173', framework: { value: 'react' } }));
     const status = (await call('caw_status')).structuredContent;
@@ -342,7 +360,7 @@ test('caw_start with overlay: the server on another port starts the run against 
 });
 
 test('caw_overlay status: overlayStatus in-process, as data; errors come back as data', async (t) => {
-    const root = project(t);
+    const root = project(t, { config: OVERLAY_CONFIG });
     const asked = [];
     let reply = { state: 'ready', framework: 'web', part: 'web', partDir: '.', url: 'http://localhost:5173/', start: 'npm run dev' };
     const overlayPreconditions = (dir, config, options) => {
@@ -367,7 +385,7 @@ test('caw_overlay status: overlayStatus in-process, as data; errors come back as
 });
 
 test('caw_overlay check/apply: runs the CLI with --json, returns its result; falls back to the file; timeout is an error', async (t) => {
-    const root = project(t);
+    const root = project(t, { config: OVERLAY_CONFIG });
     const calls = [];
     const result = { state: 'ready', parts: [{ label: 'app', status: 'local' }], missed: [], notLoaded: [], suggestion: null };
     let reply = { code: 0, out: `[caw] noise\n${JSON.stringify(result)}\n`, err: '' };
@@ -394,6 +412,43 @@ test('caw_overlay check/apply: runs the CLI with --json, returns its result; fal
     assert.equal(late.isError, true);
     assert.equal(late.structuredContent.state, 'timeout');
     assert.equal((await call('caw_overlay', { action: 'check', env: '--apply' })).isError, true);
+});
+
+test('caw_guide: the index without topic, a topic as Markdown; overlay topics and tool only while the config has an overlay block', async (t) => {
+    const root = project(t);
+    const { call } = session(root);
+    const index = await call('caw_guide');
+    assert.match(index.content[0].text, /- setup: /);
+    assert.ok(!index.structuredContent.topics.some(({ name }) => name === 'overlay'));
+    assert.match((await call('caw_guide', { topic: 'setup' })).content[0].text, /^# caw: set up a project/);
+    assert.equal((await call('caw_guide', { topic: 'overlay' })).isError, true);
+    assert.equal(await call('caw_overlay', { action: 'status' }), undefined, 'no such tool without the block: a JSON-RPC error, no result');
+    const refused = await call('caw_start', { command: 'run', test: 'bestellung', env: 'local', overlay: true });
+    assert.equal(refused.isError, true);
+    assert.match(refused.content[0].text, /overlay/);
+    writeFileSync(join(root, 'caw.config.json'), OVERLAY_CONFIG);
+    assert.ok((await call('caw_guide')).structuredContent.topics.some(({ name }) => name === 'overlay'));
+    assert.match((await call('caw_guide', { topic: 'overlay' })).content[0].text, /^# caw: local code/);
+});
+
+test('caw_config: a patch that switches the overlay on or off sends tools/list_changed; others and dryRun do not', async (t) => {
+    const root = project(t);
+    const sent = [];
+    const handler = sessionMcpHandler({ root, probes: PROBES });
+    const patch = async (args) => (await handler({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'caw_config', arguments: args } }, (note) => sent.push(note))).result;
+    const names = async () => (await handler({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).result.tools.map(({ name }) => name);
+    assert.ok(!(await names()).includes('caw_overlay'));
+    const overlay = { environments: { dev: { url: 'https://dev.example' } }, overlay: { environments: ['dev'], parts: { web: { dir: '.' } } } };
+    await patch({ patch: overlay, dryRun: true });
+    await patch({ patch: { readyTimeoutMs: 30000 } });
+    assert.deepEqual(sent, []);
+    const on = await patch({ patch: overlay });
+    assert.equal(on.isError, false, on.content[0].text);
+    assert.deepEqual(sent, [{ jsonrpc: '2.0', method: 'notifications/tools/list_changed' }]);
+    assert.ok((await names()).includes('caw_overlay'));
+    await patch({ patch: { overlay: null } });
+    assert.equal(sent.length, 2);
+    assert.ok(!(await names()).includes('caw_overlay'));
 });
 
 test('caw_status: last run from last-run.json with result, last step and artefacts; newer overlay check', async (t) => {

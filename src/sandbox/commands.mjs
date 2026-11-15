@@ -103,10 +103,10 @@ export const firewallCheck = async ({ print = (value) => console.log(JSON.string
 
 // One log per mode: the recording's log survives later advice or clarification.
 const MODES = {
-    run: { log: 'claude.log', prompt: (runId) => `/caw-ai Run ${runId} is open. Carry it out and submit the result with finish.` },
-    advise: { log: 'claude-advice.log', prompt: (runId) => `/caw-ai Run ${runId} had errors or warnings. Read the assignment with task and submit your advice with advise.` },
-    talk: { log: 'claude-talk.log', prompt: (runId) => `/caw-ai In run ${runId} a step failed, and the human is asking you in the chat. Read the assignment with task, answer with say and wait for them with chat.` },
-    develop: { log: 'claude-talk.log', prompt: (runId) => `/caw-ai In run ${runId} the human is developing in the prepared state and asks you in the chat, e.g. about a bug. Read the assignment with task, answer with say and wait for them with chat.` },
+    run: { log: 'claude.log', prompt: (runId) => `Run ${runId} is open. Carry it out and submit the result with finish.` },
+    advise: { log: 'claude-advice.log', prompt: (runId) => `Run ${runId} had errors or warnings. Read the assignment with task and submit your advice with advise.` },
+    talk: { log: 'claude-talk.log', prompt: (runId) => `In run ${runId} a step failed, and the human is asking you in the chat. Read the assignment with task, answer with say and wait for them with chat.` },
+    develop: { log: 'claude-talk.log', prompt: (runId) => `In run ${runId} the human is developing in the prepared state and asks you in the chat, e.g. about a bug. Read the assignment with task, answer with say and wait for them with chat.` },
 };
 
 /**
@@ -119,8 +119,10 @@ export const claudeEnv = (timeoutMin, env = process.env) => {
     return { ...env, BASH_DEFAULT_TIMEOUT_MS: ms, BASH_MAX_TIMEOUT_MS: ms, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' };
 };
 
-/** Claude's invocation in the container: all permissions, but only there. Without tools that defer work to later. */
-export const claudeArgs = (prompt, env = process.env) => ['-p', prompt, '--dangerously-skip-permissions', '--disallowedTools', 'Monitor,ScheduleWakeup', '--output-format', 'stream-json', '--verbose', ...limitArgs(env)];
+/** The guide the host wrote into the agent folder for this run (templates/guide, the run topics). */
+export const GUIDE_FILE = 'guide.md';
+/** Claude's invocation in the container: all permissions, but only there. Without tools that defer work to later. The guide is the system prompt's addition. */
+export const claudeArgs = (prompt, guideFile, env = process.env) => ['-p', prompt, '--dangerously-skip-permissions', '--disallowedTools', 'Monitor,ScheduleWakeup', '--append-system-prompt-file', guideFile, '--output-format', 'stream-json', '--verbose', ...limitArgs(env)];
 
 /** Cost limits the host passes on (agent.model, agent.maxBudgetUsd or CAW_CLAUDE_MODEL/CAW_CLAUDE_BUDGET), as Claude Code options. */
 export const limitArgs = (env = process.env) => [
@@ -128,7 +130,6 @@ export const limitArgs = (env = process.env) => [
     ...(env.CAW_CLAUDE_BUDGET ? ['--max-budget-usd', env.CAW_CLAUDE_BUDGET] : []),
 ];
 
-const SKILL_FILE = fileURLToPath(new URL('../../templates/skill.md', import.meta.url));
 const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
 // Reading yes; shell, writing and network never. The browser is reachable only through the caw tool.
 export const LOCAL_TOOLS = ['Read', 'Grep', 'Glob'];
@@ -140,7 +141,7 @@ export const LOCAL_DENY = ['.env', '.env.*', '**/.env', '**/.env.*', '.git/**', 
     // Keep in line with the secret files in src/host/secrets.mjs (the image has no src/host, so the list is repeated here).
     '**/*.env', '**/.envrc', '**/.pypirc', '**/.yarnrc*', '**/credentials.json', '**/*.jks', '**/.aws/**', '**/.ssh/**', '**/.docker/config.json']
     .flatMap((pattern) => LOCAL_TOOLS.map((tool) => `${tool}(${pattern})`));
-// Prepended to the skill: locally there is no shell, the commands go through a tool.
+// Prepended to the guide: locally there is no shell, the commands go through a tool.
 export const LOCAL_PREAMBLE = `You are running locally, not in the container. You have no shell and cannot write files. Every command
 \`caw agent <command> ...\` in the following guide is a call of the tool mcp__caw__caw with args (what follows \`caw agent\`), e.g.
 args ["snapshot"] or ["click", "e12"]. Where the guide writes a file and passes --file (plan, finish, advise), pass its content in file instead.
@@ -183,7 +184,7 @@ export const writeLocalSetup = (dir, env = process.env) => {
     const systemPromptFile = join(dir, 'instructions.md');
     writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { caw: { command: process.execPath, args: [BIN, 'agent', 'mcp'], env: { CAW_SANDBOX: '1', CAW_AGENT_DIR: dir, ...(env.CAW_COLOR ? { CAW_COLOR: env.CAW_COLOR } : {}) } } } }, null, 2));
     writeFileSync(settings, JSON.stringify({ ...connectionSettings(env), permissions: { deny: LOCAL_DENY }, disableAllHooks: true }, null, 2));
-    writeFileSync(systemPromptFile, `${LOCAL_PREAMBLE}${readFileSync(SKILL_FILE, 'utf8').replace(/^---[\s\S]*?---\s*/, '')}`);
+    writeFileSync(systemPromptFile, `${LOCAL_PREAMBLE}${readFileSync(join(dir, GUIDE_FILE), 'utf8')}`);
     return { mcpConfig, settings, systemPromptFile };
 };
 
@@ -198,15 +199,15 @@ export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
     let claude;
     let timer;
     if (local) {
-        // Without a container there is no firewall to check; the tool set is the boundary. The guide provides the skill, not /caw-ai.
-        const prompt = promptFor(runId).replace(/^\/caw-ai /, '');
+        // Without a container there is no firewall to check; the tool set is the boundary.
+        const prompt = promptFor(runId);
         const env = { ...claudeEnv(timeoutMin), MCP_TOOL_TIMEOUT: String(timeoutMin * 60 * 1000) };
         const bin = resolveClaude() ?? { file: 'claude', args: [] };
         claude = spawn(bin.file, [...bin.args, ...localClaudeArgs(prompt, writeLocalSetup(dir))], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
         timer = setTimeout(() => claude.kill(), timeoutMin * 60 * 1000);
     } else {
         await firewallCheck({ print: () => {} });
-        claude = spawn('timeout', [String(timeoutMin * 60), 'claude', ...claudeArgs(promptFor(runId))], { cwd: root, env: claudeEnv(timeoutMin), stdio: ['ignore', 'pipe', 'pipe'] });
+        claude = spawn('timeout', [String(timeoutMin * 60), 'claude', ...claudeArgs(promptFor(runId), join(dir, GUIDE_FILE))], { cwd: root, env: claudeEnv(timeoutMin), stdio: ['ignore', 'pipe', 'pipe'] });
     }
     const log = openSync(join(dir, logName), 'w');
     const startedAt = Date.now();

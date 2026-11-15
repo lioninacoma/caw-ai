@@ -24,7 +24,7 @@ test('claudeLimits: config agent.model and agent.maxBudgetUsd, the environment w
 test('limitArgs: Claude Code options for the container and the local agent', () => {
     assert.deepEqual(limitArgs({}), []);
     assert.deepEqual(limitArgs({ CAW_CLAUDE_MODEL: 'haiku', CAW_CLAUDE_BUDGET: '0.5' }), ['--model', 'haiku', '--max-budget-usd', '0.5']);
-    assert.deepEqual(claudeArgs('go', { CAW_CLAUDE_MODEL: 'haiku' }).slice(-2), ['--model', 'haiku']);
+    assert.deepEqual(claudeArgs('go', '/run/agent/guide.md', { CAW_CLAUDE_MODEL: 'haiku' }).slice(-2), ['--model', 'haiku']);
     const saved = { model: process.env.CAW_CLAUDE_MODEL, budget: process.env.CAW_CLAUDE_BUDGET };
     process.env.CAW_CLAUDE_MODEL = 'haiku';
     process.env.CAW_CLAUDE_BUDGET = '1';

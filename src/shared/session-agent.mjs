@@ -36,11 +36,11 @@ export const findSessionAgent = (root) => {
  * Announces the run to the session. `ended` never settles on its own: the run ends with the verdict, the window or a cancel.
  * @returns { ended, stop }
  */
-export const announceSessionAgent = ({ root, runId, agentDir, mode, hint, pid = process.pid }) => {
+export const announceSessionAgent = ({ root, runId, agentDir, mode, hint, guide = [], pid = process.pid }) => {
     mkdirSync(join(root, RUN_DIR), { recursive: true });
     const file = markerPath(root);
     const temporary = `${file}.${pid}.tmp`;
-    writeFileSync(temporary, JSON.stringify({ runId, agentDir, mode, hint, pid, startedAt: new Date().toISOString() }, null, 2));
+    writeFileSync(temporary, JSON.stringify({ runId, agentDir, mode, hint, guide, pid, startedAt: new Date().toISOString() }, null, 2));
     renameSync(temporary, file);
     return {
         ended: new Promise(() => {}),

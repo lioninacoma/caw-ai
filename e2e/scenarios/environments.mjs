@@ -13,7 +13,7 @@ import {
     writeNetworkTests, writeProject, writeSpaTest,
 } from '../spa/project.mjs';
 import { here, humans, loadTest, newestRunOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
-import { composeStack, exec, httpAlias, installPacked, preflightPorts } from '../infra.mjs';
+import { composeStack, exec, httpAlias, installPacked, mcpClient, packTarball, preflightPorts } from '../infra.mjs';
 
 const spaDir = join(here, 'spa');
 const root = join(spaDir, 'work');
@@ -280,6 +280,65 @@ scenario('B2', 'Setup with the packed CLI: init writes language and environment 
         print('     (d) http beyond this machine: D6b (CAW_E2E_LAN); (e) reads candidates: P3');
     } finally {
         rmSync(project, { recursive: true, force: true });
+    }
+});
+
+// ---- P6: MCP bootstrap
+
+scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instructions and caw_guide, caw_init explore and write, no skill, list_changed for the overlay', spa, async () => {
+    const blank = mkdtempSync(join(tmpdir(), 'caw-e2e-b1-'));
+    const tarball = await packTarball();
+    // The stand-in for `npx caw-ai mcp` of an unpublished package, as `claude mcp add caw --scope project -- npx caw-ai mcp` starts it.
+    const client = mcpClient('npx', ['--yes', '--package', tarball, 'caw', 'mcp'], { cwd: blank, env: { ...process.env, CAW_LANG: 'en', INIT_CWD: blank, CI: '' }, timeoutMs: 300000 });
+    try {
+        const hello = await client.initialize();
+        verify('(2) initialize: name caw, instructions of at most 12 lines naming caw_guide, tools.listChanged',
+            hello.serverInfo?.name === 'caw' && typeof hello.instructions === 'string' && hello.instructions.split('\n').length <= 12 && /caw_guide/.test(hello.instructions) && hello.capabilities?.tools?.listChanged === true,
+            JSON.stringify({ serverInfo: hello.serverInfo, capabilities: hello.capabilities }));
+        const names = async () => (await client.request('tools/list')).tools.map(({ name }) => name);
+        const core = ['caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_role', 'caw_guide', 'caw'];
+        const listed = await names();
+        verify('(3) tools/list: the core tools, no caw_overlay, no caw_explore', JSON.stringify([...listed].sort()) === JSON.stringify([...core].sort()), listed.join(' '));
+        const index = await client.callTool('caw_guide');
+        const topics = index.structuredContent?.topics?.map(({ name }) => name) ?? [];
+        verify('(4) caw_guide lists the core topics, no overlay or extjs', ['overview', 'setup', 'config', 'tests', 'run', 'session', 'agent', 'rules'].every((name) => topics.includes(name)) && !topics.includes('overlay') && !topics.includes('extjs'), topics.join(' '));
+        const stale = [];
+        for (const topic of topics) {
+            const text = (await client.callTool('caw_guide', { topic })).content?.[0]?.text ?? '';
+            if (text.trim() === '' || /caw-ai \w|--target|mutates|targets/.test(text)) stale.push(topic);
+        }
+        verify('(4) every topic is non-empty, without caw-ai <cmd>, --target, mutates or targets', stale.length === 0, stale.join(' '));
+
+        const url = `http://app.localhost:${SPA_PORT}`;
+        const explored = await client.callTool('caw_init', { mode: 'explore', url, yes: true });
+        const explore = explored.structuredContent?.explore;
+        verify('(5) caw_init explore (unattended) returns the suggestions: framework and sign-in', explored.structuredContent?.state === 'done' && explore?.framework !== undefined && explore?.signIn !== undefined,
+            `${explored.content?.[0]?.text?.split('\n')[0]} ${JSON.stringify(explore)?.slice(0, 200)}`);
+        print('     (5) signing in and naming role clerk in the window: unit tests (no window automation here)');
+        const written = await client.callTool('caw_init', { mode: 'write', fromExplore: true, language: 'en' });
+        const config = existsSync(join(blank, 'caw.config.json')) ? JSON.parse(readFileSync(join(blank, 'caw.config.json'), 'utf8')) : {};
+        verify('(6) caw_init write: a valid config with environment local (claude, writable)', written.isError === false && config.environments?.local?.claude === true && config.environments?.local?.writable === true && validateConfig(config).issues.length === 0,
+            `${written.content?.[0]?.text?.split('\n')[0]} ${JSON.stringify(config.environments)}`);
+        // Selectors may name a password field (#password); a credential would be a key of its own.
+        verify('(7) the config holds no credential', !/"(user|username|password|secret|token|totp)"\s*:/i.test(JSON.stringify(config)), JSON.stringify(config.signIn));
+        const mcp = existsSync(join(blank, '.mcp.json')) ? JSON.parse(readFileSync(join(blank, '.mcp.json'), 'utf8')).mcpServers : {};
+        verify('(8) no .claude/skills; .mcp.json has the entry caw through npx (nothing installed here)', !existsSync(join(blank, '.claude')) && Array.isArray(mcp.caw?.args) && mcp.caw.args.includes('caw-ai') && mcp['caw-ai'] === undefined, JSON.stringify(mcp));
+        const doctor = await client.callTool('caw_doctor');
+        // Unattended nobody signed in: what the window would have filled in blocks, each with its next step, and nothing else.
+        const blocking = doctor.structuredContent?.checks?.filter(({ ok, optional }) => !ok && !optional) ?? [];
+        verify('(9) caw_doctor: blocking only the signed-in marker and the test user the window would have saved, each with a next step',
+            blocking.length === 2 && /signedInSelector is still TODO/.test(blocking[0]?.text) && /CAW_TESTER_USER, CAW_TESTER_PASSWORD are missing/.test(blocking[1]?.text) && blocking.every(({ next }) => typeof next === 'string' && next !== ''),
+            JSON.stringify(blocking));
+
+        // W3 (6): adding the overlay block through caw_config announces the overlay tool and topic.
+        const patched = await client.callTool('caw_config', { patch: { environments: { dev: { url: 'https://dev.example.com', claude: true } }, overlay: { environments: ['dev'], parts: { web: { dir: '.' } } } } });
+        const announced = client.notifications.some(({ method }) => method === 'notifications/tools/list_changed');
+        verify('(W3.6) the overlay block via caw_config sends tools/list_changed; then caw_overlay and topic overlay are listed',
+            patched.isError === false && announced && (await names()).includes('caw_overlay') && (await client.callTool('caw_guide')).structuredContent.topics.some(({ name }) => name === 'overlay'),
+            `${patched.content?.[0]?.text?.split('\n')[0]} ${client.notifications.map(({ method }) => method).join(' ')}`);
+    } finally {
+        await client.close();
+        rmSync(blank, { recursive: true, force: true });
     }
 });
 

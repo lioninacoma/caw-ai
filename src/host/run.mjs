@@ -35,6 +35,8 @@ import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
 import { startLocalAgent } from './local-agent.mjs';
 import { announceSessionAgent } from '../shared/session-agent.mjs';
+import { GUIDE_FILE } from '../sandbox/commands.mjs';
+import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
@@ -601,10 +603,13 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 talk: `In run ${runId} a step failed, and the human is asking you in the chat. Read the task with task, answer with say and wait for the human with chat.`,
                 develop: `In run ${runId} the human is developing in the restored state. Read the task with task; you can read the page (snapshot, eval, console, network) and operate it on request (click, fill, type, press, goto, reload). Fetch questions from the workbench chat with chat and answer there with say.`,
             };
-            const agent = announceSessionAgent({ root, runId, agentDir, mode, hint: hints[mode] });
+            // The session reads these topics with caw_guide; caw_status names them.
+            const agent = announceSessionAgent({ root, runId, agentDir, mode, hint: hints[mode], guide: runTopics(mode, { creating, config }) });
             chat?.progress?.(t('run.waitingForSession'));
             return { ended: agent.ended, log: () => '', stopTail: () => {}, stop: agent.stop };
         }
+        // A local or container agent gets the run topics of the guide as its system prompt addition, from the agent folder.
+        writeFileSync(join(agentDir, GUIDE_FILE), agentGuide(config));
         if (box.kind === 'local') {
             const agent = startLocalAgent({ command: agentCommand, agentDir, root, color, limits: claudeLimits(config) });
             const stopTail = (() => { const stop = tailLines(log, onLine); return () => { stop(); closePoint(); }; })();

@@ -14,6 +14,7 @@ import { t } from '../shared/i18n.mjs';
 import { RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
+import { SESSION_INSTRUCTIONS, activeExtensions, guideIndex, guideTopic, listedTopics } from './guide.mjs';
 
 const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
 const START_COMMANDS = ['run', 'record', 'open'];
@@ -56,6 +57,11 @@ const readJson = (file) => {
     }
 };
 
+/** The config as written, for what it activates; undefined without one or when it is no JSON. */
+const rawConfig = (root) => readJson(join(root, CONFIG_FILE));
+/** Names of an environment or role, as the config takes them. */
+const NAME = /^[a-z][a-z0-9-]{0,31}$/;
+
 const mtime = (file) => (existsSync(file) ? statSync(file).mtimeMs : undefined);
 const shown = (root, file) => relative(root, file).replaceAll('\\', '/');
 
@@ -77,7 +83,7 @@ const isAlive = (pid) => {
     }
 };
 
-/** How long caw_explore and caw_role wait for the human's window. */
+/** How long caw_init (explore) and caw_role wait for the human's window. */
 const WINDOW_WAIT_MS = 20 * 60 * 1000;
 
 /**
@@ -282,7 +288,7 @@ const statusData = (root, { waiting, running, log }) => {
     else if (running !== undefined) state = 'running';
     else if (log !== undefined || run !== undefined) state = 'ended';
     const data = { state };
-    if (waiting !== undefined) data.waiting = { runId: waiting.runId, mode: waiting.mode, hint: waiting.hint };
+    if (waiting !== undefined) data.waiting = { runId: waiting.runId, mode: waiting.mode, hint: waiting.hint, guide: Array.isArray(waiting.guide) ? waiting.guide : [] };
     if (log !== undefined) data.log = shown(root, log);
     if (meta !== undefined) data.started = { command: meta.command, args: meta.args, pid: meta.pid, startedAt: meta.startedAt };
     if (run !== undefined) {
@@ -372,6 +378,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 return answer(t('run.mcp.notStarted', { message: String(error.message).split('\n')[0] }), { state: 'error', code: error.code ?? 'config-invalid', message: error.message }, true);
             }
             const given = fromArgs(args);
+            // The overlay is an extension: without its block in the config there is nothing to lay over.
+            if (given.overlay && config.overlay === undefined) throw new Error(t('run.mcp.overlayInactive'));
             let runArgs = args;
             let moved;
             if (given.overlay) {
@@ -408,7 +416,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         name: 'caw_status',
         description: 'Shows whether a run is waiting for you as the agent (with its task) and the last lines of its output. As data: the last run '
             + '(result with status, code, reason, steps, failures, warnings; last step; artefacts such as report.md, trace and logs), explore '
-            + 'suggestions after caw_explore and the last overlay check. While a run is going, pass wait (seconds, up to 120): the call returns '
+            + 'suggestions after caw_init with mode explore and the last overlay check. When a run waits for you, waiting.guide names the caw_guide topics for it. While a run is going, pass wait (seconds, up to 120): the call returns '
             + 'as soon as the run needs you, ends or reports something new, instead of you asking again and again.',
         inputSchema: { type: 'object', properties: { wait: { type: 'integer', minimum: 0, maximum: MAX_STATUS_WAIT_S } }, additionalProperties: false },
         call: async (input = {}) => {
@@ -422,7 +430,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                     ? (running === undefined
                         ? t(log === undefined ? 'run.mcp.noneWaiting' : 'run.mcp.ended')
                         : t('run.mcp.busy', { pid: running.pid }))
-                    : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Work according to the caw skill, section "Flow in the sandbox", using the caw tool. ${DATA_NOTE}`;
+                    : `Run ${waiting.runId} is waiting for you (${waiting.mode}). Task: ${waiting.hint} Read caw_guide with the topics ${(waiting.guide ?? []).join(', ') || 'agent'} first, then work with the caw tool. ${DATA_NOTE}`;
                 const data = statusData(root, { waiting, running, log });
                 const result = data.result?.status === undefined ? '' : `\n${t('run.mcp.lastRun', { runId: data.runId, status: data.result.status })}`;
                 // What counts as a change for `wait`: the run state and result, and caw-ai's own last message (not every replay step).
@@ -504,9 +512,12 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 const write = writeConfig ?? await defaultWriteConfig();
                 if (typeof write !== 'function') throw new Error(t('run.mcp.unavailable', { what: 'writeConfig' }));
                 const dryRun = input.dryRun === true;
+                const before = activeExtensions(rawConfig(root)).join();
                 const { ok, issues = [], config } = await write(root, input.patch, { dryRun });
                 const summary = ok ? t(dryRun ? 'run.mcp.configDryRun' : 'run.mcp.configWritten', { file: CONFIG_FILE }) : t('run.mcp.configRefused', { file: CONFIG_FILE, count: issues.length });
-                return answer(summary, { ok, dryRun, issues, config }, !ok);
+                // An extension switched on or off: its tool and guide topics come or go.
+                const listChanged = ok && !dryRun && activeExtensions(rawConfig(root)).join() !== before;
+                return { ...answer(summary, { ok, dryRun, issues, config }, !ok), listChanged };
             }
             const file = join(root, CONFIG_FILE);
             if (!existsSync(file)) return answer(t('run.mcp.configMissing', { file: CONFIG_FILE }), { state: 'missing', file: CONFIG_FILE });
@@ -526,43 +537,52 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_init',
-        description: 'caw init without questions: config, .env example, skill, caw/caw.md, .mcp.json and .gitignore entries; existing files stay. '
-            + 'fromExplore: take the suggestions from caw/.explore.json (run caw_explore first); offline: the template with TODO in the login. '
-            + 'roles: role names, e.g. ["admin", "clerk"]. Returns created and skipped files and the TODO fields. No tokens.',
+        description: 'Sets up caw in this project, without tokens. mode explore: opens the app for the human (url, and login true/false '
+            + 'or yes for unattended): they sign in with a test account, pick the start page, click Done and name the role of the account; '
+            + 'waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the suggestions (framework, '
+            + 'sign-in with proposed steps and identity-provider hosts, start, messages, console noise, reads candidates, third-party '
+            + 'hosts, saved roles), also in caw/.explore.json. mode write: writes caw.config.json, caw/.env.example, caw/caw.md, the '
+            + '.mcp.json entry and .gitignore entries from the explore result (fromExplore: true or its path); existing files stay. '
+            + 'mode offline: the template with TODO in the sign-in. env, language, insecureTls, allowHttp, roles and noMcp set what you '
+            + 'decided. Read caw_guide topic setup first.',
         inputSchema: {
             type: 'object',
             properties: {
+                mode: { type: 'string', enum: ['explore', 'write', 'offline'] },
                 url: { type: 'string' },
-                offline: { type: 'boolean' },
-                fromExplore: { type: ['boolean', 'string'], description: 'true or the path of an explore result' },
+                env: { type: 'string', description: 'Name of the first environment (write, offline)' },
+                language: { type: 'string', description: 'Team language, e.g. en or de (write, offline)' },
+                login: { type: 'boolean', description: 'explore: does the app have a sign-in?' },
+                yes: { type: 'boolean', description: 'explore: unattended, only the page is looked at' },
+                insecureTls: { type: 'boolean' },
+                allowHttp: { type: 'boolean', description: 'http on a host that is not this machine; only if the human confirms' },
                 roles: { type: 'array', items: { type: 'string' } },
+                fromExplore: { type: ['boolean', 'string'], description: 'write: true or the path of an explore result' },
                 noMcp: { type: 'boolean' },
+                wait: { type: 'boolean', description: 'explore: false only starts the window' },
             },
+            required: ['mode'],
             additionalProperties: false,
         },
         call: async (input) => {
+            const fields = { explore: ['mode', 'url', 'login', 'yes', 'insecureTls', 'wait'], write: ['mode', 'url', 'env', 'language', 'insecureTls', 'allowHttp', 'roles', 'fromExplore', 'noMcp'], offline: ['mode', 'url', 'env', 'language', 'insecureTls', 'allowHttp', 'roles', 'noMcp'] }[input.mode];
+            if (fields === undefined) throw new Error(t('run.mcp.initMode'));
+            const extra = Object.keys(input).find((key) => input[key] !== undefined && !fields.includes(key));
+            if (extra !== undefined) throw new Error(t('run.mcp.fieldNotFor', { field: extra, command: `mode ${input.mode}` }));
             if (input.url !== undefined && !/^https?:\/\//.test(String(input.url))) throw new Error(t('run.mcp.urlInvalid'));
-            const { initProject } = await import('./project-data.mjs');
-            const data = initProject(root, input);
-            if (data.state === 'explore-first') return answer(t('run.mcp.initExploreFirst'), data);
-            const created = data.created.length === 0 ? t('run.mcp.initNothing') : t('run.mcp.initCreated', { files: data.created.join(', ') });
-            return answer(`${created}${data.todo.length === 0 ? '' : ` ${t('run.mcp.initTodo', { keys: data.todo.join(', ') })}`}`, data);
-        },
-    },
-    {
-        name: 'caw_explore',
-        description: 'Runs caw init --explore-only: a window opens for the human, who signs in, picks the start page, clicks "Done" and names the role of '
-            + 'the test user. Needs login (true/false: does the app have a sign-in?) or yes (unattended, only the page is looked at). Waits until '
-            + 'the window is done (up to 20 minutes) and returns the suggestions from caw/.explore.json, including the saved roles; then call '
-            + 'caw_init with fromExplore. wait: false only starts it (caw_status shows the result later). No tokens.',
-        inputSchema: {
-            type: 'object',
-            properties: { url: { type: 'string' }, login: { type: 'boolean' }, yes: { type: 'boolean' }, insecureTls: { type: 'boolean' }, wait: { type: 'boolean' } },
-            required: ['url'],
-            additionalProperties: false,
-        },
-        call: async (input) => {
-            if (typeof input.url !== 'string' || !/^https?:\/\//.test(input.url)) throw new Error(t('run.mcp.urlInvalid'));
+            if (input.env !== undefined && !NAME.test(String(input.env))) throw new Error(t('run.mcp.fieldText', { field: 'env' }));
+            if (input.language !== undefined && !/^[a-z]{2,3}$/.test(String(input.language))) throw new Error(t('run.mcp.fieldText', { field: 'language' }));
+            if (input.roles !== undefined && (!Array.isArray(input.roles) || !input.roles.every((role) => NAME.test(String(role))))) throw new Error(t('run.mcp.roleName'));
+            if (input.mode !== 'explore') {
+                const { initProject } = await import('./project-data.mjs');
+                const { mode, ...options } = input;
+                const data = initProject(root, mode === 'offline' ? { ...options, offline: true } : { ...options, fromExplore: options.fromExplore ?? true });
+                if (data.state === 'explore-first') return answer(t('run.mcp.initExploreFirst'), data);
+                const created = data.created.length === 0 ? t('run.mcp.initNothing') : t('run.mcp.initCreated', { files: data.created.join(', ') });
+                const restart = data.restart === true ? ` ${t('run.mcp.initRestart')}` : '';
+                return answer(`${created}${data.todo.length === 0 ? '' : ` ${t('run.mcp.initTodo', { keys: data.todo.join(', ') })}`}${restart}`, data);
+            }
+            if (typeof input.url !== 'string') throw new Error(t('run.mcp.urlInvalid'));
             if (input.login === undefined && input.yes !== true) throw new Error(t('run.mcp.exploreLogin'));
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
@@ -576,10 +596,10 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             if (input.wait === false) return answer(t('run.mcp.exploreStarted', { pid, log }), { state: 'started', ...started });
             const ended = await waitForExit(pid, windowWait);
             if (!ended) return answer(t('run.mcp.stillOpen', { pid }), { state: 'running', ...started });
-            const file = join(root, 'caw', '.explore.json');
+            const explored = join(root, EXPLORE_FILE);
             // Written by this run (file times may be coarser than the clock): its suggestions; otherwise the window was closed.
-            if ((mtime(file) ?? 0) >= startedAt - 2000) {
-                const explore = readJson(file);
+            if ((mtime(explored) ?? 0) >= startedAt - 2000) {
+                const explore = readJson(explored);
                 return answer(t('run.mcp.exploreDone', { roles: (explore?.roles ?? []).join(', ') || '-' }), { state: 'done', ...started, explore });
             }
             return answer(t('run.mcp.endedWithout', { tail: logTail(log) }), { state: 'ended', ...started, tail: logTail(log) }, true);
@@ -591,10 +611,11 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'action add: opens a window on the sign-in page of env; the human signs in and saves the role (name prefilled), caw-ai writes '
             + 'caw/.env and the config; waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the saved roles. '
             + 'You never ask for or see user names or passwords. action remove: a role no test uses. Derive role names '
-            + 'from the code (permissions, seed users). Not needed before record: a test whose role has no test user opens that window itself. No tokens.',
+            + 'from the code (permissions, seed users). action login: for signIn type session (SSO), opens the sign-in for role name on env; '
+            + 'the human signs in and caw saves the session. Not needed before record: a test whose role has no test user opens that window itself. No tokens.',
         inputSchema: {
             type: 'object',
-            properties: { action: { type: 'string', enum: ['list', 'add', 'remove'] }, name: { type: 'string' }, env: { type: 'string' }, wait: { type: 'boolean' } },
+            properties: { action: { type: 'string', enum: ['list', 'add', 'remove', 'login'] }, name: { type: 'string' }, env: { type: 'string' }, wait: { type: 'boolean' } },
             required: ['action'],
             additionalProperties: false,
         },
@@ -605,15 +626,18 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 const data = roleOverview(root);
                 return answer(t('run.mcp.roleList', { count: data.roles.length }), data);
             }
-            if (input.name === undefined ? input.action === 'remove' : !/^[a-z][a-z0-9-]{0,31}$/.test(input.name)) throw new Error(t('run.mcp.roleName'));
+            if (!['add', 'remove', 'login'].includes(input.action)) throw new Error(t('run.mcp.roleAction'));
+            if (input.name === undefined ? input.action !== 'add' : !NAME.test(input.name)) throw new Error(t('run.mcp.roleName'));
+            if (input.env !== undefined) textField(input, 'env');
             if (input.action === 'remove') {
                 const data = removeRole(root, input.name);
                 return answer(t('run.mcp.roleRemoved', { role: input.name }), { state: 'removed', ...data });
             }
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
-            const args = ['add', ...(input.name === undefined ? [] : [input.name]), ...(input.env === undefined ? [] : ['--env', input.env])];
-            const ready = (overview) => new Set(overview.roles.flatMap(({ name, environments }) => environments.filter(({ state }) => state === 'set').map(({ env }) => `${name}@${env}`)));
+            const args = [input.action, ...(input.name === undefined ? [] : [input.name]), ...(input.env === undefined ? [] : ['--env', input.env])];
+            // A test user (add) or a saved session (login) per role and environment.
+            const ready = (overview) => new Set(overview.roles.flatMap(({ name, environments }) => environments.filter(({ state }) => state === 'set' || state === 'session').map(({ env }) => `${name}@${env}`)));
             const before = ready(roleOverview(root));
             const { log, pid } = spawnDetached({ root, command: 'role', args, spawnRun });
             const started = { command: 'role', args, pid, log: shown(root, log) };
@@ -628,6 +652,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_overlay',
+        extension: 'overlay',
         description: 'The local code for --overlay, per part of overlay.parts (part: needed when there are several). action status (fast, no browser): '
             + 'is the local code server (dev server, Sencha watch) of the part ready at its url? state ready, moved (runs at foundUrl: patch '
             + 'overlay.parts.<part>.url via caw_config), down, wrong-app (another app answers), stale, not-overlay, no-part, no-app (no app.json), '
@@ -679,6 +704,18 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             return answer(t('run.mcp.overlayCheck', { state: data.state ?? (code === 0 ? 'complete' : 'incomplete') }), { ...data, exit: code });
         },
     },
+    {
+        name: 'caw_guide',
+        description: 'How to work with caw. Without topic: the index, one line per topic. With topic: that topic as Markdown. Read the '
+            + 'topic that fits before acting (setup, tests, run, session; caw_status names the topics when a run waits for you). No tokens.',
+        inputSchema: { type: 'object', properties: { topic: { type: 'string' } }, additionalProperties: false },
+        call: async (input = {}) => {
+            const config = rawConfig(root);
+            if (input.topic === undefined) return { text: `${t('run.mcp.guideIndex')}\n${guideIndex(config)}`, data: { topics: listedTopics(config).map(({ name, about }) => ({ name, about })) } };
+            if (!listedTopics(config).some(({ name }) => name === input.topic)) throw new Error(t('run.mcp.guideUnknown', { topic: String(input.topic), topics: listedTopics(config).map(({ name }) => name).join(', ') }));
+            return { text: guideTopic(input.topic) };
+        },
+    },
     cawTool({
         run,
         agentDir: () => {
@@ -689,4 +726,13 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     }),
 ];
 
-export const sessionMcpHandler = (deps = {}) => createMcpHandler({ tools: sessionTools(deps), name: 'caw-ai' });
+/** The tools offered now: an extension's tool only while the config activates it. */
+export const offeredTools = (root, tools) => {
+    const active = activeExtensions(rawConfig(root));
+    return tools.filter(({ extension }) => extension === undefined || active.includes(extension));
+};
+
+export const sessionMcpHandler = (deps = {}) => {
+    const tools = sessionTools(deps);
+    return createMcpHandler({ tools: () => offeredTools(deps.root, tools), name: 'caw', instructions: SESSION_INSTRUCTIONS });
+};

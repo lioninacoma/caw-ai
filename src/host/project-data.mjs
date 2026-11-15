@@ -10,12 +10,11 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { describeCode } from './code-source.mjs';
-import { answersFromExplore, detectApp, envExample, mcpEntry, starterConfig } from './commands.mjs';
+import { answersFromExplore, detectApp, envExample, starterConfig } from './commands.mjs';
+import { ensureMcpEntry } from './mcp-entry.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
-import { templatePath } from './sandbox-config.mjs';
 import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
 
-const SKILL_FILE = '.claude/skills/caw-ai/SKILL.md';
 
 const testIds = (root) => {
     const dir = join(root, TEST_DIR);
@@ -147,28 +146,12 @@ export const listProject = (root) => {
     return { config: state, tests };
 };
 
-/** The caw-ai entry in .mcp.json. @returns 'created' | 'present' | 'invalid' */
-const ensureMcpEntry = (root) => {
-    const file = join(root, '.mcp.json');
-    let mcp = { mcpServers: {} };
-    try {
-        if (existsSync(file)) mcp = JSON.parse(readFileSync(file, 'utf8'));
-    } catch {
-        return 'invalid';
-    }
-    if (mcp === null || typeof mcp !== 'object') return 'invalid';
-    if (mcp.mcpServers?.['caw-ai'] !== undefined) return 'present';
-    mcp.mcpServers = { ...(mcp.mcpServers ?? {}), 'caw-ai': mcpEntry(root) };
-    writeFileSync(file, `${JSON.stringify(mcp, null, 2)}\n`);
-    return 'created';
-};
-
 /**
  * `caw init` without questions and without explore: from caw/.explore.json (fromExplore: true or a path), otherwise offline
  * (template, TODO in the login). Existing files stay untouched.
  * @returns { state: 'done', created, skipped, todo, explored } or { state: 'explore-first' } when a URL is given but nothing was explored yet
  */
-export const initProject = (root, { url, offline = false, fromExplore, roles, noMcp = false } = {}) => {
+export const initProject = (root, { url, offline = false, fromExplore, roles, noMcp = false, env, language, insecureTls = false, allowHttp = false } = {}) => {
     const exploreFile = typeof fromExplore === 'string' ? fromExplore : EXPLORE_FILE;
     const useExplore = fromExplore !== undefined && fromExplore !== false ? true : !offline && url === undefined && existsSync(join(root, EXPLORE_FILE));
     if (!useExplore && !offline && url !== undefined) return { state: 'explore-first', url };
@@ -183,9 +166,12 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
         answers = answersFromExplore(suggestion);
     }
     if (roles !== undefined) answers.roles = roles;
+    // What the session decided: the environment's name, the team language and the address switches, persisted on the environment.
+    Object.assign(answers, env === undefined ? {} : { env }, language === undefined ? {} : { language }, insecureTls ? { insecureTls: true } : {}, allowHttp ? { allowHttp: true } : {});
 
     const created = [];
     const skipped = [];
+    const updated = [];
     const write = (target, content) => {
         const path = join(root, target);
         if (existsSync(path)) {
@@ -201,12 +187,12 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
     write(CONFIG_FILE, `${JSON.stringify(config, null, 4)}\n`);
     const example = envExample(config);
     if (example !== null) write(`${ENV_FILE}.example`, example);
-    write(SKILL_FILE, readFileSync(templatePath('skill.md'), 'utf8'));
     if (!existsSync(join(root, TEST_DIR))) write(`${TEST_DIR}/.gitkeep`, '');
     write(CONTEXT_FILE, t('cli.contextTemplate'));
     if (!noMcp) {
         const mcp = ensureMcpEntry(root);
         if (mcp === 'created') created.push('.mcp.json');
+        else if (mcp === 'updated') updated.push('.mcp.json');
         else skipped.push(mcp === 'invalid' ? '.mcp.json (invalid JSON)' : '.mcp.json');
     }
     const ignore = join(root, '.gitignore');
@@ -225,5 +211,5 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
             todo = [];
         }
     }
-    return { state: 'done', created, skipped, todo, explored: useExplore };
+    return { state: 'done', created, skipped, ...(updated.length === 0 ? {} : { updated, restart: true }), todo, explored: useExplore };
 };
