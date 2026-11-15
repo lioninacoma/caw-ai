@@ -286,7 +286,15 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     }
     if (signIn === 'session') config.signIn = { type: 'session', signedInSelector: login.signedInSelector ?? config.signIn.signedInSelector };
     // From explore: found selectors instead of the template placeholders.
-    if (signIn === 'form') {
+    if (signIn === 'form' && Array.isArray(login.steps) && login.steps.length > 0) {
+        // A sign-in at an IdP: steps from the pages the person went through, starting on the app path that led there.
+        config.signIn = {
+            type: 'form',
+            path: typeof login.path === 'string' && login.path !== '' ? login.path : '/',
+            steps: login.steps,
+            signedInSelector: typeof login.signedInSelector === 'string' && login.signedInSelector !== '' ? login.signedInSelector : TODO,
+        };
+    } else if (signIn === 'form') {
         for (const key of ['path', 'userSelector', 'passwordSelector', 'submitSelector', 'signedInSelector']) {
             if (typeof login[key] === 'string' && login[key] !== '') config.signIn[key] = login[key];
             // What explore did not find gets no real-looking placeholder: doctor reports TODO until the human fills it in.

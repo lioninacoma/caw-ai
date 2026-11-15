@@ -127,7 +127,7 @@ export default {
     'session.browser.signInTimeout': '{selector} wasn\'t visible after {minutes} minutes.',
     'session.browser.devlinkRejected': 'devlink rejects the config: {issues}',
     'session.browser.profileNotDeleted': '[caw] Couldn\'t delete the Chrome profile. It holds the test account\'s login cookies, please remove it by hand: {dir}',
-    'session.browser.sessionExpired': 'The saved session has probably expired: caw role login <role> --env <environment>.',
+    'session.browser.sessionExpired': 'The saved session has probably expired: caw role login {role} --env {env}',
     'session.browser.checkSelector': 'Check signIn.signedInSelector: it must also appear on the environment\'s start page, not only in the app.',
     'session.browser.markerMissing': '"{selector}" is missing on {url} after sign-in. {next}',
     'session.browser.notSettled': 'The app didn\'t settle: {reason}',

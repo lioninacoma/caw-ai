@@ -68,6 +68,8 @@ Looks at the app like `init`, but only writes suggestions to `caw/.explore.json`
 
 With it: `--yes`, `--insecure-tls` (as for `init`); `--login` or `--no-login` answer the sign-in question for scripts.
 
+If the sign-in leads to an identity provider on another host (such as Keycloak), you sign in there as usual. explore reads its pages and suggests `signIn` `steps` that fill the user name and password (identifier-first and a one-time code included) and the provider's host in `allowHosts`; `path` is the app page the sign-in started from. If its pages have no fields caw can fill, it suggests a stored session (`type: session`, [role login](#role)).
+
 With a sign-in, the card then asks for the role of the account you used and saves it as a test user (see [role](#role)); `init` takes the roles from there.
 
 ## doctor

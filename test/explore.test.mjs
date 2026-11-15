@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
 
-import { buildSuggestions, explore, keepStable, startOf, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
+import { buildSuggestions, explore, idpSteps, keepStable, startOf, suggestConsoleIgnore, suggestSignedIn, surveyPage } from '../src/host/explore.mjs';
 import { answersFromExplore, starterConfig } from '../src/host/commands.mjs';
 import { validateConfig } from '../src/shared/config.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -72,6 +72,54 @@ test('explore: random ids are dropped on the second load, state on body beats me
     const form = buildSuggestions({ url: 'https://portal.example/', seen: { before: first, loginPage: first, after: home } });
     assert.equal(form.signIn.submitSelector, undefined);
     assert.equal(form.signIn.signedInSelector, 'body.signed-in');
+});
+
+// Sign-in pages of an IdP shaped like Keycloak's (fictitious): one page with both fields, identifier-first, a one-time code.
+const IDP_BOTH = `<form id="kc-form-login" method="post"><input id="username" name="username" type="text" autocomplete="username">
+  <input id="password" name="password" type="password"><input id="kc-login" type="submit" value="Sign In"></form>`;
+const IDP_USER = `<form id="kc-form-login" method="post"><input id="username" name="username" type="text" autocomplete="username">
+  <input id="kc-login" type="submit" value="Sign In"></form>`;
+const IDP_PASSWORD = `<form id="kc-form-login" method="post"><input id="password" name="password" type="password">
+  <input id="kc-login" type="submit" value="Sign In"></form>`;
+const IDP_CODE = `<form id="kc-otp-login-form" method="post"><input id="otp" name="otp" type="text" autocomplete="one-time-code">
+  <input id="kc-login" type="submit" value="Sign In"></form>`;
+
+test('explore: sign-in steps from the pages of an IdP, identifier-first and one-time code included', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const surveyOf = async (html) => {
+        await page.setContent(html);
+        return { ...await page.evaluate(surveyPage, 600), url: 'http://idp.localhost:18180/realms/caw-e2e/protocol/openid-connect/auth' };
+    };
+    const both = await surveyOf(IDP_BOTH);
+    const user = await surveyOf(IDP_USER);
+    const password = await surveyOf(IDP_PASSWORD);
+    const code = await surveyOf(IDP_CODE);
+    assert.deepEqual(user.entry, { kind: 'user', selector: '#username', submitSelector: '#kc-login', submitsWithEnter: true });
+    assert.deepEqual(code.entry, { kind: 'code', selector: '#otp', submitSelector: '#kc-login', submitsWithEnter: true });
+    assert.equal(both.entry, null, 'a page with a password is a login, not an entry');
+    // A real submit button: Enter on the field submits, as the app's own form sign-in does.
+    assert.deepEqual(idpSteps([both]), [{ fill: '#username', with: 'user' }, { fill: '#password', with: 'password' }, { press: 'Enter', on: '#password' }]);
+    assert.deepEqual(idpSteps([user, password, code]), [
+        { fill: '#username', with: 'user' }, { press: 'Enter', on: '#username' },
+        { fill: '#password', with: 'password' }, { press: 'Enter', on: '#password' },
+        { fill: '#otp', with: 'totp' }, { press: 'Enter', on: '#otp' },
+    ]);
+    assert.equal(idpSteps([password]), null, 'without the user name the steps are incomplete');
+    assert.equal(idpSteps([]), null);
+
+    const home = { url: 'http://ci.localhost:18080/', markers: [{ selector: '#user-menu', text: 'qa.clerk', tag: 'span' }], messages: [] };
+    const start = { url: 'http://ci.localhost:18080/', markers: [], messages: [] };
+    const suggestion = buildSuggestions({ url: 'http://ci.localhost:18080', seen: { before: start, loginPage: null, after: home }, foreignHosts: ['idp.localhost'], idpPages: [user, password], signInFrom: '/login' });
+    assert.deepEqual(suggestion.signIn, { type: 'form', path: '/login', steps: idpSteps([user, password]), signedInSelector: '#user-menu', confidence: 'certain' });
+    assert.deepEqual(suggestion.allowHosts, ['idp.localhost']);
+    assert.match(suggestion.notes.join(' '), /idp\.localhost.*allowHosts/);
+    const config = starterConfig(answersFromExplore(suggestion));
+    assert.deepEqual(config.signIn, { type: 'form', path: '/login', steps: idpSteps([user, password]), signedInSelector: '#user-menu' });
+    assert.deepEqual(config.environments.local.allowHosts, ['idp.localhost']);
+    assert.equal(validateConfig(config).ok, true);
+    // Pages caw cannot fill: the stored session stays the suggestion.
+    const unknown = buildSuggestions({ url: 'http://ci.localhost:18080', seen: { before: start, loginPage: null, after: home }, foreignHosts: ['sso.example.com'], idpPages: [{ ...start, login: null, entry: null }] });
+    assert.equal(unknown.signIn.type, 'session');
 });
 
 test('explore: suggestions for form, SSO and no sign-in; console noise without numbers', () => {

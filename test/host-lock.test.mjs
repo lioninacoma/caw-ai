@@ -5,7 +5,7 @@ import { after, before, test } from 'node:test';
 /* global window -- page.evaluate callbacks run in the browser */
 import { chromium } from 'playwright-core';
 
-import { browserArgs, installHostLock, lockDecision } from '../src/host/host-lock.mjs';
+import { ANY_HOST, browserArgs, installHostLock, lockDecision } from '../src/host/host-lock.mjs';
 import { blockedHosts, navigationHosts } from '../src/shared/environments.mjs';
 
 test('browserArgs: production hosts unresolvable first, .localhost pinned to loopback, no proxy, no WebRTC, no CDP port', () => {
@@ -27,6 +27,10 @@ test('lockDecision: top navigations only to navigation hosts (localhost and 127.
     assert.equal(decide('https://prod.example/api', false), 'production');
     assert.equal(decide('https://prod.example/', true), 'production');
     assert.equal(decide('data:text/html,x', true), 'allow');
+    // explore: the person may sign in at an IdP anywhere; production stays blocked.
+    const anywhere = { navigation: [ANY_HOST], blocked: ['prod.example'] };
+    assert.equal(lockDecision({ url: 'https://idp.example/realms/x', topNavigation: true }, anywhere), 'allow');
+    assert.equal(lockDecision({ url: 'https://prod.example/', topNavigation: true }, anywhere), 'production');
 });
 
 test('blockedHosts: production hosts of other environments; none on production itself', () => {

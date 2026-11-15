@@ -31,6 +31,38 @@ export const ENVIRONMENTS = {
     gateform: { url: 'https://gateform.localhost:18443', writable: true, insecureTls: true, gate: { type: 'basic' } },
 };
 
+/**
+ * The environments of the sign-in scenarios (P9, Keycloak): a stored session (sso), identifier-first with an optional "stay
+ * signed in" step (idfirst), the IdP on the app's host (localhost, sign-in path "/"), a Keycloak one-time code (otp) and the
+ * app's own one-time code for the admin (totp).
+ */
+export const AUTH_ENVIRONMENTS = {
+    ci: ENVIRONMENTS.ci,
+    sso: { url: http('sso'), writable: true, allowHosts: ['idp.localhost'], signIn: { type: 'session', path: '/login', signedInSelector: '#user-menu' } },
+    idfirst: {
+        url: http('idfirst'),
+        writable: true,
+        allowHosts: ['idp.localhost'],
+        signIn: {
+            type: 'form',
+            path: '/login',
+            signedInSelector: '#user-menu',
+            steps: [
+                { fill: '#username', with: 'user' }, { click: '#kc-login' }, { waitFor: '#password' }, { fill: '#password', with: 'password' },
+                { click: '#kc-login' }, { click: '#kc-stay-signed-in', optional: true },
+            ],
+        },
+    },
+    localhost: { url: `http://localhost:${SPA_PORT}`, writable: true, signIn: { ...KEYCLOAK_SIGN_IN, path: '/' } },
+    otp: {
+        url: http('otp'),
+        writable: true,
+        allowHosts: ['idp.localhost'],
+        signIn: { ...KEYCLOAK_SIGN_IN, steps: [...KEYCLOAK_SIGN_IN.steps, { fill: '#otp', with: 'totp' }, { click: '#kc-login' }] },
+    },
+    totp: { url: http('totp'), writable: true, signIn: { type: 'form', path: '/login', userSelector: '#user', passwordSelector: '#password', codeSelector: '#code', signedInSelector: '#user-menu' } },
+};
+
 /** The environments of the network scenarios (P3): third-party content, a production stack and the server-rendered notes app. */
 export const NETWORK_ENVIRONMENTS = {
     local: ENVIRONMENTS.local,
@@ -80,6 +112,10 @@ export const baseConfig = (environments = ENVIRONMENTS) => ({
     roles: { clerk: {}, admin: {} },
 });
 
+/** Base32 of the Keycloak OTP secret in e2e/stacks/idp/realm.json, and the spa's own (serve.mjs). Fictitious. */
+export const KEYCLOAK_TOTP = 'MUZGKLLPORYC243FMNZGK5BNMZUWG5DJORUW65LT';
+export const APP_TOTP = 'KRUGS4ZANFZSAYJAMZQWWZJAONSWG4TF';
+
 /** The test users, fictitious: the default set, ci's Keycloak accounts and the own accounts of the tenant south-ci. */
 export const ENV_FILE = [
     'CAW_CLERK_USER=clerk.e2e', 'CAW_CLERK_PASSWORD=clerk-pw-e2e',
@@ -89,6 +125,11 @@ export const ENV_FILE = [
     'CAW_CLERK_USER__SOUTH_CI=south.clerk', 'CAW_CLERK_PASSWORD__SOUTH_CI=south-pw-e2e',
     'CAW_ADMIN_USER__SOUTH_CI=south.admin', 'CAW_ADMIN_PASSWORD__SOUTH_CI=south-admin-pw-e2e',
     'CAW_GATE_USER=gate.e2e', 'CAW_GATE_PASSWORD=gate-pw-e2e',
+    // P9: Keycloak accounts per sign-in environment; the one-time code secrets are fictitious (Base32).
+    'CAW_CLERK_USER__IDFIRST=qa.clerk', 'CAW_CLERK_PASSWORD__IDFIRST=qa-clerk-pw-e2e',
+    'CAW_CLERK_USER__LOCALHOST=qa.clerk', 'CAW_CLERK_PASSWORD__LOCALHOST=qa-clerk-pw-e2e',
+    'CAW_CLERK_USER__OTP=qa.otp', 'CAW_CLERK_PASSWORD__OTP=qa-otp-pw-e2e', `CAW_CLERK_TOTP__OTP=${KEYCLOAK_TOTP}`,
+    'CAW_ADMIN_USER__TOTP=admin.e2e', 'CAW_ADMIN_PASSWORD__TOTP=admin-pw-e2e', `CAW_ADMIN_TOTP__TOTP=${APP_TOTP}`,
 ].join('\n');
 
 /** The tests: steps with name, expect, actions (as in the recording file) and check. */
@@ -164,6 +205,15 @@ export const ACTION_TESTS = {
     'note-due': { role: 'clerk', writes: true, locale: 'en-US', steps: [{ name: 'Add a note due in a week', expect: 'The note is listed with its due date.', actions: [{ fill: "getByRole('textbox', { name: 'Title', exact: true })", value: 'Note {{runTag}}', path: '/' }, { fill: "getByRole('textbox', { name: 'Due', exact: true })", value: '{{date+7}}', path: '/' }, { click: button('Add note'), path: '/' }], check: "[...document.querySelectorAll('#notes li')].some((item) => /due \\d{2}\\/\\d{2}\\/\\d{4}/.test(item.textContent))" }] },
 };
 
+/** M1 (P9): the notes app as a classic MPA: CSRF on sign-in and forms, a flash after post/redirect/get, pages by link text. */
+export const MPA_TESTS = {
+    'notes-paged': { role: 'clerk', writes: true, steps: [
+        { name: 'Add a note', expect: 'It says Note added and the note is first.', actions: [{ fill: "getByRole('textbox', { name: 'Title', exact: true })", value: 'Note {{runTag}}', path: '/' }, { click: button('Add note'), path: '/' }, { remember: { name: 'total', code: "document.getElementById('total').textContent" } }], check: "document.getElementById('message').textContent==='Note added'&&document.querySelector('#notes li').textContent==='Note {{runTag}}'" },
+        { name: 'Reload the list', expect: 'The flash is gone and nothing was sent twice.', actions: [{ reload: {} }, { 'wait-ready': {} }], check: "document.getElementById('message').textContent===''&&document.getElementById('total').textContent==='{{total}}'" },
+        { name: 'Go to the next page', expect: 'Page 2 with a link back.', actions: [{ click: "getByRole('link', { name: 'Next', exact: true })", path: '/notes' }], check: "location.search==='?page=2'&&[...document.querySelectorAll('nav a')].some((link)=>link.textContent==='Previous')&&document.querySelectorAll('#notes li').length>0" },
+    ] },
+};
+
 /** The single-file text of a test (description and recording), as parseTest reads it. */
 const testText = (id, { role, writes, steps, environments, locale = 'en-US', viewport = { width: 1280, height: 800 }, recordedOn = 'local' }) => {
     const lines = [`id: ${id}`, `role: ${role}`, `writes: ${writes}`, ...(environments === undefined ? [] : [`environments: [${environments.join(', ')}]`]), 'steps:'];
@@ -187,7 +237,7 @@ const testText = (id, { role, writes, steps, environments, locale = 'en-US', vie
 export const writeSpaTest = (root, id, extra = {}) => {
     rmSync(testPath(root, id), { force: true });
     rmSync(recordingPath(root, id), { force: true });
-    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id] ?? LIFECYCLE_TESTS[id] ?? ACTION_TESTS[id]), ...extra }), id), id });
+    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id] ?? LIFECYCLE_TESTS[id] ?? ACTION_TESTS[id] ?? MPA_TESTS[id]), ...extra }), id), id });
 };
 
 /** The whole project: config, caw/.env and every test; runs and sessions of earlier runs removed. */
@@ -225,7 +275,7 @@ export const makeStale = (root, id) => {
 
 /** The action scenarios' tests, written only for them. */
 export const removeActionTests = (root) => {
-    for (const id of Object.keys(ACTION_TESTS)) {
+    for (const id of [...Object.keys(ACTION_TESTS), ...Object.keys(MPA_TESTS)]) {
         rmSync(testPath(root, id), { force: true });
         rmSync(recordingPath(root, id), { force: true });
     }

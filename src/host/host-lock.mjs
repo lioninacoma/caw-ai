@@ -12,6 +12,8 @@ import { APP_FRAME } from './app-view.mjs';
 
 // localhost and 127.0.0.1 are the same machine: a dev server under one name often opens its HMR socket under the other.
 const LOOPBACK_PAIR = ['localhost', '127.0.0.1'];
+/** As a navigation host: pages may navigate anywhere (explore, where the person signs in at an IdP); production stays blocked. */
+export const ANY_HOST = '*';
 export const withLoopbackPair = (hosts) => (hosts.some((host) => LOOPBACK_PAIR.includes(host)) ? [...new Set([...hosts, ...LOOPBACK_PAIR])] : hosts);
 
 /**
@@ -60,7 +62,7 @@ export const lockDecision = ({ url, topNavigation }, { navigation, blocked = [] 
     const host = hostOf(url);
     if (host === '' || /^(data|blob|about|chrome|chrome-extension):/i.test(url)) return 'allow';
     if (blocked.includes(host)) return 'production';
-    if (topNavigation && !withLoopbackPair(navigation).includes(host)) return 'navigation';
+    if (topNavigation && !navigation.includes(ANY_HOST) && !withLoopbackPair(navigation).includes(host)) return 'navigation';
     return 'allow';
 };
 
@@ -72,9 +74,10 @@ export const lockDecision = ({ url, topNavigation }, { navigation, blocked = [] 
  */
 export const installHostLock = async (context, { navigation, blocked = [], onBlocked = () => {} }) => {
     const allowed = new Set(withLoopbackPair(navigation));
+    const anywhere = allowed.has(ANY_HOST);
     const aborted = new WeakSet();
     // Only requests to other hosts reach the handler; everything for the app's own hosts stays on Playwright's fast path.
-    await context.route((url) => !allowed.has(url.hostname) && /^(https?|wss?):$/.test(url.protocol), async (route) => {
+    await context.route((url) => (anywhere ? blocked.includes(url.hostname) : !allowed.has(url.hostname)) && /^(https?|wss?):$/.test(url.protocol), async (route) => {
         const request = route.request();
         const decision = lockDecision({ url: request.url(), topNavigation: isTopNavigation(request) }, { navigation, blocked });
         if (decision === 'allow') {
@@ -88,7 +91,7 @@ export const installHostLock = async (context, { navigation, blocked = [], onBlo
         await route.abort(decision === 'navigation' ? 'aborted' : 'blockedbyclient').catch(() => {});
     });
     context.on('request', (request) => {
-        if (request.redirectedFrom() === null || !isTopNavigation(request) || allowed.has(hostOf(request.url()))) return;
+        if (anywhere || request.redirectedFrom() === null || !isTopNavigation(request) || allowed.has(hostOf(request.url()))) return;
         onBlocked({ host: hostOf(request.url()), url: request.url(), kind: 'redirect', request });
     });
     return {

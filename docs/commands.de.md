@@ -68,6 +68,8 @@ Sieht die App an wie `init`, schreibt aber nur Vorschläge nach `caw/.explore.js
 
 Dazu: `--yes`, `--insecure-tls` (wie bei `init`); `--login` oder `--no-login` beantworten die Frage nach der Anmeldung für Skripte.
 
+Führt die Anmeldung zu einem Identitätsanbieter auf einem anderen Host (etwa Keycloak), meldest du dich dort wie gewohnt an. explore liest dessen Seiten und schlägt `signIn`-`steps` vor, die Benutzername und Passwort füllen (auch identifier-first und ein Einmalcode), und den Host des Anbieters in `allowHosts`; `path` ist die App-Seite, auf der die Anmeldung begann. Haben seine Seiten keine Felder, die caw füllen kann, schlägt es eine gespeicherte Sitzung vor (`type: session`, [role login](#role)).
+
 Mit Anmeldung fragt die Karte danach nach der Rolle des benutzten Kontos und speichert es als Testnutzer (siehe [role](#role)); `init` übernimmt die Rollen von dort.
 
 ## doctor

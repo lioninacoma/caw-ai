@@ -127,7 +127,7 @@ export default {
     'session.browser.signInTimeout': 'Nach {minutes} Minuten war {selector} nicht zu sehen.',
     'session.browser.devlinkRejected': 'devlink lehnt die Config ab: {issues}',
     'session.browser.profileNotDeleted': '[caw] Das Chrome-Profil ließ sich nicht löschen. Es enthält Login-Cookies des Testkontos, bitte von Hand entfernen: {dir}',
-    'session.browser.sessionExpired': 'Die gespeicherte Sitzung ist vermutlich abgelaufen: caw role login <rolle> --env <umgebung>.',
+    'session.browser.sessionExpired': 'Die gespeicherte Sitzung ist vermutlich abgelaufen: caw role login {role} --env {env}',
     'session.browser.checkSelector': 'Prüfe signIn.signedInSelector: Er muss auch auf der Startseite der Umgebung erscheinen, nicht nur in der Anwendung.',
     'session.browser.markerMissing': 'Auf {url} fehlt nach der Anmeldung "{selector}". {next}',
     'session.browser.notSettled': 'Die App kam nicht zur Ruhe: {reason}',

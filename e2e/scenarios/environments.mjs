@@ -1,15 +1,15 @@
 // P2 core model against the spa fixture (e2e/spa): environment choice (S8), sign-in and test users per environment with Keycloak
 // (A5), HTTP Basic and a gate (A6), several roles (A9), TLS and http exceptions (D6), tenants as environments (D7) and setup
 // with the packed CLI (B2). No Claude: the tests carry recordings written by hand and run headless.
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
 import {
-    ACTION_ENVIRONMENTS, ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeActionTests, removeLifecycleTests, removeNetworkTests,
+    ACTION_ENVIRONMENTS, APP_TOTP, AUTH_ENVIRONMENTS, ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeActionTests, removeLifecycleTests, removeNetworkTests,
     writeNetworkTests, writeProject, writeSpaTest,
 } from '../spa/project.mjs';
 import { here, humans, loadTest, newestRunOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
@@ -24,6 +24,9 @@ const { exitOf } = await import('../../src/shared/errors.mjs');
 const { listProject } = await import('../../src/host/project-data.mjs');
 const { roleCommand, roleOverview } = await import('../../src/host/role-command.mjs');
 const { sessionTools } = await import('../../src/host/session-mcp.mjs');
+const { EXPLORE_FILE, explore: exploreCommand } = await import('../../src/host/explore.mjs');
+const { exploreBrowser } = await import('../../src/host/browser-session.mjs');
+const { browserArgs } = await import('../../src/host/host-lock.mjs');
 
 let server = null;
 const startSpa = async () => {
@@ -753,4 +756,168 @@ scenario('M4', 'Dates in en-US: {{date+7}} is filled as MM/DD/YYYY in the record
     writeFileSync(join(root, 'caw/recordings/note-due.yaml'), readFileSync(join(root, 'caw/recordings/note-due.yaml'), 'utf8').replace('{{date+7}}', '{{today+7}}'));
     const old = await callWith({}, () => validate(root));
     verify('{{today+7}} is refused with its new name {{date+7}}', old.value.exit === 3 && /\{\{today\+7\}\}.*\{\{date\+7\}\}/.test(old.value.message ?? old.output), `${shown(old.value)} ${(old.value.message ?? old.output).split('\n').find((line) => /today/.test(line)) ?? ''}`);
+});
+
+// ---- P9: sign-in through Keycloak (A1–A4, A8)
+
+const authConfig = () => setConfig(baseConfig({ ...ENVIRONMENTS, ...AUTH_ENVIRONMENTS }));
+/** A test endpoint by environment name, over 127.0.0.1 with its host name (Node does not resolve *.localhost on Windows). */
+const endpoint = (env, path, method = 'GET') => new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port: SPA_PORT, method, path, headers: { host: new URL(AUTH_ENVIRONMENTS[env].url).host } }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => resolve(body));
+    });
+    req.on('error', reject);
+    req.end();
+});
+const output = (...results) => results.map((result) => result.output ?? '').join('\n');
+/** Ends every Keycloak session of a user through the admin API (fictitious bootstrap admin of e2e/stacks/idp/compose.yaml). */
+const keycloakLogout = async (username) => {
+    const base = 'http://127.0.0.1:18180';
+    const token = await fetch(`${base}/realms/master/protocol/openid-connect/token`, {
+        method: 'POST',
+        body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username: 'admin', password: 'admin-e2e-fictitious' }),
+    }).then((response) => response.json()).then((answer) => answer.access_token);
+    const headers = { authorization: `Bearer ${token}` };
+    const [user] = await fetch(`${base}/admin/realms/caw-e2e/users?exact=true&username=${username}`, { headers }).then((response) => response.json());
+    await fetch(`${base}/admin/realms/caw-e2e/users/${user.id}/logout`, { method: 'POST', headers });
+};
+/** Signs in as a person would, in a separate Chrome (as `caw role login` does), and stores the session where caw reads it. */
+const captureSession = async (env, role, { user, password }) => {
+    const { chromium } = await import('playwright-core');
+    const browser = await chromium.launch({ channel: 'chrome', headless: true, args: browserArgs([]) });
+    try {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await page.goto(`${AUTH_ENVIRONMENTS[env].url}/login`);
+        await page.fill('#username', user);
+        await page.fill('#password', password);
+        await page.click('#kc-login');
+        await page.waitForSelector('#user-menu', { timeout: 30000 });
+        const path = join(root, `caw/.auth/${env}/${role}.json`);
+        mkdirSync(join(root, `caw/.auth/${env}`), { recursive: true });
+        await context.storageState({ path });
+        return path;
+    } finally {
+        await browser.close();
+    }
+};
+
+scenario('A1', 'OIDC with the IdP on another host: explore proposes steps and allowHosts from the Keycloak pages; the suggestion signs in headless', idp, async () => {
+    authConfig();
+    const url = AUTH_ENVIRONMENTS.ci.url;
+    rmSync(join(root, EXPLORE_FILE), { force: true });
+    let browser = null;
+    // The person: signs in on the Keycloak page explore opened (headless here), then is done on the app's start page.
+    const person = async () => {
+        const page = browser.page;
+        await page.waitForSelector('#username', { timeout: 30000 });
+        await page.fill('#username', 'qa.clerk');
+        await page.fill('#password', 'qa-clerk-pw-e2e');
+        await page.click('#kc-login');
+        await page.waitForSelector('#user-menu', { timeout: 30000 });
+    };
+    const explored = await callWith({}, () => exploreCommand(root, ['--url', url, '--login'], {
+        open: async (options) => { browser = await exploreBrowser({ ...options, headless: true }); return browser; },
+        wait: person,
+        detect: () => 'web',
+        next: false,
+    }));
+    const suggestion = existsSync(join(root, EXPLORE_FILE)) ? JSON.parse(readFileSync(join(root, EXPLORE_FILE), 'utf8')) : {};
+    verify('(1) explore: exit 0, a form sign-in with steps starting on the app path', explored.value.exit === 0 && suggestion.signIn?.type === 'form' && suggestion.signIn?.path === '/', `${shown(explored.value)} ${JSON.stringify(suggestion.signIn)}`);
+    verify('(1) the steps fill user and password on Keycloak and submit', JSON.stringify(suggestion.signIn?.steps) === JSON.stringify([{ fill: '#username', with: 'user' }, { fill: '#password', with: 'password' }, { press: 'Enter', on: '#password' }]), JSON.stringify(suggestion.signIn?.steps));
+    verify('(1) the IdP host as allowHosts, the signed-in marker from the app', JSON.stringify(suggestion.allowHosts) === '["idp.localhost"]' && ['#user-menu', 'body.signed-in'].includes(suggestion.signIn?.signedInSelector), `${JSON.stringify(suggestion.allowHosts)} ${suggestion.signIn?.signedInSelector}`);
+    // The suggestion as init would write it, on the ci environment: a headless run signs in with it.
+    const { confidence, ...signIn } = suggestion.signIn ?? {};
+    setConfig(baseConfig({ ...ENVIRONMENTS, ci: { ...ENVIRONMENTS.ci, allowHosts: suggestion.allowHosts, signIn } }));
+    const ci = await go(['see-tickets', '--env', 'ci']);
+    verify('(2) headless CI sign-in with the explored steps passes', ci.exit === 0, `${shown(ci)} ${failNote('see-tickets')} (${confidence})`);
+    print('     (3) a second sign-in inside the workbench iframe: open for the acceptance (the workbench embeds only the app\'s own documents, by decision)');
+});
+
+scenario('A2', 'IdP on the same host, another port: signIn.path stays the app path "/" and the sign-in passes', idp, async () => {
+    authConfig();
+    const checked = await callWith({}, () => validate(root));
+    verify('the config with path "/" is valid', checked.value.exit === 0, shown(checked.value));
+    const local = await go(['see-tickets', '--env', 'localhost']);
+    verify('sign-in from http://localhost:18080/ to Keycloak at localhost:18180 passes', local.exit === 0, `${shown(local)} ${failNote('see-tickets')}`);
+    const { dir } = newestRunOf(root, 'see-tickets');
+    const report = existsSync(join(dir, 'report.md')) ? readFileSync(join(dir, 'report.md'), 'utf8') : '';
+    verify('no 404 at <app>/realms/…', !/18080\/realms/.test(report), report.split('\n').find((line) => /realms/.test(line)) ?? '');
+});
+
+scenario('A3', 'Identifier-first: user name page, then password page; an optional "stay signed in" step that never shows is skipped', idp, async () => {
+    authConfig();
+    const started = Date.now();
+    const first = await go(['see-tickets', '--env', 'idfirst']);
+    verify('steps fill, click, waitFor, fill, click: passes', first.exit === 0, `${shown(first)} ${failNote('see-tickets')}`);
+    verify('the run takes well under a minute (the optional step waits at most 3 s)', Date.now() - started < 60000, `${Math.round((Date.now() - started) / 1000)} s`);
+});
+
+/** Waits until a 30 s TOTP window has just begun, so two sign-ins right after each other fall into the same window. */
+const windowStart = async () => {
+    while (Date.now() % 30000 > 1500) await new Promise((resolve) => { setTimeout(resolve, 200); });
+};
+
+scenario('A4', 'One-time codes: the app\'s own (codeSelector) and Keycloak\'s (a with: totp step); a second sign-in in the same window waits for the next code', idp, async () => {
+    authConfig();
+    await windowStart();
+    const first = await go(['create-ticket', '--env', 'totp']);
+    const second = await go(['create-ticket', '--env', 'totp']);
+    const stats = JSON.parse(await endpoint('totp', '/test/stats'));
+    verify('app code: both runs pass', first.exit === 0 && second.exit === 0, `${shown(first)} | ${shown(second)} ${failNote('create-ticket')}`);
+    verify('app code: the second sign-in met its used code once and then took the next window', stats.reusedCodes === 1, JSON.stringify(stats));
+    const inRuns = (pattern, read) => runDirsOf(root, 'create-ticket').flatMap((name) => readdirSync(join(root, '.caw/runs', name)).filter((file) => pattern.test(file)).map((file) => read(join(root, '.caw/runs', name, file)))).join('\n');
+    const runText = inRuns(/\.(md|json|log)$/, (path) => readFileSync(path, 'utf8'));
+    const traces = inRuns(/^trace.*\.zip$/, zipTexts);
+    verify('the TOTP secret is in no report, result, log, trace or output', !runText.includes(APP_TOTP) && !traces.includes(APP_TOTP) && !output(first, second).includes(APP_TOTP));
+    await windowStart();
+    const otp = await go(['see-tickets', '--env', 'otp']);
+    const otpAgain = await go(['see-tickets', '--env', 'otp']);
+    verify('Keycloak code: both runs pass, the second within the same window', otp.exit === 0 && otpAgain.exit === 0, `${shown(otp)} | ${shown(otpAgain)} ${failNote('see-tickets')}`);
+});
+
+scenario('A8', 'Stored session: a run with it passes; missing names caw role login; expired names it as well; restored in CI it passes', idp, async () => {
+    authConfig();
+    print('     (1) caw role login in the window: covered by the unit tests of role-command (no window here); the session is captured with Playwright');
+    const missing = await go(['see-tickets', '--env', 'sso']);
+    verify('(3) no session file: auth-missing, exit 3, naming caw role login clerk --env sso', missing.exit === 3 && missing.code === 'auth-missing' && /caw role login clerk --env sso/.test(missing.message ?? ''), shown(missing));
+    const path = await captureSession('sso', 'clerk', { user: 'qa.clerk', password: 'qa-clerk-pw-e2e' });
+    const withSession = await go(['see-tickets', '--env', 'sso']);
+    verify('(2) a run with the stored session passes', withSession.exit === 0, `${shown(withSession)} ${failNote('see-tickets')}`);
+    // Expired as in real life: the app's session and the IdP's (otherwise Keycloak's own cookie signs the app in again).
+    await endpoint('sso', '/test/revoke', 'POST');
+    await keycloakLogout('qa.clerk');
+    const expired = await go(['see-tickets', '--env', 'sso']);
+    verify('(4) the app ended the session: the run ends naming caw role login clerk --env sso', expired.exit !== 0 && /caw role login clerk --env sso/.test(`${expired.message ?? ''} ${expired.output}`), shown(expired));
+    // CI: a fresh session file kept in a secret store outside the project, copied into caw/.auth/ before the run.
+    rmSync(path);
+    const secret = join(mkdtempSync(join(tmpdir(), 'caw-e2e-secret-')), 'clerk.json');
+    writeFileSync(secret, readFileSync(await captureSession('sso', 'clerk', { user: 'qa.clerk', password: 'qa-clerk-pw-e2e' })));
+    rmSync(path);
+    writeFileSync(path, readFileSync(secret));
+    rmSync(dirname(secret), { recursive: true, force: true });
+    const restored = await callWith({ CI: '1' }, () => run(root, ['see-tickets', '--env', 'sso', '--headless']));
+    verify('(5) CI with the session restored from a secret path passes', restored.value.exit === 0, shown(restored.value));
+});
+
+// ---- P9: M1, a classic MPA (CSRF, post/redirect/get with flash, pagination)
+
+/** A request to the notes app on its own port, by host name; resolves with the status. */
+const notesRequest = (method, path) => new Promise((resolve) => {
+    const req = httpRequest({ host: '127.0.0.1', port: 18000, method, path, headers: { host: 'notes.localhost:18000', 'content-type': 'application/x-www-form-urlencoded' } }, (res) => { res.resume(); resolve(res.statusCode); });
+    req.on('error', () => resolve(0));
+    req.end('user=clerk.e2e&password=clerk-pw-e2e');
+});
+
+scenario('M1', 'MPA record and run: sign-in form with a CSRF token, a flash after post/redirect/get, pages by link text; replays in CI', spa, async () => {
+    setConfig(baseConfig({ local: ENVIRONMENTS.local, notes: { url: 'http://notes.localhost:18000', writable: true } }));
+    writeSpaTest(root, 'notes-paged');
+    verify('the app refuses a sign-in without its CSRF token (403)', await notesRequest('POST', '/login') === 403);
+    const first = await go(['notes-paged', '--env', 'notes']);
+    verify('caw\'s form sign-in carries the token; flash, reload without a second post and the next page pass', first.exit === 0, `${shown(first)} ${failNote('notes-paged')}`);
+    const again = await callWith({ CI: '1' }, () => run(root, ['notes-paged', '--env', 'notes', '--headless']));
+    verify('the recording replays in CI with more notes than before', again.value.exit === 0, `${shown(again.value)} ${failNote('notes-paged')}`);
+    print('     403/422 visible in the assessment: gated by OPEN-12');
 });

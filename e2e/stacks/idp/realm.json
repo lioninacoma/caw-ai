@@ -3,6 +3,12 @@
     "enabled": true,
     "sslRequired": "none",
     "loginWithEmailAllowed": false,
+    "otpPolicyType": "totp",
+    "otpPolicyAlgorithm": "HmacSHA1",
+    "otpPolicyDigits": 6,
+    "otpPolicyPeriod": 30,
+    "otpPolicyLookAheadWindow": 0,
+    "otpPolicyCodeReusable": false,
     "clients": [
         {
             "clientId": "spa-ci",
@@ -12,8 +18,46 @@
             "secret": "e2e-spa-secret-fictitious",
             "standardFlowEnabled": true,
             "directAccessGrantsEnabled": false,
-            "redirectUris": ["http://ci.localhost:18080/callback"],
-            "webOrigins": ["http://ci.localhost:18080"]
+            "redirectUris": ["http://ci.localhost:18080/callback", "http://sso.localhost:18080/callback", "http://otp.localhost:18080/callback", "http://localhost:18080/callback"],
+            "webOrigins": ["http://ci.localhost:18080", "http://sso.localhost:18080", "http://otp.localhost:18080", "http://localhost:18080"]
+        },
+        {
+            "clientId": "spa-idfirst",
+            "enabled": true,
+            "protocol": "openid-connect",
+            "publicClient": false,
+            "secret": "e2e-spa-secret-fictitious",
+            "standardFlowEnabled": true,
+            "directAccessGrantsEnabled": false,
+            "redirectUris": ["http://idfirst.localhost:18080/callback"],
+            "webOrigins": ["http://idfirst.localhost:18080"],
+            "authenticationFlowBindingOverrides": { "browser": "6f1c2a10-0e2e-4c1a-9a01-000000000001" }
+        }
+    ],
+    "authenticationFlows": [
+        {
+            "id": "6f1c2a10-0e2e-4c1a-9a01-000000000001",
+            "alias": "identifier first",
+            "description": "User name on one page, password on the next",
+            "providerId": "basic-flow",
+            "topLevel": true,
+            "builtIn": false,
+            "authenticationExecutions": [
+                { "authenticator": "auth-cookie", "authenticatorFlow": false, "requirement": "ALTERNATIVE", "priority": 10, "autheticatorFlow": false, "userSetupAllowed": false },
+                { "flowAlias": "identifier first forms", "authenticatorFlow": true, "requirement": "ALTERNATIVE", "priority": 20, "autheticatorFlow": true, "userSetupAllowed": false }
+            ]
+        },
+        {
+            "id": "6f1c2a10-0e2e-4c1a-9a01-000000000002",
+            "alias": "identifier first forms",
+            "description": "Username form, then password form",
+            "providerId": "basic-flow",
+            "topLevel": false,
+            "builtIn": false,
+            "authenticationExecutions": [
+                { "authenticator": "auth-username-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "autheticatorFlow": false, "userSetupAllowed": false },
+                { "authenticator": "auth-password-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "autheticatorFlow": false, "userSetupAllowed": false }
+            ]
         }
     ],
     "users": [
@@ -34,6 +78,23 @@
             "lastName": "Admin",
             "email": "qa.admin@example.test",
             "credentials": [{ "type": "password", "value": "qa-admin-pw-e2e", "temporary": false }]
+        },
+        {
+            "username": "qa.otp",
+            "enabled": true,
+            "emailVerified": true,
+            "firstName": "QA",
+            "lastName": "Otp",
+            "email": "qa.otp@example.test",
+            "credentials": [
+                { "type": "password", "value": "qa-otp-pw-e2e", "temporary": false },
+                {
+                    "type": "otp",
+                    "userLabel": "e2e",
+                    "secretData": "{\"value\":\"e2e-otp-secret-fictitious\"}",
+                    "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+                }
+            ]
         }
     ]
 }

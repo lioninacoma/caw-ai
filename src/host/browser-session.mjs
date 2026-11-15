@@ -21,7 +21,7 @@ import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { scrubTrace } from './trace-scrub.mjs';
-import { browserArgs, installHostLock, isTopNavigation, withLoopbackPair } from './host-lock.mjs';
+import { ANY_HOST, browserArgs, installHostLock, isTopNavigation, withLoopbackPair } from './host-lock.mjs';
 import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { appHosts as appHostsOf, blockedHosts } from '../shared/environments.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
@@ -759,23 +759,38 @@ export const captureSession = async ({ url, signedInSelector, hosts, blocked = [
 };
 
 /**
- * For `caw init --explore-only`: a window that navigates on the address's host only, without sign-in by the tool. Collects console
- * errors and the hosts a page tried to navigate to, which the lock stopped (e.g. an SSO service).
+ * For `caw init --explore-only`: a window without sign-in by the tool, in which the person may also sign in at an IdP on another
+ * host. Collects console errors, the other hosts top-level pages went to (e.g. an SSO service) and the app path the sign-in left
+ * from (`signInFrom`, the first app page whose navigation or redirect led there).
  */
-export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
+export const exploreBrowser = async ({ url, insecureTls = false, launch, headless = false }) => {
     sweepStaleProfiles();
     const profileDir = mkdtempSync(join(tmpdir(), PROFILE_PREFIX));
     writeFileSync(join(profileDir, PROFILE_OWNER), String(process.pid));
     const own = new URL(url).hostname;
+    const ownHosts = withLoopbackPair([own]);
     const foreignHosts = new Set();
-    const onBlocked = ({ host, kind }) => { if (kind !== 'production' && host !== own) foreignHosts.add(host); };
-    const context = await launchChrome(profileDir, { navigation: [own], onBlocked }, { insecureTls, ...(launch === undefined ? {} : { launch }) });
+    let signInFrom = null;
+    const context = await launchChrome(profileDir, { navigation: [ANY_HOST] }, { insecureTls, headless, ...(launch === undefined ? {} : { launch }) });
     const page = context.pages()[0] ?? await context.newPage();
     const consoleErrors = [];
     // Write requests to the address's host while the person signs in and clicks: candidates for reads, never applied by themselves.
     const writes = new Set();
     context.on('request', (request) => {
-        if (new URL(request.url()).hostname !== own) return;
+        const host = new URL(request.url()).hostname;
+        if (!ownHosts.includes(host) && /^https?:$/.test(new URL(request.url()).protocol) && isTopNavigation(request)) {
+            foreignHosts.add(host);
+            if (signInFrom === null) {
+                // A redirect chain (/login → IdP) starts on the app; a link or form post leaves from the current app page.
+                let first = request;
+                while (first.redirectedFrom() !== null) first = first.redirectedFrom();
+                const from = first !== request ? first.url() : request.frame().url();
+                try {
+                    if (ownHosts.includes(new URL(from).hostname)) signInFrom = new URL(from).pathname;
+                } catch { /* about:blank */ }
+            }
+        }
+        if (host !== own) return;
         const name = requestName({ method: request.method(), url: request.url(), postData: request.postData(), contentType: request.headers()['content-type'] ?? '' });
         if (classifyRequest(name) === 'write') writes.add(name);
     });
@@ -785,6 +800,7 @@ export const exploreBrowser = async ({ url, insecureTls = false, launch }) => {
         page,
         consoleErrors,
         foreignHosts,
+        signInFrom: () => signInFrom,
         writes,
         close: async () => {
             await context.close().catch(() => {});
@@ -911,7 +927,7 @@ export const openBrowserSession = async (spec) => {
             const message = String(error?.message ?? '');
             if (/not signed in/.test(message)) {
                 const next = auth.type === 'session'
-                    ? t('session.browser.sessionExpired')
+                    ? t('session.browser.sessionExpired', { role: spec.role ?? '<role>', env: resolved.name })
                     : t('session.browser.checkSelector');
                 const failure = new CawError(auth.type === 'session' ? 'auth-missing' : 'login-failed', t('session.browser.markerMissing', { url: resolved.url, selector: auth.signedInSelector, next }));
                 const page = raw?.pages()[0];

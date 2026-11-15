@@ -74,6 +74,24 @@ export const surveyPage = (maxMarkers) => {
             submitsWithEnter: password.form !== null && submit !== null && submit.type === 'submit' && submit.form === password.form,
         };
     }
+    // A sign-in page without a password: the user name alone (identifier-first) or a one-time code. Only one such field, inside a form.
+    let entry = null;
+    if (passwords.length === 0) {
+        const inputs = [...document.querySelectorAll('form input')].filter((el) => visible(el) && ['text', 'email', 'tel', 'number', ''].includes(el.type));
+        const code = inputs.find((el) => el.autocomplete === 'one-time-code' || /^(otp|totp|code|one-?time-?code)$/i.test(el.name || el.id));
+        const user = inputs.find((el) => el.autocomplete === 'username' || el.type === 'email' || /^(user(name)?|login|email|identifier)$/i.test(el.name || el.id));
+        const field = code ?? (inputs.length === 1 ? user : undefined);
+        if (field !== undefined) {
+            const submit = [...field.form.querySelectorAll('button, input[type=submit]')].filter(visible)
+                .find((el) => el.type === 'submit' || /anmelden|einloggen|login|log in|sign in|weiter|next|continue|verify|bestätigen/i.test(textOf(el))) ?? null;
+            entry = {
+                kind: field === code ? 'code' : 'user',
+                selector: selectorOf(field),
+                submitSelector: submit === null ? null : selectorOf(submit),
+                submitsWithEnter: submit !== null && submit.type === 'submit',
+            };
+        }
+    }
 
     const markers = [];
     for (const el of document.querySelectorAll('body *')) {
@@ -108,7 +126,7 @@ export const surveyPage = (maxMarkers) => {
         .filter((cls) => !generated(cls))
         .map((cls) => `${el.tagName.toLowerCase()}.${CSS.escape(cls)}`)));
 
-    return { url: location.href, title: document.title, lang: document.documentElement.lang || '', login, markers, stateClasses, messages: [...messages], framework: probe };
+    return { url: location.href, title: document.title, lang: document.documentElement.lang || '', login, entry, markers, stateClasses, messages: [...messages], framework: probe };
 };
 
 /**
@@ -207,11 +225,43 @@ export const startOf = (url, after) => {
 };
 
 /**
+ * Sign-in steps from the IdP pages the person went through, in order: a page with user name and password, a user name alone
+ * (identifier-first) and a one-time code each become fills and a submit. Null unless the user name and the password are both
+ * covered by a stable selector; then the stored session stays the suggestion.
+ */
+export const idpSteps = (pages) => {
+    const steps = [];
+    const submit = ({ submitSelector, submitsWithEnter }, field) => (submitSelector !== null && submitSelector !== undefined && submitsWithEnter !== true
+        ? { click: submitSelector }
+        : { press: 'Enter', on: field });
+    const done = new Set();
+    for (const page of pages) {
+        const login = page?.login;
+        const entry = page?.entry;
+        if (login !== null && login !== undefined) {
+            if (login.passwordSelector === null || done.has('password')) continue;
+            if (login.userSelector !== null && !done.has('user')) {
+                steps.push({ fill: login.userSelector, with: 'user' });
+                done.add('user');
+            }
+            steps.push({ fill: login.passwordSelector, with: 'password' }, submit(login, login.passwordSelector));
+            done.add('password');
+        } else if (entry !== null && entry !== undefined && entry.selector !== null) {
+            const kind = entry.kind === 'code' ? 'totp' : 'user';
+            if (done.has(kind)) continue;
+            steps.push({ fill: entry.selector, with: kind }, submit(entry, entry.selector));
+            done.add(kind);
+        }
+    }
+    return done.has('user') && done.has('password') ? steps : null;
+};
+
+/**
  * Combines everything into suggestions for the config.
  * @param seen     { before, loginPage, after }: the page at the start, the page with the sign-in form (if any) and at the end
  * @param detected framework from package.json
  */
-export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts = [], writes = [], detected = 'web' }) => {
+export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts = [], idpPages = [], signInFrom = null, writes = [], detected = 'web' }) => {
     const { before, loginPage, after } = seen;
     const parsed = new URL(url);
     const notes = [];
@@ -230,7 +280,19 @@ export const buildSuggestions = ({ url, seen, consoleErrors = [], foreignHosts =
     if (framework !== null && detected !== 'web' && framework !== detected) notes.push(t('cli.exploreMismatch', { runtime: framework, detected }));
 
     const signedIn = suggestSignedIn(loginPage ?? before, after);
-    if (foreignHosts.length > 0) {
+    const steps = foreignHosts.length > 0 ? idpSteps(idpPages) : null;
+    if (steps !== null) {
+        // The sign-in starts on the app (its path), which leads to the IdP: the steps run there, its hosts become navigation hosts.
+        suggestion.signIn = {
+            type: 'form',
+            path: signInFrom ?? '/',
+            steps,
+            ...(signedIn === null ? {} : { signedInSelector: signedIn.selector }),
+            confidence: signedIn !== null ? 'certain' : 'likely',
+        };
+        notes.push(t('cli.exploreIdpSteps', { hosts: foreignHosts.join(', ') }));
+        if (signedIn === null) notes.push(t('cli.exploreNoSignedIn'));
+    } else if (foreignHosts.length > 0) {
         suggestion.signIn = { type: 'session', confidence: 'likely', ...(signedIn === null ? {} : { signedInSelector: signedIn.selector }) };
         notes.push(t('cli.exploreForeign', { hosts: foreignHosts.join(', ') }));
     } else if (loginPage?.login !== null && loginPage?.login !== undefined) {
@@ -376,23 +438,42 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
         if (withLogin === true && context !== undefined) capture = await installCapture(context).catch(() => null);
         await context?.addInitScript({ content: exploreCardScript(cardTexts(withLogin === true)) }).catch(() => {});
     }
-    const human = wait === undefined ? Promise.race([done, closed]) : wait().then(() => 'done');
+    // The person (or a test's stand-in) is asked only once the window shows what to do.
+    let asked = null;
+    const human = () => (asked ??= wait === undefined ? Promise.race([done, closed]) : wait().then(() => 'done'));
 
     let loginPage = null;
+    const idpPages = [];
+    const ownHosts = isLoopback(new URL(url).hostname) ? ['localhost', '127.0.0.1', new URL(url).hostname] : [new URL(url).hostname];
+    const sameHost = (address) => {
+        try {
+            return ownHosts.includes(new URL(address).hostname);
+        } catch {
+            return true;
+        }
+    };
     let pending = Promise.resolve();
     try {
         await browser.page.goto(url, { waitUntil: 'load' });
         await settle();
         const before = await surveyTwice();
         opening.done(t('cli.exploreOpened', { host }));
-        if (before?.login !== null && before?.login !== undefined) loginPage = before;
+        // The address may redirect straight to an IdP: then that is the first IdP page, not the app's sign-in form.
+        if (before !== null && before !== undefined && !sameHost(before.url)) idpPages.push(before);
+        else if (before?.login !== null && before?.login !== undefined) loginPage = before;
         // Without a human: the page decides whether there is a sign-in.
-        if (withLogin === null) withLogin = loginPage !== null;
+        if (withLogin === null) withLogin = loginPage !== null || idpPages.length > 0;
         // A sign-in form may only appear after clicking "Sign in": look at every new page once.
+        // Pages of an IdP are only surveyed: loading one again in another tab could restart the person's sign-in there.
         browser.page.on('load', () => {
             pending = pending.then(async () => {
                 const seen = await survey();
-                if (seen?.login !== null && seen?.login !== undefined && seen.url !== loginPage?.url) loginPage = await confirmInSecondTab(seen);
+                if (seen === null) return;
+                if (!sameHost(seen.url)) {
+                    idpPages.push(seen);
+                    return;
+                }
+                if (seen.login !== null && seen.login !== undefined && seen.url !== loginPage?.url) loginPage = await confirmInSecondTab(seen);
             });
         });
 
@@ -404,7 +485,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
                 const signingIn = ui.pending(t('cli.exploreWaitingSignIn'));
                 // Signed in: a password field was there and is gone, the page has finished loading. No Enter needed.
                 const signedIn = waitForSignIn(browser.page, { sawForm: before?.login !== null && before?.login !== undefined, until: HUMAN_MS });
-                const first = await Promise.race([signedIn.result, human]);
+                const first = await Promise.race([signedIn.result, human()]);
                 signedIn.stop();
                 if (first === 'closed') {
                     signingIn.fail(t('cli.exploreClosed'));
@@ -416,7 +497,7 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
             ui.section(withLogin ? 2 : 1, t('cli.exploreStepStart'));
             ui.info(t('cli.exploreGoStart'));
             const choosing = ui.pending(t('cli.exploreWaitingDone'));
-            if (await human === 'closed') {
+            if (await human() === 'closed') {
                 choosing.fail(t('cli.exploreClosed'));
                 return EXIT.rejected;
             }
@@ -434,6 +515,8 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
             seen: { before, loginPage: withLogin ? loginPage : null, after },
             consoleErrors: browser.consoleErrors,
             foreignHosts: withLogin ? [...browser.foreignHosts] : [],
+            idpPages: withLogin ? idpPages : [],
+            signInFrom: browser.signInFrom?.() ?? null,
             writes: [...(browser.writes ?? [])],
             detected: (detect ?? detectFramework)(root),
         });

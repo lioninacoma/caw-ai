@@ -176,6 +176,13 @@ export const finishOf = (ids, omit = '[]') => `echo '{"expectations":[${ids.map(
 
 // ---- Scenarios
 
+/** Catalogue ids whose checks live in older scenarios: running the id runs those (locator robustness, kept layers, the matrix). */
+export const CATALOGUE_ALIASES = {
+    U1: ['N6', 'N7', 'N8', 'N9', 'N10d', 'N10e', 'N11'],
+    U2: ['N2', 'N3'],
+    H2: ['N14'],
+};
+
 /**
  * Runs the chosen scenarios one after another, in the given order. A scenario is { id, title, body, group, gated }; a group is
  * { setup, teardown, language }: set up before its first scenario and torn down before the next group starts (servers of
@@ -186,7 +193,7 @@ export const finishOf = (ids, omit = '[]') => `echo '{"expectations":[${ids.map(
  * @param filter ids separated by commas or spaces (e.g. "A,N1"); a trailing * matches a prefix ("N*"); empty runs all
  */
 export const runScenarios = async (scenarios, filter = '') => {
-    const wanted = filter.split(/[\s,]+/).filter((id) => id !== '');
+    const wanted = filter.split(/[\s,]+/).filter((id) => id !== '').flatMap((id) => CATALOGUE_ALIASES[id] ?? [id]);
     const matches = (id, want) => (want.endsWith('*') ? id.startsWith(want.slice(0, -1)) : id === want);
     const unknown = wanted.filter((want) => !scenarios.some(({ id }) => matches(id, want)));
     if (unknown.length > 0) verify('Known scenario ids', false, `${unknown.join(', ')} (known: ${scenarios.map(({ id }) => id).join(' ')})`);

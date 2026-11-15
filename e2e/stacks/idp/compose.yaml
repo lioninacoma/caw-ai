@@ -1,12 +1,11 @@
-# Keycloak for the sign-in through an identity provider (scenario A5): realm caw-e2e with the confidential client spa-ci of the
-# spa fixture and two fictitious users. The browser reaches it as idp.localhost:18180 (the issuer), the spa server on 127.0.0.1.
+# Keycloak for the sign-in through an identity provider (scenarios A1-A5, A8): realm caw-e2e with the confidential clients spa-ci
+# and spa-idfirst (identifier-first flow) of the spa fixture and three fictitious users, one with a one-time code. No fixed
+# hostname: the browser reaches it as idp.localhost:18180 (A1) or localhost:18180 (A2), the spa server on 127.0.0.1.
 services:
   idp:
     image: quay.io/keycloak/keycloak:26.0.7
     command: ["start-dev", "--import-realm"]
     environment:
-      KC_HOSTNAME: "http://idp.localhost:18180"
-      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HEALTH_ENABLED: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
       KC_BOOTSTRAP_ADMIN_PASSWORD: "admin-e2e-fictitious"
