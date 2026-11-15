@@ -44,11 +44,11 @@ export const scenarios = [
         verify('no bin/caw-ai.mjs and no scripts/ in the tarball', !files.includes('bin/caw-ai.mjs') && !files.some((file) => file.startsWith('scripts/')));
         verify('the install links caw, not caw-ai', project.bins.includes('caw') && !project.bins.includes('caw-ai'), project.bins.join(' '));
 
-        // (2) Human help: the commands for people; mcp and agent are hidden. export comes with P7, overlay-only-with-block with P8.
+        // (2) Human help: the commands for people; mcp and agent are hidden. overlay-only-with-block comes with P8.
         const help = caw(['--help']);
         const commands = helpCommands(help.out);
         verify('help exits 0', help.code === 0, String(help.code));
-        verify('help lists the commands for people in order', JSON.stringify(commands) === JSON.stringify(['npx', 'init', 'record', 'run', 'open', 'list', 'validate', 'doctor', 'role', 'theme', 'overlay']), commands.join(' '));
+        verify('help lists the commands for people in order', JSON.stringify(commands) === JSON.stringify(['npx', 'init', 'record', 'run', 'open', 'list', 'validate', 'doctor', 'role', 'export', 'theme', 'overlay']), commands.join(' '));
         verify('help hides mcp, agent, explore and auth; skill is gone', !commands.some((name) => ['mcp', 'agent', 'explore', 'auth', 'skill'].includes(name)));
         verify('help names durations with units', /--step-timeout 30s, --claude-timeout 60m/.test(help.out));
 

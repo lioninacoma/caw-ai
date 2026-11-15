@@ -85,6 +85,8 @@ Commands:`,
   role remove <role>                     Remove a role no test uses, with its lines in caw/.env
   role login <role> --env <name>         With signIn type session: sign in once by hand (e.g. SSO), the session goes
                                          to caw/.auth/<env>/<role>.json`,
+    'cli.help.export': `  export <test> [--env <name>]           The recorded test as a Playwright test that runs without caw (@playwright/test):
+      [--out <dir>]                      <test>.spec.mjs, caw-support.mjs and playwright.config.mjs, in caw/export/playwright`,
     'cli.help.theme': `  theme [use <name> | check <name>]      List themes, pick one (applies to you, in all projects) or check one: schema,
                                          contrast, mark width, fonts. Change it in the workbench with F7`,
     'cli.help.overlay': `  overlay status [--env <name>]          Is the local code server ready (url of the part)? No browser, starts nothing: ready,
@@ -134,6 +136,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
   advise --file <advice.json>            Submit advice, also when fixing; the human decides per card`,
     // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw init [--url <address>] [--env <name>] [--language <code>] [--explore-only] [--login | --no-login] [--yes] [--from <file>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
+    'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <dir>]',
     'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session] [--env <name>]',
@@ -149,6 +152,15 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorAgentValue': '--agent expects local, docker or session.',
     'cli.mcpAgentOnly': 'caw agent mcp only starts for the agent of a run.',
     'cli.unknownCommand': 'Unknown command: {command}.{suggestion} See caw --help.',
+    'cli.export.usage': 'caw export takes one test: caw export <test> [--env <name>] [--out <dir>].',
+    'cli.export.unknownArg': 'caw export does not know {arg}.',
+    'cli.export.notRecorded': '{test} is not recorded completely ({steps}): record it first, then export.',
+    'cli.export.stale': '{test} has outdated steps ({steps}): re-record from there with caw record {test}@{from}, then export.',
+    'cli.export.todo': 'The sign-in is still TODO ({keys}): fill it in, then export.',
+    'cli.export.foreignFile': '{file} was not written by caw export: move it away or choose another --out.',
+    'cli.export.done': 'Exported {test} for {env}: {files}.',
+    'cli.export.configKept': '{file} already exists and stays as it is.',
+    'cli.export.next': 'Run it with Playwright: npm i -D @playwright/test, then npx playwright test -c {dir}. Test users as for caw (CAW_<ROLE>_USER …), CAW_BASE_URL for another address.',
     'cli.movedCommand': 'caw {command} is now caw {now}.',
     'cli.removedSkill': 'caw skill was removed: register caw as an MCP server (claude mcp add caw --scope project -- npx caw-ai mcp); it brings the guidance itself. Delete .claude/skills/caw-ai/ by hand.',
     'cli.unknownAgentCommand': 'Unknown command: caw agent {command}.{suggestion} See caw agent --help.',

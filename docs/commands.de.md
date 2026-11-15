@@ -18,6 +18,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
 | [`open`](#open) | Die App angemeldet öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
+| [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
 | [`theme`](#theme) | Themes der Werkbank auflisten, wählen oder prüfen | nein |
 | [`mcp`](#mcp) | MCP-Server für deine eigene Claude-Code-Sitzung (startet Claude Code, nicht in `--help`) | – |
 
@@ -269,6 +270,25 @@ Eine Rolle ist ein Testnutzer. `role add` öffnet die Anmeldeseite der Umgebung.
 `init` (auch mit `--explore-only`) endet genauso: Nach **Fertig** fragt die Karte nach der Rolle des Kontos, mit dem du dich angemeldet hast. Braucht `record`, `run` oder `open` eine Rolle ohne Testnutzer, öffnet sich zuerst das Fenster, und nach **Speichern** geht der Lauf weiter; in CI und mit `--headless` endet er mit `credentials-missing`. Bei `auth.type: storageState` gilt `role login`.
 
 `role login` ist für `auth.type: storageState` (SSO, OAuth, MFA). Es öffnet Chrome auf der Anmeldung, du meldest dich von Hand an. Sobald `signedInSelector` erscheint, speichert caw-ai Cookies und Storage in `caw/.auth/<env>/<rolle>.json`. Erneut ausführen, wenn die Sitzung abläuft.
+
+## export
+
+```bash
+npx caw export bestellung --env ci
+npx playwright test -c caw/export/playwright
+```
+
+Schreibt den aufgenommenen Test als Playwright-Test, der ohne caw läuft, nur mit `@playwright/test`, nach `caw/export/playwright/` (`--out <ordner>` für einen anderen Ordner):
+
+| Datei | |
+|---|---|
+| `<test>.spec.mjs` | Ein `test()`, ein `test.step()` je caw-Schritt. Die Locators sind die aufgenommenen; Prüfungen werden zu `expect.poll`, eine Dialog-Entscheidung wird rund um die Aktion beantwortet, die den Dialog öffnet, `remember` und die Platzhalter `{{runTag}}`/Datum werden je Lauf gefüllt |
+| `caw-support.mjs` | Anmeldung aus `signIn` (Formular, Schritte, Basic, gespeicherte Sitzung, TOTP), Warten auf eine ruhige Seite wie caw, Upload, Download, Auswahl in `<select>`; bei ExtJS die Engine `extjs=`. Jeder Export überschreibt sie |
+| `playwright.config.mjs` | Basis-URL, Sprache, Zeitzone und Viewport der Aufnahme, Chrome. Nur geschrieben, wenn sie fehlt; danach gehört sie dir |
+
+Die Umgebung (`--env`, sonst die einzige passende) liefert Adresse und Anmeldung. Beim Ausführen überschreibt `CAW_BASE_URL` die Adresse; die Testnutzer kommen aus denselben Variablen wie bei caw (`CAW_<ROLLE>_USER`, `CAW_<ROLLE>_PASSWORD`, `CAW_<ROLLE>_TOTP`, wahlweise mit `__<ENV>`). Eine Datei im Ordner, die nicht von export stammt, wird nie überschrieben.
+
+Nicht exportiert: gelernte Wirkungen und Netzwerk-Vergleichswerte, `knownMessages`, die Fehlerregeln für Konsole und Requests, `retry`, `readyIgnore` und die 2-s-Toleranz für einen zweiten Treffer, während ein Dialog schließt. Der Test muss vollständig und aktuell aufgenommen sein, sonst Exit 4 mit dem passenden `record`-Befehl.
 
 ## theme
 

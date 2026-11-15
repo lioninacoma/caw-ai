@@ -42,3 +42,6 @@ e2e/frameworks/shared/.cert/
 
 # spa fixture: the project is written by e2e/spa/project.mjs before every group.
 e2e/spa/work/
+
+# caw export runner for e2e S10 (installed on demand)
+e2e/export/

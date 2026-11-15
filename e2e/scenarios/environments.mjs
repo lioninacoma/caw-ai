@@ -342,6 +342,51 @@ scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instr
     }
 });
 
+// ---- P7: export
+
+/** The Playwright test runner for exported specs, pinned to caw's playwright-core version; installed once into e2e/export. */
+const exportRunner = async () => {
+    const dir = join(here, 'export');
+    if (!existsSync(join(dir, 'node_modules', '@playwright', 'test'))) {
+        const version = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')).dependencies['playwright-core'];
+        writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'caw-e2e-export', private: true, type: 'module' }, null, 2));
+        const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const installed = await exec(npm, ['install', '--no-audit', '--no-fund', `@playwright/test@${version}`], { cwd: dir, shell: true });
+        if (installed.code !== 0) throw new Error(`installing @playwright/test failed: ${installed.stderr.trim().split('\n').slice(-3).join(' | ')}`);
+    }
+    return dir;
+};
+
+scenario('S10', 'Playwright export: spec, support and config; npx playwright test passes with the run tag, a remembered value, a confirm and a prompt; a renamed button fails in its step; stale is exit 4', spa, async () => {
+    actionConfig();
+    writeSpaTest(root, 'export-me');
+    const replayed = await go(['export-me', '--env', 'extra']);
+    verify('(0) caw itself replays the test', replayed.exit === 0, `${shown(replayed)} ${failNote('export-me')}`);
+    const runnerDir = await exportRunner();
+    const out = join(runnerDir, 'out');
+    rmSync(out, { recursive: true, force: true });
+    const cli = (args) => exec(process.execPath, [join(here, '..', 'bin', 'caw.mjs'), ...args], { cwd: root, env: { ...process.env, CAW_LANG: 'en', INIT_CWD: root, NO_COLOR: '1' } });
+    const exported = await cli(['export', 'export-me', '--env', 'extra', '--out', out]);
+    const spec = existsSync(join(out, 'export-me.spec.mjs')) ? readFileSync(join(out, 'export-me.spec.mjs'), 'utf8') : '';
+    verify('(1) caw export writes export-me.spec.mjs, caw-support.mjs and playwright.config.mjs', exported.code === 0 && ['export-me.spec.mjs', 'caw-support.mjs', 'playwright.config.mjs'].every((file) => existsSync(join(out, file))),
+        `${exported.code} ${exported.stderr.trim().split('\n').slice(-2).join(' | ')}`);
+    verify('(2) the dialog decisions are exported with the actions that open them', /caw\.dialog\(\{"accept":true\}, \(\) => page\.getByRole\("button", \{ name: "Delete first", exact: true \}\)\.click\(\)\)/.test(spec)
+        && /caw\.dialog\(\{"accept":true,"value":"Note \{\{runTag\}\}"\}/.test(spec), spec.split('\n').filter((line) => line.includes('dialog')).join(' | '));
+    // The fixture's fictitious accounts, as CI would pass them.
+    const accounts = Object.fromEntries(ENV_FILE.split('\n').filter((line) => /^CAW_\w+=/.test(line)).map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
+    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const playwright = () => exec(npx, ['playwright', 'test', '-c', 'out'], { cwd: runnerDir, shell: true, env: { ...process.env, ...accounts, CI: '1' } });
+    const passed = await playwright();
+    verify('(3) npx playwright test passes: run tag, remembered ticket, confirm and prompt', passed.code === 0 && /1 passed/.test(passed.stdout), `${passed.code} ${passed.stdout.trim().split('\n').slice(-12).join(' | ')}`);
+    // Fault: the button was renamed in the app; here the same through the spec.
+    writeFileSync(join(out, 'export-me.spec.mjs'), spec.replace('name: "Delete first", exact: true', 'name: "Delete all", exact: true'));
+    const failed = await playwright();
+    verify('(4) a renamed button fails in its step, S2, naming the locator', failed.code !== 0 && /S2 Delete the first ticket/.test(failed.stdout) && /Delete all/.test(failed.stdout), failed.stdout.trim().split('\n').slice(-12).join(' | '));
+    makeStale(root, 'export-me');
+    const stale = await cli(['export', 'export-me', '--env', 'extra', '--out', out]);
+    verify('(5) a stale test → exit 4 naming record', stale.code === 4 && /caw record export-me@/.test(stale.stderr), `${stale.code} ${stale.stderr.trim().split('\n')[0]}`);
+});
+
 // ---- P3: network and safety
 
 const networkConfig = (extra = {}) => {

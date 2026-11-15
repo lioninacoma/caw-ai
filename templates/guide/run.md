@@ -21,6 +21,10 @@ project folder (on Windows from PowerShell). Report the result including the pat
   changed by hand or the application changed on purpose. The steps before replay without Claude; from `S<n>` on steps may be
   added, removed or reordered. `@S1` records the whole test. A single failed step is fixed in the run's chat ("Fix step").
 
+**Export:** `export <test> --env <name>` writes the recorded test as a Playwright test that runs without caw
+(`caw/export/playwright/`: `<test>.spec.mjs`, `caw-support.mjs`, `playwright.config.mjs`). Only when the person asks for it,
+e.g. to hand the test to a team that only uses Playwright. Learned effects, baselines and the failure rules stay with caw.
+
 **Environment:** `--env <name>` (`env` in `caw_start`). Without it caw takes the only fitting one, or names the candidates.
 **Lifecycle:** `--start` (`start: true`) runs the environment's configured `start` command when it does not answer and stops it
 afterwards; `--reset` (`reset: true`) runs its `reset` first. The commands are the team's; never start servers through caw otherwise.

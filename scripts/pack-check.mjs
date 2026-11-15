@@ -28,7 +28,7 @@ for (const path of paths) {
         if (/(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)\s*=\s*\S{8,}|sk-ant-[\w-]{8,}/.test(text)) problems.push(`${path}: looks like a token`);
     }
 }
-const TEMPLATES = ['caw.config.example.json', 'Dockerfile.tpl', 'entrypoint.sh', 'init-firewall.sh',
+const TEMPLATES = ['caw.config.example.json', 'Dockerfile.tpl', 'entrypoint.sh', 'init-firewall.sh', 'export/caw-support.mjs.tpl',
     ...['overview', 'setup', 'config', 'tests', 'run', 'session', 'agent', 'plan', 'record', 'chat', 'cause', 'fix', 'advise', 'talk', 'rules', 'overlay', 'extjs'].map((topic) => `guide/${topic}.md`)].map((name) => `templates/${name}`);
 for (const needed of ['bin/caw.mjs', ...TEMPLATES, 'package.json', 'README.md', 'NOTICE.md', 'LICENSE', 'CHANGELOG.md']) {
     if (!paths.includes(needed)) problems.push(`${needed} is missing from the package`);
