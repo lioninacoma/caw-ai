@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, w
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { hasBuild } from '../../src/host/local-build.mjs';
+import { hasBuild } from '../../src/ext/overlay/local-build.mjs';
 import { writeProject } from './project.mjs';
 import { ensureCert } from './shared/cert.mjs';
 

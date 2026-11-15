@@ -10,8 +10,8 @@ import { hideSecrets } from '../src/host/demonstrate.mjs';
 import { diagnose } from '../src/host/diagnose.mjs';
 import { isEffectCause } from '../src/host/effects.mjs';
 import { parseEnvFile, parseRunArgs } from '../src/host/linux.mjs';
-import { buildCheck, moduleAlias, scriptKind, servesBuild, withoutIntegrity } from '../src/host/local-build.mjs';
-import { prepareOverlay } from '../src/host/overlay.mjs';
+import { buildCheck, moduleAlias, scriptKind, servesBuild, withoutIntegrity } from '../src/ext/overlay/local-build.mjs';
+import { prepareOverlay } from '../src/ext/overlay/overlay.mjs';
 import { swapToken } from '../src/host/replay.mjs';
 import { isCaughtScriptError } from '../src/shared/report.mjs';
 
@@ -99,7 +99,7 @@ test('build: if the build sits one level deeper (Angular dist/<app>/browser), th
 });
 
 test('build: a lazy chunk named only by the entry stays itself, even if the page preloads another chunk', async (t) => {
-    const { resolveLocalBuild } = await import('../src/host/local-build.mjs');
+    const { resolveLocalBuild } = await import('../src/ext/overlay/local-build.mjs');
     // Angular with SRI: index.html loads main and preloads chunk-SHARED; the info page is chunk-LAZY, named only in main.
     const dir = folder(t, {
         'index.html': '<link rel="modulepreload" href="chunk-SHARED1.js"><script src="main-NEW11111.js" type="module"></script>',

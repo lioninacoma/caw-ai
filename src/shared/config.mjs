@@ -679,7 +679,7 @@ const uuidOf = (seed) => {
 
 /**
  * Builds the config the devlink host expects from project config and environment: environment, start path, login marker. It
- * does not inject local code; the overlay (src/host/overlay.mjs) does that with its own route.
+ * does not inject local code; the overlay (src/ext/overlay/overlay.mjs) does that with its own route.
  */
 export const buildDevlinkConfig = (config, resolved, start) => {
     const siteUuid = uuidOf(`portal:${resolved.name}`);

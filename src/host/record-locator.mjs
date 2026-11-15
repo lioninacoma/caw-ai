@@ -10,7 +10,7 @@
 // Every change is checked against the page: the new locator must match exactly the element pointed at.
 
 import { roleAndName, webContext } from './accessible-name.mjs';
-import { extjsCandidates } from './framework/extjs-query.mjs';
+import { extjsCandidates } from '../ext/extjs/extjs-query.mjs';
 import { buildLocator, chainPrefix, escapeRegex, parseLocator, printLocator, rejectReason } from './locator.mjs';
 
 const NORMALIZE_TIMEOUT_MS = 5000;

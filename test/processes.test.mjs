@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { extjs } from '../src/host/framework/extjs.mjs';
+import { extjs } from '../src/ext/extjs/extjs.mjs';
 import { listeningPorts, matchingPids, parseListening, processList } from '../src/host/processes.mjs';
 
 test('processes: id and command line per platform, unknown instead of an error', () => {

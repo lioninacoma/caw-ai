@@ -229,7 +229,7 @@ const overlayPartsOf = (config, value) => {
 
 /** The overlay pre-check, loaded on first use so the MCP server starts without the browser modules. */
 const defaultOverlayPreconditions = async () => {
-    const { overlayStatus } = await import('./overlay-check.mjs');
+    const { overlayStatus } = await import('../ext/overlay/overlay-check.mjs');
     return (dir, config, options) => overlayStatus(dir, { ...options, config });
 };
 

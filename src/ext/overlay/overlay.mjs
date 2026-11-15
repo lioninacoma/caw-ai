@@ -15,16 +15,16 @@ import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, posix, relative } from 'node:path';
 
-import { assetPatterns, defaultAssetPattern, overlayParts } from '../shared/config.mjs';
-import { CawError } from '../shared/errors.mjs';
-import { t } from '../shared/i18n.mjs';
-import { RUN_DIR } from '../shared/names.mjs';
-import { ago, newestFile } from './code-source.mjs';
-import { frameworkOf } from './framework/index.mjs';
+import { assetPatterns, defaultAssetPattern, overlayParts } from '../../shared/config.mjs';
+import { CawError } from '../../shared/errors.mjs';
+import { t } from '../../shared/i18n.mjs';
+import { RUN_DIR } from '../../shared/names.mjs';
+import { ago, newestFile } from '../../host/code-source.mjs';
+import { frameworkOf } from '../../host/framework/index.mjs';
 import { buildCheck, contentTypeOf, localPages, moduleAlias, resolveLocalBuild, scriptKind, servesBuild, withoutIntegrity } from './local-build.mjs';
 import { baseOf, codeTags, ssrMarker, swapPage } from './page-swap.mjs';
-import { listeningPorts, matchingPids } from './processes.mjs';
-import { isProjectCopy, isProjectCopyFile } from './project-files.mjs';
+import { listeningPorts, matchingPids } from '../../host/processes.mjs';
+import { isProjectCopy, isProjectCopyFile } from '../../host/project-files.mjs';
 import { staticFile } from './static-files.mjs';
 
 const DEV_START_MS = 60_000;

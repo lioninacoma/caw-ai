@@ -8,7 +8,7 @@ import { after, before, test } from 'node:test';
 
 
 import { interceptDocuments } from '../src/host/app-view.mjs';
-import { incompleteText, prepareOverlay, routeOverlay } from '../src/host/overlay.mjs';
+import { incompleteText, prepareOverlay, routeOverlay } from '../src/ext/overlay/overlay.mjs';
 import { launchChrome } from './chrome.mjs';
 import { serveFolder } from './static-server.mjs';
 

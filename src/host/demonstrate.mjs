@@ -13,7 +13,7 @@ import { redactDeep } from './secrets.mjs';
 import { elementHint, frameworkOf } from './framework/index.mjs';
 import { locatorLabel } from './locator.mjs';
 import { webPick } from './accessible-name.mjs';
-import { extjsCandidates, extjsMatches } from './framework/extjs-query.mjs';
+import { extjsCandidates, extjsMatches } from '../ext/extjs/extjs-query.mjs';
 import { MARK_ATTRIBUTE, recordLocator, roleAndName } from './record-locator.mjs';
 import { HASH_LIMIT_BYTES, matchFixture } from './fixtures.mjs';
 

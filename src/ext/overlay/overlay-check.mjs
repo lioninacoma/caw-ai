@@ -9,16 +9,16 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-import { isLoopback, loadConfig, overlayEnvironments, overlayParts, patternList, writeConfig } from '../shared/config.mjs';
-import { effectiveEnvironment } from '../shared/environments.mjs';
-import { CawError, EXIT } from '../shared/errors.mjs';
-import { t } from '../shared/i18n.mjs';
-import { RUN_DIR } from '../shared/names.mjs';
-import { createUi } from '../shared/ui.mjs';
-import { frameworkOf } from './framework/index.mjs';
+import { isLoopback, loadConfig, overlayEnvironments, overlayParts, patternList, writeConfig } from '../../shared/config.mjs';
+import { effectiveEnvironment } from '../../shared/environments.mjs';
+import { CawError, EXIT } from '../../shared/errors.mjs';
+import { t } from '../../shared/i18n.mjs';
+import { RUN_DIR } from '../../shared/names.mjs';
+import { createUi } from '../../shared/ui.mjs';
+import { frameworkOf } from '../../host/framework/index.mjs';
 import { serverState } from './overlay.mjs';
 import { staticFile } from './static-files.mjs';
-import { checkTest, overlayChoice } from './test-file.mjs';
+import { checkTest, overlayChoice } from '../../host/test-file.mjs';
 
 /** The result file under .caw. */
 export const OVERLAY_CHECK_FILE = 'overlay-check.json';
@@ -145,7 +145,7 @@ export const overlayCheck = async (root, { target, part, role, apply = false, st
     const runId = `${now().toISOString().replace(/[:.]/g, '-')}-${CHECK_ID}`;
     const relativeRun = posix.join(RUN_DIR, 'runs', runId);
     mkdirSync(join(root, relativeRun), { recursive: true });
-    const { openRunSession, writeLastRun } = await import('./run.mjs');
+    const { openRunSession, writeLastRun } = await import('../../host/run.mjs');
     writeLastRun(root, { runId, runDir: relativeRun, command: CHECK_ID, test: null, target: chosenTarget });
     const open = deps.openSession ?? openRunSession;
     let session;

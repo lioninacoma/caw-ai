@@ -53,6 +53,20 @@ test('Waiting: quiet only after quietMs in a row, open requests only count with 
     assert.equal(ignored.settled, true, 'extjs counts itself via Ext.Ajax');
 });
 
+test('Waiting: untilApp waits for the app to mount after quiet (dev server), and settles without it at the timeout', async () => {
+    const empty = { ...calm, appReady: false };
+    const early = await waitQuiet(FRAMEWORKS.vue, probePage([empty, empty, empty, empty, empty, empty, calm]), { quietMs: 250, ...fakeClock() });
+    assert.equal(early.lastSample.appReady, false, 'without untilApp the empty page counts as quiet');
+    const mounted = await waitQuiet(FRAMEWORKS.vue, probePage([empty, empty, empty, empty, empty, empty, calm]), { quietMs: 250, untilApp: true, ...fakeClock() });
+    assert.equal(mounted.settled, true);
+    assert.equal(mounted.lastSample.appReady, true);
+    assert.equal(mounted.waitedMs, 600);
+    const never = await waitQuiet(FRAMEWORKS.vue, probePage([empty]), { timeout: 1000, quietMs: 250, untilApp: true, ...fakeClock() });
+    assert.equal(never.settled, true, 'quiet without the app: settled, the caller reports app-not-loaded');
+    assert.equal(never.lastSample.appReady, false);
+    assert.equal(never.waitedMs, 1000);
+});
+
 test('Waiting: failed evaluation (navigation) is not quiet, minCount waits for hits', async () => {
     const navigating = await waitQuiet(FRAMEWORKS.web, probePage([null, null, calm]), { quietMs: 0, ...fakeClock() });
     assert.equal(navigating.settled, true);
@@ -67,7 +81,7 @@ test('Waiting: failed evaluation (navigation) is not quiet, minCount waits for h
 });
 
 test('extjs: a button under a sheet is not reachable, the one on the sheet is; a hidden one is explained as hidden', async () => {
-    const { extjsTargets } = await import('../src/host/framework/extjs.mjs');
+    const { extjsTargets } = await import('../src/ext/extjs/extjs.mjs');
     const node = (id, parent, text = '') => {
         const element = { id, parentElement: parent, tagName: 'DIV', classList: [], innerText: text, visible: true, children: [] };
         element.getBoundingClientRect = () => (element.visible ? { left: 0, top: 0, width: 10, height: 10 } : { left: 0, top: 0, width: 0, height: 0 });

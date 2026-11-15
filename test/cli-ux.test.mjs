@@ -225,6 +225,18 @@ test('runMode: environment, team language and whether the run learns; only --lea
     assert.match(runMode({ ...base, learn: true, opened: true, withAdvice: true }), /mit Chat; lernt: nein\.$/, 'open learns and advises nothing');
 });
 
+test('help: the overlay extension (command, --overlay, the --start remark) only with an overlay block', () => {
+    const core = helpText(undefined, { here: 'local' });
+    assert.doesNotMatch(core, /overlay/);
+    assert.match(core, /lokale Code|stoppen\n/, 'the --start line ends without the overlay remark');
+    assert.doesNotMatch(helpText('run'), /--overlay|overlay\.parts/);
+    assert.match(helpText('run'), /\[--reset\] \| \[--no-reset\]/, 'the line after the dropped option stays');
+    const extended = helpText(undefined, { overlay: true });
+    assert.match(extended, /^ {2}overlay status \[--env <name>\]/m);
+    assert.match(extended, /mit --overlay auch die lokalen Code-Server der Teile/);
+    assert.match(helpText('open', { overlay: true }), /\[--overlay\[=<teile>\]\]/);
+});
+
 test('help: per command only its block, agent commands under caw agent --help, synopsis for usage errors', () => {
     const all = helpText(undefined, { here: 'local' });
     assert.match(all, /list \[<test>\]/);

@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
-import { isSecretPath } from './secrets.mjs';
+import { isSecretPath } from '../../host/secrets.mjs';
 
 const real = (path) => {
     try {

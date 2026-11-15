@@ -89,7 +89,7 @@ Befehle:`,
       [--out <ordner>]                   <test>.spec.mjs, caw-support.mjs und playwright.config.mjs, in caw/export/playwright`,
     'cli.help.theme': `  theme [use <name> | check <name>]      Themes auflisten, eines wählen (gilt für dich, in allen Projekten) oder prüfen:
                                          Schema, Kontrast, Markenbreite, Schriften. Ändern in der Werkbank mit F7`,
-    'cli.help.overlay': `  overlay status [--env <name>]          Ist der lokale Code-Server bereit (url of the part)? Ohne Browser, startet nichts:
+    'cli.help.overlay': `  overlay status [--env <name>]          Ist der lokale Code-Server bereit (url des Teils)? Ohne Browser, startet nichts:
                                          ready, moved (läuft auf anderem Port), down, wrong-app, stale
       [--part <teil>] [--json]           Nicht nötig, wenn overlay.parts nur einen kennt; --json: der Status als eine JSON-Zeile
   overlay check [--env <name>]           Prüft ohne Token, ob das Overlay alles ersetzt, was es soll: lädt die App
@@ -98,6 +98,7 @@ Befehle:`,
       [--apply]                          Vorgeschlagene overlay.assetUrlPattern eintragen und erneut prüfen
       [--start]                          start des Teils ausführen, wenn der Server nicht antwortet, danach beenden
       [--json]                           Ergebnis als eine JSON-Zeile (auch in .caw/overlay-check.json)`,
+    'cli.help.overlayStartClause': '; mit --overlay auch die lokalen Code-Server der Teile',
     'cli.help.version': '  --version                              Version des Pakets',
     'cli.help.here': ' (hier: {names})',
     'cli.help.footer': `--env <name>: ein Name aus environments, etwa local. Entfällt, wenn die Wahl klar ist: die einzige, die passt, oder bei run
@@ -163,6 +164,8 @@ Browser:
     'cli.export.configKept': '{file} gibt es schon, sie bleibt, wie sie ist.',
     'cli.export.next': 'Mit Playwright ausführen: npm i -D @playwright/test, dann npx playwright test -c {dir}. Testnutzer wie bei caw (CAW_<ROLLE>_USER …), CAW_BASE_URL für eine andere Adresse.',
     'cli.movedCommand': 'caw {command} heißt jetzt caw {now}.',
+    'cli.overlayCommandInactive': 'caw overlay ist eine Erweiterung und hier nicht aktiv: Sie braucht einen overlay-Block in caw.config.json. Siehe docs/extensions/overlay.md.',
+    'cli.overlayFlagInactive': '--overlay ist eine Erweiterung und hier nicht aktiv: Sie braucht einen overlay-Block in caw.config.json. Siehe docs/extensions/overlay.md.',
     'cli.removedSkill': 'caw skill gibt es nicht mehr: caw als MCP-Server anmelden (claude mcp add caw --scope project -- npx caw-ai mcp); er bringt die Anleitung selbst mit. .claude/skills/caw-ai/ von Hand löschen.',
     'cli.unknownAgentCommand': 'Unbekannter Befehl: caw agent {command}.{suggestion} Siehe caw agent --help.',
     'cli.didYouMean': ' Meintest du {name}?',

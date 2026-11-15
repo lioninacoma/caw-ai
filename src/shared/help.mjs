@@ -42,14 +42,37 @@ const banner = (intro) => {
     return [...raven, ...intro.split('\n').slice(1)].join('\n');
 };
 
+/** An option line of the overlay extension; its description continues on lines indented to the description column. */
+const OVERLAY_OPTION = /^ {6}\[--overlay/;
+const CONTINUATION = /^ {41}\S/;
+
+/** A block without the overlay extension's options and remarks, for a project without an overlay block. */
+const withoutOverlay = (text) => {
+    const kept = [];
+    let skipping = false;
+    for (const line of text.split('\n')) {
+        if (OVERLAY_OPTION.test(line)) {
+            skipping = true;
+            continue;
+        }
+        if (skipping && CONTINUATION.test(line)) continue;
+        skipping = false;
+        kept.push(line);
+    }
+    return kept.join('\n').replace(t('cli.help.overlayStartClause'), '');
+};
+
 /**
  * The help. Without a command everything for people, with a command only its block, with `agent` the agent commands.
- * @param here e.g. "local, dev": the environments with Claude from the config, otherwise undefined
+ * @param here    e.g. "local, dev": the environments with Claude from the config, otherwise undefined
+ * @param overlay the config has an overlay block: the extension's command and options are shown
  */
-export const helpText = (command, { here } = {}) => {
+export const helpText = (command, { here, overlay = false } = {}) => {
     if (command === 'agent') return t('cli.help.agent');
-    if (HOST_COMMANDS.includes(command)) return block(command, here);
-    return [banner(t('cli.help.intro')), ...HOST_COMMANDS.map((name) => block(name, here)), t('cli.help.version'), '', t('cli.help.footer')].join('\n');
+    const shown = (name) => (overlay ? block(name, here) : withoutOverlay(block(name, here)));
+    if (HOST_COMMANDS.includes(command)) return shown(command);
+    const names = HOST_COMMANDS.filter((name) => overlay || name !== 'overlay');
+    return [banner(t('cli.help.intro')), ...names.map(shown), t('cli.help.version'), '', t('cli.help.footer')].join('\n');
 };
 
 /** Does this command have its own block? */

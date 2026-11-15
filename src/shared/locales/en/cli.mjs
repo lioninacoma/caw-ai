@@ -98,6 +98,7 @@ Commands:`,
       [--apply]                          Add the suggested overlay.assetUrlPattern entries and check again
       [--start]                          Run the part's start if the server doesn't answer, stop it afterwards
       [--json]                           Result as one JSON line (also in .caw/overlay-check.json)`,
+    'cli.help.overlayStartClause': '; with --overlay also the parts\' local code servers',
     'cli.help.version': '  --version                              Package version',
     'cli.help.here': ' (here: {names})',
     'cli.help.footer': `--env <name>: a name from environments, e.g. local. Left out when the choice is clear: the only one that fits, or for run
@@ -162,6 +163,8 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.export.configKept': '{file} already exists and stays as it is.',
     'cli.export.next': 'Run it with Playwright: npm i -D @playwright/test, then npx playwright test -c {dir}. Test users as for caw (CAW_<ROLE>_USER …), CAW_BASE_URL for another address.',
     'cli.movedCommand': 'caw {command} is now caw {now}.',
+    'cli.overlayCommandInactive': 'caw overlay is an extension and is not active here: it needs an overlay block in caw.config.json. See docs/extensions/overlay.md.',
+    'cli.overlayFlagInactive': '--overlay is an extension and is not active here: it needs an overlay block in caw.config.json. See docs/extensions/overlay.md.',
     'cli.removedSkill': 'caw skill was removed: register caw as an MCP server (claude mcp add caw --scope project -- npx caw-ai mcp); it brings the guidance itself. Delete .claude/skills/caw-ai/ by hand.',
     'cli.unknownAgentCommand': 'Unknown command: caw agent {command}.{suggestion} See caw agent --help.',
     'cli.didYouMean': ' Did you mean {name}?',

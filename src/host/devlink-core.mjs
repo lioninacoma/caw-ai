@@ -218,7 +218,7 @@ const createDevlinkHost = (config, deps, options) => {
 
 // host/playwright-adapter
 import { chromium } from "playwright-core";
-import { registerEngines } from "./framework/extjs-engine.mjs";
+import { registerEngines } from "../ext/extjs/extjs-engine.mjs";
 const wrapPage = (page) => ({
   goto: async (url) => {
     await page.goto(url);

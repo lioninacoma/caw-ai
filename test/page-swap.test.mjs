@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { prepareOverlay } from '../src/host/overlay.mjs';
-import { baseOf, codeTags, nonceOf, ssrMarker, swapPage } from '../src/host/page-swap.mjs';
+import { prepareOverlay } from '../src/ext/overlay/overlay.mjs';
+import { baseOf, codeTags, nonceOf, ssrMarker, swapPage } from '../src/ext/overlay/page-swap.mjs';
 
 const project = (t, files) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-swap-'));

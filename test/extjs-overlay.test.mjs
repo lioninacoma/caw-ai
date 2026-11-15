@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { appBuildNames, checkAppFiles, createWatchSource, expectedParts, identifyWatch, parseSenchaJson, replaceable, staleSources } from '../src/host/framework/extjs-overlay.mjs';
-import { deriveName, scriptNames, suggestAssetPatterns } from '../src/host/overlay.mjs';
+import { appBuildNames, checkAppFiles, createWatchSource, expectedParts, identifyWatch, parseSenchaJson, replaceable, staleSources } from '../src/ext/extjs/extjs-overlay.mjs';
+import { deriveName, scriptNames, suggestAssetPatterns } from '../src/ext/overlay/overlay.mjs';
 import { defaultAssetPattern } from '../src/shared/config.mjs';
 import { serveFolder } from './static-server.mjs';
 

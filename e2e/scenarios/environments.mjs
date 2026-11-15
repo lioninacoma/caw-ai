@@ -387,6 +387,55 @@ scenario('S10', 'Playwright export: spec, support and config; npx playwright tes
     verify('(5) a stale test → exit 4 naming record', stale.code === 4 && /caw record export-me@/.test(stale.stderr), `${stale.code} ${stale.stderr.trim().split('\n')[0]}`);
 });
 
+// ---- P8: extensions stay out of the core
+
+scenario('X4', 'Extensions stay out of the core: without an overlay block no overlay in help, CLI, validate, doctor and MCP; with it all of them; init on an ExtJS app writes no overlay block', spa, async () => {
+    const bin = join(here, '..', 'bin', 'caw.mjs');
+    const cli = (args, cwd = root) => exec(process.execPath, [bin, ...args], { cwd, env: { ...process.env, CAW_LANG: 'en', INIT_CWD: cwd, NO_COLOR: '1', CI: '1' } });
+    const toolsAndTopics = async () => {
+        const client = mcpClient(process.execPath, [bin, 'mcp'], { cwd: root, env: { ...process.env, CAW_LANG: 'en', INIT_CWD: root } });
+        try {
+            await client.initialize();
+            const tools = (await client.request('tools/list')).tools.map(({ name }) => name);
+            const topics = (await client.callTool('caw_guide')).structuredContent.topics.map(({ name }) => name);
+            return { tools, topics };
+        } finally {
+            await client.close();
+        }
+    };
+    setConfig(baseConfig());
+    writeSpaTest(root, 'see-tickets');
+    const help = await cli(['--help']);
+    verify('(core) help without the overlay command and --overlay', help.code === 0 && !/overlay/.test(help.stdout), help.stdout.split('\n').filter((line) => /overlay/.test(line)).join(' | '));
+    const command = await cli(['overlay', 'status']);
+    verify('(core) caw overlay → unknown-command with the extension hint', command.code === 3 && /caw overlay is an extension.*docs\/extensions\/overlay\.md/.test(command.stderr) && /unknown-command/.test(command.stderr), `${command.code} ${command.stderr.trim()}`);
+    const flag = await cli(['run', 'see-tickets', '--overlay']);
+    verify('(core) --overlay → usage error with the hint, before anything runs', flag.code === 3 && /--overlay is an extension/.test(flag.stderr) && /code: usage/.test(flag.stderr), `${flag.code} ${flag.stderr.trim()}`);
+    const checks = `${(await cli(['validate'])).stdout}${(await cli(['doctor'])).stdout}`;
+    verify('(core) validate and doctor have no overlay lines', !/overlay|Sencha|watch/i.test(checks), checks.split('\n').filter((line) => /overlay|sencha|watch/i.test(line)).join(' | '));
+    const core = await toolsAndTopics();
+    verify('(core) MCP: no caw_overlay, no topics overlay or extjs', !core.tools.includes('caw_overlay') && !core.topics.includes('overlay') && !core.topics.includes('extjs'), `${core.tools.join(' ')} / ${core.topics.join(' ')}`);
+
+    setConfig({ ...baseConfig(), environments: { ...ENVIRONMENTS, deployed: { url: 'https://deployed.example.com' } }, overlay: { environments: ['deployed'], parts: { web: { dir: '.', url: 'http://localhost:18599/' } } } });
+    const extendedHelp = await cli(['--help']);
+    verify('(block) help shows caw overlay and --overlay', /^ {2}overlay status/m.test(extendedHelp.stdout) && /\[--overlay\[=<parts>\]\]/.test(extendedHelp.stdout));
+    const status = await cli(['overlay', 'status', '--env', 'deployed']);
+    verify('(block) caw overlay status answers about the part (down here), not with the extension hint', !/is an extension/.test(status.stderr) && /down|not ready|18599/i.test(`${status.stdout}${status.stderr}`), `${status.code} ${`${status.stdout}${status.stderr}`.trim().split('\n').slice(0, 2).join(' | ')}`);
+    const extended = await toolsAndTopics();
+    verify('(block) MCP: caw_overlay and topic overlay', extended.tools.includes('caw_overlay') && extended.topics.includes('overlay'), `${extended.tools.join(' ')} / ${extended.topics.join(' ')}`);
+    setConfig(baseConfig());
+
+    const app = mkdtempSync(join(tmpdir(), 'caw-e2e-x4-'));
+    try {
+        writeFileSync(join(app, 'workspace.json'), '{}');
+        const init = await cli(['init', '--offline', '--url', 'http://localhost:1841', '--language', 'en', '--no-mcp'], app);
+        const written = existsSync(join(app, 'caw.config.json')) ? JSON.parse(readFileSync(join(app, 'caw.config.json'), 'utf8')) : {};
+        verify('(init) an ExtJS app: framework extjs, no overlay block', init.code === 0 && written.framework === 'extjs' && written.overlay === undefined, `${init.code} ${JSON.stringify(written).slice(0, 200)}`);
+    } finally {
+        rmSync(app, { recursive: true, force: true });
+    }
+});
+
 // ---- P3: network and safety
 
 const networkConfig = (extra = {}) => {

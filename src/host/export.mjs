@@ -11,7 +11,7 @@ import { chooseEnvironment, effectiveEnvironment, environmentCandidates, startPa
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { createUi } from '../shared/ui.mjs';
-import { EXTJS_ENGINE } from './framework/extjs-engine.mjs';
+import { EXTJS_ENGINE } from '../ext/extjs/extjs-engine.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { optionValue } from './linux.mjs';
 import { parseLocator } from './locator.mjs';

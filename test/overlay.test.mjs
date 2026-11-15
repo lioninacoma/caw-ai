@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { bridgeWebSocket, discoverServer, incompleteText, prepareOverlay, probeServer, serverState } from '../src/host/overlay.mjs';
-import { extjs } from '../src/host/framework/extjs.mjs';
+import { bridgeWebSocket, discoverServer, incompleteText, prepareOverlay, probeServer, serverState } from '../src/ext/overlay/overlay.mjs';
+import { extjs } from '../src/ext/extjs/extjs.mjs';
 import { folderFetch } from './static-server.mjs';
 
 // An ExtJS app as the Sencha watch leaves it: app Bestellung, packages modell and theme, bootstrap.json in load order.

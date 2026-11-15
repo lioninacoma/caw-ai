@@ -24,7 +24,7 @@
 // - `hydrates`: optional, true: before filling in the login, wait until `probe` reports appReady (SSR hydration)
 // - `name`: for the config; `label()`: the localized name for messages (called at runtime, never at import)
 
-import { extjs } from './extjs.mjs';
+import { extjs } from '../../ext/extjs/extjs.mjs';
 import { angular, react, vue } from './spa.mjs';
 import { web } from './web.mjs';
 import { buildLocator, locatorLabel, parseLocator } from '../locator.mjs';
@@ -241,9 +241,11 @@ const READY = { timeout: 15_000, quietMs: 250, pollMs: 100 };
  * with `minCount` at least that many hits for `store`. Quiet means `quietMs` in a row.
  * @param pending  open requests of this page (only with `countNetwork`)
  * @param ignore   CSS selectors (config `readyIgnore`): areas whose DOM changes and progress indicators do not count
+ * @param untilApp also wait for `appReady` (the start page: a dev server's app mounts after `load` once its modules arrive). Quiet
+ *                 without the app until the timeout counts as settled, so the caller reports the app as not loaded.
  * @returns { settled, waitedMs, samples, reason, lastSample }
  */
-export const waitQuiet = async (framework, page, { store = null, minCount = null, timeout = READY.timeout, quietMs = READY.quietMs, pollMs = READY.pollMs, pending = () => 0, ignore = [], sleep = sleepMs, now = Date.now } = {}) => {
+export const waitQuiet = async (framework, page, { store = null, minCount = null, timeout = READY.timeout, quietMs = READY.quietMs, pollMs = READY.pollMs, pending = () => 0, ignore = [], untilApp = false, sleep = sleepMs, now = Date.now } = {}) => {
     const start = now();
     // Without selectors the probe gets the store alone, as always.
     const selectors = Array.isArray(ignore) ? ignore.filter((selector) => typeof selector === 'string' && selector.trim() !== '') : [];
@@ -262,7 +264,8 @@ export const waitQuiet = async (framework, page, { store = null, minCount = null
             && (minCount === null || (lastSample.counts !== null && lastSample.counts >= minCount));
         if (quiet) {
             quietSince ??= at;
-            if (at - quietSince >= quietMs) return { settled: true, waitedMs: at - start, samples, reason: '', lastSample };
+            const app = !untilApp || lastSample.appReady === true || at - start >= timeout;
+            if (app && at - quietSince >= quietMs) return { settled: true, waitedMs: at - start, samples, reason: '', lastSample };
         } else {
             quietSince = null;
         }

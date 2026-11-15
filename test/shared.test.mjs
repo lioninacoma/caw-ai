@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 import { assetPatterns, buildDevlinkConfig, defaultAssetPattern, environmentsWith, navigationHosts, validateConfig, writeConfig } from '../src/shared/config.mjs';
 import { effectiveEnvironment, startPath } from '../src/shared/environments.mjs';
-import { deriveName } from '../src/host/overlay.mjs';
+import { deriveName } from '../src/ext/overlay/overlay.mjs';
 import { checkTest, withDefaults } from '../src/host/test-file.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 

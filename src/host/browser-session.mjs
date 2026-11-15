@@ -13,10 +13,10 @@ import { t } from '../shared/i18n.mjs';
 import { totp } from '../shared/totp.mjs';
 import { createDialogs } from './dialogs.mjs';
 import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig } from './devlink-core.mjs';
-import { fileVersion, incompleteText, routeOverlay } from './overlay.mjs';
+import { fileVersion, incompleteText, routeOverlay } from '../ext/overlay/overlay.mjs';
 import { DEFAULT_MESSAGE_SELECTORS, browserLaunch, isLoopback, isViewport } from '../shared/config.mjs';
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
-import { registerEngines } from './framework/extjs-engine.mjs';
+import { registerEngines } from '../ext/extjs/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
@@ -1243,7 +1243,7 @@ export const openBrowserSession = async (spec) => {
         // Quiet according to the framework adapter; for the neutral adapter also no open requests of the page.
         const ignore = readyIgnoreOf(config);
         const waitReady = (args = {}) => waitQuiet(framework, pages.current(), { ...args, ignore, pending: (page) => network.pending(page) });
-        const ready = await waitReady({ timeout: spec.readyTimeoutMs });
+        const ready = await waitReady({ timeout: spec.readyTimeoutMs, untilApp: true });
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
         // overlayStrict false (caw overlay check): report instead of throwing, the check reads the diagnosis itself. A broken
         // app is often just what a mixed state causes.

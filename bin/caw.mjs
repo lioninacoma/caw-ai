@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { CawError, EXIT, exitOf } from '../src/shared/errors.mjs';
 import { AGENT_COMMANDS, HOST_COMMANDS, helpText, synopsisOf, unknownCommandText } from '../src/shared/help.mjs';
 import { detectLanguage, setLanguage, t } from '../src/shared/i18n.mjs';
@@ -6,6 +9,18 @@ import { detectLanguage, setLanguage, t } from '../src/shared/i18n.mjs';
 const HELP = new Set(['-h', '--help']);
 
 /** The environments Claude may work on, for the help text; undefined without a readable config. */
+/** Does the config have an overlay block? The overlay extension (command, options, help) exists only then. */
+const overlayActive = (root) => {
+    try {
+        const raw = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
+        return raw?.overlay !== undefined && raw?.overlay !== null;
+    } catch {
+        return false;
+    }
+};
+/** The overlay extension asked for in a project without it. */
+const overlayInactive = (key) => new CawError(key === 'cli.overlayCommandInactive' ? 'unknown-command' : 'usage', t(key));
+
 const claudeEnvironments = async (root) => {
     try {
         const { environmentsWith, loadConfig } = await import('../src/shared/config.mjs');
@@ -20,15 +35,18 @@ const claudeEnvironments = async (root) => {
  * commands; they take arbitrary text, so there --help counts only right after `agent` or the agent command.
  */
 const helpFor = async (root, command, args) => {
-    if (command === undefined || HELP.has(command)) return helpText(undefined, { here: await claudeEnvironments(root) });
+    const overlay = overlayActive(root);
+    if (command === undefined || HELP.has(command)) return helpText(undefined, { here: await claudeEnvironments(root), overlay });
     if (command === 'help') {
         const [topic] = args;
         if (topic === 'agent') throw new CawError('unknown-command', t('cli.movedCommand', { command: 'help agent', now: 'agent --help' }));
         if (topic !== undefined && !HOST_COMMANDS.includes(topic)) throw new CawError('unknown-command', unknownCommandText(topic));
-        return helpText(topic, { here: await claudeEnvironments(root) });
+        if (topic === 'overlay' && !overlay) throw overlayInactive('cli.overlayCommandInactive');
+        return helpText(topic, { here: await claudeEnvironments(root), overlay });
     }
     if (command === 'agent') return args.length === 0 || HELP.has(args[0]) || (AGENT_COMMANDS.includes(args[0]) && HELP.has(args[1])) ? helpText('agent') : undefined;
-    if (HOST_COMMANDS.includes(command) && args.some((arg) => HELP.has(arg))) return helpText(command, { here: await claudeEnvironments(root) });
+    if (command === 'overlay' && !overlay) throw overlayInactive('cli.overlayCommandInactive');
+    if (HOST_COMMANDS.includes(command) && args.some((arg) => HELP.has(arg))) return helpText(command, { here: await claudeEnvironments(root), overlay });
     return undefined;
 };
 
@@ -108,6 +126,8 @@ const main = async ([command, ...args]) => {
         return EXIT.pass;
     }
     const host = () => import('../src/host/commands.mjs');
+    // --overlay belongs to the overlay extension: without the block it is a usage error with the hint, before anything runs.
+    if (['run', 'record', 'open'].includes(command) && args.some((arg) => arg === '--overlay' || arg.startsWith('--overlay=')) && !overlayActive(root)) throw overlayInactive('cli.overlayFlagInactive');
     switch (command) {
         case 'init': {
             // --explore-only: look at the app and write only caw/.explore.json (and caw/.env via the role card), no config.
@@ -132,7 +152,9 @@ const main = async ([command, ...args]) => {
             if (agent !== undefined && !['local', 'docker', 'session'].includes(agent)) throw new CawError('usage', t('cli.doctorAgentValue'));
             return doctor(root, { ui: createUi(), agent, environment: optionValue(args, '--env') });
         }
-        case 'overlay': return (await import('../src/host/overlay-check.mjs')).overlayCommand(root, args);
+        case 'overlay':
+            if (!overlayActive(root)) throw overlayInactive('cli.overlayCommandInactive');
+            return (await import('../src/ext/overlay/overlay-check.mjs')).overlayCommand(root, args);
         case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);
         case 'run': return (await host()).run(root, args);
         case 'record': return (await host()).record(root, args);
@@ -147,7 +169,6 @@ const main = async ([command, ...args]) => {
         case 'agent': return agentCommand(root, args);
         case '--version':
         case '-v': {
-            const { readFileSync } = await import('node:fs');
             console.log(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
             return EXIT.pass;
         }

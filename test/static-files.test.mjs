@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { overlayStatus } from '../src/host/overlay-check.mjs';
-import { prepareOverlay } from '../src/host/overlay.mjs';
-import { staticFile, workspaceRoot } from '../src/host/static-files.mjs';
+import { overlayStatus } from '../src/ext/overlay/overlay-check.mjs';
+import { prepareOverlay } from '../src/ext/overlay/overlay.mjs';
+import { staticFile, workspaceRoot } from '../src/ext/overlay/static-files.mjs';
 import { validateConfig } from '../src/shared/config.mjs';
 
 /**

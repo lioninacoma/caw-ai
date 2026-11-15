@@ -2,7 +2,7 @@
 // Chrome fails the suite instead of passing it green with skipped tests.
 import { chromium } from 'playwright-core';
 
-import { registerEngines } from '../src/host/framework/extjs-engine.mjs';
+import { registerEngines } from '../src/ext/extjs/extjs-engine.mjs';
 
 // The extjs= engine is registered before every launch, as caw does.
 export const launchChrome = async () => {

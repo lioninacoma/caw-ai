@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { buildReplay, createRecorder, failedStep, fillTarget, playReplay, replayToEntry, replayVerdict, positionalActions, stepGroups, stepLabel, swapToken } from '../src/host/replay.mjs';
 import { stepHash } from '../src/host/test-file.mjs';
-import { extjs } from '../src/host/framework/extjs.mjs';
+import { extjs } from '../src/ext/extjs/extjs.mjs';
 import { classifyFailure, renderReport, stackOrigin } from '../src/shared/report.mjs';
 import { controlsProbe } from '../src/host/effects.mjs';
 

@@ -64,7 +64,7 @@ Required. One entry per place your app runs. The name is what you pass to `--env
 ```json
 "environments": {
   "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
-  "dev":     { "url": "https://dev.example.com", "claude": true, "overlay": true, "writable": true },
+  "dev":     { "url": "https://dev.example.com", "claude": true, "writable": true },
   "staging": { "url": "https://staging.example.com" },
   "prod":    { "url": "https://example.com", "production": true }
 }
@@ -75,8 +75,7 @@ Required. One entry per place your app runs. The name is what you pass to `--env
 | `url` | Origin of the app. `https`, or `http` for `localhost`, `127.0.0.1` and `*.localhost`. |
 | `claude` | `true`: Claude may record, fix and investigate here. |
 | `writable` | `true`: tests with `mutates: true` may run here. |
-| `overlay` | `true`: `--overlay` may lay your local code over this deployed environment. It only allows it and switches nothing on. Not needed for a dev server on your machine. See [Testing local code](#testing-local-code). |
-| `production` | Required for names like `prod` or `live`. Such an environment can't have `claude`, `overlay` or `writable`. A run there sends no write requests: each one is aborted and fails the step with `write-blocked` (`reads` names requests that only read). Runs on other environments never reach its host. |
+| `production` | Required for names like `prod` or `live`. Such an environment can't have `claude` or `writable`. A run there sends no write requests: each one is aborted and fails the step with `write-blocked` (`reads` names requests that only read). Runs on other environments never reach its host. |
 | `urls` | Instead of `url` when you use `sites`: `{ "north": "https://north.example.com", … }`. |
 
 Anything not set to `true` is off. A run against `staging` above replays only, read-only tests only, against the deployed version.
@@ -176,23 +175,19 @@ Required. Usually one app; monorepos can list several.
 |---|---|
 | `dir` | App folder relative to the project, `.` for a single app. |
 | `startUrl` | Path where tests start. Only needed for apps a test starts in. |
-| `overlay` | Where `--overlay` takes the app's local code from: local code server (`url`) and its start command (`start`), build folder, fixed files. See [Testing local code](#testing-local-code). |
 
 ## Testing local code
 
 caw-ai knows two modes:
 
 - **E2E** (default, CI, nightly, every plain `run`): always the deployed code of the environment, also with `open <test>`.
-- **Development:** your local code, only with `--overlay`. Nothing switches to it silently.
+- **Development:** your local code, from your dev server as an environment, or with the [overlay extension](extensions/overlay.md). Nothing switches to it silently.
 
 Every run names the code in its first lines, in CI too:
 
 ```
 Code: deployed
 Code: dev server localhost:5173, your current version
-Code: overlay, build dist, built 14:02, 3 min ago
-Code: overlay, dev server http://localhost:5173
-Code: overlay, Sencha watch http://localhost:1841/
 ```
 
 ### Your dev server as an environment
@@ -205,101 +200,11 @@ Testing against your local dev server needs no option. The dev server is an envi
 }
 ```
 
-`--env local` then tests what is in your editor (Vite, `ng serve`, webpack dev server, Next.js, Nuxt). `--overlay` is rejected there (exit 3): it is for deployed environments.
+`--env local` then tests what is in your editor (Vite, `ng serve`, webpack dev server, Next.js, Nuxt).
 
-### `--overlay`: local code over a deployed environment
+### Local code on a deployed environment
 
-For apps that only work inside a deployed environment, e.g. in a portal or a shell, or with a backend that only exists on staging. Page, API, cookies and login stay those of the environment; only the app's code comes from your machine.
-
-It needs `"overlay": true` on the environment and a source on the app. One model for every framework: your project's **local code server** at `url`, started with your project's own command `start`:
-
-```json
-"environments": {
-  "dev": { "url": "https://dev.example.com", "claude": true, "overlay": true, "writable": true }
-},
-"apps": {
-  "web": {
-    "dir": ".",
-    "startUrl": "/",
-    "overlay": {
-      "url": "http://localhost:5173",
-      "start": "npm run dev",
-      "statics": [{ "name": "Fx/Static.js", "path": "static.js" }]
-    }
-  }
-}
-```
-
-| Field in `overlay` | |
-|---|---|
-| `url` | Address of the local code server: dev server (Vite, `ng serve`, webpack) or Sencha watch, e.g. `"http://localhost:5173"`. ExtJS default: `"http://localhost:1841/"`. |
-| `start` | Your project's command that starts the server or builds, run in the app folder, e.g. `"npm run dev"`, `"pnpm run watch"`, `"npm run build"`. caw names it when the server is down; it runs it only with `--start`. |
-| `build` | Build folder relative to the project, e.g. `"dist"` or `"dist/app/browser"`, for apps without a server: caw serves it itself. Not with ExtJS. |
-| `statics` | Fixed names served live from disk: `name` is the name in the request, `path` the file relative to the app folder. `path` may leave the app folder with `..`, e.g. into a neighbouring package of a monorepo (`../../packages/Model/resources/Const.js`), but must stay inside the workspace: the nearest folder from the project upwards with `pnpm-workspace.yaml` or a `package.json` with `workspaces`, at most up to the repository root, otherwise the project folder. Symlinks are resolved; secret files (`.env`, keys, credentials) are never served. For every framework and every source. |
-| `assetUrlPattern` | Extra patterns for this app only, in addition to the top-level `assetUrlPattern`: for an app whose files come from somewhere else. String or list. |
-
-Unknown fields are an error. You need only one of `build` and `url`.
-
-| Call | Source |
-|---|---|
-| `--overlay` | The one configured source. If the app has both `build` and `url`, the call stops (exit 3) and asks you to choose. |
-| `--overlay build` | The build folder. Not with ExtJS. |
-| `--overlay dev` | The server at `url`. |
-| `--overlay http://localhost:5174` | The server at this address. Overrides `url`, needs no `overlay` on the app. Only for a test with one app (exit 3 with `also`). |
-
-`--overlay` works on `run`, `record` and `open`. It is rejected (exit 3) with the reason on an environment without `"overlay": true`, on an environment that is itself a dev server on your machine, and for an app without a source. Apps from `also` use their own source; without one they stay deployed.
-
-**caw starts nothing by itself.** Before Chrome opens it checks the source:
-
-- **Server** at `url` doesn't answer: exit 2 (`overlay-not-ready`) with the address and `start`: `The local code server http://localhost:5173 doesn't answer. Start npm run dev in ., or run with --start …`. Start it yourself, or let Claude start it in its session (it asks first).
-- **Build** missing or older than the newest source file of the app: exit 2 with `start`. Not counted as source: `node_modules`, the build folder, folders starting with a dot, common build folders (`dist`, `build`, `out`, `coverage`, …), `caw/`, Markdown files and `caw.config.json`; at most 5000 files are looked at.
-- `npx caw overlay status` shows the same without a browser: `ready`, `moved`, `down`, `wrong-app` or `stale`.
-
-**`--start`** (on `run`, `record`, `open` and `overlay check`, only together with `--overlay`) is for CI and scripts, like Playwright's `webServer`: caw runs `start` in the app folder when the server doesn't answer, waits up to 60 s (Sencha watch: 180 s, until it serves this app), logs to `.caw/<app>-dev-server.log` or `.caw/<app>-watch.log` and stops the whole process tree at the end of the run; for `open` when you close the window. With `build` it runs `start` once (`.caw/<app>-build.log`) and checks again. The source never switches: a failed build doesn't fall back to the dev server or the deployed version.
-
-**How the local code gets into the page:**
-
-- **Pages:** Every HTML page of the app comes from the server. caw swaps the app's code tags in it for those of the local page: with `build` the page in the build folder with the most matches, with `url` the dev server's HTML for the same path. The new tags sit where the old ones were and carry the page's CSP nonce; `integrity` is removed. Inline scripts, project copies (e.g. `public/env.js`: the environment sets it, so it stays from the server) and scripts from other origins stay. There is no swap on pages without tags of the app (the login page), on server-rendered pages, and when the build uses a different base path (a warning says so); then only single requests come from local code.
-- **Requests with `build`:** the exact file, or the file with the same name up to the hash. A hash is `name[-.]hash.ext` with 6 to 64 characters from `[A-Za-z0-9_-]`, containing a digit or an uppercase letter. Its length may change (`assets/index-Bx81.js` → `assets/index-Q7f2kL9a.js`), and a fixed name and a hashed one count as the same file (`main.js` ↔ `main-A1B2C3D4.js`).
-- **Requests with `url`:** code requests (scripts, styles, fonts, images, modules) go to the dev server. Its HMR WebSocket is bridged, so hot reload works in the deployed page.
-- **`statics`** are answered first, for every source.
-- Everything local is served with `cache-control: no-store`; service workers are blocked in the test browser. The name of a request is its path below the environment URL, or group 1 of `assetUrlPattern`.
-
-**Checks after the first load:**
-
-| Finding | Result |
-|---|---|
-| Server-rendered page (Next.js, Nuxt, SvelteKit, Angular SSR) | Exit 2 (`overlay-ssr`). Test local code there with the dev server as the environment (`--env local`). |
-| Expected parts came from the server (ExtJS: app or own package) | Exit 2 (`overlay-incomplete`): a mixed version. The message names the parts, up to five URLs and the `assetUrlPattern` that catches them. `caw overlay check --apply` adds it. |
-| Nothing came from local code | Exit 2 (`overlay-unused`). |
-| Expected parts never requested | Note "Not loaded": maybe the app loads them later. |
-| Scripts from the local asset folder came from the server | Warning "Mixed version": rebuild, or check that the build matches the deployed version. |
-| Build with a different base path | Warning, no page swap. |
-
-`report.md` names what happened: `Overlay: dist; 14 file(s) local, 2 script(s)/stylesheet(s) from the server; page swapped: yes`.
-
-**ExtJS:** With `"framework": "extjs"` the local code comes from the web server of the Sencha watch, by default `http://localhost:1841/`. `init` writes `"overlay": { "url": "http://localhost:1841/" }`; add `start` with your project's watch command (e.g. `"pnpm run watch"` or `"sencha app watch"`), optionally `statics`. caw checks that the server at `url` serves *this* app (`app.json` name, `bootstrap.json` with a load order). A theme package that extends an SDK theme (e.g. `"extend": "theme-material"`) is replaced together with the JS of the themes it extends, like its build; otherwise Material's overrides (flat dialog buttons, `Ext.theme.name`) would be missing. If the port was taken, the watch picks a random one: caw finds it among the running watch processes, uses it and tells you to set `url`. `build` is an error there. Details: [Guide](guide.md#how-local-code-gets-into-the-application).
-
-**Several asset sources.** A page may load its code from more than one place. caw names each request by the path below the environment URL and by every `assetUrlPattern`; the first name a source knows wins. `assetUrlPattern` is a string or a list, one pattern per source, group 1 the file name. A typical portal loads the theme by a plain path (covered by the default) and app and packages through a proxy servlet:
-
-```json
-"assetUrlPattern": [
-  "[?&]url=repository:///Root/(?:[^&#]*/)?([^/&#]+\\.js)(?:[&#]|$)",
-  "^https://cdn\\.example\\.com/js/(?:[^?#]*/)?([^/?#]+\\.js)"
-]
-```
-
-You don't have to write these by hand: `npx caw overlay check` loads the app once, lists per part whether it came local or deployed, and suggests one pattern per missing source; `--apply` adds them. ExtJS overlay setup is done when `overlay check` reports complete. caw never starts the Sencha watch by itself, only with `--start`.
-
-**`validate`** prints the code per test and target and where `--overlay` would apply:
-
-```
-smoke (local): dev server localhost:5173, your current version
-smoke (dev): deployed; with --overlay: overlay, build dist
-smoke (dev): deployed; with --overlay build or dev: overlay, build dist | overlay, dev server http://localhost:5173
-```
-
-It also notes an app with `overlay` while no environment has `"overlay": true`.
+For apps that only run inside a deployed environment (portal, shell, backend only on staging), the [overlay extension](extensions/overlay.md) lays your local code over the environment. It is active only with an `overlay` block in the config.
 
 ## Everything else
 
@@ -324,7 +229,6 @@ It also notes an app with `overlay` while no environment has `"overlay": true`.
 | `readyTimeoutMs` | | How long to wait for the app to settle. |
 | `readyIgnore` | `[]` | CSS selectors of areas that change by themselves, e.g. `["#ticker", ".clock", "footer [role=progressbar]"]`. Their DOM changes and progress indicators don't count when waiting for a quiet page. Spinners without size, hidden or outside the viewport never count. If a page never gets quiet, the report says so once per step. |
 | `lintCommand` | | Your check command, e.g. `npm run lint`. Claude mentions it in code suggestions. |
-| `assetUrlPattern` | | Regex, or a list of them (one per asset source), for requests that load app code; group 1 is the name for `overlay.statics`, the path inside `overlay.build`, or the build name of an ExtJS app or package. Used with `--overlay` in addition to the path below the environment URL. `caw overlay check` suggests missing ones. |
 | `sites` | | Same app for several tenants: `["north", "south"]`, then `urls` per environment. |
 | `extends` | | Shared defaults from a file, e.g. `"./caw/base.json"`. |
 | `sandboxImage` | `node:22-bookworm-slim` | Base image for the `docker` agent. Falls back to `image` in `.devcontainer/devcontainer.json`. |

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { prepareOverlay } from '../src/host/overlay.mjs';
+import { prepareOverlay } from '../src/ext/overlay/overlay.mjs';
 import { isProjectCopy, isProjectCopyFile } from '../src/host/project-files.mjs';
 
 const project = (t, files, { git = false } = {}) => {

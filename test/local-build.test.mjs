@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { contentTypeOf, hasBuild, moduleAlias, resolveLocalBuild, sameButHash } from '../src/host/local-build.mjs';
-import { prepareOverlay, routeOverlay } from '../src/host/overlay.mjs';
+import { contentTypeOf, hasBuild, moduleAlias, resolveLocalBuild, sameButHash } from '../src/ext/overlay/local-build.mjs';
+import { prepareOverlay, routeOverlay } from '../src/ext/overlay/overlay.mjs';
 
 const build = (t, files) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-build-'));

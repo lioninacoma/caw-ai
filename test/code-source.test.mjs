@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { ago, describeCode, newestFile } from '../src/host/code-source.mjs';
-import { staleBuild } from '../src/host/overlay.mjs';
+import { staleBuild } from '../src/ext/overlay/overlay.mjs';
 import { createUi } from '../src/shared/ui.mjs';
 
 const at = (path, ms) => utimesSync(path, ms / 1000, ms / 1000);

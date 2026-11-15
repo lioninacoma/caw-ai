@@ -18,7 +18,6 @@ import { pollChannel } from '../shared/channel.mjs';
 import { renderReport } from '../shared/report.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
-import { prepareOverlay } from './overlay.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan } from './test-plan.mjs';
@@ -220,7 +219,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     const start = startPath(config, spec);
     // The overlay source must be ready before Chrome starts, otherwise the run would silently test something else. Whatever
     // caw starts for it (dev server, watch) ends with the session.
-    const overlay = checked.source === 'overlay' ? await prepareOverlay({ root, config, checked, info }) : null;
+    // The overlay is an extension: loaded only when this run lays local code over the environment.
+    const overlay = checked.source === 'overlay' ? await (await import('../ext/overlay/overlay.mjs')).prepareOverlay({ root, config, checked, info }) : null;
     // Imported only here so that validate works without the browser code.
     const { openBrowserSession } = await import('./browser-session.mjs');
     info(t('run.openingChrome'));

@@ -11,7 +11,7 @@ import { after, before, test } from 'node:test';
 
 import { openChat } from '../src/host/chat.mjs';
 import { WORKBENCH_MARK_SCRIPT, interceptDocuments } from '../src/host/app-view.mjs';
-import { withoutIntegrity } from '../src/host/local-build.mjs';
+import { withoutIntegrity } from '../src/ext/overlay/local-build.mjs';
 import { CHAT_FRAME, openWorkbench } from '../src/host/workbench.mjs';
 import { readPrefs } from '../src/shared/prefs.mjs';
 import { loadTheme } from '../src/shared/theme-package.mjs';

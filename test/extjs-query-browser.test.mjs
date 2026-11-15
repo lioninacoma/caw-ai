@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
-import { registerEngines } from '../src/host/framework/extjs-engine.mjs';
-import { extjsCandidates, extjsMatches } from '../src/host/framework/extjs-query.mjs';
+import { registerEngines } from '../src/ext/extjs/extjs-engine.mjs';
+import { extjsCandidates, extjsMatches } from '../src/ext/extjs/extjs-query.mjs';
 import { buildLocator, parseLocator } from '../src/host/locator.mjs';
 import { recordLocator } from '../src/host/record-locator.mjs';
 import { launchChrome } from './chrome.mjs';

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { overlayCheck, overlayCheckExit, overlayCommand, overlayStatus, overlayStatusExit } from '../src/host/overlay-check.mjs';
+import { overlayCheck, overlayCheckExit, overlayCommand, overlayStatus, overlayStatusExit } from '../src/ext/overlay/overlay-check.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 import { folderFetch } from './static-server.mjs';
 

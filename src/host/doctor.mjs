@@ -15,7 +15,6 @@ import { frameworkOf } from './framework/index.mjs';
 import { parseEnvFile } from './linux.mjs';
 import { claudeVersion } from './local-agent.mjs';
 import { MCP_NAME, isNpxEntry, mcpEntry } from './mcp-entry.mjs';
-import { OVERLAY_CHECK_FILE, overlayStatus } from './overlay-check.mjs';
 
 const browserName = (config) => {
     const launch = browserLaunch(config);
@@ -185,6 +184,8 @@ const overlayLines = async (root, config, probes, now = Date.now()) => {
     const targets = overlayEnvironments(config);
     const apps = Object.entries(overlayParts(config)).filter(([, part]) => typeof part?.dir === 'string' && existsSync(join(root, part.dir, 'app.json')));
     if (targets.length === 0 || apps.length === 0) return [];
+    // The overlay extension, loaded only for a project that has the block.
+    const { OVERLAY_CHECK_FILE, overlayStatus } = await import('../ext/overlay/overlay-check.mjs');
     const status = probes.overlay ?? ((dir, options) => overlayStatus(dir, { ...options, config }));
     let last = null;
     try {

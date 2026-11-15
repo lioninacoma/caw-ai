@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
-import { EXTJS_ENGINE, registerEngines } from '../src/host/framework/extjs-engine.mjs';
+import { EXTJS_ENGINE, registerEngines } from '../src/ext/extjs/extjs-engine.mjs';
 import { launchChrome } from './chrome.mjs';
 
 let browser = null;
