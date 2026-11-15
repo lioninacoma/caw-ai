@@ -17,6 +17,9 @@ export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** The environment names in declaration order. */
+/** The readiness probe without a ready key (§2.9): any answer below 500 on / within a minute. */
+export const READY_DEFAULT = { path: '/', timeoutMs: 60_000 };
+
 export const environmentNames = (config) => Object.keys(isObject(config?.environments) ? config.environments : {});
 
 /**
@@ -46,7 +49,7 @@ const hintFor = (key, allowed) => {
 
 /**
  * The environment as runs use it: `extends` resolved, defaults filled in.
- * @returns { name, url, claude, writable, production, signIn, allowHosts, insecureTls, allowHttp, gate }
+ * @returns { name, url, claude, writable, production, signIn, allowHosts, insecureTls, allowHttp, gate, start, stop, reset, ready }
  */
 export const effectiveEnvironment = (config, name) => {
     const keys = mergedKeys(config, name, []);
@@ -61,6 +64,8 @@ export const effectiveEnvironment = (config, name) => {
         insecureTls: keys.insecureTls === true,
         allowHttp: keys.allowHttp === true,
         ...(isObject(keys.gate) ? { gate: keys.gate } : {}),
+        ...Object.fromEntries(['start', 'stop', 'reset'].filter((key) => typeof keys[key] === 'string').map((key) => [key, keys[key]])),
+        ready: { ...READY_DEFAULT, ...(isObject(keys.ready) ? keys.ready : {}) },
     };
 };
 

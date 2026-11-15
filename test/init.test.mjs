@@ -92,10 +92,10 @@ test('readCredentials: a sign-in with a code reads CAW_<ROLE>_TOTP, and names it
 
 test('runMode names the mode and the reason, no mode follows silently from the environment', async () => {
     const { runMode } = await import('../src/host/commands.mjs');
-    const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'dev' };
-    assert.match(runMode(base), /mit Chat\. Fehlende Vergleichswerte lernt/);
+    const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'dev', env: 'dev', language: 'de' };
+    assert.match(runMode(base), /^Modus auf dev \(Teamsprache de\): mit Chat; lernt: nein\.$/);
     assert.match(runMode({ ...base, withAdvice: true }), /--explain, kostet Token/);
-    assert.match(runMode({ ...base, inCi: true }), /Variable CI.*unverändert/);
+    assert.match(runMode({ ...base, inCi: true }), /Variable CI gesetzt ist; lernt: nein/);
     assert.match(runMode({ ...base, noChat: true }), /--no-chat/);
     assert.match(runMode({ ...base, headless: true, noChat: true }), /--headless/);
     assert.match(runMode({ ...base, withAgent: false }), /nur auf dev/);
@@ -199,7 +199,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     // An invalid config: the first real finding, not just "caw.config.json:".
     writeFileSync(configPath, saved.replace('"local": {', '"local": { "robot": true, "zzz": true,'));
     const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
-    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, extends, signIn, gate, allowHosts, claude, writable, production, insecureTls, allowHttp)');
+    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, extends, signIn, gate, allowHosts, claude, writable, production, insecureTls, allowHttp, start, stop, reset, ready)');
     assert.equal(broken.next, 'caw validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.

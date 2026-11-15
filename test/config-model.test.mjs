@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { validateConfig } from '../src/shared/config.mjs';
 import { credentialNames, credentialState, resolveCredentials, roleLinePattern } from '../src/shared/credentials.mjs';
 import {
     NAME, chooseEnvironment, effectiveEnvironment, effectiveEnvironments, environmentCandidates, environmentNames, navigationHosts,
@@ -27,7 +28,7 @@ test('effectiveEnvironment: extends inherits everything but production, values r
     const south = effectiveEnvironment(config, 'south-dev');
     assert.deepEqual(south, {
         name: 'south-dev', url: 'https://south.dev.example.test', claude: true, writable: false, production: false,
-        signIn: config.signIn, allowHosts: ['cdn.example.test'], insecureTls: true, allowHttp: false,
+        signIn: config.signIn, allowHosts: ['cdn.example.test'], insecureTls: true, allowHttp: false, ready: { path: '/', timeoutMs: 60000 },
     });
     assert.deepEqual(effectiveEnvironment(config, 'ci').signIn, { type: 'none' }, 'an environment signIn replaces the top level as a whole');
     // production is not inherited: the child must say it itself.
@@ -38,6 +39,30 @@ test('effectiveEnvironment: extends inherits everything but production, values r
     const cycle = { environments: { a: { extends: 'b', url: 'https://a.test' }, b: { extends: 'a', url: 'https://b.test' } } };
     assert.throws(() => effectiveEnvironment(cycle, 'a'), /extends läuft im Kreis: a → b → a/);
     assert.deepEqual(Object.keys(effectiveEnvironments(cycle)), [], 'unresolvable environments are left out of the list');
+});
+
+test('lifecycle keys: inherited, ready filled with defaults; validated per environment and after extends', () => {
+    const lifecycle = {
+        signIn: { type: 'none' },
+        environments: {
+            ci: { url: 'http://localhost:18080', writable: true, start: 'docker compose up -d --wait', stop: 'docker compose down -v', reset: 'npm run seed', ready: { path: '/healthz' } },
+            ci2: { extends: 'ci', url: 'http://localhost:18081' },
+        },
+    };
+    assert.deepEqual(validateConfig(lifecycle).issues, []);
+    const ci2 = effectiveEnvironment(lifecycle, 'ci2');
+    assert.deepEqual([ci2.start, ci2.stop, ci2.reset, ci2.ready], ['docker compose up -d --wait', 'docker compose down -v', 'npm run seed', { path: '/healthz', timeoutMs: 60000 }]);
+    assert.equal(effectiveEnvironment(config, 'local').start, undefined);
+    const issues = (environments) => validateConfig({ signIn: { type: 'none' }, environments }).issues;
+    assert.match(issues({ a: { url: 'http://localhost:1', start: '' } }).join('\n'), /a: start muss ein Shell-Befehl sein/);
+    assert.match(issues({ a: { url: 'http://localhost:1', start: 'x', ready: { path: 'healthz' } } }).join('\n'), /a: ready ist/);
+    assert.match(issues({ a: { url: 'http://localhost:1', start: 'x', ready: { timeoutMs: 500 } } }).join('\n'), /a: ready ist/);
+    assert.match(issues({ a: { url: 'http://localhost:1', start: 'x', ready: { timeoutMs: 1000, wait: 1 } } }).join('\n'), /a: ready ist/);
+    assert.match(issues({ a: { url: 'http://localhost:1', stop: 'x' } }).join('\n'), /a: stop nur zusammen mit start/);
+    assert.match(issues({ a: { url: 'http://localhost:1', reset: 'x' } }).join('\n'), /a: reset schreibt Daten/);
+    assert.match(issues({ prod: { url: 'https://p.test', production: true, start: 'x', stop: 'y' } }).join('\n'), /prod ist Produktion: caw startet, stoppt und setzt sie nie zurück \(start, stop nicht erlaubt\)/);
+    // Inherited commands count on production too: production is not inherited, the commands are.
+    assert.match(issues({ dev: { url: 'http://localhost:1', start: 'x' }, live: { extends: 'dev', url: 'https://l.test', production: true } }).join('\n'), /live ist Produktion/);
 });
 
 test('names: lowercase, digits and -, at most 32 characters; no underscore (maps 1:1 to the variable suffix)', () => {

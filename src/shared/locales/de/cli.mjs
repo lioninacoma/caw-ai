@@ -37,15 +37,20 @@ Befehle:`,
       [--max-actions <n>]                Grenze für Aktionen von Claude, sonst maxActions aus der Config, sonst 100
       [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
       [--agent local|docker|session]     wie bei run
-      [--overlay[=<teile>]]              wie bei run, auch [--start]`,
+      [--start] [--reset]                wie bei run (--reset nur, wenn angegeben)
+      [--overlay[=<teile>]]              wie bei run`,
     'cli.help.run': `  run <test> [--env <name>]              Test ohne KI abspielen. Auf Umgebungen, auf denen Claude arbeiten darf{here},
                                          steht der Chat daneben: Scheitert ein Schritt, klärst du ihn dort mit Claude
       [--explain]                        Bei Fehlern oder Warnungen erklärt Claude von sich aus, kostet Token; nur auf
                                          Umgebungen, auf denen Claude arbeiten darf
       [--no-chat]                        Ohne Chat und ohne Claude, wie in CI
       [--headless]                       Ohne Fenster und ohne Chat
-      [--no-learn]                       Mit Chat, aber ohne gelernte Vergleichswerte: Die Testdatei ändert sich nur, wenn du
-                                         im Chat etwas übernimmst
+      [--learn]                          Fehlende Vergleichswerte und Effekte in caw/recordings/ lernen, in jedem Modus;
+                                         ohne die Option ändert ein Lauf von sich aus keine Datei (mit Chat bietet das Ende es an)
+      [--start]                          Die Umgebung mit ihrem start-Befehl starten, wenn sie nicht antwortet, am Ende
+                                         stoppen; mit --overlay auch die lokalen Code-Server der Teile
+      [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
+                                         vor dem ersten Test, --no-reset nie
       [--step-timeout <dauer>]           Zeitlimit je Schritt, Standard 30s
       [--claude-timeout <dauer>]         Zeitlimit für Claude beim Klären und Beheben, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von Claude beim Beheben, sonst maxActions aus der Config, sonst 100
@@ -54,11 +59,11 @@ Befehle:`,
       [--overlay[=<teile>]]              Lokalen Code über die ausgelieferte Umgebung legen. Ohne Wert jeder Teil aus
                                          overlay.parts mit seiner Quelle; build oder dev für diese Quelle; <url> für den
                                          einzigen Teil; oder Teile: --overlay=orders,admin:dev. Nur auf overlay.environments
-      [--start]                          Mit --overlay: start-Befehle der Teile starten, wenn der lokale Code-Server nicht antwortet
   run <test> <test> … | --all            Mehrere Tests nacheinander, für CI: ohne Chat, am Ende eine Tabelle, Exit-Code des
       [--env <name>]                     schlimmsten Laufs. --all nimmt jeden Test, der die Umgebung nennt
       [--headless]                       Ohne Fenster
-      [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML`,
+      [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML
+      [--learn] [--start] [--reset | --no-reset]  wie bei einem Test; start und reset einmal für die ganze Reihe`,
     'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Die Anwendung angemeldet öffnen, mit Werkbank und Chat. Ohne Test: navigieren,
                                          ausprobieren, mit Claude entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
                                          zum Einstieg in S4 (seine Navigation läuft, Eingaben und Prüfung bleiben offen).
@@ -66,7 +71,8 @@ Befehle:`,
       [--role <rolle>]                   Nur ohne Test; nicht nötig, wenn die Config nur eine hat
       [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
       [--agent local|docker|session] [--claude-timeout <dauer>] [--max-actions <n>]
-      [--overlay[=<teile>]]              wie bei run, auch [--start]`,
+      [--start] [--reset]                wie bei run (--reset nur, wenn angegeben)
+      [--overlay[=<teile>]]              wie bei run`,
     'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
                                          aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne Claude (CI, Pre-Commit)',
@@ -262,13 +268,14 @@ Browser:
     'cli.demoFailure': '{label}. Er steht an dieser Stelle in der Aufnahme.',
     'cli.demoNothingFollow': 'Nichts vorgeführt: Claude geht dem Testplan nach.',
     'cli.demoNothing': 'Noch nichts vorgeführt. Klick dich in der Anwendung durch den Ablauf, dann „Vorführung beenden“.',
-    'cli.modeNoAgent': 'Modus: ohne Chat, Claude darf nur auf {environments} arbeiten. Die Testdatei bleibt unverändert.',
-    'cli.modeHeadless': 'Modus: ohne Fenster und ohne Chat (--headless). Die Testdatei bleibt unverändert.',
-    'cli.modeNoChat': 'Modus: ohne Chat (--no-chat). Die Testdatei bleibt unverändert.',
-    'cli.modeCi': 'Modus: ohne Chat, weil die Variable CI gesetzt ist. Die Testdatei bleibt unverändert.',
-    'cli.modeChat': 'Modus: mit Chat{advice}. Fehlende Vergleichswerte lernt der Lauf in {file} (abschalten mit --no-learn).',
-    'cli.modeOpen': 'Modus: mit Chat. open lernt nichts; die Testdatei ändert sich nur, wenn du im Chat etwas übernimmst.',
-    'cli.modeChatNoLearn': 'Modus: mit Chat{advice}, ohne Lernen (--no-learn). Die Testdatei ändert sich nur, wenn du im Chat etwas übernimmst.',
+    'cli.modeLine': 'Modus auf {env} (Teamsprache {language}): {how}; lernt: {learns}.',
+    'cli.modeNoAgent': 'ohne Chat, Claude darf nur auf {environments} arbeiten',
+    'cli.modeHeadless': 'ohne Fenster und ohne Chat (--headless)',
+    'cli.modeNoChat': 'ohne Chat (--no-chat)',
+    'cli.modeCi': 'ohne Chat, weil die Variable CI gesetzt ist',
+    'cli.modeChat': 'mit Chat{advice}',
+    'cli.modeLearnsNo': 'nein',
+    'cli.modeLearnsYes': 'ja (--learn), fehlende Vergleichswerte und Effekte in {file}',
     'cli.modeAdvice': ' und Empfehlungen von Claude (--explain, kostet Token)',
     'cli.changed': 'Geändert: {files}',
     'cli.changedWhat': '{file} ({what})',

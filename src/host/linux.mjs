@@ -41,20 +41,21 @@ export const parseEnvFile = (text) => {
     return env;
 };
 
-const CLAUDE_OPTIONS = ['--env', '--claude-timeout', '--max-actions', '--step-timeout', '--agent', '--overlay', '--start'];
+const CLAUDE_OPTIONS = ['--env', '--claude-timeout', '--max-actions', '--step-timeout', '--agent', '--overlay', '--start', '--reset'];
 const COMMAND_OPTIONS = {
     // --claude-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
-    run: ['--env', '--explain', '--headless', '--no-chat', '--no-learn', '--all', '--report', '--step-timeout', '--claude-timeout', '--max-actions', '--agent', '--overlay', '--start'],
+    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--step-timeout', '--claude-timeout', '--max-actions', '--agent', '--overlay', '--start', '--reset', '--no-reset'],
     record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
-    open: ['--env', '--role', '--overlay', '--start', '--agent', '--claude-timeout', '--max-actions', '--step-timeout'],
+    open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--claude-timeout', '--max-actions', '--step-timeout'],
 };
 /** Flags that were renamed before 1.0: the message names the new one instead of listing every allowed option. */
 export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--claude-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
 /** Options from before 1.0 that have no successor: the message says why. */
-export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'config.removed.also' };
-// --start: caw may run overlay.start itself when the local code server is not ready (CI); otherwise it only names the command.
-const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--no-learn', '--all', '--read-only', '--start']);
+export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'config.removed.also', '--no-learn': 'config.removed.noLearn' };
+// --start: start the environment (its start command) and, with --overlay, the parts' local code servers if they do not answer, and
+// stop at the end what caw started. --reset runs the environment's reset before the first test, --no-reset never.
+const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--all', '--read-only', '--start', '--reset', '--no-reset']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
     '--env': 'local', '--role': 'admin', '--agent': 'local', '--claude-timeout': '60m',
@@ -111,7 +112,7 @@ export const splitStep = (arg) => {
  */
 export const parseRunArgs = (command, args) => {
     const allowed = COMMAND_OPTIONS[command];
-    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { advise: false, headless: false, noChat: false, learn: true, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }) };
+    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { advise: false, headless: false, noChat: false, learn: false, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }) };
     const rest = [...args];
     while (rest.length > 0) {
         const arg = rest.shift();
@@ -144,7 +145,9 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--explain') options.advise = true;
         else if (flag === '--headless') options.headless = true;
         else if (flag === '--no-chat') options.noChat = true;
-        else if (flag === '--no-learn') options.learn = false;
+        else if (flag === '--learn') options.learn = true;
+        else if (flag === '--reset') options.reset = options.reset === 'off' ? 'clash' : 'force';
+        else if (flag === '--no-reset') options.reset = options.reset === 'force' ? 'clash' : 'off';
         else if (flag === '--all') options.all = true;
         else if (flag === '--read-only') options.readOnly = true;
         else if (flag === '--start') options.start = true;
@@ -163,7 +166,7 @@ export const parseRunArgs = (command, args) => {
         else options.timeoutMin = parseDuration(flag, value) / 60000;
     }
     if (options.all && options.test !== undefined) throw new CawError('usage', t('session.args.allWithTests'));
-    if (options.start && options.overlay === undefined) throw new CawError('usage', t('session.args.startWithoutOverlay'));
+    if (options.reset === 'clash') throw new CawError('usage', t('session.args.clash', { without: '--reset', other: '--no-reset' }));
     if (command !== 'open' && options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
     for (const test of command === 'run' ? options.tests : options.test === undefined ? [] : [options.test]) checkTestId(test);
     // A test brings its role; with a step it also exists already, so its metadata stays as it is.

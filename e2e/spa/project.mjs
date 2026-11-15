@@ -1,7 +1,7 @@
 // The project around the spa fixture (e2e/spa/serve.mjs): config with one environment per host name, two tests with
 // recordings written by hand as `record` writes them, and the fictitious test users in caw/.env (default set, a set for the
 // Keycloak environment ci and one for the tenant south-ci). writeProject() rewrites everything before a group.
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseTest, recordingPath, stepHash, testPath, writeTest } from '../../src/host/test-file.mjs';
@@ -40,6 +40,26 @@ export const NETWORK_ENVIRONMENTS = {
     prod: { url: 'http://prod.localhost:18081', production: true },
     mpa: { url: 'http://mpa.localhost:18000', writable: true },
     'mpa-staging': { url: 'http://mpa-staging.localhost:18000' },
+};
+
+/** Ports of the environments caw starts itself (P4): life detaches, dev2 runs in the foreground, 18513 never answers. */
+export const LIFECYCLE_PORTS = { life: 18512, dev2: 18511, never: 18513 };
+const ctl = (args) => `node ../ctl.mjs ${args}`;
+/**
+ * The environments of the lifecycle scenarios (P4), with the commands a team would write: life like docker compose up -d --wait /
+ * down / exec seed, dev2 like npm run dev, broken and never as starts that fail or never get ready, badreset with a failing
+ * reset, and the backend faults cold, flaky and abortive on the shared server.
+ */
+export const LIFECYCLE_ENVIRONMENTS = {
+    local: ENVIRONMENTS.local,
+    life: { url: 'http://life.localhost:18512', writable: true, start: ctl('up 18512'), stop: ctl('down 18512'), reset: ctl('reset 18512'), ready: { path: '/healthz' } },
+    dev2: { url: 'http://dev2.localhost:18511', writable: true, start: 'node ../serve.mjs 18511 --only', ready: { path: '/healthz', timeoutMs: 20000 } },
+    broken: { url: 'http://broken.localhost:18513', writable: true, start: ctl('fail') },
+    never: { url: 'http://never.localhost:18513', writable: true, start: ctl('hang'), ready: { timeoutMs: 3000 } },
+    badreset: { url: http('north'), writable: true, reset: ctl('fail') },
+    cold: { url: http('cold'), writable: true },
+    flaky: { url: http('flaky'), writable: true },
+    abortive: { url: http('abortive'), writable: true },
 };
 
 export const baseConfig = (environments = ENVIRONMENTS) => ({
@@ -104,6 +124,14 @@ export const NETWORK_TESTS = {
     'notes-empty': { role: 'clerk', writes: true, steps: [{ name: 'Add a note without title', expect: 'The note is in the list.', actions: [{ click: button('Add note'), path: '/' }], check: "document.querySelectorAll('#notes li').length>0" }] },
 };
 
+/** The lifecycle scenarios' tests (P4): a second writing test, one that fails, one made stale, and one that needs its retry. */
+export const LIFECYCLE_TESTS = {
+    'create-second': { ...TESTS['create-ticket'] },
+    'fail-one': { role: 'clerk', writes: false, steps: [{ name: 'Open the list', expect: 'The page is called Nope.', actions: [{ 'wait-ready': {} }], check: "document.title==='Nope'" }] },
+    'stale-one': { ...TESTS['see-tickets'] },
+    'search-cold': { ...NETWORK_TESTS.search, steps: NETWORK_TESTS.search.steps.map((step) => ({ ...step, retry: { times: 2, waitMs: 500 } })) },
+};
+
 /** The single-file text of a test (description and recording), as parseTest reads it. */
 const testText = (id, { role, writes, steps, environments }) => {
     const lines = [`id: ${id}`, `role: ${role}`, `writes: ${writes}`, ...(environments === undefined ? [] : [`environments: [${environments.join(', ')}]`]), 'steps:'];
@@ -111,6 +139,7 @@ const testText = (id, { role, writes, steps, environments }) => {
         const plain = { id: `S${index + 1}`, name: step.name, do: '', expect: step.expect };
         lines.push(
             `  - id: ${plain.id}`, `    name: ${JSON.stringify(plain.name)}`, '    do: ""', `    expect: ${JSON.stringify(plain.expect)}`,
+            ...(step.retry === undefined ? [] : [`    retry: ${JSON.stringify(step.retry)}`]),
             '    recording:', `      hash: ${stepHash(plain)}`, ...(index === 0 ? [] : [`      after: S${index}`]),
             '      recordedOn: local', '      recordedAt: 2026-11-14T10:00:00.000Z', '      locale: en-US', '      timezone: Europe/Berlin',
             '      viewport: { width: 1280, height: 800 }',
@@ -126,7 +155,7 @@ const testText = (id, { role, writes, steps, environments }) => {
 export const writeSpaTest = (root, id, extra = {}) => {
     rmSync(testPath(root, id), { force: true });
     rmSync(recordingPath(root, id), { force: true });
-    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id]), ...extra }), id), id });
+    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id] ?? LIFECYCLE_TESTS[id]), ...extra }), id), id });
 };
 
 /** The whole project: config, caw/.env and every test; runs and sessions of earlier runs removed. */
@@ -146,4 +175,18 @@ export const removeNetworkTests = (root) => {
         rmSync(testPath(root, id), { force: true });
         rmSync(recordingPath(root, id), { force: true });
     }
+};
+
+/** The lifecycle scenarios' tests, written only for them (as the network tests). */
+export const removeLifecycleTests = (root) => {
+    for (const id of Object.keys(LIFECYCLE_TESTS)) {
+        rmSync(testPath(root, id), { force: true });
+        rmSync(recordingPath(root, id), { force: true });
+    }
+};
+
+/** Makes a test stale: its plan's expected result changes, its recording stays (needs recording, exit 4). */
+export const makeStale = (root, id) => {
+    const path = testPath(root, id);
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/expect: .*/, 'expect: "The list is there, sorted by date."'));
 };

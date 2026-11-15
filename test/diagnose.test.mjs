@@ -21,6 +21,21 @@ test('diagnosis: an abort after 2 ms without navigation, 850 ms at recording tim
     assert.match(result.findings[0], /nach 2 ms abgebrochen, ohne Seitenwechsel, bei der Aufnahme 200 in 850 ms/);
 });
 
+test('diagnosis: a connection reset is environment; the page\'s uncaught "Failed to fetch" is its consequence, a note, not an app bug', () => {
+    const reset = [{ name: 'POST /api/search', outcome: 'failed', error: 'net::ERR_EMPTY_RESPONSE', ms: 20 }];
+    const uncaught = [{ type: 'pageerror', text: 'TypeError: Failed to fetch', at: 'http://flaky.localhost/:33:32' }];
+    const result = diagnose({ failed: failed(), requests: reset, failures: uncaught });
+    assert.deepEqual([result.side, result.strength], ['environment', 'likely']);
+    assert.deepEqual(result.findings, ['POST /api/search ist fehlgeschlagen (net::ERR_EMPTY_RESPONSE).', 'Die Seite fängt den gescheiterten Request nicht ab: TypeError: Failed to fetch.']);
+    // Without a lost request the same error stays a clear app finding, and any other script error stays one anyway.
+    assert.deepEqual([diagnose({ failed: failed(), failures: uncaught }).side, diagnose({ failed: failed(), failures: uncaught }).strength], ['app', 'clear']);
+    assert.equal(diagnose({ failed: failed(), requests: reset, failures: [{ type: 'pageerror', text: 'TypeError: x is undefined' }] }).side, 'app');
+    // Firefox and Safari word it differently; an abort is judged by its request (here quick: app, clear).
+    for (const text of ['TypeError: NetworkError when attempting to fetch resource.', 'TypeError: Load failed']) assert.equal(diagnose({ failed: failed(), requests: reset, failures: [{ type: 'pageerror', text }] }).side, 'environment', text);
+    const abort = diagnose({ failed: failed(), requests: [{ name: FEES, outcome: 'aborted', navigated: false, ms: 1 }], baseline: [{ name: FEES, status: 200, ms: 40 }], failures: [{ type: 'pageerror', text: 'AbortError: signal is aborted without reason' }] });
+    assert.deepEqual([abort.side, abort.strength], ['app', 'clear']);
+});
+
 test('diagnosis: an abort caused by navigation is no evidence', () => {
     const result = diagnose({ failed: failed(), requests: [{ name: FEES, outcome: 'aborted', navigated: true, ms: 2 }] });
     assert.equal(result.side, 'unclear');

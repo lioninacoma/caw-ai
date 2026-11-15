@@ -244,6 +244,14 @@ test('caw_explore: its result shows up in caw_status once written', async (t) =>
 test('caw_start: typed fields build the command line, mixing with args and wrong fields are refused', async (t) => {
     assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', env: 'dev', overlay: 'dev', headless: true }),
         ['bestellung', '--env', 'dev', '--overlay=dev', '--headless']);
+    // The environment lifecycle and learning (SC-20, SC-21): the team's configured commands, flags only when true.
+    assert.deepEqual(startArgs({ command: 'run', test: 'bestellung', env: 'ci', learn: true, start: true, reset: true }), ['bestellung', '--env', 'ci', '--learn', '--start', '--reset']);
+    assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', start: true }), ['bestellung@S2', '--start']);
+    assert.throws(() => startArgs({ command: 'record', test: 'b', learn: true }), /learn/);
+    assert.throws(() => startArgs({ command: 'run', test: 'b', start: 'yes' }), /start/);
+    assert.throws(() => startArgs({ command: 'run', test: 'b', start: true, overlay: true }), /--start mit overlay gibt es hier nicht/);
+    assert.deepEqual(startArgs({ command: 'run', args: ['b', '--start'] }), ['b', '--start']);
+    assert.throws(() => startArgs({ command: 'run', args: ['b', '--start', '--overlay'] }), /--start mit overlay/);
     assert.deepEqual(startArgs({ command: 'record', test: 'bestellung', step: 'S3', overlay: true }), ['bestellung@S3', '--overlay']);
     assert.deepEqual(startArgs({ command: 'record', test: 'bestellung' }), ['bestellung']);
     assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', env: 'dev' }), ['bestellung@S2', '--env', 'dev']);
@@ -311,10 +319,10 @@ test('caw_start with overlay: a local code server that is not ready returns its 
     await call('caw_start', { command: 'run', test: 'bestellung' });
     assert.equal(asked.length, 2);
     assert.equal(spawned.length, 1);
-    // --start never comes from the session.
+    // --start with overlay never comes from the session: it starts the local code server itself.
     const refused = await call('caw_start', { command: 'run', args: ['bestellung', '--overlay', '--start'] });
     assert.equal(refused.isError, true);
-    assert.match(refused.content[0].text, /--start gibt es hier nicht/);
+    assert.match(refused.content[0].text, /--start mit overlay gibt es hier nicht/);
     assert.equal(spawned.length, 1);
 });
 

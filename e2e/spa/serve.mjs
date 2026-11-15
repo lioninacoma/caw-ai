@@ -5,8 +5,10 @@
 // of e2e/stacks/idp (ci). Accounts are fictitious. Roles: a clerk sees the list, an admin also creates tickets.
 //
 //   node serve.mjs <port>          (default 18080)
+//   node serve.mjs <port> --only   only that port: an environment started by caw's lifecycle (life, dev2; see ctl.mjs)
 //
-// Test endpoints: POST /test/reset clears this environment's tickets, GET /healthz answers ok.
+// Test endpoints: POST /test/reset clears this environment's tickets (and re-arms cold), POST /test/abort-on and /test/abort-off
+// switch abortive's page between aborting its search request and not, GET /healthz answers ok.
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createServer as createHttps } from 'node:https';
@@ -14,6 +16,9 @@ import { createServer as createHttps } from 'node:https';
 import { readCert } from '../frameworks/shared/cert.mjs';
 
 const PORT = Number(process.argv[2] ?? 18080);
+const ONLY = process.argv.includes('--only');
+// The first search on cold waits this long: longer than the e2e step timeout of 5 s, so the step's retry has to carry it.
+const COLD_MS = 20000;
 const GATE_PORT = 18443;
 const TLS_PORT = 18444;
 const PROD_PORT = 18081;
@@ -48,11 +53,22 @@ const ENVIRONMENTS = {
     // The server-rendered notes app: pages and form posts, no script.
     mpa: { auth: 'form', accounts: FORM_ACCOUNTS, mpa: true },
     'mpa-staging': { auth: 'form', accounts: FORM_ACCOUNTS, mpa: true },
+    // Started and stopped by caw's lifecycle (P4): life detaches (ctl.mjs up/down), dev2 runs in the foreground.
+    life: { auth: 'form', accounts: FORM_ACCOUNTS },
+    dev2: { auth: 'form', accounts: FORM_ACCOUNTS },
+    // A slow, cold or flaky backend (D3), on the search a step sends: the first search waits COLD_MS; the search is reset by the
+    // peer; the page aborts its own search after 1 ms while /test/abort-on is set.
+    cold: { auth: 'form', accounts: FORM_ACCOUNTS, cold: true },
+    flaky: { auth: 'form', accounts: FORM_ACCOUNTS, flaky: true },
+    abortive: { auth: 'form', accounts: FORM_ACCOUNTS, abortive: true },
     // Keycloak users of the realm caw-e2e; the role comes from this table.
     ci: { auth: 'oidc', roles: { 'qa.clerk': 'clerk', 'qa.admin': 'admin' } },
 };
 
 const data = new Map();
+// Environments whose next search is the cold one; abortive environments whose page aborts its search.
+const coldPending = new Set(['cold']);
+const aborting = new Set();
 const sessions = new Map();
 const pendingStates = new Map();
 
@@ -143,7 +159,9 @@ document.getElementById('gql').addEventListener('click', async () => { const ans
 document.getElementById('close').addEventListener('click', async () => { await graphql({ query: 'mutation CloseTicket($id: ID) { closeTicket(id: $id) { id } }', variables: { id: 1 } }); say('Closed'); });
 document.getElementById('persisted').addEventListener('click', async () => { const answer = await graphql({ operationName: 'Tickets', extensions: { persistedQuery: { version: 1, sha256Hash: 'e2e' } } }); say('Loaded ' + answer.data.tickets.length); });
 document.getElementById('search').addEventListener('click', async () => {
-    const found = await (await fetch('/api/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ q: document.getElementById('q').value }) })).json();
+    const abort = new AbortController();
+    if (${aborting.has(env.name)}) setTimeout(() => abort.abort(), 1);
+    const found = await (await fetch('/api/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ q: document.getElementById('q').value }), signal: abort.signal })).json();
     say('Found ' + found.length);
 });
 load();
@@ -199,7 +217,13 @@ const handler = async (req, res) => {
     }
     if (url.pathname === '/test/reset' && req.method === 'POST') {
         data.delete(env.name);
+        if (env.cold) coldPending.add(env.name);
         return send(res, 200, 'reset', 'text/plain');
+    }
+    if (url.pathname === '/test/abort-on' || url.pathname === '/test/abort-off') {
+        if (url.pathname.endsWith('on')) aborting.add(env.name);
+        else aborting.delete(env.name);
+        return send(res, 200, 'ok', 'text/plain');
     }
     if (env.auth === 'basic' && userOf(req, env) === null) {
         return send(res, 401, 'Sign in required', 'text/plain', { 'www-authenticate': 'Basic realm="tickets"' });
@@ -237,6 +261,12 @@ const handler = async (req, res) => {
     if (user === null) return url.pathname.startsWith('/api/') ? send(res, 401, '{}', 'application/json') : redirect(res, '/login');
     if (env.mpa) return notes(req, res, env, url);
     if (url.pathname === '/api/tickets' && req.method === 'GET') return send(res, 200, JSON.stringify(store(env).tickets), 'application/json');
+    if (url.pathname === '/api/search' && req.method === 'POST' && env.flaky) {
+        // reset_peer: the connection drops without an answer.
+        req.socket.destroy();
+        return undefined;
+    }
+    if (url.pathname === '/api/search' && req.method === 'POST' && coldPending.delete(env.name)) await new Promise((resolve) => { setTimeout(resolve, COLD_MS); });
     if (url.pathname === '/api/search' && req.method === 'POST') {
         const { q } = JSON.parse(await readBody(req) || '{}');
         return send(res, 200, JSON.stringify(store(env).tickets.filter((ticket) => ticket.title.includes(String(q ?? '')))), 'application/json');
@@ -267,9 +297,11 @@ const handler = async (req, res) => {
 };
 
 createServer(handler).listen(PORT, '127.0.0.1');
-const tls = readCert();
-createHttps(tls, handler).listen(GATE_PORT, '127.0.0.1');
-createHttps(tls, handler).listen(TLS_PORT, '127.0.0.1');
-createServer(handler).listen(PROD_PORT, '127.0.0.1');
-createServer(handler).listen(MPA_PORT, '127.0.0.1');
-createServer(handler).listen(THIRD_PARTY_PORT, '127.0.0.1');
+if (!ONLY) {
+    const tls = readCert();
+    createHttps(tls, handler).listen(GATE_PORT, '127.0.0.1');
+    createHttps(tls, handler).listen(TLS_PORT, '127.0.0.1');
+    createServer(handler).listen(PROD_PORT, '127.0.0.1');
+    createServer(handler).listen(MPA_PORT, '127.0.0.1');
+    createServer(handler).listen(THIRD_PARTY_PORT, '127.0.0.1');
+}

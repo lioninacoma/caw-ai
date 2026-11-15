@@ -25,11 +25,13 @@ const OVERLAY_CHECK_FILE = 'overlay-check.json';
 const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
 /** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
-    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless'] },
-    record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay'] },
-    open: { needs: [], takes: ['test', 'step', 'env', 'overlay'] },
+    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'start', 'reset'] },
+    record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
+    open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
 };
-const TYPED = ['test', 'env', 'step', 'overlay', 'headless'];
+const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'start', 'reset'];
+/** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
+const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', start: '--start', reset: '--reset' };
 /** A field renamed before 1.0: named with its new name instead of "does not apply". */
 const renamedField = (input) => {
     if (input?.target !== undefined) throw new Error(t('run.mcp.fieldRenamed', { field: 'target', now: 'env' }));
@@ -154,8 +156,10 @@ export const startArgs = (input) => {
     const given = TYPED.filter((field) => input[field] !== undefined && input[field] !== false);
     if (input.args !== undefined) {
         if (given.length > 0) throw new Error(t('run.mcp.mixedArgs'));
-        // The session starts the local code server itself, after asking the human; caw never does from here.
-        if (Array.isArray(input.args) && input.args.some((arg) => arg === '--start' || String(arg).startsWith('--start='))) throw new Error(t('run.mcp.noStart'));
+        // The session starts the overlay's local code server itself, after asking the human; caw never does from here. The
+        // environment's start command is the team's own (SC-20).
+        const raw = Array.isArray(input.args) ? input.args.map(String) : [];
+        if (raw.some((arg) => arg === '--start' || arg.startsWith('--start=')) && raw.some((arg) => arg === '--overlay' || arg.startsWith('--overlay='))) throw new Error(t('run.mcp.noStart'));
         return input.args;
     }
     const { needs, takes } = FIELDS[command];
@@ -170,12 +174,15 @@ export const startArgs = (input) => {
     // A step without its test: open would open without a test and drop it.
     if (input.step !== undefined && input.test === undefined) throw new Error(t('run.mcp.fieldMissing', { field: 'test', command }));
     if (given.includes('overlay') && !isOverlayInput(input.overlay)) throw new Error(t('run.mcp.overlayInvalid'));
-    if (given.includes('headless') && input.headless !== true) throw new Error(t('run.mcp.fieldText', { field: 'headless' }));
+    for (const field of Object.keys(SWITCH_FLAGS).filter((name) => given.includes(name))) {
+        if (input[field] !== true) throw new Error(t('run.mcp.fieldText', { field }));
+    }
+    if (given.includes('start') && given.includes('overlay')) throw new Error(t('run.mcp.noStart'));
     const args = [];
     if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
     if (input.env !== undefined) args.push('--env', input.env);
     if (given.includes('overlay')) args.push(input.overlay === true ? '--overlay' : `--overlay=${input.overlay}`);
-    if (input.headless === true) args.push('--headless');
+    for (const [field, flag] of Object.entries(SWITCH_FLAGS)) if (input[field] === true) args.push(flag);
     return args;
 };
 
@@ -326,7 +333,9 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         description: 'Starts a caw-ai command in the background with you as the agent (--agent session); the window opens for the human. '
             + 'command: run, record or open. Typed fields: test, env, step (record: re-record from this step to the end; open: stop at the '
             + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
-            + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run). '
+            + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run), '
+            + 'learn (run: write missing baselines into the recording; only when the human asks), start (run the environment\'s configured start command if it does not '
+            + 'answer and stop it afterwards; not with overlay), reset (run the environment\'s configured reset first). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
             + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
             + 'With overlay the local code server is checked first (as caw_overlay status): down, wrong-app or stale returns state, url, start '
@@ -341,6 +350,9 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 step: { type: 'string', description: 'record: re-record from this step to the end; open: hand over at the entry of this step. E.g. S3, needs test' },
                 overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
                 headless: { type: 'boolean' },
+                learn: { type: 'boolean', description: 'run: learn missing baselines and effects (--learn); only when the human asks' },
+                start: { type: 'boolean', description: 'Start the environment with its configured start command if it does not answer, stop it at the end (--start)' },
+                reset: { type: 'boolean', description: 'Run the environment\'s configured reset before the first test (--reset)' },
                 args: { type: 'array', items: { type: 'string' }, description: 'Raw command line instead of the typed fields' },
             },
             required: ['command'],

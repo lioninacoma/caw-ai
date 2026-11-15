@@ -182,7 +182,8 @@ Runs only on environments where Claude may work (`"claude": true`). `--env` can 
 | `--also <app>` | First recording only: the flow continues in another app of the project. |
 | `--read-only` | First recording only: the test doesn't write data (`mutates: false`). |
 | `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment, see [Testing local code](configuration.md#testing-local-code). |
-| `--start` | With `--overlay`: run `overlay.start` if the local code server doesn't answer, stop it at the end (CI). Without it caw starts nothing and names the command. |
+| `--start` | Start the environment with its `start` command if it doesn't answer, and stop it at the end ([lifecycle](configuration.md#starting-stopping-and-resetting-an-environment)). With `--overlay` also the parts' local code servers. Without it caw starts nothing and names the command. |
+| `--reset` | Run the environment's `reset` before recording. |
 | `--agent local\|docker\|session` | Where Claude runs. Default: `agent.mode` from the config, else `local`. |
 | `--claude-timeout <duration>` | Time limit for Claude, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's browser actions, default `maxSteps` or 100. |
@@ -206,16 +207,17 @@ npx caw run create-ticket --env local
 
 Replays the recording. No Claude, no tokens. On environments where Claude may work (`claude`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
 
-With the chat, the run learns missing baselines into `caw/recordings/<test>.yaml`. At the end it says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
+A run changes no file on its own. With `--learn` it learns missing baselines and effects into `caw/recordings/<test>.yaml`, in every mode, CI included; with the chat, a passed run that could learn offers "Learn baselines" on its end card instead, and only that click writes. The first line says which environment, which team language and whether the run learns, e.g. `Mode on local (team language en): with chat; learns: no.` At the end a run that learned says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
 
 | Option | |
 |---|---|
 | `--overlay [build\|dev\|<url>]` | Lay local code over the deployed environment: the build folder, the local code server at `overlay.url` (dev server, Sencha watch), or the server at `<url>`; without a value the one configured source. Only on environments with `"overlay": true`. Without the option the deployed version always runs. See [Testing local code](configuration.md#testing-local-code). |
 | `--start` | As for `record`. |
+| `--reset`, `--no-reset` | The environment's `reset` runs once before the first writing test; `--reset` before the first test, `--no-reset` never. |
 | `--explain` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
 | `--no-chat` | Visible window, no chat, no Claude. Like CI. |
 | `--headless` | No window, no chat. 1920×1080. |
-| `--no-learn` | Keep the chat, but learn no baselines: the test file only changes if you adopt something in the chat. |
+| `--learn` | Learn missing baselines and effects from passed steps into `caw/recordings/`. Without it a run leaves every file as it is. |
 | `--step-timeout <duration>` | Time limit per step, default `30s`. |
 | `--claude-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's actions when fixing. |
@@ -253,7 +255,7 @@ With a test, `open` signs in with the test's role and replays without Claude; th
 | Option | |
 |---|---|
 | `--role <role>`, `--app <app>` | Without a test only; not needed if the config has only one. A test brings its own. |
-| `--overlay [build\|dev\|<url>]`, `--start` | As for `run`. |
+| `--overlay [build\|dev\|<url>]`, `--start`, `--reset` | As for `run` (`reset` only with `--reset`). |
 | `--step-timeout <duration>` | Time limit per step while replaying, default `30s`. |
 | `--agent local\|docker\|session`, `--claude-timeout <duration>`, `--max-actions <n>` | As for `record`. |
 
@@ -301,7 +303,7 @@ Started by Claude Code through `.mcp.json`. You don't call it yourself. It gives
 | `caw_validate` | `validate` as data | no |
 | `caw_list` | `list` as data | no |
 | `caw_overlay` | `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `target`, `app` | no |
-| `caw_start` | Start `run`, `record` or `open` with `--agent session` (`test`, `target`, `step`, `overlay`, `headless`, or `args`; `step` for `record` and `open`, only with `test`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `appDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start`: the session starts the server itself after asking you | none beyond your session |
+| `caw_start` | Start `run`, `record` or `open` with `--agent session` (`test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `appDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
 | `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with the crosshair in the workbench | no |
@@ -357,7 +359,10 @@ When caw-ai stops, or a run ends with `error`, it prints the reason and then the
 | `auth-missing` | 3 | Delete the file under `caw/.auth/` and run `auth` again |
 | `credentials-missing` | 2 | `role add <role> --env <env>` (sign in in the window), or set the variables in the environment or `caw/.env` (CI) |
 | `login-form-missing`, `login-failed` | 2 | Is the backend up? Are `auth` selectors and credentials right? |
-| `env-unreachable`, `unreachable` | 2 | Start the dev server, check the URL |
+| `env-unreachable` | 2 | Start the environment (or pass `--start` when it has a `start` command), check the URL |
+| `env-start-failed` | 2 | The environment's `start` ended with an error: see the log tail and `.caw/env/<env>-start.log` |
+| `env-not-ready` | 2 | `ready` did not answer below 500 in time: raise `ready.timeoutMs` or check the `start` command |
+| `env-reset-failed` | 2 | The environment's `reset` failed or took longer than 10 minutes; no test ran. See `.caw/env/<env>-reset.log` |
 | `app-not-loaded`, `app-not-settled` | 2 | Open the page by hand, check the console |
 | `browser-missing` | 2 | Install Google Chrome, or set `browser` in the config |
 | `overlay-not-ready` | 2 | The local code server at `overlay.url` doesn't answer, serves another app, or the build is missing: run the `start` command the message names in the app folder, or add `--start` |

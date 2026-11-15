@@ -221,8 +221,8 @@ scenario('C', 'Failed run: offer, no Docker without a click', async () => {
     verify('One window', await h.done() === 1);
     verify('Exit 1', code === 1, String(code));
     verify('No Docker', dockerUsed === 0);
-    // Only the passed S1 gets its missing comparison, otherwise the file stays as it was.
-    verify('File unchanged except the comparison for S1', noNet(read()) === noNet(broken) && /network: \[\]/.test(stepText(read(), 'S1')) && !/network:/.test(stepText(broken, 'S1')) && stepText(read(), 'S2') === stepText(broken, 'S2'));
+    // A run learns nothing without --learn (Q7): not even the missing comparison of the passed S1.
+    verify('File unchanged', read() === broken);
     restore();
 });
 
@@ -342,7 +342,7 @@ scenario('G', 'No window in CI', async () => {
 
 scenario('H', 'Fix step: dropped remembered value is rejected, environment error leaves everything', async () => {
     // A remembered value a later step needs can only be dropped when fixing a single step ("Schritt beheben" in a run's chat):
-    // record @S<n> re-records every step after it as well. --no-learn: the run does not add comparison values to the file.
+    // record @S<n> re-records every step after it as well. Without --learn the run adds no comparison values to the file.
     const broken = breakStep(good, 'Senden');
     restore(broken);
     const agent = `A='caw agent'
@@ -359,7 +359,7 @@ echo '{"status":"error","reason":"Does not work this way"}' > /tmp/e.json; $A fi
         await page.locator('.message.question', { hasText: 'Für S2 ist keine neue Aufzeichnung entstanden' }).waitFor({ timeout: 90000 });
         await decide(page, 'Close');
     });
-    const code = await run(fake, [ID, ...short, '--no-learn'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+    const code = await run(fake, [ID, ...short], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
     verify('Two windows: test run, repair', await h.done() === 2);
     verify('Exit 2, file unchanged', code === 2 && read() === broken, String(code));
     restore();
@@ -858,8 +858,8 @@ ${finishOf(['S4'])}`;
     await h.done();
     // Comparison values are never created while recording, only in the first healthy test run afterwards.
     verify('Recording: without recording.network', code === 0 && parseTest(read()).steps.find(({ id }) => id === 'S4')?.recording?.network === undefined);
-    // With chat: without it, e.g. in CI, a run does not change the test file. A passed run waits for nobody.
-    const healthy = await run(fake, [ID, ...short], { interactive: true });
+    // Only with --learn (Q7): otherwise a run changes no file. A passed run waits for nobody.
+    const healthy = await run(fake, [ID, ...short, '--learn'], { interactive: true });
     withFees = read();
     const s4 = parseTest(withFees).steps.find(({ id }) => id === 'S4');
     const net = s4?.recording?.network ?? [];

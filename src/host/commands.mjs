@@ -9,7 +9,7 @@ import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environments
 import { credentialNames } from '../shared/credentials.mjs';
 import { NAME, blockedHosts, chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
-import { language, t } from '../shared/i18n.mjs';
+import { language, t, teamLanguage } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { closest } from '../shared/suggest.mjs';
 import { createUi } from '../shared/ui.mjs';
@@ -17,6 +17,7 @@ import { selectDocker } from './docker.mjs';
 import { DEFAULT_MAX_ACTIONS } from './step-budget.mjs';
 import { CLAUDE_TIMEOUT_MIN, optionValue, parseRunArgs, toWslPath } from './linux.mjs';
 import { EXPLORE_FILE, explore } from './explore.mjs';
+import { environmentLifecycle } from './lifecycle.mjs';
 import { ensureTestUser } from './role-capture.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
@@ -902,15 +903,42 @@ const requireHuman = (command, interactive) => {
 };
 
 /** A line at the start of the run: what the run may do and why, so no mode silently follows from the environment. */
-export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environments, learn = true, opened = false, file = RECORDING_DIR }) => {
-    if (!withAgent) return t('cli.modeNoAgent', { environments });
-    if (headless) return t('cli.modeHeadless');
-    if (noChat) return t('cli.modeNoChat');
-    if (inCi) return t('cli.modeCi');
-    // open never learns: saying "--no-learn" would name an option nobody passed.
-    if (opened) return t('cli.modeOpen');
-    const advice = withAdvice ? t('cli.modeAdvice') : '';
-    return learn ? t('cli.modeChat', { advice, file }) : t('cli.modeChatNoLearn', { advice });
+export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environments, env, language: team, learn = false, opened = false, file = RECORDING_DIR }) => {
+    let how;
+    if (!withAgent) how = t('cli.modeNoAgent', { environments });
+    else if (headless) how = t('cli.modeHeadless');
+    else if (noChat) how = t('cli.modeNoChat');
+    else if (inCi) how = t('cli.modeCi');
+    else how = t('cli.modeChat', { advice: withAdvice && !opened ? t('cli.modeAdvice') : '' });
+    // open never learns; a run learns only with --learn (Q7), and then names the file it may change.
+    const learns = learn && !opened ? t('cli.modeLearnsYes', { file }) : t('cli.modeLearnsNo');
+    return t('cli.modeLine', { env, language: team, how, learns });
+};
+
+/**
+ * The environment lifecycle of one invocation (§2.9). --start needs a start command unless it only starts overlay parts; --reset
+ * needs a reset command. run resets once before the first writing test unless --no-reset; record and open only with --reset.
+ */
+const lifecycleOf = (root, config, target, { start = false, reset, overlay }, command) => {
+    const env = effectiveEnvironment(config, target);
+    if (start && env.start === undefined && overlay === undefined) throw new CawError('usage', t('session.args.startWithoutCommand', { env: target }));
+    if (reset === 'force' && env.reset === undefined) throw new CawError('usage', t('session.args.resetWithoutCommand', { env: target }));
+    return environmentLifecycle(root, env, {
+        start: start && env.start !== undefined,
+        reset: reset ?? (command === 'run' ? 'auto' : 'off'),
+        info: (text) => ui.info(text),
+        warn: (text) => ui.warn(text),
+    });
+};
+
+/** Runs work between begin and end of the lifecycle: what caw started is stopped also after an error or Ctrl+C. */
+const withLifecycle = async (lifecycle, work) => {
+    try {
+        await lifecycle.begin();
+        return await work(lifecycle);
+    } finally {
+        await lifecycle.end();
+    }
 };
 
 /**
@@ -952,12 +980,12 @@ export const changeTracker = (root) => {
  * except in CI (variable CI); if a step fails, the human clarifies it there and can have it fixed. For open (`handover`) the
  * run prepares a state and hands over the window, to continue working on the local build from there: with `entry` at the
  * entry of that step, otherwise after the whole test. With --explain Claude advises on errors and warnings, which costs
- * tokens. --no-chat runs as in CI, --headless additionally without a window. --no-learn keeps the chat but learns no baselines.
+ * tokens. --no-chat runs as in CI, --headless additionally without a window. --learn writes missing baselines in every mode.
  * @param quiet in a batch: no mode line, the batch prints it once
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}, loaded = undefined) => {
-    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn, agent, timeoutMin, maxActions, overlay, start, quiet = false } = options;
+    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, agent, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
     let { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
@@ -966,6 +994,8 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     // it must be playable; the step itself only leads in, and if it is stale, nothing of it runs.
     if (loaded === undefined && entry === undefined) assertPlayable(spec, target);
     else if (loaded === undefined && position > 0) assertPlayable(spec, target, spec.steps[position - 1].id);
+    // The environment's reset before the first writing test (or the first test with --reset), before anything signs in.
+    await lifecycle?.beforeTest(spec);
     // Only once the run could start, with a window and a person: a role without a test user gets one in a sign-in window.
     const attended = (interactive ?? (process.env.CI === undefined || process.env.CI === '')) && !headless;
     if (loaded === undefined && attended && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
@@ -980,7 +1010,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     if (withAdvice && !canFix) throw new CawError('usage', t('cli.adviseNeedsChat'));
     // Nobody waits in CI: a handover would keep the job open until the runner times out.
     if (inCi && handover) throw new CawError('usage', t('cli.ciHandover', { option: 'open' }));
-    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), learn, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
+    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
     const tracker = changeTracker(root);
@@ -997,8 +1027,10 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         // The developer's Claude Code session is there at once and costs nothing here: it may read the page in the state right away.
         sessionAgent: (agent ?? agentMode(config)) === 'session',
         reads: config.reads ?? [],
-        // Only with chat and without --no-learn: without chat, e.g. in CI, a run does not change the test file.
-        fillBaselines: canFix && learn,
+        // Only with --learn, in every mode (SC-21): otherwise a run never changes tracked files on its own (Q7). With chat the end
+        // card offers to learn this run's baselines instead.
+        fillBaselines: learn && !handover,
+        offerLearning: canFix && !learn && !handover,
         openSandbox: () => openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent }),
         execute,
         adopt: tracker.adopt,
@@ -1015,7 +1047,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
             if (spec.steps.some(({ id }) => id === step.id)) ui.info(t('cli.untilHint', { test, target, step: step.id }));
         },
     });
-    if (canFix) ui.info(tracker.summary());
+    if (canFix || learn) ui.info(tracker.summary());
     return { code, failed };
 };
 
@@ -1068,6 +1100,11 @@ const runMany = async (root, options, deps) => {
     if (options.all) tests = tests.filter((id) => !specs.has(id) || (specs.get(id).runsOn ?? []).includes(target));
     if (tests.length === 0) throw new CawError('usage', t('cli.batchNone', { target }));
     if (options.batch) ui.info(t('cli.batchStart', { count: tests.length, target, headless: options.headless ? '' : t('cli.batchWindow') }));
+    return withLifecycle(lifecycleOf(root, loadConfig(root), target, options, 'run'), (lifecycle) => runBatch(root, { ...options, lifecycle }, deps, { tests, target }));
+};
+
+/** The tests of a batch in a row, then table, JUnit and the worst exit code. A failed reset ends the batch: no further test runs. */
+const runBatch = async (root, options, deps, { tests, target }) => {
     const rows = [];
     for (const test of tests) {
         const started = Date.now();
@@ -1078,6 +1115,7 @@ const runMany = async (root, options, deps) => {
             exit = result.code;
             if (result.failed !== undefined && exit !== EXIT.pass) note = t('cli.batchAt', { step: result.failed.id });
         } catch (error) {
+            if (error?.code === 'env-reset-failed') throw error;
             // As in bin/caw.mjs: an expected error by its code, an unexpected one is error.
             exit = error instanceof CawError ? exitOf(error.code) : EXIT.error;
             note = String(error?.message ?? error).split('\n')[0];
@@ -1104,7 +1142,8 @@ const runMany = async (root, options, deps) => {
 export const run = async (root, args, deps = {}) => {
     const options = parseRunArgs('run', args);
     if (options.batch || options.junit !== undefined) return runMany(root, options, deps);
-    return (await runOne(root, options, deps)).code;
+    const { config, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
+    return withLifecycle(lifecycleOf(root, config, target, options, 'run'), async (lifecycle) => (await runOne(root, { ...options, target, lifecycle }, deps)).code);
 };
 
 /**
@@ -1129,20 +1168,23 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
     // Before any Claude cost: the steps before must replay. The steps from here on may be stale or not recorded at all.
     const { assertPlayable } = await import('./replay.mjs');
     assertPlayable(spec, target, spec.steps[position - 1].id);
-    // A role without a test user: the human signs in once in a window, then it goes on.
-    if (await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
-        ({ config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start }));
-    }
-    const { fixFlow } = await import('./flows.mjs');
-    const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
-    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen });
-    return fixFlow({
-        draft: spec,
-        target: { id: step, reason: t('cli.recordFromReason', { step }), rerecord: true, from: true },
-        sandbox,
-        execute,
-        adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
-        log: ui.info,
+    return withLifecycle(lifecycleOf(root, config, target, options, 'record'), async (lifecycle) => {
+        await lifecycle.beforeTest(spec);
+        // A role without a test user: the human signs in once in a window, then it goes on.
+        if (await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
+            ({ config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start }));
+        }
+        const { fixFlow } = await import('./flows.mjs');
+        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
+        const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen });
+        return fixFlow({
+            draft: spec,
+            target: { id: step, reason: t('cli.recordFromReason', { step }), rerecord: true, from: true },
+            sandbox,
+            execute,
+            adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
+            log: ui.info,
+        });
     });
 };
 
@@ -1155,6 +1197,8 @@ export const record = async (root, args, deps = {}) => {
     const options = parseRunArgs('record', args);
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = deps;
     const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, overlay, start } = options;
+    // In CI nobody demonstrates or decides: said first, before --role or the environment.
+    requireHuman('record', interactive);
     let config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
     if (step !== undefined) {
@@ -1168,25 +1212,27 @@ export const record = async (root, args, deps = {}) => {
     const target = chooseEnv(config, known === null ? [] : [known], { env: given, command: 'record', writes: !readOnly });
     const spec = known ?? draftTest(root, config, { id: test, target, role, readOnly });
     if (exists && contradicts(spec, { role, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
-    requireHuman('record', interactive);
-    // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
-    if (effectiveEnvironment(config, target).claude && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
-    const checked = checkTest(spec, target, config, { overlay, start });
-    requireAgent(config, checked, target, t('cli.verbRecord'));
+    return withLifecycle(lifecycleOf(root, config, target, options, 'record'), async (lifecycle) => {
+        await lifecycle.beforeTest(spec);
+        // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
+        if (effectiveEnvironment(config, target).claude && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
+        const checked = checkTest(spec, target, config, { overlay, start });
+        requireAgent(config, checked, target, t('cli.verbRecord'));
 
-    const { recordFlow } = await import('./flows.mjs');
-    // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
-    const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
-    const previous = exists ? spec : undefined;
-    const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous });
-    // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
-    // A new test without a plan still starts with the human's demonstration.
-    const demonstration = (agent ?? agentMode(config)) === 'session' && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
-    return recordFlow({
-        sandbox,
-        execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
-        adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
-        log: ui.info,
+        const { recordFlow } = await import('./flows.mjs');
+        // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
+        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
+        const previous = exists ? spec : undefined;
+        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous });
+        // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
+        // A new test without a plan still starts with the human's demonstration.
+        const demonstration = (agent ?? agentMode(config)) === 'session' && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
+        return recordFlow({
+            sandbox,
+            execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
+            adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
+            log: ui.info,
+        });
     });
 };
 
@@ -1200,17 +1246,20 @@ const OPEN_ID = 'open';
  */
 export const open = async (root, args, deps = {}) => {
     const options = parseRunArgs('open', args);
+    requireHuman('open', deps.interactive);
     if (options.test !== undefined) {
-        requireHuman('open', deps.interactive);
-        const runOptions = { ...options, entry: options.step, handover: true, learn: false, advise: false, headless: false, noChat: false };
-        return (await runOne(root, runOptions, deps)).code;
+        const { config, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
+        const runOptions = { ...options, target, entry: options.step, handover: true, learn: false, advise: false, headless: false, noChat: false };
+        return withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => (await runOne(root, { ...runOptions, lifecycle }, deps)).code);
     }
     let config = loadConfig(root);
     const target = chooseEnv(config, [], { env: options.target, command: 'open' });
     const spec = draftTest(root, config, { id: OPEN_ID, target, role: options.role, readOnly: true });
-    requireHuman('open', deps.interactive);
-    if (await ensureTestUser(root, config, { role: spec.role, target, test: spec.id, interactive: true, capture: deps.captureTestUsers })) config = loadConfig(root);
-    const checked = checkTest(spec, target, config, { overlay: options.overlay, start: options.start });
-    const runOptions = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
-    return (await runOne(root, runOptions, deps, { config, spec, target, checked })).code;
+    return withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => {
+        await lifecycle.beforeTest(spec);
+        if (await ensureTestUser(root, config, { role: spec.role, target, test: spec.id, interactive: true, capture: deps.captureTestUsers })) config = loadConfig(root);
+        const checked = checkTest(spec, target, config, { overlay: options.overlay, start: options.start });
+        const runOptions = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
+        return (await runOne(root, runOptions, deps, { config, spec, target, checked })).code;
+    });
 };

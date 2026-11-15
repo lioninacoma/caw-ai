@@ -182,7 +182,8 @@ Nur auf Umgebungen, auf denen Claude arbeiten darf (`"claude": true`). Gibt es n
 | `--also <app>` | Nur beim ersten Aufnehmen: Der Ablauf geht in einer weiteren App des Projekts weiter. |
 | `--read-only` | Nur beim ersten Aufnehmen: Der Test schreibt keine Daten (`mutates: false`). |
 | `--overlay [build\|dev\|<url>]` | Lokalen Code über die ausgelieferte Umgebung legen, siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). |
-| `--start` | Mit `--overlay`: `overlay.start` ausführen, wenn der lokale Code-Server nicht antwortet, und am Ende beenden (CI). Ohne die Option startet caw nichts und nennt den Befehl. |
+| `--start` | Die Umgebung mit ihrem `start`-Befehl starten, wenn sie nicht antwortet, und am Ende stoppen ([Lebenszyklus](configuration.de.md#umgebung-starten-stoppen-und-zurücksetzen)). Mit `--overlay` auch die lokalen Code-Server der Teile. Ohne die Option startet caw nichts und nennt den Befehl. |
+| `--reset` | Vor der Aufnahme den `reset` der Umgebung ausführen. |
 | `--agent local\|docker\|session` | Wo Claude läuft. Standard: `agent.mode` aus der Config, sonst `local`. |
 | `--claude-timeout <dauer>` | Zeitgrenze für Claude, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Browser-Aktionen, Standard `maxSteps` oder 100. |
@@ -206,16 +207,17 @@ npx caw run create-ticket --env local
 
 Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen Claude arbeiten darf (`claude`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
 
-Mit Chat lernt der Lauf fehlende Vergleichswerte in `caw/recordings/<test>.yaml`. Am Ende sagt er, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `open <test>@<schritt>` bis zum Einstieg in den gescheiterten Schritt. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs.
+Ein Lauf ändert von sich aus keine Datei. Mit `--learn` lernt er fehlende Vergleichswerte und Effekte in `caw/recordings/<test>.yaml`, in jedem Modus, auch in CI; mit Chat bietet ein bestandener Lauf, der lernen könnte, stattdessen „Baselines lernen“ auf seiner Abschlusskarte an, und nur dieser Klick schreibt. Die erste Zeile nennt Umgebung, Teamsprache und ob der Lauf lernt, etwa `Modus auf local (Teamsprache en): mit Chat; lernt: nein.` Am Ende sagt ein Lauf, der gelernt hat, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `open <test>@<schritt>` bis zum Einstieg in den gescheiterten Schritt. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs.
 
 | Option | |
 |---|---|
 | `--overlay [build\|dev\|<url>]` | Lokalen Code über die ausgelieferte Umgebung legen: der Build-Ordner, der lokale Code-Server unter `overlay.url` (Dev-Server, Sencha-Watch) oder der Server unter `<url>`; ohne Wert die eine konfigurierte Quelle. Nur auf Umgebungen mit `"overlay": true`. Ohne die Option läuft immer der ausgelieferte Stand. Siehe [Lokalen Code testen](configuration.de.md#lokalen-code-testen). |
 | `--start` | Wie bei `record`. |
+| `--reset`, `--no-reset` | Der `reset` der Umgebung läuft einmal vor dem ersten schreibenden Test; `--reset` vor dem ersten Test, `--no-reset` nie. |
 | `--explain` | Bei Fehlern oder Warnungen erklärt Claude die Ursache ungefragt. Kostet Token. |
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
 | `--headless` | Kein Fenster, kein Chat. 1920×1080. |
-| `--no-learn` | Mit Chat, aber ohne gelernte Vergleichswerte: Die Testdatei ändert sich nur, wenn du im Chat etwas übernimmst. |
+| `--learn` | Fehlende Vergleichswerte und Effekte bestandener Schritte in `caw/recordings/` lernen. Ohne die Option lässt ein Lauf jede Datei, wie sie ist. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
 | `--claude-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Aktionen beim Beheben. |
@@ -253,7 +255,7 @@ Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab
 | Option | |
 |---|---|
 | `--role <rolle>`, `--app <app>` | Nur ohne Test; nicht nötig, wenn die Config nur eine hat. Ein Test bringt beides mit. |
-| `--overlay [build\|dev\|<url>]`, `--start` | Wie bei `run`. |
+| `--overlay [build\|dev\|<url>]`, `--start`, `--reset` | Wie bei `run` (`reset` nur mit `--reset`). |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt beim Abspielen, Standard `30s`. |
 | `--agent local\|docker\|session`, `--claude-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
 
@@ -301,7 +303,7 @@ Startet Claude Code über `.mcp.json`. Du rufst es nicht selbst auf. Deine Sitzu
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |
 | `caw_overlay` | `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `target`, `app` | nein |
-| `caw_start` | `run`, `record` oder `open` mit `--agent session` starten (`test`, `target`, `step`, `overlay`, `headless` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `appDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start`: Die Session startet den Server selbst, nachdem sie dich gefragt hat | nur deine Session |
+| `caw_start` | `run`, `record` oder `open` mit `--agent session` starten (`test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `appDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
 | `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit dem Fadenkreuz in der Werkbank gewählt hast | nein |
@@ -357,7 +359,10 @@ Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und 
 | `auth-missing` | 3 | Datei unter `caw/.auth/` löschen und `auth` erneut ausführen |
 | `credentials-missing` | 2 | `role add <rolle> --env <env>` (im Fenster anmelden), oder die Variablen in der Umgebung oder in `caw/.env` setzen (CI) |
 | `login-form-missing`, `login-failed` | 2 | Läuft das Backend? Stimmen die Selektoren in `auth` und die Zugangsdaten? |
-| `env-unreachable`, `unreachable` | 2 | Dev-Server starten, Adresse prüfen |
+| `env-unreachable` | 2 | Umgebung starten (oder `--start` angeben, wenn sie einen `start`-Befehl hat), Adresse prüfen |
+| `env-start-failed` | 2 | Der `start` der Umgebung endete mit Fehler: siehe Log-Ende und `.caw/env/<env>-start.log` |
+| `env-not-ready` | 2 | `ready` antwortete nicht rechtzeitig unter 500: `ready.timeoutMs` erhöhen oder den `start`-Befehl prüfen |
+| `env-reset-failed` | 2 | Der `reset` der Umgebung scheiterte oder dauerte länger als 10 Minuten; kein Test lief. Siehe `.caw/env/<env>-reset.log` |
 | `app-not-loaded`, `app-not-settled` | 2 | Seite von Hand öffnen, Konsole ansehen |
 | `browser-missing` | 2 | Google Chrome installieren oder `browser` in der Config setzen |
 | `overlay-not-ready` | 2 | Der lokale Code-Server unter `overlay.url` antwortet nicht, liefert eine andere App, oder der Build fehlt: den `start`-Befehl aus der Meldung im App-Ordner ausführen oder `--start` angeben |

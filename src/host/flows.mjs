@@ -478,12 +478,14 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * @param advise    --explain: on failures or warnings Claude advises on its own, even in a passed run. Costs tokens
  * @param handover  the human wants the window afterwards (open)
  * @param entry     open at the entry of this step: the steps before it, then its leading navigation (replayToEntry)
- * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens
+ * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens (--learn)
+ * @param offerLearning  without --learn, with chat: a passed run that could learn shows "Learn baselines" on the end card; only
+ *                       the human's click learns (Q7)
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  */
 export const runFlow = async (options) => {
-    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
+    const { spec, entry, handover, canFix, advise = false, fillBaselines: learnAlways = false, offerLearning = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
     const fixer = createFixer({ openSandbox });
     let target = null;
     let repaired = null;
@@ -509,7 +511,8 @@ export const runFlow = async (options) => {
         replay: entry === undefined ? replayOf(spec) : replayToEntry(spec, entry, { reads }),
         handover: () => handover && target === null && repaired === null && !rerun,
         ...(handover ? { command: 'open' } : {}),
-        learns: fillBaselines,
+        learns: learnAlways,
+        ...(offerLearning ? { offerLearning: true } : {}),
         ...(canFix ? {
             testing: true,
             /**
@@ -630,7 +633,7 @@ export const runFlow = async (options) => {
                 const advised = advise ? await fixer.advise(concluded, current) : null;
                 if (await afterAdvice(advised)) return windowAfter();
                 if (!failed) {
-                    const filled = fillBaselines && concluded.baselines !== undefined ? ` ${baselineText(concluded.baselines)}` : '';
+                    const filled = learnAlways && concluded.baselines !== undefined ? ` ${baselineText(concluded.baselines)}` : '';
                     const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${filled}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
                     // A passed run waits for nobody, not even with warnings. open passed nothing: only name findings.
                     if (spec.steps.length === 0 && advised === null && verdict.status === 'pass' && findingsText(verdict) === '') return;
@@ -658,6 +661,8 @@ export const runFlow = async (options) => {
         } : {}),
     });
     options.onPlayed?.(played);
+    // --learn, or the human's click on "Learn baselines" on the end card of this run.
+    const fillBaselines = learnAlways || played.learn === true;
     if (fillBaselines && played.baselines !== undefined) {
         current = withBaselines(current, played.baselines);
         log(t('run.flow.baselinesAdded', { ids: [...played.baselines.keys()].join(', '), file: adopt(current, new Set(played.baselines.keys()), { learned: 'baselines' }) }));

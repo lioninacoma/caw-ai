@@ -81,6 +81,39 @@ Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du a
 
 Was nicht auf `true` steht, ist aus. Gegen `staging` oben läuft also nur Abspielen, nur lesende Tests, gegen den ausgelieferten Stand.
 
+### Umgebung starten, stoppen und zurücksetzen
+
+Eine Umgebung kann deine eigenen Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nur auf Wunsch aus und
+nie auf einer `production`-Umgebung.
+
+```json
+"ci": {
+  "url": "http://localhost:8080", "writable": true,
+  "start": "docker compose -f ci/compose.yaml up -d --wait",
+  "stop":  "docker compose -f ci/compose.yaml down -v",
+  "reset": "docker compose -f ci/compose.yaml exec -T api npm run seed",
+  "ready": { "path": "/healthz", "timeoutMs": 120000 }
+}
+```
+
+| Feld | |
+|---|---|
+| `start` | Shell-Befehl, der die Umgebung startet. Läuft nur mit `--start`. caw wartet nicht auf sein Ende: Ein Befehl, der sich ablöst (`up -d`), und einer, der weiterläuft (`npm run dev`), funktionieren beide. |
+| `stop` | Shell-Befehl, der sie stoppt. Nur zusammen mit `start` und nur, wenn caw die Umgebung gestartet hat. Ein weiterlaufender `start` wird danach samt Kindprozessen beendet. |
+| `reset` | Shell-Befehl, der die Daten zurücksetzt. Braucht `writable: true`. `run` führt ihn einmal vor dem ersten schreibenden Test aus, `--reset` vor dem ersten Test, `--no-reset` nie. `record` und `open` nur mit `--reset`. |
+| `ready` | Wann die Umgebung als bereit gilt: Ein GET auf `path` (Standard `/`) antwortet unter 500. caw fragt jede Sekunde, `timeoutMs` lang (Standard 60000, 1000 bis 1800000). |
+
+Die Befehle laufen im Projektordner mit der Shell deiner Plattform (`cmd.exe` unter Windows, sonst `/bin/sh`), mit
+`CAW_ENV` und `CAW_ENV_URL`. Ihre Ausgabe steht in `.caw/env/<env>-start.log`, `-stop.log` und `-reset.log`.
+
+- Antwortet die Umgebung schon, nutzt `--start` sie und startet und stoppt nichts.
+- Ein `start`, der vorher mit Fehler endet, scheitert mit `env-start-failed`. Einer, der nie bereit wird, mit `env-not-ready`.
+  In beiden Fällen stoppt caw, was es gestartet hat.
+- Ein scheiternder `reset` (oder einer, der länger als 10 Minuten dauert) scheitert mit `env-reset-failed`, und kein Test läuft.
+- Ohne `--start` scheitert eine Umgebung, die nicht antwortet, mit `env-unreachable`; ist `start` gesetzt, nennt die Meldung
+  `--start`.
+- Die Variable `CI` ändert daran nichts: `--start` ist immer ausdrücklich.
+
 ## auth
 
 Weglassen, wenn deine App keine Anmeldung hat.

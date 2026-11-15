@@ -45,7 +45,7 @@ test('parseRunArgs: --overlay with and without source for run, record and open; 
     assert.throws(() => parseRunArgs('run', ['smoke', '--code', 'local']), (error) => error.code === 'usage', '--code no longer exists');
 });
 
-test('parseRunArgs: --start lets caw run overlay.start, only together with --overlay, for run, record and open', () => {
+test('parseRunArgs: --start and --reset for run, record and open; --no-reset for run; whether the environment has the command is checked later', () => {
     assert.equal(parseRunArgs('run', ['smoke', '--overlay']).start, undefined, 'without --start caw starts nothing');
     const run = parseRunArgs('run', ['smoke', '--overlay', '--start']);
     assert.deepEqual([run.tests, run.overlay, run.start], [['smoke'], true, true], '--start is no overlay source');
@@ -53,13 +53,20 @@ test('parseRunArgs: --start lets caw run overlay.start, only together with --ove
     assert.equal(parseRunArgs('record', ['smoke', '--overlay', '--start', '--env', 'dev']).start, true);
     assert.equal(parseRunArgs('record', ['smoke@S2', '--overlay=build', '--start']).start, true);
     assert.equal(parseRunArgs('open', ['--overlay', '--start']).start, true);
-    assert.throws(() => parseRunArgs('run', ['smoke', '--start']), (error) => error.code === 'usage' && /--start geht nur mit --overlay/.test(error.message));
-    assert.throws(() => parseRunArgs('open', ['--start']), (error) => error.code === 'usage');
+    assert.equal(parseRunArgs('run', ['smoke', '--start']).start, true, 'the environment lifecycle, no --overlay needed');
+    assert.equal(parseRunArgs('open', ['--start']).start, true);
+    assert.equal(parseRunArgs('run', ['smoke', '--reset']).reset, 'force');
+    assert.equal(parseRunArgs('run', ['smoke', '--no-reset']).reset, 'off');
+    assert.equal(parseRunArgs('run', ['smoke']).reset, undefined, 'run resets before the first writing test by default');
+    assert.equal(parseRunArgs('record', ['smoke', '--reset']).reset, 'force');
+    assert.equal(parseRunArgs('open', ['smoke@S2', '--reset']).reset, 'force');
+    assert.throws(() => parseRunArgs('run', ['smoke', '--reset', '--no-reset']), (error) => error.code === 'usage' && /--reset geht nicht zusammen mit --no-reset/.test(error.message));
+    assert.throws(() => parseRunArgs('record', ['smoke', '--no-reset']), /record kennt die Option --no-reset nicht/);
 });
 
 test('parseRunArgs: each command only knows its own options', () => {
     const base = ['smoke', '--env', 'shop/dev'];
-    assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', advise: false, headless: false, noChat: false, learn: true, all: false, stepTimeoutSec: 30 });
+    assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', advise: false, headless: false, noChat: false, learn: false, all: false, stepTimeoutSec: 30 });
     assert.equal(parseRunArgs('run', [...base, '--explain']).advise, true);
     // Limit Claude when clarifying and fixing, as for record and fix.
     assert.deepEqual((({ timeoutMin, maxActions }) => [timeoutMin, maxActions])(parseRunArgs('run', [...base, '--claude-timeout', '5m', '--max-actions=20'])), [5, 20]);

@@ -79,7 +79,7 @@ test('the report links screenshots in agent/ and marks steps never reached as sk
 test('the tested version is the line the terminal prints', () => {
     const base = { status: 'pass', testId: 'x', target: 'local' };
     assert.match(renderReport({ ...base, testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174, dein aktueller Stand/);
-    assert.match(renderReport({ ...base, status: 'error', code: 'unreachable', testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174/, 'the error code stays separate from the tested version');
+    assert.match(renderReport({ ...base, status: 'error', code: 'env-unreachable', testedCode: 'Dev-Server localhost:4174, dein aktueller Stand' }), /Getesteter Stand: Dev-Server localhost:4174/, 'the error code stays separate from the tested version');
 });
 
 test('third-party hosts: their errors and failed requests are warnings, the app host stays hard; the report lists them', () => {

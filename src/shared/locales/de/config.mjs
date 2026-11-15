@@ -21,6 +21,7 @@ export default {
     'config.removed.extends': 'eine Config je Projekt; was Umgebungen teilen, geht in environments.<env>.extends.',
     'config.removed.apps': 'eine Anwendung je Projekt: ihr Startpfad ist „start“ oben in der Config (etwa "start": "/app"); getrennt gebaute Teile gehören in overlay.parts.',
     'config.removed.testApp': 'eine Anwendung je Projekt; ein Test, der auf einer anderen Seite beginnt, setzt „start“ (etwa "start": "/orders").',
+    'config.removed.noLearn': 'run lernt nichts, solange niemand fragt; --learn lernt fehlende Baselines und Effekte.',
     'config.removed.also': '--overlay bringt jeden Teil aus overlay.parts mit, oder die genannten (--overlay=orders,admin).',
     'config.removed.roleEnv': 'der Testnutzer folgt der Namenskonvention CAW_<ROLLE>_USER, CAW_<ROLLE>_PASSWORD und CAW_<ROLLE>_TOTP in caw/.env (für eine Umgebung mit der Endung __<UMGEBUNG>).',
     'config.start': 'start muss ein Pfad sein, der mit / beginnt (nicht //), etwa "/" oder "/app#orders"',
@@ -48,6 +49,11 @@ export default {
     'config.env.productionExact': 'Umgebung {name} ist dem Namen nach Produktion. Nur mit "production": true, und dann ohne claude, overlay und writable.',
     'config.env.productionLike': 'Umgebung {name} sieht nach Produktion aus. Setze "production": true (dann ohne claude, overlay und writable) oder ausdrücklich "production": false.',
     'config.env.productionFlags': 'Umgebung {name} ist Produktion: claude und writable sind dort nicht erlaubt',
+    'config.env.productionLifecycle': 'Umgebung {name} ist Produktion: caw startet, stoppt und setzt sie nie zurück ({keys} nicht erlaubt)',
+    'config.env.command': 'Umgebung {name}: {key} muss ein Shell-Befehl sein (Text, nicht leer)',
+    'config.env.ready': 'Umgebung {name}: ready ist { "path": "/…", "timeoutMs": {min}–{max} }, beides optional',
+    'config.env.stopWithoutStart': 'Umgebung {name}: stop nur zusammen mit start (caw stoppt nur, was es gestartet hat)',
+    'config.env.resetNotWritable': 'Umgebung {name}: reset schreibt Daten, die Umgebung braucht also "writable": true',
 
     // config.mjs: login and roles
     'config.roles.missing': 'roles fehlt: Die Anmeldung ({types}) braucht mindestens eine Rolle, etwa { "tester": {} }',
@@ -342,6 +348,7 @@ export default {
     'config.diag.slow': '{name} brauchte {time}{recorded}.',
     'config.diag.verySlow': '{name} brauchte {time}. Der Dienst antwortet sehr langsam.',
     'config.diag.missingRequest': '{name} kam bei der Aufnahme ({status} in {time}), jetzt nicht.',
+    'config.diag.fetchFailure': 'Die Seite fängt den gescheiterten Request nicht ab: {text}.',
     'config.diag.pageerror': 'Skriptfehler der Anwendung: {text}{at}',
     'config.diag.pageerrorAt': ' (bei {at})',
     'config.diag.console': 'Fehler in der Konsole: {text}',

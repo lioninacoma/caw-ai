@@ -21,6 +21,7 @@ export default {
     'config.removed.extends': 'one config per project; shared settings between environments go in environments.<env>.extends.',
     'config.removed.apps': 'one application per project: its start path is the top-level "start" (e.g. "start": "/app"); separately built parts go in overlay.parts.',
     'config.removed.testApp': 'one application per project; a test that begins on another page sets "start" (e.g. "start": "/orders").',
+    'config.removed.noLearn': 'run learns nothing unless asked; --learn learns missing baselines and effects.',
     'config.removed.also': '--overlay brings every part of overlay.parts, or the ones it names (--overlay=orders,admin).',
     'config.removed.roleEnv': 'the test user follows the naming convention CAW_<ROLE>_USER, CAW_<ROLE>_PASSWORD and CAW_<ROLE>_TOTP in caw/.env (for one environment with the suffix __<ENV>).',
     'config.start': 'start must be a path beginning with / (not //), e.g. "/" or "/app#orders"',
@@ -48,6 +49,11 @@ export default {
     'config.env.productionExact': 'Environment {name} is production by name. Only with "production": true, and then without claude, overlay and writable.',
     'config.env.productionLike': 'Environment {name} looks like production. Set "production": true (then without claude, overlay and writable) or explicitly "production": false.',
     'config.env.productionFlags': 'Environment {name} is production: claude and writable are not allowed there',
+    'config.env.productionLifecycle': 'Environment {name} is production: caw never starts, stops or resets it ({keys} not allowed)',
+    'config.env.command': 'Environment {name}: {key} must be a shell command (text, not empty)',
+    'config.env.ready': 'Environment {name}: ready is { "path": "/…", "timeoutMs": {min}–{max} }, both optional',
+    'config.env.stopWithoutStart': 'Environment {name}: stop only together with start (caw stops only what it started)',
+    'config.env.resetNotWritable': 'Environment {name}: reset writes data, so the environment needs "writable": true',
 
     // config.mjs: login and roles
     'config.roles.missing': 'roles is missing: the sign-in ({types}) needs at least one role, e.g. { "tester": {} }',
@@ -342,6 +348,7 @@ export default {
     'config.diag.slow': '{name} took {time}{recorded}.',
     'config.diag.verySlow': '{name} took {time}. The service responds very slowly.',
     'config.diag.missingRequest': '{name} came during recording ({status} in {time}), but not now.',
+    'config.diag.fetchFailure': 'The page leaves the failed request uncaught: {text}.',
     'config.diag.pageerror': 'App script error: {text}{at}',
     'config.diag.pageerrorAt': ' (at {at})',
     'config.diag.console': 'Console error: {text}',

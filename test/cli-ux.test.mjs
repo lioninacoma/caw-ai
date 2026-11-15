@@ -77,7 +77,10 @@ test('parseRunArgs: several tests or --all run without chat, --explain only for 
     assert.throws(() => parseRunArgs('run', ['a', 'b', '--zzz', 'S2']), /run kennt die Option --zzz nicht/);
     assert.throws(() => parseRunArgs('run', ['--all', '--explain']), /--explain gilt nur/);
     assert.throws(() => parseRunArgs('run', ['a', '--report', 'xml']), /junit=<datei>/);
-    assert.equal(parseRunArgs('run', ['a', '--no-learn']).learn, false);
+    assert.equal(parseRunArgs('run', ['a']).learn, false, 'a run learns nothing unless asked (Q7)');
+    assert.equal(parseRunArgs('run', ['a', '--learn']).learn, true);
+    assert.equal(parseRunArgs('run', ['a', 'b', '--learn', '--headless']).learn, true, '--learn in every mode (SC-21)');
+    assert.throws(() => parseRunArgs('run', ['a', '--no-learn']), (error) => error.code === 'usage' && /--no-learn gibt es nicht mehr: run lernt nichts, solange niemand fragt; --learn/.test(error.message));
     assert.equal(parseRunArgs('run', ['a']).batch, undefined);
 });
 
@@ -215,10 +218,11 @@ test('junitXml: fail as failure, needs recording and errors as error, text safel
     assert.match(xml, /<error type="needs-recording" message="no recording"\/>/);
 });
 
-test('runMode: --no-learn keeps the chat and says the file stays; otherwise it names the file', () => {
-    const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'local' };
-    assert.match(runMode({ ...base, file: 'caw/recordings/x.yaml' }), /lernt der Lauf in caw\/recordings\/x\.yaml \(abschalten mit --no-learn\)/);
-    assert.match(runMode({ ...base, learn: false }), /mit Chat, ohne Lernen \(--no-learn\)/);
+test('runMode: environment, team language and whether the run learns; only --learn learns, open never', () => {
+    const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'local', env: 'local', language: 'en' };
+    assert.equal(runMode(base), 'Modus auf local (Teamsprache en): mit Chat; lernt: nein.');
+    assert.equal(runMode({ ...base, inCi: true, learn: true, file: 'caw/recordings/x.yaml' }), 'Modus auf local (Teamsprache en): ohne Chat, weil die Variable CI gesetzt ist; lernt: ja (--learn), fehlende Vergleichswerte und Effekte in caw/recordings/x.yaml.');
+    assert.match(runMode({ ...base, learn: true, opened: true, withAdvice: true }), /mit Chat; lernt: nein\.$/, 'open learns and advises nothing');
 });
 
 test('help: per command only its block, agent commands under caw agent --help, synopsis for usage errors', () => {

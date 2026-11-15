@@ -18,7 +18,11 @@ export { CONFIG_FILE } from './names.mjs';
 export { environmentsWith } from './environments.mjs';
 
 const ENVIRONMENT_FLAGS = ['claude', 'writable', 'production', 'insecureTls', 'allowHttp'];
-const ENVIRONMENT_KEYS = ['url', 'extends', 'signIn', 'gate', 'allowHosts', ...ENVIRONMENT_FLAGS];
+/** The lifecycle commands of an environment (§2.9): shell commands run in the project root. */
+const LIFECYCLE_COMMANDS = ['start', 'stop', 'reset'];
+const ENVIRONMENT_KEYS = ['url', 'extends', 'signIn', 'gate', 'allowHosts', ...ENVIRONMENT_FLAGS, ...LIFECYCLE_COMMANDS, 'ready'];
+/** Limits of ready.timeoutMs: one second to half an hour. */
+const READY_TIMEOUT_MS = { min: 1000, max: 1_800_000 };
 // A production environment must be declared explicitly, and then has no Claude, no local code and no writing.
 // Names containing it count too, e.g. prod-de or live_eu. If such an environment is not production, say so with "production": false.
 const PRODUCTION_NAME = /(^|[-_.])(prod|production|produktion|produktiv|prd|live)([-_.]|\d|$)/i;
@@ -222,6 +226,10 @@ const checkEnvironments = (config, issues, notes) => {
         issues.push(...hostListIssues(`environments.${name}.allowHosts`, raw.allowHosts));
         if (raw.signIn !== undefined && !isObject(raw.signIn)) issues.push(t('config.signIn.notObject', { at: `environments.${name}.signIn` }));
         if (raw.gate !== undefined && !(isObject(raw.gate) && raw.gate.type === 'basic' && Object.keys(raw.gate).length === 1)) issues.push(t('config.gate.shape', { name }));
+        for (const key of LIFECYCLE_COMMANDS.filter((command) => raw[command] !== undefined && (typeof raw[command] !== 'string' || raw[command].trim() === ''))) {
+            issues.push(t('config.env.command', { name, key }));
+        }
+        if (raw.ready !== undefined && !readyValid(raw.ready)) issues.push(t('config.env.ready', { name, min: READY_TIMEOUT_MS.min, max: READY_TIMEOUT_MS.max }));
         if (PRODUCTION_EXACT.test(name) && raw.production !== true) issues.push(t('config.env.productionExact', { name }));
         else if (PRODUCTION_NAME.test(name) && raw.production === undefined) issues.push(t('config.env.productionLike', { name }));
     }
@@ -257,10 +265,21 @@ const checkEnvironments = (config, issues, notes) => {
             }
         }
         if (env.production && (env.claude || env.writable)) issues.push(t('config.env.productionFlags', { name }));
+        // Starting, stopping or resetting production is never caw's job; reset writes, so it needs a writable environment.
+        const commands = LIFECYCLE_COMMANDS.filter((key) => env[key] !== undefined);
+        if (env.production && commands.length > 0) issues.push(t('config.env.productionLifecycle', { name, keys: commands.join(', ') }));
+        if (env.stop !== undefined && env.start === undefined) issues.push(t('config.env.stopWithoutStart', { name }));
+        if (env.reset !== undefined && !env.writable && !env.production) issues.push(t('config.env.resetNotWritable', { name }));
         // The gate's Basic credentials and a Basic sign-in would both be the browser's HTTP credentials: one would hide the other.
         if (env.gate !== undefined && env.signIn.type === 'basic') issues.push(t('config.gate.withBasic', { name }));
     }
 };
+
+/** ready: { path?: "/…", timeoutMs?: 1000–1800000 }, nothing else. */
+const readyValid = (ready) => isObject(ready)
+    && Object.keys(ready).every((key) => ['path', 'timeoutMs'].includes(key))
+    && (ready.path === undefined || (typeof ready.path === 'string' && ready.path.startsWith('/') && !ready.path.startsWith('//')))
+    && (ready.timeoutMs === undefined || (Number.isInteger(ready.timeoutMs) && ready.timeoutMs >= READY_TIMEOUT_MS.min && ready.timeoutMs <= READY_TIMEOUT_MS.max));
 
 /**
  * One sign-in object (§2.5): its type's fields only, as text; a form with path and signedInSelector plus either the user and

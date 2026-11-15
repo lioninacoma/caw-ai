@@ -81,6 +81,39 @@ Required. One entry per place your app runs. The name is what you pass to `--env
 
 Anything not set to `true` is off. A run against `staging` above replays only, read-only tests only, against the deployed version.
 
+### Starting, stopping and resetting an environment
+
+An environment may name your own commands to start, stop and reset it. caw runs them only when asked, and never on a
+`production` environment.
+
+```json
+"ci": {
+  "url": "http://localhost:8080", "writable": true,
+  "start": "docker compose -f ci/compose.yaml up -d --wait",
+  "stop":  "docker compose -f ci/compose.yaml down -v",
+  "reset": "docker compose -f ci/compose.yaml exec -T api npm run seed",
+  "ready": { "path": "/healthz", "timeoutMs": 120000 }
+}
+```
+
+| Field | |
+|---|---|
+| `start` | Shell command that starts the environment. Runs only with `--start`. caw doesn't wait for it to end: a command that detaches (`up -d`) and one that keeps running (`npm run dev`) both work. |
+| `stop` | Shell command that stops it. Only together with `start`, and only when caw started the environment. A long-running `start` is then ended with its child processes. |
+| `reset` | Shell command that resets the data. Needs `writable: true`. `run` runs it once before the first writing test, `--reset` before the first test, `--no-reset` never. `record` and `open` only with `--reset`. |
+| `ready` | When the environment counts as up: a GET to `path` (default `/`) answers below 500. caw asks every second for `timeoutMs` (default 60000, 1000 to 1800000). |
+
+Commands run in the project folder with your platform's shell (`cmd.exe` on Windows, `/bin/sh` elsewhere), with
+`CAW_ENV` and `CAW_ENV_URL` set. Their output goes to `.caw/env/<env>-start.log`, `-stop.log` and `-reset.log`.
+
+- If the environment already answers, `--start` uses it and neither starts nor stops it.
+- A `start` that ends with an error first fails with `env-start-failed`. One that never gets ready fails with `env-not-ready`.
+  Either way caw stops what it started.
+- A failing `reset` (or one taking longer than 10 minutes) fails with `env-reset-failed`, and no test runs.
+- Without `--start`, an environment that doesn't answer fails with `env-unreachable`; the message names `--start` when
+  `start` is set.
+- The `CI` variable changes none of this: `--start` is always explicit.
+
 ## auth
 
 Leave it out if your app has no login.

@@ -226,6 +226,22 @@ test('Test run: a green run fills in missing baselines without Claude; without a
     assert.deepEqual(quiet.adopted, []);
 });
 
+test('Test run without --learn: the end card offers "Learn baselines"; only the click (learn in the run\'s result) writes', async () => {
+    const network = [{ name: 'GET /a', status: 200, ms: 40 }];
+    const baselines = new Map([['S1', network]]);
+    const clicked = harness({ outcomes: [{ ...pass, baselines, learn: true }] });
+    assert.equal(await runFlow({ spec, handover: false, canFix: true, offerLearning: true, openSandbox: async () => assert.fail('no Claude'), ...clicked }), EXIT.pass);
+    assert.deepEqual([clicked.calls[0].learns, clicked.calls[0].offerLearning], [false, true], 'the run offers it on the end card');
+    assert.deepEqual(clicked.questions, [], 'a passed run waits for nobody');
+    assert.deepEqual(clicked.adopted.map(({ only }) => [...only]), [['S1']]);
+    assert.deepEqual(clicked.adopted[0].draft.steps[0].recording.network, network);
+
+    const closed = harness({ outcomes: [{ ...pass, baselines }] });
+    await runFlow({ spec, handover: false, canFix: true, offerLearning: true, openSandbox: async () => 's', ...closed });
+    assert.deepEqual(closed.adopted, [], 'without the click the files stay');
+    assert.doesNotMatch(closed.notices.join('\n'), /Vergleichswerte für S1 aufgezeichnet/);
+});
+
 test('Re-record: a step that did not fail is called that on the card, in the task and in the check run', async () => {
     const h = harness({ outcomes: [repaired(), pass] });
     await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Wunsch', rerecord: true }, sandbox: 's', ...h });

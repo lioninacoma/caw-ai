@@ -192,7 +192,7 @@ test('consoleIgnore must contain valid regular expressions', () => {
 test('effectiveEnvironment returns URL and capabilities; unknown names are rejected', () => {
     assert.deepEqual(effectiveEnvironment(multi(), 'sued-test'), {
         name: 'sued-test', url: 'https://test.sued.example', claude: false, writable: true, production: false,
-        signIn: multi().signIn, allowHosts: [], insecureTls: false, allowHttp: false,
+        signIn: multi().signIn, allowHosts: [], insecureTls: false, allowHttp: false, ready: { path: '/', timeoutMs: 60000 },
     });
     const own = { ...multi(), environments: { ...multi().environments, 'sued-test': { extends: 'nord-test', url: 'https://test.sued.example', signIn: { type: 'none' } } } };
     assert.deepEqual(effectiveEnvironment(own, 'sued-test').signIn, { type: 'none' }, 'an environment\'s own signIn replaces the top-level one');

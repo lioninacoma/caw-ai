@@ -2,12 +2,17 @@
 // (A5), HTTP Basic and a gate (A6), several roles (A9), TLS and http exceptions (D6), tenants as environments (D7) and setup
 // with the packed CLI (B2). No Claude: the tests carry recordings written by hand and run headless.
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
-import { ENVIRONMENTS, ENV_FILE, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, removeNetworkTests, writeNetworkTests, writeProject, writeSpaTest } from '../spa/project.mjs';
-import { here, newestRunOf, print, run, runDirsOf, startServer, verify } from '../harness.mjs';
+import {
+    ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeLifecycleTests, removeNetworkTests,
+    writeNetworkTests, writeProject, writeSpaTest,
+} from '../spa/project.mjs';
+import { here, humans, loadTest, newestRunOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
 import { composeStack, exec, httpAlias, installPacked, preflightPorts } from '../infra.mjs';
 
 const spaDir = join(here, 'spa');
@@ -22,7 +27,7 @@ const { sessionTools } = await import('../../src/host/session-mcp.mjs');
 
 let server = null;
 const startSpa = async () => {
-    await preflightPorts([SPA_PORT, 18443, 18444, 18081, 18000, 18090]);
+    await preflightPorts([SPA_PORT, 18443, 18444, 18081, 18000, 18090, ...Object.values(LIFECYCLE_PORTS)]);
     server = await startServer(join(spaDir, 'serve.mjs'), [String(SPA_PORT)], { cwd: spaDir, port: SPA_PORT });
 };
 const stopSpa = () => { server?.kill(); server = null; };
@@ -49,6 +54,8 @@ const fresh = () => {
     writeFileSync(join(root, 'caw/.env'), `${ENV_FILE}\n`);
     for (const id of ['see-tickets', 'create-ticket']) writeSpaTest(root, id);
     removeNetworkTests(root);
+    removeLifecycleTests(root);
+    rmSync(join(root, 'lifecycle.log'), { force: true });
 };
 const scenario = (id, title, group, body, extra = {}) => scenarios.push({ id, title, group, body: async () => { fresh(); await body(); }, ...extra });
 
@@ -354,4 +361,150 @@ scenario('D5', 'Production: a read-only test runs there, writing tests and recor
     writeSpaTest(root, 'search', { environments: ['local', 'prod'] });
     const allowed = await go(['search', '--env', 'prod']);
     verify('named in reads it passes on prod', allowed.exit === 0, `${shown(allowed)} ${failNote('search')}`);
+});
+
+// ---- P4: environment lifecycle, learning and CI
+
+const lifecycleConfig = (extra = {}) => setConfig({ ...baseConfig(LIFECYCLE_ENVIRONMENTS), ...extra });
+/** The lines ctl.mjs wrote for start, stop and reset ("up 18512 life"), and how often a command ran. */
+const markers = () => (existsSync(join(root, 'lifecycle.log')) ? readFileSync(join(root, 'lifecycle.log'), 'utf8').split('\n').filter(Boolean) : []);
+const ran = (command) => markers().filter((line) => line.startsWith(`${command} `) || line === command).length;
+/** Does anything listen on the port? */
+const listening = (port) => new Promise((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port }, () => { socket.end(); resolve(true); });
+    socket.on('error', () => resolve(false));
+});
+/** A test endpoint of the shared spa server for one environment (by its host name). */
+const poke = (host, path) => new Promise((resolve) => {
+    const req = httpRequest({ host: '127.0.0.1', port: SPA_PORT, method: 'POST', path, headers: { host: `${host}.localhost:${SPA_PORT}` } }, (res) => { res.resume(); resolve(res.statusCode); });
+    req.on('error', () => resolve(0));
+    req.end();
+});
+/** A command function (record, open, validate, run) with extra process variables: its exit code, or the code of its error. */
+const callWith = async (env, fn) => {
+    const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, env);
+    try {
+        return await captured(() => Promise.resolve().then(fn).then((code) => ({ exit: code }), (error) => ({ exit: exitOf(error.code), code: error.code, message: String(error.message) })));
+    } finally {
+        for (const [key, value] of Object.entries(saved)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
+};
+const files = (id) => [`caw/tests/${id}.yaml`, `caw/recordings/${id}.yaml`].map((path) => readFileSync(join(root, path), 'utf8'));
+/** The test with the learned parts of each recording taken out: what learning may change is network and effects only. */
+const withoutLearned = (id) => JSON.stringify(loadTest(root, id).steps.map(({ recording, ...step }) => {
+    const rest = { ...recording };
+    delete rest.network;
+    delete rest.effects;
+    return { ...step, recording: rest };
+}));
+const learnedNetwork = (id) => loadTest(root, id).steps[0].recording?.network;
+
+scenario('S3', 'No learning without asking: a chat run leaves the files, the end card learns on click, --learn learns, CI never writes', spa, async () => {
+    quietTokens();
+    const before = files('see-tickets');
+    const plain = withoutLearned('see-tickets');
+    const closer = humans(async (chat) => {
+        await chat.locator('#learn').waitFor({ state: 'visible', timeout: 90000 });
+        await chat.locator('#closeWindow').click({ timeout: 30000 });
+    });
+    const first = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: closer.onChatOpen }));
+    await closer.done();
+    verify('(1) a chat run passes and says "learns: no"', first.value.exit === 0 && /learns: no\./.test(first.output), `${shown(first.value)} ${(/Mode on .*/.exec(first.output) ?? [''])[0]}`);
+    verify('(1) test plan and recording are byte-identical afterwards, though "Learn baselines" was offered', JSON.stringify(files('see-tickets')) === JSON.stringify(before));
+    const learner = humans(async (chat) => { await chat.locator('#learn').click({ timeout: 90000 }); });
+    const second = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: learner.onChatOpen }));
+    await learner.done();
+    const after = files('see-tickets');
+    // S1 sends no request of its own (the list loads with the page before it): its learned baseline is the empty list.
+    verify('(2) "Learn baselines" on the end card: the run passes and S1 gets its network baseline', second.value.exit === 0 && Array.isArray(learnedNetwork('see-tickets')), `${shown(second.value)} ${JSON.stringify(learnedNetwork('see-tickets'))}`);
+    verify('(2) only network and effects changed: the plan file is identical, the recording otherwise too', after[0] === before[0] && after[1] !== before[1] && withoutLearned('see-tickets') === plain);
+    writeSpaTest(root, 'see-tickets');
+    const headless = await go(['see-tickets', '--env', 'local', '--learn']);
+    verify('(3) run --learn --headless learns and says so', headless.exit === 0 && Array.isArray(learnedNetwork('see-tickets')) && /learns: yes \(--learn\)/.test(headless.output), `${shown(headless)} ${(/Mode on .*/.exec(headless.output) ?? [''])[0]}`);
+    writeSpaTest(root, 'see-tickets');
+    const ciBefore = files('see-tickets');
+    const ci = await go(['see-tickets', '--env', 'local'], { env: { CI: '1' } });
+    verify('(4) CI=1 run never writes', ci.exit === 0 && JSON.stringify(files('see-tickets')) === JSON.stringify(ciBefore), shown(ci));
+});
+
+scenario('S4', 'CI: --all on an environment caw starts, resets once before the first writing test and stops; JUnit; CI refuses what needs a person', spa, async () => {
+    lifecycleConfig();
+    for (const id of ['create-second', 'fail-one', 'stale-one']) writeSpaTest(root, id);
+    makeStale(root, 'stale-one');
+    rmSync(join(root, 'out'), { recursive: true, force: true });
+    verify('nothing listens on 18512 before', !await listening(LIFECYCLE_PORTS.life));
+    const batch = await go(['--all', '--env', 'life', '--start', '--report', 'junit=out/caw.xml'], { env: { CI: '1' } });
+    verify('(1) start runs once and ready is polled', ran('up') === 1 && /Starting life: node \.\.\/ctl\.mjs up 18512/.test(batch.output) && /life is ready\./.test(batch.output), JSON.stringify(markers()));
+    verify('(2) reset runs once, before the first writing test', ran('reset') === 1 && markers().indexOf('reset 18512 life') === 1, JSON.stringify(markers()));
+    verify('(3) stop runs at the end; nothing listens on 18512 afterwards', ran('down') === 1 && markers().at(-1) === 'down 18512 life' && !await listening(LIFECYCLE_PORTS.life), JSON.stringify(markers()));
+    const xml = existsSync(join(root, 'out/caw.xml')) ? readFileSync(join(root, 'out/caw.xml'), 'utf8') : '';
+    verify('(4) JUnit: classname caw.life, pass, failure and needs-recording mapped', /classname="caw\.life" name="see-tickets" time="[\d.]+"\/>/.test(xml) && /name="fail-one"[^]*?<failure type="fail"/.test(xml) && /name="stale-one"[^]*?<error type="needs-recording"/.test(xml) && /name="create-second" time="[\d.]+"\/>/.test(xml), xml.split('\n').filter((line) => /testcase|failure|error/.test(line)).join(' '));
+    verify('(5) exit = the worst run (fail)', batch.exit === 1, shown(batch));
+    const claudeLogs = runDirsOf(root, 'see-tickets').concat(runDirsOf(root, 'create-second')).flatMap((dir) => readdirSync(join(root, '.caw/runs', dir)).filter((name) => /claude/i.test(name)));
+    verify('(6) no Claude and no sandbox in the run folders', claudeLogs.length === 0 && !/docker/i.test(batch.output), JSON.stringify(claudeLogs));
+    const recorded = await callWith({ CI: '1' }, () => recordCommand(root, ['brand-new', '--env', 'life']));
+    const opened = await callWith({ CI: '1' }, () => openCommand(root, ['--env', 'life']));
+    const explained = await callWith({ CI: '1' }, () => run(root, ['see-tickets', '--env', 'local', '--explain']));
+    verify('(7) under CI=1 record, open and run --explain: exit 3, naming CI', [recorded, opened, explained].every(({ value }) => value.exit === 3 && /variable CI set/.test(value.message ?? '')), [recorded, opened, explained].map(({ value }) => shown(value)).join(' | '));
+});
+
+scenario('D1', 'Lifecycle: detaching and long-running starts, an environment already up, failing start and reset, never ready, --reset/--no-reset, production refused', spa, async () => {
+    lifecycleConfig();
+    const detached = await go(['see-tickets', '--env', 'life', '--start']);
+    verify('(1) a detaching start (exits 0, server keeps running) and its stop', detached.exit === 0 && JSON.stringify(markers()) === '["up 18512 life","down 18512 life"]' && !await listening(LIFECYCLE_PORTS.life), `${shown(detached)} ${JSON.stringify(markers())}`);
+    const foreground = await go(['see-tickets', '--env', 'dev2', '--start']);
+    verify('(2) a long-running start (like npm run dev) is ended as a process tree: port 18511 is free afterwards', foreground.exit === 0 && !await listening(LIFECYCLE_PORTS.dev2), shown(foreground));
+    rmSync(join(root, 'lifecycle.log'), { force: true });
+    await exec(process.execPath, ['../ctl.mjs', 'up', String(LIFECYCLE_PORTS.life)], { cwd: root });
+    const reused = await go(['see-tickets', '--env', 'life', '--start']);
+    verify('(3) already up: "already running", neither start nor stop runs', reused.exit === 0 && /life is already running: using it, will not stop it\./.test(reused.output) && JSON.stringify(markers()) === '["up 18512 -"]' && await listening(LIFECYCLE_PORTS.life), `${shown(reused)} ${JSON.stringify(markers())}`);
+    await exec(process.execPath, ['../ctl.mjs', 'down', String(LIFECYCLE_PORTS.life)], { cwd: root });
+    const broken = await go(['see-tickets', '--env', 'broken', '--start']);
+    verify('(4) a failing start: env-start-failed, exit 2, with the log tail', broken.exit === 2 && broken.code === 'env-start-failed' && /table tickets is missing/.test(broken.message ?? ''), shown(broken));
+    const never = await go(['see-tickets', '--env', 'never', '--start']);
+    verify('(5) never ready: env-not-ready, exit 2', never.exit === 2 && never.code === 'env-not-ready' && /never was not ready within 3 s/.test(never.message ?? ''), shown(never));
+    rmSync(join(root, 'lifecycle.log'), { force: true });
+    const forced = await go(['see-tickets', '--env', 'life', '--start', '--reset']);
+    verify('(6) --reset forces a reset before a read-only test', forced.exit === 0 && ran('reset') === 1, `${shown(forced)} ${JSON.stringify(markers())}`);
+    rmSync(join(root, 'lifecycle.log'), { force: true });
+    const suppressed = await go(['create-ticket', '--env', 'life', '--start', '--no-reset']);
+    const automatic = await go(['create-ticket', '--env', 'life', '--start']);
+    verify('(6) --no-reset suppresses it before a writing test; without it the writing test gets one', suppressed.exit === 0 && automatic.exit === 0 && ran('reset') === 1 && markers().filter((line) => line.startsWith('up')).length === 2, JSON.stringify(markers()));
+    const runsBefore = runDirsOf(root, 'create-ticket').length;
+    const badReset = await go(['create-ticket', '--env', 'badreset']);
+    verify('(7) a failing reset: env-reset-failed, exit 2, and no test runs', badReset.exit === 2 && badReset.code === 'env-reset-failed' && runDirsOf(root, 'create-ticket').length === runsBefore, shown(badReset));
+    const unreachable = await go(['see-tickets', '--env', 'life']);
+    verify('without --start an environment that is down: env-unreachable, exit 2, the hint names --start', unreachable.exit === 2 && unreachable.code === 'env-unreachable' && /--start runs its start command \(node \.\.\/ctl\.mjs up 18512\)/.test(unreachable.message ?? ''), shown(unreachable));
+    const noCommand = await go(['see-tickets', '--env', 'local', '--start']);
+    verify('--start on an environment without start: usage, exit 3', noCommand.exit === 3 && /environment local has no start command/.test(noCommand.message ?? ''), shown(noCommand));
+    setConfig({ ...baseConfig({ local: ENVIRONMENTS.local, prod: { url: 'http://prod.localhost:18081', production: true, start: 'node ../ctl.mjs up 18081' } }) });
+    const production = await callWith({}, () => validate(root));
+    verify('(8) start on a production environment: validate exit 3', production.value.exit === 3 && /prod is production: caw never starts, stops or resets it/.test(production.value.message ?? production.output), `${shown(production.value)} ${production.output.split('\n').find((line) => /prod/.test(line)) ?? ''}`);
+    print('     (9) short ids (remember of id 7): OPEN-7, in P5');
+});
+
+scenario('D3', 'Slow, cold or flaky backend: a cold first call passes on retry with the attempt in the report, a reset connection is environment, a quick abort is application', spa, async () => {
+    // The search only reads: named in reads, a step that sent it may be retried (a write request would forbid the retry).
+    lifecycleConfig({ reads: ['POST /api/search'] });
+    writeSpaTest(root, 'search-cold');
+    writeSpaTest(root, 'search');
+    await poke('cold', '/test/reset');
+    const cold = await go(['search-cold', '--env', 'cold']);
+    const note = (newestRunOf(root, 'search-cold').result?.results ?? [])[0]?.note ?? '';
+    verify('a first search of 20 s: the step\'s retry passes, the report names the attempt', cold.exit === 0 && /Passed on attempt 2/.test(note), `${shown(cold)} ${note}`);
+    const flaky = await go(['search', '--env', 'flaky']);
+    const flakyResult = newestRunOf(root, 'search').result ?? {};
+    verify('the search reset by the peer: the assessment says environment', flaky.exit !== 0 && flakyResult.diagnosis?.side === 'environment', `${shown(flaky)} ${JSON.stringify(flakyResult.diagnosis ?? {})}`);
+    await poke('abortive', '/test/abort-off');
+    // Baselines are learned on the environment the test was recorded on (local); the abort happens on abortive.
+    const learned = await go(['search', '--env', 'local', '--learn']);
+    await poke('abortive', '/test/abort-on');
+    const aborted = await go(['search', '--env', 'abortive']);
+    await poke('abortive', '/test/abort-off');
+    const abortedResult = newestRunOf(root, 'search').result ?? {};
+    verify('the page aborts its own search after 1 ms, without navigating: application, clear (baseline from --learn)', learned.exit === 0 && aborted.exit === 1 && abortedResult.diagnosis?.side === 'app' && abortedResult.diagnosis?.strength === 'clear', `${shown(learned)} | ${shown(aborted)} ${JSON.stringify(abortedResult.diagnosis ?? {})}`);
 });

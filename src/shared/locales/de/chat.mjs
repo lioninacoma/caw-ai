@@ -49,6 +49,8 @@ export default {
     'chat.page.nextStep': 'Nächster Schritt',
     'chat.page.openReport': 'Bericht öffnen',
     'chat.page.closeIn': 'Fenster schließen ({n})',
+    'chat.page.learn': 'Baselines lernen',
+    'chat.page.learning': 'Lerne …',
     'chat.page.newRun': 'Neuer Lauf: ',
     'chat.page.removeElement': 'Element entfernen',
     'chat.page.inputLabel': 'Nachricht an Claude',

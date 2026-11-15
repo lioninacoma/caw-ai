@@ -44,6 +44,8 @@ const superseded = (request, all) => {
  * Does the application abort a request itself shortly after it started, while it went through at recording time? Only with a
  * baseline: without one it may also be an abort when a view closes (cleanup of an effect or subscription).
  */
+/** Uncaught fetch failures as browsers word them: Chrome "Failed to fetch", Firefox "NetworkError when …", Safari "Load failed", an abort. */
+const FETCH_FAILURE = /^(?:Uncaught \(in promise\) )?(?:TypeError: (?:Failed to fetch|NetworkError when attempting to fetch resource|Load failed)|AbortError\b)/;
 const quickAbort = (request, then, all = []) => request.outcome === 'aborted' && !request.navigated && then !== undefined
     && (request.ms ?? 0) < Math.max(QUICK_ABORT_MS, then.ms * QUICK_SHARE) && !superseded(request, all);
 
@@ -180,8 +182,12 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
         }
     }
 
+    // The browser's own error for a request that failed or was aborted (Chrome, Firefox, Safari), left uncaught by the page: the
+    // consequence of that request, which is judged above, not a second finding of its own.
+    const lostRequest = own.some((request) => request.outcome === 'failed' || request.outcome === 'aborted');
     for (const failure of failures) {
-        if (failure.type === 'pageerror') add('app', 'clear', t('config.diag.pageerror', { text: String(failure.text), at: failure.at ? t('config.diag.pageerrorAt', { at: String(failure.at) }) : '' }));
+        if (failure.type === 'pageerror' && lostRequest && FETCH_FAILURE.test(String(failure.text))) notes.push(t('config.diag.fetchFailure', { text: String(failure.text).split('\n')[0] }));
+        else if (failure.type === 'pageerror') add('app', 'clear', t('config.diag.pageerror', { text: String(failure.text), at: failure.at ? t('config.diag.pageerrorAt', { at: String(failure.at) }) : '' }));
         // With a source (stack resolved via source maps) it is a caught script error of the application, e.g. from Angular's ErrorHandler.
         else if (isCaughtScriptError(failure)) add('app', 'clear', t('config.diag.pageerror', { text: String(failure.text).split('\n')[0], at: t('config.diag.pageerrorAt', { at: String(failure.at) }) }));
         else if (failure.type === 'console') add('app', 'likely', t('config.diag.console', { text: String(failure.text) }));

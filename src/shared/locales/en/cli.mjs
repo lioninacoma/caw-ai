@@ -37,15 +37,20 @@ Commands:`,
       [--max-actions <n>]                Limit on Claude's actions, else maxActions from the config, else 100
       [--step-timeout <duration>]        Time limit per step in the check run, default 30s
       [--agent local|docker|session]     as for run
-      [--overlay[=<parts>]]              as for run, also [--start]`,
+      [--start] [--reset]                as for run (--reset only when given)
+      [--overlay[=<parts>]]              as for run`,
     'cli.help.run': `  run <test> [--env <name>]              Replay the test without AI. On environments where Claude may work{here}, the
                                          chat sits alongside: if a step fails, sort it out there with Claude
       [--explain]                        On errors or warnings Claude explains unasked, costs tokens; only on
                                          environments where Claude may work
       [--no-chat]                        No chat and no Claude, like in CI
       [--headless]                       No window and no chat
-      [--no-learn]                       With chat, but learns no baselines: the test file only changes if you adopt
-                                         something in the chat
+      [--learn]                          Learn missing baselines and effects into caw/recordings/, in every mode;
+                                         without it a run changes no file on its own (with chat the end offers it)
+      [--start]                          Start the environment with its start command if it doesn't answer, stop it at
+                                         the end; with --overlay also the parts' local code servers
+      [--reset] | [--no-reset]           The environment's reset runs once before the first writing test; --reset
+                                         before the first test, --no-reset never
       [--step-timeout <duration>]        Time limit per step, default 30s
       [--claude-timeout <duration>]      Time limit for Claude when clarifying and fixing, default 60m
       [--max-actions <n>]                Limit on Claude's actions when fixing, else maxActions from the config, else 100
@@ -54,11 +59,11 @@ Commands:`,
       [--overlay[=<parts>]]              Lay local code over the deployed environment. Without a value every part of
                                          overlay.parts with its source; build or dev for that source; <url> for the
                                          only part; or parts: --overlay=orders,admin:dev. Only on overlay.environments
-      [--start]                          With --overlay: start the parts' start commands if the local code server doesn't answer
   run <test> <test> … | --all            Several tests in a row, for CI: no chat, a table at the end, exit code of the
       [--env <name>]                     worst run. --all takes every test that lists the environment
       [--headless]                       No window
-      [--report junit=<file>]            Also write the result as JUnit XML`,
+      [--report junit=<file>]            Also write the result as JUnit XML
+      [--learn] [--start] [--reset | --no-reset]  as for one test; start and reset once for the whole row`,
     'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Open the app signed in, with workbench and chat. Without a test: navigate, try
                                          things, develop with Claude. With <test>: replay it first. With @<S4>: up to the
                                          entry of S4 (its navigation runs, its inputs and check stay open). Learns
@@ -66,7 +71,8 @@ Commands:`,
       [--role <role>]                    Without a test only; not needed if the config has just one
       [--step-timeout <duration>]        Time limit per step while replaying, default 30s
       [--agent local|docker|session] [--claude-timeout <duration>] [--max-actions <n>]
-      [--overlay[=<parts>]]              as for run, also [--start]`,
+      [--start] [--reset]                as for run (--reset only when given)
+      [--overlay[=<parts>]]              as for run`,
     'cli.help.list': `  list [<test>]                          Tests with environments, recording state (recorded, stale, not recorded) and
                                          whether they write; with <test> one line per step`,
     'cli.help.validate': '  validate                               Check config and tests offline, without browser or Claude (CI, pre-commit)',
@@ -261,13 +267,14 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.demoFailure': "{label}. It's at this point in the recording.",
     'cli.demoNothingFollow': 'Nothing shown: Claude follows the test plan.',
     'cli.demoNothing': 'Nothing shown yet. Click through the flow in the app, then "Finish demo".',
-    'cli.modeNoAgent': 'Mode: no chat, Claude may only work on {environments}. The test file stays unchanged.',
-    'cli.modeHeadless': 'Mode: no window and no chat (--headless). The test file stays unchanged.',
-    'cli.modeNoChat': 'Mode: no chat (--no-chat). The test file stays unchanged.',
-    'cli.modeCi': 'Mode: no chat, because the variable CI is set. The test file stays unchanged.',
-    'cli.modeChat': 'Mode: with chat{advice}. The run learns missing baselines in {file} (turn off with --no-learn).',
-    'cli.modeOpen': 'Mode: with chat. open learns nothing; the test file only changes if you adopt something in the chat.',
-    'cli.modeChatNoLearn': 'Mode: with chat{advice}, no learning (--no-learn). The test file only changes if you adopt something in the chat.',
+    'cli.modeLine': 'Mode on {env} (team language {language}): {how}; learns: {learns}.',
+    'cli.modeNoAgent': 'no chat, Claude may only work on {environments}',
+    'cli.modeHeadless': 'no window and no chat (--headless)',
+    'cli.modeNoChat': 'no chat (--no-chat)',
+    'cli.modeCi': 'no chat, because the variable CI is set',
+    'cli.modeChat': 'with chat{advice}',
+    'cli.modeLearnsNo': 'no',
+    'cli.modeLearnsYes': 'yes (--learn), missing baselines and effects into {file}',
     'cli.modeAdvice': ' and advice from Claude (--explain, costs tokens)',
     'cli.changed': 'Changed: {files}',
     'cli.changedWhat': '{file} ({what})',

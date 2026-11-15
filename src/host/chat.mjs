@@ -481,7 +481,7 @@ kbd{display:inline-block;margin-left:8px;padding:0 4px;font:400 15px/1.1 var(--f
 #next{display:none;margin:2px 2px 12px;padding:10px 12px;background:var(--pane-2);border:2px solid var(--frame)}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
 #next strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:4px;text-shadow:0 0 8px var(--glow)}#next p{margin:0 0 10px;font-size:13px;color:var(--muted)}#next code{font:12px var(--font-mono);color:var(--info);overflow-wrap:anywhere}#next .cmd{margin:12px 0 0}
 #next .acts{display:flex;flex-wrap:wrap;gap:10px}
-#report,#closeWindow{min-height:36px;padding:6px 14px;font:400 20px/1 var(--font-crt);border:0;background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#report:hover,#closeWindow:hover{filter:brightness(1.08)}#report:active,#closeWindow:active{transform:translate(2px,2px);box-shadow:none}
+#report,#closeWindow,#learn{min-height:36px;padding:6px 14px;font:400 20px/1 var(--font-crt);border:0;background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#report:hover,#closeWindow:hover,#learn:hover{filter:brightness(1.08)}#report:active,#closeWindow:active,#learn:active{transform:translate(2px,2px);box-shadow:none}#learn[hidden]{display:none}#learn:disabled{opacity:.7}
 #closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--pane);color:var(--text);box-shadow:inset 0 0 0 2px var(--frame)}
 #choices button{min-height:38px;padding:7px 12px;font:400 20px/1.1 var(--font-crt);text-align:center;color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}
 #choices button:hover{background:var(--line)}#choices button:active{transform:translate(1px,1px)}
@@ -526,7 +526,7 @@ textarea:focus-visible{outline:0}
 </style>${themeStyle(theme)}</head><body data-state="running">
 <header><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
 <main id="messages" class="readable" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><span class="who c" data-who="claude"></span><i data-spin></i></div></main>
-<footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><div class="prompt"><span class="p" aria-hidden="true" data-who="human"></span><span class="cursor" aria-hidden="true"></span><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea></div>
+<footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="learn" type="button" hidden>${t('chat.page.learn')}</button><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><div class="prompt"><span class="p" aria-hidden="true" data-who="human"></span><span class="cursor" aria-hidden="true"></span><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea></div>
 <div class="row"><div class="left"><button id="toggle" class="small" type="button"><svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/></svg><svg class="play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1h2v1h2v1h2v1h2v4H9v1H7v1H5v1H3z"/></svg><svg class="stop" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8"/></svg><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button><button id="pick" class="small" type="button" disabled title="${t('chat.page.pickDisabled')}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>${t('chat.page.element')}</button></div>
 <div class="actions"><button id="mark" class="small" type="button" disabled title="${t('chat.page.markCheckpointTitle')}">${t('chat.page.markCheckpoint')}</button><button id="send" class="small" type="submit" aria-label="${t('chat.page.send')}" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></form></footer>
 <script>
@@ -684,10 +684,11 @@ const lockChoices=(chosen)=>{for(const button of choices.querySelectorAll('butto
 // The button that Ctrl+Enter triggers shows it too.
 const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘↵':T['chat.page.ctrlEnter'];toggleButton.querySelector('.key').textContent=KEY;
 // After the run: report and what comes next.
-window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T['chat.page.newRun'],code);}};
+window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;const learn=document.getElementById('learn');if(!learn.disabled)learn.hidden=!info.learn;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T['chat.page.newRun'],code);}};
 document.getElementById('report').addEventListener('click',()=>send('report',''));
 // After the last decision the window stays open briefly: the human sees the result and closes it, otherwise it closes on timeout.
 const closeWindow=document.getElementById('closeWindow');let lingerTimer=0;
+document.getElementById('learn').addEventListener('click',(event)=>{const learn=event.currentTarget;learn.disabled=true;learn.textContent=T['chat.page.learning'];send('learn');});
 closeWindow.addEventListener('click',()=>{clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
 window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
 // A choice that discards something needs a second click, like abort in the header.
@@ -750,8 +751,9 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     let waitingFor = null;
     // The human closes the window after the run (linger).
     let closeWanted = null;
-    // After the run: { report: absolute path, shown: path for humans, text, command }.
+    // After the run: { report: absolute path, shown: path for humans, text, command, learn }.
     let next = null;
+    let learnClicked = false;
     const openReport = async () => {
         const page = await chatWindow.context().newPage();
         await page.setContent(reportPage({ markdown: readFileSync(next.report, 'utf8'), path: next.shown ?? next.report }));
@@ -820,9 +822,16 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         else if (event?.type === 'abort') chat.human.abort();
         else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();
+        // "Learn baselines" on the end card: learning happens once the window is closed, like --learn would have done.
+        else if (event?.type === 'learn' && next?.learn === true) {
+            learnClicked = true;
+            closeWanted?.();
+        }
     });
     /** While developing: who additionally receives an element picked with the crosshair (the Claude Code session). null: nobody. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
+    /** Did the human click "Learn baselines" on the end card? */
+    chat.learnWanted = () => learnClicked;
     const show = async () => {
         nonce = randomBytes(16).toString('hex');
         await doc().setContent(chatPage(nonce));

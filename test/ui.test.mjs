@@ -49,8 +49,8 @@ test('without a terminal (headless, CI): the reason of the failed step, never of
 test('an error names its code, also in the verdict line', () => {
     for (const fancy of [false, true]) {
         const { lines, ui } = capture(fancy);
-        ui.verdict({ status: 'error', code: 'unreachable', reason: 'http://localhost:4199 ist nicht erreichbar.', testId: 'r1', target: 'local' }, { report: 'r.md', elapsed: 1 });
-        assert.match(plain(lines.join('\n')), /ist nicht erreichbar\.\)? \(code: unreachable, exit 2\)/);
+        ui.verdict({ status: 'error', code: 'env-unreachable', reason: 'http://localhost:4199 ist nicht erreichbar.', testId: 'r1', target: 'local' }, { report: 'r.md', elapsed: 1 });
+        assert.match(plain(lines.join('\n')), /ist nicht erreichbar\.\)? \(code: env-unreachable, exit 2\)/);
     }
     const { lines, ui } = capture(false);
     ui.verdict({ status: 'error', code: 'config-invalid', reason: 'auth.path steht noch auf TODO', testId: 'r1', target: 'local' }, { report: 'r.md', elapsed: 1 });

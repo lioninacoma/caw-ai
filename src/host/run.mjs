@@ -211,7 +211,10 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
     // Plain http beyond this machine, allowed by allowHttp: said on every run, the traffic (and any sign-in) is readable on the way.
     const address = new URL(checked.url);
     if (address.protocol === 'http:' && !isLoopback(address.hostname)) ui.warn(t('run.allowHttp', { target: checked.name, host: address.host }));
-    if (!await reachable(checked.url)) throw new CawError('unreachable', t('run.error.unreachable', { url: checked.url }));
+    if (!await reachable(checked.url)) {
+        const { start } = effectiveEnvironment(config, checked.name);
+        throw new CawError('env-unreachable', start === undefined ? t('run.error.unreachable', { url: checked.url }) : t('run.error.unreachableStart', { url: checked.url, command: start }));
+    }
     const start = startPath(config, spec);
     // The overlay source must be ready before Chrome starts, otherwise the run would silently test something else. Whatever
     // caw starts for it (dev server, watch) ends with the session.
@@ -353,7 +356,7 @@ export const readContext = (root) => {
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
  * @returns { exitCode, verdict, failed, candidate, fresh, expectChange, ids, removed }
  */
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, offerLearning = false }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -999,7 +1002,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const results = verdict.results ?? [];
             const passed = results.filter((result) => result.status === 'pass').length;
             const text = results.length > 0 ? t('run.finished.steps', { passed, total: results.length }) : t(verdict.status === 'pass' ? 'run.finished.passed' : 'run.finished.failed');
-            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command: `caw run ${spec.id}` });
+            // Without --learn a passed run that could learn offers it here; only a click writes (Q7).
+            const learnable = offerLearning && !found.failed && (found.baselines !== undefined || found.effects !== undefined);
+            if (learnable) chat.notice(t('run.flow.learnOffer', { ids: [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])].join(', ') }));
+            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command: `caw run ${spec.id}`, learn: learnable });
             // The window changes: chat and terminal say so before it closes.
             if (after.next !== undefined) {
                 const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
@@ -1095,7 +1101,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }
         stopSignals();
         await session.close();
-        return { exitCode, verdict, ...found };
+        return { exitCode, verdict, ...found, ...(chat?.learnWanted?.() === true ? { learn: true } : {}) };
     };
     const writeInterrupted = (ended) => {
         if (ended === 'browser-closed') writeResult({ status: 'error', code: 'browser-closed', reason: t('run.interrupted.browserClosed') });
@@ -1513,7 +1519,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         });
         const deviating = ended.deviations?.size ?? 0;
         await session.workbench?.point(END, 'effects', 'pass', { label: deviating === 0 ? t('run.effects.asRecorded') : t('run.effects.deviations', { count: deviating }) });
-        // Only a run that writes them shows learning: open and --no-learn compute them but keep the file as it is.
+        // Only a run that writes them (--learn) shows learning: other runs compute them but keep the file as it is.
         if (learns && baselines.size + effects.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
         return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }) });
     }
