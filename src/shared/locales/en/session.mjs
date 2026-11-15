@@ -148,6 +148,13 @@ export default {
     // replay: step list items
     'session.point.click': 'Click',
     'session.point.dblclick': 'Double-click',
+    'session.point.hover': 'Hover',
+    'session.point.drag': 'Drag',
+    'session.point.dragTo': '{from} to {to}',
+    'session.dialog.shown': '{type} "{message}"',
+    'session.dialog.missing': '{action}: the recorded {type} did not appear.',
+    'session.dialog.otherType': '{action}: a {dialog} appeared instead of the recorded {expected}; the recorded answer was applied where possible.',
+    'session.dialog.unexpected': '{action}: unexpected {dialog}, dismissed.',
     'session.point.type': 'Input',
     'session.point.press': 'Key',
     'session.point.goto': 'Open',

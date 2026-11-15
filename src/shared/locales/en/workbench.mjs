@@ -20,6 +20,7 @@ export default {
     'workbench.stepsUnfold': 'Expand steps',
     'workbench.stepsHint': 'Steps appear once the flow is set.',
     'workbench.app': 'App',
+    'workbench.page.viewportPinned': 'Viewport of the recording: {width} × {height}, shown at {percent} %',
     'workbench.requests': 'Requests',
     'workbench.console': 'Console',
     'workbench.drawerCloseLabel': 'Collapse requests and console',

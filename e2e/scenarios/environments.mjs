@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
 import {
-    ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeLifecycleTests, removeNetworkTests,
+    ACTION_ENVIRONMENTS, ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeActionTests, removeLifecycleTests, removeNetworkTests,
     writeNetworkTests, writeProject, writeSpaTest,
 } from '../spa/project.mjs';
 import { here, humans, loadTest, newestRunOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
@@ -55,6 +55,7 @@ const fresh = () => {
     for (const id of ['see-tickets', 'create-ticket']) writeSpaTest(root, id);
     removeNetworkTests(root);
     removeLifecycleTests(root);
+    removeActionTests(root);
     rmSync(join(root, 'lifecycle.log'), { force: true });
 };
 const scenario = (id, title, group, body, extra = {}) => scenarios.push({ id, title, group, body: async () => { fresh(); await body(); }, ...extra });
@@ -507,4 +508,96 @@ scenario('D3', 'Slow, cold or flaky backend: a cold first call passes on retry w
     await poke('abortive', '/test/abort-off');
     const abortedResult = newestRunOf(root, 'search').result ?? {};
     verify('the page aborts its own search after 1 ms, without navigating: application, clear (baseline from --learn)', learned.exit === 0 && aborted.exit === 1 && abortedResult.diagnosis?.side === 'app' && abortedResult.diagnosis?.strength === 'clear', `${shown(learned)} | ${shown(aborted)} ${JSON.stringify(abortedResult.diagnosis ?? {})}`);
+});
+
+// ---- P5: actions and data
+
+const actionConfig = (extra = {}) => setConfig({ ...baseConfig(ACTION_ENVIRONMENTS), ...extra });
+const warningsOf = (id) => JSON.stringify(resultOf(id).warnings ?? []);
+
+scenario('M2', 'Native dialogs: recorded decisions apply on replay (confirm OK/Cancel, prompt with run tag, beforeunload, alert); unexpected and missing dialogs are warnings', spa, async () => {
+    actionConfig();
+    for (const id of ['dlg-delete', 'dlg-keep', 'dlg-rename', 'dlg-leave', 'dlg-ping']) writeSpaTest(root, id);
+    const deleted = await go(['dlg-delete', '--env', 'extra']);
+    verify('(5) confirm accepted on replay: Deleted', deleted.exit === 0, `${shown(deleted)} ${failNote('dlg-delete')}`);
+    const kept = await go(['dlg-keep', '--env', 'extra']);
+    verify('(1) confirm dismissed (accept: false) on replay: Kept', kept.exit === 0, `${shown(kept)} ${failNote('dlg-keep')}`);
+    const renamed = await go(['dlg-rename', '--env', 'extra']);
+    verify('(2) prompt answered with "Note {{runTag}}", filled per run', renamed.exit === 0, `${shown(renamed)} ${failNote('dlg-rename')}`);
+    const left = await go(['dlg-leave', '--env', 'extra']);
+    verify('(3) beforeunload on a dirty form: reload is answered and replayed', left.exit === 0 && !/dialog-unexpected/.test(warningsOf('dlg-leave')), `${shown(left)} ${failNote('dlg-leave')} ${warningsOf('dlg-leave')}`);
+    const pinged = await go(['dlg-ping', '--env', 'extra']);
+    verify('(5) an alert is accepted', pinged.exit === 0, `${shown(pinged)} ${failNote('dlg-ping')}`);
+    const fault = await go(['dlg-ping', '--env', 'extrafault']);
+    verify('(6) an unexpected alert is dismissed and listed as dialog-unexpected with its text', fault.exit === 0 && /dialog-unexpected/.test(warningsOf('dlg-ping')) && /Maintenance at ##:##/.test(warningsOf('dlg-ping')) === false && /Maintenance at 22:00/.test(warningsOf('dlg-ping')), `${shown(fault)} ${warningsOf('dlg-ping')}`);
+    const missing = await go(['dlg-delete', '--env', 'extrafault']);
+    verify('(7) the expected confirm does not come: the step passes with a dialog-missing warning', missing.exit === 0 && /dialog-missing/.test(warningsOf('dlg-delete')), `${shown(missing)} ${warningsOf('dlg-delete')}`);
+    print('     (1) demonstration in the chat and (4) the scripted agent arming a dialog: browser unit tests (test/dialogs-browser.test.mjs)');
+});
+
+scenario('U4', 'Hover and drag: a menu that opens on hover and a card dragged onto a column replay headless', spa, async () => {
+    actionConfig();
+    writeSpaTest(root, 'hover-menu');
+    writeSpaTest(root, 'drag-card');
+    const hover = await go(['hover-menu', '--env', 'extra']);
+    verify('hover opens the menu, Archive is clicked', hover.exit === 0, `${shown(hover)} ${failNote('hover-menu')}`);
+    const drag = await go(['drag-card', '--env', 'extra']);
+    verify('dragTo moves Card 1 into Done', drag.exit === 0, `${shown(drag)} ${failNote('drag-card')}`);
+    print('     context menu: after 1.0 (decided)');
+});
+
+scenario('U3', 'Popups and new tabs on the app host: target=_blank and window.open replay, the check runs in the new tab', spa, async () => {
+    actionConfig();
+    writeSpaTest(root, 'popup-help');
+    writeSpaTest(root, 'popup-report');
+    const help = await go(['popup-help', '--env', 'extra']);
+    verify('target=_blank: the check runs in the new tab', help.exit === 0, `${shown(help)} ${failNote('popup-help')}`);
+    const report = await go(['popup-report', '--env', 'extra']);
+    verify('window.open: the check runs in the popup', report.exit === 0, `${shown(report)} ${failNote('popup-report')}`);
+    print('     to a foreign host: blocked (D4)');
+});
+
+scenario('U6', 'Viewport: headless replay uses the recorded 600×800 and takes the hamburger path; browser.viewport overrides; the workbench pins the app frame', spa, async () => {
+    actionConfig();
+    writeSpaTest(root, 'nav-small');
+    const small = await go(['nav-small', '--env', 'extra']);
+    verify('recorded 600×800: the nav collapses into Menu, the recorded path passes', small.exit === 0, `${shown(small)} ${failNote('nav-small')}`);
+    actionConfig({ browser: { viewport: { width: 1280, height: 800 } } });
+    const wide = await go(['nav-small', '--env', 'extra']);
+    verify('browser.viewport 1280 overrides: no Menu button, the step fails', wide.exit === 1, `${shown(wide)} ${failNote('nav-small')}`);
+    actionConfig();
+    quietTokens();
+    let frame = '';
+    const watcher = humans(async (chat) => {
+        const bench = chat.page();
+        await bench.locator('#appBox.pinned').waitFor({ state: 'attached', timeout: 90000 });
+        frame = await bench.evaluate(() => { const app = document.getElementById('app'); return `${app.style.width}x${app.style.height} ${app.style.transform}`; });
+        await chat.locator('#closeWindow').click({ timeout: 90000 });
+    });
+    const inBench = await callWith({ CI: '' }, () => run(root, ['nav-small', '--env', 'extra'], { interactive: true, onChatOpen: watcher.onChatOpen }));
+    await watcher.done();
+    verify('in the workbench the app frame has exactly 600×800 (scaled to fit) and the run passes', inBench.value.exit === 0 && /^600pxx800px scale\(/.test(frame), `${shown(inBench.value)} ${frame}`);
+});
+
+scenario('D2', 'Shared environment with foreign data: look-alikes and a changing order break neither the test nor its learned effects', spa, async () => {
+    actionConfig();
+    // Recorded on shared: baselines and effects are learned there (two healthy runs fix an effect), then compared.
+    writeSpaTest(root, 'create-find', { environments: ['local', 'shared'], recordedOn: 'shared' });
+    const first = await go(['create-find', '--env', 'shared', '--learn']);
+    const second = await go(['create-find', '--env', 'shared', '--learn']);
+    const learned = loadTest(root, 'create-find').steps[0].recording?.effects?.runs ?? 0;
+    const third = await go(['create-find', '--env', 'shared']);
+    verify('each run finds its own ticket among look-alikes ("Ticket", "Ticket CAW-…") in another order', [first, second, third].every(({ exit }) => exit === 0), [first, second, third].map(shown).join(' | '));
+    verify('effects learned on shared (2 runs)', learned >= 2, String(learned));
+    verify('no effect deviation from the foreign rows', !/effect/.test(warningsOf('create-find')), warningsOf('create-find'));
+});
+
+scenario('M4', 'Dates in en-US: {{date+7}} is filled as MM/DD/YYYY in the recording\'s locale; the server accepts it', spa, async () => {
+    actionConfig();
+    writeSpaTest(root, 'note-due');
+    const due = await go(['note-due', '--env', 'mpaus']);
+    verify('the due date in US format passes the server\'s check', due.exit === 0, `${shown(due)} ${failNote('note-due')}`);
+    writeFileSync(join(root, 'caw/recordings/note-due.yaml'), readFileSync(join(root, 'caw/recordings/note-due.yaml'), 'utf8').replace('{{date+7}}', '{{today+7}}'));
+    const old = await callWith({}, () => validate(root));
+    verify('{{today+7}} is refused with its new name {{date+7}}', old.value.exit === 3 && /\{\{today\+7\}\}.*\{\{date\+7\}\}/.test(old.value.message ?? old.output), `${shown(old.value)} ${(old.value.message ?? old.output).split('\n').find((line) => /today/.test(line)) ?? ''}`);
 });

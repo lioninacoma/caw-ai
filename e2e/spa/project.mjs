@@ -62,6 +62,15 @@ export const LIFECYCLE_ENVIRONMENTS = {
     abortive: { url: http('abortive'), writable: true },
 };
 
+/** The environments of the action scenarios (P5): the extra page, its faulty twin, a shared environment and the US notes app. */
+export const ACTION_ENVIRONMENTS = {
+    local: ENVIRONMENTS.local,
+    extra: { url: http('extra'), claude: true, writable: true },
+    extrafault: { url: http('extrafault'), writable: true },
+    shared: { url: http('shared'), writable: true },
+    mpaus: { url: 'http://mpaus.localhost:18000', writable: true },
+};
+
 export const baseConfig = (environments = ENVIRONMENTS) => ({
     language: 'en',
     framework: 'web',
@@ -132,8 +141,25 @@ export const LIFECYCLE_TESTS = {
     'search-cold': { ...NETWORK_TESTS.search, steps: NETWORK_TESTS.search.steps.map((step) => ({ ...step, retry: { times: 2, waitMs: 500 } })) },
 };
 
+const status = (text) => `document.getElementById('status').textContent===${JSON.stringify(text)}`;
+/** The action scenarios' tests (P5), recorded by hand as record writes them: dialogs, hover, drag, popups, nav, shared data, dates. */
+export const ACTION_TESTS = {
+    'dlg-delete': { role: 'clerk', writes: false, steps: [{ name: 'Delete the first ticket', expect: 'It says Deleted.', actions: [{ click: button('Delete first'), path: '/', dialog: { type: 'confirm', accept: true, message: 'Delete the first ticket?' } }], check: status('Deleted') }] },
+    'dlg-keep': { role: 'clerk', writes: false, steps: [{ name: 'Keep the first ticket', expect: 'It says Kept.', actions: [{ click: button('Delete first'), path: '/', dialog: { type: 'confirm', accept: false, message: 'Delete the first ticket?' } }], check: status('Kept') }] },
+    'dlg-rename': { role: 'clerk', writes: false, steps: [{ name: 'Rename the first ticket', expect: 'It is renamed with the run tag.', actions: [{ click: button('Rename first'), path: '/', dialog: { type: 'prompt', accept: true, value: 'Note {{runTag}}', message: 'New title' } }], check: "document.getElementById('status').textContent.startsWith('Renamed to Note CAW-')" }] },
+    'dlg-leave': { role: 'clerk', writes: false, steps: [{ name: 'Leave a dirty draft', expect: 'The page reloads; the draft is empty.', actions: [{ fill: "getByRole('textbox', { name: 'Draft', exact: true })", value: 'half done', path: '/' }, { reload: {}, dialog: { type: 'beforeunload', accept: true } }, { 'wait-ready': {} }], check: "document.body.dataset.loaded==='true'&&document.getElementById('draft').value===''" }] },
+    'dlg-ping': { role: 'clerk', writes: false, steps: [{ name: 'Ping', expect: 'It says Pinged.', actions: [{ click: button('Ping'), path: '/', dialog: { type: 'alert', accept: true, message: 'Pong' } }], check: status('Pinged') }] },
+    'hover-menu': { role: 'clerk', writes: false, steps: [{ name: 'Archive from the actions menu', expect: 'It says Archived.', actions: [{ hover: button('Actions'), path: '/' }, { click: button('Archive'), path: '/' }], check: status('Archived') }] },
+    'drag-card': { role: 'clerk', writes: false, steps: [{ name: 'Move the card to Done', expect: 'The card is in Done.', actions: [{ dragTo: "getByText('Card 1', { exact: true })", to: "getByRole('list', { name: 'Done', exact: true })", path: '/' }], check: "document.getElementById('done').textContent.includes('Card 1')" }] },
+    'popup-help': { role: 'clerk', writes: false, steps: [{ name: 'Open the help', expect: 'The help opens in a new tab.', actions: [{ click: "getByRole('link', { name: 'Help', exact: true })", path: '/' }], check: "document.title==='Help'" }] },
+    'popup-report': { role: 'clerk', writes: false, steps: [{ name: 'Open the report', expect: 'The report opens in a new window.', actions: [{ click: button('Report'), path: '/' }], check: "document.title==='Report'" }] },
+    'nav-small': { role: 'clerk', writes: false, viewport: { width: 600, height: 800 }, steps: [{ name: 'Open tickets through the menu', expect: 'It says Nav Tickets.', actions: [{ click: button('Menu'), path: '/' }, { click: "getByRole('link', { name: 'Tickets', exact: true })", path: '/' }], check: status('Nav Tickets') }] },
+    'create-find': { role: 'admin', writes: true, steps: [{ name: 'Create a ticket and find it', expect: 'The new ticket is in the list.', actions: [{ click: button('New ticket'), path: '/' }, { fill: "getByRole('textbox', { name: 'Title', exact: true })", value: 'Ticket {{runTag}}', path: '/' }, { click: button('Save'), path: '/' }], check: "[...document.querySelectorAll('#tickets li')].some((item) => item.textContent.endsWith(' Ticket {{runTag}}'))" }] },
+    'note-due': { role: 'clerk', writes: true, locale: 'en-US', steps: [{ name: 'Add a note due in a week', expect: 'The note is listed with its due date.', actions: [{ fill: "getByRole('textbox', { name: 'Title', exact: true })", value: 'Note {{runTag}}', path: '/' }, { fill: "getByRole('textbox', { name: 'Due', exact: true })", value: '{{date+7}}', path: '/' }, { click: button('Add note'), path: '/' }], check: "[...document.querySelectorAll('#notes li')].some((item) => /due \\d{2}\\/\\d{2}\\/\\d{4}/.test(item.textContent))" }] },
+};
+
 /** The single-file text of a test (description and recording), as parseTest reads it. */
-const testText = (id, { role, writes, steps, environments }) => {
+const testText = (id, { role, writes, steps, environments, locale = 'en-US', viewport = { width: 1280, height: 800 }, recordedOn = 'local' }) => {
     const lines = [`id: ${id}`, `role: ${role}`, `writes: ${writes}`, ...(environments === undefined ? [] : [`environments: [${environments.join(', ')}]`]), 'steps:'];
     steps.forEach((step, index) => {
         const plain = { id: `S${index + 1}`, name: step.name, do: '', expect: step.expect };
@@ -141,8 +167,8 @@ const testText = (id, { role, writes, steps, environments }) => {
             `  - id: ${plain.id}`, `    name: ${JSON.stringify(plain.name)}`, '    do: ""', `    expect: ${JSON.stringify(plain.expect)}`,
             ...(step.retry === undefined ? [] : [`    retry: ${JSON.stringify(step.retry)}`]),
             '    recording:', `      hash: ${stepHash(plain)}`, ...(index === 0 ? [] : [`      after: S${index}`]),
-            '      recordedOn: local', '      recordedAt: 2026-11-14T10:00:00.000Z', '      locale: en-US', '      timezone: Europe/Berlin',
-            '      viewport: { width: 1280, height: 800 }',
+            `      recordedOn: ${recordedOn}`, '      recordedAt: 2026-11-14T10:00:00.000Z', `      locale: ${locale}`, '      timezone: Europe/Berlin',
+            `      viewport: { width: ${viewport.width}, height: ${viewport.height} }`,
             '      actions:', ...step.actions.map((action) => `        - ${JSON.stringify(action)}`),
             `      check: ${JSON.stringify(step.check)}`,
         );
@@ -155,7 +181,7 @@ const testText = (id, { role, writes, steps, environments }) => {
 export const writeSpaTest = (root, id, extra = {}) => {
     rmSync(testPath(root, id), { force: true });
     rmSync(recordingPath(root, id), { force: true });
-    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id] ?? LIFECYCLE_TESTS[id]), ...extra }), id), id });
+    writeTest(root, { ...parseTest(testText(id, { ...(TESTS[id] ?? NETWORK_TESTS[id] ?? LIFECYCLE_TESTS[id] ?? ACTION_TESTS[id]), ...extra }), id), id });
 };
 
 /** The whole project: config, caw/.env and every test; runs and sessions of earlier runs removed. */
@@ -189,4 +215,12 @@ export const removeLifecycleTests = (root) => {
 export const makeStale = (root, id) => {
     const path = testPath(root, id);
     writeFileSync(path, readFileSync(path, 'utf8').replace(/expect: .*/, 'expect: "The list is there, sorted by date."'));
+};
+
+/** The action scenarios' tests, written only for them. */
+export const removeActionTests = (root) => {
+    for (const id of Object.keys(ACTION_TESTS)) {
+        rmSync(testPath(root, id), { force: true });
+        rmSync(recordingPath(root, id), { force: true });
+    }
 };

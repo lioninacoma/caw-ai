@@ -175,7 +175,7 @@ and `/tmp` are writable. You reach the application only through these commands, 
    from others: Write it into every free text by which you must later recognise your record, and search for your
    record by it, never simply the top one. When replaying, the tool inserts a new one each time.
 2. **Plan first:** You always deliver a flow plan first, see "Flow plan". Until it is approved, the host rejects
-   `click`, `dblclick`, `fill`, `type`, `press`, `goto`, `reload`, `check`, `remember` and `eval` with `plan-required` (`eval` runs code in
+   `click`, `dblclick`, `hover`, `drag`, `dialog`, `fill`, `type`, `press`, `goto`, `reload`, `check`, `remember` and `eval` with `plan-required` (`eval` runs code in
    the page and could act). Reading with `snapshot`, `url`, `console` and `network` works before that.
 3. **Drive the flow:** `snapshot` shows the page with references (`[ref=e12]`, in the workbench e.g. `[ref=f3e12]`; take them
    as they appear). Then `click e12`, `dblclick e12` (one double-click, e.g. a grid row that only opens that way; two
@@ -183,7 +183,10 @@ and `/tmp` are writable. You reach the application only through these commands, 
    the chooser its button opens; never leave an upload out of the plan because you could not do it, ask the human),
    `fill e12 "Text"` (on a select list it picks the option with that value or label, e.g. `fill e12 "Tomorrow"`; never set
    options by typing their first letters, that breaks when the options change), `type e12 "Text"` (character by character, in
-   case a field reacts to keys), `press Enter`,
+   case a field reacts to keys), `hover e12` (a menu that opens under the pointer), `drag e12 --to e14` (drag onto another element),
+   `dialog accept`, `dialog accept --value "Text"` or `dialog dismiss` (answers the next native alert, confirm, prompt or
+   beforeunload; arm it before the action that opens it: an unarmed dialog is dismissed and the action's answer names it, then
+   arm and repeat), `press Enter`,
    `url`,`reload`, `goto <url>`. Instead of a reference a CSS selector also works. Prefer real clicks and
    input, as a human would do them. `click e12 --optional` for something that does not come every time, e.g. a
    cookie banner: If the target is not there after 3 s, nothing happens, and replaying skips the click as well.
@@ -221,7 +224,7 @@ and `/tmp` are writable. You reach the application only through these commands, 
    replaying reads it anew. A fixed number in a filter, click or `check` fails in the next run. You yourself always write the real value; only the tool replaces it with `{{orderno}}`.
 
    **Dates relative to today:** If you need a date (start, deadline), take one close to today, at most 60 days before or
-   after, in the format `DD.MM.YYYY` or `YYYY-MM-DD`. The recording stores it as `{{today}}`, `{{today+7}}` or `{{todayIso-1}}`,
+   after, in the format the app's locale uses (e.g. `11/23/2026` in en-US, `23.11.2026` in de-DE) or `YYYY-MM-DD`. The recording stores it as `{{date}}`, `{{date+7}}` or `{{isoDate-1}}`,
    and replaying inserts the date of its day. Here too you write the real value. A date further away stays fixed.
 6. **Submit the verdict.** Write `/tmp/result.json` and call `finish --file /tmp/result.json`:
 

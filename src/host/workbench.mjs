@@ -179,7 +179,10 @@ grid-template-areas:"steps browser chat"}
 #browserState.rec{color:var(--fail)}#browserState.ask{color:var(--warn)}
 .solo-btn{border:0;cursor:pointer;background:var(--pane-2);color:var(--text);font:400 19px/1 var(--font-crt);padding:3px 8px;box-shadow:inset 0 0 0 2px var(--line);flex:none}
 .solo-btn:hover{box-shadow:inset 0 0 0 2px var(--accent)}.solo-btn b{font-weight:400;color:var(--info);margin-right:6px}
+#appBox{flex:1;min-height:0;display:flex;position:relative;overflow:hidden}
 #app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff;box-shadow:0 0 0 2px #000}
+/* A pinned viewport: the frame has exactly the recorded size, scaled down (never up) to fit, centred. */
+#appBox.pinned{background:var(--screen)}#appBox.pinned #app{flex:none;position:absolute;top:0;transform-origin:0 0}
 .drawer{flex:none;padding-top:8px}
 .tabs{display:flex;gap:4px}
 .tabs button{font:400 20px/1 var(--font-crt);color:var(--muted);background:none;border:0;padding:3px 10px;cursor:pointer;box-shadow:inset 0 0 0 2px var(--line)}
@@ -295,7 +298,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${lg(t('workbench.steps'))}<button class="fold" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')} (F4)">◂</button><button class="strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')} (F4)"><b>▸</b>${t('workbench.steps').toUpperCase()} <span id="stripTally"></span></button>
 <div class="gauge" id="gauge" aria-hidden="true"></div><span id="tally" hidden></span><p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track" class="readable"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
 <section class="pa-browser win" aria-label="${t('workbench.app')}">${lg(t('workbench.app'))}<div class="appbar"><span id="urlMark" aria-hidden="true"></span><span id="url"></span><span id="browserState"></span><button class="solo-btn" type="button" data-solo title="${t('workbench.soloTitle')}"><b>F8</b>${t('workbench.solo')}</button></div>
-<iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-read; clipboard-write"></iframe>
+<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-read; clipboard-write"></iframe></div>
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}" title="${t('workbench.collapse')}">▾ ${t('workbench.collapse')}</button></div>
 <div class="panel readable" id="panel"></div></div></section>
 <section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${lg(t('workbench.chat'))}<button class="fold" id="chatFold" type="button" aria-expanded="true" aria-label="${t('workbench.chatFold')}" title="${t('workbench.chatFold')} (F6)">▸</button><button class="strip" id="chatStrip" type="button" aria-expanded="false" aria-label="${t('workbench.chatUnfold')}" title="${t('workbench.chatUnfold')} (F6)"><b>◂</b>${t('workbench.chat').toUpperCase()}</button><iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(theme))}"></iframe></section>
@@ -659,7 +662,17 @@ const follow=()=>{cancelAnimationFrame(followFrame);followFrame=requestAnimation
   track.scrollTo({top:Math.max(0,Math.round(top)),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});});};
 new MutationObserver(follow).observe($('steps'),{subtree:true,childList:true,attributes:true,attributeFilter:['data-state']});
 new ResizeObserver(follow).observe(track);
+// The pinned viewport of the app frame: { width, height } or null (the frame fills its pane).
+let pinned=null;
+const fitApp=()=>{const box=$('appBox');const app=$('app');box.classList.toggle('pinned',pinned!==null);
+  if(pinned===null){app.style.width=app.style.height=app.style.transform=app.style.left='';box.removeAttribute('title');return;}
+  const scale=Math.min(1,box.clientWidth/pinned.width,box.clientHeight/pinned.height);
+  app.style.width=pinned.width+'px';app.style.height=pinned.height+'px';app.style.transform='scale('+scale+')';
+  app.style.left=Math.max(0,Math.round((box.clientWidth-pinned.width*scale)/2))+'px';
+  box.title=fill('workbench.page.viewportPinned',{width:pinned.width,height:pinned.height,percent:Math.round(scale*100)});};
+new ResizeObserver(fitApp).observe($('appBox'));
 window.workbench={
+  viewport:(size)=>{pinned=size&&size.width>0&&size.height>0?{width:Math.round(size.width),height:Math.round(size.height)}:null;fitApp();},
   // The first entry is the mode (header: caw <mode> <test>), the test is already in the title; the rest goes into the facts.
   facts:(entries)=>{const [first,...rest]=entries;$('cmd').textContent=first?String(first[1]).toLowerCase():'';
     const test=$('testName').textContent;
@@ -803,7 +816,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     const view = frameView(page, frame);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // The host remembers what it has shown and restores it after a workbench reload.
-    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, catalog: null };
+    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, catalog: null, viewport: null };
     // The host remembers solo view so it comes back after a workbench reload. The browser window stays untouched.
     bench.fullscreen = async (on) => {
         shown.solo = on;
@@ -847,6 +860,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             // Solo view survives the reload; the window is still in that mode anyway.
             if (shown.solo) await call('solo', true);
             if (shown.catalog !== null) await call('states', shown.catalog);
+            if (shown.viewport !== null) await call('viewport', shown.viewport);
             await call('refreshable', bench.refresh !== null);
             // Reloaded by the human (F5, browser button) or by the application itself (top.location, form with target=_top).
             // Only the former disturbs a running test; the latter is the application's behaviour.
@@ -978,6 +992,11 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
                 if (reachable.length === 0 || (step !== undefined && !reachable.some(({ id }) => id === step))) return undefined;
                 return handler(test, step, { name: entry.name, role: entry.role, ...(step === undefined ? { until: reachable.at(-1).id } : {}) });
             };
+        },
+        /** The app frame at exactly this CSS size, scaled down to fit (OPEN-15); null lets it fill its pane again. */
+        viewport: (size) => {
+            shown.viewport = size ?? null;
+            return call('viewport', shown.viewport);
         },
         /** Application only (F8) on or off, e.g. automatically after the hand-over for developing. The window stays as it is. */
         solo: async (on) => {

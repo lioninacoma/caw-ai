@@ -20,8 +20,8 @@ const COMMAND_TIMEOUT_MS = 300_000;
 const SCREENSHOT_NAME = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.png$/;
 const ARIA_REF = /^(f\d+)?e\d+$/;
 const REMEMBER_NAME = /^[A-Za-z][A-Za-z0-9]{0,30}$/;
-// Short values would also occur in unrelated text and be replaced there too.
-const REMEMBER_MIN_LENGTH = 4;
+// Any value of at least one character (a short id in a fresh database); short ones are replaced carefully (swapToken).
+const REMEMBER_MIN_LENGTH = 1;
 
 const usage = (message) => new CawError('usage', message);
 
@@ -169,6 +169,24 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
             }
             return { files: paths };
         },
+        // The pointer over the target, e.g. a menu that opens on hover. Records as hover.
+        hover: async (command) => {
+            await locate(command).hover({ timeout: ACTION_TIMEOUT_MS });
+            return 'ok';
+        },
+        // Drag the target onto another element (to), e.g. a card onto a column. Records as dragTo.
+        dragTo: async (command) => {
+            await locate(command).dragTo(locatorFor(session.page(), text(command, 'to')), { timeout: ACTION_TIMEOUT_MS });
+            return 'ok';
+        },
+        // The answer for the next native dialog (alert, confirm, prompt, beforeunload). Unarmed, a dialog is dismissed and the
+        // command that opened it reports it, so Claude can arm and repeat. The decision is recorded on the action that opens it.
+        dialog: (command) => {
+            if (!['accept', 'dismiss'].includes(command.decision)) throw usage(t('run.agent.dialogDecision'));
+            if (command.value !== undefined && (typeof command.value !== 'string' || command.decision !== 'accept')) throw usage(t('run.agent.dialogValue'));
+            session.dialogs?.arm({ accept: command.decision === 'accept', ...(command.value === undefined ? {} : { value: command.value }) });
+            return 'armed';
+        },
         // Two clicks as one gesture, e.g. a grid row that opens on double-click: two separate click commands lie seconds apart,
         // so the browser never fires a dblclick for them.
         dblclick: async (command) => {
@@ -260,6 +278,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
     // (split, encoded) past redactDeep. Code with a secret placeholder is refused, so Claude learns why instead of a silent miss.
     const expanded = (key, value) => {
         if ((key !== 'value' && key !== 'code') || typeof value !== 'string') return value;
+        // A dialog value is typed into the page like a fill value.
         const filled = expand(value);
         if (filled !== value && key === 'code') throw usage(t('run.agent.secretInCode'));
         return filled;

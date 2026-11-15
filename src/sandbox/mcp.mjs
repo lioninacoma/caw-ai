@@ -14,7 +14,7 @@ const PROTOCOL = '2025-06-18';
 const MAX_OUTPUT = 200_000;
 
 /** What the agent may run: exactly the sandbox commands, never the host ones (run, record, init ...). */
-export const AGENT_COMMANDS = new Set(['task', 'snapshot', 'url', 'click', 'dblclick', 'upload', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload',
+export const AGENT_COMMANDS = new Set(['task', 'snapshot', 'url', 'click', 'dblclick', 'hover', 'drag', 'dialog', 'upload', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload',
     'wait-ready', 'console', 'network', 'plan', 'ask-operator', 'remember', 'chat', 'say', 'recording', 'finish', 'advise']);
 // Commands that read a file. Locally Claude cannot write one, so the content comes in the `file` field.
 const FILE_COMMANDS = new Set(['plan', 'finish', 'advise']);

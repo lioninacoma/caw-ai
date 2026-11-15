@@ -312,7 +312,7 @@ Ergebnisse kommen als kurzer Text plus `structuredContent` (JSON).
 
 ## Agenten-Befehle
 
-`caw agent <befehl>` mit `snapshot`, `click`, `dblclick`, `fill`, `type`, `press`, `upload`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
+`caw agent <befehl>` mit `snapshot`, `click`, `dblclick`, `hover`, `drag`, `dialog`, `fill`, `type`, `press`, `upload`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
 
 Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agenten während `record` und im Chat da; du brauchst sie nicht. `npx caw agent --help` listet ihre Argumente.
 

@@ -50,14 +50,14 @@ const ADVICE_LOG = 'claude-advice.log';
 const DRAFT_FILE = 'test-draft.yaml';
 // Changes the page state or proves a step: only allowed once the plan is approved.
 // eval too: it runs any script in the page and can change it just like a click. Reading stays allowed via snapshot.
-export const NEEDS_PLAN = new Set(['click', 'dblclick', 'upload', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember', 'eval']);
+export const NEEDS_PLAN = new Set(['click', 'dblclick', 'hover', 'dragTo', 'dialog', 'upload', 'fill', 'type', 'press', 'goto', 'reload', 'check', 'remember', 'eval']);
 // While advising Claude only reads: the page should stay as the run left it.
 const ADVISE_READS = new Set(['task', 'snapshot', 'url', 'eval', 'console', 'network', 'screenshot', 'say', 'advise']);
 // A conversation only adds waiting for the human.
 const TALK_READS = new Set([...ADVISE_READS, 'chat']);
 // While developing the window belongs to the human, who can ask Claude to operate it: click, fill, reproduce a bug.
 // Only on request (see skill); no test results from it, so there is no `check` or `remember` here.
-const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'dblclick', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
+const DEVELOP_ACTS = new Set([...TALK_READS, 'click', 'dblclick', 'hover', 'dragTo', 'dialog', 'fill', 'type', 'press', 'goto', 'reload', 'wait-ready']);
 /**
  * The chip at the top right of the workbench while something runs: record while Claude records or fixes (no replay), play while
  * replaying (run, check run, open with a test; restoring a state sets play itself). Nothing for open without a test: it replays
@@ -1117,7 +1117,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         verdict = null;
         // For Claude: secret values stay placeholders that the handler fills in on execution (fillSecrets).
         // Only for check code: values are escaped for a string literal.
-        const fillIn = (value) => fillDates(openRemembered().reduce((current, [placeholder, real]) => current.split(placeholder).join(codeText(real)), fillRun(value, runTag)), zonedNow(session.browser?.timezone));
+        const fillIn = (value) => fillDates(openRemembered().reduce((current, [placeholder, real]) => current.split(placeholder).join(codeText(real)), fillRun(value, runTag)), zonedNow(session.browser?.timezone), session.browser?.locale);
         if (range !== undefined) {
             // From a step to the end: the old recording of each step as orientation; the steps before have run without Claude.
             run.repair = {

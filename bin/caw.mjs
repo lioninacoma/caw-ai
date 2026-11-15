@@ -68,7 +68,11 @@ const agentCommand = async (root, [command, ...args]) => {
         case 'chat': return (await sandbox()).browserCommand({ action: command }, { timeoutMs: 60 * 60 * 1000 });
         case 'say': return browser({ action: command, text: args[0] });
         case 'click': return browser({ action: command, target: args.find((arg) => !arg.startsWith('--')), ...(args.includes('--optional') ? { optional: true } : {}) });
-        case 'dblclick': return browser({ action: command, target: args[0] });
+        case 'dblclick':
+        case 'hover':
+            return browser({ action: command, target: args[0] });
+        case 'drag': return browser({ action: 'dragTo', target: args.find((arg, index) => !arg.startsWith('--') && args[index - 1] !== '--to'), to: option(args, '--to') });
+        case 'dialog': return browser({ action: 'dialog', decision: args[0], ...(option(args, '--value') === undefined ? {} : { value: option(args, '--value') }) });
         case 'upload': return browser({ action: command, target: args[0], files: args.slice(1) });
         case 'fill':
         case 'type':

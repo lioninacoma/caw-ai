@@ -128,7 +128,9 @@ steps:
 | `path` | Die Seite, auf der die Aktion aufgenommen wurde. Fehlt ein Ziel, sagt der Lauf, dass er auf einer anderen Seite ist. |
 | `locale`, `timezone` | Sprache und Zeitzone des Aufnahme-Browsers; die Wiedergabe nimmt sie, sofern die Config nicht `browser.locale`/`browser.timezone` setzt. |
 | `check` | Ein JavaScript-Ausdruck, der `true` liefern muss. Er läuft in der angemeldeten Seite, also vor dem Commit lesen. |
-| `remember` | Liest einen Wert, den der Lauf erzeugt, hier die Ticketnummer. Spätere Schritte nutzen ihn als `{{ticketnr}}`. |
+| `hover`, `dragTo` | `hover` bewegt den Zeiger über sein Ziel, etwa ein Menü, das sich beim Überfahren öffnet. `dragTo` zieht sein Ziel auf den Locator in `to`, etwa eine Karte auf eine Spalte. |
+| `dialog` | Die Antwort auf einen nativen Dialog (`alert`, `confirm`, `prompt`, `beforeunload`), den die Aktion öffnet: `{type, accept, value?, message?}`. `value` ist der Text für einen bestätigten `prompt` (Platzhalter erlaubt); `message` ist der Dialogtext bei der Aufnahme, Ziffern als `#`. Das Abspielen antwortet genauso. Einen Dialog, den niemand aufgezeichnet hat, schließt es und nennt ihn als Warnung `dialog-unexpected`; kommt ein aufgezeichneter nicht, gibt es die Warnung `dialog-missing`. Beim Vorführen zeigt der Chat den Dialog mit OK und Abbrechen; Claude antwortet mit `caw agent dialog accept|dismiss`. |
+| `remember` | Liest einen Wert, den der Lauf erzeugt, hier die Ticketnummer. Spätere Schritte nutzen ihn als `{{ticketnr}}`. Jeder Wert ab einem Zeichen; einer mit weniger als vier Zeichen (eine Id wie `7`) wird nur in eingetippten Werten, URLs, Zeichenketten von Prüfungen und Zieltexten ersetzt, die genau dieser Wert sind. |
 | `network` | Requests je Schritt aus einem gesunden Lauf. Damit trennt caw-ai App-Fehler von Umgebungsproblemen. |
 | `effects` | Was jede Aktion an der Seite geändert hat, gelernt aus gesunden Läufen (`runs` zählt sie). Eine Abweichung lässt den Schritt scheitern oder erscheint als Warnung. |
 | `knownMessages` | Meldungen, die beim Aufnehmen sichtbar waren und keine Fehler sind. |
@@ -157,7 +159,7 @@ Eine Prüfung kann die Zwischenablage lesen: Der Browser hat `clipboard-read` un
 |---|---|
 | `{{runTag}}` | Einen Wert, eindeutig je Lauf, z. B. `CAW-20261109091543` |
 | `{{runTagLower}}` | Dasselbe kleingeschrieben, für URLs |
-| `{{today}}`, `{{today+7}}`, `{{todayIso-1}}` | Datumswerte relativ zum Tag des Laufs |
+| `{{date}}`, `{{date+7}}`, `{{isoDate-1}}` | Datumswerte relativ zum Tag des Laufs: `{{date}}` im Format der Browsersprache (`de-DE` 23.11.2026, `en-US` 11/23/2026, `en-GB` 23/11/2026), `{{isoDate}}` als 2026-11-23. Beim Aufnehmen wird ein Datum höchstens 60 Tage vom Aufnahmetag im Format der Sprache oder ISO zu einem davon; ein Datum in der Reihenfolge einer anderen Sprache bleibt, wie es ist |
 | `{{ticketnr}}` | Einen Wert, den der Lauf per `remember` gelesen hat |
 
 Claude setzt sie beim Aufnehmen ein. Im Testplan brauchst du nur `{{runTag}}`. In einem Locator füllt caw sie je Text ein: Ein Wert mit Anführungszeichen bleibt ein Text, ein Wert in einem regulären Ausdruck wird maskiert.

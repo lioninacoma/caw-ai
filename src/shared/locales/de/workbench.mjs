@@ -20,6 +20,7 @@ export default {
     'workbench.stepsUnfold': 'Schritte ausklappen',
     'workbench.stepsHint': 'Die Schritte erscheinen, sobald der Ablauf feststeht.',
     'workbench.app': 'Anwendung',
+    'workbench.page.viewportPinned': 'Viewport der Aufnahme: {width} × {height}, gezeigt mit {percent} %',
     'workbench.requests': 'Requests',
     'workbench.console': 'Konsole',
     'workbench.drawerCloseLabel': 'Requests und Konsole einklappen',

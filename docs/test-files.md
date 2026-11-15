@@ -125,10 +125,12 @@ steps:
 | Field | |
 |---|---|
 | `actions` | What to do. `dblclick` is one double-click, e.g. on a grid row that only opens that way; a double-click you demonstrate is recorded as one. The target of `click`, `dblclick`, `fill`, `type`, `upload` and `download` is one Playwright locator, written as Playwright prints it, without `page.`: role and full name with `exact: true`, label, text, `data-testid`, the row or dialog around it, `contentFrame()` for an iframe. caw parses it and never runs it as code; `validate` rejects anything else, snapshot references (`aria-ref=`), `:nth-child` and, for ExtJS, generated ids like `#button-1023`. ExtJS components can also be found with `locator('extjs=button[text="Save"]')` (`Ext.ComponentQuery`); a text or title with a comma never goes into such a query, because ComponentQuery splits at every comma. |
+| `hover`, `dragTo` | `hover` moves the pointer over its target, e.g. a menu that opens on hover. `dragTo` drags its target onto the locator in `to`, e.g. a card onto a column. |
+| `dialog` | The answer to a native dialog (`alert`, `confirm`, `prompt`, `beforeunload`) that the action opens: `{type, accept, value?, message?}`. `value` is the text for an accepted `prompt` (placeholders allowed); `message` is the dialog text at recording, digits as `#`. Replay answers the dialog that way. A dialog nobody recorded is dismissed and listed as warning `dialog-unexpected`; a recorded one that doesn't come is warning `dialog-missing`. When you demonstrate, the chat shows the dialog with OK and Cancel; Claude answers with `caw agent dialog accept|dismiss`. |
 | `path` | The page the action was recorded on. If a target is missing, the run tells you it is on a different page. |
-| `locale`, `timezone` | Language and time zone of the recording browser; replay uses them unless the config sets `browser.locale`/`browser.timezone`. |
+| `locale`, `timezone`, `viewport` | Language, time zone and size of the app view while recording; replay uses them unless the config sets `browser.locale`/`browser.timezone`/`browser.viewport`. Headless replay opens at that size; in the workbench the app frame gets exactly that size, scaled down if the window is smaller. |
 | `check` | A JavaScript expression that must return `true`. It runs in the signed-in page, so read it before you commit. |
-| `remember` | Reads a value the run creates, here the ticket number. Later steps use it as `{{ticketnr}}`. |
+| `remember` | Reads a value the run creates, here the ticket number. Later steps use it as `{{ticketnr}}`. Any value of at least one character; one shorter than four characters (an id like `7`) is replaced only in typed values, URLs, string literals of checks and target texts that are exactly that value. |
 | `network` | Requests per step from a healthy run. Used to tell app bugs from environment problems. |
 | `effects` | What each action changed on the page, learned from healthy runs (`runs` counts them). A change fails the step or shows as a warning. |
 | `knownMessages` | Messages that were visible during recording and are not errors. |
@@ -157,7 +159,7 @@ A check can read the clipboard: the browser has `clipboard-read` and `clipboard-
 |---|---|
 | `{{runTag}}` | A value unique per run, e.g. `CAW-20261109091543` |
 | `{{runTagLower}}` | The same in lowercase, for URLs |
-| `{{today}}`, `{{today+7}}`, `{{todayIso-1}}` | Dates relative to the day of the run |
+| `{{date}}`, `{{date+7}}`, `{{isoDate-1}}` | Dates relative to the day of the run: `{{date}}` in the browser's locale (`de-DE` 23.11.2026, `en-US` 11/23/2026, `en-GB` 23/11/2026), `{{isoDate}}` as 2026-11-23. While recording, a date at most 60 days from the recording day in the locale's format or ISO becomes one of them; a date in another locale's order stays as it is |
 | `{{ticketnr}}` | A value read during the run with `remember` |
 
 Claude adds these while recording. In the test plan you only need `{{runTag}}`. In a locator they are filled per text, so a value with a quote stays one string and a value inside a regular expression is escaped.

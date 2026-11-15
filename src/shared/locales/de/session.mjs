@@ -148,6 +148,13 @@ export default {
     // replay: step list items
     'session.point.click': 'Klick',
     'session.point.dblclick': 'Doppelklick',
+    'session.point.hover': 'Überfahren',
+    'session.point.drag': 'Ziehen',
+    'session.point.dragTo': '{from} auf {to}',
+    'session.dialog.shown': '{type} „{message}“',
+    'session.dialog.missing': '{action}: Der aufgezeichnete {type} kam nicht.',
+    'session.dialog.otherType': '{action}: Statt des aufgezeichneten {expected} kam ein {dialog}; die aufgezeichnete Antwort galt, soweit möglich.',
+    'session.dialog.unexpected': '{action}: unerwarteter {dialog}, geschlossen.',
     'session.point.type': 'Eingabe',
     'session.point.press': 'Taste',
     'session.point.goto': 'Öffnen',

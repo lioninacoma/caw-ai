@@ -397,13 +397,15 @@ test('remember: replay reads the value again and waits until it is there', async
     assert.equal(seen.at(-1).code, "x === '20262140000999'");
 });
 
-test('remember: the host rejects empty, short and reserved values', async () => {
+test('remember: the host rejects empty and reserved values; a short id of one character is fine (OPEN-7)', async () => {
     let result = '20262140000260';
     const handler = createAgentHandler({ session: { page: () => ({ evaluate: async () => result }) }, run: { expectations: [] }, hosts: [], agentDir: '.', onVerdict: () => {} });
     assert.deepEqual(await handler({ action: 'remember', name: 'nr', code: 'x' }), { name: 'nr', value: '20262140000260' });
     result = 20262140000260;
     assert.equal((await handler({ action: 'remember', name: 'nr', code: 'x' })).value, '20262140000260');
-    for (const bad of ['', '12', null]) {
+    result = '7';
+    assert.equal((await handler({ action: 'remember', name: 'nr', code: 'x' })).value, '7');
+    for (const bad of ['', '  ', null]) {
         result = bad;
         await assert.rejects(handler({ action: 'remember', name: 'nr', code: 'x' }), { code: 'usage' });
     }

@@ -15,9 +15,11 @@ import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 import { didYouMean } from '../shared/suggest.mjs';
+import { renamedDates } from './dates.mjs';
 import { EFFECT_LISTS } from './effects.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { checkLocator } from './locator.mjs';
+import { dialogProblem } from './dialogs.mjs';
 import { isPattern } from './patterns.mjs';
 
 export { RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -60,14 +62,20 @@ const checkNetwork = (raw, at, report) => {
         if (!ok) report([...at, index], t('config.test.network.entry'));
     });
 };
-const TARGETED = ['click', 'dblclick', 'fill', 'type', 'upload', 'download'];
+const TARGETED = ['click', 'dblclick', 'fill', 'type', 'upload', 'download', 'hover', 'dragTo'];
 const TEXT_ACTIONS = { press: 'key', goto: 'url', screenshot: 'name' };
 const ACTION_NAMES = [...TARGETED, ...Object.keys(TEXT_ACTIONS), 'reload', 'wait-ready', 'remember'];
 // Fields besides the target: what to enter, upload, or expect as a download's file name.
 // optional: a click that only counts when its target is present (e.g. a cookie banner shown on the first visit only).
 // component, source: React/Vue/Angular dev builds name the component the element belongs to; a hint for diagnosis only.
 const HINTS = ['component', 'source'];
-const ACTION_EXTRAS = { click: ['optional', ...HINTS], dblclick: [...HINTS], fill: ['value', ...HINTS], type: ['value', ...HINTS], upload: ['files', ...HINTS], download: ['file', ...HINTS], goto: ['denied'] };
+// dialog: the decision for a native dialog the action opens (Q11); only on actions that can open one.
+// to: where dragTo drops its target, a locator like the target.
+const ACTION_EXTRAS = {
+    click: ['optional', 'dialog', ...HINTS], dblclick: ['dialog', ...HINTS], fill: ['value', 'dialog', ...HINTS], type: ['value', 'dialog', ...HINTS],
+    upload: ['files', 'dialog', ...HINTS], download: ['file', 'dialog', ...HINTS], hover: [...HINTS], dragTo: ['to', ...HINTS],
+    press: ['dialog'], goto: ['denied', 'dialog'], reload: ['dialog'],
+};
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 /** A suggestion for an unknown field as a suffix (e.g. " Did you mean targets?"), otherwise empty. */
@@ -137,12 +145,20 @@ const readAction = (raw, report, { framework }) => {
     }
     const [name] = names;
     const payload = raw[name];
-    const extras = { ...(raw.path === undefined ? {} : { path: raw.path }), ...(raw.timeoutMs === undefined ? {} : { timeoutMs: raw.timeoutMs }) };
+    const extras = {
+        ...(raw.path === undefined ? {} : { path: raw.path }),
+        ...(raw.timeoutMs === undefined ? {} : { timeoutMs: raw.timeoutMs }),
+        ...(raw.dialog === undefined ? {} : { dialog: raw.dialog }),
+    };
     const allowed = new Set([name, 'path', 'timeoutMs', ...(ACTION_EXTRAS[name] ?? [])]);
     const foreign = Object.keys(raw).find((key) => !allowed.has(key));
     if (foreign !== undefined) report(t('config.test.action.unknownField', { name, field: foreign, hint: hintFor(foreign, [...allowed]) }));
     if (raw.path !== undefined && typeof raw.path !== 'string') report(t('config.test.action.path', { name }));
     if (raw.timeoutMs !== undefined && !(Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0)) report(t('config.test.action.timeout', { name }));
+    if (raw.dialog !== undefined && allowed.has('dialog')) {
+        const problem = dialogProblem(raw.dialog);
+        if (problem !== null) report(t(`config.test.action.dialog.${problem}`, { name }));
+    }
 
     if (TARGETED.includes(name)) {
         checkTarget(payload, name, framework, report);
@@ -151,6 +167,7 @@ const readAction = (raw, report, { framework }) => {
         if (name === 'upload' && !isFileList(raw.files)) report(t('config.test.action.files'));
         if (name === 'download' && !isRegExp(raw.file)) report(t('config.test.action.file'));
         if (raw.optional !== undefined && raw.optional !== true) report(t('config.test.action.optional'));
+        if (name === 'dragTo') checkTarget(raw.to, 'dragTo to', framework, report);
         return {
             action: name,
             target: payload,
@@ -159,6 +176,7 @@ const readAction = (raw, report, { framework }) => {
             ...(raw.files === undefined ? {} : { files: raw.files }),
             ...(raw.file === undefined ? {} : { file: raw.file }),
             ...(raw.optional === true ? { optional: true } : {}),
+            ...(name === 'dragTo' && typeof raw.to === 'string' ? { to: raw.to } : {}),
             ...Object.fromEntries(HINTS.filter((key) => raw[key] !== undefined).map((key) => [key, raw[key]])),
         };
     }
@@ -182,7 +200,7 @@ const readAction = (raw, report, { framework }) => {
     return { action: name, ...extras };
 };
 
-const writeAction = ({ action, target, key, url, name, code, secret, for: waitFor, minCount, value, files, file, denied, path, timeoutMs, optional, component, source }) => {
+const writeAction = ({ action, target, to, key, url, name, code, secret, for: waitFor, minCount, value, files, file, denied, path, timeoutMs, optional, dialog, component, source }) => {
     let payload = {};
     if (TARGETED.includes(action)) payload = target;
     else if (action === 'press') payload = key;
@@ -197,6 +215,8 @@ const writeAction = ({ action, target, key, url, name, code, secret, for: waitFo
         ...(file === undefined ? {} : { file }),
         ...(denied === undefined ? {} : { denied }),
         ...(optional === true ? { optional } : {}),
+        ...(to === undefined ? {} : { to }),
+        ...(dialog === undefined ? {} : { dialog }),
         ...(component === undefined ? {} : { component }),
         ...(source === undefined ? {} : { source }),
         ...(path === undefined ? {} : { path }),
@@ -211,6 +231,8 @@ const readRecording = (raw, at, problems, lineOf, { framework }) => {
         return undefined;
     }
     for (const key of Object.keys(raw)) if (!RECORDING_FIELDS.includes(key)) report([...at, key], t('config.test.recording.unknown', { key, hint: hintFor(key, RECORDING_FIELDS) }));
+    // Date placeholders before 1.0: {{today}} is now {{date}} in the browser's locale, {{todayIso}} is {{isoDate}}.
+    for (const { old, now } of renamedDates(JSON.stringify([raw.actions, raw.check]))) report(at, t('config.removed.renamed', { key: old, now }));
     for (const key of ['hash', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'check']) if (!isText(raw[key])) report([...at, key], t('config.test.recording.missing', { key }));
     if (raw.after !== undefined && !STEP_ID.test(String(raw.after))) report([...at, 'after'], t('config.test.recording.after'));
     if (raw.timeoutMs !== undefined && !(Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0)) report([...at, 'timeoutMs'], t('config.test.recording.timeout'));

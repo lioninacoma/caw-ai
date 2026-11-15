@@ -61,9 +61,9 @@ test('Recorder: two wait-ready merge into one with the more specific wait and th
 
 test('Recorder: dates close to the recording day become relative', async () => {
     const field = "getByRole('textbox', { name: 'Frist 21.11.2026', exact: true })";
-    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => pageWith() }, base: 'https://portal.example', now: () => new Date(2026, 10, 7), recordTarget: recordWith(() => field) });
+    const recorder = createRecorder({ handler: async () => 'ok', session: { page: () => pageWith(), browser: { locale: 'de-DE' } }, base: 'https://portal.example', now: () => new Date(2026, 10, 7), recordTarget: recordWith(() => field) });
     await recorder.handler({ action: 'fill', target: 'e1', value: '21.11.2026' });
-    assert.deepEqual(recorder.steps, [{ action: 'fill', target: "getByRole('textbox', { name: 'Frist {{today+14}}', exact: true })", value: '{{today+14}}' }]);
+    assert.deepEqual(recorder.steps, [{ action: 'fill', target: "getByRole('textbox', { name: 'Frist {{date+14}}', exact: true })", value: '{{date+14}}' }]);
 });
 
 test('swapToken: remembered values only as whole tokens and only in inputs, checks, URLs and target texts', () => {

@@ -11,6 +11,7 @@ import { chromium } from 'playwright-core';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { totp } from '../shared/totp.mjs';
+import { createDialogs } from './dialogs.mjs';
 import { createDevlinkHost, createPlaywrightLauncher, isHardFailure, parseConfig } from './devlink-core.mjs';
 import { fileVersion, incompleteText, routeOverlay } from './overlay.mjs';
 import { DEFAULT_MESSAGE_SELECTORS, browserLaunch, isLoopback, isViewport } from '../shared/config.mjs';
@@ -124,7 +125,7 @@ export const isBrowserClosedError = (reason) => /has been closed|Target closed|b
  * Which tabs belong to the test: the application tab and its popups. The window is visible, so a human can open
  * their own tabs at any time. Those get no agent commands, and their errors do not count.
  */
-export const trackAgentPages = (first) => {
+export const trackAgentPages = (first, { onDialog } = {}) => {
     const owned = new Set();
     const open = [];
     // With the workbench: the application is a frame inside it (`view`). Workbench and chat are not part of the test.
@@ -134,6 +135,8 @@ export const trackAgentPages = (first) => {
         owned.add(page);
         open.push(page);
         page.on('popup', add);
+        // A dialog blocks its page until answered: every tab of the test answers through the one handler (dialogs.mjs).
+        if (onDialog !== undefined) page.on('dialog', onDialog);
         page.on('close', () => {
             const at = open.findIndex((entry) => entry === page || (page === workbench && entry === view));
             if (at !== -1) open.splice(at, 1);
@@ -941,7 +944,8 @@ export const openBrowserSession = async (spec) => {
             }
         };
         const rules = { ignored: consoleIgnore.map((pattern) => new RegExp(pattern)), foreign: (foreignCode ?? []).map((pattern) => new RegExp(pattern)), skip: framework.stackSkip, thirdParty: isThirdParty };
-        const pages = trackAgentPages(raw.pages()[0]);
+        const dialogs = createDialogs();
+        const pages = trackAgentPages(raw.pages()[0], { onDialog: dialogs.handle });
         const addWarning = (entry) => {
             const known = warnings.find(({ type, text }) => type === entry.type && text === entry.text);
             if (known === undefined) warnings.push({ ...entry, count: 1 });
@@ -1219,6 +1223,8 @@ export const openBrowserSession = async (spec) => {
             // Embed only documents of the application itself, not further allowed hosts such as a sign-in service.
             bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite });
             pages.embed(bench.page, bench.view);
+            // A recorded (or configured) viewport pins the app frame to that size, as headless replay uses it (OPEN-15).
+            if (region?.viewport !== undefined) await bench.viewport(region.viewport);
             bench.view.on('domcontentloaded', () => network.replaced(bench.view));
             const signIn = auth.type === 'form' || auth.type === 'basic' ? t('session.prep.signIn') : auth.type === 'session' ? t('session.prep.takeSession') : null;
             const points = [
@@ -1343,6 +1349,8 @@ export const openBrowserSession = async (spec) => {
             },
             /** The framework adapter: targets, page state, readiness. */
             framework,
+            /** Native dialogs: arm the answer before an action, begin()/end() around it (dialogs.mjs). */
+            dialogs,
             /** { locale, timezone } the browser runs with; stored with a recording. */
             browser: region,
             /** The CSS size of the application view right now (the app frame in the workbench); stored with a recording. */

@@ -61,6 +61,13 @@ const ENVIRONMENTS = {
     cold: { auth: 'form', accounts: FORM_ACCOUNTS, cold: true },
     flaky: { auth: 'form', accounts: FORM_ACCOUNTS, flaky: true },
     abortive: { auth: 'form', accounts: FORM_ACCOUNTS, abortive: true },
+    // P5: the extra controls (dialogs, hover, drag, popups, responsive nav); on extrafault an unexpected alert after loading and
+    // a delete without its confirm. shared: other people write look-alike tickets and the order changes. mpaus: the notes app
+    // with a due date in US format.
+    extra: { auth: 'form', accounts: FORM_ACCOUNTS, extras: 'ok' },
+    extrafault: { auth: 'form', accounts: FORM_ACCOUNTS, extras: 'fault' },
+    shared: { auth: 'form', accounts: FORM_ACCOUNTS, shared: true },
+    mpaus: { auth: 'form', accounts: FORM_ACCOUNTS, mpa: true, us: true },
     // Keycloak users of the realm caw-e2e; the role comes from this table.
     ci: { auth: 'oidc', roles: { 'qa.clerk': 'clerk', 'qa.admin': 'admin' } },
 };
@@ -129,13 +136,45 @@ navigator.sendBeacon('${thirdParty('stats')}/collect', 'view');
 document.getElementById('popup').addEventListener('click', () => window.open('${thirdParty('elsewhere')}/popup'));
 document.getElementById('prodcall').addEventListener('click', () => fetch('http://prod.localhost:${PROD_PORT}/api/tickets').then(() => 'reached', () => 'blocked').then((outcome) => { document.getElementById('status').textContent = 'Production ' + outcome; }));
 </script>`);
+/** The extra controls of extra and extrafault (P5). */
+const extrasBody = (env) => (env.extras === undefined ? '' : `<section id="extras" aria-label="Extras">
+<nav id="nav" aria-label="Main"><button id="menuToggle" type="button">Menu</button><ul id="navList"><li><a id="navTickets" href="#list">Tickets</a></li></ul></nav>
+<button id="del" type="button">Delete first</button> <button id="ren" type="button">Rename first</button> <button id="ping" type="button">Ping</button>
+<label>Draft <input id="draft"></label>
+<div id="actions"><button id="actionsBtn" type="button">Actions</button><div id="actionsList" hidden><button id="archive" type="button">Archive</button></div></div>
+<div id="board"><ul id="todo" aria-label="To do"><li id="card1" draggable="true">Card 1</li></ul><ul id="done" aria-label="Done" style="min-height:40px;min-width:120px;border:1px solid #888"></ul></div>
+<a id="help" href="/help" target="_blank">Help</a> <button id="report" type="button">Report</button>
+</section>
+<style>@media (max-width: 700px) { #navList { display: none } #navList.open { display: block } } @media (min-width: 701px) { #menuToggle { display: none } }</style>
+<script>
+const note = (text) => { document.getElementById('status').textContent = text; };
+document.getElementById('menuToggle').addEventListener('click', () => document.getElementById('navList').classList.toggle('open'));
+document.getElementById('navTickets').addEventListener('click', () => note('Nav Tickets'));
+document.getElementById('del').addEventListener('click', () => note(${env.extras === 'fault'} || confirm('Delete the first ticket?') ? 'Deleted' : 'Kept'));
+document.getElementById('ren').addEventListener('click', () => { const title = prompt('New title', 'Ticket'); note(title === null ? 'Not renamed' : 'Renamed to ' + title); });
+document.getElementById('ping').addEventListener('click', () => { alert('Pong'); note('Pinged'); });
+let dirty = false;
+document.getElementById('draft').addEventListener('input', () => { dirty = true; });
+addEventListener('beforeunload', (event) => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
+const actions = document.getElementById('actions');
+actions.addEventListener('mouseenter', () => { document.getElementById('actionsList').hidden = false; });
+actions.addEventListener('mouseleave', () => { document.getElementById('actionsList').hidden = true; });
+document.getElementById('archive').addEventListener('click', () => note('Archived'));
+document.getElementById('card1').addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', 'card1'));
+const done = document.getElementById('done');
+done.addEventListener('dragover', (event) => event.preventDefault());
+done.addEventListener('drop', (event) => { event.preventDefault(); done.append(document.getElementById(event.dataTransfer.getData('text/plain'))); note('Moved'); });
+document.getElementById('report').addEventListener('click', () => window.open('/report'));
+if (${env.extras === 'fault'}) setTimeout(() => alert('Maintenance at 22:00'), 300);
+</script>`);
+
 const appPage = (user, env) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Tickets</title>
 <style>body{font-family:sans-serif}dialog::backdrop{background:#0004}</style>${thirdPartyHead(env)}</head>
 <body class="signed-in"><header><span id="user-menu">${escape(user.user)}</span> <a href="/logout">Sign out</a></header>
 <main><h1>Tickets</h1>${user.role === 'admin' ? '<button id="new">New ticket</button>' : ''}
 <button id="gql" type="button">Load via GraphQL</button> <button id="close" type="button">Close first</button> <button id="persisted" type="button">Refresh</button>
 <label>Search <input id="q"></label> <button id="search" type="button">Search</button>
-<p id="status" role="status"></p><ul id="tickets"></ul></main>${thirdPartyBody(env)}
+<p id="status" role="status"></p><ul id="tickets"></ul></main>${thirdPartyBody(env)}${extrasBody(env)}
 <dialog id="dialog" aria-label="New ticket"><form method="dialog"><label>Title <input id="title" name="title"></label>
 <button id="save" value="save">Save</button> <button value="cancel">Cancel</button></form></dialog>
 <script>
@@ -180,14 +219,14 @@ const external = (req, res, env, url) => {
 };
 
 /** The notes app of mpa and mpa-staging: server-rendered list, a search form (POST, only reads) and a create form. */
-const notesPage = (notes, status, message = '') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Notes</title></head>
+const notesPage = (notes, status, message = '', us = false) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Notes</title></head>
 <body class="signed-in"><header><span id="user-menu">notes</span></header><main><h1>Notes</h1><p id="message" role="status">${escape(message)}</p>
 <form method="post" action="/notes/search"><label>Search <input name="q"></label><button>Search</button></form>
-<form method="post" action="/notes"><label>Title <input name="title"></label><button>Add note</button></form>
+<form method="post" action="/notes"><label>Title <input name="title"></label>${us ? '<label>Due <input name="due" placeholder="MM/DD/YYYY"></label>' : ''}<button>Add note</button></form>
 <ul id="notes">${notes.map((note) => `<li>${escape(note)}</li>`).join('')}</ul></main></body></html>`;
 const notes = async (req, res, env, url) => {
     const own = store(env);
-    if (url.pathname === '/' || (url.pathname === '/notes' && req.method === 'GET')) return send(res, 200, notesPage(own.notes, 200));
+    if (url.pathname === '/' || (url.pathname === '/notes' && req.method === 'GET')) return send(res, 200, notesPage(own.notes, 200, '', env.us === true));
     const form = new URLSearchParams(await readBody(req));
     if (url.pathname === '/notes/search' && req.method === 'POST') {
         const found = own.notes.filter((note) => note.includes(form.get('q') ?? ''));
@@ -195,8 +234,19 @@ const notes = async (req, res, env, url) => {
     }
     if (url.pathname === '/notes' && req.method === 'POST') {
         const title = String(form.get('title') ?? '').trim();
-        if (title === '') return send(res, 422, notesPage(own.notes, 422, 'Title is required'));
-        own.notes.unshift(title);
+        if (title === '') return send(res, 422, notesPage(own.notes, 422, 'Title is required', env.us === true));
+        let due = '';
+        if (env.us === true) {
+            // A US date, today or later (the server's day): 11/23/2026.
+            const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(form.get('due') ?? '').trim());
+            const date = match === null ? null : new Date(Number(match[3]), Number(match[1]) - 1, Number(match[2]));
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (date === null || date.getMonth() !== Number(match[1]) - 1) return send(res, 422, notesPage(own.notes, 422, 'Due must be MM/DD/YYYY', true));
+            if (date < today) return send(res, 422, notesPage(own.notes, 422, 'Due date is in the past', true));
+            due = ` (due ${match[0]})`;
+        }
+        own.notes.unshift(`${title}${due}`);
         return redirect(res, '/notes');
     }
     return send(res, 404, 'not found', 'text/plain');
@@ -260,6 +310,16 @@ const handler = async (req, res) => {
     const user = userOf(req, env);
     if (user === null) return url.pathname.startsWith('/api/') ? send(res, 401, '{}', 'application/json') : redirect(res, '/login');
     if (env.mpa) return notes(req, res, env, url);
+    if (url.pathname === '/api/tickets' && req.method === 'GET' && env.shared) {
+        // Someone else works here too: a look-alike without a run tag and one of another run, and the order changes every time.
+        const own = store(env);
+        for (const title of ['Ticket', `Ticket CAW-${String(1000 + Math.floor(Math.random() * 9000))}`]) {
+            own.tickets.push({ id: own.next, title });
+            own.next += 1;
+        }
+        const shuffled = [...own.tickets].sort(() => Math.random() - 0.5);
+        return send(res, 200, JSON.stringify(shuffled), 'application/json');
+    }
     if (url.pathname === '/api/tickets' && req.method === 'GET') return send(res, 200, JSON.stringify(store(env).tickets), 'application/json');
     if (url.pathname === '/api/search' && req.method === 'POST' && env.flaky) {
         // reset_peer: the connection drops without an answer.
@@ -293,6 +353,10 @@ const handler = async (req, res) => {
         return send(res, 201, JSON.stringify(ticket), 'application/json');
     }
     if (url.pathname === '/') return send(res, 200, appPage(user, env));
+    if (url.pathname === '/help' || url.pathname === '/report') {
+        const title = url.pathname === '/help' ? 'Help' : 'Report';
+        return send(res, 200, `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body><h1>${title}</h1></body></html>`);
+    }
     return send(res, 404, 'not found', 'text/plain');
 };
 

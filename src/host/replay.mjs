@@ -14,6 +14,7 @@ import { redactDeep } from './secrets.mjs';
 import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
+import { dialogFindings, recordedDialog } from './dialogs.mjs';
 import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
 import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
@@ -24,7 +25,9 @@ import { brokenChain, brokenChainAt, staleSteps, stepHash, withExpectations } fr
 const HINT_TIMEOUT_MS = 5000;
 const CHECK_POLL_MS = 250;
 const DEFAULT_RETRY_WAIT_MS = 10_000;
-const TARGETED = new Set(['click', 'dblclick', 'fill', 'type', 'upload', 'download']);
+const TARGETED = new Set(['click', 'dblclick', 'fill', 'type', 'upload', 'download', 'hover', 'dragTo']);
+/** Actions that can open a native dialog; the decision is recorded on them (Q11). */
+const OPENS_DIALOG = new Set(['click', 'dblclick', 'fill', 'type', 'upload', 'download', 'press', 'goto', 'reload']);
 // How long a repeated click may wait for its target before a dialog on top makes it skip.
 const REPEAT_CLICK_MS = 1500;
 // How long an optional click (e.g. a cookie banner) waits for its target; if it does not appear, the click is dropped.
@@ -98,10 +101,30 @@ export const swapToken = (step, value, placeholder) => {
     const plain = tokenPattern(value);
     const escaped = tokenPattern(escapeRegex(value));
     const swap = (text, pattern = plain) => (typeof text === 'string' ? text.replace(pattern, () => placeholder) : text);
+    // A short value (an id like 7) also stands for unrelated numbers: in code only inside string literals, in a target only an
+    // argument that is the value itself (OPEN-7).
+    const short = value.length < SHORT_VALUE;
     const next = { ...step };
-    for (const key of TOKEN_FIELDS) if (key in next) next[key] = swap(next[key]);
-    if (typeof next.target === 'string') next.target = mapTarget(next.target, (text, kind) => swap(text, kind === 'regex' ? escaped : plain));
+    for (const key of TOKEN_FIELDS) {
+        if (key in next) next[key] = short && key === 'code' ? swapInLiterals(next[key], plain, placeholder) : swap(next[key]);
+    }
+    if (typeof next.dialog?.value === 'string') next.dialog = { ...next.dialog, value: swap(next.dialog.value) };
+    if (typeof next.target === 'string') next.target = mapTarget(next.target, (text, kind) => (short ? swapWhole(text, value, placeholder, kind) : swap(text, kind === 'regex' ? escaped : plain)));
     return next;
+};
+
+
+/** Values shorter than this are replaced only where they cannot be unrelated text (swapToken). */
+const SHORT_VALUE = 4;
+/** The pattern applied only inside the string literals of code: 'x', "x", `x`. */
+const swapInLiterals = (code, pattern, placeholder) => (typeof code === 'string'
+    ? code.replace(/(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/g, (_literal, quote, body) => `${quote}${body.replace(pattern, () => placeholder)}${quote}`)
+    : code);
+/** A target argument that is the value itself (a cell named "7"), or a regular expression of only it (/^7$/). */
+const swapWhole = (text, value, placeholder, kind) => {
+    if (kind !== 'regex') return text === value ? placeholder : text;
+    const match = /^(\^?)(.*?)(\$?)$/.exec(text);
+    return match !== null && match[2] === escapeRegex(value) ? `${match[1]}${placeholder}${match[3]}` : text;
 };
 
 const ANY_PLACEHOLDER = /\{\{[A-Za-z][A-Za-z0-9]*(?:[+-]\d{1,3})?\}\}/g;
@@ -160,11 +183,15 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
     // Remembered values first and only as whole tokens: if one contains the run tag, e.g. "Bestellung CAW-1", it would be lost
     // otherwise. Then the run tag, unique and everywhere. Then dates close to today: they become relative, otherwise the test
     // would fail the next day.
-    const add = (step) => {
+    // The decision for a dialog the current command opened: it belongs on the action that is recorded for it.
+    let openedDialog;
+    const add = (given) => {
+        const step = openedDialog === undefined ? given : { ...given, dialog: openedDialog };
+        openedDialog = undefined;
         const named = [...placeholders].sort(([a], [b]) => b.length - a.length).reduce((current, [value, placeholder]) => swapToken(current, value, placeholder), step);
         const { target, ...rest } = named;
         const today = now();
-        const marked = markDates(runTag === undefined ? rest : tagRun(rest, runTag), today);
+        const marked = markDates(runTag === undefined ? rest : tagRun(rest, runTag), today, session.browser?.locale);
         if (target === undefined) {
             keep(marked);
             return;
@@ -173,7 +200,7 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
         // In a regular expression the run tag as written there, escaped; dates there stay as they are.
         const markedTarget = mapTarget(target, (text, kind) => {
             if (kind === 'regex') return runTag === undefined ? text : swapText(swapText(text, escapeRegex(runTag), RUN_TAG_PLACEHOLDER), escapeRegex(runTag.toLowerCase()), RUN_TAG_LOWER_PLACEHOLDER);
-            return markDates(runTag === undefined ? text : tagRun(text, runTag), today);
+            return markDates(runTag === undefined ? text : tagRun(text, runTag), today, session.browser?.locale);
         });
         keep({ action: marked.action, target: markedTarget, ...marked });
     };
@@ -259,15 +286,38 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                     await element?.dispose().catch(() => {});
                 }
             }
+            if (command?.action === 'dragTo' && typeof command.to === 'string') {
+                let to = null;
+                try {
+                    to = locatorFor(session.page(), command.to);
+                } catch {
+                    to = null;
+                }
+                hint = { ...(hint ?? {}), to: to === null ? null : await recordTarget(to, framework) };
+            }
             const path = currentPath();
+            const acting = OPENS_DIALOG.has(command?.action);
+            if (acting) session.dialogs?.begin();
             let value;
+            let dialogs = [];
             try {
                 value = await handler(command);
             } catch (error) {
                 if (command?.action === 'goto' && error.code === 'host-blocked') add({ action: 'goto', url: command.url, denied: true });
                 throw error;
+            } finally {
+                if (acting) dialogs = session.dialogs?.end() ?? [];
             }
+            openedDialog = recordedDialog(dialogs);
             switch (command.action) {
+                case 'hover':
+                    if (target === null) problems.push(t('session.replay.unstableTarget', { action: command.action, target: command.target }));
+                    else add({ action: 'hover', target, ...(hint ?? {}), ...path });
+                    break;
+                case 'dragTo':
+                    if (target === null || hint?.to === null) problems.push(t('session.replay.unstableTarget', { action: command.action, target: target === null ? command.target : command.to }));
+                    else add({ action: 'dragTo', target, ...hint, ...path });
+                    break;
                 case 'click':
                 case 'dblclick':
                 case 'fill':
@@ -298,7 +348,11 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                     break;
                 default:
             }
-            return value;
+            openedDialog = undefined;
+            // Claude learns what happened to a dialog its action opened: answered as armed, or dismissed because nothing was armed.
+            if (dialogs.length === 0) return value;
+            const [first] = dialogs;
+            return { result: value, dialog: { type: first.type, message: first.message, decision: first.decided === 'dismissed' ? 'dismissed' : first.accept ? 'accepted' : 'dismissed' } };
         },
     };
 };
@@ -622,6 +676,8 @@ export const stepLabel = (step) => {
         case 'type': return `${step.action} ${locatorLabel(step.target)}`;
         case 'upload': return `upload ${locatorLabel(step.target)} ${step.files.join(', ')}`;
         case 'download': return `download ${locatorLabel(step.target)} /${step.file}/`;
+        case 'hover': return `hover ${locatorLabel(step.target)}`;
+        case 'dragTo': return `drag ${locatorLabel(step.target)} to ${locatorLabel(step.to)}`;
         case 'press': return `press ${step.key}`;
         case 'goto': return `goto ${step.url}`;
         case 'screenshot': return `screenshot ${step.name}`;
@@ -629,6 +685,14 @@ export const stepLabel = (step) => {
         case 'remember': return `remember ${step.name}`;
         default: return step.action;
     }
+};
+
+/** A dialog finding of replay (dialogFindings) as a warning of the run. */
+const dialogWarning = (finding, action) => {
+    const shown = (dialog) => t('session.dialog.shown', { type: dialog.type, message: String(dialog.message ?? '').slice(0, 120) });
+    if (finding.type === 'dialog-missing') return { type: 'dialog-missing', text: t('session.dialog.missing', { action, type: finding.expected.type }) };
+    if (finding.type === 'dialog-type') return { type: 'dialog-type', text: t('session.dialog.otherType', { action, expected: finding.expected.type, dialog: shown(finding.dialog) }) };
+    return { type: 'dialog-unexpected', text: t('session.dialog.unexpected', { action, dialog: shown(finding.dialog) }) };
 };
 
 /** How the workbench names an element: its text in quotes, otherwise its kind, e.g. button [2]. */
@@ -651,6 +715,8 @@ export const stepPoint = (step, expects = new Map()) => {
         case 'type': return { kind: t('session.point.type'), label: shownTarget(step.target) };
         case 'upload': return { kind: t('session.point.upload'), label: shownTarget(step.target) };
         case 'download': return { kind: t('session.point.download'), label: shownTarget(step.target) };
+        case 'hover': return { kind: t('session.point.hover'), label: shownTarget(step.target) };
+        case 'dragTo': return { kind: t('session.point.drag'), label: t('session.point.dragTo', { from: shownTarget(step.target), to: shownTarget(step.to) }) };
         case 'press': return { kind: t('session.point.press'), label: step.key };
         case 'goto': return { kind: t('session.point.goto'), label: step.url };
         case 'reload': return { kind: t('session.point.reload'), label: t('session.point.page') };
@@ -851,6 +917,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 else if (step.action === 'fill') await fillField(element, step.value, { timeout: remaining });
                 else if (step.action === 'upload') await upload(element, step, files, remaining);
                 else if (step.action === 'download') await download(element, step, remaining);
+                else if (step.action === 'hover') await element.hover({ timeout: remaining });
+                // An element handle cannot drag: the locator (unique, as just checked) drags onto the target of to.
+                else if (step.action === 'dragTo') await locatorFor(session.page(), step.target).dragTo(locatorFor(session.page(), step.to), { timeout: remaining });
                 else await element.type(step.value, { timeout: remaining });
                 return;
             } catch (error) {
@@ -925,6 +994,17 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     };
 
     const run = async (step, timeoutMs, previous) => {
+        // The recorded decision for a dialog this action opens; any other dialog is dismissed and reported.
+        // Dialogs between actions (e.g. an alert while signing in or waiting) nobody answered: reported with this action.
+        for (const finding of dialogFindings(undefined, session.dialogs?.begin() ?? [])) session.warn?.(dialogWarning(finding, stepLabel(step)));
+        session.dialogs?.arm(step.dialog);
+        try {
+            return await runAction(step, timeoutMs, previous);
+        } finally {
+            for (const finding of dialogFindings(step.dialog, session.dialogs?.end() ?? [])) session.warn?.(dialogWarning(finding, stepLabel(step)));
+        }
+    };
+    const runAction = async (step, timeoutMs, previous) => {
         if (TARGETED.has(step.action)) {
             const outcome = await act(step, timeoutMs, previous);
             if (outcome !== undefined) return outcome;
@@ -937,6 +1017,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         else if (step.action === 'wait-ready') await session.waitReady({ timeout: timeoutMs, ...(step.for === undefined ? {} : { store: step.for }), ...(step.minCount === undefined ? {} : { minCount: step.minCount }) }).catch(() => {});
         else await handler(step);
         if (CHANGES_PAGE.has(step.action) && !step.denied) await settle(timeoutMs);
+        return undefined;
     };
 
     // The entry of a step (replayToEntry) belongs to that step, although its check does not follow.
@@ -1077,16 +1158,16 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const today = zonedNow(session.browser?.timezone);
         const { target, ...rest } = recorded;
         const tagged = runTag === undefined ? rest : fillRun(rest, runTag);
-        const filled = fillDates([...remembered].reduce((current, [placeholder, value]) => swapText(current, placeholder, value), tagged), today);
+        const filled = fillDates([...remembered].reduce((current, [placeholder, value]) => swapText(current, placeholder, value), tagged), today, session.browser?.locale);
         if (typeof target !== 'string') return filled;
         const lookup = (placeholder) => {
             if (runTag !== undefined && placeholder === RUN_TAG_PLACEHOLDER) return runTag;
             if (runTag !== undefined && placeholder === RUN_TAG_LOWER_PLACEHOLDER) return runTag.toLowerCase();
             if (remembered.has(placeholder)) return remembered.get(placeholder);
-            const date = fillDates(placeholder, today);
+            const date = fillDates(placeholder, today, session.browser?.locale);
             return date === placeholder ? undefined : date;
         };
-        return { action: filled.action, target: fillTarget(target, lookup), ...filled };
+        return { action: filled.action, target: fillTarget(target, lookup), ...filled, ...(typeof filled.to === 'string' ? { to: fillTarget(filled.to, lookup) } : {}) };
     };
 
     let index = 0;

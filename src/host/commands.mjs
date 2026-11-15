@@ -805,6 +805,23 @@ const draftTest = (root, config, { id, target, role: chosenRole, readOnly = fals
     };
 };
 
+const DIALOG_OK = () => ({ id: 'ok', label: t('cli.dialogOk'), primary: true });
+const DIALOG_CANCEL = () => ({ id: 'cancel', label: t('cli.dialogCancel') });
+/**
+ * A native dialog of the app during a demonstration: the chat shows its text with OK and Cancel (an alert only OK); for a prompt
+ * the human may type the value. @returns { accept, value? }, or null when the chat is gone (the dialog is then dismissed)
+ */
+const askDialog = async (chat, { type, message, defaultValue }) => {
+    if (type === 'prompt') {
+        const answer = await chat.choose('discussing', t('cli.dialogPrompt', { message, value: defaultValue ?? '' }), [DIALOG_OK(), DIALOG_CANCEL()]);
+        if (answer === null) return null;
+        if (typeof answer === 'object') return { accept: true, value: answer.message };
+        return answer === 'ok' ? { accept: true, value: defaultValue ?? '' } : { accept: false };
+    }
+    const answer = await chat.choose('deciding', t(type === 'beforeunload' ? 'cli.dialogLeave' : 'cli.dialogAsks', { message }), type === 'alert' ? [DIALOG_OK()] : [DIALOG_OK(), DIALOG_CANCEL()]);
+    return answer === null ? null : { accept: answer === 'ok' };
+};
+
 /**
  * The human picks how to start and, if needed, demonstrates in their own browser. The window closes afterwards so Claude
  * starts fresh.
@@ -846,7 +863,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
         ui.note(t('cli.demoNote'));
         for (;;) {
             chat.enter('showing');
-            const items = await demonstrate({ session, operator: chat.operator, ui, dir, filesDir: join(root, PROJECT_DIR), onItem: (item) => { const line = feedLabel(item); if (line !== null) chat.progress(t('cli.demoRecorded', { line })); }, onFailure: (item) => chat.notice(t('cli.demoFailure', { label: itemLabel(item) })) });
+            const items = await demonstrate({ session, operator: chat.operator, ui, dir, filesDir: join(root, PROJECT_DIR), onDialog: (info) => askDialog(chat, info), onItem: (item) => { const line = feedLabel(item); if (line !== null) chat.progress(t('cli.demoRecorded', { line })); }, onFailure: (item) => chat.notice(t('cli.demoFailure', { label: itemLabel(item) })) });
             if (!chat.available() || windowClosed) throw aborted();
             if (items.length > 0) {
                 writeFileSync(join(dir, 'demonstration.json'), JSON.stringify(items, null, 2));

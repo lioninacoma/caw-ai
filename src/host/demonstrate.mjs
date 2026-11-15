@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
+import { dialogMessage } from './dialogs.mjs';
 import { isWorkbenchDocument } from './app-view.mjs';
 import { redactDeep } from './secrets.mjs';
 import { elementHint, frameworkOf } from './framework/index.mjs';
@@ -394,6 +395,9 @@ export const feedLabel = (item) => {
     return `${verb} ${item.target === null ? unstable(item) : locatorLabel(item.target)}`;
 };
 
+/** Demonstrated actions that can open a native dialog. */
+const OPENS_DIALOG = new Set(['click', 'dblclick', 'fill', 'type', 'upload', 'download', 'press', 'reloaded']);
+
 /**
  * Records until the human is done: a line with { checkpoint } is a checkpoint at this point, { note } is context,
  * an empty line ends it, and so does closing the window.
@@ -401,11 +405,32 @@ export const feedLabel = (item) => {
  * @param onItem   receives every recorded item, e.g. for the chat
  * @param dir      folder for the checkpoint screenshots
  * @param filesDir the project's caw folder: a file chosen for upload is recorded only if it comes from its fixtures folder
+ * @param onDialog (info) => Promise<{ accept, value? } | null>: the human's answer to a native dialog of the app (chat)
  * @returns the steps and checkpoints in order
  */
-export const demonstrate = async ({ session, operator, ui, dir, filesDir, now = Date.now, onFailure, onItem, pollMs = FAILURE_POLL_MS }) => {
+export const demonstrate = async ({ session, operator, ui, dir, filesDir, now = Date.now, onFailure, onItem, onDialog, pollMs = FAILURE_POLL_MS }) => {
     const state = await captureOf(session);
     const items = [];
+    let pendingDialog = null;
+    const placeDialog = (item) => {
+        if (pendingDialog === null || !OPENS_DIALOG.has(item?.action) || item.dialog !== undefined) return;
+        item.dialog = pendingDialog;
+        pendingDialog = null;
+    };
+    // A native dialog waits for the human's answer in the chat; the answer goes on the action that opened it (Q11).
+    if (onDialog !== undefined) {
+        session.dialogs?.asking(async (info) => {
+            const answer = await onDialog(info);
+            if (answer !== null) {
+                const accept = info.type === 'alert' ? true : answer.accept === true;
+                const value = info.type === 'prompt' && accept ? answer.value ?? info.defaultValue : undefined;
+                // The page is blocked while its dialog is open, so the action that opened it is usually recorded only afterwards:
+                // the decision waits for it. At the end it goes on the last action instead.
+                pendingDialog = { type: info.type, accept, ...(value === undefined ? {} : { value }), ...(info.message === '' ? {} : { message: dialogMessage(info.message) }) };
+            }
+            return answer;
+        });
+    }
     // Application failures (console, script, network) are detected during the demonstration: they appear in place in the
     // recording, the human sees them right away, and failures and network log also land as evidence in the demonstration folder.
     const failuresAt = session.failures?.().length ?? 0;
@@ -424,6 +449,7 @@ export const demonstrate = async ({ session, operator, ui, dir, filesDir, now = 
     const failureTimer = setInterval(watchFailures, pollMs);
     let lastAction = now();
     const push = (item) => {
+        placeDialog(item);
         items.push(item);
         ui.step({ number: items.length, total: items.length, label: itemLabel(item), elapsed: 0 });
         onItem?.(item);
@@ -515,6 +541,7 @@ export const demonstrate = async ({ session, operator, ui, dir, filesDir, now = 
         // Events whose frame is still being resolved belong to the recording; only detach afterwards.
         await state.queue;
         watchFailures();
+        if (pendingDialog !== null) placeDialog(items.findLast((item) => OPENS_DIALOG.has(item.action)));
         return items;
     } finally {
         clearInterval(failureTimer);
@@ -530,6 +557,7 @@ export const demonstrate = async ({ session, operator, ui, dir, filesDir, now = 
         // Otherwise a pending input read would continue and get in the way of the next one.
         input.abort();
         session.workbench?.onRefresh?.(null);
+        session.dialogs?.asking(null);
         process.removeListener('SIGINT', interrupt);
         state.listener = null;
         state.navigated = null;
