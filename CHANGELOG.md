@@ -26,6 +26,7 @@ First release.
 - Actions `hover` and `dragTo`.
 - Dates as `{{date±n}}` in the browser's locale and `{{isoDate±n}}`; `remember` takes values of any length, short ones replaced only where they cannot be other text.
 - The workbench shows the app at the recorded viewport, scaled down to fit.
+- The step list has a heading "Run" ("Durchführung") above the test's steps, between preparation and wrap-up.
 - Themes as packages: built-in `nacht`, `bernstein`, `phosphor`, `kachel` and `cockpit`, own themes next to `prefs.json`, `caw theme`.
 - The command is `caw` (package `caw-ai`, `npx caw …` once installed). Claude's browser commands live under `caw agent` and are not in the human help. Durations carry their unit (`--step-timeout 30s`, `--claude-timeout 60m`); `--env` picks the environment, `--explain` lets Claude explain failures unasked, `--max-actions` limits Claude. Old command and flag names are refused with their new name.
 - User interface, CLI, messages and reports in English and German.

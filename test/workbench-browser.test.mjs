@@ -334,6 +334,20 @@ test('workbench: the pill top right shows only the four chat header labels, with
     }
 });
 
+test('workbench: the steps get the heading "Durchführung" between preparation and wrap-up; it counts as no step', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const headings = () => bench.page.$$eval('#steps>li', (list) => list.map((li) => `${li.dataset.kind}:${li.dataset.id ?? li.textContent.replace(/[^A-ZÄÖÜ]/g, '')}`));
+    await bench.steps([{ id: 'prep', name: 'Vorbereitung', kind: 'phase', points: [{ id: 'chrome', label: 'Chrome starten' }] }]);
+    assert.deepEqual(await headings(), ['phase:prep'], 'no heading without steps');
+    await bench.steps([{ id: 'prep', name: 'Vorbereitung', kind: 'phase' }, { id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }, { id: 'end', name: 'Abschluss', kind: 'phase' }]);
+    assert.deepEqual(await headings(), ['phase:prep', 'section:DURCHFÜHRUNG', 'step:S1', 'step:S2', 'phase:end']);
+    await bench.step('S1', 'pass');
+    assert.equal(await bench.page.textContent('#tally'), '1/2');
+    await bench.group({ id: 'claude', name: 'Fehler klären', kind: 'phase' });
+    assert.equal((await headings()).filter((entry) => entry.startsWith('section:')).length, 1);
+});
+
 test('workbench: while Claude works the chat input is locked and the application keeps its focus; pausing unlocks it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);

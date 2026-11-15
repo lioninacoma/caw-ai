@@ -38,6 +38,7 @@ export default {
     'workbench.page.pass': 'passed',
     'workbench.page.fail': 'failed',
     'workbench.page.skipped': 'not reached',
+    'workbench.page.runSection': 'Run',
     'workbench.page.decimal': '.',
     'workbench.page.noRequests': 'No app requests yet.',
     'workbench.page.noConsole': 'No errors or warnings.',

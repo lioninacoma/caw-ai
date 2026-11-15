@@ -38,6 +38,7 @@ export default {
     'workbench.page.pass': 'bestanden',
     'workbench.page.fail': 'gescheitert',
     'workbench.page.skipped': 'nicht erreicht',
+    'workbench.page.runSection': 'Durchführung',
     'workbench.page.decimal': ',',
     'workbench.page.noRequests': 'Noch keine Requests der Anwendung.',
     'workbench.page.noConsole': 'Keine Fehler oder Warnungen.',

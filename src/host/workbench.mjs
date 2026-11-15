@@ -160,6 +160,9 @@ grid-template-areas:"steps browser chat"}
 #steps>li[data-kind=phase]>.head>.st{display:none}
 #steps>li[data-kind=phase]>.head .name{font:400 19px/1.2 var(--font-crt);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
 #steps>li[data-kind=phase][data-state=fail]>.head .name{color:var(--fail)}
+/* The heading of the test's steps, between preparation and wrap-up: a section like a phase, but no group of its own. */
+#steps>li[data-kind=section]>.head{display:block;margin-top:10px}
+#steps>li[data-kind=section]>.head .name{font:400 19px/1.2 var(--font-crt);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
 .pts>li{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:6px;align-items:baseline;padding:1px 4px 1px 0;font-size:12.5px;color:var(--muted)}
 #steps>li[data-kind=step]>.pts>li{padding-left:22px}
 .pts .tree{color:var(--faint)}
@@ -325,7 +328,8 @@ const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.spl
 const $=(id)=>document.getElementById(id);
 const state={tab:null,requests:[],console:[]};
 const LABELS={waiting:T['workbench.page.waiting'],running:T['workbench.page.running'],pass:T['workbench.page.pass'],fail:T['workbench.page.fail'],skipped:T['workbench.page.skipped']};
-const items=()=>[...$('steps').children];
+// The groups of the list; the section heading above the steps is no group.
+const items=()=>[...$('steps').children].filter((li)=>li.dataset.kind!=='section');
 // Only the test's steps are counted; preparation, wrap-up and investigate failure are phases.
 const stepItems=()=>items().filter((li)=>li.dataset.kind!=='phase');
 const pointsOf=(li)=>[...li.querySelector(':scope>.pts').children];
@@ -388,7 +392,14 @@ const gauge=(list)=>{const box=$('gauge');if(list.length===0){box.replaceChildre
 // Tree glyphs of the sub-items: the last one ends the branch.
 const trees=()=>{for(const ol of document.querySelectorAll('#steps .pts')){const all=[...ol.children];all.forEach((li,i)=>{li.querySelector(':scope>.tree').textContent=i===all.length-1?str(TH.tree?.end,'└'):str(TH.tree?.mid,'├');});}};
 // Header, progress and counter follow the steps: what runs, what failed, how many passed.
+// One heading "── RUN ──" right before the first step, none without steps.
+const section=()=>{const list=$('steps'),first=items().find((li)=>li.dataset.kind==='step');let sec=[...list.children].find((li)=>li.dataset.kind==='section');
+  if(!first){sec?.remove();return;}
+  if(!sec){sec=document.createElement('li');sec.dataset.kind='section';sec.setAttribute('role','presentation');const head=document.createElement('div');head.className='head';const name=document.createElement('span');name.className='name';head.append(name);sec.append(head);}
+  sec.querySelector('.name').textContent=ruleText(T['workbench.page.runSection'].toUpperCase());
+  if(sec.nextElementSibling!==first)list.insertBefore(sec,first);};
 const summarize=()=>{
+  section();
   const list=stepItems(),n=list.length,all=items();
   $('stepsHint').hidden=all.length>0;$('stepsHint').textContent=chatState==='showing'?T['workbench.page.stepsHintShowing']:stepsHintText;
   const count=(name)=>list.filter((li)=>li.dataset.state===name).length;
@@ -484,7 +495,7 @@ const makeGroup=(g)=>{const li=document.createElement('li');const phase=g.kind==
   const ms=document.createElement('span');ms.className='ms';head.append(text,ms);
   const pts=document.createElement('ol');pts.className='pts';li.append(head,pts);pts.append(...(g.points??[]).map(makePoint));paint(li);if(phase)phaseName(li);return li;};
 // A different theme: all glyphs anew, colours as variables, raven, legends, chat.
-const repaint=()=>{for(const li of document.querySelectorAll('#steps li'))paint(li);for(const li of items())if(li.dataset.kind==='phase')phaseName(li);
+const repaint=()=>{for(const li of document.querySelectorAll('#steps li:not([data-kind=section])'))paint(li);for(const li of items())if(li.dataset.kind==='phase')phaseName(li);
   for(const lg of document.querySelectorAll('.lg[data-title]'))lg.textContent=legendText(lg.dataset.title);
   for(const live of document.querySelectorAll('.pts .live'))live.textContent=liveText(live.dataset.text??'');
   $('urlMark').textContent=str(TH.bullets?.ok,'■');$('stateSpin').replaceChildren(cawGlyph(frames()[0]));spin();summarize();};
