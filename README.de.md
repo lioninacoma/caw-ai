@@ -6,64 +6,79 @@
 [![npm](https://img.shields.io/npm/v/caw-ai)](https://www.npmjs.com/package/caw-ai)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> `caw-ai` · *Context-Aware Web Testing*
+> `caw` · *Context-Aware Web Testing*
 >
-> KI-gestütztes E2E-Testen, Entwickeln und Debuggen für Webanwendungen.
->
-> Du zeigst oder beschreibst einen Ablauf, Claude geht ihn einmal in deiner echten App mit seinem Kontext durch (Nutzer, Rolle, Zustand), und danach läuft er ohne KI: schnell, reproduzierbar, ohne Token, und Claude kommt nur in den Chat zurück, wenn ein Schritt bricht.
+> End-to-End-Regressionstests für deine eigene Web-App, in normaler Sprache geschrieben, einmal mit Claude aufgenommen, ohne KI abgespielt.
 
-- **Capture:** Du führst einen echten Ablauf in deiner App vor, oder Claude geht einen Plan durch, den du beschreibst.
-- **Understand:** Die KI deutet jede Aktion in ihrem Kontext: angemeldeter Nutzer, Rolle, Zustand der Anwendung und Ziel, nicht nur eine Klickfolge.
-- **Replay:** Wiederverwendbare Aufzeichnungen, abgespielt mit Playwright, ohne KI: deterministisch und ohne Token, lokal wie in der CI.
-- **Debug:** Fehler im Chat neben der laufenden App untersuchen und beheben.
+Du beschreibst Schritt für Schritt, was ein Nutzer tut. Du führst es in deiner App vor, oder Claude geht es für dich durch.
+Ab dann spielt der Test mit Playwright ab, lokal und in CI: deterministisch, schnell, ohne Tokens. Bricht ein Schritt, sagt dir
+caw, ob Test, App oder Umgebung schuld ist, und Claude repariert den Schritt in einem Chat neben der laufenden App.
 
-<img src="docs/media/demo.webp" width="100%" alt="caw-ai nimmt einen Test des Errand-Beispiels auf: Claude legt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw-ai die Aufnahme ohne KI ab und der Plan wird übernommen">
+Dieselben Tests bringen dich angemeldet in jeden Zustand deiner App, um dort zu entwickeln oder einen Fehler nachzustellen.
 
-Jeder Schritt beschreibt eine Aktion und das erwartete Ergebnis:
+<img src="docs/media/demo.webp" width="100%" alt="caw nimmt einen Test des Errand-Beispiels auf: Claude schlägt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw die Aufnahme ohne KI ab und der Plan wird übernommen">
 
 ```yaml
 # caw/tests/first-errand.yaml
+id: first-errand
+role: tester
+writes: true
 steps:
   - id: S1
-    name: Todo anlegen
-    do: Lege das Todo "Feed the raven {{runTag}}" mit dem Tag "#home" an.
-    expect: Eine Bestätigung nennt die Nummer des neuen Todos, und es steht oben in der Liste.
+    name: Aufgabe anlegen
+    do: Lege die Aufgabe "Raben füttern {{runTag}}" mit dem Tag "#home" an.
+    expect: Eine Bestätigung zeigt die Nummer der neuen Aufgabe, und sie steht oben in der Liste.
 ```
-
-Einmal aufnehmen, dann abspielen:
 
 ```bash
-npx caw record first-errand --env local   # Claude führt die Schritte in Chrome aus, du gibst das Ergebnis frei
-npx caw run first-errand --env local      # spielt die Aufzeichnung ab, ohne Claude
+npx caw record first-errand --env local   # Claude führt die Schritte in Chrome aus, du übernimmst das Ergebnis
+npx caw run first-errand --env local      # spielt die Aufnahme ab, ohne Claude
 ```
 
-## Funktionsweise
+## So funktioniert es
 
-- Tests sind YAML-Dateien mit Schritten in normaler Sprache. Beim Aufnehmen führt Claude jeden Schritt in Chrome aus und speichert die Ziele über Rolle, Beschriftung und Text, nicht als CSS-Selektoren.
-- Das Abspielen nutzt nur die Aufzeichnung. Es ist deterministisch und verbraucht keine Token, lokal wie in der CI.
-- Schlägt ein Schritt fehl, zeigt der Chat neben der App die Ursache. „Schritt beheben“ dort repariert nur diesen Schritt; `record <test>@S3` nimmt nach einer gewollten Änderung ab S3 neu auf.
-- `open` gibt dir das Fenster, angemeldet, an jedem Schritt eines Tests: F1 öffnet jeden Test an jedem Schritt in einer frischen Sitzung, und Claude im Chat kann die Seite bedienen, ein eingefügtes Bugticket nachstellen und die Korrektur im Code vorschlagen.
-- Fehler werden als Test, Anwendung oder Umgebung eingeordnet, anhand von Requests, Konsolenausgaben und den Änderungen an der Seite bei der Aufnahme.
-- Claude steuert den Browser nur über einen festen Satz Befehle und erreicht nur die Hosts aus deiner Config. Testkonten gibst du im Anmeldefenster ein, sie gehen direkt nach `caw/.env`; Claude sieht sie nie. Pläne, die Daten schreiben, gibst du frei, und du entscheidest, ob eine Aufzeichnung übernommen wird.
-- Unterstützt: reine Web-Apps, React, Vue, Angular und ExtJS.
+- **Tests** sind YAML-Dateien mit Schritten in normaler Sprache. Eine Aufnahme speichert jedes Ziel als Playwright-Locator
+  (Rolle, Name, Label, Text), neben dem Plan in `caw/recordings/`.
+- **Aufnehmen:** Du führst im Fenster vor, oder Claude folgt dem Plan. Du gibst Pläne frei, die Daten schreiben, und
+  entscheidest, ob eine Aufnahme übernommen wird. `caw record <test>@S3` nimmt nach einer gewollten Änderung ab S3 neu auf.
+- **Abspielen** nutzt nur die Aufnahme: keine KI, keine Tokens, lokal und in CI. Ein Test läuft auf jeder Umgebung, zu der er
+  passt (lokaler Dev-Server, Staging, ein CI-Stack, den caw selbst startet), schreibende Tests nur dort, wo Schreiben erlaubt
+  ist, und auf Produktion schreibt er nie.
+- **Einordnung:** Ein Fehlschlag wird als Test, App oder Umgebung eingeordnet, anhand der Requests, Konsolenausgaben und
+  Seitenänderungen aus der Aufnahme. Im Chat repariert „Schritt beheben“ nur diesen Schritt.
+- **Zustände erreichen:** `caw open <test>@S3` meldet sich mit der Rolle des Tests an, spielt bis S3 ab und übergibt dir das
+  Fenster. Claude im Chat kann die Seite bedienen, ein eingefügtes Fehlerticket nachstellen und die Korrektur in deinem Code
+  vorschlagen.
+- **Anmeldung:** Anmeldeformulare, Einmalcodes, Schritte bei einem Identitätsanbieter (etwa Keycloak), HTTP Basic,
+  gespeicherte Sitzungen. Testkonten landen direkt in `caw/.env`; Claude sieht sie nie.
+- **Ausstieg zu Playwright:** `caw export <test>` schreibt einen Playwright-Test, der ohne caw läuft.
+
+Läuft mit einfachen Web-Apps, React, Vue, Angular, Next.js, Nuxt und serverseitig gerenderten Mehrseiten-Apps.
+Erweiterungen ergänzen [ExtJS](docs/extensions/extjs.de.md) und [lokalen Code auf ausgelieferten Portalen](docs/extensions/overlay.de.md).
 
 ## Voraussetzungen
 
-- Node 22.4+ und Google Chrome unter Windows oder Linux (macOS ungetestet)
-- [Claude Code](https://claude.com/claude-code), nur zum Aufnehmen und Reparieren
-- Docker, nur wenn Claude im Container laufen soll (`--agent docker`)
+- Node 22.4+ und Google Chrome (oder ein anderer Chromium-Browser) unter Windows oder Linux (macOS ungetestet)
+- [Claude Code](https://claude.com/claude-code), nur zum Aufnehmen und Beheben
+- Docker, nur wenn Claude in einem Container laufen soll (`--agent docker`)
 
-### Zugang zu Claude und Kosten
+### Claude-Zugang und Kosten
 
-caw-ai ruft Claude nicht selbst auf. Es startet dein eigenes Claude Code (`--agent local`), arbeitet als Werkzeug in deiner Claude-Code-Session (`--agent session`) oder reicht deinen eigenen `ANTHROPIC_API_KEY` zur Laufzeit in den Container (`--agent docker`, nur mit API-Schlüssel); caw-ai liest und speichert ihn nie. Welche Bedingungen gelten, hängt von deinem Konto ab: Pro- und Max-Pläne sind für die persönliche Nutzung gedacht; für Firmenprojekte und CI einen Team- oder Enterprise-Plan oder einen API-Schlüssel aus der Claude Console nutzen. Die Einhaltung der Anthropic-Bedingungen liegt bei dir.
+caw ruft Claude nicht selbst auf. Es startet dein eigenes Claude Code (`--agent local`), arbeitet als Werkzeug in deiner
+Claude-Code-Sitzung (`--agent session`) oder reicht zur Laufzeit deinen eigenen `ANTHROPIC_API_KEY` in den Container
+(`--agent docker`, nur API-Key); es liest oder speichert ihn nie. Welche Bedingungen gelten, hängt von deinem Konto ab: Pro- und
+Max-Pläne sind für die private Nutzung; für Firmenprojekte und CI nimm einen Team- oder Enterprise-Plan oder einen API-Key aus
+der Claude Console. Die Einhaltung der Bedingungen von Anthropic liegt bei dir.
 
-Claude läuft nur beim Aufnehmen, Reparieren oder wenn du im Chat fragst; Wiederholungen brauchen keine Token. Abgerechnet wird über dein Konto. Begrenzen kannst du das mit Modell und Budget pro Claude-Lauf:
+Claude läuft nur beim Aufnehmen, Beheben oder wenn du im Chat fragst; Wiedergaben verbrauchen keine Tokens. Die Nutzung wird
+über dein Konto abgerechnet. Zum Begrenzen setzt du ein Modell und ein Budget je Claude-Lauf:
 
 ```json
 "agent": { "model": "haiku", "maxBudgetUsd": 0.5 }
 ```
 
-oder für einen Lauf `CAW_CLAUDE_MODEL=haiku CAW_CLAUDE_BUDGET=0.5`. caw-ai gibt sie als `--model` und `--max-budget-usd` an Claude Code weiter.
+oder für einen Lauf `CAW_CLAUDE_MODEL=haiku CAW_CLAUDE_BUDGET=0.5`. caw gibt sie als `--model` und `--max-budget-usd` an
+Claude Code weiter.
 
 ## Installation
 
@@ -71,28 +86,26 @@ oder für einen Lauf `CAW_CLAUDE_MODEL=haiku CAW_CLAUDE_BUDGET=0.5`. caw-ai gibt
 npm i -D caw-ai
 ```
 
-## Verwendung
+## Nutzung
 
-App starten, dann:
+Starte deine App, dann:
 
 ```bash
-npx caw init --url http://localhost:5173   # öffnet die App; mit Testkonto anmelden, „Fertig“, als Rolle speichern
-npx caw doctor                             # listet auf, was noch fehlt
+npx caw init --url http://localhost:5173   # schreibt caw.config.json; mit --explore-only sieht es sich die App an und du meldest dich einmal an
+npx caw doctor                             # nennt, was noch fehlt
 ```
 
-Einen Test in `caw/tests/smoke.yaml` beschreiben:
+Beschreibe einen Test in `caw/tests/smoke.yaml`:
 
 ```yaml
 id: smoke
-app: web
 role: tester
-targets: [local]
-mutates: false
+writes: false
 steps:
   - id: S1
     name: Dashboard öffnen
     do: Öffne "Dashboard" in der Navigation.
-    expect: Das Dashboard ist sichtbar.
+    expect: Das Dashboard ist zu sehen.
 ```
 
 Einmal aufnehmen, ab dann abspielen:
@@ -102,37 +115,42 @@ npx caw record smoke --env local
 npx caw run smoke --env local
 ```
 
-[`examples/errand`](examples/errand) ist eine kleine Todo-App mit Anmeldung und aufgenommenem Test, den du sofort abspielen kannst; siehe [`examples`](examples).
+[`examples/errand`](examples/errand) ist eine kleine Aufgaben-App mit Anmeldung und einem aufgenommenen Test, den du sofort
+abspielen kannst; siehe [`examples`](examples).
 
 ### Häufige Befehle
 
 | Aufgabe | Befehl |
 |---|---|
-| Einen Test laufen lassen | `caw run <test> --env local` |
-| Wie in der CI laufen lassen | `caw run <test> --env local --headless` |
+| Einen Test ausführen | `caw run <test> --env local` |
+| Wie in CI ausführen | `caw run <test> --env staging --headless` |
+| Alle Tests ausführen, die zu einer Umgebung passen | `caw run --all --env staging` |
 | Einen neuen Test aufnehmen | `caw record <test> --env local` |
 | Ab einem geänderten Schritt bis zum Ende neu aufnehmen | `caw record <test>@S3 --env local` |
 | Die App an den Anfang eines Schritts bringen und dort weiterentwickeln | `caw open <test>@S3 --env local` |
 | Die App angemeldet öffnen, ohne Test | `caw open --env local` |
-| Lokalen Code in einer ausgelieferten Umgebung testen | `caw run <test> --env dev --overlay` |
-| Fehler sofort von Claude erklären lassen | `caw run <test> --env local --explain` |
+| Claude Fehler sofort erklären lassen | `caw run <test> --env local --explain` |
+| Einen Test nach Playwright exportieren | `caw export <test>` |
 | Config und Tests prüfen | `caw validate` |
-| Theme wählen (ändern mit F7 in der Werkbank) | `caw theme use phosphor` |
 
-Exit-Codes: `0` bestanden, `1` fehlgeschlagen, `2` Fehler der Umgebung, `3` Eingabe abgewiesen, `4` Aufnahme nötig. Alle Befehle und Optionen: [docs/commands.de.md](docs/commands.de.md).
+Exit-Codes: `0` bestanden, `1` gescheitert, `2` Umgebungsfehler, `3` ungültige Eingabe, `4` Aufnahme nötig. Alle Befehle und
+Optionen: [docs/commands.de.md](docs/commands.de.md).
 
-### In der CI
+### In CI
 
 ```yaml
 - run: npx caw validate
-- run: npx caw run smoke --env staging --headless
+- run: npx caw run --all --env staging --headless --report junit=out/caw.xml
 ```
 
-Mit gesetztem `CI` gibt es keinen Chat, und Claude wird nicht gestartet. Lokal aufnehmen und reparieren, Dateien committen, in der CI abspielen. Die Testnutzer bekommt die CI als Umgebungsvariablen (CI-Secrets), mit den Namen aus `roles` in der Config, etwa `CAW_LOGIN_TESTER` und `CAW_PW_TESTER`.
+Mit gesetztem `CI` gibt es keinen Chat, und Claude startet nicht. Lokal aufnehmen, die Dateien einchecken, in CI abspielen. Die
+Testnutzer übergibst du als Secrets, benannt nach der Rolle: `CAW_TESTER_USER`, `CAW_TESTER_PASSWORD` (und `CAW_TESTER_TOTP`
+für Einmalcodes), optional je Umgebung mit Endung, z. B. `CAW_TESTER_USER__STAGING`. Eine Umgebung mit `start`-, `stop`- und
+`reset`-Befehlen startet `--start`, und vor dem ersten schreibenden Test wird sie zurückgesetzt.
 
 ### Aus Claude Code
 
-Melde caw als MCP-Server des Projekts an und sag Claude Code einfach, was du willst:
+Registriere caw als MCP-Server des Projekts und frag dann einfach Claude Code:
 
 ```bash
 claude mcp add caw --scope project -- npx caw-ai mcp
@@ -140,109 +158,127 @@ claude mcp add caw --scope project -- npx caw-ai mcp
 
 ```
 richte caw für dieses Projekt ein
-nimm einen Test fürs Anlegen eines Tickets auf
-bring mich zur Detailseite des Tickets, ich will am Statusfeld arbeiten
+nimm einen Test für das Anlegen eines Tickets auf
+bring mich auf die Ticket-Detailseite, ich will am Statusfeld arbeiten
 ```
 
-Unter Windows (nicht WSL): `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`.
+Unter Windows (nicht WSL): `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`. `caw init` stellt den Eintrag auf die
+installierte Kopie um, sobald caw in `node_modules` liegt.
 
 ## Im Fenster arbeiten
 
-`caw open <test>@S3` spielt einen Test bis zum Einstieg in S3 ab und gibt dir das Fenster, angemeldet; `caw open <test>` spielt vorher den ganzen Test. Von dort aus:
+`caw open <test>@S3` spielt einen Test bis zum Eingang von S3 ab und übergibt dir das Fenster, angemeldet; `caw open <test>`
+spielt vorher den ganzen Test ab.
 
 ### Einen Test an einem Schritt öffnen
 
-F1 („Öffnen…“) listet jeden Test der Umgebung, für jede Rolle. Test und Schritt wählen; caw-ai meldet sich frisch mit dem Konto der Rolle an, spielt die Schritte davor ab und hält am Einstieg in den Schritt: seine Navigation ausgeführt, seine Eingaben offen. Ohne Schritt läuft der ganze Test. Aus dem Terminal: `caw open <test>@S3`.
+F1 („Öffnen…“) listet jeden Test der Umgebung, für jede Rolle. Wähle Test und Schritt; caw meldet sich frisch mit dem Konto
+dieser Rolle an, spielt die Schritte davor ab und hält am Eingang des Schritts: seine Navigation erledigt, seine Eingaben offen.
 
-<img src="docs/media/states.webp" width="100%" alt="Der F1-Dialog zeigt den Test first-errand mit den Schritten S1 bis S4">
+<img src="docs/media/states.webp" width="100%" alt="Der F1-Dialog listet den Test first-errand mit seinen Schritten S1 bis S4">
 
 ### Entwickeln
 
-Ein Element in der App wählen und danach fragen. Claude liest deinen Quellcode und antwortet mit Datei und Zeile. Gegen deinen Dev-Server oder mit `--overlay` dein lokaler Code über einer deployten Umgebung; F5 lädt deine Änderung.
+Wähle ein Element in der App und frag danach. Claude liest deinen Quellcode und antwortet mit Datei und Zeile. Gegen deinen
+Dev-Server lädt F5 deine Änderung.
 
-<img src="docs/media/develop.webp" width="100%" alt="Ein Element ist in der App gewählt; Claude erklärt im Chat mit server.mjs:134, warum „Add todo“ gesperrt ist">
+<img src="docs/media/develop.webp" width="100%" alt="Ein Element in der App ist gewählt; Claude erklärt im Chat, warum &quot;Add todo&quot; gesperrt ist, mit server.mjs:134">
 
-### Bug mit Claude beheben
+### Einen Fehler mit Claude beheben
 
-Ein Bugticket in den Chat einfügen. Claude stellt es im erreichten Zustand nach, nennt die Ursache und schlägt die Korrektur als Änderung an deinem Code vor; „Änderung übernehmen“ schreibt sie.
+Füge ein Fehlerticket in den Chat ein. Claude stellt es im erreichten Zustand nach, nennt die Ursache und schlägt die Korrektur
+als Änderung an deinem Code vor; „Änderung übernehmen“ schreibt sie.
 
-<img src="docs/media/bugfix.webp" width="100%" alt="Claude stellt einen Fehler in der Suche nach und schlägt eine Änderung an server.mjs mit dem Knopf „Apply change“ vor">
+<img src="docs/media/bugfix.webp" width="100%" alt="Claude stellt einen Suchfehler nach und schlägt eine Änderung an server.mjs mit einem Knopf &quot;Änderung übernehmen&quot; vor">
 
-### Themes
+Die Werkbank bringt [Themes](themes/README.md) mit (F7).
 
-Sechs eingebaute Themes oder ein eigenes: F7 öffnet den Editor für Farben, Glyphen, den Raben und den CRT-Look.
+## Config
 
-<img src="docs/media/themes.webp" width="100%" alt="Dieselbe Werkbank in den Themes nacht, bernstein und phosphor">
-
-## Konfiguration
-
-`caw.config.json` enthält Umgebungen, Anmeldung und Rollen. `init` schreibt sie für dich:
+`caw.config.json` enthält Umgebungen, Anmeldung und Rollen. `init` schreibt sie dir:
 
 ```json
 {
   "environments": {
-    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+    "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
+    "staging": { "url": "https://staging.example.com" }
   },
-  "auth": { "type": "form", "path": "/login", "userSelector": "#email", "passwordSelector": "#password",
-            "signedInSelector": "[data-testid=user-menu]" },
-  "apps": { "web": { "dir": ".", "startUrl": "/" } },
-  "roles": { "tester": { "loginEnv": "CAW_LOGIN_TESTER", "passwordEnv": "CAW_PW_TESTER" } }
+  "signIn": { "type": "form", "path": "/login", "userSelector": "#email", "passwordSelector": "#password",
+              "signedInSelector": "[data-testid=user-menu]" },
+  "roles": { "tester": {} }
 }
 ```
 
-Die Anmeldung kann ein Formular sein (optional mit TOTP), HTTP Basic oder eine gespeicherte Sitzung für SSO. Siehe [docs/configuration.de.md](docs/configuration.de.md).
+Siehe [docs/configuration.de.md](docs/configuration.de.md).
 
 ## Daten und Datenschutz
 
-**Wenn Claude läuft** (`record`, der Chat, `--explain`), schickt Claude Code an Anthropic, womit Claude arbeitet: Seiteninhalte (Accessibility-Snapshots, Ergebnisse von `eval`, Screenshots), Zusammenfassungen von Konsole und Netzwerk, den Quellcode des Projekts, den es liest, und deine Chat-Nachrichten. Es gelten dein Claude-Code-Konto und dessen Bedingungen.
+**Wenn Claude läuft** (`record`, der Chat, `--explain`), sendet Claude Code an Anthropic, womit Claude arbeitet: Seiteninhalte
+(Accessibility-Snapshots, `eval`-Ergebnisse, Screenshots), Zusammenfassungen von Konsole und Netzwerk, den Projektcode, den es
+liest, und deine Chatnachrichten. Dein Claude-Code-Konto und seine Bedingungen gelten.
 
-**Maskiert oder gesperrt:** caw-ai meldet sich selbst an; das Passwort der Rolle und Werte mit `secret: true` werden durch `••••` ersetzt, bevor Claude Text sieht. `caw/.env`, `.env*`, `caw/.auth` und typische Schlüsseldateien sind für Claude gesperrt (lokal über Deny-Regeln von Claude Code, im Docker-Container ausgeblendet). Andere Geheimnisse in Projektdateien, die Claude lesen darf, sind es nicht, und Claude sieht alles, was der Testnutzer in der App sieht: Nimm Testkonten und Testdaten. Details: [Sandbox-Grenzen](docs/guide.de.md#sandbox-grenzen).
+**Maskiert oder gesperrt:** caw meldet sich selbst an; das Passwort der Rolle, Einmalcodes und mit `secret: true` markierte
+Werte werden durch `••••` ersetzt, bevor Claude Text sieht. `caw/.env`, `.env*`, `caw/.auth` und typische Schlüsseldateien sind
+für Claude gesperrt (Deny-Regeln von Claude Code lokal, im Docker-Container ausgeblendet). Andere Geheimnisse in
+Projektdateien, die Claude lesen darf, sind es nicht, und Claude sieht alles, was der Testnutzer in der App sieht: Nimm
+Testkonten und Testdaten. Details: [Sandbox-Grenzen](docs/guide.de.md#sandbox-grenzen).
 
-**Wiedergaben** (`run` ohne Chat, CI) schicken nichts an eine KI.
+**Wiedergaben** (`run` ohne Chat, CI) senden nichts an eine KI.
 
-**Keine Telemetrie:** caw-ai selbst meldet nichts nach außen. Sein eigener Netzwerkverkehr geht an deine Umgebungen und `allowHosts` und an das, was die Seiten der Anwendung selbst laden (Skripte, Fonts, Analytics), dazu Paket-Downloads beim Bau des Docker-Images; in der Docker-Sandbox erreicht Claude Code nur die Anthropic-API (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
+**Keine Telemetrie:** caw meldet nirgendwohin etwas. Sein eigener Netzwerkverkehr geht an deine Umgebungen und `allowHosts`
+und an das, was die Seiten der App selbst laden (Skripte, Schriften, Analytics), dazu Paket-Downloads beim Bau des
+Docker-Images; in der Docker-Sandbox erreicht Claude Code nur die Anthropic-API
+(`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
 
-**Laufdaten** bleiben auf deinem Rechner in `.caw/runs/<lauf>/`: Bericht, `result.json`, Screenshots, Claudes Logs und `trace.zip`. Der Trace enthält Seiteninhalte und Netzwerkdaten samt Cookies; lade ihn und Lauf-Ordner nicht öffentlich hoch. `init` trägt `.caw/` in `.gitignore` ein.
+**Laufdaten** bleiben auf deinem Rechner in `.caw/runs/<lauf>/`: Bericht, `result.json`, Screenshots, Claudes Logs und
+`trace.zip`. Der Trace enthält Seiteninhalte und Netzwerkdaten samt Cookies; lade ihn und Laufordner nicht öffentlich hoch.
+`init` trägt `.caw/` in `.gitignore` ein.
 
-## Stand und Ausblick
+## Was caw nicht ist
 
-Beta. Vor 1.0 können Minor-Versionen Bestehendes brechen; das [Changelog](CHANGELOG.md) nennt die Änderungen.
+- Ein autonomer Agent für exploratives Testen: Claude folgt deinem Plan.
+- Eine Playwright-IDE: Du schreibst keine Locators und keinen Code (`caw export` ist der Ausweg).
+- Ein Werkzeug für visuelle Diffs, API-, Last- oder Sicherheitstests: Schritte prüfen Inhalt und Zustand, keine Pixel.
+- Ein Cross-Browser-Grid: nur Chromium.
+- Ein Framework für Netzwerk-Mocks: Tests laufen gegen das echte Backend der Umgebung.
+- Parallel: Tests laufen nacheinander.
 
-Unterstützt: Google Chrome oder ein anderer Chromium-Browser (`browser` in der Config), Windows und Linux, Node 22.4+. macOS ist ungetestet.
-
-Noch nicht oder nicht geplant:
-
-- **Parallele Läufe und Sharding:** Tests laufen nacheinander.
-- **Firefox und WebKit:** nur Chromium.
-- **Setup- und Teardown-Hooks für Testdaten:** Daten außerhalb von caw-ai vorbereiten, etwa in einem CI-Schritt, oder als Schritte des Tests.
-- **Netzwerk-Mocking:** Tests laufen gegen das echte Backend der Umgebung.
-- **Visuelle Diffs:** Schritte prüfen Inhalt und Zustand, keine Pixel.
-- **Andere KI-Anbieter:** caw-ai arbeitet nur mit Claude Code. Aufnehmen, Reparieren und der Chat brauchen es; Wiedergaben brauchen keine KI.
+Andere KI-Anbieter werden nicht unterstützt: Aufnehmen, Beheben und der Chat brauchen Claude Code; Wiedergaben brauchen keine KI.
 
 ## FAQ
 
-**Kostet jeder Lauf Token?**
-Nein. Aufnehmen und der Chat verbrauchen Claude-Token, abgerechnet über dein Claude-Code-Konto; Wiedergaben keine, lokal wie in der CI. Bevor Claude startet, fragt der Chat einmal pro Lauf nach (nicht, wenn deine eigene Claude-Code-Session der Agent ist); den Hinweis kannst du abschalten. Das Log des Laufs zeigt die Kosten, die Claude Code meldet.
+**Kostet jeder Lauf Tokens?**
+Nein. Aufnehmen und der Chat verbrauchen Claude-Tokens, abgerechnet über dein Claude-Code-Konto; Wiedergaben keine, lokal und
+in CI. Bevor Claude startet, fragt der Chat einmal je Lauf (nicht, wenn deine eigene Claude-Code-Sitzung der Agent ist); den
+Hinweis kannst du abschalten. Das Lauflog zeigt die Kosten, die Claude Code meldet.
 
 **Sieht Claude meine Passwörter?**
-Nein. caw-ai meldet sich selbst an, bevor Claude startet. Claude kann `caw/.env` nicht lesen und steuert den Browser nur über feste Befehle. Trotzdem Testkonten verwenden: Claude handelt als dieser Nutzer.
+Nein. caw meldet sich selbst an, bevor Claude startet. Claude kann `caw/.env` nicht lesen und bedient den Browser nur über
+feste Befehle. Nimm trotzdem Testkonten: Claude handelt als dieser Nutzer.
 
 **Was passiert, wenn sich die Oberfläche ändert?**
-Der Schritt schlägt fehl, und der Chat sagt dir, warum. War die Änderung gewollt, nimmt „Schritt beheben“ diesen Schritt neu auf; der Rest des Tests bleibt, wie er ist.
+Der Schritt scheitert, und der Chat sagt dir, warum. War die Änderung gewollt, nimmt „Schritt beheben“ diesen Schritt neu auf;
+der Rest des Tests bleibt, wie er ist.
+
+**Meine App meldet über SSO an.**
+Lass caw das Formular des Identitätsanbieters mit `signIn.steps` füllen (`init --explore-only` schlägt sie vor), oder melde
+dich einmal von Hand mit `caw role login` an und lass caw die gespeicherte Sitzung nutzen.
 
 **Meine App hat keine Anmeldung.**
-Lass `auth` und `roles` in der Config weg. `init` macht das von selbst, wenn es kein Anmeldeformular findet.
+Lass `signIn` und `roles` in der Config weg. `init` macht das für dich, wenn es kein Anmeldeformular findet.
 
 **Ist das Playwright?**
-caw-ai steuert dein installiertes Chrome über Playwright. Playwright-Code schreibst du nicht.
+Es steuert mit Playwright dein installiertes Chrome, und Aufnahmen speichern Playwright-Locators. Du schreibst keinen
+Playwright-Code; `caw export` macht aus einem Test einen, wenn du aussteigen willst.
 
-## Doku
+## Dokumentation
 
-- [Befehle](docs/commands.de.md): alle Befehle und Optionen, Exit- und Fehlercodes
-- [Konfiguration](docs/configuration.de.md): `caw.config.json`, Anmeldearten, `caw/.env`, `caw/caw.md`
-- [Testdateien](docs/test-files.de.md): Testplan, Aufzeichnung, Platzhalter
-- [Handbuch](docs/guide.de.md): Agenten, Werkbank, Chat, Einschätzung von Fehlern, Sandbox
-- [Themes](themes/README.de.md): eingebaute Themes, eigene Theme-Pakete, `caw theme`
+- [Befehle](docs/commands.de.md): jeder Befehl und jede Option, Exit- und Fehlercodes
+- [Konfiguration](docs/configuration.de.md): `caw.config.json`, Umgebungen, Anmeldung, Rollen, `caw/.env`, `caw/caw.md`
+- [Testdateien](docs/test-files.de.md): Format von Testplan und Aufnahme, Platzhalter
+- [Leitfaden](docs/guide.de.md): Agenten, Werkbank, Chat, Einordnung von Fehlern, Sandbox
+- Erweiterungen: [Overlay](docs/extensions/overlay.de.md) (lokaler Code auf einer ausgelieferten Umgebung), [ExtJS](docs/extensions/extjs.de.md)
+- [Themes](themes/README.md): eingebaute Themes, eigene Theme-Pakete, `caw theme`
 
 ## Mitmachen
 

@@ -2,13 +2,13 @@
 
 # Konfiguration
 
-caw-ai liest drei Dinge aus deinem Projekt:
+caw liest drei Dinge aus deinem Projekt:
 
-| Datei | Was | Committen? |
+| Datei | Was | Einchecken? |
 |---|---|---|
-| `caw.config.json` | Umgebungen, Anmeldung, Apps, Rollen | ja |
-| `caw/.env` | Zugangsdaten der Testkonten | **nein** (gitignored) |
-| `caw/caw.md` | Projektwissen, das Claude in jedem Lauf liest | ja |
+| `caw.config.json` | Umgebungen, Anmeldung, Rollen | ja |
+| `caw/.env` | Zugangsdaten der Testnutzer | **nein** (gitignored) |
+| `caw/caw.md` | Projektnotizen, die Claude in jedem Lauf liest | ja |
 
 Tests liegen in `caw/tests/` und `caw/recordings/`, siehe [Testdateien](test-files.de.md).
 
@@ -20,8 +20,7 @@ Eine App auf einem lokalen Dev-Server, ohne Anmeldung:
 {
   "environments": {
     "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
-  },
-  "apps": { "web": { "dir": ".", "startUrl": "/" } }
+  }
 }
 ```
 
@@ -30,36 +29,34 @@ Mit Anmeldeformular:
 ```json
 {
   "framework": "react",
+  "start": "/",
   "environments": {
     "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
   },
-  "auth": {
+  "signIn": {
     "type": "form",
     "path": "/login",
     "userSelector": "#email",
     "passwordSelector": "#password",
     "signedInSelector": "[data-testid=user-menu]"
   },
-  "apps": { "web": { "dir": ".", "startUrl": "/" } },
-  "roles": {
-    "user": { "loginEnv": "CAW_LOGIN_USER", "passwordEnv": "CAW_PW_USER" }
-  }
+  "roles": { "user": {} }
 }
 ```
 
 ```bash
 # caw/.env
-CAW_LOGIN_USER=test-user@example.com
-CAW_PW_USER=geheim
+CAW_USER_USER=test-user@example.com
+CAW_USER_PASSWORD=geheim
 ```
 
-`caw/.env` wird gelesen wie bei dotenv: `NAME=Wert`, gern in Anführungszeichen; ein Kommentar hinter dem Wert braucht ein Leerzeichen vor `#` (`NAME=Wert # Notiz`). Ein `#` ohne Leerzeichen davor gehört zum Wert; Werte mit ` #` in Anführungszeichen setzen.
-
-`npx caw init` schreibt dir so eine Config, dazu die Rolle mit ihrem Testnutzer: Nach **Fertig** nennst du im Fenster die Rolle, **Speichern** schreibt die Variablen in `caw/.env`. Umgebungsvariablen gleichen Namens gehen vor `caw/.env`, etwa in CI.
+`npx caw init` schreibt dir so eine Config. Mit `--explore-only` sieht es sich die App zuerst an, und du meldest dich einmal
+an; danach schlägt es die Anmeldung vor und speichert deinen Testnutzer (siehe [init](commands.de.md#init)).
 
 ## environments
 
-Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du an `--env` übergibst.
+Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du bei `--env` angibst: Kleinbuchstaben, Ziffern
+und `-`, beginnend mit einem Buchstaben, höchstens 32 Zeichen.
 
 ```json
 "environments": {
@@ -72,18 +69,29 @@ Pflicht. Ein Eintrag je Ort, an dem deine App läuft. Der Name ist das, was du a
 
 | Feld | |
 |---|---|
-| `url` | Origin der App. `https`, oder `http` für `localhost`, `127.0.0.1` und `*.localhost`. |
-| `claude` | `true`: Claude darf hier aufnehmen, reparieren und untersuchen. |
-| `writable` | `true`: Tests mit `mutates: true` dürfen hier laufen. |
-| `production` | Pflicht für Namen wie `prod` oder `live`. Eine solche Umgebung kann kein `claude` oder `writable` haben. Ein Lauf dort schickt keine schreibenden Requests: Jeder wird abgebrochen und lässt den Schritt mit `write-blocked` scheitern (`reads` nennt Requests, die nur lesen). Läufe auf anderen Umgebungen erreichen ihren Host nie. |
-| `urls` | Statt `url`, wenn du `sites` nutzt: `{ "nord": "https://nord.example.com", … }`. |
+| `url` | Origin der App. `https`, oder `http` für diesen Rechner (`localhost`, `127.0.0.1`, `*.localhost`). |
+| `claude` | `true`: Claude darf hier aufnehmen, beheben und untersuchen. |
+| `writable` | `true`: Tests mit `writes: true` dürfen hier laufen. |
+| `production` | Pflicht für Namen, die nach Produktion aussehen (`prod`, `live`, `prod-eu` …). So eine Umgebung kann kein `claude` oder `writable` haben. Ein Lauf dort sendet keine schreibenden Requests: Jeder wird abgebrochen und lässt den Schritt mit `write-blocked` scheitern (`reads` nennt Requests, die nur lesen). Läufe auf anderen Umgebungen erreichen ihren Host nie. Ein Name, der nur so aussieht, sagt `"production": false`. |
+| `insecureTls` | `true`: ein selbstsigniertes Zertifikat auf dieser Umgebung akzeptieren. |
+| `allowHttp` | `true`: `http` auf einem Host erlauben, der nicht dieser Rechner ist (ein Intranet ohne TLS). |
+| `allowHosts` | Weitere Hosts, auf die Seiten hier navigieren dürfen, etwa der Anmeldedienst; ergänzt `allowHosts` der obersten Ebene. |
+| `signIn` | Eine Anmeldung nur für diese Umgebung; ersetzt das `signIn` der obersten Ebene als Ganzes. Siehe [signIn](#signin). |
+| `gate` | `{ "type": "basic" }`: ein HTTP-Basic-Tor vor der App (häufig auf Staging), mit eigenem Konto `CAW_GATE_USER` / `CAW_GATE_PASSWORD`. Nicht zusammen mit `signIn.type: basic`. |
+| `start`, `stop`, `reset`, `ready` | Deine Befehle für diese Umgebung, siehe [unten](#umgebung-starten-stoppen-und-zurücksetzen). |
+| `extends` | Eine andere Umgebung, deren Felder diese übernimmt; ihre eigenen Felder ersetzen sie (Listen und Objekte als Ganzes). `production` wird nie übernommen. Praktisch für Mandanten: `"south": { "extends": "north", "url": "https://south.example.com" }`. |
 
-Was nicht auf `true` steht, ist aus. Gegen `staging` oben läuft also nur Abspielen, nur lesende Tests, gegen den ausgelieferten Stand.
+Was nicht auf `true` steht, ist aus. Ein Lauf gegen `staging` oben spielt nur ab, nur lesende Tests, gegen den ausgelieferten
+Stand.
+
+Welche Umgebung ein Befehl nimmt: die, die du mit `--env` nennst. Ohne läuft ein Test, der auf genau einer Umgebung laufen
+kann, dort; auf deinem Rechner wird die einzige Umgebung mit `claude: true` unter seinen Kandidaten genommen; in CI rät caw nie
+und nennt die Kandidaten (Exit 3).
 
 ### Umgebung starten, stoppen und zurücksetzen
 
-Eine Umgebung kann deine eigenen Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nur auf Wunsch aus und
-nie auf einer `production`-Umgebung.
+Eine Umgebung kann eigene Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nur auf Wunsch aus, und nie auf
+einer `production`-Umgebung.
 
 ```json
 "ci": {
@@ -97,88 +105,133 @@ nie auf einer `production`-Umgebung.
 
 | Feld | |
 |---|---|
-| `start` | Shell-Befehl, der die Umgebung startet. Läuft nur mit `--start`. caw wartet nicht auf sein Ende: Ein Befehl, der sich ablöst (`up -d`), und einer, der weiterläuft (`npm run dev`), funktionieren beide. |
-| `stop` | Shell-Befehl, der sie stoppt. Nur zusammen mit `start` und nur, wenn caw die Umgebung gestartet hat. Ein weiterlaufender `start` wird danach samt Kindprozessen beendet. |
+| `start` | Shell-Befehl, der die Umgebung startet. Läuft nur mit `--start`. caw wartet nicht auf sein Ende: ein Befehl, der sich löst (`up -d`), und einer, der weiterläuft (`npm run dev`), gehen beide. |
+| `stop` | Shell-Befehl, der sie stoppt. Nur zusammen mit `start`, und nur wenn caw die Umgebung gestartet hat. Ein weiterlaufendes `start` wird dann samt Kindprozessen beendet. |
 | `reset` | Shell-Befehl, der die Daten zurücksetzt. Braucht `writable: true`. `run` führt ihn einmal vor dem ersten schreibenden Test aus, `--reset` vor dem ersten Test, `--no-reset` nie. `record` und `open` nur mit `--reset`. |
-| `ready` | Wann die Umgebung als bereit gilt: Ein GET auf `path` (Standard `/`) antwortet unter 500. caw fragt jede Sekunde, `timeoutMs` lang (Standard 60000, 1000 bis 1800000). |
+| `ready` | Wann die Umgebung als bereit gilt: ein GET auf `path` (Standard `/`) antwortet unter 500. caw fragt jede Sekunde, `timeoutMs` lang (Standard 60000, 1000 bis 1800000). |
 
-Die Befehle laufen im Projektordner mit der Shell deiner Plattform (`cmd.exe` unter Windows, sonst `/bin/sh`), mit
-`CAW_ENV` und `CAW_ENV_URL`. Ihre Ausgabe steht in `.caw/env/<env>-start.log`, `-stop.log` und `-reset.log`.
+Die Befehle laufen im Projektordner mit der Shell deiner Plattform (`cmd.exe` unter Windows, sonst `/bin/sh`), mit gesetztem
+`CAW_ENV` und `CAW_ENV_URL`. Ihre Ausgabe geht nach `.caw/env/<env>-start.log`, `-stop.log` und `-reset.log`.
 
 - Antwortet die Umgebung schon, nutzt `--start` sie und startet und stoppt nichts.
-- Ein `start`, der vorher mit Fehler endet, scheitert mit `env-start-failed`. Einer, der nie bereit wird, mit `env-not-ready`.
+- Ein `start`, das mit einem Fehler endet, scheitert mit `env-start-failed`. Eines, das nie bereit wird, mit `env-not-ready`.
   In beiden Fällen stoppt caw, was es gestartet hat.
-- Ein scheiternder `reset` (oder einer, der länger als 10 Minuten dauert) scheitert mit `env-reset-failed`, und kein Test läuft.
-- Ohne `--start` scheitert eine Umgebung, die nicht antwortet, mit `env-unreachable`; ist `start` gesetzt, nennt die Meldung
-  `--start`.
-- Die Variable `CI` ändert daran nichts: `--start` ist immer ausdrücklich.
+- Ein scheiterndes `reset` (oder eines, das länger als 10 Minuten braucht) scheitert mit `env-reset-failed`, und kein Test
+  läuft.
+- Ohne `--start` scheitert eine Umgebung, die nicht antwortet, mit `env-unreachable`; die Meldung nennt `--start`, wenn
+  `start` gesetzt ist.
+- Die Variable `CI` ändert nichts daran: `--start` ist immer ausdrücklich.
 
-## auth
+## signIn
 
-Weglassen, wenn deine App keine Anmeldung hat.
+Lass es weg, wenn deine App keine Anmeldung hat. Setze es auf oberster Ebene oder je Umgebung
+(`environments.<env>.signIn`), etwa keine Anmeldung auf `local` und ein Identitätsanbieter auf `staging`.
 
 | `type` | Für | Felder |
 |---|---|---|
-| `form` | Anmeldeseite mit Benutzer und Passwort | `path`, `userSelector`, `passwordSelector`, `signedInSelector`, optional `submitSelector` (sonst schickt Enter ab), optional `codeSelector` für einen TOTP-Code als zweiten Faktor |
-| `basic` | HTTP Basic Auth | `signedInSelector` (optional) |
-| `storageState` | SSO, OAuth, MFA: du meldest dich einmal mit `caw role login` an | `signedInSelector`, optional `path` |
-| `none` | Keine Anmeldung (wie `auth` weglassen) | – |
+| `form` | Eine Anmeldeseite mit Benutzername und Passwort | `path`, `signedInSelector`, und entweder `userSelector` + `passwordSelector` (optional `submitSelector`, sonst schickt Enter ab; optional `codeSelector` für einen Einmalcode) oder `steps` |
+| `basic` | HTTP Basic | `signedInSelector` (optional) |
+| `session` | SSO, OAuth, MFA, die sich nicht automatisieren lassen: du meldest dich einmal mit `caw role login` an, caw nutzt die gespeicherte Sitzung | `signedInSelector`, optional `path` (Standard `/`) |
+| `none` | Keine Anmeldung (wie `signIn` weglassen) | – |
 
-`signedInSelector` ist ein CSS-Selektor, den es nur im angemeldeten Zustand gibt. Verschwindet er während eines Laufs, meldet caw-ai eine verlorene Anmeldung.
+- `path` ist ein Pfad der App, beginnend mit `/`. Die Anmeldung beginnt bei `<url><path>`; diese Seite darf zu einem
+  Identitätsanbieter weiterleiten. Es ist nie die Adresse des Anbieters.
+- `signedInSelector` gibt es nur angemeldet, auf der App. Verschwindet er während eines Laufs, meldet caw eine verlorene
+  Anmeldung.
+- Selektoren sind Playwright-Selektoren: standardmäßig CSS, auch `text=` und `role=`.
 
-Zweiter Faktor (TOTP): `codeSelector` auf das Feld für den Einmalcode setzen und der Rolle ein `totpEnv` mit dem Base32-Geheimnis des Kontos geben. caw-ai trägt den aktuellen Code ein (RFC 6238, SHA-1, 30 s, 6 Stellen). Lehnt die App den Code ab, weil sich das Konto im selben 30-s-Fenster schon angemeldet hat (das Codefeld bleibt, `signedInSelector` erscheint nicht binnen 10 s), wartet caw-ai auf das nächste Fenster und versucht es genau einmal neu.
+### Anmeldeschritte
+
+Für einen Identitätsanbieter (Keycloak, Entra ID, Okta …), Identifier-first-Seiten oder zusätzliche Abfragen. Jeder Schritt
+hat genau ein Verb, 1 bis 20 Schritte, mindestens einer füllt aus dem Testnutzer:
 
 ```json
-"auth": { "type": "form", "path": "/login", "userSelector": "#user", "passwordSelector": "#password",
-          "codeSelector": "#otp", "signedInSelector": "[data-testid=user-menu]" },
-"roles": { "user": { "loginEnv": "CAW_LOGIN_USER", "passwordEnv": "CAW_PW_USER", "totpEnv": "CAW_TOTP_USER" } }
+"signIn": {
+  "type": "form",
+  "path": "/login",
+  "signedInSelector": "[data-testid=user-menu]",
+  "steps": [
+    { "fill": "#username", "with": "user" },
+    { "click": "#next" },
+    { "waitFor": "#password" },
+    { "fill": "#password", "with": "password" },
+    { "click": "#sign-in" },
+    { "fill": "#otp", "with": "totp" },
+    { "press": "Enter", "on": "#otp" },
+    { "click": "text=Angemeldet bleiben", "optional": true }
+  ]
+},
+"allowHosts": ["login.example-idp.com"]
 ```
 
-Beispiel mit SSO:
+| Schritt | |
+|---|---|
+| `{ "fill": "<selektor>", "with": "user" \| "password" \| "totp" }` | Benutzername, Passwort oder aktueller Einmalcode der Rolle |
+| `{ "fill": "<selektor>", "value": "<text>" }` | Ein fester Text, der kein Geheimnis ist, etwa ein Mandant oder eine Domäne |
+| `{ "click": "<selektor>" }` | Klicken |
+| `{ "press": "<taste>", "on": "<selektor>" }` | Eine Taste drücken, auf `on` oder auf dem fokussierten Element |
+| `{ "waitFor": "<selektor>" }` | Warten, bis das Element sichtbar ist |
+| `"optional": true` | Den Schritt überspringen, wenn sein Element nicht binnen 3 s sichtbar ist („Angemeldet bleiben?“) |
+| `"timeoutMs"` | Wie lange ein Schritt auf sein Element wartet, Standard 30000 |
+
+Die Schritte laufen der Reihe nach ab `<url><path>`, auf der jeweils aktuellen Seite; der Host des Anbieters muss in
+`allowHosts` stehen. Nach dem letzten Schritt wartet caw bis zu 30 s auf `signedInSelector`. `init --explore-only` schlägt
+die Schritte vor, wenn du dich dort bei einem Anbieter anmeldest.
+
+### Einmalcodes
+
+Gib der Rolle ein TOTP-Geheimnis (`CAW_<ROLLE>_TOTP`, Base32 wie im `otpauth://`-Link) und nutze `codeSelector` oder einen
+Schritt mit `with: "totp"`. caw trägt den aktuellen Code ein (RFC 6238, SHA-1, 30 s, 6 Ziffern). Lehnt die App ihn ab, weil
+sich das Konto im selben 30-s-Fenster schon angemeldet hat, wartet caw auf das nächste Fenster und versucht es noch einmal.
+Passwörter und Codes sind in Trace, Logs und Berichten maskiert.
+
+### Gespeicherte Sitzung
 
 ```json
-"auth": { "type": "storageState", "signedInSelector": "app-user-menu" },
-"allowHosts": ["login.example-idp.com"],
-"roles": { "user": {} }
+"signIn": { "type": "session", "signedInSelector": "[data-testid=user-menu]" },
+"allowHosts": ["login.example-idp.com"]
 ```
 
 ```bash
-npx caw role login user --env dev   # einmal von Hand anmelden, die Sitzung landet in caw/.auth/dev/user.json
+npx caw role login user --env dev   # einmal von Hand anmelden; die Sitzung landet in caw/.auth/dev/user.json
 ```
+
+`caw/.auth/` ist gitignored. Ohne die Datei stoppt ein Lauf mit `auth-missing` und nennt diesen Befehl; ist die Sitzung
+abgelaufen, nennt er ihn ebenso. In CI legst du die Datei vor dem Lauf aus einem Secret dort ab.
 
 ## roles
 
-Ein Eintrag je Art von Nutzer, als der sich deine Tests anmelden. Ein Test wählt eine mit `role:`.
-
-| `auth.type` | Eintrag der Rolle |
-|---|---|
-| `form`, `basic` | `{ "loginEnv": "CAW_LOGIN_ADMIN", "passwordEnv": "CAW_PW_ADMIN" }`: Namen der Variablen in `caw/.env`. Optional `totpEnv` für `codeSelector`. |
-| `storageState` | `{}`: die Sitzung liegt je Umgebung in `caw/.auth/` |
-| keine | `roles` weglassen |
-
-Eine Rolle fügst du mit `npx caw role add <rolle> --env <env>` hinzu: im Fenster mit dem Testkonto anmelden, Rolle benennen, **Speichern**. caw-ai schreibt den Eintrag oben, die Werte in `caw/.env` und `caw/.env` in `.gitignore`. Ohne Fenster (CI) setzt du die Variablen in der Umgebung. Siehe [role](commands.de.md#role).
-
-Nimm Testkonten mit so wenig Rechten wie möglich. Claude steuert einen Browser, der als dieser Nutzer angemeldet ist.
-
-## apps
-
-Pflicht. Meist eine App; Monorepos können mehrere nennen.
+Ein Eintrag je Art von Nutzer, als der sich deine Tests anmelden. Eine Rolle ist ein leeres Objekt; Tests wählen eine mit
+`role:`. Namen folgen den Regeln für Umgebungsnamen; `gate` ist reserviert.
 
 ```json
-"apps": {
-  "web":   { "dir": "apps/web", "startUrl": "/" },
-  "admin": { "dir": "apps/admin", "startUrl": "/admin" }
-}
+"roles": { "clerk": {}, "admin": {} }
 ```
 
-| Feld | |
-|---|---|
-| `dir` | App-Ordner relativ zum Projekt, `.` für eine einzelne App. |
-| `startUrl` | Pfad, an dem Tests beginnen. Nur für Apps, in denen ein Test startet. |
+Die Zugangsdaten folgen einer Namenskonvention, nie der Config:
+
+```bash
+# caw/.env
+CAW_CLERK_USER=clerk@example.com
+CAW_CLERK_PASSWORD=geheim
+CAW_CLERK_TOTP=JBSWY3DPEHPK3PXP        # nur für Einmalcodes
+CAW_CLERK_USER__STAGING=qa.clerk       # ein anderes Konto auf staging
+CAW_CLERK_PASSWORD__STAGING=geheim2
+```
+
+- Die Endung `__<ENV>` (Umgebungsname in Großbuchstaben, `-` als `_`) ist das Konto für diese Umgebung. Ein Satz gilt als
+  Ganzes: Gibt es eine Variable des Satzes mit Endung, mischt caw nie die ohne Endung hinein.
+- Variablen des Prozesses (CI) gewinnen gegen `caw/.env`.
+- `caw/.env` wird wie dotenv gelesen: `KEY=wert`, optional in Anführungszeichen; ein Kommentar nach dem Wert braucht ein
+  Leerzeichen vor `#`.
+
+Eine Rolle legst du mit `npx caw role add <rolle> --env <env>` an: im Fenster mit dem Testkonto anmelden, **Speichern** schreibt
+die Werte nach `caw/.env` und die Rolle in die Config. Siehe [role](commands.de.md#role). Nimm Testkonten mit möglichst wenig
+Rechten: Claude bedient einen Browser, der als dieser Nutzer angemeldet ist.
 
 ## Lokalen Code testen
 
-caw-ai kennt zwei Modi:
+caw kennt zwei Modi:
 
 - **E2E** (Standard, CI, nightly, jedes einfache `run`): immer der ausgelieferte Code der Umgebung, auch mit `open <test>`.
 - **Entwicklung:** dein lokaler Code, vom Dev-Server als Umgebung oder mit der [Overlay-Erweiterung](extensions/overlay.de.md). Nichts schaltet still darauf um.
@@ -210,42 +263,43 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 
 | Feld | Standard | |
 |---|---|---|
-| `language` | erkannt | `en` oder `de` für Oberfläche, CLI und Berichte. `CAW_LANG` hat Vorrang. |
-| `framework` | `web` | `web`, `react`, `vue`, `angular` oder `extjs`. Bestimmt, wie Ziele gespeichert werden und wann eine Seite als bereit gilt. |
-| `agent.mode` | `local` | Wo Claude läuft: `local` (Claude Code auf deinem Rechner, nur lesende Werkzeuge) oder `docker`. In der CI immer `docker`. |
-| `agent.model` | Standard von Claude Code | Modell für Claude, weitergegeben als `--model`, z. B. `haiku` oder `sonnet`. `CAW_CLAUDE_MODEL` überschreibt es für einen Lauf. |
-| `agent.maxBudgetUsd` | keins | Beendet einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` überschreibt es. |
-| `allowHosts` | `[]` | Weitere Hosts, zu denen Seiten navigieren dürfen, etwa ein Anmeldedienst; auch pro Umgebung als `environments.<env>.allowHosts`. Seiten navigieren nur zu den Hosts der Umgebungen und zu diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Skripte, Styles, Fonts, Bilder, XHR/fetch, WebSockets und iframes dürfen jeden Host erreichen. Produktions-Hosts anderer Umgebungen bleiben für jeden Request unerreichbar. |
-| `insecureTls` | `false` | Selbstsignierte Zertifikate annehmen. |
-| `browser` | Chrome des Systems | `{ "channel": "msedge" }` oder `{ "executablePath": "/pfad/zu/chromium" }` |
-| `browser.locale`, `browser.timezone` | wie aufgezeichnet | Sprache und Zeitzone des Testbrowsers, z. B. `"de-DE"` und `"Europe/Berlin"`. Ohne sie nimmt eine Wiedergabe die Werte, die mit der Aufzeichnung gespeichert sind, eine Aufnahme die des Rechners. Datum, Zahlen und Übersetzungen sehen dann auf jedem Rechner und CI-Runner gleich aus. |
+| `language` | von init erkannt | Die Teamsprache, ein Code wie `en`, `de` oder `fr`: Claude schreibt Pläne, Schrittnamen und `report.md` darin. caws eigene Texte (CLI, Werkbank) folgen deiner persönlichen Sprache (`CAW_LANG`, `prefs.json`, das System). |
+| `framework` | `web` | `web`, `react`, `vue`, `angular` oder [`extjs`](extensions/extjs.de.md). Entscheidet, wann eine Seite als bereit gilt und was ein Fehlerbericht nennt. |
+| `start` | `/` | Pfad, an dem Tests beginnen; ein Test kann sein eigenes `start` setzen. |
+| `source` | `.` | Wo der Quellcode der App liegt, relativ zum Projekt, oder `false`, wenn er nicht in diesem Repository ist (dann gibt Claude keine Code-Empfehlungen). |
+| `agent.mode` | `local` | Wo Claude läuft: `local` (Claude Code auf deinem Rechner, nur lesende Werkzeuge), `docker` (isoliert) oder `session` (deine eigene Claude-Code-Sitzung). In CI immer `docker`. |
+| `agent.model` | Standard von Claude Code | Modell für Claude, als `--model` übergeben, z. B. `haiku` oder `sonnet`. `CAW_CLAUDE_MODEL` ersetzt es für einen Lauf. |
+| `agent.maxBudgetUsd` | keins | Stoppt einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` ersetzt es. |
+| `maxActions` | `100` | Aktionsbudget von Claude beim Aufnehmen und Beheben. |
+| `allowHosts` | `[]` | Weitere Hosts, auf die Seiten navigieren dürfen, etwa ein Anmeldedienst; auch je Umgebung. Seiten navigieren nur zu den Hosts der Umgebungen und diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Skripte, Styles, Schriften, Bilder, XHR/fetch, WebSockets und iframes dürfen zu jedem Host. Produktionshosts anderer Umgebungen bleiben für jeden Request unerreichbar. |
+| `browser` | System-Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) oder `{ "executablePath": "/pfad/zu/chromium" }` |
+| `browser.locale`, `browser.timezone`, `browser.viewport` | wie aufgenommen | Sprache, Zeitzone und Größe des Testbrowsers, z. B. `"de-DE"`, `"Europe/Berlin"`, `{ "width": 1280, "height": 800 }`. Ohne sie nutzt eine Wiedergabe die mit der Aufnahme gespeicherten Werte, und eine Aufnahme die des Rechners. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS-Selektoren für Fehlermeldungen ohne ARIA-Rolle. |
-| `consoleIgnore` | `[]` | Reguläre Ausdrücke für bekannte, harmlose Konsolenfehler. Eng halten. |
-| `foreignCode` | `[]` | Reguläre Ausdrücke für fremde Skripte, etwa `"/vendor/"`. Deren Fehler werden zu Warnungen. |
-| `requestKeys` | `[]` | Parameter, die einen Request benennen, bei APIs mit nur einem Endpunkt: Query-Parameter wie `["action"]` oder Felder der obersten Ebene eines JSON-Bodys als `json.<key>`, etwa `["json.method"]` bei JSON-RPC. Einen GraphQL-Request benennt seine Operation ohne diesen Schlüssel: `POST /graphql mutation CloseTicket`. |
-| `reads` | `[]` | Requests, die nur lesen, obwohl sie kein GET sind, etwa `["POST /api/search"]`. Ein Muster ist eine Methode (oder `*`) und ein Pfad, danach optional Schlüssel- und GraphQL-Teile: `*` passt innerhalb eines Pfadsegments (in den anderen Teilen auf beliebige Zeichen), `**` auf alles. `"POST /api/*/query"`, `"POST /api/proxy op=load*"`, `"POST /graphql mutation TrackView"`, `"* /api/telemetry/**"`. Ein Muster, das mit dem Pfad endet, passt nie auf einen GraphQL-Request. Nur auf oberster Ebene: Es ist in jeder Umgebung dieselbe Anwendung. |
-| `effects.fail` | `["controls", "console"]` | Welche gelernten Wirkungen einen Schritt scheitern lassen, wenn sie sich ändern. `[]` macht alle zu Warnungen. |
-| `maxSteps` | `100` | Aktionsbudget für Claude beim Aufnehmen und Reparieren. |
+| `consoleIgnore` | `[]` | RegExps für bekannte, harmlose Konsolenfehler. Halte sie eng. |
+| `foreignCode` | `[]` | RegExps für Fremdskripte, z. B. `"/vendor/"`. Ihre Fehler werden Warnungen. |
+| `requestKeys` | `[]` | Parameter, die einen Request benennen, für APIs mit einem Endpunkt: Query-Parameter wie `["action"]` oder JSON-Felder der obersten Ebene als `json.<key>`, z. B. `["json.method"]` für JSON-RPC. Ein GraphQL-Request heißt auch ohne das nach seiner Operation: `POST /graphql mutation CloseTicket`. |
+| `reads` | `[]` | Requests, die nur lesen, obwohl sie kein GET sind, z. B. `["POST /api/search"]`. Ein Muster ist eine Methode (oder `*`) und ein Pfad, dann optional Schlüssel- und GraphQL-Teile: `*` passt innerhalb eines Pfadsegments (in den anderen Teilen auf beliebige Zeichen), `**` auf alles. `"POST /api/*/query"`, `"POST /api/proxy op=load*"`, `"POST /graphql mutation TrackView"`, `"* /api/telemetry/**"`. Ein Muster, das mit dem Pfad endet, passt nie auf einen GraphQL-Request. Nur auf oberster Ebene: Es ist in jeder Umgebung dieselbe App. |
+| `effects.fail` | `["controls", "console"]` | Welche gelernten Effekte einen Schritt scheitern lassen, wenn sie sich ändern. `[]` macht alle zu Warnungen. |
 | `readyTimeoutMs` | | Wie lange auf eine ruhige App gewartet wird. |
-| `readyIgnore` | `[]` | CSS-Selektoren von Bereichen, die sich von selbst ändern, z. B. `["#ticker", ".clock", "footer [role=progressbar]"]`. Ihre DOM-Änderungen und Fortschrittsanzeigen zählen beim Warten auf eine ruhige Seite nicht. Spinner ohne Größe, versteckt oder außerhalb des sichtbaren Bereichs zählen nie. Wird eine Seite nie ruhig, sagt der Bericht das einmal je Schritt. |
-| `lintCommand` | | Dein Prüfbefehl, etwa `npm run lint`. Claude nennt ihn bei Code-Vorschlägen. |
-| `sites` | | Dieselbe App für mehrere Mandanten: `["nord", "sued"]`, dann `urls` je Umgebung. |
-| `extends` | | Gemeinsame Vorgaben aus einer Datei, etwa `"./caw/basis.json"`. |
-| `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den Agenten `docker`. Sonst `image` aus `.devcontainer/devcontainer.json`. |
+| `readyIgnore` | `[]` | CSS-Selektoren von Bereichen, die sich von selbst ändern, z. B. `["#ticker", ".clock", "footer [role=progressbar]"]`. Ihre DOM-Änderungen und Fortschrittsanzeigen zählen beim Warten auf eine ruhige Seite nicht. Spinner ohne Größe, versteckt oder außerhalb des Viewports zählen nie. Wird eine Seite nie ruhig, sagt der Lauf das und nennt `readyIgnore`. |
+| `lintCommand` | | Dein Prüfbefehl, z. B. `npm run lint`. Claude nennt ihn in Code-Empfehlungen. |
+| `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den `docker`-Agenten. Sonst `image` aus `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | Nutzer im Container. |
-| `theme` | | Vorgabe fürs Team in der Werkbank: `{ "base": "phosphor", "colors": { … } }`. Eine eigene Wahl in `prefs.json` geht vor. Siehe [Themes](../themes/README.de.md#vorgabe-fürs-team). |
+| `theme` | | Team-Standard für die Werkbank: `{ "base": "phosphor", "colors": { … } }`. Eine persönliche Wahl in `prefs.json` gewinnt. Siehe [Themes](../themes/README.md#team-default). |
+| `overlay` | | Schaltet die [Overlay-Erweiterung](extensions/overlay.de.md) ein. |
 
 ## caw/caw.md
 
-Normales Markdown, wie eine `CLAUDE.md` für deine Tests. Schreib auf, was Claude nicht im Code sieht, was aber in jedem Test zählt:
+Schlichtes Markdown, wie eine `CLAUDE.md` für deine Tests. Schreib auf, was Claude im Code nicht sieht, was aber in jedem Test zählt:
 
 ```markdown
 ## Suche
-- Die Suche merkt sich die letzte Eingabe über Sitzungen hinweg. Zuerst „Filter löschen“ klicken.
+- Die Suche behält die letzte Eingabe über Sitzungen hinweg. Zuerst "Filter löschen" klicken.
 ```
 
-Änderungen daran machen keine Aufzeichnung ungültig. Keine personenbezogenen Daten.
+Eine Änderung macht nie eine Aufnahme ungültig. Keine personenbezogenen Daten.
 
 ## Persönliche Einstellungen
 
-Was du in der Werkbank wählst (Thema, Animationen, eingeklappte Bereiche, der Hinweis auf Token), speichert caw-ai je Nutzer in `prefs.json` unter `CAW_AI_HOME`, Standard `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. Nicht im Projekt.
+Werkbank-Einstellungen (Theme, Animationen, eingeklappte Bereiche, der Token-Hinweis) und deine Sprache liegen je Nutzer in
+`prefs.json` unter `CAW_AI_HOME`, standardmäßig `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. Nicht im Projekt.

@@ -263,9 +263,8 @@ ${finishOf(['S2'])}`;
     verify('Three windows', await h.done() === 3);
     verify('Exit 0', code === 0, String(code));
     const now = read();
-    // The previous test run passed S1 and added its missing comparison; everything else stays the same.
-    verify('S1 got comparison values', /network:/.test(stepText(now, 'S1')) && !/network:/.test(stepText(broken, 'S1')), stepText(now, 'S1'));
-    verify('S1 and S3 otherwise identical character for character', noNet(stepText(now, 'S1')) === stepText(broken, 'S1') && stepText(now, 'S3') === stepText(broken, 'S3'));
+    // The lead-in run learns nothing without --learn (Q7): S1 and S3 stay as they were.
+    verify('S1 and S3 identical character for character', stepText(now, 'S1') === stepText(broken, 'S1') && stepText(now, 'S3') === stepText(broken, 'S3'), stepText(now, 'S1'));
     verify('S2 new', /Fuelle das Anliegen neu/.test(stepText(now, 'S2')) && !/Verschwunden/.test(now));
     verify('Header comment stays', now.startsWith(ORIGINAL_HEAD));
     verify('Check keeps the placeholder', /\{\{nr\}\}/.test(stepText(now, 'S2')));

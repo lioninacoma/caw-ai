@@ -1,4 +1,4 @@
-# Example test, recording included (caw/recordings/first-errand.yaml). Replay it with: npx caw-ai run first-errand --target local
+# Example test, recording included (caw/recordings/first-errand.yaml). Replay it with: npx caw run first-errand --env local
 id: first-errand
 role: user
 environments: [local]

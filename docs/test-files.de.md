@@ -16,10 +16,8 @@ Du schreibst den Testplan, `record` schreibt die Aufzeichnung. Von Hand trägst 
 ```yaml
 # caw/tests/create-ticket.yaml
 id: create-ticket
-app: web              # ein Name aus apps in caw.config.json
-role: user            # ein Name aus roles (ohne Login weglassen)
-targets: [local]      # Umgebungen, auf denen der Test laufen darf
-mutates: true         # true, wenn der Test Daten anlegt oder ändert
+role: user            # ein Name aus roles (ohne Anmeldung weglassen)
+writes: true          # true, wenn der Test Daten anlegt oder ändert
 notes: |
   A support agent takes a call: they log a ticket for a customer and start working on it.
 
@@ -47,11 +45,10 @@ Testpläne kannst du in jeder Sprache schreiben, Claude liest sie so wie ein Tes
 | Feld | Pflicht | |
 |---|---|---|
 | `id` | nein | Standard ist der Dateiname; steht sie da, muss sie ihm entsprechen. |
-| `app` | wenn die Config mehrere Apps hat | App, in der der Test startet. Standard ist die einzige App der Config. |
-| `role` | mit Login, wenn die Config mehrere Rollen hat | Rolle aus der Config. Standard ist die einzige Rolle. |
-| `targets` | nein | Umgebungen, auf denen der Test laufen darf. Standard sind alle Umgebungen außer Produktion. |
-| `mutates` | ja | `true`, wenn er Daten anlegt oder ändert; solche Tests laufen nur auf Umgebungen mit `writable: true`. `false`, wenn er nur liest. |
-| `also` | nein | Weitere Apps, durch die der Ablauf geht, z. B. `[admin]`. Mit `--overlay` kommt auch deren lokaler Code mit, wenn sie eine Quelle hat. |
+| `role` | mit Anmeldung, wenn die Config mehrere Rollen hat | Rolle aus der Config. Standard ist die einzige Rolle. |
+| `writes` | ja | `true`, wenn er Daten anlegt oder ändert; solche Tests laufen nur auf Umgebungen mit `writable: true`. `false`, wenn er nur liest. Ein Test, der beim Aufnehmen einen schreibenden Request sendet, wird `true`. |
+| `environments` | nein | Umgebungen, auf denen der Test laufen darf. Standard sind alle Umgebungen außer Produktion, für einen schreibenden Test nur die beschreibbaren. `record` setzt es nie. |
+| `start` | nein | Pfad, an dem dieser Test beginnt, statt `start` aus der Config. |
 | `notes` | nein | Kontext für den ganzen Test. |
 | `steps` | ja | Siehe unten. |
 
@@ -81,7 +78,7 @@ npx caw run create-ticket --env local       # Exit 4: S2 geändert, nennt den re
 npx caw record create-ticket@S2 --env local # ab S2 bis zum Ende neu aufnehmen, S1 bleibt
 ```
 
-`notes`, Metadaten, `retry` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
+`notes`, `role`, `writes`, `environments`, `start`, `retry` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
 
 ## Aufzeichnung
 
@@ -130,7 +127,7 @@ steps:
 | `check` | Ein JavaScript-Ausdruck, der `true` liefern muss. Er läuft in der angemeldeten Seite, also vor dem Commit lesen. |
 | `hover`, `dragTo` | `hover` bewegt den Zeiger über sein Ziel, etwa ein Menü, das sich beim Überfahren öffnet. `dragTo` zieht sein Ziel auf den Locator in `to`, etwa eine Karte auf eine Spalte. |
 | `dialog` | Die Antwort auf einen nativen Dialog (`alert`, `confirm`, `prompt`, `beforeunload`), den die Aktion öffnet: `{type, accept, value?, message?}`. `value` ist der Text für einen bestätigten `prompt` (Platzhalter erlaubt); `message` ist der Dialogtext bei der Aufnahme, Ziffern als `#`. Das Abspielen antwortet genauso. Einen Dialog, den niemand aufgezeichnet hat, schließt es und nennt ihn als Warnung `dialog-unexpected`; kommt ein aufgezeichneter nicht, gibt es die Warnung `dialog-missing`. Beim Vorführen zeigt der Chat den Dialog mit OK und Abbrechen; Claude antwortet mit `caw agent dialog accept|dismiss`. |
-| `remember` | Liest einen Wert, den der Lauf erzeugt, hier die Ticketnummer. Spätere Schritte nutzen ihn als `{{ticketnr}}`. Jeder Wert ab einem Zeichen; einer mit weniger als vier Zeichen (eine Id wie `7`) wird nur in eingetippten Werten, URLs, Zeichenketten von Prüfungen und Zieltexten ersetzt, die genau dieser Wert sind. |
+| `remember` | Liest einen Wert, den der Lauf erzeugt, hier die Ticketnummer. Spätere Schritte nutzen ihn als `{{ticketnr}}`. Jeder nicht leere Wert; einer mit weniger als vier Zeichen (eine Id wie `7`) wird nur in eingetippten Werten, URLs, Zeichenketten von Prüfungen und Zieltexten ersetzt, die genau dieser Wert sind. |
 | `network` | Requests je Schritt aus einem gesunden Lauf. Damit trennt caw-ai App-Fehler von Umgebungsproblemen. |
 | `effects` | Was jede Aktion an der Seite geändert hat, gelernt aus gesunden Läufen (`runs` zählt sie). Eine Abweichung lässt den Schritt scheitern oder erscheint als Warnung. |
 | `knownMessages` | Meldungen, die beim Aufnehmen sichtbar waren und keine Fehler sind. |

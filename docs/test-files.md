@@ -16,10 +16,8 @@ You write the test plan. `record` writes the recording; by hand you only add the
 ```yaml
 # caw/tests/create-ticket.yaml
 id: create-ticket
-app: web              # a name from apps in caw.config.json
-role: user            # a name from roles (leave out without login)
-targets: [local]      # environments this test may run on
-mutates: true         # true if the test creates or changes data
+role: user            # a name from roles (leave out without sign-in)
+writes: true          # true if the test creates or changes data
 notes: |
   A support agent takes a call: they log a ticket for a customer and start working on it.
 
@@ -47,11 +45,10 @@ Write test plans in any language; Claude reads them like a tester would.
 | Field | Required | |
 |---|---|---|
 | `id` | no | Defaults to the file name; if given, it must match it. |
-| `app` | if the config has several apps | App the test starts in. Defaults to the only app in the config. |
-| `role` | with login, if the config has several roles | Role from the config. Defaults to the only role. |
-| `targets` | no | Environments the test may run on. Defaults to all environments except production. |
-| `mutates` | yes | `true` if it creates or changes data; such tests only run on environments with `writable: true`. `false` if it only reads. |
-| `also` | no | More apps the flow passes through, e.g. `[admin]`. With `--overlay` their local code comes along too, if they have a source. |
+| `role` | with sign-in, if the config has several roles | Role from the config. Defaults to the only role. |
+| `writes` | yes | `true` if it creates or changes data; such tests only run on environments with `writable: true`. `false` if it only reads. A test that sends a write request while it is recorded becomes `true`. |
+| `environments` | no | Environments the test may run on. Defaults to every environment except production, and for a writing test only the writable ones. `record` never sets it. |
+| `start` | no | Path where this test starts, instead of the config's `start`. |
 | `notes` | no | Context for the whole test. |
 | `steps` | yes | See below. |
 
@@ -81,7 +78,7 @@ npx caw run create-ticket --env local       # exit 4: S2 changed, prints the rec
 npx caw record create-ticket@S2 --env local # re-record from S2 to the end, S1 stays
 ```
 
-`notes`, metadata, `retry` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.
+`notes`, `role`, `writes`, `environments`, `start`, `retry` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.
 
 ## Recording
 
@@ -130,7 +127,7 @@ steps:
 | `path` | The page the action was recorded on. If a target is missing, the run tells you it is on a different page. |
 | `locale`, `timezone`, `viewport` | Language, time zone and size of the app view while recording; replay uses them unless the config sets `browser.locale`/`browser.timezone`/`browser.viewport`. Headless replay opens at that size; in the workbench the app frame gets exactly that size, scaled down if the window is smaller. |
 | `check` | A JavaScript expression that must return `true`. It runs in the signed-in page, so read it before you commit. |
-| `remember` | Reads a value the run creates, here the ticket number. Later steps use it as `{{ticketnr}}`. Any value of at least one character; one shorter than four characters (an id like `7`) is replaced only in typed values, URLs, string literals of checks and target texts that are exactly that value. |
+| `remember` | Reads a value the run creates, here the ticket number. Later steps use it as `{{ticketnr}}`. Any value that is not empty; one shorter than four characters (an id like `7`) is replaced only in typed values, URLs, string literals of checks and target texts that are exactly that value. |
 | `network` | Requests per step from a healthy run. Used to tell app bugs from environment problems. |
 | `effects` | What each action changed on the page, learned from healthy runs (`runs` counts them). A change fails the step or shows as a warning. |
 | `knownMessages` | Messages that were visible during recording and are not errors. |

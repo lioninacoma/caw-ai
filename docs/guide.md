@@ -2,11 +2,11 @@ English · [Deutsch](guide.de.md)
 
 # Guide
 
-How caw-ai works in detail. For quick lookup see [Commands](commands.md), [Configuration](configuration.md) and [Test files](test-files.md).
+How caw works in detail. For quick lookup see [Commands](commands.md), [Configuration](configuration.md) and [Test files](test-files.md).
 
 ## Agent: local, Docker or your session
 
-Where Claude runs when a run needs it is set by `agent.mode` in the config (`local` or `docker`, default `local`). `--agent local|docker|session` overrides it for one run. In CI (`CI` set) it is always `docker`; other values abort.
+Where Claude runs when a run needs it is set by `agent.mode` in the config (`local`, `docker` or `session`, default `local`). `--agent local|docker|session` overrides it for one run. In CI (`CI` set) it is always `docker`; other values abort.
 
 | Agent | How Claude runs | Good for |
 |---|---|---|
@@ -87,14 +87,14 @@ This check runs before anything else and aborts with its own message (exit 2):
 
 `open --env <env>` opens the app signed in, with workbench and chat but without a test, see [Commands](commands.md#open). `open <test>` replays a test first, `open <test>@S4` stops at the entry of S4, see [Reaching a state and taking over](#reaching-a-state-and-taking-over).
 
-`<env>` is a name from `environments`, e.g. `local`. With tenants (`sites`) the target is `tenant/env`, e.g. `nord/dev`.
+`<env>` is a name from `environments`, e.g. `local`. Tenants are environments of their own (`extends`).
 
 **Test plan** means one YAML file per test under `caw/tests/<test>.yaml`. It holds the test steps; their recording is in `caw/recordings/<test>.yaml`, see [Test files](test-files.md).
 
 ```bash
 # New test: demonstrate, approve the plan, adopt at the end
-# (--role and --app can be omitted if caw.config.json has only one role or app)
-caw record bestellung --env local --role kunde --app shop --also backoffice
+# (--role can be omitted if caw.config.json has only one role)
+caw record bestellung --env local --role kunde
 
 # Test without AI
 caw run bestellung --env local
@@ -128,7 +128,7 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 `npx caw open my-app-smoke` replays the test and leaves the window open after the verdict:
 
 - **Keep clicking:** You continue in the same page and the same form state, including unsaved input and DevTools.
-- **Keep developing:** Against your dev server as the environment, F5 loads your current code. With `--overlay` the local code stays in place until you close the window, and F5 loads the current state of the build folder or dev server. There is no automatic reload apart from the dev server's hot reload.
+- **Keep developing:** Against your dev server as the environment, F5 loads your current code. With the [overlay extension](extensions/overlay.md) the local code stays in place until you close the window. There is no automatic reload apart from the dev server's hot reload.
 - **State:** F5 loses whatever existed only in the browser, such as open dialogs and unsaved input. "Restore state" in the chat or a new test run brings you back.
 - **End:** Closing the window ends the run. The exit code remains the verdict.
 - **Keyboard in the chat:** Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl+↵`. Esc first clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
@@ -146,10 +146,10 @@ A run with Claude, i.e. recording and fixing, does the following:
 
 1. **Reject what must not run:** config, test file, target and write protection are checked; for the `local` agent also whether Claude Code is present.
 2. **Image** (`docker` only): built once from the project's image plus Claude and the container part of the tool. Rebuilt only when these change.
-3. **Open:** with `--overlay` check the source (local code server at `overlay.url`, build, Sencha watch; started only with `--start`), start Chrome, sign in, open the page; with `--overlay` check after the first load that local code arrived. Failures here yield `error` without spending tokens.
+3. **Open:** start Chrome, sign in, open the page and wait until the app has loaded (with the [overlay extension](extensions/overlay.md) also check the local code). Failures here yield `error` without spending tokens.
 4. **Start Claude:** With `local`, `claude -p` starts on your machine with the locked-down tools (see [Sandbox boundaries](#sandbox-boundaries)); with `session` the run waits for your session. With `docker` the container starts (`docker run --rm`): set the firewall, then the container drops all privileges. If the sandbox isn't provably sealed, Claude doesn't run.
 5. **Test:** `claude -p` works through the plan; every browser command goes to the host as a file over the channel. The host checks the verdict.
-6. **Finish:** Claude ends immediately with the verdict (process or container). Report, trace and `floats.log` (clicks and, with `extjs`, the order of floating windows with timings, no content) are under `.caw/runs/<run>/`. The trace (`trace.zip`) contains page content, requests and cookies of the test account; don't share it. With `auth.type: basic` it records no snapshots, so the password from the Authorization header doesn't end up in it. Signing in again during a run (restoring a state) pauses the trace: the part before is kept as `trace-1.zip`, `trace-2.zip` …, and no sign-in form or request is in any of them. Screenshots and `claude.log` are under `agent/`. The log is written continuously and shows Claude's text and commands with seconds since start; the same lines appear in the terminal. A closing summary after the verdict is not included. Terminal output is colored, the file has no color codes; `NO_COLOR=1` turns colors off. Chrome closes as well.
+6. **Finish:** Claude ends immediately with the verdict (process or container). Report, trace and `floats.log` (clicks and, with `extjs`, the order of floating windows with timings, no content) are under `.caw/runs/<run>/`. The trace (`trace.zip`) contains page content, requests and cookies of the test account; don't share it. With `signIn.type: basic` it records no snapshots, so the password from the Authorization header doesn't end up in it. Signing in again during a run (restoring a state) pauses the trace: the part before is kept as `trace-1.zip`, `trace-2.zip` …, and no sign-in form or request is in any of them. Screenshots and `claude.log` are under `agent/`. The log is written continuously and shows Claude's text and commands with seconds since start; the same lines appear in the terminal. A closing summary after the verdict is not included. Terminal output is colored, the file has no color codes; `NO_COLOR=1` turns colors off. Chrome closes as well.
 
 Exit codes: `0` pass, `1` fail, `2` error (the environment is to blame), `3` input rejected, `4` needs recording (`record`).
 
@@ -159,7 +159,7 @@ All error codes with fixes: [Commands › Error codes](commands.md#error-codes).
 
 ## Recording a test plan: `record`
 
-You name role and app only the first time; the tool writes the metadata (`targets: [<target>]`, `mutates: true`). A re-recording keeps it. Claude Code or Docker, token and image are checked up front so your demonstration isn't wasted.
+You name the role only the first time; the tool writes `role` and `writes` (`true` unless `--read-only`), never `environments`. A re-recording keeps them. Claude Code or Docker, token and image are checked up front so your demonstration isn't wasted.
 
 1. **Start.** Chrome and the chat open, you are signed in. For a new test you demonstrate right away. For an existing one the chat first asks: "Show it myself" or "Claude follows the test plan".
 2. **Plan.** Claude presents the draft as a card in the chat: per test step ID, title, action and one expected result, plus notes on assumptions and open questions. The plan is the future test file without recording: YAML with `notes` and `steps`. Metadata or recordings Claude puts there are discarded by the tool. You approve or write what should change, and Claude presents a new version. Until approval the host rejects every action in the application with `plan-required`; reading is allowed.
@@ -168,7 +168,7 @@ You name role and app only the first time; the tool writes the metadata (`target
 5. **Check run.** The tool replays the recording without Claude; the chat shows progress. If a step fails, the chat offers to fix it, even in the not-yet-adopted draft.
 6. **Replace.** The chat shows a "Check run passed" card with what would be adopted; warnings and actions picked by position can be expanded. Then "Adopt test plan (N steps)" or "Discard draft", which a second click confirms. Only then is the test file written. If the check run doesn't pass, the old test plan stays untouched; plan (`plan.yaml`) and draft (`test-draft.yaml`) remain in the run folder. Nothing is committed automatically.
 
-**Test data:** Runs with `mutates: true` leave data behind: one record each from Claude and from the check run, up to two more per fix. Whatever Claude dropped also happened in the application.
+**Test data:** Runs with `writes: true` leave data behind: one record each from Claude and from the check run, up to two more per fix. Whatever Claude dropped also happened in the application.
 
 ### The workbench
 
@@ -219,30 +219,29 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 
 - **Recorded:** successful `click`, `fill`, `type`, `press`, `goto`, `reload`, `wait-ready`, `remember` and `check`. Failed attempts, `eval` and `snapshot` are left out.
 - **Completeness:** Saved only if every step has a passed `check` with no action after it. Otherwise the output names what's missing and the run ends with `fail`.
-- **Stable targets:** Instead of references, the file stores how a human finds the element, depending on the [framework](#framework-web-react-vue-angular-or-extjs): for `web` role and name, e.g. `{role: button, name: Senden, inside: {role: dialog, name: Neue Bestellung}}`, for `extjs` the component, e.g. `{xtype: combobox, label: Land*, part: input.x-input-el}`. List entries are thus tied to their text; if the data changes, the step fails.
+- **Stable targets:** Instead of references, the file stores how a human finds the element, as a Playwright locator: role and full name, label or text, scoped to the dialog or row around it, e.g. `getByRole('dialog', { name: 'Neue Bestellung' }).getByRole('button', { name: 'Senden', exact: true })`; for ExtJS components without a role also `locator('extjs=…')` ([ExtJS](extensions/extjs.md)). List entries are thus tied to their text; if the data changes, the step fails.
 - **Detours:** On submitting, Claude names what doesn't belong to the path (`"omit": [12, "14-16"]`). If all steps passed, `omit` is required, even empty, and the rejection shows Claude the full action list. Checks and `remember` can't be dropped. The report lists everything dropped. If Claude misses a detour, it stays in. The check run proves the path works, not that it is the shortest: review the file before committing, because its expressions later run in the signed-in page without Claude.
 - **Run tag:** Each run has its own `runTag`, e.g. `CAW-20261105185233`. Claude writes it into free-text fields that identify a record. The recording stores `{{runTag}}`, and every replay substitutes its own value, so a run finds its own record instead of an earlier one. If the application turns the name into a lowercase address (`/akten/akte-caw-20261105185233`), it stores `{{runTagLower}}`.
 - **Dates relative to today:** A date at most 60 days before or after the recording day (in the browser locale's format or `YYYY-MM-DD`) is stored as `{{date}}`, `{{date+7}}` or `{{isoDate-1}}`; `{{date}}` writes the date the way the locale does (`de-DE` 23.11.2026, `en-US` 11/23/2026). Replay substitutes the date of its own day, so a test doesn't fail the next day on "date is in the past". Dates further away stay fixed.
-- **Values from the run:** An order number is new in every run. Claude reads it with `remember bestellnr "<expression>"`; the recording then stores `{{bestellnr}}` with the expression, and replay reads the value from the page again. The command rejects values shorter than four characters.
+- **Values from the run:** An order number is new in every run. Claude reads it with `remember bestellnr "<expression>"`; the recording then stores `{{bestellnr}}` with the expression, and replay reads the value from the page again. The command rejects an empty value.
 - **Project context across tests:** `caw/caw.md` is to the tests what CLAUDE.md is to Claude Code: relevant project information and quirks of the applications. You maintain it by hand and check it in, e.g. "search remembers the last input". Claude gets it in every run with Claude. The file isn't part of the step hash, so changing it invalidates no recording. If a note affects the path, re-record. Behavior only, no personal data.
-- **Two apps in one test:** If the path leads into a second app of the project, name it on the first `record` with `--also verwaltung` (in the test file `also: [verwaltung]`). With `--overlay` its local code comes along too, if it has a source. The app needs an entry in `apps`, but no `startUrl`.
 
 **Limits:**
 
-- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `claude` and only with test accounts, the skill rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every write request to the app's hosts, by name without parameter values. A request is a read if it is GET, HEAD or OPTIONS, a GraphQL query, or matches a `reads` pattern; sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count; everything else writes. Requests to sign-in services in `allowHosts` and to third-party hosts (analytics, CDNs) never make a test a writing one.
-- **Step budget:** `--max-actions` (else `maxSteps` from the config, else 100) counts Claude's `click`, `fill`, `type`, `press`, `goto` and `reload`, failed ones included. What you demonstrate yourself doesn't count.
+- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `claude` and only with test accounts, the guide rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every write request to the app's hosts, by name without parameter values. A request is a read if it is GET, HEAD or OPTIONS, a GraphQL query, or matches a `reads` pattern; sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count; everything else writes. Requests to sign-in services in `allowHosts` and to third-party hosts (analytics, CDNs) never make a test a writing one.
+- **Step budget:** `--max-actions` (else `maxActions` from the config, else 100) counts Claude's `click`, `fill`, `type`, `press`, `goto` and `reload`, failed ones included. What you demonstrate yourself doesn't count.
 - **Claude doesn't react instantly:** `claude -p` runs without input; message and pause take effect before the next action. "Cancel" takes effect immediately.
 
 ## Test run: `run`
 
-Replays the recording without model, Docker or token. On environments with `claude` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines (`--no-learn` turns that off), the last one what changed in the test files. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with [`open <test>`](#reaching-a-state-and-taking-over), stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 4 and names `record`. If a step is outdated, it ends with exit 4 and names `record <test>@<step>` to re-record from that step.
+Replays the recording without model, Docker or token. On environments with `claude` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines (only with `--learn`, or when you click "Learn baselines" on the end card), the last one what changed in the test files. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with [`open <test>`](#reaching-a-state-and-taking-over), stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 4 and names `record`. If a step is outdated, it ends with exit 4 and names `record <test>@<step>` to re-record from that step.
 
 - **Waiting:** There are no fixed pauses. A step waits until its target is visible and not covered. That covers load masks, overlays and dialogs within dialogs, since only the topmost dialog is clickable. `check` retries until it holds or the time limit expires.
-- **Time limits:** 30 seconds per step by default, changeable with `--step-timeout` (e.g. `--step-timeout 45s`), or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--timeout <minutes>` (default 60) and `--max-actions <n>` apply as for `record`.
+- **Time limits:** 30 seconds per step by default, changeable with `--step-timeout` (e.g. `--step-timeout 45s`), or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--claude-timeout <duration>` (default 60m) and `--max-actions <n>` apply as for `record`.
 - **Errors:** If a step fails, the report names the test step with its action and points to a screenshot. Cleanup steps like "Cancel" then no longer run; a created record may stay open.
 - **Failures:** Console errors, script errors, failed requests and HTTP status 500 and above stop replay at the next step. So do visible dialogs, error messages and messages from `messageSelectors` that didn't occur during recording (numbers in the text don't count). With the `web` adapter a status notice (`role=status`, `aria-live=polite`, e.g. a success toast) is not a failure: it appears or not depending on timing; an unknown one appears once as a warning in the report. A dialog with input fields is interaction, not a message. Also: lost login, an application that didn't load (`extjs`: no ExtJS on the page), a stuck load mask (`aria-busy`, with `extjs` the load mask), a different page than recorded, and every unmet `check`.
 - **Fixing:** If a step fails, see [Fixing a step](#fixing-a-step).
-- **Without chat:** `--no-chat` replays in a visible window as in CI, without chat and without Claude: report, screenshot, a hint to run with chat to find the cause (`record <test>@<step>` only for an intended change), exit code. `--headless` likewise, but without a window, at a fixed 1920×1080. Neither works with `--explain` (exit 3). Whether an application accepts headless mode only shows in the run; otherwise use `--no-chat`.
+- **Without chat:** `--no-chat` replays in a visible window as in CI, without chat and without Claude: report, screenshot, a hint to run with chat to find the cause (`record <test>@<step>` only for an intended change), exit code. `--headless` likewise, but without a window, at the recorded viewport (else 1920×1080). Neither works with `--explain` (exit 3). Whether an application accepts headless mode only shows in the run; otherwise use `--no-chat`.
 - **Limits:** Only what was recorded is replayed. Claude's eye for anything odd is missing, and write protection and host lock apply here too. Toasts that disappear between two steps are not seen by replay.
 
 ### Reaching a state and taking over
@@ -258,7 +257,7 @@ Of S4 nothing runs if it has no input at all (`fill`, `type`, `upload`, e.g. onl
 
 The sequence is deterministic, the environment isn't: this is not a snapshot. The path runs anew each time with new data, and if the application deviates, the step fails visibly.
 
-- **Code:** As in every run the deployed version, unless you add `--overlay`; against your dev server as the environment your current code anyway. The `Code:` line says which (see [Testing local code](configuration.md#testing-local-code)). You see changes with F5; the form state is gone afterwards. To get back, start the command again.
+- **Code:** As in every run the code of the environment: against your dev server your current code, otherwise the deployed version. The `Code:` line says which (see [Testing local code](configuration.md#testing-local-code)). You see changes with F5; the form state is gone afterwards. To get back, start the command again.
 - **Path fails:** You clarify the error in the chat and can have the step fixed. If you close the chat, the window still goes to you and the report names the error. The exit code remains the verdict.
 - **No recording:** exit 4, record first. This applies to the steps before S4; S4 itself may be outdated.
 - **Learns nothing:** unlike `run`, `open` learns no baselines or effects.
@@ -287,7 +286,7 @@ If a step fails in `run` or in the check run of `record`, replay stops and the b
 - **Ask:** Only your message starts Claude, in the same browser and read-only as with [advice](#advice-on-errors-and-warnings). It answers in the chat, names cause, file and line, and can give advice cards. Each further message continues the same conversation until you press a button. The log is in `agent/claude-talk.log`. Without a message or click, no tokens are spent.
 - **Fix in the same browser:** If nothing of the failed step has run yet, i.e. its first action failed without a hard error from outside, Claude fixes it right there, without a lead-in. The test run's report is kept as `report-test-run.md`. Otherwise, e.g. after half a sequence of actions or an unmet check, it proceeds as below with a lead-in in a fresh browser. The chat says beforehand which way it will be.
 
-`record <test>@S4 --env <env>` re-records from S4 to the end, e.g. after an intended change in the application, or for a step changed by hand or newly added. The steps before S4 must be current; from S4 on steps may be outdated or not yet recorded. There is no check run first and no demonstration: S1 to S3 replay without Claude, then Claude follows the old plan from S4 on, you steer in the chat, and Claude looks for no cause. From S4 on Claude may add, remove, rename or reorder steps; the steps before stay as they are. If Claude presents the plan from S4 on unchanged, it applies without approval: the chat says so, and you can still write if something should change. The approval card appears only if something changes, likewise when fixing a failure. `@S1` is the same as `record <test>`. `--role`, `--app`, `--also` and `--read-only` don't go with a step (exit 3): the test keeps its metadata. Exactly one step is fixed only with "Fix step" in a run's chat.
+`record <test>@S4 --env <env>` re-records from S4 to the end, e.g. after an intended change in the application, or for a step changed by hand or newly added. The steps before S4 must be current; from S4 on steps may be outdated or not yet recorded. There is no check run first and no demonstration: S1 to S3 replay without Claude, then Claude follows the old plan from S4 on, you steer in the chat, and Claude looks for no cause. From S4 on Claude may add, remove, rename or reorder steps; the steps before stay as they are. If Claude presents the plan from S4 on unchanged, it applies without approval: the chat says so, and you can still write if something should change. The approval card appears only if something changes, likewise when fixing a failure. `@S1` is the same as `record <test>`. `--role` and `--read-only` don't go with a step (exit 3): the test keeps its metadata. Exactly one step is fixed only with "Fix step" in a run's chat.
 
 Only what Claude tells you with `say` appears as a message in the chat. Its other notes are collapsed with the actions. If you cancel, the report says "Aborted by you."
 
@@ -296,7 +295,7 @@ Only what Claude tells you with `say` appears as a message in the chat. Its othe
 3. **Execute:** Claude runs the step and cleans it up. If the result stays the same, the check must stay the same too, or `finish` rejects it. Likewise if a `remember` value needed by a later step disappears.
 4. **Check run:** The whole test runs without Claude in a fresh browser, up to any step that may still be outdated. If another step fails, the offer comes again. If it passes: "Adopt test plan (N steps)" or "Discard draft".
 
-Only the fixed steps change in the file; comments and all other steps stay identical character for character. With `record <test>@S4` the steps before S4 stay identical, steps no longer in the plan are deleted, and the steps from S4 on lose their request baselines and effects; the next `run` with chat learns them anew. New messages Claude sees along the way count as known afterwards; the decision lists them so no application bug slips through unnoticed.
+Only the fixed steps change in the file; comments and all other steps stay identical character for character. With `record <test>@S4` the steps before S4 stay identical, steps no longer in the plan are deleted, and the steps from S4 on lose their request baselines and effects; the next `run --learn` (or "Learn baselines" on its end card) learns them anew. New messages Claude sees along the way count as known afterwards; the decision lists them so no application bug slips through unnoticed.
 
 - **Test data:** A fix costs up to two passes; writing steps before it create data accordingly. Tokens are spent only for this step, with `record <test>@S4` for all steps from S4 on. If a step fails after submitting, the record stays open; replay doesn't clean up.
 - **Without Claude:** If Claude Code (`local`) or Docker or token (`docker`) is missing, the chat names the reason and the run stays `fail`.
@@ -322,7 +321,7 @@ If a step fails, the tool classifies the failure without Claude and without toke
 
 The strongest finding decides; the others are listed below it. Without notable evidence it stays "unclear". The assessment appears in the chat, as the "Assessment" section in `report.md` with a table of requests next to the recorded ones, in `result.json` and in Claude's task (`diagnosis`, `evidence`). Claude reads it there first and can fetch the latest requests with `network`.
 
-Without `recording.network` the report says so. The baseline is never created while recording or fixing: under Claude's control misclicks and detours also run, which are dropped from the recording, and their requests didn't belong to the step. It is created without Claude and tokens in the next `run` with chat on an environment with `claude`, from the cleaned-up recording: every passed step without a baseline then gets one from this run, if it was recorded on the same target. The same goes for the effect per action. Chat and terminal name the steps; only this field changes in the file, the hash stays untouched. A `run` never overwrites existing values, unless they date from before parameter names (entries without `params`). Without chat, e.g. in CI, the file stays as it is.
+Without `recording.network` the report says so. The baseline is never created while recording or fixing: under Claude's control misclicks and detours also run, which are dropped from the recording, and their requests didn't belong to the step. It is created without Claude and tokens by a `run --learn` (or "Learn baselines" on the end card of a passed run with chat), from the cleaned-up recording: every passed step without a baseline then gets one from this run, if it was recorded on the same environment. The same goes for the effect per action. Chat and terminal name the steps; only this field changes in the file, the hash stays untouched. A `run` never overwrites existing values, unless they date from before parameter names (entries without `params`). Otherwise a run changes no file.
 
 ### Effect per action
 
@@ -338,7 +337,7 @@ Every action (click, input, key) has an effect on the page. The tool measures it
 
 Numbers become `#`, so order numbers and dates don't interfere.
 
-**Learning:** A passed `run` with chat on an environment with `claude` records the effect. The first two healthy runs are reconciled: only what was equal in both is kept; the console collects everything that occurred. The effect then counts as learned (`runs: 2`) and no run changes it any more. A newly recorded step learns anew.
+**Learning:** A passed `run --learn` (or "Learn baselines") records the effect. The first two healthy runs are reconciled: only what was equal in both is kept; the console collects everything that occurred. The effect then counts as learned (`runs: 2`) and no run changes it any more. A newly recorded step learns anew.
 
 **Comparison:**
 - If something from the learned effect is missing during replay, that is a deviation, as is a new console message.
@@ -380,39 +379,9 @@ The "Recommendations" section in `report.md` lists each piece of advice with evi
 
 In a terminal the tool shows colors, symbols and, at the end, a result block with every step. In files and pipes it stays plain lines prefixed with `[caw]`. `NO_COLOR` turns this off, `FORCE_COLOR` forces it.
 
-## How local code gets into the application
+## Local code in the application
 
-When local code runs, what to set, and how build folder and dev server get into the page: [Configuration › Testing local code](configuration.md#testing-local-code). This section covers the common model, ExtJS (Sencha) and the setup order.
-
-For every framework the model is the same: your project's **local code server** runs at `overlay.url`, started with your project's own command `overlay.start`. caw starts nothing by itself (only with `--start`, for CI); it checks the server, takes the code from it and names `start` when it isn't running.
-
-With `"framework": "extjs"`, `--overlay` (or `--overlay dev`) takes the local code from the web server of the Sencha watch, `overlay.url`, by default `http://localhost:1841/`. `--overlay http://localhost:1842/` overrides it for one run. The ExtJS app is loaded into a deployed page under its build names; caw answers those requests with the sources that the watch's `bootstrap.json` lists, in their order. Optional on the app: `start` (e.g. `"pnpm run watch"`) and `statics`. `--overlay build` is rejected (exit 3).
-
-**Build names.** caw derives them as Sencha Cmd builds:
-
-- **App:** `output.js.path` (or `output.js` as a string) in `app.json`, also in the stages `production`, `testing` and `development`; otherwise `app.output.js.path` or `app.output.js` from `.sencha/app/*.properties`; otherwise `app.js`. caw doesn't know which stage is deployed, so each of these names counts.
-- **Package:** `<name>.js` and `<name>-debug.js`, with the name from the packages in `bootstrap.json`.
-
-A request matches by the last segment of its path; the folder in front of it is where the portal keeps the file. The name comes from the path below the environment URL or from group 1 of `assetUrlPattern`. Framework packages (`ext/`, `node_modules/@sencha/`) are never replaced, so Ext JS itself always comes from the server. If a name fits two parts, or the page loads two files with the same build name, the run ends with exit 2 (`overlay-ambiguous`) and names both; give one app its own `output.js.path`.
-
-**The watch.** caw reads `bootstrap.json` and every source it lists over HTTP from the watch at `url` (paths with `../` resolved against it), `bootstrap.json` once per page load. Build names still come from `app.json` and `.sencha/app/*.properties` in the project folder. So the watch may run wherever its port is reachable, e.g. in a devcontainer with a forwarded port.
-
-- **This app's watch:** before the browser caw requests `<url>app.json` and `<url>bootstrap.json`. The name must match the local `app.json` and the load order must not be empty. Another project's watch on the same port is `wrong-app` (exit 2, `overlay-not-ready`), never silently used.
-- **Random port:** if 1841 was taken, the Sencha watch picks another port. caw looks at the running watch processes, asks their listening ports and uses the one serving this app (`moved`): `Sencha watch runs at http://localhost:52775/, not at http://localhost:1841/: using it. Set apps.<app>.overlay.url …`.
-- **Watch not running:** exit 2 (`overlay-not-ready`) with `start` and the app folder. With `--start` caw runs `start` in the app folder, waits up to 180 s until the watch serves this app, logs to `.caw/<app>-watch.log` and stops it at the end.
-- **Changed files arrive on the next load.** New classes appear in `bootstrap.json` only after the watch has built.
-- **`bootstrap.json` missing, empty, or naming a file the watch doesn't serve:** exit 2 (`overlay-stale`). Wait until the watch has built, or restart it.
-
-**Completeness.** After the first load caw compares the page's script requests with the parts from `bootstrap.json` (app and own packages). It recognises a part by its file name anywhere in the URL, in the path or in a query value such as `/o/FormProxyServlet?url=…/Root/…/x.js`, independent of `assetUrlPattern`. If a part came from the server, the run ends with exit 2 (`overlay-incomplete`): the page would run partly on your code, partly on the deployed one, which shows up as errors far from the cause (`$jscomp is not defined`, a broken grid). The message lists the parts, up to five URLs and the `assetUrlPattern` that catches them. A part that was never requested is only a note: the app may load it later.
-
-Set up the overlay in this order:
-
-1. Set `overlay.url` and `overlay.start` on the app (`init` writes the ExtJS default `http://localhost:1841/`; your Claude Code session derives both from `vite.config`, `angular.json`, `package.json` scripts or the README).
-2. Start the server yourself with `start` in the app folder, or let your Claude Code session do it (it asks first and runs it in the background).
-3. `npx caw overlay status` until `ready` (`moved`: set `url` to the address it names).
-4. `npx caw overlay check` until it reports complete (`--apply` adds suggested patterns).
-
-`doctor` shows the server, `bootstrap.json` and the last check per part.
+Against your dev server the app runs your code anyway: it is just an environment ([Configuration › Testing local code](configuration.md#testing-local-code)). For apps that only run inside a deployed environment, the [overlay extension](extensions/overlay.md) lays your local code over it; with ExtJS from the Sencha watch ([ExtJS](extensions/extjs.md)).
 
 ## Framework: `web`, `react`, `vue`, `angular` or `extjs`
 
@@ -420,7 +389,7 @@ Almost everything in the tool is framework-agnostic: snapshot, clicks, console, 
 
 | | `web` (default) | `react` / `vue` / `angular` | `extjs` |
 |---|---|---|---|
-| Stored target | Role and accessible name (`aria-label`, label, text), plus `data-testid` and the nearest named region as `inside` (dialog, form, row). Without a role: tag and own text. Never field values. Open shadow roots count (closed ones can't be reached); in an iframe of the application the target carries the iframe as `frame` | like `web`, plus `component`: the components from outside in, e.g. `GroupsScreen › Button`; for Vue also `source`, the SFC file. Dev build only, irrelevant for finding the target again | Component: `xtype`, label, `itemId`, sub-element |
+| Stored target | A Playwright locator: role and full accessible name (`aria-label`, label, text), `data-testid`, scoped to the named dialog, form or row around it. Never field values. Open shadow roots count (closed ones can't be reached); an iframe of the application via `contentFrame()` | like `web`, plus `component` as a hint: the components from outside in, e.g. `GroupsScreen › Button`; for Vue also `source`, the SFC file. Dev build only, irrelevant for finding the target again | like `web`; a component without role or name as `locator('extjs=…')` (`Ext.ComponentQuery`) |
 | Ready | Document loaded, no page request open (requests open longer than 10 s, like long polling, don't count), nothing with `aria-busy`, no indeterminate progress (`role=progressbar` without `aria-valuenow`), DOM quiet for 150 ms | like `web`, plus mounted: React root container, Vue `data-v-app`, Angular `[ng-version]`; Angular also stable according to Zone.js if the app offers Testability (with `bootstrapApplication` only with `provideProtractorTestingSupport()`) | No `Ext.Ajax` request open, no store loading |
 | `wait-ready --for` | CSS selector, `--min-count` counts visible matches | like `web` | `storeId` or ComponentQuery, counts records |
 | Messages | modal dialogs without input fields, `role=alert`, `role=alertdialog`, or `messageSelectors`; `role=status` (toasts, snackbars) only as a notice | like `web` | modal dialogs, `messageSelectors`, plus ExtJS dialogs and toasts |
@@ -457,13 +426,13 @@ For `web` and the SPA adapters an accessible UI helps: buttons with text or `ari
 
 **Chrome (on the host, outside the Docker firewall):**
 
-- **Control:** The agent never gets CDP. There are only the fixed commands from `caw help`, as files in the agent folder. Navigation via `goto` only goes to allowed hosts.
+- **Control:** The agent never gets CDP. There are only the fixed commands of `caw agent --help`, as files in the agent folder. Navigation via `goto` only goes to allowed hosts.
 - **Network:** pages navigate only to the hosts of `environments` and `allowHosts` (a request route; a redirect onto another host fails the action as well). Subresources and iframes may go to any host and are listed in the report as third-party hosts. Production hosts of other environments are unresolvable in Chrome (`--host-resolver-rules`) for every request type. Plus `--no-proxy-server`, so the resolver rules apply, and a WebRTC lock.
 - **Workbench:** The tool answers the top window's document itself, at the application's address. The application thus shares the origin with the workbench and can modify its page; decisions are made only in the chat, which it can't reach (separate, opaque origin). A POST into the top window is sent once by the tool via the browser context (same cookies, same host lock).
 - **Limit of the lock:** It knows hosts, not ports. Other services on an allowed host are reachable from the page.
 - **Visibility:** `eval` runs in the signed-in page. Claude sees and can do everything the test user sees and can do in the application. So use only test accounts with few rights.
 - **Backend:** The lock ends at the application's host. Requests via an application proxy pass through, and where it forwards them is up to the server. The real boundary is the test account's rights.
-- **`mutates: false`:** A new test is writing unless `record … --read-only`. If a read-only test does write during recording, it becomes writing on adopt. The tool checks the field before starting against `environments.<env>.writable`. During the run only the skill's instruction prevents writing; it isn't technically blocked.
+- **`writes: false`:** A new test is writing unless `record … --read-only`. If a read-only test does write during recording, it becomes writing on adopt. The tool checks the field before starting against `environments.<env>.writable`. During the run only the guide's instruction prevents writing; it isn't technically blocked (on `production` environments write requests are blocked).
 - **Corporate policies:** A centrally enforced Chrome policy (e.g. a proxy) can override the lock. Check this on the machine running the tests (`chrome://policy`).
 
 **Verdict:** Only the host writes report and `result.json`, outside the agent folder. Only screenshots the host took itself count.
