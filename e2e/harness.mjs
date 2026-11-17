@@ -108,6 +108,12 @@ export const benchBack = async (chat) => {
     await bench.locator('.soloBar [data-solo]').click();
     await bench.locator('body:not(.solo)').waitFor({ state: 'attached', timeout: 10000 });
 };
+/** A new test asks how it is made: the human shows it. */
+export const showMyself = async (page) => {
+    await stateOf(page, 'choosing');
+    await page.locator('#choices button', { hasText: 'Selbst vorführen' }).click({ timeout: 90000 });
+    await stateOf(page, 'showing');
+};
 export const approve = async (page) => {
     await stateOf(page, 'planning');
     await page.locator('#approve').click();
@@ -183,7 +189,7 @@ export const CATALOGUE_ALIASES = {
     H2: ['N14'],
     // Recording: by demonstration and Claude (portal A, refs N1, demonstration N2), by plan in the session with the portability
     // and write checks (S2), the same recording on an environment caw starts (S4).
-    S1: ['A', 'N1', 'N2', 'S2', 'S4'],
+    S1: ['A', 'K2', 'N1', 'N2', 'S2', 'S4'],
     // Triage and repair: offer (C), repair one step (D, H), run --fix (O, P), assessment (X, Y), backend faults (D3), explanations (N11).
     S5: ['C', 'D', 'H', 'O', 'P', 'X', 'Y', 'D3', 'N11'],
     // Re-recording from a step: stale (B), record @S3 (E, Q, N5), failing check run (F), unchanged plan (I).

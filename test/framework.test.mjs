@@ -35,8 +35,8 @@ test('Framework: why a locator found nothing, as a sentence; a renamed name is s
     assert.deepEqual(closestNames('Speichern', ['Sichern', 'Abbrechen', 'Speichern']), ['Sichern']);
     assert.deepEqual(closestNames('Akte anlegen', ['Neue Akte anlegen', 'Hilfe']), ['Neue Akte anlegen']);
     assert.match(explainText({ frameMissing: 'iframe "Zahlung"' }), /iframe "Zahlung"/);
-    assert.match(explainText({ missing: true, similar: [{ role: 'button', name: 'Sichern' }] }), /button „Sichern“/);
-    assert.match(explainText({ covered: { role: 'dialog', name: 'Hinweis', messages: ['Sitzung abgelaufen.'] } }), /„Hinweis“.*„Sitzung abgelaufen\.“/);
+    assert.match(explainText({ missing: true, similar: [{ role: 'button', name: 'Sichern' }] }), /button "Sichern"/);
+    assert.match(explainText({ covered: { role: 'dialog', name: 'Hinweis', messages: ['Sitzung abgelaufen.'] } }), /"Hinweis".*"Sitzung abgelaufen\."/);
     assert.equal(explainText(null), '');
 });
 

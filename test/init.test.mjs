@@ -346,10 +346,10 @@ test('init: explore is required, asks for address and roles, checks every answer
     assert.equal(answers.framework, 'react');
     assert.deepEqual(answers.roles, ['admin', 'sach-bearbeiter']);
     assert.equal(answers.language, 'fr', 'the team language is asked, any language code');
-    assert.match(shown, /Teamsprache „Deutsch“: ein Sprachkürzel/);
+    assert.match(shown, /Teamsprache "Deutsch": ein Sprachkürzel/);
     assert.equal(answers.env, undefined, 'no name asked on this machine: local');
     assert.match(shown, /http:\/\/ oder https:\/\//);
-    assert.match(shown, /„Admin“: nur Kleinbuchstaben/);
+    assert.match(shown, /"Admin": nur Kleinbuchstaben/);
     init(root, answers);
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
     assert.equal(config.signIn.signedInSelector, 'TODO', 'what explore did not find');
@@ -512,8 +512,8 @@ test('init: environment name and flags (SC-15), --language and --allow-http, exp
     // Flags up front, checked before anything opens.
     const root = mkdtempSync(join(tmpdir(), 'caw-init-flags-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    await assert.rejects(initAnswers(root, ['--offline', '--env', 'Staging'], { interactive: false }), /Umgebung „Staging“/);
-    await assert.rejects(initAnswers(root, ['--offline', '--language', 'Deutsch'], { interactive: false }), /Teamsprache „Deutsch“/);
+    await assert.rejects(initAnswers(root, ['--offline', '--env', 'Staging'], { interactive: false }), /Umgebung "Staging"/);
+    await assert.rejects(initAnswers(root, ['--offline', '--language', 'Deutsch'], { interactive: false }), /Teamsprache "Deutsch"/);
     assert.deepEqual((await initAnswers(root, ['--offline', '--url', 'http://qa.intern', '--env', 'qa', '--language', 'de', '--allow-http', '--insecure-tls'], { interactive: false })).answers,
         { url: 'http://qa.intern', offline: true, env: 'qa', language: 'de', insecureTls: true, allowHttp: true });
     // explore's suggestions: the page language and the blocked sign-in hosts; flags win.

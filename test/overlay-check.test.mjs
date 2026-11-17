@@ -66,7 +66,7 @@ test('overlayStatus: no part, no overlay environment, down, wrong app, stale, mo
     const status = (options, deps = watching(root), given = settings) => overlayStatus(root, { config: given, deps, ...options });
     const unknown = await status({ target: 'dev', part: 'shop' });
     assert.deepEqual([unknown.state, overlayStatusExit(unknown)], ['no-part', 3]);
-    assert.match(unknown.message, /Kein Teil „shop“ in overlay\.parts\. Nimm --part, zur Wahl: web/);
+    assert.match(unknown.message, /Kein Teil "shop" in overlay\.parts\. Nimm --part, zur Wahl: web/);
     const local = await status({ target: 'test', part: 'web' });
     assert.equal(local.state, 'not-overlay');
     assert.match(local.message, /--overlay geht auf Umgebung test nicht: overlay\.environments erlaubt dev/);

@@ -140,7 +140,7 @@ test('validate: all problems of a test at once, YAML positions only once', (t) =
     assert.throws(() => validate(root), (error) => {
         assert.equal(error.code, 'test-invalid');
         assert.match(error.message, /kaputt\.yaml: Unbekannte Rolle: geist/);
-        assert.match(error.message, /kaputt\.yaml: environments: Umgebung „qa“ gibt es nicht\. Bekannt: local, staging/);
+        assert.match(error.message, /kaputt\.yaml: environments: Umgebung "qa" gibt es nicht\. Bekannt: local, staging/);
         return true;
     });
     writeFileSync(join(root, 'caw', 'tests', 'kaputt.yaml'), 'writes: false\nsteps:\n  - id: S1\n    do: a: b\n');

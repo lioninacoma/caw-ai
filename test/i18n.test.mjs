@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 import { detectLanguage, inLanguage, language, setLanguage, t, teamLanguage } from '../src/shared/i18n.mjs';
 
-test('detectLanguage: CAW_LANG, then prefs.json, then LANG, then system, else English; never the project config', () => {
+test('detectLanguage: CAW_LANG, then prefs.json, then the team language, then LANG, then system, else English', () => {
     const none = () => ({});
     assert.equal(detectLanguage({ env: { CAW_LANG: 'en' }, prefs: () => ({ language: 'de' }) }), 'en');
     assert.equal(detectLanguage({ env: { LANG: 'en_US.UTF-8' }, prefs: () => ({ language: 'de' }) }), 'de', 'the personal choice beats the OS');
@@ -14,7 +14,12 @@ test('detectLanguage: CAW_LANG, then prefs.json, then LANG, then system, else En
     assert.equal(detectLanguage({ env: {}, system: () => 'de-AT', prefs: none }), 'de');
     assert.equal(detectLanguage({ env: { LANG: 'C.UTF-8' }, system: () => 'fr-FR', prefs: none }), 'en');
     assert.equal(detectLanguage({ env: {}, system: () => { throw new Error('x'); }, prefs: none }), 'en');
-    // prefs.json from CAW_AI_HOME; a project config with language de does not count.
+    // The project's team language beats the system, a personal choice beats the team language; other languages don't count.
+    assert.equal(detectLanguage({ env: { LANG: 'de_DE.UTF-8' }, system: () => 'de-DE', prefs: none, team: 'en' }), 'en');
+    assert.equal(detectLanguage({ env: { CAW_LANG: 'de' }, prefs: none, team: 'en' }), 'de');
+    assert.equal(detectLanguage({ env: {}, prefs: () => ({ language: 'de' }), team: 'en' }), 'de');
+    assert.equal(detectLanguage({ env: { LANG: 'de_DE.UTF-8' }, prefs: none, team: 'fr' }), 'de');
+    // prefs.json from CAW_AI_HOME.
     const home = mkdtempSync(join(tmpdir(), 'caw-i18n-'));
     writeFileSync(join(home, 'prefs.json'), JSON.stringify({ language: 'de' }));
     assert.equal(detectLanguage({ env: { CAW_AI_HOME: home, LANG: 'en_US.UTF-8' } }), 'de');

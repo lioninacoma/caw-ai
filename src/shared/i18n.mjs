@@ -1,8 +1,9 @@
-// UI language: German or English. Workbench, chat, CLI and error messages get their texts via t(). It is personal: the
-// team language (config `language`) only decides what Claude writes and the language of report.md (teamLanguage, inLanguage).
+// UI language: German or English. Workbench, chat, CLI and error messages get their texts via t(). A project speaks one
+// language: without a personal choice the UI follows the team language (config `language`), so caw's texts and the test's own
+// texts don't mix. The team language also decides what Claude writes and the language of report.md (teamLanguage, inLanguage).
 //
-// Order: CAW_LANG, then "language" in prefs.json, then LC_ALL / LC_MESSAGES / LANG / LANGUAGE, then the system language
-// (Intl), else English.
+// Order: CAW_LANG, then "language" in prefs.json (both a deliberate personal choice), then the project's team language when it
+// is de or en, then LC_ALL / LC_MESSAGES / LANG / LANGUAGE, then the system language (Intl), else English.
 //
 // Rule for modules: never call t() at module top level, because the language is not known yet at import time.
 // Texts belong inside functions or are fetched when used.
@@ -19,12 +20,17 @@ const pick = (value) => {
     return LANGUAGES.includes(code) ? code : null;
 };
 
-/** The personal UI language from the environment, prefs.json and the system; never from the project's config. */
-export const detectLanguage = ({ env = process.env, system = () => Intl.DateTimeFormat().resolvedOptions().locale, prefs = () => readPrefs(env) } = {}) => {
+/**
+ * The UI language: a personal choice (CAW_LANG, prefs.json), else the project's team language, else the system's.
+ * @param team the `language` of the project's caw.config.json, if any
+ */
+export const detectLanguage = ({ env = process.env, system = () => Intl.DateTimeFormat().resolvedOptions().locale, prefs = () => readPrefs(env), team } = {}) => {
     const forced = pick(env.CAW_LANG);
     if (forced !== null) return forced;
     const chosen = pick(prefs().language);
     if (chosen !== null) return chosen;
+    const project = pick(team);
+    if (project !== null) return project;
     for (const name of ['LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE']) {
         const found = pick(env[name]);
         if (found !== null) return found;

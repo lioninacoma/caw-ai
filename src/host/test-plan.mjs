@@ -57,7 +57,39 @@ export const sessionFollowsOwnPlan = ({ agent, previous, proposed }) => agent ==
  * @param previous Map step id -> step as it was: a changed expectation shows the old one struck through
  * @param from     re-recording from this step on: the title names it
  */
-export const planView = ({ notes, steps }, { repairing = false, rerecord = false, from, previous } = {}) => ({
+/** The human's notes of a demonstration or description, numbered H1, H2 … in order: Claude names them in `heard`. */
+export const withNoteIds = (items) => {
+    let count = 0;
+    return items.map((item) => (item.action === 'note' ? { id: `H${(count += 1)}`, ...item } : item));
+};
+
+/**
+ * Every human note must be accounted for exactly once, and a note or retry must really be on its step.
+ * @returns problems for Claude, in English like the other plan-invalid messages
+ */
+export const heardProblems = ({ heard = [], steps }, notes) => {
+    const problems = [];
+    const ids = notes.map(({ id }) => id);
+    const named = heard.map(({ note }) => note);
+    const unknown = named.filter((id) => !ids.includes(id));
+    const twice = named.filter((id, index) => named.indexOf(id) !== index);
+    const missing = ids.filter((id) => !named.includes(id));
+    if (unknown.length > 0) problems.push(`heard names notes that do not exist: ${unknown.join(', ')}.`);
+    if (twice.length > 0) problems.push(`heard names a note more than once: ${[...new Set(twice)].join(', ')}.`);
+    if (missing.length > 0) problems.push(`heard must say for every note of the human what became of it (note, retry, notes or run); missing: ${missing.join(', ')}.`);
+    for (const { note, as, step } of heard) {
+        const target = steps.find(({ id }) => id === step);
+        if (as === 'note' && target?.note === undefined) problems.push(`${note} is heard as note of ${step}, but ${step} has no note.`);
+        if (as === 'retry' && target?.retry === undefined) problems.push(`${note} is heard as retry of ${step}, but ${step} has no retry.`);
+    }
+    return problems;
+};
+
+/** The human's notes with what became of them, for the card. */
+const heardOf = (heard = [], notes = []) => heard.map(({ note, as, step }) => ({ text: notes.find(({ id }) => id === note)?.text ?? note, as, step }))
+    .filter(({ text }) => text !== undefined);
+
+export const planView = ({ notes, steps, heard }, { repairing = false, rerecord = false, from, previous, humanNotes = [] } = {}) => ({
     repairing,
     title: (() => {
         if (!repairing) return t('config.plan.title');
@@ -65,6 +97,7 @@ export const planView = ({ notes, steps }, { repairing = false, rerecord = false
         return t(rerecord ? 'config.plan.rerecord' : 'config.plan.fix', { id: String(steps[0]?.id) });
     })(),
     notes: repairing ? '' : notes,
+    heard: heardOf(heard, humanNotes).filter(({ step }) => step === undefined).map(({ text, as }) => ({ text, as })),
     steps: steps.map(({ id, name, do: action, expect, note, retry }) => ({
         id,
         name,
@@ -72,6 +105,7 @@ export const planView = ({ notes, steps }, { repairing = false, rerecord = false
         expect,
         ...(note === undefined ? {} : { note }),
         ...(retry === undefined ? {} : { retry }),
+        ...(heardOf(heard, humanNotes).some(({ step }) => step === id) ? { heard: heardOf(heard, humanNotes).filter(({ step }) => step === id).map(({ text, as }) => ({ text, as })) } : {}),
         ...(previous?.has(id) && previous.get(id).expect !== expect ? { previousExpect: previous.get(id).expect } : {}),
     })),
 });

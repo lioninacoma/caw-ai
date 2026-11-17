@@ -35,7 +35,7 @@ test('effectiveEnvironment: extends inherits everything but production, values r
     const child = { environments: { prod: { url: 'https://x.test', production: true }, copy: { extends: 'prod', url: 'https://y.test' } } };
     assert.equal(effectiveEnvironment(child, 'copy').production, false);
     assert.equal(effectiveEnvironment(config, 'prod-south').production, true);
-    assert.throws(() => effectiveEnvironment(config, 'stagin'), (error) => error.code === 'env-invalid' && /Umgebung „stagin“ gibt es nicht/.test(error.message));
+    assert.throws(() => effectiveEnvironment(config, 'stagin'), (error) => error.code === 'env-invalid' && /Umgebung "stagin" gibt es nicht/.test(error.message));
     const cycle = { environments: { a: { extends: 'b', url: 'https://a.test' }, b: { extends: 'a', url: 'https://b.test' } } };
     assert.throws(() => effectiveEnvironment(cycle, 'a'), /extends läuft im Kreis: a → b → a/);
     assert.deepEqual(Object.keys(effectiveEnvironments(cycle)), [], 'unresolvable environments are left out of the list');

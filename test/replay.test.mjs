@@ -709,7 +709,7 @@ test('Step list: every recorded action becomes a point of its step, without ente
     ] };
     const groups = stepGroups(steps, replay);
     assert.deepEqual(groups.map(({ id, points }) => [id, points.map(({ id: point }) => point)]), [['S1', ['a1', 'a2', 'a3', 'a4']], ['S2', ['a5', 'a6', 'a7']], ['S3', []]]);
-    assert.deepEqual(groups[0].points.map(({ kind, label }) => `${kind} ${label}`), ['Eingabe „Passwort“', 'Klick „Anmelden“', 'Warten Seite ruhig', 'Prüfung Startseite offen']);
+    assert.deepEqual(groups[0].points.map(({ kind, label }) => `${kind} ${label}`), ['Eingabe "Passwort"', 'Klick "Anmelden"', 'Warten Seite ruhig', 'Prüfung Startseite offen']);
     assert.equal(stepGroups(steps, { steps: [{ action: 'click', target: "getByRole('button').nth(1)" }, { action: 'check', id: 'S1' }] })[0].points[0].label, 'button [2]', 'without a name its kind');
     assert.ok(!JSON.stringify(groups).includes('geheim'), 'no entered value');
     assert.deepEqual(stepGroups(steps, undefined).map(({ points }) => points.length), [0, 0, 0]);

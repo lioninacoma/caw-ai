@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { TESTS, testText, writeTests } from '../native/project.mjs';
 import {
     appOf, benchBack, decide, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, planOf, print, record, run,
-    runDirsOf, sleep, startServer, stateOf, tag, verify, writeTest,
+    runDirsOf, showMyself, sleep, startServer, stateOf, tag, verify, writeTest,
 } from '../harness.mjs';
 
 const native = join(here, 'native');
@@ -169,7 +169,7 @@ $A check S1 "document.getElementById('status').textContent==='Saved'"
 ${finishOf(['S1'])}`;
     const h = humans(async (page) => {
         const app = page.context().pages()[0];
-        await stateOf(page, 'showing');
+        await showMyself(page);
         await app.locator('#save').click();
         await app.locator('#customer').click();
         await app.locator('#customer').pressSequentially('Meier');
@@ -259,7 +259,7 @@ scenario('N4', 'open <test>@S3: the steps before run, S3 does not; F1 "Öffnen�
         await bench.locator('#sgo').click();
         // The chat asks before it replaces the state.
         await chat.locator('.message.question', { hasText: 'bis zum Einstieg in S2 öffnen?' }).waitFor({ timeout: 30000 });
-        await decide(chat, 'Herstellen');
+        await decide(chat, 'S2 öffnen');
         await chat.locator('.message', { hasText: 'Einstieg in n9-shadow S2 ist neu hergestellt' }).waitFor({ timeout: 60000 });
         const shadow = await appOf(bench).evaluate(() => `${document.querySelector('caw-rating').shadowRoot.querySelector('[role=status]').textContent}|${document.getElementById('status').textContent}`);
         verify('Other test at its entry: S1 ran, S2 did not', shadow === 'Thanks: Good|', shadow);
@@ -380,7 +380,7 @@ ${finishOf(['S1', 'S2'])}`;
     await setCover(true);
     try {
         const covered = await quiet();
-        verify('Covered by a message box: fails and names it by its title', covered.exit === 1 && /verdeckt von dialog „Hinweis“/.test(covered.note), covered.note);
+        verify('Covered by a message box: fails and names it by its title', covered.exit === 1 && /verdeckt von dialog "Hinweis"/.test(covered.note), covered.note);
     } finally {
         await setCover(false);
     }
@@ -532,7 +532,7 @@ $A check S1 "${DATA_DONE}"
 ${finishOf(['S1'])}`;
     const h = humans(async (page) => {
         const app = page.context().pages()[0];
-        await stateOf(page, 'showing');
+        await showMyself(page);
         // Pointer down and up like a person: a dialog closed by the click is only gone after the pointer is up again.
         const human = { delay: 80 };
         const bereich = app.locator('input[placeholder="Bereich*"]');
@@ -735,7 +735,7 @@ $A check S1 "${ARIA_DONE}"
 ${finishOf(['S1'])}`;
     const h = humans(async (page) => {
         const app = page.context().pages()[0];
-        await stateOf(page, 'showing');
+        await showMyself(page);
         // Pointer down and up like a person: a dialog closed by the click is only gone after the pointer is up again.
         const human = { delay: 80 };
         const typeInto = async (field, text) => {
@@ -796,9 +796,9 @@ ${finishOf(['S1'])}`;
 
 scenario('N11', 'Failures: renamed (similar name), covered (diagnosis with the message), repair offered in the chat', async () => {
     const renamed = await runQuietly('n11-renamed');
-    verify('Renamed: fails, similar name offered', renamed.code === 1 && /Es fehlt auf der Seite\. Ähnlich: button „Archive all“/.test(renamed.note), renamed.note);
+    verify('Renamed: fails, similar name offered', renamed.code === 1 && /Es fehlt auf der Seite\. Ähnlich: button "Archive all"/.test(renamed.note), renamed.note);
     const covered = await runQuietly('n11-covered');
-    verify('Covered: fails, names the cover and its message', covered.code === 1 && /verdeckt von dialog/.test(covered.note) && /„Session expired\.“/.test(covered.note), covered.note);
+    verify('Covered: fails, names the cover and its message', covered.code === 1 && /verdeckt von dialog/.test(covered.note) && /"Session expired\."/.test(covered.note), covered.note);
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {

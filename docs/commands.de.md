@@ -299,7 +299,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 
 | Variable | |
 |---|---|
-| `CAW_LANG` | `en` oder `de`: deine Sprache für caws eigene Texte (CLI, Werkbank). Die Teamsprache (`language` in der Config) bleibt. |
+| `CAW_LANG` | `en` oder `de`: deine eigene Sprache für caws Texte (CLI, Werkbank) statt der Teamsprache (`language` in der Config). Claude schreibt Pläne weiter in der Teamsprache. |
 | `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` oder `~/.config/caw-ai`. |
 | `ANTHROPIC_API_KEY` | API-Schlüssel aus der Claude Console für den Agenten `docker`. `local` und `session` nutzen deine Claude-Code-Anmeldung. |
 | `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` | Modell und Budget in US-Dollar für Claude-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |

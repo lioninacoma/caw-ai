@@ -372,13 +372,32 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
  * Reads the agent's plan: only `notes` and `steps`. Metadata and recordings it sends anyway are dropped, because role, environments
  * and write access stay with the human.
  */
+/** What became of a human note: a step's `note`, a step's `retry`, the test's `notes`, or only this recording. */
+export const HEARD_AS = ['note', 'retry', 'notes', 'run'];
+const HEARD_ID = /^H\d+$/;
+
+/** The plan's `heard` list: one entry per human note, `{ note: H<n>, as, step? }`. */
+const readHeard = (raw, problems, lineOf) => {
+    if (raw === undefined || raw === null) return [];
+    const wrong = () => problems.push(t('config.test.line', { line: lineOf(['heard']), message: t('config.test.plan.heard', { kinds: HEARD_AS.join(', ') }) }));
+    if (!Array.isArray(raw)) {
+        wrong();
+        return [];
+    }
+    const ok = raw.every((entry) => isObject(entry) && HEARD_ID.test(String(entry.note)) && HEARD_AS.includes(entry.as)
+        && (['note', 'retry'].includes(entry.as) ? STEP_ID.test(String(entry.step)) : entry.step === undefined));
+    if (!ok) wrong();
+    return ok ? raw.map(({ note, as, step }) => ({ note, as, ...(step === undefined ? {} : { step }) })) : [];
+};
+
 export const parsePlan = (text) => {
     const { value, problems, lineOf } = readYaml(text);
     if (problems.length === 0 && !isObject(value)) problems.push(t('config.test.plan.object'));
     if (problems.length > 0) return { problems };
     if (value.notes !== undefined && value.notes !== null && typeof value.notes !== 'string') problems.push(t('config.test.line', { line: lineOf(['notes']), message: t('config.test.text', { key: 'notes' }) }));
     const steps = readSteps(value.steps, problems, lineOf, { allowRecording: false });
-    return problems.length > 0 ? { problems } : { problems, plan: { notes: clean(value.notes), steps } };
+    const heard = readHeard(value.heard, problems, lineOf);
+    return problems.length > 0 ? { problems } : { problems, plan: { notes: clean(value.notes), steps, ...(heard.length === 0 ? {} : { heard }) } };
 };
 
 export const testPath = (root, id) => join(root, TEST_DIR, `${id}.yaml`);

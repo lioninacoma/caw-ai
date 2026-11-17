@@ -5,7 +5,7 @@ project folder (on Windows from PowerShell). Report the result including the pat
 
 - **Test:** `run <test>` (or `caw_start` with `command: "run"`, `test`). Runs without AI. If the recording is missing it ends
   with exit 4 (recording needed) and names `record`; if a step is outdated it names `record <test>@S<n>`. If a step fails on an
-  environment with `claude: true` and not in CI, the chat offers "Fix step"; only the person starts Claude from there. With
+  environment with `claude: true` and not in CI, the chat offers "{{label:run.button.fix}}"; only the person starts Claude from there. With
   `--explain` (only on such environments, not in CI) Claude gives recommendations right away on errors or warnings; that costs
   tokens, so add it only if the person wants it. `--learn` writes missing baselines into the recording: only when asked.
 - **Reach a state** ("take me to where the cart is filled"): read `caw/tests/` and find the step `S<n>` the person wants to work
@@ -19,7 +19,7 @@ project folder (on Windows from PowerShell). Report the result including the pat
   approves the plan and decides at the end. It writes in the application and costs tokens: start it only when the person wants it.
 - **Change from a step on:** `record <test>@S<n>` re-records from `S<n>` to the end, even if nothing fails, e.g. after a step was
   changed by hand or the application changed on purpose. The steps before replay without Claude; from `S<n>` on steps may be
-  added, removed or reordered. `@S1` records the whole test. A single failed step is fixed in the run's chat ("Fix step").
+  added, removed or reordered. `@S1` records the whole test. A single failed step is fixed in the run's chat ("{{label:run.button.fix}}").
 
 **Export:** `export <test> --env <name>` writes the recorded test as a Playwright test that runs without caw
 (`caw/export/playwright/`: `<test>.spec.mjs`, `caw-support.mjs`, `playwright.config.mjs`). Only when the person asks for it,

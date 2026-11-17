@@ -20,7 +20,7 @@ import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
-import { PLAN_FILE, composeTest, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan } from './test-plan.mjs';
+import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
 import { codeText, createAgentHandler } from './agent-commands.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
@@ -526,8 +526,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 remembered: rememberedIn(previous.steps),
             },
         }),
-        ...(demonstration === undefined ? {} : { demonstration: demonstration.items }),
+        ...(demonstration === undefined ? {} : { demonstration: withNoteIds(demonstration.items) }),
     };
+    // The human's notes, H1, H2 …: the plan says in `heard` what became of each, and the card shows it.
+    const humanNotes = demonstration === undefined ? [] : withNoteIds(demonstration.items).filter(({ action }) => action === 'note');
     // Remembered values of the run, placeholder -> value. Claude sees secret ones only as placeholders; the handler fills them in.
     let remembered = new Map();
     const isSecret = (value) => (session.secrets?.() ?? []).includes(value);
@@ -1188,6 +1190,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             else if (repairing !== undefined) whole = replaceStep(givenSpec, steps[0]).steps;
             const retryIssues = retryProblems(whole);
             if (retryIssues.length > 0) throw new CawError('plan-invalid', retryIssues.join(' '));
+            const heardIssues = repairing === undefined ? heardProblems(parsed, humanNotes) : [];
+            if (heardIssues.length > 0) throw new CawError('plan-invalid', heardIssues.join(' '));
             const composed = repairing === undefined ? composeTest(givenSpec, parsed) : { ...spec, steps, expectations: steps.map(({ id, expect }) => ({ id, text: expect })) };
             // Same plan as in the test file: the human already adopted it, nothing to approve. The human can still write.
             const unchanged = range === undefined
@@ -1200,7 +1204,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             const ownReadOnly = repairing === undefined && plan === null && sessionFollowsOwnPlan({ agent: box?.kind, previous, proposed: composed });
             if (ownReadOnly) chat.notice(t('run.plan.sessionReadOnly'));
             const previousSteps = new Map((range ?? (repairing === undefined ? [] : [repairing])).map((step) => [step.id, step]));
-            const answer = unchanged || ownReadOnly ? { approved: true } : await chat.plan(planView(composed, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, ...(range === undefined ? {} : { from: repair.id }), previous: previousSteps }));
+            const answer = unchanged || ownReadOnly ? { approved: true } : await chat.plan(planView({ ...composed, heard: parsed.heard }, { repairing: repairing !== undefined, rerecord: repair?.rerecord === true, ...(range === undefined ? {} : { from: repair.id }), previous: previousSteps, humanNotes }));
             if (!answer.approved) return answer;
             const redo = plan === null ? [] : invalidatedChecks(plan, composed, recorder);
             const checksNow = () => recorder.steps.filter(({ action }) => action === 'check').length;
@@ -1509,7 +1513,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             failed.suspect ||= failed.diagnosis.side === 'app';
             verdict = { ...verdict, diagnosis: { step: failed.id, ...failed.diagnosis, ...failed.evidence } };
             writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
-            writeFileSync(join(runDir, 'report.md'), renderReport(verdict));
+            writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(verdict)));
         }
         const baselines = missingBaselines({ spec: givenSpec, results: ended.results, requests: ended.requests, target });
         // Prune only from a fully healthy run: if something fails later, an earlier deviation may be the first clue.

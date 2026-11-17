@@ -154,7 +154,7 @@ export const configText = ({ env, browser }) => [
     "    testDir: '.',",
     "    testMatch: '*.spec.mjs',",
     '    timeout: 300_000,',
-    "    reporter: [['list']],",
+    "    reporter: [['list'], ['html', { open: 'never' }]],",
     '    use: {',
     `        baseURL: process.env.CAW_BASE_URL || ${js(env.url)},`,
     "        channel: 'chrome',",

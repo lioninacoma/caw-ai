@@ -78,7 +78,7 @@ test('test file: every shape violation is rejected with its line', () => {
         [YAML.replace('writes: false', 'writes: maybe'), /Zeile 4: writes/],
         [YAML.replace('role: r', 'role: r\nextra: 1'), /Zeile 3: Unbekanntes Feld extra/],
         // Fields from before 1.0: one application per project, overlay parts in the config.
-        [YAML.replace('role: r', 'role: r\napp: web'), /Zeile 3: app gibt es nicht mehr: eine Anwendung je Projekt; ein Test, der auf einer anderen Seite beginnt, setzt „start“/],
+        [YAML.replace('role: r', 'role: r\napp: web'), /Zeile 3: app gibt es nicht mehr: eine Anwendung je Projekt; ein Test, der auf einer anderen Seite beginnt, setzt "start"/],
         [YAML.replace('role: r', 'role: r\nalso: [admin]'), /Zeile 3: also gibt es nicht mehr: --overlay bringt jeden Teil/],
         [YAML.replace('role: r', 'role: r\nstart: orders'), /Zeile 3: start muss ein Pfad sein, der mit \/ beginnt/],
         [YAML.replace('role: r', 'role: r\nstart: //cdn.example/x'), /start muss ein Pfad sein/],

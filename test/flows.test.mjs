@@ -484,7 +484,7 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
     assert.equal(shown[1].question, undefined, 'the introduction comes only once');
     assert.equal(refreshed, 1, 'refresh only reloads the page, without a message');
     assert.deepEqual(handed, [element], 'the crosshair hands the element to Claude Code right away');
-    assert.match(notices[0], /„button "Senden"“ hängt an deiner nächsten Frage hier im Chat/);
+    assert.match(notices[0], /^button "Senden" hängt an deiner nächsten Frage hier im Chat/);
     assert.ok(!notices.some((text) => /neu geladen|nicht mehr gesichert/.test(text)), 'reloading the workbench does not warn while developing');
     assert.equal(notices[1], 'Zustand S2 ist neu hergestellt');
     assert.deepEqual(sent[0], { question: 'Warum ist der deaktiviert?', about: element, sandbox: 'box' });
@@ -672,8 +672,8 @@ test('Developing: a state picked with F1 is restored only after the human confir
         toCode: () => {},
     });
     assert.deepEqual(asked, [
-        ['deciding', 'anderer-test bis S3 als sachbearbeiter herstellen?', ['restore-picked:Herstellen', 'cancel-restore:Abbrechen']],
-        ['deciding', 'anderer-test bis zum Einstieg in S1 öffnen?', ['restore-picked:Herstellen', 'cancel-restore:Abbrechen']],
+        ['deciding', 'anderer-test bis S3 als sachbearbeiter öffnen?', ['restore-picked:S3 öffnen', 'cancel-restore:Abbrechen']],
+        ['deciding', 'anderer-test bis zum Einstieg in S1 öffnen?', ['restore-picked:S1 öffnen', 'cancel-restore:Abbrechen']],
     ]);
     assert.deepEqual(restored, [['anderer-test', 'S1']], 'cancelled is not restored, confirmed is');
 });

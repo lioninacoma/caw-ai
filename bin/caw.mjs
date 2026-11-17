@@ -21,6 +21,16 @@ const overlayActive = (root) => {
 /** The overlay extension asked for in a project without it. */
 const overlayInactive = (key) => new CawError(key === 'cli.overlayCommandInactive' ? 'unknown-command' : 'usage', t(key));
 
+/** The team language of the project, read before anything is validated (messages about the config need a language). */
+const projectLanguage = (root) => {
+    try {
+        const language = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'))?.language;
+        return typeof language === 'string' ? language : undefined;
+    } catch {
+        return undefined;
+    }
+};
+
 const claudeEnvironments = async (root) => {
     try {
         const { environmentsWith, loadConfig } = await import('../src/shared/config.mjs');
@@ -119,7 +129,7 @@ const agentCommand = async (root, [command, ...args]) => {
 
 const main = async ([command, ...args]) => {
     const root = process.env.INIT_CWD ?? process.cwd();
-    setLanguage(detectLanguage());
+    setLanguage(detectLanguage({ team: projectLanguage(root) }));
     const help = await helpFor(root, command, args);
     if (help !== undefined) {
         console.log(help);

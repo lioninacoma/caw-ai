@@ -263,7 +263,7 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 
 | Feld | Standard | |
 |---|---|---|
-| `language` | von init erkannt | Die Teamsprache, ein Code wie `en`, `de` oder `fr`: Claude schreibt Pläne, Schrittnamen und `report.md` darin. caws eigene Texte (CLI, Werkbank) folgen deiner persönlichen Sprache (`CAW_LANG`, `prefs.json`, das System). |
+| `language` | von init erkannt | Die Teamsprache, ein Code wie `en`, `de` oder `fr`: Claude schreibt Pläne, Schrittnamen und `report.md` darin. caws eigene Texte (CLI, Werkbank) nutzen sie auch, wenn sie `en` oder `de` ist, damit ein Projekt eine Sprache spricht; `CAW_LANG` setzt deine eigene. Sonst folgen sie deinem System. |
 | `framework` | `web` | `web`, `react`, `vue`, `angular` oder [`extjs`](extensions/extjs.de.md). Entscheidet, wann eine Seite als bereit gilt und was ein Fehlerbericht nennt. |
 | `start` | `/` | Pfad, an dem Tests beginnen; ein Test kann sein eigenes `start` setzen. |
 | `source` | `.` | Wo der Quellcode der App liegt, relativ zum Projekt, oder `false`, wenn er nicht in diesem Repository ist (dann gibt Claude keine Code-Empfehlungen). |

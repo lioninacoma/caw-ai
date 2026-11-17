@@ -128,15 +128,15 @@ test('config: keys from before 1.0 name what replaced them; extends between envi
     assert.match(issues({ ...simple(), environments: { local: { url: 'https://app.localhost:8443', overlay: true } } }), /environments\.local\.overlay heißt jetzt overlay\.environments/);
     assert.match(issues({ ...simple(), assetUrlPattern: 'a/(.+)' }), /assetUrlPattern heißt jetzt overlay\.assetUrlPattern/);
     // One application per project: apps went, its start path is the top-level start.
-    assert.match(issues({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop' } } }), /apps gibt es nicht mehr: eine Anwendung je Projekt: ihr Startpfad ist „start“/);
+    assert.match(issues({ ...simple(), apps: { shop: { dir: 'shop', startUrl: '/shop' } } }), /apps gibt es nicht mehr: eine Anwendung je Projekt: ihr Startpfad ist "start"/);
     for (const bad of ['shop', '//cdn.example/x', 3, '']) assert.match(issues({ ...simple(), start: bad }), /start muss ein Pfad sein, der mit \/ beginnt/, String(bad));
     for (const good of ['/', '/app#orders', '/shop?tab=2']) assert.equal(issues({ ...simple(), start: good }), '', good);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
-    assert.match(at({ sued: { extends: 'nord', url: 'https://s.example' } }), /extends „nord“ ist keine Umgebung/);
+    assert.match(at({ sued: { extends: 'nord', url: 'https://s.example' } }), /extends "nord" ist keine Umgebung/);
     assert.match(at({ a: { extends: 'b', url: 'https://a.example' }, b: { extends: 'a', url: 'https://b.example' } }), /extends läuft im Kreis: a → b → a/);
     assert.match(at({ kopie: { extends: 'staging' } }), /^$/, 'the url comes through extends');
     assert.match(at({ leer: { claude: true } }), /Umgebung leer hat keine url/);
-    assert.match(at({ nord_dev: { url: 'https://n.example' } }), /Umgebung „nord_dev“: Kleinbuchstaben, Ziffern und -/);
+    assert.match(at({ nord_dev: { url: 'https://n.example' } }), /Umgebung "nord_dev": Kleinbuchstaben, Ziffern und -/);
     // A production child must say so itself; a non-production environment on a production host is refused.
     assert.match(at({ live: { url: 'https://www.shop.example', production: true }, kopie: { extends: 'live', url: 'https://www.shop.example' } }), /Umgebung kopie nutzt den Host www\.shop\.example der Produktionsumgebung live/);
     assert.equal(effectiveEnvironment(multi(), 'sued-dev').claude, true);
@@ -257,14 +257,14 @@ test('which code runs: deployed unless --overlay; if the overlay is not possible
     assert.deepEqual(code(two, 'shop:build'), { source: 'overlay', parts: { shop: build }, skipped: [] }, 'parts not listed stay deployed');
     assert.throws(() => code(two, 'admin'), /--overlay geht hier nicht: Teil admin hat keine Quelle/);
     assert.throws(() => code(two, 'shop:dev,admin:dev'), /--overlay admin:dev geht hier nicht: Teil admin hat kein url\./);
-    assert.throws(() => code(two, 'shp'), /Einen Teil „shp“ gibt es nicht \(meintest du shop\?\)\. Teile: shop, admin/);
+    assert.throws(() => code(two, 'shp'), /Einen Teil "shp" gibt es nicht \(meintest du shop\?\)\. Teile: shop, admin/);
     assert.throws(() => code(two, 'shop,build'), /build steht allein/);
-    assert.throws(() => code(two, 'Shop!'), /„Shop!“ geht nicht/);
+    assert.throws(() => code(two, 'Shop!'), /"Shop!" geht nicht/);
     const none = withParts({ shop: { dir: 'shop' }, admin: { dir: 'admin' } });
     assert.throws(() => code(none, true), /Kein Teil hat eine Quelle/);
     assert.throws(() => code(none, 'build'), /--overlay build geht hier nicht: Kein Teil hat build\./);
     // Without the block, or on an environment it does not list.
-    assert.throws(() => checkTest(spec, 'local', simple(), { overlay: true }), (error) => error.code === 'usage' && /braucht einen Block „overlay“/.test(error.message));
+    assert.throws(() => checkTest(spec, 'local', simple(), { overlay: true }), (error) => error.code === 'usage' && /braucht einen Block "overlay"/.test(error.message));
     const elsewhere = { ...own, overlay: { ...own.overlay, environments: ['staging'] } };
     assert.throws(() => checkTest(spec, 'local', elsewhere, { overlay: true }), /--overlay geht auf Umgebung local nicht: overlay\.environments erlaubt staging/);
     const extjs = withParts({ shop: { dir: 'shop' } }, { framework: 'extjs' });
@@ -310,7 +310,7 @@ test('overlay config: environments, parts, pattern and statics; without --overla
     assert.match(block({ environments: ['local'], parts, apps: {} }), /overlay: unbekanntes Feld apps/);
     assert.match(block({ parts }), /overlay\.environments muss mindestens eine Umgebung nennen/);
     assert.match(block({ environments: [], parts }), /overlay\.environments muss mindestens eine Umgebung nennen/);
-    assert.match(block({ environments: ['qa'], parts }), /overlay\.environments: Umgebung „qa“ gibt es nicht\. Bekannt: local, staging/);
+    assert.match(block({ environments: ['qa'], parts }), /overlay\.environments: Umgebung "qa" gibt es nicht\. Bekannt: local, staging/);
     assert.match(block({ environments: ['live'], parts }, { live: { url: 'https://www.shop.example', production: true } }), /overlay\.environments: live ist Produktion/);
     assert.match(block({ environments: ['box'], parts }, { box: { url: 'http://localhost:5173' } }), /overlay\.environments: box ist ein Dev-Server auf diesem Rechner \(localhost:5173\)/);
     assert.equal(block({ environments: ['box'], parts }, { box: { url: 'https://shop.localhost:8443' } }), '', 'https on *.localhost is a deployed build');
@@ -489,7 +489,7 @@ test('config: a role is an empty object; the test user follows the naming conven
     assert.match(role('kaeufer'), /Rolle kaeufer muss ein leeres Objekt sein/);
     // Removed before 1.0: named with what replaced them.
     for (const key of ['loginEnv', 'passwordEnv', 'totpEnv']) assert.match(role({ [key]: 'X' }), new RegExp(`roles\\.kaeufer\\.${key} gibt es nicht mehr: der Testnutzer folgt der Namenskonvention CAW_<ROLLE>_USER`));
-    assert.match(issues({ ...simple(), roles: { gate: {} } }), /Die Rolle „gate“ ist reserviert/);
+    assert.match(issues({ ...simple(), roles: { gate: {} } }), /Die Rolle "gate" ist reserviert/);
     assert.match(issues({ ...simple(), roles: {} }), /roles muss ein Objekt mit mindestens einer Rolle sein/);
 });
 

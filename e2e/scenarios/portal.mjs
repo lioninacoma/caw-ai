@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { serveFolder } from '../../test/static-server.mjs';
 import {
     approve, benchBack, count, decide, discard, finishOf, freePort, here, humans, keep, loadTest, open, parseTest,
-    planOf, print, quietTokens, record, renderTest, run, setLanguage, shoot, shootBench, startServer, stateOf, stepHash, tag, verify,
+    planOf, print, quietTokens, record, renderTest, run, setLanguage, shoot, shootBench, showMyself, startServer, stateOf, stepHash, tag, verify,
     writeTest,
 } from '../harness.mjs';
 
@@ -138,7 +138,7 @@ $A check S3 "${CASE_DONE} && ${CASE_TEXT}==='Vorgang $TAG'"
 ${finishOf(['S1', 'S2', 'S3'])}`;
     const h = humans(async (page) => {
         const app = page.context().pages()[0];
-        await stateOf(page, 'showing');
+        await showMyself(page);
         await app.locator('#weiter').click();
         await page.waitForTimeout(400);
         // Double click on Done: the second click hits a disabled button, the chat shows the handover at once.
@@ -988,6 +988,60 @@ ${finishOf(['S1'])}`;
     restore();
 });
 
+scenario('K2', 'New test described instead of shown: notes with their page reach Claude, clicks do not', async () => {
+    rmSync(file, { force: true });
+    rmSync(recordingFile, { force: true });
+    const agent = `A='caw agent'
+{
+$A task > /tmp/t.json
+echo "NOTES=$(grep -c '"action": "note"' /tmp/t.json) CLICKS=$(grep -c '"action": "click"' /tmp/t.json) WAIT=$(grep -c 'oefter warten' /tmp/t.json) PATHS=$(grep -c '"path": "/' /tmp/t.json)"
+${planOf(`steps:\n${S1}\n    note: Die Fachdaten laden langsam, hier oefter warten.`)}
+${count('$A plan --file /tmp/p.yaml', 'missing: H1, H2', 'UNHEARD')}
+${planOf(`steps:\n${S1}\n    note: Die Fachdaten laden langsam, hier oefter warten.\nheard:\n  - {note: H1, as: run}\n  - {note: H2, as: note, step: S1}`)}
+$A plan --file /tmp/p.yaml >/dev/null
+$A click '#weiter'
+$A check S1 "${TARGET_REACHED}"
+${finishOf(['S1'])}
+} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-describe.log"`;
+    const h = humans(async (page) => {
+        const app = page.context().pages()[0];
+        await stateOf(page, 'choosing');
+        verify('New test: show or describe', await page.locator('#choices button', { hasText: 'Selbst vorführen' }).count() === 1 && await page.locator('#choices button', { hasText: 'Beschreiben, Claude nimmt auf' }).count() === 1);
+        await decide(page, 'Beschreiben, Claude nimmt auf');
+        await stateOf(page, 'describing');
+        verify('Describe: own status and placeholder', /Klicks werden nicht aufgenommen/.test(await page.locator('#status').textContent().catch(() => '')) || /Was soll der Test tun/.test(await page.locator('#input').getAttribute('placeholder')));
+        // Handing over without a word is refused: there is nothing to build a plan from.
+        await page.locator('#toggle').click();
+        await page.locator('.message', { hasText: 'Noch nichts beschrieben' }).waitFor({ timeout: 30000 });
+        await stateOf(page, 'describing');
+        await page.locator('#input').fill('Klicke Weiter, dann muss das Ziel erscheinen.');
+        await page.keyboard.press('Enter');
+        // A click while describing is not recorded; the next note carries the page it was written on.
+        await app.locator('#weiter').click();
+        await page.locator('#input').fill('Die Fachdaten laden langsam, hier oefter warten.');
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(300);
+        await page.locator('#toggle').click();
+    }, async (page) => {
+        await stateOf(page, 'planning');
+        const planCard = page.locator('.message.plan').last();
+        verify('Card: the human words with what became of them', /nur für diese Aufnahme/.test(await planCard.locator(':scope > div.heard').textContent()) && /oefter warten." → als Hinweis an diesem Schritt/.test(await planCard.locator('.step .heard').textContent()));
+        await page.locator('#approve').click();
+    }, async (page) => {
+        await page.locator('#choices button.primary').waitFor({ timeout: 90000 });
+        await decide(page, 'Testplan übernehmen');
+    });
+    const before = new Set(runDirs());
+    const code = await record(fake, [ID, ...opts, '--role', 'kunde'], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+    await h.done();
+    verify('Exit 0 and file present', code === 0 && existsSync(file), String(code));
+    const logs = runDirs().filter((name) => !before.has(name)).map((name) => join(fake, '.caw/runs', name, 'agent/claude-describe.log')).filter(existsSync).map((path) => readFileSync(path, 'utf8')).join('\n');
+    verify('Claude got two notes with their page and no click', /NOTES=2 CLICKS=0 WAIT=1 PATHS=2/.test(logs), logs.slice(0, 300));
+    verify('A plan that skips a note is rejected', /UNHEARD=1/.test(logs), logs.slice(0, 400));
+    verify('The context is in the step', /note: Die Fachdaten laden langsam/.test(readFileSync(file, 'utf8')));
+    restore();
+});
+
 scenario('1', 'Workbench: application in an iframe, chat next to it, repair in the frame', async () => {
     const back = keep(configPath);
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
@@ -1101,7 +1155,7 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         await bench.waitForTimeout(500);
         await appOf(bench).locator('#ziel').click();
         await chat.locator('#chip.on').waitFor({ timeout: 20000 });
-        await chat.locator('.message', { hasText: '“ hängt an deiner nächsten Frage hier im Chat' }).waitFor({ timeout: 20000 });
+        await chat.locator('.message', { hasText: '" hängt an deiner nächsten Frage hier im Chat' }).waitFor({ timeout: 20000 });
         const picked = existsSync(selection) ? JSON.parse(readFileSync(selection, 'utf8')) : null;
         verify('Selection for the session', picked?.test === ID && picked?.until === 'S2' && picked?.entry === 'S3' && typeof picked?.element?.label === 'string', JSON.stringify(picked)?.slice(0, 200));
         // Requests and console: open, then closed again via the button.
@@ -1121,7 +1175,7 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         verify('Expanded again', await bench.locator('#chat').isVisible() && await bench.locator('#steps').isVisible() && pref().chat === 'open' && pref().steps === 'open', JSON.stringify(pref()));
         // F5 in the application: only the page reloads, chat and steps stay. After the handover reloading is part of the work:
         // no "left" note, no greyed-out steps, no chat message.
-        const PICKED = '“ hängt an deiner nächsten Frage hier im Chat';
+        const PICKED = '" hängt an deiner nächsten Frage hier im Chat';
         const messages = await chat.locator('.message').count();
         await appOf(bench).evaluate(() => { window.__cawBeforeReload = true; });
         await appOf(bench).locator('body').press('F5');

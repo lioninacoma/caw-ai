@@ -261,7 +261,7 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 
 | Field | Default | |
 |---|---|---|
-| `language` | detected by init | The team language, a code such as `en`, `de` or `fr`: Claude writes plans, step names and `report.md` in it. caw's own texts (CLI, workbench) follow your personal language (`CAW_LANG`, `prefs.json`, the system). |
+| `language` | detected by init | The team language, a code such as `en`, `de` or `fr`: Claude writes plans, step names and `report.md` in it. caw's own texts (CLI, workbench) use it too when it is `en` or `de`, so a project speaks one language; `CAW_LANG` sets your own. Otherwise they follow your system. |
 | `framework` | `web` | `web`, `react`, `vue`, `angular` or [`extjs`](extensions/extjs.md). Decides when a page counts as ready and what a failure report names. |
 | `start` | `/` | Path where tests start; a test can set its own `start`. |
 | `source` | `.` | Where the app's source is, relative to the project, or `false` when it is not in this repository (then Claude gives no code advice). |

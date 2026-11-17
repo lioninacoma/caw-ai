@@ -5,6 +5,7 @@ import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
+import { language, setLanguage } from '../src/shared/i18n.mjs';
 import { GUIDE_TOPICS, SESSION_INSTRUCTIONS, agentGuide, guideIndex, guideTopic, listedTopics, runTopics } from '../src/host/guide.mjs';
 
 const DIR = fileURLToPath(new URL('../templates/guide/', import.meta.url));
@@ -46,4 +47,18 @@ test('run topics: per mode, record or repair by creating; extjs added when the a
 test('session instructions: at most 12 lines, name caw_guide and the four entry topics', () => {
     assert.ok(SESSION_INSTRUCTIONS.split('\n').length <= 12);
     for (const word of ['caw_guide', '"setup"', '"tests"', '"run"', '"session"', 'caw/.env']) assert.ok(SESSION_INSTRUCTIONS.includes(word), word);
+});
+
+test('guide: caw buttons appear as the person sees them, in the UI language, and no placeholder stays', () => {
+    const saved = language();
+    try {
+        setLanguage('de');
+        assert.match(guideTopic('run'), /"Schritt beheben"/);
+        assert.match(guideTopic('session'), /"Neu öffnen" in the chat/);
+        setLanguage('en');
+        assert.match(guideTopic('run'), /"Fix step"/);
+        for (const { name } of GUIDE_TOPICS) assert.doesNotMatch(guideTopic(name), /\{\{label:/, name);
+    } finally {
+        setLanguage(saved);
+    }
 });

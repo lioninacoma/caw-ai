@@ -119,7 +119,7 @@ npx caw record create-ticket --env local
 
 Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test if the file doesn't exist. Chrome opens with the workbench and a chat:
 
-1. You demonstrate the flow, or let Claude follow the test plan.
+1. You demonstrate the flow or, for a new test, describe it in the chat; for an existing test Claude can also follow the test plan.
 2. Claude shows a plan in the chat. You approve it or ask for changes.
 3. Claude walks the flow and checks each step.
 4. caw-ai replays the recording without Claude.
@@ -299,7 +299,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 
 | Variable | |
 |---|---|
-| `CAW_LANG` | `en` or `de`: your language for caw's own texts (CLI, workbench). The team language (`language` in the config) stays. |
+| `CAW_LANG` | `en` or `de`: your own language for caw's texts (CLI, workbench), instead of the team language (`language` in the config). Claude keeps writing plans in the team language. |
 | `CAW_AI_HOME` | Folder for personal settings (`prefs.json`). Default `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` or `~/.config/caw-ai`. |
 | `ANTHROPIC_API_KEY` | API key from the Claude Console for the `docker` agent. `local` and `session` use your Claude Code login. |
 | `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |

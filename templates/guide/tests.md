@@ -1,7 +1,7 @@
 # caw: test plans
 
 A test plan is `caw/tests/<test>.yaml`. You may write a new one as the session; an existing one changes only through a run
-(`record <test>@S<n>`, "Fix step") or a recommendation the person accepts. `caw/recordings/` is written only by caw.
+(`record <test>@S<n>`, "{{label:run.button.fix}}") or a recommendation the person accepts. `caw/recordings/` is written only by caw.
 
 ```yaml
 id: order-cancel            # optional; if given, equal to the file name

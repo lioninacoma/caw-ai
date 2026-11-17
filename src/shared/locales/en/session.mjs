@@ -222,7 +222,7 @@ export default {
     'session.replay.brokenAt': 'Step {number} ({label}): {message}',
     'session.replay.notReached': 'not reached',
     'session.replay.notReachedBecause': 'Not reached because {owner} failed.',
-    'session.point.quoted': '“{text}”',
+    'session.point.quoted': '"{text}"',
     // framework adapters
     'session.app.web': 'the app',
     'session.app.react': 'the React app',

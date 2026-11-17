@@ -196,3 +196,22 @@ test('crosshair: the picked element comes back as its locator, the page keeps no
     assert.equal(await marks(), 0);
     return undefined;
 });
+
+test('crosshair: a disabled button can be picked (it gets no click, only pointer events); an enabled one is never clicked', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    await open();
+    await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<button disabled>Hinzufügen</button><button onclick="document.title = \'geklickt\'">Weiter</button>'));
+    const picking = pickElement(session());
+    await page.waitForFunction(() => window.__cawPicking === true);
+    // A person clicks the greyed-out button to ask why it is disabled.
+    await page.getByRole('button', { name: 'Hinzufügen' }).click({ force: true });
+    assert.equal((await picking)?.target, "getByRole('button', { name: 'Hinzufügen', exact: true })");
+    const again = pickElement(session());
+    await page.waitForFunction(() => window.__cawPicking === true);
+    await page.getByRole('button', { name: 'Weiter' }).click();
+    assert.equal((await again)?.target, "getByRole('button', { name: 'Weiter', exact: true })");
+    await page.waitForTimeout(200);
+    assert.equal(await page.title(), 'Form', 'the click that picked it never reaches the application');
+    assert.equal(await marks(), 0);
+    return undefined;
+});

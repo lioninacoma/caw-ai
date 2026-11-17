@@ -164,7 +164,7 @@ export function pickInPage(markAttribute) {
         const mark = document.createElement('div');
         mark.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;display:none';
         document.documentElement.append(mark);
-        const swallowed = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'dblclick', 'contextmenu'];
+        const swallowed = ['pointerdown', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'dblclick', 'contextmenu'];
         const swallow = (event) => {
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -180,16 +180,24 @@ export function pickInPage(markAttribute) {
             for (let current = start; current !== null; current = parentOf(current)) if (current.matches?.(CONTROL)) return current;
             return start;
         };
-        const click = (event) => {
+        // Picked on pointerup: a disabled control gets pointer events but no click, and "why is this disabled?" is a common
+        // question. The click that follows on an enabled control is still swallowed: the pick ends only after it.
+        let chosen = null;
+        const choose = (event) => {
             if (!event.isTrusted) return;
             swallow(event);
+            if (chosen !== null || event.button !== 0) return;
             const [target] = event.composedPath();
             if (!(target instanceof Element)) return;
             const control = controlOf(target);
             // The host turns the mark into a locator and removes it.
             const value = `pick-${Date.now().toString(36)}`;
             control.setAttribute(markAttribute, value);
-            done({ mark: value, tag: target.tagName.toLowerCase(), text: (target.innerText ?? target.value ?? '').trim().slice(0, 120) });
+            chosen = { mark: value, tag: target.tagName.toLowerCase(), text: (target.innerText ?? target.value ?? '').trim().slice(0, 120) };
+            setTimeout(() => done(chosen), 50);
+        };
+        const click = (event) => {
+            if (event.isTrusted) swallow(event);
         };
         const key = (event) => {
             if (event.key !== 'Escape' || !event.isTrusted) return;
@@ -198,6 +206,7 @@ export function pickInPage(markAttribute) {
         };
         const done = (value) => {
             swallowed.forEach((name) => removeEventListener(name, swallow, true));
+            removeEventListener('pointerup', choose, true);
             removeEventListener('click', click, true);
             removeEventListener('keydown', key, true);
             removeEventListener('mousemove', move, true);
@@ -209,6 +218,7 @@ export function pickInPage(markAttribute) {
         window.__cawPicking = true;
         window.__cawCancelPick = () => done(null);
         swallowed.forEach((name) => addEventListener(name, swallow, true));
+        addEventListener('pointerup', choose, true);
         addEventListener('click', click, true);
         addEventListener('keydown', key, true);
         addEventListener('mousemove', move, true);

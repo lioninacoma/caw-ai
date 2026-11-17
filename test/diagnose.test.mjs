@@ -276,7 +276,7 @@ test('diagnosis: target under a dialog reporting a rejection, after a 409 in the
     const earlier = { id: 'S2', requests: [{ name: 'POST /api/groups', outcome: 'http', status: 409, ms: 30 }] };
     const result = diagnose({ failed: { id: 'S3', reason: 'link "Einstellungen" war nach 8 s nicht klickbar.' }, broken, earlier });
     assert.equal(result.side, 'test');
-    assert.match(result.findings[0], /verdeckt von dialog „Akte anlegen“\. Er meldet: „Diesen Namen trägt schon eine Akte\.“ Im Schritt davor \(S2\) lehnte der Dienst POST \/api\/groups mit HTTP 409 ab\./);
+    assert.match(result.findings[0], /verdeckt von dialog "Akte anlegen"\. Er meldet: "Diesen Namen trägt schon eine Akte\." Im Schritt davor \(S2\) lehnte der Dienst POST \/api\/groups mit HTTP 409 ab\./);
     assert.doesNotMatch(result.findings.join(' '), /fehlt auf der Seite/);
     // A 400 without a message about data: rather a wrong call by the app. Another message: unclear.
     const badCall = diagnose({ failed: { id: 'S3', reason: 'x' }, broken: { kind: 'target', blocker: { covered: { role: 'dialog', name: 'Fehler' } } }, requests: [{ name: 'POST /api/groups', outcome: 'http', status: 400, ms: 30 }] });
@@ -381,7 +381,7 @@ test('missing target: similarly named elements of the same role are named, dissi
     assert.deepEqual(closestNames('Prüfung abschließen', ['Ablehnen', 'Hilfe']), []);
     assert.deepEqual(closestNames('Weiter', ['Weiter']), [], 'the same name is no hint');
     assert.deepEqual(closestNames(undefined, ['Weiter']), []);
-    assert.equal(explainText({ missing: true, similar: [{ role: 'button', name: 'Sichern' }] }), ' Es fehlt auf der Seite. Ähnlich: button „Sichern“. Wurde es umbenannt?');
+    assert.equal(explainText({ missing: true, similar: [{ role: 'button', name: 'Sichern' }] }), ' Es fehlt auf der Seite. Ähnlich: button "Sichern". Wurde es umbenannt?');
     assert.equal(explainText({ missing: true }), ' Es fehlt auf der Seite.');
 });
 

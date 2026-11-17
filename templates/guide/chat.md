@@ -11,7 +11,7 @@ the steps on the left, the application in an iframe in the middle and the chat o
   steps that already belong to the test, and continue where they left off. Ask about domain uncertainties instead of guessing, and only after you have searched yourself.
   Their answer is not the result: Check the step yourself afterwards.
 - **Their messages:** If they speak up or pause, every browser command is rejected with `human-message`. Then call `chat`. The command
-  returns `messages` and, during a pause, waits until they press "Continue"; `items` contains what they wrote (`note`) and clicked in the meantime.
+  returns `messages` and, during a pause, waits until they press "{{label:chat.status.paused.button}}"; `items` contains what they wrote (`note`) and clicked in the meantime.
   Afterwards use `snapshot` anew, because the page may have changed.
 - **Instructions take precedence over your plan, not over the yardstick.** If they say "step back" or "do that differently", go in the application to the
   matching state and remove the wrong path with `omit`. What has already been submitted cannot be undone: Tell them that.

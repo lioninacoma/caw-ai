@@ -55,7 +55,7 @@ test('replay: two matches during a dialog transition are tolerated; a true twin 
     const twin = await play([click("getByRole('button', { name: 'Delete', exact: true })"), check('true')]);
     const waited = Date.now() - start;
     assert.equal(twin.broken.kind, 'target');
-    assert.match(twin.broken.message, /trifft 2 Elemente.*#1 bei \d+,\d+ neben „Invoice 17“; #2 bei \d+,\d+ neben „Invoice 18“/);
+    assert.match(twin.broken.message, /trifft 2 Elemente.*#1 bei \d+,\d+ neben "Invoice 17"; #2 bei \d+,\d+ neben "Invoice 18"/);
     assert.ok(waited >= AMBIGUOUS_MS && waited < 4500, `after the grace, not the timeout: ${waited} ms`);
     return undefined;
 });
@@ -130,11 +130,11 @@ test('explain: covered by a dialog with its message, hidden, or missing with a s
     const root = page.mainFrame();
     const covered = await explainLocator(web, root, "getByRole('button', { name: 'Delete all', exact: true })");
     assert.deepEqual(covered, { covered: { role: 'dialog', name: 'Hinweis', messages: ['Sitzung abgelaufen.'] } });
-    assert.match(explainText(covered), /verdeckt von dialog „Hinweis“, der meldet: „Sitzung abgelaufen\.“/);
+    assert.match(explainText(covered), /verdeckt von dialog "Hinweis", der meldet: "Sitzung abgelaufen\."/);
     assert.deepEqual(await explainLocator(web, root, "getByRole('button', { name: 'Hidden action', exact: true })"), { hidden: true });
     const renamed = await explainLocator(web, root, "getByRole('button', { name: 'Delete everything', exact: true })");
     assert.deepEqual(renamed, { missing: true, similar: [{ role: 'button', name: 'Delete all' }] });
-    assert.match(explainText(renamed), /Ähnlich: button „Delete all“/);
+    assert.match(explainText(renamed), /Ähnlich: button "Delete all"/);
     // The whole replay step says so too, and hands the blocker to the diagnosis.
     const { broken } = await play([click("getByRole('button', { name: 'Delete all', exact: true })"), check('true')], { stepTimeoutMs: 800 });
     assert.equal(broken.kind, 'target');

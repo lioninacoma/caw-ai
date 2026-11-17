@@ -4,6 +4,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { t } from '../shared/i18n.mjs';
+
 const GUIDE_DIR = new URL('../../templates/guide/', import.meta.url);
 
 /**
@@ -53,10 +55,13 @@ export const listedTopics = (config) => {
     return GUIDE_TOPICS.filter(({ extension }) => extension === undefined || active.includes(extension));
 };
 
-/** One topic's Markdown. Throws for an unknown name. */
+/** caw's buttons as the person sees them: `{{label:<key>}}` becomes the label in the UI language. */
+const withLabels = (text) => text.replace(/\{\{label:([\w.]+)\}\}/g, (whole, key) => t(key));
+
+/** One topic's Markdown, with caw's button labels in the UI language. Throws for an unknown name. */
 export const guideTopic = (name) => {
     if (!GUIDE_TOPICS.some((topic) => topic.name === name)) throw new Error(`Unknown topic: ${name}. Topics: ${GUIDE_TOPICS.map((topic) => topic.name).join(', ')}`);
-    return readFileSync(fileURLToPath(new URL(`${name}.md`, GUIDE_DIR)), 'utf8').replace(/\r\n/g, '\n');
+    return withLabels(readFileSync(fileURLToPath(new URL(`${name}.md`, GUIDE_DIR)), 'utf8').replace(/\r\n/g, '\n'));
 };
 
 /** The index: one line per listed topic. */

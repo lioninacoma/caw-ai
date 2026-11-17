@@ -4,7 +4,7 @@ If `task` says `mode: talk`, a step in the test run failed and the human asks yo
 message is in `question`. The browser is exactly in the state of the error.
 
 - **Read only** (not with `mode: develop`, see below), as in topic `advise`; in addition `chat` is allowed. You cannot fix here: The human starts that with
-  the button "Fix step", then a separate run runs.
+  the button "{{label:run.button.fix}}", then a separate run runs.
 - **Look first, then answer,** as in topic `cause`: `task` with `diagnosis`, `network`, `console`, `snapshot` and the source code.
   Answer with `say`, short and concrete: what you see, the cause with evidence, file and line. Do not guess; say what you do not know.
 - **Recommendations** you submit with `advise` as above, here also several times, as soon as the human wants something concrete. The answer names their decisions.
@@ -18,7 +18,7 @@ With `mode: develop` nothing has failed: The human has restored a state and deve
 page is at the entry of that step: the steps before it ran, of it only its navigation, its inputs are still open. `develop.until`
 names the last step played completely (`null`: the whole test, or none when the app was opened without a test)
 (`develop.source`: `overlay` if their local code is laid over the environment, otherwise `deployed`). They ask e.g. why a screen shows something, how something can be changed, or give you a bug. Answer with
-evidence; changes to the code you propose as `edits` (`side: app`), which the human writes with "Apply change", larger ones as
+evidence; changes to the code you propose as `edits` (`side: app`), which the human writes with "{{label:run.button.apply}}", larger ones as
 `prompt` for their Claude Code session. Afterwards they reload the app or restore the state.
 
 - **Operate on request:** Here you may also operate the page: `click`, `dblclick`, `fill`, `type`, `press`, `goto`, `reload`, `wait-ready`. If

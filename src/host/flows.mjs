@@ -30,9 +30,13 @@ const ONLY_CLOSE = button('close', 'run.button.onlyClose', { primary: true });
 const RESTORE = button('restore', 'run.button.restore', { primary: true });
 const END_DEVELOP = button('end', 'run.button.endDevelop');
 const RESTORE_PICKED = button('restore-picked', 'run.button.restorePicked', { primary: true });
+/** The confirm button names the step it opens, so it reads as the answer to the question: "S2 öffnen". */
+const openPicked = (step) => (step === undefined ? RESTORE_PICKED : { ...RESTORE_PICKED, label: t('run.button.openStep', { step }) });
 const CANCEL_RESTORE = button('cancel-restore', 'run.button.cancelRestore');
 
 const withoutDot = (text) => text.replace(/\.$/, '');
+/** The text as a closed sentence: a dot only when it does not end with . ! or ? already. */
+const closed = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 /** Added baselines in one sentence for the chat. */
 const baselineText = (baselines) => t('run.flow.baselines', { ids: [...baselines.keys()].join(', ') });
@@ -144,7 +148,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
             // The status line below says that Claude can be asked.
             // Same failure after a fix: fixing the same step again changes nothing, the cause lies elsewhere.
             const again = repeated ? t('run.flow.again', { config: CONFIG_FILE }) : '';
-            let question = `${t('run.flow.failed', { id: failed.id, reason: withoutDot(failed.reason) })}${hint}${findingsText(verdict)}${again}${where}`;
+            let question = `${t('run.flow.failed', { id: failed.id, reason: closed(failed.reason) })}${hint}${findingsText(verdict)}${again}${where}`;
             // The same as a card: step, reason and assessment on top, findings collapsible, the next step at the bottom.
             const card = {
                 id: failed.id,
@@ -566,7 +570,7 @@ export const runFlow = async (options) => {
                         // A picked step: its entry, everything before it done. Without a step the whole test up to its last restorable step.
                         const about = { test, step: step ?? last ?? t('run.develop.allSteps'), role };
                         const key = step === undefined ? 'run.develop.confirmRestore' : 'run.develop.confirmEntry';
-                        answer = await chat.choose('deciding', t(role ? key : `${key}NoRole`, about), [RESTORE_PICKED, CANCEL_RESTORE]);
+                        answer = await chat.choose('deciding', t(role ? key : `${key}NoRole`, about), [openPicked(step ?? last), CANCEL_RESTORE]);
                     } finally {
                         confirming = false;
                     }

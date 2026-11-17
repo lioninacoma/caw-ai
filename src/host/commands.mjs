@@ -36,6 +36,7 @@ const ui = createUi();
 // Labels are resolved on use: at import time the language is not set yet.
 const SHOW = () => ({ id: 'show', label: t('cli.choiceShow'), primary: true });
 const FOLLOW = () => ({ id: 'follow', label: t('cli.choiceFollow') });
+const DESCRIBE = () => ({ id: 'describe', label: t('cli.choiceDescribe') });
 /** How long a demonstration stays reusable, e.g. when login or Claude failed afterwards. */
 const REUSE_MS = 24 * 60 * 60 * 1000;
 
@@ -780,6 +781,33 @@ const askDialog = async (chat, { type, message, defaultValue }) => {
 };
 
 /**
+ * The human describes the new test in the chat instead of showing it. Each message is a note with the page it was written on;
+ * clicks are not recorded. Claude gets the notes as a demonstration without steps and finds the way itself.
+ * @returns the description as demonstration items
+ */
+const describeTest = async (chat, session, dir, { aborted, closed, handOver }) => {
+    for (;;) {
+        chat.enter('describing');
+        const items = [];
+        for (;;) {
+            const line = await chat.operator.nextLine({ page: session.page() });
+            if (line === null) throw aborted();
+            if (line === '') break;
+            const text = typeof line === 'string' ? line : line.note;
+            if (text === undefined) continue;
+            items.push({ action: 'note', text, path: new URL(session.page().url()).pathname, ...(line.element === undefined ? {} : { element: line.element }) });
+        }
+        if (!chat.available() || closed()) throw aborted();
+        if (items.length > 0) {
+            writeFileSync(join(dir, 'demonstration.json'), JSON.stringify(items, null, 2));
+            handOver();
+            return { items, dir };
+        }
+        chat.notice(t('cli.describeNothing'));
+    }
+};
+
+/**
  * The human picks how to start and, if needed, demonstrates in their own browser. The window closes afterwards so Claude
  * starts fresh.
  * @returns the demonstration, or undefined if Claude follows the old test plan
@@ -804,7 +832,8 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
         // If the last recording failed after the demonstration (login, Claude), the human need not demonstrate again.
         const last = lastDemonstration(root, spec.id);
         const reuse = last === null ? null : { id: 'reuse', label: t('cli.choiceReuse', { time: new Date(last.at).toLocaleTimeString(language() === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' }), count: last.items.length }), primary: true };
-        const options = [...(reuse === null ? [] : [reuse]), reuse === null ? SHOW() : { ...SHOW(), primary: false }, ...(exists ? [FOLLOW()] : [])];
+        // A new test: shown or described. An existing one has a plan Claude can follow instead.
+        const options = [...(reuse === null ? [] : [reuse]), reuse === null ? SHOW() : { ...SHOW(), primary: false }, exists ? FOLLOW() : DESCRIBE()];
         if (options.length > 1) {
             // Described but never recorded is no old plan: there is nothing to replace.
             const recorded = exists && spec.steps.some((step) => step.recording !== undefined);
@@ -816,6 +845,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
             if (choice === 'follow' || choice === 'reuse') handOver();
             if (choice === 'follow') return undefined;
             if (choice === 'reuse') return { items: last.items, dir: last.dir };
+            if (choice === 'describe') return await describeTest(chat, session, dir, { aborted, closed: () => windowClosed, handOver });
         }
         ui.note(t('cli.demoNote'));
         for (;;) {

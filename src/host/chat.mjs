@@ -20,17 +20,17 @@ const TAIL_MS = 500;
 const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'plan', 'advice', 'failure', 'decision']);
 // The human is demonstrating: a reload is then part of the path, not a break of the run.
 const SHOWING_STATES = ['showing', 'asking', 'paused'];
-const PICK_STATES = ['paused', 'asking', 'showing', 'planning', 'discussing', 'developing'];
+const PICK_STATES = ['paused', 'asking', 'showing', 'describing', 'planning', 'discussing', 'developing'];
 // Conversations with open input: a message goes to the flow together with the picked element.
 const TALK_KINDS = ['discussing', 'developing'];
 // The human has to act here, so the window must not stay behind the application.
 const NEEDS_HUMAN = ['choosing', 'planning', 'deciding', 'reviewing', 'discussing'];
 // Then the workbench's raven turns to the chat.
-const RAVEN_ASKS = [...NEEDS_HUMAN, 'asking', 'showing', 'developing'];
+const RAVEN_ASKS = [...NEEDS_HUMAN, 'asking', 'showing', 'describing', 'developing'];
 const UNNAMED_ELEMENT_NOTE = 'This is the element I mean.';
 
 // Status line, pill and button per state. Fetched at runtime: the language is not known yet at import time.
-const STATES = ['running', 'pausing', 'paused', 'asking', 'showing', 'choosing', 'planning', 'handing', 'verifying', 'testing', 'discussing', 'preparing', 'deciding', 'advising', 'reviewing', 'developing', 'closed'];
+const STATES = ['running', 'pausing', 'paused', 'asking', 'showing', 'describing', 'choosing', 'planning', 'handing', 'verifying', 'testing', 'discussing', 'preparing', 'deciding', 'advising', 'reviewing', 'developing', 'closed'];
 const statusTexts = (state) => {
     const part = (name) => {
         const key = `chat.status.${state}.${name}`;
@@ -204,8 +204,8 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                     // A picked element without text must not get lost.
                     if (element !== null) deliver({ note: UNNAMED_ELEMENT_NOTE, element });
                     element = null;
-                    // End of the demonstration: nothing to click here until the next section.
-                    if (capturing === 'showing') {
+                    // End of the demonstration or description: nothing to click here until the next section.
+                    if (capturing === 'showing' || capturing === 'describing') {
                         capturing = null;
                         background = 'handing';
                     }
@@ -444,7 +444,7 @@ footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px
 .ruled{display:flex!important;align-items:baseline}.ruled .fill{flex:1;min-width:2ch;margin-left:.5ch;overflow:hidden;white-space:nowrap}
 .plan strong,.advice strong,.failure strong,.decision strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:6px;text-shadow:0 0 8px var(--glow);white-space:pre-wrap}
 .plan{border-color:var(--frame)}
-.plan .notes{color:var(--muted);font-size:13px;margin-bottom:6px}.step{padding:8px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:500}.step .sid{flex:none;font:400 18px/1 var(--font-crt);color:var(--info)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--warn)}.step .before{color:var(--muted);text-decoration:line-through}
+.plan .notes{color:var(--muted);font-size:13px;margin-bottom:6px}.plan .heard{color:var(--accent,inherit);font-size:13px}div.heard{margin-bottom:6px}.step{padding:8px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:500}.step .sid{flex:none;font:400 18px/1 var(--font-crt);color:var(--info)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--warn)}.step .before{color:var(--muted);text-decoration:line-through}
 .failure{border-color:var(--fail);background:var(--fail-tint)}.failure strong{color:var(--text);text-shadow:none}.failure strong .mk{color:var(--fail)}.fail-inv .failure strong .mk{background:var(--fail);color:var(--ink)}
 .failure .reason{margin:0 0 9px;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
 .failure .badge{display:inline-block;margin:0 0 9px;padding:2px 8px;font:400 18px/1.1 var(--font-crt);color:var(--muted);box-shadow:inset 0 0 0 2px currentColor}.failure .badge.app{color:var(--fail)}.failure .badge.environment{color:var(--warn)}.failure .badge.test{color:var(--info)}
@@ -632,9 +632,12 @@ window.addMessage=(who,text,about)=>{
   if(who==='plan'){
     group=null;const card=document.createElement('div');card.className='message plan';const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
     const heading=about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']);const title=part('strong','','');fillRule(title,heading);title.dataset.heading=heading;card.append(title);if(about.notes)card.append(part('div','notes',about.notes));
+    // The human's own words and what became of them: as a note, a retry, in the test's notes, or only for this recording.
+    const heardText=(h)=>T['chat.page.heardMark']+' "'+h.text+'" → '+T['chat.page.heardAs.'+h.as];
+    for(const h of about.heard||[])card.append(part('div','heard',heardText(h)));
     for(const step of about.steps){const box=document.createElement('section');box.className='step';const head=document.createElement('div');head.className='head';head.append(part('span','sid',step.id),part('span','',step.name));const facts=document.createElement('dl');
       const fact=(label,value,changed,before)=>{const row=document.createElement('div');if(changed)row.className='changed';row.append(part('dt','',label));if(before)row.append(part('dd','before',before));row.append(part('dd','',value));facts.append(row);};
-      if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));box.append(head,facts);card.append(box);}
+      if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));for(const h of step.heard||[]){const row=document.createElement('div');row.className='heard';row.append(part('dt','',T['chat.page.heard']),part('dd','',heardText(h)));facts.append(row);}box.append(head,facts);card.append(box);}
     place(card,true);return;
   }
   if(who==='failure'){
@@ -697,7 +700,7 @@ const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return
 const COMPACT=['discussing','deciding','reviewing'];
 window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=text;}// While Claude works in the application the input is locked: typing here would take the focus from the application (an open
 // list closes when its field loses the focus). Pausing unlocks it.
-const locked=state==='running';input.disabled=locked;input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:hint;fit();
+const locked=state==='running';input.disabled=locked;input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:state==='describing'?T['chat.page.describePlaceholder']:hint;fit();
 if(state==='showing'&&group)group.details.open=true;
 const list=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
 const buttons=list.map((option)=>{const choice=document.createElement('button');choice.type='button';choice.textContent=option.label;if(option.primary)choice.className=option.big?'primary big':'primary';if(option.big){choice.id='approve';const key=document.createElement('kbd');key.setAttribute('aria-hidden','true');key.textContent=KEY;choice.append(key);}
