@@ -8,7 +8,7 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE } from '../shared/names.mjs';
 import { writePref } from '../shared/prefs.mjs';
-import { activeTheme, listThemes, loadTheme, missingFonts, readThemePackage, themeDir, themeWarnings, validateTheme } from '../shared/theme-package.mjs';
+import { MODES, activeTheme, listThemes, loadTheme, missingFonts, readThemePackage, themeDir, themeMode, themeWarnings, validateTheme } from '../shared/theme-package.mjs';
 import { createUi } from '../shared/ui.mjs';
 
 /** The team default counts towards "active": the config is read if there is one; a broken one does not matter here. */
@@ -28,7 +28,7 @@ const requireKnownTheme = (name, env) => {
 };
 
 /**
- * caw theme [use <name> | check <name>]
+ * caw theme [use <name> | mode <dark|light> | check <name>]
  * @returns exit code
  */
 export const themeCommand = (root, args, { ui = createUi(), env = process.env } = {}) => {
@@ -37,7 +37,7 @@ export const themeCommand = (root, args, { ui = createUi(), env = process.env } 
     readProject(root);
     if (action === undefined) {
         const active = activeTheme(env).name;
-        ui.heading(t('cli.themeHeading'));
+        ui.heading(t('cli.themeHeading', { mode: t(`cli.themeMode.${themeMode(env)}`) }));
         for (const theme of listThemes(env)) {
             const text = `${theme.name.padEnd(12)} ${theme.label}${theme.builtin ? '' : ` · ${t('cli.themeOwn', { base: theme.base })}`}`;
             if (theme.name === active) ui.success(`${text} ${t('cli.themeActive')}`);
@@ -46,7 +46,15 @@ export const themeCommand = (root, args, { ui = createUi(), env = process.env } 
         ui.note(t('cli.themeHint'));
         return EXIT.pass;
     }
-    if (name === undefined || !['use', 'check'].includes(action)) throw new CawError('usage', t('cli.themeUsage'));
+    if (name === undefined || !['use', 'mode', 'check'].includes(action)) throw new CawError('usage', t('cli.themeUsage'));
+    if (action === 'mode') {
+        if (!MODES.includes(name)) throw new CawError('usage', t('cli.themeUsage'));
+        writePref('mode', name, env);
+        ui.success(t('cli.themeModeSet', { mode: t(`cli.themeMode.${name}`) }));
+        const active = activeTheme(env);
+        if (!active.modes.includes(name)) ui.note(t(`cli.themeOnly.${active.scheme}`, { name: active.name }));
+        return EXIT.pass;
+    }
     requireKnownTheme(name, env);
     if (action === 'use') {
         writePref('theme', name, env);
@@ -56,7 +64,10 @@ export const themeCommand = (root, args, { ui = createUi(), env = process.env } 
     const pkg = readThemePackage(name, env);
     const problems = validateTheme(pkg);
     const theme = loadTheme(name, env);
-    const warnings = themeWarnings(theme);
+    // Contrast in every mode the theme has.
+    const { modes } = theme;
+    const warnings = modes.flatMap((mode) => themeWarnings(loadTheme(name, env, mode)).map((warning) => ({ ...warning, text: modes.length > 1 && warning.kind === 'contrast' ? `${warning.text} (${t(`cli.themeMode.${mode}`)})` : warning.text })))
+        .filter((warning, index, all) => warning.kind !== 'width' || all.findIndex((other) => other.kind === 'width') === index);
     const fonts = missingFonts(theme, env);
     const dir = themeDir(name, env);
     ui.heading(t('cli.themeCheck', { name }));

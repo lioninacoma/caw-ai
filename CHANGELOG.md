@@ -30,7 +30,7 @@ First release.
 - Dates as `{{date±n}}` in the browser's locale and `{{isoDate±n}}`; `remember` takes values of any length, short ones replaced only where they cannot be other text.
 - The workbench shows the app at the recorded viewport, scaled down to fit, while caw replays; once the window is handed over the app fills the pane.
 - The step list has a heading "Run" ("Durchführung") above the test's steps, between preparation and wrap-up.
-- Themes as packages: built-in `nacht`, `bernstein`, `phosphor`, `kachel` and `cockpit`, own themes next to `prefs.json`, `caw theme`. The pixel font VT323 is kept for large type (logo, title, test id); small labels such as buttons, chat names and the key bar use the text font, because a pixel font is never pixel-exact at small sizes.
+- Themes as packages: built-in `studio` (default), `terminal`, `raster` and `glas`, each with a dark and a light mode; own themes next to `prefs.json` (their `light` block holds the light colours), `caw theme` with `use`, `mode` and `check`. F7 in the workbench switches between dark and light at once. The terminal keeps the dark colours. Small labels use the text font in every theme, because the pixel font VT323 is never pixel-exact at small sizes; it stays for the logo and, in `terminal`, for large type.
 - The command is `caw` (package `caw-ai`, `npx caw …` once installed). Claude's browser commands live under `caw agent` and are not in the human help. Durations carry their unit (`--step-timeout 30s`, `--claude-timeout 60m`); `--env` picks the environment, `--explain` lets Claude explain failures unasked, `--max-actions` limits Claude. Old command and flag names are refused with their new name.
 - User interface, CLI, messages and reports in English and German.
 

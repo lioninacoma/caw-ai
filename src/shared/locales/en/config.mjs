@@ -91,7 +91,7 @@ export default {
     'config.didYouMean': ' (did you mean {name}?)',
     'config.language': 'language: {value} is not a language code; the team language is a primary subtag such as "en", "de" or "fr" (it never changes caw\'s own texts)',
     'config.messageSelectors': 'messageSelectors must be a list of CSS selectors',
-    'config.theme': 'theme.{key} is invalid: base is nacht, bernstein, phosphor, kachel or cockpit, colors only the 13 base colors as #rrggbb',
+    'config.theme': 'theme.{key} is invalid: base is studio, terminal, raster or glas, colors only the 13 base colors as #rrggbb',
     'config.theme.schema.noShape': 'matches no allowed shape',
     'config.theme.schema.ambiguous': 'ambiguous',
     'config.theme.schema.const': 'must be {value}',

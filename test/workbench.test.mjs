@@ -26,7 +26,7 @@ test('workbench: the chip at the top right (REC, PLAY, PAUSE) is there but off w
 });
 
 test('workbench: the theme is embedded without css and cannot end a <script>', () => {
-    const theme = { ...loadTheme('nacht'), css: 'body{x:1}', label: '</script><b>' };
+    const theme = { ...loadTheme('terminal'), css: 'body{x:1}', label: '</script><b>' };
     const html = workbenchHtml({ appUrl: 'about:blank', title: 't', theme, themes: [] });
     assert.match(html, /<style data-caw-theme-css>body\{x:1\}<\/style>/, 'theme.css from disk, as its own block');
     const script = html.slice(html.lastIndexOf('<script>'));
@@ -38,18 +38,22 @@ test('workbench: the theme dialog picks, saves custom themes, renames and delete
     const dir = mkdtempSync(join(tmpdir(), 'caw-bench-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const env = { CAW_AI_HOME: dir };
-    assert.equal(themeAction('use', 'bernstein', env).name, 'bernstein');
-    assert.equal(readPrefs(env).theme, 'bernstein');
+    assert.equal(themeAction('use', 'raster', env).name, 'raster');
+    assert.equal(readPrefs(env).theme, 'raster');
+    // The mode switch: stored, and the theme comes back in that mode.
+    assert.deepEqual([themeAction('mode', 'light', env).scheme, readPrefs(env).mode], ['light', 'light']);
+    assert.throws(() => themeAction('mode', 'grau', env), /Unknown setting/);
+    assert.equal(themeAction('mode', 'dark', env).scheme, 'dark');
     assert.throws(() => themeAction('use', 'gibt-es-nicht', env));
-    assert.throws(() => themeAction('save', { themeApi: 1, name: 'nacht', base: 'nacht' }, env), /built in/);
-    assert.throws(() => themeAction('save', { themeApi: 1, name: 'x', base: 'nacht', css: 'a.css' }, env), /Invalid theme/);
-    const saved = themeAction('save', { themeApi: 1, name: 'mein-bernstein', base: 'bernstein', colors: { accent: '#123456' } }, env);
-    assert.deepEqual([saved.name, saved.colors.accent, readPrefs(env).theme], ['mein-bernstein', '#123456', 'mein-bernstein']);
-    assert.ok(themeList(env).some(({ name, colors }) => name === 'mein-bernstein' && colors.accent === '#123456'), 'with colours for the swatch');
-    assert.equal(themeAction('rename', { from: 'mein-bernstein', to: 'hafen' }, env).name, 'hafen');
+    assert.throws(() => themeAction('save', { themeApi: 1, name: 'terminal', base: 'terminal' }, env), /built in/);
+    assert.throws(() => themeAction('save', { themeApi: 1, name: 'x', base: 'terminal', css: 'a.css' }, env), /Invalid theme/);
+    const saved = themeAction('save', { themeApi: 1, name: 'mein-raster', base: 'raster', colors: { accent: '#123456' } }, env);
+    assert.deepEqual([saved.name, saved.colors.accent, readPrefs(env).theme], ['mein-raster', '#123456', 'mein-raster']);
+    assert.ok(themeList(env).some(({ name, colors }) => name === 'mein-raster' && colors.accent === '#123456'), 'with colours for the swatch');
+    assert.equal(themeAction('rename', { from: 'mein-raster', to: 'hafen' }, env).name, 'hafen');
     assert.equal(readPrefs(env).theme, 'hafen');
-    assert.equal(themeAction('delete', 'hafen', env).name, 'bernstein', 'back to the base');
+    assert.equal(themeAction('delete', 'hafen', env).name, 'raster', 'back to the base');
     assert.equal(readThemePackage('hafen', env), undefined);
-    assert.throws(() => themeAction('delete', 'nacht', env));
+    assert.throws(() => themeAction('delete', 'terminal', env));
     assert.throws(() => themeAction('drop', 'x', env));
 });

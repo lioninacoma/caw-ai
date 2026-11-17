@@ -1,0 +1,92 @@
+/* raster: Swiss style. Hard 2px rules in the text colour, no radius, no shadow, panes headed by solid bars, capitals on
+   buttons, one strong blue. In the dark mode the same rules turn white: bars light, text dark. Inter and JetBrains Mono. */
+
+.lg,.sec,.tag,.px-label,.px-btn,.px-pill,.gauge,.fk,.tabs button,.solo-btn,#browserState,#notice,#stateSpin,.ttabs button,
+.tthemes button span,.tfields .grp,#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
+.small,#abort,#abortNo,.soloBar,.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.step .sid,.step dt,.advice dt,
+.failure .badge,#thinking,.fkeys,.sfilter span,.srow .mk,.advice .copy,.heart,#leftNote strong{font-family:var(--font-ui);font-size:12.5px;line-height:1.3;letter-spacing:0}
+.raven{font-family:"VT323",monospace!important;font-weight:400;letter-spacing:0;text-transform:none}
+body{font-variant-ligatures:no-contextual}
+
+:root{--rule:2px solid var(--text);--hair:1px solid color-mix(in srgb,var(--text) 16%,transparent);--on-signal:#ffffff}
+
+/* Page and header */
+.crt-case{background:var(--screen);box-shadow:none}
+#bench{box-shadow:none;padding:0 18px}
+.top{border-bottom:var(--rule);padding:16px 0 14px;gap:8px 22px}
+.id b{font:700 30px/1.05 var(--font-crt);letter-spacing:-.02em;text-transform:lowercase}
+.facts{font-size:12px;color:var(--text)}
+
+/* Panes share their rules: side by side the borders lie on top of each other */
+.panes{gap:0;padding:16px 0}
+.win{border:var(--rule);border-radius:0;box-shadow:none;background:var(--pane)}
+.pa-browser{margin-left:-2px}.pa-chat{margin-left:-2px}
+.lg{position:static;display:block;padding:8px 12px;background:var(--text);color:var(--screen);font:700 12px/1 var(--font-crt);letter-spacing:.12em;text-transform:uppercase}
+.pa-steps,.pa-browser,.pa-chat{padding:0}
+.fold{top:6px;right:8px;background:none;color:var(--screen)}
+#gauge{margin:12px 12px 6px;font-size:12px}
+#track{padding:4px 0 12px;mask-image:linear-gradient(to bottom,transparent 0,#000 8px)}
+.hint,#leftNote{margin:8px 12px}
+.appbar{padding:8px 12px;border-bottom:var(--rule);color:var(--text)}
+#app{box-shadow:none}
+.drawer{border-top:var(--rule);padding:0}
+.tabs{gap:0}
+.tabs button{font:700 11.5px/1 var(--font-crt);text-transform:uppercase;letter-spacing:.08em;border:0;border-right:var(--rule);box-shadow:none;padding:9px 14px;color:var(--text)}
+.tabs button[aria-selected=true]{background:var(--text);color:var(--screen)}
+
+/* Steps: rows divided by hairlines, the state as a square; the running step in the text colour, the failed one in red */
+.tag{display:inline-grid;place-items:center;width:18px;height:18px;box-sizing:border-box;font:700 11px/1 var(--font-ui);border:2px solid currentColor}
+.tag-fail.inverted{background:var(--fail);border-color:var(--fail);color:var(--on-signal)}
+#steps .head{margin:0;padding:8px 12px;gap:10px;border-top:var(--hair);border-radius:0;align-items:center}
+#steps>li:first-child>.head{border-top:0}
+#steps .head .name{font:700 14px/1.3 var(--font-crt)}
+#steps .id{font:700 12px/1 var(--font-ui);color:var(--muted)}
+#steps>li[data-state=running]>.head{background:var(--text);box-shadow:none}
+#steps>li[data-state=running]>.head :is(.id,.name,.ms,.tag){color:var(--screen)}
+#steps>li[data-state=fail]>.head{background:var(--fail);box-shadow:none}
+#steps>li[data-state=fail]>.head :is(.id,.name,.ms,.tag){color:var(--on-signal);border-color:var(--on-signal)}
+#steps>li[data-kind=step]>.pts{padding:2px 12px 10px 40px}
+#steps>li[data-kind=step]>.pts>li{padding-left:0}
+#steps>li:is([data-kind=phase],[data-kind=section])>.head{margin-top:12px;border-top:var(--rule);border-bottom:var(--rule)}
+#steps>li:is([data-kind=phase],[data-kind=section]):first-child>.head{margin-top:0;border-top:0}
+#steps>li:is([data-kind=phase],[data-kind=section])>.head .name{font:700 11px/1 var(--font-crt);letter-spacing:.12em;text-transform:uppercase;color:var(--text)}
+#steps>li[data-kind=phase]>.pts>li{padding:4px 12px}
+
+/* Buttons: framed, capitals; the primary one in the signal colour; hover fills */
+.px-btn,#choices button,.small,#report,#closeWindow,.solo-btn,.advice .copy,.ttabs button{font:700 12px/1.2 var(--font-crt);letter-spacing:.06em;text-transform:uppercase;border:var(--rule);border-radius:0;box-shadow:none;background:var(--pane);color:var(--text)}
+#choices{padding:4px 12px 12px;gap:8px}
+#choices button{min-height:40px}
+#choices button:hover,.px-btn:hover:enabled{background:var(--text);color:var(--screen)}
+.px-btn--primary,#choices button.primary,#report,#closeWindow{background:var(--accent);border-color:var(--accent);color:var(--on-signal);box-shadow:none}
+#choices button.primary:hover{background:var(--text);border-color:var(--text);color:var(--screen)}
+.solo-btn b{color:var(--accent)}
+.px-pill{border:var(--rule);border-radius:0;box-shadow:none;color:var(--text);padding:1px 8px;font-weight:700}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* Key bar */
+.fkeys{border-top:var(--rule);margin:0 -18px;padding:10px 18px;gap:6px 18px;font:500 12px/1 var(--font-crt);color:var(--text)}
+.fk b{background:var(--text);color:var(--screen);font:700 11px/1 var(--font-ui);padding:3px 5px;margin-right:6px}
+.fk.x b{background:var(--fail);color:var(--on-signal)}
+
+/* Chat */
+main{padding:12px;gap:12px}
+.who{font:700 11px/1.2 var(--font-crt);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.who .mk{display:none}
+.question,.plan,.advice,.failure,.decision,#next{border:var(--rule);border-radius:0;background:var(--pane);padding:10px 12px}
+.question{border-left:8px solid var(--info)}
+.failure{border-color:var(--fail);border-top:10px solid var(--fail);background:var(--pane)}
+.plan strong,.advice strong,.failure strong,.decision strong,#next strong{font:700 15px/1.25 var(--font-crt);text-shadow:none;color:var(--text)}
+.failure .badge{border:2px solid currentColor;box-shadow:none;border-radius:0;font:700 11px/1 var(--font-ui);padding:3px 7px;text-transform:uppercase}
+form{margin:0;border:0;border-top:var(--rule);border-radius:0;background:var(--pane);box-shadow:none}
+form:focus-within{box-shadow:inset 0 0 0 2px var(--accent)}
+#send{border-radius:0;background:var(--text);color:var(--screen)}
+
+/* Dialogs */
+#stateDlg>.win,#themeDlg>.win{padding-top:44px;margin:0}
+#stateDlg .lg,#themeDlg .lg{position:absolute;top:0;left:0;right:0}
+.srow[aria-selected=true],.srow[aria-selected=true]:hover:enabled{background:var(--text);color:var(--screen);box-shadow:none}
+.srow[aria-selected=true] :is(.mk,.meta){color:var(--screen)}
+.tmode{box-shadow:none;border:var(--rule)}
+.tmode button{font:700 12px/1 var(--font-crt);text-transform:uppercase;letter-spacing:.06em;padding:8px 14px;color:var(--text)}
+.tmode button[aria-checked=true]{background:var(--text);color:var(--screen)}
+.tthemes button{border-radius:0}

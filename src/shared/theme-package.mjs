@@ -2,8 +2,12 @@
 // Built-in: caw-ai/themes/<name>/. Custom: <prefsDir>/themes/<name>/; they name a built-in theme as base and list only the
 // differences; anything missing or broken comes from base.
 //
-// Which one applies, last wins: nacht, optional team default in caw.config.json ({ "theme": { "base", "colors" } }),
+// Which one applies, last wins: studio, optional team default in caw.config.json ({ "theme": { "base", "colors" } }),
 // prefs.json ("theme": "<name>").
+//
+// A theme has one or both modes in the same package: the top-level colors and crt are the mode named by `scheme` (dark by
+// default), a `light` or `dark` block holds the other one (colors and crt over them). prefs.json "mode" chooses (dark by
+// default); a theme without the chosen mode stays in its own.
 //
 // The workbench can save themes too. So saveTheme checks the whole object against the schema, without css and without
 // fonts.file: theme.css and fonts only come from disk. Pages set colours only as CSS variables.
@@ -21,8 +25,9 @@ const SCHEMA = () => (schemaCache ??= JSON.parse(readFileSync(new URL('theme.sch
 
 /** The base colours in the order of the theme dialog. */
 export const THEME_KEYS = ['screen', 'pane', 'frame', 'text', 'muted', 'accent', 'ok', 'warn', 'fail', 'info', 'claude', 'human', 'heart'];
-export const BUILTIN_THEMES = ['nacht', 'bernstein', 'phosphor', 'kachel', 'cockpit'];
-export const DEFAULT_THEME = 'nacht';
+export const BUILTIN_THEMES = ['studio', 'terminal', 'raster', 'glas'];
+export const DEFAULT_THEME = 'studio';
+export const MODES = ['dark', 'light'];
 export const THEME_NAME = /^[a-z0-9-]{1,32}$/;
 export const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -138,14 +143,27 @@ const readCss = (name, file, env) => {
     }
 };
 
+/** The mode from prefs.json: dark unless light was chosen. */
+export const themeMode = (env = process.env) => (readPrefs(env).mode === 'light' ? 'light' : 'dark');
+
 /**
- * A resolved package: base underneath, texts in the current language, theme.css read.
- * @param extra  merged on top last, e.g. the team default's colours
+ * A resolved package: base underneath, texts in the current language, theme.css read, the mode's colours applied.
+ * @param extra  merged on top last, e.g. the team default's colours (for the top-level mode; the other keeps its own)
+ * @param mode   dark or light; only takes effect if the theme has that mode
+ * @returns the theme with `scheme` (the mode in effect), `primary` (the mode of the top-level colours) and `modes`
  */
-export const resolvePackage = (pkg, { env = process.env, extra } = {}) => {
+export const resolvePackage = (pkg, { env = process.env, extra, mode = themeMode(env) } = {}) => {
     const base = BUILTIN_THEMES.includes(pkg?.base) ? builtin(pkg.base) : builtin(DEFAULT_THEME);
     const merged = merge(BUILTIN_THEMES.includes(pkg?.name) && pkg.base === undefined ? pkg : merge(base, pkg ?? {}), extra ?? {});
-    const theme = { ...merged, builtin: BUILTIN_THEMES.includes(merged.name), base: merged.base ?? merged.name };
+    const primary = merged.scheme === 'light' ? 'light' : 'dark';
+    const other = primary === 'dark' ? 'light' : 'dark';
+    const modes = MODES.filter((each) => each === primary || (each === other && isObject(merged[other])));
+    const scheme = modes.includes(mode) ? mode : primary;
+    const theme = { ...merged, builtin: BUILTIN_THEMES.includes(merged.name), base: merged.base ?? merged.name, primary, modes, scheme };
+    if (scheme !== primary) {
+        theme.colors = merge(merged.colors, merged[scheme].colors ?? {});
+        theme.crt = merge(merged.crt, merged[scheme].crt ?? {});
+    }
     theme.label = local(merged.label) ?? merged.name;
     theme.description = local(merged.description) ?? '';
     for (const [group, keys] of Object.entries(LOCAL)) theme[group] = { ...merged[group], ...Object.fromEntries(keys.map((key) => [key, local(merged[group]?.[key])])) };
@@ -155,10 +173,10 @@ export const resolvePackage = (pkg, { env = process.env, extra } = {}) => {
     return theme;
 };
 
-/** A theme by name, resolved; undefined if there is none. */
-export const loadTheme = (name, env = process.env) => {
+/** A theme by name, resolved in the chosen mode; undefined if there is none. */
+export const loadTheme = (name, env = process.env, mode = themeMode(env)) => {
     const pkg = readThemePackage(name, env);
-    return pkg === undefined ? undefined : resolvePackage(pkg, { env });
+    return pkg === undefined ? undefined : resolvePackage(pkg, { env, mode });
 };
 
 // The team default from caw.config.json, set when the config is loaded.
@@ -167,16 +185,16 @@ export const setProjectTheme = (value) => {
     project = value;
 };
 
-/** The theme in effect: nacht, then team default, then the own choice from prefs.json. */
-export const activeTheme = (env = process.env) => {
+/** The theme in effect, in the chosen mode: studio, then team default, then the own choice from prefs.json. */
+export const activeTheme = (env = process.env, mode = themeMode(env)) => {
     const chosen = readPrefs(env).theme;
     const own = chosen === undefined ? undefined : readThemePackage(chosen, env);
-    if (own !== undefined) return resolvePackage(own, { env });
+    if (own !== undefined) return resolvePackage(own, { env, mode });
     if (isObject(project) && projectThemeProblems(project).length === 0) {
         const base = builtin(project.base ?? DEFAULT_THEME);
-        return resolvePackage(base, { env, extra: project.colors === undefined ? undefined : { colors: project.colors } });
+        return resolvePackage(base, { env, mode, extra: project.colors === undefined ? undefined : { colors: project.colors } });
     }
-    return resolvePackage(builtin(DEFAULT_THEME), { env });
+    return resolvePackage(builtin(DEFAULT_THEME), { env, mode });
 };
 
 /** All themes: built-in first, then the readable custom ones. */

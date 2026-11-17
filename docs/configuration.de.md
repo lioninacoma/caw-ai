@@ -285,7 +285,7 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 | `lintCommand` | | Dein Prüfbefehl, z. B. `npm run lint`. Claude nennt ihn in Code-Empfehlungen. |
 | `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den `docker`-Agenten. Sonst `image` aus `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | Nutzer im Container. |
-| `theme` | | Team-Standard für die Werkbank: `{ "base": "phosphor", "colors": { … } }`. Eine persönliche Wahl in `prefs.json` gewinnt. Siehe [Themes](../themes/README.md#team-default). |
+| `theme` | | Team-Standard für die Werkbank: `{ "base": "raster", "colors": { … } }`. Eine persönliche Wahl in `prefs.json` gewinnt. Siehe [Themes](../themes/README.md#team-default). |
 | `overlay` | | Schaltet die [Overlay-Erweiterung](extensions/overlay.de.md) ein. |
 
 ## caw/caw.md

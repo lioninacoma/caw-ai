@@ -15,6 +15,7 @@ import { EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
 import { helpText, synopsisOf, unknownCommandText } from '../src/shared/help.mjs';
 import { closest, editDistance } from '../src/shared/suggest.mjs';
 import { createUi } from '../src/shared/ui.mjs';
+import { loadTheme } from '../src/shared/theme-package.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/caw.mjs', import.meta.url));
 const step = (id, name) => ({ id, name, do: `${name} tun`, expect: `${name} sichtbar` });
@@ -276,7 +277,8 @@ const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
 
 test('fatal error in the terminal: first the message, then the synopsis, last code and exit dimmed', () => {
     const lines = [];
-    const ui = createUi({ fancy: true, out: (text) => lines.push(text), err: (text) => lines.push(text) });
+    // terminal's marks: the indent follows the mark's width.
+    const ui = createUi({ fancy: true, theme: loadTheme('terminal', process.env, 'dark'), out: (text) => lines.push(text), err: (text) => lines.push(text) });
     ui.fatal('usage', 'Name des Tests fehlt.', { synopsis: 'caw open <test>@<S4>', exit: 3 });
     assert.equal(lines.length, 3);
     assert.match(plain(lines[0]), /^ {2}\[FEHLER\] Name des Tests fehlt\.$/);

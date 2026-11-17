@@ -1,4 +1,4 @@
-// The human's personal settings across projects and runs (e.g. animations off, chat collapsed, theme).
+// The human's personal settings across projects and runs (e.g. animations off, chat collapsed, theme and its mode).
 // Location: CAW_AI_HOME, else %APPDATA%\caw-ai, $XDG_CONFIG_HOME/caw-ai or ~/.config/caw-ai. Never secrets.
 // Custom themes live next to it in themes/<name>/ (src/shared/theme-package.mjs).
 
@@ -13,6 +13,8 @@ const KNOWN = {
     // The personal UI language; CAW_LANG wins over it.
     language: ['de', 'en'],
     theme: (value) => typeof value === 'string' && /^[a-z0-9-]{1,32}$/.test(value),
+    // The theme's mode; a theme without a light mode stays dark.
+    mode: ['dark', 'light'],
 };
 const allowed = (key, value) => (typeof KNOWN[key] === 'function' ? KNOWN[key](value) === true : KNOWN[key]?.includes(value) === true);
 
@@ -51,7 +53,7 @@ export const writePref = (key, value, env = process.env) => {
 
 // What the workbench page may set: only how it looks. The page shares its origin with the tested application, so whatever the
 // page may set, the application (or code Claude runs there) may set too. tokenNotice (skip the token notice) is never among them.
-export const PAGE_PREFS = ['animations', 'steps', 'chat', 'theme'];
+export const PAGE_PREFS = ['animations', 'steps', 'chat', 'theme', 'mode'];
 
 /** writePref for a value from the workbench page: only cosmetic keys, everything else is rejected like an unknown key. */
 export const writePagePref = (key, value, env = process.env) => {

@@ -33,7 +33,7 @@ test('spinner in the mark: as wide as [  OK  ], the quarter in currentColor at t
     if (browser === null) return t.skip('no Chrome');
     const page = await browser.newPage();
     t.after(() => page.close());
-    await page.setContent(`<style>${themeCss(loadTheme('nacht'))}${CONSOLE_CSS}</style><script>${GLYPH_SCRIPT}</script>
+    await page.setContent(`<style>${themeCss(loadTheme('terminal'))}${CONSOLE_CSS}</style><script>${GLYPH_SCRIPT}</script>
 <span class="tag tag-ok" id="ok">[  OK  ]</span><br><span class="tag tag-run" id="run">[  <span class="spinf" id="cell"></span>   ]</span>`);
     await page.evaluate(async () => {
         document.getElementById('cell').replaceChildren(cawGlyph('▖'));

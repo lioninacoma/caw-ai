@@ -1,0 +1,202 @@
+{
+  "$schema": "../theme.schema.json",
+  "themeApi": 1,
+  "name": "raster",
+  "label": {
+    "de": "Raster",
+    "en": "Grid"
+  },
+  "description": {
+    "de": "Schweizer Stil: harte Linien, keine Rundungen, ein kräftiges Blau.",
+    "en": "Swiss style: hard rules, no radius, one strong blue."
+  },
+  "colors": {
+    "screen": "#0c0c0d",
+    "pane": "#0c0c0d",
+    "frame": "#f2f2f2",
+    "text": "#f2f2f2",
+    "muted": "#a6a6a6",
+    "accent": "#4d7dff",
+    "ok": "#3ddc84",
+    "warn": "#f5a524",
+    "fail": "#ff4d4f",
+    "info": "#6f96ff",
+    "claude": "#b892ff",
+    "human": "#f5a524",
+    "heart": "#ff4d6d"
+  },
+  "crt": {
+    "scanlines": {
+      "color": "#000000",
+      "alpha": 0
+    },
+    "vignette": 0,
+    "headingGlowPx": 0,
+    "textGlow": {
+      "px": 0,
+      "alpha": 0
+    }
+  },
+  "light": {
+    "colors": {
+      "screen": "#ffffff",
+      "pane": "#ffffff",
+      "frame": "#111111",
+      "text": "#111111",
+      "muted": "#555555",
+      "accent": "#1840ff",
+      "ok": "#0a7d3b",
+      "warn": "#a35f00",
+      "fail": "#d0021b",
+      "info": "#1840ff",
+      "claude": "#6b2bd9",
+      "human": "#a35f00",
+      "heart": "#d0021b"
+    }
+  },
+  "fonts": {
+    "display": [
+      {
+        "family": "Inter",
+        "file": "builtin:inter-600.woff2",
+        "weight": 600
+      },
+      {
+        "family": "Inter",
+        "file": "builtin:inter-700.woff2",
+        "weight": 700
+      },
+      {
+        "family": "VT323",
+        "file": "builtin:vt323-latin-400-normal.woff2",
+        "weight": 400
+      }
+    ],
+    "text": [
+      {
+        "family": "JetBrains Mono",
+        "file": "builtin:jetbrains-mono-400.woff2",
+        "weight": 400
+      },
+      {
+        "family": "JetBrains Mono",
+        "file": "builtin:jetbrains-mono-500.woff2",
+        "weight": 500
+      }
+    ]
+  },
+  "marks": {
+    "ok": "✓",
+    "warn": "!",
+    "fail": "✕",
+    "run": "{spinner}",
+    "open": " ",
+    "ask": "?"
+  },
+  "bullets": {
+    "ok": "—",
+    "warn": "!",
+    "fail": "✕",
+    "run": "→",
+    "info": "→",
+    "pause": "‖"
+  },
+  "progress": {
+    "done": "■",
+    "run": "■",
+    "open": "□"
+  },
+  "prompt": {
+    "claude": "Claude",
+    "human": {
+      "de": "Du",
+      "en": "You"
+    },
+    "cursorMs": 1000
+  },
+  "failInverted": false,
+  "spinner": {
+    "frames": [
+      "◐",
+      "◓",
+      "◑",
+      "◒"
+    ],
+    "ms": 150
+  },
+  "rule": {
+    "line": "─",
+    "format": "{title}"
+  },
+  "legend": "{title}",
+  "mono": false,
+  "css": "theme.css",
+  "raven": {
+    "lines": [
+      "   __",
+      "  ( {eye} {beak}",
+      "  // )"
+    ],
+    "parts": {
+      "body": "muted",
+      "eye": "text",
+      "beak": "accent"
+    },
+    "beak": ">",
+    "eyes": {
+      "open": "•",
+      "shut": "-",
+      "happy": "^"
+    },
+    "blink": {
+      "ms": 160,
+      "firstMs": 1800,
+      "pauseMs": [
+        4000,
+        9000
+      ],
+      "double": {
+        "chance": 0.25,
+        "afterMs": 320,
+        "ms": 140
+      }
+    },
+    "pet": {
+      "happyMs": 800,
+      "hearts": {
+        "glyphs": [
+          "♥",
+          "<3",
+          "▄█▄█▄\n ▀█▀",
+          ".:♥:."
+        ],
+        "count": 6,
+        "staggerMs": 70,
+        "startAt": 0.2,
+        "risePx": 80,
+        "driftPx": 20,
+        "steps": 9,
+        "durationMs": [
+          1100,
+          1800
+        ],
+        "fadeFrom": 0.7,
+        "glowPx": 8
+      }
+    }
+  },
+  "tree": {
+    "mid": "├",
+    "end": "└"
+  },
+  "box": {
+    "tl": "┌",
+    "tr": "┐",
+    "bl": "└",
+    "br": "┘",
+    "h": "─",
+    "v": "│",
+    "titleOpen": "┤ ",
+    "titleClose": " ├"
+  }
+}

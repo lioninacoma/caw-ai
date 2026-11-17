@@ -68,6 +68,11 @@ export default {
     'workbench.page.pageReloaded': 'Page reloaded',
 
     'workbench.page.themeList': 'Themes',
+    'workbench.page.themeMode': 'Mode',
+    'workbench.page.mode.dark': 'Dark',
+    'workbench.page.mode.light': 'Light',
+    'workbench.page.modeOnly.dark': 'This theme has a dark mode only.',
+    'workbench.page.modeOnly.light': 'This theme has a light mode only.',
     'workbench.page.themeLabel': 'Name',
     'workbench.page.themeName': 'Folder',
     'workbench.page.themeFile': 'themes/{name}/theme.json',

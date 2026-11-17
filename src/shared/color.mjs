@@ -40,8 +40,9 @@ const ROLES = { text: 'text', muted: 'muted', frame: 'frame', accent: 'accent', 
 /**
  * Colours from the active theme (the same as in the workbench), plus bold, faint (frame mixed with text) and failTag (inverted).
  * Truecolor if the terminal supports it, otherwise the nearest of the 256 colours. Without colour every function returns the text unchanged.
+ * The theme's dark colours if it has a dark mode: the terminal's own background is unknown, and light colours vanish on a dark one.
  */
-export const themePainter = (enabled, { full = truecolor(), theme = activeTheme() } = {}) => {
+export const themePainter = (enabled, { full = truecolor(), theme = activeTheme(process.env, 'dark') } = {}) => {
     const wrap = (open, close) => (text) => (enabled ? `${open}${text}${close}` : String(text));
     const code = (hex, ground = 38) => (full ? `\u001b[${ground};2;${rgb(hex).join(';')}m` : `\u001b[${ground};5;${to256(hex)}m`);
     const colors = { ...theme.colors };

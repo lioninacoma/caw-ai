@@ -283,7 +283,7 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 | `lintCommand` | | Your check command, e.g. `npm run lint`. Claude mentions it in code suggestions. |
 | `sandboxImage` | `node:22-bookworm-slim` | Base image for the `docker` agent. Falls back to `image` in `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | User inside the container. |
-| `theme` | | Team default for the workbench: `{ "base": "phosphor", "colors": { … } }`. A personal choice in `prefs.json` wins. See [Themes](../themes/README.md#team-default). |
+| `theme` | | Team default for the workbench: `{ "base": "raster", "colors": { … } }`. A personal choice in `prefs.json` wins. See [Themes](../themes/README.md#team-default). |
 | `overlay` | | Turns on the [overlay extension](extensions/overlay.md). |
 
 ## caw/caw.md

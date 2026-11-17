@@ -103,11 +103,10 @@
     "base": {
       "description": "Built-in theme this one builds on. Required for custom themes, absent for built-ins.",
       "enum": [
-        "nacht",
-        "bernstein",
-        "phosphor",
-        "kachel",
-        "cockpit"
+        "studio",
+        "terminal",
+        "raster",
+        "glas"
       ]
     },
     "label": {
@@ -213,6 +212,39 @@
               "maximum": 1
             }
           }
+        }
+      }
+    },
+    "scheme": {
+      "description": "The mode of the top-level colors and crt: dark (default) or light.",
+      "enum": [
+        "dark",
+        "light"
+      ]
+    },
+    "light": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The light mode, if the top-level colors are dark: colours and CRT values that replace them. Optional.",
+      "properties": {
+        "colors": {
+          "$ref": "#/properties/colors"
+        },
+        "crt": {
+          "$ref": "#/properties/crt"
+        }
+      }
+    },
+    "dark": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The dark mode, if the top-level colors are light (scheme light): colours and CRT values that replace them. Optional.",
+      "properties": {
+        "colors": {
+          "$ref": "#/properties/colors"
+        },
+        "crt": {
+          "$ref": "#/properties/crt"
         }
       }
     },

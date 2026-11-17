@@ -5,7 +5,8 @@ import { t } from '../src/shared/i18n.mjs';
 import { createUi } from '../src/shared/ui.mjs';
 import { loadTheme } from '../src/shared/theme-package.mjs';
 
-const capture = (fancy, theme) => {
+// The layout tests pin terminal: its marks and rules are what they look for, whatever the default theme is.
+const capture = (fancy, theme = loadTheme('terminal', process.env, 'dark')) => {
     const lines = [];
     return { lines, ui: createUi({ fancy, theme, out: (text) => lines.push(text), err: (text) => lines.push(text) }) };
 };
@@ -122,13 +123,17 @@ test('in a terminal: section as a rule, result in a box with marks, all box rows
 });
 
 test('in a terminal: marks and colours come from the theme', () => {
-    const base = loadTheme('bernstein');
+    const base = loadTheme('raster', process.env, 'dark');
     const { lines, ui } = capture(true, { ...base, marks: { ...base.marks, ok: '[ PASS ]' } });
     ui.success('fertig');
     assert.match(plain(lines[0]), /\[ PASS \] fertig/);
-    // Truecolor from the bernstein palette (ok #ffb547) or its 256-colour approximation.
+    // Truecolor from the raster palette (ok #3ddc84) or its 256-colour approximation.
     // eslint-disable-next-line no-control-regex -- matches the ANSI colour code
-    assert.match(lines[0], /\u001b\[38;(2;255;181;71|5;\d+)m/);
+    assert.match(lines[0], /\u001b\[38;(2;61;220;132|5;\d+)m/);
+    // A rule format without {line} (studio: just the title) still draws the line in the terminal, after a space.
+    const studio = capture(true, loadTheme('studio', process.env, 'dark'));
+    studio.ui.section(1, 'Anmelden');
+    assert.match(plain(studio.lines.join('\n')), /1 ANMELDEN ─{3,}/);
 });
 
 test('an error verdict never shows the code line of describeCode as error code', () => {

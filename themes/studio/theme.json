@@ -1,0 +1,202 @@
+{
+  "$schema": "../theme.schema.json",
+  "themeApi": 1,
+  "name": "studio",
+  "label": {
+    "de": "Studio",
+    "en": "Studio"
+  },
+  "description": {
+    "de": "Ruhige Karten mit runden Ecken, Status als Badges.",
+    "en": "Calm cards with rounded corners, state as badges."
+  },
+  "colors": {
+    "screen": "#0b0d12",
+    "pane": "#12151c",
+    "frame": "#262c38",
+    "text": "#e6e8ee",
+    "muted": "#9097a7",
+    "accent": "#7c9cff",
+    "ok": "#3ecf8e",
+    "warn": "#f5b14c",
+    "fail": "#f2555a",
+    "info": "#60a5fa",
+    "claude": "#b69cff",
+    "human": "#f5b14c",
+    "heart": "#f472b6"
+  },
+  "crt": {
+    "scanlines": {
+      "color": "#000000",
+      "alpha": 0
+    },
+    "vignette": 0,
+    "headingGlowPx": 0,
+    "textGlow": {
+      "px": 0,
+      "alpha": 0
+    }
+  },
+  "light": {
+    "colors": {
+      "screen": "#f3f4f7",
+      "pane": "#ffffff",
+      "frame": "#dfe3ea",
+      "text": "#1b2130",
+      "muted": "#586273",
+      "accent": "#3f5bd8",
+      "ok": "#127a55",
+      "warn": "#9a5b00",
+      "fail": "#cc2f38",
+      "info": "#1d64d6",
+      "claude": "#6d3fd6",
+      "human": "#9a5b00",
+      "heart": "#c42a6b"
+    }
+  },
+  "fonts": {
+    "display": [
+      {
+        "family": "Inter",
+        "file": "builtin:inter-500.woff2",
+        "weight": 500
+      },
+      {
+        "family": "Inter",
+        "file": "builtin:inter-600.woff2",
+        "weight": 600
+      },
+      {
+        "family": "VT323",
+        "file": "builtin:vt323-latin-400-normal.woff2",
+        "weight": 400
+      }
+    ],
+    "text": [
+      {
+        "family": "JetBrains Mono",
+        "file": "builtin:jetbrains-mono-400.woff2",
+        "weight": 400
+      },
+      {
+        "family": "JetBrains Mono",
+        "file": "builtin:jetbrains-mono-500.woff2",
+        "weight": 500
+      }
+    ]
+  },
+  "marks": {
+    "ok": "✓",
+    "warn": "!",
+    "fail": "✕",
+    "run": "{spinner}",
+    "open": "○",
+    "ask": "?"
+  },
+  "bullets": {
+    "ok": "•",
+    "warn": "!",
+    "fail": "✕",
+    "run": "›",
+    "info": "›",
+    "pause": "‖"
+  },
+  "progress": {
+    "done": "━",
+    "run": "━",
+    "open": "─"
+  },
+  "prompt": {
+    "claude": "Claude",
+    "human": {
+      "de": "Du",
+      "en": "You"
+    },
+    "cursorMs": 1000
+  },
+  "failInverted": false,
+  "spinner": {
+    "frames": [
+      "◐",
+      "◓",
+      "◑",
+      "◒"
+    ],
+    "ms": 150
+  },
+  "rule": {
+    "line": "─",
+    "format": "{title}"
+  },
+  "legend": "{title}",
+  "mono": false,
+  "css": "theme.css",
+  "raven": {
+    "lines": [
+      "   __",
+      "  ( {eye} {beak}",
+      "  // )"
+    ],
+    "parts": {
+      "body": "muted",
+      "eye": "text",
+      "beak": "accent"
+    },
+    "beak": ">",
+    "eyes": {
+      "open": "•",
+      "shut": "-",
+      "happy": "^"
+    },
+    "blink": {
+      "ms": 160,
+      "firstMs": 1800,
+      "pauseMs": [
+        4000,
+        9000
+      ],
+      "double": {
+        "chance": 0.25,
+        "afterMs": 320,
+        "ms": 140
+      }
+    },
+    "pet": {
+      "happyMs": 800,
+      "hearts": {
+        "glyphs": [
+          "♥",
+          "<3",
+          "▄█▄█▄\n ▀█▀",
+          ".:♥:."
+        ],
+        "count": 6,
+        "staggerMs": 70,
+        "startAt": 0.2,
+        "risePx": 80,
+        "driftPx": 20,
+        "steps": 9,
+        "durationMs": [
+          1100,
+          1800
+        ],
+        "fadeFrom": 0.7,
+        "glowPx": 8
+      }
+    }
+  },
+  "tree": {
+    "mid": "├",
+    "end": "└"
+  },
+  "box": {
+    "tl": "┌",
+    "tr": "┐",
+    "bl": "└",
+    "br": "┘",
+    "h": "─",
+    "v": "│",
+    "titleOpen": "┤ ",
+    "titleClose": " ├"
+  }
+}

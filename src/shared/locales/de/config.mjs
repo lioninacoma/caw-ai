@@ -91,7 +91,7 @@ export default {
     'config.didYouMean': ' (meintest du {name}?)',
     'config.language': 'language: {value} ist kein Sprachkürzel; die Teamsprache ist ein Hauptkürzel wie "de", "en" oder "fr" (caws eigene Texte ändert sie nicht)',
     'config.messageSelectors': 'messageSelectors muss eine Liste von CSS-Selektoren sein',
-    'config.theme': 'theme.{key} passt nicht: base ist nacht, bernstein, phosphor, kachel oder cockpit, colors nur mit den 13 Grundfarben als #rrggbb',
+    'config.theme': 'theme.{key} passt nicht: base ist studio, terminal, raster oder glas, colors nur mit den 13 Grundfarben als #rrggbb',
     'config.theme.schema.noShape': 'passt zu keiner Form',
     'config.theme.schema.ambiguous': 'mehrdeutig',
     'config.theme.schema.const': 'muss {value} sein',

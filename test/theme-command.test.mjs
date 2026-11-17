@@ -24,29 +24,35 @@ const setup = (t) => {
 test('theme: lists built-in and own themes, marks the active one, use selects', (t) => {
     const { home, lines, run } = setup(t);
     mkdirSync(join(home, 'themes', 'hafen'), { recursive: true });
-    writeFileSync(join(home, 'themes', 'hafen', 'theme.json'), JSON.stringify({ themeApi: 1, name: 'hafen', base: 'nacht', colors: { frame: '#3f8f8a' } }));
+    writeFileSync(join(home, 'themes', 'hafen', 'theme.json'), JSON.stringify({ themeApi: 1, name: 'hafen', base: 'terminal', colors: { frame: '#3f8f8a' } }));
     assert.equal(run([]), EXIT.pass);
-    assert.match(lines.join('\n'), /nacht +Nacht \(aktiv\)/);
-    assert.match(lines.join('\n'), /hafen +hafen · eigenes, auf nacht/);
+    assert.match(lines.join('\n'), /Themes \(Modus dunkel\)/);
+    assert.match(lines.join('\n'), /studio +Studio \(aktiv\)/);
+    assert.match(lines.join('\n'), /hafen +hafen · eigenes, auf terminal/);
     assert.equal(run(['use', 'hafen']), EXIT.pass);
     assert.equal(readPrefs({ CAW_AI_HOME: home }).theme, 'hafen');
-    assert.throws(() => run(['use', 'nonexistent']), /gibt es nicht\. Vorhanden: nacht, bernstein, phosphor, kachel, cockpit, hafen/);
+    assert.throws(() => run(['use', 'nonexistent']), /gibt es nicht\. Vorhanden: studio, terminal, raster, glas, hafen/);
     assert.throws(() => run(['bogus']), /Aufruf: caw theme/);
+    assert.equal(run(['mode', 'light']), EXIT.pass);
+    assert.equal(readPrefs({ CAW_AI_HOME: home }).mode, 'light');
+    assert.match(lines.join('\n'), /Modus hell gewählt/);
+    assert.throws(() => run(['mode', 'grau']), /Aufruf: caw theme/);
 });
 
 test('theme check: schema, contrast, mark width, fonts', (t) => {
     const { home, lines, run } = setup(t);
-    assert.equal(run(['check', 'nacht']), EXIT.pass);
+    assert.equal(run(['check', 'terminal']), EXIT.pass);
     assert.match(lines.join('\n'), /Schema passt[\s\S]*in Ordnung/);
     mkdirSync(join(home, 'themes', 'grau'), { recursive: true });
     writeFileSync(join(home, 'themes', 'grau', 'theme.json'), JSON.stringify({
-        themeApi: 1, name: 'grau', base: 'nacht', colors: { text: '#333333' }, marks: { ok: '[OK]' },
+        themeApi: 1, name: 'grau', base: 'terminal', colors: { text: '#333333' }, marks: { ok: '[OK]' },
         fonts: { display: { family: 'Pixel', file: 'fonts/pixel.woff2' } },
     }));
     lines.length = 0;
     assert.equal(run(['check', 'grau']), EXIT.error, 'missing font');
     const text = lines.join('\n');
     assert.match(text, /unterschiedlich breit/);
-    assert.match(text, /Kontrast text\/screen nur/);
+    assert.match(text, /Kontrast text\/screen \(dunkel\) nur/);
+    assert.doesNotMatch(text, /\(hell\)/, 'the light colours of terminal replace the dark text');
     assert.match(text, /Schrift fehlt: fonts\/pixel\.woff2/);
 });

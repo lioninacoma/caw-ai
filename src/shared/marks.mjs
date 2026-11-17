@@ -19,7 +19,9 @@ export const glyphs = (theme = activeTheme()) => {
         tree: { mid: theme.tree?.mid ?? '├', end: theme.tree?.end ?? '└' },
         /** A section rule up to `width`; the title is kept as is. Returns the parts separately so they can be coloured apart. */
         rule: (title, width) => {
-            const [head, tail = ''] = rule.format.replace('{title}', '\u0000').split('{line}');
+            // The terminal always draws the line, so sections stand apart; a format without one gets it after a space.
+            const format = rule.format.includes('{line}') ? rule.format : `${rule.format} {line}`;
+            const [head, tail = ''] = format.replace('{title}', '\u0000').split('{line}');
             const [before, after = ''] = head.split('\u0000');
             const used = [...before].length + [...String(title)].length + [...after].length + [...tail].length;
             return { before, after, tail, line: rule.line.repeat(Math.max(3, width - used)) };

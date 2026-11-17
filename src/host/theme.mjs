@@ -54,21 +54,26 @@ export const crtVars = (crt = {}) => [
     `--text-glow:${num(crt.textGlow?.px, 0, 8)}px`, `--text-glow-alpha:${num(crt.textGlow?.alpha, 0, 1) * 100}%`,
 ].join(';');
 
-// Derived from the base colours.
-const DERIVED = `--page:color-mix(in srgb,var(--screen) 55%,#000);
+// Derived from the base colours. The page ground and the shadow depend on the mode: darker than the screen when dark, a
+// touch darker and with a soft shadow when light.
+const SCHEME = {
+    dark: '--page:color-mix(in srgb,var(--screen) 55%,#000);--drop-shadow:rgba(0,0,0,.45)',
+    light: '--page:color-mix(in srgb,var(--screen) 94%,#000);--drop-shadow:rgba(20,30,50,.14)',
+};
+const DERIVED = `
 --case:color-mix(in srgb,var(--frame) 24%,var(--screen));--case-hi:color-mix(in srgb,var(--frame) 42%,var(--screen));
 --pane-2:color-mix(in srgb,var(--frame) 16%,var(--pane));--line:color-mix(in srgb,var(--frame) 55%,var(--pane));
 --faint:color-mix(in srgb,var(--frame) 80%,var(--text) 20%);--glow:color-mix(in srgb,var(--info) 45%,transparent);--ink:var(--screen);
 --scan:color-mix(in srgb,var(--scan-color) calc(var(--scan-alpha) * 100%),transparent);
 --text-shine:color-mix(in srgb,var(--text) var(--text-glow-alpha),transparent);
---fail-tint:color-mix(in srgb,var(--fail) 14%,var(--pane));--fail-line:color-mix(in srgb,var(--fail) 35%,var(--pane));
---drop-shadow:rgba(0,0,0,.45)`;
+--fail-tint:color-mix(in srgb,var(--fail) 14%,var(--pane));--fail-line:color-mix(in srgb,var(--fail) 35%,var(--pane))`;
 
 const SIZES = `--fs-label:12px;--fs-meta:11px;--fs-small:13px;--fs-body:14px;--fs-step:15px;--fs-logo:24px;--fs-crt:20px;
 --gap-page:16px;--gap-card:14px;--pad-card:16px 12px 10px;--frame-w:2px;--frame-w-sm:2px`;
 
 /**
- * Fonts, colours, CRT values and spacing as CSS. Always dark; monochrome themes set data-mono on <html> (themeAttr).
+ * Fonts, colours, CRT values and spacing as CSS, in the theme's mode (scheme); monochrome themes set data-mono on <html>
+ * (themeAttr), every theme data-scheme.
  * @param theme resolved theme; default: the active one
  */
 export const themeCss = (theme = activeTheme()) => `${fontFaces(theme)}:root{${themeVars(theme)}}`;
@@ -77,12 +82,13 @@ export const themeCss = (theme = activeTheme()) => `${fontFaces(theme)}:root{${t
 export const themeVars = (theme = activeTheme()) => {
     const display = family(theme.fonts?.display, 'ui-monospace,Consolas,monospace');
     const text = family(theme.fonts?.text, 'ui-monospace,Consolas,monospace');
-    return `color-scheme:dark;${colorVars(theme.colors)};${crtVars(theme.crt)};${DERIVED};
+    const scheme = theme.scheme === 'light' ? 'light' : 'dark';
+    return `color-scheme:${scheme};${colorVars(theme.colors)};${crtVars(theme.crt)};${DERIVED};${SCHEME[scheme]};
 --font-crt:${display};--font-ui:${text};--font-deco:var(--font-crt);--font-body:var(--font-ui);--font-mono:var(--font-ui);${SIZES}`;
 };
 
-/** The attribute for <html>: data-mono for monochrome themes. */
-export const themeAttr = (theme = activeTheme()) => (theme.mono ? ' data-mono="on"' : '');
+/** The attributes for <html>: data-scheme (dark or light, for a theme.css), data-mono for monochrome themes. */
+export const themeAttr = (theme = activeTheme()) => ` data-scheme="${theme.scheme === 'light' ? 'light' : 'dark'}"${theme.mono ? ' data-mono="on"' : ''}`;
 
 /** The package's theme.css as <style>, to include after the own rules; empty without one. `</` is escaped. */
 export const themeStyle = (theme = activeTheme()) => (theme.css ? `<style data-caw-theme-css>${theme.css.replaceAll('</', '<\\/')}</style>` : '');
@@ -298,6 +304,7 @@ function cawApplyTheme(root, theme) {
     if (inRange(crt.textGlow?.alpha, 1)) root.style.setProperty('--text-glow-alpha', `${crt.textGlow.alpha * 100}%`);
     if (theme.mono === true) root.dataset.mono = 'on';
     else delete root.dataset.mono;
+    if (theme.scheme === 'light' || theme.scheme === 'dark') root.dataset.scheme = theme.scheme;
 }
 
 /** The theme script to embed: defines cawApplyTheme(root, theme). */
@@ -307,7 +314,8 @@ export const APPLY_THEME_SCRIPT = cawApplyTheme.toString();
  * Runs in the workbench or chat page, called by the host only: a theme's fonts and variables (`vars`, themeCss) and its own
  * stylesheet (`css`, from disk; '' removes it). The page itself never gets either (clientTheme), so it cannot set any CSS.
  */
-function cawThemeSheets([vars, css]) {
+function cawThemeSheets([vars, css, scheme]) {
+    document.documentElement.dataset.scheme = scheme === 'light' ? 'light' : 'dark';
     const sheet = (attribute) => {
         let style = document.head.querySelector(`style[${attribute}]`);
         if (style === null) {
@@ -325,7 +333,7 @@ function cawThemeSheets([vars, css]) {
 
 /** A theme chosen while the page is open: fonts, variables and its own stylesheet in these frames, as on a reload. */
 export const applyThemeSheets = (frames, theme) => Promise.all(frames.filter((frame) => frame !== null && frame !== undefined)
-    .map((frame) => frame.evaluate(cawThemeSheets, [themeCss(theme), theme.css ?? '']).catch(() => {})));
+    .map((frame) => frame.evaluate(cawThemeSheets, [themeCss(theme), theme.css ?? '', theme.scheme]).catch(() => {})));
 
 /**
  * The favicon: the raven's head "(•>" on the theme's screen colour, as SVG. No file; the colours are validated.

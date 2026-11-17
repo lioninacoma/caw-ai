@@ -380,7 +380,7 @@ test('workbench: a theme chosen in the dialog brings its own stylesheet and font
     const app = bench.page.frame({ name: 'caw-app' }) ?? bench.page.mainFrame().childFrames()[0];
     await app.evaluate(() => { window.cawStays = true; });
     try {
-        for (const name of ['kachel', 'nacht']) {
+        for (const name of ['glas', 'terminal']) {
             const result = await bench.page.evaluate((theme) => window.cawTheme('use', theme), name);
             assert.equal(result.ok, true, name);
             const { css } = loadTheme(name);
@@ -388,9 +388,32 @@ test('workbench: a theme chosen in the dialog brings its own stylesheet and font
             assert.equal(await own(chatFrame), css ?? '', `chat: ${name}`);
             assert.equal(await bench.page.evaluate(() => document.querySelector('style[data-caw-theme-live]')?.textContent.includes(':root{')), true);
         }
+        // The mode switch in the dialog: workbench and chat turn light at once, with the light colours and scheme.
+        const scheme = (frame) => frame.evaluate(() => [document.documentElement.dataset.scheme, getComputedStyle(document.documentElement).colorScheme]);
+        await bench.page.keyboard.press('F7');
+        await bench.page.locator('#tmode button', { hasText: 'Hell' }).click();
+        await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'light');
+        assert.deepEqual(await scheme(bench.page.mainFrame()), ['light', 'light']);
+        assert.deepEqual(await scheme(chatFrame), ['light', 'light']);
+        assert.equal(await bench.page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--screen').trim()), loadTheme('terminal', process.env, 'light').colors.screen);
+        assert.equal(await bench.page.locator('#tmode button[aria-checked=true]').textContent(), 'Hell');
+        await bench.page.locator('#tmode button', { hasText: 'Dunkel' }).click();
+        await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'dark');
+        assert.deepEqual(await scheme(chatFrame), ['dark', 'dark']);
+        // A theme with one mode: the other is greyed out. A light-only copy of studio has no dark block.
+        await bench.page.evaluate(() => window.cawTheme('save', { themeApi: 1, name: 'tag', base: 'studio', scheme: 'light', colors: { screen: '#fafafa', pane: '#ffffff', text: '#111111' } }));
+        await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'light');
+        // Saved past the dialog: pick it in the dialog, as a person would (any pick brings the fresh list).
+        await bench.page.locator('#tthemes button', { hasText: 'Studio' }).click();
+        await bench.page.locator('#tthemes button', { hasText: 'tag' }).click();
+        await bench.page.locator('#tthemes button[aria-checked=true]', { hasText: 'tag' }).waitFor();
+        assert.equal(await bench.page.locator('#tmode button', { hasText: 'Dunkel' }).isDisabled(), true);
+        assert.equal(await bench.page.locator('#tmode button', { hasText: 'Hell' }).getAttribute('aria-checked'), 'true');
+        assert.equal(await bench.page.locator('#tmode').getAttribute('title'), 'Dieses Theme hat nur einen hellen Modus.');
         assert.equal(await app.evaluate(() => window.cawStays === true), true, 'the app was not reloaded');
     } finally {
-        await bench.page.evaluate(() => window.cawTheme('use', 'nacht')).catch(() => {});
+        await bench.page.evaluate(() => window.cawTheme('mode', 'dark')).catch(() => {});
+        await bench.page.evaluate(() => window.cawTheme('use', 'terminal')).catch(() => {});
     }
     return undefined;
 });

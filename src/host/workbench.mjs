@@ -65,8 +65,8 @@ p{flex:1;display:grid;place-items:center;margin:0;padding:24px;text-align:center
 export const themeList = (env = process.env) => listThemes(env).map((entry) => ({ ...entry, colors: loadTheme(entry.name, env)?.colors }));
 
 /**
- * What the workbench theme dialog may do: use, save (custom only, only what the page schema allows), delete,
- * rename. The choice is stored in prefs.json. @returns the theme in effect afterwards
+ * What the workbench theme dialog may do: use, mode (dark or light), save (custom only, only what the page schema allows),
+ * delete, rename. The choice is stored in prefs.json. @returns the theme in effect afterwards
  */
 export const themeAction = (action, payload, env = process.env) => {
     const chosen = () => readPrefs(env).theme;
@@ -84,6 +84,10 @@ export const themeAction = (action, payload, env = process.env) => {
         const pkg = readThemePackage(payload, env);
         deleteTheme(payload, env);
         if (chosen() === payload) writePref('theme', BUILTIN_THEMES.includes(pkg?.base) ? pkg.base : BUILTIN_THEMES[0], env);
+        return activeTheme(env);
+    }
+    if (action === 'mode') {
+        writePref('mode', payload, env);
         return activeTheme(env);
     }
     if (action === 'rename') {
@@ -242,6 +246,9 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 #themeDlg>.win{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:22px 0 14px;background:var(--pane)}
 #themeDlg .tbody{min-height:0;overflow:auto;padding:0 16px}
 #themeDlg .lg{top:-13px}
+.tmode{display:inline-flex;margin-bottom:12px;box-shadow:inset 0 0 0 2px var(--line)}
+.tmode button{border:0;cursor:pointer;background:none;color:var(--muted);font:400 18px/1 var(--font-crt);padding:5px 14px}
+.tmode button[aria-checked=true]{background:var(--accent);color:var(--ink)}.tmode button:disabled{opacity:.45;cursor:default}
 .tthemes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:2px solid var(--line)}
 .tthemes button{border:0;cursor:pointer;display:grid;grid-template-columns:auto auto;gap:0 8px;align-items:center;text-align:left;background:var(--pane-2);color:var(--muted);padding:5px 10px 5px 6px;box-shadow:inset 0 0 0 2px var(--line)}
 .tthemes button i{grid-row:span 2;width:18px;height:18px;display:inline-block;background:var(--sw-screen);box-shadow:inset 0 0 0 3px var(--sw-screen),inset 0 0 0 9px var(--sw-accent)}
@@ -313,6 +320,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 <div class="scol"><div class="sec">── <b id="sstepsHead">${t('workbench.page.stateSteps').toUpperCase()}</b></div><div class="slist" id="ssteps" role="listbox" aria-label="${t('workbench.page.stateSteps')}"></div></div></div>
 <div class="sfoot"><p id="sfoot"></p><div class="acts"><button type="button" class="px-btn" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="px-btn px-btn--primary" id="sgo" disabled>[ ${t('workbench.page.stateGo').toUpperCase()} ]</button></div></div></div></div>
 <div id="themeDlg" hidden role="dialog" aria-modal="true" aria-labelledby="tname"><div class="win crt"><span class="lg glow" id="tname"></span><div class="tbody">
+<div class="tmode" id="tmode" role="radiogroup" aria-label="${t('workbench.page.themeMode')}"></div>
 <div class="tthemes" id="tthemes" role="radiogroup" aria-label="${t('workbench.page.themeList')}"></div>
 <div class="trow" id="tnameRow" hidden><label for="tlabel">${t('workbench.page.themeLabel')}</label><input id="tlabel" maxlength="40" spellcheck="false"><label for="tslug">${t('workbench.page.themeName')}</label><input id="tslug" maxlength="32" spellcheck="false" size="14"><code id="tfile"></code></div>
 <div class="ttabs" id="ttabs" role="tablist"></div><div class="tfields" id="tfields"></div><ul id="tproblems" hidden></ul>
@@ -543,7 +551,8 @@ const fresh=(base,label)=>({themeApi:1,name:unique(fill('workbench.page.themeNam
 const setPath=(pkg,path,value)=>{const keys=path.split('.');let o=pkg;
   keys.slice(0,-1).forEach((k,i)=>{const next=keys[i+1];if(o[k]==null)o[k]=/^\\d+$/.test(next)?clone(getPath(TH,keys.slice(0,i+1).join('.'))??[]):{};else o[k]=clone(o[k]);o=o[k];});
   o[keys.at(-1)]=value;};
-const edit=(path,value)=>{const pkg=isBuiltin()?fresh(TH.name,fill('workbench.page.themeMine',{label:TH.label})):ownPkg();setPath(pkg,path,value);return call('save',pkg);};
+const modePath=(path)=>(TH.scheme!==TH.primary&&/^(colors|crt)\\./.test(path)?TH.scheme+'.'+path:path);
+const edit=(path,value)=>{const pkg=isBuiltin()?fresh(TH.name,fill('workbench.page.themeMine',{label:TH.label})):ownPkg();setPath(pkg,modePath(path),value);return call('save',pkg);};
 const problems=()=>{const out=[];
   const widths=new Set(Object.values(TH.marks??{}).map((m)=>[...String(m).replace('{spinner}','x')].length));
   if(widths.size>1)out.push(T['workbench.page.themeWidth']);
@@ -577,7 +586,10 @@ const renderFields=()=>{
     const el=input(f[0],f[1],f[2]);let box=el;if(f[1]==='color'){box=document.createElement('span');box.className='sw';const code=document.createElement('code');code.textContent=el.value;box.append(code,el);}
     out.push(label(el.id,T['workbench.page.f.'+f[0]]??f[0]),box);}
   $('tfields').replaceChildren(...out);};
-const renderDialog=()=>{const own=!isBuiltin();
+const renderDialog=()=>{const own=!isBuiltin();const scheme=TH.scheme==='light'?'light':'dark';
+  $('tmode').replaceChildren(...['dark','light'].map((mode)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(mode===scheme));
+    b.textContent=T['workbench.page.mode.'+mode];b.disabled=!(TH.modes??['dark']).includes(mode);b.addEventListener('click',()=>{if(mode!==scheme)call('mode',mode);});return b;}));
+  $('tmode').title=(TH.modes??[]).length===1?T['workbench.page.modeOnly.'+TH.modes[0]]:'';
   $('tthemes').replaceChildren(...LIST.map((entry)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(entry.name===TH.name));
     const i=document.createElement('i');const sample=entry.name===TH.name?TH.colors:entry.colors;if(sample){i.style.setProperty('--sw-screen',sample.screen);i.style.setProperty('--sw-accent',sample.accent);}
     const name=document.createElement('span');name.textContent=entry.label||entry.name;const small=document.createElement('small');small.textContent=entry.builtin?T['workbench.page.themeBuiltin']:fill('workbench.page.themeOwn',{base:entry.base});
