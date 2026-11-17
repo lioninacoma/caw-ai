@@ -197,19 +197,58 @@ test('crosshair: the picked element comes back as its locator, the page keeps no
     return undefined;
 });
 
-test('crosshair: a disabled button can be picked (it gets no click, only pointer events); an enabled one is never clicked', async (t) => {
+/** Pixels of the crosshair's blue frame in the screenshot of `box` (decoded by a canvas in a page of its own). */
+const framePixels = async (box) => {
+    const png = (await page.screenshot({ clip: { x: box.x - 4, y: box.y - 4, width: box.width + 8, height: box.height + 8 } })).toString('base64');
+    const probe = await browser.newPage();
+    try {
+        return await probe.evaluate(async (data) => {
+            const image = new Image();
+            image.src = `data:image/png;base64,${data}`;
+            await image.decode();
+            const canvas = document.createElement('canvas');
+            Object.assign(canvas, { width: image.width, height: image.height });
+            const context2d = canvas.getContext('2d');
+            context2d.drawImage(image, 0, 0);
+            const { data: pixels } = context2d.getImageData(0, 0, canvas.width, canvas.height);
+            let count = 0;
+            for (let i = 0; i < pixels.length; i += 4) if (pixels[i] < 80 && pixels[i + 1] > 80 && pixels[i + 1] < 130 && pixels[i + 2] > 200) count += 1;
+            return count;
+        }, png);
+    } finally {
+        await probe.close();
+    }
+};
+
+test('crosshair: a disabled button in a modal <dialog> is framed visibly and can be picked; an enabled one is never clicked', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     await open();
-    await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<button disabled>Hinzufügen</button><button onclick="document.title = \'geklickt\'">Weiter</button>'));
+    // A native modal lies in the top layer, above any z-index; the disabled button gets no click, only pointer events.
+    await page.evaluate(() => {
+        document.body.insertAdjacentHTML('beforeend', '<dialog id="neu" aria-label="Neu"><button disabled><b>Hinzu</b>fügen</button><button onclick="document.title = \'geklickt\'">Weiter</button></dialog>');
+        document.getElementById('neu').showModal();
+    });
     const picking = pickElement(session());
     await page.waitForFunction(() => window.__cawPicking === true);
+    // The frame shows what a click picks: the whole disabled button, also over the text inside it, drawn over the modal.
+    const box = await page.getByRole('button', { name: 'Hinzufügen' }).boundingBox();
+    const inner = await page.locator('#neu b').boundingBox();
+    await page.mouse.move(inner.x + inner.width / 2, inner.y + inner.height / 2);
+    const frame = await page.evaluate(() => {
+        const mark = [...document.documentElement.children].find((node) => node.style?.zIndex === '2147483647');
+        const { left, top, width, height } = mark.getBoundingClientRect();
+        // The border lies outside the box it frames.
+        return [left, top, width - 4, height - 4].map(Math.round);
+    });
+    assert.deepEqual(frame, [box.x, box.y, box.width, box.height].map(Math.round), 'the frame lies on the disabled button');
+    assert.ok(await framePixels(box) > 100, 'the frame is drawn over the modal');
     // A person clicks the greyed-out button to ask why it is disabled.
     await page.getByRole('button', { name: 'Hinzufügen' }).click({ force: true });
-    assert.equal((await picking)?.target, "getByRole('button', { name: 'Hinzufügen', exact: true })");
+    assert.equal((await picking)?.target, "getByRole('dialog', { name: 'Neu', exact: true }).getByRole('button', { name: 'Hinzufügen', exact: true })");
     const again = pickElement(session());
     await page.waitForFunction(() => window.__cawPicking === true);
     await page.getByRole('button', { name: 'Weiter' }).click();
-    assert.equal((await again)?.target, "getByRole('button', { name: 'Weiter', exact: true })");
+    assert.equal((await again)?.target, "getByRole('dialog', { name: 'Neu', exact: true }).getByRole('button', { name: 'Weiter', exact: true })");
     await page.waitForTimeout(200);
     assert.equal(await page.title(), 'Form', 'the click that picked it never reaches the application');
     assert.equal(await marks(), 0);

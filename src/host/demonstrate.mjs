@@ -162,23 +162,34 @@ export const mergeDoubleClick = (items) => {
 export function pickInPage(markAttribute) {
     return new Promise((resolve) => {
         const mark = document.createElement('div');
-        mark.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;display:none';
+        // A popover: a modal <dialog> lies in the top layer, above any z-index; only another top-layer element is drawn over it.
+        mark.popover = 'manual';
+        mark.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;inset:auto;margin:0;padding:0;overflow:visible;display:none';
         document.documentElement.append(mark);
         const swallowed = ['pointerdown', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'dblclick', 'contextmenu'];
         const swallow = (event) => {
             event.preventDefault();
             event.stopImmediatePropagation();
         };
-        const move = ({ target }) => {
-            if (!(target instanceof Element)) return;
-            const { left, top, width, height } = target.getBoundingClientRect();
-            mark.style.cssText += `;display:block;left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
-        };
         const CONTROL = 'button, a[href], input, select, textarea, summary, [data-testid], [role]';
         const parentOf = (node) => node.parentElement ?? (node.getRootNode?.() instanceof ShadowRoot ? node.getRootNode().host : null);
         const controlOf = (start) => {
             for (let current = start; current !== null; current = parentOf(current)) if (current.matches?.(CONTROL)) return current;
             return start;
+        };
+        // The frame shows what a click would pick. Shown again for every new element: the last one shown is on top, also over a
+        // dialog opened while picking.
+        let framed = null;
+        const move = (event) => {
+            const [target] = event.composedPath();
+            if (!(target instanceof Element)) return;
+            const control = controlOf(target);
+            const { left, top, width, height } = control.getBoundingClientRect();
+            mark.style.cssText += `;display:block;left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
+            if (control === framed) return;
+            framed = control;
+            if (mark.matches(':popover-open')) mark.hidePopover();
+            mark.showPopover();
         };
         // Picked on pointerup: a disabled control gets pointer events but no click, and "why is this disabled?" is a common
         // question. The click that follows on an enabled control is still swallowed: the pick ends only after it.

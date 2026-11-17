@@ -161,7 +161,7 @@ All error codes with fixes: [Commands › Error codes](commands.md#error-codes).
 
 You name the role only the first time; the tool writes `role` and `writes` (`true` unless `--read-only`), never `environments`. A re-recording keeps them. Claude Code or Docker, token and image are checked up front so your demonstration isn't wasted.
 
-1. **Start.** Chrome and the chat open, you are signed in. For a new test the chat asks: "Show it myself" or "Describe it, Claude records". Describing means writing in the chat what the test should do; you may go to the page a sentence is about, and each message keeps the page it was written on. Clicks are not recorded, "Hand over to Claude" ends it, and Claude finds the way itself. For an existing test the chat asks: "Show it myself" or "Claude follows the test plan".
+1. **Start.** Chrome and the chat open, you are signed in. For a new test the chat asks: "Show it myself" or "Describe it, Claude records". Describing means writing in the chat what the test should do; you may go to the page a sentence is about, and each message keeps the page it was written on; the chat confirms it with its number (H1, H2 …) as the approval card shows it. Clicks are not recorded, "Hand over to Claude" ends it, and Claude finds the way itself. For an existing test the chat asks: "Show it myself" or "Claude follows the test plan".
 2. **Plan.** Claude presents the draft as a card in the chat: per test step ID, title, action and one expected result, plus notes on assumptions and open questions. The plan is the future test file without recording: YAML with `notes` and `steps`. Metadata or recordings Claude puts there are discarded by the tool. You approve or write what should change, and Claude presents a new version. Until approval the host rejects every action in the application with `plan-required`; reading is allowed.
 3. **Execute.** Claude walks the path in a fresh browser. You can pause, write, mark elements and click. If the path changes fundamentally, Claude presents a new version. All actions since the last check belong to the plan's next step, so Claude must check in that order (`step-order`).
 4. **Clean up.** Claude goes through the actions on its own and states in the chat what will be dropped, without needing your approval. The tool itself removes screenshots and the first of two `fill`s on the same field.
@@ -180,7 +180,7 @@ With chat, everything runs on one page, like Cypress:
 - **Right:** the chat with Claude, in a frame titled CHAT.
 - **Bottom:** the key bar: F1 Open… (after the handover), F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F7 Theme, F8 App only, F10 Animations off. The keys also work while the focus is in the chat.
 - **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge (F4, F6). When the chat needs you, it opens by itself.
-- **Reload:** F5 (the key, the button in the key bar, also inside the application) reloads the current page without cache after handover; chat and steps stay. While the test is running this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
+- **Reload:** F5 (the key, the button in the key bar, also inside the application) reloads the current page without cache after handover; chat and steps stay. While the test is running, also while "Open again" or F1 restores a state, this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
 
 The workbench lives at the application's own address, on its origin. Many applications access the top window (`top.Ext`, `parent.config`, `top.location.href`) because they believe they are inside the portal. In the workbench this works the same:
 
@@ -269,7 +269,7 @@ The sequence is deterministic, the environment isn't: this is not a snapshot. Th
 
 With chat, the chat stays open after handover (state "Develop"):
 
-The workbench starts in **App only** (F8 brings steps and chat back); the browser window stays as it is.
+The workbench starts in **App only** (F8 brings steps and chat back); the browser window stays as it is. The app now fills the whole pane; the recorded size holds only while caw replays, also when it restores a state.
 
 - **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with the crosshair button. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
 - **Let Claude use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.
@@ -277,7 +277,7 @@ The workbench starts in **App only** (F8 brings steps and chat back); the browse
 - **Reload** (F5): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
 - **Open again** (in the chat): starts a new session (cookies and site storage cleared), signs in again and replays the recording up to the same point (with `@S4` the entry of S4), with new test data, exactly like any other run.
 - **Open… (F1):** any test of this environment, of any role, and optionally a step. Before caw replaces your window, you confirm in the chat, e.g. with "Open S2". Then caw replays the test in the same window with the account of the test's role: without a step the whole test, with a step up to its entry, as with `open <test>@<step>`. If restoring fails, Claude in the chat knows why; it can also adjust the test, e.g. mark a cookie-banner click optional, and the change goes into the test file right away.
-- **Element to Claude Code:** With the crosshair button in the chat you click an element in the application (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw-ai stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
+- **Element to Claude Code:** With the crosshair button in the chat you click an element in the application, also a greyed-out button or one in a dialog; a frame shows what the click picks (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw-ai stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
 - **End:** "End run" or close the window.
 
 ## Fixing a step

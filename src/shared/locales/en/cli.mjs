@@ -268,6 +268,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.draftMissing': 'The new test {id} needs {missing}. Usage: {hint}',
     'cli.choiceShow': 'Show it myself',
     'cli.choiceDescribe': 'Describe it, Claude records',
+    'cli.describeNoted': '{id} noted (page {path}). Describe more, or "{button}".',
     'cli.describeNothing': 'Nothing described yet. Write what the test should do, then "Hand over to Claude".',
     'cli.choiceFollow': 'Claude follows the test plan',
     'cli.choiceReuse': 'Use last demo ({time}, {count} entries)',

@@ -243,7 +243,7 @@ const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole
     ...(seen.length === 0 ? [] : [t('run.flow.decisionSeen', { list: [...new Set(seen)].join('; ') })]),
     ...(() => {
         const known = [...new Set([...fresh, ...changes.flatMap((change) => change.fresh)])];
-        return known.length === 0 ? [] : [t('run.flow.decisionKnown', { list: known.join('; ') })];
+        return known.length === 0 ? [] : [t('run.flow.decisionKnown', { list: known.map((text) => `"${text}"`).join('; ') })];
     })(),
     ...(() => {
         const positional = positionalActions(current, whole ? undefined : new Set(changedIds(changes)));
@@ -548,13 +548,24 @@ export const runFlow = async (options) => {
                         chat.notice(t('run.develop.attemptFailed', { what, message: String(error?.message ?? error).split(/\r?\n/)[0] }));
                     }
                 };
-                // Restore one after another: whoever picks a state with F1 while a restore runs waits until it is done.
+                const reload = () => attempt(t('run.develop.refresh'), refresh);
+                // Restore one after another: whoever picks a state with F1 while a restore runs waits until it is done. Meanwhile
+                // the test is running again, so reloading is locked as in a run; it comes back unless developing has ended.
                 let queue = Promise.resolve();
+                let over = false;
+                const restoring = async (work) => {
+                    onRefresh?.(null);
+                    try {
+                        await work();
+                    } finally {
+                        if (!over) onRefresh?.(reload);
+                    }
+                };
                 const serial = (work) => {
-                    queue = queue.then(work, work);
+                    queue = queue.then(() => restoring(work), () => restoring(work));
                     return queue;
                 };
-                onRefresh?.(() => attempt(t('run.develop.refresh'), refresh));
+                onRefresh?.(reload);
                 // Reloading is part of developing (F5, hard reload with empty cache): no warning, the state is your working state.
                 const offReload = onReload?.(() => {});
                 // F1 in the workbench: pick a test (and optionally a step, then at its entry), caw-ai restores the state here once the
@@ -610,6 +621,7 @@ export const runFlow = async (options) => {
                     }
                 }
                 } finally {
+                    over = true;
                     onRefresh?.(null);
                     onPickState?.(null);
                     offReload?.();

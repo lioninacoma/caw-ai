@@ -795,7 +795,10 @@ const describeTest = async (chat, session, dir, { aborted, closed, handOver }) =
             if (line === '') break;
             const text = typeof line === 'string' ? line : line.note;
             if (text === undefined) continue;
-            items.push({ action: 'note', text, path: new URL(session.page().url()).pathname, ...(line.element === undefined ? {} : { element: line.element }) });
+            const path = new URL(session.page().url()).pathname;
+            items.push({ action: 'note', text, path, ...(line.element === undefined ? {} : { element: line.element }) });
+            // The notes are numbered as Claude gets them (withNoteIds) and as the approval card shows them.
+            chat.progress(t('cli.describeNoted', { id: `H${items.length}`, path, button: t('chat.status.describing.button') }));
         }
         if (!chat.available() || closed()) throw aborted();
         if (items.length > 0) {

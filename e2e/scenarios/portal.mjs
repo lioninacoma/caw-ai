@@ -1016,11 +1016,15 @@ ${finishOf(['S1'])}
         await stateOf(page, 'describing');
         await page.locator('#input').fill('Klicke Weiter, dann muss das Ziel erscheinen.');
         await page.keyboard.press('Enter');
+        // Every note is confirmed with the number the approval card will show, and the way on.
+        // A progress line: in the activity list of the chat, not a message of its own.
+        const noted = await page.locator('details.activity li', { hasText: 'H1 notiert' }).textContent({ timeout: 30000 }).catch(() => '');
+        verify('A note is confirmed with its number, page and the hand-over button', /^.*H1 notiert \(Seite \/.*\)\. Beschreib weiter oder „An Claude übergeben“\./.test(noted), noted);
         // A click while describing is not recorded; the next note carries the page it was written on.
         await app.locator('#weiter').click();
         await page.locator('#input').fill('Die Fachdaten laden langsam, hier oefter warten.');
         await page.keyboard.press('Enter');
-        await page.waitForTimeout(300);
+        await page.locator('details.activity li', { hasText: 'H2 notiert' }).waitFor({ state: 'attached', timeout: 30000 });
         await page.locator('#toggle').click();
     }, async (page) => {
         await stateOf(page, 'planning');
@@ -1188,8 +1192,11 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         verify('F5: page reloaded, workbench stays, no left marker, no message', pageNew && await chat.locator('.message', { hasText: PICKED }).count() === 1 && await chat.locator('.message').count() === messages && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 0 && !await bench.locator('#leftNote').isVisible(), JSON.stringify(states));
         // Restore the state. (The raven is only the logo now; it no longer flies.)
         await decide(chat, 'Neu öffnen');
+        // While the state is restored the test runs again: reloading is locked as in a run, and free again afterwards.
+        const locked = await bench.locator('#reload:disabled').waitFor({ timeout: 10000 }).then(() => true, () => false);
         await chat.locator('.message', { hasText: 'ist neu hergestellt' }).first().waitFor({ timeout: 60000 });
         await bench.waitForTimeout(1500);
+        verify('F5 locked while restoring, free again afterwards', locked && await bench.locator('#reload').isEnabled());
         verify('State restored', (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht' && await bench.locator('body.left-state').count() === 0);
         // Reload the whole workbench via the browser: chat history and steps come back, quietly as with F5.
         await bench.reload();

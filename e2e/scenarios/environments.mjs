@@ -12,7 +12,7 @@ import {
     ACTION_ENVIRONMENTS, APP_TOTP, AUTH_ENVIRONMENTS, ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeActionTests, removeLifecycleTests, removeNetworkTests,
     writeNetworkTests, writeProject, writeSpaTest,
 } from '../spa/project.mjs';
-import { here, humans, loadTest, newestRunOf, stateOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
+import { benchBack, decide, here, humans, loadTest, newestRunOf, stateOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
 import { composeStack, exec, httpAlias, installPacked, mcpClient, packTarball, preflightPorts } from '../infra.mjs';
 
 const spaDir = join(here, 'spa');
@@ -733,6 +733,24 @@ scenario('U6', 'Viewport: headless replay uses the recorded 600×800 and takes t
     const inBench = await callWith({ CI: '' }, () => run(root, ['nav-small', '--env', 'extra'], { interactive: true, onChatOpen: watcher.onChatOpen }));
     await watcher.done();
     verify('in the workbench the app frame has exactly 600×800 (scaled to fit) and the run passes', inBench.value.exit === 0 && /^600pxx800px scale\(/.test(frame), `${shown(inBench.value)} ${frame}`);
+    // After the handover the window is the human's: the app gets the whole pane. "Open again" replays in the recorded size.
+    const sizes = [];
+    const pinned = (bench) => bench.locator('#appBox.pinned').count();
+    const owner = humans(async (chat) => {
+        const bench = chat.page();
+        await benchBack(chat);
+        await stateOf(chat, 'developing');
+        sizes.push(['handed over', await pinned(bench)]);
+        // The spa project's team language is English.
+        await decide(chat, 'Open again');
+        sizes.push(['open again', await bench.locator('#appBox.pinned').waitFor({ state: 'attached', timeout: 30000 }).then(() => 1, () => 0)]);
+        await chat.locator('.message', { hasText: /restored \(runTag/ }).first().waitFor({ timeout: 90000 });
+        sizes.push(['restored', await pinned(bench)]);
+        await decide(chat, 'End run');
+    });
+    await callWith({ CI: '' }, () => openCommand(root, ['nav-small', '--env', 'extra'], { interactive: true, onChatOpen: owner.onChatOpen }));
+    await owner.done();
+    verify('handed over: whole pane; restoring: recorded size; restored: whole pane again', JSON.stringify(sizes) === JSON.stringify([['handed over', 0], ['open again', 1], ['restored', 0]]), JSON.stringify(sizes));
 });
 
 scenario('D2', 'Shared environment with foreign data: look-alikes and a changing order break neither the test nor its learned effects', spa, async () => {

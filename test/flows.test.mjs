@@ -171,7 +171,7 @@ test('Fix: the decision names a changed result, new messages and what is still s
     });
     assert.equal(await fixFlow({ draft: spec, target: { id: 'S1', reason: 'Grund' }, sandbox: 's', ...h }), EXIT.pass);
     const { text } = h.questions[0];
-    assert.match(text, /Neu als bekannte Meldung, das Abspielen meldet sie nicht mehr: Sicher\?/);
+    assert.match(text, /Neu als bekannte Meldung, das Abspielen meldet sie nicht mehr: "Sicher\?"\. /);
     assert.match(text, /Geändertes Ergebnis in S1: „neu“ statt „alt“/);
     assert.match(text, /Noch veraltet und nicht geprüft: S2/);
     assert.equal(h.calls[1].replay.until, 'S1');
@@ -509,6 +509,42 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
     });
     assert.match(said[0], /^Neu öffnen ging nicht: net::ERR_CONNECTION_REFUSED at http:\/\/app\.localhost:5173\/\. Läuft der Dev-Server/);
     assert.equal(stopped, 1, 'closing the window ends a running conversation');
+});
+
+test('Developing: while "Open again" or a state picked with F1 is restored, reloading is locked as in a run, then free again', async () => {
+    const h = harness({ outcomes: [pass] });
+    await runFlow({ spec, entry: 'S2', handover: true, canFix: true, openSandbox: async () => 'box', ...h });
+    const { develop } = h.calls[0];
+    let refresher = 'never set';
+    let pickState = null;
+    const during = [];
+    const answers = [{ choice: 'restore' }];
+    const chat = {
+        develop: async () => {
+            if (answers.length > 0) return answers.shift();
+            // F1: S2 of another test, confirmed in the chat.
+            await pickState('bestellung', 'S2');
+            during.push(['after F1', refresher === null ? 'locked' : 'free']);
+            return { choice: 'end' };
+        },
+        choose: async () => 'restore-picked',
+        notice: () => {},
+        progress: () => {},
+        onPicked: () => {},
+    };
+    await develop({
+        chat,
+        talk: () => ({ over: () => false, send: () => {}, end: async () => {} }),
+        until: 'S2',
+        refresh: async () => '',
+        restore: async () => { during.push(['open again', refresher === null ? 'locked' : 'free']); return ''; },
+        restoreTo: async () => { during.push(['F1', refresher === null ? 'locked' : 'free']); return ''; },
+        onRefresh: (handler) => { refresher = handler; },
+        onPickState: (handler) => { pickState = handler; },
+        toCode: () => {},
+    });
+    assert.deepEqual(during, [['open again', 'locked'], ['F1', 'locked'], ['after F1', 'free']]);
+    assert.equal(refresher, null, 'after developing, refresh stays locked');
 });
 
 test('Test run: if only the effects deviate, "forget effect" forgets them without Claude; otherwise there is no such button', async () => {

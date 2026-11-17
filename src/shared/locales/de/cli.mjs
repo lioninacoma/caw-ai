@@ -269,6 +269,7 @@ Browser:
     'cli.draftMissing': 'Für den neuen Test {id} fehlt {missing}. Aufruf: {hint}',
     'cli.choiceShow': 'Selbst vorführen',
     'cli.choiceDescribe': 'Beschreiben, Claude nimmt auf',
+    'cli.describeNoted': '{id} notiert (Seite {path}). Beschreib weiter oder „{button}“.',
     'cli.describeNothing': 'Noch nichts beschrieben. Schreib, was der Test tun soll, dann „An Claude übergeben“.',
     'cli.choiceFollow': 'Claude geht dem Testplan nach',
     'cli.choiceReuse': 'Letzte Vorführung verwenden ({time}, {count} Einträge)',

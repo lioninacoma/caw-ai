@@ -902,8 +902,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }
         agentHandler = newAgentHandler({ ...run, expectations: shownSpec.expectations });
         const tag = newRunTag();
-        // Restoring replays the test: play while it runs, nothing afterwards.
+        // Restoring replays the test: play while it runs, nothing afterwards. The app frame has the test's recorded size while it
+        // replays, as in a run, and the whole pane again once the window is the human's.
         await session.workbench?.transport?.('play')?.catch?.(() => {});
+        const { browserRegion } = await import('./browser-session.mjs');
+        await session.workbench?.viewport?.(browserRegion(config, recordedBrowser(shownSpec.steps)).viewport ?? null);
         entryPoints = [];
         let again;
         try {
@@ -923,6 +926,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             });
         } finally {
             await session.workbench?.transport?.(null)?.catch?.(() => {});
+            await session.workbench?.viewport?.(null);
         }
         const failed = failedStep({ ...again, expectations: shownSpec.expectations, failures: [] });
         if (failed !== null) {
@@ -1074,6 +1078,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                         await listener();
                     });
                     // After the handover (open) the workbench shows only the application full-screen; F8 brings the workbench back.
+                    // The recorded size held while replaying; the window is the human's now, the app gets the whole pane.
+                    await bench?.viewport?.(null);
                     await bench?.solo?.(true);
                     // F1: states from all tests of this target, each in its role's account. Without a step the test runs to the last
                     // restorable one. With basic auth the account is tied to the browser: only the own role.
