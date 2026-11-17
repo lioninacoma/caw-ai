@@ -6,7 +6,7 @@
 
 /* Alle Schriftgrößen, die für die Pixelschrift gebaut sind, auf Terminalgröße */
 .lg,.sec,.tag,.px-label,.px-btn,.px-pill,.gauge,.fk,.tabs button,.solo-btn,#browserState,#notice,#stateSpin,.ttabs button,
-.tthemes button span,.tfields .grp,#steps>li[data-kind=phase]>.head .name,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
+.tthemes button span,.tfields .grp,#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
 .small,#abort,#abortNo,.soloBar,.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.step .sid,.step dt,.advice dt,
 .failure .badge,#thinking,.fkeys,.sfilter span,.srow .mk,.px-pill,.advice .copy,.heart,#leftNote strong{font-size:12.5px;line-height:1.3;letter-spacing:0}
 .id b{font:500 13px/1.2 var(--font-crt)}
