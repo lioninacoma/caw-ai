@@ -330,7 +330,7 @@ test('Test run: clicking fix only then opens the sandbox and does not hand over 
     assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox: async () => { opened += 1; return 's'; }, ...h }), EXIT.pass);
     assert.equal(opened, 1);
     assert.equal(h.calls[1].sandbox, 's');
-    assert.deepEqual(h.progress, ['Bereite die Sandbox vor']);
+    assert.deepEqual(h.progress, ['Starte Claude']);
     assert.equal(h.calls[0].handover(), false);
 });
 

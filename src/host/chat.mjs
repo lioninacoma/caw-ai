@@ -233,6 +233,8 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                 if (capturing !== null) deliver(null);
                 answerChoice(null);
                 answerPlan({ approved: false, feedback: null });
+                // The workbench's pill too: no "Claude working" once the run is over.
+                publish();
             },
         },
         say: (raw) => claudeText('claude', raw),
@@ -687,7 +689,7 @@ const lockChoices=(chosen)=>{for(const button of choices.querySelectorAll('butto
 // The button that Ctrl+Enter triggers shows it too.
 const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘↵':T['chat.page.ctrlEnter'];toggleButton.querySelector('.key').textContent=KEY;
 // After the run: report and what comes next.
-window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;const learn=document.getElementById('learn');if(!learn.disabled)learn.hidden=!info.learn;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T['chat.page.newRun'],code);}};
+window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;const learn=document.getElementById('learn');if(!learn.disabled)learn.hidden=!info.learn;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T[info.adopt?'chat.page.adoptDraft':'chat.page.newRun'],code);}};
 document.getElementById('report').addEventListener('click',()=>send('report',''));
 // After the last decision the window stays open briefly: the human sees the result and closes it, otherwise it closes on timeout.
 const closeWindow=document.getElementById('closeWindow');let lingerTimer=0;

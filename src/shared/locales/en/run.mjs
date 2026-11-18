@@ -23,6 +23,7 @@ export default {
     'run.group.advise': 'Claude investigates',
     'run.group.talk': 'Clarify failure',
     'run.group.develop': 'Develop',
+    'run.group.reproduce': 'Claude reproduces',
     'run.end.name': 'Wrap-up',
     'run.end.effects': 'Effect',
     'run.end.compare': 'compare',
@@ -30,8 +31,8 @@ export default {
     'run.point.attempt': 'Attempt',
     'run.effects.asRecorded': 'as recorded',
     'run.effects.deviations': ({ count }) => `${count} ${count === 1 ? 'deviation' : 'deviations'}`,
-    'run.learn.kind': 'Learn',
-    'run.learn.label': 'baselines',
+    'run.learn.kind': 'Baselines',
+    'run.learn.label': 'saved',
 
     // Header
     'run.mode.record': 'Claude records',
@@ -144,7 +145,7 @@ export default {
     'run.flow.warnings': ' Warnings: {list}.',
     'run.flow.checkChange': ' Check the change, e.g. with lint and a new run.',
     'run.flow.changedFiles': 'Changed: {files}.{code} Nothing is committed.',
-    'run.flow.preparingSandbox': 'Preparing the sandbox',
+    'run.flow.preparingSandbox': 'Starting Claude',
     'run.flow.cannotFix': 'Can\'t fix right now: {message}.',
     'run.flow.offerChanged': '{id} was changed by the recommendation "{title}" and needs to be re-recorded.',
     'run.flow.planChanged': 'Plan changed: {title}',

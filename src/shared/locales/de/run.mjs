@@ -23,6 +23,7 @@ export default {
     'run.group.advise': 'Claude untersucht',
     'run.group.talk': 'Fehler klären',
     'run.group.develop': 'Entwickeln',
+    'run.group.reproduce': 'Claude stellt nach',
     'run.end.name': 'Abschluss',
     'run.end.effects': 'Wirkung',
     'run.end.compare': 'vergleichen',
@@ -30,8 +31,8 @@ export default {
     'run.point.attempt': 'Versuch',
     'run.effects.asRecorded': 'wie aufgenommen',
     'run.effects.deviations': ({ count }) => `${count} ${count === 1 ? 'Abweichung' : 'Abweichungen'}`,
-    'run.learn.kind': 'Lernen',
-    'run.learn.label': 'Vergleichswerte',
+    'run.learn.kind': 'Vergleichswerte',
+    'run.learn.label': 'gespeichert',
 
     // Header
     'run.mode.record': 'Claude nimmt auf',
@@ -144,7 +145,7 @@ export default {
     'run.flow.warnings': ' Warnungen: {list}.',
     'run.flow.checkChange': ' Prüfe die Änderung, etwa mit Lint und einem neuen Lauf.',
     'run.flow.changedFiles': 'Geändert: {files}.{code} Committet wird nichts.',
-    'run.flow.preparingSandbox': 'Bereite die Sandbox vor',
+    'run.flow.preparingSandbox': 'Starte Claude',
     'run.flow.cannotFix': 'Beheben geht gerade nicht: {message}.',
     'run.flow.offerChanged': '{id} ist nach der Empfehlung „{title}“ angepasst und muss neu aufgenommen werden.',
     'run.flow.planChanged': 'Plan angepasst: {title}',

@@ -122,6 +122,7 @@ export default {
     'session.browser.loginFailed': 'Anmeldung auf {url} fehlgeschlagen (Marker "{marker}" erschien nicht, Seite: {path}).',
     'session.browser.authUnreadable': 'Die gespeicherte Sitzung {path} lässt sich nicht lesen: {error}',
     'session.browser.writeBlocked': '{name} gesperrt: {env} ist eine Produktionsumgebung, dorthin schickt caw keine schreibenden Requests (reads nennt Requests, die nur lesen)',
+    'session.browser.writeBlockedReadOnly': '{name} gesperrt: {env} ist nicht schreibbar, diese Nachstellung darf nur lesen (reads nennt Requests, die nur lesen)',
     'session.browser.hostBlocked': 'Navigation zu {host} gesperrt: kein Host der Anwendung; trage ihn in allowHosts ein, wenn die Anwendung wirklich dorthin navigiert',
     'session.browser.productionBlocked': 'Request an {host} gesperrt: eine Produktionsumgebung ist aus einem Lauf auf einer anderen Umgebung nie erreichbar',
     'session.browser.chromeFailed': 'Chrome ließ sich nicht starten: {error}',

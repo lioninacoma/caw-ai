@@ -55,6 +55,7 @@ export default {
     'chat.page.learn': 'Vergleichswerte speichern',
     'chat.page.learning': 'Speichere …',
     'chat.page.newRun': 'Neuer Lauf: ',
+    'chat.page.adoptDraft': 'Entwurf nach caw/tests kopieren, dann: ',
     'chat.page.removeElement': 'Element entfernen',
     'chat.page.inputLabel': 'Nachricht an Claude',
     'chat.page.placeholder': 'Antworte oder gib Claude eine Anweisung',

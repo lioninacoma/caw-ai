@@ -54,6 +54,7 @@ export default {
     'chat.page.learn': 'Save baselines',
     'chat.page.learning': 'Saving…',
     'chat.page.newRun': 'New run: ',
+    'chat.page.adoptDraft': 'Copy the draft to caw/tests, then: ',
     'chat.page.removeElement': 'Remove element',
     'chat.page.inputLabel': 'Message to Claude',
     'chat.page.placeholder': 'Answer or give Claude an instruction',

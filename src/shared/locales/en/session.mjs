@@ -122,6 +122,7 @@ export default {
     'session.browser.loginFailed': 'Sign-in on {url} failed (marker "{marker}" didn\'t appear, page: {path}).',
     'session.browser.authUnreadable': 'The saved session {path} can\'t be read: {error}',
     'session.browser.writeBlocked': '{name} blocked: {env} is a production environment, caw sends no write requests there (reads names requests that only read)',
+    'session.browser.writeBlockedReadOnly': '{name} blocked: {env} is not writable, so this reproduction may only read (reads names requests that only read)',
     'session.browser.hostBlocked': 'Navigation to {host} blocked: it is not an app host; add it to allowHosts if the app really navigates there',
     'session.browser.productionBlocked': 'Request to {host} blocked: a production environment is never reached from a run on another environment',
     'session.browser.chromeFailed': 'Chrome failed to start: {error}',

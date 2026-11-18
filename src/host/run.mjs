@@ -1095,7 +1095,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // Without --learn a passed run that could learn offers it here; only a click writes (Q7).
             const learnable = offerLearning && !found.failed && (found.baselines !== undefined || found.effects !== undefined);
             if (learnable) chat.notice(t('run.flow.learnOffer', { ids: [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])].join(', ') }));
-            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, learn: learnable });
+            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, adopt: reproduce !== undefined && draft !== undefined, learn: learnable });
             // The window changes: chat and terminal say so before it closes.
             if (after.next !== undefined) {
                 const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });

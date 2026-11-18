@@ -1236,7 +1236,7 @@ export const openBrowserSession = async (spec) => {
             const name = productionWriteName(described, { reads, requestKeys: config.requestKeys ?? [], signingIn, signInHosts });
             if (name === null) return false;
             blockedUrls.add(url);
-            failures.push({ type: 'write-blocked', text: t('session.browser.writeBlocked', { name, env: resolved.name }), url });
+            failures.push({ type: 'write-blocked', text: t(resolved.production === true ? 'session.browser.writeBlocked' : 'session.browser.writeBlockedReadOnly', { name, env: resolved.name }), url });
             return true;
         };
         if (blocksWrites) {
