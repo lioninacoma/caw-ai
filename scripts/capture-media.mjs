@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 // Records the README media (docs/media/*.webp) from the Errand example, in English, with fictitious data only.
 //
-//   node scripts/capture-media.mjs [--scene states|develop|bugfix|demo|all] [--claude] [--out <dir>]
+//   node scripts/capture-media.mjs [--scene states|develop|bugfix|reproduce|demo|all] [--out <dir>]
 //
-// `states` needs no Claude. `demo` never uses Claude: scripts/media-agent.mjs plays Claude's part with the same plan and the
-// same clicks every time, so the video comes out the same on every run, in real time (not sped up), with the logo at the end.
-// `develop` and `bugfix` show Claude's answers: with --claude the real Claude Code works (costs tokens once); without it a
-// scripted agent stands in, in the Docker sandbox, to check the choreography without tokens, and nothing is written.
-// Needs ffmpeg on PATH, Chrome, and for the dry run of develop/bugfix Docker (as the e2e does).
+// No scene uses Claude: scripts/media-agent.mjs plays Claude's part with the same plan, clicks and answers every time, so the
+// media come out the same on every run and cost no tokens. The video runs in real time (not sped up), with the logo at the end.
+// Needs ffmpeg on PATH and Chrome.
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -18,11 +16,10 @@ import { fileURLToPath } from 'node:url';
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const option = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
-const withClaude = args.includes('--claude');
 const scene = option('--scene', 'all');
 const media = join(repo, 'docs/media');
 const out = option('--out', join(tmpdir(), 'caw-media'));
-const SCENES = ['states', 'develop', 'bugfix', 'demo'];
+const SCENES = ['states', 'develop', 'bugfix', 'reproduce', 'demo'];
 if (scene !== 'all' && !SCENES.includes(scene)) throw new Error(`--scene: one of ${SCENES.join(', ')} or all`);
 if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status !== 0) throw new Error('ffmpeg is not on PATH');
 
@@ -36,7 +33,7 @@ writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ toke
 process.env.CAW_USER_USER = 'demo';
 process.env.CAW_USER_PASSWORD = 'demo';
 
-const { open, record } = await import('../src/host/commands.mjs');
+const { open, record, reproduce } = await import('../src/host/commands.mjs');
 const { activeTheme } = await import('../src/shared/theme-package.mjs');
 const { LONG_NAME } = await import('../src/shared/raven.mjs');
 const { RAVEN_CSS, ravenLogo, themeAttr, themeCss } = await import('../src/host/theme.mjs');
@@ -77,8 +74,8 @@ const project = async () => {
 // The workbench: the chat is a frame of it, the application another one.
 const benchOf = (chat) => chat.page();
 const appOf = (bench) => bench.frames().find((frame) => frame.name() === 'caw-app');
-// Claude may take minutes; a dry run may first build the sandbox image for the copy.
-const CLAUDE_MS = withClaude ? 1800000 : 600000;
+// The scripted agent answers within seconds; the first run may wait for Chrome.
+const CLAUDE_MS = 120000;
 const stateOf = (chat, name, timeout = CLAUDE_MS) => chat.locator(`body[data-state=${name}]`).waitFor({ timeout });
 const showBench = async (chat) => {
     const bench = benchOf(chat);
@@ -113,7 +110,7 @@ const still = async (bench, name) => {
     const png = join(out, `${name}.png`);
     await bench.waitForTimeout(500);
     await bench.screenshot({ path: png });
-    if (withClaude || name === 'states') webp(['-i', png, '-c:v', 'libwebp', '-quality', '85'], name);
+    webp(['-i', png, '-c:v', 'libwebp', '-quality', '85'], name);
 };
 /**
  * The workbench's size in CSS pixels while filmed: small, so text comes out large in the README column, but wide enough for
@@ -237,18 +234,9 @@ const webp = (input, name) => {
     console.log(`written: docs/media/${name}.webp`);
 };
 
-/** A scripted agent for the dry run: the same chat states as with Claude, no tokens. */
-const dry = (script) => (withClaude ? {} : script);
-// The scripted agent calls `caw agent`, which exists in the Docker sandbox (as in the e2e), not on this machine's PATH.
-const dryAgent = withClaude ? [] : ['--agent', 'docker'];
-const DRY_TALK = ['bash', '-c', "A='caw agent'; $A say 'Dry run: Claude would answer here with file and line.'; $A chat > /dev/null"];
-const DRY_BUGFIX = ['bash', '-c', `A='caw agent'
-cat > /tmp/a.json <<'EOF'
-{"items":[{"about":"search","side":"app","title":"Search ignores tags","evidence":"GET /api/todos?q=home returns no todo tagged #home; server.mjs:197","reason":"The search compares the title only.","prompt":"In server.mjs the todo search compares only the title; also match the tag.","edits":[{"file":"server.mjs","find":"todos.filter((t) => t.title.toLowerCase().includes(q))","replace":"todos.filter((t) => t.title.toLowerCase().includes(q) || t.tag === q)","why":"Tags are searchable too"}]}]}
-EOF
-$A advise --file /tmp/a.json > /dev/null; $A chat > /dev/null`];
-// Claude's part in the demo: always the same plan, clicks and pauses (see the script).
-const DEMO_AGENT = [process.execPath, join(repo, 'scripts/media-agent.mjs')];
+// Claude's part: always the same plan, clicks and answers (see the script), as the local agent on this machine.
+const agentFor = (part) => ({ [part === 'demo' || part === 'reproduce' ? 'containerCommand' : 'talkCommand']: [process.execPath, join(repo, 'scripts/media-agent.mjs'), part] });
+const LOCAL = ['--agent', 'local'];
 
 const scenes = {
     // The F1 dialog with the example's test and its steps.
@@ -269,9 +257,9 @@ const scenes = {
     },
     // A picked element and Claude's explanation in the chat.
     develop: async (dir) => {
-        await open(dir, ['first-errand@S3', '--env', 'local', ...dryAgent], {
+        await open(dir, ['first-errand@S3', '--env', 'local', ...LOCAL], {
             interactive: true,
-            ...dry({ talkCommand: DRY_TALK }),
+            ...agentFor('develop'),
             onChatOpen: background(async (chat) => {
                 await showBench(chat);
                 const bench = benchOf(chat);
@@ -294,9 +282,9 @@ const scenes = {
     },
     // A bug pasted into the chat; Claude reproduces it and proposes a code change.
     bugfix: async (dir) => {
-        await open(dir, ['first-errand', '--env', 'local', ...dryAgent], {
+        await open(dir, ['first-errand', '--env', 'local', ...LOCAL], {
             interactive: true,
-            ...dry({ talkCommand: DRY_BUGFIX }),
+            ...agentFor('bugfix'),
             onChatOpen: background(async (chat) => {
                 await showBench(chat);
                 const bench = benchOf(chat);
@@ -310,15 +298,30 @@ const scenes = {
         });
         await settled();
     },
+    // caw reproduce: Claude alone walks a bug report; the end card with the verdict, the empty search in the app.
+    reproduce: async (dir) => {
+        await reproduce(dir, ['Searching for "home" finds nothing although todos are tagged #home.', '--env', 'local', ...LOCAL], {
+            interactive: true,
+            ...agentFor('reproduce'),
+            onChatOpen: background(async (chat) => {
+                const bench = benchOf(chat);
+                await chat.locator('#next.on').waitFor({ timeout: CLAUDE_MS });
+                await sleep(2000);
+                await still(bench, 'reproduce');
+                await bench.close();
+            }),
+        });
+        await settled();
+    },
     // A new test described in the chat: plan, approval, Claude records, the check run, adopting. Filmed throughout, Claude
     // played by scripts/media-agent.mjs. The pauses give each part a few seconds to be read.
     demo: async (dir) => {
         rmSync(join(dir, 'caw/tests/morning-errand.yaml'), { force: true });
         const camera = film('demo');
         let window = 0;
-        await record(dir, ['morning-errand', '--env', 'local', '--agent', 'local'], {
+        await record(dir, ['morning-errand', '--env', 'local', ...LOCAL], {
             interactive: true,
-            containerCommand: DEMO_AGENT,
+            ...agentFor('demo'),
             // caw waits for onChatOpen: the window gets its filming size before the run goes on (the check run replays at once),
             // then the human acts in the background.
             onChatOpen: async (chat) => {
@@ -368,7 +371,7 @@ mkdirSync(out, { recursive: true });
 for (const name of scene === 'all' ? SCENES : [scene]) {
     const { dir, server } = await project();
     try {
-        console.log(`scene ${name}${withClaude || name === 'states' || name === 'demo' ? '' : ' (dry run, scripted agent)'}`);
+        console.log(`scene ${name}`);
         await scenes[name](dir);
     } finally {
         server.kill();
