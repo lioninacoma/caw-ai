@@ -1247,6 +1247,79 @@ export const record = async (root, args, deps = {}) => {
     });
 };
 
+/** The name a reproduction runs under: report and window title. */
+const REPRODUCE_ID = 'reproduce';
+
+/**
+ * caw reproduce "<bug report>": Claude reproduces a bug on its own, signed in as a test role, optionally from a test's state
+ * (--from <test>[@<step>]). Only on environments with claude, never on production; without writable every write request is
+ * blocked. No plan, no decisions, no code change; the run folder gets the report and a draft test plan, caw/tests nothing.
+ * @returns 0 reproduced, 1 not reproduced or unclear, 2 environment error, 3 invalid input
+ */
+export const reproduce = async (root, args, deps = {}) => {
+    const { parseReproduceArgs, draftId } = await import('./reproduce.mjs');
+    const options = parseReproduceArgs(args, { root, ...(deps.readStdin === undefined ? {} : { readStdin: deps.readStdin }) });
+    const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen } = deps;
+    const config = loadConfig(root);
+    let known = null;
+    if (options.from !== undefined) {
+        const { test, step } = options.from;
+        if (!existsSync(testPath(root, test))) throw testMissing(root, config, test, options.target);
+        known = withDefaults(loadTest(root, test), config);
+        if (step !== undefined && !known.steps.some(({ id }) => id === step)) throw stepUnknown('cli.stepUnknown', known, step);
+    }
+    // The role: the test's, the one given, or the only one; several without a choice are a question for the human.
+    const roles = Object.keys(config.roles ?? {});
+    const role = known?.role ?? options.role ?? (roles.length === 1 ? roles[0] : undefined);
+    if (role === undefined && roles.length > 1) throw new CawError('usage', t('cli.reproduceRoles', { roles: roles.join(', ') }));
+    if (options.role !== undefined && config.roles !== undefined && !roles.includes(options.role)) throw new CawError('usage', t('cli.reproduceRoles', { roles: roles.join(', ') }));
+    const allowed = environmentsWith(config, 'claude').filter((name) => effectiveEnvironment(config, name).production !== true);
+    if (options.target !== undefined && !allowed.includes(options.target) && config.environments?.[options.target] !== undefined) {
+        throw new CawError('reproduce-not-allowed', t('cli.reproduceNotAllowed', { target: options.target, environments: allowed.join(', ') || t('cli.noEnvironment') }));
+    }
+    const target = chooseEnv(config, known === null ? [] : [known], { env: options.target, command: 'reproduce' });
+    const env = effectiveEnvironment(config, target);
+    if (env.claude !== true || env.production === true) {
+        throw new CawError('reproduce-not-allowed', t('cli.reproduceNotAllowed', { target, environments: allowed.join(', ') || t('cli.noEnvironment') }));
+    }
+    const writable = env.writable === true;
+    const spec = known ?? { id: REPRODUCE_ID, ...(role === undefined ? {} : { role }), writes: writable, notes: '', steps: [], expectations: [] };
+    if (known !== null) {
+        const { assertPlayable } = await import('./replay.mjs');
+        const position = options.from.step === undefined ? known.steps.length : known.steps.findIndex(({ id }) => id === options.from.step);
+        if (position > 0) assertPlayable(known, target, known.steps[position - 1].id);
+    }
+    return withLifecycle(lifecycleOf(root, config, target, {}, 'reproduce'), async (lifecycle) => {
+        await lifecycle.beforeTest(spec);
+        // Without writable the browser blocks every write request like on production, also on the way to the state.
+        const checked = { ...checkTest(spec, target, config, {}), ...(writable ? {} : { blockWrites: true }) };
+        requireTestUser(root, config, spec.role, target);
+        requireAgent(config, checked, target, t('cli.verbReproduce'));
+        ui.info(t('cli.reproduceStart', { env: target, role: spec.role ?? '-', writes: t(writable ? 'cli.reproduceWrites' : 'cli.reproduceReadOnly') }));
+        const { replayOf, replayToEntry } = await import('./replay.mjs');
+        const prefix = known === null ? undefined : options.from.step === undefined ? replayOf(known) : replayToEntry(known, options.from.step, { reads: config.reads ?? [] });
+        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent: options.agent });
+        const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin: CLAUDE_TIMEOUT_MIN, stepTimeoutSec: 30, containerCommand, adviseCommand, talkCommand, onChatOpen });
+        const result = await execute({
+            sandbox,
+            headless: options.headless,
+            // With a window the chat shows what Claude does; nobody decides anything there.
+            ...(options.headless ? {} : { conversation }),
+            reproduce: {
+                bug: options.bug,
+                writes: writable,
+                draftId: draftId(root, options.bug),
+                ...(prefix === undefined ? {} : { prefix }),
+                ...(options.from === undefined ? {} : { from: options.from }),
+            },
+        });
+        const outcome = result.verdict?.reproduce;
+        if (outcome?.reproduced !== undefined) ui.info(t(`cli.reproduceVerdict.${outcome.reproduced}`));
+        if (outcome?.draft !== undefined) ui.info(t('cli.reproduceDraft', outcome.draft));
+        return result.exitCode;
+    });
+};
+
 /** The name open runs under: report and window title. A test of that name stays untouched, open reads and writes none. */
 const OPEN_ID = 'open';
 

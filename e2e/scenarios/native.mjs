@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { TESTS, testText, writeTests } from '../native/project.mjs';
 import {
-    appOf, benchBack, decide, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, planOf, print, record, run,
+    appOf, benchBack, decide, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, planOf, print, record, reproduce, run,
     runDirsOf, showMyself, sleep, startServer, stateOf, tag, verify, writeTest,
 } from '../harness.mjs';
 
@@ -810,4 +810,80 @@ scenario('N11', 'Failures: renamed (similar name), covered (diagnosis with the m
     });
     const code = await run(native, ['n11-renamed', ...target], { interactive: true, docker, onChatOpen: h.onChatOpen });
     verify('With chat: Exit 1, one window, no Docker without a click', code === 1 && await h.done() === 1 && dockerUsed === 0, `${code} ${dockerUsed}`);
+});
+
+// ---- N12: caw reproduce, Claude alone (scripted), with a report and a draft test plan
+
+const reproduceOf = async (args, { agent, onChatOpen } = {}) => reproduce(native, [...args, '--env', 'test'], { interactive: true, containerCommand: ['bash', '-c', agent], ...(onChatOpen === undefined ? {} : { onChatOpen }) });
+
+scenario('N12', 'reproduce: Claude reproduces a bug alone (no plan, no decision), report and valid draft; not reproducible; read-only blocks writes', async () => {
+    const before = readFileSync(join(native, 'caw.config.json'), 'utf8');
+    const tests = readdirSync(join(native, 'caw/tests')).sort().join(',');
+    try {
+        // (1) With a window: the status reads English although the app speaks German. Claude finds it without a plan; plan and
+        // check are refused, the human only watches.
+        const seen = humans(async (page) => {
+            await page.locator('#next.on').waitFor({ timeout: 90000 });
+            verify('(1) end card: bug reproduced', /Fehler nachgestellt/.test(await page.locator('#next').textContent()));
+            await page.locator('#closeWindow').click({ timeout: 5000 }).catch(() => {});
+        });
+        const found = `exec 2>&1
+A='caw agent'
+echo 'notes: x' > /tmp/p.yaml
+if $A plan --file /tmp/p.yaml 2>&1 | grep -q 'reproduce-refused'; then echo PLAN-REFUSED; fi
+if $A check S1 "true" 2>&1 | grep -q 'reproduce-refused'; then echo CHECK-REFUSED; fi
+$A task | grep -q 'reproduce' && echo TASK-REPRODUCE
+$A click '#save'
+$A screenshot after-save.png > /dev/null
+S=$($A eval "document.getElementById('status').textContent")
+V=no; echo "$S" | grep -q Saved && V=yes
+cat > /tmp/f.json <<JSON
+{"reproduced":"$V","observed":"The status reads Saved after saving.","expected":"The status is in German.","steps":[{"name":"Speichern","do":"Klicke auf Save.","expect":"Der Status steht auf Deutsch da."}],"cause":"site/index.html:91 sets an English text.","screenshots":["after-save.png"]}
+JSON
+$A finish --file /tmp/f.json`;
+        const code = await reproduceOf(['Nach dem Speichern steht der Status auf Englisch da.'], { agent: found, onChatOpen: seen.onChatOpen });
+        await seen.done();
+        const { result, report, dir } = newestRunOf(native, 'reproduce');
+        verify('(1) Exit 0: reproduced', code === 0 && result?.reproduce?.reproduced === 'yes', `${code} ${JSON.stringify(result?.reproduce ?? result).slice(0, 300)}`);
+        const log = ['agent/claude.log', 'claude.log'].map((name) => join(dir, name)).filter((path) => existsSync(path)).map((path) => readFileSync(path, 'utf8')).join('') || readFileSync(join(here, 'n12.log'), 'utf8');
+        verify('(1) task in mode reproduce, plan and check refused', /TASK-REPRODUCE/.test(log) && /PLAN-REFUSED/.test(log) && /CHECK-REFUSED/.test(log), log.slice(-400));
+        verify('(1) report: verdict, bug report, steps, cause, screenshot, draft', /nachgestellt/.test(report) && /> Nach dem Speichern/.test(report) && /Klicke auf Save/.test(report) && /index\.html:91/.test(report) && /after-save\.png/.test(report) && /draft-test\.yaml/.test(report), report.slice(0, 600));
+        const draft = readFileSync(join(dir, 'draft-test.yaml'), 'utf8');
+        let valid = true;
+        try { parseTest(draft); } catch { valid = false; }
+        verify('(1) the draft is a valid test plan with the step, the environment and the id from the bug', valid && /^id: bug-nach-dem-speichern-steht-der-status/m.test(draft) && /environments: \[ ?test ?\]/.test(draft) && /Klicke auf Save\./.test(draft), draft);
+        verify('(1) caw/tests untouched', readdirSync(join(native, 'caw/tests')).sort().join(',') === tests);
+
+        // (2) Not reproducible, headless: Claude ends with no; exit 1.
+        const missed = `exec 2>&1
+A='caw agent'
+cat > /tmp/f.json <<JSON
+{"reproduced":"no","observed":"The list shows the new errand at the top.","expected":"The new errand is at the top.","steps":[{"do":"Lege die Besorgung Test an.","expect":"Sie steht oben."}]}
+JSON
+$A finish --file /tmp/f.json`;
+        const notFound = await reproduceOf(['Neue Besorgungen stehen nicht oben.', '--headless'], { agent: missed });
+        const second = newestRunOf(native, 'reproduce');
+        verify('(2) headless, not reproduced: exit 1 and the verdict in the report', notFound === 1 && second.result?.reproduce?.reproduced === 'no' && /nicht nachgestellt/.test(second.report), `${notFound} ${second.report.slice(0, 200)}`);
+
+        // (3) Without writable: the add request is aborted, the page never says "Added", the report says read-only.
+        writeFileSync(join(native, 'caw.config.json'), before.replace('"writable": true', '"writable": false'));
+        const blocked = `exec 2>&1
+A='caw agent'
+REF=$($A snapshot | grep 'textbox "New errand"' | grep -oE 'ref=[a-z0-9]+' | head -1 | cut -d= -f2)
+$A fill "$REF" "Read only $($A task | grep -o 'CAW-[0-9]*' | head -1)"
+$A click '#add'
+sleep 1
+S=$($A eval "document.getElementById('status').textContent")
+cat > /tmp/f.json <<JSON
+{"reproduced":"unclear","observed":"status: $S","expected":"Added.","steps":[{"do":"Lege eine Besorgung an.","expect":"Added erscheint."}]}
+JSON
+$A finish --file /tmp/f.json`;
+        const readOnly = await reproduceOf(['Hinzufügen geht nicht.', '--headless'], { agent: blocked });
+        const third = newestRunOf(native, 'reproduce');
+        verify('(3) read-only: the POST is blocked and named, the page never confirms, the report says read-only',
+            readOnly === 1 && !/status: Added/.test(JSON.stringify(third.result?.reproduce ?? {})) && /write-blocked/.test(JSON.stringify(third.result?.failures ?? [])) && /Nur lesend/.test(third.report),
+            `${readOnly} ${JSON.stringify(third.result?.failures ?? []).slice(0, 300)}`);
+    } finally {
+        writeFileSync(join(native, 'caw.config.json'), before);
+    }
 });

@@ -49,7 +49,7 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben. Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), die Umgebungs-Schalter (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` und `agent.mode` lehnt es ab: Die ändert die Session in der Datei, wo Claude Code dir den Diff zeigt | nein |
 | `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
-| `caw_start` | startet `run`, `record` oder `open` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset` (oder `args`) | nur deine Session |
+| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role` (oder `args`) | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |
 | `caw_selection` | das Element, das du beim Entwickeln in der Werkbank mit dem Fadenkreuz gewählt hast | nein |
@@ -302,6 +302,25 @@ Nur die behobenen Schritte ändern sich in der Datei, Kommentare und alle andere
 - **Ohne Claude:** Fehlt Claude Code (`local`) bzw. Docker oder Token (`docker`), nennt der Chat den Grund, der Lauf bleibt `fail`.
 - **Entwurf verwerfen:** Der Testplan bleibt unverändert, nach einer Rückfrage („Wirklich verwerfen?“). Ein zuvor gescheiterter `run` endet mit `fail`.
 - **Einfügen, Löschen, Umsortieren:** Mit `record <test>@S4` darf Claude den Plan ab S4 ändern, denn spätere Schritte können auf früheren aufbauen. Einen Schritt, den du von Hand einträgst, nimmst du ebenso auf: `record <test>@<seine id>`.
+
+## Einen Fehler nachstellen: `reproduce`
+
+`caw reproduce "<fehlerbericht>"` gibt Claude einen Fehlerbericht und einen angemeldeten Browser, sonst nichts zu tun: kein Plan
+zum Freigeben, keine Rückfragen, keine Entscheidungen (siehe [Befehle](commands.de.md#reproduce)). Mit `--from <test>@S3` führen
+zuerst die Schritte eines Tests in den Zustand, in dem der Fehler auftritt. Claude liest den Bericht, geht ihn nach, urteilt nach
+Belegen (Screenshot, Konsole, Netzwerk) und endet mit `yes`, `no` oder `unclear`, den Schritten in Klartext und, wenn es den
+Quelltext gelesen hat, einem Hinweis auf die Ursache mit Datei und Zeile.
+
+Was Claude dabei darf und was nicht:
+
+- Nur auf Umgebungen mit `claude`, nie auf Produktion; der Browser erreicht nur die Hosts des Projekts.
+- Schreiben nur, wo die Umgebung `writable` ist; sonst wird jeder schreibende Request abgebrochen und im Bericht genannt.
+- Kein Plan, kein `check`, keine Frage an dich, keine Empfehlung und keine Code-Änderung: Diese Befehle werden abgelehnt.
+- Nichts landet im Projekt: Bericht und `draft-test.yaml` bleiben im Laufordner. Die Erwartungen des Entwurfs beschreiben das
+  richtige Verhalten, der aufgenommene Test scheitert also, solange der Fehler da ist, und besteht, sobald er behoben ist.
+
+Aus deiner Claude-Code-Session bittest du darum („stell diesen Fehler nach: …“): Die Session startet `caw_start` mit
+`command: "reproduce"`, ist selbst der Agent ohne zusätzliche Tokens und bekommt Urteil, Bericht und Entwurf über `caw_status`.
 
 ## Einschätzung: Test, Anwendung oder Umgebung
 

@@ -233,6 +233,15 @@ export default {
 
     // Advice
     'run.advice.fileChanged': '{file} hat sich geändert, die Stelle ist nicht mehr eindeutig.',
+    'run.mode.reproduce': 'Fehler nachstellen',
+    'run.title.reproduce': 'Claude stellt einen Fehler nach',
+    'run.reproduce.working': 'Claude stellt den Fehler nach, ohne Plan und ohne Rückfragen.',
+    'run.reproduce.stateFailed': 'Der Ausgangszustand ließ sich nicht erreichen: {id} ist gescheitert ({reason}).',
+    'run.reproduce.draftNotes': 'Entwurf aus caw reproduce (Lauf {run}): Schritte, wie Claude den Fehler nachgestellt hat. Vor dem Aufnehmen prüfen.',
+    'run.reproduce.card.yes': 'Fehler nachgestellt',
+    'run.reproduce.card.no': 'Fehler nicht nachgestellt',
+    'run.reproduce.card.unclear': 'Unklar, ob der Fehler auftritt',
+    'run.reproduce.card.none': 'Kein Ergebnis',
     'run.advice.contextProject': '{path} (Projekt, über git mit dem Team geteilt)',
     'run.advice.contextPersonal': '{path} (persönlich, gilt in jedem deiner Projekte)',
     'run.advice.personalIntro': 'Deine persönlichen Notizen für Claude in jedem Projekt: Gewohnheiten und Vorlieben. caw/caw.md eines Projekts geht vor.',
@@ -361,6 +370,7 @@ export default {
     'run.button.rerecordStep': '{id} neu aufnehmen',
     'run.flow.stillStale': 'Plan angepasst',
     'run.mcp.roleList': '{count} Rolle(n).',
+    'run.mcp.bugText': 'bug: der Fehlerbericht als Text, höchstens {max} Zeichen.',
     'run.mcp.roleName': 'name: Kleinbuchstaben, Ziffern und Bindestriche, beginnt mit einem Buchstaben.',
     'run.mcp.roleRemoved': 'Rolle {role} entfernt.',
     'run.mcp.roleAdded': 'Rolle {role} ist in der Config. Der Mensch trägt die Werte selbst in caw/.env ein: {names}. Frag nie nach den Werten.',

@@ -15,6 +15,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`list`](#list) | Tests und Schritte mit Stand der Aufnahme auflisten | nein |
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen, auch ab einem Schritt | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
+| [`reproduce`](#reproduce) | Claude stellt einen Fehlerbericht allein nach: Bericht und Entwurf eines Testplans | ja |
 | [`open`](#open) | Die App angemeldet öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
 | [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
@@ -213,6 +214,40 @@ Nach der Übergabe öffnet **F1** in der Werkbank „Öffnen…“: einen belieb
 
 Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner, der schon weg ist), frag im Chat: Claude kann den Klick optional machen. Was du übernimmst, steht sofort in der Testdatei. Beim Aufnehmen geht das direkt mit `click <ziel> --optional`.
 
+## reproduce
+
+```bash
+npx caw reproduce "Nach dem Speichern zeigt die Liste noch den alten Titel." --env local
+npx caw reproduce --file fehler.md --from create-ticket@S3 --env local --headless
+befehl-der-das-ticket-ausgibt | npx caw reproduce - --env local
+```
+
+Claude stellt einen Fehler allein nach, angemeldet mit einer Testrolle: kein Plan zum Freigeben, niemand zum Antworten, keine
+Entscheidung. Es liest und bedient die Seite wie ein Mensch und endet mit einem Urteil: nachgestellt, nicht nachgestellt oder
+unklar. Im Laufordner liegen dann `report.md` (Urteil, der Fehlerbericht, was Claude beobachtet und erwartet hat, seine Schritte,
+die Aktionen im Browser, Screenshots, harte Fehler, gesperrte oder auffällige Requests, ein Hinweis auf die Ursache) und
+`draft-test.yaml`, ein Testplan im Format von caw aus Claudes Schritten. Nichts landet in `caw/tests`: Um den Fehler als
+Regressionstest zu behalten, kopierst du den Entwurf dorthin, prüfst ihn und nimmst ihn mit `caw record <id>` auf.
+
+- **Wo:** nur auf Umgebungen mit `claude`, nie auf Produktion (`reproduce-not-allowed`). Ohne `--env` die einzige solche
+  Umgebung, mit `--from` die des Tests.
+- **Schreiben:** nur, wo die Umgebung `writable` ist. Sonst bricht caw jeden schreibenden Request ab wie auf Produktion, und
+  Claude weiß, dass es nur lesen darf.
+- **Nie:** Code-Änderungen, Empfehlungen, Änderungen an Tests oder Config. Der Browser erreicht nur die Hosts des Projekts (wie
+  immer, wenn Claude dabei ist).
+- **Die Rolle:** mit `--from` die des Tests, sonst `--role` oder die einzige. Fehlt der Testnutzer, endet es mit `credentials-missing`.
+
+| Option | |
+|---|---|
+| `"<fehlerbericht>"`, `--file <datei>`, `-` | Der Fehlerbericht: als Argument, aus einer Datei oder von stdin. Genau eins, höchstens 8000 Zeichen. |
+| `--from <test>[@<S4>]` | In einem Zustand eines Tests anfangen: dessen Schritte (bis zum Einstieg in S4) laufen vorher ohne Claude. |
+| `--role <rolle>` | Ohne `--from`; unnötig, wenn die Config nur eine hat. |
+| `--headless` | Ohne Fenster. Mit Fenster zeigt die Werkbank, was Claude tut; du kannst nur zusehen oder beenden (Esc). |
+| `--agent local\|docker\|session` | Wie bei `record`. Aus deiner eigenen Claude-Code-Session (`caw_start` mit `command: "reproduce"`) ohne zusätzliche Tokens. |
+
+Exit-Codes: `0` nachgestellt, `1` nicht nachgestellt oder unklar, `2` Umgebungsfehler (auch wenn der Ausgangszustand von
+`--from` nicht erreicht wurde: `reproduce-state`), `3` ungültige Eingabe.
+
 ## role
 
 ```bash
@@ -273,7 +308,7 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
-| `caw_start` | `run`, `record` oder `open` mit `--agent session` starten (`test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
+| `caw_start` | `run`, `record`, `open` oder `reproduce` mit `--agent session` starten (`reproduce`: `bug`, `from`, `role`, `env`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
 | `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit dem Fadenkreuz in der Werkbank gewählt hast | nein |
@@ -315,6 +350,8 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 
 | Code | Exit | Abhilfe |
 |---|---|---|
+| `reproduce-not-allowed` | 3 | `reproduce` nur auf einer Umgebung mit `claude`, nie auf Produktion |
+| `reproduce-state` | 2 | Der Ausgangszustand von `--from` wurde nicht erreicht: den Test mit `run` laufen lassen und erst reparieren |
 | `usage`, `unknown-command` | 3 | `npx caw <befehl> --help` |
 | `config-missing` | 3 | `npx caw init --url <adresse>` |
 | `config-invalid` | 3 | Das genannte Feld korrigieren oder die `TODO`-Werte eintragen, dann `doctor` |

@@ -17,7 +17,10 @@ import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
 import { SESSION_INSTRUCTIONS, activeExtensions, guideIndex, guideTopic, listedTopics } from './guide.mjs';
 
 const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));
-const START_COMMANDS = ['run', 'record', 'open'];
+const START_COMMANDS = ['run', 'record', 'open', 'reproduce'];
+/** caw_start reproduce: the bug report goes to the command as a file, so no text of it can read as an option. */
+export const BUG_FILE = '.caw/reproduce-bug.md';
+const MAX_BUG = 8000;
 const LOG_PREFIX = 'session-';
 const TAIL_LINES = 40;
 const EXPLORE_FILE = 'caw/.explore.json';
@@ -29,8 +32,9 @@ const FIELDS = {
     run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'start', 'reset'] },
     record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
     open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
+    reproduce: { needs: ['bug'], takes: ['bug', 'from', 'env', 'role', 'headless'] },
 };
-const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'start', 'reset'];
+const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'start', 'reset', 'bug', 'from', 'role'];
 /** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
 const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', start: '--start', reset: '--reset' };
 /** A field renamed before 1.0: named with its new name instead of "does not apply". */
@@ -38,7 +42,7 @@ const renamedField = (input) => {
     if (input?.target !== undefined) throw new Error(t('run.mcp.fieldRenamed', { field: 'target', now: 'env' }));
 };
 const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings'];
-const RUN_ARTEFACTS = ['report.md', 'result.json', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
+const RUN_ARTEFACTS = ['report.md', 'result.json', 'draft-test.yaml', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
 // Whatever comes from the application (snapshot, eval, console, selected element) is page content and may contain text
 // that looks like an instruction. The session has more rights than the agent in a run, so every task carries this note.
@@ -174,7 +178,8 @@ export const startArgs = (input) => {
     if (extra !== undefined) throw new Error(t('run.mcp.fieldNotFor', { field: extra, command }));
     const missing = needs.find((field) => !given.includes(field));
     if (missing !== undefined) throw new Error(t('run.mcp.fieldMissing', { field: missing, command }));
-    for (const field of ['test', 'env', 'step']) {
+    if (input.bug !== undefined && (typeof input.bug !== 'string' || input.bug.trim() === '' || input.bug.length > MAX_BUG)) throw new Error(t('run.mcp.bugText', { max: MAX_BUG }));
+    for (const field of ['test', 'env', 'step', 'from', 'role']) {
         if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field] === '' || input[field].startsWith('-'))) throw new Error(t('run.mcp.fieldText', { field }));
     }
     // A step without its test: open would open without a test and drop it.
@@ -185,6 +190,9 @@ export const startArgs = (input) => {
     }
     if (given.includes('start') && given.includes('overlay')) throw new Error(t('run.mcp.noStart'));
     const args = [];
+    if (command === 'reproduce') args.push('--file', BUG_FILE);
+    if (input.from !== undefined) args.push('--from', input.from);
+    if (input.role !== undefined) args.push('--role', input.role);
     if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
     if (input.env !== undefined) args.push('--env', input.env);
     if (given.includes('overlay')) args.push(input.overlay === true ? '--overlay' : `--overlay=${input.overlay}`);
@@ -298,6 +306,11 @@ const statusData = (root, { waiting, running, log }) => {
         const result = readJson(join(run.runDir, 'result.json'));
         if (result !== undefined) {
             data.result = Object.fromEntries(RESULT_FIELDS.filter((key) => result[key] !== undefined).map((key) => [key, result[key]]));
+            // A reproduction: the verdict, what Claude saw, and where report and draft test plan are.
+            if (result.reproduce !== undefined) {
+                const { reproduced, observed, expected, cause, draft } = result.reproduce;
+                data.reproduce = { ...(reproduced === undefined ? {} : { reproduced, observed, expected }), ...(cause === undefined ? {} : { cause }), report: shown(root, join(run.runDir, 'report.md')), ...(draft === undefined ? {} : { draft: draft.from, adopt: { copyTo: draft.to, then: draft.record } }) };
+            }
             const last = Array.isArray(result.results) ? result.results.at(-1) : undefined;
             if (last !== undefined) data.lastStep = { id: last.id, status: last.status, ...(last.note === undefined ? {} : { note: last.note }) };
         }
@@ -337,7 +350,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_start',
         description: 'Starts a caw command in the background with you as the agent (--agent session); the window opens for the human. '
-            + 'command: run, record or open. Typed fields: test, env, step (record: re-record from this step to the end; open: stop at the '
+            + 'command: run, record, open or reproduce. Typed fields: test, env, step (record: re-record from this step to the end; open: stop at the '
             + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
             + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run), '
             + 'learn (run: write missing baselines into the recording; only when the human asks), start (run the environment\'s configured start command if it does not '
@@ -346,12 +359,17 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
             + 'With overlay the local code server is checked first (as caw_overlay status): down, wrong-app or stale returns state, url, start '
             + 'and partDir instead of starting; then ask the human, start the project\'s start command in your own session in the background '
-            + 'and poll caw_overlay status until ready. moved starts against the found URL and reports it. Then call caw_status until the run waits for you.',
+            + 'and poll caw_overlay status until ready. moved starts against the found URL and reports it. Then call caw_status until the run waits for you. '
+            + 'reproduce (topic reproduce): bug (the report as text), optionally from ("<test>" or "<test>@S3": start in that state), env, role, headless; '
+            + 'only on environments with claude, never production, read-only unless writable; you reproduce alone and finish with the verdict, caw_status then names report and draft test plan.',
         inputSchema: {
             type: 'object',
             properties: {
                 command: { type: 'string', enum: START_COMMANDS },
                 test: { type: 'string' },
+                bug: { type: 'string', description: 'reproduce: the bug report as the person wrote it (what they did, saw and expected)' },
+                from: { type: 'string', description: 'reproduce: start in a test\'s state, "<test>" or "<test>@S3" (its steps up to the entry of S3)' },
+                role: { type: 'string', description: 'reproduce without from: the test role to sign in as (not needed with one role)' },
                 env: { type: 'string', description: 'The environment (--env); without it caw picks the only fitting one or says which to choose' },
                 step: { type: 'string', description: 'record: re-record from this step to the end; open: hand over at the entry of this step. E.g. S3, needs test' },
                 overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
@@ -376,6 +394,11 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 config = loadConfig(root);
             } catch (error) {
                 return answer(t('run.mcp.notStarted', { message: String(error.message).split('\n')[0] }), { state: 'error', code: error.code ?? 'config-invalid', message: error.message }, true);
+            }
+            // reproduce: the bug report as a file in .caw/, read by the command (never on the command line).
+            if (input.command === 'reproduce' && input.bug !== undefined) {
+                mkdirSync(join(root, RUN_DIR), { recursive: true });
+                writeFileSync(join(root, BUG_FILE), input.bug.replaceAll('\r\n', '\n'));
             }
             const given = fromArgs(args);
             // The overlay is an extension: without its block in the config there is nothing to lay over.

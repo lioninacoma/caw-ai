@@ -16,7 +16,8 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { inLanguage, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { readPersonalContext } from '../shared/personal-context.mjs';
-import { renderReport } from '../shared/report.mjs';
+import { renderReport, renderReproduceReport } from '../shared/report.mjs';
+import { readReproduction, draftTestPlan, adoptHint } from './reproduce.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -156,7 +157,7 @@ export const readAgentLog = (file) => {
 
 /** Claude's work outside the steps: one group per run, named after what it is doing. */
 const CLAUDE_GROUP = 'claude';
-const CLAUDE_GROUPS = ['advise', 'talk', 'develop'];
+const CLAUDE_GROUPS = ['advise', 'talk', 'develop', 'reproduce'];
 const claudeGroup = (mode) => (CLAUDE_GROUPS.includes(mode) ? t(`run.group.${mode}`) : undefined);
 /** Keep a point to one line where possible; the chat shows the full command. */
 const shortActivity = (text) => (text.length > 70 ? `${text.slice(0, 69)}…` : text);
@@ -217,7 +218,7 @@ export const certificateError = (error, checked) => {
  * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
  * @param interactive with a chat, i.e. with a human in front of it
  */
-export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, info = (text) => ui.info(text) }) => {
+export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, agent = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, info = (text) => ui.info(text) }) => {
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = todoFields(config);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
@@ -244,8 +245,9 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             resolved: checked,
             credentials,
             hosts: navigationHosts(config, checked.name),
-            // With a chat Claude is (or may become) attached: the browser then reaches only the project's hosts (host-lock.mjs).
-            ...(interactive && checked.claude === true ? { reach: agentHosts(config, checked.name) } : {}),
+            // With a chat Claude is (or may become) attached, and caw reproduce always has Claude: the browser then reaches only the
+            // project's hosts (host-lock.mjs).
+            ...((interactive || agent) && checked.claude === true ? { reach: agentHosts(config, checked.name) } : {}),
             startUrl: start,
             devlinkConfig: buildDevlinkConfig(config, checked, start),
             devlinkConfigPath: join(runDir, 'devlink-config.json'),
@@ -391,7 +393,7 @@ export const benchFacts = (config, spec, checked, title) => {
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
  * @returns { exitCode, verdict, failed, candidate, fresh, expectChange, ids, removed }
  */
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, offerLearning = false }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, offerLearning = false, reproduce }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -414,7 +416,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const channel = join(agentDir, CHANNEL_DIR);
     mkdirSync(channel, { recursive: true });
     let runCommand = 'run';
-    if (repair !== undefined) runCommand = range === undefined ? 'repair' : 'record';
+    if (reproduce !== undefined) runCommand = 'reproduce';
+    else if (repair !== undefined) runCommand = range === undefined ? 'repair' : 'record';
     else if (creating) runCommand = 'record';
     else if (runAs !== undefined) runCommand = runAs;
     else if (replay.entry !== undefined || (replay.steps.length === 0 && replay.until === undefined)) runCommand = 'open';
@@ -423,7 +426,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const startedAt = Date.now();
     // The mode: a short label for the terminal, a sentence with the test's name for the workbench title.
     let headerMode = ['record'];
-    if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) headerMode = ['verify'];
+    if (reproduce !== undefined) headerMode = ['reproduce'];
+    else if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) headerMode = ['verify'];
     else if (replay?.entry !== undefined) headerMode = ['entry', { id: replay.entry.id }];
     else if (replay !== undefined && replay.steps.length === 0) headerMode = ['open'];
     else if (replay !== undefined && runAs === 'open') headerMode = ['openTest'];
@@ -437,6 +441,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
 
     // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
     const reportBase = { testId: spec.id, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
+    // A reproduction's report shows the bug report and the run's rules also when it ends early; finish adds Claude's verdict.
+    if (reproduce !== undefined) reportBase.reproduce = { bug: reproduce.bug, writable: reproduce.writes, ...(reproduce.from === undefined ? {} : { from: reproduce.from }) };
     let verdict = null;
     let session;
     // All advice of this run, also across several sessions: the report lists them together.
@@ -451,7 +457,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         verdict = redactDeep({ ...outcome, ...reportBase, writes: session?.writes() ?? [], thirdParty: session?.thirdParty?.() ?? [], warnings: session?.warnings?.() ?? [], ...(session?.overlay?.() ? { overlay: session.overlay() } : {}), ...adviceOf() }, session?.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         // report.md is shared: in the team language if caw has it, whatever the reader's terminal speaks.
-        writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(verdict)));
+        writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
         // The run is over: nothing runs any more, so the chip goes away.
         session?.workbench?.transport?.(null)?.catch?.(() => {});
     };
@@ -491,7 +497,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const aborted = new Promise((ok) => { abortSignal = ok; });
     const stopSignals = onAbortSignals(abortSignal);
     try {
-        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, recorded: recordedBrowser(givenSpec.steps) });
+        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...headerMode)));
         await session.workbench?.transport?.(transportOf(replay));
@@ -652,7 +658,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             lastPoint = null;
         };
         const onLine = (line) => {
-            chat.logLine(line);
+            chat?.logLine(line);
             notePoint(line);
         };
         if (box.kind === 'session') {
@@ -660,6 +666,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                 run: `Run ${runId} is open. Carry it out and submit the result with finish.`,
                 advise: `Run ${runId} had failures or warnings. Read the task with task and submit your advice with advise.`,
                 talk: `In run ${runId} a step failed, and the human is asking you in the chat. Read the task with task, answer with say and wait for the human with chat.`,
+                reproduce: `Run ${runId} reproduces a bug report on its own, without a human. Read the bug report with task, try to reproduce it in the browser and submit your verdict with finish.`,
                 develop: `In run ${runId} the human is developing in the restored state. Read the task with task; you can read the page (snapshot, eval, console, network) and operate it on request (click, fill, type, press, goto, reload). Fetch questions from the workbench chat with chat and answer there with say.`,
             };
             // The session reads these topics with caw_guide; caw_status names them.
@@ -1079,11 +1086,16 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // The card in the chat: short result, the report, the command for a new run.
             const results = verdict.results ?? [];
             const passed = results.filter((result) => result.status === 'pass').length;
-            const text = results.length > 0 ? t('run.finished.steps', { passed, total: results.length }) : t(verdict.status === 'pass' ? 'run.finished.passed' : 'run.finished.failed');
+            let text = results.length > 0 ? t('run.finished.steps', { passed, total: results.length }) : t(verdict.status === 'pass' ? 'run.finished.passed' : 'run.finished.failed');
+            // A reproduction: its verdict, and the command that records the draft once the human has copied it into caw/tests.
+            if (reproduce !== undefined) text = t(`run.reproduce.card.${verdict.reproduce?.reproduced ?? 'none'}`);
+            const draft = verdict.reproduce?.draft;
+            let command = `caw run ${spec.id}`;
+            if (reproduce !== undefined) command = draft === undefined ? 'caw reproduce' : draft.record;
             // Without --learn a passed run that could learn offers it here; only a click writes (Q7).
             const learnable = offerLearning && !found.failed && (found.baselines !== undefined || found.effects !== undefined);
             if (learnable) chat.notice(t('run.flow.learnOffer', { ids: [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])].join(', ') }));
-            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command: `caw run ${spec.id}`, learn: learnable });
+            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, learn: learnable });
             // The window changes: chat and terminal say so before it closes.
             if (after.next !== undefined) {
                 const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
@@ -1653,6 +1665,140 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             chat.preparing(false);
         }
     }
-    const { ended, found } = await claudeWork(sandbox);
+    /**
+     * caw reproduce: optionally the steps of a test up to a state without Claude, then Claude alone in the browser, without a
+     * plan or a human decision, until its verdict. No advice, no code change, no test written: the verdict, the report and a
+     * draft test plan in the run folder.
+     * @returns { ended, found } for closeRun
+     */
+    const reproduceWork = async (box) => {
+        verdict = null;
+        const { prefix } = reproduce;
+        if (prefix !== undefined && prefix.steps.length > 0) {
+            chat?.preparing();
+            const expectations = givenSpec.expectations.filter(({ id }) => prefix.steps.some((step) => step.action === 'check' && step.id === id));
+            const started = Date.now();
+            const ended = await Promise.race([
+                playReplay({
+                    replay: prefix,
+                    // Its own handler: the checks of the steps on the way, not Claude's.
+                    handler: createAgentHandler({ session, run: { expectations }, hosts: navigationHosts(config, checked.name), agentDir, onVerdict: () => {} }),
+                    session,
+                    base: checked.url,
+                    authMarker: checked.signIn?.signedInSelector,
+                    stepTimeoutMs,
+                    filesDir: join(root, PROJECT_DIR),
+                    runTag,
+                    log: ({ position, number, owner, label }) => {
+                        ui.step({ number: position, total: prefix.steps.length, label, elapsed: (Date.now() - started) / 1000 });
+                        chat?.progress(`${owner} · ${number} ${label}`);
+                    },
+                }),
+                session.closed.then(() => 'browser-closed'),
+                aborted.then(() => 'aborted'),
+            ]);
+            if (typeof ended === 'string') {
+                writeInterrupted(ended);
+                return { ended };
+            }
+            const failed = failedStep({ ...ended, expectations, failures: session.failures() });
+            await markEntry(prefix, failed);
+            if (failed !== null) {
+                // The state was not reached: nothing to reproduce from, the environment or the test is at fault.
+                writeResult({ status: 'error', code: 'reproduce-state', reason: t('run.reproduce.stateFailed', { id: failed.id, reason: failed.reason }) });
+                return { ended: 'verdict', found: { failed } };
+            }
+            remembered = ended.remembered;
+            chat?.preparing(false);
+        }
+        // What Claude gets: the bug report and the rules of this run, the project's and the person's notes, no plan and no steps
+        // to follow; the steps on the way to the state only as orientation.
+        const onTheWay = prefix === undefined ? [] : givenSpec.steps.filter(({ id }) => prefix.steps.some((step) => step.id === id)).map(({ id, name }) => ({ id, name }));
+        const task = {
+            runId,
+            language: run.language,
+            target,
+            source: checked.source,
+            framework: run.framework,
+            mode: 'reproduce',
+            writes: reproduce.writes,
+            runTag,
+            maxActions,
+            reproduce: {
+                bug: reproduce.bug,
+                writes: reproduce.writes,
+                ...(reproduce.from === undefined ? {} : { from: { ...reproduce.from, reached: onTheWay } }),
+            },
+            ...(run.knownTests === undefined ? {} : { knownTests: run.knownTests }),
+            ...(run.personalContext === undefined ? {} : { personalContext: run.personalContext }),
+            ...(run.context === undefined ? {} : { context: run.context }),
+        };
+        const handler = createAgentHandler({ session, run: task, hosts: navigationHosts(config, checked.name), agentDir, filesDir: join(root, PROJECT_DIR), expand: fillSecrets, onVerdict: () => {} });
+        const budget = withStepBudget(handler, maxActions ?? Number.POSITIVE_INFINITY);
+        // What Claude did in the browser, for the report: the command and its target, never a typed value.
+        const actions = [];
+        const ACTS = new Set(['click', 'dblclick', 'hover', 'dragTo', 'dialog', 'upload', 'fill', 'type', 'press', 'goto', 'reload']);
+        let doneSignal;
+        const done = new Promise((ok) => { doneSignal = ok; });
+        const finishReproduction = (command) => {
+            const result = readReproduction(command.results, { fileExists: (name) => existsSync(join(agentDir, name)) });
+            const writes = (session.writes?.() ?? []).length > 0;
+            const draft = draftTestPlan({ id: reproduce.draftId, role: spec.role, environment: target, writes, steps: result.steps, runId });
+            writeFileSync(join(runDir, 'draft-test.yaml'), draft.text);
+            reportBase.reproduce = { ...reportBase.reproduce, ...result, actions, draft: adoptHint(draft, root, runDir) };
+            // Exit code and terminal follow the verdict: reproduced is a pass, not reproduced or unclear a fail.
+            writeResult({ status: result.reproduced === 'yes' ? 'pass' : 'fail', failures: session.failures?.() ?? [] });
+            doneSignal();
+            return { status: `reproduced ${result.reproduced}`, reproduced: result.reproduced };
+        };
+        const channelHandler = (command) => {
+            const action = command?.action;
+            if (action === 'say') {
+                if (chat !== null) return chat.say(command.text);
+                ui.note(String(command.text ?? ''));
+                return { ok: true };
+            }
+            if (action === 'finish') return finishReproduction(command);
+            // Nobody to ask and nothing to approve or adopt; no change to the test or the code.
+            if (['plan', 'check', 'ask-operator', 'chat', 'advise', 'recording'].includes(action)) {
+                throw new CawError('reproduce-refused', `A reproduction has no plan, no steps to check and no human to ask, and changes no test or code: ${action} is not available. Read the page with snapshot, eval, console and network, operate it, and end with finish.`);
+            }
+            if (ACTS.has(action)) actions.push([action, command.ref ?? command.target ?? command.url ?? command.key ?? ''].filter((part) => part !== '').join(' '));
+            return budget.handler(command);
+        };
+        chat?.advising(true);
+        const stopPump = startPump(channelHandler);
+        const willing = await claudeMayStart(box, { decline: t('run.tokens.cancelRun') });
+        if (!willing) abortSignal();
+        const agent = willing ? startAgent(box, containerCommand ?? ['caw', 'agent', 'sandbox-run', '--run-id', runId, '--timeout', String(timeoutMin), '--reproduce'], CLAUDE_LOG, 'reproduce') : IDLE_AGENT;
+        let ended;
+        try {
+            if (willing) ui.info(t('run.reproduce.working'));
+            ended = await Promise.race([
+                done.then(() => 'verdict'),
+                agent.ended,
+                session.closed.then(() => 'browser-closed'),
+                aborted.then(() => 'aborted'),
+            ]);
+            agent.stopTail();
+            if (verdict === null) {
+                if (ended === 'browser-closed' || ended === 'aborted') writeInterrupted(ended);
+                else {
+                    const log = agent.log();
+                    let reason = t('run.noVerdict');
+                    if (ended.code !== 0) reason = log === '' ? t('run.sandboxNoAgent', { code: ended.code }) : claudeFailureReason(ended.code, log);
+                    writeResult({ status: 'error', code: 'no-verdict', reason });
+                }
+            }
+        } finally {
+            await agent.stop();
+            await stopPump();
+            chat?.advising(false);
+        }
+        if (budget.used() > 0) ui.info(t('run.budget', { used: budget.used(), max: maxActions ?? t('run.budget.unlimited') }));
+        return { ended: typeof ended === 'string' ? ended : 'verdict', found: {} };
+    };
+
+    const { ended, found } = reproduce === undefined ? await claudeWork(sandbox) : await reproduceWork(sandbox);
     return closeRun(ended, found);
 };

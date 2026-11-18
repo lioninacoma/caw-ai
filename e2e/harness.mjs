@@ -27,7 +27,7 @@ export const clearPrefs = () => rmSync(prefsFile, { force: true });
 export const quietTokens = () => setPrefs({ tokenNotice: 'off' });
 quietTokens();
 
-export const { run, record, open, lastDemonstration } = await import('../src/host/commands.mjs');
+export const { run, record, open, reproduce, lastDemonstration } = await import('../src/host/commands.mjs');
 export const { loadTest, parseTest, renderTest, stepHash, writeTest } = await import('../src/host/test-file.mjs');
 export const { setLanguage } = await import('../src/shared/i18n.mjs');
 

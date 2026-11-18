@@ -1229,15 +1229,17 @@ export const openBrowserSession = async (spec) => {
         // Not covered: messages an open WebSocket sends. Reading apps send them too (socket.io pings, a GraphQL subscription's
         // connection_init and subscribe), so blocking them would break reading; production WebSockets stay a documented gap.
         const signInHosts = new Set(withLoopbackPair(hosts));
+        // The same block on a run that must not write elsewhere: caw reproduce on an environment without writable.
+        const blocksWrites = resolved.production === true || resolved.blockWrites === true;
         const refuseWrite = (described, url) => {
-            if (resolved.production !== true) return false;
+            if (!blocksWrites) return false;
             const name = productionWriteName(described, { reads, requestKeys: config.requestKeys ?? [], signingIn, signInHosts });
             if (name === null) return false;
             blockedUrls.add(url);
             failures.push({ type: 'write-blocked', text: t('session.browser.writeBlocked', { name, env: resolved.name }), url });
             return true;
         };
-        if (resolved.production === true) {
+        if (blocksWrites) {
             await raw.route((url) => /^https?:$/.test(url.protocol), async (route) => {
                 const request = route.request();
                 if (!refuseWrite(describedRequest(request), request.url())) {

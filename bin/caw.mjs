@@ -74,7 +74,7 @@ const agentCommand = async (root, [command, ...args]) => {
         case 'advise': return (await sandbox()).advise(option(args, '--file'));
         case 'finish': return (await sandbox()).finish(option(args, '--file'));
         // Plumbing: the agent's process in the container (or locally), the firewall probe and the local agent's MCP server.
-        case 'sandbox-run': return (await sandbox()).sandboxRun({ root, runId: option(args, '--run-id'), timeoutMin: Number(option(args, '--timeout')), mode: args.includes('--develop') ? 'develop' : args.includes('--talk') ? 'talk' : args.includes('--advise') ? 'advise' : 'run' });
+        case 'sandbox-run': return (await sandbox()).sandboxRun({ root, runId: option(args, '--run-id'), timeoutMin: Number(option(args, '--timeout')), mode: args.includes('--reproduce') ? 'reproduce' : args.includes('--develop') ? 'develop' : args.includes('--talk') ? 'talk' : args.includes('--advise') ? 'advise' : 'run' });
         case 'firewall-check': return (await sandbox()).firewallCheck();
         // Tool server for Claude without a container, started by Claude Code itself.
         case 'mcp': {
@@ -169,6 +169,7 @@ const main = async ([command, ...args]) => {
         case 'run': return (await host()).run(root, args);
         case 'record': return (await host()).record(root, args);
         case 'open': return (await host()).open(root, args);
+        case 'reproduce': return (await host()).reproduce(root, args);
         // Tools for the developer's Claude Code session, registered in .mcp.json. Not in the human help.
         case 'mcp': {
             const [{ serveMcp }, { sessionMcpHandler }] = await Promise.all([import('../src/sandbox/mcp.mjs'), import('../src/host/session-mcp.mjs')]);

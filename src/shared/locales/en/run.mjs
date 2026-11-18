@@ -233,6 +233,15 @@ export default {
 
     // Advice
     'run.advice.fileChanged': '{file} has changed; the spot is no longer unique.',
+    'run.mode.reproduce': 'Reproducing a bug',
+    'run.title.reproduce': 'Claude reproduces a bug',
+    'run.reproduce.working': 'Claude reproduces the bug, without a plan and without asking.',
+    'run.reproduce.stateFailed': 'The starting state could not be reached: {id} failed ({reason}).',
+    'run.reproduce.draftNotes': 'Draft from caw reproduce (run {run}): steps as Claude reproduced the bug. Review before recording.',
+    'run.reproduce.card.yes': 'Bug reproduced',
+    'run.reproduce.card.no': 'Bug not reproduced',
+    'run.reproduce.card.unclear': 'Unclear whether the bug occurs',
+    'run.reproduce.card.none': 'No result',
     'run.advice.contextProject': '{path} (project, shared with the team through git)',
     'run.advice.contextPersonal': '{path} (personal, applies in every project of yours)',
     'run.advice.personalIntro': 'Your personal notes for Claude in every project: habits and preferences. The caw/caw.md of a project comes first.',
@@ -361,6 +370,7 @@ export default {
     'run.button.rerecordStep': 'Re-record {id}',
     'run.flow.stillStale': 'plan changed',
     'run.mcp.roleList': '{count} role(s).',
+    'run.mcp.bugText': 'bug: the bug report as text, at most {max} characters.',
     'run.mcp.roleName': 'name: lowercase letters, digits and hyphens, starting with a letter.',
     'run.mcp.roleRemoved': 'Role {role} removed.',
     'run.mcp.roleAdded': 'Role {role} is in the config. The human puts the values into caw/.env by hand: {names}. Never ask for the values.',

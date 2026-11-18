@@ -219,3 +219,54 @@ const REQUEST_ERROR = /\b(AxiosError|HttpErrorResponse|Http failure response|Req
  */
 export const isCaughtScriptError = (failure) => failure?.type === 'console' && typeof failure.at === 'string' && failure.at !== ''
     && !/(^|\/)node_modules\//.test(failure.at) && !REQUEST_ERROR.test(String(failure.text ?? '').split('\n')[0]);
+
+/**
+ * The report of caw reproduce: the verdict first, then the bug report, what Claude did and saw, the evidence of the browser
+ * (hard errors, warnings, write requests), the cause hint and the draft test plan to adopt.
+ */
+export const renderReproduceReport = ({ status, code, reason, target, testedCode, failures = [], warnings = [], writes = [], thirdParty = [], personalContext, reproduce = {} }) => {
+    const { bug, reproduced, observed, expected, steps = [], cause, screenshots = [], actions = [], from, writable, draft } = reproduce;
+    const lines = [t('config.report.reproduce.title', { target: String(target), verdict: t(`config.report.reproduce.verdict.${reproduced ?? 'none'}`) }), ''];
+    lines.push(t('config.report.source', { source: String(testedCode) }));
+    if (from !== undefined) lines.push(t('config.report.reproduce.from', { from: from.step === undefined ? from.test : `${from.test}@${from.step}` }));
+    lines.push(t(writable ? 'config.report.reproduce.writable' : 'config.report.reproduce.readOnly'));
+    if (personalContext !== undefined) lines.push(t('config.report.personalContext', { path: String(personalContext.path), lines: String(personalContext.lines) }));
+    if (status === 'error') lines.push('', t('config.report.reason', { reason: String(reason ?? code ?? '') }));
+    if (bug !== undefined) lines.push('', `## ${t('config.report.reproduce.bug')}`, '', ...bug.split('\n').map((line) => `> ${line}`));
+    if (observed !== undefined) {
+        lines.push('', `## ${t('config.report.reproduce.result')}`, '', `- ${t('config.report.reproduce.observed')}: ${cell(observed)}`, `- ${t('config.report.reproduce.expected')}: ${cell(expected)}`);
+        if (cause !== undefined) lines.push(`- ${t('config.report.reproduce.cause')}: ${cell(cause)}`);
+    }
+    if (steps.length > 0) {
+        lines.push('', `## ${t('config.report.reproduce.steps')}`, '');
+        steps.forEach((step, index) => lines.push(`${index + 1}. ${cell(step.do)} → ${cell(step.expect)}`));
+    }
+    if (actions.length > 0) {
+        lines.push('', `## ${t('config.report.reproduce.actions')}`, '');
+        for (const action of actions) lines.push(`- ${cell(action)}`);
+    }
+    if (screenshots.length > 0) {
+        lines.push('', `## ${t('config.report.reproduce.screenshots')}`, '');
+        for (const name of screenshots) lines.push(`- [${name}](agent/${name})`);
+    }
+    if (failures.length > 0) {
+        lines.push('', `## ${t('config.report.failures')}`, '');
+        for (const failure of failures) lines.push(`- ${failure.type}: ${failure.text}${failure.url ? ` (${failure.url})` : ''}`);
+    }
+    if (warnings.length > 0) {
+        lines.push('', `## ${t('config.report.warnings')}`, '');
+        for (const { type, text, origin, url, count } of warnings) lines.push(`- ${warningLabel(type)}: ${text}${origin || url ? ` (${origin ?? url})` : ''}${count > 1 ? ` (${count}x)` : ''}`);
+    }
+    if (writes.length > 0) {
+        lines.push('', `## ${t('config.report.writes')}`, '', t('config.report.writes.intro'), '');
+        for (const { label, count } of writes) lines.push(`- ${label} (${count}x)`);
+    }
+    if (thirdParty.length > 0) {
+        lines.push('', `## ${t('config.report.thirdParty')}`, '');
+        for (const { host, requests } of thirdParty) lines.push(`- ${cell(host)} (${requests})`);
+    }
+    if (draft !== undefined) {
+        lines.push('', `## ${t('config.report.reproduce.draft')}`, '', t('config.report.reproduce.adopt', { from: draft.from, to: draft.to, record: draft.record }));
+    }
+    return `${lines.join('\n')}\n`;
+};

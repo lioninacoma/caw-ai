@@ -115,6 +115,8 @@ export const environmentCandidates = (config, { command, specs = [], writes = tr
     const all = effectiveEnvironments(config);
     const claude = (name) => all[name]?.claude === true;
     if (command === 'open' && specs.length === 0) return Object.keys(all).filter(claude);
+    // caw reproduce: Claude works alone, so only on environments with claude, never production (chooseEnvironment drops it).
+    if (command === 'reproduce') return (specs.length === 0 ? Object.keys(all) : [...new Set(specs.flatMap((spec) => testEnvironments(config, spec)))]).filter(claude);
     if (command === 'record' && specs.length === 0) return Object.keys(all).filter((name) => claude(name) && (!writes || all[name].writable));
     const union = [...new Set(specs.flatMap((spec) => testEnvironments(config, spec)))];
     if (command === 'record') return union.filter((name) => claude(name) && (specs[0]?.writes !== true || all[name]?.writable === true));

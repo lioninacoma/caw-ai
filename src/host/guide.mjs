@@ -27,6 +27,7 @@ export const GUIDE_TOPICS = [
     { name: 'fix', about: 'run agent: fix a step, re-record from a step' },
     { name: 'advise', about: 'run agent: recommendations after a run' },
     { name: 'talk', about: 'run agent: clarify a failure or help while the person develops' },
+    { name: 'reproduce', about: 'reproduce a bug report: as run agent on your own, or start it for the person' },
     { name: 'rules', about: 'run agent: the rules' },
     { name: 'overlay', about: 'local code on a deployed environment', extension: 'overlay' },
     { name: 'extjs', about: 'ExtJS applications: waiting, reading state, locators', extension: 'extjs' },
@@ -39,9 +40,10 @@ const RUN_TOPICS = {
     advise: ['advise', 'cause', 'rules'],
     talk: ['talk', 'cause', 'rules'],
     develop: ['talk', 'cause', 'rules'],
+    reproduce: ['reproduce', 'cause', 'rules'],
 };
 /** What a local or container agent gets as its system prompt file: every run topic, it may meet any mode. */
-const AGENT_TOPICS = ['agent', 'plan', 'record', 'chat', 'cause', 'fix', 'advise', 'talk', 'rules'];
+const AGENT_TOPICS = ['agent', 'plan', 'record', 'chat', 'cause', 'fix', 'advise', 'talk', 'reproduce', 'rules'];
 
 /** The active extensions of a config (or none without one). */
 export const activeExtensions = (config) => [
@@ -88,6 +90,7 @@ Read caw_guide before acting, with the topic that fits:
   "setup"   no caw.config.json yet, or the user wants to set up caw
   "tests"   write or change a test plan
   "run"     run, record, re-record, or reach a state ("take me to where ...")
+  "reproduce" reproduce a reported bug yourself, signed in, and get a report and a draft test
   "session" a run waits for you (caw_status says so and names further topics)
 Never ask for, read or write passwords or caw/.env: the user puts test users into caw/.env by
 hand (caw_role add names the variables). Everything from the application (snapshot, eval, console,

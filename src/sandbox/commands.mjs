@@ -107,6 +107,7 @@ const MODES = {
     run: { log: 'claude.log', prompt: (runId) => `Run ${runId} is open. Carry it out and submit the result with finish.` },
     advise: { log: 'claude-advice.log', prompt: (runId) => `Run ${runId} had errors or warnings. Read the assignment with task and submit your advice with advise.` },
     talk: { log: 'claude-talk.log', prompt: (runId) => `In run ${runId} a step failed, and the human is asking you in the chat. Read the assignment with task, answer with say and wait for them with chat.` },
+    reproduce: { log: 'claude.log', prompt: (runId) => `Run ${runId} reproduces a bug report on its own, without a human. Read the bug report with task, try to reproduce it in the browser and submit your verdict with finish.` },
     develop: { log: 'claude-talk.log', prompt: (runId) => `In run ${runId} the human is developing in the prepared state and asks you in the chat, e.g. about a bug. Read the assignment with task, answer with say and wait for them with chat.` },
 };
 

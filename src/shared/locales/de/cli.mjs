@@ -73,6 +73,18 @@ Befehle:`,
       [--agent local|docker|session] [--claude-timeout <dauer>] [--max-actions <n>]
       [--start] [--reset]                wie bei run (--reset nur, wenn angegeben)
       [--overlay[=<teile>]]              wie bei run`,
+    'cli.help.reproduce': `  reproduce "<fehlerbericht>" [--env <name>]  Claude stellt einen Fehler allein nach, angemeldet mit einer
+                                         Testrolle: kein Plan zum Freigeben, keine Entscheidungen. Schreibt einen
+                                         Bericht und den Entwurf eines Testplans in den Laufordner, nie nach caw/tests.
+                                         Nur wo Claude arbeiten darf{here}, nie auf Produktion; nur lesend, außer die
+                                         Umgebung ist writable; keine Code-Änderungen. Exit 0 nachgestellt, 1 nicht
+                                         nachgestellt oder unklar
+      [--file <datei>] | -               Den Fehlerbericht aus einer Datei oder von stdin
+      [--from <test>[@<S4>]]             In einem Zustand eines Tests anfangen: dessen Schritte bis zum Einstieg in
+                                         S4, ohne Claude
+      [--role <rolle>]                   Ohne --from; unnötig, wenn die Config nur eine hat
+      [--headless]                       Ohne Fenster
+      [--agent local|docker|session]`,
     'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
                                          aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne Claude (CI, Pre-Commit)',
@@ -140,6 +152,21 @@ Browser:
     'cli.synopsis.init': 'caw init [--url <adresse>] [--env <name>] [--language <kürzel>] [--explore-only] [--login | --no-login] [--yes] [--from <datei>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <ordner>]',
     'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
+    'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--headless] [--agent local|docker|session]',
+    'cli.reproduceOneSource': 'Den Fehlerbericht entweder als Argument, mit --file oder mit - von stdin, nicht mehrfach.',
+    'cli.reproduceBugMissing': 'Welchen Fehler? caw reproduce "Nach dem Speichern zeigt die Liste den Eintrag nicht" (oder --file <datei>, oder - für stdin).',
+    'cli.reproduceBugLong': 'Der Fehlerbericht ist länger als {max} Zeichen. Kürze ihn auf das, was passiert und was du erwartest.',
+    'cli.reproduceBugControl': 'Der Fehlerbericht enthält Steuerzeichen.',
+    'cli.reproduceFileMissing': '{file} gibt es nicht oder ist keine Datei.',
+    'cli.reproduceNotAllowed': 'caw reproduce läuft nur auf Umgebungen, auf denen Claude arbeiten darf (claude: true), nie auf Produktion. {target} ist keine solche. Erlaubt: {environments}',
+    'cli.reproduceRoles': 'Mehrere Rollen in der Config: --role <rolle> wählt eine ({roles}), oder --from <test> nimmt die Rolle des Tests.',
+    'cli.reproduceStart': 'Fehler nachstellen auf {env} als {role} ({writes}).',
+    'cli.reproduceWrites': 'Schreiben erlaubt',
+    'cli.reproduceReadOnly': 'nur lesend: caw bricht jeden schreibenden Request ab',
+    'cli.reproduceVerdict.yes': 'Nachgestellt.',
+    'cli.reproduceVerdict.no': 'Nicht nachgestellt.',
+    'cli.reproduceVerdict.unclear': 'Unklar, ob der Fehler auftritt.',
+    'cli.reproduceDraft': 'Entwurf eines Tests: {from}. Übernehmen: nach {to} kopieren, prüfen, dann {record}',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session] [--env <name>]',
     'cli.synopsis.role': 'caw role [list [--json] | add <rolle> | remove <rolle> | login <rolle> --env <name>]',
@@ -263,6 +290,7 @@ Browser:
     'cli.validateNowhere': '{id} läuft nirgends: Keine Umgebung passt (ein schreibender Test braucht eine beschreibbare Umgebung)',
     'cli.noEnvironment': 'keiner Umgebung',
     'cli.verbRecord': 'Aufgenommen wird',
+    'cli.verbReproduce': 'Nachgestellt wird',
     'cli.agentOnly': '{verb} braucht environments.{environment}.claude: true (zurzeit nur: {environments}).',
     'cli.agentNotInCi': '--agent {agent} geht nicht in CI (Variable CI gesetzt), dort läuft Claude nur in Docker.',
     'cli.sessionAgent': 'Claude arbeitet in deiner Claude-Code-Session: Sage ihr „übernimm den caw-Lauf“. Sie findet ihn über das Tool caw (caw mcp) oder caw <befehl>.',

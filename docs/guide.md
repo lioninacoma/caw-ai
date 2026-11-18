@@ -49,7 +49,7 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written. Commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), the environment flags (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` and `agent.mode` are refused: the session edits those in the file, where Claude Code shows you the diff | no |
 | `caw_role` | `list` roles and whether a test user is set; `add` puts a role into the config and names its variables, you fill `caw/.env` yourself; `login` saves a session (SSO); `remove` | no |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
-| `caw_start` | starts `run`, `record` or `open` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset` (or `args`) | none beyond your session |
+| `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role` (or `args`) | none beyond your session |
 | `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |
 | `caw_selection` | the element you picked with the crosshair in the workbench while developing | no |
@@ -302,6 +302,24 @@ Only the fixed steps change in the file; comments and all other steps stay ident
 - **Without Claude:** If Claude Code (`local`) or Docker or token (`docker`) is missing, the chat names the reason and the run stays `fail`.
 - **Discard draft:** The test plan stays unchanged, after a confirmation ("Really discard?"). A previously failed `run` ends with `fail`.
 - **Insert, delete, reorder:** With `record <test>@S4` Claude may change the plan from S4 on, because later steps may build on earlier ones. A step you add by hand gets its recording the same way: `record <test>@<its id>`.
+
+## Reproducing a bug: `reproduce`
+
+`caw reproduce "<bug report>"` gives Claude a bug report and a signed-in browser, nothing else to do: no plan to approve, no
+questions, no decisions (see [commands](commands.md#reproduce)). With `--from <test>@S3` the steps of a test first lead to the
+state where the bug shows. Claude reads the report, walks it, judges by evidence (screenshot, console, network) and ends with
+`yes`, `no` or `unclear`, the steps it took in plain language and, if it read the source, a hint at the cause with file and line.
+
+What Claude may and may not do here:
+
+- Only on environments with `claude`, never on production; the browser reaches only the project's hosts.
+- Write only where the environment is `writable`; elsewhere every write request is aborted and named in the report.
+- No plan, no `check`, no question to you, no advice and no code change: these commands are refused.
+- Nothing goes into the project: the report and `draft-test.yaml` stay in the run folder. The draft's expectations describe the
+  correct behaviour, so the recorded test fails as long as the bug is there and passes once it is fixed.
+
+From your Claude Code session, ask for it ("reproduce this bug: …"): the session starts `caw_start` with `command: "reproduce"`,
+is the agent itself at no extra tokens, and gets the verdict, the report and the draft from `caw_status`.
 
 ## Assessment: test, application or environment
 

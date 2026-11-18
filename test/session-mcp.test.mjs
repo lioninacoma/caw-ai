@@ -533,3 +533,22 @@ test('caw_status wait: returns on a new caw-ai message, not on replay steps; at 
     await call('caw_status');
     assert.ok(Date.now() - instant < 500, 'without wait it answers at once');
 });
+
+test('caw_start reproduce: the bug report goes into a file, the session is the agent; caw_status names verdict, report and draft', async (t) => {
+    const root = project(t);
+    const { call, spawned } = session(root);
+    const started = await call('caw_start', { command: 'reproduce', bug: '--Nach dem Speichern\r\nfehlt der Eintrag.', from: 'bestellung@S2' });
+    assert.equal(started.isError, false);
+    assert.deepEqual(spawned[0].args.slice(1), ['reproduce', '--file', '.caw/reproduce-bug.md', '--from', 'bestellung@S2', '--agent', 'session']);
+    assert.equal(readFileSync(join(root, '.caw', 'reproduce-bug.md'), 'utf8'), '--Nach dem Speichern\nfehlt der Eintrag.');
+
+    const runDir = join(root, '.caw', 'runs', '2026-11-18T12-00-00-000Z-reproduce');
+    mkdirSync(runDir, { recursive: true });
+    const draft = { from: '.caw/runs/2026-11-18T12-00-00-000Z-reproduce/draft-test.yaml', to: 'caw/tests/bug-x.yaml', record: 'caw record bug-x' };
+    writeFileSync(join(runDir, 'result.json'), JSON.stringify({ status: 'pass', reproduce: { bug: 'x', reproduced: 'yes', observed: 'o', expected: 'e', draft } }));
+    for (const name of ['report.md', 'draft-test.yaml']) writeFileSync(join(runDir, name), '');
+    writeFileSync(join(root, '.caw', 'last-run.json'), JSON.stringify({ runId: '2026-11-18T12-00-00-000Z-reproduce', runDir, pid: 1, command: 'reproduce', test: 'reproduce', target: 'local', startedAt: new Date().toISOString() }));
+    const data = (await call('caw_status')).structuredContent;
+    assert.deepEqual(data.reproduce, { reproduced: 'yes', observed: 'o', expected: 'e', report: '.caw/runs/2026-11-18T12-00-00-000Z-reproduce/report.md', draft: draft.from, adopt: { copyTo: draft.to, then: draft.record } });
+    assert.ok(data.artefacts.includes('.caw/runs/2026-11-18T12-00-00-000Z-reproduce/draft-test.yaml'));
+});

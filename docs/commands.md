@@ -16,6 +16,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
 | [`open`](#open) | Open the app signed in, with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
+| [`reproduce`](#reproduce) | Claude reproduces a bug report on its own: report and draft test plan | yes |
 | [`role`](#role) | List, add or remove roles and their test users; `role login` stores a session (SSO) | no |
 | [`export`](#export) | The recorded test as a Playwright test that runs without caw | no |
 | [`theme`](#theme) | List, pick or check workbench themes | no |
@@ -213,6 +214,39 @@ After the handover, **F1** in the workbench opens "Open…": any test for this e
 
 If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
 
+## reproduce
+
+```bash
+npx caw reproduce "After saving, the list still shows the old title." --env local
+npx caw reproduce --file bug.md --from create-ticket@S3 --env local --headless
+some-command-that-prints-the-ticket | npx caw reproduce - --env local
+```
+
+Claude reproduces a bug on its own, signed in as a test role: no plan to approve, nobody to answer, no decision. It reads and
+operates the page like a person would and ends with a verdict: reproduced, not reproduced, or unclear. The run folder then holds
+`report.md` (verdict, the bug report, what Claude observed and expected, its steps, the browser actions, screenshots, hard errors,
+blocked or notable requests, a hint at the cause) and `draft-test.yaml`, a test plan in caw's format made from Claude's steps.
+Nothing goes into `caw/tests`: to keep the bug as a regression test, copy the draft there, review it and `caw record <id>`.
+
+- **Where:** only on environments with `claude`, never on production (`reproduce-not-allowed`). Without `--env` the only such
+  environment, or the test's with `--from`.
+- **Writing:** only where the environment is `writable`. Elsewhere caw aborts every write request like on production, and
+  Claude knows it may only read.
+- **Never:** code changes, advice, changes to tests or the config. The browser reaches only the project's hosts (as whenever Claude
+  is attached).
+- **The role:** the test's with `--from`, otherwise `--role` or the only one. A missing test user stops with `credentials-missing`.
+
+| Option | |
+|---|---|
+| `"<bug report>"`, `--file <file>`, `-` | The bug report: as the argument, from a file, or from stdin. Exactly one, at most 8000 characters. |
+| `--from <test>[@<S4>]` | Start in a test's state: its steps (up to the entry of S4) replay without Claude first. |
+| `--role <role>` | Without `--from`; not needed if the config has only one. |
+| `--headless` | No window. With a window the workbench shows what Claude does; you can only watch or end it (Esc). |
+| `--agent local\|docker\|session` | As for `record`. From your own Claude Code session (`caw_start` with `command: "reproduce"`) at no extra tokens. |
+
+Exit codes: `0` reproduced, `1` not reproduced or unclear, `2` environment error (also when the starting state of `--from` was
+not reached: `reproduce-state`), `3` invalid input.
+
 ## role
 
 ```bash
@@ -273,7 +307,7 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_validate` | `validate` as data | no |
 | `caw_list` | `list` as data | no |
 | `caw_overlay` | Only with an `overlay` block: `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `env`, `part` | no |
-| `caw_start` | Start `run`, `record` or `open` with `--agent session` (`test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
+| `caw_start` | Start `run`, `record`, `open` or `reproduce` with `--agent session` (`reproduce`: `bug`, `from`, `role`, `env`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
 | `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with the crosshair in the workbench | no |
@@ -316,6 +350,8 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | Code | Exit | Fix |
 |---|---|---|
 | `usage`, `unknown-command` | 3 | `npx caw <command> --help` |
+| `reproduce-not-allowed` | 3 | `reproduce` only on an environment with `claude`, never production |
+| `reproduce-state` | 2 | The starting state of `--from` was not reached: `run` the test and fix it first |
 | `config-missing` | 3 | `npx caw init --url <address>` |
 | `config-invalid` | 3 | Fix the field named in the message or fill in the `TODO` values, then `doctor` |
 | `test-missing`, `test-invalid` | 3 | Create or fix the test file, then `validate` |
