@@ -308,7 +308,20 @@ Schlichtes Markdown, wie eine `CLAUDE.md` für deine Tests. Schreib auf, was Cla
 
 Eine Änderung macht nie eine Aufnahme ungültig. Keine personenbezogenen Daten.
 
+### Deine eigene caw.md
+
+Neben `prefs.json` (siehe unten) hält eine `caw.md` deine persönlichen Notizen für Claude, gleich in jedem Projekt: wie du Befunde
+berichtet haben willst, worauf immer geschaut werden soll, Begriffe, die du verwendest. Claude liest sie in jedem Lauf, in dem es
+arbeitet (Aufnahme, Chat, `--explain`, Entwickeln, `reproduce`, deine eigene Session als Agent; in Docker als Text in der Aufgabe),
+vor der `caw/caw.md` des Projekts, die bei Widersprüchen gilt. Sie kommt nie in einen Test, eine Aufzeichnung oder ins Projekt. Der
+Bericht vermerkt, dass sie gelesen wurde (Pfad und Zeilenzahl, nicht der Inhalt), und `caw doctor` zeigt, ob es eine gibt.
+
+Beide Dateien können aus einem Lauf wachsen: Claudes Empfehlung kann eine Zeile für eine der beiden vorschlagen. Die Karte nennt
+die Datei (Projekt, über git geteilt, oder persönlich, mit Pfad), und erst dein Klick auf „Übernehmen“ schreibt sie. Sonst wird so
+nie etwas außerhalb des Projekts geschrieben.
+
 ## Persönliche Einstellungen
 
 Werkbank-Einstellungen (Theme, Animationen, eingeklappte Bereiche, der Token-Hinweis) und deine Sprache liegen je Nutzer in
 `prefs.json` unter `CAW_AI_HOME`, standardmäßig `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. Nicht im Projekt.
+Deine eigene `caw.md` (siehe oben) liegt im selben Ordner.

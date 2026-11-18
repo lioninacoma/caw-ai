@@ -202,6 +202,7 @@ export default {
     'config.report.diagnosis.noBaseline': 'No comparison with the recording for this step yet. It is created only on request: with `run --learn` or "Save baselines" on the end card of a passed run.',
     'config.report.title': '# {testId} on {target}: {status}',
     'config.report.source': 'Tested version: {source}',
+    'config.report.personalContext': 'Claude had your personal notes: {path} ({lines} lines).',
     'config.report.overlay': 'Overlay: {label}; {local} file(s) local, {server} script(s)/stylesheet(s) from the server; page swapped: {swapped}',
     'config.report.overlay.yes': 'yes',
     'config.report.overlay.no': 'no',

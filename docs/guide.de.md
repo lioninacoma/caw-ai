@@ -24,7 +24,7 @@ In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die A
 
 In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.mode` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
 
-**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme mit hellem oder dunklem Modus (F7, siehe [Themes](../themes/README.de.md)).
+**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme mit hellem oder dunklem Modus (F7, siehe [Themes](../themes/README.de.md)). Im selben Ordner hält deine eigene `caw.md` Notizen für Claude in jedem Projekt, gelesen vor der `caw/caw.md` des Projekts ([Konfiguration](configuration.de.md#deine-eigene-cawmd)).
 
 **Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--explain`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--agent session` gibt es den Hinweis nicht: Deine Session läuft ohnehin.
 

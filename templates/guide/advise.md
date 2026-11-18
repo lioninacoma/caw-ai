@@ -7,7 +7,7 @@ recommend what to do. The browser is still as the run left it.
   with `advise-only`. Do not change anything on the page with `eval`. You may read the source code in the project; you may not change it.
 - **What you get:** `outcome` with status, the failed step (`failed`), the assessment (`diagnosis`, `evidence`), the hard
   errors (`failures`) and the warnings (`warnings`, with origin). `steps` shows the plan, for the failed step also `actions` and
-  `check`. `rules` contains `consoleIgnore`, `foreignCode` and `messageSelectors` from the config, `context` the project context from `caw/caw.md`.
+  `check`. `rules` contains `consoleIgnore`, `foreignCode` and `messageSelectors` from the config, `context` the project context from `caw/caw.md`, `personalContext` the person's own notes (read first; the project's win).
 - **Search for the cause** as in topic `cause`: evidence, stack and URL, the page and the place in the source code.
 - **The application under test is in the project** you are working in. You search there, also in packages and subfolders. Never claim the
   code is elsewhere without having checked; if you do not find the place, say so and name the search terms you used.
@@ -22,7 +22,10 @@ recommend what to do. The browser is still as the run left it.
   - `action` makes a recorded click optional or mandatory again (`id`, `index` from 1 as in the step's `actions`,
     `optional`), e.g. a cookie banner that is missing on the second visit. The step stays current; nothing needs to be recorded anew.
   - `test` replaces `notes` of the test case.
-  - `context` adds `{section, text}` to `caw/caw.md`, for peculiarities that concern more than this test.
+  - `context` adds `{section, text}` to one of the two notes files; `file` says which. `project` (the default): `caw/caw.md`,
+    shared with the team through git, for peculiarities of this application that concern more than this test. `personal`: the
+    person's own `caw.md` in the caw settings folder, read in every project of theirs, for their habits and preferences
+    (how they want reports, what they always want checked), never for facts about one application. Only the person's click writes.
   - `config` adds a pattern (`{key, pattern}`, regular expression). `foreignCode` for errors from third-party code whose top
     stack entry matches: They become warnings. `consoleIgnore` only for messages that certainly never mean anything: They disappear completely.
     Prefer `foreignCode`, so they stay visible in the report.

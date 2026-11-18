@@ -233,6 +233,9 @@ export default {
 
     // Advice
     'run.advice.fileChanged': '{file} hat sich geändert, die Stelle ist nicht mehr eindeutig.',
+    'run.advice.contextProject': '{path} (Projekt, über git mit dem Team geteilt)',
+    'run.advice.contextPersonal': '{path} (persönlich, gilt in jedem deiner Projekte)',
+    'run.advice.personalIntro': 'Deine persönlichen Notizen für Claude in jedem Projekt: Gewohnheiten und Vorlieben. caw/caw.md eines Projekts geht vor.',
     'run.advice.contextIntro': 'Projektkontext für die Tests: Eigenheiten der Anwendungen und was jeder Lauf wissen muss.',
     'run.advice.label.name': 'Titel',
     'run.advice.label.do': 'Aktion',

@@ -305,7 +305,19 @@ Plain Markdown, like a `CLAUDE.md` for your tests. Write down things Claude can'
 
 Changing it never invalidates a recording. No personal data.
 
+### Your own caw.md
+
+Next to `prefs.json` (see below) a `caw.md` holds your personal notes for Claude, the same in every project: how you want
+findings reported, what you always want looked at, words you use. Claude reads it in every run where it works (recording, the
+chat, `--explain`, developing, `reproduce`, your own session as the agent; in Docker as text in the task) before the project's
+`caw/caw.md`, which wins where the two disagree. It never goes into a test, a recording or the project. The report notes that it
+was read (path and number of lines, not its content), and `caw doctor` shows whether there is one.
+
+Both files can grow from a run: Claude's advice may propose a line for either. The card names the file (project, shared
+through git, or personal, with its path), and only your click on "Accept" writes it. Nothing else outside the project is ever written that way.
+
 ## Personal settings
 
 Workbench choices (theme, animations, collapsed panels, the token notice) and your language are stored per user in
 `prefs.json` under `CAW_AI_HOME`, default `%APPDATA%\caw-ai` or `~/.config/caw-ai`. Not in the project.
+Your own `caw.md` (see above) lies in the same folder.

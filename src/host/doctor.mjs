@@ -10,6 +10,7 @@ import { effectiveEnvironments, usesCredentials, usesTotp } from '../shared/envi
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, ENV_FILE, RECORDING_DIR, RUN_DIR } from '../shared/names.mjs';
+import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
 import { ago } from './code-source.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { parseEnvFile } from './linux.mjs';
@@ -107,6 +108,12 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
             ? { ok: true, optional: true, text: t('cli.doctorTokenOk', { name: 'ANTHROPIC_API_KEY' }) }
             : { ok: false, optional: true, text: t('cli.doctorTokenMissing'), next: t('cli.doctorTokenNext') });
     }
+
+    // Personal notes for Claude across projects: only information, never blocking.
+    const personal = readPersonalContext(env);
+    add(personal === undefined
+        ? { ok: true, optional: true, text: t('cli.doctorPersonalNone', { path: shownPath(personalContextPath(env)) }) }
+        : { ok: true, optional: true, text: t('cli.doctorPersonalOk', { path: personal.shown, lines: personal.lines }) });
 
     // Loose comparison: "/.caw", ".caw/" and "**/.caw/" mean the same; comments and negations do not count.
     const normalize = (line) => line.trim().replace(/^(\*\*\/|\/)/, '').replace(/\/(\*\*?)?$/, '');

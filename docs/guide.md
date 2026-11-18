@@ -24,7 +24,7 @@ In all three cases the browser is the actual boundary: Claude sees the applicati
 
 In CI (`CI` set) `run` runs without chat and without Claude; `agent.mode` only applies there if a run does need Claude, and then always as `docker`.
 
-**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: the raven stops blinking, no spinner, no blinking cursor), collapsed steps or chat, and the theme with its dark or light mode (F7, see [Themes](../themes/README.md)).
+**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: the raven stops blinking, no spinner, no blinking cursor), collapsed steps or chat, and the theme with its dark or light mode (F7, see [Themes](../themes/README.md)). In the same folder your own `caw.md` holds notes for Claude in every project, read before the project's `caw/caw.md` ([Configuration](configuration.md#your-own-cawmd)).
 
 **Token notice:** Before Claude works (record, fix a step, investigate a failure, questions in the chat, `--explain`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix a step). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--agent session` there is no notice: your session is already running.
 

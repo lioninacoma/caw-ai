@@ -164,7 +164,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -172,6 +172,8 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         t('config.report.source', { source: String(testedCode) }),
         ...(overlay === undefined ? [] : [t('config.report.overlay', { label: String(overlay.label), local: String(overlay.local), server: String(overlay.server), swapped: t(overlay.swapped ? 'config.report.overlay.yes' : 'config.report.overlay.no') })]),
     ];
+    // Claude also had the human's personal notes: where they are, never what they say.
+    if (personalContext !== undefined) lines.push(t('config.report.personalContext', { path: String(personalContext.path), lines: String(personalContext.lines) }));
     if (reason !== undefined) lines.push('', t('config.report.reason', { reason: String(reason) }));
     if (note !== undefined) lines.push('', t('config.report.note', { note: String(note) }));
     if (results.length > 0) {

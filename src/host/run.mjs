@@ -15,6 +15,7 @@ import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHos
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { inLanguage, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
+import { readPersonalContext } from '../shared/personal-context.mjs';
 import { renderReport } from '../shared/report.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
@@ -537,6 +538,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     }
     const others = knownTests(root, spec.id);
     const context = readContext(root);
+    // The human's own notes across projects (caw.md in the settings folder): read before the project's, which wins.
+    const personal = readPersonalContext();
     const run = {
         runId,
         // Team language: Claude talks to the human and writes steps and expectations in it.
@@ -551,6 +554,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         runTag,
         maxActions,
         ...(others.length === 0 ? {} : { knownTests: others }),
+        ...(personal === undefined ? {} : { personalContext: personal.text }),
         ...(context === undefined ? {} : { context }),
         ...(creating ? { create: { role: spec.role ?? null } } : {}),
         ...(!creating || previous === undefined ? {} : {
@@ -625,6 +629,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
     /** Starts the agent for this run, locally or in the container. Its log is echoed in the chat as plain text; the file belongs to the agent. */
     const startAgent = (box, agentCommand, logName, mode = 'run') => {
+        // Claude works: the report says the personal notes were part of the task (where they are, not what they say).
+        if (personal !== undefined) reportBase.personalContext = { path: personal.shown, lines: personal.lines, ...(personal.truncated ? { truncated: true } : {}) };
         const log = () => readAgentLog(join(agentDir, logName));
         // What Claude does also shows in the step list: when recording under the running step, otherwise in its own group.
         const bench = session?.workbench ?? null;
@@ -730,7 +736,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                     for (const file of applyEdits(root, item.edits)) if (!result.files.includes(file)) result.files.push(file);
                 } else if (decision === 'adopted' && changesFiles(item)) {
                     const file = applyToFiles(root, item.change);
-                    if (!result.files.includes(file)) result.files.push(file);
+                    // The personal notes are no file of the project: the project's list of changed files leaves them out.
+                    if (item.change.file !== 'personal' && !result.files.includes(file)) result.files.push(file);
                     // Applies at once, also to the next verification run of this command: it does not reread the config.
                     if (item.change.kind === 'config') config[item.change.key] = configValue(config, item.change);
                 } else if (decision === 'adopted') {
@@ -804,6 +811,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             })),
             rules: { consoleIgnore: config.consoleIgnore ?? [], foreignCode: config.foreignCode ?? [], messageSelectors: session?.messageSelectors ?? config.messageSelectors ?? [] },
             ...(session?.framework?.hints === undefined ? {} : { framework: { name: session.framework.name, hints: session.framework.hints } }),
+            ...(personal === undefined ? {} : { personalContext: personal.text }),
             ...(context === undefined ? {} : { context }),
             ...(config.lintCommand === undefined ? {} : { lintCommand: config.lintCommand }),
         };

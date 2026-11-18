@@ -7,8 +7,10 @@ Talk to the person in the team language (`language` in `task`) and write plans, 
 
 1. **Read the task:** `task` shows `notes`, `steps` and whether the run may write (`writes`). With `create` topic `record`
    applies in addition, with `repair` topic `fix`. With `mode: advise` only topic `advise` applies, with `mode: talk` and
-   `mode: develop` only topic `talk`, and the rest of this flow is dropped. `context` holds the project notes from `caw/caw.md`:
-   they apply to all tests; follow them, and name a new peculiarity in the `note` (the person maintains the file). `knownTests`
+   `mode: develop` only topic `talk`, and the rest of this flow is dropped. `personalContext` holds the person's own notes
+   (their `caw.md` in the caw settings folder, the same in every project): their habits and preferences; read them first.
+   `context` holds the project notes from `caw/caw.md`: they apply to all tests of this project and win where the two
+   disagree; follow them, and name a new peculiarity in the `note` (the person maintains the files). Neither goes into a test. `knownTests`
    names what the project already knows: read the matching files, including their recording, and the source code when you
    lack a path. They can be outdated; the page is authoritative. `framework` names the adapter (`web`: no assumption).
 

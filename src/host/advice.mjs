@@ -2,12 +2,13 @@
 // human clicks. App-side advice carries a prompt and optionally concrete code edits; the host writes those only on click,
 // because the sandbox has read-only access to the project.
 
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, posix, relative } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, posix, relative } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, PROJECT_DIR, RUN_DIR } from '../shared/names.mjs';
+import { personalContextPath, shownPath } from '../shared/personal-context.mjs';
 import { parseTest, renderTest, stepHash } from './test-file.mjs';
 import { stepLabel } from './replay.mjs';
 import { isSecretPath } from './secrets.mjs';
@@ -22,6 +23,11 @@ const CONFIG_KEYS = ['consoleIgnore', 'foreignCode'];
 const SELECTOR_KEY = 'messageSelectors';
 // action: make a recorded click optional (or required again) without re-recording, e.g. a cookie banner.
 const KINDS = ['step', 'action', 'test', 'context', 'config'];
+const CONTEXT_FILES = ['project', 'personal'];
+/** The file a context change writes: exactly one of the two notes files, never anything else. */
+const contextTarget = (root, change) => (change.file === 'personal'
+    ? { path: personalContextPath(), shown: shownPath(personalContextPath()), personal: true }
+    : { path: join(root, CONTEXT_FILE), shown: CONTEXT_FILE, personal: false });
 const SIDES = ['test', 'app'];
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -73,6 +79,8 @@ const readChange = (change, spec, config, report) => {
     }
     if (change.kind === 'test') return isText(change.notes, LIMITS.notes) ? undefined : report('change.notes must be text.');
     if (change.kind === 'context') {
+        // Which of the two notes files: the project's caw/caw.md (default) or the human's own caw.md in the settings folder.
+        if (change.file !== undefined && !CONTEXT_FILES.includes(change.file)) return report('change.file is project (caw/caw.md, shared with the team) or personal (your own caw.md, every project).');
         if (!isText(change.section, 80) || change.section.includes('\n')) return report('change.section must be a single-line heading.');
         return isText(change.text, LIMITS.text) ? undefined : report('change.text is missing.');
     }
@@ -299,7 +307,7 @@ export const adviceView = (item, spec, failures = [], config = {}) => {
         return { ...base, target: `${step.id} ${step.name}`, changes: [{ label: t('run.advice.action', { number: change.index, label: stepLabel(action) }), before: word(action.optional === true), after: word(change.optional) }] };
     }
     if (change.kind === 'test') return { ...base, target: t('run.advice.testCase'), changes: [{ label: labelOf('notes'), before: spec.notes ?? '', after: change.notes }] };
-    if (change.kind === 'context') return { ...base, target: CONTEXT_FILE, changes: [{ label: t('run.advice.section', { section: change.section }), before: '', after: change.text }] };
+    if (change.kind === 'context') return { ...base, target: t(change.file === 'personal' ? 'run.advice.contextPersonal' : 'run.advice.contextProject', { path: contextTarget('', change).shown }), changes: [{ label: t('run.advice.section', { section: change.section }), before: '', after: change.text }] };
     if (change.key === SELECTOR_KEY) return { ...base, target: CONFIG_FILE, changes: [{ label: labelOf(SELECTOR_KEY), before: (config[SELECTOR_KEY] ?? []).join('  ·  '), after: change.selectors.join('  ·  ') }] };
     return { ...base, target: CONFIG_FILE, changes: [{ label: labelOf(change.key), before: '', after: change.pattern }] };
 };
@@ -327,9 +335,11 @@ export const applyToSpec = (spec, change) => {
     return { spec: replaceStep(spec, next), id: step.id, stale };
 };
 
-const appendContext = (root, { section, text }) => {
-    const path = join(root, CONTEXT_FILE);
-    const raw = existsSync(path) ? readFileSync(path, 'utf8') : `# caw\n\n${t('run.advice.contextIntro')}\n`;
+const appendContext = (root, change) => {
+    const { section, text } = change;
+    const { path, shown, personal } = contextTarget(root, change);
+    if (personal) mkdirSync(dirname(path), { recursive: true });
+    const raw = existsSync(path) ? readFileSync(path, 'utf8') : `# caw\n\n${t(personal ? 'run.advice.personalIntro' : 'run.advice.contextIntro')}\n`;
     const lines = raw.replaceAll('\r\n', '\n').replace(/\n+$/, '').split('\n');
     const entry = `- ${text.trim().replaceAll(/\s*\n\s*/g, ' ')}`;
     const heading = lines.findIndex((line) => line.trim() === `## ${section.trim()}`);
@@ -342,7 +352,7 @@ const appendContext = (root, { section, text }) => {
         lines.splice(end, 0, entry);
     }
     writeFileSync(path, keepEol(raw, `${lines.join('\n')}\n`));
-    return CONTEXT_FILE;
+    return shown;
 };
 
 /** A config key's value after the change: one more pattern, or the new list of selectors. */

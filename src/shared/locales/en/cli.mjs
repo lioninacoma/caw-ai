@@ -341,6 +341,8 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorBrowserOk': 'Browser starts ({browser})',
     'cli.doctorBrowserFail': "Browser doesn't start ({browser}): {error}",
     'cli.doctorBrowserNext': 'Install Google Chrome (Stable), caw uses the system Chrome; or set browser.channel or browser.executablePath in the config.',
+    'cli.doctorPersonalOk': 'Personal notes for Claude: {path} ({lines} lines), read in every project before caw/caw.md',
+    'cli.doctorPersonalNone': 'No personal notes for Claude (optional: {path})',
     'cli.doctorSessionOk': 'Your Claude Code session takes over (caw entry in .mcp.json)',
     'cli.doctorSessionMissing': 'caw entry in .mcp.json is missing',
     'cli.doctorSessionNpx': 'The caw entry in .mcp.json starts caw through npx although caw is installed in the project',

@@ -342,6 +342,8 @@ Browser:
     'cli.doctorBrowserOk': 'Browser startet ({browser})',
     'cli.doctorBrowserFail': 'Browser startet nicht ({browser}): {error}',
     'cli.doctorBrowserNext': 'Google Chrome installieren (Stable), caw nutzt das Chrome des Systems; oder in der Config browser.channel bzw. browser.executablePath setzen.',
+    'cli.doctorPersonalOk': 'Persönliche Notizen für Claude: {path} ({lines} Zeilen), gelten in jedem Projekt vor caw/caw.md',
+    'cli.doctorPersonalNone': 'Keine persönlichen Notizen für Claude (optional: {path})',
     'cli.doctorSessionOk': 'Deine Claude-Code-Session übernimmt (Eintrag caw in .mcp.json)',
     'cli.doctorSessionMissing': 'Eintrag caw in .mcp.json fehlt',
     'cli.doctorSessionNpx': 'Der Eintrag caw in .mcp.json startet caw über npx, obwohl caw im Projekt installiert ist',
