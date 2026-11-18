@@ -12,7 +12,7 @@ import { effectiveEnvironment } from '../shared/environments.mjs';
 import { language, t } from '../shared/i18n.mjs';
 import { CONFIG_FILE } from '../shared/names.mjs';
 import { askYesNo, createUi } from '../shared/ui.mjs';
-import { connectionSettings } from '../sandbox/commands.mjs';
+import { connectionEnv, connectionSettings, privateSettings } from '../sandbox/commands.mjs';
 
 const ui = createUi();
 const ANSWER_MS = 120_000;
@@ -67,20 +67,24 @@ export const cleanAuth = (current, proposed) => {
     return next;
 };
 
-const runClaude = (prompt, { bin = resolveClaude(), cwd }) => new Promise((ok) => {
+const runClaude = (prompt, { cwd, bin = resolveClaude({ exclude: [process.cwd(), cwd] }) }) => new Promise((ok) => {
     if (bin === null || bin === undefined) {
         ok(null);
         return;
     }
-    // No tools, no project settings: only the evidence in the prompt.
-    const args = [...bin.args, '-p', '--tools', '', '--permission-mode', 'dontAsk', '--setting-sources', '', '--settings', JSON.stringify(connectionSettings()), '--output-format', 'json'];
-    const child = spawn(bin.file, args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    // No tools, no project settings: only the evidence in the prompt. The connection settings in a private file (never on the
+    // command line, where every process sees them), their env values in the process environment.
+    const connection = connectionSettings();
+    const settings = privateSettings(connection);
+    const args = [...bin.args, '-p', '--tools', '', '--permission-mode', 'dontAsk', '--setting-sources', '', '--settings', settings.file, '--output-format', 'json'];
+    const child = spawn(bin.file, args, { cwd, env: { ...process.env, ...connectionEnv(connection) }, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let out = '';
     const timer = setTimeout(() => child.kill(), ANSWER_MS);
     child.stdout.on('data', (chunk) => { out += chunk; });
-    child.on('error', () => { clearTimeout(timer); ok(null); });
+    child.on('error', () => { clearTimeout(timer); settings.remove(); ok(null); });
     child.on('close', () => {
         clearTimeout(timer);
+        settings.remove();
         try {
             ok(JSON.parse(out).result ?? null);
         } catch {

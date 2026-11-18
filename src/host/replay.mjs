@@ -2,13 +2,14 @@
 // through the same handler as the agent, so the same limits apply.
 
 import { existsSync, statSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { isViewport } from '../shared/config.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { isCaughtScriptError } from '../shared/report.mjs';
 import { CLICK_DELAY_MS, codeText, fillField, leaveForDisabled, locatorFor, setFiles } from './agent-commands.mjs';
+import { fixturePath } from './fixtures.mjs';
 import { textMatcher } from './patterns.mjs';
 import { redactDeep } from './secrets.mjs';
 import { classifyRequest, compileReads } from '../shared/requests.mjs';
@@ -49,6 +50,14 @@ const RUN_TAG_NAMES = new Set(['runTag', 'runTagLower']);
 const LOCKED = /element is not enabled|element is disabled|element is not editable/;
 const sleepMs = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
 const firstLine = (error) => String(error?.message ?? error).split('\n')[0];
+/** A URL as the parser writes it (percent-encoded, no line breaks), or null if it is none. */
+const parsedUrl = (url) => {
+    try {
+        return new URL(url).href;
+    } catch {
+        return null;
+    }
+};
 const shownMessage = (text) => (text.length <= MESSAGE_SHOWN ? text : `${text.slice(0, MESSAGE_SHOWN)}…`);
 /**
  * An error that a new attempt within the action will not fix, e.g. a download with the wrong name: a second click would
@@ -303,7 +312,9 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
             try {
                 value = await handler(command);
             } catch (error) {
-                if (command?.action === 'goto' && error.code === 'host-blocked') add({ action: 'goto', url: command.url, denied: true });
+                // As the URL parser writes it (no line break survives), or not at all: it lands in the recording and in the export.
+                const denied = command?.action === 'goto' && error.code === 'host-blocked' ? parsedUrl(command.url) : null;
+                if (denied !== null) add({ action: 'goto', url: denied, denied: true });
                 throw error;
             } finally {
                 if (acting) dialogs = session.dialogs?.end() ?? [];
@@ -837,12 +848,14 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         session.warn?.({ type: 'note', text: t('session.replay.notSettled', { step: activeOwner, seconds: Math.round(timeoutMs / 1000) }) });
     };
 
-    /** Files for upload, relative to the caw folder. Anything missing or outside aborts before anything is clicked. */
+    /**
+     * Files for upload, relative to the caw folder: only from caw/fixtures, also after links (never caw/.env or caw/.auth).
+     * Anything missing or outside aborts before anything is clicked.
+     */
     const uploadFiles = (files) => files.map((file) => {
-        const path = resolve(filesDir ?? '', file);
-        const inside = filesDir !== undefined && !relative(filesDir, path).startsWith('..') && !isAbsolute(relative(filesDir, path));
-        if (!inside || !existsSync(path)) throw finalError(t('session.replay.uploadMissing', { file }), 'state');
-        return path;
+        const path = filesDir === undefined ? null : fixturePath(filesDir, file);
+        if (path === null) throw finalError(t('session.replay.uploadMissing', { file }), 'state');
+        return join(filesDir, path);
     });
     // The page whose events belong to the element: in the workbench the app is a frame, the events come from the page.
     const pageOf = async (element) => {

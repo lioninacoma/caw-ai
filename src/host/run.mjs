@@ -1,6 +1,6 @@
 // A complete run: open the browser on the host, start the container, execute its commands, write the report.
 
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
@@ -21,7 +21,7 @@ import { describeCode } from './code-source.mjs';
 import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
-import { codeText, createAgentHandler } from './agent-commands.mjs';
+import { codeText, createAgentHandler, hiddenAnswer, hiddenError } from './agent-commands.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
 import { frameworkOf } from './framework/index.mjs';
@@ -132,12 +132,24 @@ export const readCredentials = (root, config, roleName, target, env = process.en
     return { login: account.user, password: account.password, ...(account.totp === undefined ? {} : { totpSecret: account.totp }), ...gate };
 };
 
-/** The log file belongs to the container: only read a regular file, never a link. */
-const readAgentLog = (file) => {
+/**
+ * The log file belongs to the container: only read a regular file, never a link. Opened without following a link (where the
+ * system can), then checked on the open file: a link swapped in between lstat and open is not read.
+ */
+export const readAgentLog = (file) => {
+    let fd;
     try {
-        return lstatSync(file).isFile() ? readFileSync(file, 'utf8') : '';
+        const before = lstatSync(file);
+        if (!before.isFile()) return '';
+        fd = openSync(file, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+        const opened = fstatSync(fd);
+        // The same file as checked (Windows reports no dev for lstat, so only the file id counts).
+        if (!opened.isFile() || opened.ino !== before.ino) return '';
+        return readFileSync(fd, 'utf8');
     } catch {
         return '';
+    } finally {
+        if (fd !== undefined) closeSync(fd);
     }
 };
 
@@ -579,15 +591,32 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // What the replay read; Claude needs these values when repairing in the same browser.
     let played = null;
 
+    // True while caw signs in again (restoring a state): the page holds the password and the one-time code then.
+    let signingIn = false;
+    /**
+     * What Claude gets through the channel, whichever handler answers: refused while caw signs in (except talking), every
+     * answer and error with the secrets masked (a dialog text, a URL, a thrown value), errors without Playwright's call log.
+     */
+    const forClaude = (handler) => async (command) => {
+        if (signingIn && !['task', 'say', 'chat'].includes(command?.action)) throw new CawError('signing-in', t('run.agent.signingIn'));
+        let value;
+        try {
+            value = await handler(command);
+        } catch (error) {
+            throw await hiddenError(session, error);
+        }
+        return hiddenAnswer(session, value);
+    };
     /** Processes the commands from the container until the returned stop function halts it. */
     const startPump = (handler) => {
         let pumping = true;
         const ignored = new Set();
+        const answer = forClaude(handler);
         const loop = (async () => {
             while (pumping) {
                 // The folder belongs to the container. A failure here must not crash the run, or browser and container
                 // would be left behind; at worst the run ends without a verdict.
-                await pollChannel(channel, handler, ignored).catch((error) => ui.warn(t('run.channelError', { message: error.message }), console.error));
+                await pollChannel(channel, answer, ignored).catch((error) => ui.warn(t('run.channelError', { message: error.message }), console.error));
                 await sleep(POLL_MS);
             }
         })();
@@ -632,8 +661,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             chat?.progress?.(t('run.waitingForSession'));
             return { ended: agent.ended, log: () => '', stopTail: () => {}, stop: agent.stop };
         }
-        // A local or container agent gets the run topics of the guide as its system prompt addition, from the agent folder.
-        writeFileSync(join(agentDir, GUIDE_FILE), agentGuide(config));
+        // A local or container agent gets the run topics of the guide as its system prompt addition, from the agent folder. The
+        // folder is the container's: whatever lies there (a planted link) goes first, then the file is created, never followed.
+        rmSync(join(agentDir, GUIDE_FILE), { force: true });
+        writeFileSync(join(agentDir, GUIDE_FILE), agentGuide(config), { flag: 'wx' });
         if (box.kind === 'local') {
             const agent = startLocalAgent({ command: agentCommand, agentDir, root, color, limits: claudeLimits(config) });
             const stopTail = (() => { const stop = tailLines(log, onLine); return () => { stop(); closePoint(); }; })();
@@ -914,13 +945,19 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // Signed in fresh like a new run, otherwise the test would start in the session the previous state left behind.
         // With the account of the test's role and on its app's start page, even if the run began with another one.
         chat?.progress(t('run.restore.signingIn', { role: shownSpec.role ?? '' }));
-        if (session.signInAgain === undefined) await session.restart();
-        else {
-            await session.signInAgain({
-                // Always explicit: after a test of another role, that role's account is still signed in.
-                as: readCredentials(root, config, shownSpec.role, checked.name),
-                start: startPath(config, shownSpec),
-            });
+        // Claude's commands wait outside meanwhile (forClaude): the page holds the password while caw signs in.
+        signingIn = true;
+        try {
+            if (session.signInAgain === undefined) await session.restart();
+            else {
+                await session.signInAgain({
+                    // Always explicit: after a test of another role, that role's account is still signed in.
+                    as: readCredentials(root, config, shownSpec.role, checked.name),
+                    start: startPath(config, shownSpec),
+                });
+            }
+        } finally {
+            signingIn = false;
         }
         agentHandler = newAgentHandler({ ...run, expectations: shownSpec.expectations });
         const tag = newRunTag();

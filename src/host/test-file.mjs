@@ -111,9 +111,11 @@ const readYaml = (rawText) => {
     return { value, problems, lineOf };
 };
 
-/** Files for upload: relative to the caw folder, never absolute and never outside it. */
+/** Files for upload: relative to the caw folder and in caw/fixtures, never absolute and never outside it. */
 const isFileList = (value) => Array.isArray(value) && value.length > 0 && value.every((file) => isText(file)
-    && !/^([A-Za-z]:)?[\\/]/.test(file) && !file.split(/[\\/]/).includes('..'));
+    && /^fixtures[\\/][^\\/]/.test(file) && !file.split(/[\\/]/).includes('..'));
+// A line terminator has no place in a URL; in the export it could end a comment and start code.
+const LINE_BREAK = /[\r\n\u2028\u2029]/;
 
 const isRegExp = (value) => isText(value) && isPattern({ pattern: value });
 
@@ -182,6 +184,7 @@ const readAction = (raw, report, { framework }) => {
     }
     if (TEXT_ACTIONS[name] !== undefined) {
         if (!isText(payload)) report(t('config.test.action.text', { name }));
+        else if (name === 'goto' && LINE_BREAK.test(payload)) report(t('config.test.action.urlLine'));
         if (raw.denied !== undefined && raw.denied !== true) report(t('config.test.action.denied'));
         return { action: name, [TEXT_ACTIONS[name]]: payload, ...extras, ...(raw.denied === undefined ? {} : { denied: true }) };
     }

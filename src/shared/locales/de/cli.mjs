@@ -6,8 +6,8 @@ End-to-End-Regressionstests für deine Webanwendung: Schritte in Alltagssprache,
 Vorführung aufgenommen, mit Playwright lokal und in CI ohne KI abgespielt.
 
 Einrichten (im Projektordner, die Anwendung läuft):
-  npx caw init --url http://localhost:5173       im Fenster einmal anmelden; schreibt caw.config.json, caw/.env (Testnutzer),
-                                                 und .mcp.json; was TODO bleibt, selbst eintragen
+  npx caw init --url http://localhost:5173       im Fenster einmal anmelden; schreibt caw.config.json, caw/.env.example
+                                                 und .mcp.json; caw/.env und was TODO bleibt, selbst eintragen
   npx caw doctor                                 bis nichts mehr FEHLT
 
 Befehle:`,
@@ -80,9 +80,9 @@ Befehle:`,
                                          Umgebungen prüfen, jeweils mit nächstem Schritt
       [--env <name>]                     nur Testnutzer und Adresse dieser Umgebung`,
     'cli.help.role': `  role [list] [--json]                   Rollen, ob ein Testnutzer gesetzt ist (nie die Werte), und welche Tests sie nutzen
-  role add [<rolle>] [--env <name>]      Im Fenster mit einem Testkonto anmelden und die Rolle benennen; caw schreibt
-                                         caw/.env und die Config. „+ Weitere Rolle“ für das nächste Konto
-  role remove <rolle>                    Eine Rolle entfernen, die kein Test nutzt, samt ihren Zeilen in caw/.env
+  role add <rolle>                       Die Rolle in die Config und ihre Variablennamen in caw/.env.example eintragen;
+                                         den Testnutzer trägst du von Hand in caw/.env (oder CI-Secrets) ein
+  role remove <rolle>                    Eine Rolle entfernen, die kein Test nutzt; caw/.env bleibt, ihre Zeilen dort werden genannt
   role login <rolle> --env <name>        Bei signIn vom Typ session: einmal von Hand anmelden (etwa SSO), die Sitzung
                                          landet in caw/.auth/<umgebung>/<rolle>.json`,
     'cli.help.export': `  export <test> [--env <name>]           Den aufgenommenen Test als Playwright-Test, der ohne caw läuft (@playwright/test):
@@ -149,6 +149,10 @@ Browser:
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
+    'cli.junitOutside': '--report junit={file} muss eine Datei im Projekt nennen.',
+    'cli.fromOutside': '{from} liegt nicht im Projekt.',
+    'cli.fromMissing': 'nicht gefunden',
+    'cli.fromNotJson': 'kein Explore-Ergebnis (JSON)',
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
     'cli.doctorUnknownArg': 'doctor kennt {arg} nicht. Erlaubt: --agent local|docker|session, --env <name>',
     'cli.doctorAgentValue': '--agent erwartet local, docker oder session.',
@@ -212,6 +216,7 @@ Browser:
     'cli.authSignIn': 'Melde dich im Chrome-Fenster als {role} an. Sobald {selector} erscheint, speichert caw die Sitzung.',
     'cli.authClosed': 'Fenster geschlossen, nichts gespeichert.',
     'cli.authSaved': 'Gespeichert: {file}. Die Datei enthält Anmelde-Cookies und gehört nicht ins Repository.',
+    'cli.authIgnored': '{dir} in .gitignore eingetragen: Gespeicherte Sitzungen gehören nicht ins Repository.',
 
     // commands.mjs: validate
     'cli.validateChain': '{file}: {chain}, neu aufnehmen.',
@@ -355,7 +360,7 @@ Browser:
     'cli.doctorIgnoreNext': 'caw init ergänzt die Einträge.',
     'cli.doctorRoleOk': 'Rolle {name} auf {target}: Testnutzer gesetzt',
     'cli.doctorRoleMissing': ({ name, target, missing, count, file }) => `Rolle ${name} auf ${target}: ${missing} ${count > 1 ? 'fehlen' : 'fehlt'} in ${file}`,
-    'cli.doctorRoleNext': 'caw role add <rolle> --env <umgebung> öffnet das Anmeldefenster; in CI die Variablen als Umgebungsvariablen setzen ({file}.example nennt sie).',
+    'cli.doctorRoleNext': 'Die Variablen von Hand in {file} eintragen ({file}.example nennt sie), in CI als Umgebungsvariablen setzen.',
     'cli.doctorGateOk': 'Gate auf {target}: Zugang gesetzt',
     'cli.doctorGateMissing': ({ target, missing, count, file }) => `Gate auf ${target}: ${missing} ${count > 1 ? 'fehlen' : 'fehlt'} in ${file}`,
     'cli.doctorGateNext': 'Trage den Zugang des Basic-Gates in {file} ein (in CI als Umgebungsvariablen).',

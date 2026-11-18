@@ -17,7 +17,8 @@ const setup = (t, overrides = {}) => {
         }),
         goto: async (url) => { calls.push(['goto', url]); },
         url: () => 'https://portal.example/',
-        evaluate: async (code) => { calls.push(['eval', code]); return 42; },
+        // Masking reads the password fields with every answer; the tests count only the agent's own code.
+        evaluate: async (code) => { if (typeof code === 'function' && code.name === 'passwordValues') return []; calls.push(['eval', code]); return 42; },
         screenshot: async () => Buffer.from('png'),
     };
     const verdicts = [];

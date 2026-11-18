@@ -97,6 +97,7 @@ export default {
     'session.claude.exit': 'Claude exited with code {code}, see claude.log.',
 
     // sandbox-config
+    'session.sandbox.mountPath': 'The Docker sandbox can\'t mount {path}: a comma, a quote or a line break (a colon for a folder it hides) would change Docker\'s mount options. Rename it, or use the local agent.',
     'session.sandbox.badImage': 'The devcontainer image ({image}) is not a valid image name (letters, digits, . / : @ _ -).',
     'session.sandbox.noImage': 'The devcontainer config needs an "image"; caw doesn\'t support "build". Build the image first and enter it here.',
 
@@ -202,7 +203,7 @@ export default {
     'session.replay.skippedRepeat': 'Skipped a repeated click ({label}): the click before had already opened a dialog that covers the target.',
     'session.replay.unreadable': 'Couldn\'t read {name}: {error}',
     'session.replay.notDenied': '{url} should have been denied.',
-    'session.replay.uploadMissing': 'File for upload not found: {file}. Paths are relative to the caw folder, e.g. fixtures/letter.pdf, and stay inside it.',
+    'session.replay.uploadMissing': 'File for upload not found: {file}. Paths are relative to the caw folder, e.g. fixtures/letter.pdf, and stay in caw/fixtures.',
     'session.replay.noChooser': 'Clicking {target} opened no file chooser. Target the file field itself or the button that opens the chooser.',
     'session.replay.noDownload': 'Clicking {target} started no download within {seconds} s.',
     'session.replay.downloadName': 'The download is called {name}, which doesn\'t match /{pattern}/.',

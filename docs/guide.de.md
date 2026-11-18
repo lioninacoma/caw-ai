@@ -24,7 +24,7 @@ In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die A
 
 In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.mode` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
 
-**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw-ai je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme mit hellem oder dunklem Modus (F7, siehe [Themes](../themes/README.de.md)).
+**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme mit hellem oder dunklem Modus (F7, siehe [Themes](../themes/README.de.md)).
 
 **Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--explain`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--agent session` gibt es den Hinweis nicht: Deine Session läuft ohnehin.
 
@@ -45,8 +45,8 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | Werkzeug | Zweck | Tokens |
 |---|---|---|
 | `caw_guide` | Wie man mit caw arbeitet, je Thema (`setup`, `tests`, `run`, `session`, `config` …); ohne Thema die Übersicht | nein |
-| `caw_init` | `mode: explore` öffnet dir die App zum Anmelden und liefert die Vorschläge mit den gespeicherten Rollen; `mode: write` schreibt daraus die Config; `mode: offline` die Vorlage mit TODO | nein |
-| `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben | nein |
+| `caw_init` | `mode: explore` öffnet dir die App zum Anmelden und liefert die Vorschläge; `mode: write` schreibt daraus die Config; `mode: offline` die Vorlage mit TODO | nein |
+| `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben. Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), die Umgebungs-Schalter (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` und `agent.mode` lehnt es ab: Die ändert die Session in der Datei, wo Claude Code dir den Diff zeigt | nein |
 | `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
 | `caw_start` | startet `run`, `record` oder `open` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset` (oder `args`) | nur deine Session |
@@ -61,7 +61,7 @@ Du schreibst also in deiner Session „nimm einen Test für die Bestellung auf�
 
 - **Weniger Rückfragen:** Ist deine Session der Agent, gibt es keinen Hinweis auf Token, und `record` eines vorhandenen Testplans startet ohne die Frage, wer vorführt. Ein lesender Plan, dem die Session unverändert folgt, braucht keine Plan-Freigabe; die Übernahme des geprüften Plans am Ende immer.
 - **Wartezeiten:** `plan` und `chat` warten auf dich, bis zu einer Stunde. Bricht Claude Code den Aufruf vorher ab, setz `MCP_TOOL_TIMEOUT` (Millisekunden) in der Umgebung von Claude Code höher.
-- **Vorsicht:** Deine Session hat mehr Rechte als der Agent im Lauf (Shell, Schreiben). Was aus der Anwendung kommt, ist für sie Daten, keine Anweisung; caw sagt ihr das bei jedem Auftrag. Lass Bash- und Schreibaufrufe in dieser Session bestätigen, statt sie pauschal freizugeben.
+- **Vorsicht:** Deine Session hat mehr Rechte als der Agent im Lauf (Shell, Schreiben). Was aus der Anwendung kommt, ist für sie Daten, keine Anweisung; caw sagt ihr das bei jedem Auftrag. Lass Bash- und Schreibaufrufe in dieser Session bestätigen, statt sie pauschal freizugeben. Auch die caw-Werkzeuge führen Befehle des Projekts aus: `caw_start` mit `start` führt das `start` der Umgebung aus (und später ihr `stop`), mit `reset` ihr `reset`, und ein `run` mit schreibendem Test führt `reset` vor diesem Test aus; alles aus `caw.config.json`, auf deinem Rechner. `caw_config` kann diese Befehle und die Umgebungs-Schalter nicht ändern; diese Änderung geht über Claude Codes eigenes Datei-Bearbeiten, prüf ihren Diff wie Code.
 
 ## Docker
 
@@ -364,7 +364,7 @@ Claude arbeitet im Browser des gescheiterten Laufs, der Zustand ist also noch da
 Jede Empfehlung nennt ihren Beleg (`evidence`), etwa einen Request, einen harten Fehler oder eine Fundstelle im Code; ohne lehnt der Host sie ab. Im Chat erscheint jede als Karte, eine nach der anderen:
 
 - **Test:** Titel, Begründung, Beleg und das Geänderte als Vorher und Nachher, dazu „Übernehmen“ und „Verwerfen“. Möglich sind `name`, `do`, `expect`, `note` und `retry` eines vorhandenen Schritts, die `notes` des Testfalls, ein Eintrag in `caw/caw.md` und ein Muster in `consoleIgnore` oder `foreignCode`. Spricht die Einschätzung eindeutig für einen Fehler der Anwendung, markiert die Karte die Empfehlung als Widerspruch dazu.
-- **Anwendung:** Titel, Begründung, Beleg und ein fertiger Prompt für eine Claude-Code-Sitzung bei dir, mit „Prompt kopieren“ und „Weiter“. Bringt Claude konkrete Änderungen mit (`edits`: Datei, gesuchte Stelle, Ersatz, Grund), prüft der Host sie gegen den echten Code: Pfad relativ zum Projekt, nicht unter `caw/`, `.caw/`, `node_modules/`, `.git/` oder `.claude/`, die Stelle genau einmal in der Datei. Die Karte zeigt Datei, Zeile und den Unterschied. „Änderung übernehmen“ schreibt sie in die Dateien, Zeilenenden bleiben; hat sich die Stelle inzwischen geändert, schreibt es nichts. Claude selbst ändert Anwendungscode nie.
+- **Anwendung:** Titel, Begründung, Beleg und ein fertiger Prompt für eine Claude-Code-Sitzung bei dir, mit „Prompt kopieren“ und „Weiter“. Bringt Claude konkrete Änderungen mit (`edits`: Datei, gesuchte Stelle, Ersatz, Grund), prüft der Host sie gegen den echten Code: Pfad relativ zum Projekt, nicht unter `caw/`, `.caw/` oder `.claude/`, nicht in `node_modules/` oder `.git` in beliebiger Tiefe, keine Geheimnis-, Build-, CI- oder Agenten-Anweisungsdatei (`package.json`, Lock-Dateien, Dockerfiles, `.github/`, `.circleci/`, `Jenkinsfile`, `CLAUDE.md`, `AGENTS.md`, `.cursor/` …), die Stelle genau einmal in der Datei. Die Karte zeigt Datei, Zeile und den Unterschied. „Änderung übernehmen“ schreibt sie in die Dateien, Zeilenenden bleiben; hat sich die Stelle inzwischen geändert, schreibt es nichts. Claude selbst ändert Anwendungscode nie.
 
 Was Übernehmen bewirkt:
 

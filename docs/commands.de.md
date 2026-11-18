@@ -39,11 +39,11 @@ Eine Option, die einen Wert braucht, nimmt nie die nächste Option als Wert: `--
 npx caw init --url http://localhost:5173
 ```
 
-Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Chrome. Mit einem Testkonto anmelden (caw merkt, wenn das Anmeldeformular verschwunden ist), zur Seite gehen, auf der Tests beginnen sollen, und in der Karte unten rechts im Fenster auf **Fertig** klicken. caw-ai erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
+Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Chrome. Mit einem Testkonto anmelden (caw merkt, wenn das Anmeldeformular verschwunden ist), zur Seite gehen, auf der Tests beginnen sollen, und in der Karte unten rechts im Fenster auf **Fertig** klicken. caw erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
 
 - `caw.config.json`
 - `caw/.env.example` mit den Variablen für die Zugangsdaten je Rolle
-- einen Eintrag `caw` in `.mcp.json` (auf die installierte Kopie, wenn caw in `node_modules` liegt, sonst `npx caw-ai mcp`; ein `npx`-Eintrag wird auf die installierte Kopie umgestellt, sobald es eine gibt)
+- einen Eintrag `caw` in `.mcp.json` (auf die installierte Kopie, wenn caw in `node_modules` des Projekts oder eines Ordners darüber bis zur Wurzel des Repositorys liegt, sonst `npx caw-ai@<diese Version> mcp`; ein `npx`-Eintrag wird auf die installierte Kopie umgestellt, sobald es eine gibt)
 - `caw/tests/` für deine Testpläne und `caw/caw.md` für Notizen, die Claude in jedem Lauf liest
 - Einträge in `.gitignore` für `caw/.env`, `.caw/` und `caw/.auth/`
 
@@ -184,7 +184,7 @@ npx caw run create-ticket close-ticket --env dev
 
 Spielt die Tests nacheinander ab, ohne Chat (`--explain` wird abgelehnt). `--all` nimmt jeden Test, der das Ziel nennt. Ohne `--env` gilt das einzige Ziel der Tests. Ein Test, der nicht laufen kann (Aufnahme fehlt, Tippfehler), hält die anderen nicht auf. Am Ende zeigt eine Tabelle je Test `PASS`, `FAIL`, `ERROR`, `AUFNAHME NÖTIG` oder `ABGELEHNT`. Der Exit-Code ist der des schlimmsten Laufs, in dieser Reihenfolge: `2` error > `1` fail > `4` Aufnahme nötig > `3` abgelehnt > `0` pass.
 
-`--report junit=<datei>` schreibt die Tabelle zusätzlich als JUnit-XML (relativ zum Projektordner): `fail` als `<failure>`, alles andere, was nicht bestanden hat, als `<error>`.
+`--report junit=<datei>` schreibt die Tabelle zusätzlich als JUnit-XML (relativ zum Projektordner und darin; ein Pfad außerhalb, auch über einen Link, wird abgelehnt, bevor ein Test läuft): `fail` als `<failure>`, alles andere, was nicht bestanden hat, als `<error>`.
 
 ## open
 
@@ -242,7 +242,7 @@ Schreibt den aufgenommenen Test als Playwright-Test, der ohne caw läuft, nur mi
 |---|---|
 | `<test>.spec.mjs` | Ein `test()`, ein `test.step()` je caw-Schritt. Die Locators sind die aufgenommenen; Prüfungen werden zu `expect.poll`, eine Dialog-Entscheidung wird rund um die Aktion beantwortet, die den Dialog öffnet, `remember` und die Platzhalter `{{runTag}}`/Datum werden je Lauf gefüllt |
 | `caw-support.mjs` | Anmeldung aus `signIn` (Formular, Schritte, Basic, gespeicherte Sitzung, TOTP), Warten auf eine ruhige Seite wie caw, Upload, Download, Auswahl in `<select>`; bei ExtJS die Engine `extjs=`. Jeder Export überschreibt sie |
-| `playwright.config.mjs` | Basis-URL, Sprache, Zeitzone und Viewport der Aufnahme, Chrome. Nur geschrieben, wenn sie fehlt; danach gehört sie dir |
+| `playwright.config.mjs` | Basis-URL, Sprache, Zeitzone und Viewport der Aufnahme, Chrome, `trace: 'off'`. Nur geschrieben, wenn sie fehlt; danach gehört sie dir. Der Trace ist aus, weil die Anmeldung Passwort und Einmalcode des Testnutzers einträgt und ein Playwright-Trace sie im Klartext behält (caw bereinigt seine eigenen Traces, Playwright nicht). Schalte ihn nur ein, wo das in Ordnung ist, und lade so einen Trace nie hoch |
 
 Die Umgebung (`--env`, sonst die einzige passende) liefert Adresse und Anmeldung. Beim Ausführen überschreibt `CAW_BASE_URL` die Adresse; die Testnutzer kommen aus denselben Variablen wie bei caw (`CAW_<ROLLE>_USER`, `CAW_<ROLLE>_PASSWORD`, `CAW_<ROLLE>_TOTP`, wahlweise mit `__<ENV>`). Eine Datei im Ordner, die nicht von export stammt, wird nie überschrieben.
 
@@ -267,9 +267,9 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 |---|---|---|
 | `caw_guide` | Die Anleitung je Thema (`topic`); ohne Thema die Übersicht. `overlay` und `extjs` nur, wenn das Projekt sie nutzt | nein |
 | `caw_doctor` | `doctor` als Daten (`agent`, `env`) | nein |
-| `caw_init` | `mode: explore` (`url`, `login` oder `yes`): das Fenster, wartet und liefert Vorschläge und gespeicherte Rollen (`wait: false` startet nur); `mode: write` (`fromExplore`) und `mode: offline` schreiben die Dateien; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | nein |
+| `caw_init` | `mode: explore` (`url`, `login` oder `yes`): das Fenster, wartet und liefert die Vorschläge (`wait: false` startet nur); `mode: write` (`fromExplore`) und `mode: offline` schreiben die Dateien; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | nein |
 | `caw_role` | Rollen als Daten (`list`), eine neue in der Config mit ihren Variablennamen (`add`, `name`; `caw/.env` füllt der Mensch), eine gespeicherte Sitzung (`login`), `remove`; nie Benutzernamen oder Passwörter | nein |
-| `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste | nein |
+| `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste. Abgelehnt: Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), Umgebungs-Schalter, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; die ändert die Session in der Datei, wo du den Diff siehst | nein |
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
@@ -339,6 +339,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `token-missing` | 2 | `ANTHROPIC_API_KEY` setzen oder `--agent local` nutzen |
 | `docker-missing`, `docker-not-running`, `docker-wrong-mode` | 2 | Docker mit Linux-Containern starten, oder `--agent local` |
 | `image-build-failed`, `devcontainer-unsupported` | 2 | Anmeldung an der Registry und `sandboxImage` prüfen |
+| `sandbox-path` | 2 | Ein Projektpfad mit Komma, Anführungszeichen oder Zeilenumbruch (oder einem Doppelpunkt in einem Ordner, den die Sandbox ausblendet) lässt sich nicht sicher einbinden: umbenennen oder `--agent local` nehmen |
 | `aborted` | 2 | Du hast das Fenster geschlossen oder Strg+C gedrückt |
 | `chat-failed`, `no-session` | 2 | Neu starten |
 | `chat-tampered` | 2 | Die getestete Seite hat den Chat-Rahmen neu geladen oder seine Sandbox entfernt; der Lauf endete, damit keine Entscheidung von dort kommt. Such das Skript der Anwendung, das `top.document` anfasst |

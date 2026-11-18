@@ -118,7 +118,8 @@ test('advice: code edits are checked against the actual files and written only o
         } catch {
             linked = false;
         }
-        if (linked) assert.match(at({ file: 'src/repo/config', find: '[core]' }), /is not part of the application/);
+        // Git data at any depth is a tool folder: it answers like a missing file.
+        if (linked) assert.match(at({ file: 'src/repo/config', find: '[core]' }), /src\/repo\/config does not exist/);
         assert.match(at({ file: '../outside.js' }), /relative to the project/);
         assert.match(at({ file: 'C:/x.js' }), /relative to the project/);
         assert.match(at({ replace: '    timeout: 1,' }), /identical/);
@@ -230,7 +231,11 @@ test('advice: secrets and tool files answer like a missing file, so find is no c
         '.docker/config.json', CONFIG_FILE, 'web/caw.config.json', 'web/.caw/x.json', '.mcp.json', 'web/.claude/settings.json', 'package.json',
         'web/package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', '.github/workflows/ci.yml',
         '.gitlab-ci.yml', '.husky/pre-commit', '.vscode/settings.json', '.idea/x.xml', '.devcontainer/devcontainer.json', 'Dockerfile',
-        'web/Dockerfile.dev', 'docker-compose.yml'];
+        'web/Dockerfile.dev', 'docker-compose.yml',
+        // Dependencies and Git data below the root, agent instructions and CI files at any depth.
+        'web/node_modules/lib/index.js', 'web/.git/config', 'vendor/sub/.git', 'CLAUDE.md', 'web/claude.md', 'AGENTS.md', '.cursor/rules/x.mdc',
+        '.cursorrules', 'web/.github/copilot-instructions.md', 'Jenkinsfile', 'azure-pipelines.yml', 'bitbucket-pipelines.yml',
+        '.circleci/config.yml', '.gitmodules'];
     for (const file of files) {
         mkdirSync(join(root, file, '..'), { recursive: true });
         writeFileSync(join(root, file), `${secret}\n${secret}\n`);

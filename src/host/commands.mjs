@@ -2,7 +2,7 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
@@ -20,8 +20,9 @@ import { EXPLORE_FILE, explore } from './explore.mjs';
 import { environmentLifecycle } from './lifecycle.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
-import { requireTestUser } from './test-users.mjs';
+import { ignoreAuthDir, requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
+import { projectPath } from './project-path.mjs';
 import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
@@ -354,7 +355,8 @@ export const init = (root, answers = {}) => {
 
     const ignore = join(root, '.gitignore');
     const existing = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
-    const lines = [`${RUN_DIR}/`, ENV_FILE, `${AUTH_DIR}/`].filter((line) => !existing.split(/\r?\n/).includes(line));
+    // The explore result too: it holds what the page showed (start page, hosts, messages), not something to share.
+    const lines = [`${RUN_DIR}/`, ENV_FILE, `${AUTH_DIR}/`, EXPLORE_FILE].filter((line) => !existing.split(/\r?\n/).includes(line));
     if (lines.length > 0) {
         appendFileSync(ignore, `\n# caw\n${lines.join('\n')}\n`);
         created.push('.gitignore');
@@ -384,6 +386,8 @@ export const roleLogin = async (root, { role: roleName, target }, { capture } = 
     if (config.roles?.[roleName] === undefined) throw new CawError('usage', t('cli.authRoleUnknown', { role: roleName, roles: Object.keys(config.roles ?? {}).join(', ') }));
     if (resolved.production) throw new CawError('env-denied', t('cli.targetProduction', { target }));
     const file = join(root, sessionPath(target, roleName));
+    // The session signs in as the role: never into git, also in a project set up without init.
+    if (ignoreAuthDir(root)) ui.info(t('cli.authIgnored', { dir: `${AUTH_DIR}/` }));
     const save = capture ?? (await import('./browser-session.mjs')).captureSession;
     ui.info(t('cli.authSignIn', { role: roleName, selector: signedInSelector }));
     const saved = await save({ url: `${resolved.url}${path}`, signedInSelector, hosts: navigationHosts(config, target), blocked: blockedHosts(config, target), insecureTls: resolved.insecureTls, file, launch: browserLaunch(config) });
@@ -1129,9 +1133,14 @@ const runBatch = async (root, options, deps, { tests, target }) => {
     }
     ui.batch({ target, rows });
     if (options.junit !== undefined) {
-        const file = resolve(root, options.junit);
-        mkdirSync(join(file, '..'), { recursive: true });
-        writeFileSync(file, junitXml({ target, rows }));
+        // Inside the project only, also after links: a session passes --report through caw_start's args.
+        const file = projectPath(root, options.junit);
+        if (file === null) throw new CawError('usage', t('cli.junitOutside', { file: options.junit }));
+        mkdirSync(dirname(file), { recursive: true });
+        if (projectPath(root, options.junit) === null) throw new CawError('usage', t('cli.junitOutside', { file: options.junit }));
+        // A new file, not one a link points to.
+        rmSync(file, { force: true });
+        writeFileSync(file, junitXml({ target, rows }), { flag: 'wx' });
         ui.info(t('cli.junitWritten', { file: options.junit }));
     }
     return worstExit(rows.map(({ exit }) => exit));
@@ -1146,6 +1155,7 @@ const runBatch = async (root, options, deps, { tests, target }) => {
  */
 export const run = async (root, args, deps = {}) => {
     const options = parseRunArgs('run', args);
+    if (options.junit !== undefined && projectPath(root, options.junit) === null) throw new CawError('usage', t('cli.junitOutside', { file: options.junit }));
     if (options.batch || options.junit !== undefined) return runMany(root, options, deps);
     const { config, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
     return withLifecycle(lifecycleOf(root, config, target, options, 'run'), async (lifecycle) => (await runOne(root, { ...options, target, lifecycle }, deps)).code);

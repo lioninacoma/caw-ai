@@ -11,13 +11,15 @@ import { withClipboardRead } from './browser-session.mjs';
 import { fixtureFiles, fixturePath } from './fixtures.mjs';
 import { withLoopbackPair } from './host-lock.mjs';
 import { buildLocator, parseLocator } from './locator.mjs';
-import { passwordValues, redactDeep } from './secrets.mjs';
+import { passwordValues, redact, redactDeep } from './secrets.mjs';
 
 const ACTION_TIMEOUT_MS = 15_000;
 const NETWORK_SHOWN = 60;
 // Press and release like a human: some UIs react to the press with a delay.
 export const CLICK_DELAY_MS = 100;
 const COMMAND_TIMEOUT_MS = 300_000;
+// How long masking waits for the page's password fields.
+const PASSWORD_READ_MS = 2000;
 const SCREENSHOT_NAME = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.png$/;
 const ARIA_REF = /^(f\d+)?e\d+$/;
 const REMEMBER_NAME = /^[A-Za-z][A-Za-z0-9]{0,30}$/;
@@ -25,6 +27,34 @@ const REMEMBER_NAME = /^[A-Za-z][A-Za-z0-9]{0,30}$/;
 const REMEMBER_MIN_LENGTH = 1;
 
 const usage = (message) => new CawError('usage', message);
+
+/** What a value is, without the value: the remember message must not quote what the page returned (it may be a secret). */
+const kindOf = (value) => (value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value === 'string' ? '""' : typeof value);
+
+/**
+ * Playwright appends a "Call log:" to its errors with every step it tried, the filled or typed value among them
+ * (fill("…")). Claude gets the message without it.
+ */
+export const withoutCallLog = (message) => String(message ?? '').split(/\r?\n\s*Call log:/)[0].trimEnd();
+
+/** What must not reach Claude now: the session's secrets (password, codes, secret remembered values), the page's password fields and `extra`. */
+export const secretsNow = async (session, extra = []) => {
+    // A page that hangs (the reason a command timed out) must not hold the answer: then only the known secrets count.
+    let timer;
+    const late = new Promise((done) => { timer = setTimeout(() => done([]), PASSWORD_READ_MS); });
+    const read = (async () => session?.page?.().evaluate(passwordValues))().catch(() => []);
+    const onPage = await Promise.race([read, late]).finally(() => clearTimeout(timer));
+    return [...(session?.secrets?.() ?? []), ...(Array.isArray(onPage) ? onPage : []), ...extra];
+};
+
+/** An answer for Claude: every text in it with the secrets masked. */
+export const hiddenAnswer = async (session, value, extra = []) => {
+    const secrets = await secretsNow(session, extra);
+    return secrets.length === 0 ? value : redactDeep(value, secrets);
+};
+
+/** An error for Claude: its code, the message without Playwright's call log and with the secrets masked. */
+export const hiddenError = async (session, error, extra = []) => new CawError(error?.code ?? 'failed', redact(withoutCallLog(error?.message ?? error), await secretsNow(session, extra)));
 
 const text = (command, field) => {
     const value = command[field];
@@ -129,6 +159,9 @@ export const setFiles = async (target, files, { page, timeout }) => {
     return true;
 };
 
+// Answers that only confirm: nothing to mask, no need to ask the page for its password fields.
+const PLAIN_ANSWERS = new Set(['ok', 'absent', 'armed']);
+
 // How long an optional click waits for its target.
 const OPTIONAL_WAIT_MS = 3000;
 
@@ -228,7 +261,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
             if (!REMEMBER_NAME.test(name) || name === 'runTag' || name === 'runTagLower') throw usage(t('run.agent.rememberName'));
             const raw = await readPage(text(command, 'code'));
             const value = typeof raw === 'number' ? String(raw) : raw;
-            if (typeof value !== 'string' || value.trim().length < REMEMBER_MIN_LENGTH) throw usage(t('run.agent.rememberValue', { name, min: REMEMBER_MIN_LENGTH, raw: JSON.stringify(raw) }));
+            if (typeof value !== 'string' || value.trim().length < REMEMBER_MIN_LENGTH) throw usage(t('run.agent.rememberValue', { name, min: REMEMBER_MIN_LENGTH, raw: kindOf(raw) }));
             return { name, value: value.trim() };
         },
         screenshot: async (command) => {
@@ -270,29 +303,23 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
         },
     };
 
-    // Commands whose answer can contain page text; the others only return ok, a URL or a file name.
-    const PAGE_TEXT = new Set(['snapshot', 'eval', 'check', 'remember', 'console']);
-    // No password reaches Claude: neither via the snapshot (it contains field values) nor via eval, check or remember.
-    const hideSecrets = async (value) => {
-        const onPage = await (async () => session.page().evaluate(passwordValues))().catch(() => []);
-        const secrets = [...(session.secrets?.() ?? []), ...(Array.isArray(onPage) ? onPage : [])];
-        return secrets.length === 0 ? value : redactDeep(value, secrets);
-    };
-
     // Where a placeholder is filled: only in a fill/type value. Never in code (check, eval, remember) and never in a URL: code
     // runs in the page and can leave the value there (a global, the title, a request), where the next eval reads it transformed
     // (split, encoded) past redactDeep. Code with a secret placeholder is refused, so Claude learns why instead of a silent miss.
-    const expanded = (key, value) => {
+    const expanded = (key, value, filledIn) => {
         if ((key !== 'value' && key !== 'code') || typeof value !== 'string') return value;
         // A dialog value is typed into the page like a fill value.
         const filled = expand(value);
         if (filled !== value && key === 'code') throw usage(t('run.agent.secretInCode'));
+        if (filled !== value) filledIn.push(filled);
         return filled;
     };
     const handle = async (given, { reveal = false } = {}) => {
         if (finished) throw new CawError('run-finished', t('run.agent.finished'));
+        // The values filled in for this command: masked in its answer and its error, like the session's secrets.
+        const filledIn = [];
         const command = typeof given === 'object' && given !== null
-            ? Object.fromEntries(Object.entries(given).map(([key, value]) => [key, expanded(key, value)]))
+            ? Object.fromEntries(Object.entries(given).map(([key, value]) => [key, expanded(key, value, filledIn)]))
             : given;
         if (typeof command !== 'object' || command === null || !Object.hasOwn(commands, command.action)) {
             throw new CawError('unknown-command', t('run.agent.unknownCommand', { action: String(command?.action) }));
@@ -301,12 +328,23 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
         const limit = new Promise((_, reject) => {
             timer = setTimeout(() => reject(new CawError('command-timeout', t('run.agent.timeout', { action: command.action }))), commandTimeoutMs);
         });
+        let result;
         try {
-            const result = await Promise.race([commands[command.action](command), limit]);
-            return PAGE_TEXT.has(command.action) && !reveal ? await hideSecrets(result) : result;
+            result = await Promise.race([commands[command.action](command), limit]);
+        } catch (error) {
+            // A Playwright error quotes the value it filled (also in its call log), a thrown page value is the value itself. Masked
+            // in place: replay reads the call log and the error's kind; the channel (run.mjs) also cuts the call log for Claude.
+            if (!reveal && !(error instanceof CawError) && error !== null && typeof error === 'object' && typeof error.message === 'string') {
+                error.message = redact(error.message, await secretsNow(session, filledIn));
+            }
+            throw error;
         } finally {
             clearTimeout(timer);
         }
+        if (reveal || PLAIN_ANSWERS.has(result)) return result;
+        // No password reaches Claude: not via the snapshot (it holds field values), eval, check or remember, and not via a URL
+        // (url, goto, reload), where the page can put a value too.
+        return hiddenAnswer(session, result, filledIn);
     };
     const handler = (command) => handle(command);
     // Host only (replay): a secret remember value unredacted. Otherwise a retry of the step would read the value hidden on the

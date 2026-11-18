@@ -140,7 +140,7 @@ const main = async ([command, ...args]) => {
     if (['run', 'record', 'open'].includes(command) && args.some((arg) => arg === '--overlay' || arg.startsWith('--overlay=')) && !overlayActive(root)) throw overlayInactive('cli.overlayFlagInactive');
     switch (command) {
         case 'init': {
-            // --explore-only: look at the app and write only caw/.explore.json (and caw/.env via the role card), no config.
+            // --explore-only: look at the app and write only caw/.explore.json, no config.
             if (args.includes('--explore-only')) return (await import('../src/host/explore.mjs')).explore(root, args.filter((arg) => arg !== '--explore-only'));
             const commands = await host();
             // init explores the application first; in a terminal it asks for address and roles, not with --yes or in CI.

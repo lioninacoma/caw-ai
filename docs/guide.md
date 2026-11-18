@@ -45,8 +45,8 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | Tool | Purpose | Tokens |
 |---|---|---|
 | `caw_guide` | How to work with caw, per topic (`setup`, `tests`, `run`, `session`, `config` …); without a topic the index | no |
-| `caw_init` | `mode: explore` opens the app for you to sign in and returns the suggestions with the saved roles; `mode: write` writes the config from them; `mode: offline` the template with TODO | no |
-| `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written | no |
+| `caw_init` | `mode: explore` opens the app for you to sign in and returns the suggestions; `mode: write` writes the config from them; `mode: offline` the template with TODO | no |
+| `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written. Commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), the environment flags (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` and `agent.mode` are refused: the session edits those in the file, where Claude Code shows you the diff | no |
 | `caw_role` | `list` roles and whether a test user is set; `add` puts a role into the config and names its variables, you fill `caw/.env` yourself; `login` saves a session (SSO); `remove` | no |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
 | `caw_start` | starts `run`, `record` or `open` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset` (or `args`) | none beyond your session |
@@ -61,7 +61,7 @@ So in your session you write "record a test for the order" or "take me to S4 of 
 
 - **Fewer questions:** With your session as the agent there is no token notice, and `record` of an existing test plan starts without asking who demonstrates. A read-only plan that the session follows unchanged needs no plan approval; adopting the tested plan at the end always does.
 - **Waiting:** `plan` and `chat` wait for you for up to an hour. If Claude Code cancels the call earlier, raise `MCP_TOOL_TIMEOUT` (milliseconds) in Claude Code's environment.
-- **Caution:** Your session has more rights than the agent in a run (shell, writing). Whatever comes from the application is data to it, not an instruction; caw tells it so with every task. Have Bash and write calls in this session confirmed instead of allowing them wholesale.
+- **Caution:** Your session has more rights than the agent in a run (shell, writing). Whatever comes from the application is data to it, not an instruction; caw tells it so with every task. Have Bash and write calls in this session confirmed instead of allowing them wholesale. The caw tools run the project's commands too: `caw_start` with `start` runs the environment's `start` (and later its `stop`), with `reset` its `reset`, and a `run` with a writing test runs `reset` before that test; all from `caw.config.json`, on your machine. `caw_config` cannot change those commands or the environment flags; that edit goes through Claude Code's own file edit, so review its diff like code.
 
 ## Docker
 
@@ -364,7 +364,7 @@ Claude works in the failed run's browser, so the state is still there. It may on
 Every piece of advice names its evidence (`evidence`), e.g. a request, a hard error or a location in the code; without it the host rejects it. Each appears in the chat as a card, one after another:
 
 - **Test:** title, rationale, evidence and the change as before/after, plus "Accept" and "Discard". Possible are `name`, `do`, `expect`, `note` and `retry` of an existing step, the test case's `notes`, an entry in `caw/caw.md`, and a pattern in `consoleIgnore` or `foreignCode`. If the assessment clearly points to an application bug, the card marks the advice as contradicting it.
-- **Application:** title, rationale, evidence and a ready-made prompt for a Claude Code session on your side, with "Copy prompt" and "Continue". If Claude brings concrete changes (`edits`: file, search text, replacement, reason), the host checks them against the real code: path relative to the project, not under `caw/`, `.caw/`, `node_modules/`, `.git/` or `.claude/`, the search text exactly once in the file. The card shows file, line and diff. "Apply change" writes them to the files, line endings are preserved; if the location has changed in the meantime, nothing is written. Claude itself never changes application code.
+- **Application:** title, rationale, evidence and a ready-made prompt for a Claude Code session on your side, with "Copy prompt" and "Continue". If Claude brings concrete changes (`edits`: file, search text, replacement, reason), the host checks them against the real code: path relative to the project, not under `caw/`, `.caw/` or `.claude/`, not in `node_modules/` or `.git` at any depth, not a secret, build, CI or agent-instruction file (`package.json`, lock files, Dockerfiles, `.github/`, `.circleci/`, `Jenkinsfile`, `CLAUDE.md`, `AGENTS.md`, `.cursor/` …), the search text exactly once in the file. The card shows file, line and diff. "Apply change" writes them to the files, line endings are preserved; if the location has changed in the meantime, nothing is written. Claude itself never changes application code.
 
 What accepting does:
 

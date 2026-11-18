@@ -2,7 +2,7 @@
 // or reads stdin, because in the MCP process stdout and stdin are the protocol channel.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { AUTH_DIR, loadConfig, loadConfigWithNotes, todoFields } from '../shared/config.mjs';
 import { startPath } from '../shared/environments.mjs';
@@ -12,6 +12,7 @@ import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../share
 import { describeCode } from './code-source.mjs';
 import { answersFromExplore, detectApp, envExample, starterConfig } from './commands.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
+import { projectPath } from './project-path.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
 import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
 
@@ -157,11 +158,14 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
     if (!useExplore && !offline && url !== undefined) return { state: 'explore-first', url };
     let answers = { offline: true, ...(url === undefined ? {} : { url }) };
     if (useExplore) {
+        // The path comes from the session: inside the project only, and a parse error is not echoed (it can quote the file).
+        const file = projectPath(root, exploreFile);
+        if (file === null) throw new CawError('usage', t('cli.fromOutside', { from: exploreFile }));
         let suggestion;
         try {
-            suggestion = JSON.parse(readFileSync(resolve(root, exploreFile), 'utf8'));
+            suggestion = JSON.parse(readFileSync(file, 'utf8'));
         } catch (error) {
-            throw new CawError('usage', t('cli.fromUnreadable', { from: exploreFile, message: error.message }));
+            throw new CawError('usage', t('cli.fromUnreadable', { from: exploreFile, message: error?.code === 'ENOENT' ? t('cli.fromMissing') : t('cli.fromNotJson') }));
         }
         answers = answersFromExplore(suggestion);
     }

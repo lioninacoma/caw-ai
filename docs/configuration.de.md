@@ -12,6 +12,10 @@ caw liest drei Dinge aus deinem Projekt:
 
 Tests liegen in `caw/tests/` und `caw/recordings/`, siehe [Testdateien](test-files.de.md).
 
+`caw.config.json` und die Aufnahmen sind ausführbare Konfiguration: Die Config nennt Shell-Befehle, die caw ausführt (`start`,
+`stop`, `reset`, `lintCommand`, das `start` eines Overlay-Teils), und den Browser, den es startet, und die Schritte `check` und
+`remember` einer Aufnahme führen ihren Code in der Seite aus. Prüf Änderungen daran wie Code, egal wer sie gemacht hat.
+
 ## Minimale Config
 
 Eine App auf einem lokalen Dev-Server, ohne Anmeldung:
@@ -91,8 +95,10 @@ und nennt die Kandidaten (Exit 3).
 
 ### Umgebung starten, stoppen und zurücksetzen
 
-Eine Umgebung kann eigene Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nur auf Wunsch aus, und nie auf
-einer `production`-Umgebung.
+Eine Umgebung kann eigene Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nie auf einer
+`production`-Umgebung aus. `start` läuft nur mit `--start` (`caw_start` mit `start`), `stop` nur nach einem `start` von caw.
+`reset` läuft mit `--reset` vor dem ersten Test und in `run` von selbst einmal vor dem ersten schreibenden Test, außer mit
+`--no-reset`.
 
 ```json
 "ci": {
@@ -274,7 +280,7 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 | `maxActions` | `100` | Aktionsbudget von Claude beim Aufnehmen und Beheben. |
 | `allowHosts` | `[]` | Weitere Hosts, auf die Seiten navigieren dürfen, etwa ein Anmeldedienst; auch je Umgebung. Seiten navigieren nur zu den Hosts der Umgebungen und diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Ohne Claude dürfen Skripte, Styles, Schriften, Bilder, XHR/fetch, WebSockets und iframes zu jedem Host. Produktionshosts anderer Umgebungen bleiben für jeden Request unerreichbar. Hosts werden nach Namen verglichen (Groß-/Kleinschreibung und ein Punkt am Ende zählen nicht); ein Host, der über seine IP-Adresse erreicht wird, wird nicht erkannt. |
 | `thirdPartyHosts` | `[]` | Hosts anderer Anbieter, die die App braucht, solange Claude dabei ist (record, ein Lauf mit Chat, `open`), z. B. `["fonts.example-cdn.com"]`; auch je Umgebung. Dann geht jeder Request des Browsers (Seiten, Skripte, XHR/fetch, WebSockets, Beacons, iframes) nur an die Umgebungen, `allowHosts` und diese; alles andere wird abgebrochen und im Lauf als Warnung mit diesem Schlüssel genannt. Ein Produktionshost bleibt auch hier gesperrt. Ohne Claude bewirkt die Liste nichts. |
-| `browser` | System-Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) oder `{ "executablePath": "/pfad/zu/chromium" }` |
+| `browser` | System-Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) oder `{ "executablePath": "/pfad/zu/chromium" }` (ein absoluter Pfad auf diesem Rechner; keine Netzwerkfreigabe, kein `\\?\`- oder `/proc`-Pfad) |
 | `browser.noSandbox` | `false` | `true` startet Chrome ohne seine Sandbox. Unsicher: Eine Seite, die den Renderer von Chrome bricht, läuft dann mit deinen Rechten. Nur für Rechner, auf denen die Sandbox nicht starten kann (Linux als root, manche Container); caw hält dort mit `browser-sandbox` an, statt von selbst ohne Sandbox weiterzumachen. |
 | `browser.locale`, `browser.timezone`, `browser.viewport` | wie aufgenommen | Sprache, Zeitzone und Größe des Testbrowsers, z. B. `"de-DE"`, `"Europe/Berlin"`, `{ "width": 1280, "height": 800 }`. Ohne sie nutzt eine Wiedergabe die mit der Aufnahme gespeicherten Werte, und eine Aufnahme die des Rechners. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS-Selektoren für Fehlermeldungen ohne ARIA-Rolle. |

@@ -5,7 +5,7 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { loadConfig, writeConfig } from '../shared/config.mjs';
+import { AUTH_DIR, loadConfig, writeConfig } from '../shared/config.mjs';
 import { credentialNames, resolveCredentials } from '../shared/credentials.mjs';
 import { effectiveEnvironment, effectiveEnvironments, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
@@ -18,14 +18,20 @@ export const ENV_EXAMPLE_PATH = `${ENV_FILE}.example`;
 /** Role names as `init` and the config accept them. */
 export const ROLE_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 
-/** caw/.env must never end up in git: adds it to .gitignore if missing. @returns true if .gitignore changed */
-export const ignoreEnvFile = (root) => {
+/** Adds `line` to .gitignore unless one of `covered` is there already. @returns true if .gitignore changed */
+const ignoreLine = (root, line, covered) => {
     const ignore = join(root, '.gitignore');
     const existing = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
-    if (existing.split(/\r?\n/).some((line) => [ENV_PATH, `/${ENV_PATH}`, 'caw/', '/caw/', '.env', '*.env'].includes(line.trim()))) return false;
-    appendFileSync(ignore, `${existing === '' || existing.endsWith('\n') ? '' : '\n'}\n# caw\n${ENV_PATH}\n`);
+    if (existing.split(/\r?\n/).some((entry) => covered.includes(entry.trim()))) return false;
+    appendFileSync(ignore, `${existing === '' || existing.endsWith('\n') ? '' : '\n'}\n# caw\n${line}\n`);
     return true;
 };
+
+/** caw/.env must never end up in git: adds it to .gitignore if missing. @returns true if .gitignore changed */
+export const ignoreEnvFile = (root) => ignoreLine(root, ENV_PATH, [ENV_PATH, `/${ENV_PATH}`, 'caw/', '/caw/', '.env', '*.env']);
+
+/** Saved sessions (caw/.auth) must never end up in git either. @returns true if .gitignore changed */
+export const ignoreAuthDir = (root) => ignoreLine(root, `${AUTH_DIR}/`, [`${AUTH_DIR}/`, `/${AUTH_DIR}/`, AUTH_DIR, `/${AUTH_DIR}`, 'caw/', '/caw/', '.auth/', '.auth']);
 
 /**
  * The variables a role's test user needs, by convention (the default set, for every environment): user and password, and the

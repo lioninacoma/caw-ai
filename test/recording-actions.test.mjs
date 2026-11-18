@@ -59,7 +59,7 @@ test('upload: target and files relative to the caw folder, nothing outside', () 
     const target = "getByRole('button', { name: 'Dateien wählen', exact: true })";
     const [upload] = actionsOf(recording(`- upload: ${yamlText(target)}\n  files: [fixtures/brief.pdf, fixtures/scan.png]`));
     assert.deepEqual(upload, { action: 'upload', target, files: ['fixtures/brief.pdf', 'fixtures/scan.png'] });
-    for (const files of ['[]', '[../geheim.txt]', '[/etc/passwd]', '["C:/x.pdf"]', '[fixtures/../../x]', '"fixtures/a.pdf"']) {
+    for (const files of ['[]', '[../geheim.txt]', '[/etc/passwd]', '["C:/x.pdf"]', '[fixtures/../../x]', '"fixtures/a.pdf"', '[.env]', '[.auth/clerk.json]', '[brief.pdf]', '[fixtures/]']) {
         assert.throws(() => actionsOf(recording(`- upload: ${yamlText(SAVE)}\n  files: ${files}`)), /upload: files/, files);
     }
     assert.throws(() => actionsOf(recording(`- upload: ${yamlText(SAVE)}`)), /upload: files/);

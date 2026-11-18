@@ -127,7 +127,7 @@ steps:
 | `path` | The page the action was recorded on. If a target is missing, the run tells you it is on a different page. |
 | `locale`, `timezone`, `viewport` | Language, time zone and size of the app view while recording; replay uses them unless the config sets `browser.locale`/`browser.timezone`/`browser.viewport`. Headless replay opens at that size; in the workbench the app frame gets exactly that size, scaled down if the window is smaller. |
 | `check` | A JavaScript expression that must return `true`. It runs in the signed-in page, so read it before you commit. |
-| `remember` | Reads a value the run creates, here the ticket number. Later steps use it as `{{ticketnr}}`. Any value that is not empty; one shorter than four characters (an id like `7`) is replaced only in typed values, URLs, string literals of checks and target texts that are exactly that value. |
+| `remember` | Reads a value the run creates, here the ticket number. Its `code` runs in the signed-in page like `check`, so read it before you commit. Later steps use it as `{{ticketnr}}`. Any value that is not empty; one shorter than four characters (an id like `7`) is replaced only in typed values, URLs, string literals of checks and target texts that are exactly that value. |
 | `network` | Requests per step from a healthy run. Used to tell app bugs from environment problems. |
 | `effects` | What each action changed on the page, learned from healthy runs (`runs` counts them). A change fails the step or shows as a warning. |
 | `knownMessages` | Messages that were visible during recording and are not errors. |
@@ -142,7 +142,7 @@ Claude doesn't record `download` and `secret`; you add them to `caw/recordings/<
 
 | Syntax | Meaning |
 |---|---|
-| `- upload: "getByRole('button', { name: 'Choose files', exact: true })"`<br>`  files: [fixtures/brief.pdf]` | Sets files on a file field. If the target is the field itself (e.g. `getByLabel('Attachment')`), it gets the files directly; if it is a button in front of a hidden field, its click opens the file chooser and that gets them. Paths are relative to the `caw` folder, never absolute and never outside it; a missing file stops the step before the click |
+| `- upload: "getByRole('button', { name: 'Choose files', exact: true })"`<br>`  files: [fixtures/brief.pdf]` | Sets files on a file field. If the target is the field itself (e.g. `getByLabel('Attachment')`), it gets the files directly; if it is a button in front of a hidden field, its click opens the file chooser and that gets them. Paths are relative to the `caw` folder and start with `fixtures/`; never absolute, never outside `caw/fixtures`, never a link out of it; a missing file stops the step before the click |
 | `- download: "getByRole('button', { name: 'Export', exact: true })"`<br>`  file: "^report-.*\\.zip$"` | The click must start a download within the step's time limit, its file name must match the regular expression in `file` and the file must not be empty. Otherwise the step fails like an unmet check, without a second click. The tool deletes the file right after |
 | `- remember: {name: davPassword, code: "...", secret: true}` | Like `remember`, but from then on the value is masked as `••••` in the terminal, the workbench, `result.json`, `report.md` and everything Claude gets, like the role's password. The run itself keeps using the real value |
 | `getByRole('button', { name: /^Review( \\d+)?$/ })` | A regular expression instead of the exact name, for a live count or a changing part |

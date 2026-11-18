@@ -37,4 +37,5 @@ steps:
 - A YAML value with ` #` must be quoted; `caw_validate` reports a comment that cut a value.
 
 After writing, check it with `caw_validate` (unknown role, wrong environment, invalid fields), then record it (topic `run`).
-A test may use a role that has no test user yet: `record` opens the sign-in window first.
+A test may use a role that has no test user yet, but `record` and `run` then stop with `credentials-missing` before Chrome
+starts, naming the variables: tell the person to fill them into `caw/.env` (never ask for the values).

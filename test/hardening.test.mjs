@@ -1,6 +1,6 @@
 // Findings of the cross-review: one test each that shows the original bug. Pure functions, no Chrome.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -185,4 +185,18 @@ test('handler: Claude never sees secret values, playback gets them, only the hos
     assert.equal(evaluated.length, before, 'nothing ran in the page');
     // fill and type still get it; a check without a secret placeholder works as before.
     assert.deepEqual(await handler({ action: 'check', id: 'S1', code: 'document.title === "abcd1234"' }), { id: 'S1', pass: true, value: true });
+});
+
+test('readAgentLog: the log in the container folder is read only as a regular file, never through a link or a folder', async (t) => {
+    const { readAgentLog } = await import('../src/host/run.mjs');
+    const dir = folder(t, { 'agent/claude.log': 'line 1\n', 'secret.txt': 'SECRET' });
+    assert.equal(readAgentLog(join(dir, 'agent', 'claude.log')), 'line 1\n');
+    assert.equal(readAgentLog(join(dir, 'agent')), '', 'a folder');
+    assert.equal(readAgentLog(join(dir, 'agent', 'missing.log')), '');
+    try {
+        symlinkSync(join(dir, 'secret.txt'), join(dir, 'agent', 'linked.log'));
+    } catch {
+        return; // no symlink rights (Windows without developer mode)
+    }
+    assert.equal(readAgentLog(join(dir, 'agent', 'linked.log')), '', 'a link the container planted');
 });

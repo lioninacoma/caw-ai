@@ -216,7 +216,9 @@ See [docs/configuration.md](docs/configuration.md).
 chat messages. Your Claude Code account and its terms apply.
 
 **Masked or blocked:** caw signs in itself; the role's password, one-time codes and values marked `secret: true` are replaced
-with `••••` before Claude sees text. `caw/.env`, `.env*`, `caw/.auth` and typical key files are blocked for Claude (Claude Code
+with `••••` in everything Claude gets (error messages, URLs and dialog texts too). That keeps a value from reaching Claude by
+accident; a deliberately misbehaving agent can transform a value in the page with `eval` (split, encode) and read it past the
+mask. `caw/.env`, `.env*`, `caw/.auth` and typical key files are blocked for Claude (Claude Code
 deny rules locally, hidden in the Docker container). Other secrets in project files Claude may read are not, and Claude sees
 everything the test user sees in the app: use test accounts and test data. Details:
 [Sandbox boundaries](docs/guide.md#sandbox-boundaries).
@@ -255,8 +257,10 @@ Before Claude starts, the chat asks once per run (not when your own Claude Code 
 notice off. The run log shows the cost Claude Code reports.
 
 **Does Claude see my passwords?**
-No. caw signs in itself before Claude starts. Claude can't read `caw/.env` and only drives the browser through fixed
-commands. Use test accounts anyway: Claude acts as that user.
+Not by accident. caw signs in itself before Claude starts (and takes no commands while it signs in again), Claude can't
+read `caw/.env` and only drives the browser through fixed commands, and the password is masked in everything Claude gets.
+The mask is no defence against a deliberately misbehaving agent: with `eval` it can transform a value in the page. So use
+test accounts: Claude acts as that user.
 
 **What happens when the UI changes?**
 The step fails and the chat tells you why. If the change was intended, "Fix step" re-records that step; the rest of the test

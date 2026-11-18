@@ -6,8 +6,8 @@ End-to-end regression tests for your web app: plain-language steps, recorded onc
 replayed with Playwright locally and in CI without AI.
 
 Set up (in the project folder, app running):
-  npx caw init --url http://localhost:5173       sign in once in the window; writes caw.config.json, caw/.env (test user),
-                                                 and .mcp.json; fill in anything left TODO
+  npx caw init --url http://localhost:5173       sign in once in the window; writes caw.config.json, caw/.env.example
+                                                 and .mcp.json; fill in caw/.env and anything left TODO
   npx caw doctor                                 until nothing is MISSING
 
 Commands:`,
@@ -80,9 +80,9 @@ Commands:`,
                                          test users and environments, each with the next step
       [--env <name>]                     only this environment's test users and address`,
     'cli.help.role': `  role [list] [--json]                   Roles, whether a test user is set (never the values), and which tests use them
-  role add [<role>] [--env <name>]       Sign in with a test account in the window and name the role; caw writes caw/.env
-                                         and the config. "+ Another role" for the next account
-  role remove <role>                     Remove a role no test uses, with its lines in caw/.env
+  role add <role>                        Add the role to the config and its variable names to caw/.env.example; you put
+                                         the test user into caw/.env (or CI secrets) by hand
+  role remove <role>                     Remove a role no test uses; caw/.env stays, its lines there are named
   role login <role> --env <name>         With signIn type session: sign in once by hand (e.g. SSO), the session goes
                                          to caw/.auth/<env>/<role>.json`,
     'cli.help.export': `  export <test> [--env <name>]           The recorded test as a Playwright test that runs without caw (@playwright/test):
@@ -148,6 +148,10 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <part>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
+    'cli.junitOutside': '--report junit={file} must name a file inside the project.',
+    'cli.fromOutside': '{from} is not inside the project.',
+    'cli.fromMissing': 'not found',
+    'cli.fromNotJson': 'not an explore result (JSON)',
     'cli.fromUnreadable': "Can't read {from}: {message}",
     'cli.doctorUnknownArg': "doctor doesn't know {arg}. Allowed: --agent local|docker|session, --env <name>",
     'cli.doctorAgentValue': '--agent expects local, docker or session.',
@@ -211,6 +215,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.authSignIn': 'Sign in as {role} in the Chrome window. As soon as {selector} appears, caw saves the session.',
     'cli.authClosed': 'Window closed, nothing saved.',
     'cli.authSaved': "Saved: {file}. The file holds login cookies and doesn't belong in the repository.",
+    'cli.authIgnored': 'Added {dir} to .gitignore: saved sessions don\'t belong in the repository.',
 
     // commands.mjs: validate
     'cli.validateChain': '{file}: {chain}, record again.',
@@ -354,7 +359,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorIgnoreNext': 'caw init adds the entries.',
     'cli.doctorRoleOk': 'Role {name} on {target}: test user set',
     'cli.doctorRoleMissing': ({ name, target, missing, count, file }) => `Role ${name} on ${target}: ${missing} ${count > 1 ? 'are' : 'is'} missing in ${file}`,
-    'cli.doctorRoleNext': 'caw role add <role> --env <env> opens the sign-in window; in CI set the variables as environment variables ({file}.example names them).',
+    'cli.doctorRoleNext': 'Put the variables into {file} by hand ({file}.example names them); in CI set them as environment variables.',
     'cli.doctorGateOk': 'Gate on {target}: account set',
     'cli.doctorGateMissing': ({ target, missing, count, file }) => `Gate on ${target}: ${missing} ${count > 1 ? 'are' : 'is'} missing in ${file}`,
     'cli.doctorGateNext': 'Enter the account of the Basic gate in {file} (in CI as environment variables).',

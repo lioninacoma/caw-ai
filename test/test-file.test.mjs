@@ -131,6 +131,10 @@ test('test file: recordings are read strictly', () => {
     assert.throws(() => parseTest(bad.replace('reload: {}', 'click: "getByRole(\'button\'"')), /click: Locator/);
     assert.throws(() => parseTest(bad.replace('reload: {}', 'click: aria-ref=e5')), /click: Locator/);
     assert.throws(() => parseTest(bad.replace('recordedOn:', 'foreign: 1\n      recordedOn:')), /Unbekanntes Feld foreign/);
+    // A line break in a goto URL would end the comment the export writes for a refused one and start code.
+    for (const url of ['https://x/\nprocess.exit(1)//', 'https://x/\rx', `https://x/${String.fromCharCode(0x2028)}x`]) {
+        assert.throws(() => parseTest(withActions([{ action: 'goto', url, denied: true }])), /keinen Zeilenumbruch/, JSON.stringify(url));
+    }
 });
 
 test('plan: Claude cannot set recordings or metadata', () => {

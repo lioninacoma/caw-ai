@@ -31,7 +31,7 @@ test('init: passes validate at once, creates no example test, credentials are gi
     init(explored);
     assert.equal(readFileSync(join(explored, 'caw', 'caw.md'), 'utf8'), 'eigen');
     const ignore = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/);
-    assert.ok(ignore.includes('.caw/') && ignore.includes('caw/.env') && ignore.includes('caw/.auth/'));
+    assert.ok(ignore.includes('.caw/') && ignore.includes('caw/.env') && ignore.includes('caw/.auth/') && ignore.includes('caw/.explore.json'));
     // Not installed here: npx, the way claude mcp add writes it. No skill.
     assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers.caw, npxEntry());
     assert.ok(!existsSync(join(root, '.claude')));
@@ -126,6 +126,11 @@ test('role login: saves a role\'s session, only where the sign-in is a session a
     assert.equal(calls[0].signedInSelector, '#menu');
     assert.equal(calls[0].file, join(root, 'caw', '.auth', 'local', 'kunde.json'));
     assert.deepEqual(calls[0].hosts, ['app.localhost'], 'production never in another target\'s host lock');
+    // Also without init: the saved sessions are kept out of git before the window opens, once.
+    assert.ok(readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/).includes('caw/.auth/'));
+    assert.equal(await login(['kunde', '--env', 'local'], capture), 0);
+    assert.equal(readFileSync(join(root, '.gitignore'), 'utf8').split('caw/.auth/').length, 2, 'not added twice');
+    calls.splice(1);
     assert.equal(await login(['kunde', '--env', 'local'], async () => false), 2, 'window closed: nothing saved');
     await assert.rejects(login(['kunde', '--env', 'live'], capture), (error) => error.code === 'env-denied' && /Produktion/.test(error.message));
     await assert.rejects(login(['gast', '--env', 'local'], capture), /Rolle gast/);
