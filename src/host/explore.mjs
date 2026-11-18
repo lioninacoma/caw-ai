@@ -10,7 +10,7 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { askYesNo, createUi } from '../shared/ui.mjs';
 import { DONE_BINDING, PHASE_BINDING, exploreCardScript } from './explore-card.mjs';
-import { HUMAN_MS, freshSession, installCapture, roleRounds, roleTexts, sendPhase, waitForSignIn } from './role-capture.mjs';
+import { HUMAN_MS, sendPhase, waitForSignIn } from './sign-in-wait.mjs';
 import { isLoopback } from '../shared/config.mjs';
 import { optionValue } from './linux.mjs';
 
@@ -346,11 +346,10 @@ const openExploreBrowser = async ({ url, insecureTls, launch }) => {
 
 /** The texts of the card in the window; step numbers as in the terminal. */
 const cardTexts = (withLogin) => ({
-    title: 'CAW-AI EXPLORE',
+    title: 'CAW EXPLORE',
     steps: {
         signin: `1 ${t('cli.exploreStepSignIn')}`.toUpperCase(),
         start: `${withLogin ? 2 : 1} ${t('cli.exploreStepStart')}`.toUpperCase(),
-        role: `3 ${t('cli.roleStep')}`.toUpperCase(),
     },
     text: {
         wait: t('cli.exploreCardWait'),
@@ -358,13 +357,10 @@ const cardTexts = (withLogin) => ({
         start: t('cli.exploreCardStart'),
         reading: t('cli.exploreCardReading'),
         done: t('cli.exploreCardDone'),
-        role: t('cli.roleCardRole'),
-        saved: t('cli.roleCardSaved'),
     },
     page: t('cli.exploreCardPage'),
     button: t('cli.exploreDoneButton').toUpperCase(),
     saved: t('cli.exploreCardSaved'),
-    role: roleTexts(),
 });
 
 /**
@@ -429,13 +425,10 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
         phase = value;
         await sendPhase(browser.page, value);
     };
-    // The test user the human signs in with: only in this process, saved to caw/.env when the human names a role for it.
-    let capture = null;
     if (!unattended && wait === undefined) {
         const context = browser.page.context?.();
         await context?.exposeBinding(DONE_BINDING, () => pressDone('done')).catch(() => {});
         await context?.exposeBinding(PHASE_BINDING, () => phase).catch(() => {});
-        if (withLogin === true && context !== undefined) capture = await installCapture(context).catch(() => null);
         await context?.addInitScript({ content: exploreCardScript(cardTexts(withLogin === true)) }).catch(() => {});
     }
     // The person (or a test's stand-in) is asked only once the window shows what to do.
@@ -528,12 +521,6 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
             status: index === 0 ? sure(suggestion.framework.confidence) : index === 1 ? sure(suggestion.signIn.confidence) : 'ok',
         })));
         for (const note of suggestion.notes) ui.note(note);
-        // The test user the human signed in with: they name a role in the window, caw-ai writes caw/.env; then maybe more accounts.
-        if (capture?.credentials !== null && capture?.credentials !== undefined) {
-            ui.info(t('cli.exploreRoleStep'));
-            const roles = await roleRounds({ root, page: browser.page, capture, setPhase, signOut: freshSession(browser.page, loginPage?.url ?? url), closed });
-            if (roles.length > 0) suggestion.roles = roles;
-        }
         mkdirSync(join(root, 'caw'), { recursive: true });
         writeFileSync(join(root, EXPLORE_FILE), `${JSON.stringify(suggestion, null, 2)}\n`);
         if (next) ui.info(t('cli.exploreNext', { file: EXPLORE_FILE }));

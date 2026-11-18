@@ -4,6 +4,9 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Changed
+- caw never takes user names or passwords from a page and never writes them: you fill `caw/.env` (or CI secrets) yourself. `init` asks for the role names in the terminal and lists their variables in `caw/.env.example`; `caw role add <role>` (and `caw_role add`) adds the role and names its variables, without a window; `role remove` leaves `caw/.env` as it is. A run whose role has no test user stops before Chrome or Claude start with `credentials-missing`, naming the variables, instead of opening a sign-in window.
+
 ## [1.0.0-rc.2] - 2026-11-18
 
 ### Changed
@@ -26,7 +29,7 @@ First release candidate for 1.0.
 - Extensions outside the core, documented in `docs/extensions/`: the overlay (your local code over a deployed environment, per part from its code server or a build folder; `caw overlay status` and `overlay check`, `--overlay` on `run`, `record`, `open`) is active only with an `overlay` block in `caw.config.json`, otherwise help, validate, doctor and the MCP tools leave it out and `caw overlay`/`--overlay` name the page. ExtJS (`"framework": "extjs"`, written by `init` for a Sencha workspace) adds the `extjs=` locators, its quiet-page probe, message boxes, the Sencha watch as overlay source and the `extjs` guide topic.
 - Setup: `init` (`--explore-only` only looks at the app), `validate`, `doctor`, `role` (`role login` stores an SSO session), `list`; the MCP server (`caw mcp`) lets your session set up projects, start runs and act as the agent.
 - Agents: `local` (Claude Code with narrow tools), `docker` (isolated sandbox with firewall) and `session` (your Claude Code session); cost limits via `agent.model` and `agent.maxBudgetUsd`.
-- Sign-in: login form, one-time codes, steps on an identity provider (`init --explore-only` suggests them from the provider's pages, identifier-first and one-time codes included), SSO via saved sessions; test users per role in `caw/.env`, entered only in the window.
+- Sign-in: login form, one-time codes, steps on an identity provider (`init --explore-only` suggests them from the provider's pages, identifier-first and one-time codes included), SSO via saved sessions; test users per role in `caw/.env` or the environment, filled in by hand.
 - Network and safety: one request name (`POST /graphql mutation CloseTicket`, `json.<key>` for JSON-RPC) and one rule for what writes, with `reads` for requests that only read; pages navigate only to the app's hosts and `allowHosts` (`host-blocked`), while scripts, fonts, analytics and iframes may load from anywhere and are listed as third-party hosts whose errors are warnings; production hosts are unreachable from other environments, and a run on production sends no write requests (`write-blocked`); error pages count as evidence.
 - Environment lifecycle: `start`, `stop`, `reset` and `ready` per environment with your own commands. `--start` starts an environment that doesn't answer and stops it at the end (already running: used, never stopped); `run` resets once before the first writing test, `--reset` before the first test, `--no-reset` never; error codes `env-start-failed`, `env-not-ready`, `env-reset-failed` and `env-unreachable`. Never on production.
 - One language per project: caw's own texts follow the team language (`language`, if `de` or `en`) unless you choose your own with `CAW_LANG`; names from the app and the config stand in straight quotes in every language.

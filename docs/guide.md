@@ -47,7 +47,7 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_guide` | How to work with caw, per topic (`setup`, `tests`, `run`, `session`, `config` …); without a topic the index | no |
 | `caw_init` | `mode: explore` opens the app for you to sign in and returns the suggestions with the saved roles; `mode: write` writes the config from them; `mode: offline` the template with TODO | no |
 | `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written | no |
-| `caw_role` | `list` roles and whether a test user is set; `add` opens the sign-in window, you save the role there; `login` saves a session (SSO); `remove` | no |
+| `caw_role` | `list` roles and whether a test user is set; `add` puts a role into the config and names its variables, you fill `caw/.env` yourself; `login` saves a session (SSO); `remove` | no |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
 | `caw_start` | starts `run`, `record` or `open` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset` (or `args`) | none beyond your session |
 | `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |

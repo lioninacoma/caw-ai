@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { saveTestUser } from '../src/host/test-users.mjs';
 import { sessionMcpHandler, startArgs } from '../src/host/session-mcp.mjs';
 import { initProject, listProject, validateProject } from '../src/host/project-data.mjs';
 
@@ -223,23 +222,16 @@ test('caw_init explore waits for the window and returns the suggestions with the
     assert.equal(open.structuredContent.state, 'running');
 });
 
-test('caw_role add waits for the window and names the roles that got a test user', async (t) => {
+test('caw_role add only writes the config and the variable names; the human fills the values, no window', async (t) => {
     const root = project(t);
-    let polls = 0;
-    const alive = () => {
-        polls += 1;
-        if (polls === 2) saveTestUser(root, { role: 'clerk', user: 'c', password: 'secret-value' });
-        return polls < 3;
-    };
-    const { call, spawned } = session(root, { windowWait: { alive, pollMs: 1 } });
-    const done = await call('caw_role', { action: 'add', name: 'clerk', env: 'local' });
-    assert.deepEqual(spawned.at(-1).args.slice(1), ['role', 'add', 'clerk', '--env', 'local']);
-    assert.equal(done.structuredContent.state, 'done');
-    assert.deepEqual(done.structuredContent.saved, ['clerk']);
-    assert.ok(!JSON.stringify(done).includes('secret-value'), 'never the values');
-    const nothing = await session(root, { windowWait: { alive: () => false } }).call('caw_role', { action: 'add', name: 'auditor' });
-    assert.equal(nothing.isError, true);
-    assert.deepEqual(nothing.structuredContent.saved, []);
+    const { call, spawned } = session(root, { windowWait: { alive: () => false } });
+    const before = spawned.length;
+    const added = await call('caw_role', { action: 'add', name: 'clerk' });
+    assert.equal(spawned.length, before, 'nothing started');
+    assert.equal(added.structuredContent.state, 'added');
+    assert.deepEqual(added.structuredContent.variables, ['CAW_CLERK_USER', 'CAW_CLERK_PASSWORD']);
+    assert.ok(!existsSync(join(root, 'caw/.env')), 'caw/.env is never written');
+    assert.equal((await call('caw_role', { action: 'add' })).isError, true, 'the name is required');
     // login (SSO): the CLI's role login; name is required.
     const logins = [];
     await session(root, { spawnRun: (bin, args) => { logins.push(args); return { pid: 1, unref: () => {} }; }, windowWait: { alive: () => false } }).call('caw_role', { action: 'login', name: 'clerk', env: 'local' });

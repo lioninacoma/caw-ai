@@ -51,7 +51,7 @@ CAW_USER_PASSWORD=geheim
 ```
 
 `npx caw init` schreibt dir so eine Config. Mit `--explore-only` sieht es sich die App zuerst an, und du meldest dich einmal
-an; danach schlägt es die Anmeldung vor und speichert deinen Testnutzer (siehe [init](commands.de.md#init)).
+an; danach schlägt es die Anmeldung vor (siehe [init](commands.de.md#init)). Die Testnutzer trägst du selbst in `caw/.env` ein; caw schreibt sie nie.
 
 ## environments
 
@@ -225,8 +225,8 @@ CAW_CLERK_PASSWORD__STAGING=geheim2
 - `caw/.env` wird wie dotenv gelesen: `KEY=wert`, optional in Anführungszeichen; ein Kommentar nach dem Wert braucht ein
   Leerzeichen vor `#`.
 
-Eine Rolle legst du mit `npx caw role add <rolle> --env <env>` an: im Fenster mit dem Testkonto anmelden, **Speichern** schreibt
-die Werte nach `caw/.env` und die Rolle in die Config. Siehe [role](commands.de.md#role). Nimm Testkonten mit möglichst wenig
+Eine Rolle legst du mit `npx caw role add <rolle>` an: Sie kommt in die Config, ihre Variablennamen nach `caw/.env.example`; die
+Werte trägst du selbst in `caw/.env` ein, caw fragt nie danach. Siehe [role](commands.de.md#role). Nimm Testkonten mit möglichst wenig
 Rechten: Claude bedient einen Browser, der als dieser Nutzer angemeldet ist.
 
 ## Lokalen Code testen

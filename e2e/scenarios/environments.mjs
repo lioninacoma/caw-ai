@@ -155,7 +155,7 @@ scenario('A5', 'Sign-in and test users per environment: form on local, Keycloak 
     verify('(1) ci: Keycloak sign-in by steps with CAW_CLERK_USER__CI/PASSWORD__CI', ci.exit === 0, `${shown(ci)} ${failNote('see-tickets')}`);
     const admin = await go(['create-ticket', '--env', 'ci']);
     verify('(1) ci: the admin creates through Keycloak as well', admin.exit === 0, `${shown(admin)} ${failNote('create-ticket')}`);
-    print('     (2) role add in the window: covered by the unit tests of testUserSet and saveTestUser (no window here)');
+    print('     (2) role add writes no values: covered by the unit tests of addRole (caw/.env is filled by hand)');
     const overview = roleOverview(root, { env: {} });
     const clerk = overview.roles.find(({ name }) => name === 'clerk').environments;
     const set = Object.fromEntries(clerk.map(({ env, set: chosen, state }) => [env, `${chosen}:${state}`]));

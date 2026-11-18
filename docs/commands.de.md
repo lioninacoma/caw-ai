@@ -74,7 +74,7 @@ Dazu: `--yes`, `--insecure-tls` (wie bei `init`); `--login` oder `--no-login` be
 
 Führt die Anmeldung zu einem Identitätsanbieter auf einem anderen Host (etwa Keycloak), meldest du dich dort wie gewohnt an. explore liest dessen Seiten und schlägt `signIn`-`steps` vor, die Benutzername und Passwort füllen (auch identifier-first und ein Einmalcode), und den Host des Anbieters in `allowHosts`; `path` ist die App-Seite, auf der die Anmeldung begann. Haben seine Seiten keine Felder, die caw füllen kann, schlägt es eine gespeicherte Sitzung vor (`type: session`, [role login](#role)).
 
-Mit Anmeldung fragt die Karte danach nach der Rolle des benutzten Kontos und speichert es als Testnutzer (siehe [role](#role)); `init` übernimmt die Rollen von dort.
+Die Anmeldung tippst du selbst; caw liest nur den Aufbau der Seite (Felder, Selektoren), nie, was du eingibst. `init` fragt danach im Terminal nach den Rollennamen und listet ihre Variablen in `caw/.env.example`: nach `caw/.env` kopieren und die Testnutzer eintragen (siehe [role](#role)).
 
 ## doctor
 
@@ -218,14 +218,14 @@ Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner
 ```bash
 npx caw role                          # Rollen, ob ein Testnutzer gesetzt ist (nie die Werte), Tests je Rolle
 npx caw role list --json              # dasselbe als eine JSON-Zeile
-npx caw role add sb --env dev      # Fenster auf der Anmeldeseite: anmelden, Rolle speichern
-npx caw role remove sb                # nur wenn kein Test sie nutzt; entfernt auch ihre Zeilen in caw/.env
+npx caw role add sb                  # Rolle in die Config, ihre Variablennamen nach caw/.env.example
+npx caw role remove sb                # nur wenn kein Test sie nutzt; caw/.env bleibt, wie es ist
 npx caw role login sb --env dev       # signIn.type session: von Hand anmelden, Sitzung speichern
 ```
 
-Eine Rolle ist ein Testnutzer. `role add` öffnet die Anmeldeseite der Umgebung. Du meldest dich mit dem Testkonto an; die Karte nennt die Rolle (vorbelegt, änderbar), und **Speichern** schreibt Benutzername und Passwort in `caw/.env`, die Rolle (`{}`) in `caw.config.json` und `caw/.env` in `.gitignore`. **+ Weitere Rolle** meldet ab und nimmt das nächste Konto. Die Werte gehen von der Seite direkt in die Datei: nicht zu Claude, nicht ins Terminal, nicht in `caw/.explore.json`.
+Eine Rolle ist ein Testnutzer. caw fragt nie nach Benutzernamen und Passwörtern, liest sie nicht aus einer Seite, schreibt und zeigt sie nicht: Du trägst sie selbst in `caw/.env` ein (oder setzt sie als CI-Secrets), unter `CAW_<ROLLE>_USER` und `CAW_<ROLLE>_PASSWORD` (`CAW_<ROLLE>_TOTP` für Einmalcodes, `__<ENV>` für ein anderes Konto auf einer Umgebung, siehe [Konfiguration](configuration.de.md#roles)). `role add` schreibt die Rolle (`{}`) in `caw.config.json`, die Variablennamen ohne Werte in `caw/.env.example` und `caw/.env` in `.gitignore` und nennt die Variablen, die du füllst. `role remove` nimmt die Rolle aus der Config und nennt ihre Zeilen, die noch in `caw/.env` stehen; löschen musst du sie selbst.
 
-`init` (auch mit `--explore-only`) endet genauso: Nach **Fertig** fragt die Karte nach der Rolle des Kontos, mit dem du dich angemeldet hast. Braucht `record`, `run` oder `open` eine Rolle ohne Testnutzer, öffnet sich zuerst das Fenster, und nach **Speichern** geht der Lauf weiter; in CI und mit `--headless` endet er mit `credentials-missing`. Bei `signIn.type: session` gilt `role login`.
+Braucht `record`, `run` oder `open` eine Rolle ohne Testnutzer, endet der Befehl, bevor Chrome oder Claude starten, mit `credentials-missing` und nennt die Variablen. Bei `signIn.type: session` gilt `role login`: Du meldest dich von Hand an, caw speichert die Sitzung, nie ein Passwort.
 
 `role login` ist für `signIn.type: session` (SSO, OAuth, MFA, die sich nicht automatisieren lassen). Es öffnet Chrome auf der Anmeldung, du meldest dich von Hand an. Sobald `signedInSelector` erscheint, speichert caw Cookies und Storage in `caw/.auth/<env>/<rolle>.json`. Erneut ausführen, wenn die Sitzung abläuft.
 
@@ -268,7 +268,7 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_guide` | Die Anleitung je Thema (`topic`); ohne Thema die Übersicht. `overlay` und `extjs` nur, wenn das Projekt sie nutzt | nein |
 | `caw_doctor` | `doctor` als Daten (`agent`, `env`) | nein |
 | `caw_init` | `mode: explore` (`url`, `login` oder `yes`): das Fenster, wartet und liefert Vorschläge und gespeicherte Rollen (`wait: false` startet nur); `mode: write` (`fromExplore`) und `mode: offline` schreiben die Dateien; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | nein |
-| `caw_role` | Rollen als Daten (`list`), das Anmeldefenster für eine neue (`add`, `name`, `env`; wartet und liefert die gespeicherten Rollen), eine gespeicherte Sitzung (`login`), `remove`; nie Benutzernamen oder Passwörter | nein |
+| `caw_role` | Rollen als Daten (`list`), eine neue in der Config mit ihren Variablennamen (`add`, `name`; `caw/.env` füllt der Mensch), eine gespeicherte Sitzung (`login`), `remove`; nie Benutzernamen oder Passwörter | nein |
 | `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste | nein |
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |
@@ -327,7 +327,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `env-certificate` | 2 | Dem Zertifikat der Umgebung wird nicht vertraut: bei einer internen Zertifizierungsstelle `environments.<env>.insecureTls: true` setzen |
 | `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `claude` / `writable` an der Umgebung |
 | `auth-missing` | 3 | Keine gespeicherte Sitzung, oder sie ist abgelaufen: `caw role login <rolle> --env <env>` (die Meldung nennt ihn) |
-| `credentials-missing` | 2 | `role add <rolle> --env <env>` (im Fenster anmelden), oder die Variablen in der Umgebung oder in `caw/.env` setzen (CI) |
+| `credentials-missing` | 2 | Die genannten Variablen in `caw/.env` oder in der Umgebung setzen (CI-Secrets); eine neue Rolle vorher mit `role add <rolle>` |
 | `login-form-missing`, `login-failed` | 2 | Läuft das Backend? Stimmen Selektoren oder Schritte in `signIn` und die Zugangsdaten? |
 | `env-unreachable` | 2 | Umgebung starten (oder `--start` angeben, wenn sie einen `start`-Befehl hat), Adresse prüfen |
 | `env-start-failed` | 2 | Der `start` der Umgebung endete mit Fehler: siehe Log-Ende und `.caw/env/<env>-start.log` |

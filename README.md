@@ -48,7 +48,7 @@ npx caw run first-errand --env local      # replays the recording, without Claud
 - **Reaching states:** `caw open <test>@S3` signs in with the test's role, replays up to S3 and hands you the window. Claude in
   the chat can use the page, reproduce a pasted bug report and propose the fix in your code.
 - **Sign-in:** login forms, one-time codes, steps on an identity provider (e.g. Keycloak), HTTP Basic, stored sessions.
-  Test accounts go straight to `caw/.env`; Claude never sees them.
+  You put test accounts into `caw/.env` yourself; caw never asks for them, and Claude never sees them.
 - **Exit to Playwright:** `caw export <test>` writes a Playwright test that runs without caw.
 
 Works with plain web apps, React, Vue, Angular, Next.js, Nuxt and server-rendered multi-page apps.

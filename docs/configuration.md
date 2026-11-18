@@ -51,7 +51,7 @@ CAW_USER_PASSWORD=secret
 ```
 
 `npx caw init` writes a config like this for you. With `--explore-only` it first looks at the app and you sign in once; it
-then suggests the sign-in and saves your test user (see [init](commands.md#init)).
+then suggests the sign-in (see [init](commands.md#init)). The test users you fill into `caw/.env` yourself; caw never writes them.
 
 ## environments
 
@@ -223,8 +223,8 @@ CAW_CLERK_PASSWORD__STAGING=secret2
 - Variables of the process (CI) win over `caw/.env`.
 - `caw/.env` is read like dotenv: `KEY=value`, optionally in quotes; a comment after the value needs a space before `#`.
 
-Add a role with `npx caw role add <role> --env <env>`: sign in with the test account in the window, **Save** writes the
-values to `caw/.env` and the role to the config. See [role](commands.md#role). Use test accounts with as few rights as
+Add a role with `npx caw role add <role>`: it goes into the config and its variable names into `caw/.env.example`; the values
+you fill into `caw/.env` yourself, caw never asks for them. See [role](commands.md#role). Use test accounts with as few rights as
 possible: Claude drives a browser signed in as this user.
 
 ## Testing local code

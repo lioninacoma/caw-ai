@@ -10,6 +10,13 @@ cd examples/errand
 node server.mjs                                    # http://localhost:4174, account demo / demo
 ```
 
+Put the example's fictitious account into `caw/.env` (role `user`; caw never asks for it, you write it yourself):
+
+```
+CAW_USER_USER=demo
+CAW_USER_PASSWORD=demo
+```
+
 In a second terminal, run the test:
 
 ```bash
@@ -17,13 +24,13 @@ cd examples/errand
 node ../../bin/caw.mjs run first-errand --env local              # workbench window, chat next to the app
 ```
 
-The role `user` has no test user yet, so the sign-in window opens first: sign in with `demo` / `demo` and click **Save**. caw writes the account to `caw/.env` and the run goes on. From then on it runs without the window too:
+caw signs in with that account. It also runs without the window:
 
 ```bash
 node ../../bin/caw.mjs run first-errand --env local --headless   # no window, result in the terminal
 ```
 
-Without a window (`--headless`, CI) the account has to be there already: set `CAW_USER_USER=demo` and `CAW_USER_PASSWORD=demo` (role `user`) in the environment or in `caw/.env`.
+Without `caw/.env` (CI) set the same two variables in the environment.
 
 The run adds a todo "Feed the raven CAW-…", finds it with the search, ticks it off and moves it to "Tomorrow". The report is in `.caw/runs/`.
 

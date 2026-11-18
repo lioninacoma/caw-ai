@@ -74,7 +74,7 @@ With it: `--yes`, `--insecure-tls` (as for `init`); `--login` or `--no-login` an
 
 If the sign-in leads to an identity provider on another host (such as Keycloak), you sign in there as usual. explore reads its pages and suggests `signIn` `steps` that fill the user name and password (identifier-first and a one-time code included) and the provider's host in `allowHosts`; `path` is the app page the sign-in started from. If its pages have no fields caw can fill, it suggests a stored session (`type: session`, [role login](#role)).
 
-With a sign-in, the card then asks for the role of the account you used and saves it as a test user (see [role](#role)); `init` takes the roles from there.
+You type the sign-in yourself; caw only reads the page's structure (fields, selectors), never what you type. `init` then asks for the role names in the terminal and lists their variables in `caw/.env.example`: copy it to `caw/.env` and fill in the test users (see [role](#role)).
 
 ## doctor
 
@@ -218,14 +218,14 @@ If restoring fails on something that does not always show up (a cookie banner al
 ```bash
 npx caw role                          # roles, whether a test user is set (never the values), tests per role
 npx caw role list --json              # the same as one JSON line
-npx caw role add clerk --env dev   # window on the sign-in page: sign in, save the role
-npx caw role remove clerk             # only if no test uses it; also drops its lines in caw/.env
+npx caw role add clerk               # the role into the config, its variable names into caw/.env.example
+npx caw role remove clerk             # only if no test uses it; caw/.env stays as it is
 npx caw role login clerk --env dev    # signIn.type session: sign in by hand, store the session
 ```
 
-A role is a test user. `role add` opens the sign-in page of the environment. You sign in with the test account; the card names the role (prefilled, editable) and **Save** writes user name and password to `caw/.env`, the role (`{}`) to `caw.config.json` and `caw/.env` to `.gitignore`. **+ Another role** signs out and takes the next account. The values go from the page straight to the file: not to Claude, not to the terminal, not into `caw/.explore.json`.
+A role is a test user. caw never asks for, reads from a page, writes or shows user names and passwords: you put them into `caw/.env` yourself (or set them as CI secrets), under `CAW_<ROLE>_USER` and `CAW_<ROLE>_PASSWORD` (`CAW_<ROLE>_TOTP` for one-time codes, `__<ENV>` for another account on one environment, see [configuration](configuration.md#roles)). `role add` writes the role (`{}`) to `caw.config.json`, the variable names without values to `caw/.env.example` and `caw/.env` to `.gitignore`, and names the variables to fill in. `role remove` takes the role out of the config and names the role's lines left in `caw/.env`; deleting them is up to you.
 
-`init` (also with `--explore-only`) ends the same way: after **Done** the card asks for the role of the account you signed in with. When `record`, `run` or `open` needs a role without a test user, the window opens first and the run goes on after **Save**; in CI and with `--headless` it ends with `credentials-missing`. For `signIn.type: session` use `role login`.
+When `record`, `run` or `open` needs a role without a test user, it stops before Chrome or Claude start with `credentials-missing`, naming the variables. For `signIn.type: session` use `role login`: you sign in by hand and caw stores the session, never a password.
 
 `role login` is for `signIn.type: session` (SSO, OAuth, MFA you can't automate). It opens Chrome on the sign-in and you sign in by hand. As soon as `signedInSelector` shows up, caw stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
 
@@ -268,7 +268,7 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_guide` | The guidance per topic (`topic`); without one the index. `overlay` and `extjs` only when the project uses them | no |
 | `caw_doctor` | `doctor` as data (`agent`, `env`) | no |
 | `caw_init` | `mode: explore` (`url`, `login` or `yes`): the window, waits and returns the suggestions and saved roles (`wait: false` only starts it); `mode: write` (`fromExplore`) and `mode: offline` write the files; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | no |
-| `caw_role` | Roles as data (`list`), the sign-in window for a new one (`add`, `name`, `env`; waits and returns the saved roles), a saved session (`login`), `remove`; never user names or passwords | no |
+| `caw_role` | Roles as data (`list`), a new one in the config with its variable names (`add`, `name`; the human fills `caw/.env`), a saved session (`login`), `remove`; never user names or passwords | no |
 | `caw_config` | Read the config, or change it validated (`patch`, `dryRun`). A patch that adds or removes the `overlay` block changes the tool list | no |
 | `caw_validate` | `validate` as data | no |
 | `caw_list` | `list` as data | no |
@@ -327,7 +327,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `env-certificate` | 2 | The environment's certificate is not trusted: for an internal certificate authority set `environments.<env>.insecureTls: true` |
 | `write-protected` | 3 | Recording and writing tests need `claude` / `writable` on the environment |
 | `auth-missing` | 3 | No stored session, or it expired: `caw role login <role> --env <env>` (the message names it) |
-| `credentials-missing` | 2 | `role add <role> --env <env>` (sign in in the window), or set the variables in the environment or `caw/.env` (CI) |
+| `credentials-missing` | 2 | Set the variables the message names in `caw/.env` or the environment (CI secrets); a new role first with `role add <role>` |
 | `login-form-missing`, `login-failed` | 2 | Is the backend up? Are the `signIn` selectors or steps and the credentials right? |
 | `env-unreachable` | 2 | Start the environment (or pass `--start` when it has a `start` command), check the URL |
 | `env-start-failed` | 2 | The environment's `start` ended with an error: see the log tail and `.caw/env/<env>-start.log` |

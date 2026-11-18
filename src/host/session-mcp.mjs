@@ -541,7 +541,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'or yes for unattended): they sign in with a test account, pick the start page, click Done and name the role of the account; '
             + 'waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the suggestions (framework, '
             + 'sign-in with proposed steps and identity-provider hosts, start, messages, console noise, reads candidates, third-party '
-            + 'hosts, saved roles), also in caw/.explore.json. mode write: writes caw.config.json, caw/.env.example, caw/caw.md, the '
+            + 'hosts), also in caw/.explore.json; the human signs in by hand, caw never reads what they type. mode write: writes caw.config.json, caw/.env.example, caw/caw.md, the '
             + '.mcp.json entry and .gitignore entries from the explore result (fromExplore: true or its path); existing files stay. '
             + 'mode offline: the template with TODO in the sign-in. env, language, insecureTls, allowHttp, roles and noMcp set what you '
             + 'decided. Read caw_guide topic setup first.',
@@ -608,11 +608,12 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_role',
         description: 'Roles and their test users. action list: per role whether a test user is set (never the values) and which tests use it. '
-            + 'action add: opens a window on the sign-in page of env; the human signs in and saves the role (name prefilled), caw writes '
-            + 'caw/.env and the config; waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the saved roles. '
-            + 'You never ask for or see user names or passwords. action remove: a role no test uses. Derive role names '
-            + 'from the code (permissions, seed users). action login: for signIn type session (SSO), opens the sign-in for role name on env; '
-            + 'the human signs in and caw saves the session. Not needed before record: a test whose role has no test user opens that window itself. No tokens.',
+            + 'action add: adds role name to the config and its variable names to caw/.env.example and returns the names; the human fills '
+            + 'the values into caw/.env (or CI secrets) by hand. caw never asks for, writes or shows user names or passwords, and neither do you: '
+            + 'tell the human which variables to set, never ask for the values. action remove: a role no test uses (caw/.env stays; the result '
+            + 'names its variables found there for the human to delete). Derive role names from the code (permissions, seed users). action login: '
+            + 'for signIn type session (SSO), opens the sign-in for role name on env; the human signs in and caw saves the session. A run whose '
+            + 'role has no test user stops with credentials-missing naming the variables. No tokens.',
         inputSchema: {
             type: 'object',
             properties: { action: { type: 'string', enum: ['list', 'add', 'remove', 'login'] }, name: { type: 'string' }, env: { type: 'string' }, wait: { type: 'boolean' } },
@@ -622,28 +623,33 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         call: async (input) => {
             renamedField(input);
             const { roleOverview, removeRole } = await import('./role-command.mjs');
+            const { addRole } = await import('./test-users.mjs');
             if (input.action === 'list') {
                 const data = roleOverview(root);
                 return answer(t('run.mcp.roleList', { count: data.roles.length }), data);
             }
             if (!['add', 'remove', 'login'].includes(input.action)) throw new Error(t('run.mcp.roleAction'));
-            if (input.name === undefined ? input.action !== 'add' : !NAME.test(input.name)) throw new Error(t('run.mcp.roleName'));
+            if (input.name === undefined || !NAME.test(input.name)) throw new Error(t('run.mcp.roleName'));
             if (input.env !== undefined) textField(input, 'env');
             if (input.action === 'remove') {
                 const data = removeRole(root, input.name);
                 return answer(t('run.mcp.roleRemoved', { role: input.name }), { state: 'removed', ...data });
             }
+            if (input.action === 'add') {
+                const data = addRole(root, input.name);
+                return answer(t('run.mcp.roleAdded', { role: data.role, names: data.variables.join(', ') || '-' }), { state: data.config, ...data });
+            }
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
-            const args = [input.action, ...(input.name === undefined ? [] : [input.name]), ...(input.env === undefined ? [] : ['--env', input.env])];
-            // A test user (add) or a saved session (login) per role and environment.
-            const ready = (overview) => new Set(overview.roles.flatMap(({ name, environments }) => environments.filter(({ state }) => state === 'set' || state === 'session').map(({ env }) => `${name}@${env}`)));
+            const args = ['login', input.name, ...(input.env === undefined ? [] : ['--env', input.env])];
+            // A saved session per role and environment.
+            const ready = (overview) => new Set(overview.roles.flatMap(({ name, environments }) => environments.filter(({ state }) => state === 'session').map(({ env }) => `${name}@${env}`)));
             const before = ready(roleOverview(root));
             const { log, pid } = spawnDetached({ root, command: 'role', args, spawnRun });
             const started = { command: 'role', args, pid, log: shown(root, log) };
             if (input.wait === false) return answer(t('run.mcp.roleStarted', { pid }), { state: 'started', ...started });
             if (!await waitForExit(pid, windowWait)) return answer(t('run.mcp.stillOpen', { pid }), { state: 'running', ...started });
-            // The window is done: which roles got a test user now (never the values).
+            // The window is done: which roles got a session now.
             const overview = roleOverview(root);
             const saved = [...new Set([...ready(overview)].filter((pair) => !before.has(pair)).map((pair) => pair.split('@')[0]))];
             if (saved.length === 0) return answer(t('run.mcp.roleNothing', { tail: logTail(log) }), { state: 'ended', ...started, saved, roles: overview.roles }, true);

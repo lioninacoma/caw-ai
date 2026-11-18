@@ -18,9 +18,9 @@ import { DEFAULT_MAX_ACTIONS } from './step-budget.mjs';
 import { CLAUDE_TIMEOUT_MIN, optionValue, parseRunArgs, toWslPath } from './linux.mjs';
 import { EXPLORE_FILE, explore } from './explore.mjs';
 import { environmentLifecycle } from './lifecycle.mjs';
-import { ensureTestUser } from './role-capture.mjs';
 import { maskArgs, parseJsonc, projectImage, renderDockerfile, templatePath, toolFingerprint } from './sandbox-config.mjs';
 import { describeCode } from './code-source.mjs';
+import { requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
 import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
@@ -131,8 +131,6 @@ export const answersFromExplore = (suggestion) => {
         ...(suggestion.consoleIgnore === undefined ? {} : { consoleIgnore: suggestion.consoleIgnore }),
         ...(typeof suggestion.language === 'string' ? { language: suggestion.language } : {}),
         ...(Array.isArray(suggestion.allowHosts) && suggestion.allowHosts.length > 0 ? { allowHosts: suggestion.allowHosts } : {}),
-        // Roles the human saved test users for in the explore window.
-        ...(Array.isArray(suggestion.roles) && suggestion.roles.length > 0 ? { roles: suggestion.roles } : {}),
     };
 };
 
@@ -237,7 +235,7 @@ export const initAnswers = async (root, args, { interactive, runExplore = explor
     }
     // The flags win over what explore suggested (e.g. --language over the page's <html lang>).
     const answers = { ...answersFromExplore(suggestion), ...flags };
-    // Roles come from the test users saved in the explore window; otherwise ask in the terminal or use a neutral default.
+    // Roles: asked in the terminal, or a neutral default without one.
     if (interactive && answers.signIn !== 'none' && answers.roles === undefined) answers.roles = (await askLine({ input, output }, t('cli.askRoles'), DEFAULT_ROLE, checkRoles)).split(',').map((name) => name.trim());
     if (interactive) await askNaming(answers, { input, output }, flags);
     return { answers };
@@ -992,9 +990,9 @@ export const changeTracker = (root) => {
  * @param quiet in a batch: no mode line, the batch prints it once
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
-const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}, loaded = undefined) => {
+const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
     const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, agent, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
-    let { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
+    const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
     const { assertPlayable } = await import('./replay.mjs');
@@ -1004,11 +1002,8 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     else if (loaded === undefined && position > 0) assertPlayable(spec, target, spec.steps[position - 1].id);
     // The environment's reset before the first writing test (or the first test with --reset), before anything signs in.
     await lifecycle?.beforeTest(spec);
-    // Only once the run could start, with a window and a person: a role without a test user gets one in a sign-in window.
-    const attended = (interactive ?? (process.env.CI === undefined || process.env.CI === '')) && !headless;
-    if (loaded === undefined && attended && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
-        ({ config, spec, target, checked } = loadChecked(root, test, options.target, 'run', { overlay, start }));
-    }
+    // A missing test user stops the run here, before Chrome or Claude start.
+    requireTestUser(root, config, spec.role, target);
     const withAgent = checked.claude;
     // The chat lives in the workbench and needs no terminal. Only in CI nobody waits for it.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
@@ -1166,9 +1161,9 @@ export const contradicts = (spec, { role, readOnly = false }) => (role !== undef
  * old plan from there, the human steers in the chat. Claude may add, remove, rename or reorder steps from there on; the steps
  * before stay as they are. Without a demonstration: it would start at the sign-in, not at the step.
  */
-const recordFrom = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = {}) => {
+const recordFrom = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
     const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, agent, overlay, start } = options;
-    let { config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start });
+    const { config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start });
     const position = spec.steps.findIndex(({ id }) => id === step);
     if (position === -1) throw stepUnknown('cli.recordStepUnknown', spec, step, { file: `${TEST_DIR}/${test}.yaml` });
     requireAgent(config, checked, target, t('cli.verbRecord'));
@@ -1178,10 +1173,7 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
     assertPlayable(spec, target, spec.steps[position - 1].id);
     return withLifecycle(lifecycleOf(root, config, target, options, 'record'), async (lifecycle) => {
         await lifecycle.beforeTest(spec);
-        // A role without a test user: the human signs in once in a window, then it goes on.
-        if (await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) {
-            ({ config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start }));
-        }
+        requireTestUser(root, config, spec.role, target);
         const { fixFlow } = await import('./flows.mjs');
         const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
         const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen });
@@ -1203,11 +1195,11 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
  */
 export const record = async (root, args, deps = {}) => {
     const options = parseRunArgs('record', args);
-    const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, captureTestUsers: captureFor } = deps;
+    const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = deps;
     const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, overlay, start } = options;
     // In CI nobody demonstrates or decides: said first, before --role or the environment.
     requireHuman('record', interactive);
-    let config = loadConfig(root);
+    const config = loadConfig(root);
     const exists = existsSync(testPath(root, test));
     if (step !== undefined) {
         if (!exists) throw testMissing(root, config, test, given);
@@ -1222,9 +1214,8 @@ export const record = async (root, args, deps = {}) => {
     if (exists && contradicts(spec, { role, readOnly })) throw new CawError('usage', t('cli.recordExists', { test }));
     return withLifecycle(lifecycleOf(root, config, target, options, 'record'), async (lifecycle) => {
         await lifecycle.beforeTest(spec);
-        // A new role or one without a test user: the human signs in once in a window, then the recording goes on.
-        if (effectiveEnvironment(config, target).claude && await ensureTestUser(root, config, { role: spec.role, target, test, interactive: true, capture: captureFor })) config = loadConfig(root);
         const checked = checkTest(spec, target, config, { overlay, start });
+        requireTestUser(root, config, spec.role, target);
         requireAgent(config, checked, target, t('cli.verbRecord'));
 
         const { recordFlow } = await import('./flows.mjs');
@@ -1260,13 +1251,13 @@ export const open = async (root, args, deps = {}) => {
         const runOptions = { ...options, target, entry: options.step, handover: true, learn: false, advise: false, headless: false, noChat: false };
         return withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => (await runOne(root, { ...runOptions, lifecycle }, deps)).code);
     }
-    let config = loadConfig(root);
+    const config = loadConfig(root);
     const target = chooseEnv(config, [], { env: options.target, command: 'open' });
     const spec = draftTest(root, config, { id: OPEN_ID, target, role: options.role, readOnly: true });
     return withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => {
         await lifecycle.beforeTest(spec);
-        if (await ensureTestUser(root, config, { role: spec.role, target, test: spec.id, interactive: true, capture: deps.captureTestUsers })) config = loadConfig(root);
         const checked = checkTest(spec, target, config, { overlay: options.overlay, start: options.start });
+        requireTestUser(root, config, spec.role, target);
         const runOptions = { ...options, test: spec.id, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true };
         return (await runOne(root, runOptions, deps, { config, spec, target, checked })).code;
     });

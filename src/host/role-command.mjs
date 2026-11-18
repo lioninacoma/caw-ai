@@ -1,20 +1,19 @@
-// `caw-ai role [list|add|remove]`: test users as roles in an existing project. `add` opens a window on the sign-in page, the
-// human signs in and names the role; caw-ai writes caw/.env and the config. The values are never printed or returned.
+// `caw role [list|add|remove|login]`: roles in an existing project. `add` puts the role into the config and its variable names
+// into caw/.env.example; the human fills the values into caw/.env. caw never asks for, writes, prints or returns them.
 
-import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { loadConfig, sessionPath, writeConfig } from '../shared/config.mjs';
 import { credentialState, roleLinePattern } from '../shared/credentials.mjs';
-import { chooseEnvironment, effectiveEnvironments, environmentNames, usesCredentials, usesTotp } from '../shared/environments.mjs';
+import { effectiveEnvironments, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { ENV_FILE, TEST_DIR } from '../shared/names.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { parseEnvFile } from './linux.mjs';
-import { captureTestUsers } from './role-capture.mjs';
 import { loadTest } from './test-file.mjs';
-import { ROLE_NAME } from './test-users.mjs';
+import { addRole } from './test-users.mjs';
 
 /** Which tests sign in as which role; unreadable tests are left out. */
 const testsByRole = (root) => {
@@ -63,7 +62,10 @@ export const roleOverview = (root, { env = process.env } = {}) => {
     };
 };
 
-/** Removes a role from the config and its lines from caw/.env; refused while tests still sign in with it. */
+/**
+ * Removes a role from the config; refused while tests still sign in with it. caw/.env stays as it is: the result names the
+ * role's variables found there (names only), for the human to delete.
+ */
 export const removeRole = (root, name) => {
     const config = loadConfig(root);
     const entry = config.roles?.[name];
@@ -72,29 +74,11 @@ export const removeRole = (root, name) => {
     if (users.length > 0) throw new CawError('usage', t('cli.roleInUse', { role: name, tests: users.join(', ') }));
     const written = writeConfig(root, { roles: { [name]: null } });
     if (!written.ok) throw new CawError('config-invalid', written.issues.join('\n'));
-    // Every set of the role (default and per environment), by exact name: removing clerk never touches clerk-lead.
+    // Every set of the role (default and per environment), by exact name: clerk never matches clerk-lead.
     const file = join(root, ENV_FILE);
     const pattern = roleLinePattern(name);
     const lines = existsSync(file) ? readFileSync(file, 'utf8').split(/\r?\n/) : [];
-    const drop = lines.filter((line) => pattern.test(line)).map((line) => line.replace(/^\s*(?:export\s+)?/, '').split('=')[0].trim());
-    if (drop.length > 0) {
-        const temp = `${file}.${process.pid}.tmp`;
-        writeFileSync(temp, lines.filter((line) => !pattern.test(line)).join('\n'), { mode: 0o600 });
-        renameSync(temp, file);
-    }
-    return { role: name, removed: drop };
-};
-
-/** Where `role add` signs in: --env, else the only non-production environment, else the only one Claude may work on. */
-export const roleTarget = (config, given) => {
-    const names = environmentNames(config);
-    if (given !== undefined && !names.includes(given)) throw new CawError('env-invalid', t('cli.roleTargetUnknown', { target: given, environments: names.join(', ') }));
-    try {
-        return chooseEnvironment(config, { given, candidates: names, command: 'run' }).name;
-    } catch (error) {
-        if (error.code !== 'usage') throw error;
-        throw new CawError('usage', t('cli.roleTargetMissing', { environments: names.join(', ') }));
-    }
+    return { role: name, leftInEnv: lines.filter((line) => pattern.test(line)).map((line) => line.replace(/^\s*(?:export\s+)?/, '').split('=')[0].trim()) };
 };
 
 const optionsOf = (rest) => {
@@ -114,11 +98,10 @@ const optionsOf = (rest) => {
 };
 
 /**
- * caw role [list] [--json] | add [<role>] [--env <env>] | remove <role> | login <role> --env <env>
- * @param deps.capture tests only: replaces the sign-in window
+ * caw role [list] [--json] | add <role> | remove <role> | login <role> --env <env>
  * @param deps.captureSession tests only: replaces Chrome for login
  */
-export const roleCommand = async (root, args, { out = (text) => console.log(text), capture = captureTestUsers, captureSession } = {}) => {
+export const roleCommand = async (root, args, { out = (text) => console.log(text), captureSession } = {}) => {
     const [sub = 'list', ...rest] = args;
     const options = optionsOf(rest);
     const ui = createUi();
@@ -141,28 +124,23 @@ export const roleCommand = async (root, args, { out = (text) => console.log(text
         }
         const unconfigured = overview.roles.find((role) => !role.configured);
         const missing = overview.roles.flatMap((role) => role.environments.filter(({ state }) => state === 'missing' || state === 'no-session').map((each) => ({ role: role.name, ...each })));
-        if (unconfigured !== undefined) ui.note(t('cli.roleAddHint', { role: unconfigured.name, target: '<env>' }));
-        else if (missing.length > 0) ui.note(missing[0].state === 'missing' ? t('cli.roleAddHint', { role: missing[0].role, target: missing[0].env }) : t('cli.roleLoginHint', { role: missing[0].role, target: missing[0].env }));
+        if (unconfigured !== undefined) ui.note(t('cli.roleAddHint', { role: unconfigured.name }));
+        else if (missing.length > 0) ui.note(missing[0].state === 'missing' ? t('cli.roleFillHint', { role: missing[0].role, target: missing[0].env, names: missing[0].missing.join(', ') }) : t('cli.roleLoginHint', { role: missing[0].role, target: missing[0].env }));
         return EXIT.pass;
     }
     if (sub === 'add') {
-        if (options.names.length > 1) throw new CawError('usage', t('cli.roleSynopsis'));
-        const [name] = options.names;
-        if (name !== undefined && !ROLE_NAME.test(name)) throw new CawError('usage', t('cli.testUserRoleBad', { role: name }));
-        const config = loadConfig(root);
-        const target = roleTarget(config, options.target);
-        const saved = await capture(root, { target, role: name });
-        if (saved.length === 0) {
-            ui.warn(t('cli.roleNothingSaved'));
-            return EXIT.rejected;
-        }
-        ui.info(t('cli.roleNext', { roles: saved.join(', ') }));
+        if (options.names.length !== 1 || options.target !== undefined) throw new CawError('usage', t('cli.roleSynopsis'));
+        const result = addRole(root, options.names[0]);
+        ui.success(t(result.config === 'added' ? 'cli.roleAdded' : 'cli.roleKnown', { role: result.role }));
+        if (result.variables.length > 0) ui.info(t('cli.roleFillIn', { names: result.variables.join(', '), file: ENV_FILE }));
+        if (result.gitignore) ui.note(t('cli.roleGitignore', { file: ENV_FILE }));
         return EXIT.pass;
     }
     if (sub === 'remove') {
         if (options.names.length !== 1) throw new CawError('usage', t('cli.roleSynopsis'));
         const result = removeRole(root, options.names[0]);
-        ui.success(t('cli.roleRemoved', { role: result.role, file: ENV_FILE }));
+        ui.success(t('cli.roleRemoved', { role: result.role }));
+        if (result.leftInEnv.length > 0) ui.note(t('cli.roleLeftInEnv', { names: result.leftInEnv.join(', '), file: ENV_FILE }));
         return EXIT.pass;
     }
     throw new CawError('usage', t('cli.roleSynopsis'));

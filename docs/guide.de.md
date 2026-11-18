@@ -47,7 +47,7 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | `caw_guide` | Wie man mit caw arbeitet, je Thema (`setup`, `tests`, `run`, `session`, `config` …); ohne Thema die Übersicht | nein |
 | `caw_init` | `mode: explore` öffnet dir die App zum Anmelden und liefert die Vorschläge mit den gespeicherten Rollen; `mode: write` schreibt daraus die Config; `mode: offline` die Vorlage mit TODO | nein |
 | `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben | nein |
-| `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` öffnet das Anmeldefenster, dort speicherst du die Rolle; `login` speichert eine Sitzung (SSO); `remove` | nein |
+| `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
 | `caw_start` | startet `run`, `record` oder `open` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset` (oder `args`) | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |

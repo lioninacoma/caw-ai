@@ -50,7 +50,7 @@ npx caw run first-errand --env local      # spielt die Aufnahme ab, ohne Claude
   Fenster. Claude im Chat kann die Seite bedienen, ein eingefügtes Fehlerticket nachstellen und die Korrektur in deinem Code
   vorschlagen.
 - **Anmeldung:** Anmeldeformulare, Einmalcodes, Schritte bei einem Identitätsanbieter (etwa Keycloak), HTTP Basic,
-  gespeicherte Sitzungen. Testkonten landen direkt in `caw/.env`; Claude sieht sie nie.
+  gespeicherte Sitzungen. Testkonten trägst du selbst in `caw/.env` ein; caw fragt nie danach, und Claude sieht sie nie.
 - **Ausstieg zu Playwright:** `caw export <test>` schreibt einen Playwright-Test, der ohne caw läuft.
 
 Läuft mit einfachen Web-Apps, React, Vue, Angular, Next.js, Nuxt und serverseitig gerenderten Mehrseiten-Apps.

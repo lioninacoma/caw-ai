@@ -4,14 +4,13 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
 
 import { explore } from '../src/host/explore.mjs';
-import { answersFromExplore } from '../src/host/commands.mjs';
 import { freshSession, loginSteps, watchBroken } from '../src/host/browser-session.mjs';
 import { APP_FRAME, frameView } from '../src/host/app-view.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -78,35 +77,16 @@ test('explore: sign-in with a random button and a marker for every account, done
         await tab.waitForSelector('#logout');
         await tab.waitForSelector('[data-caw=explore]', { state: 'attached' });
         await tab.evaluate(() => window.__cawExploreDone()).catch(() => {});
-        // Then the card asks for the role of the test user they signed in with: a bad name is refused, a good one saved.
-        // explore reloads the page after Done, so a call can land in a navigation: then it is simply tried again.
-        const saveRole = (name) => tab.evaluate((role) => window.__cawExploreRole?.(role), name).catch(() => null);
-        let refused = null;
-        while ((await saveRole('admin'))?.ok !== true) {
-            await new Promise((ok) => { setTimeout(ok, 200); });
-            refused ??= (await saveRole('Admin!'))?.error ?? null;
-        }
-        assert.match(refused ?? 'Kleinbuchstaben', /Kleinbuchstaben/);
     })();
     const exploring = explore(root, ['--url', `${base}/`], { open, ask: async () => true, detect: () => 'web' });
     await human;
-    // "Finish" on the saved card ends explore; until the card is there the click has nothing to answer.
-    let code;
-    exploring.then((value) => { code = value; });
-    while (code === undefined) {
-        await tab.evaluate(() => window.__cawExploreNext('finish')).catch(() => {});
-        await new Promise((ok) => { setTimeout(ok, 200); });
-    }
-    assert.equal(code, 0);
-    const env = readFileSync(join(root, 'caw/.env'), 'utf8');
-    assert.match(env, /^CAW_ADMIN_USER=admin$/m);
-    assert.match(env, /^CAW_ADMIN_PASSWORD=secret$/m);
-    assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /^caw\/\.env$/m);
+    // Done ends explore: caw never reads what the human typed, so there is no role step and no caw/.env.
+    assert.equal(await exploring, 0);
+    assert.ok(!existsSync(join(root, 'caw/.env')), 'caw writes no test user');
     const raw = readFileSync(join(root, 'caw/.explore.json'), 'utf8');
-    assert.ok(!raw.includes('secret'), 'the password never reaches the explore result');
+    assert.ok(!raw.includes('secret') && !raw.includes('"admin"'), 'neither the password nor the user name reach the explore result');
     const suggestion = JSON.parse(raw);
-    assert.deepEqual(suggestion.roles, ['admin']);
-    assert.deepEqual(answersFromExplore(suggestion).roles, ['admin']);
+    assert.equal(suggestion.roles, undefined);
     assert.equal(suggestion.signIn.type, 'form');
     assert.equal(suggestion.signIn.userSelector, '#login_user');
     assert.equal(suggestion.signIn.submitSelector, undefined, 'suffix changes, Enter submits');
