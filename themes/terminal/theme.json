@@ -4,11 +4,11 @@
   "name": "terminal",
   "label": {
     "de": "Terminal",
-    "en": "Night"
+    "en": "Terminal"
   },
   "description": {
-    "de": "Bunt, Farben aus der Werkbank.",
-    "en": "Colourful, the workbench colours."
+    "de": "Retro-Terminal: Pixelschrift, Linienrahmen, Rasterzeilen.",
+    "en": "Retro terminal: pixel type, line frames, scanlines."
   },
   "mono": false,
   "css": "theme.css",

@@ -16,9 +16,9 @@ Every built-in theme has a dark and a light mode. Your own may have one or both;
 | `raster` | Swiss style: hard rules, no radius, solid header bars, one strong blue. |
 | `glas` | Frosted, translucent panes over soft colour fields. |
 
-## Change it in the UI
+## Pick one
 
-Press **F7** in the workbench. Switch between **Dark** and **Light** at the top, pick a theme, change colours, glyphs, the raven or the CRT look, and see it live. Editing a built-in theme saves a copy under a new name; colours you change in the light mode go to that mode only. Your choice is stored in `prefs.json`, so it is yours alone, across all projects.
+Press **F7** in the workbench. Switch between **Dark** and **Light** at the top and pick a theme; workbench and chat change at once. A mode the theme lacks is greyed out. The dialog only picks: a theme of your own is a folder you write (below), and it shows up the next time you open the dialog. Your choice is stored in `prefs.json`, so it is yours alone, across all projects.
 
 ```sh
 caw theme                 # list themes, mark the active one and the mode
@@ -62,7 +62,7 @@ Text values may be given per language: `{ "de": "[FEHLER]", "en": "[ FAIL ]" }`.
 
 The pages carry `data-scheme="dark"` or `data-scheme="light"` on `<html>`, so a `theme.css` can style a mode on its own: `:root[data-scheme=light]{ … }`.
 
-`theme.css` is only read from disk. The page under test can pick a theme name and save values that pass the schema, never CSS or files.
+caw only reads themes, it never writes one. The page under test can at most pick a theme or the mode, never change a theme.
 
 Check a theme before sharing it:
 

@@ -1,6 +1,6 @@
 // Themes as packages: a folder with theme.json (themeApi 1, see themes/theme.schema.json), optionally theme.css and fonts/.
-// Built-in: caw-ai/themes/<name>/. Custom: <prefsDir>/themes/<name>/; they name a built-in theme as base and list only the
-// differences; anything missing or broken comes from base.
+// Built-in: caw-ai/themes/<name>/. Custom: a folder in <prefsDir>/themes/<name>/, written by hand; they name a built-in theme as
+// base and list only the differences; anything missing or broken comes from base. caw only reads themes, it never writes one.
 //
 // Which one applies, last wins: studio, optional team default in caw.config.json ({ "theme": { "base", "colors" } }),
 // prefs.json ("theme": "<name>").
@@ -8,11 +8,8 @@
 // A theme has one or both modes in the same package: the top-level colors and crt are the mode named by `scheme` (dark by
 // default), a `light` or `dark` block holds the other one (colors and crt over them). prefs.json "mode" chooses (dark by
 // default); a theme without the chosen mode stays in its own.
-//
-// The workbench can save themes too. So saveTheme checks the whole object against the schema, without css and without
-// fonts.file: theme.css and fonts only come from disk. Pages set colours only as CSS variables.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { language, t } from './i18n.mjs';
@@ -73,19 +70,10 @@ const check = (schema, value, path, problems) => {
     return problems.length - before;
 };
 
-/**
- * What is wrong with a package, as a list of readable lines; empty if it is fine.
- * @param fromPage  from the workbench: then neither css nor fonts.file, and base is required
- */
-export const validateTheme = (pkg, { fromPage = false } = {}) => {
+/** What is wrong with a package, as a list of readable lines; empty if it is fine. */
+export const validateTheme = (pkg) => {
     const problems = [];
     check(SCHEMA(), pkg, 'theme', problems);
-    if (fromPage && isObject(pkg)) {
-        if (pkg.css !== undefined) problems.push(t('config.theme.cssOnlyInPackage'));
-        const fonts = Object.values(isObject(pkg.fonts) ? pkg.fonts : {}).flatMap((entry) => (Array.isArray(entry) ? entry : [entry]));
-        if (fonts.some((font) => isObject(font) && font.file !== undefined)) problems.push(t('config.theme.fontFilesOnlyInPackage'));
-        if (pkg.base === undefined) problems.push(t('config.theme.baseMissing'));
-    }
     return problems;
 };
 
@@ -120,6 +108,8 @@ const readJson = (path) => {
 };
 
 const ownDir = (env) => join(prefsDir(env), 'themes');
+/** The folder for custom themes, one subfolder per theme. */
+export const themesFolder = (env = process.env) => ownDir(env);
 const builtin = (name) => readJson(new URL(`${name}/theme.json`, TOOL_THEMES));
 
 /** The stored package for a name, built-in or custom; broken or foreign yields undefined. */
@@ -169,7 +159,6 @@ export const resolvePackage = (pkg, { env = process.env, extra, mode = themeMode
     for (const [group, keys] of Object.entries(LOCAL)) theme[group] = { ...merged[group], ...Object.fromEntries(keys.map((key) => [key, local(merged[group]?.[key])])) };
     theme.mono = merged.mono === true;
     theme.css = readCss(merged.name, pkg?.css, env);
-    theme.pkg = pkg;
     return theme;
 };
 
@@ -207,44 +196,9 @@ export const listThemes = (env = process.env) => {
     }
     return [...BUILTIN_THEMES, ...own].map((name) => {
         const pkg = readThemePackage(name, env);
-        return { name, builtin: BUILTIN_THEMES.includes(name), base: pkg.base ?? name, label: local(pkg.label) ?? name };
+        // The description only from the package itself: a custom theme without one does not borrow its base's.
+        return { name, builtin: BUILTIN_THEMES.includes(name), base: pkg.base ?? name, label: local(pkg.label) ?? name, description: local(pkg.description) ?? '' };
     });
-};
-
-const writeJson = (path, value) => {
-    const temp = `${path}.${process.pid}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
-    renameSync(temp, path);
-};
-
-/** Saves a custom theme, e.g. from the workbench. Validates as for the page; built-in names are taken. */
-export const saveTheme = (pkg, env = process.env) => {
-    const problems = validateTheme(pkg, { fromPage: true });
-    if (problems.length > 0) throw new Error(`Invalid theme: ${problems.slice(0, 5).join('; ')}`);
-    if (BUILTIN_THEMES.includes(pkg.name)) throw new Error(`${pkg.name} is built in`);
-    const dir = join(ownDir(env), pkg.name);
-    mkdirSync(dir, { recursive: true });
-    // An existing css in the package is kept: the page may neither set nor delete it.
-    const before = readJson(join(dir, 'theme.json'));
-    const keep = isObject(before) && typeof before.css === 'string' ? { css: before.css } : {};
-    const fonts = isObject(before?.fonts) ? { fonts: before.fonts } : {};
-    writeJson(join(dir, 'theme.json'), { ...pkg, ...fonts, ...keep });
-};
-
-/** Deletes a custom theme and its folder. Built-in themes cannot be deleted. */
-export const deleteTheme = (name, env = process.env) => {
-    if (!THEME_NAME.test(String(name)) || BUILTIN_THEMES.includes(name)) throw new Error(`${name} cannot be deleted`);
-    rmSync(join(ownDir(env), name), { recursive: true, force: true });
-};
-
-/** Renames a custom theme: folder and name in the package. */
-export const renameTheme = (from, to, env = process.env) => {
-    if (!THEME_NAME.test(String(from)) || BUILTIN_THEMES.includes(from)) throw new Error(`${from} cannot be renamed`);
-    if (!THEME_NAME.test(String(to)) || BUILTIN_THEMES.includes(to) || existsSync(join(ownDir(env), to))) throw new Error(`${to} is taken or invalid`);
-    const pkg = readJson(join(ownDir(env), from, 'theme.json'));
-    if (!isObject(pkg)) throw new Error(`${from} does not exist`);
-    renameSync(join(ownDir(env), from), join(ownDir(env), to));
-    writeJson(join(ownDir(env), to, 'theme.json'), { ...pkg, name: to });
 };
 
 /** WCAG contrast between two #rrggbb colours. */

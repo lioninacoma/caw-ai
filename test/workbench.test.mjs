@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -34,7 +34,7 @@ test('workbench: the theme is embedded without css and cannot end a <script>', (
     assert.ok(!CHAT_KEYS.includes('F5') && !CHAT_KEYS.includes('Escape'), 'the chat triggers neither reload nor abort in the workbench');
 });
 
-test('workbench: the theme dialog picks, saves custom themes, renames and deletes', (t) => {
+test('workbench: the theme dialog only picks a theme and the mode; own themes come from their folder', (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-bench-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const env = { CAW_AI_HOME: dir };
@@ -45,15 +45,15 @@ test('workbench: the theme dialog picks, saves custom themes, renames and delete
     assert.throws(() => themeAction('mode', 'grau', env), /Unknown setting/);
     assert.equal(themeAction('mode', 'dark', env).scheme, 'dark');
     assert.throws(() => themeAction('use', 'gibt-es-nicht', env));
-    assert.throws(() => themeAction('save', { themeApi: 1, name: 'terminal', base: 'terminal' }, env), /built in/);
-    assert.throws(() => themeAction('save', { themeApi: 1, name: 'x', base: 'terminal', css: 'a.css' }, env), /Invalid theme/);
-    const saved = themeAction('save', { themeApi: 1, name: 'mein-raster', base: 'raster', colors: { accent: '#123456' } }, env);
-    assert.deepEqual([saved.name, saved.colors.accent, readPrefs(env).theme], ['mein-raster', '#123456', 'mein-raster']);
-    assert.ok(themeList(env).some(({ name, colors }) => name === 'mein-raster' && colors.accent === '#123456'), 'with colours for the swatch');
-    assert.equal(themeAction('rename', { from: 'mein-raster', to: 'hafen' }, env).name, 'hafen');
-    assert.equal(readPrefs(env).theme, 'hafen');
-    assert.equal(themeAction('delete', 'hafen', env).name, 'raster', 'back to the base');
-    assert.equal(readThemePackage('hafen', env), undefined);
-    assert.throws(() => themeAction('delete', 'terminal', env));
-    assert.throws(() => themeAction('drop', 'x', env));
+    // Nothing is written from the page.
+    for (const action of ['save', 'rename', 'delete']) assert.throws(() => themeAction(action, { themeApi: 1, name: 'x', base: 'raster' }, env), /\?/, action);
+    assert.equal(readThemePackage('x', env), undefined);
+    // A folder added meanwhile: list shows it, with colours for the preview and its modes.
+    mkdirSync(join(dir, 'themes', 'hafen'), { recursive: true });
+    writeFileSync(join(dir, 'themes', 'hafen', 'theme.json'), JSON.stringify({ themeApi: 1, name: 'hafen', base: 'raster', colors: { accent: '#123456' } }));
+    assert.equal(themeAction('list', undefined, env).name, 'raster');
+    const hafen = themeList(env).find(({ name }) => name === 'hafen');
+    assert.deepEqual([hafen.colors.accent, hafen.modes, hafen.baseLabel, hafen.builtin], ['#123456', ['dark', 'light'], 'Raster', false]);
+    assert.equal(themeAction('use', 'hafen', env).name, 'hafen');
+
 });

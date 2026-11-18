@@ -16,9 +16,9 @@ Jedes eingebaute Theme hat einen dunklen und einen hellen Modus. Eigene dürfen 
 | `raster` | Schweizer Stil: harte Linien, keine Rundungen, Kopfzeilen als volle Balken, ein kräftiges Blau. |
 | `glas` | Mattierte, halbtransparente Fenster über sanften Farbflächen. |
 
-## In der Oberfläche ändern
+## Wählen
 
-**F7** in der Werkbank. Oben zwischen **Dunkel** und **Hell** wechseln, ein Theme wählen, Farben, Zeichen, Rabe oder CRT-Look ändern, alles sofort sichtbar. Wer ein eingebautes Theme ändert, speichert eine Kopie unter neuem Namen; Farben, die du im hellen Modus änderst, gelten nur für diesen Modus. Die Wahl steht in `prefs.json`, gilt also nur für dich, in allen Projekten.
+**F7** in der Werkbank. Oben zwischen **Dunkel** und **Hell** wechseln und ein Theme wählen; Werkbank und Chat wechseln sofort. Ein Modus, den das Theme nicht hat, ist ausgegraut. Der Dialog wählt nur: Ein eigenes Theme ist ein Ordner, den du schreibst (unten), und erscheint beim nächsten Öffnen des Dialogs. Die Wahl steht in `prefs.json`, gilt also nur für dich, in allen Projekten.
 
 ```sh
 caw theme                 # Themes auflisten, aktives und Modus markiert
@@ -62,7 +62,7 @@ Texte gehen auch je Sprache: `{ "de": "[FEHLER]", "en": "[ FAIL ]" }`.
 
 Die Seiten tragen `data-scheme="dark"` oder `data-scheme="light"` am `<html>`, eine `theme.css` kann einen Modus also eigens gestalten: `:root[data-scheme=light]{ … }`.
 
-`theme.css` wird nur von der Platte gelesen. Die getestete Seite kann einen Theme-Namen wählen und Werte speichern, die das Schema bestehen, nie CSS oder Dateien.
+caw liest Themes nur, es schreibt nie eines. Die getestete Seite kann höchstens ein Theme oder den Modus wählen, nie ein Theme ändern.
 
 Vor dem Weitergeben prüfen:
 

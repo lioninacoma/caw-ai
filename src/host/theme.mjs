@@ -97,10 +97,10 @@ export const themeStyle = (theme = activeTheme()) => (theme.css ? `<style data-c
  * The theme for a page: everything except css and files. The page sets colours only as variables and texts only as textContent.
  */
 export const clientTheme = (theme = activeTheme()) => {
-    const { pkg, ...rest } = theme;
+    const rest = { ...theme };
     delete rest.css;
     delete rest.fonts;
-    return { ...rest, pkg: pkg === undefined ? undefined : { ...pkg, css: undefined } };
+    return rest;
 };
 
 /** Pixel frame as four hard shadows, one per side. */

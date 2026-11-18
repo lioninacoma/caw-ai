@@ -1,7 +1,7 @@
 // Workbench and chat in real Chrome: only the chat speaks as the human, the application may navigate the top window itself, a
 // reload by the human aborts the test. Skipped without Chrome.
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ import { WORKBENCH_MARK_SCRIPT, interceptDocuments } from '../src/host/app-view.
 import { withoutIntegrity } from '../src/ext/overlay/local-build.mjs';
 import { CHAT_FRAME, openWorkbench } from '../src/host/workbench.mjs';
 import { readPrefs } from '../src/shared/prefs.mjs';
-import { loadTheme } from '../src/shared/theme-package.mjs';
+import { loadTheme, themesFolder } from '../src/shared/theme-package.mjs';
 import { launchChrome } from './chrome.mjs';
 
 let browser = null;
@@ -400,13 +400,24 @@ test('workbench: a theme chosen in the dialog brings its own stylesheet and font
         await bench.page.locator('#tmode button', { hasText: 'Dunkel' }).click();
         await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'dark');
         assert.deepEqual(await scheme(chatFrame), ['dark', 'dark']);
-        // A theme with one mode: the other is greyed out. A light-only copy of studio has no dark block.
-        await bench.page.evaluate(() => window.cawTheme('save', { themeApi: 1, name: 'tag', base: 'studio', scheme: 'light', colors: { screen: '#fafafa', pane: '#ffffff', text: '#111111' } }));
+        // Nothing in the dialog edits a theme: no fields, no save, rename or delete; the folder for own themes is named.
+        assert.equal(await bench.page.locator('#themeDlg input, #themeDlg details').count(), 0);
+        assert.equal(await bench.page.locator('#themeDlg .tnote code').textContent(), themesFolder());
+        assert.deepEqual(await bench.page.locator('#tthemes .tcard b').allTextContents(), ['Studio', 'Terminal', 'Raster', 'Glas']);
+        // A theme folder added while the workbench is open shows up the next time the dialog opens. It has one mode: light only,
+        // so dark is greyed out.
+        const folder = join(themesFolder(), 'tag');
+        mkdirSync(folder, { recursive: true });
+        t.after(() => rmSync(folder, { recursive: true, force: true }));
+        writeFileSync(join(folder, 'theme.json'), JSON.stringify({ themeApi: 1, name: 'tag', base: 'studio', label: 'Tag', scheme: 'light', colors: { screen: '#fafafa', pane: '#ffffff', text: '#111111' } }));
+        await bench.page.keyboard.press('Escape');
+        await bench.page.keyboard.press('F7');
+        const tag = bench.page.locator('#tthemes .tcard', { hasText: 'Tag' });
+        await tag.waitFor();
+        assert.match(await tag.textContent(), /eigenes, auf Studio · Hell$/);
+        await tag.click();
+        await bench.page.locator('#tthemes .tcard[aria-checked=true]', { hasText: 'Tag' }).waitFor();
         await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'light');
-        // Saved past the dialog: pick it in the dialog, as a person would (any pick brings the fresh list).
-        await bench.page.locator('#tthemes button', { hasText: 'Studio' }).click();
-        await bench.page.locator('#tthemes button', { hasText: 'tag' }).click();
-        await bench.page.locator('#tthemes button[aria-checked=true]', { hasText: 'tag' }).waitFor();
         assert.equal(await bench.page.locator('#tmode button', { hasText: 'Dunkel' }).isDisabled(), true);
         assert.equal(await bench.page.locator('#tmode button', { hasText: 'Hell' }).getAttribute('aria-checked'), 'true');
         assert.equal(await bench.page.locator('#tmode').getAttribute('title'), 'Dieses Theme hat nur einen hellen Modus.');

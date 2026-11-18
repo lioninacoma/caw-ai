@@ -1,8 +1,8 @@
 /* raster: Swiss style. Hard 2px rules in the text colour, no radius, no shadow, panes headed by solid bars, capitals on
    buttons, one strong blue. In the dark mode the same rules turn white: bars light, text dark. Inter and JetBrains Mono. */
 
-.lg,.sec,.tag,.px-label,.px-btn,.px-pill,.gauge,.fk,.tabs button,.solo-btn,#browserState,#notice,#stateSpin,.ttabs button,
-.tthemes button span,.tfields .grp,#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
+.lg,.sec,.tag,.px-label,.px-btn,.px-pill,.gauge,.fk,.tabs button,.solo-btn,#browserState,#notice,#stateSpin,
+#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
 .small,#abort,#abortNo,.soloBar,.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.step .sid,.step dt,.advice dt,
 .failure .badge,#thinking,.fkeys,.sfilter span,.srow .mk,.advice .copy,.heart,#leftNote strong{font-family:var(--font-ui);font-size:12.5px;line-height:1.3;letter-spacing:0}
 .raven{font-family:"VT323",monospace!important;font-weight:400;letter-spacing:0;text-transform:none}
@@ -53,7 +53,7 @@ body{font-variant-ligatures:no-contextual}
 #steps>li[data-kind=phase]>.pts>li{padding:4px 12px}
 
 /* Buttons: framed, capitals; the primary one in the signal colour; hover fills */
-.px-btn,#choices button,.small,#report,#closeWindow,.solo-btn,.advice .copy,.ttabs button{font:700 12px/1.2 var(--font-crt);letter-spacing:.06em;text-transform:uppercase;border:var(--rule);border-radius:0;box-shadow:none;background:var(--pane);color:var(--text)}
+.px-btn,#choices button,.small,#report,#closeWindow,.solo-btn,.advice .copy{font:700 12px/1.2 var(--font-crt);letter-spacing:.06em;text-transform:uppercase;border:var(--rule);border-radius:0;box-shadow:none;background:var(--pane);color:var(--text)}
 #choices{padding:4px 12px 12px;gap:8px}
 #choices button{min-height:40px}
 #choices button:hover,.px-btn:hover:enabled{background:var(--text);color:var(--screen)}
@@ -89,4 +89,4 @@ form:focus-within{box-shadow:inset 0 0 0 2px var(--accent)}
 .tmode{box-shadow:none;border:var(--rule)}
 .tmode button{font:700 12px/1 var(--font-crt);text-transform:uppercase;letter-spacing:.06em;padding:8px 14px;color:var(--text)}
 .tmode button[aria-checked=true]{background:var(--text);color:var(--screen)}
-.tthemes button{border-radius:0}
+.tcard{box-shadow:inset 0 0 0 1px var(--text)}.tcard[aria-checked=true]{box-shadow:inset 0 0 0 3px var(--accent)}

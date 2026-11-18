@@ -257,7 +257,7 @@ npx caw theme mode light      # light or dark
 npx caw theme check my-theme  # schema, contrast, mark width, fonts
 ```
 
-The theme is yours, stored in `prefs.json`, and applies in every project. Built in: `studio` (default), `terminal`, `raster`, `glas`, each with a dark and a light mode (`mode`, dark by default). Switch the mode, change colours, glyphs, raven and CRT look with F7 in the workbench; own themes are folders next to `prefs.json`. Details: [themes/README.md](../themes/README.md).
+The theme is yours, stored in `prefs.json`, and applies in every project. Built in: `studio` (default), `terminal`, `raster`, `glas`, each with a dark and a light mode (`mode`, dark by default). F7 in the workbench picks the theme and the mode; own themes are folders next to `prefs.json`, written by hand. Details: [themes/README.md](../themes/README.md).
 
 ## mcp
 

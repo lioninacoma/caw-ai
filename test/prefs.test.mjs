@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import fs, { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { PAGE_PREFS, prefsDir, readPrefs, writePagePref, writePref } from '../src/shared/prefs.mjs';
 import {
-    activeTheme, contrast, deleteTheme, listThemes, loadTheme, projectThemeProblems, readThemePackage, renameTheme, resolvePackage, saveTheme, setProjectTheme,
-    themeWarnings, validateTheme,
+    activeTheme, contrast, listThemes, loadTheme, projectThemeProblems, readThemePackage, resolvePackage, setProjectTheme, themesFolder, themeWarnings,
+    validateTheme,
 } from '../src/shared/theme-package.mjs';
 
 const home = (t) => {
@@ -17,6 +17,11 @@ const home = (t) => {
         setProjectTheme(undefined);
     });
     return { dir, env: { CAW_AI_HOME: dir } };
+};
+// A custom theme as a person adds one: a folder with a theme.json.
+const own = (env, pkg) => {
+    mkdirSync(join(themesFolder(env), pkg.name), { recursive: true });
+    writeFileSync(join(themesFolder(env), pkg.name, 'theme.json'), JSON.stringify(pkg));
 };
 
 test('prefs: location per platform, CAW_AI_HOME wins', () => {
@@ -59,15 +64,19 @@ test('theme: studio, then team default, then own choice; custom themes inherit f
     assert.deepEqual([activeTheme(env).base, activeTheme(env).colors.accent], ['raster', '#00ff00']);
     writePref('theme', 'terminal', env);
     assert.equal(activeTheme(env).colors.accent, loadTheme('terminal').colors.accent, 'the own choice wins');
-    saveTheme({ themeApi: 1, name: 'hafen', base: 'glas', colors: { heart: '#ff00ff' }, marks: { ok: '[ PASS ]' } }, env);
+    assert.equal(themesFolder(env), join(dir, 'themes'));
+    own(env, { themeApi: 1, name: 'hafen', base: 'glas', colors: { heart: '#ff00ff' }, marks: { ok: '[ PASS ]' } });
     writePref('theme', 'hafen', env);
-    const own = activeTheme(env);
-    assert.deepEqual([own.name, own.base, own.colors.heart, own.colors.screen, own.marks.ok, own.marks.warn], ['hafen', 'glas', '#ff00ff', loadTheme('glas').colors.screen, '[ PASS ]', '!']);
-    renameTheme('hafen', 'kai', env);
-    assert.equal(readThemePackage('kai', env).name, 'kai');
-    assert.deepEqual(listThemes(env).map(({ name }) => name), ['studio', 'terminal', 'raster', 'glas', 'kai']);
-    deleteTheme('kai', env);
-    assert.equal(readThemePackage('kai', env), undefined);
+    const mine = activeTheme(env);
+    assert.deepEqual([mine.name, mine.base, mine.colors.heart, mine.colors.screen, mine.marks.ok, mine.marks.warn], ['hafen', 'glas', '#ff00ff', loadTheme('glas').colors.screen, '[ PASS ]', '!']);
+    // Listed after the built-in ones; the description only from the package itself, never the base's.
+    const listed = listThemes(env);
+    assert.deepEqual(listed.map(({ name }) => name), ['studio', 'terminal', 'raster', 'glas', 'hafen']);
+    assert.deepEqual([listed.at(-1).description, listed[0].description !== ''], ['', true]);
+    // A folder whose name does not match the package's does not count.
+    own(env, { themeApi: 1, name: 'anders', base: 'glas' });
+    fs.renameSync(join(themesFolder(env), 'anders'), join(themesFolder(env), 'falsch'));
+    assert.equal(readThemePackage('falsch', env), undefined);
     // Broken or foreign packages do not count: the team default applies.
     mkdirSync(join(dir, 'themes', 'kaputt'), { recursive: true });
     writeFileSync(join(dir, 'themes', 'kaputt', 'theme.json'), '{"themeApi":1,"name":"kaputt","base":"terminal","colors":{"text":"url(x)"}}');
@@ -87,8 +96,8 @@ test('theme mode: dark by default; light takes the light colours and scheme; a t
     assert.deepEqual(light.marks, dark.marks, 'the mode changes colours, not the glyphs');
     // Asked for explicitly, either mode, whatever prefs.json says.
     assert.equal(loadTheme('glas', env, 'dark').colors.screen, readThemePackage('glas').colors.screen);
-    // Light edits of a custom theme sit in its light block, over the base's light colours.
-    saveTheme({ themeApi: 1, name: 'hell', base: 'studio', light: { colors: { accent: '#123456' } } }, env);
+    // A custom theme's light block lies over the base's light colours.
+    own(env, { themeApi: 1, name: 'hell', base: 'studio', light: { colors: { accent: '#123456' } } });
     writePref('theme', 'hell', env);
     assert.deepEqual([activeTheme(env).colors.accent, activeTheme(env).colors.screen], ['#123456', light.colors.screen]);
     assert.equal(activeTheme(env, 'dark').colors.accent, dark.colors.accent);
@@ -106,24 +115,6 @@ test('theme mode: dark by default; light takes the light colours and scheme; a t
     const both = resolvePackage({ ...lightOnly, dark: { colors: { screen: '#050505' } } }, { env, mode: 'dark' });
     assert.deepEqual([both.scheme, both.modes, both.colors.screen, both.colors.text], ['dark', ['dark', 'light'], '#050505', '#111111']);
     assert.throws(() => writePref('mode', 'system', env), /Unknown setting/);
-});
-
-test('theme from the page: schema, no css, no font files, no built-in names', (t) => {
-    const { env } = home(t);
-    const ok = { themeApi: 1, name: 'meins', base: 'terminal' };
-    for (const bad of [
-        { ...ok, css: 'x.css' },
-        { ...ok, fonts: { display: { family: 'X', file: 'fonts/x.woff2' } } },
-        { ...ok, colors: { accent: '#ff0000;}body{x' } },
-        { ...ok, colors: { glow: '#ff0000' } },
-        { ...ok, marks: { ok: 'x'.repeat(40) } },
-        { ...ok, raven: { parts: { body: 'url(x)' } } },
-        { ...ok, name: 'terminal' },
-        { ...ok, base: undefined },
-        { ...ok, evil: 1 },
-    ]) assert.throws(() => saveTheme(bad, env), /Invalid theme|built in/, JSON.stringify(bad));
-    saveTheme(ok, env);
-    assert.equal(readThemePackage('meins', env).base, 'terminal');
 });
 
 test('theme: team default and warnings', () => {

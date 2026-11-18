@@ -20,7 +20,7 @@ import { APP_FRAME, CHAT_FRAME_NAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, int
 import { language, t, texts } from '../shared/i18n.mjs';
 import { readPrefs, writePagePref, writePref } from '../shared/prefs.mjs';
 import { LONG_NAME } from '../shared/raven.mjs';
-import { BUILTIN_THEMES, THEME_KEYS, activeTheme, deleteTheme, listThemes, loadTheme, readThemePackage, renameTheme, saveTheme } from '../shared/theme-package.mjs';
+import { activeTheme, listThemes, loadTheme, readThemePackage, themesFolder } from '../shared/theme-package.mjs';
 import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, applyThemeSheets, clientTheme, ravenLogo, themeAttr, themeCss, themeStyle } from './theme.mjs';
 
 export const CHAT_FRAME = CHAT_FRAME_NAME;
@@ -61,40 +61,27 @@ header{padding:10px 14px;border-bottom:2px solid var(--line);font:400 20px/1 var
 p{flex:1;display:grid;place-items:center;margin:0;padding:24px;text-align:center;font:var(--fs-body)/1.5 var(--font-body)}</style>
 <header>${esc(theme.prompt?.claude ?? 'claude>')}</header><p>${t('workbench.chatPlaceholder')}</p></html>`;
 
-/** The themes for the dialog, each with its colours for the swatch. */
-export const themeList = (env = process.env) => listThemes(env).map((entry) => ({ ...entry, colors: loadTheme(entry.name, env)?.colors }));
+/** The themes for the dialog, each with its colours (in the chosen mode) for the preview and the modes it has. */
+export const themeList = (env = process.env) => listThemes(env).map((entry) => {
+    const theme = loadTheme(entry.name, env);
+    return { ...entry, colors: theme?.colors, modes: theme?.modes ?? ['dark'], baseLabel: entry.builtin ? undefined : loadTheme(entry.base, env)?.label };
+});
 
 /**
- * What the workbench theme dialog may do: use, mode (dark or light), save (custom only, only what the page schema allows),
- * delete, rename. The choice is stored in prefs.json. @returns the theme in effect afterwards
+ * What the workbench theme dialog may do: use a theme, choose the mode (dark or light), list the themes anew (a folder may have
+ * been added). Themes are never written from the page. The choice is stored in prefs.json. @returns the theme in effect afterwards
  */
 export const themeAction = (action, payload, env = process.env) => {
-    const chosen = () => readPrefs(env).theme;
     if (action === 'use') {
         if (readThemePackage(payload, env) === undefined) throw new Error(`${payload}?`);
         writePref('theme', payload, env);
         return loadTheme(payload, env);
     }
-    if (action === 'save') {
-        saveTheme(payload, env);
-        writePref('theme', payload.name, env);
-        return loadTheme(payload.name, env);
-    }
-    if (action === 'delete') {
-        const pkg = readThemePackage(payload, env);
-        deleteTheme(payload, env);
-        if (chosen() === payload) writePref('theme', BUILTIN_THEMES.includes(pkg?.base) ? pkg.base : BUILTIN_THEMES[0], env);
-        return activeTheme(env);
-    }
     if (action === 'mode') {
         writePref('mode', payload, env);
         return activeTheme(env);
     }
-    if (action === 'rename') {
-        renameTheme(payload?.from, payload?.to, env);
-        if (chosen() === payload.from) writePref('theme', payload.to, env);
-        return activeTheme(env);
-    }
+    if (action === 'list') return activeTheme(env);
     throw new Error(`${action}?`);
 };
 
@@ -241,38 +228,37 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 .sfoot .acts{display:flex;gap:8px}
 .fk[hidden],.solo-btn[hidden]{display:none}
 @media (max-width:859px){.scols{grid-template-columns:minmax(0,1fr)}}
-/* Theme (F7): a window above the workbench. */
+/* Theme (F7): a window above the workbench. Pick a theme and its mode; own themes are folders (themes/README.md). */
 #themeDlg{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(0,0,0,.55)}#themeDlg[hidden]{display:none}
-#themeDlg>.win{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:22px 0 14px;background:var(--pane)}
-#themeDlg .tbody{min-height:0;overflow:auto;padding:0 16px}
+#themeDlg>.win{width:min(660px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:22px 0 16px;background:var(--pane)}
+#themeDlg .tbody{min-height:0;overflow:auto;padding:6px 18px 2px;display:flex;flex-direction:column;gap:14px}
 #themeDlg .lg{top:-13px}
-.tmode{display:inline-flex;margin-bottom:12px;box-shadow:inset 0 0 0 2px var(--line)}
-.tmode button{border:0;cursor:pointer;background:none;color:var(--muted);font:400 18px/1 var(--font-crt);padding:5px 14px}
-.tmode button[aria-checked=true]{background:var(--accent);color:var(--ink)}.tmode button:disabled{opacity:.45;cursor:default}
-.tthemes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:2px solid var(--line)}
-.tthemes button{border:0;cursor:pointer;display:grid;grid-template-columns:auto auto;gap:0 8px;align-items:center;text-align:left;background:var(--pane-2);color:var(--muted);padding:5px 10px 5px 6px;box-shadow:inset 0 0 0 2px var(--line)}
-.tthemes button i{grid-row:span 2;width:18px;height:18px;display:inline-block;background:var(--sw-screen);box-shadow:inset 0 0 0 3px var(--sw-screen),inset 0 0 0 9px var(--sw-accent)}
-.tthemes button span{font:400 20px/1 var(--font-crt)}.tthemes button small{font-size:11px;color:var(--faint)}
-.tthemes button[aria-checked=true]{color:var(--text);box-shadow:inset 0 0 0 2px var(--accent),0 0 10px var(--glow)}
-.trow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.trow[hidden]{display:none}
-.trow label{font-size:12.5px;color:var(--muted)}
-.trow input,.tfields input[type=text],.tfields input[type=number]{font:13px var(--font-mono);color:var(--text);background:var(--screen);border:0;box-shadow:inset 0 0 0 2px var(--line);padding:5px 8px}
-.trow code{font:11.5px var(--font-mono);color:var(--faint);overflow-wrap:anywhere}
-.ttabs{display:flex;gap:4px;margin:4px 0 10px}
-.ttabs button{font:400 20px/1 var(--font-crt);color:var(--muted);background:none;border:0;padding:3px 10px;cursor:pointer;box-shadow:inset 0 0 0 2px var(--line)}
-.ttabs button[aria-selected=true]{color:var(--text);box-shadow:inset 0 0 0 2px var(--accent)}
-.tfields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:4px 12px;align-items:center}
-.tfields .grp{grid-column:1/-1;font:400 19px/1 var(--font-crt);color:var(--faint);margin-top:10px;white-space:nowrap;overflow:hidden}.tfields .grp:first-child{margin-top:0}
-.tfields label{font-size:13px}
-.tfields input{width:100%}
-.sw{display:flex;align-items:center;gap:8px}.sw code{font:12px var(--font-mono);color:var(--muted);width:7ch}
-.tfields input[type=color]{width:34px;height:24px;border:0;padding:0;background:none;cursor:pointer;box-shadow:0 0 0 2px var(--line)}
-.tfields input[type=color]::-webkit-color-swatch-wrapper{padding:0}.tfields input[type=color]::-webkit-color-swatch{border:0}
-#tproblems{margin:12px 0 0;padding:0;list-style:none;color:var(--warn);font-size:13px}#tproblems[hidden]{display:none}
-.tbtns{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}.tbtns [hidden]{display:none}
-#tmsg{font-size:12.5px;color:var(--muted)}
-#tjsonBox{margin-top:12px}#tjsonBox summary{cursor:pointer;color:var(--muted);font-size:12.5px}
-#tjson{margin:8px 0 0;padding:10px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line);font:12px/1.45 var(--font-mono);color:var(--muted);white-space:pre;overflow:auto;max-height:220px}
+.thead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.thead span{font:600 11.5px/1.2 var(--font-crt);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tmode{display:inline-flex;box-shadow:inset 0 0 0 1px var(--line)}
+.tmode button{border:0;cursor:pointer;background:none;color:var(--muted);font:500 12.5px/1 var(--font-ui);padding:7px 16px}
+.tmode button:hover:enabled{color:var(--text)}
+.tmode button[aria-checked=true]{background:var(--accent);color:var(--ink)}
+.tmode button:disabled{opacity:.4;cursor:not-allowed}
+.tthemes{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
+.tcard{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;align-items:center;text-align:left;cursor:pointer;border:0;padding:10px;background:var(--pane-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.tcard:hover{box-shadow:inset 0 0 0 1px var(--muted)}
+.tcard[aria-checked=true]{box-shadow:inset 0 0 0 2px var(--accent)}
+.tcard:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.tcard[aria-checked=true]:focus-visible{outline:none}
+.ttext{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ttext b{font:600 15px/1.2 var(--font-crt)}
+.ttext .tabout{font-size:12.5px;line-height:1.35;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ttext small{font:500 11px/1.2 var(--font-ui);color:var(--faint)}
+/* A small workbench in the theme's colours: steps, app, chat. */
+.tpv{height:50px;display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:3px;padding:4px;background:var(--pv-screen);box-shadow:inset 0 0 0 1px var(--pv-frame)}
+.tpv i{background:var(--pv-pane);box-shadow:inset 0 0 0 1px var(--pv-frame)}
+.tpv i:first-child{background:linear-gradient(var(--pv-ok),var(--pv-ok)) 4px 6px/55% 2px no-repeat,linear-gradient(var(--pv-muted),var(--pv-muted)) 4px 12px/70% 2px no-repeat,linear-gradient(var(--pv-muted),var(--pv-muted)) 4px 18px/45% 2px no-repeat,var(--pv-pane)}
+.tpv i:nth-child(2){background:linear-gradient(var(--pv-accent),var(--pv-accent)) 50% 70%/40% 6px no-repeat,var(--pv-screen)}
+.tpv i:last-child{background:linear-gradient(var(--pv-accent),var(--pv-accent)) 4px calc(100% - 5px)/calc(100% - 8px) 5px no-repeat,var(--pv-pane)}
+.tnote{margin:0;font-size:12.5px;line-height:1.5;color:var(--muted)}
+.tnote code{font:12px var(--font-mono);color:var(--text);overflow-wrap:anywhere}
+.tfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px 0;margin-top:2px;border-top:1px solid var(--line)}
+#tmsg{font-size:12.5px;color:var(--warn)}
 /* Three columns from 1000px; narrower sides up to 1500px so the application keeps its desktop layout. */
 @media (min-width:1000px) and (max-width:1499px){.panes{--col-steps:minmax(220px,260px);--col-chat:minmax(280px,330px)}}
 @media (min-width:1000px){
@@ -287,7 +273,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 .pa-steps{max-height:40vh}}
 @media (max-width:859px){
 .panes{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "chat" "browser"}
-.pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh}.tools{margin-left:0}.tfields{grid-template-columns:minmax(0,1fr)}}
+.pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh}.tools{margin-left:0}}
 /* Record, play, pause: a chip at the top right next to the status pill. The glyphs are drawn in CSS, the pixel font has no clean
    circle, triangle or pause bars. Record pulses gently; F10 (.still) stops it. */
 #transport{display:none;color:var(--tc)}#transport.on{display:inline-flex}
@@ -319,13 +305,11 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 <div class="scols"><div class="scol"><div class="sec">── <b>${t('workbench.page.stateTest').toUpperCase()}</b></div><div class="sfilter"><span>/</span><input id="sq" type="search" autocomplete="off" spellcheck="false" placeholder="${t('workbench.page.stateSearch')}" aria-label="${t('workbench.page.stateSearch')}"></div><div class="slist" id="stests" role="listbox" aria-label="${t('workbench.page.stateTest')}"></div></div>
 <div class="scol"><div class="sec">── <b id="sstepsHead">${t('workbench.page.stateSteps').toUpperCase()}</b></div><div class="slist" id="ssteps" role="listbox" aria-label="${t('workbench.page.stateSteps')}"></div></div></div>
 <div class="sfoot"><p id="sfoot"></p><div class="acts"><button type="button" class="px-btn" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="px-btn px-btn--primary" id="sgo" disabled>[ ${t('workbench.page.stateGo').toUpperCase()} ]</button></div></div></div></div>
-<div id="themeDlg" hidden role="dialog" aria-modal="true" aria-labelledby="tname"><div class="win crt"><span class="lg glow" id="tname"></span><div class="tbody">
-<div class="tmode" id="tmode" role="radiogroup" aria-label="${t('workbench.page.themeMode')}"></div>
+<div id="themeDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.page.themeTitle')}"><div class="win crt">${lg(t('workbench.page.themeTitle'))}<div class="tbody">
+<div class="thead"><span id="tmodeLabel">${t('workbench.page.themeMode')}</span><div class="tmode" id="tmode" role="radiogroup" aria-labelledby="tmodeLabel"></div></div>
 <div class="tthemes" id="tthemes" role="radiogroup" aria-label="${t('workbench.page.themeList')}"></div>
-<div class="trow" id="tnameRow" hidden><label for="tlabel">${t('workbench.page.themeLabel')}</label><input id="tlabel" maxlength="40" spellcheck="false"><label for="tslug">${t('workbench.page.themeName')}</label><input id="tslug" maxlength="32" spellcheck="false" size="14"><code id="tfile"></code></div>
-<div class="ttabs" id="ttabs" role="tablist"></div><div class="tfields" id="tfields"></div><ul id="tproblems" hidden></ul>
-<div class="tbtns"><button type="button" class="px-btn" id="tdup"></button><button type="button" class="px-btn" id="treset">${t('workbench.page.themeReset')}</button><button type="button" class="px-btn" id="tdelete"></button><button type="button" class="px-btn" id="tclose">${t('workbench.page.themeClose')}</button><span id="tmsg" role="status"></span></div>
-<details id="tjsonBox"><summary id="tjsonHead"></summary><pre id="tjson"></pre></details></div></div></div>
+<p class="tnote">${t('workbench.page.themeFolder')} <code>${esc(themesFolder())}</code></p></div>
+<div class="tfoot"><span id="tmsg" role="status"></span><button type="button" class="px-btn" id="tclose">${t('workbench.page.themeClose')}</button></div></div></div>
 <script>${RAVEN_SCRIPT}
 ${GLYPH_SCRIPT}
 ${APPLY_THEME_SCRIPT}
@@ -513,29 +497,9 @@ const repaint=()=>{for(const li of document.querySelectorAll('#steps li:not([dat
 const useTheme=(theme)=>{if(!theme||typeof theme!=='object')return;TH=theme;cawApplyTheme(document.documentElement,TH);raven.setRaven(TH.raven);repaint();sendTheme();};
 repaint();
 
-// Theme (F7): pick themes, create and edit own ones. Built-in themes stay as they are: the first change creates a copy
-// "my-<base>" (localized). Saving goes through cawTheme in the host, which checks the schema; the page only sets variables and textContent.
-const KEYS=${json(THEME_KEYS)},BUILTIN=${json(BUILTIN_THEMES)},LANG=${json(language())},NAME=/^[a-z0-9-]{1,32}$/;
-const isObj=(v)=>v!==null&&typeof v==='object'&&!Array.isArray(v);
-const txt=(v)=>(isObj(v)?v[LANG]??v.en??Object.values(v)[0]??'':v??'');
-const clone=(v)=>JSON.parse(JSON.stringify(v??{}));
-const getPath=(obj,path)=>path.split('.').reduce((o,k)=>(o==null?o:o[k]),obj);
-const isBuiltin=()=>BUILTIN.includes(TH.name);
-const FIELDS={
-  marks:[['marks'],['marks.ok','text',32],['marks.warn','text',32],['marks.fail','lang',32],['marks.run','text',32],['marks.open','text',32],['marks.ask','text',32],
-    ['bullets'],['bullets.ok','text',4],['bullets.warn','text',4],['bullets.fail','text',4],['bullets.run','text',4],['bullets.pause','lang',4],
-    ['lines'],['tree.mid','text',2],['tree.end','text',2],['rule.line','text',1],['legend','text',32],
-    ['progress'],['progress.done','text',1],['progress.run','text',1],['progress.open','text',1],['spinner.frames','chars',12],['spinner.ms','num',60000],
-    ['chat'],['prompt.claude','text',32],['prompt.human','lang',32]],
-  raven:[['logo'],['raven.lines.0','text',24],['raven.lines.1','text',24],['raven.lines.2','text',24],['raven.beak','text',2],
-    ['eyes'],['raven.eyes.open','text',2],['raven.eyes.shut','text',2],['raven.eyes.happy','text',2],
-    ['blink'],['raven.blink.ms','num',60000],['raven.blink.pauseMs.0','num',60000],['raven.blink.pauseMs.1','num',60000],
-    ['hearts'],['raven.pet.hearts.glyphs','list',24],['raven.pet.hearts.count','num',20],['raven.pet.hearts.risePx','num',400]],
-  crt:[['screen'],['crt.scanlines.color','color'],['crt.scanlines.alpha','range'],['crt.vignette','range'],
-    ['glow'],['crt.headingGlowPx','num',24],['crt.textGlow.px','num',8],['crt.textGlow.alpha','range']],
-};
-const TABS=['colors','marks','raven','crt'];
-let tab='colors',confirmDelete=false,busy=false;
+// Theme (F7): pick a theme and its mode. Themes are only read here: own ones are folders next to prefs.json. The host checks every
+// choice (cawTheme); the page only sets variables and textContent.
+let busy=false;
 const msg=(text)=>{$('tmsg').textContent=text??'';};
 const call=async(action,payload)=>{if(busy)return null;busy=true;
   try{const result=await window.${THEME_BINDING}?.(action,payload);
@@ -544,74 +508,20 @@ const call=async(action,payload)=>{if(busy)return null;busy=true;
   catch{msg(fill('workbench.page.themeFailed',{why:''}));}
   finally{busy=false;renderDialog();}
   return null;};
-const unique=(stem)=>{let name=stem.slice(0,32),i=2;while(LIST.some((entry)=>entry.name===name))name=(stem.slice(0,28)+'-'+(i++));return name;};
-// The own package for saving: without css and fonts, which only come from disk and stay in the host.
-const ownPkg=()=>{const pkg=clone(TH.pkg);delete pkg.css;delete pkg.fonts;delete pkg.$schema;return pkg;};
-const fresh=(base,label)=>({themeApi:1,name:unique(fill('workbench.page.themeNameOwn',{base})),base,label:{[LANG]:label}});
-const setPath=(pkg,path,value)=>{const keys=path.split('.');let o=pkg;
-  keys.slice(0,-1).forEach((k,i)=>{const next=keys[i+1];if(o[k]==null)o[k]=/^\\d+$/.test(next)?clone(getPath(TH,keys.slice(0,i+1).join('.'))??[]):{};else o[k]=clone(o[k]);o=o[k];});
-  o[keys.at(-1)]=value;};
-const modePath=(path)=>(TH.scheme!==TH.primary&&/^(colors|crt)\\./.test(path)?TH.scheme+'.'+path:path);
-const edit=(path,value)=>{const pkg=isBuiltin()?fresh(TH.name,fill('workbench.page.themeMine',{label:TH.label})):ownPkg();setPath(pkg,modePath(path),value);return call('save',pkg);};
-const problems=()=>{const out=[];
-  const widths=new Set(Object.values(TH.marks??{}).map((m)=>[...String(m).replace('{spinner}','x')].length));
-  if(widths.size>1)out.push(T['workbench.page.themeWidth']);
-  const lum=(hex)=>{const [r,g,b]=hex.slice(1).match(/../g).map((p)=>{const c=parseInt(p,16)/255;return c<=.03928?c/12.92:((c+.055)/1.055)**2.4;});return .2126*r+.7152*g+.0722*b;};
-  const ratio=(a,b)=>{const [x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return (x+.05)/(y+.05);};
-  for(const k of ['screen','pane']){const q=ratio(TH.colors.text,TH.colors[k]);if(q<4.5)out.push(fill('workbench.page.themeContrast',{ground:T['workbench.page.f.colors.'+k],ratio:q.toFixed(1).replace('.',T['workbench.page.decimal'])}));}
-  return out;};
-const input=(path,kind,max)=>{const raw=getPath(TH,path),el=document.createElement('input');el.id='f-'+path.replaceAll('.','-');el.dataset.path=path;el.dataset.kind=kind;
-  if(kind==='color'){el.type='color';el.value=raw??'#000000';}
-  else if(kind==='range'){el.type='range';el.min='0';el.max='1';el.step='0.01';el.value=String(raw??0);}
-  else if(kind==='num'){el.type='number';el.min='0';el.max=String(max);el.value=String(raw??0);}
-  else{el.type='text';el.maxLength=kind==='list'||kind==='chars'?200:max;el.value=kind==='list'?(raw??[]).join('  ').replaceAll('\\n','\\\\n'):kind==='chars'?(raw??[]).join(''):txt(raw);if(kind==='list')el.title=T['workbench.page.themeListHint'];}
-  const live=kind==='color'||kind==='range';
-  el.addEventListener(live?'input':'change',()=>{let v=el.value;
-    if(kind==='color'&&!/^#[0-9a-f]{6}$/i.test(v))return;
-    if(kind==='num'||kind==='range'){v=Number(v);if(!Number.isFinite(v)||v<0)return;if(kind==='num')v=Math.min(Math.round(v),max);}
-    if(kind==='list')v=v.split(/ {2,}/).map((s)=>s.replaceAll('\\\\n','\\n')).filter(Boolean).slice(0,12);
-    if(kind==='chars')v=[...v].filter((c)=>c.trim()).slice(0,12);
-    if((kind==='list'||kind==='chars')&&v.length===0)return;
-    if(kind==='lang')v={...(isObj(getPath(TH.pkg,path))?getPath(TH.pkg,path):{}),[LANG]:v};
-    if(live){const preview=clone(TH);setPath(preview,path,v);cawApplyTheme(document.documentElement,preview);const code=el.previousElementSibling;if(code?.tagName==='CODE')code.textContent=el.value;}
-    else edit(path,v);});
-  if(live)el.addEventListener('change',()=>{let v=el.value;if(kind==='range')v=Number(v);edit(path,v);});
-  return el;};
-const label=(forId,text)=>{const l=document.createElement('label');l.htmlFor=forId;l.textContent=text;return l;};
-const renderFields=()=>{
-  $('ttabs').replaceChildren(...TABS.map((name)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',String(name===tab));b.textContent=T['workbench.page.tab.'+name];b.addEventListener('click',()=>{tab=name;renderFields();});return b;}));
-  const out=[];
-  if(tab==='colors')for(const k of KEYS){const el=input('colors.'+k,'color');const sw=document.createElement('span');sw.className='sw';const code=document.createElement('code');code.textContent=el.value;sw.append(code,el);out.push(label(el.id,T['workbench.page.f.colors.'+k]??k),sw);}
-  else for(const f of FIELDS[tab]){if(f.length===1){const g=document.createElement('div');g.className='grp';g.textContent=ruleText(T['workbench.page.g.'+f[0]].toUpperCase(),40);out.push(g);continue;}
-    const el=input(f[0],f[1],f[2]);let box=el;if(f[1]==='color'){box=document.createElement('span');box.className='sw';const code=document.createElement('code');code.textContent=el.value;box.append(code,el);}
-    out.push(label(el.id,T['workbench.page.f.'+f[0]]??f[0]),box);}
-  $('tfields').replaceChildren(...out);};
-const renderDialog=()=>{const own=!isBuiltin();const scheme=TH.scheme==='light'?'light':'dark';
+const preview=(colors)=>{const pv=document.createElement('span');pv.className='tpv';pv.setAttribute('aria-hidden','true');
+  for(const key of ['screen','pane','frame','accent','ok','muted'])if(colors?.[key])pv.style.setProperty('--pv-'+key,colors[key]);
+  pv.append(document.createElement('i'),document.createElement('i'),document.createElement('i'));return pv;};
+const modesText=(modes)=>(modes??['dark']).map((mode)=>T['workbench.page.mode.'+mode]).join(' · ');
+const renderDialog=()=>{const scheme=TH.scheme==='light'?'light':'dark';
   $('tmode').replaceChildren(...['dark','light'].map((mode)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(mode===scheme));
     b.textContent=T['workbench.page.mode.'+mode];b.disabled=!(TH.modes??['dark']).includes(mode);b.addEventListener('click',()=>{if(mode!==scheme)call('mode',mode);});return b;}));
   $('tmode').title=(TH.modes??[]).length===1?T['workbench.page.modeOnly.'+TH.modes[0]]:'';
-  $('tthemes').replaceChildren(...LIST.map((entry)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(entry.name===TH.name));
-    const i=document.createElement('i');const sample=entry.name===TH.name?TH.colors:entry.colors;if(sample){i.style.setProperty('--sw-screen',sample.screen);i.style.setProperty('--sw-accent',sample.accent);}
-    const name=document.createElement('span');name.textContent=entry.label||entry.name;const small=document.createElement('small');small.textContent=entry.builtin?T['workbench.page.themeBuiltin']:fill('workbench.page.themeOwn',{base:entry.base});
-    b.append(i,name,small);b.addEventListener('click',()=>{confirmDelete=false;if(entry.name!==TH.name)call('use',entry.name);});return b;}));
-  $('tname').textContent=legendText('THEME '+String(TH.label||TH.name).toUpperCase());
-  $('tnameRow').hidden=!own;
-  if(own){if(document.activeElement!==$('tlabel'))$('tlabel').value=txt(TH.pkg?.label)||TH.name;if(document.activeElement!==$('tslug'))$('tslug').value=TH.name;$('tfile').textContent=fill('workbench.page.themeFile',{name:TH.name});}
-  $('tdelete').hidden=!own;$('treset').hidden=!own;
-  $('tdelete').textContent=confirmDelete?T['workbench.page.themeDeleteSure']:T['workbench.page.themeDelete'];
-  $('tdup').textContent=own?T['workbench.page.themeDuplicate']:T['workbench.page.themeOwnFrom'];
-  if(!$('tfields').contains(document.activeElement))renderFields();
-  const warn=problems();$('tproblems').replaceChildren(...warn.map((w)=>{const li=document.createElement('li');li.textContent=str(TH.bullets?.warn,'◆')+' '+w;return li;}));$('tproblems').hidden=warn.length===0;
-  $('tjsonHead').textContent=own?T['workbench.page.themeJsonOwn']:T['workbench.page.themeJsonBuiltin'];
-  const shown=clone(TH.pkg);delete shown.css;$('tjson').textContent=JSON.stringify(shown,null,2);};
-$('tlabel').addEventListener('change',()=>{const v=$('tlabel').value.trim().slice(0,40);if(v&&!isBuiltin())edit('label',{...(isObj(TH.pkg?.label)?TH.pkg.label:{}),[LANG]:v});});
-$('tslug').addEventListener('change',()=>{const to=$('tslug').value.trim().toLowerCase();if(isBuiltin()||to===TH.name)return;
-  if(!NAME.test(to)||LIST.some((entry)=>entry.name===to)){msg(T['workbench.page.themeBadName']);$('tslug').value=TH.name;return;}call('rename',{from:TH.name,to});});
-$('tdup').addEventListener('click',()=>{const base=isBuiltin()?TH.name:TH.base;const copy=fill('workbench.page.themeCopy',{label:TH.label});
-  if(isBuiltin()){call('save',{...fresh(base,copy),name:unique(fill('workbench.page.themeNameCopy',{name:TH.name}))});return;}
-  call('save',{...ownPkg(),name:unique(fill('workbench.page.themeNameCopy',{name:TH.name})),label:{[LANG]:copy}});});
-$('treset').addEventListener('click',()=>{if(isBuiltin())return;const p=ownPkg();call('save',{themeApi:1,name:p.name,base:p.base,...(p.label?{label:p.label}:{})});});
-$('tdelete').addEventListener('click',()=>{if(isBuiltin())return;if(!confirmDelete){confirmDelete=true;renderDialog();return;}confirmDelete=false;call('delete',TH.name);});
+  $('tthemes').replaceChildren(...LIST.map((entry)=>{const b=document.createElement('button');b.type='button';b.className='tcard';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(entry.name===TH.name));
+    const text=document.createElement('span');text.className='ttext';const name=document.createElement('b');name.textContent=entry.label||entry.name;
+    const about=document.createElement('span');about.className='tabout';about.textContent=entry.description||'';
+    const meta=document.createElement('small');meta.textContent=(entry.builtin?T['workbench.page.themeBuiltin']:fill('workbench.page.themeOwn',{name:entry.name,base:entry.baseLabel||entry.base}))+' · '+modesText(entry.modes);
+    text.append(name);if(about.textContent)text.append(about);text.append(meta);b.append(preview(entry.name===TH.name?TH.colors:entry.colors),text);
+    b.addEventListener('click',()=>{if(entry.name!==TH.name)call('use',entry.name);});return b;}));};
 let themeFocus=null;
 // Pick a state (F1): only after the hand-over, when the host offers tests. A picked step opens at its entry; without a step the
 // test runs up to the last reachable one.
@@ -649,8 +559,11 @@ $('sq').addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!$('sgo').d
 $('scancel').addEventListener('click',()=>openStates(false));$('sgo').addEventListener('click',goState);
 stateDlg.addEventListener('click',(event)=>{if(event.target===stateDlg)openStates(false);});
 for(const b of document.querySelectorAll('[data-states]'))b.addEventListener('click',()=>openStates(true));
-const openTheme=(on=$('themeDlg').hidden)=>{$('themeDlg').hidden=!on;$('fTheme').setAttribute('aria-pressed',String(on));confirmDelete=false;
-  if(on){themeFocus=document.activeElement;msg('');renderDialog();$('tthemes').querySelector('[aria-checked=true]')?.focus();}else themeFocus?.focus?.();};
+// Opening lists the themes anew: a folder added meanwhile shows up.
+const openTheme=(on=$('themeDlg').hidden)=>{$('themeDlg').hidden=!on;$('fTheme').setAttribute('aria-pressed',String(on));
+  if(on){themeFocus=document.activeElement;msg('');renderDialog();$('tthemes').querySelector('[aria-checked=true]')?.focus();
+    call('list').then(()=>{if(!$('themeDlg').hidden&&!$('tthemes').contains(document.activeElement))$('tthemes').querySelector('[aria-checked=true]')?.focus();});}
+  else themeFocus?.focus?.();};
 $('fTheme').addEventListener('click',()=>openTheme());$('tclose').addEventListener('click',()=>openTheme(false));
 $('themeDlg').addEventListener('click',(event)=>{if(event.target===$('themeDlg'))openTheme(false);});
 
@@ -803,7 +716,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
                 // unknown or non-cosmetic setting, or not writable: keeps for this run only
             }
         });
-        // Themes: only the workbench itself. saveTheme validates what is saved (page schema: no css, no files).
+        // Themes: only the workbench itself, and only choosing; themes are never written from the page.
         await page.exposeBinding(THEME_BINDING, async ({ frame }, action, payload) => {
             if (frame !== page.mainFrame()) return { ok: false, error: 'frame' };
             try {
