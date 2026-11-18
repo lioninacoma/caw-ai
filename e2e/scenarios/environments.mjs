@@ -571,13 +571,13 @@ scenario('S3', 'No learning without asking: a chat run leaves the files, the end
     const first = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: closer.onChatOpen }));
     await closer.done();
     verify('(1) a chat run passes and says "learns: no"', first.value.exit === 0 && /learns: no\./.test(first.output), `${shown(first.value)} ${(/Mode on .*/.exec(first.output) ?? [''])[0]}`);
-    verify('(1) test plan and recording are byte-identical afterwards, though "Learn baselines" was offered', JSON.stringify(files('see-tickets')) === JSON.stringify(before));
+    verify('(1) test plan and recording are byte-identical afterwards, though "Save baselines" was offered', JSON.stringify(files('see-tickets')) === JSON.stringify(before));
     const learner = humans(async (chat) => { await chat.locator('#learn').click({ timeout: 90000 }); });
     const second = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: learner.onChatOpen }));
     await learner.done();
     const after = files('see-tickets');
     // S1 sends no request of its own (the list loads with the page before it): its learned baseline is the empty list.
-    verify('(2) "Learn baselines" on the end card: the run passes and S1 gets its network baseline', second.value.exit === 0 && Array.isArray(learnedNetwork('see-tickets')), `${shown(second.value)} ${JSON.stringify(learnedNetwork('see-tickets'))}`);
+    verify('(2) "Save baselines" on the end card: the run passes and S1 gets its network baseline', second.value.exit === 0 && Array.isArray(learnedNetwork('see-tickets')), `${shown(second.value)} ${JSON.stringify(learnedNetwork('see-tickets'))}`);
     verify('(2) only network and effects changed: the plan file is identical, the recording otherwise too', after[0] === before[0] && after[1] !== before[1] && withoutLearned('see-tickets') === plain);
     writeSpaTest(root, 'see-tickets');
     const headless = await go(['see-tickets', '--env', 'local', '--learn']);
