@@ -2,6 +2,10 @@
 
 JSON at the project root. Unknown keys are errors with a did-you-mean hint. Change it with `caw_config` `patch` (deep merge,
 `null` deletes a key; arrays are replaced as a whole); only a valid result is written. Credentials never go into the config.
+`caw_config` refuses commands and what decides where Claude runs and what it may do (`start`, `stop`, `reset`, `ready`, the
+environment flags `production`, `claude`, `writable`, `allowHttp`, `insecureTls`, an overlay part's `start`, `lintCommand`,
+`browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and adding or removing an environment that has them):
+edit those in the file with your own Edit tool, so the person sees the diff.
 
 ## Top level
 

@@ -215,7 +215,9 @@ test('explore without signing in (--yes on an app with a login): the sign-in pag
     assert.equal(startOf('http://localhost:4174/app/', loginPage), '/app/', 'the given address, if it is not the sign-in page');
     assert.equal(startOf('http://localhost:4174/login', loginPage), '/');
     // Signed in: the page the human chose.
-    assert.equal(startOf('http://localhost:4174', { url: 'http://localhost:4174/todos?day=1', login: null }), '/todos?day=1');
+    // Without the query: it can carry a session token or an id, and the start goes into caw/.explore.json and the config.
+    assert.equal(startOf('http://localhost:4174', { url: 'http://localhost:4174/todos?day=1&token=abc', login: null }), '/todos');
+    assert.equal(startOf('http://localhost:4174/app?sid=1', loginPage), '/app');
     // init then writes "/" as start.
     assert.equal(starterConfig({ ...answersFromExplore(unattended), language: 'de' }).start, '/');
 });

@@ -3,9 +3,9 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as dns } from 'node:dns';
-import { existsSync, openSync, readFileSync, realpathSync, writeFileSync, writeSync } from 'node:fs';
+import { existsSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { request as httpsRequest } from 'node:https';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,7 @@ import { CawError, EXIT } from '../shared/errors.mjs';
 import { colorLine, formatClaudeLine, stampLine } from './claude-log.mjs';
 
 const CHANNEL_DIR = '.channel';
+const NOT_ON_PATH = 'Claude Code (claude) is not on the PATH. Install it: https://claude.com/claude-code\n';
 const HUMAN_TIMEOUT_MS = 60 * 60 * 1000;
 
 /** The agent folder: from the environment in the sandbox and for the local agent, from the waiting run's marker for the developer session. */
@@ -189,15 +190,35 @@ export const connectionSettings = (env = process.env) => {
     }
 };
 
-/** The files the local invocation needs: MCP server, read denials and the guide. All in this run's agent folder. */
+/** The text values of the settings' `env`: they go into the environment of Claude's process, never into a file. */
+export const connectionEnv = (connection) => Object.fromEntries(Object.entries(connection?.env !== null && typeof connection?.env === 'object' ? connection.env : {})
+    .filter(([, value]) => typeof value === 'string'));
+
+/**
+ * The settings file for one Claude call, outside the project: the connection settings can name an API key helper or AWS
+ * credential commands. A private folder (0700) in the system's temp folder, the file 0600; `remove` deletes both after the call.
+ * The `env` values are left out: they go through the process environment (connectionEnv).
+ */
+export const privateSettings = (settings) => {
+    const dir = mkdtempSync(join(realpathSync.native(tmpdir()), 'caw-claude-'));
+    const file = join(dir, 'settings.json');
+    const withoutEnv = Object.fromEntries(Object.entries(settings).filter(([key]) => key !== 'env'));
+    writeFileSync(file, JSON.stringify(withoutEnv, null, 2), { mode: 0o600, flag: 'wx' });
+    return { file, remove: () => rmSync(dir, { recursive: true, force: true }) };
+};
+
+/**
+ * The files the local invocation needs: MCP server and the guide in this run's agent folder; the settings (connection and read
+ * denials) privately outside the project (privateSettings), their `env` as `env` for Claude's process. Call `remove` afterwards.
+ */
 export const writeLocalSetup = (dir, env = process.env) => {
     const mcpConfig = join(dir, 'mcp.json');
-    const settings = join(dir, 'settings.json');
     const systemPromptFile = join(dir, 'instructions.md');
     writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { caw: { command: process.execPath, args: [BIN, 'agent', 'mcp'], env: { CAW_SANDBOX: '1', CAW_AGENT_DIR: dir, ...(env.CAW_COLOR ? { CAW_COLOR: env.CAW_COLOR } : {}) } } } }, null, 2));
-    writeFileSync(settings, JSON.stringify({ ...connectionSettings(env), permissions: { deny: LOCAL_DENY }, disableAllHooks: true }, null, 2));
+    const connection = connectionSettings(env);
+    const settings = privateSettings({ ...connection, permissions: { deny: LOCAL_DENY }, disableAllHooks: true });
     writeFileSync(systemPromptFile, `${LOCAL_PREAMBLE}${readFileSync(join(dir, GUIDE_FILE), 'utf8')}`);
-    return { mcpConfig, settings, systemPromptFile };
+    return { mcpConfig, settings: settings.file, systemPromptFile, env: connectionEnv(connection), remove: settings.remove };
 };
 
 /**
@@ -210,12 +231,19 @@ export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
     const { log: logName, prompt: promptFor } = MODES[mode];
     let claude;
     let timer;
+    let setup;
     if (local) {
         // Without a container there is no firewall to check; the tool set is the boundary.
         const prompt = promptFor(runId);
-        const env = { ...claudeEnv(timeoutMin), MCP_TOOL_TIMEOUT: String(timeoutMin * 60 * 1000) };
-        const bin = resolveClaude() ?? { file: 'claude', args: [] };
-        claude = spawn(bin.file, [...bin.args, ...localClaudeArgs(prompt, writeLocalSetup(dir))], { cwd: agentCwd(root), env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        // Never a bare "claude" on Windows: without a path the system looks in the working folder (the project) first.
+        const bin = resolveClaude({ exclude: [process.cwd(), root] });
+        if (bin === undefined) {
+            process.stdout.write(NOT_ON_PATH);
+            return 1;
+        }
+        setup = writeLocalSetup(dir);
+        const env = { ...claudeEnv(timeoutMin), ...setup.env, MCP_TOOL_TIMEOUT: String(timeoutMin * 60 * 1000) };
+        claude = spawn(bin.file, [...bin.args, ...localClaudeArgs(prompt, setup)], { cwd: agentCwd(root), env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
         timer = setTimeout(() => claude.kill(), timeoutMin * 60 * 1000);
     } else {
         await firewallCheck({ print: () => {} });
@@ -236,12 +264,13 @@ export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
     }));
     const code = await new Promise((resolveCode) => {
         claude.on('error', (error) => {
-            if (local && error.code === 'ENOENT') process.stdout.write('Claude Code (claude) is not on the PATH. Install it: https://claude.com/claude-code\n');
+            if (local && error.code === 'ENOENT') process.stdout.write(NOT_ON_PATH);
             resolveCode(1);
         });
         claude.on('close', (status) => resolveCode(status ?? 1));
     });
     clearTimeout(timer);
     await Promise.all(drained);
+    setup?.remove();
     return code;
 };

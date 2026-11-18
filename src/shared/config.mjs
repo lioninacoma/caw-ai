@@ -12,7 +12,7 @@ import { compileRead } from './requests.mjs';
 import { projectThemeProblems, setProjectTheme } from './theme-package.mjs';
 import { didYouMean } from './suggest.mjs';
 import { RESERVED_ROLES } from './credentials.mjs';
-import { NAME, effectiveEnvironment, environmentNames, signInTypes } from './environments.mjs';
+import { NAME, effectiveEnvironment, effectiveEnvironments, environmentNames, signInTypes } from './environments.mjs';
 
 export { CONFIG_FILE } from './names.mjs';
 export { environmentsWith } from './environments.mjs';
@@ -125,6 +125,12 @@ export const browserLaunch = (config) => {
     return { channel: typeof browser.channel === 'string' ? browser.channel : 'chrome' };
 };
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+/**
+ * A browser on this machine: an absolute path, not on a network share (\\host\share, //host/share), not a device or
+ * long-path namespace (\\?\, \\.\) and not under /proc (/proc/self/fd/…, a file a process holds open).
+ */
+const localExecutable = (value) => typeof value === 'string' && isAbsolute(value) && !/^[\\/]{2}/.test(value)
+    && !/^\/proc(\/|$)/.test(value);
 /** A BCP 47 language tag such as "de-DE" or "en". */
 const isLocale = (value) => {
     if (typeof value !== 'string' || value === '') return false;
@@ -426,7 +432,7 @@ export const validateConfig = (given) => {
             if (config.browser.timezone !== undefined && !isTimezone(config.browser.timezone)) issues.push(t('config.browser.timezone'));
             if (config.browser.viewport !== undefined && !isViewport(config.browser.viewport)) issues.push(t('config.browser.viewport'));
             if (config.browser.channel !== undefined && !BROWSER_CHANNELS.includes(config.browser.channel)) issues.push(t('config.browser.channel', { names: BROWSER_CHANNELS.join(', ') }));
-            if (config.browser.executablePath !== undefined && (typeof config.browser.executablePath !== 'string' || !isAbsolute(config.browser.executablePath))) issues.push(t('config.browser.executablePath'));
+            if (config.browser.executablePath !== undefined && !localExecutable(config.browser.executablePath)) issues.push(t('config.browser.executablePath'));
             if (config.browser.channel !== undefined && config.browser.executablePath !== undefined) issues.push(t('config.browser.both'));
         }
     }
@@ -515,10 +521,44 @@ const mergePatch = (base, patch) => {
     return out;
 };
 
+/** Per environment: the keys that run commands or decide what Claude and caw may do there (compared after extends). */
+const GUARDED_ENVIRONMENT_KEYS = [...LIFECYCLE_COMMANDS, 'ready', ...ENVIRONMENT_FLAGS];
+/** Top-level keys that run a command, start a program or choose where Claude runs. */
+const GUARDED_PATHS = [['lintCommand'], ['sandboxImage'], ['sandboxUser'], ['browser', 'executablePath'], ['agent', 'mode']];
+const valueAt = (config, path) => path.reduce((value, key) => (isObject(value) ? value[key] : undefined), config);
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** What an environment that does not exist counts as: every flag off, no command, the default ready check. */
+const absentEnvironment = () => effectiveEnvironment({ environments: { absent: { url: 'https://absent.invalid' } } }, 'absent');
+
+/**
+ * The guarded keys a change touches, as paths: lifecycle commands, ready, the environment flags (production, claude, writable,
+ * allowHttp, insecureTls) as runs see them after extends, overlay part start commands, lintCommand, sandboxImage, sandboxUser,
+ * browser.executablePath and agent.mode. An environment added or removed counts with every guarded key it has, so deleting a
+ * production environment or adding one with claude: true is a guarded change too. They change only by an edit the human sees.
+ */
+export const guardedChanges = (before, after) => {
+    const changed = [];
+    const environmentsBefore = effectiveEnvironments(isObject(before) ? before : {});
+    const environmentsAfter = effectiveEnvironments(isObject(after) ? after : {});
+    for (const name of new Set([...Object.keys(environmentsBefore), ...Object.keys(environmentsAfter)])) {
+        const was = environmentsBefore[name] ?? absentEnvironment();
+        const now = environmentsAfter[name] ?? absentEnvironment();
+        for (const key of GUARDED_ENVIRONMENT_KEYS.filter((candidate) => !same(was[candidate], now[candidate]))) changed.push(`environments.${name}.${key}`);
+    }
+    const partsBefore = overlayParts(before);
+    const partsAfter = overlayParts(after);
+    for (const part of new Set([...Object.keys(partsBefore), ...Object.keys(partsAfter)])) {
+        if (!same(partsBefore[part]?.start, partsAfter[part]?.start)) changed.push(`overlay.parts.${part}.start`);
+    }
+    for (const path of GUARDED_PATHS.filter((candidate) => !same(valueAt(before, candidate), valueAt(after, candidate)))) changed.push(path.join('.'));
+    return changed;
+};
+
 /**
  * Changes caw.config.json: merges the patch into the file as written (not the effective config), validates the result and writes
  * it atomically, only if valid and not dryRun. Never writes a secret: keys like password, secret or token are refused; credentials
- * stay in caw/.env, which this never touches.
+ * stay in caw/.env, which this never touches. Never changes a guarded key (guardedChanges): commands caw runs, where Claude runs
+ * and what it may do are edited in the file, where the human sees the diff.
  * @returns { ok, issues, config } with config as it would be written
  */
 export const writeConfig = (root, patch, { dryRun = false } = {}) => {
@@ -533,6 +573,8 @@ export const writeConfig = (root, patch, { dryRun = false } = {}) => {
         return { ok: false, issues: [error?.code === 'ENOENT' ? t('config.load.missing', { file: CONFIG_FILE, root }) : t('config.load.invalidJson', { file: CONFIG_FILE, error: error.message })], config: null };
     }
     const config = mergePatch(raw, patch);
+    const guarded = guardedChanges(raw, config);
+    if (guarded.length > 0) return { ok: false, issues: [t('config.write.guarded', { keys: guarded.join(', '), file: CONFIG_FILE })], config: null, guarded };
     const { issues } = validateConfig(config);
     if (issues.length > 0 || dryRun) return { ok: issues.length === 0, issues, config };
     // One temp file per process, so two concurrent writers never leave a half-written file.

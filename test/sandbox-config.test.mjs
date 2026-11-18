@@ -69,6 +69,22 @@ test('maskArgs handles .git as a file (worktree) and missing folders', (t) => {
     assert.doesNotMatch(args, /\.claude/);
 });
 
+test('maskArgs and sandboxRunArgs refuse a path that would change the mount options', (t) => {
+    // A secret file whose name has a comma: "target=/w/x,readonly=false.env" would be a second option.
+    const comma = mkdtempSync(join(tmpdir(), 'caw-mask-'));
+    t.after(() => rmSync(comma, { recursive: true, force: true }));
+    writeFileSync(join(comma, 'x,readonly=false.env'), 'X=1');
+    assert.throws(() => maskArgs(comma, '/w', 'C:\\empty'), (error) => error.code === 'sandbox-path' && /Komma/.test(error.message));
+    // A hidden folder with a colon would start tmpfs options.
+    const colon = mkdtempSync(join(tmpdir(), 'caw-mask-'));
+    t.after(() => rmSync(colon, { recursive: true, force: true }));
+    mkdirSync(join(colon, '.claude'));
+    assert.throws(() => maskArgs(colon, '/w:exec', 'C:\\empty'), { code: 'sandbox-path' });
+    const base = { containerRoot: '/w', image: 'i', masks: [], name: 'n', hostAgentDir: 'C:\\a', containerAgentDir: '/a', command: [] };
+    for (const hostRoot of ['C:\\p,source=C:\\', 'C:\\p"x', 'C:\\p\nx']) assert.throws(() => sandboxRunArgs({ ...base, hostRoot }), { code: 'sandbox-path' }, hostRoot);
+    assert.ok(sandboxRunArgs({ ...base, hostRoot: 'C:\\project' }).includes('type=bind,source=C:\\project,target=/w,readonly'), 'a drive colon in a source is fine');
+});
+
 test('maskArgs follows no symlinks', (t) => {
     const root = project(t);
     symlinkSync(join(root, 'projects'), join(root, 'loop'), 'junction');

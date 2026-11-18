@@ -11,13 +11,23 @@ const install = (dir) => {
     writeFileSync(join(dir, 'node_modules', 'caw-ai', 'bin', 'caw.mjs'), '');
 };
 
-test('mcpEntry: the hoisted install of a monorepo, relative to the project folder; without one npx (cmd /c on Windows)', (t) => {
-    const repo = mkdtempSync(join(tmpdir(), 'caw-mcp-'));
-    t.after(() => rmSync(repo, { recursive: true, force: true }));
+const VERSIONED = `caw-ai@${JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version}`;
+
+test('mcpEntry: the hoisted install of a monorepo, relative to the project folder; without one npx of this version (cmd /c on Windows)', (t) => {
+    const outer = mkdtempSync(join(tmpdir(), 'caw-mcp-'));
+    t.after(() => rmSync(outer, { recursive: true, force: true }));
+    const repo = join(outer, 'repo');
+    mkdirSync(join(repo, '.git'), { recursive: true });
     const app = join(repo, 'projects', 'apps', 'web');
     mkdirSync(app, { recursive: true });
-    assert.deepEqual(mcpEntry(app, 'linux'), { command: 'npx', args: ['caw-ai', 'mcp'] });
-    assert.deepEqual(mcpEntry(app, 'win32'), { command: 'cmd', args: ['/c', 'npx', 'caw-ai', 'mcp'] });
+    // A copy above the repository belongs to someone else: never taken.
+    install(outer);
+    assert.deepEqual(mcpEntry(app, 'linux'), { command: 'npx', args: [VERSIONED, 'mcp'] });
+    assert.deepEqual(mcpEntry(app, 'win32'), { command: 'cmd', args: ['/c', 'npx', VERSIONED, 'mcp'] });
+    // Outside a repository only the project folder counts.
+    const loose = join(outer, 'loose');
+    mkdirSync(loose);
+    assert.equal(mcpEntry(loose, 'linux').command, 'npx');
     install(repo);
     assert.deepEqual(mcpEntry(app), { command: 'node', args: ['../../../node_modules/caw-ai/bin/caw.mjs', 'mcp'] });
     assert.deepEqual(mcpEntry(repo), { command: 'node', args: ['node_modules/caw-ai/bin/caw.mjs', 'mcp'] });
@@ -29,6 +39,8 @@ test('isNpxEntry: what claude mcp add writes, on every system; node entries and 
     assert.ok(isNpxEntry({ command: 'C:\\Program Files\\nodejs\\npx.cmd', args: ['caw-ai', 'mcp'] }));
     assert.ok(!isNpxEntry({ command: 'node', args: ['node_modules/caw-ai/bin/caw.mjs', 'mcp'] }));
     assert.ok(!isNpxEntry({ command: 'npx', args: ['other-server'] }));
+    assert.ok(isNpxEntry({ command: 'npx', args: ['caw-ai@1.0.0', 'mcp'] }), 'with a version too');
+    assert.ok(!isNpxEntry({ command: 'npx', args: ['caw-ai-other', 'mcp'] }));
 });
 
 test('ensureMcpEntry: adds caw next to other servers; an npx entry moves to the installed copy (env kept); a node entry stays', (t) => {
@@ -37,7 +49,7 @@ test('ensureMcpEntry: adds caw next to other servers; an npx entry moves to the 
     const read = () => JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers;
     writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
     assert.equal(ensureMcpEntry(root, 'linux'), 'created');
-    assert.deepEqual(read(), { other: { command: 'x' }, caw: { command: 'npx', args: ['caw-ai', 'mcp'] } });
+    assert.deepEqual(read(), { other: { command: 'x' }, caw: { command: 'npx', args: [VERSIONED, 'mcp'] } });
     assert.equal(ensureMcpEntry(root, 'linux'), 'present', 'npx without an installed copy stays');
     writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { caw: { type: 'stdio', command: 'cmd', args: ['/c', 'npx', 'caw-ai', 'mcp'], env: { A: '1' } } } }));
     install(root);

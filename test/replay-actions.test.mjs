@@ -71,7 +71,11 @@ test('upload: behind a button the click opens the file chooser, which gets the f
 
 test('upload: a missing file or one outside the caw folder aborts without clicking', async (t) => {
     const dir = cawDir(t);
-    for (const file of ['fixtures/fehlt.pdf', '../ausserhalb.pdf']) {
+    // Secret files in the caw folder are never uploaded, nor a file a link in caw/fixtures points to.
+    writeFileSync(join(dir, '.env'), 'CAW_X_PASSWORD=x');
+    mkdirSync(join(dir, '.auth'));
+    writeFileSync(join(dir, '.auth', 'clerk.json'), '{}');
+    for (const file of ['fixtures/fehlt.pdf', '../ausserhalb.pdf', '.env', '.auth/clerk.json', 'fixtures/../.env']) {
         const { calls, session } = sessionWith({ events: { filechooser: () => ({ setFiles: async () => {} }) } });
         const { broken } = await play([{ action: 'upload', target: BUTTON, files: [file] }], session, { filesDir: dir });
         assert.match(broken.message, new RegExp(file.replace(/[.]/g, '\\.')), file);

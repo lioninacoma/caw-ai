@@ -43,7 +43,7 @@ Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. S
 
 - `caw.config.json`
 - `caw/.env.example` with the credential variables per role
-- a `caw` entry in `.mcp.json` (to the installed copy if caw is in `node_modules`, otherwise `npx caw-ai mcp`; an `npx` entry is switched to the installed copy once there is one)
+- a `caw` entry in `.mcp.json` (to the installed copy if caw is in `node_modules` of the project or a parent folder up to the repository root, otherwise `npx caw-ai@<this version> mcp`; an `npx` entry is switched to the installed copy once there is one)
 - `caw/tests/` for your test plans and `caw/caw.md` for notes Claude reads in every run
 - `.gitignore` entries for `caw/.env`, `.caw/` and `caw/.auth/`
 
@@ -184,7 +184,7 @@ npx caw run create-ticket close-ticket --env dev
 
 Runs the tests one after another, without chat (`--explain` is rejected). `--all` takes every test that lists the target. Without `--env` the only target of the tests is used. A test that can't run (missing recording, typo) doesn't stop the others. At the end a table shows `PASS`, `FAIL`, `ERROR`, `NEEDS RECORDING` or `REJECTED` per test. The exit code is that of the worst run, in this order: `2` error > `1` fail > `4` needs recording > `3` rejected > `0` pass.
 
-`--report junit=<file>` also writes the table as JUnit XML (relative to the project folder): `fail` as `<failure>`, everything else that didn't pass as `<error>`.
+`--report junit=<file>` also writes the table as JUnit XML (relative to the project folder and inside it; a path outside, also through a link, is refused before any test runs): `fail` as `<failure>`, everything else that didn't pass as `<error>`.
 
 ## open
 
@@ -242,7 +242,7 @@ Writes the recorded test as a Playwright test that runs without caw, only with `
 |---|---|
 | `<test>.spec.mjs` | One `test()`, one `test.step()` per caw step. The locators are the recorded ones; checks become `expect.poll`, a dialog decision is answered around the action that opens it, `remember` and `{{runTag}}`/date placeholders are filled per run |
 | `caw-support.mjs` | Sign-in from `signIn` (form, steps, Basic, saved session, TOTP), waiting for a quiet page like caw, uploads, downloads, `<select>` filling; for ExtJS the `extjs=` engine. Overwritten by every export |
-| `playwright.config.mjs` | Base URL, locale, time zone and viewport of the recording, Chrome. Written only if missing; then it is yours |
+| `playwright.config.mjs` | Base URL, locale, time zone and viewport of the recording, Chrome, `trace: 'off'`. Written only if missing; then it is yours. The trace is off because the sign-in fills the test user's password and one-time code, and a Playwright trace keeps them in plain text (caw scrubs its own traces, Playwright doesn't). Switch it on only where that is acceptable, and never upload such a trace |
 
 The environment (`--env`, otherwise the only fitting one) gives the address and the sign-in. At run time `CAW_BASE_URL` overrides the address; test users come from the same variables as for caw (`CAW_<ROLE>_USER`, `CAW_<ROLE>_PASSWORD`, `CAW_<ROLE>_TOTP`, optionally with `__<ENV>`). A file in the folder that export did not write is never overwritten.
 
@@ -267,9 +267,9 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 |---|---|---|
 | `caw_guide` | The guidance per topic (`topic`); without one the index. `overlay` and `extjs` only when the project uses them | no |
 | `caw_doctor` | `doctor` as data (`agent`, `env`) | no |
-| `caw_init` | `mode: explore` (`url`, `login` or `yes`): the window, waits and returns the suggestions and saved roles (`wait: false` only starts it); `mode: write` (`fromExplore`) and `mode: offline` write the files; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | no |
+| `caw_init` | `mode: explore` (`url`, `login` or `yes`): the window, waits and returns the suggestions (`wait: false` only starts it); `mode: write` (`fromExplore`) and `mode: offline` write the files; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | no |
 | `caw_role` | Roles as data (`list`), a new one in the config with its variable names (`add`, `name`; the human fills `caw/.env`), a saved session (`login`), `remove`; never user names or passwords | no |
-| `caw_config` | Read the config, or change it validated (`patch`, `dryRun`). A patch that adds or removes the `overlay` block changes the tool list | no |
+| `caw_config` | Read the config, or change it validated (`patch`, `dryRun`). A patch that adds or removes the `overlay` block changes the tool list. Refused: commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), environment flags, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; the session edits those in the file, where you see the diff | no |
 | `caw_validate` | `validate` as data | no |
 | `caw_list` | `list` as data | no |
 | `caw_overlay` | Only with an `overlay` block: `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `env`, `part` | no |
@@ -339,5 +339,6 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `token-missing` | 2 | Set `ANTHROPIC_API_KEY`, or use `--agent local` |
 | `docker-missing`, `docker-not-running`, `docker-wrong-mode` | 2 | Start Docker with Linux containers, or use `--agent local` |
 | `image-build-failed`, `devcontainer-unsupported` | 2 | Check registry login and `sandboxImage` |
+| `sandbox-path` | 2 | A project path with a comma, quote or line break (or a colon in a folder the sandbox hides) cannot be mounted safely: rename it or use `--agent local` |
 | `aborted` | 2 | You closed the window or pressed Ctrl+C |
 | `chat-failed`, `no-session` | 2 | Start again |

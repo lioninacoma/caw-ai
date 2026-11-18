@@ -97,6 +97,7 @@ export default {
     'session.claude.exit': 'Claude endete mit Exit {code}, siehe claude.log.',
 
     // sandbox-config
+    'session.sandbox.mountPath': 'Die Docker-Sandbox kann {path} nicht einbinden: Ein Komma, ein Anführungszeichen oder ein Zeilenumbruch (bei einem Ordner, den sie ausblendet, ein Doppelpunkt) würde Dockers Einbinde-Optionen ändern. Benenn ihn um oder nimm den lokalen Agenten.',
     'session.sandbox.badImage': 'Das image der Devcontainer-Config ({image}) ist kein gültiger Image-Name (Buchstaben, Ziffern, . / : @ _ -).',
     'session.sandbox.noImage': 'Die Devcontainer-Config braucht ein "image"; "build" unterstützt caw nicht. Das Image vorher bauen und hier eintragen.',
 
@@ -199,7 +200,7 @@ export default {
     'session.replay.skippedRepeat': 'Wiederholten Klick übersprungen ({label}): Der Klick davor hatte schon einen Dialog geöffnet, der das Ziel verdeckt.',
     'session.replay.unreadable': '{name} ließ sich nicht lesen: {error}',
     'session.replay.notDenied': '{url} hätte abgelehnt werden müssen.',
-    'session.replay.uploadMissing': 'Datei für upload nicht gefunden: {file}. Pfade gelten relativ zum Ordner caw, etwa fixtures/brief.pdf, und bleiben darin.',
+    'session.replay.uploadMissing': 'Datei für upload nicht gefunden: {file}. Pfade gelten relativ zum Ordner caw, etwa fixtures/brief.pdf, und bleiben in caw/fixtures.',
     'session.replay.noChooser': 'Der Klick auf {target} öffnete keine Dateiauswahl. Ziel ist das Dateifeld selbst oder der Knopf, der die Auswahl öffnet.',
     'session.replay.noDownload': 'Der Klick auf {target} startete in {seconds} s keinen Download.',
     'session.replay.downloadName': 'Der Download heißt {name} und passt nicht zu /{pattern}/.',

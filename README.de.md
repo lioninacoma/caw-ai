@@ -218,7 +218,9 @@ Siehe [docs/configuration.de.md](docs/configuration.de.md).
 liest, und deine Chatnachrichten. Dein Claude-Code-Konto und seine Bedingungen gelten.
 
 **Maskiert oder gesperrt:** caw meldet sich selbst an; das Passwort der Rolle, Einmalcodes und mit `secret: true` markierte
-Werte werden durch `••••` ersetzt, bevor Claude Text sieht. `caw/.env`, `.env*`, `caw/.auth` und typische Schlüsseldateien sind
+Werte werden in allem, was Claude bekommt (auch Fehlermeldungen, URLs und Dialogtexte), durch `••••` ersetzt. Das verhindert,
+dass ein Wert versehentlich bei Claude landet; ein absichtlich fehlgeleiteter Agent kann einen Wert in der Seite mit `eval`
+umformen (zerlegen, kodieren) und so an der Maske vorbei lesen. `caw/.env`, `.env*`, `caw/.auth` und typische Schlüsseldateien sind
 für Claude gesperrt (Deny-Regeln von Claude Code lokal, im Docker-Container ausgeblendet). Andere Geheimnisse in
 Projektdateien, die Claude lesen darf, sind es nicht, und Claude sieht alles, was der Testnutzer in der App sieht: Nimm
 Testkonten und Testdaten. Details: [Sandbox-Grenzen](docs/guide.de.md#sandbox-grenzen).
@@ -253,8 +255,10 @@ in CI. Bevor Claude startet, fragt der Chat einmal je Lauf (nicht, wenn deine ei
 Hinweis kannst du abschalten. Das Lauflog zeigt die Kosten, die Claude Code meldet.
 
 **Sieht Claude meine Passwörter?**
-Nein. caw meldet sich selbst an, bevor Claude startet. Claude kann `caw/.env` nicht lesen und bedient den Browser nur über
-feste Befehle. Nimm trotzdem Testkonten: Claude handelt als dieser Nutzer.
+Nicht aus Versehen. caw meldet sich selbst an, bevor Claude startet (und nimmt während einer neuen Anmeldung keine Befehle
+an), Claude kann `caw/.env` nicht lesen und bedient den Browser nur über feste Befehle, und das Passwort wird in allem, was
+Claude bekommt, maskiert. Gegen einen absichtlich fehlgeleiteten Agenten ist die Maske kein Schutz: Mit `eval` kann er einen
+Wert in der Seite umformen. Nimm deshalb Testkonten: Claude handelt als dieser Nutzer.
 
 **Was passiert, wenn sich die Oberfläche ändert?**
 Der Schritt scheitert, und der Chat sagt dir, warum. War die Änderung gewollt, nimmt „Schritt beheben“ diesen Schritt neu auf;

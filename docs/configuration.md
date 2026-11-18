@@ -12,6 +12,10 @@ caw reads three things from your project:
 
 Tests live in `caw/tests/` and `caw/recordings/`, see [Test files](test-files.md).
 
+`caw.config.json` and the recordings are executable configuration: the config names shell commands caw runs (`start`,
+`stop`, `reset`, `lintCommand`, an overlay part's `start`) and the browser it launches, and a recording's `check` and
+`remember` steps run their code in the page. Review changes to them like code, whoever made them.
+
 ## Minimal config
 
 An app on a local dev server, no sign-in:
@@ -90,8 +94,9 @@ guesses and names the candidates (exit 3).
 
 ### Starting, stopping and resetting an environment
 
-An environment may name your own commands to start, stop and reset it. caw runs them only when asked, and never on a
-`production` environment.
+An environment may name your own commands to start, stop and reset it. caw never runs them on a `production` environment.
+`start` runs only with `--start` (`caw_start` with `start`), `stop` only after a `start` caw did. `reset` runs with
+`--reset` before the first test, and by itself in `run` once before the first writing test, unless `--no-reset`.
 
 ```json
 "ci": {
@@ -270,7 +275,7 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 | `agent.maxBudgetUsd` | none | Stops a Claude run at this estimated spend in US dollars (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` overrides it. |
 | `maxActions` | `100` | Claude's action budget when recording and fixing. |
 | `allowHosts` | `[]` | More hosts pages may navigate to, e.g. a sign-in service; also per environment. Pages navigate only to the environments' hosts and these (links, form posts, popups, redirects, `goto`); anything else fails with `host-blocked`. Scripts, styles, fonts, images, XHR/fetch, WebSockets and iframes may go to any host. Production hosts of other environments stay unreachable for every request. |
-| `browser` | system Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) or `{ "executablePath": "/path/to/chromium" }` |
+| `browser` | system Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) or `{ "executablePath": "/path/to/chromium" }` (an absolute path on this machine; no network share, `\\?\` or `/proc` path) |
 | `browser.locale`, `browser.timezone`, `browser.viewport` | as recorded | Language, time zone and size of the test browser, e.g. `"de-DE"`, `"Europe/Berlin"`, `{ "width": 1280, "height": 800 }`. Without them a replay uses the values stored with the recording, and a recording uses the host's. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS selectors for error messages without ARIA roles. |
 | `consoleIgnore` | `[]` | Regexes for known, harmless console errors. Keep them narrow. |

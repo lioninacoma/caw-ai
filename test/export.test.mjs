@@ -34,6 +34,13 @@ test('actionLines: each kind as caw replays it; dialogs wrap the action, page ch
     assert.deepEqual(actionLines({ action: 'press', key: 'Enter' }), ['await page.keyboard.press("Enter");', 'await caw.settle();']);
     assert.deepEqual(actionLines({ action: 'goto', url: '/orders/{{nr}}' }), ['await page.goto(caw.text("/orders/{{nr}}"));', 'await caw.settle();']);
     assert.match(actionLines({ action: 'goto', url: 'https://elsewhere.example/', denied: true })[0], /^\/\/ goto .* not exported\.$/);
+    // A crafted recording (validation bypassed): the URL stays inside the comment, no line of it becomes code.
+    for (const breakChar of ['\n', '\r', String.fromCharCode(0x2028), String.fromCharCode(0x2029)]) {
+        const lines = actionLines({ action: 'goto', url: `https://x/${breakChar}process.exit(1)//`, denied: true });
+        assert.equal(lines.length, 1);
+        assert.doesNotMatch(lines[0], /[\r\n\u2028\u2029]/, JSON.stringify(breakChar));
+        assert.match(lines[0], /^\/\/ goto "https:\/\/x\/\\(n|r|u2028|u2029)process\.exit\(1\)\/\/" was refused/);
+    }
     assert.deepEqual(actionLines({ action: 'reload', dialog: { type: 'beforeunload', accept: true } }), ['await caw.dialog({"accept":true}, () => page.reload());', 'await caw.settle();']);
     assert.deepEqual(actionLines({ action: 'wait-ready', for: '#orders [role=row]', minCount: 2 }), ['await caw.waitReady({"for":"#orders [role=row]","minCount":2});']);
     assert.deepEqual(actionLines({ action: 'wait-ready' }), ['await caw.waitReady();']);
@@ -85,6 +92,8 @@ test('exportTest: spec, support and config; the support knows the environment, t
     assert.ok(!support.includes('/* caw:'), 'every marker replaced');
     const config = readFileSync(join(dir, 'playwright.config.mjs'), 'utf8');
     assert.match(config, /baseURL: process\.env\.CAW_BASE_URL \|\| "http:\/\/localhost:8080"/);
+    assert.match(config, /trace: 'off'/, 'the sign-in fills the password: no trace keeps it');
+    assert.doesNotMatch(config, /retain-on-failure/);
     assert.match(config, /locale: "de-DE",\n {8}timezoneId: "Europe\/Berlin",\n {8}viewport: \{"width":1280,"height":800\}/);
     writeFileSync(join(dir, 'playwright.config.mjs'), '// mine');
     assert.equal(exportTest(root, 'order', { env: 'local' }).kept, join(dir, 'playwright.config.mjs'));

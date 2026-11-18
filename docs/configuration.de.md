@@ -12,6 +12,10 @@ caw liest drei Dinge aus deinem Projekt:
 
 Tests liegen in `caw/tests/` und `caw/recordings/`, siehe [Testdateien](test-files.de.md).
 
+`caw.config.json` und die Aufnahmen sind ausführbare Konfiguration: Die Config nennt Shell-Befehle, die caw ausführt (`start`,
+`stop`, `reset`, `lintCommand`, das `start` eines Overlay-Teils), und den Browser, den es startet, und die Schritte `check` und
+`remember` einer Aufnahme führen ihren Code in der Seite aus. Prüf Änderungen daran wie Code, egal wer sie gemacht hat.
+
 ## Minimale Config
 
 Eine App auf einem lokalen Dev-Server, ohne Anmeldung:
@@ -90,8 +94,10 @@ und nennt die Kandidaten (Exit 3).
 
 ### Umgebung starten, stoppen und zurücksetzen
 
-Eine Umgebung kann eigene Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nur auf Wunsch aus, und nie auf
-einer `production`-Umgebung.
+Eine Umgebung kann eigene Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nie auf einer
+`production`-Umgebung aus. `start` läuft nur mit `--start` (`caw_start` mit `start`), `stop` nur nach einem `start` von caw.
+`reset` läuft mit `--reset` vor dem ersten Test und in `run` von selbst einmal vor dem ersten schreibenden Test, außer mit
+`--no-reset`.
 
 ```json
 "ci": {
@@ -272,7 +278,7 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 | `agent.maxBudgetUsd` | keins | Stoppt einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` ersetzt es. |
 | `maxActions` | `100` | Aktionsbudget von Claude beim Aufnehmen und Beheben. |
 | `allowHosts` | `[]` | Weitere Hosts, auf die Seiten navigieren dürfen, etwa ein Anmeldedienst; auch je Umgebung. Seiten navigieren nur zu den Hosts der Umgebungen und diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Skripte, Styles, Schriften, Bilder, XHR/fetch, WebSockets und iframes dürfen zu jedem Host. Produktionshosts anderer Umgebungen bleiben für jeden Request unerreichbar. |
-| `browser` | System-Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) oder `{ "executablePath": "/pfad/zu/chromium" }` |
+| `browser` | System-Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) oder `{ "executablePath": "/pfad/zu/chromium" }` (ein absoluter Pfad auf diesem Rechner; keine Netzwerkfreigabe, kein `\\?\`- oder `/proc`-Pfad) |
 | `browser.locale`, `browser.timezone`, `browser.viewport` | wie aufgenommen | Sprache, Zeitzone und Größe des Testbrowsers, z. B. `"de-DE"`, `"Europe/Berlin"`, `{ "width": 1280, "height": 800 }`. Ohne sie nutzt eine Wiedergabe die mit der Aufnahme gespeicherten Werte, und eine Aufnahme die des Rechners. |
 | `messageSelectors` | `[role=alert]`, `[role=alertdialog]` | CSS-Selektoren für Fehlermeldungen ohne ARIA-Rolle. |
 | `consoleIgnore` | `[]` | RegExps für bekannte, harmlose Konsolenfehler. Halte sie eng. |

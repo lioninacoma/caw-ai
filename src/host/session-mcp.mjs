@@ -499,7 +499,10 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         name: 'caw_config',
         description: `Reads or changes ${CONFIG_FILE}. {read: true} returns the file as written, the effective config (with extends) and the validation. `
             + '{patch, dryRun?} deep-merges patch into the file, validates the result and writes only a valid config (dryRun: only validate). '
-            + 'Credentials never go into the config; caw/.env is not read.',
+            + 'Refused: any change to the commands caw runs or to where Claude runs and what it may do (environments.*.start/stop/reset/ready, '
+            + 'the environment flags production, claude, writable, allowHttp, insecureTls, adding or removing an environment that has them, '
+            + 'overlay part start, lintCommand, sandboxImage, sandboxUser, browser.executablePath, agent.mode); make those edits with your own '
+            + 'Edit tool so the human sees the diff. Credentials never go into the config; caw/.env is not read.',
         inputSchema: {
             type: 'object',
             properties: { read: { type: 'boolean' }, patch: { type: 'object' }, dryRun: { type: 'boolean' } },
@@ -513,11 +516,13 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 if (typeof write !== 'function') throw new Error(t('run.mcp.unavailable', { what: 'writeConfig' }));
                 const dryRun = input.dryRun === true;
                 const before = activeExtensions(rawConfig(root)).join();
-                const { ok, issues = [], config } = await write(root, input.patch, { dryRun });
-                const summary = ok ? t(dryRun ? 'run.mcp.configDryRun' : 'run.mcp.configWritten', { file: CONFIG_FILE }) : t('run.mcp.configRefused', { file: CONFIG_FILE, count: issues.length });
+                const { ok, issues = [], config, guarded = [] } = await write(root, input.patch, { dryRun });
+                // A guarded key: the refusal itself says what to do instead.
+                const summary = ok ? t(dryRun ? 'run.mcp.configDryRun' : 'run.mcp.configWritten', { file: CONFIG_FILE })
+                    : guarded.length > 0 ? issues[0] : t('run.mcp.configRefused', { file: CONFIG_FILE, count: issues.length });
                 // An extension switched on or off: its tool and guide topics come or go.
                 const listChanged = ok && !dryRun && activeExtensions(rawConfig(root)).join() !== before;
-                return { ...answer(summary, { ok, dryRun, issues, config }, !ok), listChanged };
+                return { ...answer(summary, { ok, dryRun, issues, config, ...(guarded.length > 0 ? { guarded } : {}) }, !ok), listChanged };
             }
             const file = join(root, CONFIG_FILE);
             if (!existsSync(file)) return answer(t('run.mcp.configMissing', { file: CONFIG_FILE }), { state: 'missing', file: CONFIG_FILE });
@@ -538,7 +543,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_init',
         description: 'Sets up caw in this project, without tokens. mode explore: opens the app for the human (url, and login true/false '
-            + 'or yes for unattended): they sign in with a test account, pick the start page, click Done and name the role of the account; '
+            + 'or yes for unattended): they sign in with a test account, pick the start page and click Done; '
             + 'waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the suggestions (framework, '
             + 'sign-in with proposed steps and identity-provider hosts, start, messages, console noise, reads candidates, third-party '
             + 'hosts), also in caw/.explore.json; the human signs in by hand, caw never reads what they type. mode write: writes caw.config.json, caw/.env.example, caw/caw.md, the '
@@ -557,7 +562,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 insecureTls: { type: 'boolean' },
                 allowHttp: { type: 'boolean', description: 'http on a host that is not this machine; only if the human confirms' },
                 roles: { type: 'array', items: { type: 'string' } },
-                fromExplore: { type: ['boolean', 'string'], description: 'write: true or the path of an explore result' },
+                fromExplore: { type: ['boolean', 'string'], description: 'write: true or the path of an explore result inside the project' },
                 noMcp: { type: 'boolean' },
                 wait: { type: 'boolean', description: 'explore: false only starts the window' },
             },
@@ -600,7 +605,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             // Written by this run (file times may be coarser than the clock): its suggestions; otherwise the window was closed.
             if ((mtime(explored) ?? 0) >= startedAt - 2000) {
                 const explore = readJson(explored);
-                return answer(t('run.mcp.exploreDone', { roles: (explore?.roles ?? []).join(', ') || '-' }), { state: 'done', ...started, explore });
+                return answer(t('run.mcp.exploreDone'), { state: 'done', ...started, explore });
             }
             return answer(t('run.mcp.endedWithout', { tail: logTail(log) }), { state: 'ended', ...started, tail: logTail(log) }, true);
         },

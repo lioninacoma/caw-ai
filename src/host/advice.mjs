@@ -101,8 +101,10 @@ const EDIT_LIMIT = 4000;
 const NOT_APP = new RegExp(`^(${PROJECT_DIR}|\\${RUN_DIR}|node_modules|\\.git|\\.claude)(/|$)`, 'i');
 // Tool, CI and dependency files at any depth: a change there alters what gets built, installed or run, not the application.
 // Also every .env.* (.env.example too): environment files, not code.
-const TOOL_NAMES = new Set([CONFIG_FILE, '.mcp.json', 'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', '.gitlab-ci.yml']);
-const TOOL_DIRS = new Set([RUN_DIR, '.claude', '.github', '.husky', '.vscode', '.idea', '.devcontainer']);
+// Agent instructions (CLAUDE.md, AGENTS.md, Cursor and Copilot rules) are read by the next AI session as its own rules.
+const TOOL_NAMES = new Set([CONFIG_FILE, '.mcp.json', 'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', '.gitlab-ci.yml',
+    'jenkinsfile', 'azure-pipelines.yml', 'bitbucket-pipelines.yml', '.gitmodules', '.git', 'claude.md', 'agents.md', '.cursorrules', 'copilot-instructions.md']);
+const TOOL_DIRS = new Set([RUN_DIR, '.claude', '.github', '.husky', '.vscode', '.idea', '.devcontainer', '.circleci', '.cursor', 'node_modules', '.git']);
 const isToolFile = (path) => {
     const parts = path.toLowerCase().split('/');
     const name = parts.at(-1);

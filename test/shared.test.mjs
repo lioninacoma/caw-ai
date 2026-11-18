@@ -386,7 +386,7 @@ test('writeConfig: merges into the file, validates first, writes atomically with
     assert.equal(dry.ok, true);
     assert.deepEqual(dry.config.overlay.assetUrlPattern, ['a/([^/]+\\.js)', 'b/([^/]+\\.js)']);
     assert.equal(readFileSync(file, 'utf8'), before, 'dryRun writes nothing');
-    const written = writeConfig(root, { overlay: { assetUrlPattern: ['a/([^/]+\\.js)', 'b/([^/]+\\.js)'] }, consoleIgnore: null, environments: { staging: { writable: true } } });
+    const written = writeConfig(root, { overlay: { assetUrlPattern: ['a/([^/]+\\.js)', 'b/([^/]+\\.js)'] }, consoleIgnore: null, environments: { staging: { allowHosts: ['login.shop.example'] } } });
     assert.deepEqual(written, { ok: true, issues: [], config: written.config });
     const text = readFileSync(file, 'utf8');
     assert.ok(text.startsWith('{\n    "environments": {') && text.endsWith('}\n'), '4 spaces, trailing newline');
@@ -394,7 +394,7 @@ test('writeConfig: merges into the file, validates first, writes atomically with
     assert.deepEqual(saved.overlay.assetUrlPattern, ['a/([^/]+\\.js)', 'b/([^/]+\\.js)'], 'arrays replace');
     assert.deepEqual(saved.overlay.parts, { shop: { dir: 'shop' } }, 'nested objects merge');
     assert.equal(saved.consoleIgnore, undefined, 'null deletes');
-    assert.deepEqual(saved.environments.staging, { url: 'https://staging.shop.example', writable: true }, 'objects merge');
+    assert.deepEqual(saved.environments.staging, { url: 'https://staging.shop.example', allowHosts: ['login.shop.example'] }, 'objects merge');
     assert.deepEqual(readdirSync(root), ['caw.config.json'], 'no temp file left');
     for (const patch of [{ roles: { kaeufer: { password: 'geheim' } } }, { agent: { token: 'sk' } }, { apiSecret: 'x' }]) {
         const refused = writeConfig(root, patch);
@@ -403,6 +403,51 @@ test('writeConfig: merges into the file, validates first, writes atomically with
     }
     assert.equal(writeConfig(root, { roles: { kaeufer: {} }, signIn: { passwordSelector: '#pw2' } }).ok, true, 'variable names and selectors are fine');
     assert.equal(writeConfig(mkdtempSync(join(tmpdir(), 'caw-write-none-')), {}).ok, false, 'no config file');
+});
+
+test('writeConfig: refuses guarded keys (commands, environment flags, browser, sandbox, agent mode) and names them', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-write-guarded-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const file = join(root, 'caw.config.json');
+    const config = { ...simple(), environments: { ...simple().environments, live: { url: 'https://shop.example', production: true } },
+        overlay: { environments: ['staging'], parts: { shop: { dir: 'shop', url: 'http://localhost:5173', start: 'npm run dev' } } } };
+    writeFileSync(file, JSON.stringify(config));
+    const before = readFileSync(file, 'utf8');
+    const refusals = [
+        [{ environments: { local: { start: 'calc.exe' } } }, 'environments.local.start'],
+        [{ environments: { local: { reset: 'rm -rf /' } } }, 'environments.local.reset'],
+        [{ environments: { local: { ready: { path: '/x' } } } }, 'environments.local.ready'],
+        [{ environments: { staging: { claude: true } } }, 'environments.staging.claude'],
+        [{ environments: { staging: { writable: true } } }, 'environments.staging.writable'],
+        [{ environments: { staging: { allowHttp: true } } }, 'environments.staging.allowHttp'],
+        [{ environments: { staging: { insecureTls: true } } }, 'environments.staging.insecureTls'],
+        [{ environments: { local: { claude: null } } }, 'environments.local.claude'],
+        [{ environments: { staging: { extends: 'local' } } }, 'environments.staging.claude'],
+        [{ environments: { live: null } }, 'environments.live.production'],
+        [{ environments: { live: null, shop: { url: 'https://shop.example', claude: true } } }, 'environments.shop.claude'],
+        [{ environments: { other: { url: 'https://other.example', claude: true } } }, 'environments.other.claude'],
+        [{ environments: { other: { extends: 'local', url: 'https://other.localhost' } } }, 'environments.other.writable'],
+        [{ overlay: { parts: { shop: { start: 'evil' } } } }, 'overlay.parts.shop.start'],
+        [{ overlay: { parts: { admin: { dir: 'admin', url: 'http://localhost:4200', start: 'evil' } } } }, 'overlay.parts.admin.start'],
+        [{ lintCommand: 'evil' }, 'lintCommand'],
+        [{ sandboxImage: 'evil/image' }, 'sandboxImage'],
+        [{ sandboxUser: 'root' }, 'sandboxUser'],
+        [{ browser: { executablePath: '/opt/evil/chrome' } }, 'browser.executablePath'],
+        [{ agent: { mode: 'session' } }, 'agent.mode'],
+    ];
+    for (const [patch, key] of refusals) {
+        for (const dryRun of [false, true]) {
+            const refused = writeConfig(root, patch, { dryRun });
+            assert.equal(refused.ok, false, JSON.stringify(patch));
+            assert.ok(refused.guarded.includes(key), `${JSON.stringify(patch)}: ${refused.guarded}`);
+            assert.match(refused.issues[0], /Nicht über caw_config geändert: .*Edit-Werkzeug in caw\.config\.json/);
+        }
+    }
+    assert.equal(readFileSync(file, 'utf8'), before, 'nothing written');
+    // Everything else still goes through, also a new environment without guarded keys and unchanged values written again.
+    assert.equal(writeConfig(root, { environments: { qa: { url: 'https://qa.shop.example' } } }).ok, true);
+    assert.equal(writeConfig(root, { environments: { local: { claude: true, writable: true } }, overlay: { parts: { shop: { url: 'http://localhost:5174' } } } }).ok, true);
+    assert.equal(writeConfig(root, { environments: { qa: null } }).ok, true, 'an environment without guarded keys may go');
 });
 
 test('checkTest: the environment must be one the test runs on', () => {
@@ -479,6 +524,11 @@ test('config: browser picks a Chromium browser, default Chrome', async () => {
     assert.equal(issues({ ...simple(), browser: { channel: 'msedge' } }), '');
     assert.match(issues({ ...simple(), browser: { channel: 'firefox' } }), /browser.channel muss einer von/);
     assert.match(issues({ ...simple(), browser: { executablePath: 'chrome.exe' } }), /absoluter Pfad/);
+    // Only a browser on this machine: no network share, no device namespace, nothing a process holds open under /proc.
+    for (const path of ['\\\\host\\share\\chrome.exe', '//host/share/chrome', '\\\\?\\C:\\chrome.exe', '\\\\.\\pipe\\x', '/proc/self/fd/3', '/proc']) {
+        assert.match(issues({ ...simple(), browser: { executablePath: path } }), /auf diesem Rechner/, path);
+    }
+    assert.equal(issues({ ...simple(), browser: { executablePath: '/opt/chromium/chrome' } }), '');
     assert.match(issues({ ...simple(), browser: 'edge' }), /browser muss ein Objekt sein/);
 });
 

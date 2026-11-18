@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -205,6 +205,14 @@ test('run with several tests: each runs, the table shows the outcome, the exit i
     assert.match(text, /AUFNAHME NÖTIG\s+neu/);
     assert.match(text, /ABGELEHNT\s+gibtsnicht/);
     assert.match(text, /JUnit-Bericht: out\/junit\.xml/);
+    assert.match(readFileSync(join(root, 'out', 'junit.xml'), 'utf8'), /<testsuite/);
+    // The report stays in the project (a session passes --report through caw_start): refused before any test runs.
+    said.length = 0;
+    for (const file of ['../junit.xml', join(tmpdir(), 'caw-junit-outside.xml')]) {
+        await assert.rejects(run(root, ['neu', '--env', 'local', '--report', `junit=${file}`]), (error) => error.code === 'usage' && /muss eine Datei im Projekt nennen/.test(error.message), file);
+    }
+    assert.doesNotMatch(said.join('\n'), /Ergebnis/, 'no test ran');
+    assert.equal(existsSync(join(root, '..', 'junit.xml')), false);
     // --all only takes tests with the environment; in CI without --env the tests' only environment is needed, but there are two here.
     await inCi(() => assert.rejects(run(root, ['--all']), /--env fehlt: local, staging/));
     said.length = 0;

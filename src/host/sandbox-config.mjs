@@ -81,8 +81,8 @@ const MASKED_SECRET_DIRS = new Set(SECRET_DIRS);
  * Docker needs existing targets. Files are covered by an empty host file, because not every Docker way accepts /dev/null as a source.
  */
 export const maskArgs = (root, containerRoot, emptyFile) => {
-    const hideFile = (target) => ['--mount', `type=bind,source=${emptyFile},target=${target},readonly`];
-    const hide = (relative, isDirectory) => (isDirectory ? ['--tmpfs', posix.join(containerRoot, relative)] : hideFile(posix.join(containerRoot, relative)));
+    const hideFile = (target) => ['--mount', `type=bind,source=${mountPath(emptyFile)},target=${mountPath(target)},readonly`];
+    const hide = (relative, isDirectory) => (isDirectory ? ['--tmpfs', tmpfsPath(posix.join(containerRoot, relative))] : hideFile(posix.join(containerRoot, relative)));
     const args = [];
     const masked = new Set();
     for (const name of MASKED_DIRS) {
@@ -110,6 +110,20 @@ export const maskArgs = (root, containerRoot, emptyFile) => {
     return args;
 };
 
+/**
+ * A path for Docker's --mount value, which is comma-separated and may be quoted: a comma, a quote or a line break in it would
+ * end the field and add options of its own (another source, readonly gone). Such a path is refused, the mount never guessed.
+ */
+export const mountPath = (path) => {
+    if (/[,"\r\n]/.test(path)) throw new CawError('sandbox-path', t('session.sandbox.mountPath', { path: JSON.stringify(path) }));
+    return path;
+};
+/** A --tmpfs target: as for --mount, and no colon, which starts the tmpfs options. */
+const tmpfsPath = (path) => {
+    if (path.includes(':')) throw new CawError('sandbox-path', t('session.sandbox.mountPath', { path: JSON.stringify(path) }));
+    return mountPath(path);
+};
+
 /** `host*` is the source as Docker sees it, `container*` the target. Only this run's agent folder is writable. */
 export const sandboxRunArgs = ({ hostRoot, containerRoot, image, masks, name, hostAgentDir, containerAgentDir, command, color = false, limits = {} }) => [
     'run', '--rm', '--init', '--name', name,
@@ -123,9 +137,9 @@ export const sandboxRunArgs = ({ hostRoot, containerRoot, image, masks, name, ho
     '-e', `CAW_AGENT_DIR=${containerAgentDir}`,
     // The container has no terminal and cannot tell by itself whether colour is possible.
     ...(color ? ['-e', 'CAW_COLOR=1'] : []),
-    '--mount', `type=bind,source=${hostRoot},target=${containerRoot},readonly`,
+    '--mount', `type=bind,source=${mountPath(hostRoot)},target=${mountPath(containerRoot)},readonly`,
     ...masks,
-    '--mount', `type=bind,source=${hostAgentDir},target=${containerAgentDir}`,
+    '--mount', `type=bind,source=${mountPath(hostAgentDir)},target=${mountPath(containerAgentDir)}`,
     '--workdir', containerRoot,
     image,
     ...command,

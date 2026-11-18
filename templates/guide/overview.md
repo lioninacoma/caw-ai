@@ -28,7 +28,7 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 |---|---|
 | `caw_guide` | This guidance, per topic |
 | `caw_init` | Look at the app (`mode: explore`), write the config (`mode: write`), or a template (`mode: offline`) |
-| `caw_config` | Read the config, or patch it (validated) |
+| `caw_config` | Read the config, or patch it (validated); commands and environment flags only with your Edit tool (topic `config`) |
 | `caw_role` | Test users per role: list, add (window), login (saved session), remove |
 | `caw_doctor`, `caw_validate`, `caw_list` | Checks and overview, no tokens |
 | `caw_start` | Start `run`, `record` or `open` with you as the agent |

@@ -29,7 +29,10 @@ const CHANGES_PAGE = new Set(['click', 'dblclick', 'press', 'goto', 'reload']);
 const NOT_EXPORTED = 'Not exported: learned effects and network baselines, knownMessages, the console and request failure rules, '
     + 'retry, readyIgnore and the 2 s tolerance for a second match while a dialog closes.';
 
-const js = (value) => JSON.stringify(value);
+// A value as a JavaScript literal. U+2028 and U+2029 escaped too: JSON allows them raw, but they end a line in a comment.
+const js = (value) => JSON.stringify(value)?.replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
+/** Text inside a // comment: as a literal, so no line break in it can end the comment. */
+const commentText = (value) => js(String(value));
 /** A text value: with a placeholder it is filled per run. */
 const text = (value) => (String(value).includes('{{') ? `caw.text(${js(value)})` : js(value));
 
@@ -68,7 +71,8 @@ export const actionLines = (action) => {
         case 'dragTo': call = `${target}.dragTo(${exportLocator(action.to)})`; break;
         case 'press': call = `page.keyboard.press(${js(action.key)})`; break;
         // A refused navigation was recorded as proof of the host lock: Playwright has no such lock.
-        case 'goto': if (action.denied === true) return [`// goto ${action.url} was refused by caw's host lock while recording; not exported.`]; call = `page.goto(${text(action.url)})`; break;
+        // The URL as a JSON literal: a line break (or U+2028/U+2029) in it could otherwise end the comment and start code.
+        case 'goto': if (action.denied === true) return [`// goto ${commentText(action.url)} was refused by caw's host lock while recording; not exported.`]; call = `page.goto(${text(action.url)})`; break;
         case 'reload': call = 'page.reload()'; break;
         case 'wait-ready': {
             const options = { ...(action.for === undefined ? {} : { for: action.for }), ...(action.minCount === undefined ? {} : { minCount: action.minCount }) };
@@ -159,7 +163,10 @@ export const configText = ({ env, browser }) => [
     `        baseURL: process.env.CAW_BASE_URL || ${js(env.url)},`,
     "        channel: 'chrome',",
     '        actionTimeout: 30_000,',
-    "        trace: 'retain-on-failure',",
+    // The sign-in fills the test user's password and one-time code; a trace would keep them in plain text (caw scrubs its
+    // own traces, Playwright does not). Switch it on only with accounts whose secrets may end up in a report.
+    '        // No trace: the sign-in in caw-support.mjs fills the password, and a trace would keep it in plain text.',
+    "        trace: 'off',",
     ...(browser.locale === undefined ? [] : [`        locale: ${js(browser.locale)},`]),
     ...(browser.timezone === undefined ? [] : [`        timezoneId: ${js(browser.timezone)},`]),
     ...(browser.viewport === undefined ? [] : [`        viewport: ${js(browser.viewport)},`]),

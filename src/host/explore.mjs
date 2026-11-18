@@ -212,7 +212,8 @@ const HTTP_NOISE = /^Failed to load resource/i;
 export const suggestConsoleIgnore = (errors) => [...new Set(errors.filter((error) => !HTTP_NOISE.test(String(error).trim())).map(ignorePattern)
     .filter((pattern) => pattern.replace(/\\d\+/g, '0').length >= 8))].slice(0, 8);
 
-const pathOf = (address) => new URL(address).pathname + new URL(address).search;
+// The path only: a query can carry a token or an id of the session, and the start lands in caw/.explore.json and the config.
+const pathOf = (address) => new URL(address).pathname;
 
 /**
  * Where tests start: the page the human chose at the end. If that still shows a sign-in form (nobody signed in, e.g. with
