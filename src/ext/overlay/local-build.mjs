@@ -4,7 +4,7 @@
 // names and exists in the folder as is.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, posix } from 'node:path';
+import { extname, isAbsolute, join, posix, relative } from 'node:path';
 
 const TYPES = {
     '.js': 'application/javascript',
@@ -205,11 +205,16 @@ const liveFiles = (dir, at) => {
     return live;
 };
 
-/** The folder of a file in the build and its name; never `..`. */
+/**
+ * The folder of a file in the build and its name; never outside the build. A name from a URL is split on `/` only, so a
+ * backslash (a separator on Windows), a drive colon or NUL is refused, and the resolved file must still lie inside `dir`.
+ */
 const locate = (dir, name) => {
-    if (typeof name !== 'string' || name === '' || name.split('/').some((part) => part === '..' || part === '.')) return null;
+    if (typeof name !== 'string' || name === '' || /[\\:\0]/.test(name) || name.split('/').some((part) => part === '..' || part === '.')) return null;
     const folder = posix.dirname(name);
-    return { at: folder === '.' ? dir : join(dir, ...folder.split('/')), base: posix.basename(name) };
+    const place = { at: folder === '.' ? dir : join(dir, ...folder.split('/')), base: posix.basename(name) };
+    const inside = relative(dir, join(place.at, place.base));
+    return inside === '' || inside.startsWith('..') || isAbsolute(inside) ? null : place;
 };
 
 const resolveExact = (dir, name) => {
@@ -309,6 +314,25 @@ export const hasBuild = (dir) => buildCheck(dir).ok;
 
 /**
  * The deployed HTML without Subresource Integrity: the local code has other bytes than the `integrity` hashes, so Chrome would refuse
- * every injected script and stylesheet. Only attributes on `<script>` and `<link>`; the rest stays as the server sends it.
+ * every injected script and stylesheet. Only attributes on `<script>` and `<link>` whose address lies on the page's own origin or
+ * one of `origins` (the environment, the dev servers): the overlay never answers for a third-party host, so a CDN tag keeps its
+ * integrity and Chrome still checks what the CDN sends. The rest stays as the server sends it.
+ * @param url     the address the page's relative URLs resolve against; without it relative URLs count as the page's own
+ * @param origins further origins whose tags local code may answer
  */
-export const withoutIntegrity = (html) => html.replace(/(<(?:script|link)\b[^>]*?)\s+integrity\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '$1');
+export const withoutIntegrity = (html, { url, origins = [] } = {}) => {
+    const base = url ?? 'http://page.invalid/';
+    const own = new Set([new URL(base).origin, ...origins]);
+    return html.replace(/<(?:script|link)\b[^>]*>/gi, (tag) => {
+        const integrity = /\s+integrity\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i;
+        if (!integrity.test(tag)) return tag;
+        const address = /\s(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag)?.slice(1).find((value) => value !== undefined);
+        let origin = null;
+        try {
+            origin = address === undefined ? new URL(base).origin : new URL(address, base).origin;
+        } catch {
+            origin = null;
+        }
+        return own.has(origin) ? tag.replace(integrity, '') : tag;
+    });
+};

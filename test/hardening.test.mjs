@@ -89,6 +89,12 @@ test('build: which requests a build folder answers, how the local page loads a s
 
     assert.equal(withoutIntegrity('<script src="a.js" integrity="sha384-abc" crossorigin></script><link rel="stylesheet" href="b.css" integrity=\'sha256-x\'><p integrity="bleibt">'),
         '<script src="a.js" crossorigin></script><link rel="stylesheet" href="b.css"><p integrity="bleibt">');
+    // Only tags local code may answer: the page's own origin and the given ones (environment, dev server). A CDN keeps its check.
+    const page = '<script src="/app.js" integrity="sha384-own"></script><script src="https://cdn.example/lib.js" integrity="sha384-cdn" crossorigin></script>'
+        + '<script src="http://localhost:5173/src/main.js" integrity="sha384-dev"></script><link rel="stylesheet" href="//cdn.example/x.css" integrity="sha384-css">';
+    assert.equal(withoutIntegrity(page, { url: 'https://app.example/shop/', origins: ['http://localhost:5173'] }),
+        '<script src="/app.js"></script><script src="https://cdn.example/lib.js" integrity="sha384-cdn" crossorigin></script>'
+        + '<script src="http://localhost:5173/src/main.js"></script><link rel="stylesheet" href="//cdn.example/x.css" integrity="sha384-css">');
 });
 
 test('build: if the build sits one level deeper (Angular dist/<app>/browser), the check names the folder', (t) => {

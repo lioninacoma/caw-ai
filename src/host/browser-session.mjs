@@ -20,10 +20,10 @@ import { registerEngines } from '../ext/extjs/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
-import { scrubTrace } from './trace-scrub.mjs';
+import { basicAuthToken, scrubTrace } from './trace-scrub.mjs';
 import { ANY_HOST, browserArgs, installHostLock, isTopNavigation, withLoopbackPair } from './host-lock.mjs';
 import { classifyRequest, compileReads } from '../shared/requests.mjs';
-import { appHosts as appHostsOf, blockedHosts } from '../shared/environments.mjs';
+import { appHosts as appHostsOf, blockedHosts, normalizeHost } from '../shared/environments.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
 import { PREP, openWorkbench } from './workbench.mjs';
 
@@ -287,6 +287,20 @@ export const watchBroken = (page, limit = 3) => {
 };
 
 // If the application asks for a one-time code after the password (`codeSelector`), the role enters it from its TOTP secret.
+/**
+ * Fills a sign-in field (user, password, code, a step's value). Playwright names the filled text in its error message and call
+ * log (`- fill("…")`) when the element is found but cannot take it, and run and CLI print that message: the failure says which
+ * field it was, never the value, and keeps nothing of Playwright's error.
+ * @param field the config key and selector or the step, for the message
+ */
+export const fillSecret = async (fill, field) => {
+    try {
+        await fill();
+    } catch {
+        throw new CawError('login-failed', t('session.browser.fillFailed', { field }));
+    }
+};
+
 // A code is only valid once: if the same account already signed in within the same 30 s window, e.g. in the previous test, the
 // application rejects it. Then exactly one retry with the next window's code; if that fails too, loginSteps reports the sign-in as failed.
 const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep, onCode = () => {} }) => {
@@ -301,7 +315,7 @@ const secondFactor = async (page, { marker, totpSecret, selectors, now, sleep, o
         const at = now();
         const code = totp(totpSecret, at);
         onCode(code);
-        await page.fill(selectors.code, code);
+        await fillSecret(() => page.fill(selectors.code, code), `codeSelector "${selectors.code}"`);
         await page.press(selectors.code, 'Enter');
         return at;
     };
@@ -413,8 +427,8 @@ export const loginSteps = async (page, { url, marker, login, password, totpSecre
     if (selectors.submit !== undefined && await page.$(selectors.submit) === null) {
         throw new CawError('login-failed', t('session.browser.selectorMissing', { key: 'submitSelector', selector: selectors.submit }));
     }
-    await page.fill(selectors.user, login);
-    await page.fill(selectors.password, password);
+    await fillSecret(() => page.fill(selectors.user, login), `userSelector "${selectors.user}"`);
+    await fillSecret(() => page.fill(selectors.password, password), `passwordSelector "${selectors.password}"`);
     const requests = trackRequests(page, now);
     try {
         if (selectors.submit === undefined) await page.press(selectors.password, 'Enter');
@@ -479,7 +493,10 @@ export const stepSignIn = async (page, { url, marker, steps, login, password, to
                     throw new CawError('login-failed', t('session.browser.stepMissing', { step: stepLabel(step, index), path: new URL(page.url()).pathname }));
                 }
             }
-            if (step.fill !== undefined) await page.locator(step.fill).first().fill(valueOf(step));
+            if (step.fill !== undefined) {
+                const value = valueOf(step);
+                await fillSecret(() => page.locator(step.fill).first().fill(value), `signIn.steps ${stepLabel(step, index)}`);
+            }
             else if (step.click !== undefined) await page.locator(step.click).first().click({ timeout });
             else if (step.press !== undefined && step.on !== undefined) await page.locator(step.on).first().press(step.press);
             else if (step.press !== undefined) await page.keyboard.press(step.press);
@@ -612,22 +629,29 @@ export const createTrace = (context, { path, options, secrets = () => [] }) => {
     };
 };
 
+// Chrome's messages when its sandbox cannot start: as root on Linux, or in a container without user namespaces.
+export const SANDBOX_FAILURE = /No usable sandbox|without --no-sandbox|setuid sandbox|namespace sandbox/i;
+
 // Without a window there is no maximising: forms get the width of a typical screen.
 const HEADLESS_VIEWPORT = { width: 1920, height: 1080 };
 
 /**
- * @param lock        { navigation, blocked, onBlocked } for the host lock (host-lock.mjs), installed before any page loads
+ * @param lock        { navigation, blocked, reach, onBlocked } for the host lock (host-lock.mjs), installed before any page loads;
+ *                    `reach` (Claude attached) also goes into the resolver rules, which only a launch can set
  * @param headless    no visible window, in Chrome's new headless mode: same engine, same host lock
  * @param insecureTls skip certificate checks, for internal environments with their own CA (config `insecureTls`)
+ * @param launch      from browserLaunch: channel or executablePath, chromiumSandbox
  */
-const launchChrome = async (profileDir, lock, { headless = false, insecureTls = false, embed = false, httpCredentials, launch = { channel: 'chrome' }, region, ownSignals = false } = {}) => {
+const launchChrome = async (profileDir, lock, { headless = false, insecureTls = false, httpCredentials, launch = { channel: 'chrome', chromiumSandbox: true }, region, ownSignals = false } = {}) => {
     quietProfile(profileDir);
     // Before every launch: recordings may use the extjs= selector engine (a no-op without Ext).
     await registerEngines();
     let context;
     try {
         context = await chromium.launchPersistentContext(profileDir, {
-            // The system Chrome, or whatever the config names under browser (Edge, a fixed path).
+            // The system Chrome, or whatever the config names under browser (Edge, a fixed path). Always in Chrome's sandbox unless
+            // the config says browser.noSandbox (browserLaunch); Playwright's own default would be without.
+            chromiumSandbox: true,
             ...launch,
             headless,
             // Ctrl+C ends the run with a verdict and cleanup. Playwright would otherwise exit immediately with code 130.
@@ -651,15 +675,17 @@ const launchChrome = async (profileDir, lock, { headless = false, insecureTls = 
             // HTTP basic auth only for the environment's origin, never for other hosts.
             ...(httpCredentials === undefined ? {} : { httpCredentials }),
             // Maximised instead of fullscreen: forms get the full width, and on handover tabs and address bar stay visible.
-            // With the workbench: Playwright serves it, Chrome considers it public and would otherwise block the intranet application in the iframe.
             // --test-type: without it Chrome shows a warning bar about --host-resolver-rules (production hosts, .localhost) above the
-            // workbench (chromedriver does the same).
+            // workbench (chromedriver does the same). It is not there for --no-sandbox: with the sandbox on, that flag is not passed.
             // No "Translate this page?" bubble at the address bar when the app's language differs from Chrome's. Chrome only honours
             // the last --disable-features, so all features go into one flag.
-            args: [...(headless ? [] : ['--start-maximized', '--test-type']), ...browserArgs(lock.blocked ?? []), `--disable-features=${['Translate', 'TranslateUI', ...(embed ? ['LocalNetworkAccessChecks'] : [])].join(',')}`],
+            args: [...(headless ? [] : ['--start-maximized', '--test-type']), ...browserArgs(lock.blocked ?? [], { reach: lock.reach }), '--disable-features=Translate,TranslateUI'],
         });
     } catch (error) {
-        throw new CawError('browser-missing', t('session.browser.chromeFailed', { error: error.message.split('\n')[0] }));
+        const first = error.message.split('\n')[0];
+        // No silent fallback without the sandbox: the person turns it off knowingly, in the config.
+        if (launch.chromiumSandbox !== false && SANDBOX_FAILURE.test(error.message)) throw new CawError('browser-sandbox', t('session.browser.sandboxFailed', { error: first }));
+        throw new CawError('browser-missing', t('session.browser.chromeFailed', { error: first }));
     }
     await installHostLock(context, lock);
     return context;
@@ -841,6 +867,26 @@ export const exploreBrowser = async ({ url, insecureTls = false, launch, headles
 };
 
 /**
+ * The production write block's rule: the name of a request that must not go out on production, or null. Any host counts, not
+ * only the app's; reads are GET, HEAD, OPTIONS and what classifyRequest calls a read (a GraphQL query, a `reads` pattern).
+ * Sign-in requests (classifyRequest's 'ignored') pass only while caw itself signs in, and only to the sign-in hosts.
+ * @param described   { method, url, postData, contentType }
+ * @param signInHosts the navigation hosts: the environment and its sign-in services
+ */
+export const productionWriteName = (described, { reads = [], requestKeys = [], signingIn = false, signInHosts = new Set() } = {}) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(String(described.method).toUpperCase())) return null;
+    let host = '';
+    try {
+        host = normalizeHost(new URL(described.url).hostname);
+    } catch {
+        // An unreadable address counts like any other host.
+    }
+    const name = requestName(described, requestKeys);
+    if (classifyRequest(name, reads) === 'read' || (signingIn && signInHosts.has(host))) return null;
+    return name;
+};
+
+/**
  * Opens Chrome, signs in, injects the local code and waits until the app settles.
  * @param spec.overlay null or the result of prepareOverlay, which then answers the code requests
  */
@@ -918,7 +964,9 @@ export const openBrowserSession = async (spec) => {
             const origin = new URL(resolved.url).origin;
             const httpCredentials = auth.type === 'basic' ? { username: credentials.login, password: credentials.password, origin }
                 : credentials?.gate === undefined ? undefined : { ...credentials.gate, origin };
-            raw = await launchChrome(dir, { navigation: hosts, blocked: blockedHosts(config, resolved.name), onBlocked: (event) => blockedSink(event) }, { headless: spec.headless === true, insecureTls: resolved.insecureTls === true, embed: spec.embed === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
+            // With Claude attached (spec.reach), the browser reaches only those hosts, plus the overlay's dev servers.
+            const reach = spec.reach === undefined ? undefined : [...spec.reach, ...(overlay?.devServers ?? []).map((server) => new URL(server).hostname)];
+            raw = await launchChrome(dir, { navigation: hosts, blocked: blockedHosts(config, resolved.name), reach, onBlocked: (event) => blockedSink(event) }, { headless: spec.headless === true, insecureTls: resolved.insecureTls === true, httpCredentials, launch: browserLaunch(config), region, ownSignals: true });
             raw.on('close', closedSignal);
             // Chrome runs: whatever fails from here (sign-in, a session file) is not a launch problem and keeps its own message.
             try {
@@ -931,6 +979,11 @@ export const openBrowserSession = async (spec) => {
         });
         async function prepareSignedIn() {
             await grantClipboard(raw, resolved.url);
+            // With the workbench: Playwright serves it, so Chrome counts it as a public page, and Local Network Access would block
+            // the application's requests from it to an intranet or loopback host. The permission goes to the application's origin
+            // only, instead of turning the check off for every origin (measured: a request from such a page to another loopback
+            // origin fails without it and passes with it).
+            if (spec.embed === true) await raw.grantPermissions(['local-network-access'], { origin: new URL(resolved.url).origin });
             timing.chrome = Date.now();
             // With the workbench: only its tab, not the application's popups (window.open, target=_blank), where the human demonstrates too.
             // Context scripts run before tab scripts; that is why they check the mark only when the event fires.
@@ -985,7 +1038,7 @@ export const openBrowserSession = async (spec) => {
         const isThirdParty = (url) => {
             try {
                 const { protocol, hostname } = new URL(url);
-                return /^(https?|wss?):$/.test(protocol) && !navigation.has(hostname);
+                return /^(https?|wss?):$/.test(protocol) && !navigation.has(normalizeHost(hostname));
             } catch {
                 return false;
             }
@@ -1124,6 +1177,12 @@ export const openBrowserSession = async (spec) => {
                 page = null;
             }
             if (page === false || (page !== null && !pages.owns(page))) return;
+            // With Claude attached, a host outside the reach: a warning that names it and how to allow it, like any third-party
+            // host's error (a blocked analytics script is no failed step).
+            if (kind === 'agent') {
+                addWarning({ type: 'host-blocked', text: t('session.browser.agentBlocked', { host }) });
+                return;
+            }
             failures.push({ type: 'host-blocked', text: t(kind === 'production' ? 'session.browser.productionBlocked' : 'session.browser.hostBlocked', { host }), url });
         };
         for (const event of blockedEarly.splice(0)) blockedSink(event);
@@ -1156,27 +1215,45 @@ export const openBrowserSession = async (spec) => {
         // What naming needs of a request; postData is null for a body Playwright cannot read as text.
         const hostOfRequest = (request) => {
             try {
-                return new URL(request.url()).hostname;
+                return normalizeHost(new URL(request.url()).hostname);
             } catch {
                 return '';
             }
         };
         const describedRequest = (request) => ({ method: request.method(), url: request.url(), postData: request.postData(), contentType: request.headers()['content-type'] ?? '' });
-        // On production nothing writes: a write request to the app's hosts (the same classifier as the report) is aborted and fails
-        // the step. Registered after the first sign-in; a later one (signInAgain) is let through by signingIn.
+        // On production nothing writes, to any host: a request that is no read by the report's classifier (GET, HEAD, OPTIONS, a
+        // GraphQL query, a `reads` pattern) is aborted and fails the step, whether it goes to the app or elsewhere. Sign-in
+        // requests are exempt only while caw itself signs in, and only to the navigation hosts (the environment, its sign-in
+        // services); a token refresh the app sends by itself later is a write unless `reads` names it. Registered after the first
+        // sign-in; a later one (signInAgain) sets signingIn.
+        // Not covered: messages an open WebSocket sends. Reading apps send them too (socket.io pings, a GraphQL subscription's
+        // connection_init and subscribe), so blocking them would break reading; production WebSockets stay a documented gap.
+        const signInHosts = new Set(withLoopbackPair(hosts));
+        const refuseWrite = (described, url) => {
+            if (resolved.production !== true) return false;
+            const name = productionWriteName(described, { reads, requestKeys: config.requestKeys ?? [], signingIn, signInHosts });
+            if (name === null) return false;
+            blockedUrls.add(url);
+            failures.push({ type: 'write-blocked', text: t('session.browser.writeBlocked', { name, env: resolved.name }), url });
+            return true;
+        };
         if (resolved.production === true) {
-            await raw.route((url) => ownHosts.has(url.hostname), async (route) => {
+            await raw.route((url) => /^https?:$/.test(url.protocol), async (route) => {
                 const request = route.request();
-                const name = requestName(describedRequest(request), config.requestKeys ?? []);
-                if (signingIn || classifyRequest(name, reads) !== 'write') {
+                if (!refuseWrite(describedRequest(request), request.url())) {
                     await route.fallback();
                     return;
                 }
-                blockedUrls.add(request.url());
-                failures.push({ type: 'write-blocked', text: t('session.browser.writeBlocked', { name, env: resolved.name }), url: request.url() });
                 await route.abort('blockedbyclient').catch(() => {});
             });
         }
+        // A form POST into the workbench's top window is sent by caw itself (interceptDocuments), past the routes: the same check.
+        const refuseTopWrite = ({ method, url, headers, postData }) => refuseWrite({
+            method,
+            url,
+            postData,
+            contentType: Object.entries(headers).find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? '',
+        }, url);
         const watchNavigation = (page) => {
             page.on('domcontentloaded', () => network.replaced(page));
             // Playwright also reports same-document changes (History API, hash), i.e. single-page app routes. Only the application's
@@ -1256,7 +1333,10 @@ export const openBrowserSession = async (spec) => {
         // Snapshots put requests including headers into the trace; with basic auth the password would be in the Authorization header.
         // With the workbench a human is watching: continuous screenshots made the page noticeably sluggish (and the trace huge).
         // Every later sign-in (signInAgain) pauses it.
-        trace = createTrace(raw, { path: spec.tracePath, options: { screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' }, secrets: () => [...passwords, ...codes, ...hidden] });
+        // A gate's credentials travel as `Authorization: Basic base64(user:password)` in every request, and the snapshots keep the
+        // headers: the scrub also masks that encoded form, so the trace keeps its snapshots.
+        const gateToken = credentials?.gate === undefined ? [] : [basicAuthToken(credentials.gate.username, credentials.gate.password)];
+        trace = createTrace(raw, { path: spec.tracePath, options: { screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' }, secrets: () => [...passwords, ...codes, ...hidden, ...gateToken] });
         await trace.start();
 
         // devlinkHost.start() only hooks in the interception after loading the start page; so this navigation is the first
@@ -1268,7 +1348,7 @@ export const openBrowserSession = async (spec) => {
         const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
             // Embed only documents of the application itself, not further allowed hosts such as a sign-in service.
-            bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite });
+            bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite, refuse: refuseTopWrite });
             pages.embed(bench.page, bench.view);
             // A recorded (or configured) viewport pins the app frame to that size, as headless replay uses it (OPEN-15).
             if (region?.viewport !== undefined) await bench.viewport(region.viewport);

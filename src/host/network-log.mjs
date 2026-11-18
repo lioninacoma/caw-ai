@@ -1,6 +1,6 @@
 // What the app requested during a run, independent of the framework: method, name, status, duration, outcome.
 import { t } from '../shared/i18n.mjs';
-import { graphqlOf, jsonKeyParts } from '../shared/requests.mjs';
+import { graphqlOf, jsonKeyParts, nameToken } from '../shared/requests.mjs';
 
 // Parameter values never end up here, only the names from `requestKeys` that identify a request.
 
@@ -42,7 +42,7 @@ export const requestName = ({ method, url, postData = null, contentType = '' }, 
         return `${method.toUpperCase()} ?`;
     }
     const wanted = new Set(keys.filter((key) => !/^json\./i.test(key)).map((key) => key.toLowerCase()));
-    const parts = [...parsed.searchParams].filter(([key]) => wanted.has(key.toLowerCase())).map(([key, value]) => `${key}=${value.slice(0, 120)}`);
+    const parts = [...parsed.searchParams].filter(([key]) => wanted.has(key.toLowerCase())).map(([key, value]) => `${key}=${nameToken(value.slice(0, 120))}`);
     const graphql = graphqlOf(postData, contentType);
     return [`${method.toUpperCase()} ${neutralPath(parsed.pathname)}`, ...parts, ...jsonKeyParts(postData, keys), ...(graphql === null ? [] : [graphql.type, graphql.name])].join(' ');
 };

@@ -49,7 +49,7 @@ const hintFor = (key, allowed) => {
 
 /**
  * The environment as runs use it: `extends` resolved, defaults filled in.
- * @returns { name, url, claude, writable, production, signIn, allowHosts, insecureTls, allowHttp, gate, start, stop, reset, ready }
+ * @returns { name, url, claude, writable, production, signIn, allowHosts, thirdPartyHosts, insecureTls, allowHttp, gate, start, stop, reset, ready }
  */
 export const effectiveEnvironment = (config, name) => {
     const keys = mergedKeys(config, name, []);
@@ -61,6 +61,7 @@ export const effectiveEnvironment = (config, name) => {
         production: keys.production === true,
         signIn: isObject(keys.signIn) ? keys.signIn : isObject(config?.signIn) ? config.signIn : { type: 'none' },
         allowHosts: Array.isArray(keys.allowHosts) ? keys.allowHosts : [],
+        thirdPartyHosts: Array.isArray(keys.thirdPartyHosts) ? keys.thirdPartyHosts : [],
         insecureTls: keys.insecureTls === true,
         allowHttp: keys.allowHttp === true,
         ...(isObject(keys.gate) ? { gate: keys.gate } : {}),
@@ -139,9 +140,15 @@ export const chooseEnvironment = (config, { given, candidates, command, ci = fal
     throw new CawError('usage', open.length === 0 ? t('session.args.envNone', { command }) : t('session.args.targetMissing', { choices: open.join(', ') }));
 };
 
+/**
+ * A host name as the browser locks compare it: lower case, without the trailing dot of a fully qualified name. Chrome resolves
+ * `prod.example.com.` like `prod.example.com`, so a comparison that keeps the dot would let it past a block.
+ */
+export const normalizeHost = (host) => String(host).toLowerCase().replace(/\.+$/, '');
+
 const hostOfUrl = (url) => {
     try {
-        return new URL(url).hostname;
+        return normalizeHost(new URL(url).hostname);
     } catch {
         return null;
     }
@@ -171,7 +178,20 @@ export const navigationHosts = (config, envName) => {
     const own = envName === undefined ? undefined : effectiveEnvironment(config, envName);
     const production = new Set(all.filter((env) => env.production).map((env) => hostOfUrl(env.url)).filter(Boolean));
     const hosts = all.filter((env) => !env.production).map((env) => hostOfUrl(env.url)).filter(Boolean);
-    const extra = [...(Array.isArray(config?.allowHosts) ? config.allowHosts : []), ...(own?.allowHosts ?? [])]
+    const extra = [...(Array.isArray(config?.allowHosts) ? config.allowHosts : []), ...(own?.allowHosts ?? [])].map(normalizeHost)
         .filter((host) => own?.production === true || !production.has(host));
     return [...new Set([...(own === undefined ? [] : [hostOfUrl(own.url)].filter(Boolean)), ...hosts, ...extra])];
+};
+
+/**
+ * Every host the browser may reach at all while Claude is attached to a run on `envName` (record, a run with chat, open): the
+ * navigation hosts (the environments and allowHosts, so also sign-in services) and `thirdPartyHosts` (top level and the
+ * environment's), the scripts, fonts and APIs of other parties the app needs. A production host of another environment never
+ * belongs to it, even when listed. Without Claude a run reaches any host except production (navigationHosts, blockedHosts).
+ */
+export const agentHosts = (config, envName) => {
+    const blocked = new Set(blockedHosts(config, envName));
+    const own = envName === undefined ? undefined : effectiveEnvironment(config, envName);
+    const extra = [...(Array.isArray(config?.thirdPartyHosts) ? config.thirdPartyHosts : []), ...(own?.thirdPartyHosts ?? [])].map(normalizeHost);
+    return [...new Set([...navigationHosts(config, envName), ...extra.filter((host) => !blocked.has(host))])];
 };

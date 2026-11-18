@@ -230,6 +230,11 @@ und an das, was die Seiten der App selbst laden (Skripte, Schriften, Analytics),
 Docker-Images; in der Docker-Sandbox erreicht Claude Code nur die Anthropic-API
 (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
 
+**Der Browser liegt außerhalb dieser Firewall:** Chrome läuft auf deinem Rechner. Solange Claude dabei ist (record, ein Lauf
+mit Chat, `open`), geht jeder Request seiner Seiten nur an deine Umgebungen, `allowHosts` und `thirdPartyHosts`; alles
+andere wird abgebrochen und im Lauf genannt, damit eine Seite, die Claude steuert, nicht weitergeben kann, was sie sieht. Ohne
+Claude (Wiedergaben, CI) laden Seiten von jedem Host außer Produktion. Details: [Sandbox-Grenzen](docs/guide.de.md#sandbox-grenzen).
+
 **Laufdaten** bleiben auf deinem Rechner in `.caw/runs/<lauf>/`: Bericht, `result.json`, Screenshots, Claudes Logs und
 `trace.zip`. Der Trace enthält Seiteninhalte und Netzwerkdaten samt Cookies; lade ihn und Laufordner nicht öffentlich hoch.
 `init` trägt `.caw/` in `.gitignore` ein.

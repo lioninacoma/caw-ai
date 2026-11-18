@@ -123,6 +123,7 @@ export default {
     'config.browser.both': 'browser: channel or executablePath, not both',
     'config.browser.locale': 'browser.locale must be a language tag, e.g. "de-DE"',
     'config.browser.timezone': 'browser.timezone must be a time zone, e.g. "Europe/Berlin"',
+    'config.browser.noSandbox': 'browser.noSandbox must be true or false (true starts Chrome without its sandbox: unsafe, only where the sandbox cannot start)',
     'config.browser.viewport': 'browser.viewport must be { "width": 320–7680, "height": 240–4320 } in whole pixels, e.g. { "width": 1280, "height": 800 }',
     'config.sandboxImage': 'sandboxImage must be an image reference without spaces, e.g. "node:22-bookworm-slim"',
     'config.sandboxUser': 'sandboxUser must be a Linux user name',

@@ -36,6 +36,19 @@ test('GraphQL: operation type and name from the selected operation; shorthand, a
     assert.deepEqual(graphqlOperations('fragment F on T { x } query Q { y }'), [{ type: 'query', name: 'Q' }]);
 });
 
+test('names and GraphQL from structured fields: a value with spaces stays one token, a JSON body with other fields is no GraphQL', () => {
+    const smuggled = name('POST', '/c?action=x%20query%20y', {}, ['action']);
+    assert.equal(smuggled, 'POST /c action=x%20query%20y', 'whitespace in a key value is percent-encoded');
+    assert.equal(classifyRequest(smuggled), 'write', 'so it cannot pose as a GraphQL query');
+    assert.equal(classifyRequest(name('POST', '/rpc', json({ method: 'a query b' }), ['json.method'])), 'write');
+    assert.equal(name('POST', '/rpc', json({ method: 'a\tquery b' }), ['json.method']), 'POST /rpc json.method=a%09query%20b');
+    const mixed = name('POST', '/api/orders', json({ query: '{ a }', action: 'delete' }));
+    assert.equal(mixed, 'POST /api/orders', 'a "query" field among others is no GraphQL request');
+    assert.equal(classifyRequest(mixed), 'write');
+    assert.equal(name('POST', '/graphql', json({ query: '{ a }', variables: {}, operationName: null, extensions: {} })), 'POST /graphql query anonymous', 'the GraphQL fields');
+    assert.equal(name('POST', '/graphql', json({ operationName: 'x query y', extensions: { persistedQuery: {} } })), 'POST /graphql unknown x%20query%20y');
+});
+
 test('parseRequestName: request names and learned effect lines with a trailing status', () => {
     assert.deepEqual(parseRequestName('POST /graphql mutation CloseTicket 200'), { method: 'POST', path: '/graphql', keys: [], graphql: { type: 'mutation', name: 'CloseTicket' } });
     assert.deepEqual(parseRequestName('post /c action=save 201'), { method: 'POST', path: '/c', keys: ['action=save'], graphql: null });
