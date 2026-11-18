@@ -8,7 +8,6 @@
 // - A context route aborts top-level document navigations (links, form posts, location changes, the first navigation of a popup)
 //   to other hosts. A route only sees the first URL of a redirect chain, so a redirect hop onto another host is caught from the
 //   request event: the navigation then counts as blocked, although the browser already loaded that page.
-import { APP_FRAME } from './app-view.mjs';
 
 // localhost and 127.0.0.1 are the same machine: a dev server under one name often opens its HMR socket under the other.
 const LOOPBACK_PAIR = ['localhost', '127.0.0.1'];
@@ -40,6 +39,11 @@ const hostOf = (url) => {
     }
 };
 
+// The workbench's application frames, by identity: the application can rename its frame (window.name), not swap the object.
+const appFrames = new WeakSet();
+/** The workbench registers its application frame here (workbench.mjs), once per workbench document. */
+export const markAppFrame = (frame) => { appFrames.add(frame); };
+
 /**
  * Is the request a document navigation of a tab's top frame (or of the application frame in the workbench)? A popup's first
  * navigation arrives before its frame exists: that is a top-level navigation too.
@@ -48,7 +52,7 @@ export const isTopNavigation = (request) => {
     if (request.resourceType() !== 'document' || !request.isNavigationRequest()) return false;
     try {
         const frame = request.frame();
-        return frame.parentFrame() === null || frame.name() === APP_FRAME;
+        return frame.parentFrame() === null || appFrames.has(frame);
     } catch {
         return true;
     }

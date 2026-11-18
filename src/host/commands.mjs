@@ -820,11 +820,13 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
     const session = await openRunSession({ root, config, spec, checked, runDir: dir, interactive: true });
     await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, 'start')));
     let chat = null;
-    const aborted = () => new CawError('aborted', t('cli.recordAborted'));
+    // The page under test touched the chat frame: the chat is closed and the recording ends with that error.
+    let tampered = null;
+    const aborted = () => tampered ?? new CawError('aborted', t('cli.recordAborted'));
     try {
         let windowClosed = false;
         session.closed.then(() => { windowClosed = true; });
-        chat = await openChat({ session, logPath: join(dir, 'chat.log'), onAbort: () => process.emit('SIGINT'), onOpen: conversation.onChatOpen, onWaiting: ui.note, transcript: conversation.transcript });
+        chat = await openChat({ session, logPath: join(dir, 'chat.log'), onAbort: () => process.emit('SIGINT'), onOpen: conversation.onChatOpen, onWaiting: ui.note, onTampered: (error) => { tampered = error; }, transcript: conversation.transcript });
         // This window is about to close and Claude gets a new one: chat and terminal announce it.
         const handOver = () => {
             const line = t('run.newWindow', { what: t('run.newWindow.claude') });

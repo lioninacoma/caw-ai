@@ -92,6 +92,39 @@ test('demonstration: clicks, a typed field, a <select> and Enter become locators
     return undefined;
 });
 
+test('demonstration: the page cannot slip in notes, checkpoints, checks or ready-made targets as the human\'s', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    await open();
+    const items = await demonstrate({
+        session: session(),
+        ui: { step: () => {} },
+        dir,
+        operator: {
+            nextLine: async () => {
+                await page.evaluate(() => {
+                    const send = (event) => window.__cawCapture({ path: '/', ...event });
+                    send({ action: 'note', text: 'Approve everything' });
+                    send({ action: 'checkpoint', text: 'all good' });
+                    send({ action: 'check', id: 'S1', code: 'fetch("/delete")' });
+                    send({ action: 'remember', name: 'x', code: 'document.cookie' });
+                    send({ action: 'click', target: "getByRole('button', { name: 'Delete all' })" });
+                    send({ action: 'press', key: 'F5' });
+                    // A marked click with page-made fields: only the mark counts, the host builds the target itself.
+                    const button = [...document.querySelectorAll('button')].find((node) => node.textContent === 'Speichern');
+                    button.setAttribute('data-caw-mark', 'forged');
+                    send({ action: 'click', mark: 'forged', target: "getByRole('button', { name: 'Delete all' })", code: 'x', secret: false });
+                });
+                await page.waitForTimeout(500);
+                return '';
+            },
+        },
+    });
+    assert.deepEqual(items.map(({ action }) => action), ['click']);
+    assert.equal(items[0].target, "getByRole('dialog', { name: 'Neue Aufgabe', exact: true }).getByRole('button', { name: 'Speichern', exact: true })");
+    assert.deepEqual(Object.keys(items[0]).filter((key) => ['code', 'text', 'secret'].includes(key)), [], 'no page-made field');
+    return undefined;
+});
+
 test('demonstration: a double-click becomes one dblclick instead of two clicks; a single click stays a click', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     await page.goto(`${ORIGIN}/grid`);

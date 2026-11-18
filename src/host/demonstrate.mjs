@@ -306,6 +306,39 @@ const chainOf = (value) => {
             || (Object.keys(link).length === 2 && typeof link.role === 'string' && typeof link.name === 'string'));
     return value.every(known) ? value : null;
 };
+// The keys captureInPage reports; a press with another key did not come from it.
+const PRESSED = new Set(['Enter', 'Tab', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']);
+const MAX_PATH = 2000;
+/**
+ * What the page may report through the capture binding, rebuilt from scratch: only the actions captureInPage sends, each with
+ * exactly its fields. The binding is reachable by any script of the application, so a page could otherwise slip in notes,
+ * checkpoints, checks with code or a ready-made target as the human's. Target and locator always come from the host (the mark).
+ * Click, fill and upload need a mark; press only a key captureInPage sends; dblclick carries nothing.
+ * @returns { mark?, seen?, proposal?, event } or null to drop it
+ */
+export const pageEvent = (raw) => {
+    if (raw === null || typeof raw !== 'object') return null;
+    const path = typeof raw.path === 'string' ? { path: raw.path.slice(0, MAX_PATH) } : {};
+    const mark = typeof raw.mark === 'string' && raw.mark !== '' ? raw.mark : null;
+    switch (raw.action) {
+        case 'click':
+            if (mark === null) return null;
+            return { mark, seen: raw.seen ?? null, proposal: raw.proposal ?? null, event: { action: 'click', ...(typeof raw.hint === 'string' ? { hint: raw.hint.slice(0, 40) } : {}), ...path } };
+        case 'fill':
+            if (mark === null) return null;
+            if (raw.secret === true) return { mark, event: { action: 'fill', secret: true, ...path } };
+            return typeof raw.value === 'string' ? { mark, event: { action: 'fill', value: raw.value, ...path } } : null;
+        case 'upload':
+            return mark === null || !Array.isArray(raw.files) ? null : { mark, event: { action: 'upload', files: raw.files, ...path } };
+        case 'press':
+            return PRESSED.has(raw.key) ? { event: { action: 'press', key: raw.key, ...path } } : null;
+        case 'dblclick':
+            return { event: { action: 'dblclick', ...path } };
+        default:
+            return null;
+    }
+};
+
 // Never in the workbench itself: there the human types into the chat, which is not an application step.
 const captureScript = () => `if (!(${isWorkbenchDocument}) && location.href !== 'about:srcdoc') (${captureInPage})(${JSON.stringify(BINDING)}, ${JSON.stringify([...NOT_TYPED])}, ${JSON.stringify(MARK_ATTRIBUTE)}, ${MARK_MS}, ${roleAndName}, ${pickAtPointerdown}, ${HASH_LIMIT_BYTES});`;
 
@@ -353,14 +386,16 @@ const captureOf = async (session) => {
     // Only frames of the application count; in the workbench the chat sees the binding too.
     const owns = ({ page, frame }) => (session.ownsFrame === undefined ? session.ownsPage(page) : session.ownsFrame(frame));
     // A mark is turned into a locator right away, while the element still exists; the queue keeps the events in order.
-    await session.context.exposeBinding(BINDING, (source, event) => {
+    await session.context.exposeBinding(BINDING, (source, raw) => {
         if (state.listener === null || !owns(source)) return;
-        const { mark, seen, proposal, ...rest } = event ?? {};
+        const accepted = pageEvent(raw);
+        if (accepted === null) return;
+        const { mark, seen, proposal, event } = accepted;
         const valid = typeof seen?.role === 'string' && typeof seen?.name === 'string' ? { role: seen.role, name: seen.name } : null;
         const resolving = mark === undefined ? Promise.resolve(null) : markedTarget(session, source.frame, mark, valid, chainOf(proposal));
         state.queue = state.queue.then(async () => {
             const found = await resolving;
-            state.listener?.(hideSecrets(session, found === null ? rest : { ...rest, ...found }));
+            state.listener?.(hideSecrets(session, found === null ? event : { ...event, ...found }));
         }).catch(() => {});
     });
     const script = captureScript();

@@ -13,9 +13,30 @@ import { openChat } from '../src/host/chat.mjs';
 import { WORKBENCH_MARK_SCRIPT, interceptDocuments } from '../src/host/app-view.mjs';
 import { withoutIntegrity } from '../src/ext/overlay/local-build.mjs';
 import { CHAT_FRAME, openWorkbench } from '../src/host/workbench.mjs';
+import { isTopNavigation } from '../src/host/host-lock.mjs';
 import { readPrefs } from '../src/shared/prefs.mjs';
 import { loadTheme, themesFolder } from '../src/shared/theme-package.mjs';
 import { launchChrome } from './chrome.mjs';
+
+/**
+ * Runs in the application frame, same origin as the workbench: removes the chat iframe's sandbox and reloads it, then keeps
+ * looking for the chat's token in the chat document and, once found, decides as the human (abort) with it.
+ */
+function TAMPER() {
+    const chat = top.document.getElementById('chat');
+    chat.removeAttribute('sandbox');
+    chat.srcdoc = '<p>x</p>';
+    setInterval(() => {
+        let html = '';
+        try {
+            html = chat.contentDocument?.documentElement?.innerHTML ?? '';
+        } catch { /* opaque: unreadable */ }
+        const found = /nonce:"([0-9a-f]+)"/.exec(html);
+        if (found === null) return;
+        top.__stolen = found[1];
+        chat.contentWindow.__cawChat({ type: 'abort', nonce: found[1] });
+    }, 5);
+}
 
 let browser = null;
 let server = null;
@@ -26,6 +47,22 @@ before(async () => {
     browser = await launchChrome();
     server = createServer((request, response) => {
         response.setHeader('content-type', 'text/html; charset=utf-8');
+        // An application that tampers with the chat as soon as it loads in a workbench (TAMPER below).
+        if (request.url.startsWith('/tamper')) {
+            response.end(`<h1>App ${request.url}</h1><script>(${TAMPER})()</script>`);
+            return;
+        }
+        // Embedding: the application frame's own document loses X-Frame-Options, a frame inside it keeps them.
+        if (request.url.startsWith('/framed')) {
+            response.setHeader('x-frame-options', 'DENY');
+            response.end(`<h1>App ${request.url}</h1><iframe src="/denied"></iframe>`);
+            return;
+        }
+        if (request.url.startsWith('/denied')) {
+            response.setHeader('x-frame-options', 'DENY');
+            response.end('<h1>inner</h1>');
+            return;
+        }
         response.end(`<h1>App ${request.url}</h1><button id="go">Weiter</button><label>Name <input id="feld"></label>`);
     });
     await new Promise((ok) => { server.listen(0, '127.0.0.1', ok); });
@@ -46,16 +83,19 @@ const until = async (check, ms = 8000) => {
     return false;
 };
 
-const open = async (t) => {
+/** @param first  (bench) => runs between workbench and chat, e.g. the application tampering with the chat frame first */
+const open = async (t, { first } = {}) => {
     const context = await browser.newContext();
     t.after(() => context.close());
     await context.newPage();
     await context.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
     const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'] });
+    await first?.(bench);
     let aborts = 0;
+    let tampered = null;
     const waiting = [];
-    const chat = await openChat({ session: { workbench: bench }, logPath: join(dir, `chat-${Date.now()}.log`), onAbort: () => { aborts += 1; }, onWaiting: (line) => waiting.push(line) });
-    return { context, bench, chat, aborts: () => aborts, waiting };
+    const chat = await openChat({ session: { workbench: bench }, logPath: join(dir, `chat-${Date.now()}.log`), onAbort: () => { aborts += 1; }, onWaiting: (line) => waiting.push(line), onTampered: (error) => { tampered = error; } });
+    return { context, bench, chat, aborts: () => aborts, tampered: () => tampered, waiting };
 };
 
 const pause = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
@@ -97,6 +137,104 @@ test('workbench: the real chat still speaks as the human', async (t) => {
     await bench.chatFrame().evaluate(() => document.getElementById('abort').click());
     await bench.chatFrame().evaluate(() => document.getElementById('abort').click()).catch(() => {});
     assert.ok(await until(() => aborts() >= 1), 'abort in the real chat arrives');
+});
+
+test('workbench: the application removes the chat sandbox before the chat is written: no token reaches it, the run ends as tampered', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, aborts, tampered } = await open(t, {
+        first: async ({ view }) => {
+            await view.frame.evaluate(`(${TAMPER})()`);
+            // The same-origin document is in place before the host would write the chat.
+            assert.ok(await until(() => view.frame.evaluate(() => top.document.getElementById('chat').contentDocument?.body?.textContent === 'x').catch(() => false)));
+        },
+    });
+    await pause(800);
+    assert.equal(await bench.page.evaluate(() => window.__stolen ?? null), null, 'the token never landed in a document the application can read');
+    assert.equal(aborts(), 0, 'the application decides nothing');
+    assert.equal(tampered()?.code, 'chat-tampered');
+    assert.equal(chat.available(), false, 'the chat is closed, every open decision ends without an answer');
+    assert.equal(await bench.chatFrame().evaluate(() => document.body.textContent), 'x', 'the chat page was not written into it');
+});
+
+test('workbench: the application tampers with the chat of a new workbench after a top navigation: the run ends as tampered', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, aborts, tampered } = await open(t);
+    const chatBefore = bench.chatFrame();
+    await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/tamper`);
+    assert.ok(await until(() => bench.chatFrame() !== chatBefore), 'new workbench');
+    assert.ok(await until(() => bench.page.evaluate(() => window.workbench !== undefined).catch(() => false)), 'new workbench loaded');
+    await pause(1500);
+    assert.equal(await bench.page.evaluate(() => window.__stolen ?? null), null, 'no token for the application');
+    assert.equal(aborts(), 0, 'the application decides nothing');
+    assert.equal(tampered()?.code, 'chat-tampered');
+    assert.equal(chat.available(), false);
+});
+
+test('workbench: a chat frame reloaded with its sandbox intact before the chat is written is not used either', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    // An opaque document of the application's making: its timer would survive document.open and read the token.
+    const { aborts, tampered } = await open(t, {
+        first: async ({ view, chatFrame }) => {
+            const first = chatFrame();
+            await view.frame.evaluate(() => {
+                top.document.getElementById('chat').srcdoc = '<script>setInterval(() => { const found = /nonce:"([0-9a-f]+)"/.exec(document.documentElement.innerHTML); if (found) window.__cawChat({ type: "abort", nonce: found[1] }); }, 5)</script>';
+            });
+            assert.ok(await until(() => first.evaluate(() => document.scripts.length === 1 && !document.querySelector('header')).catch(() => false)));
+        },
+    });
+    await pause(800);
+    assert.equal(aborts(), 0);
+    assert.equal(tampered()?.code, 'chat-tampered');
+});
+
+test('workbench: after the chat is written, a reload of its frame ends the run as tampered; nothing it sends counts', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, aborts, tampered } = await open(t);
+    await bench.view.frame.evaluate(`(${TAMPER})()`);
+    await pause(800);
+    assert.equal(await bench.page.evaluate(() => window.__stolen ?? null), null);
+    assert.equal(aborts(), 0);
+    assert.equal(tampered()?.code, 'chat-tampered');
+    assert.equal(chat.available(), false);
+});
+
+test('workbench: keys go to the application, never to the workbench element the application names as its focus', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    assert.ok(await until(async () => (await bench.view.locator('#feld').count()) === 1), 'application loaded');
+    await bench.view.frame.evaluate(() => { window.__cawFocus = top.document.getElementById('chat'); });
+    await bench.view.keyboard.press('Shift');
+    assert.equal(await bench.page.evaluate(() => document.activeElement?.id), 'app', 'the application iframe has the focus, not the chat');
+    await bench.view.locator('#feld').focus();
+    await bench.page.evaluate(() => document.getElementById('chat').focus());
+    await bench.view.keyboard.press('a');
+    assert.equal(await bench.view.locator('#feld').inputValue(), 'a', 'the element that last had focus in the application gets the key');
+});
+
+test('workbench: the application frame is known by identity, a new name does not make its navigations non-top', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const app = bench.view.frame;
+    // The name survives the reload; from then on the frame no longer is caw-app by name.
+    await app.evaluate(() => { window.name = 'x'; setTimeout(() => location.reload(), 0); });
+    assert.ok(await until(() => app.name() === 'x'), 'renamed');
+    const seen = new Promise((ok) => { bench.page.context().on('request', (request) => { if (request.url().endsWith('/umbenannt')) ok(request); }); });
+    await app.evaluate((url) => { location.href = url; }, `${base}/umbenannt`);
+    const request = await seen;
+    assert.equal(request.frame(), app);
+    assert.notEqual(request.frame().name(), 'caw-app');
+    assert.equal(isTopNavigation(request), true, 'the host lock still treats it as a top-level navigation');
+});
+
+test('workbench: only the application frame may be embedded against X-Frame-Options, a frame inside it keeps the header', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    await bench.view.goto(`${base}/framed`);
+    assert.equal(await bench.view.frame.evaluate(() => document.querySelector('h1').textContent), 'App /framed', 'the application loads in the workbench');
+    const inner = bench.view.frame.childFrames()[0];
+    assert.ok(await until(async () => !(await inner.evaluate(() => document.querySelector('h1')?.textContent === 'inner').catch(() => false))), 'inner frame blocked');
+    await pause(500);
+    assert.notEqual(await inner.evaluate(() => document.querySelector('h1')?.textContent ?? null).catch(() => null), 'inner', 'DENY holds inside the application');
 });
 
 test('workbench: if the application navigates the top window itself the test continues; the human pressing F5 aborts', async (t) => {

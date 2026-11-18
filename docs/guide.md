@@ -191,7 +191,7 @@ The workbench lives at the application's own address, on its origin. Many applic
 
 The tool serves the workbench: only the top window's document is intercepted, no other request. So the application can be embedded, the test browser strips `X-Frame-Options` and `frame-ancestors` from the CSP of its hosts' documents, in this browser only.
 
-The chat sits in an isolated iframe with its own origin (`sandbox` without `allow-same-origin`). The application can neither reach its DOM nor decide there as the human. Messages from workbench and chat never count as application errors.
+The chat sits in an isolated iframe with its own origin (`sandbox` without `allow-same-origin`). The application can neither reach its DOM nor decide there as the human. Sharing the workbench's origin, it can remove the iframe's sandbox or reload it; the tool writes the chat only into a document with an opaque origin and checks that in a script the page can't touch. If the chat frame was reloaded or lost its sandbox, the run ends with `chat-tampered`. Messages from workbench and chat never count as application errors.
 
 **With chat, always the workbench.** Without chat (`--no-chat`, CI, `--headless`) the application runs alone in its own window.
 
@@ -429,7 +429,7 @@ For `web` and the SPA adapters an accessible UI helps: buttons with text or `ari
 
 - **Control:** The agent never gets CDP. There are only the fixed commands of `caw agent --help`, as files in the agent folder. Navigation via `goto` only goes to allowed hosts.
 - **Network:** pages navigate only to the hosts of `environments` and `allowHosts` (a request route; a redirect onto another host fails the action as well). Subresources and iframes may go to any host and are listed in the report as third-party hosts. Production hosts of other environments are unresolvable in Chrome (`--host-resolver-rules`) for every request type. Plus `--no-proxy-server`, so the resolver rules apply, and a WebRTC lock.
-- **Workbench:** The tool answers the top window's document itself, at the application's address. The application thus shares the origin with the workbench and can modify its page; decisions are made only in the chat, which it can't reach (separate, opaque origin). A POST into the top window is sent once by the tool via the browser context (same cookies, same host lock).
+- **Workbench:** The tool answers the top window's document itself, at the application's address. The application thus shares the origin with the workbench and can modify its page; decisions are made only in the chat, whose document it can't reach (separate, opaque origin). It can remove the chat iframe's sandbox or reload it; the tool then doesn't write the chat into it and the run ends with `chat-tampered`. Of the application's documents only the application iframe's own lose `X-Frame-Options` and `frame-ancestors`, and the tool knows the application frame by identity, not by its name. A POST into the top window is sent once by the tool via the browser context (same cookies, same host lock).
 - **Limit of the lock:** It knows hosts, not ports. Other services on an allowed host are reachable from the page.
 - **Visibility:** `eval` runs in the signed-in page. Claude sees and can do everything the test user sees and can do in the application. So use only test accounts with few rights.
 - **Backend:** The lock ends at the application's host. Requests via an application proxy pass through, and where it forwards them is up to the server. The real boundary is the test account's rights.

@@ -159,12 +159,16 @@ test('download: the click downloads a file with a matching name; a wrong name fa
     return undefined;
 });
 
-test('Clipboard: with the permission for the origin a check reads what the page copied', async (t) => {
+test('Clipboard: a check reads what the page copied; the page itself may read only while a check runs', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
     await grantClipboard(context, `${ORIGIN}/start`);
     await page.goto(`${ORIGIN}/`);
     await page.evaluate("navigator.clipboard.writeText('Prüfsumme 3fa9')");
-    assert.equal(await page.evaluate('navigator.clipboard.readText()'), 'Prüfsumme 3fa9');
+    const handler = createAgentHandler({ session: { page: () => page }, run: { expectations: [{ id: 'S1' }] }, hosts: [], agentDir: dir });
+    const checked = await handler({ action: 'check', id: 'S1', code: "navigator.clipboard.readText().then((text) => text === 'Prüfsumme 3fa9')" });
+    assert.equal(checked.pass, true, 'the check reads the clipboard');
+    const outside = await page.evaluate('navigator.clipboard.readText().then(() => "read", (error) => error.name)');
+    assert.notEqual(outside, 'read', 'outside a check the page cannot read the clipboard');
     return undefined;
 });
 

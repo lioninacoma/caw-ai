@@ -665,11 +665,42 @@ const launchChrome = async (profileDir, lock, { headless = false, insecureTls = 
     return context;
 };
 
+// Per browser context: the environment's origin and how many evaluations currently read the clipboard.
+const clipboards = new WeakMap();
+
 /**
- * Clipboard read and write for the environment's origin, so a check can call `navigator.clipboard.readText()`, e.g. after a
- * "Copy" button. Other origins do not get it.
+ * Clipboard write for the environment's origin for the whole run, e.g. for a "Copy" button. Reading only while a check runs
+ * (withClipboardRead): with the permission for the whole run the page under test could read the person's clipboard any time.
+ * Other origins get neither.
  */
-export const grantClipboard = (context, url) => context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(url).origin });
+export const grantClipboard = async (context, url) => {
+    const origin = new URL(url).origin;
+    clipboards.set(context, { origin, readers: 0 });
+    await context.grantPermissions(['clipboard-write'], { origin });
+};
+
+/**
+ * Runs `read` (a check, remember or eval) with clipboard-read for the environment's origin, so it can call
+ * `navigator.clipboard.readText()`, e.g. after a "Copy" button; afterwards only write again. Without grantClipboard on this
+ * context it just runs `read`.
+ */
+export const withClipboardRead = async (context, read) => {
+    const clipboard = context === undefined ? undefined : clipboards.get(context);
+    if (clipboard === undefined) return read();
+    clipboard.readers += 1;
+    try {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: clipboard.origin });
+        return await read();
+    } finally {
+        clipboard.readers -= 1;
+        // Playwright only adds permissions: clear them all and grant write again. The context gets no other permissions.
+        if (clipboard.readers === 0) {
+            await context.clearPermissions().catch(() => {});
+            // Another reader may have started meanwhile: it keeps reading.
+            await context.grantPermissions(clipboard.readers === 0 ? ['clipboard-write'] : ['clipboard-read', 'clipboard-write'], { origin: clipboard.origin }).catch(() => {});
+        }
+    }
+};
 
 const FLOATS_BINDING = '__cawFloats';
 const FLOATS_MAX_LINES = 5000;

@@ -341,3 +341,4 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `image-build-failed`, `devcontainer-unsupported` | 2 | Check registry login and `sandboxImage` |
 | `aborted` | 2 | You closed the window or pressed Ctrl+C |
 | `chat-failed`, `no-session` | 2 | Start again |
+| `chat-tampered` | 2 | The page under test reloaded the chat frame or removed its sandbox; the run ended so that no decision could come from there. Find the application script that touches `top.document` |

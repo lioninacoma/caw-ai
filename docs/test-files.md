@@ -148,7 +148,7 @@ Claude doesn't record `download` and `secret`; you add them to `caw/recordings/<
 | `getByRole('button', { name: /^Review( \\d+)?$/ })` | A regular expression instead of the exact name, for a live count or a changing part |
 | `knownMessages:`<br>`  - {pattern: "^Checksum \\S+ copied$"}` | Next to fixed texts: a pattern for a message with changing content, such as a checksum or a time. Like fixed texts it sees the message with digits as `#`, always in full; only the report shortens long messages. A new recording keeps patterns and adds no fixed text a pattern already covers |
 
-A check can read the clipboard: the browser has `clipboard-read` and `clipboard-write` for the environment's origin, e.g. `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (an expression that returns a promise is awaited).
+A check can read the clipboard: while a check, a `remember` or Claude's `eval` runs, the browser has `clipboard-read` for the environment's origin, at other times only `clipboard-write` (so the page under test cannot read your clipboard whenever it likes), e.g. `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (an expression that returns a promise is awaited).
 
 ## Placeholders
 

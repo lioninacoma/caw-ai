@@ -148,7 +148,7 @@ Bei der Wiedergabe muss ein Locator genau ein Element finden, das sichtbar und n
 | `getByRole('button', { name: /^Prüfen( \\d+)?$/ })` | Ein regulärer Ausdruck statt des genauen Namens, für einen mitlaufenden Zähler oder einen wechselnden Teil |
 | `knownMessages:`<br>`  - {pattern: "^Prüfsumme \\S+ kopiert$"}` | Neben festen Texten: ein Muster für eine Meldung mit wechselndem Inhalt, etwa einer Prüfsumme oder Uhrzeit. Wie feste Texte sieht es die Meldung mit Ziffern als `#`, immer ganz; nur der Bericht kürzt lange Meldungen. Eine neue Aufnahme behält Muster und ergänzt keinen festen Text, den ein Muster schon deckt |
 
-Eine Prüfung kann die Zwischenablage lesen: Der Browser hat `clipboard-read` und `clipboard-write` für den Origin der Umgebung, etwa `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (ein Ausdruck, der ein Promise liefert, wird abgewartet).
+Eine Prüfung kann die Zwischenablage lesen: Solange eine Prüfung, ein `remember` oder Claudes `eval` läuft, hat der Browser `clipboard-read` für den Origin der Umgebung, sonst nur `clipboard-write` (so kann die getestete Seite deine Zwischenablage nicht nach Belieben lesen), etwa `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (ein Ausdruck, der ein Promise liefert, wird abgewartet).
 
 ## Platzhalter
 

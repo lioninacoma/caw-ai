@@ -427,7 +427,10 @@ export const explore = async (root, args, { open = openExploreBrowser, wait, ask
     };
     if (!unattended && wait === undefined) {
         const context = browser.page.context?.();
-        await context?.exposeBinding(DONE_BINDING, () => pressDone('done')).catch(() => {});
+        // The card only shows in the top window of the explore tab; a page's iframe or another tab cannot press Done.
+        await context?.exposeBinding(DONE_BINDING, ({ frame }) => {
+            if (frame === browser.page.mainFrame?.()) pressDone('done');
+        }).catch(() => {});
         await context?.exposeBinding(PHASE_BINDING, () => phase).catch(() => {});
         await context?.addInitScript({ content: exploreCardScript(cardTexts(withLogin === true)) }).catch(() => {});
     }

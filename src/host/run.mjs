@@ -496,7 +496,14 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const tokensOk = createTokenGate({ chat: () => chat });
     // The developer's own Claude Code session is already running and paid for: no token notice for it.
     const claudeMayStart = (box, options) => (box?.kind === 'session' ? true : tokensOk(options));
-    const openConversation = () => openChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, transcript: conversation.transcript });
+    // The page under test touched the chat frame: the run ends like an abort, with that error as its reason.
+    let tampered = null;
+    const onTampered = (error) => {
+        tampered = error;
+        ui.note(error.message);
+        abortSignal();
+    };
+    const openConversation = () => openChat({ session, logPath: join(runDir, 'chat.log'), onAbort: abortSignal, onOpen: conversation.onChatOpen, onWaiting: ui.note, onTampered, transcript: conversation.transcript });
     if (conversation !== undefined && conversation.lazy !== true) {
         try {
             chat = await openConversation();
@@ -1131,6 +1138,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     };
     const writeInterrupted = (ended) => {
         if (ended === 'browser-closed') writeResult({ status: 'error', code: 'browser-closed', reason: t('run.interrupted.browserClosed') });
+        else if (tampered !== null) writeResult({ status: 'error', code: tampered.code, reason: tampered.message });
         else writeResult({ status: 'error', code: 'aborted', reason: t('run.interrupted.aborted') });
     };
 

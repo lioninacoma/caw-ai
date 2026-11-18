@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { evaluateFinish } from '../shared/report.mjs';
+import { withClipboardRead } from './browser-session.mjs';
 import { fixtureFiles, fixturePath } from './fixtures.mjs';
 import { withLoopbackPair } from './host-lock.mjs';
 import { buildLocator, parseLocator } from './locator.mjs';
@@ -143,6 +144,11 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
     let finished = false;
 
     const locate = (command) => locatorFor(session.page(), text(command, 'target'));
+    // Code from the test or from Claude in the page; only meanwhile may the page read the clipboard (withClipboardRead).
+    const readPage = (code) => {
+        const page = session.page();
+        return withClipboardRead(page.context?.(), () => page.evaluate(code));
+    };
 
     const commands = {
         task: () => run,
@@ -207,12 +213,12 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
             return 'ok';
         },
         press: async (command) => { await session.page().keyboard.press(text(command, 'key')); return 'ok'; },
-        eval: (command) => session.page().evaluate(text(command, 'code')),
+        eval: (command) => readPage(text(command, 'code')),
         // A repeatable check. Only exactly true passes, not any truthy value.
         check: async (command) => {
             const id = text(command, 'id');
             if (!run.expectations.some((expectation) => expectation.id === id)) throw new CawError('step-unknown', t('run.agent.unknownStep', { id }));
-            const value = await session.page().evaluate(text(command, 'code'));
+            const value = await readPage(text(command, 'code'));
             await session.workbench?.step(id, value === true ? 'pass' : 'running');
             return { id, pass: value === true, value };
         },
@@ -220,7 +226,7 @@ export const createAgentHandler = ({ session, run, hosts, agentDir, filesDir, on
         remember: async (command) => {
             const name = text(command, 'name');
             if (!REMEMBER_NAME.test(name) || name === 'runTag' || name === 'runTagLower') throw usage(t('run.agent.rememberName'));
-            const raw = await session.page().evaluate(text(command, 'code'));
+            const raw = await readPage(text(command, 'code'));
             const value = typeof raw === 'number' ? String(raw) : raw;
             if (typeof value !== 'string' || value.trim().length < REMEMBER_MIN_LENGTH) throw usage(t('run.agent.rememberValue', { name, min: REMEMBER_MIN_LENGTH, raw: JSON.stringify(raw) }));
             return { name, value: value.trim() };

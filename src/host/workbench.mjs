@@ -13,10 +13,13 @@
 //
 // The application shares the origin with the workbench (top.Ext & co.), not with the chat: that one is sandboxed in an opaque
 // origin, and the host knows it as the frame the workbench created on load, never by its name. A fake iframe named caw-chat
-// therefore cannot speak as the human. The application may trigger a refresh (F5 inside it reports anyway); it only takes
+// therefore cannot speak as the human. Sharing the workbench's origin, the application can still remove the chat iframe's
+// sandbox or reload it: the host writes the chat only into the frame's first document and only while that has an opaque
+// origin (chat.mjs, writeChat); a reloaded chat frame ends the run (chat-tampered). The application may trigger a refresh (F5 inside it reports anyway); it only takes
 // effect after the hand-over. Only the workbench itself may save themes, and only what passes the schema (never CSS, never files).
 
 import { APP_FRAME, CHAT_FRAME_NAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, interceptDocuments, sourceTag } from './app-view.mjs';
+import { markAppFrame } from './host-lock.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
 import { readPrefs, writePagePref, writePref } from '../shared/prefs.mjs';
 import { LONG_NAME } from '../shared/raven.mjs';
@@ -34,7 +37,9 @@ export const STATE_BINDING = 'cawState';
 /**
  * The chat runs in a sandboxed iframe without allow-same-origin, so with its own opaque origin. The workbench shares its
  * origin with the application (so top.Ext & co. work). Without the sandbox the application could reach the chat and decide
- * as the human, e.g. adopt a change. This way it reaches neither its DOM nor its binding.
+ * as the human, e.g. adopt a change. This way it reaches neither its DOM nor its binding. The attribute alone does not hold:
+ * the application can remove it and reload the frame. Hence the host checks the opaque origin before writing the chat and
+ * treats any later navigation of the chat frame as tampering (chat.mjs).
  */
 export const CHAT_SANDBOX = 'allow-scripts allow-forms';
 /** Keys the chat may pass on to the workbench. A message from the chat cannot trigger more. */
@@ -294,7 +299,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${lg(t('workbench.steps'))}<button class="fold" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')} (F4)">◂</button><button class="strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')} (F4)"><b>▸</b>${t('workbench.steps').toUpperCase()} <span id="stripTally"></span></button>
 <div class="gauge" id="gauge" aria-hidden="true"></div><span id="tally" hidden></span><p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track" class="readable"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
 <section class="pa-browser win" aria-label="${t('workbench.app')}">${lg(t('workbench.app'))}<div class="appbar"><span id="urlMark" aria-hidden="true"></span><span id="url"></span><span id="browserState"></span><button class="solo-btn" type="button" data-solo title="${t('workbench.soloTitle')}"><b>F8</b>${t('workbench.solo')}</button></div>
-<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-read; clipboard-write"></iframe></div>
+<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe></div>
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}" title="${t('workbench.collapse')}">▾ ${t('workbench.collapse')}</button></div>
 <div class="panel readable" id="panel"></div></div></section>
 <section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${lg(t('workbench.chat'))}<button class="fold" id="chatFold" type="button" aria-expanded="true" aria-label="${t('workbench.chatFold')}" title="${t('workbench.chatFold')} (F6)">▸</button><button class="strip" id="chatStrip" type="button" aria-expanded="false" aria-label="${t('workbench.chatUnfold')}" title="${t('workbench.chatUnfold')} (F6)"><b>◂</b>${t('workbench.chat').toUpperCase()}</button><iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(theme))}"></iframe></section>
@@ -694,7 +699,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null, fullscreen: null, state: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, state: null };
         bench = holder;
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
@@ -709,6 +714,19 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
         page.on('domcontentloaded', () => {
             holder.chat = page.mainFrame().childFrames()[1] ?? null;
             holder.rebuild?.();
+        });
+        // Documents per frame. The chat frame has exactly one, the placeholder from the workbench HTML; the host writes the chat
+        // into it without navigating. A second one was loaded by the page under test (chat.mjs).
+        page.on('framenavigated', (frame) => {
+            holder.navigations.set(frame, (holder.navigations.get(frame) ?? 0) + 1);
+        });
+        // The application frame: the first frame the parser attaches to each new workbench document, before any of the
+        // application's scripts run. Known by identity, never by its name, which the application can change (window.name).
+        // A new workbench document detaches the old frames before attaching its own.
+        page.on('frameattached', (frame) => {
+            if ((holder.app !== null && !holder.app.isDetached()) || frame.parentFrame() !== page.mainFrame()) return;
+            holder.app = frame;
+            markAppFrame(frame);
         });
         await page.exposeBinding(PREF_BINDING, ({ frame }, key, value) => {
             if (frame !== page.mainFrame()) return;
@@ -754,7 +772,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
     const frame = await (await page.waitForSelector(`iframe[name="${APP_FRAME}"]`)).contentFrame();
     await frame.waitForLoadState('load');
-    const view = frameView(page, frame);
+    const view = frameView(page, frame, () => bench.app);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // The host remembers what it has shown and restores it after a workbench reload.
     const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, catalog: null, viewport: null };
@@ -820,6 +838,8 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
         page,
         view,
         chatFrame: () => bench.chat,
+        /** How many documents the frame has had; the chat frame keeps its first one (chat.mjs). */
+        chatNavigations: (chat) => bench.navigations.get(chat) ?? 0,
         facts: (items) => {
             shown.facts = items;
             return call('facts', items);

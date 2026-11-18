@@ -341,3 +341,4 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `image-build-failed`, `devcontainer-unsupported` | 2 | Anmeldung an der Registry und `sandboxImage` prüfen |
 | `aborted` | 2 | Du hast das Fenster geschlossen oder Strg+C gedrückt |
 | `chat-failed`, `no-session` | 2 | Neu starten |
+| `chat-tampered` | 2 | Die getestete Seite hat den Chat-Rahmen neu geladen oder seine Sandbox entfernt; der Lauf endete, damit keine Entscheidung von dort kommt. Such das Skript der Anwendung, das `top.document` anfasst |

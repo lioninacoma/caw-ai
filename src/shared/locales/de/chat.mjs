@@ -38,6 +38,7 @@ export default {
     'chat.waiting': 'Wartet im Chrome-Fenster auf dich: {status}',
     'chat.error.noWorkbench': 'Der Chat läuft nur in der Werkbank, und dieser Lauf hat keine.',
     'chat.error.alreadyOpen': 'Der Chat ist in dieser Werkbank schon offen.',
+    'chat.error.tampered': 'Die getestete Seite hat den Chat manipuliert (den Chat-Rahmen ersetzt oder neu geladen). Der Lauf endet hier: Eine Entscheidung aus diesem Chat wäre nicht deine.',
     'chat.reload.showing': 'Seite neu geladen, die Vorführung läuft weiter. Schreib kurz, warum, etwa „Backend war noch nicht warm“.',
     'chat.reload.testing': 'Seite während des Tests neu geladen: Der Lauf ist ungültig und bricht ohne Ergebnis ab.',
 

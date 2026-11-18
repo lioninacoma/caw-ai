@@ -10,7 +10,8 @@
 // The tool serves the workbench: only the top window's document is intercepted, no other request.
 //
 // So the application can be embedded, the test browser strips X-Frame-Options and frame-ancestors from the documents of the
-// application's hosts, only in this browser and only for document requests. This happens at Chrome's response stage: no second
+// application's hosts, only in this browser, only for document requests and only for the application iframe itself: frames
+// the application or a page opens inside it keep their headers. This happens at Chrome's response stage: no second
 // request, Chrome's network stack and host block still apply, redirects and cookies stay as they are.
 
 export const APP_FRAME = 'caw-app';
@@ -82,7 +83,7 @@ export const rewriteBytes = async (bytes, rewrite, url) => {
  * - `workbench(url)` answers the top window's document with the workbench, and the application goes into its iframe;
  * - a POST of the top window (form with target=_top) goes out via the browser's request context, with the same cookies;
  *   a redirect then loads the application in the iframe, a direct response is handed to the iframe once as its document;
- * - all other application documents come without the headers that forbid embedding.
+ * - the documents of the application iframe come without the headers that forbid embedding; other frames keep them.
  * Without `workbench` (no human watching) the top window stays the application; then only `rewrite` applies.
  * @param workbench (url) => workbench HTML with the application at url, or undefined
  * @param request   the browser's request context (context.request)
@@ -93,6 +94,18 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
     const cdp = await context.newCDPSession(page);
     const { frameTree } = await cdp.send('Page.getFrameTree');
     const topFrame = frameTree.frame.id;
+    // The application iframe: the first frame attached to each new workbench document, before the application runs.
+    // The CDP frame id of the top frame stays the same across its navigations.
+    let appFrame = null;
+    if (workbench !== undefined) {
+        cdp.on('Page.frameNavigated', ({ frame }) => {
+            if (frame.id === topFrame) appFrame = null;
+        });
+        cdp.on('Page.frameAttached', ({ frameId, parentFrameId }) => {
+            if (appFrame === null && parentFrameId === topFrame) appFrame = frameId;
+        });
+        await cdp.send('Page.enable');
+    }
     // Responses to a POST of the top window, handed to the iframe once as its document.
     const pending = new Map();
     const quiet = (promise) => promise.catch(() => {});
@@ -132,14 +145,14 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
         if (stored !== undefined) {
             pending.delete(url);
             const kept = stored.headers.filter(({ name }) => !['content-length', 'content-encoding', 'transfer-encoding'].includes(name.toLowerCase()));
-            await fulfill(requestId, stored.status, embeddableHeaders(kept) ?? kept, stored.body);
+            await fulfill(requestId, stored.status, (frameId === appFrame ? embeddableHeaders(kept) : null) ?? kept, stored.body);
             return;
         }
         await quiet(cdp.send('Fetch.continueRequest', { requestId }));
     };
     const onResponse = async (event) => {
         const original = event.responseHeaders ?? [];
-        const headers = workbench === undefined ? null : embeddableHeaders(original);
+        const headers = workbench === undefined || event.frameId !== appFrame ? null : embeddableHeaders(original);
         const status = event.responseStatusCode ?? 0;
         const isHtml = original.some(({ name, value }) => name.toLowerCase() === 'content-type' && /text\/html/i.test(value));
         const rewriting = rewrite !== undefined && isHtml && status >= 200 && status < 300;
@@ -228,12 +241,14 @@ const descendants = (frame) => [frame, ...frame.childFrames().flatMap(descendant
  * screenshot, reload, events) goes through the workbench and only affects the frame.
  * @param page   the workbench
  * @param first  the application's frame
+ * @param app    returns the application frame of the current workbench document, known by identity (workbench.mjs). Without
+ *               it the frame is looked up by its name, which the application can change: only for pages without a workbench.
  */
-export const frameView = (page, first) => {
+export const frameView = (page, first, app) => {
     const iframe = () => page.locator(`iframe[name="${APP_FRAME}"]`);
     // If someone reloads the workbench there is a new iframe: the view follows it instead of sticking to the old, detached frame.
     const current = () => {
-        const found = page.frame({ name: APP_FRAME });
+        const found = app === undefined ? page.frame({ name: APP_FRAME }) : app();
         return found !== null && !found.isDetached() ? found : first;
     };
     // on(load) registers a wrapper; off needs it again.
@@ -273,12 +288,25 @@ export const frameView = (page, first) => {
         bringToFront: () => page.bringToFront(),
         isClosed: () => page.isClosed() || current().isDetached(),
         keyboard: {
-            // A real key press: focus the iframe first, then the element that last had focus.
+            // A real key press: focus the iframe first, then the element that last had focus. Both come from the page, which can
+            // point them at any element of the workbench (top.document, e.g. the chat): only an element of the application's own
+            // document gets the focus, checked here by its frame, not by the page.
             press: async (key, options) => {
-                const target = await current().evaluateHandle(() => (window.__cawFocus?.isConnected ? window.__cawFocus : document.activeElement));
-                await iframe().focus();
-                await target.asElement()?.focus().catch(() => {});
-                await target.dispose().catch(() => {});
+                const frame = current();
+                const own = async (handle) => {
+                    const element = handle.asElement();
+                    if (element !== null && await element.ownerFrame().catch(() => null) === frame) return element;
+                    await handle.dispose().catch(() => {});
+                    return null;
+                };
+                const target = await own(await frame.evaluateHandle(() => (window.__cawFocus?.isConnected ? window.__cawFocus : null)))
+                    ?? await own(await frame.evaluateHandle(() => document.activeElement));
+                // The iframe by its frame, not by a selector: the page can rename the element or add another one with that name.
+                const box = await frame.frameElement();
+                await box.focus();
+                await box.dispose().catch(() => {});
+                await target?.focus().catch(() => {});
+                await target?.dispose().catch(() => {});
                 await page.keyboard.press(key, options);
             },
         },

@@ -37,6 +37,7 @@ export default {
     'chat.waiting': 'Waiting for you in the Chrome window: {status}',
     'chat.error.noWorkbench': 'The chat only runs in the workbench, and this run has none.',
     'chat.error.alreadyOpen': 'The chat is already open in this workbench.',
+    'chat.error.tampered': 'The page under test tampered with the chat (it replaced or reloaded the chat frame). The run ends here: a decision from that chat would not be yours.',
     'chat.reload.showing': 'Page reloaded, the demo continues. Say briefly why, e.g. “backend wasn’t warm yet”.',
     'chat.reload.testing': 'Page reloaded during the test: The run is invalid and stops without a result.',
 

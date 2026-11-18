@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { grantClipboard, loginSteps } from '../src/host/browser-session.mjs';
+import { grantClipboard, loginSteps, withClipboardRead } from '../src/host/browser-session.mjs';
 import { totp } from '../src/shared/totp.mjs';
 
 const SECRET = 'JBSWY3DPEHPK3PXP';
@@ -71,8 +71,22 @@ test('TOTP: an accepted code is not repeated, a second rejection ends as login-f
     assert.equal(refused.codes.length, 2, 'exactly one retry');
 });
 
-test('Clipboard: read and write for the environment origin, not for others', async () => {
-    const granted = [];
-    await grantClipboard({ grantPermissions: async (permissions, options) => { granted.push([permissions, options]); } }, 'https://portal.example:8443/app/start');
-    assert.deepEqual(granted, [[['clipboard-read', 'clipboard-write'], { origin: 'https://portal.example:8443' }]]);
+test('Clipboard: write for the environment origin for the run, read only while a check reads it, not for others', async () => {
+    const calls = [];
+    const context = {
+        grantPermissions: async (permissions, options) => { calls.push(['grant', permissions, options]); },
+        clearPermissions: async () => { calls.push(['clear']); },
+    };
+    const origin = { origin: 'https://portal.example:8443' };
+    await grantClipboard(context, 'https://portal.example:8443/app/start');
+    assert.deepEqual(calls, [['grant', ['clipboard-write'], origin]]);
+    calls.length = 0;
+    assert.equal(await withClipboardRead(context, async () => { calls.push(['read']); return 'Prüfsumme'; }), 'Prüfsumme');
+    assert.deepEqual(calls, [['grant', ['clipboard-read', 'clipboard-write'], origin], ['read'], ['clear'], ['grant', ['clipboard-write'], origin]]);
+    calls.length = 0;
+    await assert.rejects(withClipboardRead(context, async () => { throw new Error('check failed'); }), /check failed/);
+    assert.deepEqual(calls.at(-2), ['clear'], 'a failing check gives the permission back as well');
+    calls.length = 0;
+    assert.equal(await withClipboardRead({ grantPermissions: async () => { calls.push('grant'); } }, async () => 'x'), 'x');
+    assert.deepEqual(calls, [], 'without grantClipboard on the context no permission at all');
 });

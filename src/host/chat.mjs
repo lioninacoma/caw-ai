@@ -729,14 +729,54 @@ addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=
 paintTheme();
 ${sourceTag}</script></body></html>`;
 
+// Runs in an isolated world of the chat frame: the page's own scripts cannot redefine window.origin or document.write there.
+const WRITE_CHAT = `(html) => {
+    if (window.origin !== 'null') return false;
+    document.open();
+    document.write(html);
+    document.close();
+    return true;
+}`;
+
+/**
+ * Writes the chat page into the chat frame, but only into a document with an opaque origin, i.e. while the frame still has its
+ * sandbox (CHAT_SANDBOX, without allow-same-origin). The application shares the workbench's origin and can remove the sandbox
+ * attribute and reload the frame; the new document then has the application's origin, and the application could read the
+ * token from it. Check and write happen in one script in an isolated world (CDP), so the page can neither fake the origin nor
+ * step in between. Chrome runs a sandboxed iframe in a process of its own (its own CDP target); a chat frame without one has
+ * lost its sandbox. Like Playwright's setContent this is document.open/write, not a navigation.
+ * @returns true if written; false if the frame does not hold an opaque-origin document
+ */
+export const writeChat = async (context, frame, html) => {
+    let cdp;
+    try {
+        await frame.waitForURL('about:srcdoc', { timeout: 15000 });
+        cdp = await context.newCDPSession(frame);
+    } catch {
+        return false;
+    }
+    try {
+        const { frameTree } = await cdp.send('Page.getFrameTree');
+        const { executionContextId } = await cdp.send('Page.createIsolatedWorld', { frameId: frameTree.frame.id, worldName: 'caw-chat-writer' });
+        const { result } = await cdp.send('Runtime.evaluate', { contextId: executionContextId, expression: `(${WRITE_CHAT})(${JSON.stringify(html)})`, returnByValue: true });
+        return result?.value === true;
+    } catch {
+        return false;
+    } finally {
+        await cdp.detach().catch(() => {});
+    }
+};
+
 /**
  * Connects the workbench's chat frame to the conversation. There is no chat without a workbench.
  * @param logPath     transcript in the run folder, without Claude's log and actions: those are in claude.log
  * @param transcript  the history so far, carried along: demonstration, Claude and verification run are separate browsers
  * @param onOpen      tests only: receives the chat frame
  * @param onWaiting   receives a line for the terminal once the chat waits for the human: once per such state
+ * @param onTampered  receives a CawError 'chat-tampered' once the page under test has replaced or reloaded the chat frame. The
+ *                    chat is closed by then (every open decision ends without an answer); the run ends with that error.
  */
-export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, transcript = [] }) => {
+export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, onTampered, transcript = [] }) => {
     // `doc()` is the chat document, the frame in the workbench (a new one after a reload); `chatWindow` is the surrounding workbench.
     const bench = session.workbench ?? null;
     if (bench === null) throw new CawError('chat-failed', t('chat.error.noWorkbench'));
@@ -745,6 +785,12 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     const doc = () => bench.chatFrame();
     const chatWindow = bench.page;
     const quiet = (promise) => promise.catch(() => {});
+    // Set once the page under test has touched the chat frame: from then on nothing is written into it or read from it.
+    let tampered = null;
+    // The frame the host last wrote the chat page into. Every navigation of it afterwards comes from someone else.
+    let written = null;
+    /** Calls a function of the chat page; after tampering nothing: the frame then holds someone else's document. */
+    const inChat = (fn, arg) => (tampered === null ? doc().evaluate(fn, arg) : Promise.resolve());
     let picking = false;
     let onPicked = null;
     // Token of the chat page written last, new on every show().
@@ -765,13 +811,13 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     const render = (state, options) => {
         current = [state, options ?? null];
         const { text, label, button } = statusTexts(state);
-        return doc().evaluate((args) => window.setStatus(...args), [state, text, label, button, options ?? null]);
+        return inChat((args) => window.setStatus(...args), [state, text, label, button, options ?? null]);
     };
     const chat = createChat({
         show: (who, text, about) => {
             if (LOGGED.has(who)) appendFileSync(logPath, `${new Date().toISOString()} ${who}: ${text.replaceAll('\n', ' ')}\n`);
             transcript.push([who, text, about ?? null]);
-            quiet(doc().evaluate((args) => window.addMessage(...args), [who, text, about ?? null]));
+            quiet(inChat((args) => window.addMessage(...args), [who, text, about ?? null]));
         },
         status: (state, options) => {
             quiet(render(state, options));
@@ -798,26 +844,28 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         }
         if (!chat.canPick()) return;
         picking = true;
-        await doc().evaluate(() => window.setPicking(true));
+        await inChat(() => window.setPicking(true));
         const picked = await pickElement(session).catch(() => null);
         picking = false;
-        await doc().evaluate(() => window.setPicking(false));
+        await inChat(() => window.setPicking(false));
         if (picked !== null && chat.canPick()) {
             chat.attach(picked);
-            await doc().evaluate((label) => window.setChip(label), picked.label);
+            await inChat((label) => window.setChip(label), picked.label);
             onPicked?.(picked);
         }
         await chatWindow.bringToFront();
     };
     await chatWindow.exposeBinding(BINDING, (source, event) => {
         // In the workbench every frame sees the binding, including the application. It must never speak as the human.
-        // The application shares the origin with the workbench and can reload the chat iframe (srcdoc, location). The frame
-        // then stays the same, and so does the binding. Only the page the host wrote last knows the token; the chat has an
-        // opaque origin, so the application cannot read it.
-        if (bench !== null && (source.frame !== doc() || event?.nonce !== nonce)) return;
+        // The application shares the origin with the workbench and can reload the chat iframe (srcdoc, location), with or
+        // without its sandbox. The frame then stays the same, and so does the binding. Only the page the host wrote last knows
+        // the token, and the host writes it only into an opaque-origin document (writeChat), so the application cannot read it.
+        // A chat frame that navigated after its first document never speaks again: the run ends (tamper).
+        if (tampered !== null || source.frame !== written || source.frame !== doc() || event?.nonce !== nonce) return;
+        if (bench.chatNavigations?.(source.frame) !== 1) return;
         if (event?.type === 'message') {
             chat.human.message(event.text, { checkpoint: event.checkpoint === true });
-            quiet(doc().evaluate(() => window.setChip(null)));
+            quiet(inChat(() => window.setChip(null)));
         } else if (event?.type === 'pick') quiet(pick());
         else if (event?.type === 'unpick') chat.detach();
         else if (event?.type === 'toggle') chat.human.toggle();
@@ -835,16 +883,37 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
     /** Did the human click "Learn baselines" on the end card? */
     chat.learnWanted = () => learnClicked;
+    /** The page under test touched the chat: close it, nothing more goes in or out, the run ends with chat-tampered. */
+    const tamper = () => {
+        if (tampered !== null) return;
+        tampered = new CawError('chat-tampered', t('chat.error.tampered'));
+        nonce = null;
+        chat.human.closed();
+        onTampered?.(tampered);
+    };
+    // The host never navigates the chat frame after writing it (document.write is no navigation): any navigation is the page's.
+    chatWindow.on('framenavigated', (frame) => {
+        if (frame === written) tamper();
+    });
     const show = async () => {
+        if (tampered !== null) return;
+        const frame = doc();
+        // Set before the write: a navigation that commits during it counts as tampering, too.
+        written = frame;
         nonce = randomBytes(16).toString('hex');
-        await doc().setContent(chatPage(nonce));
-        await doc().evaluate((entries) => entries.forEach((entry) => window.addMessage(...entry)), transcript);
-        if (next !== null) await doc().evaluate((info) => window.setNext(info), next);
+        // Only into the frame's first document, the placeholder from the workbench HTML: a later one was loaded by the page.
+        if (bench.chatNavigations?.(frame) !== 1 || !(await writeChat(chatWindow.context(), frame, chatPage(nonce)))) {
+            tamper();
+            return;
+        }
+        if (tampered !== null) return;
+        await inChat((entries) => entries.forEach((entry) => window.addMessage(...entry)), transcript);
+        if (next !== null) await inChat((info) => window.setNext(info), next);
     };
     /** The run is over: the card shows the report and the command for a new run. */
     chat.finished = async (info) => {
         next = info;
-        await quiet(doc().evaluate((value) => window.setNext(value), info));
+        await quiet(inChat((value) => window.setNext(value), info));
     };
     /**
      * After the run, after finished and closing the conversation: the window stays open with "close window" and a countdown.
@@ -855,7 +924,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, t
         let timer;
         const elapsed = new Promise((resolve) => { timer = setTimeout(resolve, ms); });
         await quiet(render('closed'));
-        await quiet(doc().evaluate((seconds) => window.linger(seconds), Math.round(ms / 1000)));
+        await quiet(inChat((seconds) => window.linger(seconds), Math.round(ms / 1000)));
         await Promise.race([clicked, elapsed]);
         clearTimeout(timer);
         closeWanted = null;
