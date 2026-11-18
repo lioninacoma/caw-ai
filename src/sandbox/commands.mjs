@@ -3,7 +3,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as dns } from 'node:dns';
-import { existsSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
+import { existsSync, openSync, readFileSync, realpathSync, writeFileSync, writeSync } from 'node:fs';
 import { request as httpsRequest } from 'node:https';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -149,6 +149,18 @@ Read the source code with Read, Grep and Glob. Do not read files outside the pro
 
 `;
 
+/**
+ * Claude's working directory, in its long form. Claude Code denies (dontAsk) every Read of an 8.3 short path such as
+ * C:\Users\ABCDEF~1 (e.g. from %TEMP%), even inside Read(./**); Claude takes its paths from the working directory.
+ */
+export const agentCwd = (root) => {
+    try {
+        return realpathSync.native(root);
+    } catch {
+        return root;
+    }
+};
+
 /** Claude's invocation without a container: only the tools above; Claude Code denies everything else without asking. */
 export const localClaudeArgs = (prompt, { mcpConfig, settings, systemPromptFile }) => [
     '-p', prompt,
@@ -203,7 +215,7 @@ export const sandboxRun = async ({ root, runId, timeoutMin, mode = 'run' }) => {
         const prompt = promptFor(runId);
         const env = { ...claudeEnv(timeoutMin), MCP_TOOL_TIMEOUT: String(timeoutMin * 60 * 1000) };
         const bin = resolveClaude() ?? { file: 'claude', args: [] };
-        claude = spawn(bin.file, [...bin.args, ...localClaudeArgs(prompt, writeLocalSetup(dir))], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        claude = spawn(bin.file, [...bin.args, ...localClaudeArgs(prompt, writeLocalSetup(dir))], { cwd: agentCwd(root), env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
         timer = setTimeout(() => claude.kill(), timeoutMin * 60 * 1000);
     } else {
         await firewallCheck({ print: () => {} });

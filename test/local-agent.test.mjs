@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 
-import { LOCAL_ALLOWED, LOCAL_DENY, localClaudeArgs, writeLocalSetup } from '../src/sandbox/commands.mjs';
+import { agentCwd, LOCAL_ALLOWED, LOCAL_DENY, localClaudeArgs, writeLocalSetup } from '../src/sandbox/commands.mjs';
 import { AGENT_COMMANDS, commandLine, createMcpHandler, serveMcp } from '../src/sandbox/mcp.mjs';
 import { claudeVersion, localAgentEnv, localCommand, requireClaude } from '../src/host/local-agent.mjs';
 import { resolveClaude } from '../src/shared/claude-bin.mjs';
@@ -254,4 +254,15 @@ test('chat: the element goes along when clarifying and developing, picking is po
     assert.deepEqual(await developing, { choice: 'end' });
     chat.human.closed();
     assert.equal(await chat.develop('x', []), null);
+});
+
+test('local Claude works in the long form of the project path: Claude Code denies every Read of an 8.3 short path', (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'caw-cwd-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const cwd = agentCwd(dir);
+    assert.ok(existsSync(cwd));
+    assert.doesNotMatch(cwd, /~\d/, `${dir} → ${cwd}`);
+    // On Windows %TEMP% is often a short path; then the long form differs only by it.
+    if (/~\d/.test(dir)) assert.equal(basename(cwd), basename(dir));
+    assert.equal(agentCwd(join(dir, 'gibt-es-nicht')), join(dir, 'gibt-es-nicht'), 'unchanged if it cannot be resolved');
 });

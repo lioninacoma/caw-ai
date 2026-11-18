@@ -47,7 +47,16 @@ const freePort = () => new Promise((resolve) => {
 /** The example in a folder of its own, so the repository stays as it is, with its server on a free port. */
 const project = async () => {
     const dir = mkdtempSync(join(tmpdir(), 'caw-media-errand-'));
-    cpSync(join(repo, 'examples/errand'), dir, { recursive: true, filter: (path) => !path.includes('.caw') });
+    // Only what is checked in: tests someone tried locally in the example must not show up in the media.
+    const files = spawnSync('git', ['ls-files', '-z', 'examples/errand'], { cwd: repo, encoding: 'utf8' }).stdout.split('\0').filter(Boolean);
+    if (files.length === 0) throw new Error('git ls-files found no files in examples/errand');
+    // Each tracked file and every folder above it.
+    const keep = new Set(files.flatMap((file) => {
+        const paths = [];
+        for (let path = join(repo, file); path.length > repo.length; path = dirname(path)) paths.push(path);
+        return paths;
+    }));
+    cpSync(join(repo, 'examples/errand'), dir, { recursive: true, filter: (path) => keep.has(path) });
     const port = await freePort();
     const config = join(dir, 'caw.config.json');
     writeFileSync(config, readFileSync(config, 'utf8').replace('http://localhost:4174', `http://localhost:${port}`));
