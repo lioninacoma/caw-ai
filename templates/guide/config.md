@@ -28,7 +28,7 @@ edit those in the file with your own Edit tool, so the person sees the diff.
 | `lintCommand` | The project's lint command, named in recommendations |
 | `agent` | `{ "mode": "local"\|"docker"\|"session", "model", "maxBudgetUsd" }` |
 | `browser` | `channel`, `executablePath`, `locale`, `timezone`, `viewport` (`{ width, height }`): pin them for replay |
-| `sandboxImage`, `sandboxUser`, `theme` | Docker sandbox image and user; the team's default theme |
+| `sandboxImage`, `sandboxUser` | Docker sandbox image and user |
 
 ## environments.\<env\>
 

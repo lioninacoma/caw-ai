@@ -1,22 +1,20 @@
-// The human's personal settings across projects and runs (e.g. animations off, chat collapsed, theme and its mode).
+// The human's personal settings across projects and runs (e.g. animations off, chat collapsed, light or dark mode).
 // Location: CAW_AI_HOME, else %APPDATA%\caw-ai, $XDG_CONFIG_HOME/caw-ai or ~/.config/caw-ai. Never secrets.
-// Custom themes live next to it in themes/<name>/ (src/shared/theme-package.mjs).
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const FILE = 'prefs.json';
-// Allowed values or a check per key. `theme`: name of a built-in or custom theme.
+// The allowed values per key.
 const KNOWN = {
     animations: ['on', 'off'], steps: ['open', 'closed'], chat: ['open', 'closed'], tokenNotice: ['on', 'off'],
     // The personal UI language; CAW_LANG wins over it.
     language: ['de', 'en'],
-    theme: (value) => typeof value === 'string' && /^[a-z0-9-]{1,32}$/.test(value),
-    // The theme's mode; a theme without a light mode stays dark.
-    mode: ['dark', 'light'],
+    // Light or dark; system follows the operating system (the default).
+    mode: ['system', 'light', 'dark'],
 };
-const allowed = (key, value) => (typeof KNOWN[key] === 'function' ? KNOWN[key](value) === true : KNOWN[key]?.includes(value) === true);
+const allowed = (key, value) => KNOWN[key]?.includes(value) === true;
 
 export const prefsDir = (env = process.env, platform = process.platform) => {
     if (env.CAW_AI_HOME) return env.CAW_AI_HOME;
@@ -53,7 +51,7 @@ export const writePref = (key, value, env = process.env) => {
 
 // What the workbench page may set: only how it looks. The page shares its origin with the tested application, so whatever the
 // page may set, the application (or code Claude runs there) may set too. tokenNotice (skip the token notice) is never among them.
-export const PAGE_PREFS = ['animations', 'steps', 'chat', 'theme', 'mode'];
+export const PAGE_PREFS = ['animations', 'steps', 'chat', 'mode'];
 
 /** writePref for a value from the workbench page: only cosmetic keys, everything else is rejected like an unknown key. */
 export const writePagePref = (key, value, env = process.env) => {

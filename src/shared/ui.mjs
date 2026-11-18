@@ -1,13 +1,13 @@
-// The tool's console output in workbench style: colours and glyphs from the active theme, boot-log style status marks
-// ([  OK  ] [ WARN ] [FEHLER]), sections as rules (── 1 ANMELDEN ───), results in a box (┌─┤ ERGEBNIS ├─┐).
+// The tool's console output in Graphite: fixed colours and plain marks (✓ ! ✕ ○ ?), sections as rules (── 1 ANMELDEN ───),
+// results in a box (┌─┤ ERGEBNIS ├─┐).
 // In files and pipes it stays plain, greppable lines prefixed with [caw].
 
-import { colorEnabled, themePainter } from './color.mjs';
+import { colorEnabled, termPainter } from './color.mjs';
 import { exitOf } from './errors.mjs';
 import { t } from './i18n.mjs';
 import { isErrorCode, isSkipped } from './report.mjs';
-import { glyphs } from './marks.mjs';
-import { ravenBanner } from './raven.mjs';
+import { MARKS as marks } from './marks.mjs';
+import { headLine } from './brand.mjs';
 
 // Error texts and reasons can come from the application; they must not control the terminal.
 // eslint-disable-next-line no-control-regex -- deliberately matches control characters to neutralise them
@@ -40,8 +40,7 @@ export const failedReason = ({ results = [], failures = [] }) => {
  */
 export const askYesNo = async (question, { fallback = true, input = process.stdin, output = process.stdout } = {}) => {
     const { createInterface } = await import('node:readline/promises');
-    const paint = themePainter(colorEnabled());
-    const marks = glyphs();
+    const paint = termPainter(colorEnabled());
     const rl = createInterface({ input, output });
     const hint = paint.muted(fallback ? t('cli.yesNoDefaultYes') : t('cli.yesNoDefaultNo'));
     try {
@@ -57,15 +56,13 @@ export const askYesNo = async (question, { fallback = true, input = process.stdi
 };
 
 // Look up console only when writing, so output also lands where a test has replaced console.log.
-export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(text), err = (text) => console.error(text), full, theme } = {}) => {
-    const paint = themePainter(fancy, { ...(full === undefined ? {} : { full }), ...(theme === undefined ? {} : { theme }) });
-    const marks = glyphs(theme);
+export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(text), err = (text) => console.error(text), full } = {}) => {
+    const paint = termPainter(fancy, full === undefined ? {} : { full });
     const blank = ' '.repeat(width(marks.tag('ok')));
-    /** A status mark in its colour; fail inverted if the theme wants it. */
+    /** A status mark in its colour. */
     const tag = (kind, frame) => {
         const text = marks.tag(kind, frame);
-        if (kind === 'fail') return marks.failInverted ? paint.failTag(text) : paint.fail(text);
-        return ({ ok: paint.ok, warn: paint.warn, run: paint.info, ask: paint.info, open: paint.faint })[kind]?.(text) ?? paint.faint(text);
+        return ({ ok: paint.ok, fail: paint.fail, warn: paint.warn, run: paint.info, ask: paint.info, open: paint.faint })[kind]?.(text) ?? paint.faint(text);
     };
     const bullet = (kind) => ({ ok: paint.ok, warn: paint.warn, fail: paint.fail, run: paint.info, info: paint.info })[kind](marks.bullet(kind));
     /** Line with a mark in front; without a terminal [caw] in front. */
@@ -88,7 +85,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         for (const row of rows) out(`  ${color(b.v)} ${row}${' '.repeat(Math.max(0, inner - width(row) - 1))}${color(b.v)}`);
         out(`  ${color(`${b.bl}${b.h.repeat(inner)}${b.br}`)}`);
     };
-    /** Progress: █ passed, ▓ running or failed, ░ open. */
+    /** Progress: ━ passed (ok), ━ failed (fail), ─ open. */
     const gauge = (counts, size = 24) => {
         const total = Math.max(1, counts.pass + counts.fail + counts.open);
         const cells = (count) => Math.round((count / total) * size);
@@ -120,13 +117,13 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             err(fancy ? `  ${blank} ${paint.muted(label)}` : `[caw] ${label}`);
         },
 
-        /** Command header: the ASCII raven with the name and its long form. In pipes only the name. */
+        /** Command header: one line "● <title> · Context-Aware Web Testing". In pipes only the title. */
         banner: ({ title }) => {
             if (!fancy) {
                 out(`[caw] ${safe(title)}`);
                 return;
             }
-            for (const row of ravenBanner(safe(title), { bold: (text) => paint.bold(paint.text(text)), dim: paint.muted, frame: paint.frame, beak: paint.accent, eye: paint.text })) out(row);
+            out(headLine(safe(title), { accent: paint.accent, bold: paint.bold, dim: paint.faint }));
             out('');
         },
         /** A section of a guided flow. */

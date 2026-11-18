@@ -1190,7 +1190,7 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         const states = await bench.locator('#steps > li[data-kind=step]').evaluateAll((items) => items.map((item) => item.dataset.state));
         const pageNew = await appOf(bench).evaluate(() => window.__cawBeforeReload === undefined);
         verify('F5: page reloaded, workbench stays, no left marker, no message', pageNew && await chat.locator('.message', { hasText: PICKED }).count() === 1 && await chat.locator('.message').count() === messages && states[1] === 'pass' && await restored(chat) === 0 && await bench.locator('body.left-state').count() === 0 && !await bench.locator('#leftNote').isVisible(), JSON.stringify(states));
-        // Restore the state. (The raven is only the logo now; it no longer flies.)
+        // Restore the state.
         await decide(chat, 'Neu öffnen');
         // While the state is restored the test runs again: reloading is locked as in a run, and free again afterwards.
         const locked = await bench.locator('#reload:disabled').waitFor({ timeout: 10000 }).then(() => true, () => false);

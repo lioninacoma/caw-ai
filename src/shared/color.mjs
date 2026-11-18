@@ -1,7 +1,5 @@
 // Terminal colours without dependencies. Output to files and pipes stays free of control sequences.
 
-import { activeTheme } from './theme-package.mjs';
-
 const CODES = { red: 31, green: 32, yellow: 33, magenta: 35, cyan: 36, dim: 2, bold: 1 };
 
 /** NO_COLOR always wins, FORCE_COLOR forces colour, otherwise the terminal decides. */
@@ -34,26 +32,37 @@ export const to256 = (hex) => {
     return distance(grayValue, grayValue, grayValue) < distance(steps[cr], steps[cg], steps[cb]) ? 232 + Math.round(gray) : cube;
 };
 
-// Terminal roles and their base colour in the theme.
-const ROLES = { text: 'text', muted: 'muted', frame: 'frame', accent: 'accent', ok: 'ok', warn: 'warn', fail: 'fail', info: 'info', claude: 'claude', human: 'human', heart: 'heart' };
+/** Graphite's terminal palette (dark): the terminal's own background is unknown, and light colours vanish on a dark one. */
+export const TERM_COLORS = {
+    accent: '#5EE0F2',
+    ok: '#3DD68C',
+    fail: '#FF6B70',
+    warn: '#F5B83D',
+    muted: '#9AA3A6',
+    faint: '#677174',
+    claude: '#EFA07E',
+};
 
 /**
- * Colours from the active theme (the same as in the workbench), plus bold, faint (frame mixed with text) and failTag (inverted).
- * Truecolor if the terminal supports it, otherwise the nearest of the 256 colours. Without colour every function returns the text unchanged.
- * The theme's dark colours if it has a dark mode: the terminal's own background is unknown, and light colours vanish on a dark one.
+ * Graphite's colours for the terminal roles: text (the terminal's own foreground), muted, faint, frame, accent, info,
+ * ok, warn, fail, claude, plus bold. Truecolor if the terminal supports it, otherwise the nearest of the 256 colours.
+ * Without colour every function returns the text unchanged.
  */
-export const themePainter = (enabled, { full = truecolor(), theme = activeTheme(process.env, 'dark') } = {}) => {
+export const termPainter = (enabled, { full = truecolor() } = {}) => {
     const wrap = (open, close) => (text) => (enabled ? `${open}${text}${close}` : String(text));
-    const code = (hex, ground = 38) => (full ? `\u001b[${ground};2;${rgb(hex).join(';')}m` : `\u001b[${ground};5;${to256(hex)}m`);
-    const colors = { ...theme.colors };
-    // faint as in the workbench: 80 % frame, 20 % text.
-    const [fr, fg, fb] = rgb(colors.frame);
-    const [tr, tg, tb] = rgb(colors.text);
-    colors.faint = `#${[fr * 0.8 + tr * 0.2, fg * 0.8 + tg * 0.2, fb * 0.8 + tb * 0.2].map((value) => Math.round(value).toString(16).padStart(2, '0')).join('')}`;
-    const paint = Object.fromEntries([...Object.entries(ROLES), ['faint', 'faint']].map(([role, key]) => [role, wrap(code(colors[key]), '\u001b[39m')]));
+    const color = (hex) => wrap(full ? `\u001b[38;2;${rgb(hex).join(';')}m` : `\u001b[38;5;${to256(hex)}m`, '\u001b[39m');
+    const { accent, ok, fail, warn, muted, faint, claude } = TERM_COLORS;
     return {
-        ...paint,
+        text: (text) => String(text),
+        muted: color(muted),
+        faint: color(faint),
+        frame: color(faint),
+        accent: color(accent),
+        info: color(accent),
+        ok: color(ok),
+        warn: color(warn),
+        fail: color(fail),
+        claude: color(claude),
         bold: wrap('\u001b[1m', '\u001b[22m'),
-        failTag: wrap(`${code(colors.fail, 48)}${code(colors.screen)}`, '\u001b[49m\u001b[39m'),
     };
 };

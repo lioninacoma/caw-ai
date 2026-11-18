@@ -29,7 +29,6 @@
     },
     "files": [
         "assets/",
-        "themes/",
         "bin/",
         "src/",
         "templates/",

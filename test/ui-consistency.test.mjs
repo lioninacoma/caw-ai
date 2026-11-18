@@ -1,4 +1,4 @@
-// UI consistency: two button sizes in the chat, every end-card button styled by every theme, no bracketed labels.
+// UI consistency: two button sizes in the chat, no bracketed labels.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -10,16 +10,9 @@ const read = (path) => readFileSync(join(repo, path), 'utf8');
 
 test('chat: buttons come in two sizes, actions 36 px and tools 28 px', () => {
     const css = read('src/host/chat.mjs');
-    const heights = new Set([...css.matchAll(/(?:min-)?height:(\d+)px[^}]*font:400 (?:18|20)px/g)].map((match) => Number(match[1])));
+    const heights = new Set([...css.matchAll(/(?:min-)?height:(\d+)px[^}]*font:500 (?:12|13)px/g)].map((match) => Number(match[1])));
     assert.deepEqual([...heights].sort(), [28, 36]);
     assert.ok(!/button\.big\{/.test(css), 'no third size for a main button');
-});
-
-test('themes: every end-card button is styled like the other actions', () => {
-    for (const theme of readdirSync(join(repo, 'themes'), { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
-        const css = read(`themes/${theme.name}/theme.css`);
-        for (const match of css.matchAll(/#report,#closeWindow(,#learn)?/g)) assert.ok(match[1], `${theme.name}: #learn next to #report,#closeWindow`);
-    }
 });
 
 test('labels: no bracketed button or tag texts', () => {

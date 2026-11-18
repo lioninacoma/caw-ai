@@ -77,7 +77,7 @@ export const migrateConfig = (old) => {
     }
     if (isObject(old.roles) && out.signIn !== undefined) out.roles = Object.fromEntries(Object.keys(old.roles).map((name) => [name, {}]));
     if (isObject(old.roles) && out.signIn === undefined) notes.push('roles dropped: nothing signs in');
-    for (const key of ['messageSelectors', 'requestKeys', 'consoleIgnore', 'foreignCode', 'readyIgnore', 'readyTimeoutMs', 'effects', 'lintCommand', 'sandboxImage', 'sandboxUser', 'theme', 'browser']) keep(key);
+    for (const key of ['messageSelectors', 'requestKeys', 'consoleIgnore', 'foreignCode', 'readyIgnore', 'readyTimeoutMs', 'effects', 'lintCommand', 'sandboxImage', 'sandboxUser', 'browser']) keep(key);
     if (old.maxSteps !== undefined) out.maxActions = old.maxSteps;
     keep('maxActions');
     if (Array.isArray(old.extraAllowedHosts) && old.extraAllowedHosts.length > 0) {

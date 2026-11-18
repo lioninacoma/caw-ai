@@ -15,7 +15,6 @@ import { EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
 import { helpText, synopsisOf, unknownCommandText } from '../src/shared/help.mjs';
 import { closest, editDistance } from '../src/shared/suggest.mjs';
 import { createUi } from '../src/shared/ui.mjs';
-import { loadTheme } from '../src/shared/theme-package.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/caw.mjs', import.meta.url));
 const step = (id, name) => ({ id, name, do: `${name} tun`, expect: `${name} sichtbar` });
@@ -254,6 +253,8 @@ test('help: the overlay extension (command, --overlay, the --start remark) only 
 
 test('help: per command only its block, agent commands under caw agent --help, synopsis for usage errors', () => {
     const all = helpText(undefined, { here: 'local' });
+    assert.match(all, /^caw - Context-Aware Web Testing\n/, 'without colour the intro keeps its first line');
+    assert.doesNotMatch(all, /theme/i);
     assert.match(all, /list \[<test>\]/);
     assert.match(all, /run <test> \[--env <name>\]/);
     assert.match(all, /auf denen Claude arbeiten darf \(hier: local\)/);
@@ -277,6 +278,7 @@ test('help: per command only its block, agent commands under caw agent --help, s
     assert.equal(synopsisOf('click'), undefined);
     assert.equal(unknownCommandText('lsit'), 'Unbekannter Befehl: lsit. Meintest du list? Siehe caw --help.');
     assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw --help.');
+    assert.match(unknownCommandText('theme'), /^Unbekannter Befehl: theme\./);
     // Moved commands name where they are now, instead of a suggestion.
     assert.equal(unknownCommandText('explore'), 'caw explore heißt jetzt caw init --explore-only.');
     assert.equal(unknownCommandText('auth'), 'caw auth heißt jetzt caw role login.');
@@ -291,13 +293,12 @@ const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
 
 test('fatal error in the terminal: first the message, then the synopsis, last code and exit dimmed', () => {
     const lines = [];
-    // terminal's marks: the indent follows the mark's width.
-    const ui = createUi({ fancy: true, theme: loadTheme('terminal', process.env, 'dark'), out: (text) => lines.push(text), err: (text) => lines.push(text) });
+    const ui = createUi({ fancy: true, out: (text) => lines.push(text), err: (text) => lines.push(text) });
     ui.fatal('usage', 'Name des Tests fehlt.', { synopsis: 'caw open <test>@<S4>', exit: 3 });
     assert.equal(lines.length, 3);
-    assert.match(plain(lines[0]), /^ {2}\[FEHLER\] Name des Tests fehlt\.$/);
+    assert.match(plain(lines[0]), /^ {2}✕ Name des Tests fehlt\.$/);
     // Aligned with the message text, not the mark.
-    assert.equal(lines[1], '           Aufruf: caw open <test>@<S4>');
+    assert.equal(lines[1], '    Aufruf: caw open <test>@<S4>');
     assert.match(lines[2], /\(code: usage, exit 3\)/);
 });
 

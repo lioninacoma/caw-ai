@@ -71,6 +71,7 @@ export default {
     'chat.page.markCheckpointTitle': 'Erst das erwartete Ergebnis eintippen',
     'chat.page.send': 'Senden',
     'chat.page.ctrlEnter': 'Strg+↵',
+    'chat.page.you': 'Du',
     'chat.page.wait': 'Einen Moment …',
     'chat.page.checkpoint': 'Prüfpunkt',
     'chat.page.changed': ' · geändert',

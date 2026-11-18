@@ -1,11 +1,9 @@
-// The workbench: one console-style page for the whole run. Left the steps with boot-log marks, in the middle the
-// application iframe with requests and console below, right the chat. F keys at the bottom. The chat is a document of its
-// own (srcdoc); its page is the one from chat.mjs.
+// The workbench: one page for the whole run. Left the steps with their marks, in the middle the application iframe with
+// requests and console below, right the chat. F keys at the bottom. The chat is a document of its own (srcdoc); its page is
+// the one from chat.mjs.
 //
-// Look and glyphs come from the active theme package (src/shared/theme-package.mjs): colours, marks, spinner, tree, progress,
-// legends, raven. The logo is the ASCII raven: it blinks now and then, a click sends up hearts.
-// F7 picks and edits themes (built-in ones stay as they are; the first change creates an own copy), F8 shows only the
-// application, F10 stops all animation.
+// The look is Graphite (style.mjs) in the personal mode (system, light or dark). F8 shows only the application, F10 stops
+// all animation.
 //
 // Refresh (F5) reloads the application's current page without cache after the hand-over; chat and steps stay, the steps
 // then show "state left". While the test runs, reloading is locked: it would corrupt the state for the following steps.
@@ -16,20 +14,18 @@
 // therefore cannot speak as the human. Sharing the workbench's origin, the application can still remove the chat iframe's
 // sandbox or reload it: the host writes the chat only into the frame's first document and only while that has an opaque
 // origin (chat.mjs, writeChat); a reloaded chat frame ends the run (chat-tampered). The application may trigger a refresh (F5 inside it reports anyway); it only takes
-// effect after the hand-over. Only the workbench itself may save themes, and only what passes the schema (never CSS, never files).
+// effect after the hand-over.
 
 import { APP_FRAME, CHAT_FRAME_NAME, FOCUS_SCRIPT, RELOAD_SCRIPT, frameView, interceptDocuments, sourceTag } from './app-view.mjs';
 import { markAppFrame } from './host-lock.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
-import { readPrefs, writePagePref, writePref } from '../shared/prefs.mjs';
-import { LONG_NAME } from '../shared/raven.mjs';
-import { activeTheme, listThemes, loadTheme, readThemePackage, themesFolder } from '../shared/theme-package.mjs';
-import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, RAVEN_CSS, RAVEN_SCRIPT, applyThemeSheets, clientTheme, ravenLogo, themeAttr, themeCss, themeStyle } from './theme.mjs';
+import { LONG_NAME } from '../shared/brand.mjs';
+import { readPrefs, writePagePref } from '../shared/prefs.mjs';
+import { BASE_CSS, FAVICON, MODE_SCRIPT, icon, logo, modeAttr, styleSheet, tokenCss } from './style.mjs';
 
 export const CHAT_FRAME = CHAT_FRAME_NAME;
 export const PREF_BINDING = 'cawPref';
 export const REFRESH_BINDING = 'cawRefresh';
-export const THEME_BINDING = 'cawTheme';
 /** Application only (F8): toggles the solo view. */
 export const FULLSCREEN_BINDING = 'cawFullscreen';
 /** Pick a state (F1): run a test up to a step. */
@@ -43,7 +39,7 @@ export const STATE_BINDING = 'cawState';
  */
 export const CHAT_SANDBOX = 'allow-scripts allow-forms';
 /** Keys the chat may pass on to the workbench. A message from the chat cannot trigger more. */
-export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F10'];
+export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10'];
 const RELOADED_MS = 15000;
 /** The preparation group: Chrome, login, local code, loading. */
 export const PREP = 'prep';
@@ -55,221 +51,157 @@ const benches = new WeakMap();
 const esc = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 /** JSON for a <script>: `<` cannot end it. */
 const json = (value) => JSON.stringify(value).replaceAll('<', '\\u003c');
-/** A theme legend, e.g. ┤ SCHRITTE ├. */
-const legend = (theme, title) => esc(String(theme.legend ?? '┤ {title} ├').replace('{title}', title));
-
-/** The placeholder in the chat frame until the chat arrives. In the current language and active theme, so built on use. */
-const chatPlaceholder = (theme = activeTheme()) => `<!doctype html><html lang="${language()}"${themeAttr(theme)}><meta charset="utf-8"><title>${t('workbench.chat')}</title><script>${APPLY_THEME_SCRIPT}
-addEventListener('message',(event)=>{if(event.source===parent&&event.data?.caw==='theme')cawApplyTheme(document.documentElement,event.data.theme);});try{parent.postMessage({caw:'theme-request'},'*');}catch{}${sourceTag}</script><style>${themeCss(theme)}
-body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--pane);color:var(--muted)}
-header{padding:10px 14px;border-bottom:2px solid var(--line);font:400 20px/1 var(--font-crt);color:var(--claude)}
-p{flex:1;display:grid;place-items:center;margin:0;padding:24px;text-align:center;font:var(--fs-body)/1.5 var(--font-body)}</style>
-<header>${esc(theme.prompt?.claude ?? 'claude>')}</header><p>${t('workbench.chatPlaceholder')}</p></html>`;
-
-/** The themes for the dialog, each with its colours (in the chosen mode) for the preview and the modes it has. */
-export const themeList = (env = process.env) => listThemes(env).map((entry) => {
-    const theme = loadTheme(entry.name, env);
-    return { ...entry, colors: theme?.colors, modes: theme?.modes ?? ['dark'], baseLabel: entry.builtin ? undefined : loadTheme(entry.base, env)?.label };
-});
-
-/**
- * What the workbench theme dialog may do: use a theme, choose the mode (dark or light), list the themes anew (a folder may have
- * been added). Themes are never written from the page. The choice is stored in prefs.json. @returns the theme in effect afterwards
- */
-export const themeAction = (action, payload, env = process.env) => {
-    if (action === 'use') {
-        if (readThemePackage(payload, env) === undefined) throw new Error(`${payload}?`);
-        writePref('theme', payload, env);
-        return loadTheme(payload, env);
-    }
-    if (action === 'mode') {
-        writePref('mode', payload, env);
-        return activeTheme(env);
-    }
-    if (action === 'list') return activeTheme(env);
-    throw new Error(`${action}?`);
-};
+/** The placeholder in the chat frame until the chat arrives. In the current language and mode, so built on use; one line
+ * of text, so without the fonts. */
+const chatPlaceholder = (mode) => `<!doctype html><html lang="${language()}"${modeAttr(mode)}><meta charset="utf-8"><title>${t('workbench.chat')}</title><script>${MODE_SCRIPT}${sourceTag}</script><style>${tokenCss()}${BASE_CSS}
+body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--panel);color:var(--muted)}
+p{flex:1;display:grid;place-items:center;margin:0;padding:24px;text-align:center;font-size:13px}</style>
+<p>${t('workbench.chatPlaceholder')}</p></html>`;
 
 /**
  * The workbench page. `appUrl` loads the iframe; the host sets everything else via `window.workbench`.
- * @param prefs   personal settings: animations 'on' | 'off', steps and chat 'open' | 'closed'
- * @param theme   the active theme (resolved); default: activeTheme()
- * @param themes  the list for the dialog (listThemes); default: built-in and custom
+ * @param prefs   personal settings: animations 'on' | 'off', steps and chat 'open' | 'closed', mode 'system' | 'light' | 'dark'
  */
-export const workbenchHtml = ({ appUrl, title, prefs = {}, theme = activeTheme(), themes = themeList() }) => {
+export const workbenchHtml = ({ appUrl, title, prefs = {} }) => {
     const still = prefs.animations === 'off';
     const classes = [still ? 'still' : '', prefs.steps === 'closed' ? 'fold-steps' : '', prefs.chat === 'closed' ? 'fold-chat' : ''].filter(Boolean).join(' ');
     const refreshTitle = t('workbench.refreshTitle');
     const test = String(title ?? '').replace(/^caw\s*·?\s*/, '');
     const key = (name, label, attrs = '', cls = '') => `<button type="button" class="fk${cls}"${attrs}><b>${name}</b>${label}</button>`;
-    const lg = (label) => `<span class="lg glow" data-title="${esc(label.toUpperCase())}">${legend(theme, label.toUpperCase())}</span>`;
-    return `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${FAVICON}<style>
-${themeCss(theme)}${CONSOLE_CSS}${RAVEN_CSS}
-*,*::before,*::after{box-sizing:border-box}html,body{height:100%;margin:0}
-body{background:var(--page);color:var(--text);font:var(--fs-body)/1.45 var(--font-body)}
-button,input{font:inherit;color:inherit}
-.pa{height:100vh;padding:10px;display:flex}
-#bench{flex:1;min-width:0;display:flex;flex-direction:column;padding:6px 16px 0;box-shadow:inset 0 0 0 2px #000,inset 0 0 60px rgba(0,0,0,.6)}
-.top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;padding-bottom:6px;border-bottom:2px solid var(--line)}
-/* The product (raven, caw, its long name) and next to it the title sentence of the run. */
-.brand{flex:none;display:flex;align-items:center;gap:6px}.brand .name{display:flex;flex-direction:column;gap:2px}.brand .name b{font:400 28px/1 var(--font-crt);color:var(--accent)}.brand .name>span{color:var(--muted);font-size:12px}
-.top .id{display:flex;flex-direction:column;gap:2px;min-width:0;padding-left:18px;border-left:2px solid var(--line)}
-.top .id b{font:400 24px/1 var(--font-crt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top .id b .cmd{color:var(--info)}
-.facts{display:flex;gap:4px 18px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:0;padding:0;list-style:none;min-width:0;flex:1 1 220px}
-.facts li{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}.facts b{color:var(--text);font-weight:500;margin-left:6px}
+    const head = (label) => `<h2 class="pane-t">${esc(label)}</h2>`;
+    return `<!doctype html><html lang="${language()}"${modeAttr(prefs.mode)}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><script>${MODE_SCRIPT}</script>${FAVICON}<style>
+${styleSheet()}
+html,body{height:100%;margin:0}
+body{background:var(--bg)}
+.pa{height:100vh;display:flex}
+#bench{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;min-height:48px;padding:6px 16px;background:var(--nav);color:var(--nav-text);border-bottom:1px solid var(--nav-line)}
+/* The product (logo, caw, its long name) and next to it the title sentence of the run. */
+.brand{flex:none;display:flex;align-items:center;gap:10px}.brand .name{display:flex;flex-direction:column;gap:2px}.brand .name b{font:600 18px/1 var(--font);letter-spacing:-.04em}.brand .name>span{color:var(--nav-muted);font-size:11px}
+.top .id{display:flex;flex-direction:column;gap:2px;min-width:0;padding-left:16px;border-left:1px solid var(--line)}
+.top .id b{font:500 14px/1.2 var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top .id b .cmd{color:var(--muted);font-weight:400}
+.facts{display:flex;gap:4px 16px;flex-wrap:wrap;font-size:12px;color:var(--nav-muted);margin:0;padding:0;list-style:none;min-width:0;flex:1 1 220px}
+.facts li{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}.facts b{color:var(--nav-text);font-weight:500;margin-left:6px}
 .tools{margin-left:auto;display:flex;align-items:center;gap:10px}
-#state{display:none}#state.on{display:inline-flex}.px-pill--claude,#stateSpin.px-pill--claude{color:var(--claude)}
-#stateSpin{font:400 20px/1 var(--font-crt);color:var(--info)}#stateSpin[hidden]{display:none}
-#notice{font:400 19px/1 var(--font-crt);color:var(--warn)}#notice[hidden]{display:none}
-.panes{flex:1;min-height:0;display:grid;gap:14px;padding:20px 0 14px;
+#state{display:none}#state.on{display:inline-flex}
+#stateSpin{color:var(--run)}#stateSpin.claude{color:var(--claude)}#stateSpin[hidden]{display:none}
+#notice{font-size:12px;color:var(--warn)}#notice[hidden]{display:none}
+.panes{flex:1;min-height:0;display:grid;gap:0;
 --col-steps:minmax(270px,320px);--col-chat:minmax(300px,380px);grid-template-columns:var(--col-steps) minmax(0,1fr) var(--col-chat);grid-template-rows:minmax(0,1fr);
 grid-template-areas:"steps browser chat"}
-.win{display:flex;flex-direction:column}
-.pa-steps{grid-area:steps;padding:10px 12px 10px}
-.pa-browser{grid-area:browser;padding:10px 10px 10px}
-.pa-chat{grid-area:chat;padding:8px 0 0}
-.fold{position:absolute;top:-13px;right:10px;z-index:3;border:0;cursor:pointer;background:var(--screen);color:var(--accent);font:400 22px/1 var(--font-crt);padding:0 6px}
-.fold:hover{color:var(--text)}
-.strip{display:none;border:0;cursor:pointer;background:none;color:var(--muted);font:400 22px/1 var(--font-crt);writing-mode:vertical-rl;padding:10px 0;align-items:center;gap:10px;width:100%;height:100%}
-.strip:hover{color:var(--text);background:var(--pane-2)}.strip b{font-weight:400;color:var(--accent)}
-#gauge{margin:2px 0 8px}#gauge:empty{display:none}
+.win{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--panel)}
+.win+.win{border-left:1px solid var(--line)}
+.pane-t{margin:0;display:flex;align-items:center;height:44px;padding:0 14px;flex:none;font:500 13px/1 var(--font);color:var(--text);border-bottom:1px solid var(--line)}
+.pa-steps{grid-area:steps}
+.pa-browser{grid-area:browser}
+.pa-chat{grid-area:chat}
+.fold{position:absolute;top:7px;right:8px;z-index:3}
+.strip{display:none;border:0;cursor:pointer;background:none;color:var(--muted);font:500 12px/1 var(--font);writing-mode:vertical-rl;padding:12px 0;align-items:center;gap:10px;width:100%;height:100%}
+.strip:hover{color:var(--text);background:var(--panel2)}
+#gauge{display:flex;gap:3px;align-items:center;margin:10px 14px 2px;font:400 11px/1 var(--font-mono);color:var(--faint)}#gauge:empty{display:none}
+#gauge i{flex:1;height:4px;border-radius:2px;background:var(--line)}#gauge i.mk-ok{background:var(--pass)}#gauge i.mk-fail{background:var(--fail)}#gauge i.mk-run{background:var(--run)}
+#gauge span{margin-left:6px}
 .left-state #steps,.left-state #gauge{opacity:.45}
-#leftNote{margin:4px 0 8px;padding:8px 10px;font-size:13px;line-height:1.45;color:var(--muted);background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}#leftNote[hidden]{display:none}
-#leftNote strong{display:block;margin-bottom:3px;font:400 19px/1 var(--font-crt);color:var(--warn)}
-.hint{margin:6px 0;font-size:var(--fs-small);color:var(--faint)}#stepsHint[hidden]{display:none}
+#leftNote{margin:8px 14px;padding:8px 10px;font-size:12.5px;line-height:1.45;color:var(--muted);background:var(--warn-soft);border-radius:var(--r1)}#leftNote[hidden]{display:none}
+#leftNote strong{display:block;margin-bottom:3px;font-weight:600;color:var(--warn)}
+.hint{margin:10px 14px;font-size:12px;color:var(--faint)}#stepsHint[hidden]{display:none}
 /* The list scrolls by itself with the current item, hence no scrollbar. The mouse wheel still works. */
-#track{flex:1;min-height:0;overflow:auto;scrollbar-width:none}#track::-webkit-scrollbar{display:none}
+#track{flex:1;min-height:0;overflow:auto;scrollbar-width:none;padding:6px 0 10px}#track::-webkit-scrollbar{display:none}
 #steps,#steps .pts{list-style:none;margin:0;padding:0}
-#steps .head{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:2px 4px;margin:6px -4px 0}
-#steps>li:first-child>.head{margin-top:0}
-#steps .id{font-size:12px;color:var(--muted)}
+#steps .head{display:grid;grid-template-columns:18px auto minmax(0,1fr) auto;gap:9px;align-items:baseline;padding:5px 14px}
+#steps .id{font:500 11px/1 var(--font-mono);color:var(--faint)}
 #steps .text{min-width:0}
-#steps .head .name{font-size:13.5px;overflow-wrap:anywhere}
-#steps .ms{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+#steps .head .name{font-weight:500;overflow-wrap:anywhere}
+#steps .ms{font:400 11px/1 var(--font-mono);color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
 #steps .note{font-size:12px;line-height:1.35;color:var(--fail);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
-#steps>li[data-state=running]>.head{background:var(--pane-2);box-shadow:inset 3px 0 0 var(--info)}
-#steps>li[data-state=fail]>.head{background:var(--fail-tint)}
+#steps>li[data-state=running]>.head .name{color:var(--run)}
+#steps>li[data-state=fail]>.head .name{color:var(--fail)}
 #steps>li[data-state=waiting]>.head .name,#steps>li[data-state=skipped]>.head .name{color:var(--muted)}
-#steps>li[data-state=waiting]>.head .id,#steps>li[data-state=skipped]>.head .id{color:var(--faint)}
-#steps>li[data-state=skipped]>.head .text::after{content:${JSON.stringify(t('workbench.page.skipped'))};display:block;font:400 16px/1 var(--font-crt);color:var(--faint)}
-/* Phases (preparation, wrap-up, investigate failure) are sections like ── NAME ───, their items below with their own mark. */
-#steps>li[data-kind=phase]>.head{grid-template-columns:minmax(0,1fr) auto;background:none;box-shadow:none;margin-top:10px}
+#steps>li[data-state=skipped]>.head .text::after{content:${JSON.stringify(t('workbench.page.skipped'))};display:block;font-size:11.5px;color:var(--faint)}
+/* Phases (preparation, wrap-up, investigate failure) are group headings, their items below with their own mark. */
+#steps>li[data-kind=phase]>.head{grid-template-columns:minmax(0,1fr) auto;padding-top:14px}
 #steps>li[data-kind=phase]>.head>.st{display:none}
-#steps>li[data-kind=phase]>.head .name{font:400 19px/1.2 var(--font-crt);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
+#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name{font:500 12px/1.2 var(--font);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
 #steps>li[data-kind=phase][data-state=fail]>.head .name{color:var(--fail)}
-/* The heading of the test's steps, between preparation and wrap-up: a section like a phase, but no group of its own. */
-#steps>li[data-kind=section]>.head{grid-template-columns:minmax(0,1fr) auto;margin-top:10px}
-#steps>li[data-kind=section]>.head .name{font:400 19px/1.2 var(--font-crt);color:var(--faint);white-space:nowrap;overflow:hidden;display:block}
-.pts>li{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:6px;align-items:baseline;padding:1px 4px 1px 0;font-size:12.5px;color:var(--muted)}
-#steps>li[data-kind=step]>.pts>li{padding-left:22px}
+/* The heading of the test's steps, between preparation and wrap-up: a heading like a phase, but no group of its own. */
+#steps>li[data-kind=section]>.head{grid-template-columns:minmax(0,1fr) auto;padding-top:14px}
+.pts>li{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:6px;align-items:baseline;padding:3px 14px 3px 0;font:400 12px/1.4 var(--font-mono);color:var(--muted)}
+#steps>li[data-kind=step]>.pts>li{padding-left:36px}
 .pts .tree{color:var(--faint)}
-#steps>li[data-kind=phase]>.pts>li{grid-template-columns:auto minmax(0,1fr) auto;padding-left:0;font-size:13px;color:var(--text)}
+#steps>li[data-kind=phase]>.pts>li{grid-template-columns:18px minmax(0,1fr) auto;gap:9px;padding-left:14px;font:400 13px/1.4 var(--font);color:var(--text)}
 #steps>li[data-kind=phase] .tree,#steps>li[data-kind=phase] .mk,#steps>li[data-kind=step] .pt-tag{display:none}
-.mk-ok{color:var(--ok)}.mk-fail{color:var(--fail)}.mk-run{color:var(--info)}.mk-open{color:var(--faint)}
+/* The marks: an icon per state, a spinner while running. */
+.st{display:inline-grid;place-items:center;width:18px}
+.tag{display:inline-grid;place-items:center;width:18px;height:18px}.tag .i{width:14px;height:14px;stroke-width:2.2}
+.tag-ok,.mk-ok{color:var(--pass)}.tag-fail,.mk-fail{color:var(--fail)}.tag-run,.mk-run{color:var(--run)}.tag-open,.mk-open{color:var(--faint)}
 .pts .text{overflow-wrap:anywhere}
 .pts .kind{color:var(--claude);margin-right:6px}
-.pts>li[data-state=running] .text{color:var(--text)}.pts>li[data-state=fail] .text{color:var(--fail)}
+.pts>li[data-state=running] .text{color:var(--run)}.pts>li[data-state=fail] .text{color:var(--fail)}
 .pts>li[data-state=waiting] .text,#steps>li[data-state=skipped] .pts .text{color:var(--faint)}
-.pts .live{display:block;font-size:12px;color:var(--info)}
+.pts .live{display:block;font-size:11px;color:var(--run)}
 .bad{color:var(--fail)!important}
-.appbar{flex:none;display:flex;gap:10px;align-items:center;font-size:12px;padding:0 2px 8px;white-space:nowrap;overflow:hidden}
-#urlMark{color:var(--ok)}
-#url{color:var(--muted);overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-#browserState{font:400 19px/1 var(--font-crt);color:var(--info)}
+.appbar{flex:none;display:flex;gap:10px;align-items:center;height:44px;padding:0 14px;font-size:12px;white-space:nowrap;overflow:hidden;border-bottom:1px solid var(--line)}
+#urlMark{color:var(--pass)}
+#url{color:var(--muted);font:400 12px/1 var(--font-mono);overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+#browserState{font:600 10.5px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--run)}
 #browserState.rec{color:var(--fail)}#browserState.ask{color:var(--warn)}
-.solo-btn{border:0;cursor:pointer;background:var(--pane-2);color:var(--text);font:400 19px/1 var(--font-crt);padding:3px 8px;box-shadow:inset 0 0 0 2px var(--line);flex:none}
-.solo-btn:hover{box-shadow:inset 0 0 0 2px var(--accent)}.solo-btn b{font-weight:400;color:var(--info);margin-right:6px}
+.solo-btn b{font:500 10.5px/1 var(--font-mono);color:var(--muted)}
 #appBox{flex:1;min-height:0;display:flex;position:relative;overflow:hidden}
-#app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff;box-shadow:0 0 0 2px #000}
+#app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
 /* A pinned viewport: the frame has exactly the recorded size, scaled down (never up) to fit, centred. */
-#appBox.pinned{background:var(--screen)}#appBox.pinned #app{flex:none;position:absolute;top:0;transform-origin:0 0}
-.drawer{flex:none;padding-top:8px}
-.tabs{display:flex;gap:4px}
-.tabs button{font:400 20px/1 var(--font-crt);color:var(--muted);background:none;border:0;padding:3px 10px;cursor:pointer;box-shadow:inset 0 0 0 2px var(--line)}
+#appBox.pinned{background:var(--sunk)}#appBox.pinned #app{flex:none;position:absolute;top:0;transform-origin:0 0}
+.drawer{flex:none;border-top:1px solid var(--line)}
+.tabs{display:flex;align-items:center;gap:16px;height:34px;padding:0 14px}
+.tabs button{font:400 12px/1 var(--font);color:var(--muted);background:none;border:0;padding:0;height:100%;cursor:pointer}
 .tabs button:hover{color:var(--text)}
-.tabs button[aria-selected=true]{color:var(--text);box-shadow:inset 0 0 0 2px var(--accent)}
-.tabs .count{margin-left:6px;color:var(--info)}.tabs .count.bad{color:var(--fail)}
-.tabs #drawerClose{display:none;margin-left:auto}.drawer.open #drawerClose{display:inline-flex}
-.panel{display:none;height:26vh;min-height:110px;overflow:auto;margin-top:6px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}.drawer.open .panel{display:block}
-table{width:100%;border-collapse:collapse;font:12px/1.4 var(--font-mono)}
-td{padding:4px 10px;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+.tabs button[aria-selected=true]{color:var(--text);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+.tabs .count{margin-left:6px;font:500 11px/1 var(--font-mono);color:var(--accent-text)}.tabs .count.bad{color:var(--fail)}
+.tabs #drawerClose{display:none;margin-left:auto}.drawer.open #drawerClose{display:inline-flex;align-items:center;gap:4px}
+.panel{display:none;height:26vh;min-height:110px;overflow:auto;border-top:1px solid var(--line);background:var(--panel)}.drawer.open .panel{display:block}
+table{width:100%;border-collapse:collapse;font:400 11.5px/1.3 var(--font-mono)}
+td{padding:6px 14px;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
 tr:first-child td{border-top:0}
-td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:var(--muted)}td.ms{text-align:right;color:var(--muted);width:90px}
-.empty{padding:10px 12px;color:var(--muted);font:12px var(--font-mono)}
-.line{padding:4px 12px;border-top:1px solid var(--line);font:12px/1.45 var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere}.line:first-child{border-top:0}.line.fail{color:var(--fail)}.line.warn{color:var(--warn)}
-#chat{flex:1;width:100%;min-height:0;border:0;display:block;background:var(--pane)}
-.fkeys{flex:none;display:flex;flex-wrap:wrap;gap:6px 16px;border-top:2px solid var(--line);margin:0 -16px;padding:8px 16px 10px;font:400 20px/1 var(--font-crt);color:var(--muted)}
-.fk{white-space:nowrap;background:none;border:0;padding:0;cursor:pointer;color:inherit;font:inherit}.fk:hover:enabled{color:var(--text)}
-.fk b{font-weight:400;background:var(--info);color:var(--ink);padding:1px 5px;margin-right:6px}
-.fk.x b{background:var(--fail)}.fk:disabled{opacity:.45;cursor:not-allowed}.fk[aria-pressed=true]{color:var(--text)}.fk[aria-pressed=true] b{background:var(--accent)}
+td.name{width:60%;color:var(--text)}td.ok{color:var(--pass)}td.bad{color:var(--fail)}td.open{color:var(--muted)}td.ms{text-align:right;color:var(--faint);width:90px}
+.empty{padding:10px 14px;color:var(--muted);font:12px var(--font-mono)}
+.line{padding:4px 14px;border-top:1px solid var(--line);font:11.5px/1.45 var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere}.line:first-child{border-top:0}.line.fail{color:var(--fail)}.line.warn{color:var(--warn)}
+#chat{flex:1;width:100%;min-height:0;border:0;display:block;background:var(--panel)}
+.fkeys{flex:none;display:flex;flex-wrap:wrap;gap:6px 16px;border-top:1px solid var(--line);padding:8px 16px;font-size:12px;color:var(--muted);background:var(--panel)}
+.fk{white-space:nowrap;background:none;border:0;padding:0;cursor:pointer;color:inherit;font:inherit;display:inline-flex;align-items:center;gap:6px}.fk:hover:enabled{color:var(--text)}
+.fk b{font:500 10.5px/1 var(--font-mono);padding:3px 5px;border-radius:var(--r1);border:1px solid var(--line2);background:var(--panel2);color:var(--muted)}
+.fk.x b{color:var(--fail)}.fk:disabled{opacity:.45;cursor:not-allowed}.fk[aria-pressed=true]{color:var(--text)}.fk[aria-pressed=true] b{border-color:var(--accent);color:var(--accent-text)}
 /* Application only (F8): header, steps, chat, bar and requests/console hidden; one line stays for the way back. */
-.soloBar{display:none;align-items:center;gap:14px;padding:0 2px 8px;font:400 20px/1 var(--font-crt);color:var(--muted);white-space:nowrap;overflow:hidden}
-.soloBar .raven{line-height:1;padding:0 2px}#soloTag{color:var(--ok)}#soloTag[hidden]{display:none}
+.soloBar{display:none;align-items:center;gap:14px;padding:6px 14px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;background:var(--nav);border-bottom:1px solid var(--line)}
+.soloBar .logo{color:var(--text)}#soloTag{color:var(--pass)}#soloTag[hidden]{display:none}
 #soloUrl{font:12px var(--font-mono);overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .solo .soloBar{display:flex}
-.solo .top,.solo .pa-steps,.solo .pa-chat,.solo .fkeys,.solo .pa-browser>.lg,.solo .appbar,.solo .drawer{display:none}
-.solo .panes{grid-template-columns:minmax(0,1fr);grid-template-areas:"browser";padding:0 0 10px}
-.solo .pa-browser{border:0;padding:0;background:none;box-shadow:none}
-.solo .pa{padding:0}.solo #bench{padding-top:8px}
+.solo .top,.solo .pa-steps,.solo .pa-chat,.solo .fkeys,.solo .pa-browser>.pane-t,.solo .appbar,.solo .drawer{display:none}
+.solo .panes{grid-template-columns:minmax(0,1fr);grid-template-areas:"browser"}
+.solo .pa-browser{border:0}
 /* Pick a state (F1): tests on the left, their steps on the right, run at the bottom. Also in solo view. */
-#stateDlg{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(0,0,0,.55)}#stateDlg[hidden]{display:none}
-#stateDlg>.win{width:min(900px,calc(100vw - 32px));height:min(620px,calc(100vh - 48px));display:flex;flex-direction:column;padding:22px 16px 14px;background:var(--pane)}
-#stateDlg .lg{top:-13px}
-.scols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;flex:1;min-height:0}
-.scol{display:flex;flex-direction:column;min-height:0;min-width:0}
-.scol .sec{margin:0 0 6px}
-.sfilter{display:flex;gap:8px;align-items:center;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line);padding:5px 8px;margin-bottom:8px}
-.sfilter span{font:400 18px/1 var(--font-crt);color:var(--muted)}
-.sfilter input{flex:1;min-width:0;background:none;border:0;color:var(--text);font:13px var(--font-mono);outline:0}
+#stateDlg{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:var(--overlay)}#stateDlg[hidden]{display:none}
+#stateDlg>.dlg{width:min(900px,calc(100vw - 32px));height:min(620px,calc(100vh - 48px));display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r3);box-shadow:var(--shadow-lg);overflow:hidden}
+#stateDlg .pane-t{font-size:15px;font-weight:600}
+.scols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);flex:1;min-height:0}
+.scol{display:flex;flex-direction:column;min-height:0;min-width:0;padding:14px;gap:6px}.scol+.scol{border-left:1px solid var(--line)}
+.sec{font:600 10.5px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:4px 0}
+.sfilter{margin-bottom:6px}
 .slist{overflow:auto;display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
-.srow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:baseline;text-align:left;border:0;background:none;cursor:pointer;padding:5px 6px;width:100%;color:var(--text);font:13px var(--font-mono)}
-.srow:hover:enabled{background:var(--pane-2)}.srow:disabled{cursor:not-allowed;color:var(--faint)}
-.srow[aria-selected=true]{background:var(--pane-2);box-shadow:inset 3px 0 0 var(--accent)}
-.srow .mk{font:400 17px/1 var(--font-crt);color:var(--faint)}.srow[aria-selected=true] .mk{color:var(--accent)}
+.srow{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:center;text-align:left;border:0;border-radius:var(--r1);background:none;cursor:pointer;padding:7px 8px;width:100%;color:var(--text);font-size:13px}
+.srow:hover:enabled{background:var(--panel2)}.srow:disabled{cursor:not-allowed;color:var(--faint)}
+.srow[aria-selected=true]{background:var(--accent-soft)}
+.srow .mk{font:400 12px/1 var(--font-mono);color:var(--faint)}.srow[aria-selected=true] .mk{color:var(--accent-text)}
 .srow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.srow .meta{font-size:11.5px;color:var(--muted);white-space:nowrap}.srow .meta.w{color:var(--warn)}
-.srow.all .nm{color:var(--info)}
-.sfoot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-top:2px solid var(--line);padding-top:10px;margin-top:10px}
-.sfoot p{margin:0;font-size:12.5px;color:var(--muted);min-width:0;flex:1 1 300px}
+.srow .meta{font-size:11px;color:var(--faint);white-space:nowrap}.srow .meta.w{color:var(--warn)}
+.srow.all .nm{color:var(--accent-text)}
+.sfoot{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:12px 16px;background:var(--panel2)}
+.sfoot p{margin:0;font-size:12px;color:var(--muted);min-width:0;flex:1 1 300px}
 .sfoot .acts{display:flex;gap:8px}
 .fk[hidden],.solo-btn[hidden]{display:none}
-@media (max-width:859px){.scols{grid-template-columns:minmax(0,1fr)}}
-/* Theme (F7): a window above the workbench. Pick a theme and its mode; own themes are folders (themes/README.md). */
-#themeDlg{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(0,0,0,.55)}#themeDlg[hidden]{display:none}
-#themeDlg>.win{width:min(660px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:22px 0 16px;background:var(--pane)}
-#themeDlg .tbody{min-height:0;overflow:auto;padding:6px 18px 2px;display:flex;flex-direction:column;gap:14px}
-#themeDlg .lg{top:-13px}
-.thead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.thead span{font:600 11.5px/1.2 var(--font-crt);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.tmode{display:inline-flex;box-shadow:inset 0 0 0 1px var(--line)}
-.tmode button{border:0;cursor:pointer;background:none;color:var(--muted);font:500 12.5px/1 var(--font-ui);padding:7px 16px}
-.tmode button:hover:enabled{color:var(--text)}
-.tmode button[aria-checked=true]{background:var(--accent);color:var(--ink)}
-.tmode button:disabled{opacity:.4;cursor:not-allowed}
-.tthemes{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
-.tcard{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;align-items:center;text-align:left;cursor:pointer;border:0;padding:10px;background:var(--pane-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
-.tcard:hover{box-shadow:inset 0 0 0 1px var(--muted)}
-.tcard[aria-checked=true]{box-shadow:inset 0 0 0 2px var(--accent)}
-.tcard:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.tcard[aria-checked=true]:focus-visible{outline:none}
-.ttext{display:flex;flex-direction:column;gap:3px;min-width:0}
-.ttext b{font:600 15px/1.2 var(--font-crt)}
-.ttext .tabout{font-size:12.5px;line-height:1.35;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.ttext small{font:500 11px/1.2 var(--font-ui);color:var(--faint)}
-/* A small workbench in the theme's colours: steps, app, chat. */
-.tpv{height:50px;display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:3px;padding:4px;background:var(--pv-screen);box-shadow:inset 0 0 0 1px var(--pv-frame)}
-.tpv i{background:var(--pv-pane);box-shadow:inset 0 0 0 1px var(--pv-frame)}
-.tpv i:first-child{background:linear-gradient(var(--pv-ok),var(--pv-ok)) 4px 6px/55% 2px no-repeat,linear-gradient(var(--pv-muted),var(--pv-muted)) 4px 12px/70% 2px no-repeat,linear-gradient(var(--pv-muted),var(--pv-muted)) 4px 18px/45% 2px no-repeat,var(--pv-pane)}
-.tpv i:nth-child(2){background:linear-gradient(var(--pv-accent),var(--pv-accent)) 50% 70%/40% 6px no-repeat,var(--pv-screen)}
-.tpv i:last-child{background:linear-gradient(var(--pv-accent),var(--pv-accent)) 4px calc(100% - 5px)/calc(100% - 8px) 5px no-repeat,var(--pv-pane)}
-.tnote{margin:0;font-size:12.5px;line-height:1.5;color:var(--muted)}
-.tnote code{font:12px var(--font-mono);color:var(--text);overflow-wrap:anywhere}
-.tfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px 0;margin-top:2px;border-top:1px solid var(--line)}
-#tmsg{font-size:12.5px;color:var(--warn)}
+@media (max-width:859px){.scols{grid-template-columns:minmax(0,1fr)}.scol+.scol{border-left:0;border-top:1px solid var(--line)}}
 /* Three columns from 1000px; narrower sides up to 1500px so the application keeps its desktop layout. */
 @media (min-width:1000px) and (max-width:1499px){.panes{--col-steps:minmax(220px,260px);--col-chat:minmax(280px,330px)}}
 @media (min-width:1000px){
 .fold-steps .panes{--col-steps:44px}.fold-chat .panes{--col-chat:44px}
-.fold-steps .pa-steps,.fold-chat .pa-chat{padding:0}
 .fold-steps .pa-steps>:not(#stepsStrip),.fold-chat .pa-chat>:not(#chatStrip){display:none}
 .fold-steps #stepsStrip,.fold-chat #chatStrip{display:flex}}
 @media (max-width:999px){
@@ -280,45 +212,29 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 @media (max-width:859px){
 .panes{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"steps" "chat" "browser"}
 .pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh}.tools{margin-left:0}}
-/* Record, play, pause: a chip at the top right next to the status pill. The glyphs are drawn in CSS, the pixel font has no clean
-   circle, triangle or pause bars. Record pulses gently; F10 (.still) stops it. */
-#transport{display:none;color:var(--tc)}#transport.on{display:inline-flex}
-#transport[data-kind=record]{--tc:var(--fail)}#transport[data-kind=play]{--tc:var(--ok)}#transport[data-kind=pause]{--tc:var(--warn)}
-#transport i{flex:none;display:inline-block;width:12px;height:12px;background:var(--tc)}
-#transport[data-kind=record] i{clip-path:polygon(25% 0,75% 0,75% 12.5%,87.5% 12.5%,87.5% 25%,100% 25%,100% 75%,87.5% 75%,87.5% 87.5%,75% 87.5%,75% 100%,25% 100%,25% 87.5%,12.5% 87.5%,12.5% 75%,0 75%,0 25%,12.5% 25%,12.5% 12.5%,25% 12.5%);animation:caw-rec 1.6s steps(2,jump-none) infinite alternate}
-#transport[data-kind=play] i{clip-path:polygon(0 0,100% 50%,0 100%)}
-#transport[data-kind=pause] i{background:linear-gradient(90deg,var(--tc) 0 36%,transparent 36% 64%,var(--tc) 64%)}
-@keyframes caw-rec{from{opacity:1}to{opacity:.35}}
-.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style>${themeStyle(theme)}</head><body class="${classes}"><div class="pa crt-case"><div class="crt" id="bench">
-<div class="soloBar">${ravenLogo(theme, { size: 11, label: 'caw' })}<span id="soloTag" hidden>${esc(t('workbench.handedOver'))}</span><span id="soloState"></span><span id="soloUrl"></span><button class="solo-btn" type="button" data-states hidden><b>F1</b>${t('workbench.stateTitle')}</button><button class="solo-btn" type="button" data-solo><b>F8</b>${t('workbench.bench')}</button></div>
-<header class="top"><div class="brand">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="name"><b class="glow">caw</b><span>${LONG_NAME}</span></div></div><div class="id"><b class="glow" id="title" data-test="${esc(test)}">${esc(test || 'caw')}</b></div>
+/* Record, play, pause: the transport chip at the top right next to the status pill (.tp). */
+#transport{display:none}#transport.on{display:inline-flex}
+</style></head><body class="${classes}"><div class="pa"><div id="bench">
+<div class="soloBar">${logo({ size: 18, label: 'caw' })}<span id="soloTag" hidden>${esc(t('workbench.handedOver'))}</span><span id="soloState"></span><span id="soloUrl"></span><button class="solo-btn btn btn-s btn-sm" type="button" data-states hidden><b>F1</b>${t('workbench.stateTitle')}</button><button class="solo-btn btn btn-s btn-sm" type="button" data-solo><b>F8</b>${t('workbench.bench')}</button></div>
+<header class="top"><div class="brand">${logo({ size: 28, label: 'caw' })}<div class="name"><b>caw</b><span>${LONG_NAME}</span></div></div><div class="id"><b id="title" data-test="${esc(test)}">${esc(test || 'caw')}</b></div>
 <ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
-<div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinf" aria-hidden="true" hidden></span><span id="state" class="px-pill glow" role="status"></span><span id="transport" class="px-pill glow" role="img"><i></i><span></span></span></div></header>
+<div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinner" aria-hidden="true" hidden></span><span id="state" class="pill" role="status"></span><span id="transport" class="tp" role="img"><i></i><span></span></span></div></header>
 <main class="panes">
-<section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${lg(t('workbench.steps'))}<button class="fold" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')} (F4)">◂</button><button class="strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')} (F4)"><b>▸</b>${t('workbench.steps').toUpperCase()} <span id="stripTally"></span></button>
-<div class="gauge" id="gauge" aria-hidden="true"></div><span id="tally" hidden></span><p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track" class="readable"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
-<section class="pa-browser win" aria-label="${t('workbench.app')}">${lg(t('workbench.app'))}<div class="appbar"><span id="urlMark" aria-hidden="true"></span><span id="url"></span><span id="browserState"></span><button class="solo-btn" type="button" data-solo title="${t('workbench.soloTitle')}"><b>F8</b>${t('workbench.solo')}</button></div>
+<section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${head(t('workbench.steps'))}<button class="fold ib" id="stepsFold" type="button" aria-expanded="true" aria-label="${t('workbench.stepsFold')}" title="${t('workbench.stepsFold')} (F4)">${icon('chev-l')}</button><button class="strip" id="stepsStrip" type="button" aria-expanded="false" aria-label="${t('workbench.stepsUnfold')}" title="${t('workbench.stepsUnfold')} (F4)">${icon('chev-r')}${t('workbench.steps')} <span id="stripTally"></span></button>
+<div class="gauge" id="gauge" aria-hidden="true"></div><span id="tally" hidden></span><p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
+<section class="pa-browser win" aria-label="${t('workbench.app')}"><div class="appbar"><span id="urlMark" aria-hidden="true">${icon('lock')}</span><span id="url"></span><span id="browserState"></span><button class="solo-btn btn btn-s btn-sm" type="button" data-solo title="${t('workbench.soloTitle')}"><b>F8</b>${t('workbench.solo')}</button></div>
 <div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe></div>
-<div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}" title="${t('workbench.collapse')}">▾ ${t('workbench.collapse')}</button></div>
-<div class="panel readable" id="panel"></div></div></section>
-<section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${lg(t('workbench.chat'))}<button class="fold" id="chatFold" type="button" aria-expanded="true" aria-label="${t('workbench.chatFold')}" title="${t('workbench.chatFold')} (F6)">▸</button><button class="strip" id="chatStrip" type="button" aria-expanded="false" aria-label="${t('workbench.chatUnfold')}" title="${t('workbench.chatUnfold')} (F6)"><b>◂</b>${t('workbench.chat').toUpperCase()}</button><iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(theme))}"></iframe></section>
+<div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}" title="${t('workbench.collapse')}">${icon('chev-d')}${t('workbench.collapse')}</button></div>
+<div class="panel" id="panel"></div></div></section>
+<section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${head(t('workbench.chat'))}<button class="fold ib" id="chatFold" type="button" aria-expanded="true" aria-label="${t('workbench.chatFold')}" title="${t('workbench.chatFold')} (F6)">${icon('chev-r')}</button><button class="strip" id="chatStrip" type="button" aria-expanded="false" aria-label="${t('workbench.chatUnfold')}" title="${t('workbench.chatUnfold')} (F6)">${icon('chev-l')}${t('workbench.chat')}</button><iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(prefs.mode))}"></iframe></section>
 </main>
-<nav class="fkeys" aria-label="${t('workbench.keys')}">${key('F1', t('workbench.stateTitle'), ' data-states hidden')}${key('F5', t('workbench.keyReload'), ` id="reload" disabled title="${t('workbench.page.refreshLockedTitle')}"`)}${key('F9', t('workbench.keyPause'), ' data-key="F9"')}${key('Esc', t('workbench.keyAbort'), ' data-key="Escape"', ' x')}${key('F2', t('workbench.requests'), ' data-tabkey="requests"')}${key('F3', t('workbench.console'), ' data-tabkey="console"')}${key('F4', t('workbench.steps'), ' id="fSteps"')}${key('F6', t('workbench.chat'), ' id="fChat"')}${key('F7', t('workbench.keyTheme'), ' id="fTheme" aria-pressed="false"')}${key('F8', t('workbench.solo'), ' data-solo')}${key('F10', t('workbench.still'), ` id="still" aria-pressed="${still}" title="${t('workbench.stillTitle')}"`)}</nav>
+<nav class="fkeys" aria-label="${t('workbench.keys')}">${key('F1', t('workbench.stateTitle'), ' data-states hidden')}${key('F5', t('workbench.keyReload'), ` id="reload" disabled title="${t('workbench.page.refreshLockedTitle')}"`)}${key('F9', t('workbench.keyPause'), ' data-key="F9"')}${key('Esc', t('workbench.keyAbort'), ' data-key="Escape"', ' x')}${key('F2', t('workbench.requests'), ' data-tabkey="requests"')}${key('F3', t('workbench.console'), ' data-tabkey="console"')}${key('F4', t('workbench.steps'), ' id="fSteps"')}${key('F6', t('workbench.chat'), ' id="fChat"')}${key('F8', t('workbench.solo'), ' data-solo')}${key('F10', t('workbench.still'), ` id="still" aria-pressed="${still}" title="${t('workbench.stillTitle')}"`)}</nav>
 </div></div>
-<div id="stateDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.stateTitle')}"><div class="win crt">${lg(t('workbench.stateTitle'))}
-<div class="scols"><div class="scol"><div class="sec">── <b>${t('workbench.page.stateTest').toUpperCase()}</b></div><div class="sfilter"><span>/</span><input id="sq" type="search" autocomplete="off" spellcheck="false" placeholder="${t('workbench.page.stateSearch')}" aria-label="${t('workbench.page.stateSearch')}"></div><div class="slist" id="stests" role="listbox" aria-label="${t('workbench.page.stateTest')}"></div></div>
-<div class="scol"><div class="sec">── <b id="sstepsHead">${t('workbench.page.stateSteps').toUpperCase()}</b></div><div class="slist" id="ssteps" role="listbox" aria-label="${t('workbench.page.stateSteps')}"></div></div></div>
-<div class="sfoot"><p id="sfoot"></p><div class="acts"><button type="button" class="px-btn" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="px-btn px-btn--primary" id="sgo" disabled>${t('workbench.page.stateGo')}</button></div></div></div></div>
-<div id="themeDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.page.themeTitle')}"><div class="win crt">${lg(t('workbench.page.themeTitle'))}<div class="tbody">
-<div class="thead"><span id="tmodeLabel">${t('workbench.page.themeMode')}</span><div class="tmode" id="tmode" role="radiogroup" aria-labelledby="tmodeLabel"></div></div>
-<div class="tthemes" id="tthemes" role="radiogroup" aria-label="${t('workbench.page.themeList')}"></div>
-<p class="tnote">${t('workbench.page.themeFolder')} <code>${esc(themesFolder())}</code></p></div>
-<div class="tfoot"><span id="tmsg" role="status"></span><button type="button" class="px-btn" id="tclose">${t('workbench.page.themeClose')}</button></div></div></div>
-<script>${RAVEN_SCRIPT}
-${GLYPH_SCRIPT}
-${APPLY_THEME_SCRIPT}
+<div id="stateDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.stateTitle')}"><div class="dlg">${head(t('workbench.stateTitle'))}
+<div class="scols"><div class="scol"><div class="sec">${t('workbench.page.stateTest')}</div><label class="field sfilter">${icon('search')}<input id="sq" type="search" autocomplete="off" spellcheck="false" placeholder="${t('workbench.page.stateSearch')}" aria-label="${t('workbench.page.stateSearch')}"></label><div class="slist" id="stests" role="listbox" aria-label="${t('workbench.page.stateTest')}"></div></div>
+<div class="scol"><div class="sec" id="sstepsHead">${t('workbench.page.stateSteps')}</div><div class="slist" id="ssteps" role="listbox" aria-label="${t('workbench.page.stateSteps')}"></div></div></div>
+<div class="sfoot"><p id="sfoot"></p><div class="acts"><button type="button" class="btn btn-s" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="btn btn-p" id="sgo" disabled>${t('workbench.page.stateGo')}</button></div></div></div></div>
+<script>
 const T=${json(texts('workbench.page.'))};
 // The pill labels: the same as in the chat header.
 const PILL=${json(Object.fromEntries(Object.entries(texts('chat.status.')).filter(([name]) => name.endsWith('.label'))))};
@@ -334,26 +250,13 @@ const pointsOf=(li)=>[...li.querySelector(':scope>.pts').children];
 const groupOf=(spot)=>spot.closest('#steps>li');
 // Group or item, even before the node is in the list.
 const isGroup=(node)=>node.querySelector(':scope>.head')!==null;
-const groupTitle=(li)=>li.dataset.kind==='phase'?li.dataset.name.toUpperCase():li.dataset.id;
+const groupTitle=(li)=>li.dataset.kind==='phase'?li.dataset.name:li.dataset.id;
 const duration=(ms)=>ms<1000?Math.round(ms)+' ms':(ms/1000).toFixed(1).replace('.',T['workbench.page.decimal'])+' s';
 const cell=(text,cls)=>{const td=document.createElement('td');td.textContent=text;if(cls)td.className=cls;td.title=text;return td;};
 const still=()=>document.body.classList.contains('still');
-// The theme as the page knows it (without css and files). Glyphs only as textContent, colours only as CSS variables.
-let TH=${json(clientTheme(theme))};
-let LIST=${json(themes)};
-const raven=cawRaven(document,document.body,still,TH.raven);
-const str=(value,fallback)=>(typeof value==='string'&&value!==''?value:fallback);
-const frames=()=>(Array.isArray(TH.spinner?.frames)&&TH.spinner.frames.length>0?TH.spinner.frames:['▖','▘','▝','▗']);
-// A mark: the theme's text; {spinner} becomes its own element that the clock advances.
-const markInto=(el,kind)=>{const [before,after]=[...str(TH.marks?.[kind],'[      ]').split('{spinner}'),''];el.replaceChildren(before);
-  if(str(TH.marks?.[kind],'').includes('{spinner}')){const s=document.createElement('span');s.className='spinf';s.replaceChildren(cawGlyph(frames()[spinAt%frames().length]));el.append(s,after);}};
-let spinTimer=0,spinAt=0;
-// The page draws block characters itself (cawGlyph); other frames stay text.
-const spin=()=>{clearInterval(spinTimer);const ms=Number.isInteger(TH.spinner?.ms)&&TH.spinner.ms>=40?TH.spinner.ms:150;
-  spinTimer=setInterval(()=>{if(still())return;spinAt=(spinAt+1)%frames().length;for(const s of document.querySelectorAll('.spinf'))s.replaceChildren(cawGlyph(frames()[spinAt]));},ms);};
-const ruleText=(title,width=34)=>{const format=str(TH.rule?.format,'── {title} {line}'),line=str(TH.rule?.line,'─');
-  const used=[...format.replace('{title}',title).replace('{line}','')].length;return format.replace('{title}',title).replace('{line}',line.repeat(Math.max(3,width-used)));};
-const legendText=(title)=>str(TH.legend,'┤ {title} ├').replace('{title}',title);
+// The marks as icons; running is a CSS spinner.
+const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle') })};
+const markInto=(el,kind)=>{if(kind==='run'){const s=document.createElement('span');s.className='spinner';el.replaceChildren(s);}else el.innerHTML=ICON[kind]??ICON.open;};
 const render=()=>{
   const panel=$('panel');panel.replaceChildren();
   if(state.tab==='requests'){
@@ -374,27 +277,26 @@ for(const b of document.querySelectorAll('[data-tab]'))b.addEventListener('click
 try{const tab=sessionStorage.getItem('caw-bench-tab');if(tab==='requests'||tab==='console')select(tab);}catch{}
 for(const b of document.querySelectorAll('[data-tabkey]'))b.addEventListener('click',()=>select(b.dataset.tabkey));
 $('drawerClose').addEventListener('click',()=>{if(state.tab!==null)select(state.tab);});
-const setCount=(name,value,bad)=>{for(const node of document.querySelectorAll('[data-count='+name+']')){node.textContent=(bad===true?str(TH.bullets?.fail,'✖')+' ':'')+value;node.classList.toggle('bad',bad===true);}};
+const setCount=(name,value,bad)=>{for(const node of document.querySelectorAll('[data-count='+name+']')){node.textContent=(bad===true?'✕ ':'')+value;node.classList.toggle('bad',bad===true);}};
 let aborted=false;
 // What the run does, for the chip at the top right: record, play, pause or null (no chip). Set by the host.
 let transport=null;
 // What the chat currently wants: ask from the mood, plus its state (showing: the human is demonstrating).
 let asking=false,chatState=null;
 const stepsHintText=$('stepsHint').textContent;
-// Progress as a bar: the same number of cells per step, passed, running or failed, open (glyphs from the theme).
+// Progress as a bar: one cell per step, passed, running, failed or open, and the count.
 const gauge=(list)=>{const box=$('gauge');if(list.length===0){box.replaceChildren();return;}
-  const per=Math.max(1,Math.floor(20/list.length)),pass=list.filter((li)=>li.dataset.state==='pass').length,p=TH.progress??{};
-  const parts=list.map((li)=>{const s=li.dataset.state;const span=document.createElement('span');span.className=s==='pass'?'mk-ok':s==='fail'?'mk-fail':s==='running'?'mk-run':'mk-open';
-    const char=s==='pass'?str(p.done,'█'):s==='fail'||s==='running'?str(p.run,'▓'):str(p.open,'░');span.replaceChildren(...Array.from({length:per},()=>cawGlyph(char)));return span;});
-  const sum=document.createElement('span');sum.className='mk-open';sum.textContent=' '+pass+'/'+list.length;box.replaceChildren(...parts,sum);};
+  const pass=list.filter((li)=>li.dataset.state==='pass').length;
+  const parts=list.map((li)=>{const s=li.dataset.state;const cell=document.createElement('i');cell.className=s==='pass'?'mk-ok':s==='fail'?'mk-fail':s==='running'?'mk-run':'mk-open';return cell;});
+  const sum=document.createElement('span');sum.textContent=pass+'/'+list.length;box.replaceChildren(...parts,sum);};
 // Tree glyphs of the sub-items: the last one ends the branch.
-const trees=()=>{for(const ol of document.querySelectorAll('#steps .pts')){const all=[...ol.children];all.forEach((li,i)=>{li.querySelector(':scope>.tree').textContent=i===all.length-1?str(TH.tree?.end,'└'):str(TH.tree?.mid,'├');});}};
+const trees=()=>{for(const ol of document.querySelectorAll('#steps .pts')){const all=[...ol.children];all.forEach((li,i)=>{li.querySelector(':scope>.tree').textContent=i===all.length-1?'└':'├';});}};
 // Header, progress and counter follow the steps: what runs, what failed, how many passed.
-// One heading "── RUN ──" right before the first step, none without steps.
+// One heading "Run" right before the first step, none without steps.
 const section=()=>{const list=$('steps'),first=items().find((li)=>li.dataset.kind==='step');let sec=[...list.children].find((li)=>li.dataset.kind==='section');
   if(!first){sec?.remove();return;}
   if(!sec){sec=document.createElement('li');sec.dataset.kind='section';sec.setAttribute('role','presentation');const head=document.createElement('div');head.className='head';const name=document.createElement('span');name.className='name';const ms=document.createElement('span');ms.className='ms';head.append(name,ms);sec.append(head);}
-  sec.querySelector('.name').textContent=ruleText(T['workbench.page.runSection'].toUpperCase());
+  sec.querySelector('.name').textContent=T['workbench.page.runSection'];
   // Total time like the phases: the measured steps, once none is running any more.
   const steps=items().filter((li)=>li.dataset.kind==='step'),timed=steps.filter((li)=>li.dataset.ms!==undefined);
   sec.querySelector('.ms').textContent=timed.length>0&&!steps.some((li)=>li.dataset.state==='running')?duration(timed.reduce((total,li)=>total+Number(li.dataset.ms),0)):'';
@@ -417,14 +319,14 @@ const summarize=()=>{
   // States without a label show no pill. The step list shows the current step.
   const label=aborted||chatState===null?undefined:PILL['chat.status.'+chatState+'.label'];
   const claudeWorks=chatState==='running'||chatState==='advising',cawWorks=label!==undefined&&!claudeWorks&&chatState!=='pausing'&&chatState!=='paused';
-  const pill=$('state');pill.className='px-pill glow'+(label===undefined?'':' on')+(claudeWorks?' px-pill--claude':cawWorks?' px-pill--run':'');pill.dataset.state=chatState??'';
-  pill.textContent=label===undefined?'':(chatState==='paused'?str(TH.bullets?.pause,'‖')+' ':'')+label;
-  $('stateSpin').hidden=!(claudeWorks||cawWorks);$('stateSpin').classList.toggle('px-pill--claude',claudeWorks);
+  const pill=$('state');pill.className='pill'+(label===undefined?'':' on')+(claudeWorks?' claude':cawWorks?' run':chatState==='paused'||chatState==='pausing'?' turn':'');pill.dataset.state=chatState??'';
+  if(label===undefined)pill.replaceChildren();else{const dot=document.createElement('span');dot.className='dot';pill.replaceChildren(dot,label);}
+  $('stateSpin').hidden=!(claudeWorks||cawWorks);$('stateSpin').classList.toggle('claude',claudeWorks);
   $('browserState').textContent=browserText;$('browserState').className=tone;
   $('soloState').textContent=text;$('soloTag').hidden=!refreshOn;
   // Only while something runs: record or play from the host, pause while that run is paused (F9). Cancelled: nothing.
   const mode=transport===null||aborted?null:chatState==='paused'||chatState==='pausing'?'pause':transport;
-  const chip=$('transport'),name=mode===null?'':mode[0].toUpperCase()+mode.slice(1);chip.classList.toggle('on',mode!==null);chip.dataset.kind=mode??'';
+  const chip=$('transport'),name=mode===null?'':mode[0].toUpperCase()+mode.slice(1);chip.className='tp'+(mode===null?'':' on '+({record:'rec',play:'play',pause:'pause'})[mode]);chip.dataset.kind=mode??'';
   chip.querySelector('span').textContent=mode===null?'':T['workbench.page.transport'+name];
   const word=mode===null?'':T['workbench.page.transport'+name+'Title'];chip.setAttribute('aria-label',word);chip.title=word;
 };
@@ -467,68 +369,33 @@ $('still').addEventListener('click',()=>setStill(!still()));
 const chatWindow=()=>{try{return $('chat').contentWindow;}catch{return null;}};
 const toChat=(key)=>{try{chatWindow()?.postMessage({caw:'key',key},'*');}catch{}};
 for(const b of document.querySelectorAll('[data-key]'))b.addEventListener('click',()=>toChat(b.dataset.key));
-const sendTheme=()=>{try{chatWindow()?.postMessage({caw:'theme',theme:TH},'*');}catch{}};
 
 const KIND={waiting:'open',running:'run',pass:'ok',fail:'fail',skipped:'open'};
-const BULLET={running:'run',pass:'ok',fail:'fail'};
+const BULLET={running:'›',pass:'·',fail:'✕'};
 const makeMark=(point)=>{const st=document.createElement('span');st.className='st';st.setAttribute('role','img');st.setAttribute('aria-label',LABELS.waiting);
   const tg=document.createElement('span');tg.className='tag'+(point?' pt-tag':'');st.append(tg);
   if(point){const mk=document.createElement('span');mk.className='mk';st.append(mk);}return st;};
 const paint=(node)=>{const own=isGroup(node),st=node.querySelector(own?':scope>.head>.st':':scope>.st'),stateName=node.dataset.state,k=KIND[stateName]??'open';
-  const tg=st.querySelector('.tag');tg.className='tag tag-'+k+(k==='fail'&&TH.failInverted!==false?' inverted':'')+(own?'':' pt-tag');markInto(tg,k);
-  const mk=st.querySelector('.mk');if(mk){mk.className='mk mk-'+k;mk.textContent=BULLET[stateName]?str(TH.bullets?.[BULLET[stateName]],'▸'):'·';}};
+  const tg=st.querySelector('.tag');tg.className='tag tag-'+k+(own?'':' pt-tag');markInto(tg,k);
+  const mk=st.querySelector('.mk');if(mk){mk.className='mk mk-'+k;mk.textContent=BULLET[stateName]??'·';}};
 const setState=(node,stateName,note)=>{const label=LABELS[stateName]??stateName,own=isGroup(node);node.dataset.state=stateName;node.setAttribute('aria-label',node.dataset.label+' – '+label);
   node.querySelector(own?':scope>.head [role=img]':'[role=img]').setAttribute('aria-label',label);paint(node);
   if(note!==undefined||stateName!=='fail'){const text=node.querySelector(own?':scope>.head .text':'.text');text.querySelector(':scope>.note')?.remove();
     if(note){const div=document.createElement('div');div.className='note';div.textContent=note;div.title=note;text.append(div);}}};
 const showMs=(node,ms)=>{const cell=node.querySelector(isGroup(node)?':scope>.head .ms':'.ms');if(ms===undefined){cell.textContent='';delete node.dataset.ms;}else{cell.textContent=duration(ms);node.dataset.ms=String(Math.round(ms));}};
-const liveText=(text)=>str(TH.bullets?.run,'▸')+' '+text;
+const liveText=(text)=>'› '+text;
 const makePoint=(p)=>{const li=document.createElement('li');li.dataset.id=p.id;li.dataset.state='waiting';if(p.kind)li.dataset.kind=p.kind;li.dataset.label=((p.kind?p.kind+' ':'')+(p.label??'')).trim();li.setAttribute('aria-label',li.dataset.label+' – '+LABELS.waiting);
   const tree=document.createElement('span');tree.className='tree';tree.setAttribute('aria-hidden','true');
   const text=document.createElement('span');text.className='text';if(p.kind){const kind=document.createElement('span');kind.className='kind';kind.textContent=p.kind;text.append(kind);}
   const name=document.createElement('span');name.className='name';name.textContent=p.label??'';text.append(name);
   const ms=document.createElement('span');ms.className='ms';li.append(tree,makeMark(true),text,ms);paint(li);return li;};
-const phaseName=(li)=>{li.querySelector(':scope>.head .name').textContent=ruleText(li.dataset.name.toUpperCase());};
+const phaseName=(li)=>{li.querySelector(':scope>.head .name').textContent=li.dataset.name;};
 const makeGroup=(g)=>{const li=document.createElement('li');const phase=g.kind==='phase';li.dataset.id=g.id;li.dataset.kind=phase?'phase':'step';li.dataset.name=g.name;li.dataset.state='waiting';li.dataset.label=(phase?'':g.id+' ')+g.name;li.setAttribute('aria-label',li.dataset.label+' – '+LABELS.waiting);
   const head=document.createElement('div');head.className='head';head.append(makeMark(false));
   if(!phase){const id=document.createElement('span');id.className='id';id.textContent=g.id;head.append(id);}
   const text=document.createElement('span');text.className='text';const name=document.createElement('span');name.className='name';name.textContent=g.name;text.append(name);
   const ms=document.createElement('span');ms.className='ms';head.append(text,ms);
   const pts=document.createElement('ol');pts.className='pts';li.append(head,pts);pts.append(...(g.points??[]).map(makePoint));paint(li);if(phase)phaseName(li);return li;};
-// A different theme: all glyphs anew, colours as variables, raven, legends, chat.
-const repaint=()=>{for(const li of document.querySelectorAll('#steps li:not([data-kind=section])'))paint(li);for(const li of items())if(li.dataset.kind==='phase')phaseName(li);
-  for(const lg of document.querySelectorAll('.lg[data-title]'))lg.textContent=legendText(lg.dataset.title);
-  for(const live of document.querySelectorAll('.pts .live'))live.textContent=liveText(live.dataset.text??'');
-  $('urlMark').textContent=str(TH.bullets?.ok,'■');$('stateSpin').replaceChildren(cawGlyph(frames()[0]));spin();summarize();};
-const useTheme=(theme)=>{if(!theme||typeof theme!=='object')return;TH=theme;cawApplyTheme(document.documentElement,TH);raven.setRaven(TH.raven);repaint();sendTheme();};
-repaint();
-
-// Theme (F7): pick a theme and its mode. Themes are only read here: own ones are folders next to prefs.json. The host checks every
-// choice (cawTheme); the page only sets variables and textContent.
-let busy=false;
-const msg=(text)=>{$('tmsg').textContent=text??'';};
-const call=async(action,payload)=>{if(busy)return null;busy=true;
-  try{const result=await window.${THEME_BINDING}?.(action,payload);
-    if(result?.ok===true){if(Array.isArray(result.list))LIST=result.list;if(result.theme)useTheme(result.theme);msg('');return result;}
-    msg(fill('workbench.page.themeFailed',{why:String(result?.error??'').slice(0,200)}));}
-  catch{msg(fill('workbench.page.themeFailed',{why:''}));}
-  finally{busy=false;renderDialog();}
-  return null;};
-const preview=(colors)=>{const pv=document.createElement('span');pv.className='tpv';pv.setAttribute('aria-hidden','true');
-  for(const key of ['screen','pane','frame','accent','ok','muted'])if(colors?.[key])pv.style.setProperty('--pv-'+key,colors[key]);
-  pv.append(document.createElement('i'),document.createElement('i'),document.createElement('i'));return pv;};
-const modesText=(modes)=>(modes??['dark']).map((mode)=>T['workbench.page.mode.'+mode]).join(' · ');
-const renderDialog=()=>{const scheme=TH.scheme==='light'?'light':'dark';
-  $('tmode').replaceChildren(...['dark','light'].map((mode)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(mode===scheme));
-    b.textContent=T['workbench.page.mode.'+mode];b.disabled=!(TH.modes??['dark']).includes(mode);b.addEventListener('click',()=>{if(mode!==scheme)call('mode',mode);});return b;}));
-  $('tmode').title=(TH.modes??[]).length===1?T['workbench.page.modeOnly.'+TH.modes[0]]:'';
-  $('tthemes').replaceChildren(...LIST.map((entry)=>{const b=document.createElement('button');b.type='button';b.className='tcard';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(entry.name===TH.name));
-    const text=document.createElement('span');text.className='ttext';const name=document.createElement('b');name.textContent=entry.label||entry.name;
-    const about=document.createElement('span');about.className='tabout';about.textContent=entry.description||'';
-    const meta=document.createElement('small');meta.textContent=(entry.builtin?T['workbench.page.themeBuiltin']:fill('workbench.page.themeOwn',{name:entry.name,base:entry.baseLabel||entry.base}))+' · '+modesText(entry.modes);
-    text.append(name);if(about.textContent)text.append(about);text.append(meta);b.append(preview(entry.name===TH.name?TH.colors:entry.colors),text);
-    b.addEventListener('click',()=>{if(entry.name!==TH.name)call('use',entry.name);});return b;}));};
-let themeFocus=null;
 // Pick a state (F1): only after the hand-over, when the host offers tests. A picked step opens at its entry; without a step the
 // test runs up to the last reachable one.
 let STATES=[],sTest=null,sStep=null;
@@ -543,7 +410,7 @@ const renderStates=()=>{
   $('stests').replaceChildren(...shown.map((test)=>{const row=sRow('',test.id===sTest?'▸':' ',test.id,test.writes?{text:(test.role?test.role+' · ':'')+T['workbench.page.stateWrites'],warn:true}:{text:(test.role?test.role+' · ':'')+fill('workbench.page.stateCount',{count:test.steps.length})},test.id===sTest);
     row.addEventListener('click',()=>{sTest=test.id;sStep=null;renderStates();});return row;}));
   const test=STATES.find((entry)=>entry.id===sTest);
-  $('sstepsHead').textContent=(test?T['workbench.page.stateSteps']+' · '+test.id:T['workbench.page.stateSteps']).toUpperCase();
+  $('sstepsHead').textContent=test?T['workbench.page.stateSteps']+' · '+test.id:T['workbench.page.stateSteps'];
   if(!test){$('ssteps').replaceChildren();$('sgo').disabled=true;$('sfoot').textContent=T['workbench.page.stateHint'];return;}
   const last=okSteps(test).at(-1);
   const all=sRow('all',sStep===null?'▸':' ',fill('workbench.page.stateAll',{id:last.id}),null,sStep===null);
@@ -556,7 +423,7 @@ const renderStates=()=>{
   $('sfoot').textContent=(sStep===null?fill('workbench.page.stateFoot',{test:test.id,step:last.id}):fill('workbench.page.stateFootEntry',{test:test.id,step:sStep}))+(test.role?fill('workbench.page.stateFootRole',{role:test.role}):'')+(test.writes?T['workbench.page.stateFootWrites']:'');
 };
 let stateFocus=null;
-const openStates=(on=stateDlg.hidden)=>{if(on&&STATES.length===0)return;if(on&&!$('themeDlg').hidden)openTheme(false);stateDlg.hidden=!on;
+const openStates=(on=stateDlg.hidden)=>{if(on&&STATES.length===0)return;stateDlg.hidden=!on;
   if(on){stateFocus=document.activeElement;if(sTest===null&&STATES.length===1)sTest=STATES[0].id;renderStates();$('sq').focus();}else stateFocus?.focus?.();};
 const goState=()=>{const test=STATES.find((entry)=>entry.id===sTest);if(!test)return;openStates(false);
   try{const result=window.${STATE_BINDING}?.(test.id,sStep);result?.catch?.(()=>{});}catch{}};
@@ -565,25 +432,17 @@ $('sq').addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!$('sgo').d
 $('scancel').addEventListener('click',()=>openStates(false));$('sgo').addEventListener('click',goState);
 stateDlg.addEventListener('click',(event)=>{if(event.target===stateDlg)openStates(false);});
 for(const b of document.querySelectorAll('[data-states]'))b.addEventListener('click',()=>openStates(true));
-// Opening lists the themes anew: a folder added meanwhile shows up.
-const openTheme=(on=$('themeDlg').hidden)=>{$('themeDlg').hidden=!on;$('fTheme').setAttribute('aria-pressed',String(on));
-  if(on){themeFocus=document.activeElement;msg('');renderDialog();$('tthemes').querySelector('[aria-checked=true]')?.focus();
-    call('list').then(()=>{if(!$('themeDlg').hidden&&!$('tthemes').contains(document.activeElement))$('tthemes').querySelector('[aria-checked=true]')?.focus();});}
-  else themeFocus?.focus?.();};
-$('fTheme').addEventListener('click',()=>openTheme());$('tclose').addEventListener('click',()=>openTheme(false));
-$('themeDlg').addEventListener('click',(event)=>{if(event.target===$('themeDlg'))openTheme(false);});
 
 // The workbench keys. F11 and F12 stay with Chrome; F5 and Ctrl+R mean refresh.
 const isRefreshKey=(event)=>event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r');
 const press=(key)=>{
   if(key==='F1'){openStates();return true;}
   if(key==='F2')select('requests');else if(key==='F3')select('console');else if(key==='F4')toggleFold('steps');else if(key==='F6')toggleFold('chat');
-  else if(key==='F7')openTheme();else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
+  else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
   return true;};
 addEventListener('keydown',(event)=>{
   if(isRefreshKey(event)){event.preventDefault();refresh();return;}
   if(event.key==='Escape'&&!stateDlg.hidden){event.preventDefault();openStates(false);return;}
-  if(event.key==='Escape'&&!$('themeDlg').hidden){event.preventDefault();openTheme(false);return;}
   if(event.key==='Escape'&&event.target?.closest?.('input,textarea,select'))return;
   if(event.ctrlKey||event.altKey||event.metaKey)return;
   if(press(event.key))event.preventDefault();});
@@ -591,7 +450,6 @@ addEventListener('keydown',(event)=>{
 const CHAT_KEYS=${json(CHAT_KEYS)};
 addEventListener('message',(event)=>{const fromChat=event.source===chatWindow();
   if(event.data?.caw==='refresh'&&(event.source===$('app').contentWindow||fromChat))refresh();
-  if(event.data?.caw==='theme-request'&&fromChat)sendTheme();
   if(event.data?.caw==='key'&&fromChat&&CHAT_KEYS.includes(event.data.key))press(event.data.key);
   if(event.data?.caw==='key'&&event.data.key==='F1'&&event.source===$('app').contentWindow)press('F1');});
 
@@ -736,18 +594,6 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
                 writePagePref(key, value);
             } catch {
                 // unknown or non-cosmetic setting, or not writable: keeps for this run only
-            }
-        });
-        // Themes: only the workbench itself, and only choosing; themes are never written from the page.
-        await page.exposeBinding(THEME_BINDING, async ({ frame }, action, payload) => {
-            if (frame !== page.mainFrame()) return { ok: false, error: 'frame' };
-            try {
-                const theme = themeAction(action, payload);
-                // The theme's stylesheet and fonts come from disk and only through the host; colours and texts the page sets itself.
-                await applyThemeSheets([page.mainFrame(), holder.chat], theme);
-                return { ok: true, list: themeList(), theme: clientTheme(theme) };
-            } catch (error) {
-                return { ok: false, error: String(error?.message ?? error).slice(0, 200) };
             }
         });
         // Pick a state (F1): only the workbench itself. The host checks against its catalogue what may be reached (onState) and asks

@@ -77,7 +77,7 @@ Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 - **Links:** die Schritte mit ihrem Zustand (läuft, bestanden, gescheitert, nicht erreicht), darunter die Zähler für Requests und Konsole.
 - **Mitte:** die Anwendung in einem iframe mit ihrer Adresse. Darunter Requests (Name, Ausgang, Dauer) und Konsole (Fehler und Warnungen); bei einem Konsolenfehler klappt die Leiste von selbst auf, „Einklappen“ schließt sie.
 - **Rechts:** der Chat mit Claude, in einem Rahmen mit dem Titel CHAT.
-- **Unten:** die Tastenleiste: F1 Öffnen… (nach der Übergabe), F5 Neu laden, F9 Pause, Esc Abbrechen, F2 Requests, F3 Konsole, F4 Schritte, F6 Chat, F7 Theme, F8 Nur Anwendung, F10 Animationen aus. Die Tasten wirken auch, wenn der Fokus im Chat liegt.
+- **Unten:** die Tastenleiste: F1 Öffnen… (nach der Übergabe), F5 Neu laden, F9 Pause, Esc Abbrechen, F2 Requests, F3 Konsole, F4 Schritte, F6 Chat, F8 Nur Anwendung, F10 Animationen aus. Die Tasten wirken auch, wenn der Fokus im Chat liegt.
 - **Einklappen:** Schritte und Chat klappen über den Knopf am Rand (F4, F6) zu einer schmalen Leiste ein. Braucht der Chat dich, klappt er von selbst auf.
 - **Neu laden:** F5 (die Taste, der Knopf in der Tastenleiste, auch in der Anwendung) lädt nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, auch während „Neu öffnen“ oder F1 einen Zustand herstellt, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
 
@@ -374,7 +374,7 @@ In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die A
 
 In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.mode` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
 
-**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme mit hellem oder dunklem Modus (F7, siehe [Themes](../themes/README.de.md)). Im selben Ordner hält deine eigene `caw.md` Notizen für Claude in jedem Projekt, gelesen vor der `caw/caw.md` des Projekts ([Konfiguration](configuration.de.md#deine-eigene-cawmd)).
+**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und der helle oder dunkle Modus, standardmäßig wie im System. Im selben Ordner hält deine eigene `caw.md` Notizen für Claude in jedem Projekt, gelesen vor der `caw/caw.md` des Projekts ([Konfiguration](configuration.de.md#deine-eigene-cawmd)).
 
 **Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--explain`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--agent session` gibt es den Hinweis nicht: Deine Session läuft ohnehin.
 

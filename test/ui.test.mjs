@@ -3,12 +3,10 @@ import { test } from 'node:test';
 
 import { t } from '../src/shared/i18n.mjs';
 import { createUi } from '../src/shared/ui.mjs';
-import { loadTheme } from '../src/shared/theme-package.mjs';
 
-// The layout tests pin terminal: its marks and rules are what they look for, whatever the default theme is.
-const capture = (fancy, theme = loadTheme('terminal', process.env, 'dark')) => {
+const capture = (fancy, full) => {
     const lines = [];
-    return { lines, ui: createUi({ fancy, theme, out: (text) => lines.push(text), err: (text) => lines.push(text) }) };
+    return { lines, ui: createUi({ fancy, full, out: (text) => lines.push(text), err: (text) => lines.push(text) }) };
 };
 // eslint-disable-next-line no-control-regex -- strips ANSI colour codes
 const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
@@ -75,10 +73,10 @@ test('in a terminal: the verdict lists each expectation with its mark, the failu
     ui.verdict(VERDICT, { report: 'r.md', elapsed: 2 });
     const text = plain(lines.join('\n'));
     assert.match(text, /── FAIL · r1 auf a\/dev · 2\.0s ─+/);
-    assert.match(text, /\[ {2}OK {2}\] E1 Maske da/);
-    assert.match(text, /\[FEHLER\] E2 Liste da/);
-    assert.match(text, /└ ✖ Liste leer/);
-    assert.match(text, /█+▓+ {2}1 bestanden · 1 Fehler/);
+    assert.match(text, /✓ E1 Maske da/);
+    assert.match(text, /✕ E2 Liste da/);
+    assert.match(text, /└ ✕ Liste leer/);
+    assert.match(text, /━+ {2}1 bestanden · 1 Fehler/);
     assert.match(text, /Bericht: r\.md/);
 });
 
@@ -103,7 +101,7 @@ test('texts from the portal cannot control the terminal', () => {
 test('status without expectations: error with a reason', () => {
     const { lines, ui } = capture(true);
     ui.verdict({ status: 'error', reason: 'Portal weg', testId: 'r1', target: 'a/dev' }, { report: 'r.md', elapsed: 1 });
-    assert.match(plain(lines.join('\n')), /── ERROR · r1[\s\S]*\[ WARN \] Portal weg/);
+    assert.match(plain(lines.join('\n')), /── ERROR · r1[\s\S]*! Portal weg/);
 });
 
 test('in a terminal: section as a rule, result in a box with marks, all box rows equally wide', () => {
@@ -114,26 +112,34 @@ test('in a terminal: section as a rule, result in a box with marks, all box rows
     const text = plain(lines.join('\n'));
     assert.match(text, /── 1 ANMELDEN ─+/);
     assert.match(text, /┌─┤ ERGEBNIS ├─+┐/);
-    assert.match(text, /│ \[ {2}OK {2}\] Framework: extjs +│/);
-    assert.match(text, /│ \[ WARN \] Startseite fehlt +│/);
+    assert.match(text, /│ ✓ Framework: extjs +│/);
+    assert.match(text, /│ ! Startseite fehlt +│/);
     assert.match(text, /│ {3}- #alt +│/);
     assert.match(text, /│ {3}\+ #neu +│/);
     const boxed = text.split('\n').filter((row) => /[┌│└]/.test(row));
     assert.equal(new Set(boxed.map((row) => [...row].length)).size, 1, boxed.join('\n'));
 });
 
-test('in a terminal: marks and colours come from the theme', () => {
-    const base = loadTheme('raster', process.env, 'dark');
-    const { lines, ui } = capture(true, { ...base, marks: { ...base.marks, ok: '[ PASS ]' } });
-    ui.success('fertig');
-    assert.match(plain(lines[0]), /\[ PASS \] fertig/);
-    // Truecolor from the raster palette (ok #3ddc84) or its 256-colour approximation.
+test('in a terminal: Graphite colours, truecolor or the nearest of the 256 colours', () => {
+    const full = capture(true, true);
+    full.ui.success('fertig');
+    assert.equal(plain(full.lines[0]), '  ✓ fertig');
+    // ok is #3DD68C; the text keeps the terminal's own colour.
+    assert.equal(full.lines[0], '  \u001b[38;2;61;214;140m✓\u001b[39m fertig');
+    const reduced = capture(true, false);
+    reduced.ui.success('fertig');
     // eslint-disable-next-line no-control-regex -- matches the ANSI colour code
-    assert.match(lines[0], /\u001b\[38;(2;61;220;132|5;\d+)m/);
-    // A rule format without {line} (studio: just the title) still draws the line in the terminal, after a space.
-    const studio = capture(true, loadTheme('studio', process.env, 'dark'));
-    studio.ui.section(1, 'Anmelden');
-    assert.match(plain(studio.lines.join('\n')), /1 ANMELDEN ─{3,}/);
+    assert.match(reduced.lines[0], /^ {2}\u001b\[38;5;\d+m✓\u001b\[39m fertig$/);
+});
+
+test('command header: one line with dot, title and long form; in pipes only the title', () => {
+    const fancy = capture(true, true);
+    fancy.ui.banner({ title: 'caw init --explore-only' });
+    assert.deepEqual(fancy.lines.map(plain), ['● caw init --explore-only · Context-Aware Web Testing', '']);
+    assert.ok(fancy.lines[0].startsWith('\u001b[38;2;94;224;242m●\u001b[39m \u001b[1mcaw init --explore-only\u001b[22m '), JSON.stringify(fancy.lines[0]));
+    const piped = capture(false);
+    piped.ui.banner({ title: 'caw init --explore-only' });
+    assert.deepEqual(piped.lines, ['[caw] caw init --explore-only']);
 });
 
 test('an error verdict never shows the code line of describeCode as error code', () => {

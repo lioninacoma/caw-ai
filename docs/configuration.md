@@ -291,7 +291,6 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 | `lintCommand` | | Your check command, e.g. `npm run lint`. Claude mentions it in code suggestions. |
 | `sandboxImage` | `node:22-bookworm-slim` | Base image for the `docker` agent. Falls back to `image` in `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | User inside the container. |
-| `theme` | | Team default for the workbench: `{ "base": "raster", "colors": { … } }`. A personal choice in `prefs.json` wins. See [Themes](../themes/README.md#team-default). |
 | `overlay` | | Turns on the [overlay extension](extensions/overlay.md). |
 
 ## caw/caw.md
@@ -318,6 +317,6 @@ through git, or personal, with its path), and only your click on "Accept" writes
 
 ## Personal settings
 
-Workbench choices (theme, animations, collapsed panels, the token notice) and your language are stored per user in
+Workbench choices (animations, collapsed panels, the token notice) and your language are stored per user in
 `prefs.json` under `CAW_AI_HOME`, default `%APPDATA%\caw-ai` or `~/.config/caw-ai`. Not in the project.
 Your own `caw.md` (see above) lies in the same folder.

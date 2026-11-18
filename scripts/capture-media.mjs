@@ -23,7 +23,7 @@ const SCENES = ['states', 'develop', 'bugfix', 'reproduce', 'demo'];
 if (scene !== 'all' && !SCENES.includes(scene)) throw new Error(`--scene: one of ${SCENES.join(', ')} or all`);
 if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status !== 0) throw new Error('ffmpeg is not on PATH');
 
-// The README shows the English UI. Personal settings in a folder of their own: no token notice, default theme.
+// The README shows the English UI. Personal settings in a folder of their own: no token notice, the system's light or dark mode.
 process.env.CAW_LANG = 'en';
 delete process.env.CI;
 process.env.CAW_AI_HOME = mkdtempSync(join(tmpdir(), 'caw-media-home-'));
@@ -34,9 +34,8 @@ process.env.CAW_USER_USER = 'demo';
 process.env.CAW_USER_PASSWORD = 'demo';
 
 const { open, record, reproduce } = await import('../src/host/commands.mjs');
-const { activeTheme } = await import('../src/shared/theme-package.mjs');
-const { LONG_NAME } = await import('../src/shared/raven.mjs');
-const { RAVEN_CSS, ravenLogo, themeAttr, themeCss } = await import('../src/host/theme.mjs');
+const { LONG_NAME } = await import('../src/shared/brand.mjs');
+const { MODE_SCRIPT, logo, modeAttr, styleSheet } = await import('../src/host/style.mjs');
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 const freePort = () => new Promise((resolve) => {
@@ -195,24 +194,22 @@ const film = (name) => {
     };
 };
 /**
- * The closing card: the raven and the name in the default theme, the cursor blinking a few times, at the film's size.
+ * The closing card: the logo and the name, the cursor blinking a few times, at the film's size.
  * @returns frames with their duration
  */
 const outro = async (dir, { width, height }) => {
     const { chromium } = await import('playwright-core');
-    const theme = activeTheme();
     const browser = await chromium.launch({ channel: 'chrome' });
     try {
         const page = await browser.newPage({ viewport: { width, height } });
-        await page.setContent(`<!doctype html><html${themeAttr(theme)}><head><meta charset="utf-8"><style>${themeCss(theme)}${RAVEN_CSS}
-html,body{margin:0;height:100%;background:var(--screen);color:var(--text)}
-body{display:flex;align-items:center;justify-content:center;gap:56px}
-.raven{font-size:64px;line-height:1.05}
-.name{font:700 84px/1 var(--font-crt);letter-spacing:-.02em;display:flex;align-items:center}
-.cursor{display:inline-block;width:.5em;height:1em;margin-left:.12em;background:var(--warn)}
+        await page.setContent(`<!doctype html><html${modeAttr('system')}><head><meta charset="utf-8"><script>${MODE_SCRIPT}</script><style>${styleSheet()}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text)}
+body{display:flex;align-items:center;justify-content:center;gap:40px}
+.name{font:600 84px/1 var(--font);letter-spacing:-.04em;display:flex;align-items:center}
+.cursor{display:inline-block;width:.08em;height:.9em;margin-left:.08em;background:var(--accent)}
 .off .cursor{visibility:hidden}
-.long{margin-top:18px;font:400 22px/1 var(--font-ui);color:var(--muted)}
-</style></head><body>${ravenLogo(theme, { size: 64 })}<div><div class="name">caw<span class="cursor"></span></div><div class="long">${LONG_NAME}</div></div></body></html>`);
+.long{margin-top:18px;font:400 22px/1 var(--font);color:var(--muted)}
+</style></head><body>${logo({ size: 120 })}<div><div class="name">caw<span class="cursor"></span></div><div class="long">${LONG_NAME}</div></div></body></html>`);
         await page.evaluate(() => globalThis.document.fonts.ready);
         const shots = [];
         for (const [index, off] of [false, true].entries()) {

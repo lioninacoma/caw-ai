@@ -19,7 +19,6 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`open`](#open) | Die App angemeldet öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
 | [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
-| [`theme`](#theme) | Themes der Werkbank auflisten, wählen oder prüfen | nein |
 | [`mcp`](#mcp) | MCP-Server für deine eigene Claude-Code-Sitzung (startet Claude Code, nicht in `--help`) | – |
 
 `npx caw help` zeigt dieselbe Übersicht im Terminal. `npx caw <befehl> --help` (oder `-h`, an beliebiger Stelle) zeigt nur diesen Befehl, `npx caw agent --help` die Befehle für den Agenten. `npx caw --version` zeigt die Version.
@@ -282,17 +281,6 @@ Schreibt den aufgenommenen Test als Playwright-Test, der ohne caw läuft, nur mi
 Die Umgebung (`--env`, sonst die einzige passende) liefert Adresse und Anmeldung. Beim Ausführen überschreibt `CAW_BASE_URL` die Adresse; die Testnutzer kommen aus denselben Variablen wie bei caw (`CAW_<ROLLE>_USER`, `CAW_<ROLLE>_PASSWORD`, `CAW_<ROLLE>_TOTP`, wahlweise mit `__<ENV>`). Eine Datei im Ordner, die nicht von export stammt, wird nie überschrieben.
 
 Nicht exportiert: gelernte Wirkungen und Netzwerk-Vergleichswerte, `knownMessages`, die Fehlerregeln für Konsole und Requests, `retry`, `readyIgnore` und die 2-s-Toleranz für einen zweiten Treffer, während ein Dialog schließt. Der Test muss vollständig und aktuell aufgenommen sein, sonst Exit 4 mit dem passenden `record`-Befehl.
-
-## theme
-
-```bash
-npx caw theme                 # Themes auflisten, aktives markiert
-npx caw theme use raster      # eines wählen
-npx caw theme mode light      # hell oder dunkel
-npx caw theme check mein-theme  # Schema, Kontrast, Markenbreite, Schriften
-```
-
-Das Theme gehört dir, steht in `prefs.json` und gilt in allen Projekten. Eingebaut: `studio` (Standard), `terminal`, `raster`, `glas`, jedes mit dunklem und hellem Modus (`mode`, Standard dunkel). Theme und Modus wählst du mit F7 in der Werkbank; eigene Themes sind Ordner neben `prefs.json`, von Hand geschrieben. Details: [themes/README.de.md](../themes/README.de.md).
 
 ## mcp
 

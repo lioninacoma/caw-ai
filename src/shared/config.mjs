@@ -9,7 +9,6 @@ import { CawError } from './errors.mjs';
 import { t } from './i18n.mjs';
 import { CONFIG_FILE } from './names.mjs';
 import { compileRead } from './requests.mjs';
-import { projectThemeProblems, setProjectTheme } from './theme-package.mjs';
 import { didYouMean } from './suggest.mjs';
 import { RESERVED_ROLES } from './credentials.mjs';
 import { NAME, effectiveEnvironment, effectiveEnvironments, environmentNames, signInTypes } from './environments.mjs';
@@ -62,7 +61,7 @@ export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${r
 
 const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys', 'reads',
     'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'maxActions', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
-    'browser', 'agent', 'language', 'theme', 'readyIgnore'];
+    'browser', 'agent', 'language', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport', 'noSandbox'];
 /** A CSS viewport { width, height } in whole pixels, as a recording stores it and browser.viewport sets it. */
 export const isViewport = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -411,7 +410,6 @@ export const validateConfig = (given) => {
     if (config.messageSelectors !== undefined && !(Array.isArray(config.messageSelectors) && config.messageSelectors.every((selector) => typeof selector === 'string' && selector !== ''))) {
         issues.push(t('config.messageSelectors'));
     }
-    if (config.theme !== undefined) for (const { key } of projectThemeProblems(config.theme)) issues.push(t('config.theme', { key }));
     if (config.framework !== undefined && !FRAMEWORK_NAMES.includes(config.framework)) issues.push(t('config.framework', { names: FRAMEWORK_NAMES.join(', ') }));
     for (const key of ['sandboxImage', 'sandboxUser', 'lintCommand']) {
         if (config[key] !== undefined && (typeof config[key] !== 'string' || config[key].trim() === '')) issues.push(t('config.text', { key }));
@@ -498,8 +496,6 @@ export const loadConfigWithNotes = (root) => {
     }
     const { issues, notes, todo } = validateConfig(config);
     if (issues.length > 0) throw configInvalid(issues);
-    // The team default theme applies to everything this process shows: workbench, chat, card, terminal.
-    setProjectTheme(config.theme);
     return { config, notes, todo };
 };
 

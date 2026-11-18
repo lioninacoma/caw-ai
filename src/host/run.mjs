@@ -509,7 +509,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         return { exitCode: finishRun(), verdict };
     }
 
-    // On abort the workbench raven flies into the logo.
+    // On abort the workbench shows the run as cancelled.
     aborted.then(() => session?.workbench?.mood?.('aborted')).catch(() => {});
 
     // The chat always sits next to the application window. With `lazy` it opens only when something goes wrong.
@@ -952,7 +952,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const restoreWith = async ({ spec: shownSpec, replay: plan }) => {
         if (plan === undefined) return t('run.restore.noRecording');
         restoreFailed = null;
-        // Like a fresh run: all steps open, the raven hops forward from S1 instead of across old results.
+        // Like a fresh run: all steps open again, instead of old results.
         await session.workbench?.mood?.('wait');
         // The steps run again as in the first run: no longer greyed out, already while they run.
         await session.workbench?.left?.(false);
@@ -1023,7 +1023,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             await session.workbench?.step(id, id === failed?.id ? 'fail' : status === 'pass' ? 'pass' : 'skipped');
         }
         await markEntry(plan, failed);
-        // Then it is the human's turn again: the raven flies to the chat, on failure it stays on the step.
+        // Then it is the human's turn again: the chat asks, or on failure the step list shows the step.
         await session.workbench?.mood?.(failed === null ? 'ask' : 'fail');
         if (failed !== null) return t('run.restore.failed', { id: failed.id, reason: failed.reason.replace(/\.$/, '') });
         const named = (id) => (shownSpec === spec ? id : `${shownSpec.id} ${id}`);

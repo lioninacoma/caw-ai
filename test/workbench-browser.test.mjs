@@ -1,7 +1,7 @@
 // Workbench and chat in real Chrome: only the chat speaks as the human, the application may navigate the top window itself, a
 // reload by the human aborts the test. Skipped without Chrome.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,7 +15,6 @@ import { withoutIntegrity } from '../src/ext/overlay/local-build.mjs';
 import { CHAT_FRAME, openWorkbench } from '../src/host/workbench.mjs';
 import { isTopNavigation } from '../src/host/host-lock.mjs';
 import { readPrefs } from '../src/shared/prefs.mjs';
-import { loadTheme, themesFolder } from '../src/shared/theme-package.mjs';
 import { launchChrome } from './chrome.mjs';
 
 /**
@@ -402,7 +401,7 @@ test('chat: the decision is a card, discard needs a second click', async (t) => 
     let answer;
     const chosen = chat.choose('deciding', 'Text fürs Protokoll', options, card).then((id) => { answer = id; });
     assert.ok(await until(() => frame.isVisible('.decision')), 'the card is shown');
-    assert.match(await frame.textContent('.decision strong'), /Prüflauf bestanden$/, 'title, preceded by the theme mark');
+    assert.match(await frame.textContent('.decision strong'), /Prüflauf bestanden$/, 'title, preceded by the mark');
     assert.equal(await frame.locator('.decision > ul > li').count(), 1);
     assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'warnings collapsed');
     assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Der Testplan ändert sich erst mit deiner Wahl.'], 'once in the terminal');
@@ -443,25 +442,28 @@ test('workbench: demonstrating shows recording, refresh is locked until the host
     assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'the actions are open');
 });
 
-test('workbench: the raven is an easter egg; "animations off" stops the hearts instead of freezing them', async (t) => {
+test('workbench: the logo is an SVG in currentColor; system mode follows the browser live, in workbench and chat', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     const page = bench.page;
-    const logo = page.locator('header.top [data-raven]');
-    const look = await logo.evaluate((node) => ({ cursor: getComputedStyle(node).cursor, tab: node.tabIndex }));
-    assert.deepEqual(look, { cursor: 'default', tab: -1 }, 'no hand cursor, not in the tab order');
-    await logo.hover();
-    assert.equal(await logo.evaluate((node) => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)', 'no frame on hover');
-    await logo.click();
-    const hearts = () => page.evaluate(() => [...document.querySelectorAll('.caw-heart')].map((node) => ({ shown: getComputedStyle(node).display !== 'none', size: getComputedStyle(node).fontSize })));
-    const flying = await hearts();
-    assert.ok(flying.length > 0 && flying.every(({ shown, size }) => shown && size === '14px'), 'small hearts rise');
-    await page.evaluate(() => document.body.classList.add('still'));
-    assert.ok((await hearts()).every(({ shown }) => !shown), 'animations off: hearts in flight disappear at once');
-    assert.ok(await until(async () => (await hearts()).length === 0, 4000), 'and are removed, not left frozen');
-    await logo.click();
-    assert.equal((await hearts()).length, 0, 'animations off: a click sends up no hearts');
-    await page.evaluate(() => document.body.classList.remove('still'));
+    assert.equal(await page.locator('header.top svg.logo[role=img][aria-label=caw]').count(), 1);
+    const chatFrame = page.frames().find((frame) => frame !== page.mainFrame() && frame.parentFrame() === page.mainFrame() && frame.name() !== 'caw-app');
+    const look = (frame) => frame.evaluate(() => [document.documentElement.dataset.pref, document.documentElement.dataset.mode, getComputedStyle(document.documentElement).colorScheme]);
+    try {
+        await page.emulateMedia({ colorScheme: 'dark' });
+        assert.ok(await until(async () => (await look(page.mainFrame()))[1] === 'dark'), 'the workbench turns dark');
+        assert.deepEqual(await look(page.mainFrame()), ['system', 'dark', 'dark']);
+        assert.ok(await until(async () => (await look(chatFrame))[1] === 'dark'), 'the chat turns dark');
+        assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(10, 12, 13)');
+        await page.emulateMedia({ colorScheme: 'light' });
+        assert.ok(await until(async () => (await look(page.mainFrame()))[1] === 'light'), 'and light again');
+        assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(247, 248, 248)');
+        assert.match(await page.evaluate(() => getComputedStyle(document.body).fontFamily), /^Geist/);
+        assert.ok(await page.evaluate(() => document.fonts.check('13px Geist')), 'Geist is loaded');
+    } finally {
+        await page.emulateMedia({ colorScheme: null });
+    }
+    return undefined;
 });
 
 test('workbench: the chip at the top right shows record, play and pause and survives a reload', async (t) => {
@@ -474,7 +476,7 @@ test('workbench: the chip at the top right shows record, play and pause and surv
     });
     assert.equal((await chip()).on, false, 'no chip without a run');
     await bench.transport('record');
-    assert.deepEqual(await chip(), { on: true, kind: 'record', text: 'REC', label: 'Aufnahme', pulse: 'caw-rec' });
+    assert.deepEqual(await chip(), { on: true, kind: 'record', text: 'REC', label: 'Aufnahme', pulse: 'caw-pulse' });
     await page.evaluate(() => document.body.classList.add('still'));
     assert.equal((await chip()).pulse, 'none', 'animations off: no pulse');
     await page.evaluate(() => document.body.classList.remove('still'));
@@ -544,7 +546,7 @@ test('workbench: the pill top right shows only the four chat header labels, with
     const pill = async () => ((await bench.page.isVisible('#state')) ? bench.page.textContent('#state') : null);
     await bench.steps([{ id: 'S1', name: 'Eins' }]);
     await bench.step('S1', 'running');
-    for (const [state, label] of [['running', 'Claude arbeitet'], ['testing', 'caw arbeitet'], ['pausing', 'Hält an …'], ['paused', '‖ Pausiert'], ['deciding', null]]) {
+    for (const [state, label] of [['running', 'Claude arbeitet'], ['testing', 'caw arbeitet'], ['pausing', 'Hält an …'], ['paused', 'Pausiert'], ['deciding', null]]) {
         await bench.chatState(state);
         assert.ok(await until(async () => (await pill()) === label), `${state}: ${await pill()}`);
     }
@@ -553,11 +555,11 @@ test('workbench: the pill top right shows only the four chat header labels, with
 test('workbench: the steps get the heading "Durchführung" between preparation and wrap-up; it counts as no step', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
-    const headings = () => bench.page.$$eval('#steps>li', (list) => list.map((li) => `${li.dataset.kind}:${li.dataset.id ?? li.textContent.replace(/[^A-ZÄÖÜ]/g, '')}`));
+    const headings = () => bench.page.$$eval('#steps>li', (list) => list.map((li) => `${li.dataset.kind}:${li.dataset.id ?? li.querySelector('.name').textContent}`));
     await bench.steps([{ id: 'prep', name: 'Vorbereitung', kind: 'phase', points: [{ id: 'chrome', label: 'Chrome starten' }] }]);
     assert.deepEqual(await headings(), ['phase:prep'], 'no heading without steps');
     await bench.steps([{ id: 'prep', name: 'Vorbereitung', kind: 'phase' }, { id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }, { id: 'end', name: 'Abschluss', kind: 'phase' }]);
-    assert.deepEqual(await headings(), ['phase:prep', 'section:DURCHFÜHRUNG', 'step:S1', 'step:S2', 'phase:end']);
+    assert.deepEqual(await headings(), ['phase:prep', 'section:Durchführung', 'step:S1', 'step:S2', 'phase:end']);
     const total = () => bench.page.textContent('#steps>li[data-kind=section] .ms');
     await bench.step('S1', 'running');
     await bench.step('S1', 'pass');
@@ -584,64 +586,6 @@ test('workbench: while Claude works the chat input is locked and the application
     assert.equal(await bench.view.locator('#feld').evaluate((node) => node.ownerDocument.activeElement === node), true);
     await frame.evaluate(() => window.setStatus('paused', 'Pausiert', '', 'Weiter'));
     assert.ok(await until(async () => !(await frame.locator('#input').isDisabled())), 'unlocked when paused');
-    return undefined;
-});
-
-test('workbench: a theme chosen in the dialog brings its own stylesheet and fonts at once, in workbench and chat, without reloading the app', async (t) => {
-    if (browser === null) return t.skip('no Chrome');
-    const { bench } = await open(t);
-    const chatFrame = bench.page.frames().find((frame) => frame !== bench.page.mainFrame() && frame.parentFrame() === bench.page.mainFrame() && frame.name() !== 'caw-app');
-    const own = (frame) => frame.evaluate(() => document.querySelector('style[data-caw-theme-css]')?.textContent ?? '');
-    // The app iframe keeps its document: a marker set now must still be there afterwards.
-    const app = bench.page.frame({ name: 'caw-app' }) ?? bench.page.mainFrame().childFrames()[0];
-    await app.evaluate(() => { window.cawStays = true; });
-    try {
-        for (const name of ['glas', 'terminal']) {
-            const result = await bench.page.evaluate((theme) => window.cawTheme('use', theme), name);
-            assert.equal(result.ok, true, name);
-            const { css } = loadTheme(name);
-            assert.equal(await own(bench.page.mainFrame()), css ?? '', `workbench: ${name}`);
-            assert.equal(await own(chatFrame), css ?? '', `chat: ${name}`);
-            assert.equal(await bench.page.evaluate(() => document.querySelector('style[data-caw-theme-live]')?.textContent.includes(':root{')), true);
-        }
-        // The mode switch in the dialog: workbench and chat turn light at once, with the light colours and scheme.
-        const scheme = (frame) => frame.evaluate(() => [document.documentElement.dataset.scheme, getComputedStyle(document.documentElement).colorScheme]);
-        await bench.page.keyboard.press('F7');
-        await bench.page.locator('#tmode button', { hasText: 'Hell' }).click();
-        await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'light');
-        assert.deepEqual(await scheme(bench.page.mainFrame()), ['light', 'light']);
-        assert.deepEqual(await scheme(chatFrame), ['light', 'light']);
-        assert.equal(await bench.page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--screen').trim()), loadTheme('terminal', process.env, 'light').colors.screen);
-        assert.equal(await bench.page.locator('#tmode button[aria-checked=true]').textContent(), 'Hell');
-        await bench.page.locator('#tmode button', { hasText: 'Dunkel' }).click();
-        await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'dark');
-        assert.deepEqual(await scheme(chatFrame), ['dark', 'dark']);
-        // Nothing in the dialog edits a theme: no fields, no save, rename or delete; the folder for own themes is named.
-        assert.equal(await bench.page.locator('#themeDlg input, #themeDlg details').count(), 0);
-        assert.equal(await bench.page.locator('#themeDlg .tnote code').textContent(), themesFolder());
-        assert.deepEqual(await bench.page.locator('#tthemes .tcard b').allTextContents(), ['Studio', 'Terminal', 'Raster', 'Glas']);
-        // A theme folder added while the workbench is open shows up the next time the dialog opens. It has one mode: light only,
-        // so dark is greyed out.
-        const folder = join(themesFolder(), 'tag');
-        mkdirSync(folder, { recursive: true });
-        t.after(() => rmSync(folder, { recursive: true, force: true }));
-        writeFileSync(join(folder, 'theme.json'), JSON.stringify({ themeApi: 1, name: 'tag', base: 'studio', label: 'Tag', scheme: 'light', colors: { screen: '#fafafa', pane: '#ffffff', text: '#111111' } }));
-        await bench.page.keyboard.press('Escape');
-        await bench.page.keyboard.press('F7');
-        const tag = bench.page.locator('#tthemes .tcard', { hasText: 'Tag' });
-        await tag.waitFor();
-        assert.match(await tag.textContent(), /eigenes, auf Studio · Hell$/);
-        await tag.click();
-        await bench.page.locator('#tthemes .tcard[aria-checked=true]', { hasText: 'Tag' }).waitFor();
-        await bench.page.waitForFunction(() => document.documentElement.dataset.scheme === 'light');
-        assert.equal(await bench.page.locator('#tmode button', { hasText: 'Dunkel' }).isDisabled(), true);
-        assert.equal(await bench.page.locator('#tmode button', { hasText: 'Hell' }).getAttribute('aria-checked'), 'true');
-        assert.equal(await bench.page.locator('#tmode').getAttribute('title'), 'Dieses Theme hat nur einen hellen Modus.');
-        assert.equal(await app.evaluate(() => window.cawStays === true), true, 'the app was not reloaded');
-    } finally {
-        await bench.page.evaluate(() => window.cawTheme('mode', 'dark')).catch(() => {});
-        await bench.page.evaluate(() => window.cawTheme('use', 'terminal')).catch(() => {});
-    }
     return undefined;
 });
 

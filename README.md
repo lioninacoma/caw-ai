@@ -237,8 +237,6 @@ as secrets named after the role: `CAW_TESTER_USER`, `CAW_TESTER_PASSWORD` (and `
 optionally per environment with a suffix, e.g. `CAW_TESTER_USER__STAGING`. An environment with `start`, `stop` and `reset`
 commands is started by `--start` and reset before the first writing test.
 
-The workbench comes with [themes](themes/README.md) (F7).
-
 ## Config
 
 `caw.config.json` holds environments, sign-in and roles. `init` writes it for you:
@@ -337,7 +335,6 @@ It uses Playwright to drive your installed Chrome, and recordings store Playwrig
 - [Configuration](docs/configuration.md): `caw.config.json`, environments, sign-in, roles, `caw/.env`, `caw.md`
 - [Test files](docs/test-files.md): test plan and recording format, placeholders
 - Extensions: [overlay](docs/extensions/overlay.md) (local code on a deployed environment), [ExtJS](docs/extensions/extjs.md)
-- [Themes](themes/README.md): built-in themes, own theme packages, `caw theme`
 
 ## Contributing
 

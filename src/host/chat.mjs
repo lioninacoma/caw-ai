@@ -7,11 +7,11 @@ import { appendFileSync, readFileSync } from 'node:fs';
 
 import { CawError } from '../shared/errors.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
-import { activeTheme } from '../shared/theme-package.mjs';
+import { readPrefs } from '../shared/prefs.mjs';
 import { sourceTag } from './app-view.mjs';
 import { cancelPick, pickElement } from './demonstrate.mjs';
 import { reportPage } from './report-page.mjs';
-import { APPLY_THEME_SCRIPT, CONSOLE_CSS, FAVICON, GLYPH_SCRIPT, clientTheme, themeAttr, themeCss, themeStyle } from './theme.mjs';
+import { FAVICON, MODE_SCRIPT, modeAttr, styleSheet } from './style.mjs';
 
 const BINDING = '__cawChat';
 const MAX_TEXT = 4000;
@@ -25,8 +25,8 @@ const PICK_STATES = ['paused', 'asking', 'showing', 'describing', 'planning', 'd
 const TALK_KINDS = ['discussing', 'developing'];
 // The human has to act here, so the window must not stay behind the application.
 const NEEDS_HUMAN = ['choosing', 'planning', 'deciding', 'reviewing', 'discussing'];
-// Then the workbench's raven turns to the chat.
-const RAVEN_ASKS = [...NEEDS_HUMAN, 'asking', 'showing', 'describing', 'developing'];
+// Then the workbench unfolds the chat and says it is the human's turn.
+const ASKS_HUMAN = [...NEEDS_HUMAN, 'asking', 'showing', 'describing', 'developing'];
 const UNNAMED_ELEMENT_NOTE = 'This is the element I mean.';
 
 // Status line, pill and button per state. Fetched at runtime: the language is not known yet at import time.
@@ -415,49 +415,47 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
     };
 };
 
-/** The chat page in the current language; texts for the page script are in T. Exported for preview and tests. */
-export const chatPage = (nonce = '', theme = activeTheme()) => `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw · Chat</title><script>(()=>{${APPLY_THEME_SCRIPT}
-// The theme comes from the workbench: the chat is isolated in its own origin. Colours only via cawApplyTheme (validates
-// itself), glyphs and prompts only as text (cawThemeText below).
-addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;cawApplyTheme(document.documentElement,event.data.theme);window.cawThemeText?.(event.data.theme);});try{parent.postMessage({caw:'theme-request'},'*');}catch{}})();${sourceTag}</script>${FAVICON}<style>
-${themeCss(theme)}${CONSOLE_CSS}
+/**
+ * The chat page in the current language and the personal mode; texts for the page script are in T. Exported for preview and
+ * tests. The chat has its own opaque origin, so it follows the system mode by itself (MODE_SCRIPT).
+ */
+export const chatPage = (nonce = '', mode = readPrefs().mode) => `<!doctype html><html lang="${language()}"${modeAttr(mode)}><head><meta charset="utf-8"><title>caw · Chat</title><script>${MODE_SCRIPT}${sourceTag}</script>${FAVICON}<style>
+${styleSheet()}
 *,*::before,*::after{box-sizing:border-box}html,body{height:100%}
-body{margin:0;display:flex;flex-direction:column;background:var(--pane);color:var(--text);font:var(--fs-body)/1.5 var(--font-body)}
+body{margin:0;display:flex;flex-direction:column;background:var(--panel);color:var(--text);font:var(--fs)/1.5 var(--font)}
 /* No header of its own: the workbench frame says CHAT, its key bar has "Esc Cancel". The row only appears while cancelling:
    the first Esc asks here ("Really cancel?" / "No"), a second Esc or a click confirms. */
 header{display:none;align-items:center;justify-content:flex-end;gap:10px;padding:6px 12px 0}#abort,#abortNo{flex:none}
 body.arming header,body.stopping header{display:flex}
 [data-state=discussing] #toggle,[data-state=developing] #toggle{display:none}[data-state=deciding] #abort,[data-state=discussing] #abort,[data-state=developing] #abort,[data-state=closed] #abort{display:none}
-#abortNo,#abort{white-space:nowrap;border:0;background:none;padding:3px 7px;font:400 19px/1 var(--font-crt);color:var(--muted)}
-#abortNo{color:var(--text)}#abortNo:hover,#abort:hover{background:var(--pane-2);color:var(--text)}#abortNo[hidden]{display:none}
-#abort.sure{background:var(--fail);color:var(--ink)}#abort:disabled{color:var(--muted);cursor:default;background:none}
-main{flex:1;overflow-y:auto;padding:12px 12px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-color:var(--line) var(--pane)}
-footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px;width:32px;height:32px;place-items:center;padding:0;background:var(--screen);border:0;box-shadow:inset 0 0 0 2px var(--frame);color:var(--text)}#down.on{display:grid}footer:has(#down.on) #status{min-height:44px;padding-right:44px}#down:hover{background:var(--pane-2)}#down svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:square;stroke-linejoin:miter}#down.new::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;background:var(--info)}
+#abortNo,#abort{white-space:nowrap;border:0;background:none;padding:3px 7px;font:500 13px/1 var(--font);color:var(--muted)}
+#abortNo{color:var(--text)}#abortNo:hover,#abort:hover{background:var(--panel2);color:var(--text)}#abortNo[hidden]{display:none}
+#abort.sure{background:var(--fail);color:var(--on-prim)}#abort:disabled{color:var(--muted);cursor:default;background:none}
+main{flex:1;overflow-y:auto;padding:12px 12px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-color:var(--line) var(--panel)}
+footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px;width:32px;height:32px;place-items:center;padding:0;background:var(--sunk);border:0;box-shadow:inset 0 0 0 2px var(--line2);color:var(--text)}#down.on{display:grid}footer:has(#down.on) #status{min-height:44px;padding-right:44px}#down:hover{background:var(--panel2)}#down svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:square;stroke-linejoin:miter}#down.new::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;background:var(--run)}
 .message{white-space:pre-wrap;overflow-wrap:anywhere}
-/* The speaker is shown in front like in a console: claude> and du>. */
-/* Prompts, marks and glyphs are set by the page script as text from the theme (data-who, data-mark, data-bullet, data-tree). */
-.who{display:block;font:400 19px/1.1 var(--font-crt);white-space:pre}.who.c{color:var(--claude)}.who.h{color:var(--human)}.who .cp{color:var(--muted);margin-left:8px}
+/* The speaker is named above the message: Claude and You. Marks are plain text (✓ ✕ ? › └). */
+.who{display:block;font:500 13px/1.1 var(--font);white-space:pre}.who.c{color:var(--claude)}.who.h{color:var(--human)}.who .cp{color:var(--muted);margin-left:8px}
 .about{display:block;font:11.5px/1.4 var(--font-mono);color:var(--muted);margin-bottom:2px;overflow-wrap:anywhere}
-.about .tr,.bl{color:var(--faint);margin-right:6px}.bl{color:var(--ok)}
-.mk{font:400 18px/1 var(--font-crt);white-space:pre;margin-right:8px}
-/* Cards: windows within the window, the header line in VT323 with the mark in front. */
-.question,.plan,.advice,.failure,.decision{padding:10px 12px 11px;background:var(--pane-2);border:2px solid var(--line);white-space:normal}
-.question{border-color:var(--info)}.question>.who .mk{color:var(--info)}
-.ruled{display:flex!important;align-items:baseline}.ruled .fill{flex:1;min-width:2ch;margin-left:.5ch;overflow:hidden;white-space:nowrap}
-.plan strong,.advice strong,.failure strong,.decision strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:6px;text-shadow:0 0 8px var(--glow);white-space:pre-wrap}
-.plan{border-color:var(--frame)}
-.plan .notes{color:var(--muted);font-size:13px;margin-bottom:6px}.plan .heard{color:var(--accent,inherit);font-size:13px}div.heard{margin-bottom:6px}.step{padding:8px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:500}.step .sid{flex:none;font:400 18px/1 var(--font-crt);color:var(--info)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--warn)}.step .before{color:var(--muted);text-decoration:line-through}
-.failure{border-color:var(--fail);background:var(--fail-tint)}.failure strong{color:var(--text);text-shadow:none}.failure strong .mk{color:var(--fail)}.fail-inv .failure strong .mk{background:var(--fail);color:var(--ink)}
+.about .tr,.bl{color:var(--faint);margin-right:6px}.bl{color:var(--pass)}
+.mk{font:500 12px/1 var(--font);white-space:pre;margin-right:8px}
+/* Cards: the header line with the mark in front. */
+.question,.plan,.advice,.failure,.decision{padding:10px 12px 11px;background:var(--panel2);border:2px solid var(--line);white-space:normal}
+.question{border-color:var(--run)}.question>.who .mk{color:var(--run)}
+.plan strong,.advice strong,.failure strong,.decision strong{display:block;font:500 13px/1.1 var(--font);color:var(--accent-text);margin-bottom:6px;white-space:pre-wrap}
+.plan{border-color:var(--line2)}
+.plan .notes{color:var(--muted);font-size:13px;margin-bottom:6px}.plan .heard{color:var(--accent-text,inherit);font-size:13px}div.heard{margin-bottom:6px}.step{padding:8px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:500}.step .sid{flex:none;font:500 12px/1 var(--font);color:var(--run)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:500 12px/1 var(--font);color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--warn)}.step .before{color:var(--muted);text-decoration:line-through}
+.failure{border-color:var(--fail);background:var(--fail-soft)}.failure strong{color:var(--text)}.failure strong .mk{color:var(--fail)}
 .failure .reason{margin:0 0 9px;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
-.failure .badge{display:inline-block;margin:0 0 9px;padding:2px 8px;font:400 18px/1.1 var(--font-crt);color:var(--muted);box-shadow:inset 0 0 0 2px currentColor}.failure .badge.app{color:var(--fail)}.failure .badge.environment{color:var(--warn)}.failure .badge.test{color:var(--info)}
-.decision{border-color:var(--ok)}.decision strong{color:var(--text);text-shadow:none}.decision strong .mk{color:var(--ok)}
+.failure .badge{display:inline-block;margin:0 0 9px;padding:2px 8px;font:500 12px/1.1 var(--font);color:var(--muted);box-shadow:inset 0 0 0 2px currentColor}.failure .badge.app{color:var(--fail)}.failure .badge.environment{color:var(--warn)}.failure .badge.test{color:var(--run)}
+.decision{border-color:var(--pass)}.decision strong{color:var(--text)}.decision strong .mk{color:var(--pass)}
 .decision ul{margin:0 0 8px;padding-left:18px;display:grid;gap:4px;font-size:13.5px;overflow-wrap:anywhere}.decision details{margin:0 0 6px}.decision summary{cursor:pointer;font-size:13.5px;font-weight:500}.decision details ul{margin:4px 0 0;color:var(--muted)}.decision .next{margin:6px 0 0;font-size:13.5px;font-weight:500}
-.failure .warn,.advice .warn,.decision .warn{margin:0 0 9px;padding:6px 9px;font-size:13px;color:var(--warn);background:var(--screen);box-shadow:inset 3px 0 0 var(--warn)}
+.failure .warn,.advice .warn,.decision .warn{margin:0 0 9px;padding:6px 9px;font-size:13px;color:var(--warn);background:var(--sunk);box-shadow:inset 3px 0 0 var(--warn)}
 .failure details{margin:0 0 6px}.failure summary{cursor:pointer;font-size:13.5px;font-weight:500}.failure ul{margin:4px 0 0;padding-left:18px;display:grid;gap:4px;font-size:13.5px;color:var(--muted);overflow-wrap:anywhere}.failure .next{margin:6px 0 0;font-size:13px;color:var(--muted)}
-.advice{border-color:var(--frame)}.advice.app{border-color:var(--info)}.advice strong{color:var(--muted);text-shadow:none}.advice.app strong{color:var(--info)}.advice strong .bl{color:inherit}
-.advice h2{margin:0 0 4px;font-size:15px;font-weight:500}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
-.advice pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--screen);padding:8px 10px;font:12px/1.45 var(--font-mono);box-shadow:inset 0 0 0 2px var(--line)}.advice pre.del{text-decoration:line-through;color:var(--muted);margin-bottom:6px}
-.advice .copy{margin-top:8px;height:28px;padding:0 9px;font:400 18px/1 var(--font-crt);color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}.advice .copy:hover{background:var(--line)}
+.advice{border-color:var(--line2)}.advice.app{border-color:var(--run)}.advice strong{color:var(--muted)}.advice.app strong{color:var(--run)}.advice strong .bl{color:inherit}
+.advice h2{margin:0 0 4px;font-size:15px;font-weight:500}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:500 12px/1 var(--font);color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
+.advice pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sunk);padding:8px 10px;font:12px/1.45 var(--font-mono);box-shadow:inset 0 0 0 2px var(--line)}.advice pre.del{text-decoration:line-through;color:var(--muted);margin-bottom:6px}
+.advice .copy{margin-top:8px;height:28px;padding:0 9px;font:500 12px/1 var(--font);color:var(--text);background:var(--panel);border:0;box-shadow:inset 0 0 0 2px var(--line2)}.advice .copy:hover{background:var(--line)}
 /* Actions muted: ■ click … */
 details.activity{font-size:12.5px;color:var(--muted)}
 details.activity summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;padding:1px 0;user-select:none;font:12.5px var(--font-mono)}
@@ -467,8 +465,8 @@ details.activity[open] summary::before{content:"▾"}
 details.activity .latest{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
 details.activity ol{list-style:none;margin:6px 0 2px 2px;padding:0 0 0 12px;box-shadow:inset 2px 0 0 var(--line);display:flex;flex-direction:column;gap:2px}
 details.activity li{font:12px/1.45 var(--font-mono);overflow-wrap:anywhere}
-#thinking{display:none;gap:8px;align-items:baseline;font:400 19px/1 var(--font-crt)}[data-state=running] #thinking,[data-state=advising] #thinking{display:flex}
-#thinking .who{display:inline}#thinking i{font-style:normal;color:var(--info)}
+#thinking{display:none;gap:8px;align-items:baseline;font:500 13px/1 var(--font)}[data-state=running] #thinking,[data-state=advising] #thinking{display:flex}
+#thinking .who{display:inline}#thinking i{font-style:normal;color:var(--run)}
 footer{padding:0 10px 10px}
 #status{padding:6px 2px;font-size:12.5px;line-height:1.45;color:var(--muted)}
 [data-state=paused] #status,[data-state=asking] #status,[data-state=showing] #status,[data-state=planning] #status{color:var(--text)}
@@ -477,97 +475,70 @@ footer{padding:0 10px 10px}
 /* For failure, decision and advice the card needs the space: compact buttons, secondary ones side by side. */
 #choices .rest{display:flex;flex-wrap:wrap;gap:10px}#choices .rest button{flex:1 1 auto;min-width:96px}
 :is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices{gap:6px;padding-bottom:10px}:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices .rest{gap:6px}
-#choices button.sure{background:var(--fail);color:var(--ink);box-shadow:none}#choices .no{flex:0 0 auto;min-width:0}
-kbd{display:inline-block;margin-left:8px;padding:0 4px;font:400 15px/1.1 var(--font-crt);opacity:.8;box-shadow:inset 0 0 0 1px currentColor}
-#next{display:none;margin:2px 2px 12px;padding:10px 12px;background:var(--pane-2);border:2px solid var(--frame)}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
-#next strong{display:block;font:400 20px/1.1 var(--font-crt);color:var(--accent);margin-bottom:4px;text-shadow:0 0 8px var(--glow)}#next p{margin:0 0 10px;font-size:13px;color:var(--muted)}#next code{font:12px var(--font-mono);color:var(--info);overflow-wrap:anywhere}#next .cmd{margin:12px 0 0}
+#choices button.sure{background:var(--fail);color:var(--on-prim);box-shadow:none}#choices .no{flex:0 0 auto;min-width:0}
+kbd{display:inline-block;margin-left:8px;padding:0 4px;font:500 11px/1.1 var(--font);opacity:.8;box-shadow:inset 0 0 0 1px currentColor}
+#next{display:none;margin:2px 2px 12px;padding:10px 12px;background:var(--panel2);border:2px solid var(--line2)}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
+#next strong{display:block;font:500 13px/1.1 var(--font);color:var(--accent-text);margin-bottom:4px}#next p{margin:0 0 10px;font-size:13px;color:var(--muted)}#next code{font:12px var(--font-mono);color:var(--run);overflow-wrap:anywhere}#next .cmd{margin:12px 0 0}
 #next .acts{display:flex;flex-wrap:wrap;gap:10px}
-#report,#closeWindow,#learn{min-height:36px;padding:6px 14px;font:400 20px/1 var(--font-crt);border:0;background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#report:hover,#closeWindow:hover,#learn:hover{filter:brightness(1.08)}#report:active,#closeWindow:active,#learn:active{transform:translate(2px,2px);box-shadow:none}#learn[hidden]{display:none}#learn:disabled{opacity:.7}
-#closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--pane);color:var(--text);box-shadow:inset 0 0 0 2px var(--frame)}
+#report,#closeWindow,#learn{min-height:36px;padding:6px 14px;font:500 13px/1 var(--font);border:0;background:var(--accent-text);color:var(--on-prim);box-shadow:none}#report:hover,#closeWindow:hover,#learn:hover{filter:brightness(1.08)}#report:active,#closeWindow:active,#learn:active{transform:translate(2px,2px);box-shadow:none}#learn[hidden]{display:none}#learn:disabled{opacity:.7}
+#closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--panel);color:var(--text);box-shadow:inset 0 0 0 2px var(--line2)}
 /* Two button sizes in the chat: actions (36 px, the choices and the end card) and tools (.small, 28 px). */
-#choices button{min-height:36px;padding:6px 14px;font:400 20px/1 var(--font-crt);text-align:center;color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}
+#choices button{min-height:36px;padding:6px 14px;font:500 13px/1 var(--font);text-align:center;color:var(--text);background:var(--panel);border:0;box-shadow:inset 0 0 0 2px var(--line2)}
 #choices button:hover{background:var(--line)}#choices button:active{transform:translate(1px,1px)}
-#choices button.primary{background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#choices button.primary:hover{filter:brightness(1.08)}
+#choices button.primary{background:var(--accent-text);color:var(--on-prim);box-shadow:none}#choices button.primary:hover{filter:brightness(1.08)}
 #choices button:disabled{cursor:progress;opacity:.55;transform:none}#choices button.busy{opacity:1}
 [data-state=handing] form,[data-state=choosing] form,[data-state=deciding] form,[data-state=reviewing] form,[data-state=verifying] form,[data-state=testing] form,[data-state=preparing] form,[data-state=advising] form{display:none}
 /* The input as a prompt: du> with a blinking block, only while the field has focus and is empty. Without focus no cursor and a
    muted du>: otherwise it looks as if typing goes to the chat while the keys land in the application. */
-form{margin:2px;padding:8px 10px;background:var(--screen);box-shadow:inset 0 0 0 2px var(--line)}
+form{margin:2px;padding:8px 10px;background:var(--sunk);box-shadow:inset 0 0 0 2px var(--line)}
 form:focus-within{box-shadow:inset 0 0 0 2px var(--human)}
-.prompt{display:flex;align-items:flex-start;gap:8px}.prompt .p{flex:none;font:400 20px/1.15 var(--font-crt);color:var(--muted)}
+.prompt{display:flex;align-items:flex-start;gap:8px}.prompt .p{flex:none;font:500 13px/1.15 var(--font);color:var(--muted)}
 form:focus-within .prompt .p{color:var(--human)}
-.cursor{flex:none;display:none;width:.55em;height:1.1em;margin-top:2px;background:var(--human);animation:caw-cursor var(--cursor-ms,1000ms) steps(1) infinite}
+.cursor{flex:none;display:none;width:.55em;height:1.1em;margin-top:2px;background:var(--human);animation:caw-cursor 1s steps(1) infinite}
 form:focus-within:has(textarea:placeholder-shown) .cursor{display:block}
 textarea:placeholder-shown:focus{caret-color:transparent}
 @keyframes caw-cursor{50%{opacity:0}}
-#chip{display:none;align-items:center;gap:6px;max-width:100%;margin-bottom:8px;padding:2px 4px 2px 8px;background:var(--pane);color:var(--info);font:12px var(--font-mono);box-shadow:inset 0 0 0 2px var(--info)}#chip.on{display:inline-flex}#chipText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#chipRemove{border:0;background:none;padding:0 4px;font-size:14px;line-height:1;color:inherit}
-.small{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;font:400 18px/1 var(--font-crt);color:var(--text);background:var(--pane-2);border:0;box-shadow:inset 0 0 0 2px var(--line)}
-.small:hover:enabled{box-shadow:inset 0 0 0 2px var(--accent)}.small:disabled{opacity:.45;cursor:default}.small svg{width:12px;height:12px}
-#pick svg{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square}#pick.on{color:var(--info);box-shadow:inset 0 0 0 2px var(--info)}
+#chip{display:none;align-items:center;gap:6px;max-width:100%;margin-bottom:8px;padding:2px 4px 2px 8px;background:var(--panel);color:var(--run);font:12px var(--font-mono);box-shadow:inset 0 0 0 2px var(--run)}#chip.on{display:inline-flex}#chipText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#chipRemove{border:0;background:none;padding:0 4px;font-size:14px;line-height:1;color:inherit}
+.small{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;font:500 12px/1 var(--font);color:var(--text);background:var(--panel2);border:0;box-shadow:inset 0 0 0 2px var(--line)}
+.small:hover:enabled{box-shadow:inset 0 0 0 2px var(--accent-text)}.small:disabled{opacity:.45;cursor:default}.small svg{width:12px;height:12px}
+#pick svg{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square}#pick.on{color:var(--run);box-shadow:inset 0 0 0 2px var(--run)}
 .left{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;min-width:0}
 textarea{display:block;flex:1;min-width:0;width:100%;min-height:22px;max-height:160px;resize:none;border:0;outline:0;padding:0 2px;font:inherit;color:inherit;background:transparent;overflow-y:hidden;scrollbar-width:thin;caret-color:var(--human)}textarea.full{overflow-y:auto}
 textarea::placeholder{color:var(--muted)}
 .row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
 button{font:inherit;cursor:pointer;color:inherit;border-radius:0}
-[data-state=paused] #toggle,[data-state=asking] #toggle,[data-state=showing] #toggle,[data-state=planning] #toggle{background:var(--accent);color:var(--ink);box-shadow:none}
+[data-state=paused] #toggle,[data-state=asking] #toggle,[data-state=showing] #toggle,[data-state=planning] #toggle{background:var(--accent-text);color:var(--on-prim);box-shadow:none}
 #toggle{white-space:nowrap}#toggle svg{fill:currentColor}#toggle .play{display:none}
 [data-state=paused] #toggle .play,[data-state=asking] #toggle .play,[data-state=showing] #toggle .play,[data-state=planning] #toggle .play{display:block}
 [data-state=paused] #toggle .pause,[data-state=asking] #toggle .pause,[data-state=showing] #toggle .pause,[data-state=planning] #toggle .pause{display:none}
 /* The demonstration ends with stop like a recording, not with continue. */
 #toggle .stop{display:none}[data-state=showing] #toggle .stop{display:block}[data-state=showing] #toggle .play{display:none}
 .actions{display:flex;align-items:center;gap:10px}#mark{display:none}[data-state=showing] #mark{display:inline-flex}
-#send{width:30px;padding:0;justify-content:center;background:var(--human);color:var(--ink);box-shadow:none}#send:hover:enabled{filter:brightness(1.08);box-shadow:none}#send svg{fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:square;stroke-linejoin:miter}
+#send{width:30px;padding:0;justify-content:center;background:var(--human);color:var(--on-prim);box-shadow:none}#send:hover:enabled{filter:brightness(1.08);box-shadow:none}#send svg{fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:square;stroke-linejoin:miter}
 textarea:focus-visible{outline:0}
 [data-state=closed] form,.stopping form,.stopping #choices{opacity:.55;pointer-events:none}
-/* The theme's spinner: the page script writes the current frame to data-f, CSS shows it only as text. Block characters are
-   drawn via data-q instead (GLYPH_CSS), without a fallback font. */
-.loader,[data-state=handing] #status::before,#toggle.busy::before,#choices button.busy::before{content:attr(data-f);display:inline-block;flex:none;margin-right:8px;color:var(--info)}
-[data-state=handing] #status.qbp[data-q]::before,#toggle.busy.qbp[data-q]::before,#choices button.busy.qbp[data-q]::before{content:"";width:1ch;height:1em;vertical-align:-.15em}
+/* The spinner: a CSS ring in front of the text while something is busy. */
+[data-state=handing] #status::before,#toggle.busy::before,#choices button.busy::before{content:"";display:inline-block;flex:none;width:10px;height:10px;margin-right:8px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;vertical-align:-1px;color:var(--run);animation:caw-spin .9s linear infinite}
 #toggle.busy svg{display:none!important}#toggle.busy{cursor:progress}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
-</style>${themeStyle(theme)}</head><body data-state="running">
+</style></head><body data-state="running">
 <header><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
-<main id="messages" class="readable" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><span class="who c" data-who="claude"></span><i data-spin></i></div></main>
+<main id="messages" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><span class="who c" data-who="claude"></span><i class="spinner"></i></div></main>
 <footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="learn" type="button" hidden>${t('chat.page.learn')}</button><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><div class="prompt"><span class="p" aria-hidden="true" data-who="human"></span><span class="cursor" aria-hidden="true"></span><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea></div>
 <div class="row"><div class="left"><button id="toggle" class="small" type="button"><svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/></svg><svg class="play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1h2v1h2v1h2v1h2v4H9v1H7v1H5v1H3z"/></svg><svg class="stop" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8"/></svg><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button><button id="pick" class="small" type="button" disabled title="${t('chat.page.pickDisabled')}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>${t('chat.page.element')}</button></div>
 <div class="actions"><button id="mark" class="small" type="button" disabled title="${t('chat.page.markCheckpointTitle')}">${t('chat.page.markCheckpoint')}</button><button id="send" class="small" type="submit" aria-label="${t('chat.page.send')}" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></form></footer>
 <script>
-${GLYPH_SCRIPT}
 const T=${JSON.stringify(texts('chat.page.'))};
-// The theme's glyphs and prompts. Text only: set via textContent, never as HTML or CSS. New ones arrive with the workbench's message.
-let TH=${JSON.stringify(clientTheme(theme)).replaceAll('<', '\\u003c')};
-const glyph=(value,fallback)=>typeof value==='string'&&value.length>0&&value.length<=64?value:fallback;
-const frames=()=>{const list=TH?.spinner?.frames;return Array.isArray(list)&&list.length>0?list.slice(0,16).map((frame)=>glyph(frame,'▖')):['▖','▘','▝','▗'];};
-const prompt=(who)=>glyph(TH?.prompt?.[who],who==='claude'?'claude>':'>');
-const markOf=(kind,frame)=>glyph(TH?.marks?.[kind],'['+kind+']').split('{spinner}').join(frame??frames()[0]);
-const bulletOf=(kind)=>glyph(TH?.bullets?.[kind],'▸');
-const treeOf=(kind)=>glyph(TH?.tree?.[kind],kind==='end'?'└':'├');
-const ruleTitle=(title)=>{const line=glyph(TH?.rule?.line,'─');return glyph(TH?.rule?.format,'{line}{line} {title}').split('{title}').join(title).split('{line}').join(line).replace(/\\s*$/,'');};
-const fillRule=(node,title)=>{const line=glyph(TH?.rule?.line,'─'),format=glyph(TH?.rule?.format,'{line}{line} {title}');const at=format.lastIndexOf('{line}');
-  const trailing=at>format.indexOf('{title}')&&format.slice(at+6).trim()==='';node.classList.toggle('ruled',trailing);
-  if(!trailing){node.textContent=ruleTitle(title);return;}
-  const head=document.createElement('span');head.textContent=format.slice(0,at).split('{title}').join(title).split('{line}').join(line).replace(/\\s*$/,'');
-  const fill=document.createElement('span');fill.className='fill';fill.setAttribute('aria-hidden','true');fill.textContent=line.repeat(240);node.replaceChildren(head,fill);};
+// Who speaks, and the plain marks.
+const prompt=(who)=>who==='claude'?'Claude':T['chat.page.you'];
+const MARK={ok:'✓',fail:'✕',ask:'?',warn:'!'};
+const markOf=(kind)=>MARK[kind]??'·';
+const BULLET={ok:'·',info:'›',warn:'!',fail:'✕'};
+const bulletOf=(kind)=>BULLET[kind]??'›';
+const treeOf=(kind)=>kind==='end'?'└':'├';
+const fillRule=(node,title)=>{node.textContent=title;};
 const marker=(cls,text,data)=>{const span=document.createElement('span');span.className=cls;span.textContent=text;for(const [key,value] of Object.entries(data??{}))span.dataset[key]=value;return span;};
 const whoLine=(who,extra)=>{const line=marker('who '+(who==='claude'?'c':'h'),'');line.append(marker('',prompt(who),{who}));if(extra)line.append(extra);return line;};
-// Rewrite everything that comes from the theme: after a new message from the workbench.
-const paintTheme=()=>{
-  for(const node of document.querySelectorAll('[data-who]'))node.textContent=prompt(node.dataset.who);
-  for(const node of document.querySelectorAll('[data-mark]'))node.textContent=markOf(node.dataset.mark);
-  for(const node of document.querySelectorAll('[data-bullet]'))node.textContent=bulletOf(node.dataset.bullet);
-  for(const node of document.querySelectorAll('[data-tree]'))node.textContent=treeOf(node.dataset.tree);
-  for(const node of document.querySelectorAll('[data-rule]'))node.textContent=glyph(TH?.rule?.line,'─').repeat(2);
-  for(const node of document.querySelectorAll('[data-heading]'))fillRule(node,node.dataset.heading);
-  document.body.classList.toggle('fail-inv',TH?.failInverted!==false);
-  const cursor=Number(TH?.prompt?.cursorMs);document.documentElement.style.setProperty('--cursor-ms',(Number.isFinite(cursor)&&cursor>=200&&cursor<=5000?Math.round(cursor):1000)+'ms');
-  spin();
-};
-// Spinner: one clock for all; with reduced motion the first frame stays.
-let spinTimer=0,spinIndex=0;
-const spinFrame=()=>{const list=frames(),frame=list[spinIndex%list.length],q=cawGlyphQ(frame);for(const node of document.querySelectorAll('[data-spin]'))node.replaceChildren(cawGlyph(frame));
-  for(const node of document.querySelectorAll('#status,#toggle,#choices button')){node.classList.toggle('qbp',q!==null);if(q===null){delete node.dataset.q;node.dataset.f=frame;}else{node.dataset.q=q;node.dataset.f='';}}};
-const spin=()=>{clearInterval(spinTimer);spinIndex=0;spinFrame();const ms=Number(TH?.spinner?.ms);if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;spinTimer=setInterval(()=>{spinIndex+=1;spinFrame();},Number.isFinite(ms)&&ms>=50&&ms<=2000?ms:150);};
-window.cawThemeText=(theme)=>{if(theme&&typeof theme==='object'){TH=theme;paintTheme();}};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
 const send=(type,text,checkpoint)=>window.${BINDING}({type,text,checkpoint,nonce:${JSON.stringify(nonce)}});
 const input=document.getElementById('input'),messages=document.getElementById('messages'),thinking=document.getElementById('thinking'),abort=document.getElementById('abort'),sendButton=document.getElementById('send'),mark=document.getElementById('mark');
@@ -582,7 +553,7 @@ input.addEventListener('input',fit);
 document.getElementById('form').addEventListener('submit',(event)=>{event.preventDefault();submit();});
 input.addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}});
 const toggleButton=document.getElementById('toggle');
-const PASS_KEYS=['F1','F2','F3','F4','F6','F7','F8','F10'];
+const PASS_KEYS=['F1','F2','F3','F4','F6','F8','F10'];
 toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');document.getElementById('toggleText').textContent=T['chat.page.wait'];send('toggle');});
 // F5 in the chat does not reload the workbench but refreshes like there: application reloaded, state restored.
 addEventListener('keydown',(event)=>{if(event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}
@@ -728,7 +699,6 @@ function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();
   else if(event.data.key==='Escape'&&!pick.classList.contains('on')&&canAbort())abort.click();});
-paintTheme();
 ${sourceTag}</script></body></html>`;
 
 // Runs in an isolated world of the chat frame: the page's own scripts cannot redefine window.origin or document.write there.
@@ -833,7 +803,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
                 waitingFor = state;
                 onWaiting?.(t('chat.waiting', { status: statusTexts(state).text }));
             } else if (!NEEDS_HUMAN.includes(state)) waitingFor = null;
-            quiet(Promise.resolve(bench.mood?.(RAVEN_ASKS.includes(state) ? 'ask' : 'wait')));
+            quiet(Promise.resolve(bench.mood?.(ASKS_HUMAN.includes(state) ? 'ask' : 'wait')));
             quiet(Promise.resolve(bench.chatState?.(state)));
             if (picking && !PICK_STATES.includes(state)) quiet(cancelPick(session));
         },

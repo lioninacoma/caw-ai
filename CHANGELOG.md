@@ -9,7 +9,8 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Your own `caw.md` next to `prefs.json`: notes for Claude in every project, read before the project's `caw/caw.md`, which wins on a conflict, also by the Docker agent. The report and `caw doctor` name the file and its number of lines, never its content. Claude's context advice can go to either file; the card names which, and only your click writes.
 
 ### Changed
-- The chat has two button sizes, actions and tools. "Learn baselines" is now "Save baselines" and looks like the other end-card buttons in every theme. Labels have no brackets any more. The workbench header is flatter and shows "caw" next to the raven.
+- The chat has two button sizes, actions and tools. "Learn baselines" is now "Save baselines" and looks like the other end-card buttons. Labels have no brackets any more. The workbench header is flatter.
+- One design, Graphite, in a light and a dark mode that follows the system, with the fonts Geist and Geist Mono, replaces the theme system: the theme packages and own theme folders, `caw theme`, the theme dialog (F7), the `theme` key in `caw.config.json` (now an unknown key like any other) and the `theme` setting in `prefs.json` are gone, and so are the raven logo and the fonts VT323, IBM Plex Mono, Inter and JetBrains Mono. The terminal head reads `● caw · Context-Aware Web Testing`.
 - caw never takes user names or passwords from a page and never writes them: you fill `caw/.env` (or CI secrets) yourself. `init` asks for the role names in the terminal and lists their variables in `caw/.env.example`; `caw role add <role>` (and `caw_role add`) adds the role and names its variables, without a window; `role remove` leaves `caw/.env` as it is. A run whose role has no test user stops before Chrome or Claude start with `credentials-missing`, naming the variables, instead of opening a sign-in window.
 
 ### Security

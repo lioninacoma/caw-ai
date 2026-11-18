@@ -99,8 +99,6 @@ Befehle:`,
                                          landet in caw/.auth/<umgebung>/<rolle>.json`,
     'cli.help.export': `  export <test> [--env <name>]           Den aufgenommenen Test als Playwright-Test, der ohne caw läuft (@playwright/test):
       [--out <ordner>]                   <test>.spec.mjs, caw-support.mjs und playwright.config.mjs, in caw/export/playwright`,
-    'cli.help.theme': `  theme [use <name> | check <name>]      Themes auflisten, eines wählen (gilt für dich, in allen Projekten) oder prüfen:
-                                         Schema, Kontrast, Markenbreite, Schriften. Ändern in der Werkbank mit F7`,
     'cli.help.overlay': `  overlay status [--env <name>]          Ist der lokale Code-Server bereit (url des Teils)? Ohne Browser, startet nichts:
                                          ready, moved (läuft auf anderem Port), down, wrong-app, stale
       [--part <teil>] [--json]           Nicht nötig, wenn overlay.parts nur einen kennt; --json: der Status als eine JSON-Zeile
@@ -151,7 +149,6 @@ Browser:
     // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw init [--url <adresse>] [--env <name>] [--language <kürzel>] [--explore-only] [--login | --no-login] [--yes] [--from <datei>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <ordner>]',
-    'cli.synopsis.theme': 'caw theme [use <name> | check <name>]',
     'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--headless] [--agent local|docker|session]',
     'cli.reproduceOneSource': 'Den Fehlerbericht entweder als Argument, mit --file oder mit - von stdin, nicht mehrfach.',
     'cli.reproduceBugMissing': 'Welchen Fehler? caw reproduce "Nach dem Speichern zeigt die Liste den Eintrag nicht" (oder --file <datei>, oder - für stdin).',
@@ -541,24 +538,6 @@ Browser:
     'cli.uiPassed': '{count} bestanden',
     'cli.uiFailed': '{count} Fehler',
     'cli.uiOpen': '{count} offen',
-    'cli.themeHeading': 'Themes (Modus {mode})',
-    'cli.themeOwn': 'eigenes, auf {base}',
-    'cli.themeActive': '(aktiv)',
-    'cli.themeHint': 'Wählen: caw theme use <name>, Hell oder Dunkel: caw theme mode light|dark. Ändern: F7 in der Werkbank.',
-    'cli.themeMode.dark': 'dunkel',
-    'cli.themeMode.light': 'hell',
-    'cli.themeModeSet': 'Modus {mode} gewählt.',
-    'cli.themeOnly.dark': '{name} hat nur einen dunklen Modus und bleibt dunkel.',
-    'cli.themeOnly.light': '{name} hat nur einen hellen Modus und bleibt hell.',
-    'cli.themeUsed': 'Theme {name} gewählt.',
-    'cli.themeUnknown': 'Theme {name} gibt es nicht. Vorhanden: {names}',
-    'cli.themeUsage': 'Aufruf: caw theme [use <name> | mode <dark|light> | check <name>]',
-    'cli.themeCheck': 'Theme {name} prüfen',
-    'cli.themeSchemaOk': 'Schema passt',
-    'cli.themeWidth': 'Die Marken sind unterschiedlich breit; Texte dahinter stehen dann nicht untereinander.',
-    'cli.themeContrast': 'Kontrast {pair} nur {ratio}:1, unter 4,5:1 schwer lesbar.',
-    'cli.themeFontMissing': 'Schrift fehlt: {file}',
-    'cli.themeLooksOk': 'Kontrast, Marken und Schriften in Ordnung',
     'cli.roleSynopsis': 'Aufruf: caw role [list [--json] | add <rolle> | remove <rolle> | login <rolle> --env <name>]',
     'cli.roleUnknownArg': 'role kennt {arg} nicht. Erlaubt: --env, --json',
     'cli.envFileHead': '# Testnutzer für caw. Nie einchecken.',

@@ -2,10 +2,9 @@
 
 caw-ai is licensed under the MIT License, see `LICENSE`. It ships or uses the following third-party parts:
 
-- **Fonts:** VT323 (headings, marks, logo) and IBM Plex Mono (text) in `assets/fonts/`, under the SIL Open Font License 1.1, see the `OFL-*.txt` files there.
-  - IBM Plex Mono: `ibm-plex-mono-400.woff2` and `ibm-plex-mono-500.woff2` are IBM's own files `IBMPlexMono-Regular-Latin1.woff2` and `IBMPlexMono-Medium-Latin1.woff2` from the npm package `@ibm/plex-mono` (2.5.0, `fonts/split/woff2/`), unmodified; only the file names are lower case. `OFL-ibm-plex-mono.txt` is the package's `LICENSE.txt`.
-  - VT323: `vt323-latin-400-normal.woff2` is the latin woff2 subset from the npm package `@fontsource/vt323` (5.2.6), built by Fontsource from the Google Fonts release, shipped byte for byte.
-  - IBM Plex declares the Reserved Font Name "Plex" (`Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"`). caw-ai ships IBM's files unmodified. If you modify them (subset, convert, change glyphs) and distribute the result, the OFL requires a different font name without "Plex". VT323 has no Reserved Font Name.
-- **Themes and logo:** the theme packages in `themes/` and the ASCII raven were made for caw-ai and are part of the package under its MIT License.
+- **Fonts:** Geist and Geist Mono (all text) in `assets/fonts/`, under the SIL Open Font License 1.1, see `OFL-geist.txt` there.
+  - `geist.woff2` and `geist-mono.woff2` are the variable fonts (weights 100 to 900) of the official Geist release 1.9.2 (github.com/vercel/geist-font), shipped byte for byte; only the file names are shortened. `OFL-geist.txt` is the release's license file.
+- **Logo:** the caw logo in `src/host/style.mjs` is part of the package under its MIT License.
+- **Icons:** the line icons in `src/host/style.mjs` follow the style of Lucide (lucide.dev), and some paths may be taken from it. Lucide is under the ISC License: Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022. Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
 - **Playwright:** caw-ai drives Chrome via `playwright-core` (Apache-2.0). It does not download a browser of its own; it uses the installed Google Chrome.
 - **Claude Code:** The Docker sandbox installs `@anthropic-ai/claude-code` when the image is built; its own terms apply. Runs with the `docker` agent need your own API key from the Claude Console (`ANTHROPIC_API_KEY`); the `local` and `session` agents use your own Claude Code sign-in. caw-ai passes the key to Docker by name only and never reads or stores it.

@@ -242,8 +242,6 @@ Testnutzer übergibst du als Secrets, benannt nach der Rolle: `CAW_TESTER_USER`,
 für Einmalcodes), optional je Umgebung mit Endung, z. B. `CAW_TESTER_USER__STAGING`. Eine Umgebung mit `start`-, `stop`- und
 `reset`-Befehlen startet `--start`, und vor dem ersten schreibenden Test wird sie zurückgesetzt.
 
-Die Werkbank bringt [Themes](themes/README.md) mit (F7).
-
 ## Config
 
 `caw.config.json` enthält Umgebungen, Anmeldung und Rollen. `init` schreibt sie dir:
@@ -345,7 +343,6 @@ Playwright-Code; `caw export` macht aus einem Test einen, wenn du aussteigen wil
 - [Konfiguration](docs/configuration.de.md): `caw.config.json`, Umgebungen, Anmeldung, Rollen, `caw/.env`, `caw.md`
 - [Testdateien](docs/test-files.de.md): Format von Testplan und Aufnahme, Platzhalter
 - Erweiterungen: [Overlay](docs/extensions/overlay.de.md) (lokaler Code auf einer ausgelieferten Umgebung), [ExtJS](docs/extensions/extjs.de.md)
-- [Themes](themes/README.md): eingebaute Themes, eigene Theme-Pakete, `caw theme`
 
 ## Mitmachen
 

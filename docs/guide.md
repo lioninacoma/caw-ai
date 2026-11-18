@@ -77,7 +77,7 @@ With chat, everything runs on one page, like Cypress:
 - **Left:** the steps with their state (running, passed, failed, not reached), below them the counters for requests and console.
 - **Center:** the application in an iframe with its address. Below it requests (name, outcome, duration) and console (errors and warnings); on a console error the panel opens by itself, "Collapse" closes it.
 - **Right:** the chat with Claude, in a frame titled CHAT.
-- **Bottom:** the key bar: F1 Open… (after the handover), F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F7 Theme, F8 App only, F10 Animations off. The keys also work while the focus is in the chat.
+- **Bottom:** the key bar: F1 Open… (after the handover), F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F8 App only, F10 Animations off. The keys also work while the focus is in the chat.
 - **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge (F4, F6). When the chat needs you, it opens by itself.
 - **Reload:** F5 (the key, the button in the key bar, also inside the application) reloads the current page without cache after handover; chat and steps stay. While the test is running, also while "Open again" or F1 restores a state, this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw rebuilds it; if the test was running, it aborts without a result.
 
@@ -373,7 +373,7 @@ In all three cases the browser is the actual boundary: Claude sees the applicati
 
 In CI (`CI` set) `run` runs without chat and without Claude; `agent.mode` only applies there if a run does need Claude, and then always as `docker`.
 
-**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: the raven stops blinking, no spinner, no blinking cursor), collapsed steps or chat, and the theme with its dark or light mode (F7, see [Themes](../themes/README.md)). In the same folder your own `caw.md` holds notes for Claude in every project, read before the project's `caw/caw.md` ([Configuration](configuration.md#your-own-cawmd)).
+**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: no spinner, no blinking cursor), collapsed steps or chat, and the light or dark mode, following the system by default. In the same folder your own `caw.md` holds notes for Claude in every project, read before the project's `caw/caw.md` ([Configuration](configuration.md#your-own-cawmd)).
 
 **Token notice:** Before Claude works (record, fix a step, investigate a failure, questions in the chat, `--explain`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix a step). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--agent session` there is no notice: your session is already running.
 

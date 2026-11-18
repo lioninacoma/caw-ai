@@ -3,11 +3,11 @@
 
 import { t } from './i18n.mjs';
 import { closest } from './suggest.mjs';
-import { colorEnabled, themePainter } from './color.mjs';
-import { ravenBanner } from './raven.mjs';
+import { headLine } from './brand.mjs';
+import { colorEnabled, termPainter } from './color.mjs';
 
 /** The commands for people, in help order. */
-export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'doctor', 'role', 'export', 'theme', 'overlay'];
+export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'doctor', 'role', 'export', 'overlay'];
 /** Commands that exist but are not in the human help: the session MCP server and Claude's namespace. */
 const HIDDEN_COMMANDS = ['mcp', 'agent'];
 /** Claude's commands, under `caw agent`; their help is `caw agent --help`. */
@@ -35,11 +35,11 @@ const REMOVED = { skill: 'cli.removedSkill' };
 /** A command's block; `here` names the environments Claude may work on, if the config knows them. */
 const block = (command, here) => t(`cli.help.${command}`, { here: here === undefined || here === '' ? '' : t('cli.help.here', { names: here }) });
 
-/** The raven as banner of the full help: name and long form sit next to it, replacing the intro's first line. */
+/** In a colour terminal the head line replaces the intro's first line; without colour the intro stays as it is. */
 const banner = (intro) => {
-    const paint = themePainter(colorEnabled());
-    const raven = ravenBanner('caw', { bold: (text) => paint.bold(paint.text(text)), dim: paint.muted, frame: paint.frame, beak: paint.accent, eye: paint.text });
-    return [...raven, ...intro.split('\n').slice(1)].join('\n');
+    if (!colorEnabled()) return intro;
+    const paint = termPainter(true);
+    return [headLine('caw', { accent: paint.accent, bold: paint.bold, dim: paint.faint }), ...intro.split('\n').slice(1)].join('\n');
 };
 
 /** An option line of the overlay extension; its description continues on lines indented to the description column. */

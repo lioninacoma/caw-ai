@@ -37,8 +37,7 @@ npx caw doctor
 | `templates/` | Config template, Docker sandbox and the guide topics `caw_guide` serves (`templates/guide/`) |
 | `test/` | Unit tests (`node --test`) |
 | `e2e/` | End-to-end run against a fake app in a real Chrome |
-| `assets/fonts/` | Fonts of the built-in themes (OFL) |
-| `themes/` | Built-in theme packages and the schema, see `themes/README.md` |
+| `assets/fonts/` | Fonts of the workbench, Geist and Geist Mono (OFL) |
 
 ## Pull requests
 

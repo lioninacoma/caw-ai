@@ -70,6 +70,7 @@ export default {
     'chat.page.markCheckpointTitle': 'Type the expected result first',
     'chat.page.send': 'Send',
     'chat.page.ctrlEnter': 'Ctrl+↵',
+    'chat.page.you': 'You',
     'chat.page.wait': 'One moment …',
     'chat.page.checkpoint': 'Checkpoint',
     'chat.page.changed': ' · changed',

@@ -294,7 +294,6 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 | `lintCommand` | | Dein Prüfbefehl, z. B. `npm run lint`. Claude nennt ihn in Code-Empfehlungen. |
 | `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den `docker`-Agenten. Sonst `image` aus `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | Nutzer im Container. |
-| `theme` | | Team-Standard für die Werkbank: `{ "base": "raster", "colors": { … } }`. Eine persönliche Wahl in `prefs.json` gewinnt. Siehe [Themes](../themes/README.md#team-default). |
 | `overlay` | | Schaltet die [Overlay-Erweiterung](extensions/overlay.de.md) ein. |
 
 ## caw/caw.md
@@ -322,6 +321,6 @@ nie etwas außerhalb des Projekts geschrieben.
 
 ## Persönliche Einstellungen
 
-Werkbank-Einstellungen (Theme, Animationen, eingeklappte Bereiche, der Token-Hinweis) und deine Sprache liegen je Nutzer in
+Werkbank-Einstellungen (Animationen, eingeklappte Bereiche, der Token-Hinweis) und deine Sprache liegen je Nutzer in
 `prefs.json` unter `CAW_AI_HOME`, standardmäßig `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. Nicht im Projekt.
 Deine eigene `caw.md` (siehe oben) liegt im selben Ordner.

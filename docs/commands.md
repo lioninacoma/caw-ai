@@ -19,7 +19,6 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`reproduce`](#reproduce) | Claude reproduces a bug report on its own: report and draft test plan | yes |
 | [`role`](#role) | List, add or remove roles and their test users; `role login` stores a session (SSO) | no |
 | [`export`](#export) | The recorded test as a Playwright test that runs without caw | no |
-| [`theme`](#theme) | List, pick or check workbench themes | no |
 | [`mcp`](#mcp) | MCP server for your own Claude Code session (started by Claude Code, not in `--help`) | – |
 
 `npx caw help` prints the same overview in the terminal. `npx caw <command> --help` (or `-h`, anywhere on the line) prints only that command, `npx caw agent --help` the agent commands. `npx caw --version` prints the version.
@@ -281,17 +280,6 @@ Writes the recorded test as a Playwright test that runs without caw, only with `
 The environment (`--env`, otherwise the only fitting one) gives the address and the sign-in. At run time `CAW_BASE_URL` overrides the address; test users come from the same variables as for caw (`CAW_<ROLE>_USER`, `CAW_<ROLE>_PASSWORD`, `CAW_<ROLE>_TOTP`, optionally with `__<ENV>`). A file in the folder that export did not write is never overwritten.
 
 Not exported: learned effects and network baselines, `knownMessages`, the console and request failure rules, `retry`, `readyIgnore`, and the 2 s tolerance for a second match while a dialog closes. The test must be recorded completely and current, otherwise exit 4 with the `record` command to run.
-
-## theme
-
-```bash
-npx caw theme                 # list themes, the active one marked
-npx caw theme use raster      # pick one
-npx caw theme mode light      # light or dark
-npx caw theme check my-theme  # schema, contrast, mark width, fonts
-```
-
-The theme is yours, stored in `prefs.json`, and applies in every project. Built in: `studio` (default), `terminal`, `raster`, `glas`, each with a dark and a light mode (`mode`, dark by default). F7 in the workbench picks the theme and the mode; own themes are folders next to `prefs.json`, written by hand. Details: [themes/README.md](../themes/README.md).
 
 ## mcp
 
