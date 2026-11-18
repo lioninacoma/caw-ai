@@ -325,7 +325,7 @@ scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instr
         // Selectors may name a password field (#password); a credential would be a key of its own.
         verify('(7) the config holds no credential', !/"(user|username|password|secret|token|totp)"\s*:/i.test(JSON.stringify(config)), JSON.stringify(config.signIn));
         const mcp = existsSync(join(blank, '.mcp.json')) ? JSON.parse(readFileSync(join(blank, '.mcp.json'), 'utf8')).mcpServers : {};
-        verify('(8) no .claude/skills; .mcp.json has the entry caw through npx (nothing installed here)', !existsSync(join(blank, '.claude')) && Array.isArray(mcp.caw?.args) && mcp.caw.args.includes('caw-ai') && mcp['caw-ai'] === undefined, JSON.stringify(mcp));
+        verify('(8) no .claude/skills; .mcp.json has the entry caw through npx (nothing installed here)', !existsSync(join(blank, '.claude')) && Array.isArray(mcp.caw?.args) && mcp.caw.args.some((arg) => /^caw-ai(@|$)/.test(arg)) && mcp['caw-ai'] === undefined, JSON.stringify(mcp));
         const doctor = await client.callTool('caw_doctor');
         // Unattended nobody signed in: what the window would have filled in blocks, each with its next step, and nothing else.
         const blocking = doctor.structuredContent?.checks?.filter(({ ok, optional }) => !ok && !optional) ?? [];
@@ -334,7 +334,7 @@ scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instr
             JSON.stringify(blocking));
 
         // W3 (6): adding the overlay block through caw_config announces the overlay tool and topic.
-        const patched = await client.callTool('caw_config', { patch: { environments: { dev: { url: 'https://dev.example.com', claude: true } }, overlay: { environments: ['dev'], parts: { web: { dir: '.' } } } } });
+        const patched = await client.callTool('caw_config', { patch: { environments: { dev: { url: 'https://dev.example.com' } }, overlay: { environments: ['dev'], parts: { web: { dir: '.' } } } } });
         const announced = client.notifications.some(({ method }) => method === 'notifications/tools/list_changed');
         verify('(W3.6) the overlay block via caw_config sends tools/list_changed; then caw_overlay and topic overlay are listed',
             patched.isError === false && announced && (await names()).includes('caw_overlay') && (await client.callTool('caw_guide')).structuredContent.topics.some(({ name }) => name === 'overlay'),

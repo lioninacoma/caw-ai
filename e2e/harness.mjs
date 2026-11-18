@@ -119,7 +119,9 @@ export const approve = async (page) => {
     await page.locator('#approve').click();
 };
 // Closing is labelled "Ohne Beheben beenden" or "Lauf beenden" depending on the situation.
-export const decide = (page, label) => page.locator('#choices button', { hasText: label === 'Close' ? /Ohne Beheben beenden|Lauf beenden/ : label }).click({ timeout: 90000 });
+// A button that ends the run closes the window while Playwright still waits after the click: that click did land.
+export const decide = (page, label) => page.locator('#choices button', { hasText: label === 'Close' ? /Ohne Beheben beenden|Lauf beenden/ : label }).click({ timeout: 90000 })
+    .catch((error) => { if (!/has been closed/.test(error.message)) throw error; });
 // Discarding a draft needs a second confirming click ("Wirklich verwerfen?").
 export const discard = async (page) => {
     await decide(page, 'Entwurf verwerfen');

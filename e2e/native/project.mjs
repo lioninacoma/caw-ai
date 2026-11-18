@@ -25,7 +25,7 @@ export const TESTS = {
             actions: [{ click: button('Accept cookies'), optional: true }, { click: button('Add one') }, { click: button('Add one') }],
             check: "document.getElementById('count').textContent==='2'",
         },
-        { name: 'Anhang', expect: 'Der Anhang ist gewaehlt.', actions: [{ upload: "getByLabel('Attachment')", files: ['files/note.txt'] }], check: "document.getElementById('file-name').textContent==='note.txt'" },
+        { name: 'Anhang', expect: 'Der Anhang ist gewaehlt.', actions: [{ upload: "getByLabel('Attachment')", files: ['fixtures/note.txt'] }], check: "document.getElementById('file-name').textContent==='note.txt'" },
         { name: 'Bericht', expect: 'Der Bericht wird geladen.', actions: [{ download: "getByRole('link', { name: 'Download report', exact: true })", file: '^report\\.csv$' }], check: 'true' },
         {
             name: 'Code bestaetigen', expect: 'Der Code ist bestaetigt.',
