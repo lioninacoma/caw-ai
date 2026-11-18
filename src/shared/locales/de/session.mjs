@@ -98,7 +98,7 @@ export default {
 
     // sandbox-config
     'session.sandbox.badImage': 'Das image der Devcontainer-Config ({image}) ist kein gültiger Image-Name (Buchstaben, Ziffern, . / : @ _ -).',
-    'session.sandbox.noImage': 'Die Devcontainer-Config braucht ein "image"; "build" unterstützt caw-ai nicht. Das Image vorher bauen und hier eintragen.',
+    'session.sandbox.noImage': 'Die Devcontainer-Config braucht ein "image"; "build" unterstützt caw nicht. Das Image vorher bauen und hier eintragen.',
 
     // browser-session
     'session.browser.requestAborted': 'abgebrochen',

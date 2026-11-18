@@ -30,7 +30,8 @@ if (spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status !== 0) throw n
 process.env.CAW_LANG = 'en';
 delete process.env.CI;
 process.env.CAW_AI_HOME = mkdtempSync(join(tmpdir(), 'caw-media-home-'));
-writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ tokenNotice: 'off' }));
+// The steps column stays open: below 1500 px the workbench folds it on its own, and the demo is filmed narrower than that.
+writeFileSync(join(process.env.CAW_AI_HOME, 'prefs.json'), JSON.stringify({ tokenNotice: 'off', steps: 'open', chat: 'open' }));
 // The example's fictitious account.
 process.env.CAW_USER_USER = 'demo';
 process.env.CAW_USER_PASSWORD = 'demo';
@@ -115,9 +116,19 @@ const still = async (bench, name) => {
     if (withClaude || name === 'states') webp(['-i', png, '-c:v', 'libwebp', '-quality', '85'], name);
 };
 /**
- * Films whichever workbench is current, in real time: Chrome's screencast sends a frame whenever the page repaints, each frame
- * lasts until the next one. Nothing is sped up; only waiting is left out: hold() stops filming until the next window, and the
- * step from one window to the next is a cut. stop() appends the logo and writes the WebP.
+ * The workbench's size in CSS pixels while filmed: small, so text comes out large in the README column, but wide enough for
+ * the three columns (steps, app, chat; from 1000) and the key bar on one line (from 1120); the app in its pane gets narrower.
+ * The video has the same size (on a screen with a higher pixel density the frames are scaled down to it, never up).
+ */
+const PAGE = { width: 1140, height: 712 };
+const VIDEO = PAGE;
+/** At most this many frames a second. */
+const FPS = 12;
+/**
+ * Films whichever workbench is current, in real time: screenshots in a loop at the screen's resolution, each frame lasting
+ * until the next. Nothing is sped up; only waiting is left out:
+ * hold() stops filming until the next window, and the step from one window to the next is a cut. stop() appends the logo and
+ * writes the WebP.
  */
 const film = (name) => {
     const dir = join(out, `${name}-frames`);
@@ -126,14 +137,13 @@ const film = (name) => {
     const frames = [];
     let session = null;
     let filmed = null;
-    let size = { width: 1280, height: 630 };
     /** Stops filming; with a workbench only while that one is filmed. */
     const hold = async (bench) => {
         if (session === null || (bench !== undefined && bench !== filmed)) return;
         const was = session;
         session = null;
         filmed = null;
-        await was.send('Page.stopScreencast').catch(() => {});
+        await was.looping;
         frames.push({ cut: true });
     };
     return {
@@ -141,19 +151,31 @@ const film = (name) => {
         follow: async (bench) => {
             await hold();
             const own = await bench.context().newCDPSession(bench);
+            // caw opens the window maximized; on a large screen the workbench would be tiny in the README. A small window instead
+            // (PAGE in CSS pixels): the text comes out larger in the video and stays readable in the README column; the app in its
+            // pane gets narrower. Only the window changes, no emulation, which would fight with Playwright's own.
+            const { windowId } = await own.send('Browser.getWindowForTarget');
+            await own.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } });
+            // Outer size = page plus the browser's frame; measured once, then corrected.
+            await own.send('Browser.setWindowBounds', { windowId, bounds: { left: 0, top: 0, width: PAGE.width, height: PAGE.height } });
+            await sleep(300);
+            const inner = await bench.evaluate(() => ({ width: globalThis.innerWidth, height: globalThis.innerHeight }));
+            await own.send('Browser.setWindowBounds', { windowId, bounds: { width: 2 * PAGE.width - inner.width, height: 2 * PAGE.height - inner.height } });
+            await bench.waitForFunction(({ width, height }) => globalThis.innerWidth === width && globalThis.innerHeight === height, PAGE, { timeout: 5000 }).catch(() => {});
+            await sleep(300);
             session = own;
             filmed = bench;
-            own.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
-                own.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
-                if (session !== own) return;
-                const path = join(dir, `f${String(frames.length).padStart(5, '0')}.jpg`);
-                writeFileSync(path, Buffer.from(data, 'base64'));
-                frames.push({ path, at: metadata.timestamp });
-                // The screencast is at most 1280 wide; the WebP keeps that size.
-                const width = Math.min(1280, Math.round(metadata.deviceWidth));
-                size = { width, height: Math.round((metadata.deviceHeight * width) / metadata.deviceWidth / 2) * 2 };
-            });
-            await own.send('Page.startScreencast', { format: 'jpeg', quality: 95, maxWidth: 1280, maxHeight: 1280 });
+            own.looping = (async () => {
+                while (session === own) {
+                    const at = Date.now();
+                    const shot = await own.send('Page.captureScreenshot', { format: 'jpeg', quality: 92 }).catch(() => null);
+                    if (session !== own || shot === null) break;
+                    const path = join(dir, `f${String(frames.length).padStart(5, '0')}.jpg`);
+                    writeFileSync(path, Buffer.from(shot.data, 'base64'));
+                    frames.push({ path, at: at / 1000 });
+                    await sleep(Math.max(0, 1000 / FPS - (Date.now() - at)));
+                }
+            })();
         },
         stop: async () => {
             await hold();
@@ -164,18 +186,13 @@ const film = (name) => {
                 if (frame.cut) return;
                 const next = frames[index + 1];
                 const seconds = next === undefined || next.cut ? 0.4 : Math.min(next.at - frame.at, 2.5);
-                // Repaints closer than 1/15 s fold into the frame before: the same motion, fewer frames.
-                if (timed.length > 0 && seconds < 1 / 15 && next !== undefined && !next.cut) {
-                    timed.at(-1).seconds += seconds;
-                    return;
-                }
                 timed.push({ path: frame.path, seconds });
             });
-            timed.push(...await outro(dir, size));
+            timed.push(...await outro(dir, VIDEO));
             const slash = (path) => path.replaceAll('\\', '/');
             const list = join(dir, 'frames.txt');
             writeFileSync(list, `ffconcat version 1.0\n${timed.map(({ path, seconds }) => `file '${slash(path)}'\nduration ${seconds.toFixed(3)}\n`).join('')}file '${slash(timed.at(-1).path)}'\n`);
-            webp(['-f', 'concat', '-safe', '0', '-i', list, '-fps_mode', 'vfr', '-vf', `scale=${size.width}:${size.height}`, '-loop', '0', '-c:v', 'libwebp_anim', '-quality', '70'], name);
+            webp(['-f', 'concat', '-safe', '0', '-i', list, '-fps_mode', 'vfr', '-vf', `scale=${VIDEO.width}:${VIDEO.height}:flags=lanczos`, '-loop', '0', '-c:v', 'libwebp_anim', '-quality', '70'], name);
             return timed.length;
         },
     };
@@ -195,11 +212,10 @@ html,body{margin:0;height:100%;background:var(--screen);color:var(--text)}
 body{display:flex;align-items:center;justify-content:center;gap:56px}
 .raven{font-size:64px;line-height:1.05}
 .name{font:700 84px/1 var(--font-crt);letter-spacing:-.02em;display:flex;align-items:center}
-.name i{font-style:normal;color:var(--accent)}
 .cursor{display:inline-block;width:.5em;height:1em;margin-left:.12em;background:var(--warn)}
 .off .cursor{visibility:hidden}
 .long{margin-top:18px;font:400 22px/1 var(--font-ui);color:var(--muted)}
-</style></head><body>${ravenLogo(theme, { size: 64 })}<div><div class="name">caw-<i>ai</i><span class="cursor"></span></div><div class="long">${LONG_NAME}</div></div></body></html>`);
+</style></head><body>${ravenLogo(theme, { size: 64 })}<div><div class="name">caw<span class="cursor"></span></div><div class="long">${LONG_NAME}</div></div></body></html>`);
         await page.evaluate(() => globalThis.document.fonts.ready);
         const shots = [];
         for (const [index, off] of [false, true].entries()) {
@@ -303,42 +319,48 @@ const scenes = {
         await record(dir, ['morning-errand', '--env', 'local', '--agent', 'local'], {
             interactive: true,
             containerCommand: DEMO_AGENT,
-            onChatOpen: background(async (chat) => {
+            // caw waits for onChatOpen: the window gets its filming size before the run goes on (the check run replays at once),
+            // then the human acts in the background.
+            onChatOpen: async (chat) => {
                 window += 1;
                 await camera.follow(benchOf(chat));
-                if (window === 1) {
-                    await stateOf(chat, 'choosing');
-                    await sleep(1200);
-                    await chat.locator('#choices button', { hasText: 'Describe it' }).click();
-                    await stateOf(chat, 'describing');
-                    await sleep(700);
-                    await chat.locator('#input').pressSequentially('Add a todo "Feed the raven" tagged #home for tomorrow, find it with the search and tick it off.', { delay: 45 });
-                    await sleep(600);
-                    await chat.locator('#input').press('Enter');
-                    await sleep(1000);
-                    await chat.locator('#toggle').click();
-                } else if (window === 2) {
-                    // Claude's window: the plan card is read for a while, then approved; Claude then records.
-                    await stateOf(chat, 'planning');
-                    await sleep(5500);
-                    await chat.locator('#approve').click();
-                    // Claude is done once it hands over to the check run; the wait for the next window is left out.
-                    await chat.getByText('A new window opens for the check run').waitFor({ timeout: CLAUDE_MS }).catch(() => {});
-                    await sleep(1200);
-                    await camera.hold(benchOf(chat));
-                } else {
-                    // The check run's window: the decision whether the proven test is adopted.
-                    await chat.locator('#choices button.primary').waitFor({ timeout: CLAUDE_MS });
-                    await sleep(3500);
-                    await chat.locator('#choices button.primary').click();
-                    await sleep(1800);
-                    await camera.hold(benchOf(chat));
-                }
-            }),
+                background((opened) => act(opened, window))(chat);
+            },
         });
         await settled();
         const frames = await camera.stop();
         console.log(`demo: ${frames} frames`);
+        /** What the human does in each window. */
+        async function act(chat, which) {
+            if (which === 1) {
+                await stateOf(chat, 'choosing');
+                await sleep(1200);
+                await chat.locator('#choices button', { hasText: 'Describe it' }).click();
+                await stateOf(chat, 'describing');
+                await sleep(700);
+                await chat.locator('#input').pressSequentially('Add a todo "Feed the raven" tagged #home for tomorrow, find it with the search and tick it off.', { delay: 45 });
+                await sleep(600);
+                await chat.locator('#input').press('Enter');
+                await sleep(1000);
+                await chat.locator('#toggle').click();
+            } else if (which === 2) {
+                // Claude's window: the plan card is read for a while, then approved; Claude then records.
+                await stateOf(chat, 'planning');
+                await sleep(5500);
+                await chat.locator('#approve').click();
+                // Claude is done once it hands over to the check run; the wait for the next window is left out.
+                await chat.getByText('A new window opens for the check run').waitFor({ timeout: CLAUDE_MS }).catch(() => {});
+                await sleep(1200);
+                await camera.hold(benchOf(chat));
+            } else {
+                // The check run's window: the decision whether the proven test is adopted.
+                await chat.locator('#choices button.primary').waitFor({ timeout: CLAUDE_MS });
+                await sleep(3500);
+                await chat.locator('#choices button.primary').click();
+                await sleep(1800);
+                await camera.hold(benchOf(chat));
+            }
+        }
     },
 };
 

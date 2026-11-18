@@ -4,6 +4,10 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Changed
+- The workbench title is one sentence with the test: "Claude records morning-errand", "Checking morning-errand without Claude", "morning-errand up to S3, then the window is yours". Next to it only what the project leaves open: the environment when there are several (a production environment always), the role when there are several, your local build only under an overlay.
+- The tool is called caw in every text, as the command; caw-ai is only the npm package (`npm i -D caw-ai`, `npx caw-ai mcp`). The status reads "caw working", recordings start with "Written by caw".
+
 ## [1.0.0-rc.1] - 2026-11-18
 
 First release candidate for 1.0.

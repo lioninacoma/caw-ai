@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { readPrefs } from '../src/shared/prefs.mjs';
 import { loadTheme, readThemePackage } from '../src/shared/theme-package.mjs';
 import { CHAT_KEYS, themeAction, themeList, workbenchHtml } from '../src/host/workbench.mjs';
+import { benchFacts, titleOf } from '../src/host/run.mjs';
 
 test('workbench: without an own choice the step list collapses in narrow windows, a choice always wins', () => {
     const free = workbenchHtml({ appUrl: 'about:blank', title: 't' });
@@ -56,4 +57,19 @@ test('workbench: the theme dialog only picks a theme and the mode; own themes co
     assert.deepEqual([hafen.colors.accent, hafen.modes, hafen.baseLabel, hafen.builtin], ['#123456', ['dark', 'light'], 'Raster', false]);
     assert.equal(themeAction('use', 'hafen', env).name, 'hafen');
 
+});
+
+test('workbench header: the title is a sentence with the test; chips only where the project offers a choice', () => {
+    const spec = { id: 'morning-errand', role: 'user' };
+    const one = { environments: { local: {} }, roles: { user: {} } };
+    const local = { name: 'local', production: false, source: 'deployed' };
+    assert.equal(titleOf(spec, 'record'), 'Claude nimmt morning-errand auf');
+    assert.equal(titleOf(spec, 'repair', { id: 'S2' }), 'Claude behebt S2 von morning-errand');
+    // One environment, one role, no overlay: the title alone.
+    assert.deepEqual(benchFacts(one, spec, local, 'T'), [['', 'T']]);
+    // Several environments and roles: both chips.
+    const many = { environments: { local: {}, staging: {} }, roles: { user: {}, admin: {} } };
+    assert.deepEqual(benchFacts(many, spec, { ...local, name: 'staging' }, 'T'), [['', 'T'], ['Umgebung', 'staging'], ['Rolle', 'user']]);
+    // Production is always named, even as the only environment; the code only under an overlay.
+    assert.deepEqual(benchFacts(one, spec, { name: 'prod', production: true, source: 'overlay' }, 'T'), [['', 'T'], ['Umgebung', 'prod'], ['Code', 'lokaler Build']]);
 });

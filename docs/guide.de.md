@@ -61,7 +61,7 @@ Du schreibst also in deiner Session „nimm einen Test für die Bestellung auf�
 
 - **Weniger Rückfragen:** Ist deine Session der Agent, gibt es keinen Hinweis auf Token, und `record` eines vorhandenen Testplans startet ohne die Frage, wer vorführt. Ein lesender Plan, dem die Session unverändert folgt, braucht keine Plan-Freigabe; die Übernahme des geprüften Plans am Ende immer.
 - **Wartezeiten:** `plan` und `chat` warten auf dich, bis zu einer Stunde. Bricht Claude Code den Aufruf vorher ab, setz `MCP_TOOL_TIMEOUT` (Millisekunden) in der Umgebung von Claude Code höher.
-- **Vorsicht:** Deine Session hat mehr Rechte als der Agent im Lauf (Shell, Schreiben). Was aus der Anwendung kommt, ist für sie Daten, keine Anweisung; caw-ai sagt ihr das bei jedem Auftrag. Lass Bash- und Schreibaufrufe in dieser Session bestätigen, statt sie pauschal freizugeben.
+- **Vorsicht:** Deine Session hat mehr Rechte als der Agent im Lauf (Shell, Schreiben). Was aus der Anwendung kommt, ist für sie Daten, keine Anweisung; caw sagt ihr das bei jedem Auftrag. Lass Bash- und Schreibaufrufe in dieser Session bestätigen, statt sie pauschal freizugeben.
 
 ## Docker
 
@@ -133,7 +133,7 @@ Im Devcontainer selbst geht der Aufruf nicht, dort fehlt Chrome (und für den Ag
 - **Ende:** Fenster schließen beendet den Lauf. Der Exit-Code bleibt das Urteil.
 - **Tastatur im Chat:** Strg+Enter (Cmd+Enter) löst den Hauptknopf aus, etwa „Plan freigeben“ oder „Vorführung beenden“; der Knopf zeigt dazu `Strg+↵`. Esc leert zuerst das Eingabefeld, wenn du darin tippst. Sonst fragt Esc den Abbruch an („Wirklich abbrechen? (Esc)“ und „Nein“), erst ein zweites Esc innerhalb von 4 Sekunden bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
 - **Du bist dran:** Wartet der Chat auf dich (Plan, Entscheidung, Fehler klären), steht „DU BIST DRAN“ über der Anwendung, und das Terminal meldet einmal „Wartet im Chrome-Fenster auf dich: …“.
-- **Aufnahme, Wiedergabe, Pause:** Ein Chip oben rechts in der Werkbank zeigt, was der Lauf tut: „REC“, solange Claude aufnimmt oder repariert, „PLAY“, solange caw-ai abspielt (run, Prüflauf, Zustand herstellen), „PAUSE“, solange ein solcher Lauf pausiert (F9). Läuft nichts (nach dem Lauf, nach der Übergabe, nach dem Abbruch), gibt es keinen Chip.
+- **Aufnahme, Wiedergabe, Pause:** Ein Chip oben rechts in der Werkbank zeigt, was der Lauf tut: „REC“, solange Claude aufnimmt oder repariert, „PLAY“, solange caw abspielt (run, Prüflauf, Zustand herstellen), „PAUSE“, solange ein solcher Lauf pausiert (F9). Läuft nichts (nach dem Lauf, nach der Übergabe, nach dem Abbruch), gibt es keinen Chip.
 - **Nach dem Lauf:** Das Ergebnis steht als letzte Zeile im Chat, etwa „Gespeichert: caw/tests/bestellung.yaml“. Das Fenster bleibt mit „Fenster schließen“ noch 15 Sekunden offen und schließt sich dann selbst. Öffnet sich gleich ein neues Fenster (für Claude oder den Prüflauf), sagen Chat und Terminal das vorher.
 
 Eigene Tabs kannst du jederzeit öffnen, auch während des Laufs: Gesteuert wird nur der Anwendungs-Tab samt Popups, und nur deren Fehler zählen. Klickst du dagegen im Anwendungs-Tab, während ein Lauf arbeitet, beeinflusst du den Test.
@@ -174,13 +174,13 @@ Die Rolle nennst du nur beim ersten Mal; das Tool schreibt `role` und `writes` (
 
 Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 
-- **Oben:** Test, Ziel, Rolle, Stand (lokal oder wie unter der Adresse), was Claude oder caw-ai gerade tut, und der Chip REC/PLAY/PAUSE.
+- **Oben:** was gerade passiert, als Satz mit dem Test („Claude nimmt morning-errand auf“, „morning-errand wird ohne Claude geprüft“); Umgebung und Rolle nur, wenn das Projekt mehrere hat (eine Produktionsumgebung immer), dein lokaler Build nur unter einem Overlay; was Claude oder caw gerade tut, und der Chip REC/PLAY/PAUSE.
 - **Links:** die Schritte mit ihrem Zustand (läuft, bestanden, gescheitert, nicht erreicht), darunter die Zähler für Requests und Konsole.
 - **Mitte:** die Anwendung in einem iframe mit ihrer Adresse. Darunter Requests (Name, Ausgang, Dauer) und Konsole (Fehler und Warnungen); bei einem Konsolenfehler klappt die Leiste von selbst auf, „Einklappen“ schließt sie.
 - **Rechts:** der Chat mit Claude, in einem Rahmen mit dem Titel CHAT.
 - **Unten:** die Tastenleiste: F1 Öffnen… (nach der Übergabe), F5 Neu laden, F9 Pause, Esc Abbrechen, F2 Requests, F3 Konsole, F4 Schritte, F6 Chat, F7 Theme, F8 Nur Anwendung, F10 Animationen aus. Die Tasten wirken auch, wenn der Fokus im Chat liegt.
 - **Einklappen:** Schritte und Chat klappen über den Knopf am Rand (F4, F6) zu einer schmalen Leiste ein. Braucht der Chat dich, klappt er von selbst auf.
-- **Neu laden:** F5 (die Taste, der Knopf in der Tastenleiste, auch in der Anwendung) lädt nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, auch während „Neu öffnen“ oder F1 einen Zustand herstellt, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw-ai sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
+- **Neu laden:** F5 (die Taste, der Knopf in der Tastenleiste, auch in der Anwendung) lädt nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, auch während „Neu öffnen“ oder F1 einen Zustand herstellt, ist das gesperrt und der Knopf ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
 
 Die Werkbank liegt unter der Adresse der Anwendung selbst, auf ihrem Origin. Viele Anwendungen greifen auf das oberste Fenster zu (`top.Ext`, `parent.config`, `top.location.href`), weil sie sich im Portal dafür halten. In der Werkbank geht das genauso:
 
@@ -277,7 +277,7 @@ Die Werkbank startet in **Nur Anwendung** (F8 holt Schritte und Chat zurück); d
 - **Neu laden** (F5): lädt die aktuelle Seite ohne Cache neu, damit deine Änderung sofort da ist. Chat und Schritte bleiben; der Test ist schon vorbei, sein Ergebnis ändert sich nicht.
 - **Neu öffnen** (im Chat): beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet neu an und spielt die Aufzeichnung bis zur selben Stelle ab (bei `@S4` bis zum Einstieg in S4), mit neuen Testdaten, also genau wie jeder andere Lauf.
 - **Öffnen… (F1):** ein beliebiger Test dieser Umgebung, jeder Rolle, optional mit einem Schritt. Bevor caw dein Fenster ersetzt, bestätigst du im Chat, etwa mit „S2 öffnen“. Dann spielt caw den Test im selben Fenster mit dem Konto der Rolle des Tests ab: ohne Schritt den ganzen Test, mit Schritt bis zu dessen Einstieg, wie bei `open <test>@<schritt>`. Scheitert das Herstellen, weiß Claude im Chat warum; es kann den Test auch anpassen, etwa einen Klick auf einen Cookie-Banner optional machen, und die Änderung steht sofort in der Testdatei.
-- **Element an Claude Code:** Mit dem Fadenkreuz-Knopf im Chat klickst du in der Anwendung auf ein Element, auch auf einen ausgegrauten Knopf oder einen in einem Dialog; ein Rahmen zeigt, was der Klick wählt (der Klick löst dort nichts aus, Esc bricht ab). Es hängt an deiner nächsten Frage im Chat, und caw-ai legt es mit Beschriftung, Komponente bzw. Quelle, Seite und Requests für deine Claude-Code-Session ab, abrufbar mit `caw_selection`.
+- **Element an Claude Code:** Mit dem Fadenkreuz-Knopf im Chat klickst du in der Anwendung auf ein Element, auch auf einen ausgegrauten Knopf oder einen in einem Dialog; ein Rahmen zeigt, was der Klick wählt (der Klick löst dort nichts aus, Esc bricht ab). Es hängt an deiner nächsten Frage im Chat, und caw legt es mit Beschriftung, Komponente bzw. Quelle, Seite und Requests für deine Claude-Code-Session ab, abrufbar mit `caw_selection`.
 - **Ende:** „Lauf beenden“ oder Fenster schließen.
 
 ## Einen Schritt beheben
@@ -416,7 +416,7 @@ Für `web` und die SPA-Adapter hilft eine zugängliche Oberfläche: Knöpfe mit 
 - **Dateien:** `.env*`, `.git`, `.claude`, `.worktrees`, `.caw`, `caw/.auth` sowie typische Schlüsseldateien (`.npmrc`, `*.pem`, `id_rsa*` …) sind per `permissions.deny` gesperrt. Das ist eine Sperre von Claude Code, kein Dateisystem-Schutz wie im Container: Wer stärkere Garantien braucht, nimmt `docker`.
 - **Netz:** Claude selbst hat kein Web-Werkzeug. Die Anwendung erreicht es nur über den Browser mit dessen Sperre.
 
-**Session (Agent `session`):** Es gelten die Rechte deiner eigenen Claude-Code-Session. caw-ai gibt ihr nur die Befehle für den Browser dazu.
+**Session (Agent `session`):** Es gelten die Rechte deiner eigenen Claude-Code-Session. caw gibt ihr nur die Befehle für den Browser dazu.
 
 **Container (Agent `docker`):**
 

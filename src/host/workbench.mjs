@@ -287,7 +287,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>${themeStyle(theme)}</head><body class="${classes}"><div class="pa crt-case"><div class="crt" id="bench">
 <div class="soloBar">${ravenLogo(theme, { size: 11, label: 'caw' })}<span id="soloTag" hidden>${esc(t('workbench.handedOver'))}</span><span id="soloState"></span><span id="soloUrl"></span><button class="solo-btn" type="button" data-states hidden><b>F1</b>${t('workbench.stateTitle')}</button><button class="solo-btn" type="button" data-solo><b>F8</b>${t('workbench.bench')}</button></div>
-<header class="top">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="id"><b class="glow">caw <span class="cmd" id="cmd"></span> <span id="testName">${esc(test)}</span></b><span>${LONG_NAME}</span></div>
+<header class="top">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="id"><b class="glow" id="title" data-test="${esc(test)}">${esc(test || 'caw')}</b><span>${LONG_NAME}</span></div>
 <ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
 <div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinf" aria-hidden="true" hidden></span><span id="state" class="px-pill glow" role="status"></span><span id="transport" class="px-pill glow" role="img"><i></i><span></span></span></div></header>
 <main class="panes">
@@ -612,10 +612,12 @@ const fitApp=()=>{const box=$('appBox');const app=$('app');box.classList.toggle(
 new ResizeObserver(fitApp).observe($('appBox'));
 window.workbench={
   viewport:(size)=>{pinned=size&&size.width>0&&size.height>0?{width:Math.round(size.width),height:Math.round(size.height)}:null;fitApp();},
-  // The first entry is the mode (header: caw <mode> <test>), the test is already in the title; the rest goes into the facts.
-  facts:(entries)=>{const [first,...rest]=entries;$('cmd').textContent=first?String(first[1]).toLowerCase():'';
-    const test=$('testName').textContent;
-    $('facts').replaceChildren(...rest.filter(([,value])=>String(value)!==test).map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;const b=document.createElement('b');b.textContent=String(value);li.append(label,b);return li;}));},
+  // The first entry is the title, a sentence with the test's name (shown plain, the words around it in the accent colour);
+  // the rest are the chips.
+  facts:(entries)=>{const [first,...rest]=entries;const title=$('title');const test=title.dataset.test;
+    if(first){const text=String(first[1]);const at=test?text.indexOf(test):-1;const word=(part)=>{const span=document.createElement('span');span.className='cmd';span.textContent=part;return span;};
+      title.replaceChildren(...(at<0?[word(text)]:[text.slice(0,at),test,text.slice(at+test.length)].map((part,index)=>index===1?document.createTextNode(part):part===''?null:word(part)).filter(Boolean)));title.title=text;}
+    $('facts').replaceChildren(...rest.map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;const b=document.createElement('b');b.textContent=String(value);li.append(label,b);return li;}));},
   url:(url)=>{appUrl=url;$('url').textContent=$('soloUrl').textContent=url;$('url').title=url;},
   steps:(groups)=>{aborted=false;$('steps').replaceChildren(...groups.map(makeGroup));if(groups.length>0)showSteps();summarize();},
   // Adds or renames a group, e.g. "Fehler klären" when Claude investigates. Existing items stay.

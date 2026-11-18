@@ -39,7 +39,7 @@ An option that needs a value never takes the next option as its value: `--env --
 npx caw init --url http://localhost:5173
 ```
 
-Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. Sign in with a test account (caw-ai notices when the sign-in form is gone), go to the page where tests should start and click **Done** in the card at the bottom right of the window. caw-ai detects framework, login form and a "signed in" marker and creates:
+Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. Sign in with a test account (caw notices when the sign-in form is gone), go to the page where tests should start and click **Done** in the card at the bottom right of the window. caw-ai detects framework, login form and a "signed in" marker and creates:
 
 - `caw.config.json`
 - `caw/.env.example` with the credential variables per role
@@ -122,7 +122,7 @@ Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test i
 1. You demonstrate the flow or, for a new test, describe it in the chat; for an existing test Claude can also follow the test plan.
 2. Claude shows a plan in the chat. You approve it or ask for changes.
 3. Claude walks the flow and checks each step.
-4. caw-ai replays the recording without Claude.
+4. caw replays the recording without Claude.
 5. You choose "Adopt test plan". Only then are files written.
 
 Runs only on environments where Claude may work (`"claude": true`). `--env` can be left out if there is only one.
@@ -209,7 +209,7 @@ With a test, `open` signs in with the test's role and replays without Claude; th
 | `--step-timeout <duration>` | Time limit per step while replaying, default `30s`. |
 | `--agent local\|docker\|session`, `--claude-timeout <duration>`, `--max-actions <n>` | As for `record`. |
 
-After the handover, **F1** in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw-ai starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
+After the handover, **F1** in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
 
 If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
 
@@ -227,7 +227,7 @@ A role is a test user. `role add` opens the sign-in page of the environment. You
 
 `init` (also with `--explore-only`) ends the same way: after **Done** the card asks for the role of the account you signed in with. When `record`, `run` or `open` needs a role without a test user, the window opens first and the run goes on after **Save**; in CI and with `--headless` it ends with `credentials-missing`. For `signIn.type: session` use `role login`.
 
-`role login` is for `signIn.type: session` (SSO, OAuth, MFA you can't automate). It opens Chrome on the sign-in and you sign in by hand. As soon as `signedInSelector` shows up, caw-ai stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
+`role login` is for `signIn.type: session` (SSO, OAuth, MFA you can't automate). It opens Chrome on the sign-in and you sign in by hand. As soon as `signedInSelector` shows up, caw stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
 
 ## export
 
@@ -311,7 +311,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 
 ## Error codes
 
-When caw-ai stops, or a run ends with `error`, it prints the reason and then the code.
+When caw stops, or a run ends with `error`, it prints the reason and then the code.
 
 | Code | Exit | Fix |
 |---|---|---|

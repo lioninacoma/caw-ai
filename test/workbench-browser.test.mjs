@@ -322,13 +322,30 @@ test('chat: after the run the window stays open until the human closes it or the
     assert.ok(Date.now() - start < 3000, 'without a click after the timeout');
 });
 
+test('workbench: the title is one sentence with the test name in it, the chips follow', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const context = await browser.newContext();
+    t.after(() => context.close());
+    await context.newPage();
+    const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'], title: 'caw · morning-errand' });
+    assert.equal(await bench.page.textContent('#title'), 'morning-errand');
+    await bench.facts([['', 'Claude nimmt morning-errand auf'], ['Umgebung', 'staging']]);
+    assert.ok(await until(async () => (await bench.page.textContent('#title')) === 'Claude nimmt morning-errand auf'));
+    // The words around the test's name in the accent colour, the name itself plain.
+    assert.deepEqual(await bench.page.locator('#title .cmd').allTextContents(), ['Claude nimmt ', ' auf']);
+    assert.deepEqual(await bench.page.locator('#facts li').allTextContents(), ['Umgebungstaging']);
+    await bench.facts([['', 'morning-errand wird ohne Claude geprüft']]);
+    assert.ok(await until(async () => (await bench.page.locator('#facts li').count()) === 0));
+    assert.deepEqual(await bench.page.locator('#title .cmd').allTextContents(), [' wird ohne Claude geprüft']);
+});
+
 test('workbench: the pill top right shows only the four chat header labels, without a step', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     const pill = async () => ((await bench.page.isVisible('#state')) ? bench.page.textContent('#state') : null);
     await bench.steps([{ id: 'S1', name: 'Eins' }]);
     await bench.step('S1', 'running');
-    for (const [state, label] of [['running', 'Claude arbeitet'], ['testing', 'caw-ai arbeitet'], ['pausing', 'Hält an …'], ['paused', '‖ Pausiert'], ['deciding', null]]) {
+    for (const [state, label] of [['running', 'Claude arbeitet'], ['testing', 'caw arbeitet'], ['pausing', 'Hält an …'], ['paused', '‖ Pausiert'], ['deciding', null]]) {
         await bench.chatState(state);
         assert.ok(await until(async () => (await pill()) === label), `${state}: ${await pill()}`);
     }

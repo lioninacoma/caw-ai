@@ -414,7 +414,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
 };
 
 /** The chat page in the current language; texts for the page script are in T. Exported for preview and tests. */
-export const chatPage = (nonce = '', theme = activeTheme()) => `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw-ai · Chat</title><script>(()=>{${APPLY_THEME_SCRIPT}
+export const chatPage = (nonce = '', theme = activeTheme()) => `<!doctype html><html lang="${language()}"${themeAttr(theme)}><head><meta charset="utf-8"><title>caw · Chat</title><script>(()=>{${APPLY_THEME_SCRIPT}
 // The theme comes from the workbench: the chat is isolated in its own origin. Colours only via cawApplyTheme (validates
 // itself), glyphs and prompts only as text (cawThemeText below).
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='theme')return;cawApplyTheme(document.documentElement,event.data.theme);window.cawThemeText?.(event.data.theme);});try{parent.postMessage({caw:'theme-request'},'*');}catch{}})();${sourceTag}</script>${FAVICON}<style>

@@ -64,7 +64,7 @@ const noticeFiles = (files, chat) => {
     chat.notice?.(t('run.flow.changedFiles', { files: files.join(', '), code }));
 };
 
-/** The changed files of the app, without the caw-ai config and project context. */
+/** The changed files of the app, without the caw config and project context. */
 const appFilesOf = (files) => files.filter((file) => file !== CONFIG_FILE && file !== CONTEXT_FILE);
 
 /**

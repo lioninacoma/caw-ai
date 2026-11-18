@@ -358,7 +358,7 @@ export const init = (root, answers = {}) => {
     const existing = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
     const lines = [`${RUN_DIR}/`, ENV_FILE, `${AUTH_DIR}/`].filter((line) => !existing.split(/\r?\n/).includes(line));
     if (lines.length > 0) {
-        appendFileSync(ignore, `\n# caw-ai\n${lines.join('\n')}\n`);
+        appendFileSync(ignore, `\n# caw\n${lines.join('\n')}\n`);
         created.push('.gitignore');
     }
     ui.success(created.length > 0 ? t('cli.initCreated', { files: created.join(', ') }) : t('cli.initAlready'));
@@ -816,10 +816,11 @@ const describeTest = async (chat, session, dir, { aborted, closed, handOver }) =
  * @returns the demonstration, or undefined if Claude follows the old test plan
  */
 const startRecording = async (root, config, spec, checked, { exists, conversation }) => {
-    const [{ openRunSession }, { openChat }, { demonstrate, feedLabel, itemLabel }] = await Promise.all([import('./run.mjs'), import('./chat.mjs'), import('./demonstrate.mjs')]);
+    const [{ benchFacts, openRunSession, titleOf }, { openChat }, { demonstrate, feedLabel, itemLabel }] = await Promise.all([import('./run.mjs'), import('./chat.mjs'), import('./demonstrate.mjs')]);
     const dir = join(root, RUN_DIR, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${spec.id}-demonstration`);
     mkdirSync(dir, { recursive: true });
     const session = await openRunSession({ root, config, spec, checked, runDir: dir, interactive: true });
+    await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, 'start')));
     let chat = null;
     const aborted = () => new CawError('aborted', t('cli.recordAborted'));
     try {

@@ -7,7 +7,7 @@ Each test has two YAML files:
 | File | Written by | Commit? |
 |---|---|---|
 | `caw/tests/<id>.yaml` | you: what the test does, in plain language | yes |
-| `caw/recordings/<id>.yaml` | caw-ai: how to replay it | yes, review it first |
+| `caw/recordings/<id>.yaml` | caw: how to replay it | yes, review it first |
 
 You write the test plan. `record` writes the recording; by hand you only add the [extras](#hand-written-additions) Claude does not record. `recording` and `knownMessages` belong in the recording only; in the test plan `validate` rejects them.
 
@@ -86,7 +86,7 @@ Written by `record` and by "Fix step" in a run's chat. Review it; change it only
 
 ```yaml
 # caw/recordings/create-ticket.yaml
-# Written by caw-ai, belongs to caw/tests/create-ticket.yaml. Delete by hand if needed, never edit.
+# Written by caw, belongs to caw/tests/create-ticket.yaml. Delete by hand if needed, never edit.
 
 test: create-ticket
 steps:

@@ -172,7 +172,7 @@ Browser:
 
     // commands.mjs: explore file, config, init
     'cli.notExploreResult': 'Die Datei sieht nicht nach einem Ergebnis von caw init --explore-only aus.',
-    'cli.unknownFramework': 'Framework "{framework}" kennt caw-ai nicht ({names}).',
+    'cli.unknownFramework': 'Framework "{framework}" kennt caw nicht ({names}).',
     'cli.initAuthUnknown': 'Anmeldung "{auth}" gibt es bei init nicht (form, session, none).',
     'cli.badRoleName': 'Rolle "{name}": nur Kleinbuchstaben, Ziffern und Bindestrich, mit einem Buchstaben vorn (etwa admin, editor).',
     'cli.mcpInvalid': '.mcp.json ist kein gültiges JSON, den Eintrag für caw bitte von Hand ergänzen (siehe README).',
@@ -209,7 +209,7 @@ Browser:
     'cli.authStorageOnly': 'caw role login gibt es nur, wo die Anmeldung vom Typ session ist; auf {target} ist sie {type}.',
     'cli.authRoleUnknown': 'Rolle {role} steht nicht in roles ({roles}).',
     'cli.targetProduction': '{target} ist Produktion.',
-    'cli.authSignIn': 'Melde dich im Chrome-Fenster als {role} an. Sobald {selector} erscheint, speichert caw-ai die Sitzung.',
+    'cli.authSignIn': 'Melde dich im Chrome-Fenster als {role} an. Sobald {selector} erscheint, speichert caw die Sitzung.',
     'cli.authClosed': 'Fenster geschlossen, nichts gespeichert.',
     'cli.authSaved': 'Gespeichert: {file}. Die Datei enthält Anmelde-Cookies und gehört nicht ins Repository.',
 
@@ -336,7 +336,7 @@ Browser:
     'cli.doctorConfigNextInit': 'caw init legt sie an.',
     'cli.doctorBrowserOk': 'Browser startet ({browser})',
     'cli.doctorBrowserFail': 'Browser startet nicht ({browser}): {error}',
-    'cli.doctorBrowserNext': 'Google Chrome installieren (Stable), caw-ai nutzt das Chrome des Systems; oder in der Config browser.channel bzw. browser.executablePath setzen.',
+    'cli.doctorBrowserNext': 'Google Chrome installieren (Stable), caw nutzt das Chrome des Systems; oder in der Config browser.channel bzw. browser.executablePath setzen.',
     'cli.doctorSessionOk': 'Deine Claude-Code-Session übernimmt (Eintrag caw in .mcp.json)',
     'cli.doctorSessionMissing': 'Eintrag caw in .mcp.json fehlt',
     'cli.doctorSessionNpx': 'Der Eintrag caw in .mcp.json startet caw über npx, obwohl caw im Projekt installiert ist',
@@ -528,7 +528,7 @@ Browser:
     'cli.roleUnknownArg': 'role kennt {arg} nicht. Erlaubt: --env, --json',
     'cli.testUserMultiline': 'Benutzername oder Passwort enthält einen Zeilenumbruch; caw/.env kann das nicht aufnehmen.',
     'cli.testUserQuotes': 'Das Passwort enthält alle Anführungszeichen; trage es selbst in caw/.env ein.',
-    'cli.envFileHead': '# Testnutzer für caw-ai. Nie einchecken.',
+    'cli.envFileHead': '# Testnutzer für caw. Nie einchecken.',
     'cli.testUserRoleBad': 'Rolle "{role}": Kleinbuchstaben, Ziffern und Bindestriche, beginnt mit einem Buchstaben, höchstens 32 Zeichen.',
     'cli.testUserEmpty': 'Im Anmeldeformular wurde kein Benutzername oder Passwort eingegeben.',
     'cli.roleStep': 'Rolle',

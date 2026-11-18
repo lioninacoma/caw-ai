@@ -47,7 +47,7 @@ npx caw doctor
 - Code, names and comments are in English. UI texts live in `src/shared/locales/` (de and en).
 - User-facing text goes into both `src/shared/locales/en` and `src/shared/locales/de`. Keep it short.
 - Add a line under `[Unreleased]` in `CHANGELOG.md`.
-- caw-ai stays framework-independent. Framework specifics belong in `src/host/framework/`.
+- caw stays framework-independent. Framework specifics belong in `src/host/framework/`.
 - Nothing in the package may depend on one particular project or company.
 
 ## End-to-end tests

@@ -1,6 +1,6 @@
 # Example: Errand
 
-A small todo app to try caw-ai on, mobile first: sign-in, a list with progress ring, filters and search, a "New todo" dialog with selects and a detail page where you move a todo to another day. No dependencies, data lives in memory, the API answers with a little latency.
+A small todo app to try caw on, mobile first: sign-in, a list with progress ring, filters and search, a "New todo" dialog with selects and a detail page where you move a todo to another day. No dependencies, data lives in memory, the API answers with a little latency.
 
 The test `first-errand` comes with its recording (`caw/recordings/first-errand.yaml`), so you can replay it right away, without Claude. It runs from a clone of the caw-ai repository; run `npm ci` in the repository root once:
 
@@ -17,7 +17,7 @@ cd examples/errand
 node ../../bin/caw.mjs run first-errand --env local              # workbench window, chat next to the app
 ```
 
-The role `user` has no test user yet, so the sign-in window opens first: sign in with `demo` / `demo` and click **Save**. caw-ai writes the account to `caw/.env` and the run goes on. From then on it runs without the window too:
+The role `user` has no test user yet, so the sign-in window opens first: sign in with `demo` / `demo` and click **Save**. caw writes the account to `caw/.env` and the run goes on. From then on it runs without the window too:
 
 ```bash
 node ../../bin/caw.mjs run first-errand --env local --headless   # no window, result in the terminal

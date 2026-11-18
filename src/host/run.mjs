@@ -343,6 +343,24 @@ export const readContext = (root) => {
     return text === '' ? undefined : text;
 };
 
+/** The workbench title: a sentence with the test's name, e.g. "Claude records morning-errand". */
+export const titleOf = (spec, key, vars = {}) => t(`run.title.${key}`, { ...vars, test: spec.id });
+
+/**
+ * The workbench header: first the title, then chips only where the project offers a choice: the environment when there are
+ * several (production always), the role when there are several, the code only under an overlay (your local build).
+ * @param checked  checkTest's result: the environment (name, production) and the code source
+ */
+export const benchFacts = (config, spec, checked, title) => {
+    const several = (map) => Object.keys(map ?? {}).length > 1;
+    return [
+        ['', title],
+        ...(several(config.environments) || checked.production ? [[t('run.fact.target'), checked.name]] : []),
+        ...(spec.role && several(config.roles) ? [[t('run.fact.role'), spec.role]] : []),
+        ...(checked.source === 'overlay' ? [[t('run.fact.code'), t('run.fact.local')]] : []),
+    ];
+};
+
 /**
  * @param sandbox  result of prepareSandbox
  * @param options  spec, target, checked, timeoutMin, containerCommand, note;
@@ -388,14 +406,16 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     writeLastRun(root, { runId, runDir: relativeRun, command: runCommand, test: spec.id, target });
 
     const startedAt = Date.now();
-    let modeLabel = t('run.mode.record');
-    if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) modeLabel = t('run.mode.verify');
-    else if (replay?.entry !== undefined) modeLabel = t('run.mode.entry', { id: replay.entry.id });
-    else if (replay !== undefined && replay.steps.length === 0) modeLabel = t('run.mode.open');
-    else if (replay !== undefined && runAs === 'open') modeLabel = t('run.mode.openTest');
-    else if (replay !== undefined) modeLabel = t('run.mode.replay');
-    else if (range !== undefined) modeLabel = t('run.mode.recordFrom', { id: repair.id });
-    else if (repair !== undefined) modeLabel = t(repair.rerecord ? 'run.mode.rerecord' : 'run.mode.repair', { id: repair.id });
+    // The mode: a short label for the terminal, a sentence with the test's name for the workbench title.
+    let headerMode = ['record'];
+    if (replay !== undefined && conversation !== undefined && conversation.lazy !== true && conversation.testing !== true) headerMode = ['verify'];
+    else if (replay?.entry !== undefined) headerMode = ['entry', { id: replay.entry.id }];
+    else if (replay !== undefined && replay.steps.length === 0) headerMode = ['open'];
+    else if (replay !== undefined && runAs === 'open') headerMode = ['openTest'];
+    else if (replay !== undefined) headerMode = ['replay'];
+    else if (range !== undefined) headerMode = ['recordFrom', { id: repair.id }];
+    else if (repair !== undefined) headerMode = [repair.rerecord ? 'rerecord' : 'repair', { id: repair.id }];
+    const modeLabel = t(`run.mode.${headerMode[0]}`, headerMode[1]);
     // Which code runs, always on one line, also in CI: otherwise a silently deployed version would only show in the result.
     const codeLine = describeCode(config, spec, checked, { root });
     ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: codeLine, language: teamLanguage(config), ...(replay === undefined ? { maxActions } : {}) });
@@ -435,13 +455,6 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         if (broke) await session.workbench?.step(plan.entry.id, 'fail');
         entryPoints = [];
     };
-    const factsOf = (phase) => [
-        [t('run.fact.phase'), phase],
-        [t('run.fact.test'), spec.id],
-        [t('run.fact.target'), target],
-        ...(spec.role ? [[t('run.fact.role'), spec.role]] : []),
-        [t('run.fact.code'), checked.source === 'overlay' ? t('run.fact.local') : codeLine],
-    ];
     // The entry actions of the current replay (replayToEntry) that ran: the step itself is not judged, its points are.
     let entryPoints = [];
     // Every recorded action is a point of its step. Without an action, the replay reports a new attempt.
@@ -465,7 +478,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     try {
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
-        await session.workbench?.facts(factsOf(modeLabel));
+        await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...headerMode)));
         await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
     } catch (error) {
@@ -1034,10 +1047,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         }
         if (handing) {
             // The header says what applies now: the replay is over, it is the human's turn.
-            let phase = t('run.phase.handedOver');
+            let phase = ['handedOver'];
             const state = replay?.entry?.id ?? replay?.until;
-            if (developing) phase = state !== undefined && verdict.status === 'pass' ? t('run.phase.developIn', { until: state }) : t('run.phase.develop');
-            await session.workbench?.facts(factsOf(phase)).catch(() => {});
+            if (developing) phase = state !== undefined && verdict.status === 'pass' ? ['developIn', { until: state }] : ['develop'];
+            await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...phase))).catch(() => {});
             await session.workbench?.transport?.(null).catch(() => {});
             const local = checked.source === 'overlay' ? t('run.handover.local') : '';
             if (replay?.entry !== undefined && verdict.status === 'pass') {

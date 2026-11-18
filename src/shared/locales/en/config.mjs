@@ -270,7 +270,7 @@ export default {
     'config.test.missing': '{key} is missing.',
     'config.test.text': '{key} must be text.',
     'config.test.label': 'Test file',
-    'config.test.recordingHeader': 'Written by caw-ai, belongs to {file}. Delete by hand if needed, never edit.',
+    'config.test.recordingHeader': 'Written by caw, belongs to {file}. Delete by hand if needed, never edit.',
     'config.test.file.object': 'The file must be an object with writes and steps, plus role, environments and start where needed.',
     'config.test.unknown': 'Unknown field {key}.{hint}',
     'config.test.environments': 'environments must be a non-empty list of environment names.',

@@ -58,7 +58,7 @@ export const ignoreEnvFile = (root) => {
     const ignore = join(root, '.gitignore');
     const existing = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
     if (existing.split(/\r?\n/).some((line) => [ENV_PATH, `/${ENV_PATH}`, 'caw/', '/caw/', '.env', '*.env'].includes(line.trim()))) return false;
-    appendFileSync(ignore, `${existing === '' || existing.endsWith('\n') ? '' : '\n'}\n# caw-ai\n${ENV_PATH}\n`);
+    appendFileSync(ignore, `${existing === '' || existing.endsWith('\n') ? '' : '\n'}\n# caw\n${ENV_PATH}\n`);
     return true;
 };
 

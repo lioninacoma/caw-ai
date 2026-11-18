@@ -7,7 +7,7 @@ Jeder Test hat zwei YAML-Dateien:
 | Datei | Schreibt | Committen? |
 |---|---|---|
 | `caw/tests/<id>.yaml` | du: was der Test tut, in normaler Sprache | ja |
-| `caw/recordings/<id>.yaml` | caw-ai: wie er abgespielt wird | ja, vorher ansehen |
+| `caw/recordings/<id>.yaml` | caw: wie er abgespielt wird | ja, vorher ansehen |
 
 Du schreibst den Testplan, `record` schreibt die Aufzeichnung. Von Hand trägst du dort nur die [Ergänzungen](#von-hand-ergänzen) ein, die Claude nicht aufnimmt. `recording` und `knownMessages` gehören nur in die Aufzeichnung; im Testplan lehnt `validate` sie ab.
 
@@ -86,7 +86,7 @@ Schreiben `record` und „Schritt beheben“ im Chat eines Laufs. Ansehen ja, ä
 
 ```yaml
 # caw/recordings/create-ticket.yaml
-# Written by caw-ai, belongs to caw/tests/create-ticket.yaml. Delete by hand if needed, never edit.
+# Written by caw, belongs to caw/tests/create-ticket.yaml. Delete by hand if needed, never edit.
 
 test: create-ticket
 steps:
@@ -128,7 +128,7 @@ steps:
 | `hover`, `dragTo` | `hover` bewegt den Zeiger über sein Ziel, etwa ein Menü, das sich beim Überfahren öffnet. `dragTo` zieht sein Ziel auf den Locator in `to`, etwa eine Karte auf eine Spalte. |
 | `dialog` | Die Antwort auf einen nativen Dialog (`alert`, `confirm`, `prompt`, `beforeunload`), den die Aktion öffnet: `{type, accept, value?, message?}`. `value` ist der Text für einen bestätigten `prompt` (Platzhalter erlaubt); `message` ist der Dialogtext bei der Aufnahme, Ziffern als `#`. Das Abspielen antwortet genauso. Einen Dialog, den niemand aufgezeichnet hat, schließt es und nennt ihn als Warnung `dialog-unexpected`; kommt ein aufgezeichneter nicht, gibt es die Warnung `dialog-missing`. Beim Vorführen zeigt der Chat den Dialog mit OK und Abbrechen; Claude antwortet mit `caw agent dialog accept|dismiss`. |
 | `remember` | Liest einen Wert, den der Lauf erzeugt, hier die Ticketnummer. Spätere Schritte nutzen ihn als `{{ticketnr}}`. Jeder nicht leere Wert; einer mit weniger als vier Zeichen (eine Id wie `7`) wird nur in eingetippten Werten, URLs, Zeichenketten von Prüfungen und Zieltexten ersetzt, die genau dieser Wert sind. |
-| `network` | Requests je Schritt aus einem gesunden Lauf. Damit trennt caw-ai App-Fehler von Umgebungsproblemen. |
+| `network` | Requests je Schritt aus einem gesunden Lauf. Damit trennt caw App-Fehler von Umgebungsproblemen. |
 | `effects` | Was jede Aktion an der Seite geändert hat, gelernt aus gesunden Läufen (`runs` zählt sie). Eine Abweichung lässt den Schritt scheitern oder erscheint als Warnung. |
 | `knownMessages` | Meldungen, die beim Aufnehmen sichtbar waren und keine Fehler sind. |
 

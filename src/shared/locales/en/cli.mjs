@@ -171,7 +171,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
 
     // commands.mjs: explore file, config, init
     'cli.notExploreResult': "This file doesn't look like a caw init --explore-only result.",
-    'cli.unknownFramework': 'caw-ai doesn\'t know framework "{framework}" ({names}).',
+    'cli.unknownFramework': 'caw doesn\'t know framework "{framework}" ({names}).',
     'cli.initAuthUnknown': 'init has no sign-in type "{auth}" (form, session, none).',
     'cli.badRoleName': 'Role "{name}": lowercase letters, digits and hyphens only, starting with a letter (e.g. admin, clerk).',
     'cli.mcpInvalid': '.mcp.json is not valid JSON, please add the caw entry by hand (see README).',
@@ -208,7 +208,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.authStorageOnly': 'caw role login only works where the sign-in is of type session; on {target} it is {type}.',
     'cli.authRoleUnknown': 'Role {role} is not in roles ({roles}).',
     'cli.targetProduction': '{target} is production.',
-    'cli.authSignIn': 'Sign in as {role} in the Chrome window. As soon as {selector} appears, caw-ai saves the session.',
+    'cli.authSignIn': 'Sign in as {role} in the Chrome window. As soon as {selector} appears, caw saves the session.',
     'cli.authClosed': 'Window closed, nothing saved.',
     'cli.authSaved': "Saved: {file}. The file holds login cookies and doesn't belong in the repository.",
 
@@ -335,7 +335,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorConfigNextInit': 'caw init creates it.',
     'cli.doctorBrowserOk': 'Browser starts ({browser})',
     'cli.doctorBrowserFail': "Browser doesn't start ({browser}): {error}",
-    'cli.doctorBrowserNext': 'Install Google Chrome (Stable), caw-ai uses the system Chrome; or set browser.channel or browser.executablePath in the config.',
+    'cli.doctorBrowserNext': 'Install Google Chrome (Stable), caw uses the system Chrome; or set browser.channel or browser.executablePath in the config.',
     'cli.doctorSessionOk': 'Your Claude Code session takes over (caw entry in .mcp.json)',
     'cli.doctorSessionMissing': 'caw entry in .mcp.json is missing',
     'cli.doctorSessionNpx': 'The caw entry in .mcp.json starts caw through npx although caw is installed in the project',
@@ -527,7 +527,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.roleUnknownArg': 'role doesn\'t know {arg}. Allowed: --env, --json',
     'cli.testUserMultiline': 'User name or password contains a line break; caw/.env cannot hold it.',
     'cli.testUserQuotes': 'The password contains every quote character; enter it in caw/.env yourself.',
-    'cli.envFileHead': '# Test users for caw-ai. Never commit this file.',
+    'cli.envFileHead': '# Test users for caw. Never commit this file.',
     'cli.testUserRoleBad': 'Role "{role}": lowercase letters, digits and hyphens, starting with a letter, at most 32 characters.',
     'cli.testUserEmpty': 'No user name or password was entered in the sign-in form.',
     'cli.roleStep': 'Role',

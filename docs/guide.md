@@ -61,7 +61,7 @@ So in your session you write "record a test for the order" or "take me to S4 of 
 
 - **Fewer questions:** With your session as the agent there is no token notice, and `record` of an existing test plan starts without asking who demonstrates. A read-only plan that the session follows unchanged needs no plan approval; adopting the tested plan at the end always does.
 - **Waiting:** `plan` and `chat` wait for you for up to an hour. If Claude Code cancels the call earlier, raise `MCP_TOOL_TIMEOUT` (milliseconds) in Claude Code's environment.
-- **Caution:** Your session has more rights than the agent in a run (shell, writing). Whatever comes from the application is data to it, not an instruction; caw-ai tells it so with every task. Have Bash and write calls in this session confirmed instead of allowing them wholesale.
+- **Caution:** Your session has more rights than the agent in a run (shell, writing). Whatever comes from the application is data to it, not an instruction; caw tells it so with every task. Have Bash and write calls in this session confirmed instead of allowing them wholesale.
 
 ## Docker
 
@@ -133,7 +133,7 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 - **End:** Closing the window ends the run. The exit code remains the verdict.
 - **Keyboard in the chat:** Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl+↵`. Esc first clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
 - **Your turn:** When the chat waits for you (plan, decision, clarifying a failure), "YOUR TURN" shows above the application, and the terminal prints once "Waiting for you in the Chrome window: …".
-- **Record, play, pause:** A chip at the top right of the workbench shows what the run does: "REC" while Claude records or fixes, "PLAY" while caw-ai replays (run, check run, restoring a state), "PAUSE" while such a run is paused (F9). When nothing runs (after the run, after the handover, after cancelling) there is no chip.
+- **Record, play, pause:** A chip at the top right of the workbench shows what the run does: "REC" while Claude records or fixes, "PLAY" while caw replays (run, check run, restoring a state), "PAUSE" while such a run is paused (F9). When nothing runs (after the run, after the handover, after cancelling) there is no chip.
 - **After the run:** The outcome is the last line in the chat, e.g. "Saved: caw/tests/bestellung.yaml". The window stays open for 15 seconds with "Close window" and then closes itself. If a new window is about to open (for Claude or the check run), chat and terminal say so first.
 
 You can open your own tabs at any time, even during a run: only the application tab and its popups are controlled, and only their errors count. Clicking in the application tab while a run is working, however, affects the test.
@@ -174,13 +174,13 @@ You name the role only the first time; the tool writes `role` and `writes` (`tru
 
 With chat, everything runs on one page, like Cypress:
 
-- **Top:** test, target, role, code state (local or as deployed at the address), what Claude or caw-ai is doing, and the REC/PLAY/PAUSE chip.
+- **Top:** what is happening, as a sentence with the test ("Claude records morning-errand", "Checking morning-errand without Claude"); the environment and the role only when the project has several (a production environment always), your local build only under an overlay; what Claude or caw is doing, and the REC/PLAY/PAUSE chip.
 - **Left:** the steps with their state (running, passed, failed, not reached), below them the counters for requests and console.
 - **Center:** the application in an iframe with its address. Below it requests (name, outcome, duration) and console (errors and warnings); on a console error the panel opens by itself, "Collapse" closes it.
 - **Right:** the chat with Claude, in a frame titled CHAT.
 - **Bottom:** the key bar: F1 Open… (after the handover), F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F7 Theme, F8 App only, F10 Animations off. The keys also work while the focus is in the chat.
 - **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge (F4, F6). When the chat needs you, it opens by itself.
-- **Reload:** F5 (the key, the button in the key bar, also inside the application) reloads the current page without cache after handover; chat and steps stay. While the test is running, also while "Open again" or F1 restores a state, this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw-ai rebuilds it; if the test was running, it aborts without a result.
+- **Reload:** F5 (the key, the button in the key bar, also inside the application) reloads the current page without cache after handover; chat and steps stay. While the test is running, also while "Open again" or F1 restores a state, this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw rebuilds it; if the test was running, it aborts without a result.
 
 The workbench lives at the application's own address, on its origin. Many applications access the top window (`top.Ext`, `parent.config`, `top.location.href`) because they believe they are inside the portal. In the workbench this works the same:
 
@@ -277,7 +277,7 @@ The workbench starts in **App only** (F8 brings steps and chat back); the browse
 - **Reload** (F5): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
 - **Open again** (in the chat): starts a new session (cookies and site storage cleared), signs in again and replays the recording up to the same point (with `@S4` the entry of S4), with new test data, exactly like any other run.
 - **Open… (F1):** any test of this environment, of any role, and optionally a step. Before caw replaces your window, you confirm in the chat, e.g. with "Open S2". Then caw replays the test in the same window with the account of the test's role: without a step the whole test, with a step up to its entry, as with `open <test>@<step>`. If restoring fails, Claude in the chat knows why; it can also adjust the test, e.g. mark a cookie-banner click optional, and the change goes into the test file right away.
-- **Element to Claude Code:** With the crosshair button in the chat you click an element in the application, also a greyed-out button or one in a dialog; a frame shows what the click picks (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw-ai stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
+- **Element to Claude Code:** With the crosshair button in the chat you click an element in the application, also a greyed-out button or one in a dialog; a frame shows what the click picks (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
 - **End:** "End run" or close the window.
 
 ## Fixing a step
@@ -416,7 +416,7 @@ For `web` and the SPA adapters an accessible UI helps: buttons with text or `ari
 - **Files:** `.env*`, `.git`, `.claude`, `.worktrees`, `.caw`, `caw/.auth` and typical key files (`.npmrc`, `*.pem`, `id_rsa*` …) are blocked via `permissions.deny`. That's a Claude Code lock, not file system protection as in the container: if you need stronger guarantees, use `docker`.
 - **Network:** Claude itself has no web tool. It reaches the application only through the browser and its lock.
 
-**Session (agent `session`):** The rights of your own Claude Code session apply. caw-ai only adds the browser commands.
+**Session (agent `session`):** The rights of your own Claude Code session apply. caw only adds the browser commands.
 
 **Container (agent `docker`):**
 

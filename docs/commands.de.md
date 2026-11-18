@@ -39,7 +39,7 @@ Eine Option, die einen Wert braucht, nimmt nie die nächste Option als Wert: `--
 npx caw init --url http://localhost:5173
 ```
 
-Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Chrome. Mit einem Testkonto anmelden (caw-ai merkt, wenn das Anmeldeformular verschwunden ist), zur Seite gehen, auf der Tests beginnen sollen, und in der Karte unten rechts im Fenster auf **Fertig** klicken. caw-ai erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
+Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Chrome. Mit einem Testkonto anmelden (caw merkt, wenn das Anmeldeformular verschwunden ist), zur Seite gehen, auf der Tests beginnen sollen, und in der Karte unten rechts im Fenster auf **Fertig** klicken. caw-ai erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
 
 - `caw.config.json`
 - `caw/.env.example` mit den Variablen für die Zugangsdaten je Rolle
@@ -109,7 +109,7 @@ npx caw list create-ticket
 
 Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)`. Ohne Browser und ohne Claude.
 
-Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw-ai mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
+Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
 
 ## record
 
@@ -122,7 +122,7 @@ Nimmt den Testplan aus `caw/tests/create-ticket.yaml` auf, oder legt einen neuen
 1. Du führst den Ablauf vor, oder Claude geht dem Testplan nach.
 2. Claude zeigt einen Plan im Chat. Du gibst ihn frei oder schreibst, was sich ändern soll.
 3. Claude geht den Ablauf durch und prüft jeden Schritt.
-4. caw-ai spielt die Aufzeichnung ohne Claude ab.
+4. caw spielt die Aufzeichnung ohne Claude ab.
 5. Du wählst „Testplan übernehmen“. Erst dann werden Dateien geschrieben.
 
 Nur auf Umgebungen, auf denen Claude arbeiten darf (`"claude": true`). Gibt es nur eine, darf `--env` fehlen.
@@ -209,7 +209,7 @@ Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt beim Abspielen, Standard `30s`. |
 | `--agent local\|docker\|session`, `--claude-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
 
-Nach der Übergabe öffnet **F1** in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw-ai beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
+Nach der Übergabe öffnet **F1** in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
 
 Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner, der schon weg ist), frag im Chat: Claude kann den Klick optional machen. Was du übernimmst, steht sofort in der Testdatei. Beim Aufnehmen geht das direkt mit `click <ziel> --optional`.
 
@@ -227,7 +227,7 @@ Eine Rolle ist ein Testnutzer. `role add` öffnet die Anmeldeseite der Umgebung.
 
 `init` (auch mit `--explore-only`) endet genauso: Nach **Fertig** fragt die Karte nach der Rolle des Kontos, mit dem du dich angemeldet hast. Braucht `record`, `run` oder `open` eine Rolle ohne Testnutzer, öffnet sich zuerst das Fenster, und nach **Speichern** geht der Lauf weiter; in CI und mit `--headless` endet er mit `credentials-missing`. Bei `signIn.type: session` gilt `role login`.
 
-`role login` ist für `signIn.type: session` (SSO, OAuth, MFA, die sich nicht automatisieren lassen). Es öffnet Chrome auf der Anmeldung, du meldest dich von Hand an. Sobald `signedInSelector` erscheint, speichert caw-ai Cookies und Storage in `caw/.auth/<env>/<rolle>.json`. Erneut ausführen, wenn die Sitzung abläuft.
+`role login` ist für `signIn.type: session` (SSO, OAuth, MFA, die sich nicht automatisieren lassen). Es öffnet Chrome auf der Anmeldung, du meldest dich von Hand an. Sobald `signedInSelector` erscheint, speichert caw Cookies und Storage in `caw/.auth/<env>/<rolle>.json`. Erneut ausführen, wenn die Sitzung abläuft.
 
 ## export
 
@@ -311,7 +311,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 
 ## Fehlercodes
 
-Bricht caw-ai ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und danach den Code.
+Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und danach den Code.
 
 | Code | Exit | Abhilfe |
 |---|---|---|

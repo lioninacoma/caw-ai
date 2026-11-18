@@ -336,7 +336,7 @@ const textField = (input, field) => {
 export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), probes, overlayPreconditions, writeConfig, windowWait = {} } = {}) => [
     {
         name: 'caw_start',
-        description: 'Starts a caw-ai command in the background with you as the agent (--agent session); the window opens for the human. '
+        description: 'Starts a caw command in the background with you as the agent (--agent session); the window opens for the human. '
             + 'command: run, record or open. Typed fields: test, env, step (record: re-record from this step to the end; open: stop at the '
             + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
             + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run), '
@@ -608,7 +608,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_role',
         description: 'Roles and their test users. action list: per role whether a test user is set (never the values) and which tests use it. '
-            + 'action add: opens a window on the sign-in page of env; the human signs in and saves the role (name prefilled), caw-ai writes '
+            + 'action add: opens a window on the sign-in page of env; the human signs in and saves the role (name prefilled), caw writes '
             + 'caw/.env and the config; waits until the window is done (up to 20 minutes, wait: false only starts it) and returns the saved roles. '
             + 'You never ask for or see user names or passwords. action remove: a role no test uses. Derive role names '
             + 'from the code (permissions, seed users). action login: for signIn type session (SSO), opens the sign-in for role name on env; '

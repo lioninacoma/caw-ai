@@ -199,7 +199,7 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
     const existing = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
     const lines = [`${RUN_DIR}/`, ENV_FILE, `${AUTH_DIR}/`].filter((line) => !existing.split(/\r?\n/).includes(line));
     if (lines.length > 0) {
-        appendFileSync(ignore, `\n# caw-ai\n${lines.join('\n')}\n`);
+        appendFileSync(ignore, `\n# caw\n${lines.join('\n')}\n`);
         created.push('.gitignore');
     }
     // The TODO fields of the config on disk: a kept older config counts, not the one that was not written.
