@@ -62,9 +62,9 @@ Maintainers only.
 2. Set `version` in `package.json` (`npm version 0.3.0 --no-git-tag-version`) and commit.
 3. Tag and push: `git tag v0.3.0 && git push origin v0.3.0`.
 
-The tag starts `.github/workflows/release.yml`: it checks that the tag matches `package.json`, runs `npm ci`, lint, tests and `pack:check`, then `npm publish --provenance --access public`. A version with a pre-release part (`v0.3.0-beta.1`) is published under the `next` dist-tag.
+The tag starts `.github/workflows/release.yml`: it checks that the tag matches `package.json`, runs `npm ci`, lint, tests and `pack:check`, then `npm stage publish --provenance --access public`. A version with a pre-release part (`v0.3.0-beta.1`) is staged under the `next` dist-tag. A staged version goes live only once a maintainer approves it with 2FA: on npmjs.com under **Staged Packages**, or with `npm stage list` and `npm stage approve <stage-id>`.
 
-Publishing uses npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), no token: on npmjs.com, package `caw-ai` → Settings → Trusted publisher → GitHub Actions, repository `lioninacoma/caw-ai`, workflow `release.yml`. The workflow installs npm 11.5.1 or later, which trusted publishing requires. Once it works, set the package to require 2FA and disallow tokens.
+Publishing uses npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), no token: on npmjs.com, package `caw-ai` → Settings → Trusted publisher → GitHub Actions, repository `lioninacoma/caw-ai`, workflow `release.yml`, no environment, direct publishing left unchecked (staging only). The workflow installs npm 11.15.0 or later, which `npm stage` requires. Once it works, set the package to require 2FA and disallow tokens.
 
 ## Security
 
