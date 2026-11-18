@@ -1,6 +1,6 @@
 {
     "name": "caw-ai",
-    "version": "0.3.0",
+    "version": "1.0.0-rc.1",
     "description": "caw-ai, Context-Aware Web Testing: AI-powered E2E testing, development and debugging for web apps, replayed without AI.",
     "keywords": [
         "testing",

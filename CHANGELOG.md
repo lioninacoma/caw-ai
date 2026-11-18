@@ -4,7 +4,9 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
-First release.
+## [1.0.0-rc.1] - 2026-11-18
+
+First release candidate for 1.0.
 
 ### Added
 - Test plans as YAML in `caw/tests/` (steps `S<n>` with title, action and one expected result) and recordings per step in `caw/recordings/`, written by the tool only.
@@ -34,4 +36,5 @@ First release.
 - The command is `caw` (package `caw-ai`, `npx caw …` once installed). Claude's browser commands live under `caw agent` and are not in the human help. Durations carry their unit (`--step-timeout 30s`, `--claude-timeout 60m`); `--env` picks the environment, `--explain` lets Claude explain failures unasked, `--max-actions` limits Claude. Old command and flag names are refused with their new name.
 - User interface, CLI, messages and reports in English and German.
 
-[Unreleased]: https://github.com/lioninacoma/caw-ai/commits/HEAD
+[Unreleased]: https://github.com/lioninacoma/caw-ai/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/lioninacoma/caw-ai/releases/tag/v1.0.0-rc.1
