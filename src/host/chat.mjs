@@ -455,7 +455,7 @@ footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px
 .advice{border-color:var(--frame)}.advice.app{border-color:var(--info)}.advice strong{color:var(--muted);text-shadow:none}.advice.app strong{color:var(--info)}.advice strong .bl{color:inherit}
 .advice h2{margin:0 0 4px;font-size:15px;font-weight:500}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:400 17px/1 var(--font-crt);color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
 .advice pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--screen);padding:8px 10px;font:12px/1.45 var(--font-mono);box-shadow:inset 0 0 0 2px var(--line)}.advice pre.del{text-decoration:line-through;color:var(--muted);margin-bottom:6px}
-.advice .copy{margin-top:8px;padding:5px 10px;font:400 18px/1 var(--font-crt);color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}.advice .copy:hover{background:var(--line)}
+.advice .copy{margin-top:8px;height:28px;padding:0 9px;font:400 18px/1 var(--font-crt);color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}.advice .copy:hover{background:var(--line)}
 /* Actions muted: ■ click … */
 details.activity{font-size:12.5px;color:var(--muted)}
 details.activity summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;padding:1px 0;user-select:none;font:12.5px var(--font-mono)}
@@ -471,11 +471,10 @@ footer{padding:0 10px 10px}
 #status{padding:6px 2px;font-size:12.5px;line-height:1.45;color:var(--muted)}
 [data-state=paused] #status,[data-state=asking] #status,[data-state=showing] #status,[data-state=planning] #status{color:var(--text)}
 #choices{display:none;flex-direction:column;gap:10px;padding:4px 4px 12px 2px}[data-state=choosing] #choices,[data-state=deciding] #choices,[data-state=reviewing] #choices,[data-state=discussing] #choices,[data-state=developing] #choices,[data-state=planning] #choices{display:flex}
-#choices button.big{min-height:46px;font-size:24px}[data-state=planning] #toggle{display:none}
+[data-state=planning] #toggle{display:none}
 /* For failure, decision and advice the card needs the space: compact buttons, secondary ones side by side. */
 #choices .rest{display:flex;flex-wrap:wrap;gap:10px}#choices .rest button{flex:1 1 auto;min-width:96px}
 :is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices{gap:6px;padding-bottom:10px}:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices .rest{gap:6px}
-:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices button{min-height:32px;padding:5px 10px}
 #choices button.sure{background:var(--fail);color:var(--ink);box-shadow:none}#choices .no{flex:0 0 auto;min-width:0}
 kbd{display:inline-block;margin-left:8px;padding:0 4px;font:400 15px/1.1 var(--font-crt);opacity:.8;box-shadow:inset 0 0 0 1px currentColor}
 #next{display:none;margin:2px 2px 12px;padding:10px 12px;background:var(--pane-2);border:2px solid var(--frame)}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
@@ -483,7 +482,8 @@ kbd{display:inline-block;margin-left:8px;padding:0 4px;font:400 15px/1.1 var(--f
 #next .acts{display:flex;flex-wrap:wrap;gap:10px}
 #report,#closeWindow,#learn{min-height:36px;padding:6px 14px;font:400 20px/1 var(--font-crt);border:0;background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#report:hover,#closeWindow:hover,#learn:hover{filter:brightness(1.08)}#report:active,#closeWindow:active,#learn:active{transform:translate(2px,2px);box-shadow:none}#learn[hidden]{display:none}#learn:disabled{opacity:.7}
 #closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--pane);color:var(--text);box-shadow:inset 0 0 0 2px var(--frame)}
-#choices button{min-height:38px;padding:7px 12px;font:400 20px/1.1 var(--font-crt);text-align:center;color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}
+/* Two button sizes in the chat: actions (36 px, the choices and the end card) and tools (.small, 28 px). */
+#choices button{min-height:36px;padding:6px 14px;font:400 20px/1 var(--font-crt);text-align:center;color:var(--text);background:var(--pane);border:0;box-shadow:inset 0 0 0 2px var(--frame)}
 #choices button:hover{background:var(--line)}#choices button:active{transform:translate(1px,1px)}
 #choices button.primary{background:var(--accent);color:var(--ink);box-shadow:4px 4px 0 var(--drop-shadow)}#choices button.primary:hover{filter:brightness(1.08)}
 #choices button:disabled{cursor:progress;opacity:.55;transform:none}#choices button.busy{opacity:1}
@@ -873,7 +873,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         else if (event?.type === 'abort') chat.human.abort();
         else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();
-        // "Learn baselines" on the end card: learning happens once the window is closed, like --learn would have done.
+        // "Save baselines" on the end card: learning happens once the window is closed, like --learn would have done.
         else if (event?.type === 'learn' && next?.learn === true) {
             learnClicked = true;
             closeWanted?.();
@@ -881,7 +881,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     });
     /** While developing: who additionally receives an element picked with the crosshair (the Claude Code session). null: nobody. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
-    /** Did the human click "Learn baselines" on the end card? */
+    /** Did the human click "Save baselines" on the end card? */
     chat.learnWanted = () => learnClicked;
     /** The page under test touched the chat: close it, nothing more goes in or out, the run ends with chat-tampered. */
     const tamper = () => {

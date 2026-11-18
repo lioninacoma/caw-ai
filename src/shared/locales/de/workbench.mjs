@@ -5,7 +5,7 @@ export default {
     'workbench.runFacts': 'Laufdaten',
     'workbench.stillTitle': 'Kein Blinzeln, kein Spinner, kein Cursor (F10). Gilt auch für die nächsten Läufe.',
     'workbench.still': 'Animationen aus',
-    'workbench.handedOver': '[ ÜBERGEBEN ]',
+    'workbench.handedOver': 'ÜBERGEBEN',
     'workbench.bench': 'Werkbank',
     'workbench.solo': 'Nur Anwendung',
     'workbench.soloTitle': 'Nur die Anwendung, ohne Werkbank (F8)',

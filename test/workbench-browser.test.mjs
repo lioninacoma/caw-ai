@@ -700,7 +700,7 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     // A picked step means its entry: the steps before it completely, of the step only its navigation.
     assert.match(await page.textContent('#ssteps .srow[aria-selected=true]'), /S1 {2}Personensuche$/);
     assert.match(await page.textContent('#sfoot'), /^Spielt sb-antrag-abbrechen bis zum Einstieg in S1 ab: die Schritte davor ganz, von S1 nur die Navigation, ohne Claude\./);
-    assert.match(await page.textContent('#sgo'), /ÖFFNEN/);
+    assert.match(await page.textContent('#sgo'), /^Öffnen$/);
     await page.click('#sgo');
     await until(() => picked.length === 2);
     assert.deepEqual(picked[1], ['sb-antrag-abbrechen', 'S1']);

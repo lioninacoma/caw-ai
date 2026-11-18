@@ -5,7 +5,7 @@ export default {
     'workbench.runFacts': 'Run details',
     'workbench.stillTitle': 'No blinking, no spinner, no cursor (F10). Applies to future runs too.',
     'workbench.still': 'Animations off',
-    'workbench.handedOver': '[ HANDED OVER ]',
+    'workbench.handedOver': 'HANDED OVER',
     'workbench.bench': 'Workbench',
     'workbench.solo': 'App only',
     'workbench.soloTitle': 'Only the app, without the workbench (F8)',

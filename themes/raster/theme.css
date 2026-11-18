@@ -2,7 +2,7 @@
    buttons, one strong blue. In the dark mode the same rules turn white: bars light, text dark. Inter and JetBrains Mono. */
 
 .lg,.sec,.tag,.px-label,.px-btn,.px-pill,.gauge,.fk,.tabs button,.solo-btn,#browserState,#notice,#stateSpin,
-#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
+#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,#learn,.strip,.fold,
 .small,#abort,#abortNo,.soloBar,.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.step .sid,.step dt,.advice dt,
 .failure .badge,#thinking,.fkeys,.sfilter span,.srow .mk,.advice .copy,.heart,#leftNote strong{font-family:var(--font-ui);font-size:12.5px;line-height:1.3;letter-spacing:0}
 .raven{font-family:"VT323",monospace!important;font-weight:400;letter-spacing:0;text-transform:none}
@@ -14,7 +14,7 @@ body{font-variant-ligatures:no-contextual}
 .crt-case{background:var(--screen);box-shadow:none}
 #bench{box-shadow:none;padding:0 18px}
 .top{border-bottom:var(--rule);padding:16px 0 14px;gap:8px 22px}
-.id b{font:700 30px/1.05 var(--font-crt);letter-spacing:-.02em;text-transform:lowercase}
+.id b{font:700 26px/1.05 var(--font-crt);letter-spacing:-.02em;text-transform:lowercase}
 .facts{font-size:12px;color:var(--text)}
 
 /* Panes share their rules: side by side the borders lie on top of each other */
@@ -53,11 +53,11 @@ body{font-variant-ligatures:no-contextual}
 #steps>li[data-kind=phase]>.pts>li{padding:4px 12px}
 
 /* Buttons: framed, capitals; the primary one in the signal colour; hover fills */
-.px-btn,#choices button,.small,#report,#closeWindow,.solo-btn,.advice .copy{font:700 12px/1.2 var(--font-crt);letter-spacing:.06em;text-transform:uppercase;border:var(--rule);border-radius:0;box-shadow:none;background:var(--pane);color:var(--text)}
+.px-btn,#choices button,.small,#report,#closeWindow,#learn,.solo-btn,.advice .copy{font:700 12px/1.2 var(--font-crt);letter-spacing:.06em;text-transform:uppercase;border:var(--rule);border-radius:0;box-shadow:none;background:var(--pane);color:var(--text)}
 #choices{padding:4px 12px 12px;gap:8px}
-#choices button{min-height:40px}
+#choices button,#report,#closeWindow,#learn{min-height:40px}
 #choices button:hover,.px-btn:hover:enabled{background:var(--text);color:var(--screen)}
-.px-btn--primary,#choices button.primary,#report,#closeWindow{background:var(--accent);border-color:var(--accent);color:var(--on-signal);box-shadow:none}
+.px-btn--primary,#choices button.primary,#report,#closeWindow,#learn{background:var(--accent);border-color:var(--accent);color:var(--on-signal);box-shadow:none}
 #choices button.primary:hover{background:var(--text);border-color:var(--text);color:var(--screen)}
 .solo-btn b{color:var(--accent)}
 .px-pill{border:var(--rule);border-radius:0;box-shadow:none;color:var(--text);padding:1px 8px;font-weight:700}

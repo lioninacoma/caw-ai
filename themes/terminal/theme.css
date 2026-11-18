@@ -3,7 +3,7 @@
    for the large type (logo, title, test id). The other themes use the same list. */
 :root{--fs-crt:13px}
 .lg,.sec,.tag,.thead span,.px-label,.px-btn,.px-pill,.gauge,.fk,.tabs button,.solo-btn,#browserState,#notice,#stateSpin,
-#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,.strip,.fold,
+#steps>li[data-kind=phase]>.head .name,#steps>li[data-kind=section]>.head .name,.prompt .p,.who,.mk,#choices button,#report,#closeWindow,#learn,.strip,.fold,
 .small,#abort,#abortNo,.soloBar,.plan strong,.advice strong,.failure strong,.decision strong,#next strong,.step .sid,.step dt,.advice dt,
 .failure .badge,#thinking,.fkeys,.sfilter span,.srow .mk,.advice .copy,.heart,#leftNote strong{font-family:var(--font-ui);font-size:12.5px;line-height:1.3;letter-spacing:0}
 /* Light mode: no CRT tube. The black edge and the dark inner shadow around the workbench and the black ring around the app

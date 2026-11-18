@@ -195,7 +195,7 @@ export default {
     'run.flow.filesChanged': 'the change to {files} is applied, the app is unchanged',
     'run.flow.rerunOffer': '{id} failed, {what}. A new run shows whether that fixes it.',
     'run.flow.runPassed': 'The run passed.',
-    'run.flow.learnOffer': 'Steps {ids} have no baselines yet. "Learn baselines" below writes the requests and effects of this run into the recording, so later failures can be told apart as test, app or environment. Without the click nothing changes.',
+    'run.flow.learnOffer': 'Steps {ids} have no baselines yet. "Save baselines" below writes the requests and effects of this run into the recording, so later failures can be told apart as test, app or environment. Without the click nothing changes.',
     'run.flow.runFailed': 'The run failed.',
     'run.flow.adviceInReport': ' The recommendations are in the report.',
     'run.flow.effectForgotten': 'Forgot learned effect of {id}: {file}. Please review and commit.',

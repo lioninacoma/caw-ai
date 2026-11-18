@@ -226,7 +226,7 @@ test('Test run: a green run fills in missing baselines without Claude; without a
     assert.deepEqual(quiet.adopted, []);
 });
 
-test('Test run without --learn: the end card offers "Learn baselines"; only the click (learn in the run\'s result) writes', async () => {
+test('Test run without --learn: the end card offers "Save baselines"; only the click (learn in the run\'s result) writes', async () => {
     const network = [{ name: 'GET /a', status: 200, ms: 40 }];
     const baselines = new Map([['S1', network]]);
     const clicked = harness({ outcomes: [{ ...pass, baselines, learn: true }] });

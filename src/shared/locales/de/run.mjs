@@ -195,7 +195,7 @@ export default {
     'run.flow.filesChanged': 'die Änderung an {files} ist übernommen, die Anwendung ist unverändert',
     'run.flow.rerunOffer': '{id} ist gescheitert, {what}. Ein neuer Lauf zeigt, ob das den Fehler behebt.',
     'run.flow.runPassed': 'Der Lauf hat bestanden.',
-    'run.flow.learnOffer': 'Schritte {ids} haben noch keine Vergleichswerte. „Baselines lernen“ unten schreibt Requests und Effekte dieses Laufs in die Aufzeichnung, damit spätere Fehler als Test, Anwendung oder Umgebung erkennbar sind. Ohne den Klick ändert sich nichts.',
+    'run.flow.learnOffer': 'Schritte {ids} haben noch keine Vergleichswerte. „Vergleichswerte speichern“ unten schreibt Requests und Effekte dieses Laufs in die Aufzeichnung, damit spätere Fehler als Test, Anwendung oder Umgebung erkennbar sind. Ohne den Klick ändert sich nichts.',
     'run.flow.runFailed': 'Der Lauf hat nicht bestanden.',
     'run.flow.adviceInReport': ' Die Empfehlungen stehen im Bericht.',
     'run.flow.effectForgotten': 'Gelernte Wirkung von {id} vergessen: {file}. Bitte prüfen und committen.',

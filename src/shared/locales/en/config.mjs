@@ -199,7 +199,7 @@ export default {
     'config.report.diagnosis': 'Assessment',
     'config.report.diagnosis.header': '| Request in {step} | Now | Duration | Recording |',
     'config.report.diagnosis.missing': 'missing',
-    'config.report.diagnosis.noBaseline': 'No comparison with the recording for this step yet. It is created only on request: with `run --learn` or "Learn baselines" on the end card of a passed run.',
+    'config.report.diagnosis.noBaseline': 'No comparison with the recording for this step yet. It is created only on request: with `run --learn` or "Save baselines" on the end card of a passed run.',
     'config.report.title': '# {testId} on {target}: {status}',
     'config.report.source': 'Tested version: {source}',
     'config.report.overlay': 'Overlay: {label}; {local} file(s) local, {server} script(s)/stylesheet(s) from the server; page swapped: {swapped}',

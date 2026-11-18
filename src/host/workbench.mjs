@@ -109,11 +109,12 @@ ${themeCss(theme)}${CONSOLE_CSS}${RAVEN_CSS}
 body{background:var(--page);color:var(--text);font:var(--fs-body)/1.45 var(--font-body)}
 button,input{font:inherit;color:inherit}
 .pa{height:100vh;padding:10px;display:flex}
-#bench{flex:1;min-width:0;display:flex;flex-direction:column;padding:10px 16px 0;box-shadow:inset 0 0 0 2px #000,inset 0 0 60px rgba(0,0,0,.6)}
-.top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;padding-bottom:10px;border-bottom:2px solid var(--line)}
-.id{display:flex;flex-direction:column;gap:2px;min-width:0}
-.id b{font:400 28px/1 var(--font-crt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.id b .cmd{color:var(--info)}
-.id>span{color:var(--muted);font-size:12px}
+#bench{flex:1;min-width:0;display:flex;flex-direction:column;padding:6px 16px 0;box-shadow:inset 0 0 0 2px #000,inset 0 0 60px rgba(0,0,0,.6)}
+.top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+/* The product (raven, caw, its long name) and next to it the title sentence of the run. */
+.brand{flex:none;display:flex;align-items:center;gap:6px}.brand .name{display:flex;flex-direction:column;gap:2px}.brand .name b{font:400 28px/1 var(--font-crt);color:var(--accent)}.brand .name>span{color:var(--muted);font-size:12px}
+.top .id{display:flex;flex-direction:column;gap:2px;min-width:0;padding-left:18px;border-left:2px solid var(--line)}
+.top .id b{font:400 24px/1 var(--font-crt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top .id b .cmd{color:var(--info)}
 .facts{display:flex;gap:4px 18px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:0;padding:0;list-style:none;min-width:0;flex:1 1 220px}
 .facts li{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}.facts b{color:var(--text);font-weight:500;margin-left:6px}
 .tools{margin-left:auto;display:flex;align-items:center;gap:10px}
@@ -124,9 +125,9 @@ button,input{font:inherit;color:inherit}
 --col-steps:minmax(270px,320px);--col-chat:minmax(300px,380px);grid-template-columns:var(--col-steps) minmax(0,1fr) var(--col-chat);grid-template-rows:minmax(0,1fr);
 grid-template-areas:"steps browser chat"}
 .win{display:flex;flex-direction:column}
-.pa-steps{grid-area:steps;padding:16px 12px 10px}
-.pa-browser{grid-area:browser;padding:16px 10px 10px}
-.pa-chat{grid-area:chat;padding:14px 0 0}
+.pa-steps{grid-area:steps;padding:10px 12px 10px}
+.pa-browser{grid-area:browser;padding:10px 10px 10px}
+.pa-chat{grid-area:chat;padding:8px 0 0}
 .fold{position:absolute;top:-13px;right:10px;z-index:3;border:0;cursor:pointer;background:var(--screen);color:var(--accent);font:400 22px/1 var(--font-crt);padding:0 6px}
 .fold:hover{color:var(--text)}
 .strip{display:none;border:0;cursor:pointer;background:none;color:var(--muted);font:400 22px/1 var(--font-crt);writing-mode:vertical-rl;padding:10px 0;align-items:center;gap:10px;width:100%;height:100%}
@@ -292,7 +293,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>${themeStyle(theme)}</head><body class="${classes}"><div class="pa crt-case"><div class="crt" id="bench">
 <div class="soloBar">${ravenLogo(theme, { size: 11, label: 'caw' })}<span id="soloTag" hidden>${esc(t('workbench.handedOver'))}</span><span id="soloState"></span><span id="soloUrl"></span><button class="solo-btn" type="button" data-states hidden><b>F1</b>${t('workbench.stateTitle')}</button><button class="solo-btn" type="button" data-solo><b>F8</b>${t('workbench.bench')}</button></div>
-<header class="top">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="id"><b class="glow" id="title" data-test="${esc(test)}">${esc(test || 'caw')}</b><span>${LONG_NAME}</span></div>
+<header class="top"><div class="brand">${ravenLogo(theme, { size: 22, label: 'caw' })}<div class="name"><b class="glow">caw</b><span>${LONG_NAME}</span></div></div><div class="id"><b class="glow" id="title" data-test="${esc(test)}">${esc(test || 'caw')}</b></div>
 <ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul>
 <div class="tools"><span id="notice" role="status" hidden></span><span id="stateSpin" class="spinf" aria-hidden="true" hidden></span><span id="state" class="px-pill glow" role="status"></span><span id="transport" class="px-pill glow" role="img"><i></i><span></span></span></div></header>
 <main class="panes">
@@ -309,7 +310,7 @@ td.name{width:60%}td.ok{color:var(--ok)}td.bad{color:var(--fail)}td.open{color:v
 <div id="stateDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.stateTitle')}"><div class="win crt">${lg(t('workbench.stateTitle'))}
 <div class="scols"><div class="scol"><div class="sec">── <b>${t('workbench.page.stateTest').toUpperCase()}</b></div><div class="sfilter"><span>/</span><input id="sq" type="search" autocomplete="off" spellcheck="false" placeholder="${t('workbench.page.stateSearch')}" aria-label="${t('workbench.page.stateSearch')}"></div><div class="slist" id="stests" role="listbox" aria-label="${t('workbench.page.stateTest')}"></div></div>
 <div class="scol"><div class="sec">── <b id="sstepsHead">${t('workbench.page.stateSteps').toUpperCase()}</b></div><div class="slist" id="ssteps" role="listbox" aria-label="${t('workbench.page.stateSteps')}"></div></div></div>
-<div class="sfoot"><p id="sfoot"></p><div class="acts"><button type="button" class="px-btn" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="px-btn px-btn--primary" id="sgo" disabled>[ ${t('workbench.page.stateGo').toUpperCase()} ]</button></div></div></div></div>
+<div class="sfoot"><p id="sfoot"></p><div class="acts"><button type="button" class="px-btn" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="px-btn px-btn--primary" id="sgo" disabled>${t('workbench.page.stateGo')}</button></div></div></div></div>
 <div id="themeDlg" hidden role="dialog" aria-modal="true" aria-label="${t('workbench.page.themeTitle')}"><div class="win crt">${lg(t('workbench.page.themeTitle'))}<div class="tbody">
 <div class="thead"><span id="tmodeLabel">${t('workbench.page.themeMode')}</span><div class="tmode" id="tmode" role="radiogroup" aria-labelledby="tmodeLabel"></div></div>
 <div class="tthemes" id="tthemes" role="radiogroup" aria-label="${t('workbench.page.themeList')}"></div>

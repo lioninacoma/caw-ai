@@ -199,7 +199,7 @@ export default {
     'config.report.diagnosis': 'Einschätzung',
     'config.report.diagnosis.header': '| Request in {step} | Jetzt | Dauer | Aufnahme |',
     'config.report.diagnosis.missing': 'fehlt',
-    'config.report.diagnosis.noBaseline': 'Für diesen Schritt gibt es noch keinen Vergleich mit der Aufnahme. Er entsteht nur auf Wunsch: mit `run --learn` oder „Baselines lernen“ auf der Abschlusskarte eines bestandenen Laufs.',
+    'config.report.diagnosis.noBaseline': 'Für diesen Schritt gibt es noch keinen Vergleich mit der Aufnahme. Er entsteht nur auf Wunsch: mit `run --learn` oder „Vergleichswerte speichern“ auf der Abschlusskarte eines bestandenen Laufs.',
     'config.report.title': '# {testId} auf {target}: {status}',
     'config.report.source': 'Getesteter Stand: {source}',
     'config.report.overlay': 'Overlay: {label}; {local} Datei(en) lokal, {server} Skript(e)/Stylesheet(s) vom Server; Seite getauscht: {swapped}',

@@ -115,7 +115,7 @@ export const exploreCardScript = (texts, theme = activeTheme()) => {
             say.classList.toggle('dots', phase === 'wait' || phase === 'reading');
             mark(phase === 'wait' || phase === 'reading' ? 'spin' : phase === 'done' ? 'ok' : 'info');
             $('.where').hidden = phase !== 'start';
-            if (phase === 'start' && !button.disabled) button.textContent = '[ ' + T.button + ' ]';
+            if (phase === 'start' && !button.disabled) button.textContent = T.button;
             button.hidden = phase !== 'start' && !(phase === 'reading' && button.disabled) && !(phase === 'done' && button.disabled);
         };
         // Shorten long paths at the front: the end tells where you are.

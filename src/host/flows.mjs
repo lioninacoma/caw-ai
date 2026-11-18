@@ -483,7 +483,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * @param handover  the human wants the window afterwards (open)
  * @param entry     open at the entry of this step: the steps before it, then its leading navigation (replayToEntry)
  * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens (--learn)
- * @param offerLearning  without --learn, with chat: a passed run that could learn shows "Learn baselines" on the end card; only
+ * @param offerLearning  without --learn, with chat: a passed run that could learn shows "Save baselines" on the end card; only
  *                       the human's click learns (Q7)
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
@@ -677,7 +677,7 @@ export const runFlow = async (options) => {
         } : {}),
     });
     options.onPlayed?.(played);
-    // --learn, or the human's click on "Learn baselines" on the end card of this run.
+    // --learn, or the human's click on "Save baselines" on the end card of this run.
     const fillBaselines = learnAlways || played.learn === true;
     if (fillBaselines && played.baselines !== undefined) {
         current = withBaselines(current, played.baselines);
