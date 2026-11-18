@@ -33,23 +33,35 @@ export const graphqlOperations = (text) => {
     return operations;
 };
 
+/**
+ * A value as one token of a request name: whitespace percent-encoded. A name is split on whitespace again (parseRequestName), so
+ * a raw space in a value (`?action=x query y`) would otherwise make up tokens, e.g. a GraphQL query suffix that reads as a read.
+ */
+export const nameToken = (text) => String(text).replace(/\s/g, (space) => encodeURIComponent(space));
+
+// The fields of a GraphQL request object (GraphQL over HTTP), plus Relay's persisted `documentId`. A JSON body with any other
+// top-level field is no GraphQL request: `{"query": "{a}", "action": "delete"}` must not pass as a query.
+const GRAPHQL_FIELDS = new Set(['query', 'operationName', 'variables', 'extensions', 'documentId']);
+
 /** One GraphQL request object ({query, operationName} or a persisted query without text): type and name, or null. */
 const operationOf = (entry) => {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    if (!Object.keys(entry).every((key) => GRAPHQL_FIELDS.has(key))) return null;
     const wanted = typeof entry.operationName === 'string' && entry.operationName !== '' ? entry.operationName : null;
     if (typeof entry.query !== 'string') {
         const persisted = (entry.extensions !== null && typeof entry.extensions === 'object' && entry.extensions.persistedQuery !== undefined)
             || typeof entry.documentId === 'string';
-        return persisted ? { type: 'unknown', name: wanted ?? 'anonymous' } : null;
+        return persisted ? { type: 'unknown', name: nameToken(wanted ?? 'anonymous') } : null;
     }
     const operations = graphqlOperations(entry.query);
     const chosen = operations.find(({ name }) => wanted !== null && name === wanted) ?? operations[0];
-    return chosen === undefined ? null : { type: chosen.type, name: chosen.name ?? wanted ?? 'anonymous' };
+    return chosen === undefined ? null : { type: chosen.type, name: nameToken(chosen.name ?? wanted ?? 'anonymous') };
 };
 
 /**
  * The GraphQL operation of a request body, or null when it is no GraphQL request: a JSON object with a string `query` (or a
- * persisted query), a batch array of them (named by the first, typed by the most writing), or `application/graphql`.
+ * persisted query) and no other top-level field, a batch array of them (named by the first, typed by the most writing), or
+ * `application/graphql`.
  */
 export const graphqlOf = (postData, contentType = '') => {
     if (typeof postData !== 'string' || postData === '') return null;
@@ -82,7 +94,7 @@ export const jsonKeyParts = (postData, keys) => {
     }
     const shape = Array.isArray(body) ? body[0] : body;
     if (shape === null || typeof shape !== 'object' || Array.isArray(shape)) return [];
-    return wanted.filter((key) => ['string', 'number', 'boolean'].includes(typeof shape[key])).map((key) => `json.${key}=${String(shape[key]).slice(0, 120)}`);
+    return wanted.filter((key) => ['string', 'number', 'boolean'].includes(typeof shape[key])).map((key) => `json.${key}=${nameToken(String(shape[key]).slice(0, 120))}`);
 };
 
 /** Splits a request name (or a learned effect line `<name> <status>`) into method, path, key parts and the GraphQL suffix. */

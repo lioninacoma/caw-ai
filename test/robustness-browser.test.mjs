@@ -9,6 +9,7 @@ import { after, before, test } from 'node:test';
 
 
 import { createTrace } from '../src/host/browser-session.mjs';
+import { basicAuthToken } from '../src/host/trace-scrub.mjs';
 import { waitQuiet } from '../src/host/framework/index.mjs';
 import { web } from '../src/host/framework/web.mjs';
 import { launchChrome } from './chrome.mjs';
@@ -98,6 +99,42 @@ test('trace: Basic credentials in the context options are masked in the saved tr
     assert.equal(countInZip(join(dir, 'trace.zip'), PASSWORD), 0);
     assert.ok(countInZip(join(dir, 'trace.zip'), 'gate.user') > 0, 'the rest of the options is kept');
     assert.ok(countInZip(join(dir, 'trace.zip'), 'Application') > 0, 'the page is still in the trace');
+});
+
+test('trace: a gate\'s Authorization header (base64 of user:password) is masked too, with snapshots on', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const dir = mkdtempSync(join(tmpdir(), 'caw-trace-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    // A gate: 401 with a Basic challenge until the browser sends the credentials.
+    const gate = createServer((req, res) => {
+        if (req.headers.authorization === undefined) {
+            res.writeHead(401, { 'www-authenticate': 'Basic realm="gate"' });
+            res.end();
+            return;
+        }
+        res.setHeader('content-type', 'text/html');
+        res.end('<p id="app">Application</p><script>fetch("/api/data")</script>');
+    });
+    await new Promise((ok) => { gate.listen(0, '127.0.0.1', ok); });
+    t.after(() => gate.close());
+    const gateBase = `http://127.0.0.1:${gate.address().port}`;
+    const token = basicAuthToken('gate.user', PASSWORD);
+    const run = async (name, secrets) => {
+        const context = await browser.newContext({ httpCredentials: { username: 'gate.user', password: PASSWORD, origin: gateBase } });
+        const page = await context.newPage();
+        const trace = createTrace(context, { path: join(dir, name), options: { screenshots: false, snapshots: true }, secrets: () => secrets });
+        await trace.start();
+        await page.goto(gateBase);
+        await page.waitForLoadState('networkidle');
+        await trace.stop();
+        await context.close();
+    };
+    await run('plain.zip', [PASSWORD]);
+    assert.ok(countInZip(join(dir, 'plain.zip'), token) > 0, 'masking the password alone leaves the encoded header (the case this guards)');
+    await run('trace.zip', [PASSWORD, token]);
+    assert.equal(countInZip(join(dir, 'trace.zip'), token), 0);
+    assert.equal(countInZip(join(dir, 'trace.zip'), PASSWORD), 0);
+    assert.ok(countInZip(join(dir, 'trace.zip'), 'Application') > 0, 'the snapshots stay');
 });
 
 test('readiness: a ticker and a permanent spinner settle with readyIgnore; spinners outside the view never count', async (t) => {

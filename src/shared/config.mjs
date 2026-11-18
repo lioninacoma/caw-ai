@@ -20,7 +20,7 @@ export { environmentsWith } from './environments.mjs';
 const ENVIRONMENT_FLAGS = ['claude', 'writable', 'production', 'insecureTls', 'allowHttp'];
 /** The lifecycle commands of an environment (§2.9): shell commands run in the project root. */
 const LIFECYCLE_COMMANDS = ['start', 'stop', 'reset'];
-const ENVIRONMENT_KEYS = ['url', 'extends', 'signIn', 'gate', 'allowHosts', ...ENVIRONMENT_FLAGS, ...LIFECYCLE_COMMANDS, 'ready'];
+const ENVIRONMENT_KEYS = ['url', 'extends', 'signIn', 'gate', 'allowHosts', 'thirdPartyHosts', ...ENVIRONMENT_FLAGS, ...LIFECYCLE_COMMANDS, 'ready'];
 /** Limits of ready.timeoutMs: one second to half an hour. */
 const READY_TIMEOUT_MS = { min: 1000, max: 1_800_000 };
 // A production environment must be declared explicitly, and then has no Claude, no local code and no writing.
@@ -61,9 +61,9 @@ export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
 const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys', 'reads',
-    'consoleIgnore', 'foreignCode', 'allowHosts', 'overlay', 'effects', 'maxActions', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
+    'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'maxActions', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'theme', 'readyIgnore'];
-const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport'];
+const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport', 'noSandbox'];
 /** A CSS viewport { width, height } in whole pixels, as a recording stores it and browser.viewport sets it. */
 export const isViewport = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
     && Object.keys(value).every((key) => key === 'width' || key === 'height')
@@ -119,10 +119,14 @@ export const agentMode = (config, env = process.env) => {
 export const BROWSER_CHANNELS = ['chrome', 'chrome-beta', 'chrome-dev', 'msedge', 'msedge-beta', 'msedge-dev'];
 
 /** How the browser starts: the system Chrome by default, otherwise `browser.channel` or `browser.executablePath` from the config. */
+// Always with Chrome's sandbox: Playwright starts Chromium without it unless asked. Only `browser.noSandbox: true` turns it off,
+// for a machine where it cannot start (Linux as root, some containers). That is unsafe: a page that breaks the renderer then
+// runs with the user's rights.
 export const browserLaunch = (config) => {
     const browser = isObject(config?.browser) ? config.browser : {};
-    if (typeof browser.executablePath === 'string' && browser.executablePath !== '') return { executablePath: browser.executablePath };
-    return { channel: typeof browser.channel === 'string' ? browser.channel : 'chrome' };
+    const chromiumSandbox = browser.noSandbox !== true;
+    if (typeof browser.executablePath === 'string' && browser.executablePath !== '') return { executablePath: browser.executablePath, chromiumSandbox };
+    return { channel: typeof browser.channel === 'string' ? browser.channel : 'chrome', chromiumSandbox };
 };
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 /** A BCP 47 language tag such as "de-DE" or "en". */
@@ -223,7 +227,7 @@ const checkEnvironments = (config, issues, notes) => {
         if (raw.extends !== undefined && (typeof raw.extends !== 'string' || !names.includes(raw.extends))) {
             issues.push(t('config.env.extendsUnknown', { name, parent: String(raw.extends), names: names.filter((other) => other !== name).join(', ') || '–' }));
         }
-        issues.push(...hostListIssues(`environments.${name}.allowHosts`, raw.allowHosts));
+        for (const key of ['allowHosts', 'thirdPartyHosts']) issues.push(...hostListIssues(`environments.${name}.${key}`, raw[key]));
         if (raw.signIn !== undefined && !isObject(raw.signIn)) issues.push(t('config.signIn.notObject', { at: `environments.${name}.signIn` }));
         if (raw.gate !== undefined && !(isObject(raw.gate) && raw.gate.type === 'basic' && Object.keys(raw.gate).length === 1)) issues.push(t('config.gate.shape', { name }));
         for (const key of LIFECYCLE_COMMANDS.filter((command) => raw[command] !== undefined && (typeof raw[command] !== 'string' || raw[command].trim() === ''))) {
@@ -428,13 +432,14 @@ export const validateConfig = (given) => {
             if (config.browser.channel !== undefined && !BROWSER_CHANNELS.includes(config.browser.channel)) issues.push(t('config.browser.channel', { names: BROWSER_CHANNELS.join(', ') }));
             if (config.browser.executablePath !== undefined && (typeof config.browser.executablePath !== 'string' || !isAbsolute(config.browser.executablePath))) issues.push(t('config.browser.executablePath'));
             if (config.browser.channel !== undefined && config.browser.executablePath !== undefined) issues.push(t('config.browser.both'));
+            if (config.browser.noSandbox !== undefined && typeof config.browser.noSandbox !== 'boolean') issues.push(t('config.browser.noSandbox'));
         }
     }
     if (typeof config.sandboxImage === 'string' && !/^[\w./:@-]+$/.test(config.sandboxImage)) issues.push(t('config.sandboxImage'));
     if (config.sandboxUser !== undefined && !/^[a-z_][a-z0-9_-]*$/.test(config.sandboxUser)) issues.push(t('config.sandboxUser'));
     if (config.maxActions !== undefined && (!Number.isInteger(config.maxActions) || config.maxActions <= 0)) issues.push(t('config.maxActions'));
     if (config.readyTimeoutMs !== undefined && (!Number.isInteger(config.readyTimeoutMs) || config.readyTimeoutMs <= 0)) issues.push(t('config.readyTimeoutMs'));
-    issues.push(...hostListIssues('allowHosts', config.allowHosts));
+    for (const key of ['allowHosts', 'thirdPartyHosts']) issues.push(...hostListIssues(key, config[key]));
     for (const key of ['consoleIgnore', 'foreignCode']) {
         if (config[key] !== undefined && !(Array.isArray(config[key]) && config[key].every((pattern) => typeof pattern === 'string'))) {
             issues.push(t('config.patterns.list', { key }));

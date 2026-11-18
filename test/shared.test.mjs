@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { assetPatterns, buildDevlinkConfig, defaultAssetPattern, environmentsWith, navigationHosts, validateConfig, writeConfig } from '../src/shared/config.mjs';
-import { effectiveEnvironment, startPath } from '../src/shared/environments.mjs';
+import { agentHosts, blockedHosts, effectiveEnvironment, startPath } from '../src/shared/environments.mjs';
 import { deriveName } from '../src/ext/overlay/overlay.mjs';
 import { checkTest, withDefaults } from '../src/host/test-file.mjs';
 import { CawError } from '../src/shared/errors.mjs';
@@ -82,7 +82,7 @@ test('config: browser.locale, browser.timezone and readyIgnore', () => {
     assert.match(issues({ ...simple(), browser: { locale: 'kein locale!' } }), /browser\.locale muss ein Sprachkürzel sein/);
     assert.match(issues({ ...simple(), browser: { locale: 7 } }), /browser\.locale/);
     assert.match(issues({ ...simple(), browser: { timezone: 'Mars/Olympus' } }), /browser\.timezone muss eine Zeitzone sein/);
-    assert.match(issues({ ...simple(), browser: { zone: 'UTC' } }), /browser\.zone gibt es nicht \(erlaubt: channel, executablePath, locale, timezone, viewport\)/);
+    assert.match(issues({ ...simple(), browser: { zone: 'UTC' } }), /browser\.zone gibt es nicht \(erlaubt: channel, executablePath, locale, timezone, viewport, noSandbox\)/);
     assert.equal(issues({ ...simple(), browser: { viewport: { width: 1280, height: 800 } } }), '');
     for (const viewport of [{ width: 100, height: 800 }, { width: 1280 }, { width: 1280.5, height: 800 }, { width: 1280, height: 800, scale: 2 }, '1280x800']) {
         assert.match(issues({ ...simple(), browser: { viewport } }), /browser\.viewport muss \{ "width": 320–7680, "height": 240–4320 \}/, JSON.stringify(viewport));
@@ -192,7 +192,7 @@ test('consoleIgnore must contain valid regular expressions', () => {
 test('effectiveEnvironment returns URL and capabilities; unknown names are rejected', () => {
     assert.deepEqual(effectiveEnvironment(multi(), 'sued-test'), {
         name: 'sued-test', url: 'https://test.sued.example', claude: false, writable: true, production: false,
-        signIn: multi().signIn, allowHosts: [], insecureTls: false, allowHttp: false, ready: { path: '/', timeoutMs: 60000 },
+        signIn: multi().signIn, allowHosts: [], thirdPartyHosts: [], insecureTls: false, allowHttp: false, ready: { path: '/', timeoutMs: 60000 },
     });
     const own = { ...multi(), environments: { ...multi().environments, 'sued-test': { extends: 'nord-test', url: 'https://test.sued.example', signIn: { type: 'none' } } } };
     assert.deepEqual(effectiveEnvironment(own, 'sued-test').signIn, { type: 'none' }, 'an environment\'s own signIn replaces the top-level one');
@@ -207,6 +207,18 @@ test('navigationHosts: every non-production environment and the allowed hosts, n
     assert.ok(hosts.includes('abnahme.sued.example'));
     assert.ok(hosts.includes('cdn.example'));
     assert.deepEqual(navigationHosts(simple(), 'local'), ['app.localhost', 'staging.shop.example']);
+});
+
+test('agentHosts: navigation hosts plus thirdPartyHosts (top level and the environment\'s), never production; hosts normalized', () => {
+    const config = {
+        ...simple(),
+        environments: { ...simple().environments, local: { ...simple().environments.local, thirdPartyHosts: ['Fonts.Example.'] }, live: { url: 'https://Shop.Example./', production: true } },
+        allowHosts: ['SSO.example'],
+        thirdPartyHosts: ['cdn.example', 'shop.example'],
+    };
+    assert.deepEqual(agentHosts(config, 'local'), ['app.localhost', 'staging.shop.example', 'sso.example', 'cdn.example', 'fonts.example']);
+    assert.deepEqual(blockedHosts(config, 'local'), ['shop.example'], 'a trailing dot or upper case in the URL does not slip past the block');
+    assert.ok(!agentHosts(config, 'staging').includes('fonts.example'), 'another environment\'s list does not count');
 });
 
 const SPEC = { id: 'smoke', role: 'kunde', environments: ['nord-dev', 'sued-test'], writes: false };
@@ -473,9 +485,16 @@ test('config: broken values lead to messages, not crashes', () => {
 
 test('config: browser picks a Chromium browser, default Chrome', async () => {
     const { browserLaunch } = await import('../src/shared/config.mjs');
-    assert.deepEqual(browserLaunch({}), { channel: 'chrome' });
-    assert.deepEqual(browserLaunch({ browser: { channel: 'msedge' } }), { channel: 'msedge' });
-    assert.deepEqual(browserLaunch({ browser: { executablePath: '/opt/chromium/chrome' } }), { executablePath: '/opt/chromium/chrome' });
+    assert.deepEqual(browserLaunch({}), { channel: 'chrome', chromiumSandbox: true });
+    assert.deepEqual(browserLaunch({ browser: { channel: 'msedge' } }), { channel: 'msedge', chromiumSandbox: true });
+    assert.deepEqual(browserLaunch({ browser: { executablePath: '/opt/chromium/chrome' } }), { executablePath: '/opt/chromium/chrome', chromiumSandbox: true });
+    // Chrome's sandbox is always on; only the explicit, unsafe opt-out turns it off.
+    assert.deepEqual(browserLaunch({ browser: { noSandbox: true } }), { channel: 'chrome', chromiumSandbox: false });
+    assert.equal(issues({ ...simple(), browser: { noSandbox: true } }), '');
+    assert.match(issues({ ...simple(), browser: { noSandbox: 'yes' } }), /browser\.noSandbox muss true oder false sein/);
+    // thirdPartyHosts: host names like allowHosts, top level and per environment.
+    assert.equal(issues({ ...simple(), thirdPartyHosts: ['fonts.example'] }), '');
+    assert.match(issues({ ...simple(), thirdPartyHosts: ['https://fonts.example/css'] }), /thirdPartyHosts: "https:\/\/fonts\.example\/css" ist eine Adresse/);
     assert.equal(issues({ ...simple(), browser: { channel: 'msedge' } }), '');
     assert.match(issues({ ...simple(), browser: { channel: 'firefox' } }), /browser.channel muss einer von/);
     assert.match(issues({ ...simple(), browser: { executablePath: 'chrome.exe' } }), /absoluter Pfad/);

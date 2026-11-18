@@ -73,6 +73,10 @@ test('resolveLocalBuild: exact, except for the hash, unambiguous or not at all',
     assert.equal(resolveLocalBuild(dir, 'assets/logo-ABCD1234.svg'), null);
     assert.equal(resolveLocalBuild(dir, 'info'), null, 'SPA route');
     assert.equal(resolveLocalBuild(dir, '../secret-ABCD1234.js'), null);
+    // A name from a URL is split on / only: on Windows a backslash is a separator too, and NUL is never part of a file name.
+    assert.equal(resolveLocalBuild(join(dir, 'assets'), 'x\\..\\..\\/main-LOCAL123.js'), null, 'a folder with backslashes leaves the build');
+    assert.equal(resolveLocalBuild(dir, 'a\\..\\main-LOCAL123.js'), null);
+    assert.equal(resolveLocalBuild(dir, 'main-LOCAL123.js\0'), null);
     assert.equal(resolveLocalBuild(join(dir, 'fehlt'), 'main-X.js'), null);
 });
 

@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { colorEnabled } from '../shared/color.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { resolveCredentials } from '../shared/credentials.mjs';
-import { effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
+import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
 import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { inLanguage, t, teamLanguage } from '../shared/i18n.mjs';
@@ -231,6 +231,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             resolved: checked,
             credentials,
             hosts: navigationHosts(config, checked.name),
+            // With a chat Claude is (or may become) attached: the browser then reaches only the project's hosts (host-lock.mjs).
+            ...(interactive && checked.claude === true ? { reach: agentHosts(config, checked.name) } : {}),
             startUrl: start,
             devlinkConfig: buildDevlinkConfig(config, checked, start),
             devlinkConfigPath: join(runDir, 'devlink-config.json'),

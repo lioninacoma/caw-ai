@@ -86,10 +86,12 @@ export const rewriteBytes = async (bytes, rewrite, url) => {
  * Without `workbench` (no human watching) the top window stays the application; then only `rewrite` applies.
  * @param workbench (url) => workbench HTML with the application at url, or undefined
  * @param request   the browser's request context (context.request)
+ * @param refuse    ({ method, url, headers, postData }) => true for a top-window POST that must not go out (a write on
+ *                  production): it fails instead of being sent; optional
  * @param rewrite   async (html, { url }) => html, optional: changes every HTML page of the application, e.g. for local code. `html` is a
  *                  byte string (latin1, see rewriteBytes): the page keeps its encoding, and whatever is not changed stays byte for byte.
  */
-export const interceptDocuments = async (context, page, hosts, { workbench, request, rewrite }) => {
+export const interceptDocuments = async (context, page, hosts, { workbench, request, rewrite, refuse }) => {
     const cdp = await context.newCDPSession(page);
     const { frameTree } = await cdp.send('Page.getFrameTree');
     const topFrame = frameTree.frame.id;
@@ -111,11 +113,17 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
                 await fulfill(requestId, 200, html, workbench(url));
                 return;
             }
-            // POST etc. into the top window: send it for real once, the result belongs to the application.
+            // POST etc. into the top window: send it for real once, the result belongs to the application. The browser context's
+            // request API does not pass the context's routes, so a request the session refuses (a write on production) fails here.
+            const body = postBody(event.request);
+            if (refuse?.({ method, url, headers: headers ?? {}, postData: body === undefined ? null : body.toString('utf8') }) === true) {
+                await quiet(cdp.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }));
+                return;
+            }
             const sent = await request.fetch(url, {
                 method,
                 headers: Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !HOP_HEADERS.has(name.toLowerCase()))),
-                data: postBody(event.request),
+                data: body,
                 maxRedirects: 0,
                 failOnStatusCode: false,
             });

@@ -11,6 +11,12 @@ const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
 const ZIP64 = 0xffffffff;
 
+/**
+ * The token of an HTTP Basic `Authorization` header, as the trace's network entries hold it: base64(user:password). Pass it
+ * among the secrets so the encoded password is masked too.
+ */
+export const basicAuthToken = (username, password) => Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
+
 /** The byte sequences of a secret as it can appear in a trace: as is and JSON-escaped. */
 const needlesOf = (secrets) => [...new Set(secrets.filter((secret) => typeof secret === 'string' && secret.length >= MIN_SECRET)
     .flatMap((secret) => [secret, JSON.stringify(secret).slice(1, -1)]))]

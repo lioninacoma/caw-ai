@@ -152,6 +152,67 @@ test('local code: application popups and new tabs also get their HTML without su
     assert.equal(await integrity(tab), null, 'a new tab');
 });
 
+test('workbench: a form POST into the top window that the session refuses is not sent (it would pass the context routes)', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const posts = [];
+    const app = createServer((request, response) => {
+        if (request.method === 'POST') posts.push(request.url);
+        response.setHeader('content-type', 'text/html; charset=utf-8');
+        response.end('<p id="app">App</p>');
+    });
+    await new Promise((ok) => { app.listen(0, '127.0.0.1', ok); });
+    t.after(() => app.close());
+    const url = `http://127.0.0.1:${app.address().port}`;
+    const submit = async (refuse) => {
+        const context = await browser.newContext();
+        t.after(() => context.close());
+        const page = await context.newPage();
+        const asked = [];
+        await interceptDocuments(context, page, ['127.0.0.1'], { workbench: () => '<p id="bench">Bench</p>', request: context.request, refuse: (request) => { asked.push(request); return refuse; } });
+        await page.goto(`${url}/`);
+        await page.evaluate((action) => {
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = action;
+            form.innerHTML = '<input name="amount" value="5">';
+            document.body.append(form);
+            form.submit();
+        }, `${url}/api/transfer`);
+        await pause(800);
+        return asked;
+    };
+    const refused = await submit(true);
+    assert.equal(refused.length, 1);
+    assert.equal(refused[0].method, 'POST');
+    assert.equal(refused[0].postData, 'amount=5');
+    assert.deepEqual(posts, [], 'refused: the server never saw it');
+    await submit(false);
+    assert.deepEqual(posts, ['/api/transfer'], 'allowed: sent once by caw');
+});
+
+test('workbench: Local Network Access blocks a served page reaching another loopback origin; the permission for the app origin lets it through', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const api = createServer((request, response) => {
+        response.setHeader('access-control-allow-origin', '*');
+        response.end('api');
+    });
+    await new Promise((ok) => { api.listen(0, '127.0.0.1', ok); });
+    t.after(() => api.close());
+    const other = `http://localhost:${api.address().port}/data`;
+    const reach = async (grant) => {
+        const context = await browser.newContext();
+        t.after(() => context.close());
+        // Like the workbench: the document comes from Playwright, not from the network, so Chrome counts it as public.
+        if (grant) await context.grantPermissions(['local-network-access'], { origin: base });
+        const page = await context.newPage();
+        await page.route(`${base}/served`, (route) => route.fulfill({ contentType: 'text/html', body: '<p>served</p>' }));
+        await page.goto(`${base}/served`);
+        return page.evaluate((url) => fetch(url).then((response) => response.text(), (error) => String(error)), other);
+    };
+    assert.match(await reach(false), /Failed to fetch/, 'without the permission (why caw grants it)');
+    assert.equal(await reach(true), 'api');
+});
+
 test('local code: an ISO-8859-1 page keeps its umlauts even when rewritten', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const latinServer = createServer((request, response) => {

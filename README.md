@@ -227,6 +227,11 @@ everything the test user sees in the app: use test accounts and test data. Detai
 the app's pages load themselves (scripts, fonts, analytics), plus package downloads when the Docker image is built; in the
 Docker sandbox, Claude Code reaches only the Anthropic API (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`).
 
+**The browser is outside that firewall:** Chrome runs on your machine. While Claude is attached (record, a run with chat,
+`open`), every request of its pages goes only to your environments, `allowHosts` and `thirdPartyHosts`; anything else is
+aborted and named in the run, so a page Claude drives cannot send what it sees elsewhere. Without Claude (replays, CI) pages
+load from any host except production. Details: [Sandbox boundaries](docs/guide.md#sandbox-boundaries).
+
 **Run data** stays on your machine in `.caw/runs/<run>/`: report, `result.json`, screenshots, Claude's logs and `trace.zip`.
 The trace contains page contents and network data including cookies; don't upload it or run folders publicly. `init` adds
 `.caw/` to `.gitignore`.

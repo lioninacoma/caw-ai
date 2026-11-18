@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { bridgeWebSocket, discoverServer, incompleteText, prepareOverlay, probeServer, serverState } from '../src/ext/overlay/overlay.mjs';
+import { bridgeWebSocket, discoverServer, incompleteText, prepareOverlay, probeServer, routeOverlay, serverState } from '../src/ext/overlay/overlay.mjs';
 import { extjs } from '../src/ext/extjs/extjs.mjs';
 import { folderFetch } from './static-server.mjs';
 
@@ -97,7 +97,11 @@ test('Overlay dev with --start: caw runs overlay.start, waits for the address, f
     assert.equal(await overlay.resolve('https://staging.example/assets/index-OLD.js', 'script'), null, 'HTML instead of code: the server');
     assert.equal(await overlay.resolve('https://staging.example/api/orders', 'fetch'), null, 'never data');
     assert.equal(await overlay.resolve('https://staging.example/', 'document'), null);
+    assert.equal(await overlay.resolve('https://cdn.other.example/src/main.js?t=1', 'script'), null, 'another origin is never answered from the dev server');
+    assert.equal(await overlay.resolve('https://staging.example:8443/src/main.js', 'script'), null, 'another port is another origin');
+    assert.equal(String((await overlay.resolve(`${url}/src/main.js`, 'script')).body), 'console.log("dev")', 'the dev server\'s own address');
     assert.deepEqual(overlay.devServers, [url]);
+    assert.equal(overlay.envOrigin, 'https://staging.example');
     overlay.stop();
     const until = Date.now() + 10_000;
     while (await probeServer(url) && Date.now() < until) await new Promise((resolve) => { setTimeout(resolve, 200); });
@@ -168,6 +172,16 @@ test('HMR: dev server sockets go to it with its origin; others go unchanged to t
     auto.handlers.message('{"type":"hash"}');
     assert.deepEqual(made[3].sent, ['{"type":"hash"}']);
     assert.equal(auto.direct, undefined);
+});
+
+test('HMR: only sockets to the environment or the dev server are bridged (with the dev origin); others keep target and Origin', async () => {
+    let matches = null;
+    const context = { route: async () => {}, routeWebSocket: async (predicate) => { matches = predicate; } };
+    await routeOverlay(context, { devServers: ['http://localhost:5173'], envOrigin: 'https://staging.example', resolve: async () => null });
+    assert.equal(matches(new URL('wss://staging.example/ws')), true);
+    assert.equal(matches(new URL('ws://localhost:5173/')), true);
+    assert.equal(matches(new URL('wss://chat.thirdparty.example/socket')), false, 'a third-party socket is not forged');
+    assert.equal(matches(new URL('wss://staging.example:8443/ws')), false, 'another port is another origin');
 });
 
 test('Overlay watch: diagnose names parts from the server (missed), parts never loaded, and the pattern that catches them', async (t) => {

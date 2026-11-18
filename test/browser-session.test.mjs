@@ -129,6 +129,55 @@ test('Writing calls: sign-in, sign-out, session and token do not count, business
     assert.equal(kind('POST', '/c?action=load', ['action']), 'write', 'a POST through one endpoint writes unless reads names it');
 });
 
+test('production write block: any host, sign-in only while caw signs in and only on the sign-in hosts, reads still pass', async () => {
+    const { productionWriteName } = await import('../src/host/browser-session.mjs');
+    const { compileReads } = await import('../src/shared/requests.mjs');
+    const signInHosts = new Set(['shop.example', 'sso.example']);
+    const write = (method, url, options = {}, body = {}) => productionWriteName({ method, url, ...body }, { signInHosts, ...options });
+    assert.equal(write('POST', 'https://shop.example/api/orders'), 'POST /api/orders');
+    assert.equal(write('POST', 'https://collect.analytics.example/v1/events'), 'POST /v1/events', 'a third-party host is no exception');
+    assert.equal(write('PUT', 'https://SHOP.example./api/orders/7'), 'PUT /api/orders/:id');
+    assert.equal(write('GET', 'https://elsewhere.example/x'), null);
+    assert.equal(write('OPTIONS', 'https://shop.example/api/orders'), null);
+    assert.equal(write('POST', 'https://shop.example/api/session'), 'POST /api/session', 'a sign-in path outside caw\'s own sign-in writes');
+    assert.equal(write('DELETE', 'https://shop.example/api/session'), 'DELETE /api/session');
+    assert.equal(write('POST', 'https://sso.example/login', { signingIn: true }), null, 'caw signing in: the sign-in hosts pass');
+    assert.equal(write('POST', 'https://tracker.example/collect', { signingIn: true }), 'POST /collect', 'but no other host');
+    assert.equal(write('POST', 'https://shop.example/graphql', {}, { postData: JSON.stringify({ query: 'query Me { me { id } }' }), contentType: 'application/json' }), null, 'a GraphQL query reads');
+    assert.equal(write('POST', 'https://shop.example/api/search', { reads: compileReads(['POST /api/search']) }), null, 'reads names it');
+});
+
+test('Chrome sandbox: the messages of a sandbox that cannot start are recognised, other launch failures are not', async () => {
+    const { SANDBOX_FAILURE } = await import('../src/host/browser-session.mjs');
+    assert.ok(SANDBOX_FAILURE.test('[FATAL:zygote_host_impl_linux.cc(127)] No usable sandbox! Update your kernel or see https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md'));
+    assert.ok(SANDBOX_FAILURE.test('[FATAL:zygote_host_impl_linux.cc(90)] Running as root without --no-sandbox is not supported. See https://crbug.com/638180.'));
+    assert.ok(!SANDBOX_FAILURE.test('browserType.launchPersistentContext: Chromium distribution \'chrome\' is not found'));
+});
+
+test('fillSecret: a failed sign-in fill names the field, never the value or Playwright\'s call log', async () => {
+    const { fillSecret } = await import('../src/host/browser-session.mjs');
+    const playwright = new Error('locator.fill: Error: Element is not an <input>\nCall log:\n  - fill("geheim-123")\n  - locator resolved to <div id="pw">');
+    const error = await fillSecret(async () => { throw playwright; }, 'passwordSelector "#pw"').catch((caught) => caught);
+    assert.equal(error.code, 'login-failed');
+    assert.match(error.message, /passwordSelector "#pw"/);
+    assert.doesNotMatch(`${error.message}\n${error.stack}`, /geheim-123|Call log/);
+    assert.equal(error.cause, undefined);
+});
+
+test('fillSecret in Chrome: Playwright\'s own message would carry the value, caw\'s does not', async (t) => {
+    const { launchChrome } = await import('./chrome.mjs');
+    const { fillSecret } = await import('../src/host/browser-session.mjs');
+    const browser = await launchChrome();
+    if (browser === null) return t.skip('no Chrome');
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    await page.setContent('<div id="pw">not a field</div>');
+    const raw = await page.locator('#pw').fill('geheim-123', { timeout: 500 }).catch((caught) => caught);
+    assert.match(String(raw.message), /geheim-123/, 'the leak this guards against');
+    const error = await fillSecret(() => page.locator('#pw').fill('geheim-123', { timeout: 500 }), 'passwordSelector "#pw"').catch((caught) => caught);
+    assert.doesNotMatch(`${error.message}\n${error.stack}`, /geheim-123/);
+});
+
 test('certificateError: an untrusted certificate becomes an environment error naming insecureTls; anything else stays', async () => {
     const { certificateError } = await import('../src/host/run.mjs');
     const { exitOf } = await import('../src/shared/errors.mjs');

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
 
-/* global window -- page.evaluate callbacks run in the browser */
+/* global window, document -- page.evaluate callbacks run in the browser */
 import { chromium } from 'playwright-core';
 
 import { ANY_HOST, browserArgs, installHostLock, lockDecision } from '../src/host/host-lock.mjs';
@@ -10,7 +10,8 @@ import { blockedHosts, navigationHosts } from '../src/shared/environments.mjs';
 
 test('browserArgs: production hosts unresolvable first, .localhost pinned to loopback, no proxy, no WebRTC, no CDP port', () => {
     const args = browserArgs(['prod.example', 'prod.localhost']);
-    assert.equal(args[0], '--host-resolver-rules=MAP prod.example ~NOTFOUND, MAP prod.localhost ~NOTFOUND, MAP localhost 127.0.0.1, MAP *.localhost 127.0.0.1');
+    assert.equal(args[0], '--host-resolver-rules=MAP prod.example ~NOTFOUND, MAP prod.example. ~NOTFOUND, MAP prod.localhost ~NOTFOUND, MAP prod.localhost. ~NOTFOUND, '
+        + 'MAP localhost 127.0.0.1, MAP *.localhost 127.0.0.1', 'a trailing dot is the same host for Chrome');
     assert.equal(browserArgs()[0], '--host-resolver-rules=MAP localhost 127.0.0.1, MAP *.localhost 127.0.0.1', 'every other host resolves: subresources may go anywhere');
     assert.ok(args.includes('--no-proxy-server'), 'through a proxy the resolver rules would not apply');
     assert.ok(args.includes('--webrtc-ip-handling-policy=disable_non_proxied_udp'));
@@ -100,4 +101,70 @@ test('host lock in Chrome: a link and a popup to another host are blocked, third
     await page.click('#redirect');
     await page.waitForLoadState();
     assert.deepEqual(blocked, ['production prod.localhost', 'navigation elsewhere.localhost', 'navigation elsewhere.localhost', 'redirect elsewhere.localhost']);
+});
+
+test('lockDecision: hosts compared normalized; with Claude attached (reach) every request type outside the reach is blocked', () => {
+    const lock = { navigation: ['app.example', 'localhost'], blocked: ['prod.example'] };
+    assert.equal(lockDecision({ url: 'https://prod.example./api', topNavigation: false }, lock), 'production', 'a trailing dot is the same host');
+    assert.equal(lockDecision({ url: 'https://PROD.example/api', topNavigation: false }, lock), 'production');
+    assert.equal(lockDecision({ url: 'https://app.example./x', topNavigation: true }, lock), 'allow');
+    const agent = { ...lock, reach: ['app.example', 'localhost', 'fonts.example'] };
+    assert.equal(lockDecision({ url: 'https://fonts.example/a.woff2', topNavigation: false }, agent), 'allow', 'a listed third-party host');
+    assert.equal(lockDecision({ url: 'https://cdn.example/lib.js', topNavigation: false }, agent), 'agent', 'an unlisted one: blocked for subresources too');
+    assert.equal(lockDecision({ url: 'wss://cdn.example/socket', topNavigation: false }, agent), 'agent');
+    assert.equal(lockDecision({ url: 'http://127.0.0.1:5173/', topNavigation: false }, agent), 'allow', 'the loopback pair');
+    assert.equal(lockDecision({ url: 'https://elsewhere.example/', topNavigation: true }, agent), 'navigation', 'a top navigation keeps its own kind');
+    assert.equal(lockDecision({ url: 'https://prod.example/', topNavigation: false }, agent), 'production');
+});
+
+test('browserArgs with reach: allowed loopback names pinned, everything else unresolvable, other allowed hosts and IPs excluded', () => {
+    const [rules] = browserArgs(['prod.example'], { reach: ['app.localhost', 'localhost', 'sso.example'] });
+    assert.equal(rules, '--host-resolver-rules=MAP prod.example ~NOTFOUND, MAP prod.example. ~NOTFOUND, MAP app.localhost 127.0.0.1, MAP localhost 127.0.0.1, '
+        + 'MAP * ~NOTFOUND, EXCLUDE sso.example, EXCLUDE 127.0.0.1');
+    assert.ok(!rules.includes('EXCLUDE prod'), 'EXCLUDE beats every MAP rule: never for a production host');
+});
+
+test('agent lock in Chrome: fetch, iframe, beacon and WebSocket reach only the reach; the resolver alone already stops them; a trailing dot does not pass production', async (t) => {
+    const agentBrowser = await chromium.launch({ channel: 'chrome', headless: true, chromiumSandbox: true, args: browserArgs(['prod.localhost'], { reach: ['app.localhost', 'cdn.localhost', 'localhost'] }) }).catch((error) => {
+        if (process.env.CAW_REQUIRE_CHROME === '1') throw error;
+        return null;
+    });
+    if (agentBrowser === null) return t.skip('no Chrome');
+    t.after(() => agentBrowser.close());
+    const fetchFrom = (page, url) => page.evaluate((target) => fetch(target).then((response) => response.status, (error) => String(error)), url);
+
+    // Only the resolver rules, no route: an unlisted host does not even resolve.
+    const bare = await agentBrowser.newContext();
+    const plain = await bare.newPage();
+    await plain.goto(`http://app.localhost:${port}/lib.js`);
+    assert.equal(await fetchFrom(plain, `http://cdn.localhost:${port}/lib.js`), 200, 'a listed third-party host');
+    assert.equal(await fetchFrom(plain, `http://127.0.0.1:${port}/lib.js`), 200, 'the loopback pair of localhost');
+    assert.match(String(await fetchFrom(plain, `http://evil.localhost:${port}/lib.js`)), /Failed to fetch/, 'an unlisted host is unresolvable');
+    assert.match(String(await fetchFrom(plain, `http://prod.localhost.:${port}/lib.js`)), /Failed to fetch/, 'production with a trailing dot');
+    await bare.close();
+
+    const context = await agentBrowser.newContext();
+    t.after(() => context.close());
+    const blocked = [];
+    await installHostLock(context, { navigation: ['app.localhost'], blocked: ['prod.localhost'], reach: ['app.localhost', 'cdn.localhost', 'localhost'], onBlocked: ({ host, kind }) => blocked.push(`${kind} ${host}`) });
+    const page = await context.newPage();
+    await page.goto(`http://app.localhost:${port}/lib.js`);
+    assert.equal(await fetchFrom(page, `http://cdn.localhost:${port}/lib.js`), 200);
+    assert.match(String(await fetchFrom(page, `http://evil.localhost:${port}/lib.js`)), /Failed to fetch/);
+    await page.evaluate((url) => {
+        const frame = document.createElement('iframe');
+        frame.src = url;
+        document.body.append(frame);
+    }, `http://evil.localhost:${port}/frame`);
+    // eslint-disable-next-line n/no-unsupported-features/node-builtins -- runs in the browser page
+    await page.evaluate((url) => navigator.sendBeacon(url, 'data'), `http://evil.localhost:${port}/beacon`);
+    const socket = await page.evaluate((url) => new Promise((done) => {
+        const ws = new WebSocket(url);
+        ws.onopen = () => done('open');
+        ws.onclose = () => done('closed');
+    }), `ws://evil.localhost:${port}/socket`);
+    assert.equal(socket, 'closed');
+    await page.waitForTimeout(500);
+    assert.deepEqual([...new Set(blocked)], ['agent evil.localhost'], 'every attempt named as blocked by the agent lock');
+    assert.ok(blocked.length >= 4, `fetch, iframe, beacon and socket each reported (${blocked.join(', ')})`);
 });

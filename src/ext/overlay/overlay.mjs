@@ -387,6 +387,9 @@ const devSource = ({ root, name, appDir, choice, info, envUrl, fetchImpl = fetch
         stop: () => started?.stop(),
         resolve: async ({ url, type }) => {
             const request = new URL(url);
+            // Only the application's own requests (the environment's origin) and those naming the dev server: a third-party
+            // host's paths must never be answered from the local dev server.
+            if (request.origin !== new URL(envUrl).origin && request.origin !== origin) return null;
             const path = `${request.pathname}${request.search}`;
             const code = DEV_TYPES.has(type) || ((type === 'fetch' || type === 'xhr' || type === 'other') && DEV_FETCHED.test(path));
             if (!code) return null;
@@ -679,7 +682,7 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
             }
             pages.push(seen);
             if (pages.length > 50) pages.shift();
-            return withoutIntegrity(out);
+            return withoutIntegrity(out, { url: baseOf(out, url), origins: [new URL(url).origin, new URL(checked.url).origin, ...apps.filter(({ kind }) => kind === 'dev').map(({ source }) => source.origin)] });
         },
         pages,
         /** The response from local code for a request, or null for the server. The test's app comes first. */
@@ -710,6 +713,8 @@ export const prepareOverlay = async ({ root, config, checked, info = () => {}, d
             return undefined;
         },
         devServers: apps.filter(({ kind }) => kind === 'dev').map(({ source }) => source.origin),
+        /** The environment's origin: the application whose requests and sockets the dev servers may answer. */
+        envOrigin: new URL(checked.url).origin,
         served,
         /**
          * What ran after loading, for the diagnosis: never silently test the deployed state.
@@ -780,7 +785,10 @@ export const routeOverlay = async (context, overlay, { onProblem = () => {} } = 
     const [devOrigin] = overlay.devServers;
     if (devOrigin === undefined) return;
     const devHost = new URL(devOrigin).host;
-    await context.routeWebSocket(() => true, (ws) => bridgeWebSocket(ws, devOrigin, devHost));
+    // Only sockets to the environment's host or the dev server: any other socket keeps its own target and its own Origin, and
+    // the host lock's WebSocket route (registered before, so asked after this one) still sees it.
+    const envHost = overlay.envOrigin === undefined ? null : new URL(overlay.envOrigin).host;
+    await context.routeWebSocket((url) => url.host === devHost || url.host === envHost, (ws) => bridgeWebSocket(ws, devOrigin, devHost));
 };
 
 // Codes only the browser reports (1005 no code, 1006 aborted) must not be sent by anyone.
