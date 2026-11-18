@@ -4,7 +4,12 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+- `caw reproduce "<bug report>"` (also `--file`, or `-` for stdin): Claude reproduces a bug on its own, signed in as a test role, optionally from a test's state (`--from <test>@S3`, those steps replayed without Claude). No plan to approve, no question, no advice and no code change; Claude ends with reproduced yes, no or unclear, observed against expected, the steps, screenshots and a hint at the cause. The run folder gets `report.md` and `draft-test.yaml`, a test plan you can adopt and record; `caw/tests` stays untouched. Only on environments with `claude`, never production (`reproduce-not-allowed`), with the browser's network lock; without `writable` every write request is blocked. Exit `0` reproduced, `1` not or unclear, `2` environment (`reproduce-state` when `--from` does not reach its state). From Claude Code: `caw_start` with `command: "reproduce"`, `caw_status` names verdict, report and draft.
+- Your own `caw.md` next to `prefs.json`: notes for Claude in every project, read before the project's `caw/caw.md`, which wins on a conflict, also by the Docker agent. The report and `caw doctor` name the file and its number of lines, never its content. Claude's context advice can go to either file; the card names which, and only your click writes.
+
 ### Changed
+- The chat has two button sizes, actions and tools. "Learn baselines" is now "Save baselines" and looks like the other end-card buttons in every theme. Labels have no brackets any more. The workbench header is flatter and shows "caw" next to the raven.
 - caw never takes user names or passwords from a page and never writes them: you fill `caw/.env` (or CI secrets) yourself. `init` asks for the role names in the terminal and lists their variables in `caw/.env.example`; `caw role add <role>` (and `caw_role add`) adds the role and names its variables, without a window; `role remove` leaves `caw/.env` as it is. A run whose role has no test user stops before Chrome or Claude start with `credentials-missing`, naming the variables, instead of opening a sign-in window.
 
 ### Security

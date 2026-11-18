@@ -4,80 +4,21 @@
 
 Wie caw im Einzelnen arbeitet. Zum Nachschlagen: [Befehle](commands.de.md), [Konfiguration](configuration.de.md) und [Testdateien](test-files.de.md).
 
-## Agent: lokal, Docker oder deine Session
+**Features:**
 
-Wo Claude läuft, wenn ein Lauf es braucht, legt `agent.mode` in der Config fest (`local`, `docker` oder `session`, Standard `local`). `--agent local|docker|session` überschreibt das für einen Lauf. In CI (`CI` gesetzt) gilt immer `docker`, andere Werte brechen ab.
+1. [Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen](#tests-in-normaler-sprache-einmal-aufnehmen-ohne-ki-abspielen)
+2. [Einen Fehler nachstellen: `reproduce`](#einen-fehler-nachstellen-reproduce)
+3. [Jeden Zustand erreichen und entwickeln](#jeden-zustand-erreichen-und-entwickeln)
+4. [Einordnen und reparieren](#einordnen-und-reparieren)
+5. [Aus Claude Code steuern](#aus-claude-code-steuern)
+6. [Sicher mit Zugangsdaten und Produktion](#sicher-mit-zugangsdaten-und-produktion)
+7. [Export nach Playwright](#export-nach-playwright)
 
-| Agent | Wie Claude läuft | Gut für |
-|---|---|---|
-| `local` | `claude -p` auf deinem Rechner, mit deiner Anmeldung. Nur die Werkzeuge `Read`, `Grep`, `Glob` und das caw-Tool, keine Shell, kein Schreiben, kein Web, keine Hooks, keine anderen MCP-Server. | den Alltag am eigenen Rechner |
-| `docker` | `claude` im Container mit Firewall, nur mit API-Schlüssel (`ANTHROPIC_API_KEY`) | wer Claude nicht auf dem eigenen System haben will |
-| `session` | Kein eigener Claude-Prozess. Deine offene Claude-Code-Session übernimmt die Rolle über den MCP-Server `caw mcp`. | Aufnehmen, Beheben und Entwickeln in der gewohnten IDE-Session |
+## Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen
 
-In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die Anwendung nur über die festen Befehle, Navigation nur zu erlaubten Hosts (siehe [Sandbox-Grenzen](#sandbox-grenzen)).
+Ein Test ist ein Plan in normaler Sprache. Du gehst ihn einmal im Browser durch, oder Claude tut es; caw speichert, was getan wurde, und spielt es ab dann ohne KI ab, lokal und in CI.
 
-```json
-"caw:shop:smoke": "caw run shop-smoke --env local",
-"caw:shop:smoke:record": "caw record shop-smoke --env local",
-"caw:shop:smoke:rerecord-docker": "caw record shop-smoke@S2 --env local --agent docker"
-```
-
-In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.mode` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
-
-**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme mit hellem oder dunklem Modus (F7, siehe [Themes](../themes/README.de.md)). Im selben Ordner hält deine eigene `caw.md` Notizen für Claude in jedem Projekt, gelesen vor der `caw/caw.md` des Projekts ([Konfiguration](configuration.de.md#deine-eigene-cawmd)).
-
-**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--explain`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--agent session` gibt es den Hinweis nicht: Deine Session läuft ohnehin.
-
-**Ausprobieren** ohne eigenes Projekt: [`examples/errand`](../examples/errand) im Repository, eine kleine App mit Anmeldung und einem Test.
-
-### Aus deiner Claude-Code-Session
-
-Melde caw einmal als MCP-Server des Projekts an:
-
-```bash
-claude mcp add caw --scope project -- npx caw-ai mcp
-```
-
-Unter Windows (nicht WSL) braucht `npx` einen Wrapper: `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`. Ist caw im
-Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die installierte Kopie um
-(`node node_modules/caw-ai/bin/caw.mjs mcp`); danach Claude Code neu starten. Deine Session hat dann diese Werkzeuge:
-
-| Werkzeug | Zweck | Tokens |
-|---|---|---|
-| `caw_guide` | Wie man mit caw arbeitet, je Thema (`setup`, `tests`, `run`, `session`, `config` …); ohne Thema die Übersicht | nein |
-| `caw_init` | `mode: explore` öffnet dir die App zum Anmelden und liefert die Vorschläge; `mode: write` schreibt daraus die Config; `mode: offline` die Vorlage mit TODO | nein |
-| `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben. Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), die Umgebungs-Schalter (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` und `agent.mode` lehnt es ab: Die ändert die Session in der Datei, wo Claude Code dir den Diff zeigt | nein |
-| `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
-| `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
-| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role` (oder `args`) | nur deine Session |
-| `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
-| `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |
-| `caw_selection` | das Element, das du beim Entwickeln in der Werkbank mit dem Fadenkreuz gewählt hast | nein |
-| `caw_overlay` | nur mit einem `overlay`-Block: Ist der lokale Code-Server bereit, `check` und `apply` | nein |
-
-Der Server sagt Claude Code, wofür caw da ist und dass es zuerst `caw_guide` liest; eine Skill-Datei gibt es nicht. Die Daten-Werkzeuge liefern einen kurzen Text und dasselbe Ergebnis als `structuredContent` (JSON). Keins schreibt auf den MCP-Kanal oder fragt auf stdin; Explore, `overlay check` und Läufe laufen als eigene Prozesse. caw startet deinen lokalen Code-Server nie aus der Session; das macht Claude in seiner eigenen Session, nachdem es dich gefragt hat, außer die Regeln deines Projekts (etwa `CLAUDE.md`) sagen etwas anderes.
-
-Du schreibst also in deiner Session „nimm einen Test für die Bestellung auf“ oder „bring mich zu S4 von bestellung“, und die Session erledigt den Rest mit dem Guide. Startest du den Lauf selbst im Terminal mit `--agent session`, zeigt der Chat, dass er auf die Session wartet; schreib ihr dann „übernimm den caw-Lauf“ (sie findet ihn mit `caw_status`).
-
-- **Weniger Rückfragen:** Ist deine Session der Agent, gibt es keinen Hinweis auf Token, und `record` eines vorhandenen Testplans startet ohne die Frage, wer vorführt. Ein lesender Plan, dem die Session unverändert folgt, braucht keine Plan-Freigabe; die Übernahme des geprüften Plans am Ende immer.
-- **Wartezeiten:** `plan` und `chat` warten auf dich, bis zu einer Stunde. Bricht Claude Code den Aufruf vorher ab, setz `MCP_TOOL_TIMEOUT` (Millisekunden) in der Umgebung von Claude Code höher.
-- **Vorsicht:** Deine Session hat mehr Rechte als der Agent im Lauf (Shell, Schreiben). Was aus der Anwendung kommt, ist für sie Daten, keine Anweisung; caw sagt ihr das bei jedem Auftrag. Lass Bash- und Schreibaufrufe in dieser Session bestätigen, statt sie pauschal freizugeben. Auch die caw-Werkzeuge führen Befehle des Projekts aus: `caw_start` mit `start` führt das `start` der Umgebung aus (und später ihr `stop`), mit `reset` ihr `reset`, und ein `run` mit schreibendem Test führt `reset` vor diesem Test aus; alles aus `caw.config.json`, auf deinem Rechner. `caw_config` kann diese Befehle und die Umgebungs-Schalter nicht ändern; diese Änderung geht über Claude Codes eigenes Datei-Bearbeiten, prüf ihren Diff wie Code.
-
-## Docker
-
-Nur für den Agenten `docker`. Der Docker-Dienst muss laufen, das Tool startet ihn nicht. Den Container startet und entfernt es selbst.
-
-Unter Windows nimmt das Tool den ersten Weg, dessen Dienst antwortet: zuerst `docker.exe`, dann Docker in WSL. Welcher es ist, steht am Anfang der Ausgabe. Mit `CAW_DOCKER=windows` oder `CAW_DOCKER=wsl` legst du ihn fest.
-
-Die Prüfung läuft vor allem anderen und bricht mit einer eigenen Meldung ab (Exit 2):
-
-| Code | Bedeutung |
-|---|---|
-| `docker-missing` | Kein Docker gefunden |
-| `docker-not-running` | Docker ist da, der Dienst antwortet nicht |
-| `docker-wrong-mode` | Docker Desktop steht auf Windows-Container, die Sandbox braucht Linux-Container |
-
-## Drei Wege
+### Drei Wege
 
 | Befehl | Was passiert | KI und Chat | Umgebung |
 |---|---|---|---|
@@ -115,49 +56,7 @@ caw record bestellung@S4 --env local
 
 In Claude Code reicht ein Satz: „bring mich dahin, wo der Warenkorb gefüllt ist“. Die Session sucht Test und Schritt und startet `open`. Passt nichts, schlägt sie `record` vor.
 
-## So arbeitest du damit
-
-1. Dev-Server der App starten, wo du entwickelst: im Devcontainer oder auf Windows.
-2. Im Projektordner aus PowerShell aufrufen: `pnpm caw:my-app:smoke`. Chrome geht maximiert auf, und du siehst dem Test zu.
-3. Ändern und Schritt 2 wiederholen.
-
-Im Devcontainer selbst geht der Aufruf nicht, dort fehlt Chrome (und für den Agenten `docker` auch Docker). Für `docker` aus Windows: Git Bash endete beim Bau des Images bisher mit Exit 139, nutze PowerShell.
-
-### Übernehmen und weiterentwickeln
-
-`npx caw open my-app-smoke` spielt den Test ab und lässt das Fenster nach dem Urteil offen:
-
-- **Weiterklicken:** Du machst in derselben Seite und im selben Maskenzustand weiter, auch mit ungespeicherten Eingaben und DevTools.
-- **Weiterentwickeln:** Gegen deinen Dev-Server als Umgebung lädt F5 deinen aktuellen Code. Mit der [Overlay-Erweiterung](extensions/overlay.de.md) bleibt der lokale Code, bis du das Fenster schließt. Einen automatischen Reload gibt es nicht, außer dem Hot Reload des Dev-Servers.
-- **Zustand:** F5 verliert, was nur im Browser stand, etwa offene Dialoge und ungespeicherte Eingaben. Zurück dorthin bringt dich „Zustand neu herstellen“ im Chat oder ein neuer Testlauf.
-- **Ende:** Fenster schließen beendet den Lauf. Der Exit-Code bleibt das Urteil.
-- **Tastatur im Chat:** Strg+Enter (Cmd+Enter) löst den Hauptknopf aus, etwa „Plan freigeben“ oder „Vorführung beenden“; der Knopf zeigt dazu `Strg+↵`. Esc leert zuerst das Eingabefeld, wenn du darin tippst. Sonst fragt Esc den Abbruch an („Wirklich abbrechen? (Esc)“ und „Nein“), erst ein zweites Esc innerhalb von 4 Sekunden bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
-- **Du bist dran:** Wartet der Chat auf dich (Plan, Entscheidung, Fehler klären), steht „DU BIST DRAN“ über der Anwendung, und das Terminal meldet einmal „Wartet im Chrome-Fenster auf dich: …“.
-- **Aufnahme, Wiedergabe, Pause:** Ein Chip oben rechts in der Werkbank zeigt, was der Lauf tut: „REC“, solange Claude aufnimmt oder repariert, „PLAY“, solange caw abspielt (run, Prüflauf, Zustand herstellen), „PAUSE“, solange ein solcher Lauf pausiert (F9). Läuft nichts (nach dem Lauf, nach der Übergabe, nach dem Abbruch), gibt es keinen Chip.
-- **Nach dem Lauf:** Das Ergebnis steht als letzte Zeile im Chat, etwa „Gespeichert: caw/tests/bestellung.yaml“. Das Fenster bleibt mit „Fenster schließen“ noch 15 Sekunden offen und schließt sich dann selbst. Öffnet sich gleich ein neues Fenster (für Claude oder den Prüflauf), sagen Chat und Terminal das vorher.
-
-Eigene Tabs kannst du jederzeit öffnen, auch während des Laufs: Gesteuert wird nur der Anwendungs-Tab samt Popups, und nur deren Fehler zählen. Klickst du dagegen im Anwendungs-Tab, während ein Lauf arbeitet, beeinflusst du den Test.
-
-Du bleibst im Fenster hinter derselben Host-Sperre und bist als Testnutzer angemeldet. Dialoge wie `alert()` schließt Playwright automatisch, sie bleiben also nicht stehen. Das Profil ist frisch und wird am Ende gelöscht. Bleibt es etwa nach einem Abbruch liegen, entfernt es der nächste Lauf, sofern dessen Prozess nicht mehr läuft.
-
-## Ablauf eines Laufs
-
-Ein Lauf mit Claude, also beim Aufnehmen und Beheben, macht Folgendes:
-
-1. **Abweisen, was nicht laufen darf:** Config, Testdatei, Ziel und Schreibschutz werden geprüft. Beim Agenten `local` dazu, ob Claude Code da ist.
-2. **Image** (nur `docker`): Einmal bauen, aus dem Image des Projekts plus Claude und dem Container-Teil des Tools. Neu gebaut wird nur nach Änderungen daran.
-3. **Öffnen:** Chrome starten, anmelden, Seite öffnen und warten, bis die App geladen ist (mit der [Overlay-Erweiterung](extensions/overlay.de.md) auch den lokalen Code prüfen). Fehler hier ergeben `error`, ohne dass Tokens anfallen.
-4. **Claude starten:** Bei `local` startet `claude -p` auf deinem Rechner mit den gesperrten Werkzeugen (siehe [Sandbox-Grenzen](#sandbox-grenzen)), bei `session` wartet der Lauf auf deine Session. Bei `docker` startet der Container (`docker run --rm`): Firewall setzen, danach gibt der Container alle Rechte ab. Ist die Sandbox nicht nachweislich dicht, läuft Claude nicht.
-5. **Testen:** `claude -p` arbeitet den Plan ab, jeder Browserbefehl geht als Datei über den Kanal an den Host. Das Urteil prüft der Host.
-6. **Abschließen:** Mit dem Urteil endet Claude sofort (Prozess bzw. Container). Bericht, Trace und `floats.log` (Klicks und, bei `extjs`, die Reihenfolge der schwebenden Fenster mit Zeiten, ohne Inhalte) liegen unter `.caw/runs/<lauf>/`. Der Trace (`trace.zip`) enthält Seiteninhalte, Requests und Cookies des Testkontos; gib ihn nicht weiter. Bei `signIn.type: basic` zeichnet er keine Snapshots auf, damit das Passwort aus dem Authorization-Header nicht darin landet. Eine erneute Anmeldung im Lauf (Zustand herstellen) unterbricht den Trace: Der Teil davor bleibt als `trace-1.zip`, `trace-2.zip` …, und in keinem steht ein Anmeldeformular oder -Request; Screenshots und `claude.log` unter `agent/`. Das Log entsteht laufend und zeigt Claudes Text und Befehle mit den Sekunden seit dem Start; dieselben Zeilen laufen im Terminal mit. Eine Schlusszusammenfassung nach dem Urteil fehlt darin. Im Terminal ist die Ausgabe farbig, die Datei bleibt ohne Farbcodes; `NO_COLOR=1` schaltet Farben ab. Chrome verschwindet ebenfalls.
-
-Exit-Codes: `0` pass, `1` fail, `2` error (die Umgebung ist schuld), `3` Eingabe abgelehnt, `4` Aufnahme nötig (`record`).
-
-### Fehlercodes
-
-Alle Fehlercodes mit Abhilfe: [Befehle › Fehlercodes](commands.de.md#fehlercodes).
-
-## Testplan aufnehmen: `record`
+### Testplan aufnehmen: `record`
 
 Die Rolle nennst du nur beim ersten Mal; das Tool schreibt `role` und `writes` (`true`, außer mit `--read-only`), nie `environments`. Bei einer Neuaufnahme bleiben sie erhalten. Claude Code bzw. Docker, Token und Image werden vorab geprüft, damit deine Vorführung nicht umsonst ist.
 
@@ -170,7 +69,7 @@ Die Rolle nennst du nur beim ersten Mal; das Tool schreibt `role` und `writes` (
 
 **Testdaten:** Läufe mit `writes: true` hinterlassen Daten: je einen Datensatz von Claude und vom Prüflauf, je Beheben bis zu zwei weitere. Auch was Claude gestrichen hat, ist in der Anwendung passiert.
 
-### Die Werkbank
+#### Die Werkbank
 
 Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 
@@ -201,7 +100,7 @@ Der Chat liegt in einem abgeschotteten iframe mit eigenem Origin (`sandbox` ohne
 - Was eine Seite nur oben im Fenster tut (`window.top`-Prüfungen, Frame-Busting per Skript), kann im iframe anders laufen. Solche Prüfungen gehören in der Testumgebung abgeschaltet.
 - Die Werkbank liefert caw selbst aus, deshalb hält Chrome sie für eine öffentliche Seite, und seine Prüfung auf private Netze (Local Network Access) würde die Anwendung im Intranet oder auf diesem Rechner sperren. Der Testbrowser erteilt diese Berechtigung nur dem Origin der Anwendung.
 
-### Der Chat
+#### Der Chat
 
 In der Werkbank rechts, auch in einem Testlauf ohne Claude. Der Verlauf wandert über die Werkbänke von Vorführung, Claude und Prüflauf mit. Dort läuft auch Claudes Log mit: Text als Nachricht, Befehle als aufklappbare Aktionen. Das Fenster ist die einzige Quelle für Anweisungen, die Seite der Anwendung erreicht den Chat nicht. Die Mitschrift liegt als `chat.log` im Lauf-Ordner.
 
@@ -216,7 +115,7 @@ In der Werkbank rechts, auch in einem Testlauf ohne Claude. Der Verlauf wandert 
 
 Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard hier 60 Minuten (`--claude-timeout 60m`).
 
-### Was in der Aufzeichnung steht
+#### Was in der Aufzeichnung steht
 
 - **Was aufgezeichnet wird:** Erfolgreiche `click`, `fill`, `type`, `press`, `goto`, `reload`, `wait-ready`, `remember` und `check`. Fehlversuche, `eval` und `snapshot` fehlen.
 - **Vollständigkeit:** Gespeichert wird nur, wenn jeder Schritt ein bestandenes `check` hat und danach keine Aktion mehr folgt. Sonst nennt die Ausgabe, was fehlt, und der Lauf endet mit `fail`.
@@ -233,7 +132,7 @@ Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard h
 - **Schrittbudget:** `--max-actions` (sonst `maxActions` aus der Config, sonst 100) zählt `click`, `fill`, `type`, `press`, `goto` und `reload` von Claude, auch gescheiterte. Was du selbst vorführst, zählt nicht.
 - **Claude reagiert nicht sofort:** `claude -p` läuft ohne Eingabe, Nachricht und Pause greifen vor der nächsten Aktion. „Abbrechen“ wirkt sofort.
 
-## Testlauf: `run`
+### Testlauf: `run`
 
 Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `claude` steht der Chat von Anfang an neben dem Fenster, außer in CI (Variable `CI` gesetzt), mit `--no-chat` oder `--headless`. Die erste Zeile im Terminal nennt den Modus und ob der Lauf Vergleichswerte lernt (nur mit `--learn` oder wenn du auf der Abschlusskarte „Vergleichswerte speichern“ klickst), die letzte, was sich an den Dateien des Tests geändert hat. Der Chat: Er zeigt jede Aktion (`S3 · 4/12 click …`) samt neuer Versuche, die Eingabe ist gesperrt. Besteht der Lauf, meldet der Chat das samt Warnungen und wartet nicht; er schließt mit dem Lauf oder bleibt bei [`open <test>`](#zustand-herstellen-und-übernehmen) neben dem übergebenen Fenster. Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben). Fehlt die Aufzeichnung ganz, endet es mit Exit 4 und nennt `record`. Ist ein Schritt veraltet, endet es mit Exit 4 und nennt `record <test>@<schritt>`, um ab diesem Schritt neu aufzunehmen.
 
@@ -244,6 +143,48 @@ Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `cl
 - **Beheben:** Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben).
 - **Ohne Chat:** `--no-chat` spielt im sichtbaren Fenster ab wie in CI, ohne Chat und ohne Claude: Bericht, Screenshot, Hinweis auf einen Lauf mit Chat zur Ursache (`record <test>@<schritt>` nur bei gewollter Änderung), Exit-Code. `--headless` ebenso, aber ohne Fenster, in der aufgenommenen Größe (sonst 1920×1080). Beide gehen nicht mit `--explain` (Exit 3). Ob eine Anwendung den Headless-Modus annimmt, zeigt erst der Lauf; sonst bleibt `--no-chat`.
 - **Grenzen:** Abgespielt wird nur, was aufgezeichnet wurde. Claudes Blick auf Auffälliges fehlt, und auch hier gelten Schreibschutz und Host-Sperre. Toasts, die zwischen zwei Schritten wieder verschwinden, sieht das Abspielen nicht.
+
+### Ablauf eines Laufs
+
+Ein Lauf mit Claude, also beim Aufnehmen und Beheben, macht Folgendes:
+
+1. **Abweisen, was nicht laufen darf:** Config, Testdatei, Ziel und Schreibschutz werden geprüft. Beim Agenten `local` dazu, ob Claude Code da ist.
+2. **Image** (nur `docker`): Einmal bauen, aus dem Image des Projekts plus Claude und dem Container-Teil des Tools. Neu gebaut wird nur nach Änderungen daran.
+3. **Öffnen:** Chrome starten, anmelden, Seite öffnen und warten, bis die App geladen ist (mit der [Overlay-Erweiterung](extensions/overlay.de.md) auch den lokalen Code prüfen). Fehler hier ergeben `error`, ohne dass Tokens anfallen.
+4. **Claude starten:** Bei `local` startet `claude -p` auf deinem Rechner mit den gesperrten Werkzeugen (siehe [Sandbox-Grenzen](#sandbox-grenzen)), bei `session` wartet der Lauf auf deine Session. Bei `docker` startet der Container (`docker run --rm`): Firewall setzen, danach gibt der Container alle Rechte ab. Ist die Sandbox nicht nachweislich dicht, läuft Claude nicht.
+5. **Testen:** `claude -p` arbeitet den Plan ab, jeder Browserbefehl geht als Datei über den Kanal an den Host. Das Urteil prüft der Host.
+6. **Abschließen:** Mit dem Urteil endet Claude sofort (Prozess bzw. Container). Bericht, Trace und `floats.log` (Klicks und, bei `extjs`, die Reihenfolge der schwebenden Fenster mit Zeiten, ohne Inhalte) liegen unter `.caw/runs/<lauf>/`. Der Trace (`trace.zip`) enthält Seiteninhalte, Requests und Cookies des Testkontos; gib ihn nicht weiter. Bei `signIn.type: basic` zeichnet er keine Snapshots auf, damit das Passwort aus dem Authorization-Header nicht darin landet. Eine erneute Anmeldung im Lauf (Zustand herstellen) unterbricht den Trace: Der Teil davor bleibt als `trace-1.zip`, `trace-2.zip` …, und in keinem steht ein Anmeldeformular oder -Request; Screenshots und `claude.log` unter `agent/`. Das Log entsteht laufend und zeigt Claudes Text und Befehle mit den Sekunden seit dem Start; dieselben Zeilen laufen im Terminal mit. Eine Schlusszusammenfassung nach dem Urteil fehlt darin. Im Terminal ist die Ausgabe farbig, die Datei bleibt ohne Farbcodes; `NO_COLOR=1` schaltet Farben ab. Chrome verschwindet ebenfalls.
+
+Exit-Codes: `0` pass, `1` fail, `2` error (die Umgebung ist schuld), `3` Eingabe abgelehnt, `4` Aufnahme nötig (`record`).
+
+#### Fehlercodes
+
+Alle Fehlercodes mit Abhilfe: [Befehle › Fehlercodes](commands.de.md#fehlercodes).
+
+## Einen Fehler nachstellen: `reproduce`
+
+Claude geht ein Fehlerticket selbstständig durch und berichtet, ob es sich nachstellen lässt.
+
+`caw reproduce "<fehlerbericht>"` gibt Claude einen Fehlerbericht und einen angemeldeten Browser, sonst nichts zu tun: kein Plan
+zum Freigeben, keine Rückfragen, keine Entscheidungen (siehe [Befehle](commands.de.md#reproduce)). Mit `--from <test>@S3` führen
+zuerst die Schritte eines Tests in den Zustand, in dem der Fehler auftritt. Claude liest den Bericht, geht ihn nach, urteilt nach
+Belegen (Screenshot, Konsole, Netzwerk) und endet mit `yes`, `no` oder `unclear`, den Schritten in Klartext und, wenn es den
+Quelltext gelesen hat, einem Hinweis auf die Ursache mit Datei und Zeile.
+
+Was Claude dabei darf und was nicht:
+
+- Nur auf Umgebungen mit `claude`, nie auf Produktion; der Browser erreicht nur die Hosts des Projekts.
+- Schreiben nur, wo die Umgebung `writable` ist; sonst wird jeder schreibende Request abgebrochen und im Bericht genannt.
+- Kein Plan, kein `check`, keine Frage an dich, keine Empfehlung und keine Code-Änderung: Diese Befehle werden abgelehnt.
+- Nichts landet im Projekt: Bericht und `draft-test.yaml` bleiben im Laufordner. Die Erwartungen des Entwurfs beschreiben das
+  richtige Verhalten, der aufgenommene Test scheitert also, solange der Fehler da ist, und besteht, sobald er behoben ist.
+
+Aus deiner Claude-Code-Session bittest du darum („stell diesen Fehler nach: …“): Die Session startet `caw_start` mit
+`command: "reproduce"`, ist selbst der Agent ohne zusätzliche Tokens und bekommt Urteil, Bericht und Entwurf über `caw_status`.
+
+## Jeden Zustand erreichen und entwickeln
+
+Dieselben Tests bringen dich angemeldet in jeden Zustand deiner App und übergeben dir das Fenster: um dort mit Claude im Chat zu entwickeln.
 
 ### Zustand herstellen und übernehmen
 
@@ -280,49 +221,36 @@ Die Werkbank startet in **Nur Anwendung** (F8 holt Schritte und Chat zurück); d
 - **Element an Claude Code:** Mit dem Fadenkreuz-Knopf im Chat klickst du in der Anwendung auf ein Element, auch auf einen ausgegrauten Knopf oder einen in einem Dialog; ein Rahmen zeigt, was der Klick wählt (der Klick löst dort nichts aus, Esc bricht ab). Es hängt an deiner nächsten Frage im Chat, und caw legt es mit Beschriftung, Komponente bzw. Quelle, Seite und Requests für deine Claude-Code-Session ab, abrufbar mit `caw_selection`.
 - **Ende:** „Lauf beenden“ oder Fenster schließen.
 
-## Einen Schritt beheben
+### So arbeitest du damit
 
-Scheitert ein Schritt in `run` oder im Prüflauf von `record`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Lauf beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `claude`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
+1. Dev-Server der App starten, wo du entwickelst: im Devcontainer oder auf Windows.
+2. Im Projektordner aus PowerShell aufrufen: `pnpm caw:my-app:smoke`. Chrome geht maximiert auf, und du siehst dem Test zu.
+3. Ändern und Schritt 2 wiederholen.
 
-- **Fragen:** Erst deine Nachricht startet Claude, im selben Browser und nur lesend wie bei den [Empfehlungen](#empfehlungen-zu-fehlern-und-warnungen). Es antwortet im Chat, nennt Ursache, Datei und Zeile und kann Empfehlungskarten geben. Jede weitere Nachricht geht ins selbe Gespräch, bis du einen Knopf drückst. Das Log steht in `agent/claude-talk.log`. Ohne Nachricht und ohne Klick fallen keine Token an.
-- **Im selben Browser beheben:** Ist vom gescheiterten Schritt noch nichts ausgeführt, scheiterte also seine erste Aktion ohne harten Fehler von außen, behebt Claude ihn direkt dort, ohne Vorlauf. Der Bericht des Testlaufs bleibt als `report-test-run.md` erhalten. Sonst, etwa nach einer halben Aktionsfolge oder einer nicht erfüllten Prüfung, geht es wie unten mit Vorlauf in einem frischen Browser. Der Chat sagt vorher, welcher Weg es wird.
+Im Devcontainer selbst geht der Aufruf nicht, dort fehlt Chrome (und für den Agenten `docker` auch Docker). Für `docker` aus Windows: Git Bash endete beim Bau des Images bisher mit Exit 139, nutze PowerShell.
 
-`record <test>@S4 --env <umgebung>` nimmt ab S4 bis zum Ende neu auf, etwa nach einer gewollten Änderung der Anwendung oder für einen von Hand geänderten oder neu eingetragenen Schritt. Die Schritte vor S4 müssen aktuell sein; ab S4 dürfen Schritte veraltet oder noch gar nicht aufgenommen sein. Einen Prüflauf vorher und eine Vorführung gibt es nicht: S1 bis S3 laufen ohne Claude, dann folgt Claude dem alten Plan ab S4, du lenkst im Chat, und Claude sucht keine Ursache. Ab S4 darf Claude Schritte ergänzen, entfernen, umbenennen oder umstellen; die Schritte davor bleiben, wie sie sind. Legt Claude den Plan ab S4 unverändert vor, gilt er ohne Freigabe: Der Chat sagt das, und du kannst trotzdem schreiben, wenn sich etwas ändern soll. Die Karte zum Freigeben erscheint nur, wenn sich etwas ändert, beim Beheben eines Fehlers ebenso. `@S1` ist dasselbe wie `record <test>`. `--role` und `--read-only` gehen nicht zusammen mit einem Schritt (Exit 3): Der Test behält seine Metadaten. Genau einen Schritt behebst du nur mit „Schritt beheben“ im Chat eines Laufs.
+#### Übernehmen und weiterentwickeln
 
-Im Chat erscheint als Nachricht nur, was Claude dir mit `say` sagt. Seine übrigen Notizen stehen eingeklappt bei den Aktionen. Brichst du ab, steht im Bericht „Von dir abgebrochen.“
+`npx caw open my-app-smoke` spielt den Test ab und lässt das Fenster nach dem Urteil offen:
 
-1. **Vorbereiten:** In einem frischen Browser laufen S1 bis S3 ohne Claude, der Chat zeigt den Fortschritt. Scheitert schon davor ein Schritt, wird dieser angeboten. Beim Beheben im selben Browser entfällt das.
-2. **Ursache, dann Plan:** Claude bekommt nur diesen Schritt (bei `record <test>@S4` alle Schritte ab S4, ohne Ursachensuche): Text, bisherige Aktionen, Prüfung, Grund, Einschätzung samt Requests, dazu `caw.md` und die bisher gelesenen `remember`-Werte. Zuerst klärt es die Ursache, auch im Quellcode, und sagt sie im Chat. Liegt es an der Anwendung, ändert es den Test nicht, sondern gibt eine Empfehlung mit konkreter Änderung am Code und meldet `fail`. Sonst legt es nur diesen Schritt als Karte vor. Ein geändertes Ergebnis ist dort markiert, erscheint bei der Entscheidung und steht im Bericht.
-3. **Ausführen:** Claude führt den Schritt aus und bereinigt ihn. Bleibt das Ergebnis gleich, muss auch die Prüfung gleich bleiben, sonst lehnt `finish` ab. Fällt ein `remember`-Wert weg, den ein späterer Schritt braucht, ebenso.
-4. **Prüflauf:** Der ganze Test läuft ohne Claude in einem frischen Browser, bis vor einen womöglich noch veralteten Schritt. Scheitert ein anderer Schritt, kommt wieder das Angebot. Besteht er: „Testplan übernehmen (N Schritte)“ oder „Entwurf verwerfen“.
+- **Weiterklicken:** Du machst in derselben Seite und im selben Maskenzustand weiter, auch mit ungespeicherten Eingaben und DevTools.
+- **Weiterentwickeln:** Gegen deinen Dev-Server als Umgebung lädt F5 deinen aktuellen Code. Mit der [Overlay-Erweiterung](extensions/overlay.de.md) bleibt der lokale Code, bis du das Fenster schließt. Einen automatischen Reload gibt es nicht, außer dem Hot Reload des Dev-Servers.
+- **Zustand:** F5 verliert, was nur im Browser stand, etwa offene Dialoge und ungespeicherte Eingaben. Zurück dorthin bringt dich „Zustand neu herstellen“ im Chat oder ein neuer Testlauf.
+- **Ende:** Fenster schließen beendet den Lauf. Der Exit-Code bleibt das Urteil.
+- **Tastatur im Chat:** Strg+Enter (Cmd+Enter) löst den Hauptknopf aus, etwa „Plan freigeben“ oder „Vorführung beenden“; der Knopf zeigt dazu `Strg+↵`. Esc leert zuerst das Eingabefeld, wenn du darin tippst. Sonst fragt Esc den Abbruch an („Wirklich abbrechen? (Esc)“ und „Nein“), erst ein zweites Esc innerhalb von 4 Sekunden bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
+- **Du bist dran:** Wartet der Chat auf dich (Plan, Entscheidung, Fehler klären), steht „DU BIST DRAN“ über der Anwendung, und das Terminal meldet einmal „Wartet im Chrome-Fenster auf dich: …“.
+- **Aufnahme, Wiedergabe, Pause:** Ein Chip oben rechts in der Werkbank zeigt, was der Lauf tut: „REC“, solange Claude aufnimmt oder repariert, „PLAY“, solange caw abspielt (run, Prüflauf, Zustand herstellen), „PAUSE“, solange ein solcher Lauf pausiert (F9). Läuft nichts (nach dem Lauf, nach der Übergabe, nach dem Abbruch), gibt es keinen Chip.
+- **Nach dem Lauf:** Das Ergebnis steht als letzte Zeile im Chat, etwa „Gespeichert: caw/tests/bestellung.yaml“. Das Fenster bleibt mit „Fenster schließen“ noch 15 Sekunden offen und schließt sich dann selbst. Öffnet sich gleich ein neues Fenster (für Claude oder den Prüflauf), sagen Chat und Terminal das vorher.
 
-Nur die behobenen Schritte ändern sich in der Datei, Kommentare und alle anderen Schritte bleiben Zeichen für Zeichen gleich. Bei `record <test>@S4` bleiben die Schritte vor S4 gleich, Schritte, die nicht mehr im Plan stehen, fallen weg, und die Schritte ab S4 verlieren ihre Vergleichswerte der Requests und ihre Wirkungen; der nächste `run --learn` (oder „Vergleichswerte speichern“ auf seiner Abschlusskarte) lernt sie neu. Neue Meldungen, die Claude dabei sieht, zählen danach als bekannt; die Entscheidung nennt sie, damit kein Fehler der Anwendung unbemerkt durchrutscht.
+Eigene Tabs kannst du jederzeit öffnen, auch während des Laufs: Gesteuert wird nur der Anwendungs-Tab samt Popups, und nur deren Fehler zählen. Klickst du dagegen im Anwendungs-Tab, während ein Lauf arbeitet, beeinflusst du den Test.
 
-- **Testdaten:** Ein Beheben kostet bis zu zwei Durchläufe, schreibende Schritte davor legen entsprechend Daten an. Token fallen nur für diesen Schritt an, bei `record <test>@S4` für alle Schritte ab S4. Scheitert ein Schritt nach dem Absenden, bleibt der Datensatz offen, das Abspielen räumt nicht auf.
-- **Ohne Claude:** Fehlt Claude Code (`local`) bzw. Docker oder Token (`docker`), nennt der Chat den Grund, der Lauf bleibt `fail`.
-- **Entwurf verwerfen:** Der Testplan bleibt unverändert, nach einer Rückfrage („Wirklich verwerfen?“). Ein zuvor gescheiterter `run` endet mit `fail`.
-- **Einfügen, Löschen, Umsortieren:** Mit `record <test>@S4` darf Claude den Plan ab S4 ändern, denn spätere Schritte können auf früheren aufbauen. Einen Schritt, den du von Hand einträgst, nimmst du ebenso auf: `record <test>@<seine id>`.
+Du bleibst im Fenster hinter derselben Host-Sperre und bist als Testnutzer angemeldet. Dialoge wie `alert()` schließt Playwright automatisch, sie bleiben also nicht stehen. Das Profil ist frisch und wird am Ende gelöscht. Bleibt es etwa nach einem Abbruch liegen, entfernt es der nächste Lauf, sofern dessen Prozess nicht mehr läuft.
 
-## Einen Fehler nachstellen: `reproduce`
+## Einordnen und reparieren
 
-`caw reproduce "<fehlerbericht>"` gibt Claude einen Fehlerbericht und einen angemeldeten Browser, sonst nichts zu tun: kein Plan
-zum Freigeben, keine Rückfragen, keine Entscheidungen (siehe [Befehle](commands.de.md#reproduce)). Mit `--from <test>@S3` führen
-zuerst die Schritte eines Tests in den Zustand, in dem der Fehler auftritt. Claude liest den Bericht, geht ihn nach, urteilt nach
-Belegen (Screenshot, Konsole, Netzwerk) und endet mit `yes`, `no` oder `unclear`, den Schritten in Klartext und, wenn es den
-Quelltext gelesen hat, einem Hinweis auf die Ursache mit Datei und Zeile.
+Scheitert ein Schritt, ordnet caw den Fehler ohne KI ein; Claude erklärt ihn auf Wunsch, nimmt einen Schritt neu auf oder schlägt eine Code-Änderung vor.
 
-Was Claude dabei darf und was nicht:
-
-- Nur auf Umgebungen mit `claude`, nie auf Produktion; der Browser erreicht nur die Hosts des Projekts.
-- Schreiben nur, wo die Umgebung `writable` ist; sonst wird jeder schreibende Request abgebrochen und im Bericht genannt.
-- Kein Plan, kein `check`, keine Frage an dich, keine Empfehlung und keine Code-Änderung: Diese Befehle werden abgelehnt.
-- Nichts landet im Projekt: Bericht und `draft-test.yaml` bleiben im Laufordner. Die Erwartungen des Entwurfs beschreiben das
-  richtige Verhalten, der aufgenommene Test scheitert also, solange der Fehler da ist, und besteht, sobald er behoben ist.
-
-Aus deiner Claude-Code-Session bittest du darum („stell diesen Fehler nach: …“): Die Session startet `caw_start` mit
-`command: "reproduce"`, ist selbst der Agent ohne zusätzliche Tokens und bekommt Urteil, Bericht und Entwurf über `caw_status`.
-
-## Einschätzung: Test, Anwendung oder Umgebung
+### Einschätzung: Test, Anwendung oder Umgebung
 
 Scheitert ein Schritt, ordnet das Tool den Fehler ein, ohne Claude und ohne Token. Es nutzt nur, was jeder Browser liefert, unabhängig von Framework und Umgebung:
 
@@ -343,7 +271,7 @@ Der stärkste Befund entscheidet, die übrigen stehen darunter. Ohne auffällige
 
 Ohne `recording.network` sagt der Bericht das. Der Vergleich entsteht nie beim Aufnehmen oder Beheben: Unter Claudes Steuerung laufen auch Fehlklicks und Umwege, die aus der Aufzeichnung gestrichen werden, ihre Requests gehörten nicht zum Schritt. Er entsteht ohne Claude und Token durch ein `run --learn` (oder „Vergleichswerte speichern“ auf der Abschlusskarte eines bestandenen Laufs mit Chat), aus der bereinigten Aufzeichnung: Jeder bestandene Schritt ohne Vergleich bekommt ihn dann aus diesem Lauf, wenn er auf derselben Umgebung aufgenommen wurde. Ebenso die Wirkung je Aktion. Der Chat und das Terminal nennen die Schritte, nur dieses Feld ändert sich in der Datei, der Hash bleibt unberührt. Vorhandene Werte überschreibt ein `run` nie, außer sie stammen aus der Zeit vor den Parameternamen (Einträge ohne `params`). Sonst ändert ein Lauf keine Datei.
 
-### Wirkung je Aktion
+#### Wirkung je Aktion
 
 Jede Aktion (Klick, Eingabe, Taste) hat eine Wirkung auf der Seite. Das Tool misst sie nach jeder Aktion, sobald die Seite ruhig ist, und hält sie in `recording.effects` fest. Die Wirkung ist der Unterschied zwischen vorher und nachher, ohne Werte:
 
@@ -367,7 +295,7 @@ Zahlen werden zu `#`, damit Bestellnummern und Daten nicht stören.
 - **Selbstbereinigung:** Besteht ein ganzer Lauf ohne Wiederholung, und weicht ein Schritt nur in Listen außerhalb von `effects.fail` ab, dann schwankt das offenbar. Die fehlenden Zeilen fallen aus der gelernten Wirkung, etwa ein Request, der nicht in jedem Lauf kommt. Die Warnung erscheint so nur einmal. Abweichungen in Listen aus `effects.fail` bleiben Befunde.
 - Ein Schritt mit gelernter Abweichung lernt sonst nicht, damit kein Fehler aus dem Vergleich verschwindet. Soll eine geänderte Wirkung gelten, im Chat **„Neue Wirkung übernehmen“** wählen. Der Knopf erscheint, wenn nur die Wirkung abweicht und die Prüfung erfüllt ist. Er löscht `effects` dieses Schritts aus der Datei, ohne Claude und ohne Tokens; die nächsten zwei gesunden Läufe lernen sie neu. Ohne Chat geht dasselbe, indem man `effects` aus der Datei löscht.
 
-## Empfehlungen zu Fehlern und Warnungen
+### Empfehlungen zu Fehlern und Warnungen
 
 Ohne Fix-Parameter kostet nichts Token, solange du nicht schreibst oder klickst: Ein `run` zeigt bei einem gescheiterten Schritt im Chat den Grund, die harten Fehler und die Warnungen. Claude empfiehlt von sich aus nur hier, und im Gespräch, wenn du danach fragst:
 
@@ -395,38 +323,115 @@ Was Übernehmen bewirkt:
 
 Der Abschnitt „Empfehlungen“ in `report.md` nennt jede Empfehlung mit Beleg und deiner Entscheidung, bei einer Anwendungsempfehlung samt Prompt und Änderungen als Diff. Committet wird nie.
 
-## Konsolenausgabe
+### Einen Schritt beheben
+
+Scheitert ein Schritt in `run` oder im Prüflauf von `record`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Lauf beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `claude`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
+
+- **Fragen:** Erst deine Nachricht startet Claude, im selben Browser und nur lesend wie bei den [Empfehlungen](#empfehlungen-zu-fehlern-und-warnungen). Es antwortet im Chat, nennt Ursache, Datei und Zeile und kann Empfehlungskarten geben. Jede weitere Nachricht geht ins selbe Gespräch, bis du einen Knopf drückst. Das Log steht in `agent/claude-talk.log`. Ohne Nachricht und ohne Klick fallen keine Token an.
+- **Im selben Browser beheben:** Ist vom gescheiterten Schritt noch nichts ausgeführt, scheiterte also seine erste Aktion ohne harten Fehler von außen, behebt Claude ihn direkt dort, ohne Vorlauf. Der Bericht des Testlaufs bleibt als `report-test-run.md` erhalten. Sonst, etwa nach einer halben Aktionsfolge oder einer nicht erfüllten Prüfung, geht es wie unten mit Vorlauf in einem frischen Browser. Der Chat sagt vorher, welcher Weg es wird.
+
+`record <test>@S4 --env <umgebung>` nimmt ab S4 bis zum Ende neu auf, etwa nach einer gewollten Änderung der Anwendung oder für einen von Hand geänderten oder neu eingetragenen Schritt. Die Schritte vor S4 müssen aktuell sein; ab S4 dürfen Schritte veraltet oder noch gar nicht aufgenommen sein. Einen Prüflauf vorher und eine Vorführung gibt es nicht: S1 bis S3 laufen ohne Claude, dann folgt Claude dem alten Plan ab S4, du lenkst im Chat, und Claude sucht keine Ursache. Ab S4 darf Claude Schritte ergänzen, entfernen, umbenennen oder umstellen; die Schritte davor bleiben, wie sie sind. Legt Claude den Plan ab S4 unverändert vor, gilt er ohne Freigabe: Der Chat sagt das, und du kannst trotzdem schreiben, wenn sich etwas ändern soll. Die Karte zum Freigeben erscheint nur, wenn sich etwas ändert, beim Beheben eines Fehlers ebenso. `@S1` ist dasselbe wie `record <test>`. `--role` und `--read-only` gehen nicht zusammen mit einem Schritt (Exit 3): Der Test behält seine Metadaten. Genau einen Schritt behebst du nur mit „Schritt beheben“ im Chat eines Laufs.
+
+Im Chat erscheint als Nachricht nur, was Claude dir mit `say` sagt. Seine übrigen Notizen stehen eingeklappt bei den Aktionen. Brichst du ab, steht im Bericht „Von dir abgebrochen.“
+
+1. **Vorbereiten:** In einem frischen Browser laufen S1 bis S3 ohne Claude, der Chat zeigt den Fortschritt. Scheitert schon davor ein Schritt, wird dieser angeboten. Beim Beheben im selben Browser entfällt das.
+2. **Ursache, dann Plan:** Claude bekommt nur diesen Schritt (bei `record <test>@S4` alle Schritte ab S4, ohne Ursachensuche): Text, bisherige Aktionen, Prüfung, Grund, Einschätzung samt Requests, dazu `caw.md` und die bisher gelesenen `remember`-Werte. Zuerst klärt es die Ursache, auch im Quellcode, und sagt sie im Chat. Liegt es an der Anwendung, ändert es den Test nicht, sondern gibt eine Empfehlung mit konkreter Änderung am Code und meldet `fail`. Sonst legt es nur diesen Schritt als Karte vor. Ein geändertes Ergebnis ist dort markiert, erscheint bei der Entscheidung und steht im Bericht.
+3. **Ausführen:** Claude führt den Schritt aus und bereinigt ihn. Bleibt das Ergebnis gleich, muss auch die Prüfung gleich bleiben, sonst lehnt `finish` ab. Fällt ein `remember`-Wert weg, den ein späterer Schritt braucht, ebenso.
+4. **Prüflauf:** Der ganze Test läuft ohne Claude in einem frischen Browser, bis vor einen womöglich noch veralteten Schritt. Scheitert ein anderer Schritt, kommt wieder das Angebot. Besteht er: „Testplan übernehmen (N Schritte)“ oder „Entwurf verwerfen“.
+
+Nur die behobenen Schritte ändern sich in der Datei, Kommentare und alle anderen Schritte bleiben Zeichen für Zeichen gleich. Bei `record <test>@S4` bleiben die Schritte vor S4 gleich, Schritte, die nicht mehr im Plan stehen, fallen weg, und die Schritte ab S4 verlieren ihre Vergleichswerte der Requests und ihre Wirkungen; der nächste `run --learn` (oder „Vergleichswerte speichern“ auf seiner Abschlusskarte) lernt sie neu. Neue Meldungen, die Claude dabei sieht, zählen danach als bekannt; die Entscheidung nennt sie, damit kein Fehler der Anwendung unbemerkt durchrutscht.
+
+- **Testdaten:** Ein Beheben kostet bis zu zwei Durchläufe, schreibende Schritte davor legen entsprechend Daten an. Token fallen nur für diesen Schritt an, bei `record <test>@S4` für alle Schritte ab S4. Scheitert ein Schritt nach dem Absenden, bleibt der Datensatz offen, das Abspielen räumt nicht auf.
+- **Ohne Claude:** Fehlt Claude Code (`local`) bzw. Docker oder Token (`docker`), nennt der Chat den Grund, der Lauf bleibt `fail`.
+- **Entwurf verwerfen:** Der Testplan bleibt unverändert, nach einer Rückfrage („Wirklich verwerfen?“). Ein zuvor gescheiterter `run` endet mit `fail`.
+- **Einfügen, Löschen, Umsortieren:** Mit `record <test>@S4` darf Claude den Plan ab S4 ändern, denn spätere Schritte können auf früheren aufbauen. Einen Schritt, den du von Hand einträgst, nimmst du ebenso auf: `record <test>@<seine id>`.
+
+### Konsolenausgabe
 
 Im Terminal zeigt das Tool Farben, Symbole und am Ende einen Ergebnisblock mit jedem Schritt. In Dateien und Pipes bleiben es schlichte Zeilen mit `[caw]` davor. `NO_COLOR` schaltet das ab, `FORCE_COLOR` erzwingt es.
 
-## Lokaler Code in der Anwendung
+## Aus Claude Code steuern
 
-Gegen deinen Dev-Server läuft ohnehin dein Code: Er ist einfach eine Umgebung ([Konfiguration › Lokalen Code testen](configuration.de.md#lokalen-code-testen)). Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen, legt die [Overlay-Erweiterung](extensions/overlay.de.md) deinen lokalen Code darüber; bei ExtJS aus dem Sencha-Watch ([ExtJS](extensions/extjs.de.md)).
+Claude läuft als dein eigenes Claude Code, in einer Docker-Sandbox oder als deine Claude-Code-Session. In deiner Session ist caw ein Satz MCP-Werkzeuge: einrichten, aufnehmen, abspielen, nachstellen, einen Zustand öffnen.
 
-## Framework: `web`, `react`, `vue`, `angular` oder `extjs`
+### Agent: lokal, Docker oder deine Session
 
-Fast alles im Tool kennt kein Framework: Snapshot, Klicks, Konsole, Requests, Einschätzung, Chat. Was davon abhängt, steckt in einem Adapter, gewählt mit `framework` in der Config. Ein Projekt hat genau einen; die Testdatei nennt ihn nicht. `react`, `vue` und `angular` sind `web` mit drei Zusätzen: Sie erkennen, wann das Framework die Anwendung eingehängt hat, nennen zu jedem Ziel die Komponente (nur als Hinweis für Claude und den Bericht) und überspringen Framework-Dateien im Stack.
+Wo Claude läuft, wenn ein Lauf es braucht, legt `agent.mode` in der Config fest (`local`, `docker` oder `session`, Standard `local`). `--agent local|docker|session` überschreibt das für einen Lauf. In CI (`CI` gesetzt) gilt immer `docker`, andere Werte brechen ab.
 
-| | `web` (Standard) | `react` / `vue` / `angular` | `extjs` |
-|---|---|---|---|
-| Ziel speichern | Ein Playwright-Locator: Rolle und vollständiger zugänglicher Name (`aria-label`, Beschriftung, Text), `data-testid`, eingegrenzt auf den benannten Dialog, das Formular oder die Zeile darum. Nie Feldwerte. Offene Shadow Roots zählen (geschlossene sind nicht erreichbar); ein iframe der Anwendung über `contentFrame()` | wie `web`, dazu `component` als Hinweis: die Komponenten von außen nach innen, z. B. `GroupsScreen › Button`; bei Vue auch `source`, die SFC-Datei. Nur im Dev-Build, für das Wiederfinden ohne Belang | wie `web`; eine Komponente ohne Rolle oder Namen als `locator('extjs=…')` (`Ext.ComponentQuery`) |
-| Bereit | Dokument geladen, kein Request der Seite offen (länger als 10 s offene wie Long-Polling zählen nicht), nichts mit `aria-busy`, kein unbestimmter Fortschritt (`role=progressbar` ohne `aria-valuenow`), DOM seit 150 ms still | wie `web`, dazu eingehängt: React-Root-Container, Vue `data-v-app`, Angular `[ng-version]`; Angular zusätzlich stabil laut Zone.js, wenn die App Testability anbietet (bei `bootstrapApplication` nur mit `provideProtractorTestingSupport()`) | Kein `Ext.Ajax`-Request offen, kein Store lädt |
-| `wait-ready --for` | CSS-Selektor, `--min-count` zählt sichtbare Treffer | wie `web` | `storeId` oder ComponentQuery, zählt Datensätze |
-| Meldungen | modale Dialoge ohne Eingabefelder, `role=alert`, `role=alertdialog`, oder `messageSelectors`; `role=status` (Toasts, Snackbars) nur als Hinweis | wie `web` | modale Dialoge, `messageSelectors`, dazu ExtJS-Dialoge und Toasts |
-| Stack-Herkunft | oberster Eintrag | oberster außerhalb von `react-dom`, `@vue/*`, `@angular/*`, `zone.js` | oberster Eintrag außerhalb von `ext-*.js` |
+| Agent | Wie Claude läuft | Gut für |
+|---|---|---|
+| `local` | `claude -p` auf deinem Rechner, mit deiner Anmeldung. Nur die Werkzeuge `Read`, `Grep`, `Glob` und das caw-Tool, keine Shell, kein Schreiben, kein Web, keine Hooks, keine anderen MCP-Server. | den Alltag am eigenen Rechner |
+| `docker` | `claude` im Container mit Firewall, nur mit API-Schlüssel (`ANTHROPIC_API_KEY`) | wer Claude nicht auf dem eigenen System haben will |
+| `session` | Kein eigener Claude-Prozess. Deine offene Claude-Code-Session übernimmt die Rolle über den MCP-Server `caw mcp`. | Aufnehmen, Beheben und Entwickeln in der gewohnten IDE-Session |
 
-Für alle gilt:
+In allen drei Fällen ist der Browser die eigentliche Grenze: Claude sieht die Anwendung nur über die festen Befehle, Navigation nur zu erlaubten Hosts (siehe [Sandbox-Grenzen](#sandbox-grenzen)).
 
-- **Quellkarten:** Ein Skriptfehler zeigt auf den Quellcode, wenn die Anwendung Quellkarten ausliefert (Vite im Dev-Modus immer, Builds mit `sourcemap`): `src/screens/GroupsScreen.tsx:190:15` statt `index-3f9a.js:1:48211`. Geladen wird nur vom Origin des Skripts und nur von Hosts der Sperre.
-- **Routenwechsel:** Bricht ein Single-Page-Router beim Wechsel der Route offene Requests ab (bis 1 s davor oder 0,5 s danach), gilt das nicht als Fehler der Anwendung, ebenso wenig wie ein Abbruch durch einen Seitenwechsel.
-- **Verdeckte Ziele:** Ist ein Ziel nicht klickbar, sagt das Tool, warum: es fehlt, es ist unsichtbar, oder ein Dialog liegt darüber, samt seiner Meldung.
-- **Virtualisierte Listen:** Fehlt eine Zeile, rollt die Suche die Liste weiter, bis sie auftaucht.
+```json
+"caw:shop:smoke": "caw run shop-smoke --env local",
+"caw:shop:smoke:record": "caw record shop-smoke --env local",
+"caw:shop:smoke:rerecord-docker": "caw record shop-smoke@S2 --env local --agent docker"
+```
 
-Für `web` und die SPA-Adapter hilft eine zugängliche Oberfläche: Knöpfe mit Text oder `aria-label`, Felder mit `<label>`, Dialoge mit Titel. Wo das fehlt, macht `data-testid` ein Ziel eindeutig. Sonst bleibt der Index unter gleichen Treffern, und der bricht, sobald sich die Reihenfolge ändert. Erzeugte Klassen und ids (`_ngcontent-…`, CSS-Module-Hashes, `:r1:` aus `useId`) nutzt kein Adapter.
+In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.mode` greift dort nur, falls ein Lauf doch Claude braucht, und dann immer mit `docker`.
 
-**Dev-Server statt Bundle:** Eine gebündelte Anwendung (Vite, Angular CLI, webpack) testest du lokal direkt gegen ihren Dev-Server, etwa `http://localhost:5173`; das Backend erreicht sie über den Proxy des Dev-Servers, auch ein entferntes. `http` ist nur auf dem eigenen Rechner erlaubt: `localhost`, `127.0.0.1` oder ein Name unter `.localhost` (etwa `app.localhost`, wenn mehrere Anwendungen getrennte Cookies brauchen). Chrome erreicht diese Namen immer über `127.0.0.1`; lauscht der Dev-Server nur auf `::1`, starte ihn mit `--host 127.0.0.1`.
+**Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: Der Rabe blinzelt nicht mehr, kein Spinner, kein blinkender Cursor), eingeklappte Schritte oder Chat und das Theme mit hellem oder dunklem Modus (F7, siehe [Themes](../themes/README.de.md)). Im selben Ordner hält deine eigene `caw.md` Notizen für Claude in jedem Projekt, gelesen vor der `caw/caw.md` des Projekts ([Konfiguration](configuration.de.md#deine-eigene-cawmd)).
 
-## Sandbox-Grenzen
+**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--explain`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--agent session` gibt es den Hinweis nicht: Deine Session läuft ohnehin.
+
+**Ausprobieren** ohne eigenes Projekt: [`examples/errand`](../examples/errand) im Repository, eine kleine App mit Anmeldung und einem Test.
+
+#### Aus deiner Claude-Code-Session
+
+Melde caw einmal als MCP-Server des Projekts an:
+
+```bash
+claude mcp add caw --scope project -- npx caw-ai mcp
+```
+
+Unter Windows (nicht WSL) braucht `npx` einen Wrapper: `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`. Ist caw im
+Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die installierte Kopie um
+(`node node_modules/caw-ai/bin/caw.mjs mcp`); danach Claude Code neu starten. Deine Session hat dann diese Werkzeuge:
+
+| Werkzeug | Zweck | Tokens |
+|---|---|---|
+| `caw_guide` | Wie man mit caw arbeitet, je Thema (`setup`, `tests`, `run`, `session`, `config` …); ohne Thema die Übersicht | nein |
+| `caw_init` | `mode: explore` öffnet dir die App zum Anmelden und liefert die Vorschläge; `mode: write` schreibt daraus die Config; `mode: offline` die Vorlage mit TODO | nein |
+| `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben. Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), die Umgebungs-Schalter (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` und `agent.mode` lehnt es ab: Die ändert die Session in der Datei, wo Claude Code dir den Diff zeigt | nein |
+| `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
+| `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
+| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role` (oder `args`) | nur deine Session |
+| `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
+| `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |
+| `caw_selection` | das Element, das du beim Entwickeln in der Werkbank mit dem Fadenkreuz gewählt hast | nein |
+| `caw_overlay` | nur mit einem `overlay`-Block: Ist der lokale Code-Server bereit, `check` und `apply` | nein |
+
+Der Server sagt Claude Code, wofür caw da ist und dass es zuerst `caw_guide` liest; eine Skill-Datei gibt es nicht. Die Daten-Werkzeuge liefern einen kurzen Text und dasselbe Ergebnis als `structuredContent` (JSON). Keins schreibt auf den MCP-Kanal oder fragt auf stdin; Explore, `overlay check` und Läufe laufen als eigene Prozesse. caw startet deinen lokalen Code-Server nie aus der Session; das macht Claude in seiner eigenen Session, nachdem es dich gefragt hat, außer die Regeln deines Projekts (etwa `CLAUDE.md`) sagen etwas anderes.
+
+Du schreibst also in deiner Session „nimm einen Test für die Bestellung auf“ oder „bring mich zu S4 von bestellung“, und die Session erledigt den Rest mit dem Guide. Startest du den Lauf selbst im Terminal mit `--agent session`, zeigt der Chat, dass er auf die Session wartet; schreib ihr dann „übernimm den caw-Lauf“ (sie findet ihn mit `caw_status`).
+
+- **Weniger Rückfragen:** Ist deine Session der Agent, gibt es keinen Hinweis auf Token, und `record` eines vorhandenen Testplans startet ohne die Frage, wer vorführt. Ein lesender Plan, dem die Session unverändert folgt, braucht keine Plan-Freigabe; die Übernahme des geprüften Plans am Ende immer.
+- **Wartezeiten:** `plan` und `chat` warten auf dich, bis zu einer Stunde. Bricht Claude Code den Aufruf vorher ab, setz `MCP_TOOL_TIMEOUT` (Millisekunden) in der Umgebung von Claude Code höher.
+- **Vorsicht:** Deine Session hat mehr Rechte als der Agent im Lauf (Shell, Schreiben). Was aus der Anwendung kommt, ist für sie Daten, keine Anweisung; caw sagt ihr das bei jedem Auftrag. Lass Bash- und Schreibaufrufe in dieser Session bestätigen, statt sie pauschal freizugeben. Auch die caw-Werkzeuge führen Befehle des Projekts aus: `caw_start` mit `start` führt das `start` der Umgebung aus (und später ihr `stop`), mit `reset` ihr `reset`, und ein `run` mit schreibendem Test führt `reset` vor diesem Test aus; alles aus `caw.config.json`, auf deinem Rechner. `caw_config` kann diese Befehle und die Umgebungs-Schalter nicht ändern; diese Änderung geht über Claude Codes eigenes Datei-Bearbeiten, prüf ihren Diff wie Code.
+
+### Docker
+
+Nur für den Agenten `docker`. Der Docker-Dienst muss laufen, das Tool startet ihn nicht. Den Container startet und entfernt es selbst.
+
+Unter Windows nimmt das Tool den ersten Weg, dessen Dienst antwortet: zuerst `docker.exe`, dann Docker in WSL. Welcher es ist, steht am Anfang der Ausgabe. Mit `CAW_DOCKER=windows` oder `CAW_DOCKER=wsl` legst du ihn fest.
+
+Die Prüfung läuft vor allem anderen und bricht mit einer eigenen Meldung ab (Exit 2):
+
+| Code | Bedeutung |
+|---|---|
+| `docker-missing` | Kein Docker gefunden |
+| `docker-not-running` | Docker ist da, der Dienst antwortet nicht |
+| `docker-wrong-mode` | Docker Desktop steht auf Windows-Container, die Sandbox braucht Linux-Container |
+
+## Sicher mit Zugangsdaten und Produktion
+
+Testkonten bleiben in deiner `caw/.env`, Produktion wird nur gelesen, und Claude erreicht die Anwendung nur über den Browser und feste Befehle.
+
+### Sandbox-Grenzen
 
 **Lokal (Agent `local`):**
 
@@ -458,7 +463,40 @@ Für `web` und die SPA-Adapter hilft eine zugängliche Oberfläche: Knöpfe mit 
 
 **Urteil:** Bericht und `result.json` schreibt nur der Host, außerhalb des Agent-Ordners. Als Screenshot zählt nur, was der Host selbst aufgenommen hat.
 
-## Entwicklung
+## Export nach Playwright
+
+`caw export <test>` schreibt einen aufgenommenen Test als Playwright-Test, der ohne caw läuft, nur mit `@playwright/test`: die aufgenommenen Locators, ein `test.step()` je Schritt, die Anmeldung aus `signIn`, Prüfungen als `expect.poll`. Was nicht exportiert wird und wie du ihn startest: [Befehle](commands.de.md#export).
+
+## Weiteres
+
+### Lokaler Code in der Anwendung
+
+Gegen deinen Dev-Server läuft ohnehin dein Code: Er ist einfach eine Umgebung ([Konfiguration › Lokalen Code testen](configuration.de.md#lokalen-code-testen)). Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen, legt die [Overlay-Erweiterung](extensions/overlay.de.md) deinen lokalen Code darüber; bei ExtJS aus dem Sencha-Watch ([ExtJS](extensions/extjs.de.md)).
+
+### Framework: `web`, `react`, `vue`, `angular` oder `extjs`
+
+Fast alles im Tool kennt kein Framework: Snapshot, Klicks, Konsole, Requests, Einschätzung, Chat. Was davon abhängt, steckt in einem Adapter, gewählt mit `framework` in der Config. Ein Projekt hat genau einen; die Testdatei nennt ihn nicht. `react`, `vue` und `angular` sind `web` mit drei Zusätzen: Sie erkennen, wann das Framework die Anwendung eingehängt hat, nennen zu jedem Ziel die Komponente (nur als Hinweis für Claude und den Bericht) und überspringen Framework-Dateien im Stack.
+
+| | `web` (Standard) | `react` / `vue` / `angular` | `extjs` |
+|---|---|---|---|
+| Ziel speichern | Ein Playwright-Locator: Rolle und vollständiger zugänglicher Name (`aria-label`, Beschriftung, Text), `data-testid`, eingegrenzt auf den benannten Dialog, das Formular oder die Zeile darum. Nie Feldwerte. Offene Shadow Roots zählen (geschlossene sind nicht erreichbar); ein iframe der Anwendung über `contentFrame()` | wie `web`, dazu `component` als Hinweis: die Komponenten von außen nach innen, z. B. `GroupsScreen › Button`; bei Vue auch `source`, die SFC-Datei. Nur im Dev-Build, für das Wiederfinden ohne Belang | wie `web`; eine Komponente ohne Rolle oder Namen als `locator('extjs=…')` (`Ext.ComponentQuery`) |
+| Bereit | Dokument geladen, kein Request der Seite offen (länger als 10 s offene wie Long-Polling zählen nicht), nichts mit `aria-busy`, kein unbestimmter Fortschritt (`role=progressbar` ohne `aria-valuenow`), DOM seit 150 ms still | wie `web`, dazu eingehängt: React-Root-Container, Vue `data-v-app`, Angular `[ng-version]`; Angular zusätzlich stabil laut Zone.js, wenn die App Testability anbietet (bei `bootstrapApplication` nur mit `provideProtractorTestingSupport()`) | Kein `Ext.Ajax`-Request offen, kein Store lädt |
+| `wait-ready --for` | CSS-Selektor, `--min-count` zählt sichtbare Treffer | wie `web` | `storeId` oder ComponentQuery, zählt Datensätze |
+| Meldungen | modale Dialoge ohne Eingabefelder, `role=alert`, `role=alertdialog`, oder `messageSelectors`; `role=status` (Toasts, Snackbars) nur als Hinweis | wie `web` | modale Dialoge, `messageSelectors`, dazu ExtJS-Dialoge und Toasts |
+| Stack-Herkunft | oberster Eintrag | oberster außerhalb von `react-dom`, `@vue/*`, `@angular/*`, `zone.js` | oberster Eintrag außerhalb von `ext-*.js` |
+
+Für alle gilt:
+
+- **Quellkarten:** Ein Skriptfehler zeigt auf den Quellcode, wenn die Anwendung Quellkarten ausliefert (Vite im Dev-Modus immer, Builds mit `sourcemap`): `src/screens/GroupsScreen.tsx:190:15` statt `index-3f9a.js:1:48211`. Geladen wird nur vom Origin des Skripts und nur von Hosts der Sperre.
+- **Routenwechsel:** Bricht ein Single-Page-Router beim Wechsel der Route offene Requests ab (bis 1 s davor oder 0,5 s danach), gilt das nicht als Fehler der Anwendung, ebenso wenig wie ein Abbruch durch einen Seitenwechsel.
+- **Verdeckte Ziele:** Ist ein Ziel nicht klickbar, sagt das Tool, warum: es fehlt, es ist unsichtbar, oder ein Dialog liegt darüber, samt seiner Meldung.
+- **Virtualisierte Listen:** Fehlt eine Zeile, rollt die Suche die Liste weiter, bis sie auftaucht.
+
+Für `web` und die SPA-Adapter hilft eine zugängliche Oberfläche: Knöpfe mit Text oder `aria-label`, Felder mit `<label>`, Dialoge mit Titel. Wo das fehlt, macht `data-testid` ein Ziel eindeutig. Sonst bleibt der Index unter gleichen Treffern, und der bricht, sobald sich die Reihenfolge ändert. Erzeugte Klassen und ids (`_ngcontent-…`, CSS-Module-Hashes, `:r1:` aus `useId`) nutzt kein Adapter.
+
+**Dev-Server statt Bundle:** Eine gebündelte Anwendung (Vite, Angular CLI, webpack) testest du lokal direkt gegen ihren Dev-Server, etwa `http://localhost:5173`; das Backend erreicht sie über den Proxy des Dev-Servers, auch ein entferntes. `http` ist nur auf dem eigenen Rechner erlaubt: `localhost`, `127.0.0.1` oder ein Name unter `.localhost` (etwa `app.localhost`, wenn mehrere Anwendungen getrennte Cookies brauchen). Chrome erreicht diese Namen immer über `127.0.0.1`; lauscht der Dev-Server nur auf `::1`, starte ihn mit `--host 127.0.0.1`.
+
+### Entwicklung
 
 ```bash
 npm test                          # Unit-Tests; die Browser-Tests brauchen Chrome und laufen sonst nicht mit
