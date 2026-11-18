@@ -16,7 +16,7 @@ whether the test, the app or the environment is at fault, and Claude repairs the
 
 The same tests take you to any state of your app, signed in, to develop or to reproduce a bug.
 
-<img src="docs/media/demo.webp" width="100%" alt="caw records a test of the Errand example: Claude proposes the test plan, works through it in the app and answers a question in the chat; then caw replays the recording without AI and the plan is adopted">
+<img src="docs/media/demo.webp" width="100%" alt="caw records a test of the Errand example: the test is described in the chat, Claude proposes the test plan and works through it in the app; then caw replays the recording without AI and the plan is adopted">
 
 ```yaml
 # caw/tests/first-errand.yaml

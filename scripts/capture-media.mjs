@@ -3,10 +3,11 @@
 //
 //   node scripts/capture-media.mjs [--scene states|develop|bugfix|demo|all] [--claude] [--out <dir>]
 //
-// `states` needs no Claude. `develop`, `bugfix` and `demo` show Claude in the chat: with --claude the real Claude Code works
-// (costs tokens once); without it a scripted agent stands in, in the Docker sandbox, to check the choreography without tokens.
-// Media are only written with --claude, or for `states`; a dry run writes its frames to the out folder for a look.
-// Needs ffmpeg on PATH, Chrome, and for the dry run Docker (as the e2e does).
+// `states` needs no Claude. `demo` never uses Claude: scripts/media-agent.mjs plays Claude's part with the same plan and the
+// same clicks every time, so the video comes out the same on every run, in real time (not sped up), with the logo at the end.
+// `develop` and `bugfix` show Claude's answers: with --claude the real Claude Code works (costs tokens once); without it a
+// scripted agent stands in, in the Docker sandbox, to check the choreography without tokens, and nothing is written.
+// Needs ffmpeg on PATH, Chrome, and for the dry run of develop/bugfix Docker (as the e2e does).
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -35,6 +36,9 @@ process.env.CAW_USER_USER = 'demo';
 process.env.CAW_USER_PASSWORD = 'demo';
 
 const { open, record } = await import('../src/host/commands.mjs');
+const { activeTheme } = await import('../src/shared/theme-package.mjs');
+const { LONG_NAME } = await import('../src/shared/raven.mjs');
+const { RAVEN_CSS, ravenLogo, themeAttr, themeCss } = await import('../src/host/theme.mjs');
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 const freePort = () => new Promise((resolve) => {
@@ -110,32 +114,105 @@ const still = async (bench, name) => {
     await bench.screenshot({ path: png });
     if (withClaude || name === 'states') webp(['-i', png, '-c:v', 'libwebp', '-quality', '85'], name);
 };
-/** Frames of whichever workbench is current, every 500 ms, until stop(); played back fourfold. */
+/**
+ * Films whichever workbench is current, in real time: Chrome's screencast sends a frame whenever the page repaints, each frame
+ * lasts until the next one. Nothing is sped up; only waiting is left out: hold() stops filming until the next window, and the
+ * step from one window to the next is a cut. stop() appends the logo and writes the WebP.
+ */
 const film = (name) => {
     const dir = join(out, `${name}-frames`);
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
-    let current = null;
-    let running = true;
-    let index = 0;
-    const loop = (async () => {
-        while (running) {
-            if (current !== null && !current.isClosed()) {
-                index += 1;
-                await current.screenshot({ path: join(dir, `f${String(index).padStart(5, '0')}.png`) }).catch(() => { index -= 1; });
-            }
-            await sleep(500);
-        }
-    })();
+    const frames = [];
+    let session = null;
+    let filmed = null;
+    let size = { width: 1280, height: 630 };
+    /** Stops filming; with a workbench only while that one is filmed. */
+    const hold = async (bench) => {
+        if (session === null || (bench !== undefined && bench !== filmed)) return;
+        const was = session;
+        session = null;
+        filmed = null;
+        await was.send('Page.stopScreencast').catch(() => {});
+        frames.push({ cut: true });
+    };
     return {
-        follow: (bench) => { current = bench; },
+        hold,
+        follow: async (bench) => {
+            await hold();
+            const own = await bench.context().newCDPSession(bench);
+            session = own;
+            filmed = bench;
+            own.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+                own.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+                if (session !== own) return;
+                const path = join(dir, `f${String(frames.length).padStart(5, '0')}.jpg`);
+                writeFileSync(path, Buffer.from(data, 'base64'));
+                frames.push({ path, at: metadata.timestamp });
+                // The screencast is at most 1280 wide; the WebP keeps that size.
+                const width = Math.min(1280, Math.round(metadata.deviceWidth));
+                size = { width, height: Math.round((metadata.deviceHeight * width) / metadata.deviceWidth / 2) * 2 };
+            });
+            await own.send('Page.startScreencast', { format: 'jpeg', quality: 95, maxWidth: 1280, maxHeight: 1280 });
+        },
         stop: async () => {
-            running = false;
-            await loop;
-            if (withClaude && index > 0) webp(['-framerate', '8', '-i', join(dir, 'f%05d.png'), '-vf', 'scale=1280:-2', '-loop', '0', '-c:v', 'libwebp', '-quality', '60'], name);
-            return index;
+            await hold();
+            if (!frames.some((frame) => frame.cut === undefined)) return 0;
+            // Each frame until the next; at a cut between windows 0.4 s, and no frame longer than 2.5 s.
+            const timed = [];
+            frames.forEach((frame, index) => {
+                if (frame.cut) return;
+                const next = frames[index + 1];
+                const seconds = next === undefined || next.cut ? 0.4 : Math.min(next.at - frame.at, 2.5);
+                // Repaints closer than 1/15 s fold into the frame before: the same motion, fewer frames.
+                if (timed.length > 0 && seconds < 1 / 15 && next !== undefined && !next.cut) {
+                    timed.at(-1).seconds += seconds;
+                    return;
+                }
+                timed.push({ path: frame.path, seconds });
+            });
+            timed.push(...await outro(dir, size));
+            const slash = (path) => path.replaceAll('\\', '/');
+            const list = join(dir, 'frames.txt');
+            writeFileSync(list, `ffconcat version 1.0\n${timed.map(({ path, seconds }) => `file '${slash(path)}'\nduration ${seconds.toFixed(3)}\n`).join('')}file '${slash(timed.at(-1).path)}'\n`);
+            webp(['-f', 'concat', '-safe', '0', '-i', list, '-fps_mode', 'vfr', '-vf', `scale=${size.width}:${size.height}`, '-loop', '0', '-c:v', 'libwebp_anim', '-quality', '70'], name);
+            return timed.length;
         },
     };
+};
+/**
+ * The closing card: the raven and the name in the default theme, the cursor blinking a few times, at the film's size.
+ * @returns frames with their duration
+ */
+const outro = async (dir, { width, height }) => {
+    const { chromium } = await import('playwright-core');
+    const theme = activeTheme();
+    const browser = await chromium.launch({ channel: 'chrome' });
+    try {
+        const page = await browser.newPage({ viewport: { width, height } });
+        await page.setContent(`<!doctype html><html${themeAttr(theme)}><head><meta charset="utf-8"><style>${themeCss(theme)}${RAVEN_CSS}
+html,body{margin:0;height:100%;background:var(--screen);color:var(--text)}
+body{display:flex;align-items:center;justify-content:center;gap:56px}
+.raven{font-size:64px;line-height:1.05}
+.name{font:700 84px/1 var(--font-crt);letter-spacing:-.02em;display:flex;align-items:center}
+.name i{font-style:normal;color:var(--accent)}
+.cursor{display:inline-block;width:.5em;height:1em;margin-left:.12em;background:var(--warn)}
+.off .cursor{visibility:hidden}
+.long{margin-top:18px;font:400 22px/1 var(--font-ui);color:var(--muted)}
+</style></head><body>${ravenLogo(theme, { size: 64 })}<div><div class="name">caw-<i>ai</i><span class="cursor"></span></div><div class="long">${LONG_NAME}</div></div></body></html>`);
+        await page.evaluate(() => globalThis.document.fonts.ready);
+        const shots = [];
+        for (const [index, off] of [false, true].entries()) {
+            await page.evaluate((hide) => globalThis.document.body.classList.toggle('off', hide), off);
+            const path = join(dir, `outro-${index}.jpg`);
+            await page.screenshot({ path, type: 'jpeg', quality: 95 });
+            shots.push(path);
+        }
+        // The cursor blinks three times, then stays on.
+        return [...[0, 1, 0, 1, 0, 1].map((index) => ({ path: shots[index], seconds: 0.55 })), { path: shots[0], seconds: 2.5 }];
+    } finally {
+        await browser.close();
+    }
 };
 const webp = (input, name) => {
     const target = join(media, `${name}.webp`);
@@ -154,20 +231,8 @@ cat > /tmp/a.json <<'EOF'
 {"items":[{"about":"search","side":"app","title":"Search ignores tags","evidence":"GET /api/todos?q=home returns no todo tagged #home; server.mjs:197","reason":"The search compares the title only.","prompt":"In server.mjs the todo search compares only the title; also match the tag.","edits":[{"file":"server.mjs","find":"todos.filter((t) => t.title.toLowerCase().includes(q))","replace":"todos.filter((t) => t.title.toLowerCase().includes(q) || t.tag === q)","why":"Tags are searchable too"}]}]}
 EOF
 $A advise --file /tmp/a.json > /dev/null; $A chat > /dev/null`];
-const DRY_RECORD = ['bash', '-c', `A='caw agent'
-cat > /tmp/p.yaml <<'EOF'
-steps:
-  - id: S1
-    name: Open the new todo
-    do: Click New todo.
-    expect: The New todo dialog is open.
-heard:
-  - {note: H1, as: run}
-EOF
-$A plan --file /tmp/p.yaml > /dev/null
-$A click '#new'
-$A check S1 "document.getElementById('dialog').open === true"
-echo '{"expectations":[{"id":"S1","status":"pass","evidence":{"type":"eval","value":"dry"}}],"omit":[]}' > /tmp/e.json; $A finish --file /tmp/e.json`];
+// Claude's part in the demo: always the same plan, clicks and pauses (see the script).
+const DEMO_AGENT = [process.execPath, join(repo, 'scripts/media-agent.mjs')];
 
 const scenes = {
     // The F1 dialog with the example's test and its steps.
@@ -229,35 +294,45 @@ const scenes = {
         });
         await settled();
     },
-    // A new test described in the chat: plan, approval, Claude records, the check run, adopting. Filmed throughout.
+    // A new test described in the chat: plan, approval, Claude records, the check run, adopting. Filmed throughout, Claude
+    // played by scripts/media-agent.mjs. The pauses give each part a few seconds to be read.
     demo: async (dir) => {
         rmSync(join(dir, 'caw/tests/morning-errand.yaml'), { force: true });
         const camera = film('demo');
         let window = 0;
-        await record(dir, ['morning-errand', '--env', 'local', ...dryAgent], {
+        await record(dir, ['morning-errand', '--env', 'local', '--agent', 'local'], {
             interactive: true,
-            ...dry({ containerCommand: DRY_RECORD }),
+            containerCommand: DEMO_AGENT,
             onChatOpen: background(async (chat) => {
                 window += 1;
-                camera.follow(benchOf(chat));
+                await camera.follow(benchOf(chat));
                 if (window === 1) {
                     await stateOf(chat, 'choosing');
+                    await sleep(1200);
                     await chat.locator('#choices button', { hasText: 'Describe it' }).click();
                     await stateOf(chat, 'describing');
-                    await chat.locator('#input').pressSequentially('Add a todo "Feed the raven" tagged #home for tomorrow, find it with the search and tick it off.', { delay: 25 });
+                    await sleep(700);
+                    await chat.locator('#input').pressSequentially('Add a todo "Feed the raven" tagged #home for tomorrow, find it with the search and tick it off.', { delay: 45 });
+                    await sleep(600);
                     await chat.locator('#input').press('Enter');
-                    await sleep(800);
+                    await sleep(1000);
                     await chat.locator('#toggle').click();
                 } else if (window === 2) {
-                    // Claude's window: the plan card, approved after a moment; Claude then records.
+                    // Claude's window: the plan card is read for a while, then approved; Claude then records.
                     await stateOf(chat, 'planning');
-                    await sleep(2500);
+                    await sleep(5500);
                     await chat.locator('#approve').click();
+                    // Claude is done once it hands over to the check run; the wait for the next window is left out.
+                    await chat.getByText('A new window opens for the check run').waitFor({ timeout: CLAUDE_MS }).catch(() => {});
+                    await sleep(1200);
+                    await camera.hold(benchOf(chat));
                 } else {
                     // The check run's window: the decision whether the proven test is adopted.
                     await chat.locator('#choices button.primary').waitFor({ timeout: CLAUDE_MS });
-                    await sleep(2000);
+                    await sleep(3500);
                     await chat.locator('#choices button.primary').click();
+                    await sleep(1800);
+                    await camera.hold(benchOf(chat));
                 }
             }),
         });
@@ -271,7 +346,7 @@ mkdirSync(out, { recursive: true });
 for (const name of scene === 'all' ? SCENES : [scene]) {
     const { dir, server } = await project();
     try {
-        console.log(`scene ${name}${withClaude || name === 'states' ? '' : ' (dry run, scripted agent)'}`);
+        console.log(`scene ${name}${withClaude || name === 'states' || name === 'demo' ? '' : ' (dry run, scripted agent)'}`);
         await scenes[name](dir);
     } finally {
         server.kill();

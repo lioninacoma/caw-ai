@@ -16,7 +16,7 @@ caw, ob Test, App oder Umgebung schuld ist, und Claude repariert den Schritt in 
 
 Dieselben Tests bringen dich angemeldet in jeden Zustand deiner App, um dort zu entwickeln oder einen Fehler nachzustellen.
 
-<img src="docs/media/demo.webp" width="100%" alt="caw nimmt einen Test des Errand-Beispiels auf: Claude schlägt den Testplan vor, arbeitet ihn in der App ab und beantwortet eine Frage im Chat; danach spielt caw die Aufnahme ohne KI ab und der Plan wird übernommen">
+<img src="docs/media/demo.webp" width="100%" alt="caw nimmt einen Test des Errand-Beispiels auf: Der Test wird im Chat beschrieben, Claude schlägt den Testplan vor und arbeitet ihn in der App ab; danach spielt caw die Aufnahme ohne KI ab und der Plan wird übernommen">
 
 ```yaml
 # caw/tests/first-errand.yaml
