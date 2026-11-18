@@ -660,7 +660,7 @@ scenario('3', 'English UI: workbench, chat, steps and result in English', async 
             const bench = page.page?.() ?? page;
             await stateOf(page, 'testing');
             verify('Chat in English', (await page.locator('#status').textContent()).includes('Test run without Claude') && await page.evaluate(() => document.documentElement.lang) === 'en');
-            verify('Workbench in English', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()).includes('PREPARATION'));
+            verify('Workbench in English', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()).includes('Preparation'));
             await benchBack(page);
             await page.locator('.message.question', { hasText: 'The run passed' }).waitFor({ timeout: 60000 });
             await stateOf(page, 'developing');
@@ -1152,7 +1152,7 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         const labels = await chat.locator('#choices button').allTextContents();
         verify('Buttons for developing', ['Neu öffnen', 'Lauf beenden'].every((label) => labels.some((text) => text.includes(label))) && labels.length === 2, JSON.stringify(labels));
         verify('Crosshair in the chat', await chat.locator('#pick').isVisible() && await chat.locator('#pick').isEnabled());
-        verify('Key bar: F5 Neu laden enabled, animations on', (await bench.locator('#reload').textContent()).includes('Neu laden') && await bench.locator('#reload').isEnabled() && await bench.locator('#still').getAttribute('aria-pressed') === 'false');
+        verify('Menu: F5 Anwendung neu laden enabled, animations on', (await bench.locator('#reload').textContent()).includes('Anwendung neu laden') && await bench.locator('#reload').isEnabled() && await bench.locator('#still').getAttribute('aria-checked') === 'false');
         await shoot(chat, 'develop');
         // Crosshair: the element is attached to the next question and is ready for the Claude Code session at once.
         await chat.locator('#pick').click();
@@ -1162,8 +1162,8 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         await chat.locator('.message', { hasText: '" hängt an deiner nächsten Frage hier im Chat' }).waitFor({ timeout: 20000 });
         const picked = existsSync(selection) ? JSON.parse(readFileSync(selection, 'utf8')) : null;
         verify('Selection for the session', picked?.test === ID && picked?.until === 'S2' && picked?.entry === 'S3' && typeof picked?.element?.label === 'string', JSON.stringify(picked)?.slice(0, 200));
-        // Requests and console: open, then closed again via the button.
-        await bench.locator('[data-tab=requests]').click();
+        // Requests and console: opened from the count in the status line, closed again via the drawer's button.
+        await bench.locator('.afoot [data-tabkey=requests]').click();
         const opened = await bench.locator('#drawer.open').count();
         await bench.locator('#drawerClose').click();
         verify('Drawer collapsed via its button', opened === 1 && await bench.locator('#drawer.open').count() === 0);
@@ -1210,16 +1210,18 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         while (await restored(fresh) < 2 && Date.now() < deadline) await bench.waitForTimeout(300);
         verify('After reloading: restoring the state works', await restored(fresh) === 2 && (await appOf(bench).locator('#ziel').textContent()) === 'Ziel erreicht');
         // Animations off (F10): everything stands still, remembered for the next runs.
-        await bench.locator('#still[aria-pressed=false]').click();
+        await bench.locator('#more').click();
+        await bench.locator('#still[aria-checked=false]').click();
         await bench.waitForTimeout(2000);
-        verify('Animations off: still, remembered', await bench.locator('#still').getAttribute('aria-pressed') === 'true' && await bench.locator('body.still').count() === 1 && pref().animations === 'off', JSON.stringify(pref()));
+        verify('Animations off: still, remembered', await bench.locator('#still').getAttribute('aria-checked') === 'true' && await bench.locator('body.still').count() === 1 && pref().animations === 'off', JSON.stringify(pref()));
         await decide(fresh, 'Beenden');
     }, async (chat) => {
         const bench = chat.page();
         await benchBack(chat);
         await stateOf(chat, 'developing');
-        verify('Next run: animations stay off', await bench.locator('#still').getAttribute('aria-pressed') === 'true' && await bench.locator('body.still').count() === 1);
-        await bench.locator('#still[aria-pressed=true]').click();
+        verify('Next run: animations stay off', await bench.locator('#still').getAttribute('aria-checked') === 'true' && await bench.locator('body.still').count() === 1);
+        await bench.locator('#more').click();
+        await bench.locator('#still[aria-checked=true]').click();
         await bench.waitForTimeout(800);
         verify('On again and remembered', pref().animations === 'on' && await bench.locator('body.still').count() === 0);
         await decide(chat, 'Beenden');

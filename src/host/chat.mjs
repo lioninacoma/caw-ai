@@ -417,7 +417,8 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
 
 /**
  * The chat page in the current language and the personal mode; texts for the page script are in T. Exported for preview and
- * tests. The chat has its own opaque origin, so it follows the system mode by itself (MODE_SCRIPT).
+ * tests. The chat has its own opaque origin, so it follows the system mode by itself (MODE_SCRIPT); a mode picked in the
+ * workbench's settings arrives as a message from the parent.
  */
 export const chatPage = (nonce = '', mode = readPrefs().mode) => `<!doctype html><html lang="${language()}"${modeAttr(mode)}><head><meta charset="utf-8"><title>caw · Chat</title><script>${MODE_SCRIPT}${sourceTag}</script>${FAVICON}<style>
 ${styleSheet()}
@@ -559,6 +560,8 @@ toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggl
 addEventListener('keydown',(event)=>{if(event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}
   // The workbench's F keys apply here too: the chat passes them on. It handles F9 and Esc itself, F11 and F12 stay with the browser.
   else if(PASS_KEYS.includes(event.key)&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();parent.postMessage({caw:'key',key:event.key},'*');}
+  // Ctrl+, opens the workbench's settings from here too.
+  else if((event.ctrlKey||event.metaKey)&&!event.altKey&&event.key===','){event.preventDefault();parent.postMessage({caw:'key',key:'Ctrl+,'},'*');}
   else if(event.key==='F9'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();pauseKey();}});
 const pick=document.getElementById('pick'),chip=document.getElementById('chip'),statusBox=document.getElementById('status');let statusText='';
 pick.addEventListener('click',()=>send('pick'));document.getElementById('chipRemove').addEventListener('click',()=>{window.setChip(null);send('unpick');});
@@ -695,6 +698,8 @@ document.addEventListener('keydown',(event)=>{
 });
 // Pause via F9: like the button, if it is currently shown.
 function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)toggleButton.click();}
+// A new mode from the workbench's settings: only from it, only one of the three modes.
+addEventListener('message',(event)=>{const pref=event.data?.pref;if(event.source===parent&&event.data?.caw==='mode'&&['system','light','dark'].includes(pref))document.documentElement.dataset.pref=pref;});
 // F9 and Esc from the workbench: only from it, only these two.
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();

@@ -251,7 +251,8 @@ scenario('N4', 'open <test>@S3: the steps before run, S3 does not; F1 "Ã–ffnenâ€
         const app = appOf(bench);
         const state = await app.evaluate(() => [document.getElementById('prices').textContent, document.getElementById('count').textContent, document.getElementById('file-name').textContent].join('|'));
         verify('S1 and S2 ran, S3 did not', state === 'loaded|2|', state);
-        await bench.locator('.fkeys [data-states]').click();
+        await bench.locator('#more').click();
+        await bench.locator('#menu [data-states]').click();
         await bench.locator('#stateDlg:not([hidden])').waitFor({ timeout: 10000 });
         await bench.locator('#stests .srow', { hasText: 'n9-shadow' }).click();
         await bench.locator('#ssteps .srow:not(.all)', { hasText: 'S2' }).click();

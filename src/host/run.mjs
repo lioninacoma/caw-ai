@@ -1,7 +1,7 @@
 // A complete run: open the browser on the host, start the container, execute its commands, write the report.
 
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join, posix } from 'node:path';
+import { basename, join, posix } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -13,14 +13,15 @@ import { resolveCredentials } from '../shared/credentials.mjs';
 import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
 import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
-import { inLanguage, t, teamLanguage } from '../shared/i18n.mjs';
+import { inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
-import { readPersonalContext } from '../shared/personal-context.mjs';
+import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
+import { prefsDir, readPrefs } from '../shared/prefs.mjs';
 import { renderReport, renderReproduceReport } from '../shared/report.mjs';
 import { readReproduction, draftTestPlan, adoptHint } from './reproduce.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
-import { CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
 import { codeText, createAgentHandler, hiddenAnswer, hiddenError } from './agent-commands.mjs';
@@ -378,6 +379,45 @@ export const benchFacts = (config, spec, checked, title) => {
     ];
 };
 
+let cawVersion = null;
+const versionOf = () => {
+    try {
+        cawVersion ??= String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version);
+    } catch {
+        cawVersion = '';
+    }
+    return cawVersion;
+};
+
+/**
+ * What the workbench's settings page shows read-only. The page shares its origin with the application under test, so only what
+ * the application may read anyway: names, flags, the home folder as ~ and line counts, never a note's content.
+ * @param agent  the label of the sandbox Claude runs in, if known
+ */
+export const benchSettings = ({ root, config, spec, checked, agent, env = process.env }) => {
+    const personal = readPersonalContext(env);
+    let project;
+    try {
+        project = readContext(root);
+    } catch {
+        // unreadable: shown as missing, the run does not depend on it here
+    }
+    return {
+        project: basename(root),
+        config: CONFIG_FILE,
+        env: { name: checked.name, url: checked.url, claude: checked.claude === true, writable: checked.writable === true, production: checked.production === true },
+        ...(spec.role === undefined ? {} : { role: spec.role }),
+        code: checked.source === 'overlay' ? t('run.fact.local') : t('run.fact.deployed'),
+        version: `caw ${versionOf()} · Node ${process.versions.node.split('.')[0]}`,
+        ...(typeof agent === 'string' && agent !== '' ? { agent } : {}),
+        language: { value: language(), source: languageSource({ env, team: config.language }) },
+        tokenNotice: readPrefs(env).tokenNotice === 'off' ? 'off' : 'on',
+        prefsFile: shownPath(join(prefsDir(env), 'prefs.json')),
+        personal: { path: personal?.shown ?? shownPath(personalContextPath(env)), lines: personal?.lines ?? null },
+        projectNotes: { path: CONTEXT_FILE, lines: project === undefined ? null : project.split('\n').length },
+    };
+};
+
 /**
  * @param sandbox  result of prepareSandbox
  * @param options  spec, target, checked, timeoutMin, containerCommand, note;
@@ -500,6 +540,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...headerMode)));
+        await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, agent: sandbox?.label ?? sandbox?.docker?.label }));
         await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
     } catch (error) {

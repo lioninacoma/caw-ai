@@ -405,9 +405,10 @@ test('chat: the decision is a card, discard needs a second click', async (t) => 
     assert.equal(await frame.locator('.decision > ul > li').count(), 1);
     assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'warnings collapsed');
     assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Der Testplan ändert sich erst mit deiner Wahl.'], 'once in the terminal');
-    // The application bar says so too. The pill top right only knows the four chat header labels: there is none here.
+    // The application bar says so too, and the pill: the chat waits for the human.
     assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === 'DU BIST DRAN'));
-    assert.equal(await bench.page.isVisible('#state'), false, 'no pill without a label');
+    assert.equal(await bench.page.textContent('#state'), 'Du bist dran');
+    assert.equal(await bench.page.getAttribute('#state', 'class'), 'pill on turn');
 
     const discard = frame.locator('#choices button', { hasText: 'Entwurf verwerfen' });
     await discard.click();
@@ -532,24 +533,42 @@ test('workbench: the title is one sentence with the test name in it, the chips f
     assert.equal(await bench.page.textContent('#title'), 'morning-errand');
     await bench.facts([['', 'Claude nimmt morning-errand auf'], ['Umgebung', 'staging']]);
     assert.ok(await until(async () => (await bench.page.textContent('#title')) === 'Claude nimmt morning-errand auf'));
-    // The words around the test's name in the accent colour, the name itself plain.
+    // In the badge the words around the test's name, the name itself plain; the breadcrumb names the test.
     assert.deepEqual(await bench.page.locator('#title .cmd').allTextContents(), ['Claude nimmt ', ' auf']);
-    assert.deepEqual(await bench.page.locator('#facts li').allTextContents(), ['Umgebungstaging']);
+    assert.equal(await bench.page.textContent('#crumbTest'), 'morning-errand');
+    // The facts by their values, the label in title and aria-label.
+    assert.deepEqual(await bench.page.locator('#facts li').allTextContents(), ['staging']);
+    assert.equal(await bench.page.getAttribute('#facts li', 'aria-label'), 'Umgebung: staging');
     await bench.facts([['', 'morning-errand wird ohne Claude geprüft']]);
     assert.ok(await until(async () => (await bench.page.locator('#facts li').count()) === 0));
     assert.deepEqual(await bench.page.locator('#title .cmd').allTextContents(), [' wird ohne Claude geprüft']);
 });
 
-test('workbench: the pill top right shows only the four chat header labels, without a step', async (t) => {
+test('workbench: the pill top right is a dot and a word: the chat header labels first, then failed, passed, ready; no step while one runs', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
-    const pill = async () => ((await bench.page.isVisible('#state')) ? bench.page.textContent('#state') : null);
-    await bench.steps([{ id: 'S1', name: 'Eins' }]);
+    const pill = async () => ((await bench.page.isVisible('#state')) ? `${(await bench.page.getAttribute('#state', 'class')).replace('pill on ', '')}:${await bench.page.textContent('#state')}` : null);
+    assert.equal(await pill(), null, 'nothing before the steps');
+    await bench.steps([{ id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }]);
+    assert.equal(await pill(), 'idle:Bereit');
     await bench.step('S1', 'running');
-    for (const [state, label] of [['running', 'Claude arbeitet'], ['testing', 'caw arbeitet'], ['pausing', 'Hält an …'], ['paused', 'Pausiert'], ['deciding', null]]) {
+    for (const [state, label] of [['running', 'run:Claude arbeitet'], ['testing', 'run:caw arbeitet'], ['pausing', 'turn:Hält an …'], ['paused', 'turn:Pausiert'], ['deciding', null]]) {
         await bench.chatState(state);
         assert.ok(await until(async () => (await pill()) === label), `${state}: ${await pill()}`);
     }
+    assert.equal(await bench.page.locator('#state .dot').count(), 0);
+    await bench.chatState('closed');
+    await bench.step('S1', 'fail', 'kaputt');
+    assert.equal(await pill(), 'fail:S1 gescheitert');
+    await bench.step('S1', 'pass');
+    await bench.step('S2', 'pass');
+    assert.equal(await pill(), 'pass:Alle bestanden');
+    assert.equal(await bench.page.locator('#state .dot').count(), 1);
+    await bench.group({ id: 'reproduce', name: 'Claude stellt nach', kind: 'phase', points: [{ id: 'p1', label: 'Suche' }] });
+    await bench.point('reproduce', 'p1', 'running');
+    assert.equal(await pill(), 'claude:Claude stellt nach');
+    await bench.mood('aborted');
+    assert.equal(await pill(), 'fail:Abgebrochen');
 });
 
 test('workbench: the steps get the heading "Durchführung" between preparation and wrap-up; it counts as no step', async (t) => {
@@ -624,12 +643,18 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     const page = bench.page;
     const picked = [];
     bench.onState(async (testId, step) => { picked.push([testId, step]); });
-    assert.equal(await page.isVisible('.fkeys [data-states]'), false, 'no F1 without tests');
+    const offered = async () => {
+        await page.click('#more');
+        const visible = await page.isVisible('#menu [data-states]');
+        await page.keyboard.press('Escape');
+        return visible;
+    };
+    assert.equal(await offered(), false, 'no Open… without tests');
     await bench.states([
         { id: 'sb-antrag-abbrechen', name: '', writes: true, steps: [{ id: 'S1', name: 'Personensuche', ok: true }, { id: 'S2', name: 'Person wählen', ok: true }, { id: 'S3', name: 'Antrag', ok: false, why: 'stale' }] },
         { id: 'pruefen-liste', name: '', writes: false, steps: [{ id: 'S1', name: 'Liste', ok: true }] },
     ]);
-    assert.equal(await page.isVisible('.fkeys [data-states]'), true);
+    assert.equal(await offered(), true, 'Open… in the ⋯ menu');
     await page.keyboard.press('F1');
     assert.equal(await page.isVisible('#stateDlg'), true, 'F1 opens the dialog');
     await page.click('#stests .srow >> text=sb-antrag-abbrechen');
@@ -642,15 +667,22 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     await page.keyboard.press('F1');
     await page.click('#ssteps .srow >> text=S1');
     // A picked step means its entry: the steps before it completely, of the step only its navigation.
-    assert.match(await page.textContent('#ssteps .srow[aria-selected=true]'), /S1 {2}Personensuche$/);
+    assert.equal(await page.textContent('#ssteps .srow[aria-selected=true] .sid'), 'S1');
+    assert.match(await page.textContent('#ssteps .srow[aria-selected=true] .nm'), /^S1Personensuche$/);
     assert.match(await page.textContent('#sfoot'), /^Spielt sb-antrag-abbrechen bis zum Einstieg in S1 ab: die Schritte davor ganz, von S1 nur die Navigation, ohne Claude\./);
-    assert.match(await page.textContent('#sgo'), /^Öffnen$/);
+    assert.match(await page.textContent('#sgo'), /^Öffnen/);
     await page.click('#sgo');
     await until(() => picked.length === 2);
     assert.deepEqual(picked[1], ['sb-antrag-abbrechen', 'S1']);
-    // In solo view F1 sits in the narrow bar.
+    // In solo view F1 still opens the dialog; the narrow bar only leads back.
     await bench.solo(true);
-    assert.equal(await page.isVisible('.soloBar [data-states]'), true);
+    assert.equal(await page.isVisible('.soloBar [data-states]'), false);
+    await page.keyboard.press('F1');
+    assert.equal(await page.isVisible('#stateDlg'), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.isVisible('#stateDlg'), false);
+    await page.click('.soloBar [data-solo]');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('solo')), false, 'back to the workbench');
     return undefined;
 });
 
@@ -676,5 +708,165 @@ test('workbench: the application reaches the bindings via top, but sets no token
     assert.deepEqual(picked, [], 'only reachable states from the catalogue');
     await bench.view.evaluate(() => top.cawState('liste'));
     assert.deepEqual(picked, [['liste', undefined, { name: '', role: 'sb', until: 'S1' }]], 'the host passes on what it knows itself');
+    return undefined;
+});
+
+/** A fresh prefs.json for a test that writes settings through the page. */
+const ownHome = (t) => {
+    const home = mkdtempSync(join(tmpdir(), 'caw-bench-home-'));
+    const previous = process.env.CAW_AI_HOME;
+    process.env.CAW_AI_HOME = home;
+    t.after(() => {
+        if (previous === undefined) delete process.env.CAW_AI_HOME;
+        else process.env.CAW_AI_HOME = previous;
+        rmSync(home, { recursive: true, force: true });
+    });
+    return home;
+};
+
+test('workbench: the ⋯ menu lists every function with its key; arrows, Enter and Esc work, Ctrl+K opens it too', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const home = ownHome(t);
+    const { bench } = await open(t);
+    const page = bench.page;
+    const focused = () => page.evaluate(() => document.activeElement?.id ?? '');
+    assert.equal(await page.isVisible('#menu'), false);
+    await page.click('#more');
+    assert.equal(await page.isVisible('#menu'), true);
+    assert.equal(await page.getAttribute('#more', 'aria-expanded'), 'true');
+    assert.equal(await focused(), 'mPause', 'the focus is on the first item');
+    const shown = await page.locator('#menu .pop-i:visible').evaluateAll((list) => list.map((item) => `${item.querySelector('.nm').textContent} ${item.querySelector('kbd').textContent}`));
+    const steps = await page.evaluate(() => document.body.classList.contains('fold-steps'));
+    assert.deepEqual(shown, ['Pause F9', 'Anwendung neu laden F5', 'Lauf abbrechen Esc', 'Requests F2', 'Konsole F3', `Schritte ${steps ? 'einblenden' : 'ausblenden'} F4`, 'Chat ausblenden F6', 'Nur Anwendung F8', 'Animationen aus F10', 'Einstellungen Strg ,', 'Tastenkürzel ?']);
+    assert.equal(await page.isDisabled('#reload'), true, 'reload only after the hand-over');
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await focused(), 'mCancel', 'the locked item is skipped');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await focused(), 'mPause');
+    await page.keyboard.press('End');
+    assert.equal(await focused(), 'mKeys');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.isVisible('#menu'), false, 'Esc closes');
+    assert.equal(await focused(), 'more', 'the focus returns to ⋯');
+    // Ctrl+K, then an item by keyboard: Animations off.
+    await page.keyboard.press('Control+KeyK');
+    assert.equal(await page.isVisible('#menu'), true);
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await focused(), 'still');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.isVisible('#menu'), false, 'an item closes the menu');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('still')), true);
+    assert.equal(await page.getAttribute('#still', 'aria-checked'), 'true');
+    assert.ok(await until(() => readPrefs({ CAW_AI_HOME: home }).animations === 'off'), 'remembered');
+    // A click on an item: the console opens; the count in the status line closes it again, Esc too.
+    await page.click('#more');
+    await page.click('#menu [data-tabkey=console]');
+    assert.equal(await page.getAttribute('[data-tab=console]', 'aria-selected'), 'true');
+    assert.equal(await page.isVisible('#drawer'), true);
+    await page.click('.afoot [data-tabkey=console]');
+    assert.equal(await page.isVisible('#drawer'), false);
+    await page.click('.afoot [data-tabkey=requests]');
+    assert.equal(await page.getAttribute('[data-tab=requests]', 'aria-selected'), 'true');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.isVisible('#drawer'), false, 'Esc closes the drawer');
+    return undefined;
+});
+
+test('workbench: Ctrl+, opens the settings page; its mode switches workbench and chat live and stays for the next page', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const home = ownHome(t);
+    const { bench } = await open(t);
+    const page = bench.page;
+    const look = (frame) => frame.evaluate(() => [document.documentElement.dataset.pref, document.documentElement.dataset.mode]);
+    await bench.settings({
+        project: 'errand', config: 'caw.config.json', env: { name: 'local', url: 'http://localhost:4173', claude: true, writable: false, production: false }, role: 'user', code: 'lokaler Build',
+        version: 'caw 1.0.0 · Node 22', language: { value: 'de', source: 'env' }, tokenNotice: 'on', prefsFile: '~/prefs.json', personal: { path: '~/caw.md', lines: 12 }, projectNotes: { path: 'caw/caw.md', lines: null },
+    });
+    assert.equal(await page.textContent('#project'), 'errand', 'the project in the breadcrumb');
+    assert.equal(await page.textContent('#envBadge'), 'nur lesen', 'the app bar says the environment is not writable');
+    await page.focus('#more');
+    await page.keyboard.press('Control+Comma');
+    assert.equal(await page.isVisible('#settings'), true);
+    assert.equal(await page.isVisible('#app'), false, 'a view of the workbench: the panes step back');
+    assert.equal(await page.textContent('#title'), 'Einstellungen');
+    assert.equal(await page.textContent('#setLang'), 'Deutsch');
+    assert.equal(await page.textContent('#setLangSrc'), 'aus CAW_LANG');
+    assert.equal(await page.textContent('#setToken'), 'An');
+    assert.equal(await page.isVisible('#setAgentRow'), false, 'no agent when the host does not know it');
+    assert.equal(await page.textContent('#setPersonalPath'), '~/caw.md');
+    assert.equal(await page.textContent('#setPersonalLines'), '· 12 Zeilen');
+    assert.equal(await page.textContent('#setProjectLines'), '· noch nicht angelegt');
+    assert.match(await page.textContent('#setRun'), /errand · caw\.config\.json/);
+    assert.equal(await page.getAttribute('#setMode [data-mode=system]', 'aria-pressed'), 'true');
+    const chat = bench.chatFrame();
+    await page.click('#setMode [data-mode=dark]');
+    assert.deepEqual(await look(page.mainFrame()), ['dark', 'dark']);
+    assert.ok(await until(async () => (await look(chat))[1] === 'dark'), 'the chat turns dark too');
+    assert.deepEqual(await look(chat), ['dark', 'dark']);
+    assert.ok(await until(() => readPrefs({ CAW_AI_HOME: home }).mode === 'dark'), 'saved');
+    await page.click('#setMode [data-mode=light]');
+    assert.ok(await until(async () => (await look(chat))[1] === 'light'));
+    await page.click('#setMode [data-mode=dark]');
+    // The chat ignores a mode from anyone but its parent, and anything but the three modes.
+    await page.evaluate(() => document.getElementById('chat').contentWindow.postMessage({ caw: 'mode', pref: 'neon' }, '*'));
+    await bench.view.frame.evaluate(() => top.document.getElementById('chat').contentWindow.postMessage({ caw: 'mode', pref: 'light' }, '*'));
+    await pause(300);
+    assert.deepEqual(await look(chat), ['dark', 'dark']);
+    // Animations: the same as F10.
+    await page.click('#setStill');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('still')), true);
+    assert.equal(await page.getAttribute('#setStill', 'aria-checked'), 'false');
+    await page.click('#setStill');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.isVisible('#settings'), false, 'Esc goes back to the run');
+    assert.equal(await page.isVisible('#app'), true);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'more', 'the focus returns');
+    // Ctrl+, from inside the chat opens it too.
+    await chat.locator('body').press('Control+Comma');
+    assert.ok(await until(() => page.isVisible('#settings')));
+    await page.click('#setBack');
+    // A reloaded workbench and its new chat start in the saved mode.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    assert.ok(await until(async () => (await look(page.mainFrame()).catch(() => []))[0] === 'dark'), 'the workbench');
+    assert.ok(await until(async () => (await look(bench.chatFrame()).catch(() => []))[0] === 'dark'), 'the chat');
+    return undefined;
+});
+
+test('workbench: a hovered step offers to open its state only when F1 offers this test, preselected on test and step', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const context = await browser.newContext();
+    t.after(() => context.close());
+    await context.newPage();
+    const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'], title: 'caw · morning-errand' });
+    const page = bench.page;
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await bench.steps([{ id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }, { id: 'S3', name: 'Drei' }]);
+    const offer = async (id) => {
+        await page.hover(`#steps>li[data-id=${id}]>.head`);
+        return (await page.isVisible(`#steps>li[data-id=${id}] .hov .lnk`)) ? page.textContent(`#steps>li[data-id=${id}] .hov .lnk`) : null;
+    };
+    assert.equal(await offer('S2'), null, 'nothing without F1 states');
+    await bench.states([
+        { id: 'other', name: '', writes: false, steps: [{ id: 'S1', name: 'x', ok: true }] },
+        { id: 'morning-errand', name: '', role: 'user', writes: false, steps: [{ id: 'S1', name: 'Eins', ok: true }, { id: 'S2', name: 'Zwei', ok: true }, { id: 'S3', name: 'Drei', ok: false, why: 'stale' }] },
+    ]);
+    assert.equal(await offer('S2'), 'Öffnen bis S2');
+    assert.equal(await offer('S3'), null, 'not for a step F1 cannot reach');
+    await offer('S2');
+    await page.click('#steps>li[data-id=S2] .hov .lnk');
+    assert.equal(await page.isVisible('#stateDlg'), true);
+    assert.equal(await page.textContent('#stests .srow[aria-selected=true] .nm'), 'morning-errand');
+    assert.equal(await page.textContent('#ssteps .srow[aria-selected=true] .sid'), 'S2');
+    assert.match(await page.textContent('#sfoot'), /bis zum Einstieg in S2/);
+    await page.keyboard.press('Escape');
+    await offer('S1');
+    await page.click('#steps>li[data-id=S1] .hov .ib');
+    assert.equal(await page.locator('#ssteps .srow.all[aria-selected=true]').count(), 1, 'the ⋯ opens the whole test');
+    await page.click('#scancel');
+    assert.equal(await page.isVisible('#stateDlg'), false);
+    await bench.states([]);
+    assert.equal(await offer('S2'), null, 'gone with the offer');
     return undefined;
 });

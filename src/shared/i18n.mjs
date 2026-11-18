@@ -42,6 +42,16 @@ export const detectLanguage = ({ env = process.env, system = () => Intl.DateTime
     }
 };
 
+/**
+ * Where the UI language comes from, in the order of detectLanguage: 'env' (CAW_LANG), 'prefs' (prefs.json), 'project'
+ * (the config's team language) or 'system' (locale variables, the system, the fallback). For the workbench's settings page.
+ */
+export const languageSource = ({ env = process.env, prefs = () => readPrefs(env), team } = {}) => {
+    if (pick(env.CAW_LANG) !== null) return 'env';
+    if (pick(prefs().language) !== null) return 'prefs';
+    return pick(team) !== null ? 'project' : 'system';
+};
+
 /** Sets the language; unknown values fall back to English. */
 export const setLanguage = (value) => {
     current = pick(value) ?? FALLBACK;
