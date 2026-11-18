@@ -278,6 +278,12 @@ test('init: detects the framework, takes answers, no role without login', async 
 });
 
 test('missing test: the record hint only names flags the config does not determine', async (t) => {
+    // A person at the machine: record refuses in CI before anything else, so CI is unset here (GitHub Actions sets it).
+    const ci = process.env.CI;
+    delete process.env.CI;
+    t.after(() => {
+        if (ci !== undefined) process.env.CI = ci;
+    });
     const root = mkdtempSync(join(tmpdir(), 'caw-hint-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});

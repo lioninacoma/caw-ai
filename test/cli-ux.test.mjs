@@ -174,6 +174,12 @@ test('run: without --env the only environment, typos get a suggestion and the ch
 });
 
 test('open and record with a step: a stale step before it names record <test>@<step>, CI has nobody for the window', async (t) => {
+    // A person at the machine: record refuses in CI before anything else, so CI is unset here (GitHub Actions sets it).
+    const ci = process.env.CI;
+    delete process.env.CI;
+    t.after(() => {
+        if (ci !== undefined) process.env.CI = ci;
+    });
     const root = project(t);
     // bestellen: S2 changed by hand since recording. Up to the entry of S3, S2 must replay: re-record from S2.
     await assert.rejects(open(root, ['bestellen@S3', '--env', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /S2 .*Neu aufnehmen ab dort: caw record bestellen@S2 --env local/.test(error.message));
