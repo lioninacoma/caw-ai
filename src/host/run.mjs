@@ -727,7 +727,10 @@ ${text}`) ?? 0;
     let closeActivity = () => {};
     const forClaude = (handler) => async (command) => {
         // Commands with which the agent waits for the person: a chat answer or a question to show in the browser.
-        const waits = ['chat', 'ask-operator'].includes(command?.action);
+        // Commands with which the agent waits for the person. caw's own agent answers with say and waits with chat. An attached
+        // session fetches the message with chat, answers with say and then listens on its Monitor: say is where it is done.
+        const attached = link !== null;
+        const waits = attached ? ['say', 'ask-operator'].includes(command?.action) : ['chat', 'ask-operator'].includes(command?.action);
         if (command?.action === 'say' || waits) closeActivity();
         // The chat shows "working" until the agent waits for the person again.
         if (typeof command?.action === 'string') chat?.working?.(!waits);
