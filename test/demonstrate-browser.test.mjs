@@ -66,9 +66,12 @@ test('demonstration: clicks, a typed field, a <select> and Enter become locators
                 await page.getByRole('textbox', { name: 'Titel' }).click();
                 await page.keyboard.type('Milch');
                 await page.keyboard.press('Enter');
-                // On macOS ArrowDown opens the list instead of changing the value: pick from it as a person there would.
-                if (process.platform === 'darwin') await page.getByRole('combobox', { name: 'Tag' }).selectOption('home');
-                else {
+                // On macOS ArrowDown opens the list instead of changing the value: click it and pick, as a person there would
+                // (the click marks the element, the pick changes it).
+                if (process.platform === 'darwin') {
+                    await page.getByRole('combobox', { name: 'Tag' }).click();
+                    await page.getByRole('combobox', { name: 'Tag' }).selectOption('home');
+                } else {
                     await page.getByRole('combobox', { name: 'Tag' }).focus();
                     await page.keyboard.press('ArrowDown');
                 }
