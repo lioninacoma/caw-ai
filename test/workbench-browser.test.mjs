@@ -1369,3 +1369,13 @@ test('F8 with the focus in the app switches App only, both ways', async (t) => {
     assert.ok(await until(async () => !(await solo())), 'and back');
     return undefined;
 });
+
+test('console tools in the app context too (the DevTools switch there after picking an element); an app keeps its own caw', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const app = bench.page.frames().find((frame) => frame.name() === 'caw-app');
+    assert.equal(await app.evaluate(() => caw === top.caw && typeof caw.help === 'function'), true);
+    assert.equal(await app.evaluate(() => { window.caw = 'own'; return caw; }), 'own', 'an assignment by the app wins');
+    assert.equal(await bench.page.evaluate(() => typeof window.caw.help), 'function', 'the workbench keeps its tools');
+    return undefined;
+});

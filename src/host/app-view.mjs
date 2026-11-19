@@ -242,7 +242,14 @@ export const RELOAD_SCRIPT = `if (window !== top && window.parent === top && win
     else if ((event.key === 'F1' || event.key === 'F8') && !event.ctrlKey && !event.altKey && !event.metaKey) { event.preventDefault(); top.postMessage({ caw: 'key', key: event.key }, '*'); }
     // Ctrl+J: the chat over the app in App only. Only there: elsewhere Chrome's downloads stay as they are.
     else if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'j' && top.document.body.classList.contains('solo')) { event.preventDefault(); top.postMessage({ caw: 'key', key: 'Ctrl+J' }, '*'); }
-}, true);`;
+}, true);
+// The console tools also here: picking an element switches the DevTools console to the app's context. An app that defines its
+// own caw (var, function, assignment) keeps it: the first assignment replaces this pointer.
+if (window !== top && window.parent === top && window.name === ${JSON.stringify(APP_FRAME)} && !('caw' in window)) Object.defineProperty(window, 'caw', {
+    configurable: true,
+    get: () => top.caw,
+    set: (value) => { Object.defineProperty(window, 'caw', { value, writable: true, configurable: true, enumerable: true }); },
+});`;
 
 const descendants = (frame) => [frame, ...frame.childFrames().flatMap(descendants)];
 
