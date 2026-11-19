@@ -546,15 +546,17 @@ footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;pa
 #toggle.busy .i{display:none}#toggle.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
 #choices{display:none;flex-direction:column;gap:8px}
 :is([data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=discussing],[data-state=developing],[data-state=planning]) #choices{display:flex}
-.acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acts>.btn,.acts>.more{flex:0 0 auto}.acts>.btn-p{flex:1 1 auto}
+.acts{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acts>.btn,.acts>.more{flex:0 0 auto}.acts>.btn-p{flex:1 1 auto}
 #choices .btn,#next .btn{white-space:normal;height:auto;min-height:36px;padding:8px 15px;line-height:1.25;text-align:center}
 #choices .rest>.btn{flex:1 1 auto}
 #choices button.sure{background:var(--fail);color:var(--on-accent);border-color:transparent}
 #choices button:disabled{cursor:progress;opacity:.55}#choices button.busy{opacity:1}
 #choices button.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
 /* More: the other options of a card, a menu that opens upwards. */
-.more{position:relative}.more .btn .i{width:14px;height:14px}
-.more .pop{position:absolute;right:0;bottom:calc(100% + 6px);z-index:30;min-width:220px;max-width:min(320px,calc(100vw - 28px))}
+/* The menu hangs from the row, not from the button: a wrapped "More" sits at the row's left edge, where a menu aligned to
+   the button would leave the chat. */
+.more{position:static}.more .btn .i{width:14px;height:14px}
+.more .pop{position:absolute;right:0;bottom:calc(100% + 6px);z-index:30;min-width:min(220px,100%);max-width:min(320px,100%)}
 .more .pop-i{display:block;white-space:normal;line-height:1.35;font-size:12.5px}.more .pop-i:focus{outline:none;background:var(--accent-soft)}
 .more .pop-i.sure{background:var(--fail);color:var(--on-accent)}
 /* The end card after the run. */

@@ -1195,7 +1195,7 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         // Restore the state.
         await decide(chat, 'Neu öffnen');
         // While the state is restored the test runs again: reloading is locked as in a run, and free again afterwards.
-        const locked = await bench.locator('#reload:disabled').waitFor({ timeout: 10000 }).then(() => true, () => false);
+        const locked = await bench.locator('#reload:disabled').waitFor({ state: 'attached', timeout: 10000 }).then(() => true, () => false);
         await chat.locator('.message', { hasText: 'ist neu hergestellt' }).first().waitFor({ timeout: 60000 });
         await bench.waitForTimeout(1500);
         verify('F5 locked while restoring, free again afterwards', locked && await bench.locator('#reload').isEnabled());

@@ -475,7 +475,7 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
         onReload: (listener) => { reloaded = listener; return () => { reloaded = 'unsubscribed'; }; },
         toCode: (value) => handed.push(value),
     });
-    assert.match(shown[0].question, /^Zustand S2 steht\. .*Neu laden.*Neu öffnen.*Fadenkreuz.*kosten Token/);
+    assert.match(shown[0].question, /^Zustand S2 steht\. .*Anwendung neu laden.*Neu öffnen.*\/element im Chat.*kosten Token/);
     // At the entry of a step the introduction says so.
     const entered = [];
     await develop({ chat: { ...chat, develop: async (question) => { entered.push(question); return { choice: 'end' }; } }, talk, until: 'S3', entry: true, refresh: async () => '', restore: async () => '', toCode: () => {} });

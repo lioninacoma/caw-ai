@@ -1006,6 +1006,18 @@ test('chat: the main action sits above the input with Ctrl+Enter; while Claude w
 });
 
 const failureOptions = [{ id: 'ask', label: 'Claude die Ursache finden lassen', primary: true }, { id: 'fix', label: 'Schritt beheben' }, { id: 'rerun', label: 'Erneut testen' }, { id: 'close', label: 'Lauf beenden' }];
+test('chat: the "Mehr" menu stays inside the chat, and its items take a mouse click', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    const answer = chat.discuss('S3 ist gescheitert', failureOptions, failureCard);
+    assert.ok(await until(() => frame.isVisible('#choicesMore')));
+    await frame.click('#choicesMore');
+    const box = await frame.evaluate(() => { const r = document.getElementById('choicesMoreMenu').getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth }; });
+    assert.ok(box.left >= 0 && box.right <= box.width, `menu inside the chat: ${JSON.stringify(box)}`);
+    await frame.locator('#choices button', { hasText: 'Lauf beenden' }).click({ timeout: 5000 });
+    assert.deepEqual(await answer, { choice: 'close' });
+    return undefined;
+});
 const failureCard = { id: 'S3', reason: 'Der Ring zeigt 0/1', diagnosis: { side: 'app', strength: 'clear', text: 'Sieht nach einem Fehler der Anwendung aus.', findings: ['PATCH /api/todos/1 → 500'] }, warn: 'Den Test anzupassen würde den Fehler nur verdecken.', failures: [], warnings: [] };
 
 test('chat: a failure card shows one primary choice; the others are behind "Mehr", a menu that opens, picks and closes with Esc', async (t) => {
