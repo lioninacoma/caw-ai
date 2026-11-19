@@ -722,15 +722,17 @@ const requireAgent = (config, checked, target, verb) => {
  * Where Claude runs. Locally (default) it only needs Claude Code on the PATH; with Docker also token and image. Scripted flows
  * instead of Claude need neither Claude Code nor a token.
  */
-const openSandbox = async (root, { config, containerCommand, adviseCommand, talkCommand, docker: chosenDocker, agent }) => {
+const openSandbox = async (root, { config, containerCommand, adviseCommand, talkCommand, docker: chosenDocker, agent, attach }) => {
     const scripted = containerCommand !== undefined || adviseCommand !== undefined || talkCommand !== undefined;
     const inCi = process.env.CI !== undefined && process.env.CI !== '';
     if (agent !== undefined && agent !== 'docker' && inCi) throw new CawError('usage', t('cli.agentNotInCi', { agent }));
-    const mode = agent ?? agentMode(config);
-    if (mode === 'session') {
+    // --attach, or agent.mode "session" in the config: the person's own session answers, caw starts no agent of its own.
+    if (attach !== undefined || (agent === undefined && agentMode(config) === 'session')) {
+        if (inCi) throw new CawError('usage', t('cli.agentNotInCi', { agent: '--attach' }));
         ui.info(t('cli.sessionAgent'));
-        return { kind: 'session', label: t('cli.sessionLabel') };
+        return { kind: 'session', attach: attach ?? true, label: t('cli.sessionLabel') };
     }
+    const mode = agent ?? agentMode(config);
     if (chosenDocker === undefined && mode === 'local') {
         const { localBox, requireClaude } = await import('./local-agent.mjs');
         if (!scripted) ui.info(t('cli.localAgent', { version: requireClaude() }));
@@ -997,7 +999,7 @@ export const changeTracker = (root) => {
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
-    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, agent, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
+    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
     const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
@@ -1035,13 +1037,13 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         canFix,
         advise: withAdvice,
         // The developer's Claude Code session is there at once and costs nothing here: it may read the page in the state right away.
-        sessionAgent: (agent ?? agentMode(config)) === 'session',
+        sessionAgent: attach !== undefined || (agent === undefined && agentMode(config) === 'session'),
         reads: config.reads ?? [],
         // Only with --learn, in every mode (SC-21): otherwise a run never changes tracked files on its own (Q7). With chat the end
         // card offers to learn this run's baselines instead.
         fillBaselines: learn && !handover,
         offerLearning: canFix && !learn && !handover,
-        openSandbox: () => openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent }),
+        openSandbox: () => openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach }),
         execute,
         adopt: tracker.adopt,
         log: ui.info,
@@ -1179,7 +1181,7 @@ export const contradicts = (spec, { role, readOnly = false }) => (role !== undef
  * before stay as they are. Without a demonstration: it would start at the sign-in, not at the step.
  */
 const recordFrom = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, agent, overlay, start } = options;
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, agent, attach, overlay, start } = options;
     const { config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start });
     const position = spec.steps.findIndex(({ id }) => id === step);
     if (position === -1) throw stepUnknown('cli.recordStepUnknown', spec, step, { file: `${TEST_DIR}/${test}.yaml` });
@@ -1192,7 +1194,7 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
         await lifecycle.beforeTest(spec);
         requireTestUser(root, config, spec.role, target);
         const { fixFlow } = await import('./flows.mjs');
-        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
+        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
         const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen });
         return fixFlow({
             draft: spec,
@@ -1213,7 +1215,7 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
 export const record = async (root, args, deps = {}) => {
     const options = parseRunArgs('record', args);
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = deps;
-    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, overlay, start } = options;
+    const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, role, readOnly, agent, attach, overlay, start } = options;
     // In CI nobody demonstrates or decides: said first, before --role or the environment.
     requireHuman('record', interactive);
     const config = loadConfig(root);
@@ -1237,12 +1239,12 @@ export const record = async (root, args, deps = {}) => {
 
         const { recordFlow } = await import('./flows.mjs');
         // Before the demonstration: if Docker failed only afterwards, the human's work would be wasted.
-        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent });
+        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach });
         const previous = exists ? spec : undefined;
         const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, previous });
         // Driven from the developer's Claude Code session: it follows an existing test plan without asking the human first.
         // A new test without a plan still starts with the human's demonstration.
-        const demonstration = (agent ?? agentMode(config)) === 'session' && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
+        const demonstration = (attach !== undefined || (agent === undefined && agentMode(config) === 'session')) && exists ? undefined : await startRecording(root, config, spec, checked, { exists, conversation });
         return recordFlow({
             sandbox,
             execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
@@ -1303,7 +1305,7 @@ export const reproduce = async (root, args, deps = {}) => {
         ui.info(t('cli.reproduceStart', { env: target, role: spec.role ?? '-', writes: t(writable ? 'cli.reproduceWrites' : 'cli.reproduceReadOnly') }));
         const { replayOf, replayToEntry } = await import('./replay.mjs');
         const prefix = known === null ? undefined : options.from.step === undefined ? replayOf(known) : replayToEntry(known, options.from.step, { reads: config.reads ?? [] });
-        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent: options.agent });
+        const sandbox = await openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent: options.agent, attach: options.attach });
         const { execute, conversation } = claudeRuns(root, config, { spec, checked, target, timeoutMin: CLAUDE_TIMEOUT_MIN, stepTimeoutSec: 30, containerCommand, adviseCommand, talkCommand, onChatOpen });
         const result = await execute({
             sandbox,

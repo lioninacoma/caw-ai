@@ -134,7 +134,8 @@ Nur auf Umgebungen, auf denen Claude arbeiten darf (`"agent": true`). Gibt es nu
 | `--overlay` | Nur mit der [Overlay-Erweiterung](extensions/overlay.de.md): lokaler Code über die ausgelieferte Umgebung |
 | `--start` | Die Umgebung mit ihrem `start`-Befehl starten, wenn sie nicht antwortet, und am Ende stoppen ([Lebenszyklus](configuration.de.md#umgebung-starten-stoppen-und-zurücksetzen)). Mit `--overlay` auch die lokalen Code-Server der Teile. Ohne die Option startet caw nichts und nennt den Befehl. |
 | `--reset` | Vor der Aufnahme den `reset` der Umgebung ausführen. |
-| `--agent local\|docker\|session` | Wo Claude läuft. Standard: `agent.mode` aus der Config, sonst `local`. |
+| `--agent local\|docker` | Wo caw seinen Agenten startet. Standard: `agent.mode` aus der Config, sonst `local`. |
+| `--attach [<key>]` | Stattdessen antwortet deine eigene Claude-Code-Session, ohne zusätzliche Token, nach `/caw-attach` dort (siehe [Leitfaden](guide.de.md#aus-claude-code-steuern)). Ohne `<key>` die einzige zuhörende Session; bei mehreren wählst du eine mit ihrem Schlüssel (`k7f2`) oder dem Anfang ihrer Session-ID. Das Fenster wartet, solange keine zuhört, und meldet „Nicht verbunden“, wenn sie geht. |
 | `--agent-timeout <dauer>` | Zeitgrenze für Claude, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Browser-Aktionen, Standard `maxActions` oder 100. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt im Prüflauf, Standard `30s`. |
@@ -171,7 +172,7 @@ Ein Lauf ändert von sich aus keine Datei. Mit `--learn` lernt er fehlende Vergl
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
 | `--agent-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Aktionen beim Beheben. |
-| `--agent local\|docker\|session` | Wie bei `record`. |
+| `--agent local\|docker`, `--attach [<key>]` | Wie bei `record`. |
 
 Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`. `record` und `open` brauchen einen Menschen und werden in CI abgelehnt (Exit 3), denn niemand übernähme den Browser. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
 
@@ -207,7 +208,7 @@ Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab
 | `--role <rolle>` | Nur ohne Test; nicht nötig, wenn die Config nur eine hat. Ein Test bringt seine mit. |
 | `--start`, `--reset` | Wie bei `run` (`reset` nur mit `--reset`). |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt beim Abspielen, Standard `30s`. |
-| `--agent local\|docker\|session`, `--agent-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
+| `--agent local\|docker`, `--attach [<key>]`, `--agent-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
 
 Nach der Übergabe öffnet **F1** (oder ⋯ → Öffnen…, `/open` im Chat) in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
 
@@ -242,7 +243,7 @@ Regressionstest zu behalten, kopierst du den Entwurf dorthin, prüfst ihn und ni
 | `--from <test>[@<S4>]` | In einem Zustand eines Tests anfangen: dessen Schritte (bis zum Einstieg in S4) laufen vorher ohne Claude. |
 | `--role <rolle>` | Ohne `--from`; unnötig, wenn die Config nur eine hat. |
 | `--headless` | Ohne Fenster. Mit Fenster zeigt die Werkbank, was Claude tut; du kannst nur zusehen oder beenden (Esc). |
-| `--agent local\|docker\|session` | Wie bei `record`. Aus deiner eigenen Claude-Code-Session (`caw_start` mit `command: "reproduce"`) ohne zusätzliche Tokens. |
+| `--agent local\|docker`, `--attach [<key>]` | Wie bei `record`. Aus deiner eigenen Claude-Code-Session (`caw_start` mit `command: "reproduce"`) ohne zusätzliche Tokens. |
 
 Exit-Codes: `0` nachgestellt, `1` nicht nachgestellt oder unklar, `2` Umgebungsfehler (auch wenn der Ausgangszustand von
 `--from` nicht erreicht wurde: `reproduce-state`), `3` ungültige Eingabe.
@@ -296,7 +297,8 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_validate` | `validate` als Daten | nein |
 | `caw_list` | `list` als Daten | nein |
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
-| `caw_start` | `run`, `record`, `open` oder `reproduce` mit `--agent session` starten (`reproduce`: `bug`, `from`, `role`, `env`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
+| `caw_attach` | Diese Session verbinden: liefert ihren Schlüssel und den Befehl, den sie mit dem Monitor-Werkzeug startet; jede Chat-Nachricht und jede Aufgabe eines verbundenen Fensters erreicht die Session dann als Zeile. |
+| `caw_start` | `run`, `record`, `open` oder `reproduce` mit dieser Session verbunden starten (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
 | `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit `/element` im Chat der Werkbank gewählt hast | nein |

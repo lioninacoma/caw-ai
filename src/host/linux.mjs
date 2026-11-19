@@ -1,3 +1,4 @@
+import { isAttachValue } from '../shared/attach.mjs';
 import { parseDuration } from '../shared/duration.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
@@ -41,13 +42,13 @@ export const parseEnvFile = (text) => {
     return env;
 };
 
-const CLAUDE_OPTIONS = ['--env', '--agent-timeout', '--max-actions', '--step-timeout', '--agent', '--overlay', '--start', '--reset'];
+const CLAUDE_OPTIONS = ['--env', '--agent-timeout', '--max-actions', '--step-timeout', '--agent', '--attach', '--overlay', '--start', '--reset'];
 const COMMAND_OPTIONS = {
     // --agent-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
-    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--overlay', '--start', '--reset', '--no-reset'],
+    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
     record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
-    open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--agent-timeout', '--max-actions', '--step-timeout'],
+    open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout'],
 };
 /** Flags that were renamed before 1.0: the message names the new one instead of listing every allowed option. */
 export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--agent-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
@@ -62,7 +63,8 @@ const VALUE_EXAMPLES = {
     '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
-export const AGENT_CHOICES = ['local', 'docker', 'session'];
+/** Where caw starts its own agent; the person's own session answers with --attach instead. */
+export const AGENT_CHOICES = ['local', 'docker'];
 /** A value of --overlay after a space: build, dev or the address of a dev server. Parts only with =, see parseArgs. */
 const overlayValue = (value) => ['build', 'dev'].includes(value) || /^https?:\/\/[^\s/]+/i.test(value ?? '');
 // The human is at the chat, which takes longer than a run without them.
@@ -134,6 +136,13 @@ export const parseRunArgs = (command, args) => {
         if (!allowed.includes(flag)) throw new CawError('usage', t('session.args.unknownOption', { command, flag, allowed: allowed.join(', ') }));
         // --overlay may stand without a value: --overlay, --overlay build, --overlay=dev, --overlay http://localhost:5174. Parts
         // only with =: --overlay=orders,admin:dev, since --overlay orders reads the test orders. checkTest validates the items.
+        // --attach may stand without a value (the only listening session) or name one: its key (k7f2) or the start of its id.
+        if (flag === '--attach') {
+            const value = inline ?? (isAttachValue(rest[0]) ? rest.shift() : undefined);
+            if (value === '') throw new CawError('usage', t('session.args.attachValue'));
+            options.attach = value ?? true;
+            continue;
+        }
         if (flag === '--overlay') {
             const value = inline ?? (overlayValue(rest[0]) ? rest.shift() : undefined);
             if (value === '') throw new CawError('usage', t('session.args.overlayChoice'));
@@ -167,6 +176,7 @@ export const parseRunArgs = (command, args) => {
     }
     if (options.all && options.test !== undefined) throw new CawError('usage', t('session.args.allWithTests'));
     if (options.reset === 'clash') throw new CawError('usage', t('session.args.clash', { without: '--reset', other: '--no-reset' }));
+    if (options.attach !== undefined && options.agent !== undefined) throw new CawError('usage', t('session.args.clash', { without: '--attach', other: '--agent' }));
     if (command !== 'open' && options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
     for (const test of command === 'run' ? options.tests : options.test === undefined ? [] : [options.test]) checkTestId(test);
     // A test brings its role; with a step it also exists already, so its metadata stays as it is.

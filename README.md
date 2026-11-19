@@ -155,7 +155,7 @@ Extensions add [ExtJS](docs/extensions/extjs.md) and [local code on deployed por
 ### Claude access and costs
 
 caw does not call Claude itself. It starts your own Claude Code (`--agent local`), works as a tool in your Claude Code session
-(`--agent session`), or passes your own `ANTHROPIC_API_KEY` into the container at run time (`--agent docker`, API key only); it
+(`--attach`), or passes your own `ANTHROPIC_API_KEY` into the container at run time (`--agent docker`, API key only); it
 never reads or stores it. Which terms apply depends on your account: Pro and Max plans are for personal use; for company
 projects and CI use a Team or Enterprise plan or an API key from the Claude Console. Complying with Anthropic's terms is up to
 you.

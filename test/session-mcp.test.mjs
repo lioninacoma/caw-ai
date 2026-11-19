@@ -308,7 +308,8 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
     const started = await call('caw_start', { command: 'open', test: 'bestellung', step: 'S2', env: 'local' });
     assert.equal(started.isError, false);
     assert.equal(started.structuredContent.state, 'started');
-    assert.deepEqual(spawned[0].args.slice(1), ['open', 'bestellung@S2', '--env', 'local', '--agent', 'session']);
+    assert.deepEqual(spawned[0].args.slice(1, -1), ['open', 'bestellung@S2', '--env', 'local']);
+    assert.match(spawned[0].args.at(-1), /^--attach=[a-z0-9]{4}$/);
     assert.ok(started.content[0].text.startsWith('Gestartet'));
     const meta = JSON.parse(readFileSync(join(root, started.structuredContent.log.replace(/\.log$/, '.log.json')), 'utf8'));
     assert.equal(meta.command, 'open');
@@ -325,7 +326,8 @@ test('caw_start: open is allowed, config problems come back with their code', as
     assert.equal((await call('caw_start', { command: 'open' })).structuredContent.code, 'config-invalid');
     writeFileSync(join(root, 'caw.config.json'), TEMPLATE);
     await call('caw_start', { command: 'open', env: 'local' });
-    assert.deepEqual(spawned[0].args.slice(1), ['open', '--env', 'local', '--agent', 'session']);
+    assert.deepEqual(spawned[0].args.slice(1, -1), ['open', '--env', 'local']);
+    assert.match(spawned[0].args.at(-1), /^--attach=[a-z0-9]{4}$/);
 });
 
 test('caw_start with overlay: a local code server that is not ready returns its start command instead of starting', async (t) => {
@@ -365,13 +367,15 @@ test('caw_start with overlay: the server on another port starts the run against 
     const { call, spawned } = session(root, { overlayPreconditions });
     const typed = await call('caw_start', { command: 'run', test: 'bestellung', env: 'local', overlay: true });
     assert.equal(typed.structuredContent.state, 'started');
-    assert.deepEqual(spawned[0].args.slice(1), ['run', 'bestellung', '--env', 'local', '--overlay=http://localhost:52775/', '--agent', 'session']);
+    assert.deepEqual(spawned[0].args.slice(1, -1), ['run', 'bestellung', '--env', 'local', '--overlay=http://localhost:52775/']);
+    assert.match(spawned[0].args.at(-1), /^--attach=[a-z0-9]{4}$/);
     assert.deepEqual(typed.structuredContent.overlay, { state: 'moved', url: 'http://localhost:1841/', foundUrl: 'http://localhost:52775/', part: 'web' });
     assert.match(typed.content[0].text, /läuft unter http:\/\/localhost:52775\/.*overlay\.parts\.web\.url/);
     rmSync(join(root, '.caw'), { recursive: true, force: true });
     // Raw args: a separate value is replaced as well.
     await call('caw_start', { command: 'open', args: ['--overlay', 'http://localhost:1841', '--env', 'local'] });
-    assert.deepEqual(spawned[1].args.slice(1), ['open', '--overlay=http://localhost:52775/', '--env', 'local', '--agent', 'session']);
+    assert.deepEqual(spawned[1].args.slice(1, -1), ['open', '--overlay=http://localhost:52775/', '--env', 'local']);
+    assert.match(spawned[1].args.at(-1), /^--attach=[a-z0-9]{4}$/);
 });
 
 test('caw_overlay status: overlayStatus in-process, as data; errors come back as data', async (t) => {
@@ -539,7 +543,8 @@ test('caw_start reproduce: the bug report goes into a file, the session is the a
     const { call, spawned } = session(root);
     const started = await call('caw_start', { command: 'reproduce', bug: '--Nach dem Speichern\r\nfehlt der Eintrag.', from: 'bestellung@S2' });
     assert.equal(started.isError, false);
-    assert.deepEqual(spawned[0].args.slice(1), ['reproduce', '--file', '.caw/reproduce-bug.md', '--from', 'bestellung@S2', '--agent', 'session']);
+    assert.deepEqual(spawned[0].args.slice(1, -1), ['reproduce', '--file', '.caw/reproduce-bug.md', '--from', 'bestellung@S2']);
+    assert.match(spawned[0].args.at(-1), /^--attach=[a-z0-9]{4}$/);
     assert.equal(readFileSync(join(root, '.caw', 'reproduce-bug.md'), 'utf8'), '--Nach dem Speichern\nfehlt der Eintrag.');
 
     const runDir = join(root, '.caw', 'runs', '2026-11-18T12-00-00-000Z-reproduce');

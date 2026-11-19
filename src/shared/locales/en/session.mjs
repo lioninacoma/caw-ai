@@ -60,6 +60,7 @@ export default {
     'session.args.unexpected': 'Unexpected argument: {arg}',
     'session.args.unknownOption': '{command} has no option {flag}. Allowed: {allowed}',
     'session.args.valueMissing': '{flag} needs a value, e.g. {flag} {example}',
+    'session.args.attachValue': '--attach takes the key of a listening session (e.g. --attach k7f2) or nothing for the only one.',
     'session.args.agentChoice': '--agent expects {choices}.',
     'session.args.overlayChoice': '--overlay takes build, dev or the address of a dev server after a space; parts with =, e.g. --overlay=orders,admin:dev.',
     'session.args.testId': 'Invalid test name: {test}. Use letters, digits, _, - and . (no folders), e.g. login or order-2.',

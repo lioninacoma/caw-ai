@@ -6,7 +6,7 @@ When the person reports a bug of their web app ("the search finds nothing after 
 reproduce it in a real, signed-in browser: `caw_start` with `command: "reproduce"` and `bug` (the report as text). Optional:
 `env` (an environment with `agent`, never production), `role` (without `from`; not needed with one role), `from`
 (`"<test>"` or `"<test>@S3"`: start in that test's state, its steps up to the entry of S3 replayed without you), `headless`
-(no window). You are the agent then (`--agent session`), at no extra tokens: call `caw_status` until the run waits for you and
+(no window). You are the agent then (attached to you, `--attach`), at no extra tokens: call `caw_status` until the run waits for you and
 read this topic's second part. Without a window nobody watches; with one the person sees what you do but decides nothing.
 When it is done, `caw_status` names the verdict, the report and the draft test plan. Tell the person the verdict and offer the
 draft: they copy it to `caw/tests/<id>.yaml` and record it with `caw record <id>`; never copy it yourself unasked.

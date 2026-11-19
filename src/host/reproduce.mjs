@@ -6,6 +6,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
+import { isAttachValue } from '../shared/attach.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { TEST_DIR } from '../shared/names.mjs';
@@ -13,7 +14,7 @@ import { AGENT_CHOICES, splitStep } from './linux.mjs';
 import { parseTest, renderTest } from './test-file.mjs';
 import { CONTROL, EMAIL, composeTest } from './test-plan.mjs';
 
-const OPTIONS = ['--env', '--role', '--from', '--headless', '--agent', '--file'];
+const OPTIONS = ['--env', '--role', '--from', '--headless', '--agent', '--attach', '--file'];
 // A bug report is a paragraph or a page, not a document.
 const MAX_BUG = 8000;
 const MAX_STEPS = 20;
@@ -53,6 +54,11 @@ export const parseReproduceArgs = (args, { root, readStdin = () => readFileSync(
             options.headless = true;
             continue;
         }
+        // --attach: the person's own session reproduces; it may name the session (its key) or stand alone.
+        if (flag === '--attach') {
+            options.attach = inline ?? (isAttachValue(rest[0]) ? rest.shift() : true);
+            continue;
+        }
         const value = valueOf(flag, inline ?? rest.shift());
         if (flag === '--env') options.target = value;
         else if (flag === '--role') options.role = value;
@@ -69,6 +75,7 @@ export const parseReproduceArgs = (args, { root, readStdin = () => readFileSync(
     if (bug.length > MAX_BUG) throw usage('cli.reproduceBugLong', { max: MAX_BUG });
     // eslint-disable-next-line no-control-regex
     if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(bug)) throw usage('cli.reproduceBugControl');
+    if (options.attach !== undefined && options.agent !== undefined) throw usage('session.args.clash', { without: '--attach', other: '--agent' });
     if (options.from !== undefined && options.role !== undefined) throw usage('session.args.openWithTest', { flag: '--role' });
     return { ...options, bug };
 };

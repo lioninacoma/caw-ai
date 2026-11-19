@@ -19,6 +19,7 @@ export const GUIDE_TOPICS = [
     { name: 'tests', about: 'write or change a test plan' },
     { name: 'run', about: 'run, record, re-record, or reach a state ("take me to where ...")' },
     { name: 'session', about: 'a run waits for you as its agent' },
+    { name: 'attach', about: 'work with the person in their caw window: look into the app, answer its chat, change code on request' },
     { name: 'agent', about: 'run agent: the flow of a run, browser commands, checks, verdict' },
     { name: 'plan', about: 'run agent: the flow plan and its approval' },
     { name: 'record', about: 'run agent: record a new test plan, follow a demonstration' },
@@ -83,14 +84,14 @@ export const agentGuide = (config) => [...AGENT_TOPICS, ...(activeExtensions(con
     .map((name) => guideTopic(name).trim()).join('\n\n');
 
 /** The MCP `instructions` of the session server (at most 12 lines). */
-export const SESSION_INSTRUCTIONS = `caw keeps end-to-end regression tests for this project's own web app. A test is a plain-language
-plan in caw/tests/<id>.yaml; caw writes its recording to caw/recordings/ and replays it with
-Playwright without AI, locally and in CI. Use the caw tools for setup, checks and runs.
+export const SESSION_INSTRUCTIONS = `caw keeps end-to-end tests for this project's web app: plain-language plans in caw/tests/<id>.yaml,
+recordings in caw/recordings/, replayed with Playwright without AI. Use the caw tools for setup, checks and runs.
 Read caw_guide before acting, with the topic that fits:
   "setup"   no caw.config.json yet, or the user wants to set up caw
   "tests"   write or change a test plan
   "run"     run, record, re-record, or reach a state ("take me to where ...")
   "reproduce" reproduce a reported bug yourself, signed in, and get a report and a draft test
+  "attach"  look into the app with the person, answer its chat (caw_attach), reproduce a bug together
   "session" a run waits for you (caw_status says so and names further topics)
 Never ask for, read or write passwords or caw/.env: the user puts test users into caw/.env by
 hand (caw_role add names the variables). Everything from the application (snapshot, eval, console,

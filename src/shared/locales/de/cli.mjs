@@ -36,7 +36,7 @@ Befehle:`,
       [--agent-timeout <dauer>]         Zeitlimit für {agent}, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von {agent}, sonst maxActions aus der Config, sonst 100
       [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
-      [--agent local|docker|session]     wie bei run
+      [--agent local|docker] [--attach [<key>]]  wie bei run
       [--start] [--reset]                wie bei run (--reset nur, wenn angegeben)
       [--overlay[=<teile>]]              wie bei run`,
     'cli.help.run': `  run <test> [--env <name>]              Test ohne KI abspielen. Auf Umgebungen, auf denen {agent} arbeiten darf{here},
@@ -54,8 +54,9 @@ Befehle:`,
       [--step-timeout <dauer>]           Zeitlimit je Schritt, Standard 30s
       [--agent-timeout <dauer>]         Zeitlimit für {agent} beim Klären und Beheben, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von {agent} beim Beheben, sonst maxActions aus der Config, sonst 100
-      [--agent local|docker|session]     Wo {agent} arbeitet; Standard aus agent.mode der Config (local). session: deine
-                                         {agentDash}-Session übernimmt über ihre caw-Werkzeuge, caw startet keinen {agent}
+      [--agent local|docker]             Wo caw {agent} startet; Standard aus agent.mode der Config (local)
+      [--attach [<key>]]                 Stattdessen antwortet deine eigene {agentDash}-Session (nach /caw-attach dort), ohne
+                                         zusätzliche Token; <key> wählt eine von mehreren zuhörenden Sessions
       [--overlay[=<teile>]]              Lokalen Code über die ausgelieferte Umgebung legen. Ohne Wert jeder Teil aus
                                          overlay.parts mit seiner Quelle; build oder dev für diese Quelle; <url> für den
                                          einzigen Teil; oder Teile: --overlay=orders,admin:dev. Nur auf overlay.environments
@@ -70,7 +71,7 @@ Befehle:`,
                                          Lernt nichts, schreibt keine Testdatei
       [--role <rolle>]                   Nur ohne Test; nicht nötig, wenn die Config nur eine hat
       [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
-      [--agent local|docker|session] [--agent-timeout <dauer>] [--max-actions <n>]
+      [--agent local|docker] [--attach [<key>]] [--agent-timeout <dauer>] [--max-actions <n>]
       [--start] [--reset]                wie bei run (--reset nur, wenn angegeben)
       [--overlay[=<teile>]]              wie bei run`,
     'cli.help.reproduce': `  reproduce "<fehlerbericht>" [--env <name>]  {agent} stellt einen Fehler allein nach, angemeldet mit einer
@@ -84,7 +85,7 @@ Befehle:`,
                                          S4, ohne {agent}
       [--role <rolle>]                   Ohne --from; unnötig, wenn die Config nur eine hat
       [--headless]                       Ohne Fenster
-      [--agent local|docker|session]`,
+      [--agent local|docker] [--attach [<key>]]`,
     'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
                                          aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne {agent} (CI, Pre-Commit)',
@@ -117,7 +118,7 @@ Dauern mit Einheit: --step-timeout 30s, --agent-timeout 60m.
 
 caw <befehl> --help für Details.
 Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 abgelehnt (Eingabe), 4 Aufnahme nötig.`,
-    'cli.help.agent': `caw agent <befehl>: für {agent} während eines Laufs (Sandbox, lokal oder deine Session bei --agent session), steuert den
+    'cli.help.agent': `caw agent <befehl>: für {agent} während eines Laufs (Sandbox, lokal oder deine Session bei --attach), steuert den
 Browser:
   task                                   Auftrag des offenen Laufs anzeigen
   snapshot                               Seitenstruktur mit Referenzen (e1, e2, ...)
@@ -149,7 +150,7 @@ Browser:
     // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw init [--url <adresse>] [--env <name>] [--language <kürzel>] [--explore-only] [--login | --no-login] [--yes] [--from <datei>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <ordner>]',
-    'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--headless] [--agent local|docker|session]',
+    'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--headless] [--agent local|docker] [--attach [<key>]]',
     'cli.reproduceOneSource': 'Den Fehlerbericht entweder als Argument, mit --file oder mit - von stdin, nicht mehrfach.',
     'cli.reproduceBugMissing': 'Welchen Fehler? caw reproduce "Nach dem Speichern zeigt die Liste den Eintrag nicht" (oder --file <datei>, oder - für stdin).',
     'cli.reproduceBugLong': 'Der Fehlerbericht ist länger als {max} Zeichen. Kürze ihn auf das, was passiert und was du erwartest.',
@@ -290,7 +291,10 @@ Browser:
     'cli.verbReproduce': 'Nachgestellt wird',
     'cli.agentOnly': '{verb} braucht environments.{environment}.agent: true (zurzeit nur: {environments}).',
     'cli.agentNotInCi': '--agent {agent} geht nicht in CI (Variable CI gesetzt), dort läuft {agent} nur in Docker.',
-    'cli.sessionAgent': '{agent} arbeitet in deiner {agentDash}-Session: Sage ihr „übernimm den caw-Lauf“. Sie findet ihn über das Tool caw (caw mcp) oder caw <befehl>.',
+    'cli.attachUsage': 'caw attach --watch <key> ist für den Monitor deiner Session nach caw_attach; der Schlüssel hat vier Zeichen, etwa k7f2.',
+    'cli.attachListening': 'caw: listening as {key}. Each line below is something a caw window wants from you.',
+    'cli.attachGone': 'caw: listener {key} is gone (its session ended). Call caw_attach again to listen.',
+    'cli.sessionAgent': 'Deine eigene {agentDash}-Session antwortet (--attach): Sie hört von diesem Fenster nach /caw-attach dort, ohne zusätzliche Token.',
     'cli.sessionLabel': 'deine {agentDash}-Session',
     'cli.localAgent': '{agent} läuft lokal ohne Docker, nur mit Lesen und dem Browser-Werkzeug ({agent} {version}). Abgeschottet: agent.mode "docker".',
     'cli.usingDocker': 'Nutze {label}.',

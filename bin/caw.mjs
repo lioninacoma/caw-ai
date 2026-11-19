@@ -177,6 +177,8 @@ const main = async ([command, ...args]) => {
         }
         // Claude's browser commands and the run plumbing: `caw agent <command>`, see agentCommand.
         case 'agent': return agentCommand(root, args);
+        // What a session's Monitor runs after caw_attach: prints the lines runs send to it.
+        case 'attach': return (await import('../src/host/attach-command.mjs')).attachCommand(root, args);
         case '--version':
         case '-v': {
             console.log(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);

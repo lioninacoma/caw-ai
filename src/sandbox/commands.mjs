@@ -11,6 +11,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 import { sendCommand } from '../shared/channel.mjs';
+import { liveListeners, matchListeners } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { resolveClaude } from '../shared/claude-bin.mjs';
 import { painter } from '../shared/color.mjs';
@@ -25,9 +26,12 @@ const HUMAN_TIMEOUT_MS = 60 * 60 * 1000;
 const agentDir = () => {
     const dir = process.env.CAW_AGENT_DIR;
     if (process.env.CAW_SANDBOX === '1' && dir) return dir;
-    const waiting = findSessionAgent(process.env.INIT_CWD ?? process.cwd());
+    // The person's own session: its listener is the one with this session's id (Bash and hooks always carry the current one).
+    const root = process.env.INIT_CWD ?? process.cwd();
+    const own = matchListeners(liveListeners(root), process.env.CLAUDE_CODE_SESSION_ID ?? '')[0];
+    const waiting = findSessionAgent(root, own === undefined ? {} : { key: own.key });
     if (waiting !== undefined) return waiting.agentDir;
-    throw new CawError('not-in-sandbox', 'No run is waiting for an agent. In your session: start caw record <test> --env <environment> --agent session (in the background), then use these commands.');
+    throw new CawError('not-in-sandbox', 'No run is waiting for an agent. In your session: call caw_attach, or start caw record <test> --env <environment> --attach (in the background), then use these commands.');
 };
 
 /** Passes a command to the browser on the host and prints the answer. */

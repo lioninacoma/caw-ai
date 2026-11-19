@@ -9,7 +9,7 @@ import { colorEnabled, termPainter } from './color.mjs';
 /** The commands for people, in help order. */
 export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'doctor', 'role', 'export', 'overlay'];
 /** Commands that exist but are not in the human help: the session MCP server and Claude's namespace. */
-const HIDDEN_COMMANDS = ['mcp', 'agent'];
+const HIDDEN_COMMANDS = ['mcp', 'agent', 'attach'];
 /** Claude's commands, under `caw agent`; their help is `caw agent --help`. */
 export const AGENT_COMMANDS = ['task', 'snapshot', 'url', 'click', 'dblclick', 'hover', 'drag', 'dialog', 'upload', 'fill', 'type', 'press', 'eval', 'check', 'screenshot', 'goto', 'reload', 'wait-ready', 'console', 'network', 'plan', 'ask-operator', 'remember', 'chat', 'say', 'recording', 'finish', 'advise'];
 /** The run plumbing under `caw agent`, not in any help. */

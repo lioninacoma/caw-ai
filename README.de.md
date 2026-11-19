@@ -160,7 +160,7 @@ Erweiterungen ergänzen [ExtJS](docs/extensions/extjs.de.md) und [lokalen Code a
 ### Claude-Zugang und Kosten
 
 caw ruft Claude nicht selbst auf. Es startet dein eigenes Claude Code (`--agent local`), arbeitet als Werkzeug in deiner
-Claude-Code-Sitzung (`--agent session`) oder reicht zur Laufzeit deinen eigenen `ANTHROPIC_API_KEY` in den Container
+Claude-Code-Sitzung (`--attach`) oder reicht zur Laufzeit deinen eigenen `ANTHROPIC_API_KEY` in den Container
 (`--agent docker`, nur API-Key); es liest oder speichert ihn nie. Welche Bedingungen gelten, hängt von deinem Konto ab: Pro- und
 Max-Pläne sind für die private Nutzung; für Firmenprojekte und CI nimm einen Team- oder Enterprise-Plan oder einen API-Key aus
 der Claude Console. Die Einhaltung der Bedingungen von Anthropic liegt bei dir.

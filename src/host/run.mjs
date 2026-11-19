@@ -37,6 +37,7 @@ import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
 import { startLocalAgent } from './local-agent.mjs';
 import { announceSessionAgent } from '../shared/session-agent.mjs';
+import { createSessionLink } from './session-link.mjs';
 import { GUIDE_FILE } from '../sandbox/commands.mjs';
 import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
@@ -497,6 +498,14 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // A reproduction's report shows the bug report and the run's rules also when it ends early; finish adds Claude's verdict.
     if (reproduce !== undefined) reportBase.reproduce = { bug: reproduce.bug, writable: reproduce.writes, ...(reproduce.from === undefined ? {} : { from: reproduce.from }) };
     let verdict = null;
+    // --attach: the link to the person's session, its line in the header, and the tasks it has not heard of yet.
+    let link = null;
+    let linkFact = null;
+    let shownFacts = [];
+    const announcedAgents = new Set();
+    const pendingTells = [];
+    let chat = null;
+    const withLink = (entries) => (linkFact === null ? entries : [...entries, [t('run.fact.agent'), linkFact]]);
     let session;
     // All advice of this run, also across several sessions: the report lists them together.
     const decided = [];
@@ -569,7 +578,25 @@ ${text}`) ?? 0;
     try {
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
-        await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...headerMode), badgeOf(...headerMode)));
+        // --attach: the person's own session answers. The header says whether it is there, the chat when that changes.
+        if (sandbox?.kind === 'session') {
+            link = createSessionLink({
+                root,
+                want: sandbox.attach ?? true,
+                onState: (state, { key, candidates = [] }) => {
+                    linkFact = state === 'connected' || state === 'back' ? t('run.attach.factConnected', { key }) : state === 'lost' ? t('run.attach.factLost') : t('run.attach.factWaiting');
+                    session.workbench?.facts(withLink(shownFacts)).catch(() => {});
+                    const line = state === 'waiting' ? t(candidates.length > 1 ? 'run.attach.several' : 'run.attach.waiting', { keys: candidates.join(', ') })
+                        : t(`run.attach.${state}`, { key });
+                    if (state !== 'waiting' || candidates.length > 1 || chat !== null) chat?.notice(line);
+                    ui.info(line);
+                    for (const announced of announcedAgents) if (key !== undefined && key !== null) announced.rebind(key);
+                    if (state === 'connected' || state === 'back') for (const [mode, hint] of pendingTells.splice(0)) link.tell(t('run.attach.event', { runId, mode, hint }));
+                },
+            });
+        }
+        shownFacts = benchFacts(config, spec, checked, titleOf(spec, ...headerMode), badgeOf(...headerMode));
+        await session.workbench?.facts(withLink(shownFacts));
         await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, agent: sandbox?.label ?? sandbox?.docker?.label, mode: runCommand, run: runId }));
         await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
@@ -583,8 +610,8 @@ ${text}`) ?? 0;
     // On abort the workbench shows the run as cancelled.
     aborted.then(() => session?.workbench?.mood?.('aborted')).catch(() => {});
 
-    // The chat always sits next to the application window. With `lazy` it opens only when something goes wrong.
-    let chat = null;
+    // The chat always sits next to the application window (declared with the link above). With `lazy` it opens only when
+    // something goes wrong.
     const tokensOk = createTokenGate({ chat: () => chat });
     // The developer's own Claude Code session is already running and paid for: no token notice for it.
     const claudeMayStart = (box, options) => (box?.kind === 'session' ? true : tokensOk(options));
@@ -740,10 +767,21 @@ ${text}`) ?? 0;
                 reproduce: `Run ${runId} reproduces a bug report on its own, without a human. Read the bug report with task, try to reproduce it in the browser and submit your verdict with finish.`,
                 develop: `In run ${runId} the human is developing in the restored state. Read the task with task; you can read the page (snapshot, eval, console, network) and operate it on request (click, fill, type, press, goto, reload). Fetch questions from the workbench chat with chat and answer there with say.`,
             };
-            // The session reads these topics with caw_guide; caw_status names them.
-            const agent = announceSessionAgent({ root, runId, agentDir, mode, hint: hints[mode], guide: runTopics(mode, { creating, config }) });
+            // The session reads these topics with caw_guide; caw_status names them. Its Monitor hears of the task at once.
+            const agent = announceSessionAgent({ root, runId, agentDir, mode, hint: hints[mode], guide: [...runTopics(mode, { creating, config }), 'attach'], attach: link?.key() ?? null });
+            announcedAgents.add(agent);
+            if (link?.key() === null || link?.state() === 'lost') pendingTells.push([mode, hints[mode]]);
+            else link?.tell(t('run.attach.event', { runId, mode, hint: hints[mode] }));
             chat?.progress?.(t('run.waitingForSession'));
-            return { ended: agent.ended, log: () => '', stopTail: () => {}, stop: agent.stop };
+            return {
+                ended: agent.ended,
+                log: () => '',
+                stopTail: () => {},
+                stop: async () => {
+                    announcedAgents.delete(agent);
+                    await agent.stop();
+                },
+            };
         }
         // A local or container agent gets the run topics of the guide as its system prompt addition, from the agent folder. The
         // folder is the container's: whatever lies there (a planted link) goes first, then the file is created, never followed.
@@ -864,6 +902,8 @@ ${text}`) ?? 0;
         };
         const task = {
             mode,
+            // The person's own coding agent session (--attach): it may change the application's code when the person asks.
+            ...(box.kind === 'session' ? { attached: true } : {}),
             ...(talking ? { question } : {}),
             // The element the human picked for the question: target, label, component or source. Its text is never an instruction.
             ...(element === undefined ? {} : { element }),
@@ -978,6 +1018,8 @@ ${text}`) ?? 0;
             configChanged: () => new Promise((resolve) => { configListeners.push(resolve); }),
             send: (message, picked) => {
                 log.push({ from: 'human', text: String(message) });
+                // The person's own session hears of it through its Monitor; the text itself it fetches with chat.
+                if (box.kind === 'session') link?.tell(t(picked === undefined ? 'run.attach.message' : 'run.attach.messageElement', { runId, text: String(message).slice(0, 300) }));
                 inbox.push(picked === undefined ? message : { text: message, element: picked });
                 deliver();
             },
@@ -1194,7 +1236,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             let phase = ['handedOver'];
             const state = replay?.entry?.id ?? replay?.until;
             if (developing) phase = state !== undefined && verdict.status === 'pass' ? ['developIn', { until: state }] : ['develop'];
-            await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...phase), badgeOf(...phase))).catch(() => {});
+            shownFacts = benchFacts(config, spec, checked, titleOf(spec, ...phase), badgeOf(...phase));
+            await session.workbench?.facts(withLink(shownFacts)).catch(() => {});
             await session.workbench?.transport?.(null).catch(() => {});
             const local = checked.source === 'overlay' ? t('run.handover.local') : '';
             if (replay?.entry !== undefined && verdict.status === 'pass') {
@@ -1270,6 +1313,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             }
             noteAfterHandover(handedAt);
         }
+        link?.tell(t('run.attach.ended', { runId }));
+        link?.stop();
         stopSignals();
         await session.close();
         return { exitCode, verdict, ...found, ...(chat?.learnWanted?.() === true ? { learn: true } : {}) };

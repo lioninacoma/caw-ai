@@ -10,8 +10,9 @@ import { fileURLToPath } from 'node:url';
 
 import { CONFIG_FILE, loadConfig, validateConfig } from '../shared/config.mjs';
 import { effectiveEnvironments } from '../shared/environments.mjs';
-import { t } from '../shared/i18n.mjs';
+import { AGENT_NAME, t } from '../shared/i18n.mjs';
 import { RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
+import { listenerOf, newKey, registerListener } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
 import { SESSION_INSTRUCTIONS, activeExtensions, guideIndex, guideTopic, listedTopics } from './guide.mjs';
@@ -145,12 +146,12 @@ const spawnDetached = ({ root, command, args, spawnRun = spawn }) => {
     }
 };
 
-/** A background run with --agent session. Its output goes to .caw/session-<time>.log. */
-export const startRun = ({ root, command, args, spawnRun = spawn }) => {
+/** A background run attached to this session (--attach=<key>). Its output goes to .caw/session-<time>.log. */
+export const startRun = ({ root, command, args, attach, spawnRun = spawn }) => {
     if (!START_COMMANDS.includes(command)) throw new Error(t('run.mcp.commandInvalid', { list: START_COMMANDS.join(', ') }));
     if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string')) throw new Error(t('run.mcp.argsInvalid'));
-    if (args.some((arg) => arg === '--agent' || arg.startsWith('--agent='))) throw new Error(t('run.mcp.agentFlag'));
-    return spawnDetached({ root, command, args: [...args, '--agent', 'session'], spawnRun });
+    if (args.some((arg) => ['--agent', '--attach'].some((flag) => arg === flag || arg.startsWith(`${flag}=`)))) throw new Error(t('run.mcp.agentFlag'));
+    return spawnDetached({ root, command, args: [...args, `--attach=${attach}`], spawnRun });
 };
 
 /** A value of --overlay after a space on the command line: build, dev or a dev server URL (parts only with =). */
@@ -346,7 +347,33 @@ const textField = (input, field) => {
  * @param overlayPreconditions (root, config, { target, part }) -> overlayStatus result; for caw_start and caw_overlay status; default from overlay-check.mjs
  * @param writeConfig (root, patch, { dryRun }) -> { ok, issues, config }; default from config.mjs
  */
-export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), probes, overlayPreconditions, writeConfig, windowWait = {} } = {}) => [
+export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), probes, overlayPreconditions, writeConfig, windowWait = {}, listener = {} } = {}) => {
+    // This session as a listener (attach.mjs): one key for the life of this MCP server, registered on first use. Runs started
+    // here are bound to it; a run started with --attach in a terminal binds to it too.
+    let ownKey = null;
+    const attach = () => {
+        if (ownKey !== null && listenerOf(root, ownKey, listener.env) !== undefined) return ownKey;
+        ownKey = newKey(root);
+        registerListener(root, { key: ownKey, sessionId: (listener.env ?? process.env).CLAUDE_CODE_SESSION_ID, agent: AGENT_NAME, ...(listener.pid === undefined ? {} : { pid: listener.pid }), ...(listener.env === undefined ? {} : { env: listener.env }) });
+        return ownKey;
+    };
+    // Forward slashes: the Monitor runs the command in a POSIX shell, also on Windows (Git Bash).
+    const watchCommand = (forKey) => `node "${BIN.replaceAll('\\', '/')}" attach --watch ${forKey}`;
+    return [
+    {
+        name: 'caw_attach',
+        description: 'Attaches this session to caw windows: you become the agent that answers the person in the workbench chat, and you may change the '
+            + 'code of the application when they ask there. Returns your key and a command: start it with the Monitor tool (persistent, longest timeout; '
+            + 're-arm it when it expires), so every chat message and task reaches you as a line while you keep talking to the person here. Then call '
+            + 'caw_status when a line says a run waits for you. Runs you start with caw_start are attached already; the person can attach a window '
+            + 'they start in a terminal with --attach (or --attach <key> when several sessions listen). Read caw_guide topic attach first.',
+        inputSchema: EMPTY,
+        call: async () => {
+            const own = attach();
+            const waiting = findSessionAgent(root, { key: own, env: listener.env });
+            return answer(t('run.mcp.attached', { key: own, watch: watchCommand(own) }), { key: own, watch: watchCommand(own), ...(waiting === undefined ? {} : { waiting: { runId: waiting.runId, mode: waiting.mode } }) });
+        },
+    },
     {
         name: 'caw_start',
         description: 'Starts a caw command in the background with you as the agent (--agent session); the window opens for the human. '
@@ -383,7 +410,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             additionalProperties: false,
         },
         call: async (input) => {
-            const waiting = findSessionAgent(root);
+            const own = attach();
+            const waiting = findSessionAgent(root, { key: own, env: listener.env });
             if (waiting !== undefined) throw new Error(t('run.mcp.alreadyWaiting', { runId: waiting.runId, mode: waiting.mode }));
             const running = runningRun(root);
             if (running !== undefined) throw new Error(t('run.mcp.stillRunning', { pid: running.pid, log: running.log }));
@@ -428,7 +456,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                     }
                 }
             }
-            const { log, pid } = startRun({ root, command: input.command, args: runArgs, spawnRun });
+            const { log, pid } = startRun({ root, command: input.command, args: runArgs, attach: own, spawnRun });
             const started = t('run.mcp.started', { pid, log });
             if (moved === undefined) return answer(started, { state: 'started', command: input.command, args: runArgs, pid, log: shown(root, log) });
             const note = t('run.mcp.startedMoved', { found: moved.foundUrl, url: moved.url ?? '', app: moved.part });
@@ -444,7 +472,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         inputSchema: { type: 'object', properties: { wait: { type: 'integer', minimum: 0, maximum: MAX_STATUS_WAIT_S } }, additionalProperties: false },
         call: async (input = {}) => {
             const status = () => {
-                const waiting = findSessionAgent(root);
+                const waiting = findSessionAgent(root, { key: ownKey ?? undefined, env: listener.env });
                 const log = latestLog(root);
                 const lines = log === undefined ? [] : readFileSync(log, 'utf8').split(/\r?\n/);
                 const tail = lines.slice(-TAIL_LINES).join('\n').trim();
@@ -753,12 +781,13 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     cawTool({
         run,
         agentDir: () => {
-            const waiting = findSessionAgent(root);
+            const waiting = findSessionAgent(root, { key: ownKey ?? undefined, env: listener.env });
             if (waiting === undefined) throw noRun();
             return waiting.agentDir;
         },
     }),
-];
+    ];
+};
 
 /** The tools offered now: an extension's tool only while the config activates it. */
 export const offeredTools = (root, tools) => {

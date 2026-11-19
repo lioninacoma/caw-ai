@@ -1,7 +1,7 @@
 # caw: you as the agent of a run
 
 The person wants to record, re-record or develop in a state without switching sessions. Then you are the agent; caw starts no
-Claude of its own (`--agent session`).
+agent of its own: runs you start are attached to you (`--attach`, topic `attach`).
 
 1. **Start:** `caw_start` with `command` (`run`, `record` or `open`) and typed fields: `test`, `env`, `step` (e.g. `S3`, needs
    `test`: `record` re-records from there, `open` lands at its entry), `headless` and `learn` (only `run`), `start`, `reset`. Or
@@ -22,7 +22,7 @@ Claude of its own (`--agent session`).
 5. **Picked elements:** when the person picks an element with `/element` in the workbench chat while developing, `caw_selection`
    reads it: label, locator, component or source file and the step's requests. Start the code search there.
 
-**Rights.** As the agent of a run, the rules of topic `rules` apply, including "do not change application code". Outside of a
+**Rights.** As the agent of a run, the rules of topic `rules` apply, including "do not change application code" (attached, the person may ask you to: topic `attach`). Outside of a
 run you change application code only if the person explicitly asks. Recordings are written only by caw. After a code change
 the person presses F5 ("{{label:workbench.keyReload}}" in the workbench's ⋯ menu); "{{label:run.button.restore}}" in the chat replays the steps from the start.
 
