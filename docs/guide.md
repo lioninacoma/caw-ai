@@ -73,13 +73,47 @@ You name the role only the first time; the tool writes `role` and `writes` (`tru
 
 With chat, everything runs on one page, like Cypress:
 
-- **Top:** what is happening, as a sentence with the test ("Claude records morning-errand", "Checking morning-errand without Claude"); the environment and the role only when the project has several (a production environment always), your local build only under an overlay; what Claude or caw is doing, and the REC/PLAY/PAUSE chip.
-- **Left:** the steps with their state (running, passed, failed, not reached), below them the counters for requests and console.
-- **Center:** the application in an iframe with its address. Below it requests (name, outcome, duration) and console (errors and warnings); on a console error the panel opens by itself, "Collapse" closes it.
-- **Right:** the chat with Claude, in a frame titled CHAT.
-- **Bottom:** the key bar: F1 Open… (after the handover), F5 Reload, F9 Pause, Esc Cancel, F2 Requests, F3 Console, F4 Steps, F6 Chat, F8 App only, F10 Animations off. The keys also work while the focus is in the chat.
-- **Collapse:** Steps and chat collapse to a narrow strip via the button at the edge (F4, F6). When the chat needs you, it opens by itself.
-- **Reload:** F5 (the key, the button in the key bar, also inside the application) reloads the current page without cache after handover; chat and steps stay. While the test is running, also while "Open again" or F1 restores a state, this is blocked and the button is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw rebuilds it; if the test was running, it aborts without a result.
+- **Top:** the caw logo, then `/ project / test` and a badge with what the run does ("Claude records", "Check run", "Develop"); the full sentence ("Claude records morning-errand") is its tooltip. On the right the facts in mono (the environment and the role only when the project has several, a production environment always, your local build only under an overlay), a status pill with a dot and a word ("Claude working", "Your turn", "S3 failed", "All passed"), the REC/PLAY/PAUSE chip and the ⋯ menu.
+- **Left:** the steps with their state (running, passed, failed, not reached) and their duration. After the handover a step that can be opened offers "Open up to S3" when you point at it (as F1 does).
+- **Center:** the application in an iframe with its address above it; on a production or read-only environment the address carries a badge. Below it the counts, e.g. "12 requests · 1 console": a click on them (or F2, F3) opens requests (name, outcome, duration) and console (errors and warnings) in a drawer. On a console error the drawer opens by itself; Esc (or "Esc closes" in the drawer) closes it.
+- **Right:** the chat with Claude.
+- **⋯ menu** (also Ctrl+K): every function with its key, in two groups. Run: Pause (F9), Reload app (F5), Cancel run (Esc) and, after the handover, Open… (F1). View: Requests (F2), Console (F3), Hide steps (F4), Hide chat (F6), App only (F8). Below them Animations off (F10), Settings (Ctrl+,) and Keyboard shortcuts (?). Arrow keys move, Enter picks, Esc closes. The keys also work while the focus is in the chat.
+- **Collapse:** a click on the title "Steps" or "Chat" (or F4, F6) collapses the pane to a narrow strip. When the chat needs you, it opens by itself.
+- **App only:** F8 shows only the application, with one line above it and "Back to workbench F8".
+- **Reload:** F5 (also Ctrl+R, inside the application and in the chat, ⋯ → Reload app, or `/reload` in the chat) reloads the current page without cache after handover; chat and steps stay. While the test is running, also while "Open again" or F1 restores a state, this is blocked and the menu item is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw rebuilds it; if the test was running, it aborts without a result.
+
+#### Settings
+
+Ctrl+, (or ⋯ → Settings, `/settings` in the chat) turns the workbench into its settings page; Esc or "Back to the run" returns. The page is yours, for every project, and names the `prefs.json` it saves to. It changes only how the workbench looks; everything else it shows read-only:
+
+- **General:** Appearance System, Light or Dark, applied at once to workbench and chat (System follows your operating system until you pick Light or Dark); Animations (F10); the language with where it comes from (`CAW_LANG`, `prefs.json`, `caw.config.json` or the system), read-only. Layout: whether the steps panel (F4) and the chat panel (F6) are open when a run starts.
+- **Claude:** "Ask before Claude uses tokens", read-only: "Don't ask again" in the notice turns it off, removing `tokenNotice` from `prefs.json` brings it back. The workbench cannot change it, because it shares its origin with the application under test. With an agent, the agent of this run (from `--agent` or the config).
+- **Notes for Claude:** your own `caw.md` and the project's `caw/caw.md`, each with its path and number of lines, never its content; "Copy path" copies yours.
+- **Keyboard:** the keys below.
+- **This run**, read-only: project, environment with its switches (Claude allowed, writable, production), role, code and version.
+
+Light and dark: the workbench, the chat, the report page and the "caw explore" card follow your system unless you set a mode; the choice is `mode` in `prefs.json` (`system`, `light` or `dark`).
+
+#### Keyboard
+
+| Key | What it does |
+|---|---|
+| F1 | Open… a test or a step (after the handover) |
+| F2, F3 | Requests, console |
+| F4, F6 | Collapse or expand steps, chat |
+| F5 | Reload the app without cache (after the handover) |
+| F8 | App only, and back |
+| F9 | Pause or continue Claude |
+| F10 | Animations off or on |
+| Esc | Closes the open menu, dialog, settings page or drawer, cancels picking an element; otherwise asks to cancel the run, and a second Esc within 4 seconds confirms |
+| Ctrl+K | The ⋯ menu |
+| Ctrl+, | Settings |
+| ? | Keyboard shortcuts (not while typing) |
+| Ctrl+↵ | Chat: the main action, while the input is empty (Cmd+↵ on a Mac) |
+| Alt+↵ | Chat: sends your text as a checkpoint while you demonstrate |
+| / | Chat: the commands, at the start of the input |
+
+F11 and F12 stay with Chrome.
 
 The workbench lives at the application's own address, on its origin. Many applications access the top window (`top.Ext`, `parent.config`, `top.location.href`) because they believe they are inside the portal. In the workbench this works the same:
 
@@ -105,13 +139,16 @@ The chat sits in an isolated iframe with its own origin (`sandbox` without `allo
 On the right of the workbench, even in a test run without Claude. The history carries over across the workbenches of demonstration, Claude and check run. Claude's log also appears there: text as messages, commands as expandable actions. The window is the only source of instructions; the application page can't reach the chat. The transcript is saved as `chat.log` in the run folder.
 
 - **Your context on the approval card:** Every message you wrote while showing or describing gets a mark on the card (✎) with what Claude made of it: the note of a step, its retry, the test's notes, or "only for this recording". Claude has to account for each of them; a plan that leaves one out is rejected.
-- **Demonstrate:** Clicks, double-clicks, field changes, files chosen from `caw/fixtures` and the keys Enter, Tab, Escape and the arrow keys are captured (arrows not in a native select list, whose choice is captured as the field change). A message gives Claude context at this point of the path, "Add checkpoint" sets a future step with a screenshot there; first type into the field what should be visible. "Finish demo" ends the demonstration. While it runs, "● RECORDING – your clicks count" shows above the application. Password fields never leave the page. All other input goes to Claude and into the recording, so demonstrate with test data only.
+- **Demonstrate:** Clicks, double-clicks, field changes, files chosen from `caw/fixtures` and the keys Enter, Tab, Escape and the arrow keys are captured (arrows not in a native select list, whose choice is captured as the field change). A message gives Claude context at this point of the path. Alt+↵ (or `/checkpoint` in front of the text) sends it as a checkpoint instead: a future step with a screenshot there; type first what should be visible. "Finish demo", the main action above the input, ends the demonstration. While it runs, "● RECORDING – your clicks count" shows above the application. Password fields never leave the page. All other input goes to Claude and into the recording, so demonstrate with test data only.
 - **Write a message:** Claude reads it before its next action, since until then the tool rejects every browser command. If Claude is thinking, this takes a moment.
-- **Pause:** Claude stops before its next action; the status in the window shows it. Then you can write and click in the application until you press "Continue". Your clicks go into the test, so only click once "Paused" is shown.
-- **Mark element:** During demonstration, plan, pause, question and failure clarification, the crosshair button in the chat picks the component you mean: the next click in the application does nothing there and isn't recorded; Esc cancels. The element is attached to your next message; Claude gets its description.
+- **Pause:** While Claude works, "Pause F9" sits in the status line above the input (also F9 or `/pause`). Claude stops before its next action; the status pill shows it. Then you can write and click in the application until you press "Continue". Your clicks go into the test, so only click once "Paused" is shown.
+- **Main action:** The one thing to do next ("Done", "Approve plan", "Finish demo", "Hand over to Claude", "Continue") sits full width above the input; Ctrl+↵ triggers it while the input is empty.
+- **Commands:** `/` at the start of the input opens the commands: `/element`, `/checkpoint`, `/pause`, `/open`, `/requests`, `/console`, `/reload`, `/app`, `/settings`, `/keys`, `/cancel`, each with its key. Arrow keys and Enter pick, Tab completes, Esc closes; a command that is not possible right now is greyed out. `/open`, `/requests`, `/console`, `/app`, `/settings` and `/keys` open that view in the workbench, like their keys.
+- **Cards:** plan, question, advice (with a diff for a code change), failure, decision and the token notice come as cards. Each card has one primary action; one other choice sits beside it, more go behind "More".
+- **Mark element:** During demonstration, plan, pause, question and failure clarification, `/element` picks the component you mean: a ring with a label (role and name, e.g. `button "Add todo" in dialog "New todo"`) shows what a click would pick, and a band at the top of the application says that the click does nothing there and Esc cancels. The click isn't recorded. The element shows as a chip above the input (× removes it) and is attached to your next message; Claude gets its description.
 - **Questions:** Claude asks via `ask-operator`. Your answer or "Done" releases the run.
 - **Step back:** There is no rewind. Tell Claude what was wrong: it goes to the right state and drops the detour with `omit`. What was submitted stays in the application; then only a new run helps.
-- **Cancel:** Esc (or "Cancel" in the key bar) asks "Really cancel? (Esc)"; a second Esc or a click on it within 4 seconds confirms and ends everything immediately with `error`. Closing the chat has the same effect; without it there is neither approval nor decision.
+- **Cancel:** Esc (or `/cancel`, ⋯ → Cancel run) asks "Really cancel? (Esc)"; a second Esc or a click on it within 4 seconds confirms and ends everything immediately with `error`. Closing the chat has the same effect; without it there is neither approval nor decision.
 
 The human's time counts toward Claude's limit, so the default here is 60 minutes (`--claude-timeout 60m`).
 
@@ -211,13 +248,13 @@ With chat, the chat stays open after handover (state "Develop"):
 
 The workbench starts in **App only** (F8 brings steps and chat back); the browser window stays as it is. The app now fills the whole pane; the recorded size holds only while caw replays, also when it restores a state.
 
-- **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with the crosshair button. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
+- **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with `/element`. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
 - **Let Claude use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.
 - **Debug a bug:** Paste a bug ticket into the chat. Claude reproduces it in the reached state, looks at console, requests, component values and source, names the cause with file and line and proposes the fix as a change you apply with a click. Then reload or restore the state, and Claude checks whether the bug is gone.
 - **Reload** (F5): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
 - **Open again** (in the chat): starts a new session (cookies and site storage cleared), signs in again and replays the recording up to the same point (with `@S4` the entry of S4), with new test data, exactly like any other run.
 - **Open… (F1):** any test of this environment, of any role, and optionally a step. Before caw replaces your window, you confirm in the chat, e.g. with "Open S2". Then caw replays the test in the same window with the account of the test's role: without a step the whole test, with a step up to its entry, as with `open <test>@<step>`. If restoring fails, Claude in the chat knows why; it can also adjust the test, e.g. mark a cookie-banner click optional, and the change goes into the test file right away.
-- **Element to Claude Code:** With the crosshair button in the chat you click an element in the application, also a greyed-out button or one in a dialog; a frame shows what the click picks (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
+- **Element to Claude Code:** With `/element` in the chat you click an element in the application, also a greyed-out button or one in a dialog; a ring with a label shows what the click picks (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
 - **End:** "End run" or close the window.
 
 ### How you work with it
@@ -236,10 +273,10 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 - **Keep developing:** Against your dev server as the environment, F5 loads your current code. With the [overlay extension](extensions/overlay.md) the local code stays in place until you close the window. There is no automatic reload apart from the dev server's hot reload.
 - **State:** F5 loses whatever existed only in the browser, such as open dialogs and unsaved input. "Restore state" in the chat or a new test run brings you back.
 - **End:** Closing the window ends the run. The exit code remains the verdict.
-- **Keyboard in the chat:** Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl+↵`. Esc first clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
+- **Keyboard in the chat:** Ctrl+↵ (Cmd+↵) triggers the main action while the input is empty, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl ↵`. Alt+↵ sends a checkpoint while you demonstrate. Esc first closes an open menu, then clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
 - **Your turn:** When the chat waits for you (plan, decision, clarifying a failure), "YOUR TURN" shows above the application, and the terminal prints once "Waiting for you in the Chrome window: …".
 - **Record, play, pause:** A chip at the top right of the workbench shows what the run does: "REC" while Claude records or fixes, "PLAY" while caw replays (run, check run, restoring a state), "PAUSE" while such a run is paused (F9). When nothing runs (after the run, after the handover, after cancelling) there is no chip.
-- **After the run:** The outcome is the last line in the chat, e.g. "Saved: caw/tests/bestellung.yaml". The window stays open for 15 seconds with "Close window" and then closes itself. If a new window is about to open (for Claude or the check run), chat and terminal say so first.
+- **After the run:** The outcome is the last line in the chat, e.g. "Saved: caw/tests/bestellung.yaml". Below it the end card says "Run passed" or "Run failed" (for `reproduce` the verdict, with observed, expected and cause), counts the steps and shows the command for a new run, with a button to copy it. Its main action is "Save baselines" when the run can learn them, otherwise "Close window" or "Open report"; the other choices sit beside it, or behind "More" when there are two. "Open report" opens the [report page](#the-report-page) in a new tab. The window stays open for 15 seconds, counting down on "Close window", and then closes itself. If a new window is about to open (for Claude or the check run), chat and terminal say so first.
 
 You can open your own tabs at any time, even during a run: only the application tab and its popups are controlled, and only their errors count. Clicking in the application tab while a run is working, however, affects the test.
 
@@ -347,7 +384,38 @@ Only the fixed steps change in the file; comments and all other steps stay ident
 
 ### Console output
 
-In a terminal the tool shows colors, symbols and, at the end, a result block with every step. In files and pipes it stays plain lines prefixed with `[caw]`. `NO_COLOR` turns this off, `FORCE_COLOR` forces it.
+In a terminal a run reads like the workbench: the head with the version, the mode in bold, what caw is doing, then the "Run" rule with one line per step and its duration, the reason under a failed step, the summary, the report and what to do next:
+
+```
+● caw · Context-Aware Web Testing · <version>
+  › Mode on local (team language en): no window and no chat (--headless); learns: no.
+Replay without Claude · first-errand on local as user · team language en
+Code: dev server localhost:4874, your current version
+
+  › Opening Chrome and signing in ...
+  › Replaying the recording (19 steps, recorded on local) ...
+    ›  1/19 click button "New todo" +0.0s
+    …
+
+Run ────────────────────────────────────────────────
+  ✓ S1  Add a todo     4.0s
+  ✓ S2  Find it        1.5s
+  ✕ S3  Tick it off   32.1s
+      └ Not met after 30 s: …
+  ○ S4  Plan it      not reached
+
+Failed. 2 of 4 steps passed. · 39.9s
+report  .caw/runs/<run>/report.md
+        file:///…/report.md
+next    S3 failed. Find the cause: caw run first-errand --env local in the terminal, …
+        Up to the entry of the step: caw open first-errand@S3 --env local
+```
+
+The marks are ✓ passed, ✕ failed, ! warning and ○ not reached. In files and pipes it stays plain lines prefixed with `[caw]`, with `Report:` before the report's path. `NO_COLOR` turns colors off, `FORCE_COLOR` forces them.
+
+### The report page
+
+"Open report" on the end card opens `report.md` as a page in a new tab of the same browser, in your light or dark mode. At the top the logo, "Report" and the path; then the title with a badge (passed, failed, error, or a reproduction's verdict), the lines below it, tiles for passed, failed, not reached and write requests, and the steps with their badges. Hard errors and warnings are lists with icons, write requests are in mono, and screenshots the report links appear as thumbnails. Read-only runs, reasons and notes are banners. The page only shows what `report.md` says; the file itself is unchanged.
 
 ## Drive it from Claude Code
 
@@ -373,7 +441,7 @@ In all three cases the browser is the actual boundary: Claude sees the applicati
 
 In CI (`CI` set) `run` runs without chat and without Claude; `agent.mode` only applies there if a run does need Claude, and then always as `docker`.
 
-**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: no spinner, no blinking cursor), collapsed steps or chat, and the light or dark mode, following the system by default. In the same folder your own `caw.md` holds notes for Claude in every project, read before the project's `caw/caw.md` ([Configuration](configuration.md#your-own-cawmd)).
+**Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: no spinner, no pulsing dots, no blinking cursor), collapsed steps or chat, and the mode (`system`, `light` or `dark`; `system` follows your operating system and is the default). You change them on the [settings page](#settings) (Ctrl+,). In the same folder your own `caw.md` holds notes for Claude in every project, read before the project's `caw/caw.md` ([Configuration](configuration.md#your-own-cawmd)).
 
 **Token notice:** Before Claude works (record, fix a step, investigate a failure, questions in the chat, `--explain`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude" (investigate a failure, questions in the chat) or "Cancel run" (record, fix a step). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--agent session` there is no notice: your session is already running.
 
@@ -401,7 +469,7 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role` (or `args`) | none beyond your session |
 | `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |
-| `caw_selection` | the element you picked with the crosshair in the workbench while developing | no |
+| `caw_selection` | the element you picked with `/element` in the workbench chat while developing | no |
 | `caw_overlay` | only with an `overlay` block: is the local code server ready, `check` and `apply` | no |
 
 The server tells Claude Code what caw is for and to read `caw_guide` first; there is no skill file. The data tools return a short text and the same result as `structuredContent` (JSON). None of them prints to the MCP channel or asks on stdin; explore, `overlay check` and runs run as separate processes. caw never starts your local code server from the session; Claude does that in its own session after asking you, unless your project's rules (e.g. `CLAUDE.md`) say otherwise.

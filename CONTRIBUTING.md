@@ -45,6 +45,7 @@ npx caw doctor
 - Add or update unit tests. `npm run lint`, `npm test` and `npm run pack:check` must pass. CI lints once and runs the tests on Linux and Windows with Node 22.4, 22 and 24; a macOS job runs too but does not block.
 - Code, names and comments are in English. UI texts live in `src/shared/locales/` (de and en).
 - User-facing text goes into both `src/shared/locales/en` and `src/shared/locales/de`. Keep it short.
+- Workbench, chat, report page and the explore card share one look from `src/host/style.mjs`: its tokens for light and dark, fonts, icons and base components. Use them instead of own colours, and check a UI change in both modes.
 - Add a line under `[Unreleased]` in `CHANGELOG.md`.
 - caw stays framework-independent. Framework specifics belong in `src/host/framework/`.
 - Nothing in the package may depend on one particular project or company.

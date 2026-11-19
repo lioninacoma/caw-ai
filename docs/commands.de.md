@@ -26,7 +26,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 Bricht ein Befehl ab, steht im Terminal zuerst der Grund, bei einem ungültigen Aufruf dann die Kurzform des Befehls, zuletzt Code und Exit-Code:
 
 ```
-✗ create-ticket@s2: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3.
+✕ create-ticket@s2: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3.
   Aufruf: caw record <test> [--env <umgebung>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <umgebung>]
   (code: usage, exit 3)
 ```
@@ -39,7 +39,7 @@ Eine Option, die einen Wert braucht, nimmt nie die nächste Option als Wert: `--
 npx caw init --url http://localhost:5173
 ```
 
-Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Chrome. Mit einem Testkonto anmelden (caw merkt, wenn das Anmeldeformular verschwunden ist), zur Seite gehen, auf der Tests beginnen sollen, und in der Karte unten rechts im Fenster auf **Fertig** klicken. caw erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
+Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Chrome. Mit einem Testkonto anmelden (caw merkt, wenn das Anmeldeformular verschwunden ist), zur Seite gehen, auf der Tests beginnen sollen, und in der Karte „caw explore“ unten rechts im Fenster auf **Fertig** klicken. Die Karte zeigt den Schritt als Badge („2 · Startseite“) und im Startschritt die Seite, die sie nimmt („SEITE /todos“); ein Klick auf ihren Kopf klappt sie ein. caw erkennt Framework, Anmeldeformular und eine Marke für „angemeldet“ und legt an:
 
 - `caw.config.json`
 - `caw/.env.example` mit den Variablen für die Zugangsdaten je Rolle
@@ -209,7 +209,7 @@ Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt beim Abspielen, Standard `30s`. |
 | `--agent local\|docker\|session`, `--claude-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
 
-Nach der Übergabe öffnet **F1** in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
+Nach der Übergabe öffnet **F1** (oder ⋯ → Öffnen…, `/open` im Chat) in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
 
 Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner, der schon weg ist), frag im Chat: Claude kann den Klick optional machen. Was du übernimmst, steht sofort in der Testdatei. Beim Aufnehmen geht das direkt mit `click <ziel> --optional`.
 
@@ -299,7 +299,7 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_start` | `run`, `record`, `open` oder `reproduce` mit `--agent session` starten (`reproduce`: `bug`, `from`, `role`, `env`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
 | `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
-| `caw_selection` | Das Element, das du mit dem Fadenkreuz in der Werkbank gewählt hast | nein |
+| `caw_selection` | Das Element, das du mit `/element` im Chat der Werkbank gewählt hast | nein |
 
 Ergebnisse kommen als kurzer Text plus `structuredContent` (JSON).
 

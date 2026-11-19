@@ -26,7 +26,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 When a command stops, the terminal shows the reason first, then for an invalid call the command's short form, then the code and exit code:
 
 ```
-✗ create-ticket@s2: a step goes after the test as <test>@S<n>, e.g. order@S3.
+✕ create-ticket@s2: a step goes after the test as <test>@S<n>, e.g. order@S3.
   Usage: caw record <test> [--env <env>] [--role <role>]  or  caw record <test>@<S4> [--env <env>]
   (code: usage, exit 3)
 ```
@@ -39,7 +39,7 @@ An option that needs a value never takes the next option as its value: `--env --
 npx caw init --url http://localhost:5173
 ```
 
-Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. Sign in with a test account (caw notices when the sign-in form is gone), go to the page where tests should start and click **Done** in the card at the bottom right of the window. caw-ai detects framework, login form and a "signed in" marker and creates:
+Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. Sign in with a test account (caw notices when the sign-in form is gone), go to the page where tests should start and click **Done** in the "caw explore" card at the bottom right of the window. The card shows the step as a badge ("2 · Start page") and, on the start step, the page it will use ("PAGE /todos"); its header collapses it. caw-ai detects framework, login form and a "signed in" marker and creates:
 
 - `caw.config.json`
 - `caw/.env.example` with the credential variables per role
@@ -209,7 +209,7 @@ With a test, `open` signs in with the test's role and replays without Claude; th
 | `--step-timeout <duration>` | Time limit per step while replaying, default `30s`. |
 | `--agent local\|docker\|session`, `--claude-timeout <duration>`, `--max-actions <n>` | As for `record`. |
 
-After the handover, **F1** in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
+After the handover, **F1** (or ⋯ → Open…, `/open` in the chat) in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
 
 If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
 
@@ -298,7 +298,7 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` with `--agent session` (`reproduce`: `bug`, `from`, `role`, `env`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
 | `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
-| `caw_selection` | The element you picked with the crosshair in the workbench | no |
+| `caw_selection` | The element you picked with `/element` in the workbench chat | no |
 
 Results come as short text plus `structuredContent` (JSON).
 

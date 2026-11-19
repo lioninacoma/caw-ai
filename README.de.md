@@ -75,8 +75,8 @@ seine Navigation erledigt, seine Eingaben offen. F1 („Öffnen…“) wählt je
 
 <img src="docs/media/states.webp" width="100%" alt="Der F1-Dialog listet den Test first-errand mit seinen Schritten S1 bis S4">
 
-Wähle ein Element in der App und frag danach: Claude liest deinen Quellcode und antwortet mit Datei und Zeile. Gegen deinen
-Dev-Server lädt F5 deine Änderung.
+Wähle ein Element in der App (`/element` im Chat) und frag danach: Claude liest deinen Quellcode und antwortet mit Datei
+und Zeile. Gegen deinen Dev-Server lädt F5 deine Änderung.
 
 <img src="docs/media/develop.webp" width="100%" alt="Ein Element in der App ist gewählt; Claude erklärt im Chat, warum &quot;Add todo&quot; gesperrt ist, mit server.mjs:134">
 

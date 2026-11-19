@@ -296,6 +296,8 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 | `sandboxUser` | `node` | Nutzer im Container. |
 | `overlay` | | Schaltet die [Overlay-Erweiterung](extensions/overlay.de.md) ein. |
 
+Jedes andere Feld meldet caw als unbekannt (`Unbekanntes Feld: …`). Das gilt auch für `theme`: Die Werkbank hat ein Aussehen in einem hellen und einem dunklen Modus, den du für dich wählst (siehe [Persönliche Einstellungen](#persönliche-einstellungen)).
+
 ## caw/caw.md
 
 Schlichtes Markdown, wie eine `CLAUDE.md` für deine Tests. Schreib auf, was Claude im Code nicht sieht, was aber in jedem Test zählt:
@@ -321,6 +323,17 @@ nie etwas außerhalb des Projekts geschrieben.
 
 ## Persönliche Einstellungen
 
-Werkbank-Einstellungen (Animationen, eingeklappte Bereiche, der Token-Hinweis) und deine Sprache liegen je Nutzer in
-`prefs.json` unter `CAW_AI_HOME`, standardmäßig `%APPDATA%\caw-ai` oder `~/.config/caw-ai`. Nicht im Projekt.
-Deine eigene `caw.md` (siehe oben) liegt im selben Ordner.
+Werkbank-Einstellungen und deine Sprache liegen je Nutzer in `prefs.json` unter `CAW_AI_HOME`, standardmäßig
+`%APPDATA%\caw-ai` oder `~/.config/caw-ai`. Nicht im Projekt. Deine eigene `caw.md` (siehe oben) liegt im selben Ordner.
+
+| Schlüssel | Werte | |
+|---|---|---|
+| `mode` | `system` (Standard), `light`, `dark` | Hell oder dunkel für Werkbank, Chat, Berichtsseite und die Karte „caw explore“. `system` folgt deinem Betriebssystem. |
+| `animations` | `on` (Standard), `off` | `off` hält Spinner, pulsierende Punkte und den blinkenden Cursor an (F10). |
+| `steps`, `chat` | `open` (Standard), `closed` | Ob Schrittliste und Chat offen sind, wenn ein Lauf beginnt (F4, F6). |
+| `tokenNotice` | `on` (Standard), `off` | `off` überspringt den Hinweis, bevor Claude Token verbraucht. Gesetzt von „Nicht mehr fragen“; entfernst du den Eintrag, kommt der Hinweis wieder. |
+| `language` | `de`, `en` | Deine Sprache für caws eigene Texte. `CAW_LANG` gewinnt. |
+
+Die Einstellungsseite der Werkbank (Strg+,) setzt `mode`, `animations`, `steps` und `chat` und zeigt den Rest nur lesend:
+Die Seite teilt ihren Ursprung mit der getesteten Anwendung und darf darum nur ändern, wie die Werkbank aussieht.
+Unbekannte Schlüssel und Werte ignoriert caw.

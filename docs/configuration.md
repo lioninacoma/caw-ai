@@ -293,6 +293,8 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 | `sandboxUser` | `node` | User inside the container. |
 | `overlay` | | Turns on the [overlay extension](extensions/overlay.md). |
 
+Any other field is reported as unknown (`Unknown field: …`). That includes `theme`: the workbench has one look in a light and a dark mode, which you pick for yourself (see [Personal settings](#personal-settings)).
+
 ## caw/caw.md
 
 Plain Markdown, like a `CLAUDE.md` for your tests. Write down things Claude can't see in the code but that matter in every test:
@@ -317,6 +319,17 @@ through git, or personal, with its path), and only your click on "Accept" writes
 
 ## Personal settings
 
-Workbench choices (animations, collapsed panels, the token notice) and your language are stored per user in
-`prefs.json` under `CAW_AI_HOME`, default `%APPDATA%\caw-ai` or `~/.config/caw-ai`. Not in the project.
-Your own `caw.md` (see above) lies in the same folder.
+Workbench choices and your language are stored per user in `prefs.json` under `CAW_AI_HOME`, default `%APPDATA%\caw-ai`
+or `~/.config/caw-ai`. Not in the project. Your own `caw.md` (see above) lies in the same folder.
+
+| Key | Values | |
+|---|---|---|
+| `mode` | `system` (default), `light`, `dark` | Light or dark for workbench, chat, report page and the "caw explore" card. `system` follows your operating system. |
+| `animations` | `on` (default), `off` | `off` stops the spinner, pulsing dots and the blinking cursor (F10). |
+| `steps`, `chat` | `open` (default), `closed` | Whether the steps and the chat panel are open when a run starts (F4, F6). |
+| `tokenNotice` | `on` (default), `off` | `off` skips the notice before Claude uses tokens. Set by "Don't ask again"; remove it to get the notice back. |
+| `language` | `de`, `en` | Your language for caw's own texts. `CAW_LANG` wins over it. |
+
+The workbench's settings page (Ctrl+,) sets `mode`, `animations`, `steps` and `chat` and shows the rest read-only: the
+page shares its origin with the application under test, so it may change only how the workbench looks. Unknown keys and
+values are ignored.

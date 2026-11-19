@@ -72,8 +72,8 @@ done, its inputs open. F1 ("Open…") picks any test and step of the environment
 
 <img src="docs/media/states.webp" width="100%" alt="The F1 dialog lists the test first-errand with its steps S1 to S4">
 
-Pick an element in the app and ask about it: Claude reads your source code and answers with file and line. Against your dev
-server, F5 loads your change.
+Pick an element in the app (`/element` in the chat) and ask about it: Claude reads your source code and answers with file
+and line. Against your dev server, F5 loads your change.
 
 <img src="docs/media/develop.webp" width="100%" alt="An element is picked in the app; Claude explains in the chat why &quot;Add todo&quot; is disabled, with server.mjs:134">
 
