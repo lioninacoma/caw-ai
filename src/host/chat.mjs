@@ -516,7 +516,7 @@ details.activity li{overflow-wrap:anywhere}
 .activity li small.items{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .message.starting.done{background:none;padding:0;color:var(--muted);font-size:12px}.message.starting.done .i{color:var(--pass)}.message.starting.done small{margin-left:0}
 #thinking{display:none;align-items:center;gap:7px;font:500 12px/1 var(--font);color:var(--agent)}#thinking .i{width:14px;height:14px}
-[data-state=running] #thinking,[data-state=advising] #thinking,body.awaiting #thinking{display:flex}main:has(.message.starting:not(.done)) #thinking{display:none!important}
+[data-state=running] #thinking,[data-state=advising] #thinking,body.awaiting:not([data-state=choosing]):not([data-state=planning]):not([data-state=deciding]):not([data-state=reviewing]) #thinking{display:flex}main:has(.message.starting:not(.done)) #thinking{display:none!important}
 /* Cards: plan, question, advice, failure, decision and the token notice. Flat: the header line, then the parts. */
 .message.card{gap:10px;padding:12px 14px 14px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line);font-size:13px;line-height:1.5}
 .card>strong{display:flex;align-items:center;gap:8px;font:500 13px/1.25 var(--font);color:var(--text)}
@@ -643,9 +643,7 @@ addEventListener('resize',fit);
 // A message, or a checkpoint while demonstrating (Alt+Enter, or "/checkpoint " in front of the text).
 const CHECKPOINT='/checkpoint ';
 const submit=(checkpoint=false)=>{let text=input.value;if(text.startsWith(CHECKPOINT)){text=text.slice(CHECKPOINT.length);checkpoint=true;}
-  if(text.trim()==='')return;send('message',text,checkpoint&&stateNow()==='showing');input.value='';fit();renderSlash();input.focus();
-  // In a conversation the answer takes a moment: "working" shows at once, until the agent's next entry.
-  if(['discussing','developing'].includes(stateNow()))document.body.classList.add('awaiting');};
+  if(text.trim()==='')return;send('message',text,checkpoint&&stateNow()==='showing');input.value='';fit();renderSlash();input.focus();};
 $('form').addEventListener('submit',(event)=>{event.preventDefault();submit();});
 toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');$('toggleText').textContent=T['chat.page.wait'];send('toggle');});
 // F9: like the main action, if it is currently shown.
@@ -728,9 +726,8 @@ let popped=false,solo=false;
 const UNREAD=['claude','plan','failure','decision','advice','question','tokens'];
 window.addMessage=(who,text,about,at)=>{
   if(UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
-  // "Working" stays under the agent's actions until it answers or asks; its start (after Continue) begins it too.
-  if(UNREAD.includes(who))document.body.classList.remove('awaiting');
-  else if(who==='starting'&&['discussing','developing','running'].includes(stateNow()))document.body.classList.add('awaiting');
+  // Its start (after Continue) begins "working"; the host ends it once the agent waits for the person (setWorking).
+  if(who==='starting'&&['discussing','developing','running'].includes(stateNow()))document.body.classList.add('awaiting');
   // One start at a time: preparing the sandbox and starting the agent show as one line.
   if(who==='starting'&&starting)return;
   if(who==='starting'){endGroup();started();const row=el('div','message starting');row.dataset.t0=String(at||Date.now());row.append(ic('loader'),el('span','',text),el('small'));elapsed(row);starting=row;place(row);return;}
@@ -872,6 +869,8 @@ input.addEventListener('keydown',(event)=>{
   if(event.key==='Enter'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submit();}});
 
 const TOGGLE_ICON={running:'pause',pausing:'play',paused:'play',asking:'check',showing:'stop',describing:'chev'};
+// The host knows: the agent works until it waits for the person (its chat call) or ends.
+window.setWorking=(on)=>{document.body.classList.toggle('awaiting',on===true);};
 window.setStatus=(state,text,label,button,options)=>{if(state==='closed')document.body.classList.remove('awaiting');document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=pick.classList.contains('on')?T['chat.page.picking']:text;}
   // While Claude works in the application the input is locked: typing here would take the focus from the application (an open
   // list closes when its field loses the focus). Pausing unlocks it.
@@ -1131,6 +1130,13 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
      * After the run, after finished and closing the conversation: the window stays open with "close window" and a countdown.
      * @returns once the human closes it or the time is up
      */
+    /** Whether the agent is working: shown as "working" in a conversation. Waiting for the person ends it. */
+    let working = false;
+    chat.working = (on) => {
+        if (on === working && on) return;
+        working = on === true;
+        quiet(inChat((value) => window.setWorking?.(value), working));
+    };
     chat.linger = async (ms) => {
         const clicked = new Promise((resolve) => { closeWanted = () => resolve('close'); });
         const stayed = new Promise((resolve) => { stayWanted = () => resolve('stay'); });

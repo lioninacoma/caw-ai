@@ -1311,21 +1311,22 @@ test('agent actions: a folded item unfolds to its files and keeps the call as to
     assert.ok(await until(() => page.evaluate(() => { const track = document.getElementById('track'); const box = track.getBoundingClientRect(); const r = document.querySelector('#steps li[data-id=claude] .pts>li[data-id=c1]').getBoundingClientRect(); return track.scrollTop > 0 && r.top >= box.top && r.bottom <= box.bottom; })), 'the latest action in view');
     await item.locator('.name').click();
     assert.deepEqual(await item.locator('.det li').allTextContents(), ['p/a.mjs', 'p/b.md']);
-    // A question in the conversation: "working" at once, until the agent's next entry.
+    // A question in the conversation: "working" from the message until the agent waits for the person again (run.mjs says so).
     const answer = chat.develop('Bereit.', [{ id: 'end', label: 'Ende' }]);
     await frame.waitForFunction(() => document.body.dataset.state === 'developing');
     await frame.fill('#input', 'Warum?');
     await frame.press('#input', 'Enter');
-    assert.ok(await until(() => frame.isVisible('#thinking')), 'working shows at once');
     await answer;
-    // As in develop: the conversation goes on at once.
     chat.develop(undefined, [{ id: 'end', label: 'Ende' }]);
     await pause(300);
-    assert.equal(await frame.isVisible('#thinking'), true, 'still working while the agent thinks');
+    assert.equal(await frame.isVisible('#thinking'), false, 'nobody works yet: no spinner of its own');
+    chat.working(true);
+    assert.ok(await until(() => frame.isVisible('#thinking')), 'working once an agent hears it');
     chat.logLine('[+1.0s] > Read: {"file_path":"/p/a.mjs"}');
+    chat.say('Verstanden, ich passe das an.');
     await pause(300);
-    assert.equal(await frame.isVisible('#thinking'), true, 'and while it acts');
-    chat.say('Weil.');
-    assert.ok(await until(async () => !(await frame.isVisible('#thinking'))), 'gone with the answer');
+    assert.equal(await frame.isVisible('#thinking'), true, 'an interim message does not end it');
+    chat.working(false);
+    assert.ok(await until(async () => !(await frame.isVisible('#thinking'))), 'gone once the agent waits for the person');
     return undefined;
 });

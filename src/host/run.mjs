@@ -590,6 +590,7 @@ ${text}`) ?? 0;
                     const line = state === 'waiting' ? t(candidates.length > 1 ? 'run.attach.several' : 'run.attach.waiting', { keys: candidates.join(', ') })
                         : t(`run.attach.${state}`, { key });
                     if (state !== 'waiting' || candidates.length > 1 || chat !== null) chat?.notice(line);
+                    if (state === 'lost') chat?.working?.(false);
                     ui.info(line);
                     for (const announced of announcedAgents) if (key !== undefined && key !== null) announced.rebind(key);
                     if (state === 'connected' || state === 'back') for (const [mode, hint] of pendingTells.splice(0)) link.tell(t('run.attach.event', { runId, mode, hint }));
@@ -710,6 +711,8 @@ ${text}`) ?? 0;
     let closeActivity = () => {};
     const forClaude = (handler) => async (command) => {
         if (command?.action === 'say' || command?.action === 'chat') closeActivity();
+        // The chat shows "working" until the agent waits for the person again (chat).
+        if (typeof command?.action === 'string') chat?.working?.(command.action !== 'chat');
         if (signingIn && !['task', 'say', 'chat'].includes(command?.action)) throw new CawError('signing-in', t('run.agent.signingIn'));
         let value;
         try {
@@ -1013,6 +1016,7 @@ ${text}`) ?? 0;
             } finally {
                 await agent.stop();
                 await stopPump();
+                chat.working?.(false);
             }
             if (!talking) chat.advising(false);
             if (adviceNote !== undefined) {
@@ -1033,6 +1037,8 @@ ${text}`) ?? 0;
             configChanged: () => new Promise((resolve) => { configListeners.push(resolve); }),
             send: (message, picked) => {
                 log.push({ from: 'human', text: String(message) });
+                // "Working" at once, but only if an agent hears it: an attached session that is not there does not work.
+                if (box.kind !== 'session' || ['connected', 'back'].includes(link?.state())) chat.working?.(true);
                 // The person's own session hears of it through its Monitor; the text itself it fetches with chat.
                 if (box.kind === 'session') link?.tell(t(picked === undefined ? 'run.attach.message' : 'run.attach.messageElement', { runId, text: String(message).slice(0, 300) }));
                 inbox.push(picked === undefined ? message : { text: message, element: picked });
