@@ -729,12 +729,13 @@ ${text}`) ?? 0;
         // Commands with which the agent waits for the person: a chat answer or a question to show in the browser.
         // Commands with which the agent waits for the person. caw's own agent answers with say and waits with chat. An attached
         // session fetches the message with chat, answers with say and then listens on its Monitor: say is where it is done.
-        // An attached session's chat never waits (it returns at once), so it changes nothing; the message itself turns "working" on.
+        // An attached session also works on its own (reading its task after connecting) without anyone waiting: for it only the
+        // person's message turns "working" on (send), and its answer turns it off.
         const attached = link !== null;
         const waits = attached ? ['say', 'ask-operator'].includes(command?.action) : ['chat', 'ask-operator'].includes(command?.action);
         if (command?.action === 'say' || waits) closeActivity();
         // The chat shows "working" until the agent waits for the person again.
-        if (typeof command?.action === 'string' && !(attached && command.action === 'chat')) chat?.working?.(!waits);
+        if (typeof command?.action === 'string' && (!attached || waits)) chat?.working?.(!waits);
         if (signingIn && !['task', 'say', 'chat'].includes(command?.action)) throw new CawError('signing-in', t('run.agent.signingIn'));
         let value;
         try {
