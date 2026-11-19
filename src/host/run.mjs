@@ -13,6 +13,7 @@ import { resolveCredentials } from '../shared/credentials.mjs';
 import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
 import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
+import { foldAction } from './activity.mjs';
 import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
@@ -746,18 +747,25 @@ ${text}`) ?? 0;
         let lastPoint = null;
         let count = 0;
         closeActivity = () => closePoint();
+        // Actions of one kind in a row share one item ("Read 2 files", unfolds to the files); the call is its tooltip.
+        let fold = null;
         const notePoint = (line) => {
             const entry = parseClaudeLog(line);
             if (bench === null || entry === null || entry.kind !== 'activity') return;
             const group = own === undefined ? bench.running() : CLAUDE_GROUP;
             if (group === null) return;
-            count += 1;
-            lastPoint = [group, `c${count}`];
-            bench.point(group, lastPoint[1], 'running', { kind: AGENT_NAME, label: shortActivity(entry.text) });
+            fold = lastPoint !== null && lastPoint[0] === group ? foldAction(fold, entry) : foldAction(null, entry);
+            if (!fold.merged) {
+                count += 1;
+                lastPoint = [group, `c${count}`];
+            }
+            const items = fold.items.filter((item) => item !== '');
+            bench.point(group, lastPoint[1], 'running', { kind: AGENT_NAME, label: shortActivity(fold.text), raw: fold.raws.join('\n'), ...(items.length > 1 || (fold.group === 'shell' && items.length > 0) ? { details: items } : {}) });
         };
         const closePoint = () => {
             if (lastPoint !== null) bench?.point(lastPoint[0], lastPoint[1], 'pass');
             lastPoint = null;
+            fold = null;
         };
         const onLine = (line) => {
             chat?.logLine(line);

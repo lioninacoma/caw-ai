@@ -11,6 +11,7 @@
 // commands (element, checkpoint, pause, cancel, and open, requests and the like for the workbench). Those for the workbench are posted to it like a forwarded key (CHAT_KEYS): they open views there.
 // Nothing from the workbench or the application decides here; only clicks and keys in this page reach the binding.
 
+import { actionOf, actionText, foldAction } from './activity.mjs';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -62,9 +63,12 @@ export const parseClaudeLog = (line) => {
     if (match[1] === undefined && match[2].startsWith('Claude finished after')) return null;
     // Free text is Claude's notes to itself. It addresses the human only via say.
     if (match[1] === undefined) return { kind: 'text', text: match[2].replaceAll(' ⏎ ', ' ').slice(0, MAX_ACTIVITY) };
-    const text = readableCommand(match[2]).replace(/^Bash: /, '').replace(/(^|[\s;&|(])caw agent /g, '$1').replaceAll(' ⏎ ', '; ').trim();
+    const readable = readableCommand(match[2]).replaceAll(' ⏎ ', '; ').trim();
+    const text = readable.replace(/^Bash: /, '').replace(/(^|[\s;&|(])caw agent /g, '$1').trim();
     if (/^(say|chat|plan)\b/.test(text) && !/[;&|]/.test(text)) return null;
-    return { kind: 'activity', text: text.slice(0, MAX_ACTIVITY) };
+    // For people a short sentence ("Read server.mjs"); the call itself stays as raw, e.g. for a tooltip.
+    const action = actionOf(readable);
+    return { kind: 'activity', text: actionText(action.group, [action.item]), group: action.group, item: action.item, raw: text.slice(0, MAX_ACTIVITY) };
 };
 
 /**
@@ -118,7 +122,13 @@ export const tailLines = (read, onLine, intervalMs = TAIL_MS) => {
  * @param status  shows the state, see STATES; plus the options when the human has to decide
  * @param onAbort the human aborts the whole run
  */
-export const createChat = ({ show = () => {}, status = () => {}, onAbort = () => {} } = {}) => {
+export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort = () => {} } = {}) => {
+    // Actions of one kind in a row fold into one line ("Read 2 files"); anything else shown in between starts a new one.
+    let fold = null;
+    const show = (who, ...rest) => {
+        if (who !== 'activity') fold = null;
+        return shown(who, ...rest);
+    };
     const unread = [];
     const lines = [];
     let paused = false;
@@ -382,7 +392,13 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         logLine: (line) => {
             const entry = parseClaudeLog(line);
             if (entry === null || ended) return;
-            show('activity', entry.text);
+            // Claude's notes to itself go with the actions as they are; actions fold by kind.
+            if (entry.kind !== 'activity') {
+                show('activity', entry.text);
+                return;
+            }
+            fold = foldAction(fold, entry);
+            show('activity', fold.text, { merge: fold.merged, items: fold.items.filter((item) => item !== ''), raw: fold.raws.join('\n') });
         },
         /** Before every browser command: while the human has something to say, nothing more happens in the application. */
         gate: () => {
@@ -497,9 +513,10 @@ details.activity li{overflow-wrap:anywhere}
 /* Claude starting, and Claude working. */
 .message.starting{flex-direction:row;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--r2);background:var(--panel2);font-size:12.5px}
 .message.starting .i{color:var(--agent)}.message.starting small{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
+.activity li small.items{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .message.starting.done{background:none;padding:0;color:var(--muted);font-size:12px}.message.starting.done .i{color:var(--pass)}.message.starting.done small{margin-left:0}
 #thinking{display:none;align-items:center;gap:7px;font:500 12px/1 var(--font);color:var(--agent)}#thinking .i{width:14px;height:14px}
-[data-state=running] #thinking,[data-state=advising] #thinking{display:flex}main:has(.message.starting:not(.done)) #thinking{display:none!important}
+[data-state=running] #thinking,[data-state=advising] #thinking,body.awaiting #thinking{display:flex}main:has(.message.starting:not(.done)) #thinking{display:none!important}
 /* Cards: plan, question, advice, failure, decision and the token notice. Flat: the header line, then the parts. */
 .message.card{gap:10px;padding:12px 14px 14px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line);font-size:13px;line-height:1.5}
 .card>strong{display:flex;align-items:center;gap:8px;font:500 13px/1.25 var(--font);color:var(--text)}
@@ -626,7 +643,9 @@ addEventListener('resize',fit);
 // A message, or a checkpoint while demonstrating (Alt+Enter, or "/checkpoint " in front of the text).
 const CHECKPOINT='/checkpoint ';
 const submit=(checkpoint=false)=>{let text=input.value;if(text.startsWith(CHECKPOINT)){text=text.slice(CHECKPOINT.length);checkpoint=true;}
-  if(text.trim()==='')return;send('message',text,checkpoint&&stateNow()==='showing');input.value='';fit();renderSlash();input.focus();};
+  if(text.trim()==='')return;send('message',text,checkpoint&&stateNow()==='showing');input.value='';fit();renderSlash();input.focus();
+  // In a conversation the answer takes a moment: "working" shows at once, until the agent's next entry.
+  if(['discussing','developing'].includes(stateNow()))document.body.classList.add('awaiting');};
 $('form').addEventListener('submit',(event)=>{event.preventDefault();submit();});
 toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');$('toggleText').textContent=T['chat.page.wait'];send('toggle');});
 // F9: like the main action, if it is currently shown.
@@ -709,6 +728,7 @@ let popped=false,solo=false;
 const UNREAD=['claude','plan','failure','decision','advice','question','tokens'];
 window.addMessage=(who,text,about,at)=>{
   if(UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
+  if(!['human','checkpoint','notice'].includes(who))document.body.classList.remove('awaiting');
   // One start at a time: preparing the sandbox and starting the agent show as one line.
   if(who==='starting'&&starting)return;
   if(who==='starting'){endGroup();started();const row=el('div','message starting');row.dataset.t0=String(at||Date.now());row.append(ic('loader'),el('span','',text),el('small'));elapsed(row);starting=row;place(row);return;}
@@ -716,7 +736,7 @@ window.addMessage=(who,text,about,at)=>{
   if(who==='activity'){
     // While demonstrating, the open list shows that every click arrives.
     if(group===null){const details=el('details','activity live');if(stateNow()==='showing')details.open=true;details.setAttribute('aria-live','off');const summary=el('summary');const mark=el('span','mk');mark.append(ic('chev','chev'),ic('loader'));const count=el('span','count');const latest=el('span','latest');summary.append(mark,count,latest);const ol=el('ol');details.append(summary,ol);group={details,count,latest,list:ol,total:0};place(details);}
-    group.list.append(el('li','',text));group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.textContent=text;
+    const merging=about?.merge===true&&group.list.lastElementChild!==null;const li=merging?group.list.lastElementChild:el('li');li.replaceChildren(el('span','',text));if(Array.isArray(about?.items)&&about.items.length>1)li.append(el('small','items',about.items.join(' · ')));if(typeof about?.raw==='string')li.title=about.raw;if(!merging)group.list.append(li);group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.textContent=text;
     if(follow)toEnd();
     return;
   }
@@ -850,7 +870,7 @@ input.addEventListener('keydown',(event)=>{
   if(event.key==='Enter'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submit();}});
 
 const TOGGLE_ICON={running:'pause',pausing:'play',paused:'play',asking:'check',showing:'stop',describing:'chev'};
-window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=pick.classList.contains('on')?T['chat.page.picking']:text;}
+window.setStatus=(state,text,label,button,options)=>{if(state==='closed')document.body.classList.remove('awaiting');document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=pick.classList.contains('on')?T['chat.page.picking']:text;}
   // While Claude works in the application the input is locked: typing here would take the focus from the application (an open
   // list closes when its field loses the focus). Pausing unlocks it.
   const locked=state==='running';input.disabled=locked;

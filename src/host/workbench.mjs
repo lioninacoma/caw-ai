@@ -252,6 +252,10 @@ grid-template-areas:"steps browser chat"}
 #steps>li[data-kind=step] .pts>li[data-state=running] .name{color:var(--run)}#steps>li[data-kind=step] .pts>li[data-state=fail] .name{color:var(--fail)}
 #steps>li[data-kind=step] .pts>li[data-state=waiting] .name,#steps>li[data-state=skipped] .pts .name{color:var(--faint)}
 .pts .live{display:block;font-size:11px;color:var(--run)}
+/* The agent's actions: several of one kind are one item ("Read 2 files") that unfolds to what they were about. */
+.pts li.has-det>.text>.name{cursor:pointer}.pts li.has-det>.text>.name::after{content:" ▸";color:var(--faint)}.pts li.has-det.open>.text>.name::after{content:" ▾"}
+.pts .det{display:none;margin:2px 0 0;padding:0;list-style:none;font:400 11.5px/1.45 var(--font-mono);color:var(--muted)}.pts li.open .det{display:block}
+.pts .det li{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* The marks: an icon per state, a spinner while running. */
 .st{display:inline-grid;place-items:center;width:18px}
 .tag{display:inline-grid;place-items:center;width:18px;height:18px}.tag .i{width:14px;height:14px;stroke-width:2.2}
@@ -580,6 +584,10 @@ const makePoint=(p)=>{const li=document.createElement('li');li.dataset.id=p.id;l
   const name=document.createElement('span');name.className='name';name.textContent=p.label??'';text.append(name);
   // The duration floats right at the start of the text, so the text wraps under it and keeps the whole width.
   const ms=document.createElement('span');ms.className='ms';text.insertBefore(ms,name);li.append(tree,makeMark(true),text);paint(li);return li;};
+// What a folded item was about, one line each; a click on its name unfolds it.
+const details=(point,list)=>{let box=point.querySelector(':scope>.text>.det');if(!box){box=document.createElement('ul');box.className='det';point.querySelector(':scope>.text').append(box);}
+  box.replaceChildren(...list.map((item)=>{const li=document.createElement('li');li.textContent=String(item);li.title=String(item);return li;}));point.classList.toggle('has-det',list.length>0);};
+document.addEventListener('click',(event)=>{const name=event.target.closest?.('#steps .pts li.has-det>.text>.name');if(name)name.closest('li').classList.toggle('open');});
 const phaseName=(li)=>{li.querySelector(':scope>.head .name').textContent=li.dataset.name;};
 // A step's hover action: open the state up to it (F1), shown only when the host offers this test (openable).
 const hoverOf=(id)=>{const box=document.createElement('span');box.className='hov';
@@ -742,11 +750,12 @@ addEventListener('message',(event)=>{const fromChat=event.source===chatWindow();
   if(event.data?.caw==='unread'&&fromChat&&document.body.classList.contains('solo')&&!popped())$('chatPop').querySelector('.new').hidden=false;});
 
 // The current item always stays in view: running, else failed, else the first open one; it sits in the upper third.
-const track=$('track');let followFrame=0;
+const track=$('track');let followFrame=0;let latestAction=null;
 const innermost=(state)=>[...document.querySelectorAll('#steps li[data-state='+state+']')].find((li)=>!li.querySelector('li[data-state='+state+']'));
 const follow=()=>{cancelAnimationFrame(followFrame);followFrame=requestAnimationFrame(()=>{
   if(track.scrollHeight<=track.clientHeight+1)return;
-  const li=innermost('running')??innermost('fail')??document.querySelector('#steps li[data-state=waiting]');
+  // Between the agent's actions nothing runs: its latest action stays in view, not the first waiting step far above it.
+  const li=innermost('running')??(latestAction?.isConnected?latestAction:null)??innermost('fail')??document.querySelector('#steps li[data-state=waiting]');
   const el=li?(li.parentElement.id==='steps'?li.querySelector(':scope>.head'):li):null;
   const box=track.getBoundingClientRect();
   const top=el?track.scrollTop+el.getBoundingClientRect().top-box.top-track.clientHeight/3:track.scrollHeight;
@@ -793,8 +802,11 @@ window.workbench={
     let point=pointsOf(li).find((node)=>node.dataset.id===id);
     if(!point){point=makePoint({id,label:opts.label??'',kind:opts.kind});li.querySelector(':scope>.pts').append(point);}
     else if(opts.label!==undefined){point.querySelector('.name').textContent=opts.label;point.dataset.label=((point.dataset.kind?point.dataset.kind+' ':'')+opts.label).trim();}
+    if(typeof opts.raw==='string')point.title=opts.raw;
+    if(Array.isArray(opts.details))details(point,opts.details);
     if(stateName==='running')for(const other of pointsOf(li))if(other!==point&&other.dataset.state==='running'){setState(other,'pass');other.querySelector('.live')?.remove();}
     setState(point,stateName,opts.note);
+    if(li.dataset.kind==='phase')latestAction=point;
     if(opts.ms!==undefined)showMs(point,opts.ms);else if(stateName==='waiting'||stateName==='running')showMs(point);
     point.querySelector('.live')?.remove();
     if(stateName==='running'&&opts.live){const live=document.createElement('span');live.className='live';live.dataset.text=opts.live;live.textContent=liveText(opts.live);point.querySelector('.text').append(live);}

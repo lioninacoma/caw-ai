@@ -1294,3 +1294,35 @@ test('workbench: the console object caw: the app window, what runs here, the foo
     assert.equal(await top.evaluate(() => caw.app.document.querySelectorAll('[data-caw-mark]').length), 0, 'the mark is gone again');
     assert.equal(await top.evaluate(() => Object.isFrozen(caw)), true);
 });
+
+test('agent actions: a folded item unfolds to its files and keeps the call as tooltip; the latest action stays in view; "working" right after a message', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    const page = bench.page;
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await bench.steps(Array.from({ length: 30 }, (_, i) => ({ id: `S${i + 1}`, name: `Schritt ${i + 1}`, kind: 'step' })));
+    await bench.group({ id: 'claude', name: 'Develop', kind: 'phase' });
+    await bench.point('claude', 'c1', 'running', { kind: 'Claude Code', label: '2 Dateien gelesen', raw: 'Read: a\nRead: b', details: ['p/a.mjs', 'p/b.md'] });
+    await bench.point('claude', 'c1', 'pass');
+    const item = page.locator('#steps li[data-id=claude] .pts>li[data-id=c1]');
+    assert.equal(await item.getAttribute('title'), 'Read: a\nRead: b');
+    assert.equal(await item.locator('.det').isVisible(), false, 'folded');
+    // Nothing runs, S1 waits far above: the latest action stays in view all the same.
+    assert.ok(await until(() => page.evaluate(() => { const track = document.getElementById('track'); const box = track.getBoundingClientRect(); const r = document.querySelector('#steps li[data-id=claude] .pts>li[data-id=c1]').getBoundingClientRect(); return track.scrollTop > 0 && r.top >= box.top && r.bottom <= box.bottom; })), 'the latest action in view');
+    await item.locator('.name').click();
+    assert.deepEqual(await item.locator('.det li').allTextContents(), ['p/a.mjs', 'p/b.md']);
+    // A question in the conversation: "working" at once, until the agent's next entry.
+    const answer = chat.develop('Bereit.', [{ id: 'end', label: 'Ende' }]);
+    await frame.waitForFunction(() => document.body.dataset.state === 'developing');
+    await frame.fill('#input', 'Warum?');
+    await frame.press('#input', 'Enter');
+    assert.ok(await until(() => frame.isVisible('#thinking')), 'working shows at once');
+    await answer;
+    // As in develop: the conversation goes on at once.
+    chat.develop(undefined, [{ id: 'end', label: 'Ende' }]);
+    await pause(300);
+    assert.equal(await frame.isVisible('#thinking'), true, 'still working while the agent thinks');
+    chat.say('Weil.');
+    assert.ok(await until(async () => !(await frame.isVisible('#thinking'))), 'gone with the answer');
+    return undefined;
+});
