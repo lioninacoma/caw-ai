@@ -24,7 +24,7 @@ const { exitOf } = await import('../../src/shared/errors.mjs');
 const { listProject } = await import('../../src/host/project-data.mjs');
 const { roleCommand, roleOverview } = await import('../../src/host/role-command.mjs');
 const { sessionTools } = await import('../../src/host/session-mcp.mjs');
-const { unregisterListener } = await import('../../src/shared/attach.mjs');
+const { liveListeners, unregisterListener } = await import('../../src/shared/attach.mjs');
 const { EXPLORE_FILE, explore: exploreCommand } = await import('../../src/host/explore.mjs');
 const { exploreBrowser } = await import('../../src/host/browser-session.mjs');
 const { browserArgs } = await import('../../src/host/host-lock.mjs');
@@ -270,7 +270,7 @@ scenario('B2', 'Setup with the packed CLI: init writes language and environment 
         const a = newDir();
         const first = await caw(a, ['init', '--offline', '--url', `http://app.localhost:${SPA_PORT}`, '--language', 'en', '--no-mcp']);
         const config = existsSync(join(a, 'caw.config.json')) ? JSON.parse(readFileSync(join(a, 'caw.config.json'), 'utf8')) : {};
-        verify('(a) init: language en, environment local with claude and writable', first.code === 0 && config.language === 'en' && JSON.stringify(config.environments?.local) === `{"url":"http://app.localhost:${SPA_PORT}","claude":true,"writable":true}`, `${first.code} ${JSON.stringify(config.environments)}`);
+        verify('(a) init: language en, environment local with agent and writable', first.code === 0 && config.language === 'en' && JSON.stringify(config.environments?.local) === `{"url":"http://app.localhost:${SPA_PORT}","agent":true,"writable":true}`, `${first.code} ${JSON.stringify(config.environments)}`);
         verify('(a) .env.example with the naming convention and .gitignore lines', /CAW_TESTER_USER=\nCAW_TESTER_PASSWORD=/.test(readFileSync(join(a, 'caw/.env.example'), 'utf8'))
             && ['caw/.env', 'caw/.auth/'].every((line) => readFileSync(join(a, '.gitignore'), 'utf8').includes(line)));
         const b = newDir();
@@ -1057,6 +1057,8 @@ scenario('S2', 'Record by plan as the session agent: caw_start, caw_status names
 
 scenario('S2c', 'open --attach: waits in header and chat, links after the handover, chat never blocks the session, working only from the message to the answer', spa, async () => {
     setConfig(baseConfig({ local: ENVIRONMENTS.local }));
+    // Sessions of earlier scenarios listened with this process's pid and still count as alive: none may answer this window.
+    for (const { key } of liveListeners(root)) unregisterListener(root, key);
     // The session runs in this process: its tools as Claude Code calls them over MCP, its listener with this pid.
     const tools = Object.fromEntries(sessionTools({ root }).map((tool) => [tool.name, tool]));
     const caw = (args) => tools.caw.call({ args });

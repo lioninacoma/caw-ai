@@ -181,7 +181,13 @@ export const humans = (...windows) => {
         onChatOpen: (page) => {
             const human = windows[index];
             index += 1;
-            running.push((human ?? (async () => verify('Unexpected window', false, String(index))))(asHuman(page)).catch(async (error) => {
+            const person = asHuman(page);
+            // Done with the window: an end card offering "Save baselines" counts down nothing and waits for a choice, so the
+            // person closes it, as anyone would. A window that closes by itself ends the wait at once.
+            const leave = () => person.locator('#next.on #learn:not([hidden])').waitFor({ state: 'visible', timeout: 120000 })
+                .then(() => endAction(person, 'closeWindow', { timeout: 10000 }))
+                .catch(() => {});
+            running.push((human ?? (async () => verify('Unexpected window', false, String(index))))(person).then(leave).catch(async (error) => {
                 // Where the chat was: without this a timeout says nothing.
                 const seen = await page.evaluate(() => `${document.body?.dataset.state ?? '-'} | ${document.body?.innerText.replace(/\s+/g, ' ').slice(-300)}`).catch((reason) => `unreadable: ${reason.message.split('\n')[0]}`);
                 verify(`Human in window ${index}`, false, `${error.message.split('\n')[0]} | Chat: ${seen}`);
