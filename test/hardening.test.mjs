@@ -1,6 +1,6 @@
 // Findings of the cross-review: one test each that shows the original bug. Pure functions, no Chrome.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -129,7 +129,8 @@ test('overlay.statics: if a file is missing, the run names it before the browser
 });
 
 test('overlay: overlay.statics wins, then the build up to the hash; never pages or data', async (t) => {
-    const root = folder(t, { 'fixed/index.js': 'fixed' });
+    // The real path: on macOS the temp folder lies behind a link (/var -> /private/var), and statics resolve links.
+    const root = realpathSync(folder(t, { 'fixed/index.js': 'fixed' }));
     for (const [name, text] of [['dist/assets/index-NEW11111.js', 'x'], ['dist/assets/style-NEW11111.css', 'y']]) {
         mkdirSync(join(root, name, '..'), { recursive: true });
         writeFileSync(join(root, name), text);

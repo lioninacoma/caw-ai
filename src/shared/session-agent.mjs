@@ -73,7 +73,8 @@ export const waitingRuns = (root, env = process.env) => {
         .filter((name) => name.endsWith('.json'))
         .map((name) => validMarker(root, join(markersDir(root), name), env))
         .filter((marker) => marker !== undefined)
-        .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+        // Two runs of the same millisecond: the run id, which starts with its time, decides.
+        .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)) || String(b.runId).localeCompare(String(a.runId)));
 };
 
 /**

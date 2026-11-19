@@ -99,6 +99,8 @@ const open = async (t, { first } = {}) => {
 };
 
 const pause = (ms) => new Promise((ok) => { setTimeout(ok, ms); });
+// The chat names and takes the platform's modifier: ⌘ on macOS, Ctrl elsewhere.
+const MOD = process.platform === 'darwin' ? '⌘' : 'Strg';
 
 test('workbench: only the own chat speaks as the human, a fake iframe named caw-chat does not', async (t) => {
     if (browser === null) return t.skip('no Chrome');
@@ -850,7 +852,7 @@ test('workbench: Ctrl+, opens the settings page; its mode switches workbench and
     assert.equal(await page.textContent('#project'), 'errand', 'the project in the breadcrumb');
     assert.equal(await page.textContent('#envBadge'), 'nur lesen', 'the app bar says the environment is not writable');
     await page.focus('#more');
-    await page.keyboard.press('Control+Comma');
+    await page.keyboard.press('ControlOrMeta+Comma');
     assert.equal(await page.isVisible('#settings'), true);
     assert.equal(await page.isVisible('#app'), false, 'a view of the workbench: the panes step back');
     assert.equal(await page.textContent('#title'), 'Einstellungen');
@@ -887,7 +889,7 @@ test('workbench: Ctrl+, opens the settings page; its mode switches workbench and
     assert.equal(await page.isVisible('#app'), true);
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'more', 'the focus returns');
     // Ctrl+, from inside the chat opens it too.
-    await chat.locator('body').press('Control+Comma');
+    await chat.locator('body').press('ControlOrMeta+Comma');
     assert.ok(await until(() => page.isVisible('#settings')));
     await page.click('#setBack');
     // A reloaded workbench and its new chat start in the saved mode.
@@ -1033,19 +1035,19 @@ test('chat: the main action sits above the input with Ctrl+Enter; while Claude C
     assert.match(await frame.textContent('#toggle'), /^Pause\s*F9$/);
     assert.equal(await frame.evaluate(() => document.getElementById('toggle').parentElement.id), 'bar');
     assert.equal(await frame.locator('#form button').evaluateAll((list) => list.filter((b) => b.offsetParent !== null).map((b) => b.id).join(',')), 'send', 'only the send arrow in the field');
-    assert.match(await frame.textContent('#hint'), /^\/ Befehle\s*Enter senden\s*Strg ↵ Hauptaktion/);
+    assert.match(await frame.textContent('#hint'), new RegExp(`^/ Befehle\\s*Enter senden\\s*${MOD} ↵ Hauptaktion`));
     // Asking: "Fertig" full width above the input, Ctrl+Enter presses it.
     const lines = [];
     chat.enter('asking');
     assert.ok(await until(() => frame.evaluate(() => document.body.dataset.state === 'asking')));
     assert.match(await frame.getAttribute('#toggle', 'class'), /btn btn-p/);
-    assert.match(await frame.textContent('#toggle'), /^Fertig\s*Strg ↵$/);
+    assert.match(await frame.textContent('#toggle'), new RegExp(`^Fertig\\s*${MOD} ↵$`));
     const [toggle, form] = await Promise.all([frame.locator('#toggle').boundingBox(), frame.locator('#form').boundingBox()]);
     assert.ok(toggle.y + toggle.height <= form.y, 'above the input');
     assert.ok(Math.abs(toggle.width - form.width) < 2, 'full width');
     const next = chat.operator.nextLine().then((line) => lines.push(line));
     await frame.focus('#input');
-    await bench.page.keyboard.press('Control+Enter');
+    await bench.page.keyboard.press('ControlOrMeta+Enter');
     await next;
     assert.deepEqual(lines, [''], 'Ctrl+Enter is "Fertig"');
     // Planning: "Plan freigeben" is the one main action, Ctrl+Enter approves it.
@@ -1055,7 +1057,7 @@ test('chat: the main action sits above the input with Ctrl+Enter; while Claude C
     assert.equal(await frame.isVisible('#toggle'), false);
     assert.match(await frame.getAttribute('#approve', 'class'), /primary big btn btn-p/);
     await frame.focus('#input');
-    await bench.page.keyboard.press('Control+Enter');
+    await bench.page.keyboard.press('ControlOrMeta+Enter');
     await planned;
     assert.deepEqual(answer, { approved: true });
     return undefined;
