@@ -7,12 +7,13 @@
 // question, advice (with diff), failure, decision and the token notice. No tool row: the one main action of the state
 // (Done, Approve plan, Finish demo, Hand over …) sits full width above the input (Ctrl+Enter); while Claude works it is
 // "Pause F9" in the status line. A card's choices and the end card show one primary action, the others beside it or behind
-// "More". "/" at the start of the field opens the commands (element, checkpoint, pause, cancel, and open, requests and the
-// like for the workbench). Those for the workbench are posted to it like a forwarded key (CHAT_KEYS): they open views there.
+// "More"; the end card's command wraps only between words and keeps its spaces. "/" at the start of the field opens the
+// commands (element, checkpoint, pause, cancel, and open, requests and the like for the workbench). Those for the workbench are posted to it like a forwarded key (CHAT_KEYS): they open views there.
 // Nothing from the workbench or the application decides here; only clicks and keys in this page reach the binding.
 
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
@@ -524,11 +525,10 @@ details.activity li{overflow-wrap:anywhere}
 .card>ul{margin:0;font-size:12.5px;color:var(--text)}.card li{display:flex;gap:6px}.card li .i{width:13px;height:13px;margin-top:2px}
 .card li.e .i{color:var(--fail)}.card li.w .i{color:var(--warn)}.card li.f .i,.card>ul li .i{color:var(--faint)}
 .advice h2{margin:0;font:600 14px/1.3 var(--font)}.advice .target{font:400 11.5px/1.4 var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
-.diff code,.cmd code{font-variant-ligatures:none}
 .diff-h{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--muted);font:400 11px/1.3 var(--font);background:var(--panel2)}
 .diff-h b{color:var(--text);font:500 11px/1.3 var(--font-mono)}.diff-h .i{width:13px;height:13px}.diff-h span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .prompt{display:flex;flex-direction:column;gap:6px;padding:9px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12px;color:var(--muted)}
-.prompt .ptext{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto}.prompt .lnk{font-size:12px;align-self:flex-start}
+.prompt .ptext{white-space:pre-wrap;overflow-wrap:break-word;max-height:200px;overflow:auto}.prompt .lnk{font-size:12px;align-self:flex-start}
 /* The footer: cancel question, status line, choices or the end card, then the input. */
 footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;padding:10px 14px 14px;border-top:1px solid var(--line)}
 #down{position:absolute;right:14px;top:-42px;background:var(--panel);box-shadow:0 0 0 1px var(--line2);display:none}#down.on{display:inline-grid}
@@ -564,8 +564,10 @@ footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;pa
 #nextText{font-size:13px}#nextText:empty,#nextRepro:empty{display:none}#nextRepro{display:flex;flex-direction:column;gap:10px}
 .quote{padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px;font-style:italic;overflow-wrap:anywhere}
 .banner.ro{padding:7px 10px}.banner.ro span{font-size:12px}
-.cmd{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--code);color:var(--code-text);font:400 11.5px/1.45 var(--font-mono);overflow-wrap:anywhere}
-.cmd>.i{width:14px;height:14px;margin-top:1px;color:var(--muted)}.cmd>span{min-width:0;flex:1}
+.cmd{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--code);color:var(--code-text);font:400 11.5px/1.45 var(--font-mono)}
+.cmd>.i{width:14px;height:14px;margin-top:1px;color:var(--muted)}.cmd>span{min-width:0;flex:1;overflow-x:auto}
+/* A command wraps only between its words, never inside one (not even after a hyphen); the spaces stay. */
+.cmd code{white-space:normal;overflow-wrap:normal;word-break:normal}.cmd .w{white-space:nowrap}
 .cmd small{display:block;margin-bottom:2px;font:400 11.5px/1.4 var(--font);color:var(--muted)}.cmd code{font:inherit}
 .cmd .ib{width:22px;height:22px;margin:-2px -4px -2px 0}.cmd .ib .i{width:14px;height:14px}.cmd:empty{display:none}
 /* The input: chip, field with the send arrow, the hint line; "/" opens the commands above it. */
@@ -789,7 +791,9 @@ window.setNext=(info)=>{const box=$('next');box.classList.toggle('on',!!info);if
   if(r){if(r.bug)repro.append(el('div','quote','“'+r.bug+'”'));const kv=el('dl','kv');for(const [key,value] of [['observed',r.observed],['expected',r.expected],['cause',r.cause]])if(value)kv.append(el('dt','',T['chat.page.'+key]),el('dd','',value));if(kv.childElementCount>0)repro.append(kv);
     if(r.readOnly){const banner=el('div','banner ro');banner.append(ic('lock'),el('span','',T['chat.page.readOnly']));repro.append(banner);}}
   const cmd=$('nextCmd');cmd.replaceChildren();
-  if(info.command){const words=el('span');words.append(el('small','',T[info.adopt?'chat.page.adoptDraft':'chat.page.newRun']),el('code','',info.command));const copy=el('button','ib');copy.type='button';copy.title=copy.ariaLabel=T['chat.page.copyCommand'];copy.append(ic('copy'));
+  // Each word unbreakable, the spaces between them plain text: it wraps only there, and a copy keeps them.
+  const commandCode=(text)=>{const code=el('code');String(text).split(' ').forEach((word,index)=>{if(index>0)code.append(' ');code.append(el('span','w',word));});return code;};
+  if(info.command){const words=el('span');words.append(el('small','',T[info.adopt?'chat.page.adoptDraft':'chat.page.newRun']),commandCode(info.command));const copy=el('button','ib');copy.type='button';copy.title=copy.ariaLabel=T['chat.page.copyCommand'];copy.append(ic('copy'));
     copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(info.command);copy.title=T['chat.page.copied'];}catch{const range=document.createRange();range.selectNodeContents(words.lastChild);getSelection().removeAllRanges();getSelection().addRange(range);}});
     cmd.append(ic(info.adopt?'file':'terminal'),words,copy);}
   arrangeNext();};
@@ -959,7 +963,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     let learnClicked = false;
     const openReport = async () => {
         const page = await chatWindow.context().newPage();
-        await page.setContent(reportPage({ markdown: readFileSync(next.report, 'utf8'), path: next.shown ?? next.report }));
+        await page.setContent(reportPage({ markdown: readFileSync(next.report, 'utf8'), path: next.shown ?? next.report, dir: dirname(next.report) }));
         await page.bringToFront();
     };
     const render = (state, options) => {

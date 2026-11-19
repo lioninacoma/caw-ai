@@ -3,7 +3,7 @@
 
 import { t } from './i18n.mjs';
 import { closest } from './suggest.mjs';
-import { headLine } from './brand.mjs';
+import { headLine, packageVersion } from './brand.mjs';
 import { colorEnabled, termPainter } from './color.mjs';
 
 /** The commands for people, in help order. */
@@ -35,11 +35,11 @@ const REMOVED = { skill: 'cli.removedSkill' };
 /** A command's block; `here` names the environments Claude may work on, if the config knows them. */
 const block = (command, here) => t(`cli.help.${command}`, { here: here === undefined || here === '' ? '' : t('cli.help.here', { names: here }) });
 
-/** In a colour terminal the head line replaces the intro's first line; without colour the intro stays as it is. */
+/** In a colour terminal the head line with the version replaces the intro's first line; without colour the intro stays as it is. */
 const banner = (intro) => {
     if (!colorEnabled()) return intro;
     const paint = termPainter(true);
-    return [headLine('caw', { accent: paint.accent, bold: paint.bold, dim: paint.faint }), ...intro.split('\n').slice(1)].join('\n');
+    return [headLine('caw', { accent: paint.accent, bold: paint.bold, dim: paint.faint }, { version: packageVersion() }), ...intro.split('\n').slice(1)].join('\n');
 };
 
 /** An option line of the overlay extension; its description continues on lines indented to the description column. */

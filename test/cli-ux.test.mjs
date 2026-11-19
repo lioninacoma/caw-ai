@@ -306,7 +306,7 @@ test('report: in the terminal also as a clickable file:// address', () => {
     const lines = [];
     const ui = createUi({ fancy: true, out: (text) => lines.push(text) });
     ui.verdict({ status: 'pass', testId: 'x', target: 'local' }, { report: '.caw/runs/r/report.md', reportUrl: 'file:///c:/p/.caw/runs/r/report.md', elapsed: 1 });
-    assert.match(plain(lines.join('\n')), /Bericht:.*\.caw\/runs\/r\/report\.md\n.*file:\/\/\/c:\/p\/\.caw\/runs\/r\/report\.md/);
+    assert.match(plain(lines.join('\n')), /^Bericht {2}\.caw\/runs\/r\/report\.md\n {9}file:\/\/\/c:\/p\/\.caw\/runs\/r\/report\.md$/m);
 });
 
 test('stepsText: contiguous as a range, otherwise listed', () => {

@@ -1,5 +1,9 @@
 // The tool's console output in Graphite: fixed colours and plain marks (✓ ! ✕ ○ ?), sections as rules (── 1 ANMELDEN ───),
 // results in a box (┌─┤ ERGEBNIS ├─┐).
+// A run reads like the workbench: the head "● caw · Context-Aware Web Testing · <version>", the mode in bold, the "Run ───" rule,
+// one line per step (✓ S1  name, its duration dim in a right-aligned column, "not reached" for an open step), a failure as
+// "└ reason" under the step's name, the summary "Failed. 2 of 4 steps passed. 1 warning", then "report" and "next" with a dim
+// label and the commands in the accent colour.
 // In files and pipes it stays plain, greppable lines prefixed with [caw].
 
 import { colorEnabled, termPainter } from './color.mjs';
@@ -7,7 +11,7 @@ import { exitOf } from './errors.mjs';
 import { t } from './i18n.mjs';
 import { isErrorCode, isSkipped } from './report.mjs';
 import { MARKS as marks } from './marks.mjs';
-import { headLine } from './brand.mjs';
+import { headLine, packageVersion } from './brand.mjs';
 
 // Error texts and reasons can come from the application; they must not control the terminal.
 // eslint-disable-next-line no-control-regex -- deliberately matches control characters to neutralise them
@@ -22,6 +26,10 @@ const ANSI = /\u001b\[[0-9;]*m/g;
 const width = (text) => [...String(text).replace(ANSI, '')].length;
 // The reason of a failed step in the plain output: two terminal lines at most, the rest is in report.md.
 const MAX_REASON = 240;
+// The step names' column in the run's result; a longer name pushes its duration further right.
+const MAX_NAME = 40;
+// The head is shown once per process on the console, however many parts of the tool print; an own `out` has its own.
+const CONSOLE_HEAD = { shown: false };
 
 /** Why the run failed, as "S1: <note>": the first failed step that was reached, otherwise the first hard error. */
 export const failedReason = ({ results = [], failures = [] }) => {
@@ -56,7 +64,9 @@ export const askYesNo = async (question, { fallback = true, input = process.stdi
 };
 
 // Look up console only when writing, so output also lands where a test has replaced console.log.
-export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(text), err = (text) => console.error(text), full } = {}) => {
+export const createUi = ({ fancy = colorEnabled(), out: own, err = (text) => console.error(text), full } = {}) => {
+    const out = own ?? ((text) => console.log(text));
+    const headed = own === undefined ? CONSOLE_HEAD : { shown: false };
     const paint = termPainter(fancy, full === undefined ? {} : { full });
     const blank = ' '.repeat(width(marks.tag('ok')));
     /** A status mark in its colour. */
@@ -69,8 +79,6 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
     const marked = (kind, text, write = out, color = paint.text) => write(fancy ? `  ${tag(kind)} ${color(safe(text))}` : `[caw] ${safe(text)}`);
     /** Line with a bullet in front, for hints and instructions. */
     const pointed = (kind, text, write = out, color = paint.muted) => write(fancy ? `  ${bullet(kind)} ${color(safe(text))}` : `[caw] ${safe(text)}`);
-    /** Sub-item under a mark: tree, bullet, text. */
-    const sub = (kind, text, last = true, color = paint.muted) => `  ${blank} ${paint.faint(last ? marks.tree.end : marks.tree.mid)} ${bullet(kind)} ${color(safe(text))}`;
     /** Section: ── TITLE ─────── in faint, the title in accent. */
     const rule = (title, color = paint.accent) => {
         const { before, after, tail, line } = marks.rule(title, WIDTH);
@@ -85,19 +93,30 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         for (const row of rows) out(`  ${color(b.v)} ${row}${' '.repeat(Math.max(0, inner - width(row) - 1))}${color(b.v)}`);
         out(`  ${color(`${b.bl}${b.h.repeat(inner)}${b.br}`)}`);
     };
-    /** Progress: ━ passed (ok), ━ failed (fail), ─ open. */
-    const gauge = (counts, size = 24) => {
-        const total = Math.max(1, counts.pass + counts.fail + counts.open);
-        const cells = (count) => Math.round((count / total) * size);
-        const pass = cells(counts.pass);
-        const fail = Math.min(size - pass, cells(counts.fail));
-        const p = marks.progress;
-        return `${paint.ok(p.done.repeat(pass))}${paint.fail(p.run.repeat(fail))}${paint.faint(p.open.repeat(Math.max(0, size - pass - fail)))}`;
-    };
     const STATUS = {
-        pass: { kind: 'ok', title: 'PASS', color: paint.ok },
-        fail: { kind: 'fail', title: 'FAIL', color: paint.fail },
-        error: { kind: 'warn', title: 'ERROR', color: paint.warn },
+        pass: { kind: 'ok', color: paint.ok },
+        fail: { kind: 'fail', color: paint.fail },
+        error: { kind: 'warn', color: paint.warn },
+    };
+    /** The commands in `text` in the accent colour, the rest in `color`. */
+    const withCommands = (text, commands = [], color = paint.muted) => {
+        let rest = safe(text);
+        let shown = '';
+        for (;;) {
+            const found = commands.map((command) => [rest.indexOf(command), command]).filter(([at]) => at !== -1).sort(([a], [b]) => a - b)[0];
+            if (found === undefined) return shown + (rest === '' ? '' : color(rest));
+            const [at, command] = found;
+            shown += (at === 0 ? '' : color(rest.slice(0, at))) + paint.accent(command);
+            rest = rest.slice(at + command.length);
+        }
+    };
+    /** "report" and "next" as a dim label column at the left edge. */
+    const LABELS = () => [t('cli.uiReportLabel'), t('cli.uiNextLabel')];
+    const labelled = (label, text) => `${paint.faint(label.padEnd(Math.max(...LABELS().map((item) => item.length)) + 2))}${text}`;
+    const head = () => {
+        if (!fancy || headed.shown) return;
+        headed.shown = true;
+        out(headLine('caw', { accent: paint.accent, bold: paint.bold, dim: paint.faint }, { version: packageVersion() }));
     };
 
     return {
@@ -123,8 +142,22 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
                 out(`[caw] ${safe(title)}`);
                 return;
             }
+            headed.shown = true;
             out(headLine(safe(title), { accent: paint.accent, bold: paint.bold, dim: paint.faint }));
             out('');
+        },
+        /** The head "● caw · Context-Aware Web Testing · <version>", once per process; in pipes nothing. */
+        head,
+        /**
+         * What to do next, after a run: the first line labelled "next", the commands in it in the accent colour. In pipes the
+         * lines as they are.
+         * @param lines [{ text, commands: ['caw run …'] }]
+         */
+        next: (lines) => {
+            lines.forEach(({ text, commands }, index) => {
+                if (!fancy) out(`[caw] ${safe(text)}`);
+                else out(index === 0 ? labelled(t('cli.uiNextLabel'), withCommands(text, commands)) : labelled('', withCommands(text, commands)));
+            });
         },
         /** A section of a guided flow. */
         section: (number, title) => {
@@ -158,7 +191,7 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
         pending: (text) => {
             if (!fancy || !process.stdout.isTTY) {
                 out(`[caw] ${safe(text)} …`);
-                return { done: (final = text) => out(`[caw] ✓ ${safe(final)}`), fail: (final = text) => out(`[caw] ✗ ${safe(final)}`) };
+                return { done: (final = text) => out(`[caw] ✓ ${safe(final)}`), fail: (final = text) => out(`[caw] ✕ ${safe(final)}`) };
             }
             let frame = 0;
             const { frames, ms } = marks.spinner;
@@ -177,20 +210,22 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
          * Header of a single run: what runs where, and who drives.
          * `code` is the "Code: …" line (describeCode); it is always shown, even without a terminal.
          */
-        header: ({ mode, test, target, source, code, maxActions, language: team }) => {
+        header: ({ mode, test, target, role, source, code, maxActions, language: team }) => {
             const codeLine = t('cli.uiCode', { code: code ?? (source === 'overlay' ? t('cli.uiLocal') : t('cli.uiDeployed')) });
             if (!fancy) {
                 out(`[caw] ${mode}: ${test} ${t('cli.uiOn')} ${target}${team === undefined ? '' : ` · ${t('cli.uiLanguage', { language: team })}`}`);
                 out(`[caw] ${safe(codeLine)}`);
                 return;
             }
-            out('');
-            out(rule(`${safe(test).toUpperCase()} ${t('cli.uiOn')} ${safe(target)}`));
-            const details = [mode];
+            head();
+            // "Replay without Claude · first-errand on local as user · team language en"
+            const details = [];
             if (team !== undefined) details.push(t('cli.uiLanguage', { language: team }));
             if (maxActions !== undefined) details.push(t('cli.uiMaxActions', { count: maxActions }));
-            out(`  ${blank} ${paint.muted(details.map(safe).join(' · '))}`);
-            out(`  ${blank} ${paint.muted(safe(codeLine))}`);
+            const as = role === undefined ? '' : `${paint.faint(` ${t('cli.uiAs')}`)} ${safe(role)}`;
+            out(`${paint.bold(safe(mode))} ${paint.faint(`· ${safe(test)} ${t('cli.uiOn')}`)} ${safe(target)}${as}${details.length === 0 ? '' : paint.faint(` · ${details.map(safe).join(' · ')}`)}`);
+            out(paint.faint(safe(codeLine)));
+            out('');
         },
 
         step: ({ number, total, label, elapsed }) => {
@@ -202,9 +237,14 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
             out(`  ${blank} ${bullet('run')} ${paint.accent(String(number).padStart(size))}${paint.faint(`/${total}`)} ${paint.text(safe(label))} ${paint.muted(`+${seconds(elapsed)}`)}`);
         },
 
-        /** A run's result: rule with the outcome, one mark per expectation, progress, report. */
-        verdict: ({ status, reason, note, code, testId, target, expectations = [], results = [], failures = [], warnings = [] }, { report, reportUrl, elapsed }) => {
-            const { title, color } = STATUS[status];
+        /**
+         * A run's result: the "Run" rule, one line per step with its mark, name and duration, the reason under a failed step, hard
+         * errors, the summary, the report.
+         * @param names     step id -> name (otherwise the expectation's text is shown)
+         * @param durations step id -> seconds
+         */
+        verdict: ({ status, reason, note, code, testId, target, expectations = [], results = [], failures = [], warnings = [] }, { report, reportUrl, elapsed, names = {}, durations = {} }) => {
+            const { color } = STATUS[status];
             // An error always names its code, as when a command stops (fatal).
             const codeLabel = status === 'error' && isErrorCode(code) ? t('cli.errorCode', { code, exit: exitOf(code) }) : '';
             const why = failedReason({ results, failures });
@@ -217,36 +257,46 @@ export const createUi = ({ fancy = colorEnabled(), out = (text) => console.log(t
                 return;
             }
             out('');
-            out(rule(`${title} · ${safe(testId)} ${t('cli.uiOn')} ${safe(target)} · ${seconds(elapsed)}`, (text) => color(paint.bold(text))));
+            const { line } = marks.rule('', WIDTH);
+            out(paint.faint(`${t('cli.uiRun')} ${line.slice(width(t('cli.uiRun')) + 1)}`));
             if (reason) out(`  ${tag(STATUS[status].kind)} ${paint.text(safe(reason))}${codeLabel ? ` ${paint.muted(codeLabel)}` : ''}`);
+            // Columns: mark, id, name, duration. The name starts where a failure's reason starts below it.
+            const idWidth = Math.max(0, ...expectations.map(({ id }) => width(id)));
+            const nameOf = ({ id, text }) => safe(names[id] ?? text);
+            const nameWidth = Math.min(MAX_NAME, Math.max(0, ...expectations.map((item) => width(nameOf(item)))));
+            const indent = ' '.repeat(2 + width(marks.tag('ok')) + 1 + idWidth + 2);
+            const under = (text, last, paintText) => out(`${indent.slice(2)}${paint.faint(last ? marks.tree.end : marks.tree.mid)} ${paintText(safe(text))}`);
+            const time = (id) => (typeof durations[id] === 'number' ? seconds(durations[id]).padStart(6) : '');
             const counts = { pass: 0, fail: 0, open: 0 };
-            for (const { id, text } of expectations) {
-                const item = results.find((candidate) => candidate.id === id);
+            for (const item of expectations) {
+                const { id } = item;
+                const result = results.find((candidate) => candidate.id === id);
+                const name = nameOf(item);
+                const gap = ' '.repeat(Math.max(2, nameWidth - width(name) + 2));
                 // Not reached because an earlier step failed: open, not one more failure.
-                if (item === undefined || isSkipped(item, results)) {
+                if (result === undefined || isSkipped(result, results)) {
                     counts.open += 1;
-                    out(`  ${tag('open')} ${paint.faint(`${id} ${safe(text)}`)}`);
+                    out(`  ${tag('open')} ${paint.faint(`${id.padEnd(idWidth)}  ${name}${gap}${t('cli.uiNotReached')}`)}`);
                     continue;
                 }
-                counts[item.status === 'pass' ? 'pass' : 'fail'] += 1;
-                out(`  ${tag(STATUS[item.status].kind)} ${paint.muted(id)} ${paint.text(safe(text))}`);
-                if (item.status !== 'pass' && item.note) out(sub('fail', item.note, true, paint.text));
+                counts[result.status === 'pass' ? 'pass' : 'fail'] += 1;
+                const took = time(id);
+                out(`  ${tag(STATUS[result.status].kind)} ${paint.muted(id.padEnd(idWidth))}  ${paint.text(name)}${took === '' ? '' : `${gap}${paint.faint(took)}`}`);
+                if (result.status !== 'pass' && result.note) under(result.note, true, paint.fail);
             }
             const shown = failures.slice(0, MAX_FAILURES);
-            shown.forEach((failure, index) => out(sub('fail', `${failure.type}: ${failure.text}`, index === shown.length - 1 && failures.length <= MAX_FAILURES, paint.fail)));
-            if (failures.length > MAX_FAILURES) out(`  ${blank}   ${paint.muted(t('cli.uiMoreFailures', { count: failures.length - MAX_FAILURES }))}`);
-            if (warnings.length > 0) out(`  ${tag('warn')} ${paint.muted(t('cli.uiWarningsShort', { count: warnings.length }))}`);
-            if (note) out(`  ${blank} ${paint.muted(safe(note))}`);
-            if (expectations.length > 0) {
-                const parts = [paint.ok(t('cli.uiPassed', { count: counts.pass }))];
-                if (counts.fail > 0) parts.push(paint.fail(t('cli.uiFailed', { count: counts.fail })));
-                if (counts.open > 0) parts.push(paint.muted(t('cli.uiOpen', { count: counts.open })));
-                out('');
-                out(`  ${gauge(counts)}  ${parts.join(paint.muted(' · '))}`);
-            }
-            out(`  ${paint.muted(t('cli.uiReport'))} ${paint.info(report)}`);
+            shown.forEach((failure, index) => under(`${failure.type}: ${failure.text}`, index === shown.length - 1 && failures.length <= MAX_FAILURES, paint.fail));
+            if (failures.length > MAX_FAILURES) out(`${indent}${paint.muted(t('cli.uiMoreFailures', { count: failures.length - MAX_FAILURES }))}`);
+            if (note) out(`${indent}${paint.muted(safe(note))}`);
+            // "Failed. 2 of 4 steps passed. 1 warning · 8.7s"
+            const parts = [color(paint.bold(t(`cli.uiStatus.${status}`)))];
+            if (expectations.length > 0) parts.push(paint.text(t('cli.uiStepsPassed', { passed: counts.pass, total: expectations.length })));
+            if (warnings.length > 0) parts.push(paint.warn(t('cli.uiWarningCount', { count: warnings.length })));
+            out('');
+            out(`${parts.join(' ')} ${paint.faint(`· ${seconds(elapsed)}`)}`);
+            out(labelled(t('cli.uiReportLabel'), paint.text(report)));
             // Clickable in the terminal; the relative path above stays readable.
-            if (reportUrl !== undefined) out(`  ${paint.muted(reportUrl)}`);
+            if (reportUrl !== undefined) out(labelled('', paint.faint(reportUrl)));
         },
 
         /**

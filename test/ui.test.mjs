@@ -64,20 +64,77 @@ test('in a terminal: steps not reached count as open, not as failed', () => {
         results: [{ id: 'S1', status: 'fail', note: 'kaputt' }, { id: 'S2', status: 'fail', note: t('session.replay.notReachedBecause', { owner: 'S1' }) }],
     }, { report: 'r.md', elapsed: 1 });
     const text = plain(lines.join('\n'));
-    assert.match(text, /1 Fehler · 1 offen/);
-    assert.doesNotMatch(text, /Nicht erreicht/);
+    assert.match(text, /✕ S1 {2}a/);
+    assert.match(text, /○ S2 {2}b {2}nicht erreicht/);
+    assert.match(text, /Fehlgeschlagen\. 0 von 2 Schritten bestanden\./);
+    assert.doesNotMatch(text, /Nicht erreicht, weil/, 'the note of a step not reached is not shown as a failure');
 });
 
-test('in a terminal: the verdict lists each expectation with its mark, the failure reason and the progress', () => {
+test('in a terminal: the verdict lists each step with its mark, the failure reason under its name and the summary', () => {
     const { lines, ui } = capture(true);
     ui.verdict(VERDICT, { report: 'r.md', elapsed: 2 });
     const text = plain(lines.join('\n'));
-    assert.match(text, /── FAIL · r1 auf a\/dev · 2\.0s ─+/);
-    assert.match(text, /✓ E1 Maske da/);
-    assert.match(text, /✕ E2 Liste da/);
-    assert.match(text, /└ ✕ Liste leer/);
-    assert.match(text, /━+ {2}1 bestanden · 1 Fehler/);
-    assert.match(text, /Bericht: r\.md/);
+    assert.match(text, /^Lauf ─+$/m);
+    assert.match(text, /^ {2}✓ E1 {2}Maske da$/m);
+    assert.match(text, /^ {2}✕ E2 {2}Liste da$/m);
+    // The reason starts where the step's name starts.
+    const name = lines.map(plain).find((line) => line.includes('Liste da')).indexOf('Liste da');
+    const reason = lines.map(plain).find((line) => line.includes('Liste leer'));
+    assert.equal(reason.indexOf('Liste leer'), name, reason);
+    assert.match(reason, /└ Liste leer$/);
+    assert.match(text, /^Fehlgeschlagen\. 1 von 2 Schritten bestanden\. · 2\.0s$/m);
+    assert.match(text, /^Bericht {2}r\.md$/m);
+});
+
+// The run's result in a terminal, exactly (B22): names, durations in a right-aligned column, the open step, the summary.
+test('in a terminal: the format of a run, passed and failed', () => {
+    const steps = [{ id: 'S1', text: 'Eine Bestätigung zeigt die Nummer.' }, { id: 'S2', text: 'Genau eine Aufgabe.' }, { id: 'S3', text: 'Sie ist durchgestrichen.' }, { id: 'S4', text: 'Morgen.' }];
+    const names = { S1: 'Aufgabe anlegen', S2: 'Finden', S3: 'Abhaken', S4: 'Planen' };
+    const failed = capture(true, true);
+    failed.ui.verdict({ status: 'fail', testId: 'erste', target: 'local', expectations: steps,
+        results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }, { id: 'S3', status: 'fail', note: 'der Ring zeigt 0/1' }, { id: 'S4', status: 'fail', note: t('session.replay.notReachedBecause', { owner: 'S3' }) }],
+        warnings: [{ type: 'console', text: 'x' }] }, { report: '.caw/runs/r/report.md', reportUrl: 'file:///p/report.md', elapsed: 8.7, names, durations: { S1: 4.2, S2: 1.3, S3: 31.5 } });
+    assert.deepEqual(failed.lines.map(plain), [
+        '',
+        'Lauf ───────────────────────────────────────────────',
+        '  ✓ S1  Aufgabe anlegen    4.2s',
+        '  ✓ S2  Finden             1.3s',
+        '  ✕ S3  Abhaken           31.5s',
+        '      └ der Ring zeigt 0/1',
+        '  ○ S4  Planen           nicht erreicht',
+        '',
+        'Fehlgeschlagen. 2 von 4 Schritten bestanden. 1 Warnung · 8.7s',
+        'Bericht  .caw/runs/r/report.md',
+        '         file:///p/report.md',
+    ]);
+    // Colours: the duration and the open step dim, the reason in fail, the status word bold in its colour.
+    assert.ok(failed.lines[2].endsWith('\u001b[38;2;103;113;116m  4.2s\u001b[39m'), JSON.stringify(failed.lines[2]));
+    assert.ok(failed.lines[5].includes('\u001b[38;2;255;107;112mder Ring zeigt 0/1\u001b[39m'), JSON.stringify(failed.lines[5]));
+    assert.ok(failed.lines[8].startsWith('\u001b[38;2;255;107;112m\u001b[1mFehlgeschlagen.\u001b[22m\u001b[39m'), JSON.stringify(failed.lines[8]));
+    const passed = capture(true, true);
+    passed.ui.verdict({ status: 'pass', testId: 'erste', target: 'local', expectations: steps.slice(0, 2), results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }] },
+        { report: 'r.md', elapsed: 5, names });
+    assert.deepEqual(passed.lines.map(plain).slice(2), ['  ✓ S1  Aufgabe anlegen', '  ✓ S2  Finden', '', 'Bestanden. 2 von 2 Schritten bestanden. · 5.0s', 'Bericht  r.md']);
+});
+
+test('in a terminal: the run header, the head once with the version, the next commands in the accent colour', () => {
+    const { lines, ui } = capture(true, true);
+    ui.header({ mode: 'Wiedergabe ohne Claude', test: 'erste', target: 'local', role: 'user', code: 'Dev-Server localhost:4174', language: 'de' });
+    ui.head();
+    const text = lines.map(plain);
+    assert.match(text[0], /^● caw · Context-Aware Web Testing · \d+\.\d+\.\d+/);
+    assert.equal(text.filter((line) => line.startsWith('●')).length, 1, 'the head only once');
+    assert.equal(text[1], 'Wiedergabe ohne Claude · erste auf local als user · Teamsprache de');
+    assert.ok(lines[1].startsWith('\u001b[1mWiedergabe ohne Claude\u001b[22m'), 'the mode in bold');
+    assert.equal(text[2], 'Code: Dev-Server localhost:4174');
+    lines.length = 0;
+    ui.next([{ text: 'S3 ist gescheitert. Ursache klären: caw run erste --env local im Terminal', commands: ['caw run erste --env local'] }, { text: 'Bis zum Einstieg: caw open erste@S3 --env local', commands: ['caw open erste@S3 --env local'] }]);
+    assert.deepEqual(lines.map(plain), ['Weiter   S3 ist gescheitert. Ursache klären: caw run erste --env local im Terminal', '         Bis zum Einstieg: caw open erste@S3 --env local']);
+    assert.ok(lines[0].includes('\u001b[38;2;94;224;242mcaw run erste --env local\u001b[39m'), 'the command in accent');
+    const piped = capture(false);
+    piped.ui.head();
+    piped.ui.next([{ text: 'a: caw run x', commands: ['caw run x'] }]);
+    assert.deepEqual(piped.lines, ['[caw] a: caw run x'], 'in pipes no head, the hint as before');
 });
 
 test('in a terminal: too many failures are truncated, the report has them all', () => {
@@ -101,7 +158,7 @@ test('texts from the portal cannot control the terminal', () => {
 test('status without expectations: error with a reason', () => {
     const { lines, ui } = capture(true);
     ui.verdict({ status: 'error', reason: 'Portal weg', testId: 'r1', target: 'a/dev' }, { report: 'r.md', elapsed: 1 });
-    assert.match(plain(lines.join('\n')), /── ERROR · r1[\s\S]*! Portal weg/);
+    assert.match(plain(lines.join('\n')), /Lauf ─+\n {2}! Portal weg\n\nFehler\. · 1\.0s/);
 });
 
 test('in a terminal: section as a rule, result in a box with marks, all box rows equally wide', () => {
@@ -136,7 +193,8 @@ test('command header: one line with dot, title and long form; in pipes only the 
     const fancy = capture(true, true);
     fancy.ui.banner({ title: 'caw init --explore-only' });
     assert.deepEqual(fancy.lines.map(plain), ['● caw init --explore-only · Context-Aware Web Testing', '']);
-    assert.ok(fancy.lines[0].startsWith('\u001b[38;2;94;224;242m●\u001b[39m \u001b[1mcaw init --explore-only\u001b[22m '), JSON.stringify(fancy.lines[0]));
+    // The dot and the name in the accent colour, the name bold, the rest dim.
+    assert.ok(fancy.lines[0].startsWith('\u001b[38;2;94;224;242m●\u001b[39m \u001b[38;2;94;224;242m\u001b[1mcaw init --explore-only\u001b[22m\u001b[39m \u001b[38;2;103;113;116m· '), JSON.stringify(fancy.lines[0]));
     const piped = capture(false);
     piped.ui.banner({ title: 'caw init --explore-only' });
     assert.deepEqual(piped.lines, ['[caw] caw init --explore-only']);

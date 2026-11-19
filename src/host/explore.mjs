@@ -347,10 +347,10 @@ const openExploreBrowser = async ({ url, insecureTls, launch }) => {
 
 /** The texts of the card in the window; step numbers as in the terminal. */
 const cardTexts = (withLogin) => ({
-    title: 'CAW EXPLORE',
+    title: 'caw explore',
     steps: {
-        signin: `1 ${t('cli.exploreStepSignIn')}`.toUpperCase(),
-        start: `${withLogin ? 2 : 1} ${t('cli.exploreStepStart')}`.toUpperCase(),
+        signin: `1 · ${t('cli.exploreStepSignIn')}`,
+        start: `${withLogin ? 2 : 1} · ${t('cli.exploreStepStart')}`,
     },
     text: {
         wait: t('cli.exploreCardWait'),
@@ -360,7 +360,7 @@ const cardTexts = (withLogin) => ({
         done: t('cli.exploreCardDone'),
     },
     page: t('cli.exploreCardPage'),
-    button: t('cli.exploreDoneButton').toUpperCase(),
+    button: t('cli.exploreDoneButton'),
     saved: t('cli.exploreCardSaved'),
 });
 

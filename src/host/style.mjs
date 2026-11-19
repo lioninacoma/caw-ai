@@ -10,6 +10,8 @@
 // - Logo, favicon and line icons as inline SVG, all in currentColor.
 // - Base components: buttons, link, icon button, badge, kbd, status pill, transport chip, card, menu, field, segmented control,
 //   switch, banner and diff lines. Animations stop with prefers-reduced-motion and with .still (animations off).
+// - No ligatures anywhere: Geist Mono's "liga" draws "--" in one cell, so "first-errand --env" read as "first-errand--env". Every
+//   `font` shorthand resets font-variant-ligatures, hence !important on all elements.
 
 import { readFileSync } from 'node:fs';
 
@@ -170,6 +172,7 @@ export const BASE_CSS = `*,*::before,*::after{box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font:400 var(--fs)/1.45 var(--font);-webkit-font-smoothing:antialiased}
 button,input,textarea,select{font:inherit;color:inherit}
 code,kbd,pre,samp{font-family:var(--font-mono)}
+*,*::before,*::after{font-variant-ligatures:none!important}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
 .i.fillc{fill:currentColor;stroke:none}

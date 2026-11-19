@@ -1085,6 +1085,47 @@ test('chat: the end card has one main action; report and close are beside it or 
     return undefined;
 });
 
+test('chat: the end card\'s command wraps only between its words, keeps every space and draws "--" in two cells', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    const command = 'caw run first-errand --env local';
+    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command, learn: true });
+    chat.human.closed();
+    const lingering = chat.linger(60000);
+    assert.ok(await until(() => frame.isVisible('#next.on')));
+    // Narrow enough that the command needs two lines, as in the workbench's chat column.
+    const seen = await frame.evaluate(() => {
+        const code = document.querySelector('#nextCmd code');
+        code.parentElement.style.width = '150px';
+        const lines = new Map();
+        const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        const widths = [];
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            for (let i = 0; i < node.length; i += 1) {
+                range.setStart(node, i);
+                range.setEnd(node, i + 1);
+                const box = range.getBoundingClientRect();
+                if (node.data[i] !== ' ') widths.push(box.width);
+                if (box.width > 0) lines.set(Math.round(box.top), `${lines.get(Math.round(box.top)) ?? ''}${node.data[i]}`);
+            }
+        }
+        return { text: code.textContent, lines: [...lines.values()].map((line) => line.trim()), widths, ligatures: getComputedStyle(code).fontVariantLigatures };
+    });
+    assert.equal(seen.text, command, 'the text keeps its spaces, also for a copy');
+    assert.ok(seen.lines.length > 1, `wrapped: ${JSON.stringify(seen.lines)}`);
+    // Every line is made of whole words of the command.
+    const words = command.split(' ');
+    for (const line of seen.lines) assert.ok(line.split(' ').every((word) => words.includes(word)), `no word broken: ${JSON.stringify(seen.lines)}`);
+    assert.equal(seen.ligatures, 'none');
+    assert.ok(Math.max(...seen.widths) - Math.min(...seen.widths) < 0.5, `one cell per character: ${seen.widths}`);
+    await frame.click('#nextMore');
+    await frame.click('#closeWindow');
+    await lingering;
+    return undefined;
+});
+
 test('chat: a reproduction ends with its findings, the read-only note and Close window as the main action, the report beside it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, frame } = await chatReady(t);

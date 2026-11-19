@@ -1,5 +1,6 @@
-// The `explore` card in the browser window, in the Graphite look and the personal mode: a card with the logo, title, step and
-// collapse in its header. On the start step it shows the "Done" button, which replaces "Enter in the terminal".
+// The `explore` card in the browser window, in the Graphite look and the personal mode: the header holds the logo, "caw explore",
+// the step as a badge ("2 · Start page") and collapse; the body the instruction with its mark, on the start step the page in a
+// mono box ("PAGE /todos") and the primary "Done", which replaces "Enter in the terminal". Tokens sit on the shadow host.
 // Lives in a closed shadow DOM: the page cannot restyle it, and surveyPage does not see it (the host element only carries data-caw).
 // The phase comes from the host: after every navigation via a binding, in between via an event.
 
@@ -18,7 +19,8 @@ ${BASE_CSS}
 .card{position:fixed;right:20px;bottom:20px;z-index:2147483647;width:320px;color:var(--text);font:400 13px/1.45 var(--font);
  border-color:var(--line2);border-radius:var(--r3);box-shadow:var(--shadow-lg)}
 .head{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
-.head .logo{color:var(--text)}
+.head .logo{color:var(--text);--logo-eye:var(--panel)}
+.toggle{width:22px;height:22px;margin-left:2px}.toggle .i{width:14px;height:14px}
 .title{font:600 13px/1 var(--font);white-space:nowrap}
 .step{margin-left:auto}
 .body{padding:12px;display:flex;flex-direction:column;gap:10px}
@@ -28,7 +30,7 @@ ${BASE_CSS}
 .where{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--r1);background:var(--sunk)}
 .where b{font:600 10px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
 .where code{font:400 11.5px/1.3 var(--font-mono);color:var(--accent-text);overflow:hidden;white-space:nowrap;flex:1;min-width:0}
-.btn{width:100%}
+.btn{width:100%}.btn .i{width:14px;height:14px}
 .btn:disabled{opacity:1;cursor:default;background:var(--pass-soft);color:var(--pass)}
 .dots::after{content:"";animation:dots 1.2s steps(4) infinite}
 @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
@@ -61,7 +63,7 @@ export const exploreCardScript = (texts, mode = readPrefs().mode) => {
         cawMode(host);
         const root = host.attachShadow({ mode: 'closed' });
         root.innerHTML = '<style>' + ${JSON.stringify(CSS)} + '</style>'
-            + '<div class="card" data-phase="wait"><div class="head">' + ${JSON.stringify(logo({ size: 20 }))} + '<span class="title"></span><span class="step bdg acc"></span><span class="toggle ib"></span></div>'
+            + '<div class="card" data-phase="wait"><div class="head">' + ${JSON.stringify(logo({ size: 22 }))} + '<span class="title"></span><span class="step bdg acc"></span><span class="toggle ib"></span></div>'
             + '<div class="body"><p class="text"><span class="mk"></span><span class="say"></span></p><div class="where"><b></b><code></code></div>'
             + '<button type="button" class="btn btn-p"></button></div></div>';
         const $ = (selector) => root.querySelector(selector);
@@ -77,7 +79,8 @@ export const exploreCardScript = (texts, mode = readPrefs().mode) => {
         const button = $('.btn');
         button.addEventListener('click', () => {
             button.disabled = true;
-            button.textContent = '✓ ' + T.saved;
+            button.innerHTML = L.ok;
+            button.append(T.saved);
             window.${DONE_BINDING}?.();
         });
         // The mark: a spinner while waiting or reading.

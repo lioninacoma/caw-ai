@@ -481,7 +481,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const modeLabel = t(`run.mode.${headerMode[0]}`, headerMode[1]);
     // Which code runs, always on one line, also in CI: otherwise a silently deployed version would only show in the result.
     const codeLine = describeCode(config, spec, checked, { root });
-    ui.header({ mode: modeLabel, test: spec.id, target, source: checked.source, code: codeLine, language: teamLanguage(config), ...(replay === undefined ? { maxActions } : {}) });
+    ui.header({ mode: modeLabel, test: spec.id, target, role: spec.role, source: checked.source, code: codeLine, language: teamLanguage(config), ...(replay === undefined ? { maxActions } : {}) });
+    // For the terminal's result: each step's name, and how long a replayed step took (from its first action to the next step's).
+    const stepNames = () => Object.fromEntries((givenSpec.steps ?? []).filter(({ name }) => typeof name === 'string' && name !== '').map(({ id, name }) => [id, name]));
+    const stepTimes = new Map();
+    const durations = () => Object.fromEntries([...stepTimes].filter(([, { end }]) => end !== undefined).map(([id, { start, end }]) => [id, (end - start) / 1000]));
 
     // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
     const reportBase = { testId: spec.id, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
@@ -506,7 +510,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         session?.workbench?.transport?.(null)?.catch?.(() => {});
     };
     const finishRun = () => {
-        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000 });
+        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000, names: stepNames(), durations: durations() });
         // Missing saved sign-in or a TODO left in the config means nothing ran: an invalid invocation (3), not the environment (2).
         if (verdict.status === 'error' && NOTHING_RAN.has(verdict.code)) return EXIT.rejected;
         return EXIT[verdict.status];
@@ -1583,7 +1587,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         ui.heading(t('run.repairInPlace', { id: failed.id }));
         const { ended, found } = await claudeWork(box);
         const repaired = { verdict, exitCode: EXIT[verdict.status], ...found, ended };
-        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000 });
+        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000, names: stepNames() });
         verdict = before;
         return repaired;
     };
@@ -1591,6 +1595,17 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     if (replay !== undefined) {
         if (replay.steps.length > 0) ui.info(t('run.replaying', { count: replay.steps.length, on: replay.recordedOn }));
         const started = Date.now();
+        // A step runs from its first action until the next step's first action, the last one until the replay ends.
+        let timedOwner;
+        const timeStep = (owner) => {
+            const now = Date.now();
+            if (owner === timedOwner) return;
+            if (timedOwner !== undefined) stepTimes.get(timedOwner).end = now;
+            const seen = stepTimes.get(owner);
+            if (seen === undefined) stepTimes.set(owner, { start: now });
+            else seen.end = undefined;
+            timedOwner = owner;
+        };
         const play = playReplay({
             replay,
             handler: agentHandler,
@@ -1604,6 +1619,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // The terminal adds the total itself, the chat gets the finished label.
             log: (entry) => {
                 const { position, number, owner, label } = entry;
+                if (owner !== undefined) timeStep(owner);
                 ui.step({ number: position, total: replay.steps.length, label, elapsed: (Date.now() - started) / 1000 });
                 chat?.progress(`${owner} · ${number} ${label}`);
                 showAction(entry);
@@ -1614,6 +1630,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             session.closed.then(() => 'browser-closed'),
             aborted.then(() => 'aborted'),
         ]);
+        if (timedOwner !== undefined) stepTimes.get(timedOwner).end ??= Date.now();
         if (typeof ended === 'string') {
             writeInterrupted(ended);
             return closeRun(ended);

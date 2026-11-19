@@ -1019,6 +1019,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     if (withAdvice && !canFix) throw new CawError('usage', t('cli.adviseNeedsChat'));
     // Nobody waits in CI: a handover would keep the job open until the runner times out.
     if (inCi && handover) throw new CawError('usage', t('cli.ciHandover', { option: 'open' }));
+    if (!quiet) ui.head();
     if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
@@ -1046,14 +1047,18 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         log: ui.info,
         onPlayed: (played) => { failed = played.failed; },
         // Cause first, then change: `record <test>@<step>` re-records without looking for a cause, which only suits an intended change.
+        // In the terminal the first line is labelled "next", the commands stand out.
         hint: (step, { canFix: hadChat }) => {
+            const lines = [];
+            const rerun = (env) => `caw run ${test} --env ${env}`;
             if (!hadChat) {
-                if (withAgent) ui.info(t('cli.failedHintAgent', { step: step.id, test, target }));
-                else if (chatTarget !== undefined) ui.info(t('cli.failedHint', { step: step.id, test, target: chatTarget }));
-                else ui.info(t('cli.failedHintNoAgent', { step: step.id, environments: agentEnvironments(config) }));
+                if (withAgent) lines.push({ text: t('cli.failedHintAgent', { step: step.id, test, target }), commands: [rerun(target), `caw record ${test}@${step.id} --env ${target}`] });
+                else if (chatTarget !== undefined) lines.push({ text: t('cli.failedHint', { step: step.id, test, target: chatTarget }), commands: [rerun(chatTarget)] });
+                else lines.push({ text: t('cli.failedHintNoAgent', { step: step.id, environments: agentEnvironments(config) }), commands: [] });
             }
             // open lands at the entry of the failed step: everything before it done, the step itself still open.
-            if (spec.steps.some(({ id }) => id === step.id)) ui.info(t('cli.untilHint', { test, target, step: step.id }));
+            if (spec.steps.some(({ id }) => id === step.id)) lines.push({ text: t('cli.untilHint', { test, target, step: step.id }), commands: [`caw open ${test}@${step.id} --env ${target}`] });
+            ui.next(lines);
         },
     });
     if (canFix || learn) ui.info(tracker.summary());

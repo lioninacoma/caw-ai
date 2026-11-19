@@ -230,7 +230,7 @@ test('crosshair: the picked element comes back as its locator, the page keeps no
     return undefined;
 });
 
-/** Pixels of the crosshair's blue frame in the screenshot of `box` (decoded by a canvas in a page of its own). */
+/** Pixels of the crosshair's frame (light mode's pick colour #0891B2) in the screenshot of `box` (decoded by a canvas in a page of its own). */
 const framePixels = async (box) => {
     const png = (await page.screenshot({ clip: { x: box.x - 4, y: box.y - 4, width: box.width + 8, height: box.height + 8 } })).toString('base64');
     const probe = await browser.newPage();
@@ -245,13 +245,76 @@ const framePixels = async (box) => {
             context2d.drawImage(image, 0, 0);
             const { data: pixels } = context2d.getImageData(0, 0, canvas.width, canvas.height);
             let count = 0;
-            for (let i = 0; i < pixels.length; i += 4) if (pixels[i] < 80 && pixels[i + 1] > 80 && pixels[i + 1] < 130 && pixels[i + 2] > 200) count += 1;
+            for (let i = 0; i < pixels.length; i += 4) if (Math.abs(pixels[i] - 8) < 30 && Math.abs(pixels[i + 1] - 145) < 30 && Math.abs(pixels[i + 2] - 178) < 30) count += 1;
             return count;
         }, png);
     } finally {
         await probe.close();
     }
 };
+
+test('crosshair: Graphite overlay per mode, a pill naming the element and its dialog, the band only in the top document', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    // The overlay's own parts as the page sees them: the mark (z-index top) and the band (data-caw-band); their insides are
+    // closed shadow roots.
+    const overlay = () => page.evaluate(() => {
+        const mark = [...document.documentElement.children].find((node) => node.style?.zIndex === '2147483647');
+        const band = document.querySelector('[data-caw-band]');
+        const style = mark === undefined ? null : getComputedStyle(mark);
+        return { border: style?.borderTopColor, radius: style?.borderTopLeftRadius, halo: style?.boxShadow, band: band !== null && band.matches(':popover-open') };
+    });
+    for (const [mode, ring] of [['light', 'rgb(8, 145, 178)'], ['dark', 'rgb(34, 211, 238)']]) {
+        await open();
+        const picking = pickElement(session(), { mode });
+        await page.waitForFunction(() => window.__cawPicking === true);
+        const box = await page.getByRole('button', { name: 'Speichern' }).boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        const seen = await overlay();
+        assert.equal(seen.border, ring, `${mode}: the 2 px ring in the pick colour`);
+        assert.equal(seen.radius, '6px');
+        assert.match(seen.halo, /0px 0px 0px 4px/, `${mode}: a soft halo`);
+        assert.equal(seen.band, true, `${mode}: the band in the top document`);
+        await page.keyboard.press('Escape');
+        assert.equal(await picking, null);
+        assert.equal(await page.evaluate(() => document.querySelector('[data-caw-band]')), null, `${mode}: the band goes with the pick`);
+    }
+    // The band never in a frame inside the application.
+    const picking = pickElement(session(), { mode: 'light' });
+    await page.waitForFunction(() => window.__cawPicking === true);
+    const inFrame = await page.frames().find((frame) => frame !== page.mainFrame()).evaluate(() => document.querySelector('[data-caw-band]') !== null);
+    assert.equal(inFrame, false);
+    await page.keyboard.press('Escape');
+    await picking;
+    return undefined;
+});
+
+test('crosshair: the pill names the element and its dialog in mono', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    await open();
+    // An open shadow root for this test only: the pill's text is read where the page would see it if the root were open.
+    await page.evaluate(() => {
+        const attach = Element.prototype.attachShadow;
+        Element.prototype.attachShadow = function attachOpen(init) { return attach.call(this, { ...init, mode: 'open' }); };
+    });
+    const picking = pickElement(session(), { mode: 'light' });
+    await page.waitForFunction(() => window.__cawPicking === true);
+    const box = await page.getByRole('button', { name: 'Speichern' }).boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const pill = await page.evaluate(() => {
+        const mark = [...document.documentElement.children].find((node) => node.style?.zIndex === '2147483647');
+        const label = mark.shadowRoot.querySelector('.l');
+        return { text: label.textContent, font: getComputedStyle(label).fontFamily, background: getComputedStyle(label).backgroundColor };
+    });
+    assert.equal(pill.text, 'button "Speichern" in dialog "Neue Aufgabe"');
+    assert.match(pill.font, /Geist Mono/);
+    assert.equal(pill.background, 'rgb(8, 145, 178)');
+    const band = await page.evaluate(() => document.querySelector('[data-caw-band]').shadowRoot.textContent);
+    assert.equal(band, 'Klicke in der Anwendung auf das Element. Der Klick löst dort nichts aus, Esc bricht ab.');
+    await page.keyboard.press('Escape');
+    await picking;
+    await page.reload();
+    return undefined;
+});
 
 test('crosshair: a disabled button in a modal <dialog> is framed visibly and can be picked; an enabled one is never clicked', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');

@@ -1,4 +1,4 @@
-// Graphite's plain marks for the terminal: status marks, spinner, bullets, tree, rules, box, progress.
+// Graphite's plain marks for the terminal: status marks, spinner, bullets, tree, rules, box.
 // Every status mark is one character wide, so text after it lines up.
 
 const TAGS = { ok: '✓', fail: '✕', warn: '!', open: '○', ask: '?' };
@@ -19,5 +19,4 @@ export const MARKS = {
         return { before, after, tail: '', line: '─'.repeat(Math.max(3, width - used)) };
     },
     box: { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '─', v: '│', titleOpen: '┤ ', titleClose: ' ├' },
-    progress: { done: '━', run: '━', open: '─' },
 };

@@ -12,10 +12,12 @@ import { isWorkbenchDocument } from './app-view.mjs';
 import { redactDeep } from './secrets.mjs';
 import { elementHint, frameworkOf } from './framework/index.mjs';
 import { locatorLabel } from './locator.mjs';
-import { webPick } from './accessible-name.mjs';
+import { webContext, webPick } from './accessible-name.mjs';
 import { extjsCandidates, extjsMatches } from '../ext/extjs/extjs-query.mjs';
 import { MARK_ATTRIBUTE, recordLocator, roleAndName } from './record-locator.mjs';
 import { HASH_LIMIT_BYTES, matchFixture } from './fixtures.mjs';
+import { readPrefs } from '../shared/prefs.mjs';
+import { TOKENS, modeOf } from './style.mjs';
 
 const BINDING = '__cawCapture';
 const SETTLE_MS = 300;
@@ -158,14 +160,70 @@ export const mergeDoubleClick = (items) => {
 /**
  * Runs in the browser. The next click picks an element instead of triggering anything: it stops at window and reaches
  * neither the application nor the recording. Escape cancels.
+ * Drawn in Graphite, with the page's CSS kept out (inline styles, closed shadow roots): a 2 px ring in the pick colour with a
+ * soft halo around what a click would pick, above it a pill with its role and name in mono (button "Add todo" in dialog
+ * "New todo"), and in the application's top document a band with what to do. The page has no caw tokens, so `look` brings
+ * the resolved colours of both modes and the mode pref (system follows the page's prefers-color-scheme).
+ * @param look { mode, light: { pick, onPick, pickSoft }, dark: {…}, band, font, sans, cross } (pickLook)
+ * @param nameOf roleAndName, contextOf webContext (accessible-name.mjs): only for the pill; the host names the result
  */
-export function pickInPage(markAttribute) {
+export function pickInPage(markAttribute, look, nameOf, contextOf) {
     return new Promise((resolve) => {
+        const dark = look.mode === 'dark' || (look.mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        const colors = dark ? look.dark : look.light;
         const mark = document.createElement('div');
         // A popover: a modal <dialog> lies in the top layer, above any z-index; only another top-layer element is drawn over it.
         mark.popover = 'manual';
-        mark.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;inset:auto;margin:0;padding:0;overflow:visible;display:none';
+        mark.style.cssText = `position:fixed;z-index:2147483647;pointer-events:none;border:2px solid ${colors.pick};background:${colors.pickSoft};box-shadow:0 0 0 4px ${colors.pickSoft};border-radius:6px;inset:auto;margin:0;padding:0;overflow:visible;display:none;box-sizing:content-box`;
         document.documentElement.append(mark);
+        const pill = `display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:5px 8px;border-radius:6px;font:500 11.5px/1 ${look.font}`;
+        const markRoot = mark.attachShadow({ mode: 'closed' });
+        markRoot.innerHTML = `<span class="l" style="position:absolute;right:-2px;bottom:calc(100% + 8px);${pill};background:${colors.pick};color:${colors.onPick};box-shadow:0 4px 12px rgba(0,0,0,.2)">${look.cross}<span class="t"></span></span>`;
+        const label = markRoot.querySelector('.l');
+        // The band only in the application's top document: not in its iframes, the workbench or the chat.
+        const appTop = (() => {
+            try {
+                if (window.__cawWorkbench === true || location.href === 'about:srcdoc') return false;
+                return window.top === window || window.parent.__cawWorkbench === true;
+            } catch {
+                return false;
+            }
+        })();
+        let band = null;
+        if (appTop) {
+            band = document.createElement('div');
+            band.popover = 'manual';
+            band.setAttribute('data-caw-band', '');
+            band.style.cssText = 'position:fixed;z-index:2147483646;pointer-events:none;inset:0 0 auto 0;width:auto;height:auto;margin:0;padding:0;border:0;background:none;overflow:visible';
+            const bandRoot = band.attachShadow({ mode: 'closed' });
+            bandRoot.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 10px;background:${colors.pick};color:${colors.onPick};font:400 12px/1.3 ${look.sans}">${look.cross}<span></span></div>`;
+            // "Esc" as a key, as everywhere in caw.
+            const text = bandRoot.querySelector('span');
+            String(look.band).split(/(Esc)/).forEach((part) => {
+                if (part !== 'Esc') {
+                    text.append(part);
+                    return;
+                }
+                const key = document.createElement('kbd');
+                key.style.cssText = `display:inline-flex;font:500 10.5px/1 ${look.font};padding:2px 4px;margin:0 1px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit`;
+                key.textContent = part;
+                text.append(key);
+            });
+            document.documentElement.append(band);
+            band.showPopover();
+        }
+        // What the pill says: role and name, and the dialog around it, as the host's label will (locatorLabel).
+        const short = (value) => (value.length > 40 ? `${value.slice(0, 39)}…` : value);
+        const pillText = (control) => {
+            try {
+                const own = nameOf(control);
+                const self = own === null ? control.tagName.toLowerCase() : `${own.role} "${short(own.name)}"`;
+                const dialog = control.matches('dialog, [role=dialog], [role=alertdialog]') ? null : contextOf(control, nameOf).dialog;
+                return dialog === null || dialog === undefined ? self : `${self} in ${dialog.role} "${short(dialog.name)}"`;
+            } catch {
+                return control.tagName.toLowerCase();
+            }
+        };
         const swallowed = ['pointerdown', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'dblclick', 'contextmenu'];
         const swallow = (event) => {
             event.preventDefault();
@@ -188,7 +246,14 @@ export function pickInPage(markAttribute) {
             mark.style.cssText += `;display:block;left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
             if (control === framed) return;
             framed = control;
+            label.querySelector('.t').textContent = pillText(control);
+            // Below the element when there is no room above it (the band lies there too).
+            label.style.bottom = top < 64 ? 'auto' : 'calc(100% + 8px)';
+            label.style.top = top < 64 ? 'calc(100% + 8px)' : 'auto';
+            // Shown again, the band first: the last one shown lies on top.
             if (mark.matches(':popover-open')) mark.hidePopover();
+            if (band?.matches(':popover-open')) band.hidePopover();
+            band?.showPopover();
             mark.showPopover();
         };
         // Picked on pointerup: a disabled control gets pointer events but no click, and "why is this disabled?" is a common
@@ -222,6 +287,7 @@ export function pickInPage(markAttribute) {
             removeEventListener('keydown', key, true);
             removeEventListener('mousemove', move, true);
             mark.remove();
+            band?.remove();
             window.__cawPicking = false;
             window.__cawCancelPick = undefined;
             resolve(value);
@@ -269,17 +335,39 @@ export const markedTarget = async (session, frame, mark, seen = null, proposal =
 
 /** In every frame, because forms are sometimes inside iframes. The first click wins, the other frames cancel. */
 export const cancelPick = (session) => Promise.all(session.page().frames().map((frame) => frame.evaluate('window.__cawCancelPick?.()').catch(() => {})));
+const quietCancel = (session) => {
+    cancelPick(session).catch(() => {});
+};
 
-export const pickElement = async (session) => {
-    const script = `(${pickInPage})(${JSON.stringify(MARK_ATTRIBUTE)})`;
+/** What pickInPage draws with: the pick colours of both modes (style.mjs), the mode pref, the band's text, fonts, crosshair. */
+export const pickLook = (mode = readPrefs().mode) => {
+    const of = (tokens) => ({ pick: tokens.pick, onPick: tokens['on-pick'], pickSoft: tokens['pick-soft'] });
+    const cross = '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" style="flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>';
+    return {
+        mode: modeOf(mode), light: of(TOKENS.light), dark: of(TOKENS.dark), band: t('chat.page.picking'), cross,
+        // Single quotes: they go into style attributes.
+        font: "'Geist Mono',ui-monospace,Consolas,monospace", sans: "'Geist',system-ui,-apple-system,'Segoe UI',sans-serif",
+    };
+};
+
+/**
+ * The crosshair: the next click in the application picks an element.
+ * @param mode the personal mode pref, for the overlay's colours (default: from the prefs)
+ * @returns { label, target, … } or null if cancelled
+ */
+export const pickElement = async (session, { mode } = {}) => {
+    const script = `(${pickInPage})(${JSON.stringify(MARK_ATTRIBUTE)}, ${JSON.stringify(pickLook(mode))}, ${roleAndName}, ${webContext})`;
     const picked = await new Promise((resolve) => {
         const frames = session.page().frames();
         let open = frames.length;
         for (const frame of frames) {
-            frame.evaluate(script).catch(() => null).then((value) => {
+            frame.evaluate(script).catch(() => undefined).then((value) => {
                 open -= 1;
                 if (value !== null && value !== undefined) resolve({ value, frame });
                 else if (open === 0) resolve(null);
+                // Esc in one frame cancels the pick in the others too (a frame that failed to run it cancels nothing): a pick
+                // left waiting in an iframe after Esc crashed headless Chrome's page.
+                else if (value === null) quietCancel(session);
             });
         }
     }).then(async (hit) => {

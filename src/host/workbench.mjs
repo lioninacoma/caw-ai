@@ -1,6 +1,7 @@
 // The workbench: one page for the whole run, in Graphite (style.mjs) and the personal mode (system, light or dark). Left the
 // steps with their marks, in the middle the application iframe with its address bar and a status line whose counts open
 // requests and console, right the chat. The chat is a document of its own (srcdoc); its page is the one from chat.mjs.
+// On a production or read-only environment the address bar carries its badge (shield or lock, as in the settings page).
 //
 // No toolbars: the header holds the product, the breadcrumb with the test and a badge with the run's mode, the run facts,
 // the status pill, the REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. Pane
@@ -403,7 +404,7 @@ const cell=(text,cls)=>{const td=document.createElement('td');td.textContent=tex
 const still=()=>document.body.classList.contains('still');
 const settingsOn=()=>document.body.classList.contains('settings-on');
 // The marks as icons (static SVG from the host); running is a CSS spinner.
-const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle'), skip: icon('dash'), chev: icon('chev-r'), file: icon('file'), more: icon('more') })};
+const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle'), skip: icon('dash'), chev: icon('chev-r'), file: icon('file'), more: icon('more'), shield: icon('shield'), lock: icon('lock'), spark: icon('spark') })};
 const markInto=(el,kind)=>{if(kind==='run'){const s=document.createElement('span');s.className='spinner';el.replaceChildren(s);}else el.innerHTML=ICON[kind]??ICON.open;};
 const render=()=>{
   const panel=$('panel');panel.replaceChildren();
@@ -633,7 +634,7 @@ let shownPath='';
 $('setCopy').addEventListener('click',async()=>{if(!shownPath)return;let ok=false;try{await navigator.clipboard.writeText(shownPath);ok=true;}catch{}
   if(ok){const word=$('setCopy').querySelector('span');word.textContent=T['workbench.page.setCopied'];setTimeout(()=>{word.textContent=T['workbench.page.setCopy'];},1500);}});
 const lines=(count)=>count===null||count===undefined?T['workbench.page.setMissing']:count===1?T['workbench.page.setLine']:fill('workbench.page.setLines',{count});
-const badge=(cls,text)=>{const b=document.createElement('span');b.className='bdg '+cls;b.textContent=text;return b;};
+const badge=(cls,text,glyph)=>{const b=document.createElement('span');b.className='bdg '+cls;if(glyph)b.innerHTML=ICON[glyph];b.append(text);return b;};
 const code=(text)=>{const c=document.createElement('code');c.textContent=text;return c;};
 // What the host passes (run.mjs, benchSettings), shown as text only.
 const fillSettings=(data)=>{
@@ -650,14 +651,15 @@ const fillSettings=(data)=>{
   $('setRun').replaceChildren(
     ...kv(KV.project,String(data.project??''),sep(),code(String(data.config??''))),
     ...kv(KV.env,String(env.name??''),sep(),code(String(env.url??''))),
-    ...kv(KV.switches,badge(env.claude?'acc':'line',T[env.claude?'workbench.page.setClaudeAllowed':'workbench.page.setNoClaude']),badge(env.writable?'pass':'warn',T[env.writable?'workbench.page.setWritable':'workbench.page.setNotWritable']),badge(env.production?'fail':'line',T[env.production?'workbench.page.setProduction':'workbench.page.setNotProduction'])),
+    ...kv(KV.switches,badge(env.claude?'acc':'line',T[env.claude?'workbench.page.setClaudeAllowed':'workbench.page.setNoClaude'],env.claude?'spark':''),badge(env.writable?'pass':'warn',T[env.writable?'workbench.page.setWritable':'workbench.page.setNotWritable'],env.writable?'ok':'lock'),badge(env.production?'fail':'line',T[env.production?'workbench.page.setProduction':'workbench.page.setNotProduction'],env.production?'shield':'')),
     ...(data.role===undefined?[]:kv(KV.role,String(data.role))),
     ...kv(KV.code,String(data.code??'')),
     ...kv(KV.version,String(data.version??'')));
   // The project in the breadcrumb, and in the application bar what the environment does not allow.
   $('project').textContent=String(data.project??'');$('project').hidden=$('projectSep').hidden=!data.project;
   const envBadge=$('envBadge');envBadge.hidden=!(env.production||env.writable===false);envBadge.className='bdg '+(env.production?'fail':'warn');
-  envBadge.textContent=env.production?T['workbench.page.setProduction']:T['workbench.page.setNotWritable'];};
+  // As in the drafts (B16): production with the shield, read-only with the lock.
+  envBadge.innerHTML=env.production?ICON.shield:ICON.lock;envBadge.append(env.production?T['workbench.page.setProduction']:T['workbench.page.setNotWritable']);};
 const KV=${json({ project: t('workbench.set.kvProject'), env: t('workbench.set.kvEnv'), switches: t('workbench.set.kvSwitches'), role: t('workbench.set.kvRole'), code: t('workbench.set.kvCode'), version: t('workbench.set.kvVersion') })};
 
 // The ⋯ menu (also Ctrl+K): arrow keys, Home, End, Enter; Esc and Tab close it, the focus returns to ⋯.
