@@ -729,11 +729,12 @@ ${text}`) ?? 0;
         // Commands with which the agent waits for the person: a chat answer or a question to show in the browser.
         // Commands with which the agent waits for the person. caw's own agent answers with say and waits with chat. An attached
         // session fetches the message with chat, answers with say and then listens on its Monitor: say is where it is done.
+        // An attached session's chat never waits (it returns at once), so it changes nothing; the message itself turns "working" on.
         const attached = link !== null;
         const waits = attached ? ['say', 'ask-operator'].includes(command?.action) : ['chat', 'ask-operator'].includes(command?.action);
         if (command?.action === 'say' || waits) closeActivity();
         // The chat shows "working" until the agent waits for the person again.
-        if (typeof command?.action === 'string') chat?.working?.(!waits);
+        if (typeof command?.action === 'string' && !(attached && command.action === 'chat')) chat?.working?.(!waits);
         if (signingIn && !['task', 'say', 'chat'].includes(command?.action)) throw new CawError('signing-in', t('run.agent.signingIn'));
         let value;
         try {
@@ -800,7 +801,7 @@ ${text}`) ?? 0;
             const hints = {
                 run: `Run ${runId} is open. Carry it out and submit the result with finish.`,
                 advise: `Run ${runId} had failures or warnings. Read the task with task and submit your advice with advise.`,
-                talk: `In run ${runId} a step failed, and the human is asking you in the chat. Read the task with task, answer with say and wait for the human with chat.`,
+                talk: `In run ${runId} a step failed, and the human is asking you in the chat. Read the task with task, answer with say and wait for the human with chat (attached: fetch it with chat when your Monitor says they wrote).`,
                 reproduce: `Run ${runId} reproduces a bug report on its own, without a human. Read the bug report with task, try to reproduce it in the browser and submit your verdict with finish.`,
                 develop: `In run ${runId} the human is developing in the restored state. Read the task with task; you can read the page (snapshot, eval, console, network) and operate it on request (click, fill, type, press, goto, reload). Fetch questions from the workbench chat with chat and answer there with say.`,
             };
@@ -983,8 +984,13 @@ ${text}`) ?? 0;
                 if (talking) log.push({ from: 'claude', text: String(command.text ?? '') });
                 return chat.say(command.text);
             }
-            // Waits for the human: new messages, or the end as soon as a button is pressed.
-            if (command.action === 'chat') return closing && inbox.length === 0 ? { ended: true } : new Promise((resolve) => { waiting = resolve; deliver(); });
+            // Waits for the human: new messages, or the end as soon as a button is pressed. An attached session never waits here:
+            // it is the person's conversation, and its Monitor says when they write.
+            if (command.action === 'chat') {
+                if (closing && inbox.length === 0) return { ended: true };
+                if (box.kind === 'session') return inbox.length > 0 ? { messages: inbox.splice(0) } : { messages: [], note: 'No new message. Your Monitor prints a line when the person writes; fetch it with chat then.' };
+                return new Promise((resolve) => { waiting = resolve; deliver(); });
+            }
             if (command.action !== 'advise') return reader(command);
             if (submitted && !talking) throw new CawError('advise-only', 'The advice has already been submitted.');
             const items = checkAdvice(command.advice, result.spec, config, { root, diagnosis: failed?.diagnosis });
