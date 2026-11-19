@@ -691,20 +691,17 @@ const arrange=(box,id,primary,rest)=>{for(const b of primary){b.classList.remove
 const down=$('down');
 const atEnd=()=>messages.scrollHeight-messages.scrollTop-messages.clientHeight<80;
 let follow=true;
-// A card (failure, decision, advice, plan) that would not fit at the end shows its start, not its end:
-// otherwise only its lower part would be visible once the buttons appear below. The start stays on top until a new message arrives.
-let anchor=null;
-const offsetOf=(element)=>element.getBoundingClientRect().top-messages.getBoundingClientRect().top;
-const tall=()=>anchor!==null&&anchor.isConnected&&offsetOf(anchor)+messages.scrollTop-8<messages.scrollHeight-messages.clientHeight-1;
-const pinned=()=>tall()&&Math.abs(offsetOf(anchor)-8)<16;
-const toEnd=()=>{if(tall())messages.scrollTop+=offsetOf(anchor)-8;else messages.scrollTop=messages.scrollHeight;down.classList.toggle('on',!atEnd());};
-messages.addEventListener('scroll',()=>{follow=atEnd()||pinned();down.classList.toggle('on',!atEnd());if(follow)down.classList.remove('new');});
-down.addEventListener('click',()=>{follow=true;anchor=null;down.classList.remove('on','new');toEnd();});
+// At the end the chat follows everything that grows: new entries, a card that changes (Next, a copy prompt), an unfolded
+// list. Scrolled up by the human, it stays where it is; the button at the bottom shows that something new came.
+const toEnd=()=>{messages.scrollTop=messages.scrollHeight;down.classList.toggle('on',!atEnd());};
+messages.addEventListener('scroll',()=>{follow=atEnd();down.classList.toggle('on',!follow);if(follow)down.classList.remove('new');});
+down.addEventListener('click',()=>{follow=true;down.classList.remove('on','new');toEnd();});
 const grown=()=>{if(follow)toEnd();else down.classList.add('on','new');};
 // If the footer grows or shrinks, the chat area resizes: following continues.
 if(window.ResizeObserver)new ResizeObserver(()=>{if(follow)toEnd();}).observe(messages);
-// A new card needs a decision: it scrolls into view even if the human is reading further up.
-const place=(element,top=false)=>{messages.insertBefore(element,thinking);anchor=top?element:null;if(top){follow=true;down.classList.remove('new');}grown();};
+// Content that changes in place (a card's next item, an unfolded list) grows the chat without a new entry.
+new MutationObserver(()=>grown()).observe(messages,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['open','hidden','class']});
+const place=(element)=>{messages.insertBefore(element,thinking);grown();};
 const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));};
 const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?${JSON.stringify(AGENT_NAME)}:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'claude':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
 const head=(glyph,title,meta)=>{const strong=el('strong');strong.append(ic(glyph),el('span','',title));if(meta)strong.append(el('span','meta',meta));return strong;};
@@ -750,7 +747,7 @@ window.addMessage=(who,text,about,at)=>{
       const fact=(label,value,changed,before)=>{const row=el('div',changed?'changed':'');const dd=el('dd');if(before){dd.append(el('span','before',before),el('br'));}dd.append(value);row.append(el('dt','',label),dd);facts.append(row);};
       if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));
       for(const h of step.heard||[]){const row=el('div','heard');row.append(el('dt','',T['chat.page.heard']),el('dd','',heardText(h)));facts.append(row);}section.append(top,facts);box.append(section);}
-    place(box,true);return;
+    place(box);return;
   }
   if(who==='failure'){
     const box=card('question failure'+(about.diagnosis?' '+about.diagnosis.side:''));box.append(head('x',fill('chat.page.failed',{id:about.id})));
@@ -761,7 +758,7 @@ window.addMessage=(who,text,about,at)=>{
     if(about.warn){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',about.warn));box.append(warn);}
     for(const part of [list(T['chat.page.findings'],about.diagnosis?about.diagnosis.findings:[],'f'),list(T['chat.page.failures'],about.failures,'e'),list(T['chat.page.warnings'],about.warnings,'w')])if(part)box.append(part);
     if(about.next)box.append(el('p','next muted',about.next));
-    place(box,true);return;
+    place(box);return;
   }
   if(who==='decision'){
     const box=card('decision');box.append(head('check',about.title));
@@ -769,7 +766,7 @@ window.addMessage=(who,text,about,at)=>{
     if(about.warn){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',about.warn));box.append(warn);}
     for(const section of about.details??[]){const part=list(section.title,section.items,'w');if(part)box.append(part);}
     if(about.question)box.append(el('p','next',about.question));
-    place(box,true);return;
+    place(box);return;
   }
   if(who==='advice'){
     const box=card('advice '+about.side);box.append(head('agent',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']));
@@ -783,9 +780,9 @@ window.addMessage=(who,text,about,at)=>{
       lines(edit.find,'del');lines(edit.replace,'add');box.append(diff);}
     if(about.changes){const facts=el('dl','kv');for(const change of about.changes){const dd=el('dd');if(change.before){dd.append(el('span','before',change.before),el('br'));}dd.append(change.after);facts.append(el('dt','',change.label),dd);}box.append(facts);}
     if(about.prompt){const prompt=el('div','prompt');const words=el('div','ptext',about.prompt);prompt.append(words,copyButton(about.prompt,words));box.append(prompt);}
-    place(box,true);return;
+    place(box);return;
   }
-  if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));place(box,true);return;}
+  if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));place(box);return;}
   if(who==='question'){const box=card('question');box.append(head('help',T['chat.page.question']),el('p','txt',text));place(box);return;}
   if(who==='notice'){const item=el('div','message notice');item.append(ic('info'),el('span','txt',text));place(item);return;}
   const item=el('div','message '+who);

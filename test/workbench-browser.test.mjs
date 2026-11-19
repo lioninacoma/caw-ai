@@ -1330,3 +1330,42 @@ test('agent actions: a folded item unfolds to its files and keeps the call as to
     assert.ok(await until(async () => !(await frame.isVisible('#thinking'))), 'gone once the agent waits for the person');
     return undefined;
 });
+
+test('chat follows the end: new entries, a card that grows in place; scrolled up it stays, the button says something came', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    const gap = () => frame.evaluate(() => { const m = document.getElementById('messages'); return Math.round(m.scrollHeight - m.scrollTop - m.clientHeight); });
+    for (let i = 0; i < 30; i += 1) chat.notice(`Hinweis ${i}`);
+    assert.ok(await until(async () => (await gap()) < 5), 'at the end');
+    // A long card ends with its buttons and the copy prompt: the end is shown, not its start.
+    chat.say(Array.from({ length: 40 }, (_, i) => `Zeile ${i}`).join('\n'));
+    assert.ok(await until(async () => (await gap()) < 5), 'a long answer to its end');
+    // Grows in place, as after Next: still at the end.
+    await frame.evaluate(() => { const last = [...document.querySelectorAll('#messages .message')].at(-1); for (let i = 0; i < 20; i += 1) last.append(Object.assign(document.createElement('p'), { textContent: `mehr ${i}` })); });
+    assert.ok(await until(async () => (await gap()) < 5), 'follows a card that grows');
+    // Scrolled up: nothing moves, the button marks the news.
+    await frame.evaluate(() => { document.getElementById('messages').scrollTop = 0; });
+    await pause(200);
+    chat.say('Neu.');
+    await pause(400);
+    assert.equal(await frame.evaluate(() => document.getElementById('messages').scrollTop), 0, 'stays where the person reads');
+    assert.ok(await frame.evaluate(() => document.getElementById('down').classList.contains('new')));
+    await frame.click('#down');
+    assert.ok(await until(async () => (await gap()) < 5), 'the button goes to the end and following starts again');
+    return undefined;
+});
+
+test('F8 with the focus in the app switches App only, both ways', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const page = bench.page;
+    const solo = () => page.evaluate(() => document.body.classList.contains('solo'));
+    const app = page.frameLocator('#app');
+    await app.locator('body').click();
+    await page.keyboard.press('F8');
+    assert.ok(await until(solo), 'App only from the app');
+    await app.locator('body').click();
+    await page.keyboard.press('F8');
+    assert.ok(await until(async () => !(await solo())), 'and back');
+    return undefined;
+});

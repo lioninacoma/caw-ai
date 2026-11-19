@@ -745,7 +745,7 @@ const CHAT_KEYS=${json(CHAT_KEYS)};
 addEventListener('message',(event)=>{const fromChat=event.source===chatWindow();
   if(event.data?.caw==='refresh'&&(event.source===$('app').contentWindow||fromChat))refresh();
   if(event.data?.caw==='key'&&fromChat&&CHAT_KEYS.includes(event.data.key))press(event.data.key);
-  if(event.data?.caw==='key'&&['F1','Ctrl+J'].includes(event.data.key)&&event.source===$('app').contentWindow)press(event.data.key);
+  if(event.data?.caw==='key'&&['F1','F8','Ctrl+J'].includes(event.data.key)&&event.source===$('app').contentWindow)press(event.data.key);
   // Something new from the agent while the chat is hidden in App only: a dot on Chat.
   if(event.data?.caw==='unread'&&fromChat&&document.body.classList.contains('solo')&&!popped())$('chatPop').querySelector('.new').hidden=false;});
 
