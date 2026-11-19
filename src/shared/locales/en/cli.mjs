@@ -87,8 +87,9 @@ Commands:`,
     'cli.help.list': `  list [<test>]                          Tests with environments, recording state (recorded, stale, not recorded) and
                                          whether they write; with <test> one line per step`,
     'cli.help.validate': '  validate                               Check config and tests offline, without browser or {agent} (CI, pre-commit)',
-    'cli.help.doctor': `  doctor [--agent local|docker|session]  Check Node, Chrome, {agent} (local) or Docker and token (docker),
+    'cli.help.doctor': `  doctor [--agent local|docker]          Check Node, Chrome, {agent} (local) or Docker and token (docker),
                                          test users and environments, each with the next step
+      [--attach]                         instead of local or docker: what your own {agent} session needs (caw in .mcp.json)
       [--env <name>]                     only this environment's test users and address`,
     'cli.help.skill': `  skill                                  Write or update the Claude Code skill caw-attach (.claude/skills/caw-attach): it tells your
                                          session when and how to work with you in a caw window. Check it in.`,
@@ -165,7 +166,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.reproduceVerdict.unclear': 'Unclear whether the bug occurs.',
     'cli.reproduceDraft': 'Draft test: {from}. To adopt: copy it to {to}, review it, then {record}',
     'cli.synopsis.list': 'caw list [<test>]',
-    'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session] [--env <name>]',
+    'cli.synopsis.doctor': 'caw doctor [--agent local|docker | --attach] [--env <name>]',
     'cli.synopsis.skill': 'caw skill',
     'cli.synopsis.role': 'caw role [list [--json] | add <role> | remove <role> | login <role> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  or  caw run <test> <test> … | --all [--env <name>]',
@@ -179,8 +180,8 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.fromMissing': 'not found',
     'cli.fromNotJson': 'not an explore result (JSON)',
     'cli.fromUnreadable': "Can't read {from}: {message}",
-    'cli.doctorUnknownArg': "doctor doesn't know {arg}. Allowed: --agent local|docker|session, --env <name>",
-    'cli.doctorAgentValue': '--agent expects local, docker or session.',
+    'cli.doctorUnknownArg': "doctor doesn't know {arg}. Allowed: --agent local|docker, --attach, --env <name>",
+    'cli.doctorAgentValue': '--agent expects local or docker; for your own session: --attach.',
     'cli.mcpAgentOnly': 'caw agent mcp only starts for the agent of a run.',
     'cli.unknownCommand': 'Unknown command: {command}.{suggestion} See caw --help.',
     'cli.export.usage': 'caw export takes one test: caw export <test> [--env <name>] [--out <dir>].',

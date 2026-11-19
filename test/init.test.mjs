@@ -219,10 +219,10 @@ test('doctor: names the next step per problem, optional items do not block, neve
     assert.ok(docker.some(({ text }) => /Kein Zugang für Claude Code in Docker/.test(text)));
     assert.ok(!docker.some(({ text }) => /Claude Code 2/.test(text)));
     rmSync(join(root, '.mcp.json'), { force: true });
-    const session = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' });
+    const session = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, attach: true });
     assert.match(session.find(({ text }) => /mcp\.json/.test(text)).next, /claude mcp add caw --scope project -- npx caw-ai mcp/);
     writeFileSync(join(root, '.mcp.json'), '{ "mcpServers": { "caw": { "command": "npx", "args": ["caw-ai", "mcp"] } } }');
-    const sessionCheck = async () => (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' })).find(({ text }) => /mcp\.json/.test(text));
+    const sessionCheck = async () => (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, attach: true })).find(({ text }) => /mcp\.json/.test(text));
     assert.ok((await sessionCheck()).ok);
     // Installed in the project but still started through npx (OPEN-16): another version, so init switches it.
     mkdirSync(join(root, 'node_modules', 'caw-ai', 'bin'), { recursive: true });

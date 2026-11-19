@@ -58,7 +58,7 @@ test('mcp plumbing: data becomes structuredContent next to the text; text-only t
 test('caw_doctor, caw_validate and caw_list: data with counts, problems and recording state', async (t) => {
     const root = project(t);
     const { call } = session(root);
-    const doctor = (await call('caw_doctor', { agent: 'session' })).structuredContent;
+    const doctor = (await call('caw_doctor', { attach: true })).structuredContent;
     assert.ok(Array.isArray(doctor.checks) && doctor.checks.length > 0);
     assert.equal(doctor.counts.ok + doctor.counts.blocking + doctor.counts.optional, doctor.checks.length);
     assert.ok(doctor.checks.every((check) => typeof check.ok === 'boolean' && typeof check.text === 'string'));

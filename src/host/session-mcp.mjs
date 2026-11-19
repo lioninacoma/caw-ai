@@ -513,10 +513,10 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_doctor',
         description: 'caw doctor as data: every check with ok, text, next step and whether it is optional (only needed for runs with Claude). No tokens.',
-        inputSchema: { type: 'object', properties: { agent: { type: 'string', enum: ['local', 'docker', 'session'] }, env: { type: 'string', description: 'Only this environment\'s test users and address' } }, additionalProperties: false },
+        inputSchema: { type: 'object', properties: { agent: { type: 'string', enum: ['local', 'docker'] }, attach: { type: 'boolean', description: 'Check what this session needs to answer caw windows (the MCP entry), instead of local or docker' }, env: { type: 'string', description: 'Only this environment\'s test users and address' } }, additionalProperties: false },
         call: async (input) => {
             const { doctorChecks } = await import('./doctor.mjs');
-            const checks = await doctorChecks(root, { agent: input.agent, environment: input.env, ...(probes === undefined ? {} : { probes }) });
+            const checks = await doctorChecks(root, { agent: input.agent, attach: input.attach === true, environment: input.env, ...(probes === undefined ? {} : { probes }) });
             const counts = {
                 ok: checks.filter(({ ok }) => ok).length,
                 blocking: checks.filter(({ ok, optional }) => !ok && !optional).length,

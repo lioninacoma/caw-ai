@@ -41,7 +41,7 @@ export const isPlaceholderHost = (url) => {
  * @param probes tests only: replaces Chrome, Docker and network
  * @param agent where Claude should run (local, docker, session), otherwise from the config as for run
  */
-export const doctorChecks = async (root, { env = process.env, nodeVersion = process.versions.node, probes = {}, agent, environment } = {}) => {
+export const doctorChecks = async (root, { env = process.env, nodeVersion = process.versions.node, probes = {}, agent, attach = false, environment } = {}) => {
     const results = [];
     const add = (entry) => results.push(entry);
     const major = Number(nodeVersion.split('.')[0]);
@@ -82,7 +82,8 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     else add({ ok: true, optional: true, text: t(skill === 'foreign' ? 'cli.doctorSkillForeign' : 'cli.doctorSkillOk', { file: SKILL_PATH }) });
 
     // Claude is only needed for record and the chat; locally Claude Code suffices, Docker also needs Docker and the token.
-    const sandbox = agent ?? agentMode(config ?? {}, env);
+    // --attach (or agent.mode "session"): your own session answers; that needs only the caw entry in .mcp.json.
+    const sandbox = attach ? 'session' : agent ?? agentMode(config ?? {}, env);
     if (sandbox === 'session') {
         // The developer's own Claude Code session takes over via caw mcp: that only needs the entry in .mcp.json.
         const mcp = join(root, '.mcp.json');

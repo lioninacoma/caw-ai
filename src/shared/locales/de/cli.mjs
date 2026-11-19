@@ -89,8 +89,9 @@ Befehle:`,
     'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
                                          aufgenommen) und ob sie schreiben; mit <test> je Schritt eine Zeile`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne {agent} (CI, Pre-Commit)',
-    'cli.help.doctor': `  doctor [--agent local|docker|session]  Node, Chrome, {agent} (local) bzw. Docker und Token (docker), Testnutzer und
+    'cli.help.doctor': `  doctor [--agent local|docker]          Node, Chrome, {agent} (local) bzw. Docker und Token (docker), Testnutzer und
                                          Umgebungen prüfen, jeweils mit nächstem Schritt
+      [--attach]                         statt local oder docker: was deine eigene {agentDash}-Session braucht (caw in .mcp.json)
       [--env <name>]                     nur Testnutzer und Adresse dieser Umgebung`,
     'cli.help.skill': `  skill                                  Den Claude-Code-Skill caw-attach schreiben oder aktualisieren (.claude/skills/caw-attach): Er sagt
                                          deiner Session, wann und wie sie mit dir in einem caw-Fenster arbeitet. Einchecken.`,
@@ -168,7 +169,7 @@ Browser:
     'cli.reproduceVerdict.unclear': 'Unklar, ob der Fehler auftritt.',
     'cli.reproduceDraft': 'Entwurf eines Tests: {from}. Übernehmen: nach {to} kopieren, prüfen, dann {record}',
     'cli.synopsis.list': 'caw list [<test>]',
-    'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session] [--env <name>]',
+    'cli.synopsis.doctor': 'caw doctor [--agent local|docker | --attach] [--env <name>]',
     'cli.synopsis.skill': 'caw skill',
     'cli.synopsis.role': 'caw role [list [--json] | add <rolle> | remove <rolle> | login <rolle> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>]',
@@ -182,8 +183,8 @@ Browser:
     'cli.fromMissing': 'nicht gefunden',
     'cli.fromNotJson': 'kein Explore-Ergebnis (JSON)',
     'cli.fromUnreadable': '{from} ist nicht lesbar: {message}',
-    'cli.doctorUnknownArg': 'doctor kennt {arg} nicht. Erlaubt: --agent local|docker|session, --env <name>',
-    'cli.doctorAgentValue': '--agent erwartet local, docker oder session.',
+    'cli.doctorUnknownArg': 'doctor kennt {arg} nicht. Erlaubt: --agent local|docker, --attach, --env <name>',
+    'cli.doctorAgentValue': '--agent erwartet local oder docker; für deine eigene Session: --attach.',
     'cli.mcpAgentOnly': 'caw agent mcp startet nur für den Agenten eines Laufs.',
     'cli.unknownCommand': 'Unbekannter Befehl: {command}.{suggestion} Siehe caw --help.',
     'cli.export.usage': 'caw export nimmt einen Test: caw export <test> [--env <name>] [--out <ordner>].',

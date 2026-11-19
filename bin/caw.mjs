@@ -155,11 +155,14 @@ const main = async ([command, ...args]) => {
         case 'doctor': {
             const [{ doctor }, { createUi }, { optionValue }] = await Promise.all([import('../src/host/doctor.mjs'), import('../src/shared/ui.mjs'), import('../src/host/linux.mjs')]);
             const valued = ['--agent', '--env'];
-            const unknown = args.filter((arg, index) => !valued.some((flag) => arg === flag || arg.startsWith(`${flag}=`)) && !valued.includes(args[index - 1]));
+            const unknown = args.filter((arg, index) => arg !== '--attach' && !valued.some((flag) => arg === flag || arg.startsWith(`${flag}=`)) && !valued.includes(args[index - 1]));
             if (unknown.length > 0) throw new CawError('usage', t('cli.doctorUnknownArg', { arg: unknown[0] }));
             const agent = optionValue(args, '--agent');
-            if (agent !== undefined && !['local', 'docker', 'session'].includes(agent)) throw new CawError('usage', t('cli.doctorAgentValue'));
-            return doctor(root, { ui: createUi(), agent, environment: optionValue(args, '--env') });
+            if (agent !== undefined && !['local', 'docker'].includes(agent)) throw new CawError('usage', t('cli.doctorAgentValue'));
+            // --attach: check what your own session needs (the MCP entry), as with run/open --attach.
+            const attach = args.includes('--attach');
+            if (attach && agent !== undefined) throw new CawError('usage', t('session.args.clash', { without: '--attach', other: '--agent' }));
+            return doctor(root, { ui: createUi(), agent, attach, environment: optionValue(args, '--env') });
         }
         case 'overlay':
             if (!overlayActive(root)) throw overlayInactive('cli.overlayCommandInactive');

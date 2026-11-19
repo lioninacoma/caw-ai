@@ -81,10 +81,11 @@ Die Anmeldung tippst du selbst; caw liest nur den Aufbau der Seite (Felder, Sele
 ```bash
 npx caw doctor
 npx caw doctor --agent docker
+npx caw doctor --attach
 npx caw doctor --env staging
 ```
 
-Prüft Node, Chrome, Claude Code (Agent `local`) oder Docker und Token (Agent `docker`), die Config, `TODO`-Werte, die Zugangsdaten je Rolle und ob jede Umgebung antwortet. Jede fehlgeschlagene Prüfung nennt den nächsten Schritt. Bei einer ungültigen Config zeigt es den ersten Befund, `validate` alle. Platzhalter-Adressen (`example.com`, `.test`, `.invalid`) meldet es, ohne sie anzufragen.
+Prüft Node, Chrome, Claude Code (Agent `local`) oder Docker und Token (Agent `docker`) oder mit `--attach` den caw-Eintrag in `.mcp.json`, den deine eigene Session braucht, dann den Skill `caw-attach`, die Config, `TODO`-Werte, die Zugangsdaten je Rolle und ob jede Umgebung antwortet. Jede fehlgeschlagene Prüfung nennt den nächsten Schritt. Bei einer ungültigen Config zeigt es den ersten Befund, `validate` alle. Platzhalter-Adressen (`example.com`, `.test`, `.invalid`) meldet es, ohne sie anzufragen.
 
 Mit der [Overlay-Erweiterung](extensions/overlay.de.md) und ExtJS-Teilen kommen optionale Zeilen zum lokalen Code-Server und zum letzten `overlay check` dazu.
 

@@ -81,10 +81,11 @@ You type the sign-in yourself; caw only reads the page's structure (fields, sele
 ```bash
 npx caw doctor
 npx caw doctor --agent docker
+npx caw doctor --attach
 npx caw doctor --env staging
 ```
 
-Checks Node, Chrome, Claude Code (agent `local`) or Docker and token (agent `docker`), the config, `TODO` values, credentials per role and whether each environment answers. Every failed check comes with the next step. For an invalid config it shows the first finding; `validate` lists them all. Placeholder addresses (`example.com`, `.test`, `.invalid`) are reported, never contacted.
+Checks Node, Chrome, Claude Code (agent `local`) or Docker and token (agent `docker`), or with `--attach` the caw entry in `.mcp.json` your own session needs, then the skill `caw-attach`, the config, `TODO` values, credentials per role and whether each environment answers. Every failed check comes with the next step. For an invalid config it shows the first finding; `validate` lists them all. Placeholder addresses (`example.com`, `.test`, `.invalid`) are reported, never contacted.
 
 With the [overlay extension](extensions/overlay.md) and ExtJS parts, doctor adds optional lines about the local code server and the last `overlay check`.
 
