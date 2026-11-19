@@ -24,6 +24,7 @@ const { exitOf } = await import('../../src/shared/errors.mjs');
 const { listProject } = await import('../../src/host/project-data.mjs');
 const { roleCommand, roleOverview } = await import('../../src/host/role-command.mjs');
 const { sessionTools } = await import('../../src/host/session-mcp.mjs');
+const { unregisterListener } = await import('../../src/shared/attach.mjs');
 const { EXPLORE_FILE, explore: exploreCommand } = await import('../../src/host/explore.mjs');
 const { exploreBrowser } = await import('../../src/host/browser-session.mjs');
 const { browserArgs } = await import('../../src/host/host-lock.mjs');
@@ -1052,4 +1053,54 @@ scenario('S2', 'Record by plan as the session agent: caw_start, caw_status names
     }, async () => {}, adopt);
     verify('(7) a read-only plan that sent a write while recording becomes writes: true, with a warning naming it', closing.result.value.exit === 0 && loadTest(root, 'close-plan').writes === true && /CloseTicket/.test(closing.result.output), `${shown(closing.result.value)} ${closing.result.output.split('\n').find((line) => /CloseTicket|writes/.test(line)) ?? ''}`);
     for (const id of Object.keys(PLANS)) for (const path of [`caw/tests/${id}.yaml`, `caw/recordings/${id}.yaml`]) rmSync(join(root, path), { force: true });
+});
+
+scenario('S2c', 'open --attach: waits in header and chat, links after the handover, chat never blocks the session, working only from the message to the answer', spa, async () => {
+    setConfig(baseConfig({ local: ENVIRONMENTS.local }));
+    // The session runs in this process: its tools as Claude Code calls them over MCP, its listener with this pid.
+    const tools = Object.fromEntries(sessionTools({ root }).map((tool) => [tool.name, tool]));
+    const caw = (args) => tools.caw.call({ args });
+    const working = (chat) => chat.evaluate(() => document.body.classList.contains('awaiting'));
+    const seen = {};
+    const owner = humans(async (chat) => {
+        const bench = chat.page();
+        await benchBack(chat);
+        seen.workbench = await bench.locator('body:not(.solo)').count();
+        // (1) Nobody listens yet: the header and the chat say whom the window waits for.
+        seen.waitingFact = await bench.locator('#facts li', { hasText: 'Waiting for' }).waitFor({ timeout: 30000 }).then(() => true, () => false);
+        seen.waitingLine = await chat.locator('.message', { hasText: 'type /caw-attach' }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+        // (2) The session attaches: the window connects by itself.
+        seen.key = (await tools.caw_attach.call({})).data?.key;
+        seen.connected = await chat.locator('.message', { hasText: `connected (session ${seen.key})` }).first().waitFor({ timeout: 30000 }).then(() => true, () => false);
+        seen.connectedFact = await bench.locator('#facts li', { hasText: seen.key }).waitFor({ timeout: 10000 }).then(() => true, () => false);
+        // (3) It reads its task: no "working" without a question. Its chat returns at once.
+        let status = await tools.caw_status.call({ wait: 60 });
+        for (let tries = 0; tries < 10 && status.data?.state !== 'waiting'; tries += 1) status = await tools.caw_status.call({ wait: 60 });
+        await caw(['task']);
+        const started = Date.now();
+        const empty = await caw(['chat']);
+        seen.quickChat = Date.now() - started < 5000 && /No new message/.test(empty.text);
+        seen.idleAfterTask = !(await working(chat));
+        // (4) The person asks: working until the session answers with say.
+        await chat.locator('#input').fill('Why is Save disabled?');
+        await chat.page().keyboard.press('Enter');
+        seen.workingOnMessage = await chat.waitForFunction(() => document.body.classList.contains('awaiting'), null, { timeout: 10000 }).then(() => true, () => false);
+        seen.message = (await caw(['chat'])).text;
+        seen.stillWorking = await working(chat);
+        await caw(['say', 'Because the form is empty.']);
+        seen.offAfterSay = await chat.waitForFunction(() => !document.body.classList.contains('awaiting'), null, { timeout: 10000 }).then(() => true, () => false);
+        await decide(chat, 'End run');
+    });
+    try {
+        await callWith({ CI: '' }, () => openCommand(root, ['--env', 'local', '--role', 'clerk', '--attach'], { interactive: true, onChatOpen: owner.onChatOpen }));
+        await owner.done();
+    } finally {
+        // The listener lives with this process: later scenarios must not find it.
+        if (seen.key !== undefined) unregisterListener(root, seen.key);
+    }
+    verify('(0) after the handover the workbench stays (not App only)', seen.workbench === 1, JSON.stringify(seen));
+    verify('(1) waiting: "○ Waiting for …" in the header and the /caw-attach line in the chat', seen.waitingFact && seen.waitingLine, JSON.stringify(seen));
+    verify('(2) caw_attach connects the open window by itself; the header names the key', seen.connected && seen.connectedFact, JSON.stringify(seen));
+    verify('(3) the attached session\'s chat returns at once without a message, and reading the task shows no "working"', seen.quickChat && seen.idleAfterTask, JSON.stringify(seen));
+    verify('(4) the message turns "working" on, chat delivers it without turning it off, say turns it off', seen.workingOnMessage && /Why is Save disabled/.test(seen.message ?? '') && seen.stillWorking && seen.offAfterSay, JSON.stringify(seen));
 });
