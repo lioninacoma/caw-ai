@@ -10,7 +10,7 @@ const DURATION = /^(\d+(?:\.\d+)?)(ms|s|m|h)$/;
 /** The flags with durations: allowed range and an example for messages. */
 export const DURATION_FLAGS = {
     '--step-timeout': { min: '1s', max: '10m', example: '30s' },
-    '--claude-timeout': { min: '1m', max: '24h', example: '60m' },
+    '--agent-timeout': { min: '1m', max: '24h', example: '60m' },
     '--timeout': { min: '100ms', max: '10m', example: '20s' },
 };
 

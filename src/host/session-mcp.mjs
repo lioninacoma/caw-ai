@@ -361,7 +361,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'and partDir instead of starting; then ask the human, start the project\'s start command in your own session in the background '
             + 'and poll caw_overlay status until ready. moved starts against the found URL and reports it. Then call caw_status until the run waits for you. '
             + 'reproduce (topic reproduce): bug (the report as text), optionally from ("<test>" or "<test>@S3": start in that state), env, role, headless; '
-            + 'only on environments with claude, never production, read-only unless writable; you reproduce alone and finish with the verdict, caw_status then names report and draft test plan.',
+            + 'only on environments with agent: true, never production, read-only unless writable; you reproduce alone and finish with the verdict, caw_status then names report and draft test plan.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -523,7 +523,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         description: `Reads or changes ${CONFIG_FILE}. {read: true} returns the file as written, the effective config (with extends) and the validation. `
             + '{patch, dryRun?} deep-merges patch into the file, validates the result and writes only a valid config (dryRun: only validate). '
             + 'Refused: any change to the commands caw runs or to where Claude runs and what it may do (environments.*.start/stop/reset/ready, '
-            + 'the environment flags production, claude, writable, allowHttp, insecureTls, adding or removing an environment that has them, '
+            + 'the environment flags production, agent, writable, allowHttp, insecureTls, adding or removing an environment that has them, '
             + 'overlay part start, lintCommand, sandboxImage, sandboxUser, browser.executablePath, agent.mode); make those edits with your own '
             + 'Edit tool so the human sees the diff. Credentials never go into the config; caw/.env is not read.',
         inputSchema: {

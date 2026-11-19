@@ -22,13 +22,13 @@ only be learned from the code or from the person.
    - The most important screens from the router (`start`).
    - Domain terms and peculiarities (date formats, slow services, known messages) go into `caw/caw.md`.
 5. **Commands and environment flags with your Edit tool.** `caw_config` refuses everything that runs a command or decides
-   what Claude may do: `start`, `stop`, `reset`, `ready`, `production`, `claude`, `writable`, `allowHttp`, `insecureTls`,
+   what Claude may do: `start`, `stop`, `reset`, `ready`, `production`, `agent`, `writable`, `allowHttp`, `insecureTls`,
    an overlay part's `start`, `lintCommand`, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and
    adding or removing an environment that has them. Edit `caw.config.json` yourself for these, so Claude Code shows the
    person the diff to approve; validate with `caw_config` `read` afterwards. Propose them from the code:
    - Lifecycle: `start`, `stop`, `reset` and `ready` from compose files and package scripts, e.g. `docker compose up -d --wait`.
      caw runs them on this machine (`start` with `caw_start` `start`; `reset` with `reset` and before the first writing test).
-   - An environment on the own machine: `claude: true`, `writable: true`. dev/test/staging: `claude: true`, `writable: true` only
+   - An environment on the own machine: `agent: true`, `writable: true`. dev/test/staging: `agent: true`, `writable: true` only
      if the code shows test data or seeds there. Anything named prod/live or on the public domain: `production: true`.
 6. **Decide, don't ask** about the rest. Set these yourself with `caw_config` and list them at the end as "how I set it up":
    - Sign-in: top-level `signIn` applies to every environment. One that signs in differently gets `environments.<env>.signIn`,

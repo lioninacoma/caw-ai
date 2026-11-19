@@ -14,8 +14,8 @@ const config = {
     signIn: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#menu' },
     allowHosts: ['idp.example.test'],
     environments: {
-        local: { url: 'http://localhost:5173', claude: true, writable: true },
-        'north-dev': { url: 'https://north.dev.example.test', claude: true, allowHosts: ['cdn.example.test'], insecureTls: true },
+        local: { url: 'http://localhost:5173', agent: true, writable: true },
+        'north-dev': { url: 'https://north.dev.example.test', agent: true, allowHosts: ['cdn.example.test'], insecureTls: true },
         'south-dev': { extends: 'north-dev', url: 'https://south.dev.example.test' },
         ci: { url: 'http://localhost:8080', writable: true, signIn: { type: 'none' } },
         prod: { url: 'https://www.example.test', production: true },
@@ -27,7 +27,7 @@ test('effectiveEnvironment: extends inherits everything but production, values r
     assert.deepEqual(environmentNames(config), ['local', 'north-dev', 'south-dev', 'ci', 'prod', 'prod-south']);
     const south = effectiveEnvironment(config, 'south-dev');
     assert.deepEqual(south, {
-        name: 'south-dev', url: 'https://south.dev.example.test', claude: true, writable: false, production: false,
+        name: 'south-dev', url: 'https://south.dev.example.test', agent: true, writable: false, production: false,
         signIn: config.signIn, allowHosts: ['cdn.example.test'], thirdPartyHosts: [], insecureTls: true, allowHttp: false, ready: { path: '/', timeoutMs: 60000 },
     });
     assert.deepEqual(effectiveEnvironment(config, 'ci').signIn, { type: 'none' }, 'an environment signIn replaces the top level as a whole');

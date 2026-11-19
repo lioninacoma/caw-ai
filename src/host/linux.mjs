@@ -41,16 +41,16 @@ export const parseEnvFile = (text) => {
     return env;
 };
 
-const CLAUDE_OPTIONS = ['--env', '--claude-timeout', '--max-actions', '--step-timeout', '--agent', '--overlay', '--start', '--reset'];
+const CLAUDE_OPTIONS = ['--env', '--agent-timeout', '--max-actions', '--step-timeout', '--agent', '--overlay', '--start', '--reset'];
 const COMMAND_OPTIONS = {
-    // --claude-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
+    // --agent-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
-    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--step-timeout', '--claude-timeout', '--max-actions', '--agent', '--overlay', '--start', '--reset', '--no-reset'],
+    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--overlay', '--start', '--reset', '--no-reset'],
     record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
-    open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--claude-timeout', '--max-actions', '--step-timeout'],
+    open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--agent-timeout', '--max-actions', '--step-timeout'],
 };
 /** Flags that were renamed before 1.0: the message names the new one instead of listing every allowed option. */
-export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--claude-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
+export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--agent-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
 /** Options from before 1.0 that have no successor: the message says why. */
 export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'config.removed.also', '--no-learn': 'config.removed.noLearn' };
 // --start: start the environment (its start command) and, with --overlay, the parts' local code servers if they do not answer, and
@@ -58,7 +58,7 @@ export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'con
 const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--all', '--read-only', '--start', '--reset', '--no-reset']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
-    '--env': 'local', '--role': 'admin', '--agent': 'local', '--claude-timeout': '60m',
+    '--env': 'local', '--role': 'admin', '--agent': 'local', '--agent-timeout': '60m',
     '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */

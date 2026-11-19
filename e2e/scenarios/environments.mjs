@@ -275,7 +275,7 @@ scenario('B2', 'Setup with the packed CLI: init writes language and environment 
         const b = newDir();
         const second = await caw(b, ['init', '--url', 'https://tls.localhost:18444', '--insecure-tls', '--env', 'staging', '--yes', '--no-login', '--no-mcp']);
         const staging = existsSync(join(b, 'caw.config.json')) ? JSON.parse(readFileSync(join(b, 'caw.config.json'), 'utf8')).environments?.staging : undefined;
-        verify('(b) --insecure-tls is stored on the named environment (a loopback host: claude and writable, SC-15)', second.code === 0 && staging?.insecureTls === true && staging?.claude === true && staging?.writable === true,
+        verify('(b) --insecure-tls is stored on the named environment (a loopback host: agent and writable, SC-15)', second.code === 0 && staging?.insecureTls === true && staging?.agent === true && staging?.writable === true,
             `${second.code} ${JSON.stringify(staging)} ${second.stderr.split('\n').slice(-3).join(' | ')}`);
         const c = newDir();
         const third = await caw(c, ['init', '--explore-only', '--url', `http://app.localhost:${SPA_PORT}`, '--yes', '--no-login']);
@@ -320,7 +320,7 @@ scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instr
         print('     (5) signing in and naming role clerk in the window: unit tests (no window automation here)');
         const written = await client.callTool('caw_init', { mode: 'write', fromExplore: true, language: 'en' });
         const config = existsSync(join(blank, 'caw.config.json')) ? JSON.parse(readFileSync(join(blank, 'caw.config.json'), 'utf8')) : {};
-        verify('(6) caw_init write: a valid config with environment local (claude, writable)', written.isError === false && config.environments?.local?.claude === true && config.environments?.local?.writable === true && validateConfig(config).issues.length === 0,
+        verify('(6) caw_init write: a valid config with environment local (agent, writable)', written.isError === false && config.environments?.local?.agent === true && config.environments?.local?.writable === true && validateConfig(config).issues.length === 0,
             `${written.content?.[0]?.text?.split('\n')[0]} ${JSON.stringify(config.environments)}`);
         // Selectors may name a password field (#password); a credential would be a key of its own.
         verify('(7) the config holds no credential', !/"(user|username|password|secret|token|totp)"\s*:/i.test(JSON.stringify(config)), JSON.stringify(config.signIn));

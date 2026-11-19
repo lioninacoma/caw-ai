@@ -93,7 +93,7 @@ export default {
     'session.args.batchClash': '{other} only works for a single test; several tests or --all run without chat and handover.',
     'session.args.report': '--report expects junit=<file>, e.g. --report junit=caw-junit.xml',
     'session.claude.tokenInvalid': 'Claude rejected the access as invalid or expired. Locally: sign in to Claude Code again (/login). In Docker: check ANTHROPIC_API_KEY.',
-    'session.claude.timeout': 'Claude exceeded the time limit. Longer limit with --claude-timeout, e.g. --claude-timeout 120m.',
+    'session.claude.timeout': 'Claude exceeded the time limit. Longer limit with --agent-timeout, e.g. --agent-timeout 120m.',
     'session.claude.exit': 'Claude exited with code {code}, see claude.log.',
 
     // sandbox-config

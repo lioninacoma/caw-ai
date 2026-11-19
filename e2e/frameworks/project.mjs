@@ -22,7 +22,7 @@ export const writeProject = (root, { framework, url, build, overlay, embed = fal
     const config = {
         language: 'en',
         framework,
-        environments: { test: { url, claude: true, writable: true, ...(url.startsWith('https:') ? { insecureTls: true } : {}) } },
+        environments: { test: { url, agent: true, writable: true, ...(url.startsWith('https:') ? { insecureTls: true } : {}) } },
         signIn: { type: 'form', path: '/login', userSelector: '#email', passwordSelector: '#password', signedInSelector: '[data-testid=user-menu]' },
         ...(overlay ? { overlay: { environments: ['test'], parts: { web: { dir: '.', ...overlay } } } } : {}),
         roles: { tester: {} },

@@ -2,8 +2,8 @@
 // here: address, whether Claude may work there, whether tests may write, sign-in, extra hosts, TLS. Tenants are environments too:
 // `south-dev` extends `north-dev` and only changes its url.
 //
-//   "environments": { "local": { "url": "http://localhost:5173", "claude": true, "writable": true },
-//                     "staging": { "url": "https://staging.example.com", "claude": true },
+//   "environments": { "local": { "url": "http://localhost:5173", "agent": true, "writable": true },
+//                     "staging": { "url": "https://staging.example.com", "agent": true },
 //                     "staging-south": { "extends": "staging", "url": "https://south.staging.example.com" },
 //                     "prod": { "url": "https://www.example.com", "production": true } }
 
@@ -49,14 +49,14 @@ const hintFor = (key, allowed) => {
 
 /**
  * The environment as runs use it: `extends` resolved, defaults filled in.
- * @returns { name, url, claude, writable, production, signIn, allowHosts, thirdPartyHosts, insecureTls, allowHttp, gate, start, stop, reset, ready }
+ * @returns { name, url, agent, writable, production, signIn, allowHosts, thirdPartyHosts, insecureTls, allowHttp, gate, start, stop, reset, ready }
  */
 export const effectiveEnvironment = (config, name) => {
     const keys = mergedKeys(config, name, []);
     return {
         name,
         url: keys.url,
-        claude: keys.claude === true,
+        agent: keys.agent === true,
         writable: keys.writable === true,
         production: keys.production === true,
         signIn: isObject(keys.signIn) ? keys.signIn : isObject(config?.signIn) ? config.signIn : { type: 'none' },
@@ -79,7 +79,7 @@ export const effectiveEnvironments = (config) => Object.fromEntries(environmentN
     }
 }));
 
-/** Environments with an ability (claude, writable, production), for messages like "only on dev". */
+/** Environments with an ability (agent, writable, production), for messages like "only on dev". */
 export const environmentsWith = (config, ability) => Object.values(effectiveEnvironments(config)).filter((env) => env[ability] === true).map(({ name }) => name);
 
 /** The sign-in on an environment (its own, inherited, else the top-level one, else none). */
@@ -113,9 +113,9 @@ export const testEnvironments = (config, spec) => {
  */
 export const environmentCandidates = (config, { command, specs = [], writes = true }) => {
     const all = effectiveEnvironments(config);
-    const claude = (name) => all[name]?.claude === true;
+    const claude = (name) => all[name]?.agent === true;
     if (command === 'open' && specs.length === 0) return Object.keys(all).filter(claude);
-    // caw reproduce: Claude works alone, so only on environments with claude, never production (chooseEnvironment drops it).
+    // caw reproduce: Claude works alone, so only on environments with agent, never production (chooseEnvironment drops it).
     if (command === 'reproduce') return (specs.length === 0 ? Object.keys(all) : [...new Set(specs.flatMap((spec) => testEnvironments(config, spec)))]).filter(claude);
     if (command === 'record' && specs.length === 0) return Object.keys(all).filter((name) => claude(name) && (!writes || all[name].writable));
     const union = [...new Set(specs.flatMap((spec) => testEnvironments(config, spec)))];
@@ -137,7 +137,7 @@ export const chooseEnvironment = (config, { given, candidates, command, ci = fal
     const all = effectiveEnvironments(config);
     const open = candidates.filter((name) => all[name] !== undefined && !all[name].production);
     if (open.length === 1) return { name: open[0], why: 'only' };
-    const claude = open.filter((name) => all[name].claude);
+    const claude = open.filter((name) => all[name].agent);
     if (command === 'run' && !ci && claude.length === 1) return { name: claude[0], why: 'onlyClaude' };
     throw new CawError('usage', open.length === 0 ? t('session.args.envNone', { command }) : t('session.args.targetMissing', { choices: open.join(', ') }));
 };

@@ -65,7 +65,7 @@ test('parseRunArgs: an option without a value does not swallow the next one', ()
     assert.throws(() => parseRunArgs('run', ['t', '--env=']), /--env braucht einen Wert/);
     assert.throws(() => parseRunArgs('record', ['t', '--role', '--app', 'web']), /--role braucht einen Wert/);
     assert.throws(() => parseRunArgs('record', ['t@S2', '--agent']), /--agent braucht einen Wert/);
-    assert.throws(() => parseRunArgs('open', ['t@S1', '--claude-timeout', '--x']), /--claude-timeout braucht einen Wert, etwa --claude-timeout 60m/);
+    assert.throws(() => parseRunArgs('open', ['t@S1', '--agent-timeout', '--x']), /--agent-timeout braucht einen Wert, etwa --agent-timeout 60m/);
 });
 
 test('parseRunArgs: several tests or --all run without chat, --explain only for one test', () => {
@@ -85,7 +85,7 @@ test('parseRunArgs: several tests or --all run without chat, --explain only for 
 });
 
 test('chooseEnv: the only candidate, for run outside CI the only one with Claude, otherwise the choices; logged', () => {
-    const config = { environments: { local: { url: 'http://localhost:1', claude: true, writable: true }, dev: { url: 'https://dev.example', claude: true, writable: true }, staging: { url: 'https://s.example' } } };
+    const config = { environments: { local: { url: 'http://localhost:1', agent: true, writable: true }, dev: { url: 'https://dev.example', agent: true, writable: true }, staging: { url: 'https://s.example' } } };
     const said = [];
     const log = (text) => said.push(text);
     assert.equal(chooseEnv(config, [{ id: 'x', environments: ['dev'] }], { command: 'run', log }), 'dev');

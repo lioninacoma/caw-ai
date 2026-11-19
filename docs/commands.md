@@ -125,7 +125,7 @@ Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test i
 4. caw replays the recording without Claude.
 5. You choose "Adopt test plan". Only then are files written.
 
-Runs only on environments where Claude may work (`"claude": true`). `--env` can be left out if there is only one.
+Runs only on environments where Claude may work (`"agent": true`). `--env` can be left out if there is only one.
 
 | Option | |
 |---|---|
@@ -135,7 +135,7 @@ Runs only on environments where Claude may work (`"claude": true`). `--env` can 
 | `--start` | Start the environment with its `start` command if it doesn't answer, and stop it at the end ([lifecycle](configuration.md#starting-stopping-and-resetting-an-environment)). With `--overlay` also the parts' local code servers. Without it caw starts nothing and names the command. |
 | `--reset` | Run the environment's `reset` before recording. |
 | `--agent local\|docker\|session` | Where Claude runs. Default: `agent.mode` from the config, else `local`. |
-| `--claude-timeout <duration>` | Time limit for Claude, default `60m`. |
+| `--agent-timeout <duration>` | Time limit for Claude, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's browser actions, default `maxActions` or 100. |
 | `--step-timeout <duration>` | Time limit per step in the check run, default `30s`. |
 
@@ -155,7 +155,7 @@ There is no check run first: if a step fails because of a bug in the app, find t
 npx caw run create-ticket --env local
 ```
 
-Replays the recording. No Claude, no tokens. On environments where Claude may work (`claude`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
+Replays the recording. No Claude, no tokens. On environments where Claude may work (`agent`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
 
 A run changes no file on its own. With `--learn` it learns missing baselines and effects into `caw/recordings/<test>.yaml`, in every mode, CI included; with the chat, a passed run that could learn offers "Save baselines" on its end card instead, and only that click writes. The first line says which environment, which team language and whether the run learns, e.g. `Mode on local (team language en): with chat; learns: no.` At the end a run that learned says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
 
@@ -169,7 +169,7 @@ A run changes no file on its own. With `--learn` it learns missing baselines and
 | `--headless` | No window, no chat. The recorded viewport (else 1920×1080). |
 | `--learn` | Learn missing baselines and effects from passed steps into `caw/recordings/`. Without it a run leaves every file as it is. |
 | `--step-timeout <duration>` | Time limit per step, default `30s`. |
-| `--claude-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
+| `--agent-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's actions when fixing. |
 | `--agent local\|docker\|session` | As for `record`. |
 
@@ -207,7 +207,7 @@ With a test, `open` signs in with the test's role and replays without Claude; th
 | `--role <role>` | Without a test only; not needed if the config has only one. A test brings its own. |
 | `--start`, `--reset` | As for `run` (`reset` only with `--reset`). |
 | `--step-timeout <duration>` | Time limit per step while replaying, default `30s`. |
-| `--agent local\|docker\|session`, `--claude-timeout <duration>`, `--max-actions <n>` | As for `record`. |
+| `--agent local\|docker\|session`, `--agent-timeout <duration>`, `--max-actions <n>` | As for `record`. |
 
 After the handover, **F1** (or ⋯ → Open…, `/open` in the chat) in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
 
@@ -227,7 +227,7 @@ operates the page like a person would and ends with a verdict: reproduced, not r
 blocked or notable requests, a hint at the cause) and `draft-test.yaml`, a test plan in caw's format made from Claude's steps.
 Nothing goes into `caw/tests`: to keep the bug as a regression test, copy the draft there, review it and `caw record <id>`.
 
-- **Where:** only on environments with `claude`, never on production (`reproduce-not-allowed`). Without `--env` the only such
+- **Where:** only on environments with `agent`, never on production (`reproduce-not-allowed`). Without `--env` the only such
   environment, or the test's with `--from`.
 - **Writing:** only where the environment is `writable`. Elsewhere caw aborts every write request like on production, and
   Claude knows it may only read.
@@ -325,7 +325,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `CAW_LANG` | `en` or `de`: your own language for caw's texts (CLI, workbench), instead of the team language (`language` in the config). Claude keeps writing plans in the team language. |
 | `CAW_AI_HOME` | Folder for personal settings (`prefs.json`). Default `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` or `~/.config/caw-ai`. |
 | `ANTHROPIC_API_KEY` | API key from the Claude Console for the `docker` agent. `local` and `session` use your Claude Code login. |
-| `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
+| `CAW_AGENT_MODEL`, `CAW_AGENT_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
 | `CI` | Set: no chat, `docker` agent only; `record` and `open` are rejected. |
 | `NO_COLOR`, `FORCE_COLOR` | Terminal colors off or on. |
@@ -338,7 +338,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | Code | Exit | Fix |
 |---|---|---|
 | `usage`, `unknown-command` | 3 | `npx caw <command> --help` |
-| `reproduce-not-allowed` | 3 | `reproduce` only on an environment with `claude`, never production |
+| `reproduce-not-allowed` | 3 | `reproduce` only on an environment with `agent`, never production |
 | `reproduce-state` | 2 | The starting state of `--from` was not reached: `run` the test and fix it first |
 | `config-missing` | 3 | `npx caw init --url <address>` |
 | `config-invalid` | 3 | Fix the field named in the message or fill in the `TODO` values, then `doctor` |
@@ -349,7 +349,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `env-invalid`, `env-denied` | 3 | Use an environment from the config; production can't be recorded |
 | `host-blocked` | 3 | `goto` to a host that is no app host: add it to `allowHosts` if the app really navigates there. In a run the same block is a failure of the step |
 | `env-certificate` | 2 | The environment's certificate is not trusted: for an internal certificate authority set `environments.<env>.insecureTls: true` |
-| `write-protected` | 3 | Recording and writing tests need `claude` / `writable` on the environment |
+| `write-protected` | 3 | Recording and writing tests need `agent` / `writable` on the environment |
 | `auth-missing` | 3 | No stored session, or it expired: `caw role login <role> --env <env>` (the message names it) |
 | `credentials-missing` | 2 | Set the variables the message names in `caw/.env` or the environment (CI secrets); a new role first with `role add <role>` |
 | `login-form-missing`, `login-failed` | 2 | Is the backend up? Are the `signIn` selectors or steps and the credentials right? |

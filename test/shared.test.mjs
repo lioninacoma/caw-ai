@@ -13,7 +13,7 @@ import { CawError } from '../src/shared/errors.mjs';
 // Tenants as environments: the south ones extend the north ones and only change the address.
 const multiRaw = () => ({
     environments: {
-        'nord-dev': { url: 'https://dev.nord.example', claude: true, writable: true },
+        'nord-dev': { url: 'https://dev.nord.example', agent: true, writable: true },
         'sued-dev': { extends: 'nord-dev', url: 'https://dev.sued.example' },
         'nord-test': { url: 'https://test.nord.example', writable: true },
         'sued-test': { extends: 'nord-test', url: 'https://test.sued.example' },
@@ -34,7 +34,7 @@ const multi = multiRaw;
 // The usual case: one application, a few environments, flat.
 const simple = () => ({
     environments: {
-        local: { url: 'https://app.localhost:8443', claude: true, writable: true },
+        local: { url: 'https://app.localhost:8443', agent: true, writable: true },
         staging: { url: 'https://staging.shop.example' },
     },
     signIn: { type: 'form', path: '/anmelden', userSelector: '#mail', passwordSelector: '#pw', submitSelector: 'button[type=submit]', signedInSelector: '#menu' },
@@ -135,11 +135,11 @@ test('config: keys from before 1.0 name what replaced them; extends between envi
     assert.match(at({ sued: { extends: 'nord', url: 'https://s.example' } }), /extends "nord" ist keine Umgebung/);
     assert.match(at({ a: { extends: 'b', url: 'https://a.example' }, b: { extends: 'a', url: 'https://b.example' } }), /extends läuft im Kreis: a → b → a/);
     assert.match(at({ kopie: { extends: 'staging' } }), /^$/, 'the url comes through extends');
-    assert.match(at({ leer: { claude: true } }), /Umgebung leer hat keine url/);
+    assert.match(at({ leer: { agent: true } }), /Umgebung leer hat keine url/);
     assert.match(at({ nord_dev: { url: 'https://n.example' } }), /Umgebung "nord_dev": Kleinbuchstaben, Ziffern und -/);
     // A production child must say so itself; a non-production environment on a production host is refused.
     assert.match(at({ live: { url: 'https://www.shop.example', production: true }, kopie: { extends: 'live', url: 'https://www.shop.example' } }), /Umgebung kopie nutzt den Host www\.shop\.example der Produktionsumgebung live/);
-    assert.equal(effectiveEnvironment(multi(), 'sued-dev').claude, true);
+    assert.equal(effectiveEnvironment(multi(), 'sued-dev').agent, true);
     assert.equal(effectiveEnvironment(multi(), 'sued-dev').url, 'https://dev.sued.example');
 });
 
@@ -155,14 +155,14 @@ test('config: insecureTls, allowHttp and allowHosts per environment', () => {
 });
 
 test('environments: capabilities from the config, production only explicitly and without Claude', () => {
-    assert.deepEqual(environmentsWith(multi(), 'claude'), ['nord-dev', 'sued-dev']);
+    assert.deepEqual(environmentsWith(multi(), 'agent'), ['nord-dev', 'sued-dev']);
     assert.deepEqual(environmentsWith(multi(), 'writable'), ['nord-dev', 'sued-dev', 'nord-test', 'sued-test']);
-    assert.equal(effectiveEnvironment(simple(), 'local').claude, true);
+    assert.equal(effectiveEnvironment(simple(), 'local').agent, true);
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
     assert.match(at({ prod: { url: 'https://www.shop.example' } }), /Produktion/);
-    assert.match(at({ live: { url: 'https://www.shop.example', production: true, claude: true } }), /Produktion: claude/);
+    assert.match(at({ live: { url: 'https://www.shop.example', production: true, agent: true } }), /Produktion: agent/);
     assert.equal(at({ live: { url: 'https://www.shop.example', production: true } }), '');
-    assert.match(at({ local: { url: 'http://app.localhost:5173', claude: 'ja' } }), /claude muss true oder false sein/);
+    assert.match(at({ local: { url: 'http://app.localhost:5173', agent: 'ja' } }), /agent muss true oder false sein/);
     assert.match(at({ local: { url: 'http://app.localhost:5173', stage: 'x' } }), /stage gibt es dort nicht/);
 });
 
@@ -191,7 +191,7 @@ test('consoleIgnore must contain valid regular expressions', () => {
 
 test('effectiveEnvironment returns URL and capabilities; unknown names are rejected', () => {
     assert.deepEqual(effectiveEnvironment(multi(), 'sued-test'), {
-        name: 'sued-test', url: 'https://test.sued.example', claude: false, writable: true, production: false,
+        name: 'sued-test', url: 'https://test.sued.example', agent: false, writable: true, production: false,
         signIn: multi().signIn, allowHosts: [], thirdPartyHosts: [], insecureTls: false, allowHttp: false, ready: { path: '/', timeoutMs: 60000 },
     });
     const own = { ...multi(), environments: { ...multi().environments, 'sued-test': { extends: 'nord-test', url: 'https://test.sued.example', signIn: { type: 'none' } } } };
@@ -288,7 +288,7 @@ test('which code runs: deployed unless --overlay; if the overlay is not possible
     assert.throws(() => code(extjs, 'build'), (error) => error.code === 'usage' && /--overlay build gibt es bei ExtJS nicht/.test(error.message));
     // http on localhost is a dev server: it always runs the own code, an overlay makes no sense. https on *.localhost,
     // however, is a deployed build like any other.
-    const at = (url) => ({ ...own, environments: { box: { url, claude: true } }, overlay: { ...own.overlay, environments: ['box'] } });
+    const at = (url) => ({ ...own, environments: { box: { url, agent: true } }, overlay: { ...own.overlay, environments: ['box'] } });
     assert.throws(() => checkTest(spec, 'box', at('http://localhost:5173'), { overlay: true }), (error) => error.code === 'usage' && /Umgebung box ist ein Dev-Server \(localhost:5173\)/.test(error.message));
     assert.equal(checkTest(spec, 'box', at('https://shop.localhost:8443'), { overlay: true }).source, 'overlay');
     assert.throws(() => checkTest({ ...spec, environments: ['local'] }, 'staging', own), /Trage staging in environments in caw\/tests\/smoke\.yaml ein/);
@@ -298,9 +298,9 @@ test('config: suggestions for typos, notes on settings without effect', () => {
     assert.match(issues({ ...simple(), allowHost: ['x.example'] }), /Unbekanntes Feld: allowHost \(meintest du allowHosts\?\)/);
     assert.match(issues({ ...simple(), environments: { local: { url: 'http://app.localhost:5173', writabel: true } } }), /writabel gibt es dort nicht.*\(meintest du writable\?\)/);
     assert.doesNotMatch(issues({ ...simple(), zzz: 1 }), /meintest/);
-    const claude = { ...simple(), environments: { local: { url: 'http://app.localhost:5173', claude: true, writable: true } } };
+    const claude = { ...simple(), environments: { local: { url: 'http://app.localhost:5173', agent: true, writable: true } } };
     assert.deepEqual(validateConfig(claude), { ok: true, issues: [], notes: [], todo: [] });
-    assert.equal(effectiveEnvironment(claude, 'local').claude, true);
+    assert.equal(effectiveEnvironment(claude, 'local').agent, true);
 });
 
 test('overlay config: environments, parts, pattern and statics; without --overlay only the deployed code', () => {
@@ -429,15 +429,15 @@ test('writeConfig: refuses guarded keys (commands, environment flags, browser, s
         [{ environments: { local: { start: 'calc.exe' } } }, 'environments.local.start'],
         [{ environments: { local: { reset: 'rm -rf /' } } }, 'environments.local.reset'],
         [{ environments: { local: { ready: { path: '/x' } } } }, 'environments.local.ready'],
-        [{ environments: { staging: { claude: true } } }, 'environments.staging.claude'],
+        [{ environments: { staging: { agent: true } } }, 'environments.staging.agent'],
         [{ environments: { staging: { writable: true } } }, 'environments.staging.writable'],
         [{ environments: { staging: { allowHttp: true } } }, 'environments.staging.allowHttp'],
         [{ environments: { staging: { insecureTls: true } } }, 'environments.staging.insecureTls'],
-        [{ environments: { local: { claude: null } } }, 'environments.local.claude'],
-        [{ environments: { staging: { extends: 'local' } } }, 'environments.staging.claude'],
+        [{ environments: { local: { agent: null } } }, 'environments.local.agent'],
+        [{ environments: { staging: { extends: 'local' } } }, 'environments.staging.agent'],
         [{ environments: { live: null } }, 'environments.live.production'],
-        [{ environments: { live: null, shop: { url: 'https://shop.example', claude: true } } }, 'environments.shop.claude'],
-        [{ environments: { other: { url: 'https://other.example', claude: true } } }, 'environments.other.claude'],
+        [{ environments: { live: null, shop: { url: 'https://shop.example', agent: true } } }, 'environments.shop.agent'],
+        [{ environments: { other: { url: 'https://other.example', agent: true } } }, 'environments.other.agent'],
         [{ environments: { other: { extends: 'local', url: 'https://other.localhost' } } }, 'environments.other.writable'],
         [{ overlay: { parts: { shop: { start: 'evil' } } } }, 'overlay.parts.shop.start'],
         [{ overlay: { parts: { admin: { dir: 'admin', url: 'http://localhost:4200', start: 'evil' } } } }, 'overlay.parts.admin.start'],
@@ -458,7 +458,7 @@ test('writeConfig: refuses guarded keys (commands, environment flags, browser, s
     assert.equal(readFileSync(file, 'utf8'), before, 'nothing written');
     // Everything else still goes through, also a new environment without guarded keys and unchanged values written again.
     assert.equal(writeConfig(root, { environments: { qa: { url: 'https://qa.shop.example' } } }).ok, true);
-    assert.equal(writeConfig(root, { environments: { local: { claude: true, writable: true } }, overlay: { parts: { shop: { url: 'http://localhost:5174' } } } }).ok, true);
+    assert.equal(writeConfig(root, { environments: { local: { agent: true, writable: true } }, overlay: { parts: { shop: { url: 'http://localhost:5174' } } } }).ok, true);
     assert.equal(writeConfig(root, { environments: { qa: null } }).ok, true, 'an environment without guarded keys may go');
 });
 
@@ -508,13 +508,13 @@ test('navigationHosts: production only if the run itself is on production, not e
 
 test('production: also detected as part of a name, explicit false allowed', () => {
     const at = (environments) => issues({ ...simple(), environments: { ...simple().environments, ...environments } });
-    for (const name of ['prod-de', 'live-eu', 'prd2', 'produktiv-at']) assert.match(at({ [name]: { url: 'https://www.shop.example', claude: true } }), /sieht nach Produktion aus/, name);
-    assert.equal(at({ 'live-preview': { url: 'https://preview.shop.example', production: false, claude: true } }), '');
+    for (const name of ['prod-de', 'live-eu', 'prd2', 'produktiv-at']) assert.match(at({ [name]: { url: 'https://www.shop.example', agent: true } }), /sieht nach Produktion aus/, name);
+    assert.equal(at({ 'live-preview': { url: 'https://preview.shop.example', production: false, agent: true } }), '');
     assert.equal(at({ delivery: { url: 'https://d.shop.example' } }), '', 'no match in the middle of a word');
 });
 
 test('production: the exact names cannot be bypassed with false', () => {
-    assert.match(issues({ ...simple(), environments: { ...simple().environments, prod: { url: 'https://www.shop.example', production: false, claude: true } } }), /dem Namen nach Produktion/);
+    assert.match(issues({ ...simple(), environments: { ...simple().environments, prod: { url: 'https://www.shop.example', production: false, agent: true } } }), /dem Namen nach Produktion/);
 });
 
 test('config: broken values lead to messages, not crashes', () => {

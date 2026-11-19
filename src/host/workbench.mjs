@@ -657,7 +657,7 @@ const fillSettings=(data)=>{
   $('setRun').replaceChildren(
     ...kv(KV.project,String(data.project??''),sep(),code(String(data.config??''))),
     ...kv(KV.env,String(env.name??''),sep(),code(String(env.url??''))),
-    ...kv(KV.switches,badge(env.claude?'acc':'line',T[env.claude?'workbench.page.setClaudeAllowed':'workbench.page.setNoClaude'],env.claude?'spark':''),badge(env.writable?'pass':'warn',T[env.writable?'workbench.page.setWritable':'workbench.page.setNotWritable'],env.writable?'ok':'lock'),badge(env.production?'fail':'line',T[env.production?'workbench.page.setProduction':'workbench.page.setNotProduction'],env.production?'shield':'')),
+    ...kv(KV.switches,badge(env.agent?'acc':'line',T[env.agent?'workbench.page.setClaudeAllowed':'workbench.page.setNoClaude'],env.agent?'spark':''),badge(env.writable?'pass':'warn',T[env.writable?'workbench.page.setWritable':'workbench.page.setNotWritable'],env.writable?'ok':'lock'),badge(env.production?'fail':'line',T[env.production?'workbench.page.setProduction':'workbench.page.setNotProduction'],env.production?'shield':'')),
     ...(data.role===undefined?[]:kv(KV.role,String(data.role))),
     ...kv(KV.code,String(data.code??'')),
     ...kv(KV.version,String(data.version??'')));

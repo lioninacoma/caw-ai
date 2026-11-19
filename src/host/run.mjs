@@ -248,7 +248,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             hosts: navigationHosts(config, checked.name),
             // With a chat Claude is (or may become) attached, and caw reproduce always has Claude: the browser then reaches only the
             // project's hosts (host-lock.mjs).
-            ...((interactive || agent) && checked.claude === true ? { reach: agentHosts(config, checked.name) } : {}),
+            ...((interactive || agent) && checked.agent === true ? { reach: agentHosts(config, checked.name) } : {}),
             startUrl: start,
             devlinkConfig: buildDevlinkConfig(config, checked, start),
             devlinkConfigPath: join(runDir, 'devlink-config.json'),
@@ -274,7 +274,7 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
         const { isLoginFailure, offerAuthRepair } = await import('./login-repair.mjs');
         if (isLoginFailure(error)) {
             // Spend tokens only where Claude runs anyway: with a chat and on a target with claude. Otherwise just point the way.
-            if (interactive && checked.claude) await offerAuthRepair({ root, config, target: checked.name, error }).catch(() => false);
+            if (interactive && checked.agent) await offerAuthRepair({ root, config, target: checked.name, error }).catch(() => false);
             else error.message = `${error.message} ${t('repair.hint')}`;
         }
         throw error;
@@ -414,7 +414,7 @@ export const benchSettings = ({ root, config, spec, checked, agent, mode, run, e
         ...(run === undefined ? {} : { run }),
         framework: config.framework ?? 'web',
         config: CONFIG_FILE,
-        env: { name: checked.name, url: checked.url, claude: checked.claude === true, writable: checked.writable === true, production: checked.production === true },
+        env: { name: checked.name, url: checked.url, agent: checked.agent === true, writable: checked.writable === true, production: checked.production === true },
         ...(spec.role === undefined ? {} : { role: spec.role }),
         code: checked.source === 'overlay' ? t('run.fact.local') : t('run.fact.deployed'),
         version: `caw ${versionOf()} · Node ${process.versions.node.split('.')[0]}`,

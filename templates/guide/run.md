@@ -5,7 +5,7 @@ project folder (on Windows from PowerShell). Report the result including the pat
 
 - **Test:** `run <test>` (or `caw_start` with `command: "run"`, `test`). Runs without AI. If the recording is missing it ends
   with exit 4 (recording needed) and names `record`; if a step is outdated it names `record <test>@S<n>`. If a step fails on an
-  environment with `claude: true` and not in CI, the chat offers "{{label:run.button.fix}}"; only the person starts Claude from there. With
+  environment with `agent: true` and not in CI, the chat offers "{{label:run.button.fix}}"; only the person starts Claude from there. With
   `--explain` (only on such environments, not in CI) Claude gives recommendations right away on errors or warnings; that costs
   tokens, so add it only if the person wants it. `--learn` writes missing baselines into the recording: only when asked.
 - **Reach a state** ("take me to where the cart is filled"): read `caw/tests/` and find the step `S<n>` the person wants to work
@@ -14,7 +14,7 @@ project folder (on Windows from PowerShell). Report the result including the pat
   inputs, or one of its clicks writes, nothing of it or only up to that click runs. If the state is the end of the test, `open
   <test>` replays all and hands over. The command ends only when the person closes the window: start it in the background and
   say when the state is reached. The window then belongs to them.
-- **Record or replace:** `record <test>`, on an environment with `claude: true` (and `writable` for a writing test). It follows
+- **Record or replace:** `record <test>`, on an environment with `agent: true` (and `writable` for a writing test). It follows
   the plan in `caw/tests/<test>.yaml`; without a plan it starts with the person's demonstration. The person sits at the chat,
   approves the plan and decides at the end. It writes in the application and costs tokens: start it only when the person wants it.
 - **Change from a step on:** `record <test>@S<n>` re-records from `S<n>` to the end, even if nothing fails, e.g. after a step was

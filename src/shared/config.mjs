@@ -16,7 +16,7 @@ import { NAME, effectiveEnvironment, effectiveEnvironments, environmentNames, si
 export { CONFIG_FILE } from './names.mjs';
 export { environmentsWith } from './environments.mjs';
 
-const ENVIRONMENT_FLAGS = ['claude', 'writable', 'production', 'insecureTls', 'allowHttp'];
+const ENVIRONMENT_FLAGS = ['agent', 'writable', 'production', 'insecureTls', 'allowHttp'];
 /** The lifecycle commands of an environment (§2.9): shell commands run in the project root. */
 const LIFECYCLE_COMMANDS = ['start', 'stop', 'reset'];
 const ENVIRONMENT_KEYS = ['url', 'extends', 'signIn', 'gate', 'allowHosts', 'thirdPartyHosts', ...ENVIRONMENT_FLAGS, ...LIFECYCLE_COMMANDS, 'ready'];
@@ -94,17 +94,17 @@ const AGENT_KEYS = ['mode', 'model', 'maxBudgetUsd'];
 const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,79}$/;
 
 /**
- * Cost limits for Claude, passed on to Claude Code (`--model`, `--max-budget-usd`): from the environment (CAW_CLAUDE_MODEL,
- * CAW_CLAUDE_BUDGET, e.g. for one run) or from `agent.model` / `agent.maxBudgetUsd`. Invalid values are left out.
- * @returns the variables for the agent process, e.g. { CAW_CLAUDE_MODEL: 'haiku', CAW_CLAUDE_BUDGET: '0.5' }
+ * Cost limits for Claude, passed on to Claude Code (`--model`, `--max-budget-usd`): from the environment (CAW_AGENT_MODEL,
+ * CAW_AGENT_BUDGET, e.g. for one run) or from `agent.model` / `agent.maxBudgetUsd`. Invalid values are left out.
+ * @returns the variables for the agent process, e.g. { CAW_AGENT_MODEL: 'haiku', CAW_AGENT_BUDGET: '0.5' }
  */
 export const claudeLimits = (config, env = process.env) => {
     const agent = isObject(config?.agent) ? config.agent : {};
-    const model = env.CAW_CLAUDE_MODEL || agent.model;
-    const budget = env.CAW_CLAUDE_BUDGET || (agent.maxBudgetUsd === undefined ? undefined : String(agent.maxBudgetUsd));
+    const model = env.CAW_AGENT_MODEL || agent.model;
+    const budget = env.CAW_AGENT_BUDGET || (agent.maxBudgetUsd === undefined ? undefined : String(agent.maxBudgetUsd));
     return {
-        ...(typeof model === 'string' && MODEL_NAME.test(model) ? { CAW_CLAUDE_MODEL: model } : {}),
-        ...(typeof budget === 'string' && /^\d+(\.\d+)?$/.test(budget) && Number(budget) > 0 ? { CAW_CLAUDE_BUDGET: budget } : {}),
+        ...(typeof model === 'string' && MODEL_NAME.test(model) ? { CAW_AGENT_MODEL: model } : {}),
+        ...(typeof budget === 'string' && /^\d+(\.\d+)?$/.test(budget) && Number(budget) > 0 ? { CAW_AGENT_BUDGET: budget } : {}),
     };
 };
 
@@ -273,7 +273,7 @@ const checkEnvironments = (config, issues, notes) => {
                 if (!env.production && production !== undefined) issues.push(t('config.env.productionHost', { name, host: hostname, production }));
             }
         }
-        if (env.production && (env.claude || env.writable)) issues.push(t('config.env.productionFlags', { name }));
+        if (env.production && (env.agent || env.writable)) issues.push(t('config.env.productionFlags', { name }));
         // Starting, stopping or resetting production is never caw's job; reset writes, so it needs a writable environment.
         const commands = LIFECYCLE_COMMANDS.filter((key) => env[key] !== undefined);
         if (env.production && commands.length > 0) issues.push(t('config.env.productionLifecycle', { name, keys: commands.join(', ') }));
@@ -532,10 +532,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const absentEnvironment = () => effectiveEnvironment({ environments: { absent: { url: 'https://absent.invalid' } } }, 'absent');
 
 /**
- * The guarded keys a change touches, as paths: lifecycle commands, ready, the environment flags (production, claude, writable,
+ * The guarded keys a change touches, as paths: lifecycle commands, ready, the environment flags (production, agent, writable,
  * allowHttp, insecureTls) as runs see them after extends, overlay part start commands, lintCommand, sandboxImage, sandboxUser,
  * browser.executablePath and agent.mode. An environment added or removed counts with every guarded key it has, so deleting a
- * production environment or adding one with claude: true is a guarded change too. They change only by an edit the human sees.
+ * production environment or adding one with agent: true is a guarded change too. They change only by an edit the human sees.
  */
 export const guardedChanges = (before, after) => {
     const changed = [];

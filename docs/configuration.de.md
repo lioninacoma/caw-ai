@@ -23,7 +23,7 @@ Eine App auf einem lokalen Dev-Server, ohne Anmeldung:
 ```json
 {
   "environments": {
-    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
   }
 }
 ```
@@ -35,7 +35,7 @@ Mit Anmeldeformular:
   "framework": "react",
   "start": "/",
   "environments": {
-    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
   },
   "signIn": {
     "type": "form",
@@ -64,8 +64,8 @@ und `-`, beginnend mit einem Buchstaben, höchstens 32 Zeichen.
 
 ```json
 "environments": {
-  "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
-  "dev":     { "url": "https://dev.example.com", "claude": true, "writable": true },
+  "local":   { "url": "http://localhost:5173", "agent": true, "writable": true },
+  "dev":     { "url": "https://dev.example.com", "agent": true, "writable": true },
   "staging": { "url": "https://staging.example.com" },
   "prod":    { "url": "https://example.com", "production": true }
 }
@@ -74,9 +74,9 @@ und `-`, beginnend mit einem Buchstaben, höchstens 32 Zeichen.
 | Feld | |
 |---|---|
 | `url` | Origin der App. `https`, oder `http` für diesen Rechner (`localhost`, `127.0.0.1`, `*.localhost`). |
-| `claude` | `true`: Claude darf hier aufnehmen, beheben und untersuchen. |
+| `agent` | `true`: Claude darf hier aufnehmen, beheben und untersuchen. |
 | `writable` | `true`: Tests mit `writes: true` dürfen hier laufen. |
-| `production` | Pflicht für Namen, die nach Produktion aussehen (`prod`, `live`, `prod-eu` …). So eine Umgebung kann kein `claude` oder `writable` haben. Ein Lauf dort sendet keine schreibenden Requests, an keinen Host: Jeder Request, der kein GET, HEAD, OPTIONS, keine GraphQL-Query und kein `reads`-Muster ist, wird abgebrochen und lässt den Schritt mit `write-blocked` scheitern, auch ein Formular-Post ins oberste Fenster. Anmelde-Requests gehen nur durch, solange caw selbst anmeldet; ein Token-Refresh, den die App später schickt, schreibt, außer `reads` nennt ihn. Nicht abgedeckt: Nachrichten, die die App über einen offenen WebSocket schickt (auch lesende Apps schicken welche, etwa Keep-alives und Abonnements). Läufe auf anderen Umgebungen erreichen ihren Host nie. Ein Name, der nur so aussieht, sagt `"production": false`. |
+| `production` | Pflicht für Namen, die nach Produktion aussehen (`prod`, `live`, `prod-eu` …). So eine Umgebung kann kein `agent` oder `writable` haben. Ein Lauf dort sendet keine schreibenden Requests, an keinen Host: Jeder Request, der kein GET, HEAD, OPTIONS, keine GraphQL-Query und kein `reads`-Muster ist, wird abgebrochen und lässt den Schritt mit `write-blocked` scheitern, auch ein Formular-Post ins oberste Fenster. Anmelde-Requests gehen nur durch, solange caw selbst anmeldet; ein Token-Refresh, den die App später schickt, schreibt, außer `reads` nennt ihn. Nicht abgedeckt: Nachrichten, die die App über einen offenen WebSocket schickt (auch lesende Apps schicken welche, etwa Keep-alives und Abonnements). Läufe auf anderen Umgebungen erreichen ihren Host nie. Ein Name, der nur so aussieht, sagt `"production": false`. |
 | `insecureTls` | `true`: ein selbstsigniertes Zertifikat auf dieser Umgebung akzeptieren. |
 | `allowHttp` | `true`: `http` auf einem Host erlauben, der nicht dieser Rechner ist (ein Intranet ohne TLS). |
 | `allowHosts` | Weitere Hosts, auf die Seiten hier navigieren dürfen, etwa der Anmeldedienst; ergänzt `allowHosts` der obersten Ebene. |
@@ -90,7 +90,7 @@ Was nicht auf `true` steht, ist aus. Ein Lauf gegen `staging` oben spielt nur ab
 Stand.
 
 Welche Umgebung ein Befehl nimmt: die, die du mit `--env` nennst. Ohne läuft ein Test, der auf genau einer Umgebung laufen
-kann, dort; auf deinem Rechner wird die einzige Umgebung mit `claude: true` unter seinen Kandidaten genommen; in CI rät caw nie
+kann, dort; auf deinem Rechner wird die einzige Umgebung mit `agent: true` unter seinen Kandidaten genommen; in CI rät caw nie
 und nennt die Kandidaten (Exit 3).
 
 ### Umgebung starten, stoppen und zurücksetzen
@@ -256,7 +256,7 @@ Gegen deinen lokalen Dev-Server testest du ohne Option. Der Dev-Server ist eine 
 
 ```json
 "environments": {
-  "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+  "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
 }
 ```
 
@@ -275,8 +275,8 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 | `start` | `/` | Pfad, an dem Tests beginnen; ein Test kann sein eigenes `start` setzen. |
 | `source` | `.` | Wo der Quellcode der App liegt, relativ zum Projekt, oder `false`, wenn er nicht in diesem Repository ist (dann gibt Claude keine Code-Empfehlungen). |
 | `agent.mode` | `local` | Wo Claude läuft: `local` (Claude Code auf deinem Rechner, nur lesende Werkzeuge), `docker` (isoliert) oder `session` (deine eigene Claude-Code-Sitzung). In CI immer `docker`. |
-| `agent.model` | Standard von Claude Code | Modell für Claude, als `--model` übergeben, z. B. `haiku` oder `sonnet`. `CAW_CLAUDE_MODEL` ersetzt es für einen Lauf. |
-| `agent.maxBudgetUsd` | keins | Stoppt einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` ersetzt es. |
+| `agent.model` | Standard von Claude Code | Modell für Claude, als `--model` übergeben, z. B. `haiku` oder `sonnet`. `CAW_AGENT_MODEL` ersetzt es für einen Lauf. |
+| `agent.maxBudgetUsd` | keins | Stoppt einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_AGENT_BUDGET` ersetzt es. |
 | `maxActions` | `100` | Aktionsbudget von Claude beim Aufnehmen und Beheben. |
 | `allowHosts` | `[]` | Weitere Hosts, auf die Seiten navigieren dürfen, etwa ein Anmeldedienst; auch je Umgebung. Seiten navigieren nur zu den Hosts der Umgebungen und diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Ohne Claude dürfen Skripte, Styles, Schriften, Bilder, XHR/fetch, WebSockets und iframes zu jedem Host. Produktionshosts anderer Umgebungen bleiben für jeden Request unerreichbar. Hosts werden nach Namen verglichen (Groß-/Kleinschreibung und ein Punkt am Ende zählen nicht); ein Host, der über seine IP-Adresse erreicht wird, wird nicht erkannt. |
 | `thirdPartyHosts` | `[]` | Hosts anderer Anbieter, die die App braucht, solange Claude dabei ist (record, ein Lauf mit Chat, `open`), z. B. `["fonts.example-cdn.com"]`; auch je Umgebung. Dann geht jeder Request des Browsers (Seiten, Skripte, XHR/fetch, WebSockets, Beacons, iframes) nur an die Umgebungen, `allowHosts` und diese; alles andere wird abgebrochen und im Lauf als Warnung mit diesem Schlüssel genannt. Ein Produktionshost bleibt auch hier gesperrt. Ohne Claude bewirkt die Liste nichts. |

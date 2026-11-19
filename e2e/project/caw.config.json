@@ -8,7 +8,7 @@
     "environments": {
         "dev": {
             "url": "https://portal.localhost:8453",
-            "claude": true,
+            "agent": true,
             "writable": true,
             "insecureTls": true
         }

@@ -33,7 +33,7 @@ Befehle:`,
       [--role <rolle>]                   Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (writes: false); schreibt er doch,
                                          wird er schreibend
-      [--claude-timeout <dauer>]         Zeitlimit für Claude, Standard 60m
+      [--agent-timeout <dauer>]         Zeitlimit für Claude, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von Claude, sonst maxActions aus der Config, sonst 100
       [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
       [--agent local|docker|session]     wie bei run
@@ -52,7 +52,7 @@ Befehle:`,
       [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
                                          vor dem ersten Test, --no-reset nie
       [--step-timeout <dauer>]           Zeitlimit je Schritt, Standard 30s
-      [--claude-timeout <dauer>]         Zeitlimit für Claude beim Klären und Beheben, Standard 60m
+      [--agent-timeout <dauer>]         Zeitlimit für Claude beim Klären und Beheben, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von Claude beim Beheben, sonst maxActions aus der Config, sonst 100
       [--agent local|docker|session]     Wo Claude arbeitet; Standard aus agent.mode der Config (local). session: deine
                                          Claude-Code-Session übernimmt über ihre caw-Werkzeuge, caw startet keinen Claude
@@ -70,7 +70,7 @@ Befehle:`,
                                          Lernt nichts, schreibt keine Testdatei
       [--role <rolle>]                   Nur ohne Test; nicht nötig, wenn die Config nur eine hat
       [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
-      [--agent local|docker|session] [--claude-timeout <dauer>] [--max-actions <n>]
+      [--agent local|docker|session] [--agent-timeout <dauer>] [--max-actions <n>]
       [--start] [--reset]                wie bei run (--reset nur, wenn angegeben)
       [--overlay[=<teile>]]              wie bei run`,
     'cli.help.reproduce': `  reproduce "<fehlerbericht>" [--env <name>]  Claude stellt einen Fehler allein nach, angemeldet mit einer
@@ -113,7 +113,7 @@ Befehle:`,
     'cli.help.here': ' (hier: {names})',
     'cli.help.footer': `--env <name>: ein Name aus environments, etwa local. Entfällt, wenn die Wahl klar ist: die einzige, die passt, oder bei run
 außerhalb von CI die einzige, auf der Claude arbeiten darf; Produktion nur, wenn genannt.
-Dauern mit Einheit: --step-timeout 30s, --claude-timeout 60m.
+Dauern mit Einheit: --step-timeout 30s, --agent-timeout 60m.
 
 caw <befehl> --help für Details.
 Exit-Codes: 0 pass, 1 fail, 2 error (Umgebung), 3 abgelehnt (Eingabe), 4 Aufnahme nötig.`,
@@ -288,7 +288,7 @@ Browser:
     'cli.noEnvironment': 'keiner Umgebung',
     'cli.verbRecord': 'Aufgenommen wird',
     'cli.verbReproduce': 'Nachgestellt wird',
-    'cli.agentOnly': '{verb} braucht environments.{environment}.claude: true (zurzeit nur: {environments}).',
+    'cli.agentOnly': '{verb} braucht environments.{environment}.agent: true (zurzeit nur: {environments}).',
     'cli.agentNotInCi': '--agent {agent} geht nicht in CI (Variable CI gesetzt), dort läuft Claude nur in Docker.',
     'cli.sessionAgent': 'Claude arbeitet in deiner Claude-Code-Session: Sage ihr „übernimm den caw-Lauf“. Sie findet ihn über das Tool caw (caw mcp) oder caw <befehl>.',
     'cli.sessionLabel': 'deine Claude-Code-Session',

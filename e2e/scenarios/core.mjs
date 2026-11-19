@@ -50,7 +50,7 @@ export const scenarios = [
         verify('help exits 0', help.code === 0, String(help.code));
         verify('help lists the commands for people in order', JSON.stringify(commands) === JSON.stringify(['npx', 'init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'doctor', 'role', 'export']), commands.join(' '));
         verify('help hides mcp, agent, explore and auth; skill is gone', !commands.some((name) => ['mcp', 'agent', 'explore', 'auth', 'skill'].includes(name)));
-        verify('help names durations with units', /--step-timeout 30s, --claude-timeout 60m/.test(help.out));
+        verify('help names durations with units', /--step-timeout 30s, --agent-timeout 60m/.test(help.out));
 
         // (3) Moved commands: exit 3 and the new place, nothing runs.
         for (const [args, now] of [[['explore', '--url', 'http://localhost:18510'], 'caw init --explore-only'], [['auth', 'clerk'], 'caw role login'], [['click', 'e1'], 'caw agent click'], [['skill'], null]]) {
@@ -65,7 +65,7 @@ export const scenarios = [
             [['run', 't', '--step-timeout', '30'], /--step-timeout 30: add a unit, e\.g\. --step-timeout 30s/],
             [['run', 't', '--advise'], /--advise is now called --explain\./],
             [['record', 't', '--max-steps', '5'], /--max-steps is now called --max-actions\./],
-            [['record', 't', '--timeout', '60'], /--timeout is now called --claude-timeout\./],
+            [['record', 't', '--timeout', '60'], /--timeout is now called --agent-timeout\./],
             [['role', 'login', 'clerk', '--target', 'local'], /--target is now called --env\./],
         ]) {
             const renamed = caw(args);

@@ -22,9 +22,9 @@ A test is a plan in plain language. You or Claude walk it once in the browser; c
 
 | Command | What happens | AI and chat | Environment |
 |---|---|---|---|
-| `record <test> --env <env>` | Record a new test plan or replace one | always | only environments with `claude` |
-| `run <test> --env <env>` | Test run by plan | On environments with `claude` the chat sits alongside from the start; Claude only after your message, your click on "Let Claude find the cause" or "Fix step", or with `--explain` | all |
-| `record <test>@S4 --env <env>` | Re-record from S4 to the end. S1 to S3 replay without Claude, then Claude follows the old plan from S4 on; there is no check run first, so look for causes with `run` | always | only environments with `claude` |
+| `record <test> --env <env>` | Record a new test plan or replace one | always | only environments with `agent` |
+| `run <test> --env <env>` | Test run by plan | On environments with `agent` the chat sits alongside from the start; Claude only after your message, your click on "Let Claude find the cause" or "Fix step", or with `--explain` | all |
+| `record <test>@S4 --env <env>` | Re-record from S4 to the end. S1 to S3 replay without Claude, then Claude follows the old plan from S4 on; there is no check run first, so look for causes with `run` | always | only environments with `agent` |
 
 `open --env <env>` opens the app signed in, with workbench and chat but without a test, see [Commands](commands.md#open). `open <test>` replays a test first, `open <test>@S4` stops at the entry of S4, see [Reaching a state and taking over](#reaching-a-state-and-taking-over).
 
@@ -160,7 +160,7 @@ On the right of the workbench, even in a test run without Claude. The history ca
 - **Step back:** There is no rewind. Tell Claude what was wrong: it goes to the right state and drops the detour with `omit`. What was submitted stays in the application; then only a new run helps.
 - **Cancel:** Esc (or `/cancel`, ⋯ → Cancel run) asks "Really cancel? (Esc)"; a second Esc or a click on it within 4 seconds confirms and ends everything immediately with `error`. Closing the chat has the same effect; without it there is neither approval nor decision.
 
-The human's time counts toward Claude's limit, so the default here is 60 minutes (`--claude-timeout 60m`).
+The human's time counts toward Claude's limit, so the default here is 60 minutes (`--agent-timeout 60m`).
 
 #### What goes into the recording
 
@@ -175,16 +175,16 @@ The human's time counts toward Claude's limit, so the default here is 60 minutes
 
 **Limits:**
 
-- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `claude` and only with test accounts, the guide rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every write request to the app's hosts, by name without parameter values. A request is a read if it is GET, HEAD or OPTIONS, a GraphQL query, or matches a `reads` pattern; sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count; everything else writes. Requests to sign-in services in `allowHosts` and to third-party hosts (analytics, CDNs) never make a test a writing one.
+- **Claude can write while exploring.** There is deliberately no write lock: in many applications submitting and follow-up steps depend on each other, and reading and writing requests often look the same at the HTTP level. Instead: recording only on environments with `agent` and only with test accounts, the guide rule "own records only", plan approval, the step budget, and the report lists under "Write requests" every write request to the app's hosts, by name without parameter values. A request is a read if it is GET, HEAD or OPTIONS, a GraphQL query, or matches a `reads` pattern; sign-in, sign-out, session and token (paths ending in login, logout, session, token, auth, refresh, csrf and similar) don't count; everything else writes. Requests to sign-in services in `allowHosts` and to third-party hosts (analytics, CDNs) never make a test a writing one.
 - **Step budget:** `--max-actions` (else `maxActions` from the config, else 100) counts Claude's `click`, `fill`, `type`, `press`, `goto` and `reload`, failed ones included. What you demonstrate yourself doesn't count.
 - **Claude doesn't react instantly:** `claude -p` runs without input; message and pause take effect before the next action. "Cancel" takes effect immediately.
 
 ### Test run: `run`
 
-Replays the recording without model, Docker or token. On environments with `claude` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines (only with `--learn`, or when you click "Save baselines" on the end card), the last one what changed in the test files. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with [`open <test>`](#reaching-a-state-and-taking-over), stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 4 and names `record`. If a step is outdated, it ends with exit 4 and names `record <test>@<step>` to re-record from that step.
+Replays the recording without model, Docker or token. On environments with `agent` the chat sits next to the window from the start, except in CI (variable `CI` set), with `--no-chat` or `--headless`. The first terminal line states the mode and whether the run learns baselines (only with `--learn`, or when you click "Save baselines" on the end card), the last one what changed in the test files. The chat shows each action (`S3 · 4/12 click …`) including retries; input is locked. If the run passes, the chat reports it along with warnings and doesn't wait; it closes with the run or, with [`open <test>`](#reaching-a-state-and-taking-over), stays next to the handed-over window. If a step fails, see [Fixing a step](#fixing-a-step). If the recording is missing entirely, it ends with exit 4 and names `record`. If a step is outdated, it ends with exit 4 and names `record <test>@<step>` to re-record from that step.
 
 - **Waiting:** There are no fixed pauses. A step waits until its target is visible and not covered. That covers load masks, overlays and dialogs within dialogs, since only the topmost dialog is clickable. `check` retries until it holds or the time limit expires.
-- **Time limits:** 30 seconds per step by default, changeable with `--step-timeout` (e.g. `--step-timeout 45s`), or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--claude-timeout <duration>` (default 60m) and `--max-actions <n>` apply as for `record`.
+- **Time limits:** 30 seconds per step by default, changeable with `--step-timeout` (e.g. `--step-timeout 45s`), or by hand per action with `timeoutMs` and per check with `recording.timeoutMs` in the test file. If Claude clarifies or fixes from within the run, `--agent-timeout <duration>` (default 60m) and `--max-actions <n>` apply as for `record`.
 - **Errors:** If a step fails, the report names the test step with its action and points to a screenshot. Cleanup steps like "Cancel" then no longer run; a created record may stay open.
 - **Failures:** Console errors, script errors, failed requests and HTTP status 500 and above stop replay at the next step. So do visible dialogs, error messages and messages from `messageSelectors` that didn't occur during recording (numbers in the text don't count). With the `web` adapter a status notice (`role=status`, `aria-live=polite`, e.g. a success toast) is not a failure: it appears or not depending on timing; an unknown one appears once as a warning in the report. A dialog with input fields is interaction, not a message. Also: lost login, an application that didn't load (`extjs`: no ExtJS on the page), a stuck load mask (`aria-busy`, with `extjs` the load mask), a different page than recorded, and every unmet `check`.
 - **Fixing:** If a step fails, see [Fixing a step](#fixing-a-step).
@@ -219,7 +219,7 @@ state where the bug shows. Claude reads the report, walks it, judges by evidence
 
 What Claude may and may not do here:
 
-- Only on environments with `claude`, never on production; the browser reaches only the project's hosts.
+- Only on environments with `agent`, never on production; the browser reaches only the project's hosts.
 - Write only where the environment is `writable`; elsewhere every write request is aborted and named in the report.
 - No plan, no `check`, no question to you, no advice and no code change: these commands are refused.
 - Nothing goes into the project: the report and `draft-test.yaml` stay in the run folder. The draft's expectations describe the
@@ -348,7 +348,7 @@ Without fix parameters nothing costs tokens as long as you don't write or click:
 | Run | When |
 |---|---|
 | `run` and "Let Claude find the cause" | A step failed and you click the button in the chat. If the assessment is "application", it is the main button, otherwise it sits next to "Fix step". Then as with `--explain`: cards, and "Test again" after an adopted application change |
-| `run … --explain` | Without a click: a step fails, a hard error occurs or there are warnings, even in a passed run. For runs whose result you only look at later. Only on environments with `claude` and with chat (not in CI), otherwise exit 3 |
+| `run … --explain` | Without a click: a step fails, a hard error occurs or there are warnings, even in a passed run. For runs whose result you only look at later. Only on environments with `agent` and with chat (not in CI), otherwise exit 3 |
 | `record <test>@<S4>` and "Fix step" | Errors or warnings while re-recording or fixing and in the check run afterwards |
 | `record` | only once you choose "Fix step" in the check run |
 
@@ -371,7 +371,7 @@ The "Recommendations" section in `report.md` lists each piece of advice with evi
 
 ### Fixing a step
 
-If a step fails in `run` or in the check run of `record`, replay stops and the browser stays in the failure state. The chat says "S4 failed: <reason>" with hard errors and warnings and unlocks input (state "Clarify failure"), plus "Fix step" and "End run". Below it is the tool's [assessment](#assessment-test-application-or-environment) with its findings. If it points to an application bug, "Fix step" becomes only the second button, with a note that an adjusted test would merely hide the bug. This exists only on environments with `claude`; in CI, with `--no-chat`/`--headless` and on other environments there is only the exit code and the report.
+If a step fails in `run` or in the check run of `record`, replay stops and the browser stays in the failure state. The chat says "S4 failed: <reason>" with hard errors and warnings and unlocks input (state "Clarify failure"), plus "Fix step" and "End run". Below it is the tool's [assessment](#assessment-test-application-or-environment) with its findings. If it points to an application bug, "Fix step" becomes only the second button, with a note that an adjusted test would merely hide the bug. This exists only on environments with `agent`; in CI, with `--no-chat`/`--headless` and on other environments there is only the exit code and the report.
 
 - **Ask:** Only your message starts Claude, in the same browser and read-only as with [advice](#advice-on-errors-and-warnings). It answers in the chat, names cause, file and line, and can give advice cards. Each further message continues the same conversation until you press a button. The log is in `agent/claude-talk.log`. Without a message or click, no tokens are spent.
 - **Fix in the same browser:** If nothing of the failed step has run yet, i.e. its first action failed without a hard error from outside, Claude fixes it right there, without a lead-in. The test run's report is kept as `report-test-run.md`. Otherwise, e.g. after half a sequence of actions or an unmet check, it proceeds as below with a lead-in in a fresh browser. The chat says beforehand which way it will be.
@@ -473,7 +473,7 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 |---|---|---|
 | `caw_guide` | How to work with caw, per topic (`setup`, `tests`, `run`, `session`, `config` …); without a topic the index | no |
 | `caw_init` | `mode: explore` opens the app for you to sign in and returns the suggestions; `mode: write` writes the config from them; `mode: offline` the template with TODO | no |
-| `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written. Commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), the environment flags (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` and `agent.mode` are refused: the session edits those in the file, where Claude Code shows you the diff | no |
+| `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written. Commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), the environment flags (`production`, `agent`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` and `agent.mode` are refused: the session edits those in the file, where Claude Code shows you the diff | no |
 | `caw_role` | `list` roles and whether a test user is set; `add` puts a role into the config and names its variables, you fill `caw/.env` yourself; `login` saves a session (SSO); `remove` | no |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
 | `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role` (or `args`) | none beyond your session |

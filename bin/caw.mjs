@@ -34,7 +34,7 @@ const projectLanguage = (root) => {
 const claudeEnvironments = async (root) => {
     try {
         const { environmentsWith, loadConfig } = await import('../src/shared/config.mjs');
-        return environmentsWith(loadConfig(root), 'claude').join(', ') || undefined;
+        return environmentsWith(loadConfig(root), 'agent').join(', ') || undefined;
     } catch {
         return undefined;
     }

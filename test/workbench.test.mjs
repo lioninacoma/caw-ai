@@ -87,9 +87,9 @@ test('settings data: names, flags and line counts; home as ~, never the content 
     writeFileSync(join(home, 'prefs.json'), JSON.stringify({ tokenNotice: 'off' }));
     try {
         const env = { ...process.env, CAW_AI_HOME: home };
-        const data = benchSettings({ root, config: {}, spec: { id: 't', role: 'user' }, checked: { name: 'local', url: 'http://localhost:4173', claude: true, writable: false, production: false, source: 'deployed' }, agent: 'Docker', env });
+        const data = benchSettings({ root, config: {}, spec: { id: 't', role: 'user' }, checked: { name: 'local', url: 'http://localhost:4173', agent: true, writable: false, production: false, source: 'deployed' }, agent: 'Docker', env });
         assert.equal(data.project, 'errand');
-        assert.deepEqual(data.env, { name: 'local', url: 'http://localhost:4173', claude: true, writable: false, production: false });
+        assert.deepEqual(data.env, { name: 'local', url: 'http://localhost:4173', agent: true, writable: false, production: false });
         assert.equal(data.role, 'user');
         assert.equal(data.agent, 'Docker');
         assert.equal(data.tokenNotice, 'off');

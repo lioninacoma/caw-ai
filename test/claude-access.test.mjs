@@ -9,29 +9,29 @@ import { claudeArgs, limitArgs, localClaudeArgs } from '../src/sandbox/commands.
 import { claudeLimits, validateConfig } from '../src/shared/config.mjs';
 
 const BASE = {
-    environments: { local: { url: 'http://localhost:5173', claude: true, writable: true } },
+    environments: { local: { url: 'http://localhost:5173', agent: true, writable: true } },
     signIn: { type: 'none' },
     start: '/',
 };
 
 test('claudeLimits: config agent.model and agent.maxBudgetUsd, the environment wins, invalid values are left out', () => {
     assert.deepEqual(claudeLimits({}, {}), {});
-    assert.deepEqual(claudeLimits({ agent: { model: 'haiku', maxBudgetUsd: 0.5 } }, {}), { CAW_CLAUDE_MODEL: 'haiku', CAW_CLAUDE_BUDGET: '0.5' });
-    assert.deepEqual(claudeLimits({ agent: { model: 'haiku', maxBudgetUsd: 0.5 } }, { CAW_CLAUDE_MODEL: 'sonnet', CAW_CLAUDE_BUDGET: '2' }), { CAW_CLAUDE_MODEL: 'sonnet', CAW_CLAUDE_BUDGET: '2' });
-    assert.deepEqual(claudeLimits({}, { CAW_CLAUDE_MODEL: 'haiku --dangerously', CAW_CLAUDE_BUDGET: '-1' }), {}, 'no options smuggled in, no negative budget');
+    assert.deepEqual(claudeLimits({ agent: { model: 'haiku', maxBudgetUsd: 0.5 } }, {}), { CAW_AGENT_MODEL: 'haiku', CAW_AGENT_BUDGET: '0.5' });
+    assert.deepEqual(claudeLimits({ agent: { model: 'haiku', maxBudgetUsd: 0.5 } }, { CAW_AGENT_MODEL: 'sonnet', CAW_AGENT_BUDGET: '2' }), { CAW_AGENT_MODEL: 'sonnet', CAW_AGENT_BUDGET: '2' });
+    assert.deepEqual(claudeLimits({}, { CAW_AGENT_MODEL: 'haiku --dangerously', CAW_AGENT_BUDGET: '-1' }), {}, 'no options smuggled in, no negative budget');
 });
 
 test('limitArgs: Claude Code options for the container and the local agent', () => {
     assert.deepEqual(limitArgs({}), []);
-    assert.deepEqual(limitArgs({ CAW_CLAUDE_MODEL: 'haiku', CAW_CLAUDE_BUDGET: '0.5' }), ['--model', 'haiku', '--max-budget-usd', '0.5']);
-    assert.deepEqual(claudeArgs('go', '/run/agent/guide.md', { CAW_CLAUDE_MODEL: 'haiku' }).slice(-2), ['--model', 'haiku']);
-    const saved = { model: process.env.CAW_CLAUDE_MODEL, budget: process.env.CAW_CLAUDE_BUDGET };
-    process.env.CAW_CLAUDE_MODEL = 'haiku';
-    process.env.CAW_CLAUDE_BUDGET = '1';
+    assert.deepEqual(limitArgs({ CAW_AGENT_MODEL: 'haiku', CAW_AGENT_BUDGET: '0.5' }), ['--model', 'haiku', '--max-budget-usd', '0.5']);
+    assert.deepEqual(claudeArgs('go', '/run/agent/guide.md', { CAW_AGENT_MODEL: 'haiku' }).slice(-2), ['--model', 'haiku']);
+    const saved = { model: process.env.CAW_AGENT_MODEL, budget: process.env.CAW_AGENT_BUDGET };
+    process.env.CAW_AGENT_MODEL = 'haiku';
+    process.env.CAW_AGENT_BUDGET = '1';
     try {
         assert.deepEqual(localClaudeArgs('go', { mcpConfig: 'm.json', settings: '{}', systemPromptFile: 's.md' }).slice(-4), ['--model', 'haiku', '--max-budget-usd', '1']);
     } finally {
-        for (const [key, value] of [['CAW_CLAUDE_MODEL', saved.model], ['CAW_CLAUDE_BUDGET', saved.budget]]) {
+        for (const [key, value] of [['CAW_AGENT_MODEL', saved.model], ['CAW_AGENT_BUDGET', saved.budget]]) {
             if (value === undefined) delete process.env[key];
             else process.env[key] = value;
         }
@@ -39,17 +39,17 @@ test('limitArgs: Claude Code options for the container and the local agent', () 
 });
 
 test('Docker: only the API key, by name only; no subscription token; the limits with their values', () => {
-    const args = sandboxRunArgs({ hostRoot: '/p', containerRoot: '/w', image: 'img', masks: [], name: 'n', hostAgentDir: '/a', containerAgentDir: '/w/a', command: ['x'], limits: { CAW_CLAUDE_MODEL: 'haiku' } });
+    const args = sandboxRunArgs({ hostRoot: '/p', containerRoot: '/w', image: 'img', masks: [], name: 'n', hostAgentDir: '/a', containerAgentDir: '/w/a', command: ['x'], limits: { CAW_AGENT_MODEL: 'haiku' } });
     const passed = args.flatMap((arg, index) => (arg === '-e' ? [args[index + 1]] : []));
     assert.ok(passed.includes('ANTHROPIC_API_KEY'));
     assert.ok(!passed.some((entry) => entry.startsWith('CLAUDE_CODE_OAUTH_TOKEN')), 'subscription logins stay outside the container');
-    assert.ok(passed.includes('CAW_CLAUDE_MODEL=haiku'));
+    assert.ok(passed.includes('CAW_AGENT_MODEL=haiku'));
     assert.ok(!passed.some((entry) => /^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=/.test(entry)), 'never the value');
 });
 
 test('local agent: the limits reach the agent process environment', () => {
-    const env = localAgentEnv('C:/tmp/agent', { env: { PATH: '' }, limits: { CAW_CLAUDE_BUDGET: '0.5' } });
-    assert.equal(env.CAW_CLAUDE_BUDGET, '0.5');
+    const env = localAgentEnv('C:/tmp/agent', { env: { PATH: '' }, limits: { CAW_AGENT_BUDGET: '0.5' } });
+    assert.equal(env.CAW_AGENT_BUDGET, '0.5');
 });
 
 test('config: agent.model and agent.maxBudgetUsd are checked up front', () => {

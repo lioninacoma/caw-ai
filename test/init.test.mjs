@@ -109,7 +109,7 @@ test('role login: saves a role\'s session, only where the sign-in is a session a
     t.after(() => rmSync(root, { recursive: true, force: true }));
     t.mock.method(console, 'log', () => {});
     const write = (authConfig) => writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
-        environments: { local: { url: 'http://app.localhost:5173', claude: true }, live: { url: 'https://www.shop.example', production: true } },
+        environments: { local: { url: 'http://app.localhost:5173', agent: true }, live: { url: 'https://www.shop.example', production: true } },
         signIn: authConfig,
         start: '/',
         roles: { kunde: {} },
@@ -207,7 +207,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     // An invalid config: the first real finding, not just "caw.config.json:".
     writeFileSync(configPath, saved.replace('"local": {', '"local": { "robot": true, "zzz": true,'));
     const broken = (await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes })).find(({ text }) => text.startsWith('caw.config.json'));
-    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, extends, signIn, gate, allowHosts, thirdPartyHosts, claude, writable, production, insecureTls, allowHttp, start, stop, reset, ready)');
+    assert.equal(broken.text, 'caw.config.json: Umgebung local: robot gibt es dort nicht (erlaubt: url, extends, signIn, gate, allowHosts, thirdPartyHosts, agent, writable, production, insecureTls, allowHttp, start, stop, reset, ready)');
     assert.equal(broken.next, 'caw validate zeigt alle 2 Befunde.');
     writeFileSync(configPath, saved);
     // Always Docker in CI: then Docker and token count.
@@ -269,7 +269,7 @@ test('init: detects the framework, takes answers, no role without login', async 
     init(open, { url: 'http://shop.localhost:3000', signIn: 'none' });
     const config = JSON.parse(readFileSync(join(open, 'caw.config.json'), 'utf8'));
     assert.equal(config.framework, 'vue');
-    assert.deepEqual(config.environments, { local: { url: 'http://shop.localhost:3000', claude: true, writable: true } });
+    assert.deepEqual(config.environments, { local: { url: 'http://shop.localhost:3000', agent: true, writable: true } });
     assert.equal(config.signIn, undefined);
     assert.equal(validate(open), 0);
 
@@ -383,7 +383,7 @@ test('validate: code per test and target, where an overlay is possible, and TODO
     const root = mkdtempSync(join(tmpdir(), 'caw-validate-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
-        environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, dev: { url: 'https://dev.example.com', claude: true } },
+        environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, dev: { url: 'https://dev.example.com', agent: true } },
         signIn: { type: 'form', path: '/login', userSelector: '#u', passwordSelector: 'TODO', signedInSelector: '#m' },
         start: '/',
         overlay: { environments: ['dev'], parts: { web: { dir: '.', build: 'dist' } } },
@@ -512,12 +512,12 @@ test('init: environment name and flags (SC-15), --language and --allow-http, exp
     assert.equal(defaultEnvName('https://QA_1.example.com'), 'qa-1');
     assert.equal(defaultEnvName('https://10.0.0.5'), 'app', 'an address without a usable label');
     const environment = (answers) => Object.entries(starterConfig(answers).environments)[0];
-    assert.deepEqual(environment({ url: 'http://localhost:5173' }), ['local', { url: 'http://localhost:5173', claude: true, writable: true }]);
+    assert.deepEqual(environment({ url: 'http://localhost:5173' }), ['local', { url: 'http://localhost:5173', agent: true, writable: true }]);
     assert.deepEqual(environment({ url: 'https://staging.example.com', insecureTls: true, allowHosts: ['login.example.com'] }),
-        ['staging', { url: 'https://staging.example.com', claude: true, writable: false, insecureTls: true, allowHosts: ['login.example.com'] }]);
+        ['staging', { url: 'https://staging.example.com', agent: true, writable: false, insecureTls: true, allowHosts: ['login.example.com'] }]);
     assert.deepEqual(environment({ url: 'https://www.shop.example', env: 'live' }), ['live', { url: 'https://www.shop.example', production: true }]);
     assert.throws(() => starterConfig({ url: 'http://test.intern' }), /--allow-http/);
-    assert.deepEqual(environment({ url: 'http://test.intern', allowHttp: true }), ['test', { url: 'http://test.intern', claude: true, writable: false, allowHttp: true }]);
+    assert.deepEqual(environment({ url: 'http://test.intern', allowHttp: true }), ['test', { url: 'http://test.intern', agent: true, writable: false, allowHttp: true }]);
     assert.equal(starterConfig({ language: 'fr' }).language, 'fr');
     for (const config of [starterConfig({ url: 'https://staging.example.com' }), starterConfig({ url: 'http://test.intern', allowHttp: true })]) assert.deepEqual(validateConfig(config).issues, []);
     // Flags up front, checked before anything opens.

@@ -22,7 +22,7 @@ test('parseEnvFile reads values with and without quotes and ignores comments', (
 
 test('claudeFailureReason names token, time limit and other causes', () => {
     assert.match(claudeFailureReason(1, 'Failed to authenticate. API Error: 401 Invalid bearer token'), /ANTHROPIC_API_KEY/);
-    assert.match(claudeFailureReason(124, ''), /--claude-timeout 120m/);
+    assert.match(claudeFailureReason(124, ''), /--agent-timeout 120m/);
     assert.match(claudeFailureReason(7, 'whatever'), /Exit 7/);
 });
 
@@ -69,7 +69,7 @@ test('parseRunArgs: each command only knows its own options', () => {
     assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', advise: false, headless: false, noChat: false, learn: false, all: false, stepTimeoutSec: 30 });
     assert.equal(parseRunArgs('run', [...base, '--explain']).advise, true);
     // Limit Claude when clarifying and fixing, as for record and fix.
-    assert.deepEqual((({ timeoutMin, maxActions }) => [timeoutMin, maxActions])(parseRunArgs('run', [...base, '--claude-timeout', '5m', '--max-actions=20'])), [5, 20]);
+    assert.deepEqual((({ timeoutMin, maxActions }) => [timeoutMin, maxActions])(parseRunArgs('run', [...base, '--agent-timeout', '5m', '--max-actions=20'])), [5, 20]);
     assert.throws(() => parseRunArgs('run', [...base, '--max-actions', '0']), /--max-actions muss/);
     assert.equal(parseRunArgs('record', [...base, '--read-only']).readOnly, true);
     assert.throws(() => parseRunArgs('run', [...base, '--read-only']), /kennt die Option --read-only nicht/);
@@ -84,7 +84,7 @@ test('parseRunArgs: each command only knows its own options', () => {
     assert.throws(() => parseRunArgs('record', ['smoke@E4', '--env', 'shop/dev']), /etwa bestellung@S3/);
     assert.throws(() => parseRunArgs('record', ['smoke@S4', 'S5', '--env', 'shop/dev']), /S5/);
     assert.equal(parseRunArgs('run', ['smoke', '--env=shop/dev', '--step-timeout', '1m']).stepTimeoutSec, 60);
-    const created = parseRunArgs('record', [...base, '--role', 'r', '--claude-timeout=2h', '--max-actions=30']);
+    const created = parseRunArgs('record', [...base, '--role', 'r', '--agent-timeout=2h', '--max-actions=30']);
     assert.deepEqual([created.role, created.timeoutMin, created.maxActions], ['r', 120, 30]);
     // One application per project: --app and --also are gone, the message says why.
     for (const command of ['record', 'open', 'run']) {
@@ -97,21 +97,21 @@ test('parseRunArgs: each command only knows its own options', () => {
     assert.throws(() => parseRunArgs('record', [...base, 'one-more']), /one-more/);
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '0s']), /--step-timeout muss zwischen 1s und 10m liegen/);
     assert.throws(() => parseRunArgs('record', [...base, '--max-actions=0']), /--max-actions/);
-    assert.throws(() => parseRunArgs('record', [...base, '--claude-timeout', 'x']), /--claude-timeout x ist keine Dauer/);
+    assert.throws(() => parseRunArgs('record', [...base, '--agent-timeout', 'x']), /--agent-timeout x ist keine Dauer/);
 });
 
 test('parseRunArgs: durations need a unit and stay in range; renamed flags name their new name', () => {
     const base = ['smoke', '--env', 'shop/dev'];
     assert.equal(parseRunArgs('run', [...base, '--step-timeout', '1500ms']).stepTimeoutSec, 1.5);
     assert.equal(parseRunArgs('run', [...base, '--step-timeout', '1.5s']).stepTimeoutSec, 1.5);
-    assert.equal(parseRunArgs('record', [...base, '--claude-timeout', '1.5h']).timeoutMin, 90);
+    assert.equal(parseRunArgs('record', [...base, '--agent-timeout', '1.5h']).timeoutMin, 90);
     // A bare number: seconds or minutes? Never guessed.
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '30']), (error) => error.code === 'usage' && /--step-timeout 30: Gib eine Einheit an, etwa --step-timeout 30s/.test(error.message));
-    assert.throws(() => parseRunArgs('record', [...base, '--claude-timeout', '60']), /etwa --claude-timeout 60m/);
+    assert.throws(() => parseRunArgs('record', [...base, '--agent-timeout', '60']), /etwa --agent-timeout 60m/);
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '11m']), /zwischen 1s und 10m/);
-    assert.throws(() => parseRunArgs('record', [...base, '--claude-timeout', '30s']), /zwischen 1m und 24h/);
+    assert.throws(() => parseRunArgs('record', [...base, '--agent-timeout', '30s']), /zwischen 1m und 24h/);
     assert.throws(() => parseRunArgs('run', [...base, '--step-timeout', '30 s']), /keine Dauer/);
-    for (const [old, now] of [['--target', '--env'], ['--timeout', '--claude-timeout'], ['--max-steps', '--max-actions'], ['--advise', '--explain']]) {
+    for (const [old, now] of [['--target', '--env'], ['--timeout', '--agent-timeout'], ['--max-steps', '--max-actions'], ['--advise', '--explain']]) {
         assert.throws(() => parseRunArgs('run', ['smoke', old, '1']), (error) => error.code === 'usage' && error.message === `${old} heißt jetzt ${now}.`, old);
     }
 });

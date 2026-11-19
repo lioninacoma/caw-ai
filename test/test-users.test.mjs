@@ -17,7 +17,7 @@ const tempDir = (t) => {
 const project = (t, roles = { tester: {} }, signIn = { type: 'form', path: '/login', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#me' }) => {
     const root = tempDir(t);
     writeFileSync(join(root, 'caw.config.json'), `${JSON.stringify({
-        environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, prod: { url: 'https://example.com', production: true } },
+        environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, prod: { url: 'https://example.com', production: true } },
         signIn,
         start: '/',
         roles,

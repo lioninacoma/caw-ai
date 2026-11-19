@@ -20,8 +20,8 @@ export const KEYCLOAK_SIGN_IN = {
 
 /** Every environment the fixture serves; scenarios pick the ones they need. */
 export const ENVIRONMENTS = {
-    local: { url: http('app'), claude: true, writable: true },
-    staging: { url: http('staging'), claude: true },
+    local: { url: http('app'), agent: true, writable: true },
+    staging: { url: http('staging'), agent: true },
     ci: { url: http('ci'), writable: true, allowHosts: ['idp.localhost'], signIn: KEYCLOAK_SIGN_IN },
     'north-ci': { url: http('north'), writable: true },
     'south-ci': { extends: 'north-ci', url: http('south') },
@@ -97,7 +97,7 @@ export const LIFECYCLE_ENVIRONMENTS = {
 /** The environments of the action scenarios (P5): the extra page, its faulty twin, a shared environment and the US notes app. */
 export const ACTION_ENVIRONMENTS = {
     local: ENVIRONMENTS.local,
-    extra: { url: http('extra'), claude: true, writable: true },
+    extra: { url: http('extra'), agent: true, writable: true },
     extrafault: { url: http('extrafault'), writable: true },
     shared: { url: http('shared'), writable: true },
     mpaus: { url: 'http://mpaus.localhost:18000', writable: true },

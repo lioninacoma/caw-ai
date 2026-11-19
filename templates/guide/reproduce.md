@@ -4,7 +4,7 @@
 
 When the person reports a bug of their web app ("the search finds nothing after saving", a ticket, a log excerpt), caw can
 reproduce it in a real, signed-in browser: `caw_start` with `command: "reproduce"` and `bug` (the report as text). Optional:
-`env` (an environment with `claude`, never production), `role` (without `from`; not needed with one role), `from`
+`env` (an environment with `agent`, never production), `role` (without `from`; not needed with one role), `from`
 (`"<test>"` or `"<test>@S3"`: start in that test's state, its steps up to the entry of S3 replayed without you), `headless`
 (no window). You are the agent then (`--agent session`), at no extra tokens: call `caw_status` until the run waits for you and
 read this topic's second part. Without a window nobody watches; with one the person sees what you do but decides nothing.

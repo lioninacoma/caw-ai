@@ -3,7 +3,7 @@
 JSON at the project root. Unknown keys are errors with a did-you-mean hint. Change it with `caw_config` `patch` (deep merge,
 `null` deletes a key; arrays are replaced as a whole); only a valid result is written. Credentials never go into the config.
 `caw_config` refuses commands and what decides where Claude runs and what it may do (`start`, `stop`, `reset`, `ready`, the
-environment flags `production`, `claude`, `writable`, `allowHttp`, `insecureTls`, an overlay part's `start`, `lintCommand`,
+environment flags `production`, `agent`, `writable`, `allowHttp`, `insecureTls`, an overlay part's `start`, `lintCommand`,
 `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and adding or removing an environment that has them):
 edit those in the file with your own Edit tool, so the person sees the diff.
 
@@ -37,7 +37,7 @@ Names match `^[a-z][a-z0-9-]{0,31}$`.
 | Key | Meaning |
 |---|---|
 | `url` | Origin, `https://host[:port]`; `http://` only on loopback or with `allowHttp: true` |
-| `claude` | Claude may record, fix, explain and talk here (page content goes to Claude) |
+| `agent` | The agent may record, fix, explain and talk here (page content goes to Claude) |
 | `writable` | Writing tests may run here |
 | `production` | Production rules: no Claude, no writing, no lifecycle. A name like prod/live must state it |
 | `extends` | Inherit another environment's keys (not `production`); values replace, never merge. Tenants: `south-dev` extends `north-dev` with another `url` |
@@ -78,10 +78,10 @@ end for an account of one environment (role and environment upper case, `-` as `
   "roles": { "clerk": {}, "admin": {} },
   "reads": ["POST /api/search"],
   "environments": {
-    "local":   { "url": "http://localhost:5173", "claude": true, "writable": true, "start": "npm run dev" },
+    "local":   { "url": "http://localhost:5173", "agent": true, "writable": true, "start": "npm run dev" },
     "ci":      { "url": "http://localhost:8080", "writable": true, "start": "docker compose up -d --wait",
                  "stop": "docker compose down -v", "reset": "docker compose exec -T api npm run seed", "ready": { "path": "/healthz" } },
-    "staging": { "url": "https://staging.example.com", "claude": true, "allowHosts": ["login.example-idp.test"],
+    "staging": { "url": "https://staging.example.com", "agent": true, "allowHosts": ["login.example-idp.test"],
                  "signIn": { "type": "form", "path": "/", "signedInSelector": "[data-testid=user-menu]",
                              "steps": [ { "fill": "#username", "with": "user" }, { "click": "#next" },
                                         { "fill": "#password", "with": "password" }, { "click": "#sign-in" } ] } },

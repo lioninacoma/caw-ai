@@ -22,9 +22,9 @@ Ein Test ist ein Plan in normaler Sprache. Du gehst ihn einmal im Browser durch,
 
 | Befehl | Was passiert | KI und Chat | Umgebung |
 |---|---|---|---|
-| `record <test> --env <umgebung>` | Testplan neu aufnehmen oder ablösen | immer | nur Umgebungen mit `claude` |
-| `run <test> --env <umgebung>` | Testlauf nach Plan | Chat auf Umgebungen mit `claude` von Anfang an daneben; Claude erst nach deiner Nachricht, deinem Klick auf „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“, oder mit `--explain` | alle |
-| `record <test>@S4 --env <umgebung>` | Ab S4 bis zum Ende neu aufnehmen. S1 bis S3 laufen ohne Claude, dann folgt Claude dem alten Plan ab S4; einen Prüflauf vorher gibt es nicht, die Ursache klärst du also mit `run` | immer | nur Umgebungen mit `claude` |
+| `record <test> --env <umgebung>` | Testplan neu aufnehmen oder ablösen | immer | nur Umgebungen mit `agent` |
+| `run <test> --env <umgebung>` | Testlauf nach Plan | Chat auf Umgebungen mit `agent` von Anfang an daneben; Claude erst nach deiner Nachricht, deinem Klick auf „Ursache von Claude untersuchen lassen“ oder „Schritt beheben“, oder mit `--explain` | alle |
+| `record <test>@S4 --env <umgebung>` | Ab S4 bis zum Ende neu aufnehmen. S1 bis S3 laufen ohne Claude, dann folgt Claude dem alten Plan ab S4; einen Prüflauf vorher gibt es nicht, die Ursache klärst du also mit `run` | immer | nur Umgebungen mit `agent` |
 
 `open --env <umgebung>` öffnet die Anwendung angemeldet, mit Werkbank und Chat, aber ohne Test, siehe [Befehle](commands.de.md#open). `open <test>` spielt vorher einen Test ab, `open <test>@S4` hält am Einstieg in S4 an, siehe [Zustand herstellen und übernehmen](#zustand-herstellen-und-übernehmen).
 
@@ -160,7 +160,7 @@ In der Werkbank rechts, auch in einem Testlauf ohne Claude. Der Verlauf wandert 
 - **Schritt zurück:** Eine Rückspultaste gibt es nicht. Sag Claude, was falsch war: Es geht zum passenden Zustand und streicht den Umweg mit `omit`. Abgeschicktes bleibt in der Anwendung, dann hilft nur ein neuer Lauf.
 - **Abbrechen:** Esc (oder `/cancel`, ⋯ → Lauf abbrechen) fragt „Wirklich abbrechen? (Esc)“; ein zweites Esc oder ein Klick darauf innerhalb von 4 Sekunden bestätigt und beendet alles sofort mit `error`. Den Chat zu schließen wirkt genauso, ohne ihn gibt es weder Freigabe noch Entscheidung.
 
-Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard hier 60 Minuten (`--claude-timeout 60m`).
+Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard hier 60 Minuten (`--agent-timeout 60m`).
 
 #### Was in der Aufzeichnung steht
 
@@ -175,16 +175,16 @@ Die Zeit für den Menschen zählt zum Limit von Claude, darum ist der Standard h
 
 **Grenzen:**
 
-- **Claude kann beim Suchen schreiben.** Eine Schreibsperre gibt es bewusst nicht: In vielen Anwendungen hängen Abschicken und Folgeschritte voneinander ab, und lesende und schreibende Requests sehen auf HTTP-Ebene oft gleich aus. Stattdessen gilt: Aufnahme nur auf Umgebungen mit `claude` und nur mit Testkonten, die Leitfaden-Regel „nur eigene Datensätze“, die Freigabe des Plans, das Schrittbudget, und der Bericht listet unter „Schreibende Aufrufe“ jeden schreibenden Request an die Hosts der Anwendung, mit Namen und ohne Parameterwerte. Lesend ist ein Request mit GET, HEAD oder OPTIONS, eine GraphQL-Query oder einer, auf den ein Muster aus `reads` passt; An- und Abmelden, Sitzung und Token (Pfade, die auf login, logout, session, token, auth, refresh, csrf u. Ä. enden) zählen nicht; alles andere schreibt. Requests an Anmeldedienste aus `allowHosts` und an fremde Hosts (Analytics, CDNs) machen einen Test nie schreibend.
+- **Claude kann beim Suchen schreiben.** Eine Schreibsperre gibt es bewusst nicht: In vielen Anwendungen hängen Abschicken und Folgeschritte voneinander ab, und lesende und schreibende Requests sehen auf HTTP-Ebene oft gleich aus. Stattdessen gilt: Aufnahme nur auf Umgebungen mit `agent` und nur mit Testkonten, die Leitfaden-Regel „nur eigene Datensätze“, die Freigabe des Plans, das Schrittbudget, und der Bericht listet unter „Schreibende Aufrufe“ jeden schreibenden Request an die Hosts der Anwendung, mit Namen und ohne Parameterwerte. Lesend ist ein Request mit GET, HEAD oder OPTIONS, eine GraphQL-Query oder einer, auf den ein Muster aus `reads` passt; An- und Abmelden, Sitzung und Token (Pfade, die auf login, logout, session, token, auth, refresh, csrf u. Ä. enden) zählen nicht; alles andere schreibt. Requests an Anmeldedienste aus `allowHosts` und an fremde Hosts (Analytics, CDNs) machen einen Test nie schreibend.
 - **Schrittbudget:** `--max-actions` (sonst `maxActions` aus der Config, sonst 100) zählt `click`, `fill`, `type`, `press`, `goto` und `reload` von Claude, auch gescheiterte. Was du selbst vorführst, zählt nicht.
 - **Claude reagiert nicht sofort:** `claude -p` läuft ohne Eingabe, Nachricht und Pause greifen vor der nächsten Aktion. „Abbrechen“ wirkt sofort.
 
 ### Testlauf: `run`
 
-Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `claude` steht der Chat von Anfang an neben dem Fenster, außer in CI (Variable `CI` gesetzt), mit `--no-chat` oder `--headless`. Die erste Zeile im Terminal nennt den Modus und ob der Lauf Vergleichswerte lernt (nur mit `--learn` oder wenn du auf der Abschlusskarte „Vergleichswerte speichern“ klickst), die letzte, was sich an den Dateien des Tests geändert hat. Der Chat: Er zeigt jede Aktion (`S3 · 4/12 click …`) samt neuer Versuche, die Eingabe ist gesperrt. Besteht der Lauf, meldet der Chat das samt Warnungen und wartet nicht; er schließt mit dem Lauf oder bleibt bei [`open <test>`](#zustand-herstellen-und-übernehmen) neben dem übergebenen Fenster. Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben). Fehlt die Aufzeichnung ganz, endet es mit Exit 4 und nennt `record`. Ist ein Schritt veraltet, endet es mit Exit 4 und nennt `record <test>@<schritt>`, um ab diesem Schritt neu aufzunehmen.
+Spielt die Aufzeichnung ohne Modell, Docker und Token ab. Auf Umgebungen mit `agent` steht der Chat von Anfang an neben dem Fenster, außer in CI (Variable `CI` gesetzt), mit `--no-chat` oder `--headless`. Die erste Zeile im Terminal nennt den Modus und ob der Lauf Vergleichswerte lernt (nur mit `--learn` oder wenn du auf der Abschlusskarte „Vergleichswerte speichern“ klickst), die letzte, was sich an den Dateien des Tests geändert hat. Der Chat: Er zeigt jede Aktion (`S3 · 4/12 click …`) samt neuer Versuche, die Eingabe ist gesperrt. Besteht der Lauf, meldet der Chat das samt Warnungen und wartet nicht; er schließt mit dem Lauf oder bleibt bei [`open <test>`](#zustand-herstellen-und-übernehmen) neben dem übergebenen Fenster. Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben). Fehlt die Aufzeichnung ganz, endet es mit Exit 4 und nennt `record`. Ist ein Schritt veraltet, endet es mit Exit 4 und nennt `record <test>@<schritt>`, um ab diesem Schritt neu aufzunehmen.
 
 - **Warten:** Es gibt keine festen Pausen. Ein Schritt wartet, bis sein Ziel sichtbar und nicht überdeckt ist. Das deckt Lademasken, Overlays und Dialoge in Dialogen ab, denn nur der oberste Dialog ist klickbar. `check` wiederholt die Prüfung, bis sie stimmt oder das Zeitlimit abläuft.
-- **Zeitlimits:** Standard sind 30 Sekunden je Schritt, änderbar mit `--step-timeout` (etwa `--step-timeout 45s`) oder von Hand je Aktion mit `timeoutMs` und je Prüfung mit `recording.timeoutMs` in der Testdatei. Klärt oder behebt Claude aus dem Lauf heraus, gelten `--claude-timeout <dauer>` (Standard 60m) und `--max-actions <n>` wie bei `record`.
+- **Zeitlimits:** Standard sind 30 Sekunden je Schritt, änderbar mit `--step-timeout` (etwa `--step-timeout 45s`) oder von Hand je Aktion mit `timeoutMs` und je Prüfung mit `recording.timeoutMs` in der Testdatei. Klärt oder behebt Claude aus dem Lauf heraus, gelten `--agent-timeout <dauer>` (Standard 60m) und `--max-actions <n>` wie bei `record`.
 - **Fehler:** Scheitert ein Schritt, nennt der Bericht den Testschritt samt Aktion und verweist auf einen Screenshot. Aufräumschritte wie „Abbrechen“ laufen dann nicht mehr, ein angelegter Datensatz kann offen bleiben.
 - **Fehlschläge:** Konsolenfehler, Skriptfehler, fehlgeschlagene Requests und HTTP-Status ab 500 beenden das Abspielen beim nächsten Schritt. Ebenso sichtbare Dialoge, Fehlermeldungen und Meldungen aus `messageSelectors`, die bei der Aufnahme nicht vorkamen, wobei Zahlen im Text nicht zählen. Beim Adapter `web` gilt ein Statushinweis (`role=status`, `aria-live=polite`, etwa ein Erfolgs-Toast) nicht als Fehlschlag: Er kommt je nach Tempo oder nicht, unbekannt steht er einmal als Warnung im Bericht. Ein Dialog mit Eingabefeldern ist Bedienung, keine Meldung. Dazu verlorene Anmeldung, eine nicht geladene Anwendung (bei `extjs`: kein ExtJS auf der Seite), eine stehen gebliebene Lademaske (`aria-busy`, bei `extjs` die Lademaske), eine andere Seite als aufgezeichnet und jedes nicht erfüllte `check`.
 - **Beheben:** Scheitert ein Schritt, siehe [Einen Schritt beheben](#einen-schritt-beheben).
@@ -220,7 +220,7 @@ Quelltext gelesen hat, einem Hinweis auf die Ursache mit Datei und Zeile.
 
 Was Claude dabei darf und was nicht:
 
-- Nur auf Umgebungen mit `claude`, nie auf Produktion; der Browser erreicht nur die Hosts des Projekts.
+- Nur auf Umgebungen mit `agent`, nie auf Produktion; der Browser erreicht nur die Hosts des Projekts.
 - Schreiben nur, wo die Umgebung `writable` ist; sonst wird jeder schreibende Request abgebrochen und im Bericht genannt.
 - Kein Plan, kein `check`, keine Frage an dich, keine Empfehlung und keine Code-Änderung: Diese Befehle werden abgelehnt.
 - Nichts landet im Projekt: Bericht und `draft-test.yaml` bleiben im Laufordner. Die Erwartungen des Entwurfs beschreiben das
@@ -349,7 +349,7 @@ Ohne Fix-Parameter kostet nichts Token, solange du nicht schreibst oder klickst:
 | Lauf | Wann |
 |---|---|
 | `run` und „Ursache von Claude untersuchen lassen“ | Ein Schritt ist gescheitert, du klickst den Knopf im Chat. Lautet die Einschätzung „Anwendung“, ist er der Hauptknopf, sonst steht er neben „Schritt beheben“. Danach wie mit `--explain`: Karten, bei übernommener Änderung an der Anwendung „Erneut testen“ |
-| `run … --explain` | Ohne Klick: Ein Schritt scheitert, ein harter Fehler tritt auf oder es gibt Warnungen, auch in einem bestandenen Lauf. Für Läufe, deren Ergebnis du dir erst später ansiehst. Nur auf Umgebungen mit `claude` und mit Chat (nicht in CI), sonst Exit 3 |
+| `run … --explain` | Ohne Klick: Ein Schritt scheitert, ein harter Fehler tritt auf oder es gibt Warnungen, auch in einem bestandenen Lauf. Für Läufe, deren Ergebnis du dir erst später ansiehst. Nur auf Umgebungen mit `agent` und mit Chat (nicht in CI), sonst Exit 3 |
 | `record <test>@<S4>` und „Schritt beheben“ | Fehler oder Warnungen beim Neuaufnehmen oder Beheben und im Prüflauf danach |
 | `record` | erst, wenn du im Prüflauf „Schritt beheben“ wählst |
 
@@ -372,7 +372,7 @@ Der Abschnitt „Empfehlungen“ in `report.md` nennt jede Empfehlung mit Beleg 
 
 ### Einen Schritt beheben
 
-Scheitert ein Schritt in `run` oder im Prüflauf von `record`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Lauf beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `claude`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
+Scheitert ein Schritt in `run` oder im Prüflauf von `record`, hält das Abspielen an, und der Browser bleibt im Zustand des Fehlers. Der Chat nennt „S4 ist gescheitert: <Grund>“ samt harten Fehlern und Warnungen und schaltet die Eingabe frei (Zustand „Fehler klären“), dazu „Schritt beheben“ und „Lauf beenden“. Darunter steht die [Einschätzung](#einschätzung-test-anwendung-oder-umgebung) des Tools mit ihren Befunden. Spricht sie für einen Fehler der Anwendung, ist „Schritt beheben“ nur noch der zweite Knopf, mit dem Hinweis, dass ein angepasster Test den Fehler nur verdecken würde. Das gibt es nur auf Umgebungen mit `agent`; in CI, mit `--no-chat`/`--headless` und auf den anderen Umgebungen bleibt es beim Exit-Code und beim Bericht.
 
 - **Fragen:** Erst deine Nachricht startet Claude, im selben Browser und nur lesend wie bei den [Empfehlungen](#empfehlungen-zu-fehlern-und-warnungen). Es antwortet im Chat, nennt Ursache, Datei und Zeile und kann Empfehlungskarten geben. Jede weitere Nachricht geht ins selbe Gespräch, bis du einen Knopf drückst. Das Log steht in `agent/claude-talk.log`. Ohne Nachricht und ohne Klick fallen keine Token an.
 - **Im selben Browser beheben:** Ist vom gescheiterten Schritt noch nichts ausgeführt, scheiterte also seine erste Aktion ohne harten Fehler von außen, behebt Claude ihn direkt dort, ohne Vorlauf. Der Bericht des Testlaufs bleibt als `report-test-run.md` erhalten. Sonst, etwa nach einer halben Aktionsfolge oder einer nicht erfüllten Prüfung, geht es wie unten mit Vorlauf in einem frischen Browser. Der Chat sagt vorher, welcher Weg es wird.
@@ -474,7 +474,7 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 |---|---|---|
 | `caw_guide` | Wie man mit caw arbeitet, je Thema (`setup`, `tests`, `run`, `session`, `config` …); ohne Thema die Übersicht | nein |
 | `caw_init` | `mode: explore` öffnet dir die App zum Anmelden und liefert die Vorschläge; `mode: write` schreibt daraus die Config; `mode: offline` die Vorlage mit TODO | nein |
-| `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben. Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), die Umgebungs-Schalter (`production`, `claude`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` und `agent.mode` lehnt es ab: Die ändert die Session in der Datei, wo Claude Code dir den Diff zeigt | nein |
+| `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben. Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), die Umgebungs-Schalter (`production`, `agent`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` und `agent.mode` lehnt es ab: Die ändert die Session in der Datei, wo Claude Code dir den Diff zeigt | nein |
 | `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
 | `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role` (oder `args`) | nur deine Session |

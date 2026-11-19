@@ -57,7 +57,7 @@ const project = (t, { recorded = true, stale = false, framework = 'web', locator
         framework,
         signIn: { type: 'form', path: '/login', userSelector: '#user', passwordSelector: '#password', signedInSelector: '#menu' },
         roles: { clerk: {} },
-        environments: { local: { url: 'http://localhost:5173', claude: true, writable: true }, ci: { url: 'http://localhost:8080', writable: true } },
+        environments: { local: { url: 'http://localhost:5173', agent: true, writable: true }, ci: { url: 'http://localhost:8080', writable: true } },
     }));
     mkdirSync(join(root, 'caw', 'tests'), { recursive: true });
     mkdirSync(join(root, 'caw', 'recordings'), { recursive: true });

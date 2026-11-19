@@ -2,7 +2,7 @@
     "framework": "web",
     "start": "/",
     "environments": {
-        "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+        "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
     },
     "signIn": {
         "type": "form",

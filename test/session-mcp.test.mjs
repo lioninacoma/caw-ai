@@ -191,7 +191,7 @@ test('caw_init: mode offline without questions, existing files stay, no skill; e
     assert.equal(written.isError, false, written.content[0].text);
     const staged = JSON.parse(readFileSync(join(decided, 'caw.config.json'), 'utf8'));
     assert.equal(staged.language, 'fr');
-    assert.deepEqual(staged.environments.staging, { url: 'http://staging.example.com:8080', claude: true, writable: false, insecureTls: true, allowHttp: true });
+    assert.deepEqual(staged.environments.staging, { url: 'http://staging.example.com:8080', agent: true, writable: false, insecureTls: true, allowHttp: true });
     assert.equal((await session(decided).call('caw_init', { mode: 'write', env: 'Staging_1' })).isError, true);
     // fromExplore stays in the project and never quotes the file it could not read.
     const outside = join(tempDir(t), 'secret.json');

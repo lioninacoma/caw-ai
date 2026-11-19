@@ -168,7 +168,7 @@ test('config: agent.mode, local by default, always Docker in CI', () => {
     assert.equal(agentMode({ agent: { mode: 'local' } }, { CI: 'true' }), 'docker');
     assert.equal(agentMode({ agent: { mode: 'session' } }, {}), 'session');
     assert.equal(agentMode({ agent: { mode: 'session' } }, { CI: 'true' }), 'docker', 'nobody watches a session in CI');
-    const base = { framework: 'web', environments: { local: { url: 'http://app.localhost:5173', claude: true } }, signIn: { type: 'none' }, apps: { app: { path: '/' } } };
+    const base = { framework: 'web', environments: { local: { url: 'http://app.localhost:5173', agent: true } }, signIn: { type: 'none' }, apps: { app: { path: '/' } } };
     const issues = (agent) => validateConfig({ ...base, agent }).issues.filter((issue) => issue.startsWith('agent')).join('\n');
     assert.equal(issues({ mode: 'docker' }), '');
     assert.equal(issues({ mode: 'session' }), '');

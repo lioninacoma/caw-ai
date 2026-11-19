@@ -811,7 +811,7 @@ test('workbench: Ctrl+, opens the settings page; its mode switches workbench and
     const page = bench.page;
     const look = (frame) => frame.evaluate(() => [document.documentElement.dataset.pref, document.documentElement.dataset.mode]);
     await bench.settings({
-        project: 'errand', config: 'caw.config.json', env: { name: 'local', url: 'http://localhost:4173', claude: true, writable: false, production: false }, role: 'user', code: 'lokaler Build',
+        project: 'errand', config: 'caw.config.json', env: { name: 'local', url: 'http://localhost:4173', agent: true, writable: false, production: false }, role: 'user', code: 'lokaler Build',
         version: 'caw 1.0.0 · Node 22', language: { value: 'de', source: 'env' }, tokenNotice: 'on', prefsFile: '~/prefs.json', personal: { path: '~/caw.md', lines: 12 }, projectNotes: { path: 'caw/caw.md', lines: null },
     });
     assert.equal(await page.textContent('#project'), 'errand', 'the project in the breadcrumb');

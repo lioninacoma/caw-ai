@@ -25,6 +25,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - caw never takes user names or passwords from a page and never writes them: you fill `caw/.env` (or CI secrets) yourself. `init` asks for the role names in the terminal and lists their variables in `caw/.env.example`; `caw role add <role>` (and `caw_role add`) adds the role and names its variables, without a window; `role remove` leaves `caw/.env` as it is. A run whose role has no test user stops before Chrome or Claude start with `credentials-missing`, naming the variables, instead of opening a sign-in window.
 
 ### Removed
+- Names after one agent, without compatibility: the environment flag `claude` is now `agent` (`"agent": true`: the agent may record, fix and investigate here), `--claude-timeout` is `--agent-timeout`, and `CAW_CLAUDE_MODEL` / `CAW_CLAUDE_BUDGET` are `CAW_AGENT_MODEL` / `CAW_AGENT_BUDGET`. An old key is reported as an unknown field.
 - The theme system, without compatibility: the theme packages and own theme folders, `caw theme`, the theme dialog (F7), the `theme` key in `caw.config.json` (now reported as an unknown field like any other) and the `theme` setting in `prefs.json`; with them the raven logo, the ASCII raven, the CRT look and the fonts VT323, IBM Plex Mono, Inter and JetBrains Mono.
 - The F-key bar under the workbench and the chat's tool row ("Element", "Add checkpoint", the Pause button). Their functions are in the ⋯ menu, the slash commands and the keys.
 

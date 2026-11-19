@@ -20,7 +20,7 @@ const project = (t, roles = { tester: {} }) => {
     const root = tempDir(t);
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify({
         environments: {
-            local: { url: 'http://localhost:5173', claude: true, writable: true },
+            local: { url: 'http://localhost:5173', agent: true, writable: true },
             staging: { url: 'https://staging.example.com' },
             live: { url: 'https://example.com', production: true },
         },

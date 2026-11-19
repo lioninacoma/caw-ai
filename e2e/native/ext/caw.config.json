@@ -8,7 +8,7 @@
     "environments": {
         "test": {
             "url": "http://native.localhost:8451",
-            "claude": true,
+            "agent": true,
             "writable": true
         }
     }

@@ -13,7 +13,7 @@ import {
 const native = join(here, 'native');
 const PORT = 8451;
 const target = ['--env', 'test', '--step-timeout', '5s'];
-const recordArgs = ['--env', 'test', '--claude-timeout', '3m', '--step-timeout', '5s'];
+const recordArgs = ['--env', 'test', '--agent-timeout', '3m', '--step-timeout', '5s'];
 let server = null;
 const group = {
     language: 'de',

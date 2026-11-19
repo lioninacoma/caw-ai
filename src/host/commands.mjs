@@ -267,7 +267,7 @@ export const starterConfig = ({ framework = 'web', language: projectLanguage = l
     const { protocol, hostname } = new URL(address);
     if (protocol === 'http:' && !isLoopback(hostname) && !allowHttp) throw new CawError('usage', t('cli.initNeedsAllowHttp', { host: hostname }));
     const envName = env ?? defaultEnvName(url);
-    const flags = productionLike(envName) ? { production: true } : isLoopback(hostname) ? { claude: true, writable: true } : { claude: true, writable: false };
+    const flags = productionLike(envName) ? { production: true } : isLoopback(hostname) ? { agent: true, writable: true } : { agent: true, writable: false };
     config.environments = {
         [envName]: {
             url: address,
@@ -711,11 +711,11 @@ export const list = (root, args, { out = console.log } = {}) => {
     return EXIT.pass;
 };
 /** The environments Claude may work on, as text: "dev" or "dev, local". */
-const agentEnvironments = (config) => environmentsWith(config, 'claude').join(', ') || t('cli.noEnvironment');
+const agentEnvironments = (config) => environmentsWith(config, 'agent').join(', ') || t('cli.noEnvironment');
 
 /** Claude only works on environments with `claude`: the others are meant to fail when something is off. */
 const requireAgent = (config, checked, target, verb) => {
-    if (!checked.claude) throw new CawError('write-protected', t('cli.agentOnly', { verb, environments: agentEnvironments(config), target, environment: checked.environment }));
+    if (!checked.agent) throw new CawError('write-protected', t('cli.agentOnly', { verb, environments: agentEnvironments(config), target, environment: checked.environment }));
 };
 
 /**
@@ -1010,7 +1010,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     await lifecycle?.beforeTest(spec);
     // A missing test user stops the run here, before Chrome or Claude start.
     requireTestUser(root, config, spec.role, target);
-    const withAgent = checked.claude;
+    const withAgent = checked.agent;
     // The chat lives in the workbench and needs no terminal. Only in CI nobody waits for it.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     const canFix = withAgent && !noChat && !inCi;
@@ -1026,7 +1026,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     const tracker = changeTracker(root);
     let failed;
     // Where the human can clarify the failure in the chat: the test's first environment Claude may work on.
-    const claude = new Set(environmentsWith(config, 'claude'));
+    const claude = new Set(environmentsWith(config, 'agent'));
     const chatTarget = spec.runsOn.find((name) => claude.has(name));
     const code = await runFlow({
         spec,
@@ -1278,13 +1278,13 @@ export const reproduce = async (root, args, deps = {}) => {
     const role = known?.role ?? options.role ?? (roles.length === 1 ? roles[0] : undefined);
     if (role === undefined && roles.length > 1) throw new CawError('usage', t('cli.reproduceRoles', { roles: roles.join(', ') }));
     if (options.role !== undefined && config.roles !== undefined && !roles.includes(options.role)) throw new CawError('usage', t('cli.reproduceRoles', { roles: roles.join(', ') }));
-    const allowed = environmentsWith(config, 'claude').filter((name) => effectiveEnvironment(config, name).production !== true);
+    const allowed = environmentsWith(config, 'agent').filter((name) => effectiveEnvironment(config, name).production !== true);
     if (options.target !== undefined && !allowed.includes(options.target) && config.environments?.[options.target] !== undefined) {
         throw new CawError('reproduce-not-allowed', t('cli.reproduceNotAllowed', { target: options.target, environments: allowed.join(', ') || t('cli.noEnvironment') }));
     }
     const target = chooseEnv(config, known === null ? [] : [known], { env: options.target, command: 'reproduce' });
     const env = effectiveEnvironment(config, target);
-    if (env.claude !== true || env.production === true) {
+    if (env.agent !== true || env.production === true) {
         throw new CawError('reproduce-not-allowed', t('cli.reproduceNotAllowed', { target, environments: allowed.join(', ') || t('cli.noEnvironment') }));
     }
     const writable = env.writable === true;

@@ -23,7 +23,7 @@ An app on a local dev server, no sign-in:
 ```json
 {
   "environments": {
-    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
   }
 }
 ```
@@ -35,7 +35,7 @@ With a sign-in form:
   "framework": "react",
   "start": "/",
   "environments": {
-    "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+    "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
   },
   "signIn": {
     "type": "form",
@@ -64,8 +64,8 @@ starting with a letter, at most 32 characters.
 
 ```json
 "environments": {
-  "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
-  "dev":     { "url": "https://dev.example.com", "claude": true, "writable": true },
+  "local":   { "url": "http://localhost:5173", "agent": true, "writable": true },
+  "dev":     { "url": "https://dev.example.com", "agent": true, "writable": true },
   "staging": { "url": "https://staging.example.com" },
   "prod":    { "url": "https://example.com", "production": true }
 }
@@ -74,9 +74,9 @@ starting with a letter, at most 32 characters.
 | Field | |
 |---|---|
 | `url` | Origin of the app. `https`, or `http` for this machine (`localhost`, `127.0.0.1`, `*.localhost`). |
-| `claude` | `true`: Claude may record, fix and investigate here. |
+| `agent` | `true`: Claude may record, fix and investigate here. |
 | `writable` | `true`: tests with `writes: true` may run here. |
-| `production` | Required for names that look like production (`prod`, `live`, `prod-eu` …). Such an environment can't have `claude` or `writable`. A run there sends no write requests, to any host: every request that is no GET, HEAD, OPTIONS, GraphQL query or `reads` pattern is aborted and fails the step with `write-blocked`, a form post into the top window too. Sign-in requests pass only while caw itself signs in; a token refresh the app sends later is a write unless `reads` names it. Not covered: messages the app sends over an open WebSocket (reading apps send them too, e.g. keep-alives and subscriptions). Runs on other environments never reach its host. A name that only looks like production says `"production": false`. |
+| `production` | Required for names that look like production (`prod`, `live`, `prod-eu` …). Such an environment can't have `agent` or `writable`. A run there sends no write requests, to any host: every request that is no GET, HEAD, OPTIONS, GraphQL query or `reads` pattern is aborted and fails the step with `write-blocked`, a form post into the top window too. Sign-in requests pass only while caw itself signs in; a token refresh the app sends later is a write unless `reads` names it. Not covered: messages the app sends over an open WebSocket (reading apps send them too, e.g. keep-alives and subscriptions). Runs on other environments never reach its host. A name that only looks like production says `"production": false`. |
 | `insecureTls` | `true`: accept a self-signed certificate on this environment. |
 | `allowHttp` | `true`: allow `http` on a host that is not this machine (an intranet without TLS). |
 | `allowHosts` | More hosts pages may navigate to here, e.g. the sign-in service; adds to the top-level `allowHosts`. |
@@ -90,7 +90,7 @@ Anything not set to `true` is off. A run against `staging` above replays only, r
 version.
 
 Which environment a command takes: the one you name with `--env`. Without it, a test that runs on exactly one environment
-takes that one; on your machine the only environment with `claude: true` among its candidates is taken; in CI caw never
+takes that one; on your machine the only environment with `agent: true` among its candidates is taken; in CI caw never
 guesses and names the candidates (exit 3).
 
 ### Starting, stopping and resetting an environment
@@ -253,7 +253,7 @@ Testing against your local dev server needs no option. The dev server is an envi
 
 ```json
 "environments": {
-  "local": { "url": "http://localhost:5173", "claude": true, "writable": true }
+  "local": { "url": "http://localhost:5173", "agent": true, "writable": true }
 }
 ```
 
@@ -272,8 +272,8 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 | `start` | `/` | Path where tests start; a test can set its own `start`. |
 | `source` | `.` | Where the app's source is, relative to the project, or `false` when it is not in this repository (then Claude gives no code advice). |
 | `agent.mode` | `local` | Where Claude runs: `local` (Claude Code on your machine, read-only tools), `docker` (isolated) or `session` (your own Claude Code session). Always `docker` in CI. |
-| `agent.model` | Claude Code's default | Model for Claude, passed as `--model`, e.g. `haiku` or `sonnet`. `CAW_CLAUDE_MODEL` overrides it for one run. |
-| `agent.maxBudgetUsd` | none | Stops a Claude run at this estimated spend in US dollars (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` overrides it. |
+| `agent.model` | Claude Code's default | Model for Claude, passed as `--model`, e.g. `haiku` or `sonnet`. `CAW_AGENT_MODEL` overrides it for one run. |
+| `agent.maxBudgetUsd` | none | Stops a Claude run at this estimated spend in US dollars (`--max-budget-usd`). `CAW_AGENT_BUDGET` overrides it. |
 | `maxActions` | `100` | Claude's action budget when recording and fixing. |
 | `allowHosts` | `[]` | More hosts pages may navigate to, e.g. a sign-in service; also per environment. Pages navigate only to the environments' hosts and these (links, form posts, popups, redirects, `goto`); anything else fails with `host-blocked`. Without Claude, scripts, styles, fonts, images, XHR/fetch, WebSockets and iframes may go to any host. Production hosts of other environments stay unreachable for every request. Hosts are compared by name (case and a trailing dot do not matter); a host reached by its IP address is not recognised. |
 | `thirdPartyHosts` | `[]` | Hosts of other parties the app needs while Claude is attached (record, a run with chat, `open`), e.g. `["fonts.example-cdn.com"]`; also per environment. Then every request of the browser (pages, scripts, XHR/fetch, WebSockets, beacons, iframes) goes only to the environments, `allowHosts` and these; anything else is aborted and named as a warning in the run, with this key. A production host listed here stays blocked. Without Claude the list does nothing. |

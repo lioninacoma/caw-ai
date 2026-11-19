@@ -91,7 +91,7 @@ export const migrateConfig = (old) => {
     const overlayEnvs = [];
     for (const [env, raw] of Object.entries(old.environments ?? {})) {
         const entry = raw ?? {};
-        const flags = Object.fromEntries(['claude', 'writable', 'production'].filter((flag) => entry[flag] === true).map((flag) => [flag, true]));
+        const flags = Object.fromEntries(['claude', 'writable', 'production'].filter((flag) => entry[flag] === true).map((flag) => [flag === 'claude' ? 'agent' : flag, true]));
         if (old.insecureTls === true && entry.production !== true) flags.insecureTls = true;
         const own = Object.fromEntries(['allowHosts', 'insecureTls', 'allowHttp'].filter((key) => entry[key] !== undefined).map((key) => [key, entry[key]]));
         if (sites.length === 0) {

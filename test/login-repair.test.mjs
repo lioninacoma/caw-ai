@@ -44,7 +44,7 @@ test('Repair: proposal only with known fields, written only after a yes', async 
 
     const root = mkdtempSync(join(tmpdir(), 'caw-repair-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    const config = { framework: 'web', environments: { dev: { url: 'https://p.example', claude: true } }, signIn: auth, start: '/', roles: { a: {} } };
+    const config = { framework: 'web', environments: { dev: { url: 'https://p.example', agent: true } }, signIn: auth, start: '/', roles: { a: {} } };
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(config, null, 4));
     const proposal = async () => JSON.stringify({ signIn: { ...auth, submitSelector: undefined, signedInSelector: 'body.signed-in' }, why: 'stable' });
     const error = { code: 'login-failed', message: 'x', evidence: { hits: {} } };
@@ -61,8 +61,8 @@ test('Repair: written where the environment\'s sign-in comes from (own, inherite
     const form = { type: 'form', path: '/', userSelector: '#u', passwordSelector: '#p', signedInSelector: '#menu' };
     const config = {
         environments: {
-            local: { url: 'http://localhost:5173', claude: true, signIn: { type: 'none' } },
-            dev: { url: 'https://dev.p.example', claude: true, signIn: form },
+            local: { url: 'http://localhost:5173', agent: true, signIn: { type: 'none' } },
+            dev: { url: 'https://dev.p.example', agent: true, signIn: form },
             'dev-b': { extends: 'dev', url: 'https://dev-b.p.example' },
             test: { url: 'https://test.p.example' },
         },

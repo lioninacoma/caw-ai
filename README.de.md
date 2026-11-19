@@ -172,7 +172,7 @@ Nutzung wird über dein Konto abgerechnet. Zum Begrenzen setzt du ein Modell und
 "agent": { "model": "haiku", "maxBudgetUsd": 0.5 }
 ```
 
-oder für einen Lauf `CAW_CLAUDE_MODEL=haiku CAW_CLAUDE_BUDGET=0.5`. caw gibt sie als `--model` und `--max-budget-usd` an
+oder für einen Lauf `CAW_AGENT_MODEL=haiku CAW_AGENT_BUDGET=0.5`. caw gibt sie als `--model` und `--max-budget-usd` an
 Claude Code weiter.
 
 ## Installation und erster Test
@@ -249,7 +249,7 @@ für Einmalcodes), optional je Umgebung mit Endung, z. B. `CAW_TESTER_USER__STAG
 ```json
 {
   "environments": {
-    "local":   { "url": "http://localhost:5173", "claude": true, "writable": true },
+    "local":   { "url": "http://localhost:5173", "agent": true, "writable": true },
     "staging": { "url": "https://staging.example.com" }
   },
   "signIn": { "type": "form", "path": "/login", "userSelector": "#email", "passwordSelector": "#password",

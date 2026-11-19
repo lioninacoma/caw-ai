@@ -125,7 +125,7 @@ Nimmt den Testplan aus `caw/tests/create-ticket.yaml` auf, oder legt einen neuen
 4. caw spielt die Aufzeichnung ohne Claude ab.
 5. Du wählst „Testplan übernehmen“. Erst dann werden Dateien geschrieben.
 
-Nur auf Umgebungen, auf denen Claude arbeiten darf (`"claude": true`). Gibt es nur eine, darf `--env` fehlen.
+Nur auf Umgebungen, auf denen Claude arbeiten darf (`"agent": true`). Gibt es nur eine, darf `--env` fehlen.
 
 | Option | |
 |---|---|
@@ -135,7 +135,7 @@ Nur auf Umgebungen, auf denen Claude arbeiten darf (`"claude": true`). Gibt es n
 | `--start` | Die Umgebung mit ihrem `start`-Befehl starten, wenn sie nicht antwortet, und am Ende stoppen ([Lebenszyklus](configuration.de.md#umgebung-starten-stoppen-und-zurücksetzen)). Mit `--overlay` auch die lokalen Code-Server der Teile. Ohne die Option startet caw nichts und nennt den Befehl. |
 | `--reset` | Vor der Aufnahme den `reset` der Umgebung ausführen. |
 | `--agent local\|docker\|session` | Wo Claude läuft. Standard: `agent.mode` aus der Config, sonst `local`. |
-| `--claude-timeout <dauer>` | Zeitgrenze für Claude, Standard `60m`. |
+| `--agent-timeout <dauer>` | Zeitgrenze für Claude, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Browser-Aktionen, Standard `maxActions` oder 100. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt im Prüflauf, Standard `30s`. |
 
@@ -155,7 +155,7 @@ Einen Prüflauf vorher gibt es nicht: Scheitert ein Schritt an einem Fehler der 
 npx caw run create-ticket --env local
 ```
 
-Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen Claude arbeiten darf (`claude`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
+Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen Claude arbeiten darf (`agent`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
 
 Ein Lauf ändert von sich aus keine Datei. Mit `--learn` lernt er fehlende Vergleichswerte und Effekte in `caw/recordings/<test>.yaml`, in jedem Modus, auch in CI; mit Chat bietet ein bestandener Lauf, der lernen könnte, stattdessen „Vergleichswerte speichern“ auf seiner Abschlusskarte an, und nur dieser Klick schreibt. Die erste Zeile nennt Umgebung, Teamsprache und ob der Lauf lernt, etwa `Modus auf local (Teamsprache en): mit Chat; lernt: nein.` Am Ende sagt ein Lauf, der gelernt hat, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `open <test>@<schritt>` bis zum Einstieg in den gescheiterten Schritt. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs.
 
@@ -169,7 +169,7 @@ Ein Lauf ändert von sich aus keine Datei. Mit `--learn` lernt er fehlende Vergl
 | `--headless` | Kein Fenster, kein Chat. In der aufgenommenen Größe (sonst 1920×1080). |
 | `--learn` | Fehlende Vergleichswerte und Effekte bestandener Schritte in `caw/recordings/` lernen. Ohne die Option lässt ein Lauf jede Datei, wie sie ist. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
-| `--claude-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
+| `--agent-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Aktionen beim Beheben. |
 | `--agent local\|docker\|session` | Wie bei `record`. |
 
@@ -207,7 +207,7 @@ Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab
 | `--role <rolle>` | Nur ohne Test; nicht nötig, wenn die Config nur eine hat. Ein Test bringt seine mit. |
 | `--start`, `--reset` | Wie bei `run` (`reset` nur mit `--reset`). |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt beim Abspielen, Standard `30s`. |
-| `--agent local\|docker\|session`, `--claude-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
+| `--agent local\|docker\|session`, `--agent-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
 
 Nach der Übergabe öffnet **F1** (oder ⋯ → Öffnen…, `/open` im Chat) in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
 
@@ -228,7 +228,7 @@ die Aktionen im Browser, Screenshots, harte Fehler, gesperrte oder auffällige R
 `draft-test.yaml`, ein Testplan im Format von caw aus Claudes Schritten. Nichts landet in `caw/tests`: Um den Fehler als
 Regressionstest zu behalten, kopierst du den Entwurf dorthin, prüfst ihn und nimmst ihn mit `caw record <id>` auf.
 
-- **Wo:** nur auf Umgebungen mit `claude`, nie auf Produktion (`reproduce-not-allowed`). Ohne `--env` die einzige solche
+- **Wo:** nur auf Umgebungen mit `agent`, nie auf Produktion (`reproduce-not-allowed`). Ohne `--env` die einzige solche
   Umgebung, mit `--from` die des Tests.
 - **Schreiben:** nur, wo die Umgebung `writable` ist. Sonst bricht caw jeden schreibenden Request ab wie auf Produktion, und
   Claude weiß, dass es nur lesen darf.
@@ -326,7 +326,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | `CAW_LANG` | `en` oder `de`: deine eigene Sprache für caws Texte (CLI, Werkbank) statt der Teamsprache (`language` in der Config). Claude schreibt Pläne weiter in der Teamsprache. |
 | `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` oder `~/.config/caw-ai`. |
 | `ANTHROPIC_API_KEY` | API-Schlüssel aus der Claude Console für den Agenten `docker`. `local` und `session` nutzen deine Claude-Code-Anmeldung. |
-| `CAW_CLAUDE_MODEL`, `CAW_CLAUDE_BUDGET` | Modell und Budget in US-Dollar für Claude-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |
+| `CAW_AGENT_MODEL`, `CAW_AGENT_BUDGET` | Modell und Budget in US-Dollar für Claude-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
 | `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record` und `open` werden abgelehnt. |
 | `NO_COLOR`, `FORCE_COLOR` | Farben im Terminal aus oder an. |
@@ -338,7 +338,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 
 | Code | Exit | Abhilfe |
 |---|---|---|
-| `reproduce-not-allowed` | 3 | `reproduce` nur auf einer Umgebung mit `claude`, nie auf Produktion |
+| `reproduce-not-allowed` | 3 | `reproduce` nur auf einer Umgebung mit `agent`, nie auf Produktion |
 | `reproduce-state` | 2 | Der Ausgangszustand von `--from` wurde nicht erreicht: den Test mit `run` laufen lassen und erst reparieren |
 | `usage`, `unknown-command` | 3 | `npx caw <befehl> --help` |
 | `config-missing` | 3 | `npx caw init --url <adresse>` |
@@ -350,7 +350,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `env-invalid`, `env-denied` | 3 | Eine Umgebung aus der Config nehmen; Produktion lässt sich nicht aufnehmen |
 | `host-blocked` | 3 | `goto` zu einem Host, der kein Host der Anwendung ist: in `allowHosts` eintragen, wenn die Anwendung wirklich dorthin navigiert. In einem Lauf ist dieselbe Sperre ein Fehler des Schritts |
 | `env-certificate` | 2 | Dem Zertifikat der Umgebung wird nicht vertraut: bei einer internen Zertifizierungsstelle `environments.<env>.insecureTls: true` setzen |
-| `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `claude` / `writable` an der Umgebung |
+| `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `agent` / `writable` an der Umgebung |
 | `auth-missing` | 3 | Keine gespeicherte Sitzung, oder sie ist abgelaufen: `caw role login <rolle> --env <env>` (die Meldung nennt ihn) |
 | `credentials-missing` | 2 | Die genannten Variablen in `caw/.env` oder in der Umgebung setzen (CI-Secrets); eine neue Rolle vorher mit `role add <rolle>` |
 | `login-form-missing`, `login-failed` | 2 | Läuft das Backend? Stimmen Selektoren oder Schritte in `signIn` und die Zugangsdaten? |

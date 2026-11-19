@@ -42,7 +42,7 @@ test('migrateConfig: the spec example becomes a valid 1.0 config', () => {
     assert.deepEqual(config.roles, { clerk: {}, lead: {} });
     assert.equal(config.maxActions, 150);
     assert.deepEqual(Object.keys(config.environments), ['north-dev', 'south-dev', 'north-test', 'south-test', 'north-prod', 'south-prod']);
-    assert.deepEqual(config.environments['north-dev'], { url: 'https://portal-dev.north.example.test', claude: true, writable: true, insecureTls: true });
+    assert.deepEqual(config.environments['north-dev'], { url: 'https://portal-dev.north.example.test', agent: true, writable: true, insecureTls: true });
     assert.deepEqual(config.environments['south-dev'], { extends: 'north-dev', url: 'https://portal-dev.south.example.test' });
     assert.deepEqual(config.environments['north-prod'], { url: 'https://portal.north.example.test', production: true }, 'production gets no insecureTls');
     assert.deepEqual(config.environments['south-prod'], { extends: 'north-prod', url: 'https://portal.south.example.test', production: true }, 'production is not inherited');

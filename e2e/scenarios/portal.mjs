@@ -55,7 +55,7 @@ let configBefore = null;
 
 const ID = 'fx-schritte';
 const file = join(fake, 'caw/tests', `${ID}.yaml`);
-const opts = ['--env', 'dev', '--claude-timeout', '3m', '--step-timeout', '5s'];
+const opts = ['--env', 'dev', '--agent-timeout', '3m', '--step-timeout', '5s'];
 const short = ['--env', 'dev', '--step-timeout', '4s'];
 const S1 = '  - id: S1\n    name: Ziel erreichen\n    do: Klicke Weiter.\n    expect: Das Ziel erscheint.';
 const S2 = (action = 'Fuelle das Anliegen und sende es.', expect = 'Der Vorgang steht da.') => `  - id: S2\n    name: Vorgang anlegen\n    do: ${action}\n    expect: ${expect}`;
