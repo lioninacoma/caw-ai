@@ -24,8 +24,9 @@ only be learned from the code or from the person.
 5. **Commands and environment flags with your Edit tool.** `caw_config` refuses everything that runs a command or decides
    what Claude may do: `start`, `stop`, `reset`, `ready`, `production`, `agent`, `writable`, `allowHttp`, `insecureTls`,
    an overlay part's `start`, `lintCommand`, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and
-   adding or removing an environment that has them. Edit `caw.config.json` yourself for these, so Claude Code shows the
-   person the diff to approve; validate with `caw_config` `read` afterwards. Propose them from the code:
+   adding or removing an environment that has them. For these, name the exact change to the person and wait for their
+   explicit yes in the conversation, even if your edits are approved automatically; then edit `caw.config.json` yourself
+   and validate with `caw_config` `read` afterwards. Propose them from the code:
    - Lifecycle: `start`, `stop`, `reset` and `ready` from compose files and package scripts, e.g. `docker compose up -d --wait`.
      caw runs them on this machine (`start` with `caw_start` `start`; `reset` with `reset` and before the first writing test).
    - An environment on the own machine: `agent: true`, `writable: true`. dev/test/staging: `agent: true`, `writable: true` only

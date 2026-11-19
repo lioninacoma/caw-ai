@@ -60,7 +60,7 @@ export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
 const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys', 'reads',
-    'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'maxActions', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
+    'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'maxActions', 'keepRuns', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport', 'noSandbox'];
 /** A CSS viewport { width, height } in whole pixels, as a recording stores it and browser.viewport sets it. */
@@ -442,6 +442,7 @@ export const validateConfig = (given) => {
     if (typeof config.sandboxImage === 'string' && !/^[\w./:@-]+$/.test(config.sandboxImage)) issues.push(t('config.sandboxImage'));
     if (config.sandboxUser !== undefined && !/^[a-z_][a-z0-9_-]*$/.test(config.sandboxUser)) issues.push(t('config.sandboxUser'));
     if (config.maxActions !== undefined && (!Number.isInteger(config.maxActions) || config.maxActions <= 0)) issues.push(t('config.maxActions'));
+    if (config.keepRuns !== undefined && (!Number.isInteger(config.keepRuns) || config.keepRuns < 0)) issues.push(t('config.keepRuns'));
     if (config.readyTimeoutMs !== undefined && (!Number.isInteger(config.readyTimeoutMs) || config.readyTimeoutMs <= 0)) issues.push(t('config.readyTimeoutMs'));
     for (const key of ['allowHosts', 'thirdPartyHosts']) issues.push(...hostListIssues(key, config[key]));
     for (const key of ['consoleIgnore', 'foreignCode']) {

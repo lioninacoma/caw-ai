@@ -452,7 +452,7 @@ test('writeConfig: refuses guarded keys (commands, environment flags, browser, s
             const refused = writeConfig(root, patch, { dryRun });
             assert.equal(refused.ok, false, JSON.stringify(patch));
             assert.ok(refused.guarded.includes(key), `${JSON.stringify(patch)}: ${refused.guarded}`);
-            assert.match(refused.issues[0], /Nicht über caw_config geändert: .*Edit-Werkzeug in caw\.config\.json/);
+            assert.match(refused.issues[0], /Nicht über caw_config geändert: .*ausdrückliches Ja im Gespräch, auch wenn deine Edits automatisch freigegeben werden.*Edit-Werkzeug in caw\.config\.json/);
         }
     }
     assert.equal(readFileSync(file, 'utf8'), before, 'nothing written');

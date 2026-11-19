@@ -5,7 +5,8 @@ JSON at the project root. Unknown keys are errors with a did-you-mean hint. Chan
 `caw_config` refuses commands and what decides where Claude runs and what it may do (`start`, `stop`, `reset`, `ready`, the
 environment flags `production`, `agent`, `writable`, `allowHttp`, `insecureTls`, an overlay part's `start`, `lintCommand`,
 `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and adding or removing an environment that has them):
-edit those in the file with your own Edit tool, so the person sees the diff.
+name the exact change to the person and wait for their explicit yes in the conversation, even if your edits are approved
+automatically; then edit the file with your own Edit tool.
 
 ## Top level
 
@@ -25,6 +26,7 @@ edit those in the file with your own Edit tool, so the person sees the diff.
 | `readyIgnore`, `readyTimeoutMs` | Elements that never count as loading; how long to wait for a quiet page |
 | `effects` | `{ "fail": [...] }`: which learned effects fail a step (`controls`, `view`, `requests`, `responses`, `console`) |
 | `maxActions` | Claude's action budget per run (default 100) |
+| `keepRuns` | how many run folders in `.caw/runs` caw keeps (default 30, 0 keeps all); older ones go when a run starts |
 | `lintCommand` | The project's lint command, named in recommendations |
 | `agent` | `{ "mode": "local"\|"docker"\|"session", "model", "maxBudgetUsd" }` |
 | `browser` | `channel`, `executablePath`, `locale`, `timezone`, `viewport` (`{ width, height }`): pin them for replay |

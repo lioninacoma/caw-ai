@@ -157,7 +157,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.reproduceBugLong': 'The bug report is longer than {max} characters. Cut it down to what happens and what you expect.',
     'cli.reproduceBugControl': 'The bug report contains control characters.',
     'cli.reproduceFileMissing': '{file} does not exist or is no file.',
-    'cli.reproduceNotAllowed': 'caw reproduce runs only on environments {agent} may work on (claude: true), never on production. {target} is none. Allowed: {environments}',
+    'cli.reproduceNotAllowed': 'caw reproduce runs only on environments {agent} may work on (agent: true), never on production. {target} is none. Allowed: {environments}',
     'cli.reproduceRoles': 'Several roles in the config: --role <role> picks one ({roles}), or --from <test> takes the test\'s role.',
     'cli.reproduceStart': 'Reproducing on {env} as {role} ({writes}).',
     'cli.reproduceWrites': 'writing allowed',

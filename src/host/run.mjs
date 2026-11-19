@@ -14,6 +14,7 @@ import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared
 import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { foldAction } from './activity.mjs';
+import { DEFAULT_KEEP_RUNS, markRunAlive, pruneRuns } from './runs.mjs';
 import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
@@ -466,6 +467,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const agentDir = join(runDir, AGENT_DIR);
     const channel = join(agentDir, CHANNEL_DIR);
     mkdirSync(channel, { recursive: true });
+    // Old runs go (the newest keepRuns stay, open ones always); this one is open now.
+    markRunAlive(runDir);
+    pruneRuns(root, config.keepRuns ?? DEFAULT_KEEP_RUNS, { except: runId });
     let runCommand = 'run';
     if (reproduce !== undefined) runCommand = 'reproduce';
     else if (repair !== undefined) runCommand = range === undefined ? 'repair' : 'record';

@@ -161,7 +161,7 @@ Browser:
     'cli.reproduceBugLong': 'Der Fehlerbericht ist länger als {max} Zeichen. Kürze ihn auf das, was passiert und was du erwartest.',
     'cli.reproduceBugControl': 'Der Fehlerbericht enthält Steuerzeichen.',
     'cli.reproduceFileMissing': '{file} gibt es nicht oder ist keine Datei.',
-    'cli.reproduceNotAllowed': 'caw reproduce läuft nur auf Umgebungen, auf denen {agent} arbeiten darf (claude: true), nie auf Produktion. {target} ist keine solche. Erlaubt: {environments}',
+    'cli.reproduceNotAllowed': 'caw reproduce läuft nur auf Umgebungen, auf denen {agent} arbeiten darf (agent: true), nie auf Produktion. {target} ist keine solche. Erlaubt: {environments}',
     'cli.reproduceRoles': 'Mehrere Rollen in der Config: --role <rolle> wählt eine ({roles}), oder --from <test> nimmt die Rolle des Tests.',
     'cli.reproduceStart': 'Fehler nachstellen auf {env} als {role} ({writes}).',
     'cli.reproduceWrites': 'Schreiben erlaubt',

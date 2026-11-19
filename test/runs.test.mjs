@@ -1,0 +1,29 @@
+// Old run folders go when a run starts: the newest keepRuns stay, an open run always stays.
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+
+import { markRunAlive, pruneRuns } from '../src/host/runs.mjs';
+import { validateConfig } from '../src/shared/config.mjs';
+
+test('runs: the oldest beyond keepRuns go, an open one and the starting one stay, 0 keeps all', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-runs-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const runs = join(root, '.caw', 'runs');
+    const names = Array.from({ length: 6 }, (_, i) => `2026-11-1${i}T10-00-00-000Z-open`);
+    for (const name of names) mkdirSync(join(runs, name), { recursive: true });
+    markRunAlive(join(runs, names[0]));
+    markRunAlive(join(runs, names[1]), 2 ** 22 + 4321);
+    assert.deepEqual(pruneRuns(root, 0), [], '0 keeps every run');
+    assert.deepEqual(pruneRuns(root, 2, { except: names[2] }), [names[1], names[3]], 'the open one (this process) and the starting one stay, a dead process does not count');
+    assert.deepEqual(readdirSync(runs).sort(), [names[0], names[2], names[4], names[5]]);
+    assert.deepEqual(pruneRuns(join(root, 'nothing'), 2), [], 'no runs folder yet');
+});
+
+test('runs: keepRuns is a whole number from 0', () => {
+    const base = { environments: { local: { url: 'http://localhost:5173' } } };
+    for (const keepRuns of [0, 30]) assert.ok(!validateConfig({ ...base, keepRuns }).issues.some((issue) => /keepRuns/.test(issue)), String(keepRuns));
+    for (const keepRuns of [-1, 2.5, '30']) assert.ok(validateConfig({ ...base, keepRuns }).issues.some((issue) => /keepRuns muss/.test(issue)), String(keepRuns));
+});
