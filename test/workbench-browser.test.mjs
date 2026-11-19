@@ -526,6 +526,28 @@ test('chat: after the run the window stays open until the human closes it or the
     assert.ok(Date.now() - start < 3000, 'without a click after the timeout');
 });
 
+test('chat: a click into the input stops the close countdown; the window then waits for "Close window" only', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat } = await open(t);
+    const frame = bench.chatFrame();
+    await chat.finished({ report: join(dir, 'x.md'), text: '2 von 2 Schritten bestanden.', command: 'caw run t' });
+    chat.human.closed();
+    let done = false;
+    const lingering = chat.linger(1500).then(() => { done = true; });
+    assert.ok(await until(() => frame.isVisible('#closeWindow')));
+    assert.equal(await frame.isVisible('#input'), true, 'the input stays reachable under the end card');
+    assert.match(await frame.getAttribute('#input', 'placeholder'), /Ein Klick hier hält das Fenster offen/);
+    await frame.click('#input');
+    assert.ok(await until(() => frame.isVisible('#stays')));
+    assert.equal((await frame.textContent('#closeWindow')).trim(), 'Fenster schließen');
+    assert.equal(await frame.evaluate(() => document.getElementById('input').readOnly), true, 'nothing listens after the run');
+    await pause(2500);
+    assert.equal(done, false, 'the time no longer closes it');
+    await frame.click('#closeWindow');
+    await lingering;
+    assert.equal(done, true);
+});
+
 test('workbench: the badge shows the mode only, the sentence is its tooltip; the breadcrumb names the test; the chips follow', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const context = await browser.newContext();

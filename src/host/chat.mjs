@@ -560,7 +560,8 @@ footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;pa
 .more .pop-i{display:block;white-space:normal;line-height:1.35;font-size:12.5px}.more .pop-i:focus{outline:none;background:var(--accent-soft)}
 .more .pop-i.sure{background:var(--fail);color:var(--on-accent)}
 /* The end card after the run. */
-#next{display:none;gap:10px;padding:12px 14px 14px;overflow:visible}[data-state=closed] #next.on{display:flex}[data-state=closed]:has(#next.on) form{display:none}
+#next{display:none;gap:10px;padding:12px 14px 14px;overflow:visible}[data-state=closed] #next.on{display:flex}[data-state=closed]:has(#next.on) #hint{display:none}
+#stays{display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:var(--muted)}#stays[hidden]{display:none}#stays .i{width:13px;height:13px}
 #next[data-kind=pass] #nextIcon .i{color:var(--pass)}#next[data-kind=fail] #nextIcon .i{color:var(--fail)}#next[data-kind=reproduce] #nextIcon .i{color:var(--warn)}
 #nextIcon{display:inline-grid}#nextIcon:empty{display:none}
 #nextText{font-size:13px}#nextText:empty,#nextRepro:empty{display:none}#nextRepro{display:flex;flex-direction:column;gap:10px}
@@ -576,7 +577,7 @@ footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;pa
 form{position:relative;display:flex;flex-direction:column;gap:8px;margin:0;padding:9px 10px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line2)}
 form:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}form:has(textarea:disabled){opacity:.75}
 :is([data-state=handing],[data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=verifying],[data-state=testing],[data-state=preparing],[data-state=advising]) form{display:none}
-[data-state=closed] form,.stopping form,.stopping #choices{opacity:.55;pointer-events:none}
+[data-state=closed] form{opacity:.7}.stopping form,.stopping #choices{opacity:.55;pointer-events:none}
 .inp-row{display:flex;align-items:flex-end;gap:8px;min-width:0}
 textarea{display:block;flex:1;min-width:0;width:100%;min-height:22px;max-height:160px;margin:0;padding:2px 0;resize:none;border:0;outline:0;background:none;font:400 13px/1.45 var(--font);color:var(--text);overflow-y:hidden;scrollbar-width:thin;caret-color:var(--accent)}
 textarea.full{overflow-y:auto}textarea::placeholder{color:var(--faint)}textarea:focus-visible{outline:0}
@@ -598,7 +599,7 @@ textarea.full{overflow-y:auto}textarea::placeholder{color:var(--faint)}textarea:
 <div id="bar"><div id="status" role="status" aria-live="polite"></div><button id="toggle" type="button" class="lnk"><span class="tic"></span><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button></div>
 <div id="choices"></div>
 <div id="next" class="card" role="region" aria-label="${t('chat.page.nextStep')}"><strong id="nextHead"><span id="nextIcon"></span><span id="nextTitle">${t('chat.page.nextStep')}</span></strong><p id="nextText"></p><div id="nextRepro"></div><div class="cmd" id="nextCmd"></div>
-<div class="acts" id="nextActs"><button id="learn" type="button" class="btn btn-p" hidden>${icon('bookmark')}<span>${t('chat.page.learn')}</span></button><button id="closeWindow" type="button" class="btn btn-s" hidden></button><button id="report" type="button" class="btn btn-s">${t('chat.page.openReport')}</button></div></div>
+<div class="acts" id="nextActs"><button id="learn" type="button" class="btn btn-p" hidden>${icon('bookmark')}<span>${t('chat.page.learn')}</span></button><button id="closeWindow" type="button" class="btn btn-s" hidden></button><button id="report" type="button" class="btn btn-s">${t('chat.page.openReport')}</button></div><p id="stays" hidden>${icon('clock')}<span>${t('chat.page.stays')}</span></p></div>
 <form id="form"><div id="slash" class="pop" role="listbox" aria-label="${t('chat.page.commands')}" hidden><div class="pop-h">${t('chat.page.commands')}</div>${slash}<div id="slashEmpty" hidden>${t('chat.page.noCommand')}</div></div>
 <div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}" title="${t('chat.page.removeElement')}">${icon('x')}</button></div>
 <div class="inp-row"><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" aria-controls="slash" aria-autocomplete="list" placeholder="${t('chat.page.placeholder')}"></textarea><button id="send" type="submit" aria-label="${t('chat.page.send')}" title="${t('chat.page.send')} (Enter)" disabled>${icon('up')}</button></div>
@@ -804,6 +805,9 @@ report.addEventListener('click',()=>{closeMenus();send('report','');});
 let lingerTimer=0;
 learn.addEventListener('click',()=>{closeMenus();learn.disabled=true;learn.querySelector('span').textContent=T['chat.page.learning'];send('learn');});
 closeWindow.addEventListener('click',()=>{closeMenus();clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
+// A click into the input while the window counts down: the person stays, the countdown stops for good.
+const stay=()=>{if(lingerTimer===0||closeWindow.disabled)return;clearInterval(lingerTimer);lingerTimer=0;closeWindow.textContent=T['chat.page.closeNow'];$('stays').hidden=false;send('stay');};
+input.addEventListener('pointerdown',stay);input.addEventListener('focus',stay);
 window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();arrangeNext();
   if(closeWindow.offsetParent!==null)closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
 
@@ -842,7 +846,9 @@ const TOGGLE_ICON={running:'pause',pausing:'play',paused:'play',asking:'check',s
 window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=pick.classList.contains('on')?T['chat.page.picking']:text;}
   // While Claude works in the application the input is locked: typing here would take the focus from the application (an open
   // list closes when its field loses the focus). Pausing unlocks it.
-  const locked=state==='running';input.disabled=locked;input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:state==='describing'?T['chat.page.describePlaceholder']:hint;fit();
+  const locked=state==='running';input.disabled=locked;
+  // After the run nothing listens any more: the input only stays reachable to stop the close countdown.
+  input.readOnly=state==='closed';input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='closed'?T['chat.page.endedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:state==='describing'?T['chat.page.describePlaceholder']:hint;fit();
   if(state==='showing'&&group)group.details.open=true;
   // The main action: a link with F9 while Claude works, else the full-width button with Ctrl+Enter.
   const asLink=state==='running'||state==='pausing';toggleButton.className=asLink?'lnk':'btn btn-p';
@@ -960,6 +966,8 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     let waitingFor = null;
     // The human closes the window after the run (linger).
     let closeWanted = null;
+    // The human clicked into the input while it counted down: the window waits for "Close window" only.
+    let stayWanted = null;
     // After the run: { report: absolute path, shown: path for humans, text, command, learn }.
     let next = null;
     let learnClicked = false;
@@ -1043,6 +1051,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         else if (event?.type === 'abort') chat.human.abort();
         else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();
+        else if (event?.type === 'stay') stayWanted?.();
         // "Save baselines" on the end card: learning happens once the window is closed, like --learn would have done.
         else if (event?.type === 'learn' && next?.learn === true) {
             learnClicked = true;
@@ -1090,14 +1099,19 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
      * @returns once the human closes it or the time is up
      */
     chat.linger = async (ms) => {
-        const clicked = new Promise((resolve) => { closeWanted = resolve; });
+        const clicked = new Promise((resolve) => { closeWanted = () => resolve('close'); });
+        const stayed = new Promise((resolve) => { stayWanted = () => resolve('stay'); });
         let timer;
-        const elapsed = new Promise((resolve) => { timer = setTimeout(resolve, ms); });
+        const elapsed = new Promise((resolve) => { timer = setTimeout(() => resolve('time'), ms); });
         await quiet(render('closed'));
         await quiet(inChat((seconds) => window.linger(seconds), Math.round(ms / 1000)));
-        await Promise.race([clicked, elapsed]);
+        if (await Promise.race([clicked, elapsed, stayed]) === 'stay') {
+            clearTimeout(timer);
+            await clicked;
+        }
         clearTimeout(timer);
         closeWanted = null;
+        stayWanted = null;
     };
     await show();
     await render('running');
