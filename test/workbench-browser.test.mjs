@@ -555,23 +555,23 @@ test('workbench: the badge shows the mode only, the sentence is its tooltip; the
     await context.newPage();
     const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'], title: 'caw · morning-errand' });
     assert.equal(await bench.page.textContent('#title'), 'morning-errand');
-    await bench.facts([['', 'Claude nimmt morning-errand auf', 'Claude nimmt auf'], ['Umgebung', 'staging']]);
-    assert.ok(await until(async () => (await bench.page.textContent('#title')) === 'Claude nimmt auf'));
-    assert.equal(await bench.page.getAttribute('#title', 'title'), 'Claude nimmt morning-errand auf');
+    await bench.facts([['', 'Claude Code nimmt morning-errand auf', 'Claude Code nimmt auf'], ['Umgebung', 'staging']]);
+    assert.ok(await until(async () => (await bench.page.textContent('#title')) === 'Claude Code nimmt auf'));
+    assert.equal(await bench.page.getAttribute('#title', 'title'), 'Claude Code nimmt morning-errand auf');
     assert.equal(await bench.page.textContent('#crumbTest'), 'morning-errand');
     // The facts by their values, the label in title and aria-label.
     assert.deepEqual(await bench.page.locator('#facts li').allTextContents(), ['staging']);
     assert.equal(await bench.page.getAttribute('#facts li', 'aria-label'), 'Umgebung: staging');
     // Without a badge it shows the sentence.
-    await bench.facts([['', 'morning-errand wird ohne Claude geprüft']]);
+    await bench.facts([['', 'morning-errand wird ohne Claude Code geprüft']]);
     assert.ok(await until(async () => (await bench.page.locator('#facts li').count()) === 0));
-    assert.equal(await bench.page.textContent('#title'), 'morning-errand wird ohne Claude geprüft');
+    assert.equal(await bench.page.textContent('#title'), 'morning-errand wird ohne Claude Code geprüft');
     // While the settings are open the badge says so, and comes back with the run's mode.
-    await bench.facts([['', 'Claude behebt S2 von morning-errand', 'Claude behebt S2']]);
+    await bench.facts([['', 'Claude Code behebt S2 von morning-errand', 'Claude Code behebt S2']]);
     await bench.page.keyboard.press('Control+Comma');
     assert.equal(await bench.page.textContent('#title'), 'Einstellungen');
     await bench.page.keyboard.press('Escape');
-    assert.equal(await bench.page.textContent('#title'), 'Claude behebt S2');
+    assert.equal(await bench.page.textContent('#title'), 'Claude Code behebt S2');
 });
 
 test('workbench: the pill top right is a dot and a word: the chat header labels first, then failed, passed, ready; no step while one runs', async (t) => {
@@ -582,7 +582,7 @@ test('workbench: the pill top right is a dot and a word: the chat header labels 
     await bench.steps([{ id: 'S1', name: 'Eins' }, { id: 'S2', name: 'Zwei' }]);
     assert.equal(await pill(), 'idle:Bereit');
     await bench.step('S1', 'running');
-    for (const [state, label] of [['running', 'run:Claude arbeitet'], ['testing', 'run:caw arbeitet'], ['pausing', 'turn:Hält an …'], ['paused', 'turn:Pausiert'], ['deciding', null]]) {
+    for (const [state, label] of [['running', 'run:Claude Code arbeitet'], ['testing', 'run:caw arbeitet'], ['pausing', 'turn:Hält an …'], ['paused', 'turn:Pausiert'], ['deciding', null]]) {
         await bench.chatState(state);
         assert.ok(await until(async () => (await pill()) === label), `${state}: ${await pill()}`);
     }
@@ -594,9 +594,9 @@ test('workbench: the pill top right is a dot and a word: the chat header labels 
     await bench.step('S2', 'pass');
     assert.equal(await pill(), 'pass:Alle bestanden');
     assert.equal(await bench.page.locator('#state .dot').count(), 1);
-    await bench.group({ id: 'reproduce', name: 'Claude stellt nach', kind: 'phase', points: [{ id: 'p1', label: 'Suche' }] });
+    await bench.group({ id: 'reproduce', name: 'Claude Code stellt nach', kind: 'phase', points: [{ id: 'p1', label: 'Suche' }] });
     await bench.point('reproduce', 'p1', 'running');
-    assert.equal(await pill(), 'claude:Claude stellt nach');
+    assert.equal(await pill(), 'agent:Claude Code stellt nach');
     await bench.mood('aborted');
     assert.equal(await pill(), 'fail:Abgebrochen');
 });
@@ -621,15 +621,15 @@ test('workbench: the steps get the heading "Durchführung" between preparation a
     assert.equal((await headings()).filter((entry) => entry.startsWith('section:')).length, 1);
 });
 
-test('workbench: while Claude works the chat input is locked and the application keeps its focus; pausing unlocks it', async (t) => {
+test('workbench: while Claude Code works the chat input is locked and the application keeps its focus; pausing unlocks it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);
     const frame = bench.chatFrame();
     await bench.page.waitForSelector('iframe[name="caw-app"]');
     assert.ok(await until(async () => (await bench.view.locator('#feld').count()) === 1), 'application loaded');
     await frame.waitForFunction(() => typeof window.setStatus === 'function');
-    await frame.evaluate(() => window.setStatus('running', 'Claude arbeitet', '', 'Anhalten'));
-    assert.ok(await until(() => frame.locator('#input').isDisabled()), 'locked while Claude works');
+    await frame.evaluate(() => window.setStatus('running', 'Claude Code arbeitet', '', 'Anhalten'));
+    assert.ok(await until(() => frame.locator('#input').isDisabled()), 'locked while Claude Code works');
     // Claude fills in the application: the field keeps the focus, an open list there would stay open.
     await bench.view.locator('#feld').fill('Meier');
     assert.equal(await bench.view.locator('#feld').evaluate((node) => node.ownerDocument.activeElement === node), true);
@@ -688,7 +688,7 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     await page.keyboard.press('F1');
     assert.equal(await page.isVisible('#stateDlg'), true, 'F1 opens the dialog');
     await page.click('#stests .srow >> text=sb-antrag-abbrechen');
-    assert.match(await page.textContent('#sfoot'), /bis S2 ab, ohne Claude\. Legt dabei neue Daten an\./, 'without a step: up to the last reachable one');
+    assert.match(await page.textContent('#sfoot'), /bis S2 ab, ohne Claude Code\. Legt dabei neue Daten an\./, 'without a step: up to the last reachable one');
     assert.equal(await page.isDisabled('#ssteps .srow >> text=S3'), true, 'stale is locked');
     await page.click('#sgo');
     await until(() => picked.length === 1);
@@ -699,7 +699,7 @@ test('workbench: F1 picks a state, without a step up to the last one, stale step
     // A picked step means its entry: the steps before it completely, of the step only its navigation.
     assert.equal(await page.textContent('#ssteps .srow[aria-selected=true] .sid'), 'S1');
     assert.match(await page.textContent('#ssteps .srow[aria-selected=true] .nm'), /^S1Personensuche$/);
-    assert.match(await page.textContent('#sfoot'), /^Spielt sb-antrag-abbrechen bis zum Einstieg in S1 ab: die Schritte davor ganz, von S1 nur die Navigation, ohne Claude\./);
+    assert.match(await page.textContent('#sfoot'), /^Spielt sb-antrag-abbrechen bis zum Einstieg in S1 ab: die Schritte davor ganz, von S1 nur die Navigation, ohne Claude Code./);
     assert.match(await page.textContent('#sgo'), /^Öffnen/);
     await page.click('#sgo');
     await until(() => picked.length === 2);
@@ -920,7 +920,7 @@ test('chat: "/" at the start opens the commands; arrows and Enter run one, Esc c
     await bench.page.keyboard.type('/');
     assert.equal(await frame.isVisible('#slash'), true, '"/" opens the commands');
     const all = await visibleIds(frame);
-    assert.deepEqual(all, ['/element:sel', '/checkpoint:off', '/pause:off', '/open', '/requests', '/console', '/reload', '/app', '/settings', '/keys', '/cancel'], 'checkpoint only while demonstrating, pause only while Claude works or is paused');
+    assert.deepEqual(all, ['/element:sel', '/checkpoint:off', '/pause:off', '/open', '/requests', '/console', '/reload', '/app', '/settings', '/keys', '/cancel'], 'checkpoint only while demonstrating, pause only while Claude Code works or is paused');
     assert.equal(await frame.getAttribute('#input', 'aria-activedescendant'), 'pick');
     // Each command shows its key.
     assert.deepEqual(await frame.$$eval('#slash [data-cmd] kbd', (list) => list.map((k) => k.textContent)), ['Alt ↵', 'F9', 'F1', 'F2', 'F3', 'F5', 'F8', 'Strg ,', '?', 'Esc']);
@@ -991,7 +991,7 @@ test('chat: /checkpoint and Alt+Enter set a checkpoint while demonstrating; /ele
     return undefined;
 });
 
-test('chat: the main action sits above the input with Ctrl+Enter; while Claude works it is "Pause F9" in the status line', async (t) => {
+test('chat: the main action sits above the input with Ctrl+Enter; while Claude Code works it is "Pause F9" in the status line', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat, frame } = await chatReady(t);
     // Running: a link with F9 next to the status, no button row under the input.
@@ -1028,7 +1028,7 @@ test('chat: the main action sits above the input with Ctrl+Enter; while Claude w
     return undefined;
 });
 
-const failureOptions = [{ id: 'ask', label: 'Claude die Ursache finden lassen', primary: true }, { id: 'fix', label: 'Schritt beheben' }, { id: 'rerun', label: 'Erneut testen' }, { id: 'close', label: 'Lauf beenden' }];
+const failureOptions = [{ id: 'ask', label: 'Claude Code die Ursache finden lassen', primary: true }, { id: 'fix', label: 'Schritt beheben' }, { id: 'rerun', label: 'Erneut testen' }, { id: 'close', label: 'Lauf beenden' }];
 test('chat: the "Mehr" menu stays inside the chat, and its items take a mouse click', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, frame } = await chatReady(t);
@@ -1050,7 +1050,7 @@ test('chat: a failure card shows one primary choice; the others are behind "Mehr
     assert.ok(await until(() => frame.isVisible('.message.failure')));
     assert.equal(await frame.textContent('.failure .bdg.fail'), 'Anwendung', 'the category badge');
     assert.match(await frame.textContent('.failure .warnbox'), /nur verdecken/);
-    assert.equal(await frame.textContent('#choices button.primary'), 'Claude die Ursache finden lassen');
+    assert.equal(await frame.textContent('#choices button.primary'), 'Claude Code die Ursache finden lassen');
     assert.equal(await frame.isVisible('#choicesMore'), true);
     for (const label of ['Schritt beheben', 'Erneut testen', 'Lauf beenden']) assert.equal(await frame.locator('#choices button', { hasText: label }).isVisible(), false, `${label} behind More`);
     // Opens with a click, the first item gets the focus; arrows move, Esc closes and returns to "Mehr".
@@ -1182,7 +1182,7 @@ test('chat: a reproduction ends with its findings, the read-only note and Close 
     return undefined;
 });
 
-test('chat: notices are quiet icon lines, the token notice a card; Claude starting shows a spinner and the pill says so', async (t) => {
+test('chat: notices are quiet icon lines, the token notice a card; Claude Code starting shows a spinner and the pill says so', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat, frame } = await chatReady(t);
     chat.notice('Gespeichert: caw/tests/t.yaml');
@@ -1191,17 +1191,17 @@ test('chat: notices are quiet icon lines, the token notice a card; Claude starti
     chat.starting('Starte Claude');
     assert.ok(await until(() => frame.isVisible('.message.starting:not(.done) .spin')));
     assert.match(await frame.textContent('.message.starting small'), /^00:0\d$/);
-    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude startet'), 'the pill while Claude starts');
-    assert.equal(await bench.page.getAttribute('#state', 'class'), 'pill on claude');
+    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude Code startet'), 'the pill while Claude Code starts');
+    assert.equal(await bench.page.getAttribute('#state', 'class'), 'pill on agent');
     chat.say('Ich schaue.');
-    assert.ok(await until(() => frame.isVisible('.message.starting.done')), 'done once Claude speaks');
-    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude arbeitet'), 'the pill follows the chat again');
-    assert.match(await frame.textContent('.message.claude .who'), /^Claude\d\d:\d\d$/, 'with the time');
-    const gate = chat.choose('choosing', 'Jetzt arbeitet Claude, das kostet Token.', [{ id: 'go', label: 'Weiter', primary: true }, { id: 'always', label: 'Nicht mehr fragen' }, { id: 'stop', label: 'Ohne Claude weiter' }], { kind: 'tokens', text: 'caw fragt einmal pro Lauf.' });
+    assert.ok(await until(() => frame.isVisible('.message.starting.done')), 'done once Claude Code speaks');
+    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude Code arbeitet'), 'the pill follows the chat again');
+    assert.match(await frame.textContent('.message.claude .who'), /^Claude Code\d\d:\d\d$/, 'with the time');
+    const gate = chat.choose('choosing', 'Jetzt arbeitet Claude, das kostet Token.', [{ id: 'go', label: 'Weiter', primary: true }, { id: 'always', label: 'Nicht mehr fragen' }, { id: 'stop', label: 'Ohne Claude Code weiter' }], { kind: 'tokens', text: 'caw fragt einmal pro Lauf.' });
     assert.ok(await until(() => frame.isVisible('.message.tokens')));
     assert.equal(await frame.textContent('.message.tokens strong'), 'Jetzt arbeitet Claude, das kostet Token.');
     await frame.click('#choicesMore');
-    await frame.click('#choices button:text-is("Ohne Claude weiter")');
+    await frame.click('#choices button:text-is("Ohne Claude Code weiter")');
     assert.equal(await gate, 'stop');
     return undefined;
 });

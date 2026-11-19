@@ -93,13 +93,13 @@ test('chooseEnv: the only candidate, for run outside CI the only one with Claude
     assert.equal(chooseEnv(config, [{ id: 'x', environments: ['dev'] }], { env: 'local', command: 'run', log }), 'local', 'a given environment wins');
     // Two candidates, one of them with Claude: the developer's own outside CI; in CI nobody guesses.
     assert.equal(chooseEnv(config, [{ id: 'x', environments: ['local', 'staging'] }], { command: 'run', ci: false, log }), 'local');
-    assert.match(said.at(-1), /die einzige, auf der Claude arbeiten darf/);
+    assert.match(said.at(-1), /die einzige, auf der Claude Code arbeiten darf/);
     assert.throws(() => chooseEnv(config, [{ id: 'x', environments: ['local', 'staging'] }], { command: 'run', ci: true, log }), /--env fehlt: local, staging/);
-    assert.equal(chooseEnv(config, [{ id: 'x', environments: ['local', 'staging'] }], { command: 'record', log }), 'local', 'record: only where Claude may work');
+    assert.equal(chooseEnv(config, [{ id: 'x', environments: ['local', 'staging'] }], { command: 'record', log }), 'local', 'record: only where Claude Code may work');
     assert.throws(() => chooseEnv(config, [], { command: 'record', log }), /--env fehlt: local, dev/);
     const one = { environments: { local: config.environments.local, staging: config.environments.staging } };
     assert.equal(chooseEnv(one, [], { command: 'record', log }), 'local');
-    assert.match(said.at(-1), /einzige Umgebung, auf der Claude arbeiten darf/);
+    assert.match(said.at(-1), /einzige Umgebung, auf der Claude Code arbeiten darf/);
     // Several tests: the union of their environments.
     assert.equal(chooseEnv(config, [{ id: 'a', environments: ['dev'] }, { id: 'b', environments: ['dev'] }], { command: 'run', ci: true, log }), 'dev');
     assert.match(said.at(-1), /einzige Umgebung der Tests/);
@@ -257,7 +257,7 @@ test('help: per command only its block, agent commands under caw agent --help, s
     assert.doesNotMatch(all, /theme/i);
     assert.match(all, /list \[<test>\]/);
     assert.match(all, /run <test> \[--env <name>\]/);
-    assert.match(all, /auf denen Claude arbeiten darf \(hier: local\)/);
+    assert.match(all, /auf denen Claude Code arbeiten darf \(hier: local\)/);
     assert.match(all, /4 Aufnahme nötig/);
     assert.match(all, /Dauern mit Einheit: --step-timeout 30s/);
     assert.doesNotMatch(all, /fill <ziel> <text>/, 'agent commands are under caw agent --help');

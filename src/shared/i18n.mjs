@@ -84,7 +84,14 @@ export const language = () => {
     return current;
 };
 
-const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (whole, name) => (vars[name] === undefined ? whole : String(vars[name])));
+/** The agent that runs or is connected, as texts name it ({agent}). There is one today: Claude Code. */
+export const AGENT_NAME = 'Claude Code';
+// agentDash: in a German compound the name is coupled with hyphens (Claude-Code-Session).
+const DEFAULTS = { agent: AGENT_NAME, agentDash: AGENT_NAME.replaceAll(' ', '-') };
+const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (whole, name) => {
+    const value = vars[name] ?? DEFAULTS[name];
+    return value === undefined ? whole : String(value);
+});
 
 /**
  * The text for key in the current language. Catalogue entries are strings with {placeholders} or functions (vars) => text,
@@ -93,14 +100,14 @@ const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (whole, name) => (vars[n
 export const t = (key, vars = {}) => {
     const entry = CATALOGS[language()]?.[key] ?? CATALOGS.en?.[key] ?? CATALOGS.de?.[key];
     if (entry === undefined) return key;
-    return typeof entry === 'function' ? entry(vars) : fill(entry, vars);
+    return typeof entry === 'function' ? fill(entry(vars), DEFAULTS) : fill(entry, vars);
 };
 
 /** All texts with this prefix as a flat object, for page scripts in the browser (workbench, chat). Strings only. */
 export const texts = (prefix) => {
     const out = {};
     for (const catalog of [CATALOGS.de, CATALOGS.en, CATALOGS[language()]]) {
-        for (const [key, value] of Object.entries(catalog ?? {})) if (key.startsWith(prefix) && typeof value === 'string') out[key] = value;
+        for (const [key, value] of Object.entries(catalog ?? {})) if (key.startsWith(prefix) && typeof value === 'string') out[key] = fill(value, DEFAULTS);
     }
     return out;
 };

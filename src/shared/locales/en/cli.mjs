@@ -2,7 +2,7 @@
 export default {
     // bin/caw.mjs and help.mjs: help, one block per command. caw --help shows all blocks, caw <command> --help only its own.
     'cli.help.intro': `caw - Context-Aware Web Testing
-End-to-end regression tests for your web app: plain-language steps, recorded once with Claude or by demonstration,
+End-to-end regression tests for your web app: plain-language steps, recorded once with {agent} or by demonstration,
 replayed with Playwright locally and in CI without AI.
 
 Set up (in the project folder, app running):
@@ -16,7 +16,7 @@ Commands:`,
       [--explore-only]                   only look at the app: suggestions in caw/.explore.json, no config
       [--env <name>]                     name of the environment (default: local on this machine, else the first part
                                          of the host name)
-      [--language <code>]                team language for plans and Claude's texts (default: the app's own, asked)
+      [--language <code>]                team language for plans and {agent}'s texts (default: the app's own, asked)
       [--login | --no-login]             answer the sign-in question up front (scripts)
       [--insecure-tls]                   accept self-signed certificates; stored on the environment
       [--allow-http]                     allow plain http to another machine; stored on the environment
@@ -25,25 +25,25 @@ Commands:`,
       [--no-mcp]                         no entry in .mcp.json
       [--offline]                        don't look at the app: template with TODO for the sign-in (also without
                                          terminal and --url)`,
-    'cli.help.record': `  record <test> [--env <name>]           Record a test plan or replace its recording, with Claude at the chat; only on
-                                         environments where Claude may work{here}
-  record <test>@<S4>                     Re-record from S4 to the end: the steps before it replay without Claude, then
-                                         Claude follows the old plan from S4 while you steer in the chat. From S4 on the
+    'cli.help.record': `  record <test> [--env <name>]           Record a test plan or replace its recording, with {agent} at the chat; only on
+                                         environments where {agent} may work{here}
+  record <test>@<S4>                     Re-record from S4 to the end: the steps before it replay without {agent}, then
+                                         {agent} follows the old plan from S4 while you steer in the chat. From S4 on the
                                          plan may change, the steps before it stay. @S1 records the whole test
       [--role <role>]                    First time only, not with @<S4>; not needed if the config has just one
       [--read-only]                      First time only: the test doesn't write (writes: false); if it does, it's
                                          marked as writing
-      [--agent-timeout <duration>]      Time limit for Claude, default 60m
-      [--max-actions <n>]                Limit on Claude's actions, else maxActions from the config, else 100
+      [--agent-timeout <duration>]      Time limit for {agent}, default 60m
+      [--max-actions <n>]                Limit on the agent's actions, else maxActions from the config, else 100
       [--step-timeout <duration>]        Time limit per step in the check run, default 30s
       [--agent local|docker|session]     as for run
       [--start] [--reset]                as for run (--reset only when given)
       [--overlay[=<parts>]]              as for run`,
-    'cli.help.run': `  run <test> [--env <name>]              Replay the test without AI. On environments where Claude may work{here}, the
-                                         chat sits alongside: if a step fails, sort it out there with Claude
-      [--explain]                        On errors or warnings Claude explains unasked, costs tokens; only on
-                                         environments where Claude may work
-      [--no-chat]                        No chat and no Claude, like in CI
+    'cli.help.run': `  run <test> [--env <name>]              Replay the test without AI. On environments where {agent} may work{here}, the
+                                         chat sits alongside: if a step fails, sort it out there with {agent}
+      [--explain]                        On errors or warnings {agent} explains unasked, costs tokens; only on
+                                         environments where {agent} may work
+      [--no-chat]                        No chat and no {agent}, like in CI
       [--headless]                       No window and no chat
       [--learn]                          Learn missing baselines and effects into caw/recordings/, in every mode;
                                          without it a run changes no file on its own (with chat the end offers it)
@@ -52,10 +52,10 @@ Commands:`,
       [--reset] | [--no-reset]           The environment's reset runs once before the first writing test; --reset
                                          before the first test, --no-reset never
       [--step-timeout <duration>]        Time limit per step, default 30s
-      [--agent-timeout <duration>]      Time limit for Claude when clarifying and fixing, default 60m
-      [--max-actions <n>]                Limit on Claude's actions when fixing, else maxActions from the config, else 100
-      [--agent local|docker|session]     Where Claude works; default from agent.mode in the config (local). session:
-                                         your Claude Code session takes over via its caw tools, caw starts no Claude
+      [--agent-timeout <duration>]      Time limit for {agent} when clarifying and fixing, default 60m
+      [--max-actions <n>]                Limit on the agent's actions when fixing, else maxActions from the config, else 100
+      [--agent local|docker|session]     Where {agent} works; default from agent.mode in the config (local). session:
+                                         your {agent} session takes over via its caw tools, caw starts no {agent}
       [--overlay[=<parts>]]              Lay local code over the deployed environment. Without a value every part of
                                          overlay.parts with its source; build or dev for that source; <url> for the
                                          only part; or parts: --overlay=orders,admin:dev. Only on overlay.environments
@@ -65,7 +65,7 @@ Commands:`,
       [--report junit=<file>]            Also write the result as JUnit XML
       [--learn] [--start] [--reset | --no-reset]  as for one test; start and reset once for the whole row`,
     'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Open the app with workbench and chat. Without a test: navigate, try
-                                         things, develop with Claude. With <test>: replay it first. With @<S4>: up to the
+                                         things, develop with the agent. With <test>: replay it first. With @<S4>: up to the
                                          entry of S4 (its navigation runs, its inputs and check stay open). Learns
                                          nothing, writes no test file
       [--role <role>]                    Without a test only; not needed if the config has just one
@@ -73,20 +73,20 @@ Commands:`,
       [--agent local|docker|session] [--agent-timeout <duration>] [--max-actions <n>]
       [--start] [--reset]                as for run (--reset only when given)
       [--overlay[=<parts>]]              as for run`,
-    'cli.help.reproduce': `  reproduce "<bug report>" [--env <name>]  Claude reproduces a bug on its own, signed in as a test role: no plan
+    'cli.help.reproduce': `  reproduce "<bug report>" [--env <name>]  {agent} reproduces a bug on its own, signed in as a test role: no plan
                                          to approve, no decisions. Writes a report and a draft test plan to the run
-                                         folder, never into caw/tests. Only where Claude may work{here}, never on
+                                         folder, never into caw/tests. Only where {agent} may work{here}, never on
                                          production; read-only unless the environment is writable; no code changes.
                                          Exit 0 reproduced, 1 not reproduced or unclear
       [--file <file>] | -                The bug report from a file, or from stdin
-      [--from <test>[@<S4>]]             Start in a test's state: its steps up to the entry of S4, without Claude
+      [--from <test>[@<S4>]]             Start in a test's state: its steps up to the entry of S4, without {agent}
       [--role <role>]                    Without --from; not needed if the config has just one
       [--headless]                       No window
       [--agent local|docker|session]`,
     'cli.help.list': `  list [<test>]                          Tests with environments, recording state (recorded, stale, not recorded) and
                                          whether they write; with <test> one line per step`,
-    'cli.help.validate': '  validate                               Check config and tests offline, without browser or Claude (CI, pre-commit)',
-    'cli.help.doctor': `  doctor [--agent local|docker|session]  Check Node, Chrome, Claude Code (local) or Docker and token (docker),
+    'cli.help.validate': '  validate                               Check config and tests offline, without browser or {agent} (CI, pre-commit)',
+    'cli.help.doctor': `  doctor [--agent local|docker|session]  Check Node, Chrome, {agent} (local) or Docker and token (docker),
                                          test users and environments, each with the next step
       [--env <name>]                     only this environment's test users and address`,
     'cli.help.role': `  role [list] [--json]                   Roles, whether a test user is set (never the values), and which tests use them
@@ -110,12 +110,12 @@ Commands:`,
     'cli.help.version': '  --version                              Package version',
     'cli.help.here': ' (here: {names})',
     'cli.help.footer': `--env <name>: a name from environments, e.g. local. Left out when the choice is clear: the only one that fits, or for run
-outside CI the only one where Claude may work; production only when named.
+outside CI the only one where {agent} may work; production only when named.
 Durations take units: --step-timeout 30s, --agent-timeout 60m.
 
 caw <command> --help for details.
 Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs recording.`,
-    'cli.help.agent': `caw agent <command>: for Claude during a run (sandbox, local, or your session with --agent session), drives the browser:
+    'cli.help.agent': `caw agent <command>: for {agent} during a run (sandbox, local, or your session with --agent session), drives the browser:
   task                                   Show the task of the open run
   snapshot                               Page structure with references (e1, e2, ...)
   url                                    Current URL
@@ -152,7 +152,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.reproduceBugLong': 'The bug report is longer than {max} characters. Cut it down to what happens and what you expect.',
     'cli.reproduceBugControl': 'The bug report contains control characters.',
     'cli.reproduceFileMissing': '{file} does not exist or is no file.',
-    'cli.reproduceNotAllowed': 'caw reproduce runs only on environments Claude may work on (claude: true), never on production. {target} is none. Allowed: {environments}',
+    'cli.reproduceNotAllowed': 'caw reproduce runs only on environments {agent} may work on (claude: true), never on production. {target} is none. Allowed: {environments}',
     'cli.reproduceRoles': 'Several roles in the config: --role <role> picks one ({roles}), or --from <test> takes the test\'s role.',
     'cli.reproduceStart': 'Reproducing on {env} as {role} ({writes}).',
     'cli.reproduceWrites': 'writing allowed',
@@ -201,7 +201,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.initAuthUnknown': 'init has no sign-in type "{auth}" (form, session, none).',
     'cli.badRoleName': 'Role "{name}": lowercase letters, digits and hyphens only, starting with a letter (e.g. admin, clerk).',
     'cli.mcpInvalid': '.mcp.json is not valid JSON, please add the caw entry by hand (see README).',
-    'cli.mcpUpdated': '.mcp.json: the caw entry now starts the installed copy instead of npx. Restart Claude Code in the project.',
+    'cli.mcpUpdated': '.mcp.json: the caw entry now starts the installed copy instead of npx. Restart {agent} in the project.',
     'cli.initCreated': 'Created: {files}',
     'cli.initAlready': 'Already set up.',
     'cli.initNeedsUrl': 'Usage: npx caw init --url <address>. init looks at the app first; you sign in in the window.',
@@ -213,14 +213,14 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorTodoNext': 'Fill in caw.config.json: path and field selectors from the sign-in page, signedInSelector from the page after signing in. caw init --explore-only --url <address> finds them.',
     'cli.initNext': 'Next: caw doctor, then record the first test: caw record <test> --env {target}.',
     'cli.askEnv': 'Name of this environment',
-    'cli.askLanguage': 'Team language (plans and Claude\'s texts), a code such as en, de, fr',
+    'cli.askLanguage': 'Team language (plans and {agent}\'s texts), a code such as en, de, fr',
     'cli.initEnvBad': 'Environment "{env}": lowercase letters, digits and -, starting with a letter, at most 32 characters.',
     'cli.initLanguageBad': 'Team language "{language}": a language code such as en, de or fr.',
     'cli.initNeedsAllowHttp': '{host} is plain http and not on this machine: add --allow-http if that is really meant (everything, also the sign-in, travels unencrypted).',
-    'cli.initProductionLike': 'Environment {env} looks like production: written with production: true, so caw never writes there and Claude does not work there. Rename it with --env if it is not production.',
+    'cli.initProductionLike': 'Environment {env} looks like production: written with production: true, so caw never writes there and {agent} does not work there. Rename it with --env if it is not production.',
     'cli.initNextExplore': ' No fitting selectors yet? Run caw init --explore-only --url <address> first.',
     'cli.initOfflineFallback': 'No terminal and no --url: init writes the template, the sign-in stays TODO. Later: caw init --explore-only --url <address>.',
-    'cli.contextTemplate': '# Notes for Claude\n\nWhat Claude should know in every test but can\'t see in the code. No personal data.\n\n- Example: The search remembers the last input. Click "Clear filter" first.\n',
+    'cli.contextTemplate': '# Notes for {agent}\n\nWhat {agent} should know in every test but can\'t see in the code. No personal data.\n\n- Example: The search remembers the last input. Click "Clear filter" first.\n',
 
     // commands.mjs: init dialog
     'cli.askUrl': 'Address of the local environment',
@@ -279,32 +279,32 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.envChosen': 'Environment: {env} ({why})',
     'cli.envWhyTest': 'only environment of {test}',
     'cli.envWhyTests': 'only environment of the tests',
-    'cli.envWhyNew': 'only environment where Claude may work',
-    'cli.envWhyOnlyClaude': 'the only one where Claude may work',
+    'cli.envWhyNew': 'only environment where {agent} may work',
+    'cli.envWhyOnlyClaude': 'the only one where {agent} may work',
     'cli.validateNowhere': '{id} runs nowhere: no environment fits (a writing test needs a writable environment)',
     'cli.noEnvironment': 'no environment',
     'cli.verbRecord': 'Recording',
     'cli.verbReproduce': 'Reproducing',
     'cli.agentOnly': '{verb} needs environments.{environment}.agent: true (currently only: {environments}).',
-    'cli.agentNotInCi': "--agent {agent} doesn't work in CI (variable CI set), there Claude runs in Docker only.",
-    'cli.sessionAgent': 'Claude works in your Claude Code session: tell it "take over the caw run". It finds the run via the caw tool (caw mcp) or caw <command>.',
-    'cli.sessionLabel': 'your Claude Code session',
-    'cli.localAgent': 'Claude runs locally without Docker, with read access and the browser tool only (Claude Code {version}). Isolated: agent.mode "docker".',
+    'cli.agentNotInCi': "--agent {agent} doesn't work in CI (variable CI set), there {agent} runs in Docker only.",
+    'cli.sessionAgent': '{agent} works in your {agent} session: tell it "take over the caw run". It finds the run via the caw tool (caw mcp) or caw <command>.',
+    'cli.sessionLabel': 'your {agent} session',
+    'cli.localAgent': '{agent} runs locally without Docker, with read access and the browser tool only ({agent} {version}). Isolated: agent.mode "docker".',
     'cli.usingDocker': 'Using {label}.',
-    'cli.tokenMissing': '{hint} Claude in Docker needs an API key from the Claude Console. Without one, use --agent local: it runs with your own Claude Code login.',
+    'cli.tokenMissing': '{hint} {agent} in Docker needs an API key from the Claude Console. Without one, use --agent local: it runs with your own {agent} login.',
     'cli.and': ' and ',
     'cli.draftMissing': 'The new test {id} needs {missing}. Usage: {hint}',
     'cli.choiceShow': 'Show it myself',
-    'cli.choiceDescribe': 'Describe it, Claude records',
+    'cli.choiceDescribe': 'Describe it, {agent} records',
     'cli.describeNoted': '{id} noted (page {path}). Describe more, or "{button}".',
-    'cli.describeNothing': 'Nothing described yet. Write what the test should do, then "Hand over to Claude".',
-    'cli.choiceFollow': 'Claude follows the test plan',
+    'cli.describeNothing': 'Nothing described yet. Write what the test should do, then "Hand over to {agent}".',
+    'cli.choiceFollow': '{agent} follows the test plan',
     'cli.choiceReuse': 'Use last demo ({time}, {count} entries)',
     'cli.recordAborted': 'Recording was cancelled.',
     'cli.questionNew': 'How should {id} be created?',
     'cli.questionRecorded': "{id} is already recorded. The recording is only replaced if you agree at the end. How should the new one be created?",
-    'cli.questionDescribed': '{id} is described but not recorded yet. Will you show it, or should Claude follow the test plan?',
-    'cli.demoNote': 'Only show test data: your input goes to Claude and ends up in the recording. Passwords are never captured.',
+    'cli.questionDescribed': '{id} is described but not recorded yet. Will you show it, or should {agent} follow the test plan?',
+    'cli.demoNote': 'Only show test data: your input goes to {agent} and ends up in the recording. Passwords are never captured.',
     'cli.dialogAsks': 'The app asks: "{message}"',
     'cli.dialogLeave': 'The app asks before leaving the page: "{message}"',
     'cli.dialogPrompt': 'The app asks for a value: "{message}". Type the value here and send it, or choose OK (keeps "{value}") or Cancel.',
@@ -312,17 +312,17 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.dialogCancel': 'Cancel',
     'cli.demoRecorded': 'Recorded: {line}',
     'cli.demoFailure': "{label}. It's at this point in the recording.",
-    'cli.demoNothingFollow': 'Nothing shown: Claude follows the test plan.',
+    'cli.demoNothingFollow': 'Nothing shown: {agent} follows the test plan.',
     'cli.demoNothing': 'Nothing shown yet. Click through the flow in the app, then "Finish demo".',
     'cli.modeLine': 'Mode on {env} (team language {language}): {how}; learns: {learns}.',
-    'cli.modeNoAgent': 'no chat, Claude may only work on {environments}',
+    'cli.modeNoAgent': 'no chat, {agent} may only work on {environments}',
     'cli.modeHeadless': 'no window and no chat (--headless)',
     'cli.modeNoChat': 'no chat (--no-chat)',
     'cli.modeCi': 'no chat, because the variable CI is set',
     'cli.modeChat': 'with chat{advice}',
     'cli.modeLearnsNo': 'no',
     'cli.modeLearnsYes': 'yes (--learn), missing baselines and effects into {file}',
-    'cli.modeAdvice': ' and advice from Claude (--explain, costs tokens)',
+    'cli.modeAdvice': ' and advice from {agent} (--explain, costs tokens)',
     'cli.changed': 'Changed: {files}',
     'cli.changedWhat': '{file} ({what})',
     'cli.changedBaselines': 'baselines {ids}',
@@ -342,13 +342,13 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.batchAt': 'at {step}',
     'cli.junitWritten': 'JUnit report: {file}',
     'cli.stepUnknown': '{test} has no step {step}.{suggestion} {steps}',
-    'cli.adviseAgentOnly': '--explain only on environments where Claude may work (here: {environments}), not on {target}.',
+    'cli.adviseAgentOnly': '--explain only on environments where {agent} may work (here: {environments}), not on {target}.',
     'cli.ciHandover': '{option} hands the browser to a person; in CI (variable CI set) there is none.',
     'cli.ciNeedsHuman': 'caw {command} needs a person in the chat (demonstration, plan, decisions); in CI (variable CI set) there is none.',
-    'cli.adviseNeedsChat': "--explain needs the chat; in CI (variable CI set) Claude doesn't advise.",
-    'cli.failedHintAgent': '{step} failed. Find the cause: caw run {test} --env {target} in the terminal, the chat shows the assessment and lets Claude investigate. Only if the app changed on purpose, re-record from there: caw record {test}@{step} --env {target}',
+    'cli.adviseNeedsChat': "--explain needs the chat; in CI (variable CI set) {agent} doesn't advise.",
+    'cli.failedHintAgent': '{step} failed. Find the cause: caw run {test} --env {target} in the terminal, the chat shows the assessment and lets {agent} investigate. Only if the app changed on purpose, re-record from there: caw record {test}@{step} --env {target}',
     'cli.failedHint': '{step} failed. Find the cause in a run with chat: caw run {test} --env {target}',
-    'cli.failedHintNoAgent': '{step} failed. A run with chat finds the cause, on an environment where Claude may work (here: {environments}).',
+    'cli.failedHintNoAgent': '{step} failed. A run with chat finds the cause, on an environment where {agent} may work (here: {environments}).',
     'cli.untilHint': 'Up to the entry of the step: caw open {test}@{step} --env {target}',
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role and --read-only must match the file or be left out.',
     'cli.recordStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
@@ -364,21 +364,21 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorBrowserOk': 'Browser starts ({browser})',
     'cli.doctorBrowserFail': "Browser doesn't start ({browser}): {error}",
     'cli.doctorBrowserNext': 'Install Google Chrome (Stable), caw uses the system Chrome; or set browser.channel or browser.executablePath in the config.',
-    'cli.doctorPersonalOk': 'Personal notes for Claude: {path} ({lines} lines), read in every project before caw/caw.md',
-    'cli.doctorPersonalNone': 'No personal notes for Claude (optional: {path})',
-    'cli.doctorSessionOk': 'Your Claude Code session takes over (caw entry in .mcp.json)',
+    'cli.doctorPersonalOk': 'Personal notes for {agent}: {path} ({lines} lines), read in every project before caw/caw.md',
+    'cli.doctorPersonalNone': 'No personal notes for {agent} (optional: {path})',
+    'cli.doctorSessionOk': 'Your {agent} session takes over (caw entry in .mcp.json)',
     'cli.doctorSessionMissing': 'caw entry in .mcp.json is missing',
     'cli.doctorSessionNpx': 'The caw entry in .mcp.json starts caw through npx although caw is installed in the project',
-    'cli.doctorSessionNpxNext': 'npx caw init points it at the installed copy; then restart Claude Code in the project.',
-    'cli.doctorSessionNext': 'claude mcp add caw --scope project -- npx caw-ai mcp (or npx caw init) adds it; then restart Claude Code in the project.',
-    'cli.doctorClaudeOk': 'Claude Code {version} (Claude runs locally, without Docker)',
-    'cli.doctorClaudeMissing': 'Claude Code (claude) is not in PATH',
-    'cli.doctorClaudeNext': 'Only for runs with Claude: install Claude Code and sign in once, or agent.mode "docker".',
+    'cli.doctorSessionNpxNext': 'npx caw init points it at the installed copy; then restart {agent} in the project.',
+    'cli.doctorSessionNext': 'claude mcp add caw --scope project -- npx caw-ai mcp (or npx caw init) adds it; then restart {agent} in the project.',
+    'cli.doctorClaudeOk': '{agent} {version} ({agent} runs locally, without Docker)',
+    'cli.doctorClaudeMissing': '{agent} (claude) is not in PATH',
+    'cli.doctorClaudeNext': 'Only for runs with {agent}: install {agent} and sign in once, or agent.mode "docker".',
     'cli.doctorDockerOk': 'Docker: {label}',
-    'cli.doctorDockerNext': 'Only needed for record and Claude in the chat: start Docker (Linux containers).',
-    'cli.doctorTokenOk': 'Access for Claude in Docker: {name}',
-    'cli.doctorTokenMissing': 'No access for Claude in Docker (ANTHROPIC_API_KEY)',
-    'cli.doctorTokenNext': 'Only for runs with Claude in Docker: set an API key from the Claude Console as ANTHROPIC_API_KEY. Locally Claude uses your Claude Code login.',
+    'cli.doctorDockerNext': 'Only needed for record and {agent} in the chat: start Docker (Linux containers).',
+    'cli.doctorTokenOk': 'Access for {agent} in Docker: {name}',
+    'cli.doctorTokenMissing': 'No access for {agent} in Docker (ANTHROPIC_API_KEY)',
+    'cli.doctorTokenNext': 'Only for runs with {agent} in Docker: set an API key from the Claude Console as ANTHROPIC_API_KEY. Locally {agent} uses your {agent} login.',
     'cli.doctorIgnoreOk': '.gitignore protects runs, credentials and sessions',
     'cli.doctorIgnoreMissing': '.gitignore is missing: {lines}',
     'cli.doctorIgnoreNext': 'caw init adds the entries.',

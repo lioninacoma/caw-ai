@@ -16,7 +16,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { CawError } from '../shared/errors.mjs';
-import { language, t, texts } from '../shared/i18n.mjs';
+import { AGENT_NAME, language, t, texts } from '../shared/i18n.mjs';
 import { readPrefs } from '../shared/prefs.mjs';
 import { sourceTag } from './app-view.mjs';
 import { cancelPick, pickElement } from './demonstrate.mjs';
@@ -461,7 +461,7 @@ const slashCommands = (ctrl) => [
 export const chatPage = (nonce = '', mode = readPrefs().mode) => {
     const ctrl = t('workbench.page.keyCtrl');
     const slash = slashCommands(ctrl).map(([name, id, glyph, key, bench]) => `<button type="button" class="pop-i${name === 'cancel' ? ' danger' : ''}" role="option" tabindex="-1" id="${id}" data-cmd="${name}" data-name="/${name}"${bench ? ` data-key="${bench}"` : ''}${id === 'pick' ? ` title="${t('chat.page.pickTitle')}"` : ''}>${icon(glyph)}<span><span class="nm">/${name}</span><small>${t(`chat.page.cmd.${name}`)}</small></span>${key ? `<kbd>${key}</kbd>` : '<span></span>'}</button>`).join('');
-    const icons = { claude: 'spark', you: 'user', cross: 'cross', flag: 'flag', info: 'info', chev: 'chev-r', chevd: 'chev-d', loader: 'loader', check: 'check', x: 'x', alert: 'alert', help: 'help', list: 'list', file: 'file', copy: 'copy', terminal: 'terminal', bug: 'bug', coins: 'coins', lock: 'lock', msg: 'msg', pause: 'pause', play: 'play', stop: 'stop', spark: 'spark', bookmark: 'bookmark', dot: 'circle' };
+    const icons = { claude: 'agent', you: 'user', cross: 'cross', flag: 'flag', info: 'info', chev: 'chev-r', chevd: 'chev-d', loader: 'loader', check: 'check', x: 'x', alert: 'alert', help: 'help', list: 'list', file: 'file', copy: 'copy', terminal: 'terminal', bug: 'bug', coins: 'coins', lock: 'lock', msg: 'msg', pause: 'pause', play: 'play', stop: 'stop', spark: 'spark', bookmark: 'bookmark', dot: 'circle' };
     const ICON = Object.fromEntries(Object.entries(icons).map(([name, glyph]) => [name, icon(glyph, { cls: name === 'loader' ? 'spin' : '' })]));
     return `<!doctype html><html lang="${language()}"${modeAttr(mode)}><head><meta charset="utf-8"><title>caw · Chat</title><script>${MODE_SCRIPT}${sourceTag}</script>${FAVICON}<style>
 ${styleSheet()}
@@ -475,7 +475,7 @@ main>*{flex-shrink:0}
 /* Messages: who speaks (Claude, You) with an icon and the time, the text below. */
 .message{display:flex;flex-direction:column;gap:3px;min-width:0}
 .who{display:inline-flex;align-items:center;gap:6px;font:500 12px/1.2 var(--font);color:var(--text)}
-.who .i{width:13px;height:13px}.who.c .i{color:var(--claude)}.who.h .i{color:var(--muted)}
+.who .i{width:13px;height:13px}.who.c .i{color:var(--agent)}.who.h .i{color:var(--muted)}
 .who small{font:400 10.5px/1 var(--font-mono);color:var(--faint)}
 .who .cp{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}.who .cp .i{color:var(--accent-text)}
 .txt{font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -496,9 +496,9 @@ details.activity ol{margin:6px 0 0 5px;padding:0 0 0 12px;border-left:1px solid 
 details.activity li{overflow-wrap:anywhere}
 /* Claude starting, and Claude working. */
 .message.starting{flex-direction:row;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--r2);background:var(--panel2);font-size:12.5px}
-.message.starting .i{color:var(--claude)}.message.starting small{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
+.message.starting .i{color:var(--agent)}.message.starting small{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
 .message.starting.done{background:none;padding:0;color:var(--muted);font-size:12px}.message.starting.done .i{color:var(--pass)}.message.starting.done small{margin-left:0}
-#thinking{display:none;align-items:center;gap:7px;font:500 12px/1 var(--font);color:var(--claude)}#thinking .i{width:14px;height:14px}
+#thinking{display:none;align-items:center;gap:7px;font:500 12px/1 var(--font);color:var(--agent)}#thinking .i{width:14px;height:14px}
 [data-state=running] #thinking,[data-state=advising] #thinking{display:flex}main:has(.message.starting:not(.done)) #thinking{display:none!important}
 /* Cards: plan, question, advice, failure, decision and the token notice. Flat: the header line, then the parts. */
 .message.card{gap:10px;padding:12px 14px 14px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line);font-size:13px;line-height:1.5}
@@ -506,7 +506,7 @@ details.activity li{overflow-wrap:anywhere}
 .card>strong .i{width:16px;height:16px}.card>strong .meta{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
 .card p{margin:0}.card .txt{white-space:pre-wrap}.card .muted{color:var(--muted);font-size:12px}
 .message.question{box-shadow:inset 0 2px 0 var(--run)}.question>strong .i{color:var(--run)}
-.plan>strong .i{color:var(--accent-text)}.advice>strong .i{color:var(--claude)}.decision>strong .i{color:var(--pass)}.tokens>strong .i{color:var(--warn)}
+.plan>strong .i{color:var(--accent-text)}.advice>strong .i{color:var(--agent)}.decision>strong .i{color:var(--pass)}.tokens>strong .i{color:var(--warn)}
 .message.failure{box-shadow:inset 0 2px 0 var(--fail)}.failure>strong .i{color:var(--fail)}
 .heard{display:flex;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px}
 .heard .i{width:14px;height:14px;margin-top:3px;color:var(--muted)}.heard small{display:block;color:var(--faint);font-size:11px}
@@ -689,7 +689,7 @@ if(window.ResizeObserver)new ResizeObserver(()=>{if(follow)toEnd();}).observe(me
 // A new card needs a decision: it scrolls into view even if the human is reading further up.
 const place=(element,top=false)=>{messages.insertBefore(element,thinking);anchor=top?element:null;if(top){follow=true;down.classList.remove('new');}grown();};
 const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));};
-const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?'Claude':T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'claude':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
+const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?${JSON.stringify(AGENT_NAME)}:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'claude':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
 const head=(glyph,title,meta)=>{const strong=el('strong');strong.append(ic(glyph),el('span','',title));if(meta)strong.append(el('span','meta',meta));return strong;};
 const card=(cls)=>el('div','message card '+cls);
 // "Starting Claude": a spinner and the time since, until anything else arrives.
@@ -746,7 +746,7 @@ window.addMessage=(who,text,about,at)=>{
     place(box,true);return;
   }
   if(who==='advice'){
-    const box=card('advice '+about.side);box.append(head('spark',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']));
+    const box=card('advice '+about.side);box.append(head('agent',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']));
     const intro=el('div');intro.append(el('h2','',about.title));if(about.target)intro.append(el('div','target',about.target));if(about.about)intro.append(el('div','target',fill('chat.page.about',{about:about.about})));box.append(intro);
     box.append(el('p','reason txt',about.reason));
     if(about.evidence)box.append(el('p','muted',fill('chat.page.evidence',{evidence:about.evidence})));

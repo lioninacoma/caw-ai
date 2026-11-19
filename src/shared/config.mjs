@@ -95,16 +95,16 @@ const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,79}$/;
 
 /**
  * Cost limits for Claude, passed on to Claude Code (`--model`, `--max-budget-usd`): from the environment (CAW_AGENT_MODEL,
- * CAW_AGENT_BUDGET, e.g. for one run) or from `agent.model` / `agent.maxBudgetUsd`. Invalid values are left out.
- * @returns the variables for the agent process, e.g. { CAW_AGENT_MODEL: 'haiku', CAW_AGENT_BUDGET: '0.5' }
+ * CAW_CLAUDE_BUDGET, e.g. for one run) or from `agent.model` / `agent.maxBudgetUsd`. Invalid values are left out.
+ * @returns the variables for the agent process, e.g. { CAW_AGENT_MODEL: 'haiku', CAW_CLAUDE_BUDGET: '0.5' }
  */
 export const claudeLimits = (config, env = process.env) => {
     const agent = isObject(config?.agent) ? config.agent : {};
     const model = env.CAW_AGENT_MODEL || agent.model;
-    const budget = env.CAW_AGENT_BUDGET || (agent.maxBudgetUsd === undefined ? undefined : String(agent.maxBudgetUsd));
+    const budget = env.CAW_CLAUDE_BUDGET || (agent.maxBudgetUsd === undefined ? undefined : String(agent.maxBudgetUsd));
     return {
         ...(typeof model === 'string' && MODEL_NAME.test(model) ? { CAW_AGENT_MODEL: model } : {}),
-        ...(typeof budget === 'string' && /^\d+(\.\d+)?$/.test(budget) && Number(budget) > 0 ? { CAW_AGENT_BUDGET: budget } : {}),
+        ...(typeof budget === 'string' && /^\d+(\.\d+)?$/.test(budget) && Number(budget) > 0 ? { CAW_CLAUDE_BUDGET: budget } : {}),
     };
 };
 

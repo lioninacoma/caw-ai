@@ -53,10 +53,10 @@ export default {
     'session.docker.missing': 'Kein Docker gefunden. Im Devcontainer gibt es keins: Starte den Test aus PowerShell im Projektordner. Unter Windows geht Docker Desktop oder Docker in WSL.',
 
     // local-agent
-    'session.local.label': 'Claude lokal (ohne Docker)',
-    'session.local.claudeMissing': 'Claude Code (claude) ist nicht im PATH. Installieren: https://claude.com/claude-code, danach einmal claude starten und anmelden. Oder in der Config agent.mode: "docker".',
+    'session.local.label': '{agent} lokal (ohne Docker)',
+    'session.local.claudeMissing': '{agent} (claude) ist nicht im PATH. Installieren: https://claude.com/claude-code, danach einmal claude starten und anmelden. Oder in der Config agent.mode: "docker".',
 
-    // linux: arguments and why Claude ended
+    // linux: arguments and why {agent} ended
     'session.args.unexpected': 'Unerwartetes Argument: {arg}',
     'session.args.unknownOption': '{command} kennt die Option {flag} nicht. Erlaubt: {allowed}',
     'session.args.valueMissing': '{flag} braucht einen Wert, etwa {flag} {example}',
@@ -92,9 +92,9 @@ export default {
     'session.args.clash': '{without} geht nicht zusammen mit {other}.',
     'session.args.batchClash': '{other} gilt nur für einen Test; mehrere Tests oder --all laufen ohne Chat und ohne Übergabe.',
     'session.args.report': '--report erwartet junit=<datei>, etwa --report junit=caw-junit.xml',
-    'session.claude.tokenInvalid': 'Claude hat den Zugang als ungültig oder abgelaufen abgelehnt. Lokal: in Claude Code neu anmelden (/login). In Docker: ANTHROPIC_API_KEY prüfen.',
-    'session.claude.timeout': 'Claude hat das Zeitlimit überschritten. Längeres Limit mit --agent-timeout, etwa --agent-timeout 120m.',
-    'session.claude.exit': 'Claude endete mit Exit {code}, siehe claude.log.',
+    'session.claude.tokenInvalid': '{agent} hat den Zugang als ungültig oder abgelaufen abgelehnt. Lokal: in {agent} neu anmelden (/login). In Docker: ANTHROPIC_API_KEY prüfen.',
+    'session.claude.timeout': '{agent} hat das Zeitlimit überschritten. Längeres Limit mit --agent-timeout, etwa --agent-timeout 120m.',
+    'session.claude.exit': '{agent} endete mit Exit {code}, siehe claude.log.',
 
     // sandbox-config
     'session.sandbox.mountPath': 'Die Docker-Sandbox kann {path} nicht einbinden: Ein Komma, ein Anführungszeichen oder ein Zeilenumbruch (bei einem Ordner, den sie ausblendet, ein Doppelpunkt) würde Dockers Einbinde-Optionen ändern. Benenn ihn um oder nimm den lokalen Agenten.',
@@ -111,14 +111,14 @@ export default {
     'session.browser.stepMissing': 'Anmeldeschritt {step}: Das Element erschien nicht (auf {path}). Prüfe den Selektor in signIn.steps oder markiere den Schritt mit optional: true.',
     'session.browser.selectorMissing': '{key} "{selector}" steht nicht auf der Anmeldeseite.',
     'session.browser.loginRejected': 'Anmeldung auf {url} abgelehnt: Das Formular steht nach dem Absenden wieder da (Seite: {path}). Zugangsdaten falsch, oder das Absenden ging ins Leere.',
-    'repair.asking': 'Anmeldung gescheitert. Claude prüft die Seite und schlägt eine Korrektur vor …',
-    'repair.noAnswer': 'Claude hat keinen brauchbaren Vorschlag geliefert.',
-    'repair.none': 'Claude sieht keine sichere Korrektur: {why}',
-    'repair.invalid': 'Claudes Vorschlag ist keine gültige Config ({issues}); nichts geändert.',
+    'repair.asking': 'Anmeldung gescheitert. {agent} prüft die Seite und schlägt eine Korrektur vor …',
+    'repair.noAnswer': '{agent} hat keinen brauchbaren Vorschlag geliefert.',
+    'repair.none': '{agent} sieht keine sichere Korrektur: {why}',
+    'repair.invalid': 'Der Vorschlag von {agent} ist keine gültige Config ({issues}); nichts geändert.',
     'repair.proposal': 'Vorgeschlagene Anmeldung {at} in {file}',
     'repair.confirm': 'Übernehmen?',
     'repair.written': '{file} geändert. Starte den Befehl noch einmal.',
-    'repair.hint': 'Mit Chat (record, run) schlägt Claude eine Korrektur der Anmeldung vor.',
+    'repair.hint': 'Mit Chat (record, run) schlägt {agent} eine Korrektur der Anmeldung vor.',
     'session.browser.loginFailed': 'Anmeldung auf {url} fehlgeschlagen (Marker "{marker}" erschien nicht, Seite: {path}).',
     'session.browser.authUnreadable': 'Die gespeicherte Sitzung {path} lässt sich nicht lesen: {error}',
     'session.browser.writeBlocked': '{name} gesperrt: {env} ist eine Produktionsumgebung, dorthin schickt caw keine schreibenden Requests (reads nennt Requests, die nur lesen)',
@@ -127,7 +127,7 @@ export default {
     'session.browser.productionBlocked': 'Request an {host} gesperrt: eine Produktionsumgebung ist aus einem Lauf auf einer anderen Umgebung nie erreichbar',
     'session.browser.chromeFailed': 'Chrome ließ sich nicht starten: {error}',
     'session.browser.sandboxFailed': 'Chrome konnte seine Sandbox nicht starten: {error}. Unter Linux als root oder in manchen Containern funktioniert die Sandbox nicht: starte caw als normaler Benutzer oder setze, im Wissen, dass Seiten dann ohne Sandbox laufen, "browser": { "noSandbox": true } in caw.config.json (unsicher).',
-    'session.browser.agentBlocked': 'Anfrage an {host} gesperrt: solange Claude dabei ist, erreicht der Browser nur die Umgebungen, allowHosts und thirdPartyHosts. Braucht die Anwendung diesen Host, trage ihn in caw.config.json unter thirdPartyHosts ein',
+    'session.browser.agentBlocked': 'Anfrage an {host} gesperrt: solange {agent} dabei ist, erreicht der Browser nur die Umgebungen, allowHosts und thirdPartyHosts. Braucht die Anwendung diesen Host, trage ihn in caw.config.json unter thirdPartyHosts ein',
     'session.browser.fillFailed': 'Die Anmeldung konnte {field} nicht ausfüllen: das Element ist da, nimmt aber keine Eingabe an (verborgen, gesperrt oder kein Feld). Der Wert steht hier nicht; prüfe den Selektor.',
     'session.browser.signInTimeout': 'Nach {minutes} Minuten war {selector} nicht zu sehen.',
     'session.browser.devlinkRejected': 'devlink lehnt die Config ab: {issues}',

@@ -380,7 +380,7 @@ $A click '#spaeter'
 $A check S3 "${CASE_DONE} && ${CASE_TEXT}==='Vorgang $TAG'"
 ${finishOf(['S2', 'S3'])}`;
     const h = humans(async (page) => {
-        await page.locator('.message', { hasText: 'Plan ab S2 unverändert, Claude nimmt ab dort neu auf' }).waitFor({ timeout: 90000 });
+        await page.locator('.message', { hasText: 'Plan ab S2 unverändert, Claude Code nimmt ab dort neu auf' }).waitFor({ timeout: 90000 });
         verify('No plan card', await page.locator('.message.plan').count() === 0);
     }, async (page) => {
         await page.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
@@ -659,7 +659,7 @@ scenario('3', 'English UI: workbench, chat, steps and result in English', async 
         const h = humans(async (page) => {
             const bench = page.page?.() ?? page;
             await stateOf(page, 'testing');
-            verify('Chat in English', (await page.locator('#status').textContent()).includes('Test run without Claude') && await page.evaluate(() => document.documentElement.lang) === 'en');
+            verify('Chat in English', (await page.locator('#status').textContent()).includes('Test run without Claude Code') && await page.evaluate(() => document.documentElement.lang) === 'en');
             verify('Workbench in English', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()).includes('Preparation'));
             await benchBack(page);
             await page.locator('.message:is(.question,.notice)', { hasText: 'The run passed' }).waitFor({ timeout: 60000 });
@@ -698,7 +698,7 @@ $A chat > /tmp/c2.json; echo "END=$(grep -c ended /tmp/c2.json)"`;
         await page.locator('.message', { hasText: 'das kostet Token' }).first().waitFor({ timeout: 30000 });
         gate = (await page.locator('#choices button:not(#choicesMore)').allTextContents()).join('|');
         await shoot(page, 'token-notice');
-        await decide(page, 'Ohne Claude weiter');
+        await decide(page, 'Ohne Claude Code weiter');
         await stateOf(page, 'discussing');
         await page.locator('#input').fill('Why?');
         await page.keyboard.press('Enter');
@@ -715,7 +715,7 @@ $A chat > /tmp/c2.json; echo "END=$(grep -c ended /tmp/c2.json)"`;
     const logged = `{\n${talk}\n} 2>&1 | tee -a "$CAW_AGENT_DIR/claude-talk.log"`;
     const code = await run(fake, [ID, ...short], { interactive: true, onChatOpen: h.onChatOpen, talkCommand: ['bash', '-c', logged] });
     verify('One window, Exit 1', await h.done() === 1 && code === 1, String(code));
-    verify('Token notice: Weiter, Nicht mehr fragen, Ohne Claude weiter; remembered afterwards', gate === 'Weiter|Nicht mehr fragen|Ohne Claude weiter' && JSON.parse(readFileSync(prefsFile, 'utf8')).tokenNotice === 'off', gate);
+    verify('Token notice: Weiter, Nicht mehr fragen, Ohne Claude Code weiter; remembered afterwards', gate === 'Weiter|Nicht mehr fragen|Ohne Claude Code weiter' && JSON.parse(readFileSync(prefsFile, 'utf8')).tokenNotice === 'off', gate);
     const log = join(newestRun().dir, 'agent/claude-talk.log');
     const text = existsSync(log) ? readFileSync(log, 'utf8') : '';
     verify('Conversation log: read only, end reported', /CLICK-REJECTED=1/.test(text) && /END=1/.test(text) && /QUESTION=1/.test(text), text.slice(-400));
@@ -1006,8 +1006,8 @@ ${finishOf(['S1'])}
     const h = humans(async (page) => {
         const app = page.context().pages()[0];
         await stateOf(page, 'choosing');
-        verify('New test: show or describe', await page.locator('#choices button', { hasText: 'Selbst vorführen' }).count() === 1 && await page.locator('#choices button', { hasText: 'Beschreiben, Claude nimmt auf' }).count() === 1);
-        await decide(page, 'Beschreiben, Claude nimmt auf');
+        verify('New test: show or describe', await page.locator('#choices button', { hasText: 'Selbst vorführen' }).count() === 1 && await page.locator('#choices button', { hasText: 'Beschreiben, Claude Code nimmt auf' }).count() === 1);
+        await decide(page, 'Beschreiben, Claude Code nimmt auf');
         await stateOf(page, 'describing');
         verify('Describe: own status and placeholder', /Klicks werden nicht aufgenommen/.test(await page.locator('#status').textContent().catch(() => '')) || /Was soll der Test tun/.test(await page.locator('#input').getAttribute('placeholder')));
         // Handing over without a word is refused: there is nothing to build a plan from.

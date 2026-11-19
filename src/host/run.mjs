@@ -13,7 +13,7 @@ import { resolveCredentials } from '../shared/credentials.mjs';
 import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
 import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
-import { inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
+import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
 import { prefsDir, readPrefs } from '../shared/prefs.mjs';
@@ -722,7 +722,7 @@ ${text}`) ?? 0;
             if (group === null) return;
             count += 1;
             lastPoint = [group, `c${count}`];
-            bench.point(group, lastPoint[1], 'running', { kind: 'Claude', label: shortActivity(entry.text) });
+            bench.point(group, lastPoint[1], 'running', { kind: AGENT_NAME, label: shortActivity(entry.text) });
         };
         const closePoint = () => {
             if (lastPoint !== null) bench?.point(lastPoint[0], lastPoint[1], 'pass');

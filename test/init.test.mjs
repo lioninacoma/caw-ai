@@ -18,7 +18,7 @@ test('init: passes validate at once, creates no example test, credentials are gi
     init(root);
     assert.equal(validate(root), 0);
     assert.deepEqual(readdirSync(join(root, 'caw', 'tests')), ['.gitkeep'], 'no unrequested example test, but the folder');
-    assert.match(readFileSync(join(root, 'caw', 'caw.md'), 'utf8'), /^# Notizen für Claude\n[\s\S]*\n- Beispiel:/);
+    assert.match(readFileSync(join(root, 'caw', 'caw.md'), 'utf8'), /^# Notizen für Claude Code\n[\s\S]*\n- Beispiel:/);
     assert.match(said.join('\n'), /den ersten Test aufnehmen: caw record <test> --env local\. Ohne passende Selektoren erst caw init --explore-only/);
     // If explore just ran, init does not advise running it first.
     const explored = mkdtempSync(join(tmpdir(), 'caw-init-explored-'));
@@ -175,7 +175,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     const output = lines.join('\n');
     assert.match(output, /ok OK +Rolle tester auf local: Testnutzer gesetzt/);
     assert.match(output, /ok OK +Rolle tester auf staging: Testnutzer gesetzt/, 'the default set applies to every environment');
-    assert.match(output, /ok OK +Claude Code 2\.1\.0 \(Claude läuft lokal, ohne Docker\)/);
+    assert.match(output, /ok OK +Claude Code 2\.1\.0 \(Claude Code läuft lokal, ohne Docker\)/);
     assert.doesNotMatch(output, /Docker gefunden|ANTHROPIC_API_KEY/, 'locally neither Docker nor key count');
     assert.match(output, /ok OK +local: http:\/\/localhost:5173 antwortet/);
     assert.match(output, /opt OPTIONAL +staging: https:\/\/staging\.firma\.intern antwortet nicht/);
@@ -213,10 +213,10 @@ test('doctor: names the next step per problem, optional items do not block, neve
     // Always Docker in CI: then Docker and token count.
     const inCi = await doctorChecks(root, { env: { CI: 'true', ANTHROPIC_API_KEY: 'sk-geheim' }, nodeVersion: '22.4.0', probes });
     assert.ok(inCi.some(({ text, optional }) => optional && /Kein Docker gefunden/.test(text)));
-    assert.ok(inCi.some(({ ok, text }) => ok && /Zugang für Claude in Docker: ANTHROPIC_API_KEY/.test(text)));
+    assert.ok(inCi.some(({ ok, text }) => ok && /Zugang für Claude Code in Docker: ANTHROPIC_API_KEY/.test(text)));
     // --agent chooses as for run: docker checks Docker and token, session only the entry in .mcp.json.
     const docker = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'docker' });
-    assert.ok(docker.some(({ text }) => /Kein Zugang für Claude in Docker/.test(text)));
+    assert.ok(docker.some(({ text }) => /Kein Zugang für Claude Code in Docker/.test(text)));
     assert.ok(!docker.some(({ text }) => /Claude Code 2/.test(text)));
     rmSync(join(root, '.mcp.json'), { force: true });
     const session = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes, agent: 'session' });
@@ -314,7 +314,7 @@ test('caw skill is removed: exit with what replaces it', async () => {
 test('record: options for an already described test may match, only contradictions abort', async () => {
     const { contradicts } = await import('../src/host/commands.mjs');
     const spec = { role: 'nutzer', writes: false };
-    assert.equal(contradicts(spec, { readOnly: true }), false, 'as in the npm script Claude created');
+    assert.equal(contradicts(spec, { readOnly: true }), false, 'as in the npm script Claude Code created');
     assert.equal(contradicts(spec, { role: 'nutzer' }), false);
     assert.equal(contradicts(spec, {}), false);
     assert.equal(contradicts(spec, { role: 'admin' }), true);

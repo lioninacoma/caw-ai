@@ -106,7 +106,7 @@ test('Recording: closing the window at the decision means not adopting', async (
     assert.deepEqual(h.adopted, []);
 });
 
-test('Recording: Claude delivers nothing, the reason is in the chat, no check run', async () => {
+test('Recording: Claude Code delivers nothing, the reason is in the chat, no check run', async () => {
     const h = harness({ outcomes: [nothing] });
     assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.fail);
     assert.equal(h.calls.length, 1);
@@ -157,7 +157,7 @@ test('Fix: if a step before fails, that one is offered', async () => {
     assert.deepEqual([...h.adopted[0].only], ['S1']);
 });
 
-test('Fix: Claude does not make it, the test plan stays', async () => {
+test('Fix: Claude Code does not make it, the test plan stays', async () => {
     const h = harness({ outcomes: [nothing] });
     assert.equal(await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Grund' }, sandbox: 's', ...h }), EXIT.fail);
     assert.match(h.questions[0].text, /Für S2 ist keine neue Aufzeichnung entstanden/);
@@ -178,7 +178,7 @@ test('Fix: the decision names a changed result, new messages and what is still s
     assert.match(h.calls[1].note, /Erwartet vorher in S1: alt/);
 });
 
-test('Re-recording from a step: Claude gets the range, the decision lists every changed step, adopting prunes', async () => {
+test('Re-recording from a step: Claude Code gets the range, the decision lists every changed step, adopting prunes', async () => {
     const step3 = { id: 'S3', name: 'S3', do: '', expect: 'S3 da' };
     const whole = { ...spec, steps: [...spec.steps, { ...step3, recording: { ...spec.steps[0].recording, hash: stepHash(step3) } }], expectations: [{ id: 'S1' }, { id: 'S2' }, { id: 'S3' }] };
     const renamed = { id: 'S2', name: 'Neu', do: '', expect: 'S2 neu da' };
@@ -200,7 +200,7 @@ test('Re-recording from a step: Claude gets the range, the decision lists every 
 
 test('Test run: a pass is only announced in the open chat, without Docker, without waiting, and the window goes as requested', async () => {
     const h = harness({ outcomes: [{ ...pass, verdict: { status: 'pass', warnings: [{ text: 't.getKey.', origin: 'x.js' }] } }] });
-    const openSandbox = async () => assert.fail('Claude is not needed');
+    const openSandbox = async () => assert.fail('Claude Code is not needed');
     assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox, ...h }), EXIT.pass);
     assert.deepEqual(h.questions, []);
     assert.deepEqual(h.notices, ['Der Lauf hat bestanden. Warnungen: t.getKey (x.js).']);
@@ -278,14 +278,14 @@ test('Test run: after a change to the app there is "test again" instead of "fix 
     assert.equal(closed.calls.length, 1);
 });
 
-test('Test run: without --explain Claude looks for the cause on click, as the main button for an app failure', async () => {
+test('Test run: without --explain Claude Code looks for the cause on click, as the main button for an app failure', async () => {
     const advice = { spec, touched: [], stale: [], files: ['src/app.js'], notes: false };
     let advised = 0;
     const app = { side: 'app', text: 'Einschätzung: Fehler der Anwendung (eindeutig).', findings: ['HTTP 500.'] };
     const concluded = { flawed: true, advise: async () => { advised += 1; return advice; } };
     const h = harness({ outcomes: [{ ...failing('S2', { diagnosis: app }), concluded }, pass], answers: ['ask', 'rerun'] });
     assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...h }), EXIT.pass);
-    assert.equal(advised, 1, 'Claude only after the click');
+    assert.equal(advised, 1, 'Claude Code only after the click');
     assert.deepEqual(h.questions.map(({ options }) => options), [['ask', 'fix', 'close'], ['rerun', 'close']]);
     assert.equal(h.calls.length, 2);
 
@@ -330,7 +330,7 @@ test('Test run: clicking fix only then opens the sandbox and does not hand over 
     assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox: async () => { opened += 1; return 's'; }, ...h }), EXIT.pass);
     assert.equal(opened, 1);
     assert.equal(h.calls[1].sandbox, 's');
-    assert.deepEqual(h.progress, ['Starte Claude']);
+    assert.deepEqual(h.progress, ['Starte Claude Code']);
     assert.equal(h.calls[0].handover(), false);
 });
 
@@ -377,7 +377,7 @@ test('Test run: only the message starts Claude, further ones go into the same co
     assert.deepEqual(talked, [['start', 's', 'Warum?'], ['send', 'Und jetzt?'], ['end']]);
     assert.equal(opened, 1);
     // The button shows the way to Claude; typing still works.
-    assert.doesNotMatch(h.questions[0].text, /Du kannst Claude auch erst fragen/);
+    assert.doesNotMatch(h.questions[0].text, /Du kannst Claude Code auch erst fragen/);
     assert.deepEqual(h.questions[0].options, ['fix', 'ask', 'close']);
     assert.deepEqual(h.questions.map(({ kind }) => kind), ['discussing', 'discussing', 'discussing']);
     assert.equal(h.calls.length, 1);
@@ -489,7 +489,7 @@ test('Developing in a state: refresh without state, restore state, crosshair to 
     assert.equal(notices[1], 'Zustand S2 ist neu hergestellt');
     assert.deepEqual(sent[0], { question: 'Warum ist der deaktiviert?', about: element, sandbox: 'box' });
     assert.deepEqual(sent[1], { text: 'Und jetzt?', about: undefined });
-    assert.equal(opened, 1, 'Claude only on the first question');
+    assert.equal(opened, 1, 'Claude Code only on the first question');
     assert.equal(ended, 1, 'ending also ends the conversation');
     assert.equal(refresher, null, 'after developing, refresh is locked again');
     assert.equal(reloaded, 'unsubscribed');
@@ -587,7 +587,7 @@ test('Check run: only script errors can be ignored with one click, then a new ru
     assert.equal(h.calls.length, 3, 'recording, check run, another check run, no Claude');
     assert.equal(h.calls[2].repair, undefined);
     assert.ok(h.notices.some((text) => text.includes('consoleIgnore eingetragen: t.getKey')), JSON.stringify(h.notices));
-    assert.ok(h.notices.some((text) => /Prüflauf ohne Claude startet/.test(text)));
+    assert.ok(h.notices.some((text) => /Prüflauf ohne Claude Code startet/.test(text)));
     assert.deepEqual(h.said[1], { next: 'check' });
 });
 
@@ -626,7 +626,7 @@ test('Check run: if the human adopts an ignore advice in the conversation that a
     assert.equal(await recordFlow({ sandbox: 's', ...h, execute, openSandbox: async () => 's' }), EXIT.pass);
     assert.equal(h.calls.length, 3, 'recording, check run, new check run without a fix');
     assert.equal(h.calls[2].repair, undefined);
-    assert.ok(h.notices.some((text) => /Prüflauf ohne Claude startet/.test(text)));
+    assert.ok(h.notices.some((text) => /Prüflauf ohne Claude Code startet/.test(text)));
 });
 
 test('Developing: a pick with F1 restores the state, one after another with restore', async () => {

@@ -325,7 +325,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `CAW_LANG` | `en` or `de`: your own language for caw's texts (CLI, workbench), instead of the team language (`language` in the config). Claude keeps writing plans in the team language. |
 | `CAW_AI_HOME` | Folder for personal settings (`prefs.json`). Default `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` or `~/.config/caw-ai`. |
 | `ANTHROPIC_API_KEY` | API key from the Claude Console for the `docker` agent. `local` and `session` use your Claude Code login. |
-| `CAW_AGENT_MODEL`, `CAW_AGENT_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
+| `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
 | `CI` | Set: no chat, `docker` agent only; `record` and `open` are rejected. |
 | `NO_COLOR`, `FORCE_COLOR` | Terminal colors off or on. |

@@ -167,7 +167,7 @@ your account. To cap it, set a model and a budget per Claude run:
 "agent": { "model": "haiku", "maxBudgetUsd": 0.5 }
 ```
 
-or for one run `CAW_AGENT_MODEL=haiku CAW_AGENT_BUDGET=0.5`. caw passes them to Claude Code as `--model` and
+or for one run `CAW_AGENT_MODEL=haiku CAW_CLAUDE_BUDGET=0.5`. caw passes them to Claude Code as `--model` and
 `--max-budget-usd`.
 
 ## Install and first test
@@ -343,3 +343,5 @@ Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 MIT, see [LICENSE](LICENSE). Fonts and graphics: [NOTICE.md](NOTICE.md).
+
+Claude and Claude Code are trademarks of Anthropic, PBC. caw is not affiliated with or endorsed by Anthropic.

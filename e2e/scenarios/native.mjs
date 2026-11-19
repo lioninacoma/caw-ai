@@ -72,7 +72,7 @@ const runQuietly = async (id, extra = [], root = native) => {
 const followAndAdopt = async (page) => {
     const deadline = Date.now() + 240000;
     while (Date.now() < deadline) {
-        const follow = page.locator('#choices button', { hasText: 'Claude geht dem Testplan nach' });
+        const follow = page.locator('#choices button', { hasText: 'Claude Code geht dem Testplan nach' });
         const adopt = page.locator('#choices button', { hasText: 'Testplan übernehmen' });
         if (await adopt.count().catch(() => 0) > 0) {
             await clickChoice(page, adopt);

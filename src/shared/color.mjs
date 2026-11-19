@@ -40,18 +40,18 @@ export const TERM_COLORS = {
     warn: '#F5B83D',
     muted: '#9AA3A6',
     faint: '#677174',
-    claude: '#EFA07E',
+    agent: '#22D3EE',
 };
 
 /**
  * Graphite's colours for the terminal roles: text (the terminal's own foreground), muted, faint, frame, accent, info,
- * ok, warn, fail, claude, plus bold. Truecolor if the terminal supports it, otherwise the nearest of the 256 colours.
+ * ok, warn, fail, agent, plus bold. Truecolor if the terminal supports it, otherwise the nearest of the 256 colours.
  * Without colour every function returns the text unchanged.
  */
 export const termPainter = (enabled, { full = truecolor() } = {}) => {
     const wrap = (open, close) => (text) => (enabled ? `${open}${text}${close}` : String(text));
     const color = (hex) => wrap(full ? `\u001b[38;2;${rgb(hex).join(';')}m` : `\u001b[38;5;${to256(hex)}m`, '\u001b[39m');
-    const { accent, ok, fail, warn, muted, faint, claude } = TERM_COLORS;
+    const { accent, ok, fail, warn, muted, faint, agent } = TERM_COLORS;
     return {
         text: (text) => String(text),
         muted: color(muted),
@@ -62,7 +62,7 @@ export const termPainter = (enabled, { full = truecolor() } = {}) => {
         ok: color(ok),
         warn: color(warn),
         fail: color(fail),
-        claude: color(claude),
+        agent: color(agent),
         bold: wrap('\u001b[1m', '\u001b[22m'),
     };
 };

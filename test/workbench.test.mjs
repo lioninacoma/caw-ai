@@ -43,8 +43,8 @@ test('workbench header: the title is a sentence with the test; chips only where 
     const spec = { id: 'morning-errand', role: 'user' };
     const one = { environments: { local: {} }, roles: { user: {} } };
     const local = { name: 'local', production: false, source: 'deployed' };
-    assert.equal(titleOf(spec, 'record'), 'Claude nimmt morning-errand auf');
-    assert.equal(titleOf(spec, 'repair', { id: 'S2' }), 'Claude behebt S2 von morning-errand');
+    assert.equal(titleOf(spec, 'record'), 'Claude Code nimmt morning-errand auf');
+    assert.equal(titleOf(spec, 'repair', { id: 'S2' }), 'Claude Code behebt S2 von morning-errand');
     // One environment, one role, no overlay: the title alone.
     assert.deepEqual(benchFacts(one, spec, local, 'T'), [['', 'T']]);
     // Several environments and roles: both chips.
@@ -53,9 +53,9 @@ test('workbench header: the title is a sentence with the test; chips only where 
     // Production is always named, even as the only environment; the code only under an overlay.
     assert.deepEqual(benchFacts(one, spec, { name: 'prod', production: true, source: 'overlay' }, 'T'), [['', 'T'], ['Umgebung', 'prod'], ['Code', 'lokaler Build']]);
     // The badge carries the mode only: the breadcrumb names the test.
-    assert.deepEqual(benchFacts(one, spec, local, 'T', badgeOf('record')), [['', 'T', 'Claude nimmt auf']]);
-    assert.equal(badgeOf('repair', { id: 'S2' }), 'Claude behebt S2');
-    assert.equal(badgeOf('reproduce'), 'Claude stellt nach');
+    assert.deepEqual(benchFacts(one, spec, local, 'T', badgeOf('record')), [['', 'T', 'Claude Code nimmt auf']]);
+    assert.equal(badgeOf('repair', { id: 'S2' }), 'Claude Code behebt S2');
+    assert.equal(badgeOf('reproduce'), 'Claude Code stellt nach');
 });
 
 test('workbench: no toolbars; one ⋯ menu lists every function with its key, the keys stay', () => {

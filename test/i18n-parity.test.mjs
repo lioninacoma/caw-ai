@@ -11,7 +11,9 @@ import { CATALOGS } from '../src/shared/locales/index.mjs';
 const LOCALES = fileURLToPath(new URL('../src/shared/locales/', import.meta.url));
 const areas = readdirSync(join(LOCALES, 'en')).filter((name) => name.endsWith('.mjs')).sort();
 const load = async (lang, area) => (await import(pathToFileURL(join(LOCALES, lang, area)).href)).default;
-const placeholders = (text) => [...new Set([...text.matchAll(/\{(\w+)\}/g)].map(([, name]) => name))].sort();
+// {agent} and {agentDash} are filled by i18n itself (the running agent's name): a text may use them in one language only.
+const FILLED = new Set(['agent', 'agentDash']);
+const placeholders = (text) => [...new Set([...text.matchAll(/\{(\w+)\}/g)].map(([, name]) => name).filter((name) => !FILLED.has(name)))].sort();
 
 test('both languages have the same area files', () => {
     assert.deepEqual(readdirSync(join(LOCALES, 'de')).filter((name) => name.endsWith('.mjs')).sort(), areas);

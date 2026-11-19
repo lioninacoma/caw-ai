@@ -126,10 +126,10 @@ export const GUIDE_FILE = 'guide.md';
 /** Claude's invocation in the container: all permissions, but only there. Without tools that defer work to later. The guide is the system prompt's addition. */
 export const claudeArgs = (prompt, guideFile, env = process.env) => ['-p', prompt, '--dangerously-skip-permissions', '--disallowedTools', 'Monitor,ScheduleWakeup', '--append-system-prompt-file', guideFile, '--output-format', 'stream-json', '--verbose', ...limitArgs(env)];
 
-/** Cost limits the host passes on (agent.model, agent.maxBudgetUsd or CAW_AGENT_MODEL/CAW_AGENT_BUDGET), as Claude Code options. */
+/** Cost limits the host passes on (agent.model, agent.maxBudgetUsd or CAW_AGENT_MODEL/CAW_CLAUDE_BUDGET), as Claude Code options. */
 export const limitArgs = (env = process.env) => [
     ...(env.CAW_AGENT_MODEL ? ['--model', env.CAW_AGENT_MODEL] : []),
-    ...(env.CAW_AGENT_BUDGET ? ['--max-budget-usd', env.CAW_AGENT_BUDGET] : []),
+    ...(env.CAW_CLAUDE_BUDGET ? ['--max-budget-usd', env.CAW_CLAUDE_BUDGET] : []),
 ];
 
 const BIN = fileURLToPath(new URL('../../bin/caw.mjs', import.meta.url));

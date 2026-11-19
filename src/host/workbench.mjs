@@ -106,7 +106,7 @@ const settingsView = (ctrl) => {
     const nav = (name, glyph, label) => `<button type="button" data-sec="${name}">${icon(glyph)}${label}</button>`;
     const mode = (name, glyph) => `<button type="button" data-mode="${name}" aria-pressed="false">${icon(glyph)}${t(`workbench.set.${name}`)}</button>`;
     return `<section id="settings" class="spage" hidden aria-label="${t('workbench.page.settings')}">
-<nav class="snav" aria-label="${t('workbench.set.nav')}"><button type="button" class="back" id="setBack">${icon('chev-l')}${t('workbench.set.back')}<kbd>Esc</kbd></button>${nav('general', 'sliders', t('workbench.set.general'))}${nav('claude', 'spark', t('workbench.set.claude'))}${nav('notes', 'book', t('workbench.set.notes'))}${nav('keys', 'keyboard', t('workbench.set.keys'))}${nav('run', 'db', t('workbench.set.run'))}</nav>
+<nav class="snav" aria-label="${t('workbench.set.nav')}"><button type="button" class="back" id="setBack">${icon('chev-l')}${t('workbench.set.back')}<kbd>Esc</kbd></button>${nav('general', 'sliders', t('workbench.set.general'))}${nav('claude', 'agent', t('workbench.set.claude'))}${nav('notes', 'book', t('workbench.set.notes'))}${nav('keys', 'keyboard', t('workbench.set.keys'))}${nav('run', 'db', t('workbench.set.run'))}</nav>
 <div class="scont" id="scont"><div class="sin">
 <section data-sec="general" id="set-general"><h2 tabindex="-1" id="setHead">${t('workbench.set.general')}</h2><p class="lede" id="setLede"></p></section>
 <section><h3 class="sgrp-h">${t('workbench.set.appearance')}</h3><div class="sgrp">
@@ -408,7 +408,7 @@ const cell=(text,cls)=>{const td=document.createElement('td');td.textContent=tex
 const still=()=>document.body.classList.contains('still');
 const settingsOn=()=>document.body.classList.contains('settings-on');
 // The marks as icons (static SVG from the host); running is a CSS spinner.
-const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle'), skip: icon('dash'), chev: icon('chev-r'), file: icon('file'), more: icon('more'), shield: icon('shield'), lock: icon('lock'), spark: icon('spark') })};
+const ICON=${json({ ok: icon('check'), fail: icon('x'), open: icon('circle'), skip: icon('dash'), chev: icon('chev-r'), file: icon('file'), more: icon('more'), shield: icon('shield'), lock: icon('lock'), agent: icon('agent') })};
 const markInto=(el,kind)=>{if(kind==='run'){const s=document.createElement('span');s.className='spinner';el.replaceChildren(s);}else el.innerHTML=ICON[kind]??ICON.open;};
 const render=()=>{
   const panel=$('panel');panel.replaceChildren();
@@ -459,8 +459,8 @@ const pillOf=(failed,running,n,pass)=>{
   const reproducing=items().some((li)=>li.dataset.id==='reproduce'&&li.dataset.state==='running');
   if(aborted)return ['fail',T['workbench.page.pillCancelled']];
   if(chatState==='paused'||chatState==='pausing')return ['turn',label];
-  if(reproducing)return ['claude',T['workbench.page.pillReproduces']];
-  if(chatState==='starting'&&label!==undefined)return ['claude',label];
+  if(reproducing)return ['agent',T['workbench.page.pillReproduces']];
+  if(chatState==='starting'&&label!==undefined)return ['agent',label];
   if(label!==undefined)return ['run',label];
   if(asking)return ['turn',T['workbench.page.pillYourTurn']];
   if(failed)return ['fail',fill('workbench.page.pillFailed',{id:groupTitle(failed)})];
@@ -657,7 +657,7 @@ const fillSettings=(data)=>{
   $('setRun').replaceChildren(
     ...kv(KV.project,String(data.project??''),sep(),code(String(data.config??''))),
     ...kv(KV.env,String(env.name??''),sep(),code(String(env.url??''))),
-    ...kv(KV.switches,badge(env.agent?'acc':'line',T[env.agent?'workbench.page.setClaudeAllowed':'workbench.page.setNoClaude'],env.agent?'spark':''),badge(env.writable?'pass':'warn',T[env.writable?'workbench.page.setWritable':'workbench.page.setNotWritable'],env.writable?'ok':'lock'),badge(env.production?'fail':'line',T[env.production?'workbench.page.setProduction':'workbench.page.setNotProduction'],env.production?'shield':'')),
+    ...kv(KV.switches,badge(env.agent?'acc':'line',T[env.agent?'workbench.page.setClaudeAllowed':'workbench.page.setNoClaude'],env.agent?'agent':''),badge(env.writable?'pass':'warn',T[env.writable?'workbench.page.setWritable':'workbench.page.setNotWritable'],env.writable?'ok':'lock'),badge(env.production?'fail':'line',T[env.production?'workbench.page.setProduction':'workbench.page.setNotProduction'],env.production?'shield':'')),
     ...(data.role===undefined?[]:kv(KV.role,String(data.role))),
     ...kv(KV.code,String(data.code??'')),
     ...kv(KV.version,String(data.version??'')));

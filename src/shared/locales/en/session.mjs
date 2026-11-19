@@ -53,10 +53,10 @@ export default {
     'session.docker.missing': 'No Docker found. There is none in the devcontainer: start the test from PowerShell in the project folder. On Windows, Docker Desktop or Docker in WSL works.',
 
     // local-agent
-    'session.local.label': 'Claude local (no Docker)',
-    'session.local.claudeMissing': 'Claude Code (claude) is not in PATH. Install: https://claude.com/claude-code, then start claude once and sign in. Or set agent.mode: "docker" in the config.',
+    'session.local.label': '{agent} local (no Docker)',
+    'session.local.claudeMissing': '{agent} (claude) is not in PATH. Install: https://claude.com/claude-code, then start claude once and sign in. Or set agent.mode: "docker" in the config.',
 
-    // linux: arguments and why Claude ended
+    // linux: arguments and why {agent} ended
     'session.args.unexpected': 'Unexpected argument: {arg}',
     'session.args.unknownOption': '{command} has no option {flag}. Allowed: {allowed}',
     'session.args.valueMissing': '{flag} needs a value, e.g. {flag} {example}',
@@ -92,9 +92,9 @@ export default {
     'session.args.clash': '{without} can\'t be combined with {other}.',
     'session.args.batchClash': '{other} only works for a single test; several tests or --all run without chat and handover.',
     'session.args.report': '--report expects junit=<file>, e.g. --report junit=caw-junit.xml',
-    'session.claude.tokenInvalid': 'Claude rejected the access as invalid or expired. Locally: sign in to Claude Code again (/login). In Docker: check ANTHROPIC_API_KEY.',
-    'session.claude.timeout': 'Claude exceeded the time limit. Longer limit with --agent-timeout, e.g. --agent-timeout 120m.',
-    'session.claude.exit': 'Claude exited with code {code}, see claude.log.',
+    'session.claude.tokenInvalid': '{agent} rejected the access as invalid or expired. Locally: sign in to {agent} again (/login). In Docker: check ANTHROPIC_API_KEY.',
+    'session.claude.timeout': '{agent} exceeded the time limit. Longer limit with --agent-timeout, e.g. --agent-timeout 120m.',
+    'session.claude.exit': '{agent} exited with code {code}, see claude.log.',
 
     // sandbox-config
     'session.sandbox.mountPath': 'The Docker sandbox can\'t mount {path}: a comma, a quote or a line break (a colon for a folder it hides) would change Docker\'s mount options. Rename it, or use the local agent.',
@@ -111,14 +111,14 @@ export default {
     'session.browser.stepMissing': 'Sign-in step {step}: the element did not appear (on {path}). Check the selector in signIn.steps, or mark the step optional: true.',
     'session.browser.selectorMissing': '{key} "{selector}" is not on the sign-in page.',
     'session.browser.loginRejected': 'Sign-in on {url} rejected: the form is back after submitting (page: {path}). Wrong credentials, or the submit went nowhere.',
-    'repair.asking': 'Sign-in failed. Claude is checking the page and proposing a fix …',
-    'repair.noAnswer': 'Claude returned no usable proposal.',
-    'repair.none': 'Claude sees no confident fix: {why}',
-    'repair.invalid': "Claude's proposal is not a valid config ({issues}); nothing changed.",
+    'repair.asking': 'Sign-in failed. {agent} is checking the page and proposing a fix …',
+    'repair.noAnswer': '{agent} returned no usable proposal.',
+    'repair.none': '{agent} sees no confident fix: {why}',
+    'repair.invalid': "{agent}'s proposal is not a valid config ({issues}); nothing changed.",
     'repair.proposal': 'Proposed sign-in {at} in {file}',
     'repair.confirm': 'Apply?',
     'repair.written': '{file} updated. Run the command again.',
-    'repair.hint': 'With chat (record, run) Claude proposes a fix for the sign-in.',
+    'repair.hint': 'With chat (record, run) {agent} proposes a fix for the sign-in.',
     'session.browser.loginFailed': 'Sign-in on {url} failed (marker "{marker}" didn\'t appear, page: {path}).',
     'session.browser.authUnreadable': 'The saved session {path} can\'t be read: {error}',
     'session.browser.writeBlocked': '{name} blocked: {env} is a production environment, caw sends no write requests there (reads names requests that only read)',
@@ -127,7 +127,7 @@ export default {
     'session.browser.productionBlocked': 'Request to {host} blocked: a production environment is never reached from a run on another environment',
     'session.browser.chromeFailed': 'Chrome failed to start: {error}',
     'session.browser.sandboxFailed': 'Chrome could not start its sandbox: {error}. On Linux as root or in some containers the sandbox does not work: run caw as a normal user, or, knowing that pages then run without the sandbox, set "browser": { "noSandbox": true } in caw.config.json (unsafe).',
-    'session.browser.agentBlocked': 'Request to {host} blocked: while Claude is attached, the browser reaches only the environments, allowHosts and thirdPartyHosts. If the app needs this host, add it to thirdPartyHosts in caw.config.json',
+    'session.browser.agentBlocked': 'Request to {host} blocked: while {agent} is attached, the browser reaches only the environments, allowHosts and thirdPartyHosts. If the app needs this host, add it to thirdPartyHosts in caw.config.json',
     'session.browser.fillFailed': 'Sign-in could not fill {field}: the element is there but takes no input (hidden, disabled or not a field). The value is not shown here; check the selector.',
     'session.browser.signInTimeout': '{selector} wasn\'t visible after {minutes} minutes.',
     'session.browser.devlinkRejected': 'devlink rejects the config: {issues}',

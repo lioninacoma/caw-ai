@@ -29,7 +29,7 @@ export const TOKENS = {
         accent: '#0891B2', 'accent-text': '#0E7490', 'accent-soft': '#E3F6FA', 'on-accent': '#FFFFFF',
         prim: '#0E1112', 'prim-hi': '#2A3033', 'on-prim': '#FFFFFF',
         pass: '#18794E', 'pass-soft': '#E8F7EE', fail: '#CD2B31', 'fail-soft': '#FDECEC', warn: '#9E5000', 'warn-soft': '#FFF3DA',
-        run: '#0E7490', 'run-soft': '#E3F6FA', claude: '#A84F2C', 'claude-soft': '#FBEDE6', human: '#0E1112',
+        run: '#0E7490', 'run-soft': '#E3F6FA', agent: '#0891B2', 'agent-soft': '#E3F6FA', human: '#0E1112',
         code: '#F7F8F8', 'code-text': '#20262A', 'diff-add': '#E8F7EE', 'diff-del': '#FDECEC',
         nav: '#FFFFFF', 'nav-text': '#0E1112', 'nav-muted': '#5D6568', 'nav-line': '#E5E8E9',
         'shadow-lg': '0 10px 30px rgba(14,17,18,.12),0 0 0 1px rgba(14,17,18,.07)',
@@ -42,7 +42,7 @@ export const TOKENS = {
         accent: '#22D3EE', 'accent-text': '#5EE0F2', 'accent-soft': 'rgba(34,211,238,.11)', 'on-accent': '#04191D',
         prim: '#ECEFF0', 'prim-hi': '#FFFFFF', 'on-prim': '#0A0C0D',
         pass: '#3DD68C', 'pass-soft': 'rgba(61,214,140,.11)', fail: '#FF6B70', 'fail-soft': 'rgba(255,99,105,.11)', warn: '#F5B83D', 'warn-soft': 'rgba(245,184,61,.11)',
-        run: '#5EE0F2', 'run-soft': 'rgba(34,211,238,.09)', claude: '#EFA07E', 'claude-soft': 'rgba(239,160,126,.12)', human: '#ECEFF0',
+        run: '#5EE0F2', 'run-soft': 'rgba(34,211,238,.09)', agent: '#22D3EE', 'agent-soft': 'rgba(34,211,238,.11)', human: '#ECEFF0',
         code: '#0A0C0D', 'code-text': '#C9D0D2', 'diff-add': 'rgba(61,214,140,.10)', 'diff-del': 'rgba(255,99,105,.10)',
         nav: '#0F1213', 'nav-text': '#ECEFF0', 'nav-muted': '#9AA3A6', 'nav-line': '#22282A',
         'shadow-lg': '0 16px 40px rgba(0,0,0,.6),0 0 0 1px #2A3133',
@@ -115,7 +115,7 @@ const ICONS = {
     file: '<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/>', lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     alert: '<path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17.5v.01"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>',
     expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', terminal: '<path d="m5 8 4 4-4 4M12 17h7"/>',
-    arrows: '<path d="M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3"/>', spark: '<path d="M12 3v5M12 16v5M3 12h5M16 12h5M5.6 5.6l3.2 3.2M15.2 15.2l3.2 3.2M5.6 18.4l3.2-3.2M15.2 8.8l3.2-3.2"/>',
+    arrows: '<path d="M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3"/>', agent: '<path d="M10 3.5C10.7 9.3 12.7 11.3 18.5 12C12.7 12.7 10.7 14.7 10 20.5C9.3 14.7 7.3 12.7 1.5 12C7.3 11.3 9.3 9.3 10 3.5Z"/><path d="M18.5 2C18.85 4.4 19.6 5.15 22 5.5C19.6 5.85 18.85 6.6 18.5 9C18.15 6.6 17.4 5.85 15 5.5C17.4 5.15 18.15 4.4 18.5 2Z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>', msg: '<path d="M4 5h16v11H9l-5 4z"/>',
     panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>', keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
@@ -129,7 +129,8 @@ const ICONS = {
     book: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>', db: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
 };
 // Icons drawn as filled shapes instead of strokes.
-const FILLED = new Set(['more']);
+// agent: a large and a small sparkle, filled; a generic sign for the AI agent, never a vendor's mark.
+const FILLED = new Set(['more', 'agent']);
 
 /** The names of the icons. */
 export const ICON_NAMES = Object.keys(ICONS);
@@ -203,7 +204,7 @@ kbd{display:inline-flex;align-items:center;font:500 10.5px/1 var(--font-mono);pa
 .pill{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px;border-radius:var(--rp);font:500 12px/1 var(--font);white-space:nowrap;background:var(--panel);box-shadow:inset 0 0 0 1px var(--line2);color:var(--text)}
 .pill .dot{color:var(--faint)}
 .pill.run .dot{color:var(--run);animation:caw-pulse 1.4s ease-in-out infinite}.pill.pass .dot{color:var(--pass)}.pill.fail .dot{color:var(--fail)}
-.pill.turn .dot{color:var(--warn)}.pill.claude .dot{color:var(--claude);animation:caw-pulse 1.4s ease-in-out infinite}
+.pill.turn .dot{color:var(--warn)}.pill.agent .dot{color:var(--agent);animation:caw-pulse 1.4s ease-in-out infinite}
 .tp{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--rp);font:700 10.5px/1 var(--font-mono);letter-spacing:.08em;box-shadow:inset 0 0 0 1px currentColor;white-space:nowrap}
 .tp i{width:9px;height:9px;background:currentColor;border-radius:50%;flex:none}
 .tp.rec{color:var(--fail)}.tp.rec i{animation:caw-pulse 1.6s ease-in-out infinite}
