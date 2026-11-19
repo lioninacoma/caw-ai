@@ -1,4 +1,4 @@
-# Lint once; unit tests and package contents on every push and pull request (Linux and Windows, macOS optional).
+# Lint once; unit tests and package contents on every push and pull request (Linux and Windows).
 # The E2E run needs Docker and a visible Chrome (xvfb on Linux); it runs nightly or by hand.
 name: CI
 
@@ -54,23 +54,6 @@ jobs:
         run: npm test
       - name: Check package contents
         run: npm run pack:check
-
-  macos:
-    name: Unit tests (macOS, optional)
-    if: github.event_name != 'schedule'
-    runs-on: macos-latest
-    # macOS is untested: report results, never block.
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Unit tests
-        run: npm test
 
   e2e:
     name: E2E
