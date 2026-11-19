@@ -33,10 +33,11 @@ Commands:`,
       [--role <role>]                    First time only, not with @<S4>; not needed if the config has just one
       [--read-only]                      First time only: the test doesn't write (writes: false); if it does, it's
                                          marked as writing
-      [--agent-timeout <duration>]      Time limit for {agent}, default 60m
+      [--agent-timeout <duration>]       Time limit for {agent}, default 60m
       [--max-actions <n>]                Limit on the agent's actions, else maxActions from the config, else 100
       [--step-timeout <duration>]        Time limit per step in the check run, default 30s
-      [--agent local|docker] [--attach [<key>]]  as for run
+      [--agent local|docker]             as for run
+      [--attach [<key>]]                 as for run
       [--start] [--reset]                as for run (--reset only when given)
       [--overlay[=<parts>]]              as for run`,
     'cli.help.run': `  run <test> [--env <name>]              Replay the test without AI. On environments where {agent} may work{here}, the
@@ -52,11 +53,11 @@ Commands:`,
       [--reset] | [--no-reset]           The environment's reset runs once before the first writing test; --reset
                                          before the first test, --no-reset never
       [--step-timeout <duration>]        Time limit per step, default 30s
-      [--agent-timeout <duration>]      Time limit for {agent} when clarifying and fixing, default 60m
+      [--agent-timeout <duration>]       Time limit for {agent} when clarifying and fixing, default 60m
       [--max-actions <n>]                Limit on the agent's actions when fixing, else maxActions from the config, else 100
       [--agent local|docker]             Where caw starts {agent}; default from agent.mode in the config (local)
-      [--attach [<key>]]                 Your own {agent} session answers instead (after /caw-attach there), no extra tokens;
-                                         <key> names one of several listening sessions
+      [--attach [<key>]]                 Your own {agent} session answers instead (after /caw-attach there),
+                                         no extra tokens; <key> names one of several listening sessions
       [--overlay[=<parts>]]              Lay local code over the deployed environment. Without a value every part of
                                          overlay.parts with its source; build or dev for that source; <url> for the
                                          only part; or parts: --overlay=orders,admin:dev. Only on overlay.environments
@@ -89,10 +90,10 @@ Commands:`,
     'cli.help.validate': '  validate                               Check config and tests offline, without browser or {agent} (CI, pre-commit)',
     'cli.help.doctor': `  doctor [--agent local|docker]          Check Node, Chrome, {agent} (local) or Docker and token (docker),
                                          test users and environments, each with the next step
-      [--attach]                         instead of local or docker: what your own {agent} session needs (caw in .mcp.json)
+      [--attach]                         instead: what your own {agent} session needs (caw in .mcp.json)
       [--env <name>]                     only this environment's test users and address`,
-    'cli.help.skill': `  skill                                  Write or update the Claude Code skill caw-attach (.claude/skills/caw-attach): it tells your
-                                         session when and how to work with you in a caw window. Check it in.`,
+    'cli.help.skill': `  skill                                  Write or update the {agent} skill caw-attach (.claude/skills/caw-attach):
+                                         it tells your session when and how to work with you in a caw window. Check it in.`,
     'cli.help.role': `  role [list] [--json]                   Roles, whether a test user is set (never the values), and which tests use them
   role add <role>                        Add the role to the config and its variable names to caw/.env.example; you put
                                          the test user into caw/.env (or CI secrets) by hand

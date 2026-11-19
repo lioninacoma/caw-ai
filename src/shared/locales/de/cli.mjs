@@ -33,10 +33,11 @@ Befehle:`,
       [--role <rolle>]                   Nur beim ersten Mal, nicht mit @<S4>; entfällt, wenn die Config nur eine kennt
       [--read-only]                      Nur beim ersten Mal: Der Test schreibt nicht (writes: false); schreibt er doch,
                                          wird er schreibend
-      [--agent-timeout <dauer>]         Zeitlimit für {agent}, Standard 60m
+      [--agent-timeout <dauer>]          Zeitlimit für {agent}, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von {agent}, sonst maxActions aus der Config, sonst 100
       [--step-timeout <dauer>]           Zeitlimit je Schritt im Prüfdurchlauf, Standard 30s
-      [--agent local|docker] [--attach [<key>]]  wie bei run
+      [--agent local|docker]             wie bei run
+      [--attach [<key>]]                 wie bei run
       [--start] [--reset]                wie bei run (--reset nur, wenn angegeben)
       [--overlay[=<teile>]]              wie bei run`,
     'cli.help.run': `  run <test> [--env <name>]              Test ohne KI abspielen. Auf Umgebungen, auf denen {agent} arbeiten darf{here},
@@ -52,11 +53,11 @@ Befehle:`,
       [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
                                          vor dem ersten Test, --no-reset nie
       [--step-timeout <dauer>]           Zeitlimit je Schritt, Standard 30s
-      [--agent-timeout <dauer>]         Zeitlimit für {agent} beim Klären und Beheben, Standard 60m
+      [--agent-timeout <dauer>]          Zeitlimit für {agent} beim Klären und Beheben, Standard 60m
       [--max-actions <n>]                Grenze für Aktionen von {agent} beim Beheben, sonst maxActions aus der Config, sonst 100
       [--agent local|docker]             Wo caw {agent} startet; Standard aus agent.mode der Config (local)
-      [--attach [<key>]]                 Stattdessen antwortet deine eigene {agentDash}-Session (nach /caw-attach dort), ohne
-                                         zusätzliche Token; <key> wählt eine von mehreren zuhörenden Sessions
+      [--attach [<key>]]                 Stattdessen antwortet deine eigene {agentDash}-Session (nach /caw-attach
+                                         dort), ohne zusätzliche Token; <key> wählt eine von mehreren zuhörenden Sessions
       [--overlay[=<teile>]]              Lokalen Code über die ausgelieferte Umgebung legen. Ohne Wert jeder Teil aus
                                          overlay.parts mit seiner Quelle; build oder dev für diese Quelle; <url> für den
                                          einzigen Teil; oder Teile: --overlay=orders,admin:dev. Nur auf overlay.environments
@@ -91,10 +92,11 @@ Befehle:`,
     'cli.help.validate': '  validate                               Config und Tests offline prüfen, ohne Browser und ohne {agent} (CI, Pre-Commit)',
     'cli.help.doctor': `  doctor [--agent local|docker]          Node, Chrome, {agent} (local) bzw. Docker und Token (docker), Testnutzer und
                                          Umgebungen prüfen, jeweils mit nächstem Schritt
-      [--attach]                         statt local oder docker: was deine eigene {agentDash}-Session braucht (caw in .mcp.json)
+      [--attach]                         stattdessen: was deine eigene {agentDash}-Session braucht (caw in .mcp.json)
       [--env <name>]                     nur Testnutzer und Adresse dieser Umgebung`,
-    'cli.help.skill': `  skill                                  Den Claude-Code-Skill caw-attach schreiben oder aktualisieren (.claude/skills/caw-attach): Er sagt
-                                         deiner Session, wann und wie sie mit dir in einem caw-Fenster arbeitet. Einchecken.`,
+    'cli.help.skill': `  skill                                  Den {agentDash}-Skill caw-attach schreiben oder aktualisieren
+                                         (.claude/skills/caw-attach): Er sagt deiner Session, wann und wie sie mit dir in
+                                         einem caw-Fenster arbeitet. Einchecken.`,
     'cli.help.role': `  role [list] [--json]                   Rollen, ob ein Testnutzer gesetzt ist (nie die Werte), und welche Tests sie nutzen
   role add <rolle>                       Die Rolle in die Config und ihre Variablennamen in caw/.env.example eintragen;
                                          den Testnutzer trägst du von Hand in caw/.env (oder CI-Secrets) ein
