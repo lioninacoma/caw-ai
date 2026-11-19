@@ -12,7 +12,7 @@ import {
     ACTION_ENVIRONMENTS, APP_TOTP, AUTH_ENVIRONMENTS, ENVIRONMENTS, ENV_FILE, LIFECYCLE_ENVIRONMENTS, LIFECYCLE_PORTS, NETWORK_ENVIRONMENTS, SPA_PORT, baseConfig, makeStale, removeActionTests, removeLifecycleTests, removeNetworkTests,
     writeNetworkTests, writeProject, writeSpaTest,
 } from '../spa/project.mjs';
-import { benchBack, decide, here, humans, loadTest, newestRunOf, stateOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
+import { benchBack, decide, endAction, here, humans, loadTest, newestRunOf, stateOf, open as openCommand, print, quietTokens, record as recordCommand, run, runDirsOf, startServer, verify } from '../harness.mjs';
 import { composeStack, exec, httpAlias, installPacked, mcpClient, packTarball, preflightPorts } from '../infra.mjs';
 
 const spaDir = join(here, 'spa');
@@ -566,7 +566,7 @@ scenario('S3', 'No learning without asking: a chat run leaves the files, the end
     const plain = withoutLearned('see-tickets');
     const closer = humans(async (chat) => {
         await chat.locator('#learn').waitFor({ state: 'visible', timeout: 90000 });
-        await chat.locator('#closeWindow').click({ timeout: 30000 });
+        await endAction(chat, 'closeWindow', { timeout: 30000 });
     });
     const first = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: closer.onChatOpen }));
     await closer.done();
@@ -728,7 +728,7 @@ scenario('U6', 'Viewport: headless replay uses the recorded 600×800 and takes t
         const bench = chat.page();
         await bench.locator('#appBox.pinned').waitFor({ state: 'attached', timeout: 90000 });
         frame = await bench.evaluate(() => { const app = document.getElementById('app'); return `${app.style.width}x${app.style.height} ${app.style.transform}`; });
-        await chat.locator('#closeWindow').click({ timeout: 90000 });
+        await endAction(chat, 'closeWindow');
     });
     const inBench = await callWith({ CI: '' }, () => run(root, ['nav-small', '--env', 'extra'], { interactive: true, onChatOpen: watcher.onChatOpen }));
     await watcher.done();

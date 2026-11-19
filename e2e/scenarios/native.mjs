@@ -6,8 +6,8 @@ import { join } from 'node:path';
 
 import { TESTS, testText, writeTests } from '../native/project.mjs';
 import {
-    appOf, benchBack, decide, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, planOf, print, record, reproduce, run,
-    runDirsOf, showMyself, sleep, startServer, stateOf, tag, verify, writeTest,
+    appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, planOf, print, record, reproduce, run,
+    runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
 } from '../harness.mjs';
 
 const native = join(here, 'native');
@@ -75,16 +75,16 @@ const followAndAdopt = async (page) => {
         const follow = page.locator('#choices button', { hasText: 'Claude geht dem Testplan nach' });
         const adopt = page.locator('#choices button', { hasText: 'Testplan übernehmen' });
         if (await adopt.count().catch(() => 0) > 0) {
-            await adopt.click();
+            await clickChoice(page, adopt);
             return;
         }
         // The check run after the recording failed: nothing to adopt, the scenario's checks report it.
         const close = page.locator('#choices button', { hasText: /Ohne Beheben beenden|Lauf beenden/ });
-        if (await page.locator('.message.question', { hasText: /ist gescheitert|[Kk]eine (neue )?Aufzeichnung/ }).count().catch(() => 0) > 0 && await close.count().catch(() => 0) > 0) {
-            await close.click();
+        if (await page.locator('.message:is(.question,.notice)', { hasText: /ist gescheitert|[Kk]eine (neue )?Aufzeichnung/ }).count().catch(() => 0) > 0 && await close.count().catch(() => 0) > 0) {
+            await clickChoice(page, close);
             return;
         }
-        if (await follow.count().catch(() => 0) > 0) await follow.click().catch(() => {});
+        if (await follow.count().catch(() => 0) > 0) await clickChoice(page, follow).catch(() => {});
         else if (await page.locator('body[data-state=planning] #approve').isVisible().catch(() => false)) await page.locator('#approve').click().catch(() => {});
         else if (await page.locator('body').count().catch(() => 0) === 0) return;
         await sleep(300);
@@ -206,7 +206,7 @@ ${finishOf(['S1'])}`;
     const picks = [];
     const pick = async (chat, click) => {
         rmSync(selection, { force: true });
-        await chat.locator('#pick').click();
+        await slash(chat, 'pick');
         await chat.page().waitForTimeout(500);
         await click(appOf(chat.page()));
         const deadline = Date.now() + 20000;
@@ -259,7 +259,7 @@ scenario('N4', 'open <test>@S3: the steps before run, S3 does not; F1 "Öffnen�
         verify('F1 explains the entry', /bis zum Einstieg in S2/.test(await bench.locator('#sfoot').textContent()));
         await bench.locator('#sgo').click();
         // The chat asks before it replaces the state.
-        await chat.locator('.message.question', { hasText: 'bis zum Einstieg in S2 öffnen?' }).waitFor({ timeout: 30000 });
+        await chat.locator('.message:is(.question,.notice)', { hasText: 'bis zum Einstieg in S2 öffnen?' }).waitFor({ timeout: 30000 });
         await decide(chat, 'S2 öffnen');
         await chat.locator('.message', { hasText: 'Einstieg in n9-shadow S2 ist neu hergestellt' }).waitFor({ timeout: 60000 });
         const shadow = await appOf(bench).evaluate(() => `${document.querySelector('caw-rating').shadowRoot.querySelector('[role=status]').textContent}|${document.getElementById('status').textContent}`);
@@ -803,8 +803,8 @@ scenario('N11', 'Failures: renamed (similar name), covered (diagnosis with the m
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {
-        await page.locator('.message.question', { hasText: 'S1 ist gescheitert' }).waitFor({ timeout: 60000 });
-        const text = await page.locator('.message.question').last().textContent();
+        await page.locator('.message:is(.question,.notice)', { hasText: 'S1 ist gescheitert' }).waitFor({ timeout: 60000 });
+        const text = await page.locator('.message:is(.question,.notice)').last().textContent();
         verify('Chat: the failed step with its locator label and the similar name', /button "Archive"/.test(text) && /Archive all/.test(text), text.slice(0, 400));
         verify('Repair offered', await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
         await decide(page, 'Close');
@@ -826,7 +826,7 @@ scenario('N12', 'reproduce: Claude reproduces a bug alone (no plan, no decision)
         const seen = humans(async (page) => {
             await page.locator('#next.on').waitFor({ timeout: 90000 });
             verify('(1) end card: bug reproduced', /Fehler nachgestellt/.test(await page.locator('#next').textContent()));
-            await page.locator('#closeWindow').click({ timeout: 5000 }).catch(() => {});
+            await endAction(page, 'closeWindow', { timeout: 5000 }).catch(() => {});
         });
         const found = `exec 2>&1
 A='caw agent'

@@ -437,8 +437,9 @@ test('workbench: demonstrating shows recording, refresh is locked until the host
     assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === '● AUFNAHME – deine Klicks zählen'));
     assert.equal(await bench.page.textContent('#stepsHint'), 'Führe den Ablauf in der Anwendung vor.');
     assert.match(await frame.textContent('#toggle'), /Vorführung beenden/);
-    assert.equal(await frame.textContent('#mark'), 'Als Prüfpunkt setzen');
-    assert.match(await frame.getAttribute('#input', 'placeholder'), /Als Prüfpunkt setzen/);
+    // The checkpoint is a slash command and Alt+Enter, only while demonstrating.
+    assert.match(await frame.textContent('#mark'), /^\/checkpointNur während du vorführstAlt ↵$/);
+    assert.match(await frame.getAttribute('#input', 'placeholder'), /Alt\+↵ = Prüfpunkt/);
     chat.progress('Klick: Weiter');
     assert.ok(await until(() => frame.evaluate(() => document.querySelector('details.activity')?.open === true)), 'the actions are open');
 });
@@ -524,24 +525,30 @@ test('chat: after the run the window stays open until the human closes it or the
     assert.ok(Date.now() - start < 3000, 'without a click after the timeout');
 });
 
-test('workbench: the title is one sentence with the test name in it, the chips follow', async (t) => {
+test('workbench: the badge shows the mode only, the sentence is its tooltip; the breadcrumb names the test; the chips follow', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const context = await browser.newContext();
     t.after(() => context.close());
     await context.newPage();
     const bench = await openWorkbench(context, { appUrl: `${base}/start`, hosts: ['127.0.0.1'], title: 'caw · morning-errand' });
     assert.equal(await bench.page.textContent('#title'), 'morning-errand');
-    await bench.facts([['', 'Claude nimmt morning-errand auf'], ['Umgebung', 'staging']]);
-    assert.ok(await until(async () => (await bench.page.textContent('#title')) === 'Claude nimmt morning-errand auf'));
-    // In the badge the words around the test's name, the name itself plain; the breadcrumb names the test.
-    assert.deepEqual(await bench.page.locator('#title .cmd').allTextContents(), ['Claude nimmt ', ' auf']);
+    await bench.facts([['', 'Claude nimmt morning-errand auf', 'Claude nimmt auf'], ['Umgebung', 'staging']]);
+    assert.ok(await until(async () => (await bench.page.textContent('#title')) === 'Claude nimmt auf'));
+    assert.equal(await bench.page.getAttribute('#title', 'title'), 'Claude nimmt morning-errand auf');
     assert.equal(await bench.page.textContent('#crumbTest'), 'morning-errand');
     // The facts by their values, the label in title and aria-label.
     assert.deepEqual(await bench.page.locator('#facts li').allTextContents(), ['staging']);
     assert.equal(await bench.page.getAttribute('#facts li', 'aria-label'), 'Umgebung: staging');
+    // Without a badge it shows the sentence.
     await bench.facts([['', 'morning-errand wird ohne Claude geprüft']]);
     assert.ok(await until(async () => (await bench.page.locator('#facts li').count()) === 0));
-    assert.deepEqual(await bench.page.locator('#title .cmd').allTextContents(), [' wird ohne Claude geprüft']);
+    assert.equal(await bench.page.textContent('#title'), 'morning-errand wird ohne Claude geprüft');
+    // While the settings are open the badge says so, and comes back with the run's mode.
+    await bench.facts([['', 'Claude behebt S2 von morning-errand', 'Claude behebt S2']]);
+    await bench.page.keyboard.press('Control+Comma');
+    assert.equal(await bench.page.textContent('#title'), 'Einstellungen');
+    await bench.page.keyboard.press('Escape');
+    assert.equal(await bench.page.textContent('#title'), 'Claude behebt S2');
 });
 
 test('workbench: the pill top right is a dot and a word: the chat header labels first, then failed, passed, ready; no step while one runs', async (t) => {
@@ -868,5 +875,287 @@ test('workbench: a hovered step offers to open its state only when F1 offers thi
     assert.equal(await page.isVisible('#stateDlg'), false);
     await bench.states([]);
     assert.equal(await offer('S2'), null, 'gone with the offer');
+    return undefined;
+});
+
+/** A chat with the page ready; `frame` is the chat document. */
+const chatReady = async (t) => {
+    const opened = await open(t);
+    const frame = opened.bench.chatFrame();
+    await frame.waitForFunction(() => typeof window.setStatus === 'function');
+    return { ...opened, frame };
+};
+const visibleIds = (frame) => frame.$$eval('#slash [data-cmd]', (list) => list.filter((b) => !b.hidden).map((b) => `${b.dataset.name}${b.disabled ? ':off' : ''}${b.classList.contains('sel') ? ':sel' : ''}`));
+
+test('chat: "/" at the start opens the commands; arrows and Enter run one, Esc closes, unavailable ones are disabled', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    chat.enter('asking');
+    assert.ok(await until(() => frame.evaluate(() => document.body.dataset.state === 'asking')));
+    assert.equal(await frame.isVisible('#slash'), false);
+    await frame.focus('#input');
+    await bench.page.keyboard.type('/');
+    assert.equal(await frame.isVisible('#slash'), true, '"/" opens the commands');
+    const all = await visibleIds(frame);
+    assert.deepEqual(all, ['/element:sel', '/checkpoint:off', '/pause:off', '/open', '/requests', '/console', '/reload', '/app', '/settings', '/keys', '/cancel'], 'checkpoint only while demonstrating, pause only while Claude works or is paused');
+    assert.equal(await frame.getAttribute('#input', 'aria-activedescendant'), 'pick');
+    // Each command shows its key.
+    assert.deepEqual(await frame.$$eval('#slash [data-cmd] kbd', (list) => list.map((k) => k.textContent)), ['Alt ↵', 'F9', 'F1', 'F2', 'F3', 'F5', 'F8', 'Strg ,', '?', 'Esc']);
+    // Arrows skip the disabled ones; typing filters.
+    await bench.page.keyboard.press('ArrowDown');
+    assert.deepEqual((await visibleIds(frame)).filter((id) => id.endsWith(':sel')), ['/open:sel']);
+    await bench.page.keyboard.press('ArrowUp');
+    await bench.page.keyboard.press('ArrowUp');
+    assert.deepEqual((await visibleIds(frame)).filter((id) => id.endsWith(':sel')), ['/cancel:sel'], 'wraps around');
+    await bench.page.keyboard.type('re');
+    assert.deepEqual(await visibleIds(frame), ['/requests:sel', '/reload']);
+    // Enter runs it: requests opens the workbench's drawer, the field is empty again.
+    await bench.page.keyboard.press('Enter');
+    assert.ok(await until(() => bench.page.isVisible('#drawer.open')), 'the requests open in the workbench');
+    assert.equal(await bench.page.getAttribute('[data-tab=requests]', 'aria-selected'), 'true');
+    assert.equal(await frame.inputValue('#input'), '');
+    assert.equal(await frame.isVisible('#slash'), false);
+    // Esc closes the list without clearing the field and without asking to cancel.
+    await frame.focus('#input');
+    await bench.page.keyboard.type('/se');
+    assert.equal(await frame.isVisible('#slash'), true);
+    await bench.page.keyboard.press('Escape');
+    assert.equal(await frame.isVisible('#slash'), false);
+    assert.equal(await frame.inputValue('#input'), '/se');
+    assert.equal(await frame.evaluate(() => document.body.classList.contains('arming')), false);
+    // A disabled command runs nothing on Enter and is not sent as text either.
+    await frame.fill('#input', '/checkpoint');
+    assert.deepEqual(await visibleIds(frame), ['/checkpoint:off']);
+    await bench.page.keyboard.press('Enter');
+    assert.equal(await frame.inputValue('#input'), '/checkpoint');
+    assert.equal(await frame.locator('.message.human').count(), 0);
+    // /settings opens the workbench's settings page.
+    await frame.fill('#input', '/settings');
+    await bench.page.keyboard.press('Enter');
+    assert.ok(await until(() => bench.page.evaluate(() => document.body.classList.contains('settings-on'))), 'the settings open');
+    return undefined;
+});
+
+test('chat: /checkpoint and Alt+Enter set a checkpoint while demonstrating; /element picks; text with a space is a message', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    chat.enter('showing');
+    assert.ok(await until(() => frame.evaluate(() => document.body.dataset.state === 'showing')));
+    const lines = [];
+    const reading = (async () => { for (let i = 0; i < 3; i += 1) lines.push(await chat.operator.nextLine()); })();
+    await frame.focus('#input');
+    await bench.page.keyboard.type('/check');
+    assert.deepEqual(await visibleIds(frame), ['/checkpoint:sel']);
+    await bench.page.keyboard.press('Enter');
+    assert.equal(await frame.inputValue('#input'), '/checkpoint ', 'the command goes in front of the text');
+    assert.equal(await frame.isVisible('#slash'), false);
+    await bench.page.keyboard.type('Die Liste ist leer');
+    await bench.page.keyboard.press('Enter');
+    await frame.fill('#input', 'Der Haken ist gesetzt');
+    await frame.focus('#input');
+    await bench.page.keyboard.press('Alt+Enter');
+    await frame.fill('#input', '/api ist langsam');
+    await bench.page.keyboard.press('Enter');
+    await reading;
+    assert.deepEqual(lines, [{ checkpoint: 'Die Liste ist leer' }, { checkpoint: 'Der Haken ist gesetzt' }, { note: '/api ist langsam' }]);
+    assert.equal(await frame.locator('.message.checkpoint').count(), 2);
+    // /element asks the host to pick (its crosshair in the application), like the former Element button.
+    await frame.evaluate(() => { const binding = window.__cawChat; window.__cawChat = (event) => { window.sent = [...(window.sent ?? []), event.type]; return binding(event); }; });
+    await frame.fill('#input', '/el');
+    await bench.page.keyboard.press('Enter');
+    assert.deepEqual(await frame.evaluate(() => window.sent), ['pick']);
+    assert.equal(await frame.inputValue('#input'), '');
+    return undefined;
+});
+
+test('chat: the main action sits above the input with Ctrl+Enter; while Claude works it is "Pause F9" in the status line', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    // Running: a link with F9 next to the status, no button row under the input.
+    assert.ok(await until(() => frame.evaluate(() => document.body.dataset.state === 'running')));
+    assert.equal(await frame.getAttribute('#toggle', 'class'), 'lnk');
+    assert.match(await frame.textContent('#toggle'), /^Pause\s*F9$/);
+    assert.equal(await frame.evaluate(() => document.getElementById('toggle').parentElement.id), 'bar');
+    assert.equal(await frame.locator('#form button').evaluateAll((list) => list.filter((b) => b.offsetParent !== null).map((b) => b.id).join(',')), 'send', 'only the send arrow in the field');
+    assert.match(await frame.textContent('#hint'), /^\/ Befehle\s*Enter senden\s*Strg ↵ Hauptaktion/);
+    // Asking: "Fertig" full width above the input, Ctrl+Enter presses it.
+    const lines = [];
+    chat.enter('asking');
+    assert.ok(await until(() => frame.evaluate(() => document.body.dataset.state === 'asking')));
+    assert.match(await frame.getAttribute('#toggle', 'class'), /btn btn-p/);
+    assert.match(await frame.textContent('#toggle'), /^Fertig\s*Strg ↵$/);
+    const [toggle, form] = await Promise.all([frame.locator('#toggle').boundingBox(), frame.locator('#form').boundingBox()]);
+    assert.ok(toggle.y + toggle.height <= form.y, 'above the input');
+    assert.ok(Math.abs(toggle.width - form.width) < 2, 'full width');
+    const next = chat.operator.nextLine().then((line) => lines.push(line));
+    await frame.focus('#input');
+    await bench.page.keyboard.press('Control+Enter');
+    await next;
+    assert.deepEqual(lines, [''], 'Ctrl+Enter is "Fertig"');
+    // Planning: "Plan freigeben" is the one main action, Ctrl+Enter approves it.
+    let answer;
+    const planned = chat.plan({ steps: [{ id: 'S1', name: 'Eins', do: 'Klick', expect: 'Da' }] }).then((value) => { answer = value; });
+    assert.ok(await until(() => frame.isVisible('#approve')));
+    assert.equal(await frame.isVisible('#toggle'), false);
+    assert.match(await frame.getAttribute('#approve', 'class'), /primary big btn btn-p/);
+    await frame.focus('#input');
+    await bench.page.keyboard.press('Control+Enter');
+    await planned;
+    assert.deepEqual(answer, { approved: true });
+    return undefined;
+});
+
+const failureOptions = [{ id: 'ask', label: 'Claude die Ursache finden lassen', primary: true }, { id: 'fix', label: 'Schritt beheben' }, { id: 'rerun', label: 'Erneut testen' }, { id: 'close', label: 'Lauf beenden' }];
+const failureCard = { id: 'S3', reason: 'Der Ring zeigt 0/1', diagnosis: { side: 'app', strength: 'clear', text: 'Sieht nach einem Fehler der Anwendung aus.', findings: ['PATCH /api/todos/1 → 500'] }, warn: 'Den Test anzupassen würde den Fehler nur verdecken.', failures: [], warnings: [] };
+
+test('chat: a failure card shows one primary choice; the others are behind "Mehr", a menu that opens, picks and closes with Esc', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    const answer = chat.discuss('S3 ist gescheitert', failureOptions, failureCard);
+    assert.ok(await until(() => frame.isVisible('.message.failure')));
+    assert.equal(await frame.textContent('.failure .bdg.fail'), 'Anwendung', 'the category badge');
+    assert.match(await frame.textContent('.failure .warnbox'), /nur verdecken/);
+    assert.equal(await frame.textContent('#choices button.primary'), 'Claude die Ursache finden lassen');
+    assert.equal(await frame.isVisible('#choicesMore'), true);
+    for (const label of ['Schritt beheben', 'Erneut testen', 'Lauf beenden']) assert.equal(await frame.locator('#choices button', { hasText: label }).isVisible(), false, `${label} behind More`);
+    // Opens with a click, the first item gets the focus; arrows move, Esc closes and returns to "Mehr".
+    await frame.click('#choicesMore');
+    assert.equal(await frame.getAttribute('#choicesMore', 'aria-expanded'), 'true');
+    assert.equal(await frame.evaluate(() => document.activeElement.textContent), 'Schritt beheben');
+    await bench.page.keyboard.press('ArrowDown');
+    assert.equal(await frame.evaluate(() => document.activeElement.textContent), 'Erneut testen');
+    await bench.page.keyboard.press('Escape');
+    assert.equal(await frame.isVisible('#choicesMoreMenu'), false);
+    assert.equal(await frame.evaluate(() => document.activeElement.id), 'choicesMore');
+    assert.equal(await frame.evaluate(() => document.body.classList.contains('arming')), false, 'Esc only closed the menu');
+    // With the keyboard: ArrowDown on "Mehr" opens it, Enter picks.
+    await bench.page.keyboard.press('ArrowDown');
+    await bench.page.keyboard.press('End');
+    assert.equal(await frame.evaluate(() => document.activeElement.textContent), 'Lauf beenden');
+    await bench.page.keyboard.press('Enter');
+    assert.deepEqual(await answer, { choice: 'close' });
+    assert.equal(await frame.isVisible('#choicesMoreMenu'), false, 'closed after the choice');
+    return undefined;
+});
+
+test('chat: two choices need no menu; a confirming choice in "Mehr" still needs its second click', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    const advice = chat.advice({ side: 'app', title: 'Suche ignoriert Tags', reason: 'Nur der Titel', edits: [{ file: 'server.mjs', line: 197, find: 'a\nb', replace: 'c' }], prompt: 'Auch den Tag prüfen.' },
+        [{ id: 'apply', label: 'Änderung übernehmen', primary: true }, { id: 'next', label: 'Weiter', primary: false }]);
+    assert.ok(await until(() => frame.isVisible('.message.advice')));
+    assert.deepEqual(await frame.$$eval('.advice .dl', (rows) => rows.map((row) => `${row.className}|${row.querySelector('.n').textContent}|${row.querySelector('code').textContent}`)), ['dl del|197|a', 'dl del|198|b', 'dl add|197|c'], 'the diff with line numbers');
+    assert.equal(await frame.isVisible('.advice button.copy'), true);
+    assert.equal(await frame.locator('#choicesMore').count(), 0);
+    assert.equal(await frame.isVisible('#choices button:text-is("Weiter")'), true, 'a single secondary button');
+    await frame.click('#choices button:text-is("Weiter")');
+    assert.equal(await advice, 'next');
+    const decided = chat.choose('deciding', 'Text', [{ id: 'adopt', label: 'Übernehmen', primary: true }, { id: 'keep', label: 'Behalten' }, { id: 'discard', label: 'Verwerfen', confirm: 'Wirklich verwerfen?' }], { title: 'Prüflauf bestanden' });
+    assert.ok(await until(() => frame.isVisible('#choicesMore')));
+    await frame.click('#choicesMore');
+    await frame.click('#choices button:text-is("Verwerfen")');
+    assert.equal(await frame.textContent('#choices button.sure'), 'Wirklich verwerfen?');
+    assert.equal(await frame.isVisible('#choicesMoreMenu'), true, 'the menu stays open for the second click');
+    await frame.click('#choices button.sure');
+    assert.equal(await decided, 'discard');
+    return undefined;
+});
+
+test('chat: the end card has one main action; report and close are beside it or behind "Mehr"', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command: 'caw run t', learn: true });
+    chat.human.closed();
+    const lingering = chat.linger(60000);
+    assert.ok(await until(() => frame.isVisible('#next.on')));
+    assert.equal(await frame.textContent('#nextTitle'), 'Lauf bestanden');
+    assert.equal(await frame.textContent('#nextText'), '4 von 4 Schritten bestanden.');
+    assert.match(await frame.textContent('#nextCmd'), /Neuer Lauf: caw run t/);
+    assert.ok(await until(async () => (await frame.getAttribute('#learn', 'class')) === 'btn btn-p'), 'Save baselines is the main action');
+    assert.equal(await frame.isVisible('#report'), false);
+    await frame.click('#nextMore');
+    assert.deepEqual(await frame.$$eval('#nextMoreMenu button', (list) => list.map((b) => b.id)), ['report', 'closeWindow']);
+    assert.equal(await frame.isVisible('#closeWindow'), true);
+    await frame.focus('#nextMoreMenu button');
+    await frame.locator('#report').press('Escape');
+    assert.equal(await frame.isVisible('#nextMoreMenu'), false);
+    await frame.click('#nextMore');
+    await frame.click('#closeWindow');
+    await lingering;
+    return undefined;
+});
+
+test('chat: a reproduction ends with its findings, the read-only note and Close window as the main action, the report beside it', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    await chat.finished({ kind: 'reproduce', report: join(dir, 'x.md'), text: 'Fehler nachgestellt', command: 'caw record bug-x', adopt: true,
+        reproduce: { bug: 'Suche findet nichts', observed: 'Leere Liste', expected: 'Zwei Einträge', cause: 'server.mjs:197', readOnly: true } });
+    chat.human.closed();
+    const lingering = chat.linger(60000);
+    assert.ok(await until(() => frame.isVisible('#closeWindow')));
+    assert.equal(await frame.textContent('#nextTitle'), 'Fehler nachgestellt');
+    assert.equal(await frame.textContent('#nextRepro .quote'), '“Suche findet nichts”');
+    assert.deepEqual(await frame.$$eval('#nextRepro dt', (list) => list.map((dt) => dt.textContent)), ['Beobachtet', 'Erwartet', 'Ursache']);
+    assert.match(await frame.textContent('#nextRepro .banner.ro'), /Nur lesend/);
+    assert.match(await frame.textContent('#nextCmd'), /Entwurf nach caw\/tests kopieren, dann: caw record bug-x/);
+    assert.equal(await frame.getAttribute('#closeWindow', 'class'), 'btn btn-p');
+    assert.equal(await frame.getAttribute('#report', 'class'), 'btn btn-s');
+    assert.equal(await frame.locator('#nextMore').count(), 0);
+    await frame.click('#closeWindow');
+    await lingering;
+    return undefined;
+});
+
+test('chat: notices are quiet icon lines, the token notice a card; Claude starting shows a spinner and the pill says so', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat, frame } = await chatReady(t);
+    chat.notice('Gespeichert: caw/tests/t.yaml');
+    assert.ok(await until(() => frame.isVisible('.message.notice')));
+    assert.equal(await frame.locator('.message.notice svg').count(), 1);
+    chat.starting('Starte Claude');
+    assert.ok(await until(() => frame.isVisible('.message.starting:not(.done) .spin')));
+    assert.match(await frame.textContent('.message.starting small'), /^00:0\d$/);
+    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude startet'), 'the pill while Claude starts');
+    assert.equal(await bench.page.getAttribute('#state', 'class'), 'pill on claude');
+    chat.say('Ich schaue.');
+    assert.ok(await until(() => frame.isVisible('.message.starting.done')), 'done once Claude speaks');
+    assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude arbeitet'), 'the pill follows the chat again');
+    assert.match(await frame.textContent('.message.claude .who'), /^Claude\d\d:\d\d$/, 'with the time');
+    const gate = chat.choose('choosing', 'Jetzt arbeitet Claude, das kostet Token.', [{ id: 'go', label: 'Weiter', primary: true }, { id: 'always', label: 'Nicht mehr fragen' }, { id: 'stop', label: 'Ohne Claude weiter' }], { kind: 'tokens', text: 'caw fragt einmal pro Lauf.' });
+    assert.ok(await until(() => frame.isVisible('.message.tokens')));
+    assert.equal(await frame.textContent('.message.tokens strong'), 'Jetzt arbeitet Claude, das kostet Token.');
+    await frame.click('#choicesMore');
+    await frame.click('#choices button:text-is("Ohne Claude weiter")');
+    assert.equal(await gate, 'stop');
+    return undefined;
+});
+
+test('chat: Ctrl+K and ? (when not typing) open the workbench\'s menu and keys; the mode still switches the chat', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, frame } = await chatReady(t);
+    const page = bench.page;
+    await frame.evaluate(() => window.setStatus('paused', 'Pausiert', '', 'Weiter'));
+    await frame.focus('#input');
+    await page.keyboard.press('Control+KeyK');
+    assert.ok(await until(() => page.isVisible('#menu')), 'Ctrl+K in the chat opens the ⋯ menu');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.isVisible('#menu'), false);
+    // ? in the field is text; outside it opens the keys.
+    await frame.focus('#input');
+    await page.keyboard.type('?');
+    assert.equal(await frame.inputValue('#input'), '?');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('settings-on')), false);
+    await frame.fill('#input', '');
+    await frame.focus('#toggle');
+    await page.keyboard.type('?');
+    assert.ok(await until(() => page.evaluate(() => document.body.classList.contains('settings-on'))), '? opens the keys');
+    // The mode picked in the settings switches the chat live, with its cards.
+    const look = () => frame.evaluate(() => [document.documentElement.dataset.mode, getComputedStyle(document.body).backgroundColor]);
+    await page.click('#setMode [data-mode=dark]');
+    assert.ok(await until(async () => (await look())[0] === 'dark'));
+    assert.equal((await look())[1], 'rgb(15, 18, 19)', 'the dark panel');
+    await page.click('#setMode [data-mode=light]');
+    assert.ok(await until(async () => (await look())[0] === 'light'));
+    assert.equal((await look())[1], 'rgb(255, 255, 255)');
     return undefined;
 });

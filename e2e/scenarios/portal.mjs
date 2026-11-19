@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { serveFolder } from '../../test/static-server.mjs';
 import {
     approve, benchBack, count, decide, discard, finishOf, freePort, here, humans, keep, loadTest, open, parseTest,
-    planOf, print, quietTokens, record, renderTest, run, setLanguage, shoot, shootBench, showMyself, startServer, stateOf, stepHash, tag, verify,
+    planOf, print, quietTokens, record, renderTest, run, setLanguage, shoot, shootBench, showMyself, slash, startServer, stateOf, stepHash, tag, verify,
     writeTest,
 } from '../harness.mjs';
 
@@ -185,7 +185,7 @@ scenario('B', 'Stale: open at its entry runs the steps before it and hands over,
     const before = existsSync(hits) ? readFileSync(hits, 'utf8') : '';
     const h = humans(async (page) => {
         await benchBack(page);
-        await page.locator('.message.question', { hasText: 'Der Lauf hat bestanden' }).waitFor({ timeout: 60000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'Der Lauf hat bestanden' }).waitFor({ timeout: 60000 });
         verify('Progress in the chat', /S1 · 1\/\d+ /.test(await page.locator('details.activity').first().textContent()));
         await stateOf(page, 'developing');
         verify('After the handover: input open for developing', await page.locator('#form').isVisible());
@@ -207,12 +207,12 @@ scenario('C', 'Failed run: offer, no Docker without a click', async () => {
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {
-        await page.locator('.message.question', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
-        verify('Offer names the step', /S2 ist gescheitertclick button "Verschwunden"/.test(await page.locator('.message.question').last().textContent()));
+        await page.locator('.message:is(.question,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
+        verify('Offer names the step', /S2 ist gescheitert.*click button "Verschwunden"/.test(await page.locator('.message:is(.question,.notice)').last().textContent()));
         verify('Schritt beheben is the primary button', (await page.locator('#choices button.primary').textContent()) === 'Schritt beheben');
         await stateOf(page, 'discussing');
         verify('Input open', await page.locator('#form').isVisible());
-        verify('Partial actions: path with lead-in run', /frischen Browser/.test(await page.locator('.message.question').last().textContent()));
+        verify('Partial actions: path with lead-in run', /frischen Browser/.test(await page.locator('.message:is(.question,.notice)').last().textContent()));
         await page.waitForTimeout(300);
         await shootBench(page, join(here, 'step-offer.png'));
         await decide(page, 'Close');
@@ -318,7 +318,7 @@ $A eval "window.__nurBeimAufnehmen = 1"
 $A check S3 "window.__nurBeimAufnehmen === 1 && ${CASE_DONE}"
 ${finishOf(['S2', 'S3'])}`;
     const h = humans(approve, async (page) => {
-        await page.locator('.message.question', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 90000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 90000 });
         // A failed check without failed requests: the assessment may lean either way, so only the offer itself is checked.
         verify('Offer for S3', await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
         await decide(page, 'Close');
@@ -355,7 +355,7 @@ echo '{"status":"error","reason":"Does not work this way"}' > /tmp/e.json; $A fi
         await decide(page, 'Schritt beheben');
     }, async (page) => {
         await approve(page);
-        await page.locator('.message.question', { hasText: 'Für S2 ist keine neue Aufzeichnung entstanden' }).waitFor({ timeout: 90000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'Für S2 ist keine neue Aufzeichnung entstanden' }).waitFor({ timeout: 90000 });
         await decide(page, 'Close');
     });
     const code = await run(fake, [ID, ...short], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
@@ -490,7 +490,7 @@ scenario('M', 'run without --explain: chat next to the application, no advice, n
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {
-        await page.locator('.message.question', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
         const box = async (name) => page.page().locator(`iframe[name="${name}"]`).boundingBox();
         const [a, c] = await Promise.all([box('caw-app'), box('caw-chat')]);
         verify('Application and chat side by side in the workbench', a !== null && c !== null && (c.x + c.width <= a.x + 8 || a.x + a.width <= c.x + 8), JSON.stringify({ a, c }));
@@ -550,7 +550,7 @@ $A advise --file /tmp/a.json > /tmp/answer.json; echo "ADVISE Exit=$?"; tr -d '\
         verify('Copy reports back', /Kopiert|Markiert/.test(copied), copied);
         await shoot(page, 'advice-app');
         await decide(page, 'Weiter');
-        await page.locator('.message.question', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
         await decide(page, 'Close');
     });
     try {
@@ -585,10 +585,10 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         await stateOf(page, 'reviewing');
         verify('Card shows before and after', /Fremder Fehler stoert nicht/.test(await card(page, 0).textContent()) && /nur als Warnung/.test(await card(page, 0).textContent()));
         await decide(page, 'Übernehmen');
-        await page.locator('.message.question', { hasText: 'neu aufgenommen' }).waitFor({ timeout: 30000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'neu aufgenommen' }).waitFor({ timeout: 30000 });
         verify('Neu aufnehmen is the primary button', (await page.locator('#choices button.primary').textContent()) === 'Neu aufnehmen');
         await decide(page, 'Close');
-        await page.locator('.message.question', { hasText: 'hat bestanden' }).waitFor({ timeout: 30000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'hat bestanden' }).waitFor({ timeout: 30000 });
         await decide(page, 'Close');
     });
     try {
@@ -618,9 +618,9 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
         await stateOf(page, 'reviewing');
         await decide(page, 'Übernehmen');
         // note is part of the hash: the step is then stale and a fix is offered.
-        await page.locator('.message.question', { hasText: 'neu aufgenommen' }).waitFor({ timeout: 60000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'neu aufgenommen' }).waitFor({ timeout: 60000 });
         await decide(page, 'Close');
-        await page.locator('.message.question', { hasText: 'keine neue Aufzeichnung entstanden' }).waitFor({ timeout: 60000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'keine neue Aufzeichnung entstanden' }).waitFor({ timeout: 60000 });
         await decide(page, 'Close');
     });
     const code = await record(fake, [`${ID}@S3`, ...opts], { interactive: true, containerCommand: ['bash', '-c', repair], adviseCommand: ['bash', '-c', advice], onChatOpen: h.onChatOpen });
@@ -641,7 +641,7 @@ scenario('R', 'Passed run: chat from the start, progress, input blocked during t
         verify('Input blocked in the test run', !await page.locator('#form').isVisible());
         await shoot(page, 'test-run');
         await benchBack(page);
-        await page.locator('.message.question', { hasText: 'Der Lauf hat bestanden' }).waitFor({ timeout: 60000 });
+        await page.locator('.message:is(.question,.notice)', { hasText: 'Der Lauf hat bestanden' }).waitFor({ timeout: 60000 });
         verify('Progress with a single total', /S3 · \d+\/\d+ /.test(await page.locator('details.activity').last().textContent()) && !/\d+\/\d+\/\d+/.test(await page.locator('details.activity').last().textContent()));
         await stateOf(page, 'developing');
         verify('After open: developing with open input', await page.locator('#form').isVisible());
@@ -662,7 +662,7 @@ scenario('3', 'English UI: workbench, chat, steps and result in English', async 
             verify('Chat in English', (await page.locator('#status').textContent()).includes('Test run without Claude') && await page.evaluate(() => document.documentElement.lang) === 'en');
             verify('Workbench in English', await bench.evaluate(() => document.documentElement.lang) === 'en' && (await bench.locator('#steps > li[data-id=prep] .head .name').textContent()).includes('Preparation'));
             await benchBack(page);
-            await page.locator('.message.question', { hasText: 'The run passed' }).waitFor({ timeout: 60000 });
+            await page.locator('.message:is(.question,.notice)', { hasText: 'The run passed' }).waitFor({ timeout: 60000 });
             await stateOf(page, 'developing');
             const german = await bench.evaluate(() => /[äöüß]|\b(und|nicht|Schritt|Lauf)\b/i.test(document.querySelector('header')?.innerText ?? ''));
             verify('Header without German', !german);
@@ -696,7 +696,7 @@ $A chat > /tmp/c2.json; echo "END=$(grep -c ended /tmp/c2.json)"`;
         await page.locator('#input').fill('Why?');
         await page.keyboard.press('Enter');
         await page.locator('.message', { hasText: 'das kostet Token' }).first().waitFor({ timeout: 30000 });
-        gate = (await page.locator('#choices button').allInnerTexts()).join('|');
+        gate = (await page.locator('#choices button:not(#choicesMore)').allTextContents()).join('|');
         await shoot(page, 'token-notice');
         await decide(page, 'Ohne Claude weiter');
         await stateOf(page, 'discussing');
@@ -738,8 +738,8 @@ $A check S3 "${CASE_DONE} && ${CASE_TEXT}==='$NR'"
 ${finishOf(['S3'])}`;
     const saved = hitCount('Speichern');
     const h = humans(async (page) => {
-        await page.locator('.message.question', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 60000 });
-        verify('Offer: in the same browser', /im selben Browser, ohne die Schritte davor/.test(await page.locator('.message.question').last().textContent()));
+        await page.locator('.message:is(.question,.notice)', { hasText: 'S3 ist gescheitert' }).waitFor({ timeout: 60000 });
+        verify('Offer: in the same browser', /im selben Browser, ohne die Schritte davor/.test(await page.locator('.message:is(.question,.notice)').last().textContent()));
         await decide(page, 'Schritt beheben');
         // Unchanged plan: no approval needed.
     }, async (page) => {
@@ -877,7 +877,7 @@ $A say "APP=$(grep -c '"side": "app"' /tmp/t.json) EVIDENCE=$(grep -c '"evidence
 $A chat > /dev/null`;
     const h = humans(async (page) => {
         await stateOf(page, 'discussing');
-        const text = await page.locator('.message.question').last().textContent();
+        const text = await page.locator('.message:is(.question,.notice)').last().textContent();
         verify('Chat: assessment application, clear', /Einschätzung: Fehler der Anwendung \(eindeutig\)/.test(text), text);
         verify('Chat: finding with duration and recording', /HTTP-X-Preise wurde nach \d+ ms abgebrochen, ohne Seitenwechsel, bei der Aufnahme 200/.test(text));
         verify('Chat: warning, Schritt beheben not the primary button', /nur verdecken/.test(text) && await page.locator('#choices button.primary', { hasText: 'Schritt beheben' }).count() === 0 && await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
@@ -1079,7 +1079,7 @@ ${finishOf(['S2'])}`;
     const appFrame = (bench) => bench.frames().find((frame) => frame.name() === 'caw-app');
     const h = humans(async (chat) => {
         const bench = workbenchOf(chat);
-        await chat.locator('.message.question', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
+        await chat.locator('.message:is(.question,.notice)', { hasText: 'S2 ist gescheitert' }).waitFor({ timeout: 60000 });
         const app = appFrame(bench);
         verify('Workbench at the address of the application', new URL(bench.url()).origin === new URL(app.url()).origin && bench.url() === app.url(), `${bench.url()} ${app.url()}`);
         // As in the portal: the application accesses the top window and finds its own globals there.
@@ -1151,11 +1151,13 @@ scenario('2', 'Developing in a state: crosshair to Claude Code, reload without s
         await stateOf(chat, 'developing');
         const labels = await chat.locator('#choices button').allTextContents();
         verify('Buttons for developing', ['Neu öffnen', 'Lauf beenden'].every((label) => labels.some((text) => text.includes(label))) && labels.length === 2, JSON.stringify(labels));
-        verify('Crosshair in the chat', await chat.locator('#pick').isVisible() && await chat.locator('#pick').isEnabled());
+        await chat.locator('#input').fill('/');
+        verify('Crosshair in the chat: /element', await chat.locator('#pick').isVisible() && await chat.locator('#pick').isEnabled());
+        await chat.locator('#input').fill('');
         verify('Menu: F5 Anwendung neu laden enabled, animations on', (await bench.locator('#reload').textContent()).includes('Anwendung neu laden') && await bench.locator('#reload').isEnabled() && await bench.locator('#still').getAttribute('aria-checked') === 'false');
         await shoot(chat, 'develop');
         // Crosshair: the element is attached to the next question and is ready for the Claude Code session at once.
-        await chat.locator('#pick').click();
+        await slash(chat, 'pick');
         await bench.waitForTimeout(500);
         await appOf(bench).locator('#ziel').click();
         await chat.locator('#chip.on').waitFor({ timeout: 20000 });

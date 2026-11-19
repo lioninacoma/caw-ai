@@ -2,10 +2,11 @@
 // steps with their marks, in the middle the application iframe with its address bar and a status line whose counts open
 // requests and console, right the chat. The chat is a document of its own (srcdoc); its page is the one from chat.mjs.
 //
-// No toolbars: the header holds the product, the breadcrumb with the run's title, the run facts, the status pill, the
-// REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. Pane titles collapse their pane
-// (F4, F6). F8 shows only the application with one line back, F10 stops all animation, Ctrl+, opens the settings page, a
-// view of the workbench (not a dialog) that changes only cosmetic prefs and shows the rest read-only.
+// No toolbars: the header holds the product, the breadcrumb with the test and a badge with the run's mode, the run facts,
+// the status pill, the REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. Pane
+// titles collapse their pane (F4, F6). F8 shows only the application with one line back, F10 stops all animation, Ctrl+,
+// opens the settings page, a view of the workbench (not a dialog) that changes only cosmetic prefs and shows the rest
+// read-only. The chat forwards these keys, and posts them for its slash commands (CHAT_KEYS).
 //
 // Refresh (F5) reloads the application's current page without cache after the hand-over; chat and steps stay, the steps
 // then show "state left". While the test runs, reloading is locked: it would corrupt the state for the following steps.
@@ -42,8 +43,9 @@ export const STATE_BINDING = 'cawState';
  * treats any later navigation of the chat frame as tampering (chat.mjs).
  */
 export const CHAT_SANDBOX = 'allow-scripts allow-forms';
-/** Keys the chat may pass on to the workbench. A message from the chat cannot trigger more. */
-export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,'];
+/** Keys the chat may pass on to the workbench, also for its slash commands: they open views and menus, never decide. A message
+ * from the chat cannot trigger more. */
+export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', '?'];
 const RELOADED_MS = 15000;
 /** The preparation group: Chrome, login, local code, loading. */
 export const PREP = 'prep';
@@ -226,13 +228,14 @@ grid-template-areas:"steps browser chat"}
 /* The items: in a phase rows with their own mark; under a step its actions, hanging off a hairline. */
 .pts>li{display:grid;gap:6px 9px;align-items:baseline;min-width:0}
 .pts .tree{display:none}
-#steps>li[data-kind=phase]>.pts>li{grid-template-columns:18px minmax(0,1fr) auto;align-items:center;min-height:var(--row);padding:5px 14px;font:400 13px/1.4 var(--font);color:var(--text)}
+#steps>li[data-kind=phase]>.pts>li{grid-template-columns:18px minmax(0,1fr);align-items:center;min-height:var(--row);padding:5px 14px;font:400 13px/1.4 var(--font);color:var(--text)}
 #steps>li[data-kind=phase] .mk,#steps>li[data-kind=step] .pts .st{display:none}
 #steps>li[data-kind=step]>.pts{margin:0 0 4px 22px;border-left:1px solid var(--line);padding:2px 0}
 #steps>li[data-kind=step]>.pts:empty{display:none}
-#steps>li[data-kind=step]>.pts>li{grid-template-columns:minmax(0,1fr) auto;padding:3px 14px;font:400 12px/1.4 var(--font-mono);color:var(--muted)}
-#steps>li[data-kind=step] .pts .text{display:grid;grid-template-columns:56px minmax(0,1fr);gap:0 6px}
-#steps>li[data-kind=step] .pts .text>*{grid-column:2}#steps>li[data-kind=step] .pts .text>.kind{grid-column:1;grid-row:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+#steps>li[data-kind=step]>.pts>li{grid-template-columns:minmax(0,1fr);padding:3px 12px 3px 14px;font:400 12px/1.4 var(--font-mono);color:var(--muted)}
+#steps>li[data-kind=step] .pts .text{display:block;position:relative;padding-left:46px}
+#steps>li[data-kind=step] .pts .text>.kind{position:absolute;left:0;top:0;width:42px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pts .text>.ms{float:right;margin-left:8px;line-height:calc(13px*1.4)}#steps>li[data-kind=step] .pts .text>.ms{font-size:10.5px;line-height:calc(12px*1.4)}
 #steps>li[data-kind=step] .pts .text>.name{color:var(--text)}
 #steps>li[data-kind=step] .pts>li[data-state=running]{box-shadow:inset 1px 0 0 var(--run);margin-left:-1px;padding-left:15px}
 #steps>li[data-kind=step] .pts>li[data-state=fail]{box-shadow:inset 1px 0 0 var(--fail);margin-left:-1px;padding-left:15px}
@@ -452,6 +455,7 @@ const pillOf=(failed,running,n,pass)=>{
   if(aborted)return ['fail',T['workbench.page.pillCancelled']];
   if(chatState==='paused'||chatState==='pausing')return ['turn',label];
   if(reproducing)return ['claude',T['workbench.page.pillReproduces']];
+  if(chatState==='starting'&&label!==undefined)return ['claude',label];
   if(label!==undefined)return ['run',label];
   if(asking)return ['turn',T['workbench.page.pillYourTurn']];
   if(failed)return ['fail',fill('workbench.page.pillFailed',{id:groupTitle(failed)})];
@@ -550,7 +554,8 @@ const makePoint=(p)=>{const li=document.createElement('li');li.dataset.id=p.id;l
   const tree=document.createElement('span');tree.className='tree';tree.setAttribute('aria-hidden','true');
   const text=document.createElement('span');text.className='text';if(p.kind){const kind=document.createElement('span');kind.className='kind';kind.textContent=p.kind;text.append(kind);}
   const name=document.createElement('span');name.className='name';name.textContent=p.label??'';text.append(name);
-  const ms=document.createElement('span');ms.className='ms';li.append(tree,makeMark(true),text,ms);paint(li);return li;};
+  // The duration floats right at the start of the text, so the text wraps under it and keeps the whole width.
+  const ms=document.createElement('span');ms.className='ms';text.insertBefore(ms,name);li.append(tree,makeMark(true),text);paint(li);return li;};
 const phaseName=(li)=>{li.querySelector(':scope>.head .name').textContent=li.dataset.name;};
 // A step's hover action: open the state up to it (F1), shown only when the host offers this test (openable).
 const hoverOf=(id)=>{const box=document.createElement('span');box.className='hov';
@@ -729,11 +734,11 @@ new ResizeObserver(fitApp).observe($('appBox'));
 let titleNodes=[];
 window.workbench={
   viewport:(size)=>{pinned=size&&size.width>0&&size.height>0?{width:Math.round(size.width),height:Math.round(size.height)}:null;fitApp();},
-  // The first entry is the title, a sentence with the test's name (in the badge, the name plain, the words around it as .cmd);
-  // the rest are the facts, shown by their values in mono.
-  facts:(entries)=>{const [first,...rest]=entries;const title=$('title');const test=title.dataset.test;
-    if(first){const text=String(first[1]);const at=test?text.indexOf(test):-1;const word=(part)=>{const span=document.createElement('span');span.className='cmd';span.textContent=part;return span;};
-      const nodes=at<0?[word(text)]:[text.slice(0,at),test,text.slice(at+test.length)].map((part,index)=>index===1?document.createTextNode(part):part===''?null:word(part)).filter(Boolean);
+  // The first entry is the title: [label, sentence, badge]. The badge shows the mode only ("Claude records"), the breadcrumb
+  // already names the test; the sentence is its tooltip. Without a badge it shows the sentence. The rest are the facts, shown
+  // by their values in mono.
+  facts:(entries)=>{const [first,...rest]=entries;const title=$('title');
+    if(first){const text=String(first[1]);const nodes=[document.createTextNode(first[2]===undefined||first[2]===null?text:String(first[2]))];
       if(settingsOn())titleNodes=nodes;else title.replaceChildren(...nodes);title.title=text;}
     $('facts').replaceChildren(...rest.map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;li.setAttribute('aria-label',label+': '+value);li.textContent=String(value);return li;}));},
   url:(url)=>{appUrl=url;$('url').textContent=$('soloUrl').textContent=url;$('url').title=url;},

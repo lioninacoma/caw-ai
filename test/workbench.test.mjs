@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { CHAT_KEYS, workbenchHtml } from '../src/host/workbench.mjs';
-import { benchFacts, benchSettings, titleOf } from '../src/host/run.mjs';
+import { badgeOf, benchFacts, benchSettings, titleOf } from '../src/host/run.mjs';
 import { languageSource } from '../src/shared/i18n.mjs';
 
 test('workbench: without an own choice the step list collapses in narrow windows, a choice always wins', () => {
@@ -52,6 +52,10 @@ test('workbench header: the title is a sentence with the test; chips only where 
     assert.deepEqual(benchFacts(many, spec, { ...local, name: 'staging' }, 'T'), [['', 'T'], ['Umgebung', 'staging'], ['Rolle', 'user']]);
     // Production is always named, even as the only environment; the code only under an overlay.
     assert.deepEqual(benchFacts(one, spec, { name: 'prod', production: true, source: 'overlay' }, 'T'), [['', 'T'], ['Umgebung', 'prod'], ['Code', 'lokaler Build']]);
+    // The badge carries the mode only: the breadcrumb names the test.
+    assert.deepEqual(benchFacts(one, spec, local, 'T', badgeOf('record')), [['', 'T', 'Claude nimmt auf']]);
+    assert.equal(badgeOf('repair', { id: 'S2' }), 'Claude behebt S2');
+    assert.equal(badgeOf('reproduce'), 'Claude stellt nach');
 });
 
 test('workbench: no toolbars; one ⋯ menu lists every function with its key, the keys stay', () => {
@@ -64,7 +68,8 @@ test('workbench: no toolbars; one ⋯ menu lists every function with its key, th
     assert.match(menu, /data-states data-press="F1" hidden/, 'Open… only when offered');
     assert.match(menu, /role="menuitemcheckbox" tabindex="-1" id="still" aria-checked="true"/);
     assert.match(html, /id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu"/);
-    assert.deepEqual(CHAT_KEYS, ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,']);
+    // The chat forwards these keys and posts them for its slash commands: views and menus only, never a decision.
+    assert.deepEqual(CHAT_KEYS, ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', '?']);
 });
 
 test('workbench: the chat placeholder takes a new mode only from its parent and only one of the three', () => {

@@ -263,6 +263,8 @@ const scenes = {
                 await stateOf(chat, 'developing');
                 await appOf(bench).locator('#new').click();
                 await appOf(bench).locator('#create').waitFor({ timeout: 10000 });
+                // The element: "/" in the field, then /element.
+                await chat.locator('#input').fill('/');
                 await chat.locator('#pick').click();
                 // The button is disabled: a person clicks it anyway to pick it, Playwright only with force.
                 await appOf(bench).locator('#create').click({ force: true });
@@ -335,7 +337,10 @@ const scenes = {
             if (which === 1) {
                 await stateOf(chat, 'choosing');
                 await sleep(1200);
-                await chat.locator('#choices button', { hasText: 'Describe it' }).click();
+                // Beside the primary choice, or behind "More" when there are more.
+                const describe = chat.locator('#choices button', { hasText: 'Describe it' });
+                if (!(await describe.isVisible()) && await chat.locator('#choicesMore').isVisible()) await chat.locator('#choicesMore').click();
+                await describe.click();
                 await stateOf(chat, 'describing');
                 await sleep(700);
                 await chat.locator('#input').pressSequentially('Add a todo "Feed the raven" tagged #home for tomorrow, find it with the search and tick it off.', { delay: 45 });

@@ -9,8 +9,8 @@ const answering = (id) => {
     const chat = createChat({ show: (who, text) => asked.push([who, text]) });
     chat.available = () => true;
     const original = chat.choose;
-    chat.choose = (kind, question, options) => {
-        const pending = original(kind, question, options);
+    chat.choose = (kind, question, options, card) => {
+        const pending = original(kind, question, options, card);
         setImmediate(() => chat.human.choose(id));
         return pending;
     };
@@ -23,8 +23,9 @@ test('Token notice: once per run, cancel blocks, "do not ask again" is remembere
     const gate = createTokenGate({ chat: () => go.chat, prefs: () => ({}), save: (value) => saved.push(value) });
     assert.equal(await gate(), true);
     assert.equal(await gate(), true, 'second time without asking');
-    assert.equal(go.asked.filter(([who]) => who === 'question').length, 1);
-    assert.match(go.asked.find(([who]) => who === 'question')[1], /das kostet Token/);
+    // Shown as the token card: its question as the title.
+    assert.equal(go.asked.filter(([who]) => who === 'tokens').length, 1);
+    assert.match(go.asked.find(([who]) => who === 'tokens')[1], /das kostet Token/);
 
     const stop = answering('stop');
     const declined = createTokenGate({ chat: () => stop.chat, prefs: () => ({}), save: (value) => saved.push(value) });

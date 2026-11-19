@@ -568,6 +568,20 @@ test('Chat: log and questions appear in the window, nothing after the end', () =
     assert.deepEqual(shown, [['activity', 'Ich schaue.'], ['activity', 'snapshot'], ['question', 'Welcher Bereich?']]);
 });
 
+test('Chat: caw\'s notices and Claude starting are entries of their own, the token notice a card; nothing after the end', async () => {
+    const shown = [];
+    const chat = createChat({ show: (who, text, about) => shown.push([who, text, about]) });
+    chat.notice('Gespeichert');
+    chat.starting('Starte Claude');
+    const gate = chat.choose('choosing', 'Das kostet Token.', [{ id: 'go', label: 'Weiter', primary: true }], { kind: 'tokens', text: 'Einmal pro Lauf.' });
+    chat.human.choose('go');
+    assert.equal(await gate, 'go');
+    chat.human.closed();
+    chat.notice('Zu spät');
+    chat.starting('Zu spät');
+    assert.deepEqual(shown, [['notice', 'Gespeichert', undefined], ['starting', 'Starte Claude', undefined], ['tokens', 'Das kostet Token.', { kind: 'tokens', text: 'Einmal pro Lauf.' }], ['human', 'Weiter', undefined]]);
+});
+
 const VIEW = { repairing: false, notes: '', steps: [{ id: 'S1', name: 'Los', do: 'Tu es', expect: 'Da' }] };
 
 test('Plan: a message is a change request, the button approves, and the wait lets nothing through', async () => {

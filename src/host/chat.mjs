@@ -1,6 +1,15 @@
-// The chat in the workbench, left of the application iframe: Claude asks and reports, the human answers, pauses or
+// The chat in the workbench, right of the application iframe: Claude asks and reports, the human answers, pauses or
 // aborts. Deliberately not inside the application page: there it could cover buttons, end up in snapshots and recordings,
 // and the page itself could slip instructions to Claude. The binding only exists on the chat page.
+//
+// The page, in Graphite (style.mjs) and the personal mode: messages with speaker, time and the picked element; caw's notices
+// as quiet icon lines; Claude's actions as one collapsible mono line; "Starting Claude" with the time since; cards for plan,
+// question, advice (with diff), failure, decision and the token notice. No tool row: the one main action of the state
+// (Done, Approve plan, Finish demo, Hand over …) sits full width above the input (Ctrl+Enter); while Claude works it is
+// "Pause F9" in the status line. A card's choices and the end card show one primary action, the others beside it or behind
+// "More". "/" at the start of the field opens the commands (element, checkpoint, pause, cancel, and open, requests and the
+// like for the workbench). Those for the workbench are posted to it like a forwarded key (CHAT_KEYS): they open views there.
+// Nothing from the workbench or the application decides here; only clicks and keys in this page reach the binding.
 
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -11,13 +20,13 @@ import { readPrefs } from '../shared/prefs.mjs';
 import { sourceTag } from './app-view.mjs';
 import { cancelPick, pickElement } from './demonstrate.mjs';
 import { reportPage } from './report-page.mjs';
-import { FAVICON, MODE_SCRIPT, modeAttr, styleSheet } from './style.mjs';
+import { FAVICON, MODE_SCRIPT, icon, modeAttr, styleSheet } from './style.mjs';
 
 const BINDING = '__cawChat';
 const MAX_TEXT = 4000;
 const MAX_ACTIVITY = 300;
 const TAIL_MS = 500;
-const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'plan', 'advice', 'failure', 'decision']);
+const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'notice', 'tokens', 'plan', 'advice', 'failure', 'decision']);
 // The human is demonstrating: a reload is then part of the path, not a break of the run.
 const SHOWING_STATES = ['showing', 'asking', 'paused'];
 const PICK_STATES = ['paused', 'asking', 'showing', 'describing', 'planning', 'discussing', 'developing'];
@@ -103,7 +112,8 @@ export const tailLines = (read, onLine, intervalMs = TAIL_MS) => {
 
 /**
  * The conversation state, without a browser.
- * @param show    shows an entry: ('human' | 'checkpoint' | 'claude' | 'question' | 'activity', text, element label)
+ * @param show    shows an entry: (who, text, about). who is human, checkpoint, claude, question, notice, activity or starting
+ *                (about: the element label), or a card: plan, failure, decision, advice, tokens (about: the card)
  * @param status  shows the state, see STATES; plus the options when the human has to decide
  * @param onAbort the human aborts the whole run
  */
@@ -240,7 +250,11 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         say: (raw) => claudeText('claude', raw),
         /** A message from the tool that needs no action from the human. */
         notice: (text) => {
-            if (!ended) show('question', text);
+            if (!ended) show('notice', text);
+        },
+        /** Claude is starting: the chat shows it with the time since, until anything else arrives. */
+        starting: (text) => {
+            if (!ended) show('starting', text);
         },
         ask: (raw) => claudeText('question', raw),
         /**
@@ -258,7 +272,8 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
         /**
          * The human picks by button.
          * @param kind choosing or deciding
-         * @param card the decision as a card (title, facts, details); `question` then only goes to the log
+         * @param card the decision as a card (title, facts, details), or { kind: 'tokens', text } for the token notice, whose
+         *             title is `question`; otherwise `question` then only goes to the log
          * @returns the option id, null if the window closes or the human aborts
          */
         choose: (kind, question, options, card) => {
@@ -276,6 +291,7 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
                     },
                 };
                 if (card === undefined) show('question', question);
+                else if (card.kind === 'tokens') show('tokens', question, card);
                 else show('decision', question, card);
                 publish();
             });
@@ -415,171 +431,242 @@ export const createChat = ({ show = () => {}, status = () => {}, onAbort = () =>
     };
 };
 
+/** JSON for a <script>: `<` cannot end it. */
+const json = (value) => JSON.stringify(value).replaceAll('<', '\\u003c');
+
+/**
+ * The slash commands: [name, id, icon, key shown, key passed to the workbench]. The page decides which are available now;
+ * the workbench ones are posted like a forwarded key (CHAT_KEYS), so they open views there and never decide anything.
+ */
+const slashCommands = (ctrl) => [
+    ['element', 'pick', 'cross', '', ''],
+    ['checkpoint', 'mark', 'flag', 'Alt ↵', ''],
+    ['pause', 'cmdPause', 'pause', 'F9', ''],
+    ['open', 'cmdOpen', 'play', 'F1', 'F1'],
+    ['requests', 'cmdRequests', 'arrows', 'F2', 'F2'],
+    ['console', 'cmdConsole', 'terminal', 'F3', 'F3'],
+    ['reload', 'cmdReload', 'reload', 'F5', ''],
+    ['app', 'cmdApp', 'expand', 'F8', 'F8'],
+    ['settings', 'cmdSettings', 'gear', `${ctrl} ,`, 'Ctrl+,'],
+    ['keys', 'cmdKeys', 'keyboard', '?', '?'],
+    ['cancel', 'cmdCancel', 'x', 'Esc', ''],
+];
+
 /**
  * The chat page in the current language and the personal mode; texts for the page script are in T. Exported for preview and
  * tests. The chat has its own opaque origin, so it follows the system mode by itself (MODE_SCRIPT); a mode picked in the
  * workbench's settings arrives as a message from the parent.
  */
-export const chatPage = (nonce = '', mode = readPrefs().mode) => `<!doctype html><html lang="${language()}"${modeAttr(mode)}><head><meta charset="utf-8"><title>caw · Chat</title><script>${MODE_SCRIPT}${sourceTag}</script>${FAVICON}<style>
+export const chatPage = (nonce = '', mode = readPrefs().mode) => {
+    const ctrl = t('workbench.page.keyCtrl');
+    const slash = slashCommands(ctrl).map(([name, id, glyph, key, bench]) => `<button type="button" class="pop-i${name === 'cancel' ? ' danger' : ''}" role="option" tabindex="-1" id="${id}" data-cmd="${name}" data-name="/${name}"${bench ? ` data-key="${bench}"` : ''}${id === 'pick' ? ` title="${t('chat.page.pickTitle')}"` : ''}>${icon(glyph)}<span><span class="nm">/${name}</span><small>${t(`chat.page.cmd.${name}`)}</small></span>${key ? `<kbd>${key}</kbd>` : '<span></span>'}</button>`).join('');
+    const icons = { claude: 'spark', you: 'user', cross: 'cross', flag: 'flag', info: 'info', chev: 'chev-r', chevd: 'chev-d', loader: 'loader', check: 'check', x: 'x', alert: 'alert', help: 'help', list: 'list', file: 'file', copy: 'copy', terminal: 'terminal', bug: 'bug', coins: 'coins', lock: 'lock', msg: 'msg', pause: 'pause', play: 'play', stop: 'stop', spark: 'spark', bookmark: 'bookmark', dot: 'circle' };
+    const ICON = Object.fromEntries(Object.entries(icons).map(([name, glyph]) => [name, icon(glyph, { cls: name === 'loader' ? 'spin' : '' })]));
+    return `<!doctype html><html lang="${language()}"${modeAttr(mode)}><head><meta charset="utf-8"><title>caw · Chat</title><script>${MODE_SCRIPT}${sourceTag}</script>${FAVICON}<style>
 ${styleSheet()}
-*,*::before,*::after{box-sizing:border-box}html,body{height:100%}
-body{margin:0;display:flex;flex-direction:column;background:var(--panel);color:var(--text);font:var(--fs)/1.5 var(--font)}
-/* No header of its own: the workbench frame says CHAT, its key bar has "Esc Cancel". The row only appears while cancelling:
-   the first Esc asks here ("Really cancel?" / "No"), a second Esc or a click confirms. */
-header{display:none;align-items:center;justify-content:flex-end;gap:10px;padding:6px 12px 0}#abort,#abortNo{flex:none}
-body.arming header,body.stopping header{display:flex}
-[data-state=discussing] #toggle,[data-state=developing] #toggle{display:none}[data-state=deciding] #abort,[data-state=discussing] #abort,[data-state=developing] #abort,[data-state=closed] #abort{display:none}
-#abortNo,#abort{white-space:nowrap;border:0;background:none;padding:3px 7px;font:500 13px/1 var(--font);color:var(--muted)}
-#abortNo{color:var(--text)}#abortNo:hover,#abort:hover{background:var(--panel2);color:var(--text)}#abortNo[hidden]{display:none}
-#abort.sure{background:var(--fail);color:var(--on-prim)}#abort:disabled{color:var(--muted);cursor:default;background:none}
-main{flex:1;overflow-y:auto;padding:12px 12px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-color:var(--line) var(--panel)}
-footer{position:relative}#down{display:none;position:absolute;right:12px;top:6px;width:32px;height:32px;place-items:center;padding:0;background:var(--sunk);border:0;box-shadow:inset 0 0 0 2px var(--line2);color:var(--text)}#down.on{display:grid}footer:has(#down.on) #status{min-height:44px;padding-right:44px}#down:hover{background:var(--panel2)}#down svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:square;stroke-linejoin:miter}#down.new::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;background:var(--run)}
-.message{white-space:pre-wrap;overflow-wrap:anywhere}
-/* The speaker is named above the message: Claude and You. Marks are plain text (✓ ✕ ? › └). */
-.who{display:block;font:500 13px/1.1 var(--font);white-space:pre}.who.c{color:var(--claude)}.who.h{color:var(--human)}.who .cp{color:var(--muted);margin-left:8px}
-.about{display:block;font:11.5px/1.4 var(--font-mono);color:var(--muted);margin-bottom:2px;overflow-wrap:anywhere}
-.about .tr,.bl{color:var(--faint);margin-right:6px}.bl{color:var(--pass)}
-.mk{font:500 12px/1 var(--font);white-space:pre;margin-right:8px}
-/* Cards: the header line with the mark in front. */
-.question,.plan,.advice,.failure,.decision{padding:10px 12px 11px;background:var(--panel2);border:2px solid var(--line);white-space:normal}
-.question{border-color:var(--run)}.question>.who .mk{color:var(--run)}
-.plan strong,.advice strong,.failure strong,.decision strong{display:block;font:500 13px/1.1 var(--font);color:var(--accent-text);margin-bottom:6px;white-space:pre-wrap}
-.plan{border-color:var(--line2)}
-.plan .notes{color:var(--muted);font-size:13px;margin-bottom:6px}.plan .heard{color:var(--accent-text,inherit);font-size:13px}div.heard{margin-bottom:6px}.step{padding:8px 0;border-top:2px dashed var(--line)}.step:first-of-type{border-top:0}.step .head{display:flex;gap:8px;align-items:baseline;font-weight:500}.step .sid{flex:none;font:500 12px/1 var(--font);color:var(--run)}.step dl{margin:4px 0 0;display:grid;gap:4px}.step dt{font:500 12px/1 var(--font);color:var(--muted)}.step dd{margin:0}.step .changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:9px}.step .changed dt::after{content:${JSON.stringify(t('chat.page.changed'))};color:var(--warn)}.step .before{color:var(--muted);text-decoration:line-through}
-.failure{border-color:var(--fail);background:var(--fail-soft)}.failure strong{color:var(--text)}.failure strong .mk{color:var(--fail)}
-.failure .reason{margin:0 0 9px;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
-.failure .badge{display:inline-block;margin:0 0 9px;padding:2px 8px;font:500 12px/1.1 var(--font);color:var(--muted);box-shadow:inset 0 0 0 2px currentColor}.failure .badge.app{color:var(--fail)}.failure .badge.environment{color:var(--warn)}.failure .badge.test{color:var(--run)}
-.decision{border-color:var(--pass)}.decision strong{color:var(--text)}.decision strong .mk{color:var(--pass)}
-.decision ul{margin:0 0 8px;padding-left:18px;display:grid;gap:4px;font-size:13.5px;overflow-wrap:anywhere}.decision details{margin:0 0 6px}.decision summary{cursor:pointer;font-size:13.5px;font-weight:500}.decision details ul{margin:4px 0 0;color:var(--muted)}.decision .next{margin:6px 0 0;font-size:13.5px;font-weight:500}
-.failure .warn,.advice .warn,.decision .warn{margin:0 0 9px;padding:6px 9px;font-size:13px;color:var(--warn);background:var(--sunk);box-shadow:inset 3px 0 0 var(--warn)}
-.failure details{margin:0 0 6px}.failure summary{cursor:pointer;font-size:13.5px;font-weight:500}.failure ul{margin:4px 0 0;padding-left:18px;display:grid;gap:4px;font-size:13.5px;color:var(--muted);overflow-wrap:anywhere}.failure .next{margin:6px 0 0;font-size:13px;color:var(--muted)}
-.advice{border-color:var(--line2)}.advice.app{border-color:var(--run)}.advice strong{color:var(--muted)}.advice.app strong{color:var(--run)}.advice strong .bl{color:inherit}
-.advice h2{margin:0 0 4px;font-size:15px;font-weight:500}.advice .target{font:12px var(--font-mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}.advice .reason{margin:0 0 8px}.advice dl{margin:0;display:grid;gap:6px}.advice dt{font:500 12px/1 var(--font);color:var(--muted)}.advice dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.advice .before{color:var(--muted);text-decoration:line-through}
-.advice pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sunk);padding:8px 10px;font:12px/1.45 var(--font-mono);box-shadow:inset 0 0 0 2px var(--line)}.advice pre.del{text-decoration:line-through;color:var(--muted);margin-bottom:6px}
-.advice .copy{margin-top:8px;height:28px;padding:0 9px;font:500 12px/1 var(--font);color:var(--text);background:var(--panel);border:0;box-shadow:inset 0 0 0 2px var(--line2)}.advice .copy:hover{background:var(--line)}
-/* Actions muted: ■ click … */
-details.activity{font-size:12.5px;color:var(--muted)}
-details.activity summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;padding:1px 0;user-select:none;font:12.5px var(--font-mono)}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;display:flex;flex-direction:column;background:var(--panel);color:var(--text);font:400 13px/1.5 var(--font)}
+button{cursor:pointer}
+main{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px;scrollbar-width:thin;scrollbar-color:var(--line2) var(--panel)}
+/* Nothing in the list shrinks: a card is as tall as its content, the list scrolls. */
+main>*{flex-shrink:0}
+/* Messages: who speaks (Claude, You) with an icon and the time, the text below. */
+.message{display:flex;flex-direction:column;gap:3px;min-width:0}
+.who{display:inline-flex;align-items:center;gap:6px;font:500 12px/1.2 var(--font);color:var(--text)}
+.who .i{width:13px;height:13px}.who.c .i{color:var(--claude)}.who.h .i{color:var(--muted)}
+.who small{font:400 10.5px/1 var(--font-mono);color:var(--faint)}
+.who .cp{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}.who .cp .i{color:var(--accent-text)}
+.txt{font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.about{display:flex;gap:5px;font:400 11px/1.35 var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
+.about .i{width:12px;height:12px;margin-top:1px;color:var(--accent-text)}
+/* A note from caw: one quiet line with an icon. */
+.message.notice{flex-direction:row;align-items:flex-start;gap:8px;font-size:12px;line-height:1.45;color:var(--muted)}
+.message.notice .i{width:14px;height:14px;margin-top:1px}.message.notice .txt{font-size:12px}
+/* Claude's actions: one mono line, opened the list of all. */
+details.activity{font:400 11.5px/1.4 var(--font-mono);color:var(--muted)}
+details.activity summary{display:flex;align-items:center;gap:6px;cursor:pointer;list-style:none;user-select:none;min-width:0}
 details.activity summary::-webkit-details-marker{display:none}
-details.activity summary::before{content:"▸";flex:none;color:var(--faint)}
-details.activity[open] summary::before{content:"▾"}
-details.activity .latest{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
-details.activity ol{list-style:none;margin:6px 0 2px 2px;padding:0 0 0 12px;box-shadow:inset 2px 0 0 var(--line);display:flex;flex-direction:column;gap:2px}
-details.activity li{font:12px/1.45 var(--font-mono);overflow-wrap:anywhere}
-#thinking{display:none;gap:8px;align-items:baseline;font:500 13px/1 var(--font)}[data-state=running] #thinking,[data-state=advising] #thinking{display:flex}
-#thinking .who{display:inline}#thinking i{font-style:normal;color:var(--run)}
-footer{padding:0 10px 10px}
-#status{padding:6px 2px;font-size:12.5px;line-height:1.45;color:var(--muted)}
-[data-state=paused] #status,[data-state=asking] #status,[data-state=showing] #status,[data-state=planning] #status{color:var(--text)}
-#choices{display:none;flex-direction:column;gap:10px;padding:4px 4px 12px 2px}[data-state=choosing] #choices,[data-state=deciding] #choices,[data-state=reviewing] #choices,[data-state=discussing] #choices,[data-state=developing] #choices,[data-state=planning] #choices{display:flex}
-[data-state=planning] #toggle{display:none}
-/* For failure, decision and advice the card needs the space: compact buttons, secondary ones side by side. */
-#choices .rest{display:flex;flex-wrap:wrap;gap:10px}#choices .rest button{flex:1 1 auto;min-width:96px}
-:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices{gap:6px;padding-bottom:10px}:is([data-state=discussing],[data-state=deciding],[data-state=reviewing]) #choices .rest{gap:6px}
-#choices button.sure{background:var(--fail);color:var(--on-prim);box-shadow:none}#choices .no{flex:0 0 auto;min-width:0}
-kbd{display:inline-block;margin-left:8px;padding:0 4px;font:500 11px/1.1 var(--font);opacity:.8;box-shadow:inset 0 0 0 1px currentColor}
-#next{display:none;margin:2px 2px 12px;padding:10px 12px;background:var(--panel2);border:2px solid var(--line2)}[data-state=closed] #next.on{display:block}[data-state=closed]:has(#next.on) #form{display:none}
-#next strong{display:block;font:500 13px/1.1 var(--font);color:var(--accent-text);margin-bottom:4px}#next p{margin:0 0 10px;font-size:13px;color:var(--muted)}#next code{font:12px var(--font-mono);color:var(--run);overflow-wrap:anywhere}#next .cmd{margin:12px 0 0}
-#next .acts{display:flex;flex-wrap:wrap;gap:10px}
-#report,#closeWindow,#learn{min-height:36px;padding:6px 14px;font:500 13px/1 var(--font);border:0;background:var(--accent-text);color:var(--on-prim);box-shadow:none}#report:hover,#closeWindow:hover,#learn:hover{filter:brightness(1.08)}#report:active,#closeWindow:active,#learn:active{transform:translate(2px,2px);box-shadow:none}#learn[hidden]{display:none}#learn:disabled{opacity:.7}
-#closeWindow[hidden]{display:none}#next:has(#closeWindow:not([hidden])) #report{background:var(--panel);color:var(--text);box-shadow:inset 0 0 0 2px var(--line2)}
-/* Two button sizes in the chat: actions (36 px, the choices and the end card) and tools (.small, 28 px). */
-#choices button{min-height:36px;padding:6px 14px;font:500 13px/1 var(--font);text-align:center;color:var(--text);background:var(--panel);border:0;box-shadow:inset 0 0 0 2px var(--line2)}
-#choices button:hover{background:var(--line)}#choices button:active{transform:translate(1px,1px)}
-#choices button.primary{background:var(--accent-text);color:var(--on-prim);box-shadow:none}#choices button.primary:hover{filter:brightness(1.08)}
-#choices button:disabled{cursor:progress;opacity:.55;transform:none}#choices button.busy{opacity:1}
-[data-state=handing] form,[data-state=choosing] form,[data-state=deciding] form,[data-state=reviewing] form,[data-state=verifying] form,[data-state=testing] form,[data-state=preparing] form,[data-state=advising] form{display:none}
-/* The input as a prompt: du> with a blinking block, only while the field has focus and is empty. Without focus no cursor and a
-   muted du>: otherwise it looks as if typing goes to the chat while the keys land in the application. */
-form{margin:2px;padding:8px 10px;background:var(--sunk);box-shadow:inset 0 0 0 2px var(--line)}
-form:focus-within{box-shadow:inset 0 0 0 2px var(--human)}
-.prompt{display:flex;align-items:flex-start;gap:8px}.prompt .p{flex:none;font:500 13px/1.15 var(--font);color:var(--muted)}
-form:focus-within .prompt .p{color:var(--human)}
-.cursor{flex:none;display:none;width:.55em;height:1.1em;margin-top:2px;background:var(--human);animation:caw-cursor 1s steps(1) infinite}
-form:focus-within:has(textarea:placeholder-shown) .cursor{display:block}
-textarea:placeholder-shown:focus{caret-color:transparent}
-@keyframes caw-cursor{50%{opacity:0}}
-#chip{display:none;align-items:center;gap:6px;max-width:100%;margin-bottom:8px;padding:2px 4px 2px 8px;background:var(--panel);color:var(--run);font:12px var(--font-mono);box-shadow:inset 0 0 0 2px var(--run)}#chip.on{display:inline-flex}#chipText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#chipRemove{border:0;background:none;padding:0 4px;font-size:14px;line-height:1;color:inherit}
-.small{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;font:500 12px/1 var(--font);color:var(--text);background:var(--panel2);border:0;box-shadow:inset 0 0 0 2px var(--line)}
-.small:hover:enabled{box-shadow:inset 0 0 0 2px var(--accent-text)}.small:disabled{opacity:.45;cursor:default}.small svg{width:12px;height:12px}
-#pick svg{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square}#pick.on{color:var(--run);box-shadow:inset 0 0 0 2px var(--run)}
-.left{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;min-width:0}
-textarea{display:block;flex:1;min-width:0;width:100%;min-height:22px;max-height:160px;resize:none;border:0;outline:0;padding:0 2px;font:inherit;color:inherit;background:transparent;overflow-y:hidden;scrollbar-width:thin;caret-color:var(--human)}textarea.full{overflow-y:auto}
-textarea::placeholder{color:var(--muted)}
-.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
-button{font:inherit;cursor:pointer;color:inherit;border-radius:0}
-[data-state=paused] #toggle,[data-state=asking] #toggle,[data-state=showing] #toggle,[data-state=planning] #toggle{background:var(--accent-text);color:var(--on-prim);box-shadow:none}
-#toggle{white-space:nowrap}#toggle svg{fill:currentColor}#toggle .play{display:none}
-[data-state=paused] #toggle .play,[data-state=asking] #toggle .play,[data-state=showing] #toggle .play,[data-state=planning] #toggle .play{display:block}
-[data-state=paused] #toggle .pause,[data-state=asking] #toggle .pause,[data-state=showing] #toggle .pause,[data-state=planning] #toggle .pause{display:none}
-/* The demonstration ends with stop like a recording, not with continue. */
-#toggle .stop{display:none}[data-state=showing] #toggle .stop{display:block}[data-state=showing] #toggle .play{display:none}
-.actions{display:flex;align-items:center;gap:10px}#mark{display:none}[data-state=showing] #mark{display:inline-flex}
-#send{width:30px;padding:0;justify-content:center;background:var(--human);color:var(--on-prim);box-shadow:none}#send:hover:enabled{filter:brightness(1.08);box-shadow:none}#send svg{fill:none;stroke:currentColor;stroke-width:2.8;stroke-linecap:square;stroke-linejoin:miter}
-textarea:focus-visible{outline:0}
+details.activity .mk{display:inline-grid;place-items:center;width:12px;flex:none}.activity .mk .i{width:12px;height:12px}
+details.activity[open] .mk .chev{transform:rotate(90deg)}.activity .mk .spin{display:none}
+:is([data-state=running],[data-state=advising]) details.activity.live .mk .spin{display:block}:is([data-state=running],[data-state=advising]) details.activity.live .mk .chev{display:none}
+details.activity .count{flex:none}details.activity .latest{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}details.activity .latest::before{content:"· "}
+details.activity ol{margin:6px 0 0 5px;padding:0 0 0 12px;border-left:1px solid var(--line2);list-style:none;display:flex;flex-direction:column;gap:2px}
+details.activity li{overflow-wrap:anywhere}
+/* Claude starting, and Claude working. */
+.message.starting{flex-direction:row;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--r2);background:var(--panel2);font-size:12.5px}
+.message.starting .i{color:var(--claude)}.message.starting small{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
+.message.starting.done{background:none;padding:0;color:var(--muted);font-size:12px}.message.starting.done .i{color:var(--pass)}.message.starting.done small{margin-left:0}
+#thinking{display:none;align-items:center;gap:7px;font:500 12px/1 var(--font);color:var(--claude)}#thinking .i{width:14px;height:14px}
+[data-state=running] #thinking,[data-state=advising] #thinking{display:flex}main:has(.message.starting:not(.done)) #thinking{display:none!important}
+/* Cards: plan, question, advice, failure, decision and the token notice. Flat: the header line, then the parts. */
+.message.card{gap:10px;padding:12px 14px 14px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line);font-size:13px;line-height:1.5}
+.card>strong{display:flex;align-items:center;gap:8px;font:500 13px/1.25 var(--font);color:var(--text)}
+.card>strong .i{width:16px;height:16px}.card>strong .meta{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
+.card p{margin:0}.card .txt{white-space:pre-wrap}.card .muted{color:var(--muted);font-size:12px}
+.message.question{box-shadow:inset 0 2px 0 var(--run)}.question>strong .i{color:var(--run)}
+.plan>strong .i{color:var(--accent-text)}.advice>strong .i{color:var(--claude)}.decision>strong .i{color:var(--pass)}.tokens>strong .i{color:var(--warn)}
+.message.failure{box-shadow:inset 0 2px 0 var(--fail)}.failure>strong .i{color:var(--fail)}
+.heard{display:flex;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px}
+.heard .i{width:14px;height:14px;margin-top:3px;color:var(--muted)}.heard small{display:block;color:var(--faint);font-size:11px}
+.step{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;padding-top:10px;border-top:1px solid var(--line)}.step:first-of-type{border-top:0;padding-top:0}
+.step .head{display:contents}.step .sid{font:500 11.5px/1.6 var(--font-mono);color:var(--accent-text)}.step .head .nm{font-weight:600}
+.step:has(.changed) .sid::after{content:${JSON.stringify(t('chat.page.changed'))};font-family:var(--font);color:var(--warn)}
+.step dl{grid-column:2;margin:2px 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:12.5px}.step dl>div{display:contents}
+.step dt,.kv dt{padding-top:2px;font:600 11px/1.4 var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.step dd,.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}.before{color:var(--faint);text-decoration:line-through}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 12px;margin:0;font-size:12.5px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}.tags .bdg.line{height:auto;min-height:20px;padding:3px 8px;white-space:normal;line-height:1.3;border-radius:var(--r1)}.tags .bdg.test{background:var(--accent-soft);color:var(--accent-text)}
+.warnbox{display:flex;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.45}.warnbox .i{width:14px;height:14px;margin-top:2px}
+.card details summary{display:flex;align-items:center;gap:6px;cursor:pointer;list-style:none;font:600 11px/1.4 var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.card details summary::-webkit-details-marker{display:none}.card details summary .i{width:12px;height:12px}.card details[open] summary .i{transform:rotate(90deg)}
+.card details ul,.card>ul{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.card>ul{margin:0;font-size:12.5px;color:var(--text)}.card li{display:flex;gap:6px}.card li .i{width:13px;height:13px;margin-top:2px}
+.card li.e .i{color:var(--fail)}.card li.w .i{color:var(--warn)}.card li.f .i,.card>ul li .i{color:var(--faint)}
+.advice h2{margin:0;font:600 14px/1.3 var(--font)}.advice .target{font:400 11.5px/1.4 var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
+.diff code,.cmd code{font-variant-ligatures:none}
+.diff-h{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--muted);font:400 11px/1.3 var(--font);background:var(--panel2)}
+.diff-h b{color:var(--text);font:500 11px/1.3 var(--font-mono)}.diff-h .i{width:13px;height:13px}.diff-h span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prompt{display:flex;flex-direction:column;gap:6px;padding:9px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12px;color:var(--muted)}
+.prompt .ptext{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto}.prompt .lnk{font-size:12px;align-self:flex-start}
+/* The footer: cancel question, status line, choices or the end card, then the input. */
+footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;padding:10px 14px 14px;border-top:1px solid var(--line)}
+#down{position:absolute;right:14px;top:-42px;background:var(--panel);box-shadow:0 0 0 1px var(--line2);display:none}#down.on{display:inline-grid}
+#down.new::after{content:"";position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+#cancel{display:none;align-items:center;justify-content:flex-end;gap:8px}body.arming #cancel,body.stopping #cancel{display:flex}
+#abort.sure{background:var(--fail);color:var(--on-accent);border-color:transparent}
+#bar{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px}
+#status{font-size:12px;line-height:1.45;color:var(--muted);min-width:0}#status:empty{display:none}
+:is([data-state=paused],[data-state=asking],[data-state=showing],[data-state=describing],[data-state=planning]) #status{color:var(--text)}
+[data-state=handing] #status::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:50%;border:2px solid var(--run);border-right-color:transparent;vertical-align:-1px;animation:caw-spin .9s linear infinite}
+/* The one main action: a link in the status line while Claude works (Pause F9), else full width above the input. */
+#toggle{display:none}#toggle.lnk{font-size:12px}#toggle.lnk kbd{margin-left:2px}
+:is([data-state=running],[data-state=pausing]) #toggle{display:inline-flex}
+:is([data-state=paused],[data-state=asking],[data-state=showing],[data-state=describing]) #toggle{display:flex;width:100%}
+#toggle.busy .i{display:none}#toggle.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
+#choices{display:none;flex-direction:column;gap:8px}
+:is([data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=discussing],[data-state=developing],[data-state=planning]) #choices{display:flex}
+.acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.acts>.btn,.acts>.more{flex:0 0 auto}.acts>.btn-p{flex:1 1 auto}
+#choices .btn,#next .btn{white-space:normal;height:auto;min-height:36px;padding:8px 15px;line-height:1.25;text-align:center}
+#choices .rest>.btn{flex:1 1 auto}
+#choices button.sure{background:var(--fail);color:var(--on-accent);border-color:transparent}
+#choices button:disabled{cursor:progress;opacity:.55}#choices button.busy{opacity:1}
+#choices button.busy::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:caw-spin .9s linear infinite}
+/* More: the other options of a card, a menu that opens upwards. */
+.more{position:relative}.more .btn .i{width:14px;height:14px}
+.more .pop{position:absolute;right:0;bottom:calc(100% + 6px);z-index:30;min-width:220px;max-width:min(320px,calc(100vw - 28px))}
+.more .pop-i{display:block;white-space:normal;line-height:1.35;font-size:12.5px}.more .pop-i:focus{outline:none;background:var(--accent-soft)}
+.more .pop-i.sure{background:var(--fail);color:var(--on-accent)}
+/* The end card after the run. */
+#next{display:none;gap:10px;padding:12px 14px 14px;overflow:visible}[data-state=closed] #next.on{display:flex}[data-state=closed]:has(#next.on) form{display:none}
+#next[data-kind=pass] #nextIcon .i{color:var(--pass)}#next[data-kind=fail] #nextIcon .i{color:var(--fail)}#next[data-kind=reproduce] #nextIcon .i{color:var(--warn)}
+#nextIcon{display:inline-grid}#nextIcon:empty{display:none}
+#nextText{font-size:13px}#nextText:empty,#nextRepro:empty{display:none}#nextRepro{display:flex;flex-direction:column;gap:10px}
+.quote{padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px;font-style:italic;overflow-wrap:anywhere}
+.banner.ro{padding:7px 10px}.banner.ro span{font-size:12px}
+.cmd{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--code);color:var(--code-text);font:400 11.5px/1.45 var(--font-mono);overflow-wrap:anywhere}
+.cmd>.i{width:14px;height:14px;margin-top:1px;color:var(--muted)}.cmd>span{min-width:0;flex:1}
+.cmd small{display:block;margin-bottom:2px;font:400 11.5px/1.4 var(--font);color:var(--muted)}.cmd code{font:inherit}
+.cmd .ib{width:22px;height:22px;margin:-2px -4px -2px 0}.cmd .ib .i{width:14px;height:14px}.cmd:empty{display:none}
+/* The input: chip, field with the send arrow, the hint line; "/" opens the commands above it. */
+form{position:relative;display:flex;flex-direction:column;gap:8px;margin:0;padding:9px 10px;border-radius:var(--r2);background:var(--panel);border:1px solid var(--line2)}
+form:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}form:has(textarea:disabled){opacity:.75}
+:is([data-state=handing],[data-state=choosing],[data-state=deciding],[data-state=reviewing],[data-state=verifying],[data-state=testing],[data-state=preparing],[data-state=advising]) form{display:none}
 [data-state=closed] form,.stopping form,.stopping #choices{opacity:.55;pointer-events:none}
-/* The spinner: a CSS ring in front of the text while something is busy. */
-[data-state=handing] #status::before,#toggle.busy::before,#choices button.busy::before{content:"";display:inline-block;flex:none;width:10px;height:10px;margin-right:8px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;vertical-align:-1px;color:var(--run);animation:caw-spin .9s linear infinite}
-#toggle.busy svg{display:none!important}#toggle.busy{cursor:progress}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.inp-row{display:flex;align-items:flex-end;gap:8px;min-width:0}
+textarea{display:block;flex:1;min-width:0;width:100%;min-height:22px;max-height:160px;margin:0;padding:2px 0;resize:none;border:0;outline:0;background:none;font:400 13px/1.45 var(--font);color:var(--text);overflow-y:hidden;scrollbar-width:thin;caret-color:var(--accent)}
+textarea.full{overflow-y:auto}textarea::placeholder{color:var(--faint)}textarea:focus-visible{outline:0}
+#send{display:grid;place-items:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--r1);background:var(--prim);color:var(--on-prim)}
+#send:hover:enabled{background:var(--prim-hi)}#send:disabled{background:var(--line);color:var(--faint);cursor:default}#send .i{width:15px;height:15px;stroke-width:2.3}
+#chip{display:none;align-items:center;gap:6px;align-self:flex-start;max-width:100%;height:24px;padding:0 4px 0 8px;border-radius:var(--r1);background:var(--accent-soft);color:var(--accent-text);font:500 11.5px/1 var(--font-mono)}#chip.on{display:inline-flex}
+#chipText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#chipRemove{display:grid;place-items:center;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:none;color:inherit}#chipRemove:hover{background:var(--panel)}#chipRemove .i{width:12px;height:12px}
+.inp-hint{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--faint)}.inp-hint b{font-weight:500;color:var(--muted)}.inp-hint .cp{display:none}[data-state=showing] .inp-hint .cp{display:inline}
+#slash{position:absolute;left:-1px;right:-1px;bottom:calc(100% + 6px);z-index:30;max-height:min(360px,60vh);overflow:auto}
+#slash .pop-i>span{min-width:0}#slash .pop-i .nm{display:block;font:500 12px/1.3 var(--font-mono)}#slash .pop-i small{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#slash .pop-i:disabled{background:none}#pick.on .nm{color:var(--accent-text)}
+#slashEmpty{padding:6px 8px;color:var(--faint);font-size:12px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style></head><body data-state="running">
-<header><button id="abortNo" type="button" hidden>${t('chat.page.no')}</button><button id="abort" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></header>
-<main id="messages" role="log" aria-live="polite"><div id="thinking" aria-hidden="true"><span class="who c" data-who="claude"></span><i class="spinner"></i></div></main>
-<footer><button id="down" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button><div id="status" role="status" aria-live="polite"></div><div id="choices"></div><div id="next" role="region" aria-label="${t('chat.page.nextStep')}"><strong>${t('chat.page.nextStep')}</strong><p id="nextText"></p><div class="acts"><button id="learn" type="button" hidden>${t('chat.page.learn')}</button><button id="closeWindow" type="button" hidden></button><button id="report" type="button">${t('chat.page.openReport')}</button></div><p class="cmd" id="nextCmd"></p></div><form id="form"><div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}">×</button></div><div class="prompt"><span class="p" aria-hidden="true" data-who="human"></span><span class="cursor" aria-hidden="true"></span><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" placeholder="${t('chat.page.placeholder')}"></textarea></div>
-<div class="row"><div class="left"><button id="toggle" class="small" type="button"><svg class="pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/></svg><svg class="play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1h2v1h2v1h2v1h2v4H9v1H7v1H5v1H3z"/></svg><svg class="stop" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8"/></svg><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button><button id="pick" class="small" type="button" disabled title="${t('chat.page.pickDisabled')}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>${t('chat.page.element')}</button></div>
-<div class="actions"><button id="mark" class="small" type="button" disabled title="${t('chat.page.markCheckpointTitle')}">${t('chat.page.markCheckpoint')}</button><button id="send" class="small" type="submit" aria-label="${t('chat.page.send')}" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></form></footer>
+<main id="messages" role="log" aria-live="polite"><div id="thinking" aria-hidden="true">${ICON.loader}<span>${t('chat.page.thinking')}</span></div></main>
+<footer><button id="down" class="ib" type="button" aria-label="${t('chat.page.scrollDown')}" title="${t('chat.page.scrollDown')}">${icon('down')}</button>
+<div id="cancel"><button id="abortNo" class="btn btn-s btn-sm" type="button" hidden>${t('chat.page.no')}</button><button id="abort" class="btn btn-s btn-sm" type="button" title="${t('chat.page.abortTitle')}">${t('chat.page.abort')}</button></div>
+<div id="bar"><div id="status" role="status" aria-live="polite"></div><button id="toggle" type="button" class="lnk"><span class="tic"></span><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button></div>
+<div id="choices"></div>
+<div id="next" class="card" role="region" aria-label="${t('chat.page.nextStep')}"><strong id="nextHead"><span id="nextIcon"></span><span id="nextTitle">${t('chat.page.nextStep')}</span></strong><p id="nextText"></p><div id="nextRepro"></div><div class="cmd" id="nextCmd"></div>
+<div class="acts" id="nextActs"><button id="learn" type="button" class="btn btn-p" hidden>${icon('bookmark')}<span>${t('chat.page.learn')}</span></button><button id="closeWindow" type="button" class="btn btn-s" hidden></button><button id="report" type="button" class="btn btn-s">${t('chat.page.openReport')}</button></div></div>
+<form id="form"><div id="slash" class="pop" role="listbox" aria-label="${t('chat.page.commands')}" hidden><div class="pop-h">${t('chat.page.commands')}</div>${slash}<div id="slashEmpty" hidden>${t('chat.page.noCommand')}</div></div>
+<div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}" title="${t('chat.page.removeElement')}">${icon('x')}</button></div>
+<div class="inp-row"><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" aria-controls="slash" aria-autocomplete="list" placeholder="${t('chat.page.placeholder')}"></textarea><button id="send" type="submit" aria-label="${t('chat.page.send')}" title="${t('chat.page.send')} (Enter)" disabled>${icon('up')}</button></div>
+<div class="inp-hint" id="hint"><span><b>/</b> ${t('chat.page.hintCommands')}</span><span><b>Enter</b> ${t('chat.page.hintSend')}</span><span><b class="mainKey"></b> ${t('chat.page.hintMain')}</span><span class="cp"><b>Alt ↵</b> ${t('chat.page.hintCheckpoint')}</span></div></form></footer>
 <script>
-const T=${JSON.stringify(texts('chat.page.'))};
-// Who speaks, and the plain marks.
-const prompt=(who)=>who==='claude'?'Claude':T['chat.page.you'];
-const MARK={ok:'✓',fail:'✕',ask:'?',warn:'!'};
-const markOf=(kind)=>MARK[kind]??'·';
-const BULLET={ok:'·',info:'›',warn:'!',fail:'✕'};
-const bulletOf=(kind)=>BULLET[kind]??'›';
-const treeOf=(kind)=>kind==='end'?'└':'├';
-const fillRule=(node,title)=>{node.textContent=title;};
-const marker=(cls,text,data)=>{const span=document.createElement('span');span.className=cls;span.textContent=text;for(const [key,value] of Object.entries(data??{}))span.dataset[key]=value;return span;};
-const whoLine=(who,extra)=>{const line=marker('who '+(who==='claude'?'c':'h'),'');line.append(marker('',prompt(who),{who}));if(extra)line.append(extra);return line;};
+const T=${json(texts('chat.page.'))};
+const ICON=${json(ICON)};
+const $=(id)=>document.getElementById(id);
+const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined&&text!==null)node.textContent=text;return node;};
+// The icons are static SVG from the host, never page content.
+const ic=(name,cls)=>{const box=document.createElement('template');box.innerHTML=ICON[name]??'';const svg=box.content.firstChild;if(cls)svg.classList.add(cls);return svg;};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
 const send=(type,text,checkpoint)=>window.${BINDING}({type,text,checkpoint,nonce:${JSON.stringify(nonce)}});
-const input=document.getElementById('input'),messages=document.getElementById('messages'),thinking=document.getElementById('thinking'),abort=document.getElementById('abort'),sendButton=document.getElementById('send'),mark=document.getElementById('mark');
+const toBench=(key)=>parent.postMessage({caw:'key',key},'*');
+const input=$('input'),messages=$('messages'),thinking=$('thinking'),abort=$('abort'),sendButton=$('send'),toggleButton=$('toggle'),statusBox=$('status');
+const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘ ↵':T['chat.page.ctrlEnter'];
+document.querySelector('#hint .mainKey').textContent=KEY;
+const stateNow=()=>document.body.dataset.state;
 // The height follows the text, or the placeholder when empty: it wraps in a narrow chat and would be cut off otherwise.
 // A scrollbar only appears at the maximum height.
 const fit=()=>{input.style.height='auto';let height=input.scrollHeight;if(input.value===''&&input.placeholder){input.value=input.placeholder;height=input.scrollHeight;input.value='';}
-  input.style.height=height+'px';input.classList.toggle('full',height>=160);sendButton.disabled=mark.disabled=input.value.trim()==='';};
+  input.style.height=height+'px';input.classList.toggle('full',height>=160);sendButton.disabled=input.value.trim()==='';};
 addEventListener('resize',fit);
-const submit=(checkpoint=false)=>{if(input.value.trim()==='')return;send('message',input.value,checkpoint);input.value='';fit();input.focus();};
-mark.addEventListener('click',()=>submit(true));
-input.addEventListener('input',fit);
-document.getElementById('form').addEventListener('submit',(event)=>{event.preventDefault();submit();});
-input.addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}});
-const toggleButton=document.getElementById('toggle');
-const PASS_KEYS=['F1','F2','F3','F4','F6','F8','F10'];
-toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');document.getElementById('toggleText').textContent=T['chat.page.wait'];send('toggle');});
-// F5 in the chat does not reload the workbench but refreshes like there: application reloaded, state restored.
-addEventListener('keydown',(event)=>{if(event.key==='F5'||((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}
-  // The workbench's F keys apply here too: the chat passes them on. It handles F9 and Esc itself, F11 and F12 stay with the browser.
-  else if(PASS_KEYS.includes(event.key)&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();parent.postMessage({caw:'key',key:event.key},'*');}
-  // Ctrl+, opens the workbench's settings from here too.
-  else if((event.ctrlKey||event.metaKey)&&!event.altKey&&event.key===','){event.preventDefault();parent.postMessage({caw:'key',key:'Ctrl+,'},'*');}
-  else if(event.key==='F9'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();pauseKey();}});
-const pick=document.getElementById('pick'),chip=document.getElementById('chip'),statusBox=document.getElementById('status');let statusText='';
-pick.addEventListener('click',()=>send('pick'));document.getElementById('chipRemove').addEventListener('click',()=>{window.setChip(null);send('unpick');});
+// A message, or a checkpoint while demonstrating (Alt+Enter, or "/checkpoint " in front of the text).
+const CHECKPOINT='/checkpoint ';
+const submit=(checkpoint=false)=>{let text=input.value;if(text.startsWith(CHECKPOINT)){text=text.slice(CHECKPOINT.length);checkpoint=true;}
+  if(text.trim()==='')return;send('message',text,checkpoint&&stateNow()==='showing');input.value='';fit();renderSlash();input.focus();};
+$('form').addEventListener('submit',(event)=>{event.preventDefault();submit();});
+toggleButton.addEventListener('click',()=>{if(toggleButton.disabled)return;toggleButton.disabled=true;toggleButton.classList.add('busy');toggleButton.setAttribute('aria-busy','true');$('toggleText').textContent=T['chat.page.wait'];send('toggle');});
+// F9: like the main action, if it is currently shown.
+function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)toggleButton.click();}
+const pick=$('pick'),chip=$('chip');let statusText='';
+const PICK_STATES=["paused","asking","showing","planning","discussing","developing"];
+const pickAllowed=()=>PICK_STATES.includes(stateNow());
+$('chipRemove').addEventListener('click',()=>{window.setChip(null);send('unpick');});
 window.setPicking=(on)=>{pick.classList.toggle('on',on);statusBox.textContent=on?T['chat.page.picking']:statusText;};
-window.setChip=(label)=>{chip.classList.toggle('on',label!==null);document.getElementById('chipText').textContent=label??'';input.focus();};
-let sure=false,stopping=false,unsure=null;
-const abortNo=document.getElementById('abortNo');
+window.setChip=(label)=>{chip.classList.toggle('on',label!==null);$('chipText').textContent=label??'';input.focus();};
 // Cancelling is possible while something runs; deciding, talking, developing and the end have no cancel.
-const canAbort=()=>!abort.disabled&&!['deciding','discussing','developing','closed'].includes(document.body.dataset.state);
+let sure=false,stopping=false,unsure=null;
+const abortNo=$('abortNo');
+const canAbort=()=>!abort.disabled&&!['deciding','discussing','developing','closed'].includes(stateNow());
 const unarm=()=>{sure=false;clearTimeout(unsure);document.body.classList.remove('arming');abort.classList.remove('sure');abort.textContent=T['chat.page.abort'];abortNo.hidden=true;};
-abortNo.addEventListener('click',()=>{unarm();abort.focus();});
+abortNo.addEventListener('click',()=>{unarm();input.focus();});
 abort.addEventListener('click',()=>{
   if(stopping)return;
   if(sure){stopping=true;clearTimeout(unsure);abortNo.hidden=true;document.body.classList.remove('arming');abort.disabled=true;document.body.classList.add('stopping');abort.classList.remove('sure');abort.textContent=T['chat.page.aborting'];statusText=T['chat.page.abortingStatus'];statusBox.textContent=statusText;send('abort');return;}
   sure=true;abort.classList.add('sure');abort.textContent=T['chat.page.abortSure'];abortNo.hidden=false;document.body.classList.add('arming');unsure=setTimeout(unarm,4000);});
+
+// "More": a menu of the other options, keyboard operable (arrows, Home, End; Esc and Tab close it).
+const openMenus=()=>[...document.querySelectorAll('.more')].filter((wrap)=>!wrap.querySelector('.pop').hidden);
+const closeMenus=(focus=false)=>{for(const wrap of openMenus())wrap.close(focus);};
+const more=(id,items)=>{const wrap=el('div','more');const button=el('button','btn btn-s');button.type='button';button.id=id;button.append(T['chat.page.more'],ic('chevd'));
+  const menu=el('div','pop');menu.id=id+'Menu';menu.setAttribute('role','menu');menu.hidden=true;button.setAttribute('aria-haspopup','menu');button.setAttribute('aria-expanded','false');button.setAttribute('aria-controls',menu.id);
+  for(const item of items){item.classList.remove('btn','btn-p','btn-s');item.classList.add('pop-i');item.setAttribute('role','menuitem');item.tabIndex=-1;menu.append(item);}
+  const entries=()=>[...menu.querySelectorAll('button')].filter((b)=>!b.disabled&&!b.hidden);
+  const open=()=>{closeMenus();menu.hidden=false;button.setAttribute('aria-expanded','true');entries()[0]?.focus();};
+  wrap.close=(focus=true)=>{if(menu.hidden)return;menu.hidden=true;button.setAttribute('aria-expanded','false');if(focus)button.focus();};
+  button.addEventListener('click',()=>{if(menu.hidden)open();else wrap.close();});
+  button.addEventListener('keydown',(event)=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();open();if(event.key==='ArrowUp')entries().at(-1)?.focus();}});
+  menu.addEventListener('keydown',(event)=>{const list=entries(),at=list.indexOf(document.activeElement);const to=(i)=>{event.preventDefault();list[(i+list.length)%list.length]?.focus();};
+    if(event.key==='ArrowDown')to(at+1);else if(event.key==='ArrowUp')to(at<0?list.length-1:at-1);else if(event.key==='Home')to(0);else if(event.key==='End')to(list.length-1);
+    else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();wrap.close();}else if(event.key==='Tab')wrap.close(false);});
+  wrap.append(button,menu);return wrap;};
+addEventListener('pointerdown',(event)=>{for(const wrap of openMenus())if(!wrap.contains(event.target))wrap.close(false);},true);
+// One primary action, the rest next to it: one as a button, more than one behind "More".
+const arrange=(box,id,primary,rest)=>{for(const b of primary){b.classList.remove('pop-i','btn-s');b.removeAttribute('role');b.classList.add('btn','btn-p');}
+  if(primary.length===1&&rest.length>1){box.replaceChildren(...primary,more(id,rest));return;}
+  for(const b of rest){b.classList.remove('pop-i','btn-p');b.removeAttribute('role');b.removeAttribute('tabindex');b.classList.add('btn','btn-s');}box.replaceChildren(...primary,...rest);};
+
 // Follow the end as long as the human has not scrolled up. Measured on scroll, not on insert:
 // when a lot arrives at once, e.g. the history in a new window, a scroll would otherwise still be pending.
-const down=document.getElementById('down');
+const down=$('down');
 const atEnd=()=>messages.scrollHeight-messages.scrollTop-messages.clientHeight<80;
 let follow=true;
 // A card (failure, decision, advice, plan) that would not fit at the end shows its start, not its end:
@@ -592,119 +679,207 @@ const toEnd=()=>{if(tall())messages.scrollTop+=offsetOf(anchor)-8;else messages.
 messages.addEventListener('scroll',()=>{follow=atEnd()||pinned();down.classList.toggle('on',!atEnd());if(follow)down.classList.remove('new');});
 down.addEventListener('click',()=>{follow=true;anchor=null;down.classList.remove('on','new');toEnd();});
 const grown=()=>{if(follow)toEnd();else down.classList.add('on','new');};
-// If the buttons below grow or shrink, the chat area resizes: following continues.
+// If the footer grows or shrinks, the chat area resizes: following continues.
 if(window.ResizeObserver)new ResizeObserver(()=>{if(follow)toEnd();}).observe(messages);
 // A new card needs a decision: it scrolls into view even if the human is reading further up.
 const place=(element,top=false)=>{messages.insertBefore(element,thinking);anchor=top?element:null;if(top){follow=true;down.classList.remove('new');}grown();};
+const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));};
+const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?'Claude':T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'claude':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
+const head=(glyph,title,meta)=>{const strong=el('strong');strong.append(ic(glyph),el('span','',title));if(meta)strong.append(el('span','meta',meta));return strong;};
+const card=(cls)=>el('div','message card '+cls);
+// "Starting Claude": a spinner and the time since, until anything else arrives.
+let starting=null;
+const elapsed=(row)=>{const s=Math.max(0,Math.floor((Date.now()-Number(row.dataset.t0))/1000));row.querySelector('small').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
+setInterval(()=>{if(starting)elapsed(starting);},1000);
+const started=()=>{if(!starting)return;elapsed(starting);starting.classList.add('done');starting.querySelector('.i').replaceWith(ic('check'));starting=null;};
 let group=null;
-window.addMessage=(who,text,about)=>{
+const endGroup=()=>{group?.details.classList.remove('live');group=null;};
+const list=(title,items,cls)=>{if(!items||items.length===0)return null;const details=el('details');const summary=el('summary');summary.append(ic('chev'),title+' ('+items.length+')');const ul=el('ul');
+  for(const text of items){const li=el('li',cls);li.append(ic(cls==='e'?'x':cls==='w'?'alert':'dot'),el('span','',text));ul.append(li);}details.append(summary,ul);return details;};
+const copyButton=(text,select)=>{const copy=el('button','lnk copy');copy.type='button';copy.append(ic('copy'),el('span','',T['chat.page.copyPrompt']));
+  copy.addEventListener('click',async()=>{let done=false;try{await navigator.clipboard.writeText(text);done=true;}catch{}if(!done){const range=document.createRange();range.selectNodeContents(select);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);try{done=document.execCommand('copy');}catch{}}copy.querySelector('span').textContent=done?T['chat.page.copied']:T['chat.page.copyManual'];});return copy;};
+window.addMessage=(who,text,about,at)=>{
+  if(who==='starting'){endGroup();started();const row=el('div','message starting');row.dataset.t0=String(at||Date.now());row.append(ic('loader'),el('span','',text),el('small'));elapsed(row);starting=row;place(row);return;}
+  started();
   if(who==='activity'){
     // While demonstrating, the open list shows that every click arrives.
-    if(group===null){const details=document.createElement('details');details.className='activity';if(document.body.dataset.state==='showing')details.open=true;details.setAttribute('aria-live','off');const summary=document.createElement('summary');const count=document.createElement('span');const latest=document.createElement('span');latest.className='latest';summary.append(count,latest);const list=document.createElement('ol');details.append(summary,list);group={details,count,latest,list,total:0};place(details);}
-    const item=document.createElement('li');item.append(marker('bl',bulletOf('ok'),{bullet:'ok'}),text);group.list.append(item);group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.replaceChildren(marker('bl',bulletOf('ok'),{bullet:'ok'}),text);
+    if(group===null){const details=el('details','activity live');if(stateNow()==='showing')details.open=true;details.setAttribute('aria-live','off');const summary=el('summary');const mark=el('span','mk');mark.append(ic('chev','chev'),ic('loader'));const count=el('span','count');const latest=el('span','latest');summary.append(mark,count,latest);const ol=el('ol');details.append(summary,ol);group={details,count,latest,list:ol,total:0};place(details);}
+    group.list.append(el('li','',text));group.total+=1;group.count.textContent=group.total===1?T['chat.page.oneAction']:fill('chat.page.actions',{n:group.total});group.latest.textContent=text;
     if(follow)toEnd();
     return;
   }
+  endGroup();
   if(who==='plan'){
-    group=null;const card=document.createElement('div');card.className='message plan';const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    const heading=about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']);const title=part('strong','','');fillRule(title,heading);title.dataset.heading=heading;card.append(title);if(about.notes)card.append(part('div','notes',about.notes));
+    const box=card('plan');const heading=about.title||(about.repairing?T['chat.page.repairStep']:T['chat.page.plan']);const title=head('list',heading,about.steps.length===1?T['chat.page.oneStep']:fill('chat.page.steps',{n:about.steps.length}));title.dataset.heading=heading;box.append(title);
+    if(about.notes)box.append(el('div','notes muted',about.notes));
     // The human's own words and what became of them: as a note, a retry, in the test's notes, or only for this recording.
-    const heardText=(h)=>T['chat.page.heardMark']+' "'+h.text+'" → '+T['chat.page.heardAs.'+h.as];
-    for(const h of about.heard||[])card.append(part('div','heard',heardText(h)));
-    for(const step of about.steps){const box=document.createElement('section');box.className='step';const head=document.createElement('div');head.className='head';head.append(part('span','sid',step.id),part('span','',step.name));const facts=document.createElement('dl');
-      const fact=(label,value,changed,before)=>{const row=document.createElement('div');if(changed)row.className='changed';row.append(part('dt','',label));if(before)row.append(part('dd','before',before));row.append(part('dd','',value));facts.append(row);};
-      if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));for(const h of step.heard||[]){const row=document.createElement('div');row.className='heard';row.append(part('dt','',T['chat.page.heard']),part('dd','',heardText(h)));facts.append(row);}box.append(head,facts);card.append(box);}
-    place(card,true);return;
+    const heardText=(h)=>'"'+h.text+'" → '+T['chat.page.heardAs.'+h.as];
+    for(const h of about.heard||[]){const said=el('div','heard');const words=el('span','','“'+h.text+'”');words.append(el('small','',T['chat.page.heard']+' · '+T['chat.page.heardAs.'+h.as]));said.append(ic('msg'),words);box.append(said);}
+    for(const step of about.steps){const section=el('section','step');const top=el('div','head');top.append(el('span','sid',step.id),el('span','nm',step.name));const facts=el('dl');
+      const fact=(label,value,changed,before)=>{const row=el('div',changed?'changed':'');const dd=el('dd');if(before){dd.append(el('span','before',before),el('br'));}dd.append(value);row.append(el('dt','',label),dd);facts.append(row);};
+      if(step.do)fact(T['chat.page.do'],step.do);fact(T['chat.page.expect'],step.expect,step.previousExpect!==undefined,step.previousExpect);if(step.note)fact(T['chat.page.note'],step.note);if(step.retry)fact(T['chat.page.retry'],fill('chat.page.retryText',{times:step.retry.times,from:step.retry.from||step.id}));
+      for(const h of step.heard||[]){const row=el('div','heard');row.append(el('dt','',T['chat.page.heard']),el('dd','',heardText(h)));facts.append(row);}section.append(top,facts);box.append(section);}
+    place(box,true);return;
   }
   if(who==='failure'){
-    group=null;const card=document.createElement('div');card.className='message question failure'+(about.diagnosis?' '+about.diagnosis.side:'');const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    const title=part('strong','',fill('chat.page.failed',{id:about.id}));title.prepend(marker('mk',markOf('fail'),{mark:'fail'}));card.append(title,part('p','reason',about.reason));
-    if(about.diagnosis){const badge=part('div','badge '+about.diagnosis.side+' '+about.diagnosis.strength,(about.diagnosis.text.endsWith('.')?about.diagnosis.text.slice(0,-1):about.diagnosis.text));card.append(badge);}
-    else if(about.suspect)card.append(part('div','badge app',T['chat.page.suspect']));
-    if(about.warn)card.append(part('div','warn',about.warn));
-    const list=(title,items,open)=>{if(!items||items.length===0)return;const details=document.createElement('details');if(open)details.open=true;details.append(part('summary','',title+' ('+items.length+')'));const ul=document.createElement('ul');for(const text of items)ul.append(part('li','',text));details.append(ul);card.append(details);};
-    list(T['chat.page.findings'],about.diagnosis?about.diagnosis.findings:[],false);list(T['chat.page.failures'],about.failures,false);list(T['chat.page.warnings'],about.warnings,false);
-    if(about.next)card.append(part('p','next',about.next));
-    place(card,true);return;
+    const box=card('question failure'+(about.diagnosis?' '+about.diagnosis.side:''));box.append(head('x',fill('chat.page.failed',{id:about.id})));
+    const side=about.diagnosis?.side??(about.suspect?'app':null);
+    if(side){const tags=el('div','tags');tags.append(el('span','bdg '+(({app:'fail',environment:'warn',test:'test'})[side]??''),T['chat.page.side.'+side]??side));
+      const why=about.diagnosis?(about.diagnosis.text.endsWith('.')?about.diagnosis.text.slice(0,-1):about.diagnosis.text):T['chat.page.suspect'];tags.append(el('span','bdg line badge '+(about.diagnosis?about.diagnosis.side+' '+about.diagnosis.strength:'app'),why));box.append(tags);}
+    box.append(el('p','reason txt',about.reason));
+    if(about.warn){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',about.warn));box.append(warn);}
+    for(const part of [list(T['chat.page.findings'],about.diagnosis?about.diagnosis.findings:[],'f'),list(T['chat.page.failures'],about.failures,'e'),list(T['chat.page.warnings'],about.warnings,'w')])if(part)box.append(part);
+    if(about.next)box.append(el('p','next muted',about.next));
+    place(box,true);return;
   }
   if(who==='decision'){
-    group=null;const card=document.createElement('div');card.className='message decision';const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    const title=part('strong','',about.title);title.prepend(marker('mk',markOf('ok'),{mark:'ok'}));card.append(title);
-    if(about.facts&&about.facts.length>0){const ul=document.createElement('ul');for(const text of about.facts)ul.append(part('li','',text));card.append(ul);}
-    if(about.warn)card.append(part('div','warn',about.warn));
-    for(const section of about.details??[]){if(!section.items||section.items.length===0)continue;const details=document.createElement('details');details.append(part('summary','',section.title+' ('+section.items.length+')'));const ul=document.createElement('ul');for(const text of section.items)ul.append(part('li','',text));details.append(ul);card.append(details);}
-    if(about.question)card.append(part('p','next',about.question));
-    place(card,true);return;
+    const box=card('decision');box.append(head('check',about.title));
+    if(about.facts&&about.facts.length>0){const ul=el('ul');for(const fact of about.facts){const li=el('li');li.append(ic('dot'),el('span','',fact));ul.append(li);}box.append(ul);}
+    if(about.warn){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',about.warn));box.append(warn);}
+    for(const section of about.details??[]){const part=list(section.title,section.items,'w');if(part)box.append(part);}
+    if(about.question)box.append(el('p','next',about.question));
+    place(box,true);return;
   }
   if(who==='advice'){
-    group=null;const card=document.createElement('div');card.className='message advice '+about.side;const part=(tag,className,value)=>{const node=document.createElement(tag);if(className)node.className=className;node.textContent=value;return node;};
-    const title=part('strong','',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']);title.prepend(marker('bl',bulletOf('info'),{bullet:'info'}));card.append(title,part('h2','',about.title));if(about.target)card.append(part('div','target',about.target));if(about.about)card.append(part('div','target',fill('chat.page.about',{about:about.about})));card.append(part('p','reason',about.reason));
-    if(about.evidence)card.append(part('div','target',fill('chat.page.evidence',{evidence:about.evidence})));
-    if(about.contradicts)card.append(part('div','warn',T['chat.page.contradicts']));
-    if(about.edits){const facts=document.createElement('dl');for(const edit of about.edits){facts.append(part('dt','',edit.file+(edit.line?':'+edit.line:'')+(edit.why?' · '+edit.why:'')),part('dd','',''));const last=facts.lastChild;last.append(part('pre','del',edit.find),part('pre','',edit.replace));}card.append(facts);}
-    if(about.changes){const facts=document.createElement('dl');for(const change of about.changes){facts.append(part('dt','',change.label));if(change.before)facts.append(part('dd','before',change.before));facts.append(part('dd','',change.after));}card.append(facts);}
-    if(about.prompt){const pre=part('pre','',about.prompt);const copy=part('button','copy',T['chat.page.copyPrompt']);copy.type='button';
-      copy.addEventListener('click',async()=>{let done=false;try{await navigator.clipboard.writeText(about.prompt);done=true;}catch{}if(!done){const range=document.createRange();range.selectNodeContents(pre);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);try{done=document.execCommand('copy');}catch{}}copy.textContent=done?T['chat.page.copied']:T['chat.page.copyManual'];});
-      card.append(pre,copy);}
-    place(card,true);return;
+    const box=card('advice '+about.side);box.append(head('spark',about.side==='app'?T['chat.page.adviceApp']:T['chat.page.adviceTest']));
+    const intro=el('div');intro.append(el('h2','',about.title));if(about.target)intro.append(el('div','target',about.target));if(about.about)intro.append(el('div','target',fill('chat.page.about',{about:about.about})));box.append(intro);
+    box.append(el('p','reason txt',about.reason));
+    if(about.evidence)box.append(el('p','muted',fill('chat.page.evidence',{evidence:about.evidence})));
+    if(about.contradicts){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',T['chat.page.contradicts']));box.append(warn);}
+    // A change in the code as diff lines, numbered from the line it names.
+    for(const edit of about.edits??[]){const diff=el('div','diff');const top=el('div','diff-h');top.append(ic('file'),el('b','',edit.file+(edit.line?':'+edit.line:'')));if(edit.why)top.append(el('span','',edit.why));diff.append(top);
+      const lines=(text,kind)=>String(text).split(String.fromCharCode(10)).forEach((line,i)=>{const row=el('div','dl '+kind);row.append(el('span','n',edit.line?String(Number(edit.line)+i):''),el('span','sg',kind==='del'?'−':'+'),el('code','',line));diff.append(row);});
+      lines(edit.find,'del');lines(edit.replace,'add');box.append(diff);}
+    if(about.changes){const facts=el('dl','kv');for(const change of about.changes){const dd=el('dd');if(change.before){dd.append(el('span','before',change.before),el('br'));}dd.append(change.after);facts.append(el('dt','',change.label),dd);}box.append(facts);}
+    if(about.prompt){const prompt=el('div','prompt');const words=el('div','ptext',about.prompt);prompt.append(words,copyButton(about.prompt,words));box.append(prompt);}
+    place(box,true);return;
   }
-  group=null;const item=document.createElement('div');item.className='message '+who;
-  if(who==='claude'||who==='human')item.append(whoLine(who));
-  else if(who==='checkpoint')item.append(whoLine('human',marker('cp',T['chat.page.checkpoint'])));
-  else if(who==='question'){const line=whoLine('claude');line.prepend(marker('mk',markOf('ask'),{mark:'ask'}));item.append(line);}
-  if(about){const ref=document.createElement('span');ref.className='about';ref.append(marker('tr',treeOf('end'),{tree:'end'}),about);item.append(ref);}item.append(text);place(item);
+  if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));place(box,true);return;}
+  if(who==='question'){const box=card('question');box.append(head('help',T['chat.page.question']),el('p','txt',text));place(box);return;}
+  if(who==='notice'){const item=el('div','message notice');item.append(ic('info'),el('span','txt',text));place(item);return;}
+  const item=el('div','message '+who);
+  if(who==='checkpoint'){const cp=el('span','cp');cp.append(ic('flag'),T['chat.page.checkpoint']);item.append(whoLine('human',at,cp));}
+  else item.append(whoLine(who==='claude'?'claude':'human',at));
+  if(about){const ref=el('span','about');ref.append(ic('cross'),el('span','',about));item.append(ref);}
+  item.append(el('div','txt',text));place(item);
 };
-const choices=document.getElementById('choices');
+
+const choices=$('choices');
 // After a click all buttons are locked and the chosen one shows progress: no double click, no second choice.
 // If no new buttons arrive (the choice was already outdated), the lock releases them after 8 s.
 let unlock=0;
 const lockChoices=(chosen)=>{for(const button of choices.querySelectorAll('button')){button.disabled=true;button.setAttribute('aria-disabled','true');}chosen.classList.add('busy');chosen.setAttribute('aria-busy','true');
-  clearTimeout(unlock);const current=choices.firstElementChild;unlock=setTimeout(()=>{if(choices.firstElementChild!==current)return;for(const button of choices.querySelectorAll('button')){button.disabled=false;button.removeAttribute('aria-disabled');button.classList.remove('busy');button.removeAttribute('aria-busy');}},8000);};const hint=input.placeholder;
-// The button that Ctrl+Enter triggers shows it too.
-const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘↵':T['chat.page.ctrlEnter'];toggleButton.querySelector('.key').textContent=KEY;
-// After the run: report and what comes next.
-window.setNext=(info)=>{const box=document.getElementById('next');box.classList.toggle('on',!!info);if(!info)return;const learn=document.getElementById('learn');if(!learn.disabled)learn.hidden=!info.learn;document.getElementById('nextText').textContent=info.text;const cmd=document.getElementById('nextCmd');cmd.replaceChildren();if(info.command){const code=document.createElement('code');code.textContent=info.command;cmd.append(T[info.adopt?'chat.page.adoptDraft':'chat.page.newRun'],code);}};
-document.getElementById('report').addEventListener('click',()=>send('report',''));
-// After the last decision the window stays open briefly: the human sees the result and closes it, otherwise it closes on timeout.
-const closeWindow=document.getElementById('closeWindow');let lingerTimer=0;
-document.getElementById('learn').addEventListener('click',(event)=>{const learn=event.currentTarget;learn.disabled=true;learn.textContent=T['chat.page.learning'];send('learn');});
-closeWindow.addEventListener('click',()=>{clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
-window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
-// A choice that discards something needs a second click, like abort in the header.
-const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return false;choice.classList.add('sure');choice.textContent=option.confirm;const no=document.createElement('button');no.type='button';no.className='no';no.textContent=T['chat.page.no'];
+  clearTimeout(unlock);const current=choices.firstElementChild;unlock=setTimeout(()=>{if(choices.firstElementChild!==current)return;for(const button of choices.querySelectorAll('button')){button.disabled=false;button.removeAttribute('aria-disabled');button.classList.remove('busy');button.removeAttribute('aria-busy');}},8000);};
+const hint=input.placeholder;
+// A choice that discards something needs a second click, like Cancel.
+const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return false;choice.classList.add('sure');choice.textContent=option.confirm;const no=el('button',choice.classList.contains('pop-i')?'pop-i no':'btn btn-s no',T['chat.page.no']);no.type='button';if(choice.classList.contains('pop-i')){no.setAttribute('role','menuitem');no.tabIndex=-1;}
   let timer=0;const reset=()=>{clearTimeout(timer);choice.classList.remove('sure');choice.textContent=option.label;no.remove();};no.addEventListener('click',()=>{reset();choice.focus();});choice.after(no);timer=setTimeout(reset,4000);choice.disarm=()=>{clearTimeout(timer);no.remove();};return true;};
-const COMPACT=['discussing','deciding','reviewing'];
-window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=text;}// While Claude works in the application the input is locked: typing here would take the focus from the application (an open
-// list closes when its field loses the focus). Pausing unlocks it.
-const locked=state==='running';input.disabled=locked;input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:state==='describing'?T['chat.page.describePlaceholder']:hint;fit();
-if(state==='showing'&&group)group.details.open=true;
-const list=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
-const buttons=list.map((option)=>{const choice=document.createElement('button');choice.type='button';choice.textContent=option.label;if(option.primary)choice.className=option.big?'primary big':'primary';if(option.big){choice.id='approve';const key=document.createElement('kbd');key.setAttribute('aria-hidden','true');key.textContent=KEY;choice.append(key);}
-  choice.addEventListener('click',()=>{if(choice.disabled)return;if(option.confirm&&confirmFirst(choice,option))return;choice.disarm?.();lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id);});return choice;});
-// Compact: the main choice on top, all others side by side in one row.
-const primary=buttons.filter((choice)=>choice.classList.contains('primary')),rest=buttons.filter((choice)=>!choice.classList.contains('primary'));
-if(COMPACT.includes(state)&&rest.length>1){const row=document.createElement('div');row.className='rest';row.append(...rest);choices.replaceChildren(...primary,row);}else choices.replaceChildren(...buttons);
-// New buttons get focus so keyboard and screen reader continue there; someone typing keeps the field.
-if(buttons.length>0&&document.activeElement!==input)(choices.querySelector('.primary')??choices.querySelector('button')).focus({preventScroll:true});
-const allowed=["paused","asking","showing","planning","discussing","developing"].includes(state);pick.disabled=!allowed;pick.title=allowed?T['chat.page.pickTitle']:T['chat.page.pickDisabled'];if(!allowed)window.setChip(null);document.getElementById('toggleText').textContent=button;};
+
+// After the run: the end card with one main action; the others next to it or behind "More".
+const learn=$('learn'),closeWindow=$('closeWindow'),report=$('report');
+// The main action: save baselines if offered, else close the window, else the report; beside it the report first.
+const arrangeNext=()=>{const shown=[learn,closeWindow,report].filter((b)=>!b.hidden);const rest=shown.slice(1).sort((a,b)=>(a===report?-1:b===report?1:0));arrange($('nextActs'),'nextMore',shown.slice(0,1),rest);};
+const KINDS={pass:['check','chat.page.endPass'],fail:['x','chat.page.endFail'],reproduce:['bug','']};
+window.setNext=(info)=>{const box=$('next');box.classList.toggle('on',!!info);if(!info)return;
+  if(!learn.disabled)learn.hidden=!info.learn;
+  const kind=KINDS[info.kind];box.dataset.kind=info.kind??'';$('nextIcon').replaceChildren(...(kind?[ic(kind[0])]:[]));
+  // A reproduction's verdict is the title itself; a run's title says passed or failed, the text counts the steps.
+  const title=kind?(kind[1]?T[kind[1]]:info.text):T['chat.page.nextStep'];$('nextTitle').textContent=title;$('nextText').textContent=title===info.text?'':info.text;
+  const repro=$('nextRepro');repro.replaceChildren();const r=info.reproduce;
+  if(r){if(r.bug)repro.append(el('div','quote','“'+r.bug+'”'));const kv=el('dl','kv');for(const [key,value] of [['observed',r.observed],['expected',r.expected],['cause',r.cause]])if(value)kv.append(el('dt','',T['chat.page.'+key]),el('dd','',value));if(kv.childElementCount>0)repro.append(kv);
+    if(r.readOnly){const banner=el('div','banner ro');banner.append(ic('lock'),el('span','',T['chat.page.readOnly']));repro.append(banner);}}
+  const cmd=$('nextCmd');cmd.replaceChildren();
+  if(info.command){const words=el('span');words.append(el('small','',T[info.adopt?'chat.page.adoptDraft':'chat.page.newRun']),el('code','',info.command));const copy=el('button','ib');copy.type='button';copy.title=copy.ariaLabel=T['chat.page.copyCommand'];copy.append(ic('copy'));
+    copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(info.command);copy.title=T['chat.page.copied'];}catch{const range=document.createRange();range.selectNodeContents(words.lastChild);getSelection().removeAllRanges();getSelection().addRange(range);}});
+    cmd.append(ic(info.adopt?'file':'terminal'),words,copy);}
+  arrangeNext();};
+report.addEventListener('click',()=>{closeMenus();send('report','');});
+// After the last decision the window stays open briefly: the human sees the result and closes it, otherwise it closes on timeout.
+let lingerTimer=0;
+learn.addEventListener('click',()=>{closeMenus();learn.disabled=true;learn.querySelector('span').textContent=T['chat.page.learning'];send('learn');});
+closeWindow.addEventListener('click',()=>{closeMenus();clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
+window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();arrangeNext();
+  if(closeWindow.offsetParent!==null)closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
+
+// The slash commands: "/" at the start of the field opens them; arrows, Enter and Tab pick, Esc closes. Unavailable ones
+// stay visible but disabled. Commands for the workbench are posted to it like a forwarded key.
+const slash=$('slash'),slashItems=[...slash.querySelectorAll('[data-cmd]')];
+let slashSel=null,slashOff=false;
+const available=(cmd)=>{const s=stateNow();
+  if(cmd==='element')return pickAllowed();if(cmd==='checkpoint')return s==='showing';if(cmd==='pause')return ['running','pausing','paused'].includes(s)&&!toggleButton.disabled;if(cmd==='cancel')return canAbort();return true;};
+const slashQuery=()=>{const value=input.value;return value.startsWith('/')&&!/[\\s]/.test(value)?value.toLowerCase():null;};
+const renderSlash=()=>{const query=slashQuery();const on=query!==null&&!slashOff&&!input.disabled;slash.hidden=!on;input.setAttribute('aria-expanded',String(on));
+  if(!on){slashSel=null;input.removeAttribute('aria-activedescendant');return;}
+  const shown=slashItems.filter((b)=>{const hit=b.dataset.name.startsWith(query);b.hidden=!hit;b.disabled=!available(b.dataset.cmd);b.setAttribute('aria-disabled',String(b.disabled));return hit;});
+  const usable=shown.filter((b)=>!b.disabled);if(!usable.includes(slashSel))slashSel=usable[0]??null;
+  for(const b of slashItems){b.classList.toggle('sel',b===slashSel);b.setAttribute('aria-selected',String(b===slashSel));}
+  if(slashSel)input.setAttribute('aria-activedescendant',slashSel.id);else input.removeAttribute('aria-activedescendant');$('slashEmpty').hidden=shown.length>0;};
+const moveSlash=(step)=>{const usable=slashItems.filter((b)=>!b.hidden&&!b.disabled);if(usable.length===0)return;slashSel=usable[(usable.indexOf(slashSel)+step+usable.length)%usable.length];renderSlash();slashSel.scrollIntoView({block:'nearest'});};
+const runSlash=(b)=>{if(!b||b.disabled)return;const cmd=b.dataset.cmd;
+  if(cmd==='checkpoint'){input.value=CHECKPOINT;fit();renderSlash();input.focus();return;}
+  input.value='';fit();renderSlash();
+  if(cmd==='element')send('pick');else if(cmd==='pause')pauseKey();else if(cmd==='cancel')abort.click();else if(cmd==='reload')parent.postMessage({caw:'refresh'},'*');else if(b.dataset.key)toBench(b.dataset.key);};
+slash.addEventListener('mousedown',(event)=>event.preventDefault());
+slash.addEventListener('click',(event)=>runSlash(event.target.closest('[data-cmd]')));
+input.addEventListener('input',()=>{slashOff=false;fit();renderSlash();});
+input.addEventListener('keydown',(event)=>{
+  if(!slash.hidden){
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();moveSlash(event.key==='ArrowDown'?1:-1);return;}
+    if(event.key==='Tab'&&slashSel){event.preventDefault();input.value=slashSel.dataset.name+(slashSel.dataset.cmd==='checkpoint'?' ':'');fit();renderSlash();return;}
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();slashOff=true;renderSlash();return;}
+    // Enter runs the selected command; a command that is not available now runs nothing and is not sent as text either.
+    if(event.key==='Enter'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&slashItems.some((b)=>!b.hidden)){event.preventDefault();runSlash(slashSel);return;}}
+  if(event.key==='Enter'&&event.altKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();if(stateNow()==='showing')submit(true);return;}
+  if(event.key==='Enter'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();submit();}});
+
+const TOGGLE_ICON={running:'pause',pausing:'play',paused:'play',asking:'check',showing:'stop',describing:'chev'};
+window.setStatus=(state,text,label,button,options)=>{document.body.dataset.state=state;toggleButton.disabled=false;toggleButton.classList.remove('busy');toggleButton.removeAttribute('aria-busy');if(!stopping){statusText=text;statusBox.textContent=pick.classList.contains('on')?T['chat.page.picking']:text;}
+  // While Claude works in the application the input is locked: typing here would take the focus from the application (an open
+  // list closes when its field loses the focus). Pausing unlocks it.
+  const locked=state==='running';input.disabled=locked;input.placeholder=locked?T['chat.page.lockedPlaceholder']:state==='planning'?T['chat.page.planPlaceholder']:state==='showing'?T['chat.page.showPlaceholder']:state==='describing'?T['chat.page.describePlaceholder']:hint;fit();
+  if(state==='showing'&&group)group.details.open=true;
+  // The main action: a link with F9 while Claude works, else the full-width button with Ctrl+Enter.
+  const asLink=state==='running'||state==='pausing';toggleButton.className=asLink?'lnk':'btn btn-p';
+  toggleButton.querySelector('.tic').replaceChildren(ic(TOGGLE_ICON[state]??'play'));toggleButton.querySelector('.key').textContent=asLink?'F9':KEY;$('toggleText').textContent=button;
+  closeMenus();
+  const all=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
+  const buttons=all.map((option)=>{const choice=el('button','',option.label);choice.type='button';if(option.primary)choice.classList.add('primary');if(option.big){choice.classList.add('big');choice.id='approve';const key=el('kbd','',KEY);key.setAttribute('aria-hidden','true');choice.append(key);}
+    choice.addEventListener('click',()=>{if(choice.disabled)return;if(option.confirm&&confirmFirst(choice,option))return;choice.disarm?.();closeMenus();lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id);});return choice;});
+  const primary=buttons.filter((b)=>b.classList.contains('primary')),rest=buttons.filter((b)=>!b.classList.contains('primary'));
+  const row=el('div','acts rest');arrange(row,'choicesMore',primary,rest);choices.replaceChildren(...(buttons.length>0?[row]:[]));
+  // New buttons get focus so keyboard and screen reader continue there; someone typing keeps the field.
+  if(buttons.length>0&&document.activeElement!==input)(choices.querySelector('.primary')??choices.querySelector('button')).focus({preventScroll:true});
+  if(!pickAllowed())window.setChip(null);renderSlash();};
 input.focus();
-// Shortcuts: Ctrl+Enter (Cmd+Enter) triggers the main button, e.g. approve or done. Esc first clears the field being typed in;
-// otherwise the first Esc asks to abort and only a second one within 4 s confirms it.
+// Shortcuts: Ctrl+Enter (Cmd+Enter) triggers the main action, e.g. approve or done. Esc first closes a menu, then clears the field
+// being typed in; otherwise the first Esc asks to cancel and only a second one within 4 s confirms it.
 document.addEventListener('keydown',(event)=>{
-  if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&input.value.trim()===''){const main=document.getElementById('approve');if(main&&main.offsetParent!==null&&!main.disabled){event.preventDefault();main.click();}else if(toggleButton.offsetParent!==null&&!toggleButton.disabled){event.preventDefault();toggleButton.click();}}
-  else if(event.key==='Escape'&&!pick.classList.contains('on')){
-    if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();return;}
+  if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&input.value.trim()===''){const main=$('approve');if(main&&main.offsetParent!==null&&!main.disabled){event.preventDefault();main.click();}else if(toggleButton.offsetParent!==null&&!toggleButton.disabled){event.preventDefault();toggleButton.click();}}
+  else if(event.key==='Escape'){
+    if(openMenus().length>0){event.preventDefault();closeMenus(true);return;}
+    if(pick.classList.contains('on'))return;
+    if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();renderSlash();return;}
     if(canAbort()){event.preventDefault();abort.click();}}
 });
-// Pause via F9: like the button, if it is currently shown.
-function pauseKey(){if(toggleButton.offsetParent!==null&&!toggleButton.disabled)toggleButton.click();}
+// The workbench's keys apply here too: the chat passes them on (CHAT_KEYS). It handles F9 and Esc itself, F11 and F12 stay with the browser.
+const PASS_KEYS=['F1','F2','F3','F4','F6','F8','F10'];
+addEventListener('keydown',(event)=>{const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey,ctrl=(event.ctrlKey||event.metaKey)&&!event.altKey;
+  // F5 in the chat does not reload the workbench but refreshes like there: application reloaded, state restored.
+  if(event.key==='F5'||(ctrl&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}
+  else if(PASS_KEYS.includes(event.key)&&plain){event.preventDefault();toBench(event.key);}
+  // Ctrl+, opens the workbench's settings, Ctrl+K its ⋯ menu, ? (when not typing) the keys.
+  else if(ctrl&&event.key===','){event.preventDefault();toBench('Ctrl+,');}
+  else if(ctrl&&event.key.toLowerCase()==='k'){event.preventDefault();toBench('Ctrl+K');}
+  else if(event.key==='?'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target?.closest?.('input,textarea')){event.preventDefault();toBench('?');}
+  else if(event.key==='F9'&&plain){event.preventDefault();pauseKey();}});
 // A new mode from the workbench's settings: only from it, only one of the three modes.
 addEventListener('message',(event)=>{const pref=event.data?.pref;if(event.source===parent&&event.data?.caw==='mode'&&['system','light','dark'].includes(pref))document.documentElement.dataset.pref=pref;});
 // F9 and Esc from the workbench: only from it, only these two.
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();
-  else if(event.data.key==='Escape'&&!pick.classList.contains('on')&&canAbort())abort.click();});
+  else if(event.data.key==='Escape'){if(openMenus().length>0)closeMenus(true);else if(!pick.classList.contains('on')&&canAbort())abort.click();}});
 ${sourceTag}</script></body></html>`;
+};
 
 // Runs in an isolated world of the chat frame: the page's own scripts cannot redefine window.origin or document.write there.
 const WRITE_CHAT = `(html) => {
@@ -773,6 +948,8 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     // Token of the chat page written last, new on every show().
     let nonce = null;
     let current = ['running', null];
+    // Claude is starting: the workbench's pill says so until the next entry or state.
+    let startingShown = false;
     // The state for which the terminal last reported that the window is waiting.
     let waitingFor = null;
     // The human closes the window after the run (linger).
@@ -792,9 +969,18 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     };
     const chat = createChat({
         show: (who, text, about) => {
-            if (LOGGED.has(who)) appendFileSync(logPath, `${new Date().toISOString()} ${who}: ${text.replaceAll('\n', ' ')}\n`);
-            transcript.push([who, text, about ?? null]);
-            quiet(inChat((args) => window.addMessage(...args), [who, text, about ?? null]));
+            const at = Date.now();
+            if (LOGGED.has(who)) appendFileSync(logPath, `${new Date(at).toISOString()} ${who}: ${text.replaceAll('\n', ' ')}\n`);
+            // With its time: the page shows it next to the speaker, also after a reload.
+            transcript.push([who, text, about ?? null, at]);
+            quiet(inChat((args) => window.addMessage(...args), [who, text, about ?? null, at]));
+            if (who === 'starting') {
+                startingShown = true;
+                quiet(Promise.resolve(bench.chatState?.('starting')));
+            } else if (startingShown) {
+                startingShown = false;
+                quiet(Promise.resolve(bench.chatState?.(current[0])));
+            }
         },
         status: (state, options) => {
             quiet(render(state, options));
@@ -809,6 +995,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
                 onWaiting?.(t('chat.waiting', { status: statusTexts(state).text }));
             } else if (!NEEDS_HUMAN.includes(state)) waitingFor = null;
             quiet(Promise.resolve(bench.mood?.(ASKS_HUMAN.includes(state) ? 'ask' : 'wait')));
+            startingShown = false;
             quiet(Promise.resolve(bench.chatState?.(state)));
             if (picking && !PICK_STATES.includes(state)) quiet(cancelPick(session));
         },

@@ -364,15 +364,19 @@ export const readContext = (root) => {
 /** The workbench title: a sentence with the test's name, e.g. "Claude records morning-errand". */
 export const titleOf = (spec, key, vars = {}) => t(`run.title.${key}`, { ...vars, test: spec.id });
 
+/** The header badge: only the mode, the breadcrumb already names the test, e.g. "Claude records". */
+export const badgeOf = (key, vars = {}) => t(`run.badge.${key}`, vars);
+
 /**
  * The workbench header: first the title, then chips only where the project offers a choice: the environment when there are
  * several (production always), the role when there are several, the code only under an overlay (your local build).
  * @param checked  checkTest's result: the environment (name, production) and the code source
+ * @param badge    the mode for the header badge (badgeOf); the title is then its tooltip
  */
-export const benchFacts = (config, spec, checked, title) => {
+export const benchFacts = (config, spec, checked, title, badge) => {
     const several = (map) => Object.keys(map ?? {}).length > 1;
     return [
-        ['', title],
+        badge === undefined ? ['', title] : ['', title, badge],
         ...(several(config.environments) || checked.production ? [[t('run.fact.target'), checked.name]] : []),
         ...(spec.role && several(config.roles) ? [[t('run.fact.role'), spec.role]] : []),
         ...(checked.source === 'overlay' ? [[t('run.fact.code'), t('run.fact.local')]] : []),
@@ -539,7 +543,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     try {
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
-        await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...headerMode)));
+        await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...headerMode), badgeOf(...headerMode)));
         await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, agent: sandbox?.label ?? sandbox?.docker?.label }));
         await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
@@ -1136,7 +1140,11 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             // Without --learn a passed run that could learn offers it here; only a click writes (Q7).
             const learnable = offerLearning && !found.failed && (found.baselines !== undefined || found.effects !== undefined);
             if (learnable) chat.notice(t('run.flow.learnOffer', { ids: [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])].join(', ') }));
-            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, adopt: reproduce !== undefined && draft !== undefined, learn: learnable });
+            // The card's kind (passed, failed, reproduced) and for a reproduction what Claude found, as plain text.
+            const kind = reproduce !== undefined ? 'reproduce' : verdict.status === 'pass' ? 'pass' : 'fail';
+            const repro = verdict.reproduce;
+            const reproduced = reproduce === undefined ? {} : { reproduce: { bug: repro?.bug, observed: repro?.observed, expected: repro?.expected, cause: repro?.cause, readOnly: repro?.writable === false } };
+            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, adopt: reproduce !== undefined && draft !== undefined, learn: learnable, kind, ...reproduced });
             // The window changes: chat and terminal say so before it closes.
             if (after.next !== undefined) {
                 const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
@@ -1157,7 +1165,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             let phase = ['handedOver'];
             const state = replay?.entry?.id ?? replay?.until;
             if (developing) phase = state !== undefined && verdict.status === 'pass' ? ['developIn', { until: state }] : ['develop'];
-            await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...phase))).catch(() => {});
+            await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...phase), badgeOf(...phase))).catch(() => {});
             await session.workbench?.transport?.(null).catch(() => {});
             const local = checked.source === 'overlay' ? t('run.handover.local') : '';
             if (replay?.entry !== undefined && verdict.status === 'pass') {

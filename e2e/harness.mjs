@@ -108,10 +108,31 @@ export const benchBack = async (chat) => {
     await bench.locator('.soloBar [data-solo]').click();
     await bench.locator('body:not(.solo)').waitFor({ state: 'attached', timeout: 10000 });
 };
+/**
+ * Clicks a choice in the chat. A card shows one primary choice; with more than one other they are behind "More"
+ * (#choicesMore), which is opened first.
+ */
+export const clickChoice = async (page, button, { timeout = 90000 } = {}) => {
+    await button.waitFor({ state: 'attached', timeout });
+    if (!(await button.isVisible()) && await page.locator('#choicesMore').isVisible()) await page.locator('#choicesMore').click({ timeout: 10000 });
+    await button.click({ timeout: 10000 });
+};
+/** The end card's actions: the main one, and the others beside it or behind "More" (#nextMore). */
+export const endAction = async (page, id, { timeout = 90000 } = {}) => {
+    const button = page.locator(`#${id}:not([hidden])`);
+    await button.waitFor({ state: 'attached', timeout });
+    if (!(await button.isVisible()) && await page.locator('#nextMore').isVisible()) await page.locator('#nextMore').click({ timeout: 10000 });
+    await button.click({ timeout: 10000 });
+};
+/** A slash command in the chat: "/" in the field opens the list, then the command by its id (pick for /element). */
+export const slash = async (page, id) => {
+    await page.locator('#input').fill('/');
+    await page.locator(`#slash #${id}`).click({ timeout: 10000 });
+};
 /** A new test asks how it is made: the human shows it. */
 export const showMyself = async (page) => {
     await stateOf(page, 'choosing');
-    await page.locator('#choices button', { hasText: 'Selbst vorführen' }).click({ timeout: 90000 });
+    await clickChoice(page, page.locator('#choices button', { hasText: 'Selbst vorführen' }));
     await stateOf(page, 'showing');
 };
 export const approve = async (page) => {
@@ -120,7 +141,7 @@ export const approve = async (page) => {
 };
 // Closing is labelled "Ohne Beheben beenden" or "Lauf beenden" depending on the situation.
 // A button that ends the run closes the window while Playwright still waits after the click: that click did land.
-export const decide = (page, label) => page.locator('#choices button', { hasText: label === 'Close' ? /Ohne Beheben beenden|Lauf beenden/ : label }).click({ timeout: 90000 })
+export const decide = (page, label) => clickChoice(page, page.locator('#choices button', { hasText: label === 'Close' ? /Ohne Beheben beenden|Lauf beenden/ : label }))
     .catch((error) => { if (!/has been closed/.test(error.message)) throw error; });
 // Discarding a draft needs a second confirming click ("Wirklich verwerfen?").
 export const discard = async (page) => {

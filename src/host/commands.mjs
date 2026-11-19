@@ -817,11 +817,11 @@ const describeTest = async (chat, session, dir, { aborted, closed, handOver }) =
  * @returns the demonstration, or undefined if Claude follows the old test plan
  */
 const startRecording = async (root, config, spec, checked, { exists, conversation }) => {
-    const [{ benchFacts, benchSettings, openRunSession, titleOf }, { openChat }, { demonstrate, feedLabel, itemLabel }] = await Promise.all([import('./run.mjs'), import('./chat.mjs'), import('./demonstrate.mjs')]);
+    const [{ badgeOf, benchFacts, benchSettings, openRunSession, titleOf }, { openChat }, { demonstrate, feedLabel, itemLabel }] = await Promise.all([import('./run.mjs'), import('./chat.mjs'), import('./demonstrate.mjs')]);
     const dir = join(root, RUN_DIR, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${spec.id}-demonstration`);
     mkdirSync(dir, { recursive: true });
     const session = await openRunSession({ root, config, spec, checked, runDir: dir, interactive: true });
-    await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, 'start')));
+    await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, 'start'), badgeOf('start')));
     await session.workbench?.settings?.(benchSettings({ root, config, spec, checked }));
     let chat = null;
     // The page under test touched the chat frame: the chat is closed and the recording ends with that error.
