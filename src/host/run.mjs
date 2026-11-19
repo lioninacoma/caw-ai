@@ -1232,7 +1232,15 @@ ${text}`) ?? 0;
             if (reproduce !== undefined) command = draft === undefined ? 'caw reproduce' : draft.record;
             // Without --learn a passed run that could learn offers it here; only a click writes (Q7).
             const learnable = offerLearning && !found.failed && (found.baselines !== undefined || found.effects !== undefined);
-            if (learnable) chat.notice(t('run.flow.learnOffer', { ids: [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])].join(', ') }));
+            if (learnable) {
+                // Steps without any baselines yet, and steps whose effects a second healthy run confirms (effects learn over two runs).
+                const ids = [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])];
+                const has = (id) => spec.steps.find((step) => step.id === id)?.recording?.effects !== undefined && !found.baselines?.has(id);
+                const missing = ids.filter((id) => !has(id));
+                const confirming = ids.filter(has);
+                if (missing.length > 0) chat.notice(t('run.flow.learnOffer', { ids: missing.join(', ') }));
+                if (confirming.length > 0) chat.notice(t('run.flow.learnConfirm', { ids: confirming.join(', ') }));
+            }
             // The card's kind (passed, failed, reproduced) and for a reproduction what Claude found, as plain text.
             const kind = reproduce !== undefined ? 'reproduce' : verdict.status === 'pass' ? 'pass' : 'fail';
             const repro = verdict.reproduce;
