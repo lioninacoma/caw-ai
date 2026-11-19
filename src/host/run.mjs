@@ -511,6 +511,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     let verdict = null;
     // --attach: the link to the person's session, its line in the header, and the tasks it has not heard of yet.
     let link = null;
+    let linkSession = () => {};
     let linkFact = null;
     let shownFacts = [];
     const announcedAgents = new Set();
@@ -591,11 +592,13 @@ ${text}`) ?? 0;
     try {
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
-        // --attach: the person's own session answers. The header says whether it is there, the chat when that changes.
-        if (sandbox?.kind === 'session') {
+        // --attach: the person's own session answers. The header says whether it is there, the chat when that changes. Linked
+        // when the session box is first used: at the start, or only after the handover (open, develop).
+        linkSession = (box) => {
+            if (link !== null || box?.kind !== 'session') return;
             link = createSessionLink({
                 root,
-                want: sandbox.attach ?? true,
+                want: box.attach ?? true,
                 onState: (state, { key, candidates = [] }) => {
                     linkFact = state === 'connected' || state === 'back' ? t('run.attach.factConnected', { key }) : state === 'lost' ? t('run.attach.factLost') : t('run.attach.factWaiting');
                     session.workbench?.facts(withLink(shownFacts)).catch(() => {});
@@ -608,7 +611,8 @@ ${text}`) ?? 0;
                     if (state === 'connected' || state === 'back') for (const [mode, hint] of pendingTells.splice(0)) link.tell(t('run.attach.event', { runId, mode, hint }));
                 },
             });
-        }
+        };
+        linkSession(sandbox);
         shownFacts = benchFacts(config, spec, checked, titleOf(spec, ...headerMode), badgeOf(...headerMode));
         await session.workbench?.facts(withLink(shownFacts));
         await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, agent: sandbox?.label ?? sandbox?.docker?.label, mode: runCommand, run: runId }));
@@ -789,6 +793,7 @@ ${text}`) ?? 0;
             notePoint(line);
         };
         if (box.kind === 'session') {
+            linkSession(box);
             const hints = {
                 run: `Run ${runId} is open. Carry it out and submit the result with finish.`,
                 advise: `Run ${runId} had failures or warnings. Read the task with task and submit your advice with advise.`,
@@ -801,7 +806,8 @@ ${text}`) ?? 0;
             announcedAgents.add(agent);
             if (link?.key() === null || link?.state() === 'lost') pendingTells.push([mode, hints[mode]]);
             else link?.tell(t('run.attach.event', { runId, mode, hint: hints[mode] }));
-            chat?.progress?.(t('run.waitingForSession'));
+            // Without a link (it could not start) the chat at least says whom it waits for; with one, its waiting line says so.
+            if (link === null) chat?.progress?.(t('run.waitingForSession'));
             return {
                 ended: agent.ended,
                 log: () => '',
