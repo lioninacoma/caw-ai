@@ -460,6 +460,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorOverlayNoCheck': '{target}, part {app}: overlay not checked yet',
     'cli.doctorOverlayNoCheckNext': 'caw overlay check --env {target}',
     'cli.doctorMarkOk': 'OK        ',
+    'cli.doctorMarkInfo': 'INFO      ',
     'cli.doctorMarkOptional': 'OPTIONAL  ',
     'cli.doctorMarkMissing': 'MISSING   ',
     'cli.doctorSummary': ({ ok, blocking, optional }) => `${ok} OK, ${blocking} missing, ${optional} optional open`,

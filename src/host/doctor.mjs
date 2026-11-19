@@ -119,7 +119,8 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     // Personal notes for Claude across projects: only information, never blocking.
     const personal = readPersonalContext(env);
     add(personal === undefined
-        ? { ok: true, optional: true, text: t('cli.doctorPersonalNone', { path: shownPath(personalContextPath(env)) }) }
+        // No notes is no problem and nothing to do: a neutral line, neither OK nor open.
+        ? { ok: true, optional: true, info: true, text: t('cli.doctorPersonalNone', { path: shownPath(personalContextPath(env)) }) }
         : { ok: true, optional: true, text: t('cli.doctorPersonalOk', { path: personal.shown, lines: personal.lines }) });
 
     // Loose comparison: "/.caw", ".caw/" and "**/.caw/" mean the same; comments and negations do not count.
@@ -249,14 +250,16 @@ export const doctor = async (root, options = {}) => {
     const { ui } = options;
     const results = await doctorChecks(root, options);
     // The mark is part of the text so plain output without symbols and colours stays readable.
-    for (const { ok, optional, text, next } of results) {
-        if (ok) ui.success(`${t('cli.doctorMarkOk')}${text}`);
+    for (const { ok, optional, info, text, next } of results) {
+        if (info) ui.info(`${t('cli.doctorMarkInfo')}${text}`);
+        else if (ok) ui.success(`${t('cli.doctorMarkOk')}${text}`);
         else if (optional) ui.note(`${t('cli.doctorMarkOptional')}${text}. ${next}`);
         else ui.warn(`${t('cli.doctorMarkMissing')}${text}. ${next}`);
     }
     const blocking = results.filter(({ ok, optional }) => !ok && !optional).length;
     const optionalMissing = results.filter(({ ok, optional }) => !ok && optional).length;
-    const summary = t('cli.doctorSummary', { ok: results.length - blocking - optionalMissing, blocking, optional: optionalMissing });
+    const infos = results.filter(({ info }) => info).length;
+    const summary = t('cli.doctorSummary', { ok: results.length - blocking - optionalMissing - infos, blocking, optional: optionalMissing });
     // The next step depends on whether recorded tests exist: a merely described one (like the example from init)
     // cannot be played back yet and must be recorded first.
     const dir = join(root, RECORDING_DIR);

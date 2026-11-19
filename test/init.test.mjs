@@ -170,9 +170,10 @@ test('doctor: names the next step per problem, optional items do not block, neve
     writeFileSync(join(root, 'caw.config.json'), JSON.stringify(initial, null, 4));
     writeFileSync(join(root, 'caw', '.env'), 'CAW_TESTER_USER=geheim-login\nCAW_TESTER_PASSWORD=geheim-pw\n');
     const lines = [];
-    const ui = { success: (text) => lines.push(`ok ${text}`), note: (text) => lines.push(`opt ${text}`), warn: (text) => lines.push(`warn ${text}`) };
+    const ui = { success: (text) => lines.push(`ok ${text}`), note: (text) => lines.push(`opt ${text}`), info: (text) => lines.push(`info ${text}`), warn: (text) => lines.push(`warn ${text}`) };
     assert.equal(await doctor(root, { ui, env: { ANTHROPIC_API_KEY: 'sk-geheim' }, nodeVersion: '22.4.0', probes }), 0);
     const output = lines.join('\n');
+    assert.match(output, /info INFO +Keine persönlichen Notizen/, 'no notes: a neutral line, neither OK nor open');
     assert.match(output, /ok OK +Rolle tester auf local: Testnutzer gesetzt/);
     assert.match(output, /ok OK +Rolle tester auf staging: Testnutzer gesetzt/, 'the default set applies to every environment');
     assert.match(output, /ok OK +Claude Code 2\.1\.0 \(Claude Code läuft lokal, ohne Docker\)/);

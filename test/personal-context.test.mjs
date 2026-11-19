@@ -54,6 +54,7 @@ test('doctor: the personal notes are an optional information line either way', a
     assert.equal(none.ok, true);
     assert.equal(none.optional, true);
     assert.match(none.text, /Keine persönlichen Notizen/);
+    assert.equal(none.info, true, 'a neutral line, neither OK nor open');
     writeFileSync(join(home, 'caw.md'), '- One.\n- Two.\n');
     assert.match((await line()).text, /\(2 Zeilen\)/);
 });

@@ -60,7 +60,7 @@ test('caw_doctor, caw_validate and caw_list: data with counts, problems and reco
     const { call } = session(root);
     const doctor = (await call('caw_doctor', { attach: true })).structuredContent;
     assert.ok(Array.isArray(doctor.checks) && doctor.checks.length > 0);
-    assert.equal(doctor.counts.ok + doctor.counts.blocking + doctor.counts.optional, doctor.checks.length);
+    assert.equal(doctor.counts.ok + doctor.counts.blocking + doctor.counts.optional + doctor.counts.info, doctor.checks.length);
     assert.ok(doctor.checks.every((check) => typeof check.ok === 'boolean' && typeof check.text === 'string'));
 
     const validated = await call('caw_validate');

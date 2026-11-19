@@ -518,9 +518,10 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const { doctorChecks } = await import('./doctor.mjs');
             const checks = await doctorChecks(root, { agent: input.agent, attach: input.attach === true, environment: input.env, ...(probes === undefined ? {} : { probes }) });
             const counts = {
-                ok: checks.filter(({ ok }) => ok).length,
+                ok: checks.filter(({ ok, info }) => ok && !info).length,
                 blocking: checks.filter(({ ok, optional }) => !ok && !optional).length,
                 optional: checks.filter(({ ok, optional }) => !ok && optional).length,
+                info: checks.filter(({ info }) => info).length,
             };
             return answer(t('run.mcp.doctor', counts), { checks, counts });
         },

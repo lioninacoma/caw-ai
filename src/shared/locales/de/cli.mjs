@@ -464,6 +464,7 @@ Browser:
     'cli.doctorOverlayNoCheck': '{target}, Teil {app}: Overlay noch nicht geprüft',
     'cli.doctorOverlayNoCheckNext': 'caw overlay check --env {target}',
     'cli.doctorMarkOk': 'OK        ',
+    'cli.doctorMarkInfo': 'INFO      ',
     'cli.doctorMarkOptional': 'OPTIONAL  ',
     'cli.doctorMarkMissing': 'FEHLT     ',
     'cli.doctorSummary': ({ ok, blocking, optional }) => `${ok} in Ordnung, ${blocking} ${blocking === 1 ? 'fehlt' : 'fehlen'}, ${optional} optional offen`,
