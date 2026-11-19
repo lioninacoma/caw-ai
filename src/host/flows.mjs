@@ -100,10 +100,13 @@ const createFixer = ({ sandbox, openSandbox }) => {
     const open = async (chat, say) => {
         if (box !== undefined && box !== null) return box;
         try {
-            // Shown as Claude starting (spinner and time); a chat without it gets a progress line.
-            if (chat.starting === undefined) chat.progress(t('run.flow.preparingSandbox'));
-            else chat.starting(t('run.flow.preparingSandbox'));
-            box = await openSandbox();
+            // The agent itself starts later, after the token notice. Only a preparation that takes a while (Docker) shows.
+            const slow = setTimeout(() => (chat.starting === undefined ? chat.progress : chat.starting)(t('run.flow.preparingBox')), 1000);
+            try {
+                box = await openSandbox();
+            } finally {
+                clearTimeout(slow);
+            }
             return box;
         } catch (error) {
             if (!(error instanceof CawError)) throw error;

@@ -174,6 +174,7 @@ export default {
     'run.flow.warnings': ' Warnings: {list}.',
     'run.flow.checkChange': ' Check the change, e.g. with lint and a new run.',
     'run.flow.changedFiles': 'Changed: {files}.{code} Nothing is committed.',
+    'run.flow.preparingBox': 'Preparing the sandbox for {agent}',
     'run.flow.preparingSandbox': 'Starting {agent}',
     'run.flow.cannotFix': 'Can\'t fix right now: {message}.',
     'run.flow.offerChanged': '{id} was changed by the recommendation "{title}" and needs to be re-recorded.',

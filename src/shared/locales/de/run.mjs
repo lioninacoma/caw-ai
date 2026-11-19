@@ -174,6 +174,7 @@ export default {
     'run.flow.warnings': ' Warnungen: {list}.',
     'run.flow.checkChange': ' Prüfe die Änderung, etwa mit Lint und einem neuen Lauf.',
     'run.flow.changedFiles': 'Geändert: {files}.{code} Committet wird nichts.',
+    'run.flow.preparingBox': 'Sandbox für {agent} wird vorbereitet',
     'run.flow.preparingSandbox': 'Starte {agent}',
     'run.flow.cannotFix': 'Beheben geht gerade nicht: {message}.',
     'run.flow.offerChanged': '{id} ist nach der Empfehlung „{title}“ angepasst und muss neu aufgenommen werden.',

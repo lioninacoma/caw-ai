@@ -330,8 +330,14 @@ test('Test run: clicking fix only then opens the sandbox and does not hand over 
     assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox: async () => { opened += 1; return 's'; }, ...h }), EXIT.pass);
     assert.equal(opened, 1);
     assert.equal(h.calls[1].sandbox, 's');
-    assert.deepEqual(h.progress, ['Starte Claude Code']);
+    assert.deepEqual(h.progress, [], 'a quick preparation shows nothing: the agent starts after the token notice');
     assert.equal(h.calls[0].handover(), false);
+});
+
+test('Test run: a preparation that takes a while (Docker) says so after a second', async () => {
+    const h = harness({ outcomes: [failing('S2'), repaired(), pass], answers: ['fix', 'adopt'] });
+    assert.equal(await runFlow({ spec, handover: true, canFix: true, openSandbox: () => new Promise((ok) => { setTimeout(() => ok('s'), 1300); }), ...h }), EXIT.pass);
+    assert.deepEqual(h.progress, ['Sandbox für Claude Code wird vorbereitet']);
 });
 
 test('Test run: fix and then discard ends with the original failure', async () => {

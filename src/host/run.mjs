@@ -540,8 +540,10 @@ ${text}`) ?? 0;
         });
         const failed = (session.failures?.() ?? []).slice(handedAt.failures).map(({ type, text, url }) => ({ type, text, ...(url === undefined ? {} : { url }), count: 1 }));
         const seen = [...failed, ...warned];
-        if (verdict === null || seen.length === 0) return;
-        verdict = redactDeep({ ...verdict, afterHandover: seen }, session.secrets?.() ?? []);
+        // The agent started after the handover (develop): the report names the personal notes it got, as for any run.
+        const late = reportBase.personalContext !== undefined && verdict?.personalContext === undefined;
+        if (verdict === null || (seen.length === 0 && !late)) return;
+        verdict = redactDeep({ ...verdict, ...(late ? { personalContext: reportBase.personalContext } : {}), ...(seen.length === 0 ? {} : { afterHandover: seen }) }, session.secrets?.() ?? []);
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
     };
