@@ -957,6 +957,9 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     bench.refresh = null;
     bench.rebuild = null;
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
+    // Chrome starts on a blank tab with the cursor in its address bar and keeps it there when the workbench loads: keys
+    // (F8, F1, typing) would go to the address bar until the person clicks. Bringing the page to the front focuses its content.
+    await page.bringToFront().catch(() => {});
     const frame = await (await page.waitForSelector(`iframe[name="${APP_FRAME}"]`)).contentFrame();
     await frame.waitForLoadState('load');
     const view = frameView(page, frame, () => bench.app);
