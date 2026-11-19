@@ -114,7 +114,7 @@ Light and dark: the workbench, the chat, the report page and the "caw explore" c
 | Alt+↵ | Chat: sends your text as a checkpoint while you demonstrate |
 | / | Chat: the commands, at the start of the input |
 
-F11 and F12 stay with Chrome. The DevTools console starts in the workbench, not in the app; right-click → Inspect in the app switches it to the app frame. In the workbench, `caw` holds tools (`caw.help()` lists them):
+F11 and F12 stay with Chrome. The DevTools console starts in the workbench, not in the app; right-click → Inspect in the app switches it to the app frame. In the workbench and in the app frame, `caw` holds tools (`caw.help()` lists them):
 
 | | |
 |---|---|

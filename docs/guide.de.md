@@ -114,7 +114,7 @@ Hell und dunkel: Werkbank, Chat, Berichtsseite und die Karte „caw explore“ f
 | Alt+↵ | Chat: schickt deinen Text als Prüfpunkt, während du vorführst |
 | / | Chat: die Befehle, am Anfang des Eingabefelds |
 
-F11 und F12 bleiben bei Chrome. Die DevTools-Konsole beginnt in der Werkbank, nicht in der App; Rechtsklick → Untersuchen in der App stellt sie auf den App-Frame. In der Werkbank hält `caw` Werkzeuge bereit (`caw.help()` listet sie):
+F11 und F12 bleiben bei Chrome. Die DevTools-Konsole beginnt in der Werkbank, nicht in der App; Rechtsklick → Untersuchen in der App stellt sie auf den App-Frame. In der Werkbank und im App-Frame hält `caw` Werkzeuge bereit (`caw.help()` listet sie):
 
 | | |
 |---|---|
