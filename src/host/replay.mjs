@@ -595,9 +595,10 @@ const flatten = (spec, steps, until) => ({
     baselines: Object.fromEntries(steps.filter(({ recording }) => recording?.network !== undefined).map(({ id, recording }) => [id, recording.network])),
     // Effects per action from healthy runs: they show the first action after which the app behaves differently.
     effects: Object.fromEntries(steps.filter((step) => currentEffects(spec, step) !== undefined).map((step) => [step.id, currentEffects(spec, step)])),
-    steps: steps.flatMap(({ id, recording }) => [
+    steps: steps.flatMap(({ id, expect, recording }) => [
         ...recording.actions,
-        { action: 'check', id, code: recording.check, ...(recording.timeoutMs === undefined ? {} : { timeoutMs: recording.timeoutMs }) },
+        // The expectation goes along: a check that is not met names it, the code stays in the report's evidence.
+        { action: 'check', id, code: recording.check, ...(expect === undefined ? {} : { expect }), ...(recording.timeoutMs === undefined ? {} : { timeoutMs: recording.timeoutMs }) },
     ]),
 });
 
@@ -961,10 +962,10 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 failedWith = last;
             }
             if (now() >= deadline) {
-                const timedOut = t('session.replay.checkTimeout', { seconds: Math.round(timeoutMs / 1000), code: step.code });
+                const timedOut = t('session.replay.checkTimeout', { seconds: Math.round(timeoutMs / 1000), code: step.expect ?? step.code });
                 const cause = await withSignIn(failedWith === null ? timedOut : `${timedOut} ${t('session.replay.checkError', { error: failedWith })}`);
                 causes.set(step.id, cause);
-                results.set(step.id, { id: step.id, status: 'fail', evidence: { type: 'eval', value: last }, note: withTries(step.id, cause) });
+                results.set(step.id, { id: step.id, status: 'fail', evidence: { type: 'eval', value: `${step.code} => ${last}` }, note: withTries(step.id, cause) });
                 return;
             }
             await sleep(CHECK_POLL_MS);

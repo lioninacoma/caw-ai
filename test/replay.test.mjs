@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReplay, createRecorder, failedStep, fillTarget, playReplay, replayToEntry, replayVerdict, positionalActions, stepGroups, stepLabel, swapToken } from '../src/host/replay.mjs';
+import { buildReplay, createRecorder, failedStep, fillTarget, playReplay, replayOf, replayToEntry, replayVerdict, positionalActions, stepGroups, stepLabel, swapToken } from '../src/host/replay.mjs';
 import { stepHash } from '../src/host/test-file.mjs';
 import { extjs } from '../src/ext/extjs/extjs.mjs';
 import { classifyFailure, renderReport, stackOrigin } from '../src/shared/report.mjs';
@@ -871,4 +871,16 @@ test('Playback at the entry of a step: its actions belong to it, are neither com
     // The step list shows the entry under its step.
     const groups = stepGroups([{ id: 'S1', name: 'A' }, { id: 'S2', name: 'B' }], { steps });
     assert.deepEqual(groups.map(({ id, points }) => [id, points.map(({ id: point }) => point)]), [['S1', ['a1', 'a2']], ['S2', ['a3']]]);
+});
+
+test('an unmet check names the expectation, the code stays in the evidence', async () => {
+    const steps = [{ action: 'check', id: 'S1', code: 'a' }, { action: 'check', id: 'S2', code: '(()=>false)()', expect: 'The list shows the #home todos.' }];
+    const { results } = await playRetry({ retries: {}, passOn: 9, steps });
+    assert.match(results.get('S2').note, /nicht erfüllt: The list shows the #home todos\.$/);
+    assert.match(results.get('S2').evidence.value, /^\(\(\)=>false\)\(\) => /);
+});
+
+test('the replay carries the expectation to the check', () => {
+    const spec = { id: 't', steps: [{ id: 'S1', name: 'n', do: 'd', expect: 'Shown.', recording: { actions: [], check: 'true' } }] };
+    assert.equal(replayOf(spec).steps.at(-1).expect, 'Shown.');
 });
