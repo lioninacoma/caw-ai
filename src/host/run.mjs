@@ -26,7 +26,9 @@ import { describeCode } from './code-source.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
-import { codeText, createAgentHandler, hiddenAnswer, hiddenError } from './agent-commands.mjs';
+import { codeText, createAgentHandler, hiddenAnswer, hiddenError, locatorFor } from './agent-commands.mjs';
+import { locatorLabel } from './locator.mjs';
+import { recordLocator } from './record-locator.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
 import { frameworkOf } from './framework/index.mjs';
@@ -49,6 +51,8 @@ import { redactDeep } from './secrets.mjs';
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 50;
 const AGENT_DIR = 'agent';
+// The run folder and report name of every reproduction, with or without a starting test.
+const REPRODUCE_RUN = 'reproduce';
 const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
 // How long the window stays open after the last decision, with a countdown, unless the human closes it.
@@ -461,7 +465,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     }
     const runTag = newRunTag();
     const creating = replay === undefined && repair === undefined;
-    const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${spec.id}`;
+    // A reproduction is named as such, also when it starts from a test's step (--from).
+    const runName = reproduce === undefined ? spec.id : REPRODUCE_RUN;
+    const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${runName}`;
     const relativeRun = posix.join(RUN_DIR, 'runs', runId);
     const runDir = join(root, relativeRun);
     const agentDir = join(runDir, AGENT_DIR);
@@ -499,7 +505,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const durations = () => Object.fromEntries([...stepTimes].filter(([, { end }]) => end !== undefined).map(([id, { start, end }]) => [id, (end - start) / 1000]));
 
     // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
-    const reportBase = { testId: spec.id, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
+    const reportBase = { testId: runName, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
     // A reproduction's report shows the bug report and the run's rules also when it ends early; finish adds Claude's verdict.
     if (reproduce !== undefined) reportBase.reproduce = { bug: reproduce.bug, writable: reproduce.writes, ...(reproduce.from === undefined ? {} : { from: reproduce.from }) };
     let verdict = null;
@@ -1914,6 +1920,18 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const ACTS = new Set(['click', 'dblclick', 'hover', 'dragTo', 'dialog', 'upload', 'fill', 'type', 'press', 'goto', 'reload']);
         let doneSignal;
         const done = new Promise((ok) => { doneSignal = ok; });
+        /** An action for the report as record names it (`fill searchbox "Search todos"`), never a snapshot reference. */
+        const readableAction = async (command) => {
+            const { action } = command;
+            if (typeof command.target !== 'string') return [action, command.url ?? command.key ?? ''].filter((part) => part !== '').join(' ');
+            try {
+                const code = await recordLocator(session.page().mainFrame(), locatorFor(session.page(), command.target), { framework: (session.framework ?? frameworkOf()).name, timeout: 2000 });
+                if (code !== null) return `${action} ${locatorLabel(code)}`;
+            } catch {
+                // An element that cannot be named stays unnamed.
+            }
+            return action;
+        };
         const finishReproduction = (command) => {
             const result = readReproduction(command.results, { fileExists: (name) => existsSync(join(agentDir, name)) });
             // The steps write when the agent says so or when the run wrote; never on an environment that may not write.
@@ -1926,7 +1944,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             doneSignal();
             return { status: `reproduced ${result.reproduced}`, reproduced: result.reproduced };
         };
-        const channelHandler = (command) => {
+        const channelHandler = async (command) => {
             const action = command?.action;
             if (action === 'say') {
                 if (chat !== null) return chat.say(command.text);
@@ -1938,7 +1956,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             if (['plan', 'check', 'ask-operator', 'chat', 'advise', 'recording'].includes(action)) {
                 throw new CawError('reproduce-refused', `A reproduction has no plan, no steps to check and no human to ask, and changes no test or code: ${action} is not available. Read the page with snapshot, eval, console and network, operate it, and end with finish.`);
             }
-            if (ACTS.has(action)) actions.push([action, command.ref ?? command.target ?? command.url ?? command.key ?? ''].filter((part) => part !== '').join(' '));
+            if (ACTS.has(action)) actions.push(await readableAction(command));
             return budget.handler(command);
         };
         chat?.advising(true);

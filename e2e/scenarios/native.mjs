@@ -849,6 +849,7 @@ $A finish --file /tmp/f.json`;
         const log = ['agent/claude.log', 'claude.log'].map((name) => join(dir, name)).filter((path) => existsSync(path)).map((path) => readFileSync(path, 'utf8')).join('') || readFileSync(join(here, 'n12.log'), 'utf8');
         verify('(1) task in mode reproduce, plan and check refused', /TASK-REPRODUCE/.test(log) && /PLAN-REFUSED/.test(log) && /CHECK-REFUSED/.test(log), log.slice(-400));
         verify('(1) report: verdict, bug report, steps, cause, screenshot, draft', /nachgestellt/.test(report) && /> Nach dem Speichern/.test(report) && /Klicke auf Save/.test(report) && /index\.html:91/.test(report) && /after-save\.png/.test(report) && /draft-test\.yaml/.test(report), report.slice(0, 600));
+        verify('(1) report names the action by its element, never a reference', /^- click button "Save"/m.test(report), report.split('\n').filter((line) => line.startsWith('- click')).join(' | '));
         const draft = readFileSync(join(dir, 'draft-test.yaml'), 'utf8');
         let valid = true;
         try { parseTest(draft); } catch { valid = false; }
@@ -859,7 +860,7 @@ $A finish --file /tmp/f.json`;
         const missed = `exec 2>&1
 A='caw agent'
 cat > /tmp/f.json <<JSON
-{"reproduced":"no","observed":"The list shows the new errand at the top.","expected":"The new errand is at the top.","steps":[{"do":"Lege die Besorgung Test an.","expect":"Sie steht oben."}]}
+{"reproduced":"no","observed":"The list shows the new errand at the top.","expected":"The new errand is at the top.","writes":true,"steps":[{"do":"Lege die Besorgung Test an.","expect":"Sie steht oben."}]}
 JSON
 $A finish --file /tmp/f.json`;
         const notFound = await reproduceOf(['Neue Besorgungen stehen nicht oben.', '--headless'], { agent: missed });
@@ -876,7 +877,7 @@ $A click '#add'
 sleep 1
 S=$($A eval "document.getElementById('status').textContent")
 cat > /tmp/f.json <<JSON
-{"reproduced":"unclear","observed":"status: $S","expected":"Added.","steps":[{"do":"Lege eine Besorgung an.","expect":"Added erscheint."}]}
+{"reproduced":"unclear","observed":"status: $S","expected":"Added.","writes":true,"steps":[{"do":"Lege eine Besorgung an.","expect":"Added erscheint."}]}
 JSON
 $A finish --file /tmp/f.json`;
         const readOnly = await reproduceOf(['Hinzufügen geht nicht.', '--headless'], { agent: blocked });
