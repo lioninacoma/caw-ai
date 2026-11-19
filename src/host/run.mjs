@@ -705,7 +705,10 @@ ${text}`) ?? 0;
      * What Claude gets through the channel, whichever handler answers: refused while caw signs in (except talking), every
      * answer and error with the secrets masked (a dialog text, a URL, a thrown value), errors without Playwright's call log.
      */
+    // The agent's latest activity in the step list; it is done once the agent speaks or waits for the person.
+    let closeActivity = () => {};
     const forClaude = (handler) => async (command) => {
+        if (command?.action === 'say' || command?.action === 'chat') closeActivity();
         if (signingIn && !['task', 'say', 'chat'].includes(command?.action)) throw new CawError('signing-in', t('run.agent.signingIn'));
         let value;
         try {
@@ -742,6 +745,7 @@ ${text}`) ?? 0;
         if (bench !== null && own !== undefined) bench.group({ id: CLAUDE_GROUP, name: own, kind: 'phase' });
         let lastPoint = null;
         let count = 0;
+        closeActivity = () => closePoint();
         const notePoint = (line) => {
             const entry = parseClaudeLog(line);
             if (bench === null || entry === null || entry.kind !== 'activity') return;
