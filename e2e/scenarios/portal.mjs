@@ -1019,7 +1019,7 @@ ${finishOf(['S1'])}
         // Every note is confirmed with the number the approval card will show, and the way on.
         // A progress line: in the activity list of the chat, not a message of its own.
         const noted = await page.locator('details.activity li', { hasText: 'H1 notiert' }).textContent({ timeout: 30000 }).catch(() => '');
-        verify('A note is confirmed with its number, page and the hand-over button', /^.*H1 notiert \(Seite \/.*\)\. Beschreib weiter oder „An Claude übergeben“\./.test(noted), noted);
+        verify('A note is confirmed with its number, page and the hand-over button', /^.*H1 notiert \(Seite \/.*\)\. Beschreib weiter oder „An Claude Code übergeben“\./.test(noted), noted);
         // A click while describing is not recorded; the next note carries the page it was written on.
         await app.locator('#weiter').click();
         await page.locator('#input').fill('Die Fachdaten laden langsam, hier oefter warten.');
