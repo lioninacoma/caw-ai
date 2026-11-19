@@ -728,7 +728,9 @@ let popped=false,solo=false;
 const UNREAD=['claude','plan','failure','decision','advice','question','tokens'];
 window.addMessage=(who,text,about,at)=>{
   if(UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
-  if(!['human','checkpoint','notice'].includes(who))document.body.classList.remove('awaiting');
+  // "Working" stays under the agent's actions until it answers or asks; its start (after Continue) begins it too.
+  if(UNREAD.includes(who))document.body.classList.remove('awaiting');
+  else if(who==='starting'&&['discussing','developing','running'].includes(stateNow()))document.body.classList.add('awaiting');
   // One start at a time: preparing the sandbox and starting the agent show as one line.
   if(who==='starting'&&starting)return;
   if(who==='starting'){endGroup();started();const row=el('div','message starting');row.dataset.t0=String(at||Date.now());row.append(ic('loader'),el('span','',text),el('small'));elapsed(row);starting=row;place(row);return;}

@@ -1322,6 +1322,9 @@ test('agent actions: a folded item unfolds to its files and keeps the call as to
     chat.develop(undefined, [{ id: 'end', label: 'Ende' }]);
     await pause(300);
     assert.equal(await frame.isVisible('#thinking'), true, 'still working while the agent thinks');
+    chat.logLine('[+1.0s] > Read: {"file_path":"/p/a.mjs"}');
+    await pause(300);
+    assert.equal(await frame.isVisible('#thinking'), true, 'and while it acts');
     chat.say('Weil.');
     assert.ok(await until(async () => !(await frame.isVisible('#thinking'))), 'gone with the answer');
     return undefined;
