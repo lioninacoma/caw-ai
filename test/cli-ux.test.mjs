@@ -274,7 +274,7 @@ test('help: per command only its block, agent commands under caw agent --help, s
     assert.match(helpText('agent'), /fill <ziel> <text>/);
     assert.match(helpText('agent'), /wait-ready \[--for <selektor>\] \[--min-count <n>\] \[--timeout <dauer>\]/);
     assert.equal(synopsisOf('qqqq'), undefined);
-    assert.equal(synopsisOf('open'), 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>]');
+    assert.equal(synopsisOf('open'), 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>] [--agent local|docker | --attach [<key>]]');
     assert.equal(synopsisOf('click'), undefined);
     assert.equal(unknownCommandText('lsit'), 'Unbekannter Befehl: lsit. Meintest du list? Siehe caw --help.');
     assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw --help.');
@@ -339,7 +339,7 @@ test('CLI: unknown command with suggestion, help everywhere with -h, exit codes'
     assert.match(renamed.stderr, /--target heißt jetzt --env\./);
     const usage = cli('record', 'x@s3');
     assert.equal(usage.status, 3);
-    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] {2}oder {2}caw record <test>@<S4> \[--env <name>\]\n\[caw\] \(code: usage, exit 3\)/);
+    assert.match(usage.stderr, /x@s3: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3\.\n\[caw\] Aufruf: caw record <test> \[--env <name>\] \[--role <rolle>\] {2}oder {2}caw record <test>@<S4> \[--env <name>\] \[--agent local\|docker \| --attach \[<key>\]\]\n\[caw\] \(code: usage, exit 3\)/);
     const unknown = cli('qqqq', 'x', 'S2');
     assert.equal(unknown.status, 3);
     assert.match(unknown.stderr, /Unbekannter Befehl: qqqq\./);
