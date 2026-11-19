@@ -128,7 +128,7 @@ export default {
     'session.browser.productionBlocked': 'Request an {host} gesperrt: eine Produktionsumgebung ist aus einem Lauf auf einer anderen Umgebung nie erreichbar',
     'session.browser.chromeFailed': 'Chrome ließ sich nicht starten: {error}',
     'session.browser.sandboxFailed': 'Chrome konnte seine Sandbox nicht starten: {error}. Unter Linux als root oder in manchen Containern funktioniert die Sandbox nicht: starte caw als normaler Benutzer oder setze, im Wissen, dass Seiten dann ohne Sandbox laufen, "browser": { "noSandbox": true } in caw.config.json (unsicher).',
-    'session.browser.agentBlocked': 'Anfrage an {host} gesperrt: solange {agent} dabei ist, erreicht der Browser nur die Umgebungen, allowHosts und thirdPartyHosts. Braucht die Anwendung diesen Host, trage ihn in caw.config.json unter thirdPartyHosts ein',
+    'session.browser.agentBlocked': 'Anfrage an {host} gesperrt: auf Umgebungen, auf denen {agent} arbeiten darf, erreicht der Browser nur die Umgebungen, allowHosts und thirdPartyHosts. Braucht die Anwendung diesen Host, trage ihn in caw.config.json unter thirdPartyHosts ein',
     'session.browser.fillFailed': 'Die Anmeldung konnte {field} nicht ausfüllen: das Element ist da, nimmt aber keine Eingabe an (verborgen, gesperrt oder kein Feld). Der Wert steht hier nicht; prüfe den Selektor.',
     'session.browser.signInTimeout': 'Nach {minutes} Minuten war {selector} nicht zu sehen.',
     'session.browser.devlinkRejected': 'devlink lehnt die Config ab: {issues}',

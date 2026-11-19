@@ -128,7 +128,7 @@ export default {
     'session.browser.productionBlocked': 'Request to {host} blocked: a production environment is never reached from a run on another environment',
     'session.browser.chromeFailed': 'Chrome failed to start: {error}',
     'session.browser.sandboxFailed': 'Chrome could not start its sandbox: {error}. On Linux as root or in some containers the sandbox does not work: run caw as a normal user, or, knowing that pages then run without the sandbox, set "browser": { "noSandbox": true } in caw.config.json (unsafe).',
-    'session.browser.agentBlocked': 'Request to {host} blocked: while {agent} is attached, the browser reaches only the environments, allowHosts and thirdPartyHosts. If the app needs this host, add it to thirdPartyHosts in caw.config.json',
+    'session.browser.agentBlocked': 'Request to {host} blocked: on environments where {agent} may work, the browser reaches only the environments, allowHosts and thirdPartyHosts. If the app needs this host, add it to thirdPartyHosts in caw.config.json',
     'session.browser.fillFailed': 'Sign-in could not fill {field}: the element is there but takes no input (hidden, disabled or not a field). The value is not shown here; check the selector.',
     'session.browser.signInTimeout': '{selector} wasn\'t visible after {minutes} minutes.',
     'session.browser.devlinkRejected': 'devlink rejects the config: {issues}',

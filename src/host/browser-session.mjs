@@ -1183,7 +1183,7 @@ export const openBrowserSession = async (spec) => {
                 page = null;
             }
             if (page === false || (page !== null && !pages.owns(page))) return;
-            // With Claude attached, a host outside the reach: a warning that names it and how to allow it, like any third-party
+            // On an environment the agent may work on, a host outside the reach: a warning that names it and how to allow it, like any third-party
             // host's error (a blocked analytics script is no failed step).
             if (kind === 'agent') {
                 addWarning({ type: 'host-blocked', text: t('session.browser.agentBlocked', { host }) });
