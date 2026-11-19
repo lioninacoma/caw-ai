@@ -8,6 +8,9 @@ steps:
     recordedAt: 2026-11-12T21:16:58.087Z
     locale: de-DE
     timezone: Europe/Berlin
+    viewport:
+      width: 1259
+      height: 939
     actions:
       - {click: "getByRole('button', { name: 'New todo', exact: true })", path: /}
       - {fill: "getByRole('textbox', { name: 'Title', exact: true })", value: "Feed the raven {{runTag}}", path: /}
@@ -23,6 +26,9 @@ steps:
     recordedAt: 2026-11-12T21:16:58.087Z
     locale: de-DE
     timezone: Europe/Berlin
+    viewport:
+      width: 1259
+      height: 939
     actions:
       - {fill: "getByRole('searchbox', { name: 'Search todos', exact: true })", value: "{{runTag}}", path: /}
       - {wait-ready: {}}
@@ -34,6 +40,9 @@ steps:
     recordedAt: 2026-11-12T21:16:58.087Z
     locale: de-DE
     timezone: Europe/Berlin
+    viewport:
+      width: 1259
+      height: 939
     actions:
       - {click: "getByRole('button', { name: 'Complete Feed the raven {{runTag}}', exact: true })", path: /}
       - {wait-ready: {}}
@@ -45,6 +54,9 @@ steps:
     recordedAt: 2026-11-12T21:16:58.087Z
     locale: de-DE
     timezone: Europe/Berlin
+    viewport:
+      width: 1259
+      height: 939
     actions:
       - {click: "getByRole('link', { name: 'Feed the raven {{runTag}}', exact: true })", path: /}
       - {wait-ready: {}}
