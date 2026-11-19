@@ -79,7 +79,7 @@ and line. Against your dev server, F5 loads your change.
 
 ```bash
 npx caw open first-errand@S3 --env local   # the state before S3, signed in, the window is yours
-npx caw open --env local                   # the app signed in, without a test
+npx caw open --env local                   # the app, without a test
 ```
 
 Details: [Guide](docs/guide.md#reach-any-state-and-develop).
@@ -217,7 +217,7 @@ npx caw run smoke --env local
 | Re-record from a changed step to the end | `caw record <test>@S3 --env local` |
 | Let Claude reproduce a bug report | `caw reproduce "<bug report>" --env local` |
 | Get the app to the start of a step and keep coding there | `caw open <test>@S3 --env local` |
-| Open the app signed in, without a test | `caw open --env local` |
+| Open the app without a test | `caw open --env local` |
 | Let Claude explain failures right away | `caw run <test> --env local --explain` |
 | Export a test to Playwright | `caw export <test>` |
 | Check config and tests | `caw validate` |

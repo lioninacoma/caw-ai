@@ -64,7 +64,7 @@ Befehle:`,
       [--headless]                       Ohne Fenster
       [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML
       [--learn] [--start] [--reset | --no-reset]  wie bei einem Test; start und reset einmal für die ganze Reihe`,
-    'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Die Anwendung angemeldet öffnen, mit Werkbank und Chat. Ohne Test: navigieren,
+    'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Die Anwendung öffnen, mit Werkbank und Chat. Ohne Test: navigieren,
                                          ausprobieren, mit Claude entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
                                          zum Einstieg in S4 (seine Navigation läuft, Eingaben und Prüfung bleiben offen).
                                          Lernt nichts, schreibt keine Testdatei

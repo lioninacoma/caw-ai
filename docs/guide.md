@@ -113,7 +113,17 @@ Light and dark: the workbench, the chat, the report page and the "caw explore" c
 | Alt+↵ | Chat: sends your text as a checkpoint while you demonstrate |
 | / | Chat: the commands, at the start of the input |
 
-F11 and F12 stay with Chrome.
+F11 and F12 stay with Chrome. The DevTools console starts in the workbench, not in the app; right-click → Inspect in the app switches it to the app frame. In the workbench, `caw` holds tools (`caw.help()` lists them):
+
+| | |
+|---|---|
+| `caw.app` | The app's window: `caw.app.fetch('/api/…')`, `caw.app.document.title` |
+| `caw.info` | Project, test, running step, mode, run folder, environment, URL, role, framework, version. Names only, never passwords |
+| `caw.requests()`, `caw.console()` | The lists behind the counts in the footer |
+| `caw.locator(el)` | The locator caw would record for an element, e.g. `await caw.locator($0)` after Inspect |
+| `caw.ready()` | The framework's ready probe and the open requests, right now |
+
+The app shares its origin with the workbench and can read `caw` too, so it holds nothing secret and changes nothing.
 
 The workbench lives at the application's own address, on its origin. Many applications access the top window (`top.Ext`, `parent.config`, `top.location.href`) because they believe they are inside the portal. In the workbench this works the same:
 

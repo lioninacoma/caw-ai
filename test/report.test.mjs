@@ -96,3 +96,11 @@ test('third-party hosts: their errors and failed requests are warnings, the app 
     assert.match(md, /\| cdn\.example \| 3 \| script, stylesheet \| 1 \|/);
     assert.doesNotMatch(renderReport({ status: 'pass', testId: 'x', target: 'local' }), /Fremde Hosts/);
 });
+
+test('what the window saw after the handover is a section of its own and leaves the result alone', () => {
+    const md = renderReport({ status: 'pass', testId: 'open', target: 'local', afterHandover: [{ type: 'host-blocked', text: 'Request to example.com blocked', count: 2 }] });
+    assert.match(md, /^# open auf local: pass/m);
+    assert.match(md, /## Nach der Übergabe\n\nGesehen, während das Fenster dir gehörte, .*\n\n- host-blocked: Request to example.com blocked \(2x\)/);
+    assert.doesNotMatch(md, /## Warnungen/);
+    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'open', target: 'local' }), /Übergabe/);
+});

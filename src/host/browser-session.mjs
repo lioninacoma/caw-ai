@@ -26,6 +26,8 @@ import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { appHosts as appHostsOf, blockedHosts, normalizeHost } from '../shared/environments.mjs';
 import { createNetworkLog, outcomeText, parameterNames, requestName } from './network-log.mjs';
 import { PREP, openWorkbench } from './workbench.mjs';
+import { markedTarget } from './demonstrate.mjs';
+import { MARK_ATTRIBUTE } from './record-locator.mjs';
 
 /** Access from the iframe to the top window, which has a different origin in the workbench. */
 export const CROSS_ORIGIN_TOP = /Blocked a frame with origin .* from accessing a cross-origin frame/;
@@ -899,6 +901,9 @@ export const openBrowserSession = async (spec) => {
     const startUrl = `${resolved.url}${spec.startUrl}`;
     // The environment's own sign-in: it may differ per environment (e.g. none on local, form with an IdP on staging).
     const auth = resolved.signIn ?? { type: 'none' };
+    // With the workbench the human watches the form sign-in as a step of its own in the application frame; without it (headless,
+    // CI) it happens before anything is shown. Either way it stays out of the trace.
+    const liveSignIn = spec.embed === true && auth.type === 'form';
     const framework = frameworkOf(config);
     sweepStaleProfiles();
     // Every run gets a fresh profile; at the end it contains the test user's login cookies.
@@ -990,7 +995,7 @@ export const openBrowserSession = async (spec) => {
             if (spec.embed === true) await raw.pages()[0].addInitScript({ content: WORKBENCH_MARK_SCRIPT });
             if (auth.type === 'session') await applyStorageState(raw, credentials.storageState);
             // Via the app's own sign-in page, so the application does not load once before the local code is injected.
-            if (auth.type === 'form') await formLogin();
+            if (auth.type === 'form' && !liveSignIn) await formLogin();
             timing.login = Date.now();
         }
         devlinkHost = createDevlinkHost(devlinkConfig, {
@@ -1003,7 +1008,8 @@ export const openBrowserSession = async (spec) => {
             // A verification run must not silently test the deployed code on substitution errors.
             onFailure: 'fail',
             // Without a marker (no sign-in, or basic auth without one) the host checks nothing.
-            authMarker: auth.signedInSelector ?? '',
+            // A live sign-in follows only once the workbench is open: the start page cannot show the marker yet.
+            authMarker: liveSignIn ? '' : auth.signedInSelector ?? '',
         });
         // The host checks the marker on the environment's start page before local code is injected. Its messages are generic;
         // here they become a hint about what to do in the project.
@@ -1339,7 +1345,8 @@ export const openBrowserSession = async (spec) => {
         // headers: the scrub also masks that encoded form, so the trace keeps its snapshots.
         const gateToken = credentials?.gate === undefined ? [] : [basicAuthToken(credentials.gate.username, credentials.gate.password)];
         trace = createTrace(raw, { path: spec.tracePath, options: { screenshots: spec.embed !== true, snapshots: auth.type !== 'basic' }, secrets: () => [...passwords, ...codes, ...hidden, ...gateToken] });
-        await trace.start();
+        // A live sign-in starts it once signed in, so the typed password never enters it.
+        if (!liveSignIn) await trace.start();
 
         // devlinkHost.start() only hooks in the interception after loading the start page; so this navigation is the first
         // to load the app with the local code.
@@ -1350,20 +1357,43 @@ export const openBrowserSession = async (spec) => {
         const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
             // Embed only documents of the application itself, not further allowed hosts such as a sign-in service.
-            bench = await openWorkbench(raw, { appUrl: startUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite, refuse: refuseTopWrite });
+            // A live sign-in opens on the sign-in page, so the application never loads signed out.
+            const firstUrl = liveSignIn ? `${resolved.url}${auth.path}` : startUrl;
+            bench = await openWorkbench(raw, { appUrl: firstUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite, refuse: refuseTopWrite });
             pages.embed(bench.page, bench.view);
             // A recorded (or configured) viewport pins the app frame to that size, as headless replay uses it (OPEN-15).
             if (region?.viewport !== undefined) await bench.viewport(region.viewport);
             bench.view.on('domcontentloaded', () => network.replaced(bench.view));
             const signIn = auth.type === 'form' || auth.type === 'basic' ? t('session.prep.signIn') : auth.type === 'session' ? t('session.prep.takeSession') : null;
+            const asRole = spec.role === undefined ? '' : t('session.prep.asRole', { role: spec.role });
+            // A live sign-in comes after the local code is hooked in and has no duration yet: it runs below, in view.
+            const login = signIn === null ? [] : [{ id: 'login', kind: signIn, label: asRole, ...(liveSignIn ? {} : { ms: (timing.login ?? timing.chrome) - (timing.chrome ?? timing.start) }) }];
+            const code = overlay !== null ? [{ id: 'code', kind: t('session.prep.code'), label: t('session.prep.codeLocal'), ms: timing.code - (timing.login ?? timing.chrome ?? timing.start) }] : [];
             const points = [
                 { id: 'chrome', kind: t('session.prep.chrome'), label: t('session.prep.chromeStart'), ms: (timing.chrome ?? timing.start) - timing.start },
-                ...(signIn === null ? [] : [{ id: 'login', kind: signIn, label: spec.role === undefined ? '' : t('session.prep.asRole', { role: spec.role }), ms: (timing.login ?? timing.chrome) - (timing.chrome ?? timing.start) }]),
-                ...(overlay !== null ? [{ id: 'code', kind: t('session.prep.code'), label: t('session.prep.codeLocal'), ms: timing.code - (timing.login ?? timing.chrome ?? timing.start) }] : []),
+                ...(liveSignIn ? [...code, ...login] : [...login, ...code]),
                 { id: 'load', kind: t('session.prep.load'), label: t('session.prep.app') },
             ];
             await bench.group({ id: PREP, name: t('session.prep.group'), kind: 'phase', points: points.map(({ id, kind, label }) => ({ id, kind, label })) });
             for (const { id, ms } of points) if (ms !== undefined) await bench.point(PREP, id, 'pass', { ms: Math.max(0, ms) });
+            if (liveSignIn) {
+                await bench.point(PREP, 'login', 'running');
+                const began = Date.now();
+                // Sign-in requests may write even where nothing else may (productionWriteName), and they are no write of the run.
+                signingIn = true;
+                try {
+                    await formLogin(bench.view);
+                } catch (error) {
+                    await bench.point(PREP, 'login', 'fail', { ms: Date.now() - began });
+                    throw error;
+                } finally {
+                    signingIn = false;
+                }
+                await bench.point(PREP, 'login', 'pass', { ms: Date.now() - began });
+                await trace.start();
+                // Where the application is: the start path, not wherever the sign-in landed.
+                await bench.view.goto(startUrl, { waitUntil: 'load' });
+            }
             await bench.point(PREP, 'load', 'running');
         } else {
             if (rewrite !== undefined) await interceptDocuments(raw, raw.pages()[0], appHosts, { request: raw.request, rewrite });
@@ -1372,6 +1402,24 @@ export const openBrowserSession = async (spec) => {
         // Quiet according to the framework adapter; for the neutral adapter also no open requests of the page.
         const ignore = readyIgnoreOf(config);
         const waitReady = (args = {}) => waitQuiet(framework, pages.current(), { ...args, ignore, pending: (page) => network.pending(page) });
+        // The console tools of the workbench (caw.ready(), caw.locator(el)): one sample, no waiting; a locator as a step records it.
+        bench?.onDebug({
+            ready: async () => {
+                const page = pages.current();
+                const sample = await page.evaluate(framework.probe, ignore.length === 0 ? null : { store: null, ignore }).catch(() => null);
+                return { ...(sample ?? {}), openRequests: network.pending(page) };
+            },
+            // The page marked the element: only the application's frames are searched, never the workbench or the chat.
+            locator: async (mark) => {
+                const inApp = (frame) => [frame, ...frame.childFrames().flatMap(inApp)];
+                if (!/^console-[a-z0-9]+$/.test(mark)) return null;
+                const selector = `[${MARK_ATTRIBUTE}="${mark}"]`;
+                for (const frame of inApp(bench.view.frame)) {
+                    if (await frame.locator(selector).count().catch(() => 0) === 1) return (await markedTarget({ framework, workbench: bench }, frame, mark)).target;
+                }
+                return null;
+            },
+        });
         const ready = await waitReady({ timeout: spec.readyTimeoutMs, untilApp: true });
         await bench?.point(PREP, 'load', ready.settled && ready.lastSample?.appReady === true ? 'pass' : 'fail', ready.settled ? {} : { note: ready.reason });
         // overlayStrict false (caw overlay check): report instead of throwing, the check reads the diagnosis itself. A broken
@@ -1415,6 +1463,8 @@ export const openBrowserSession = async (spec) => {
         }
 
         return {
+            /** Whether caw signed in to show the application (any sign-in but none). */
+            signedIn: auth.type !== 'none',
             writes: () => [...writes].sort(([a], [b]) => a.localeCompare(b)).map(([label, count]) => ({ label, count })),
             /** Hosts outside the navigation hosts the pages contacted: request count, resource types, failed requests. */
             thirdParty: () => [...thirdPartyHosts.values()].sort((a, b) => a.host.localeCompare(b.host)).map(({ types, ...rest }) => ({ ...rest, types: [...types].sort() })),

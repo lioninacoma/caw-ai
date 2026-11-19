@@ -213,6 +213,8 @@ export default {
     'config.report.failures.at': ' at {at}',
     'config.report.warnings': 'Warnings',
     'config.report.warnings.intro': 'Errors from third-party code, minor issues and new status messages. They don\'t affect the result.',
+    'config.report.afterHandover': 'After the handover',
+    'config.report.afterHandover.intro': 'Seen while the window was yours, after the result above. It doesn\'t change the result.',
     'config.report.thirdParty': 'Third-party hosts',
     'config.report.thirdParty.intro': 'Hosts outside the environments and allowHosts that the app\'s pages contacted (scripts, fonts, analytics, iframes). Their errors are warnings, never a failed step.',
     'config.report.thirdParty.header': '| Host | Requests | Types | Failed |',

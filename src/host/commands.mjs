@@ -2,7 +2,7 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
@@ -822,7 +822,7 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
     mkdirSync(dir, { recursive: true });
     const session = await openRunSession({ root, config, spec, checked, runDir: dir, interactive: true });
     await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, 'start'), badgeOf('start')));
-    await session.workbench?.settings?.(benchSettings({ root, config, spec, checked }));
+    await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, mode: 'record', run: basename(dir) }));
     let chat = null;
     // The page under test touched the chat frame: the chat is closed and the recording ends with that error.
     let tampered = null;
@@ -1343,7 +1343,8 @@ export const open = async (root, args, deps = {}) => {
     }
     const config = loadConfig(root);
     const target = chooseEnv(config, [], { env: options.target, command: 'open' });
-    const spec = draftTest(root, config, { id: OPEN_ID, target, role: options.role, readOnly: true });
+    // No test file, so no runsOn from loading one: the session runs on the chosen environment only.
+    const spec = { ...draftTest(root, config, { id: OPEN_ID, target, role: options.role, readOnly: true }), runsOn: [target] };
     return withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => {
         await lifecycle.beforeTest(spec);
         const checked = checkTest(spec, target, config, { overlay: options.overlay, start: options.start });

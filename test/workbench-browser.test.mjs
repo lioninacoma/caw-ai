@@ -1,6 +1,7 @@
 // Workbench and chat in real Chrome: only the chat speaks as the human, the application may navigate the top window itself, a
 // reload by the human aborts the test. Skipped without Chrome.
 import assert from 'node:assert/strict';
+/* global caw -- the workbench's console object, inside page.evaluate callbacks */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -1211,4 +1212,27 @@ test('chat: Ctrl+K and ? (when not typing) open the workbench\'s menu and keys; 
     assert.ok(await until(async () => (await look())[0] === 'light'));
     assert.equal((await look())[1], 'rgb(255, 255, 255)');
     return undefined;
+});
+
+test('workbench: the console object caw: the app window, what runs here, the footer lists and the host tools', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench } = await open(t);
+    const top = bench.page.mainFrame();
+    assert.equal(await top.evaluate(() => caw.app === document.getElementById('app').contentWindow), true);
+    await bench.view.goto(`${base}/start?again`);
+    assert.equal(await top.evaluate(() => caw.app.location.search), '?again', 'always the current document');
+    await bench.settings({ project: 'shop', test: 'order', mode: 'open', env: { name: 'local', url: base }, role: 'clerk', version: 'caw 1' });
+    await bench.steps([{ id: 'S1', name: 'Eins' }]);
+    await bench.step('S1', 'running');
+    const info = await top.evaluate(() => caw.info);
+    assert.deepEqual({ project: info.project, test: info.test, step: info.step, mode: info.mode, env: info.env.name, role: info.role }, { project: 'shop', test: 'order', step: 'S1', mode: 'open', env: 'local', role: 'clerk' });
+    assert.match(info.url, /\/start\?again$/);
+    assert.deepEqual(await top.evaluate(() => [Array.isArray(caw.requests()), Array.isArray(caw.console())]), [true, true]);
+    assert.equal(await top.evaluate(() => caw.ready()), null, 'without a session nothing answers');
+    bench.onDebug({ ready: async () => ({ appReady: true, openRequests: 0 }), locator: async (mark) => bench.view.frame.locator(`[data-caw-mark="${mark}"]`).evaluate((node) => node.tagName.toLowerCase()) });
+    assert.deepEqual(await top.evaluate(() => caw.ready()), { appReady: true, openRequests: 0 });
+    assert.equal(await top.evaluate(() => caw.locator(caw.app.document.body)), 'body');
+    assert.equal(await top.evaluate(() => caw.locator('nothing')), null);
+    assert.equal(await top.evaluate(() => caw.app.document.querySelectorAll('[data-caw-mark]').length), 0, 'the mark is gone again');
+    assert.equal(await top.evaluate(() => Object.isFrozen(caw)), true);
 });

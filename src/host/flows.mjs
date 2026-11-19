@@ -529,12 +529,12 @@ export const runFlow = async (options) => {
              * @param onRefresh  tells the workbench who refreshes (null: locked)
              * @param onReload   after reloading the whole workbench; returns the unsubscribe function
              */
-            develop: async ({ chat, talk, until: state, entry: atEntry = false, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState }) => {
+            develop: async ({ chat, talk, signedIn = false, until: state, entry: atEntry = false, refresh, restore, onRefresh, onReload, toCode, restoreTo, onPickState }) => {
                 let talker = null;
                 const at = state === undefined ? t('run.develop.atEnd') : t('run.develop.atState', { state });
                 // open: no steps, so nothing to restore; only refresh and questions.
                 const opened = spec.steps.length === 0;
-                let question = opened ? t('run.develop.opened', { agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens') }) : t('run.develop.intro', {
+                let question = opened ? t('run.develop.opened', { head: t(signedIn ? 'run.develop.openedSignedIn' : 'run.develop.openedPlain'), agent: t(sessionAgent ? 'run.develop.sessionAgent' : 'run.develop.costsTokens') }) : t('run.develop.intro', {
                     start: state === undefined ? t('run.develop.runDone') : t(atEntry ? 'run.develop.entryReady' : 'run.develop.stateReady', { state }),
                     at,
                     restore: RESTORE.label,

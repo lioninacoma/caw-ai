@@ -15,7 +15,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`list`](#list) | List tests and steps with their recording status | no |
 | [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
-| [`open`](#open) | Open the app signed in, with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
+| [`open`](#open) | Open the app with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
 | [`reproduce`](#reproduce) | Claude reproduces a bug report on its own: report and draft test plan | yes |
 | [`role`](#role) | List, add or remove roles and their test users; `role login` stores a session (SSO) | no |
 | [`export`](#export) | The recorded test as a Playwright test that runs without caw | no |
@@ -194,9 +194,9 @@ npx caw open create-ticket --env local
 npx caw open create-ticket@S3 --env local
 ```
 
-Opens the app signed in, with workbench and chat: navigate, try things, develop with Claude. Learns nothing and writes no test file.
+Opens the app with workbench and chat: navigate, try things, develop with Claude. Learns nothing and writes no test file.
 
-- **Without a test** it opens the app's start page. Without `--env` it takes the only environment where Claude may work.
+- **Without a test** it opens the app's start page. If the environment has a form sign-in, you watch it in the app first, as the step "Sign in" under Preparation, then caw goes to the start page. Without `--env` it takes the only environment where Claude may work.
 - **`open <test>`** replays the whole test first, then the window is yours.
 - **`open <test>@S3`** stops at the entry of S3: S1 and S2 replay completely, of S3 only its navigation (`goto`, clicks, waiting for the page). Its inputs and its check stay open for you; the terminal says `Ready for S3 …: navigation done, inputs open`. If S3 has no inputs at all (e.g. only a submit click), none of S3 runs; if one of its clicks wrote data in earlier runs, it stops before that click; if S3 isn't recorded or is stale, none of it runs. The terminal names the reason.
 

@@ -113,7 +113,17 @@ Hell und dunkel: Werkbank, Chat, Berichtsseite und die Karte „caw explore“ f
 | Alt+↵ | Chat: schickt deinen Text als Prüfpunkt, während du vorführst |
 | / | Chat: die Befehle, am Anfang des Eingabefelds |
 
-F11 und F12 bleiben bei Chrome.
+F11 und F12 bleiben bei Chrome. Die DevTools-Konsole beginnt in der Werkbank, nicht in der App; Rechtsklick → Untersuchen in der App stellt sie auf den App-Frame. In der Werkbank hält `caw` Werkzeuge bereit (`caw.help()` listet sie):
+
+| | |
+|---|---|
+| `caw.app` | Das Fenster der App: `caw.app.fetch('/api/…')`, `caw.app.document.title` |
+| `caw.info` | Projekt, Test, laufender Schritt, Modus, Lauf-Ordner, Umgebung, URL, Rolle, Framework, Version. Nur Namen, nie Passwörter |
+| `caw.requests()`, `caw.console()` | Die Listen hinter den Zählern in der Fußzeile |
+| `caw.locator(el)` | Der Locator, den caw für ein Element aufnehmen würde, etwa `await caw.locator($0)` nach Untersuchen |
+| `caw.ready()` | Die Bereit-Prüfung des Frameworks und die offenen Requests, jetzt |
+
+Die App teilt ihren Ursprung mit der Werkbank und kann `caw` ebenfalls lesen; deshalb steht darin nichts Geheimes, und nichts davon ändert den Lauf.
 
 Die Werkbank liegt unter der Adresse der Anwendung selbst, auf ihrem Origin. Viele Anwendungen greifen auf das oberste Fenster zu (`top.Ext`, `parent.config`, `top.location.href`), weil sie sich im Portal dafür halten. In der Werkbank geht das genauso:
 

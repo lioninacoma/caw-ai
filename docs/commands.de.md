@@ -16,7 +16,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen, auch ab einem Schritt | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
 | [`reproduce`](#reproduce) | Claude stellt einen Fehlerbericht allein nach: Bericht und Entwurf eines Testplans | ja |
-| [`open`](#open) | Die App angemeldet öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
+| [`open`](#open) | Die App öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
 | [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
 | [`mcp`](#mcp) | MCP-Server für deine eigene Claude-Code-Sitzung (startet Claude Code, nicht in `--help`) | – |
@@ -194,9 +194,9 @@ npx caw open create-ticket --env local
 npx caw open create-ticket@S3 --env local
 ```
 
-Öffnet die App angemeldet, mit Werkbank und Chat: navigieren, ausprobieren, mit Claude entwickeln. Lernt nichts und schreibt keine Testdatei.
+Öffnet die App mit Werkbank und Chat: navigieren, ausprobieren, mit Claude entwickeln. Lernt nichts und schreibt keine Testdatei.
 
-- **Ohne Test** öffnet es die Startseite der App. Ohne `--env` nimmt es die einzige Umgebung, auf der Claude arbeiten darf.
+- **Ohne Test** öffnet es die Startseite der App. Hat die Umgebung eine Formular-Anmeldung, siehst du sie zuerst in der App, als Schritt „Anmelden“ unter Vorbereitung; danach geht caw zur Startseite. Ohne `--env` nimmt es die einzige Umgebung, auf der Claude arbeiten darf.
 - **`open <test>`** spielt erst den ganzen Test ab, dann gehört dir das Fenster.
 - **`open <test>@S3`** hält am Einstieg in S3: S1 und S2 laufen ganz, von S3 nur die Navigation (`goto`, Klicks, Warten auf die Seite). Seine Eingaben und seine Prüfung bleiben für dich offen; das Terminal meldet `Bereit für S3 …: Navigation ausgeführt, Eingaben offen`. Hat S3 gar keine Eingaben (etwa nur ein Klick auf „Absenden“), läuft von S3 nichts; hat einer seiner Klicks in früheren Läufen Daten geschrieben, hält es vor diesem Klick; ist S3 nicht oder nicht aktuell aufgenommen, läuft davon nichts. Das Terminal nennt den Grund.
 

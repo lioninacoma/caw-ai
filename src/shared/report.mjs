@@ -164,7 +164,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [] }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -206,6 +206,10 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         for (const step of dropped) lines.push(`- ${cell(step)}`);
     }
     if (advice !== undefined) lines.push(...adviceLines(advice));
+    if (afterHandover.length > 0) {
+        lines.push('', `## ${t('config.report.afterHandover')}`, '', t('config.report.afterHandover.intro'), '');
+        for (const { type, text, origin, url, count } of afterHandover) lines.push(`- ${warningLabel(type)}: ${text}${origin || url ? ` (${origin ?? url})` : ''}${count > 1 ? ` (${count}x)` : ''}`);
+    }
     return `${lines.join('\n')}\n`;
 };
 

@@ -213,6 +213,8 @@ export default {
     'config.report.failures.at': ' bei {at}',
     'config.report.warnings': 'Warnungen',
     'config.report.warnings.intro': 'Fehler aus fremdem Code, Nebensächliches und neue Statushinweise. Sie entscheiden nicht über das Ergebnis.',
+    'config.report.afterHandover': 'Nach der Übergabe',
+    'config.report.afterHandover.intro': 'Gesehen, während das Fenster dir gehörte, nach dem Ergebnis oben. Es ändert das Ergebnis nicht.',
     'config.report.thirdParty': 'Fremde Hosts',
     'config.report.thirdParty.intro': 'Hosts außerhalb der Umgebungen und von allowHosts, die die Seiten der Anwendung kontaktiert haben (Skripte, Fonts, Analytics, iframes). Ihre Fehler sind Warnungen, nie ein gescheiterter Schritt.',
     'config.report.thirdParty.header': '| Host | Requests | Typen | Fehlgeschlagen |',

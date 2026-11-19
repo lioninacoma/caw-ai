@@ -27,6 +27,7 @@ import { markAppFrame } from './host-lock.mjs';
 import { language, t, texts } from '../shared/i18n.mjs';
 import { LONG_NAME } from '../shared/brand.mjs';
 import { readPrefs, writePagePref } from '../shared/prefs.mjs';
+import { MARK_ATTRIBUTE } from './record-locator.mjs';
 import { BASE_CSS, FAVICON, MODES, MODE_SCRIPT, icon, logo, modeAttr, styleSheet, tokenCss } from './style.mjs';
 
 export const CHAT_FRAME = CHAT_FRAME_NAME;
@@ -36,6 +37,9 @@ export const REFRESH_BINDING = 'cawRefresh';
 export const FULLSCREEN_BINDING = 'cawFullscreen';
 /** Pick a state (F1): run a test up to a step. */
 export const STATE_BINDING = 'cawState';
+/** Console tools (caw.ready(), caw.locator(el)): read-only answers from the host. */
+export const READY_BINDING = 'cawReady';
+export const LOCATE_BINDING = 'cawLocate';
 /**
  * The chat runs in a sandboxed iframe without allow-same-origin, so with its own opaque origin. The workbench shares its
  * origin with the application (so top.Ext & co. work). Without the sandbox the application could reach the chat and decide
@@ -637,7 +641,9 @@ const lines=(count)=>count===null||count===undefined?T['workbench.page.setMissin
 const badge=(cls,text,glyph)=>{const b=document.createElement('span');b.className='bdg '+cls;if(glyph)b.innerHTML=ICON[glyph];b.append(text);return b;};
 const code=(text)=>{const c=document.createElement('code');c.textContent=text;return c;};
 // What the host passes (run.mjs, benchSettings), shown as text only.
+let settingsData=null;
 const fillSettings=(data)=>{
+  settingsData=data;
   const lede=$('setLede');lede.replaceChildren(...T['workbench.page.setLede'].split('{file}').flatMap((part,i)=>i===0?[part]:[code(String(data.prefsFile??'')),part]));
   $('setLang').textContent=T['workbench.page.setLang.'+data.language?.value]??String(data.language?.value??'');
   $('setLangSrc').textContent=T['workbench.page.setSource.'+data.language?.source]??'';
@@ -794,6 +800,25 @@ window.workbench={
 // application's globals it does not have itself, and its address follows the application. The shared origin makes both possible.
 const forwarded=new Set();
 const appWindow=()=>{try{return $('app').contentWindow;}catch{return null;}};
+// For the DevTools console, which starts in the workbench: caw.app is the application's window (caw.app.fetch(…)), always the
+// current one; caw.info what runs here; requests(), console() the lists of the footer; locator(el) what caw would record for an
+// element, ready() whether the app is quiet. The application shares the origin and can read all of it: only names, never secrets,
+// and nothing that changes the run.
+const copy=(value)=>JSON.parse(JSON.stringify(value));
+const cawTools={
+  get app(){return appWindow();},
+  get info(){const s=settingsData??{};const running=items().find((li)=>li.dataset.state==='running'&&li.dataset.kind!=='phase');
+    let url=null;try{url=appWindow()?.location.href??null;}catch{}
+    return copy({project:s.project??null,test:s.test??null,step:running?.dataset.id??null,mode:s.mode??null,run:s.run??null,env:s.env??null,url,role:s.role??null,code:s.code??null,framework:s.framework??null,version:s.version??null});},
+  requests:()=>copy(state.requests),
+  console:()=>copy(state.console),
+  locator:async(element)=>{if(element===null||typeof element!=='object'||element.nodeType!==1)return null;
+    const mark='console-'+Math.random().toString(36).slice(2);element.setAttribute(${json(MARK_ATTRIBUTE)},mark);
+    try{return (await window.${LOCATE_BINDING}?.(mark))??null;}finally{element.removeAttribute(${json(MARK_ATTRIBUTE)});}},
+  ready:async()=>(await window.${READY_BINDING}?.())??null,
+  help:()=>{console.table({app:'the application window',info:'test, step, environment, mode, run, version',requests:'requests() – the footer list',console:'console() – the footer list','locator(el)':'the locator caw records for an element, e.g. caw.locator($0)',ready:'ready() – framework probe and open requests'});},
+};
+Object.defineProperty(window,'caw',{configurable:true,value:Object.freeze(cawTools)});
 const forward=()=>{const app=appWindow();if(!app)return;let names;try{names=Object.getOwnPropertyNames(app);}catch{return;}
   for(const name of names){if(forwarded.has(name)||name in window)continue;
     try{Object.defineProperty(window,name,{configurable:true,get(){try{return appWindow()?.[name];}catch{return undefined;}},set(value){try{appWindow()[name]=value;}catch{}}});forwarded.add(name);}catch{}}};
@@ -825,7 +850,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, state: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, state: null, debug: null };
         bench = holder;
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
@@ -873,6 +898,9 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (frame !== page.mainFrame() || holder.fullscreen === null) return;
             await holder.fullscreen(on === true);
         });
+        // caw.ready() and caw.locator(el) in the console: answers only, from whatever document calls them.
+        await page.exposeBinding(READY_BINDING, async () => (holder.debug === null ? null : holder.debug.ready()));
+        await page.exposeBinding(LOCATE_BINDING, async (_source, mark) => (holder.debug === null || typeof mark !== 'string' ? null : holder.debug.locator(mark)));
         // true: the host reloaded. false: locked, the test is running.
         await page.exposeBinding(REFRESH_BINDING, async ({ frame }) => {
             if (frame !== page.mainFrame() || holder.refresh === null) return false;
@@ -1073,6 +1101,10 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
                 if (reachable.length === 0 || (step !== undefined && !reachable.some(({ id }) => id === step))) return undefined;
                 return handler(test, step, { name: entry.name, role: entry.role, ...(step === undefined ? { until: reachable.at(-1).id } : {}) });
             };
+        },
+        /** The console tools' host side: { ready(), locator(mark) } with the value of the element's mark; null turns them off. */
+        onDebug: (handlers) => {
+            bench.debug = handlers ?? null;
         },
         /** The app frame at exactly this CSS size, scaled down to fit (OPEN-15); null lets it fill its pane again. */
         viewport: (size) => {

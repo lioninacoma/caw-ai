@@ -82,7 +82,7 @@ und Zeile. Gegen deinen Dev-Server lädt F5 deine Änderung.
 
 ```bash
 npx caw open first-errand@S3 --env local   # der Zustand vor S3, angemeldet, das Fenster gehört dir
-npx caw open --env local                   # die App angemeldet, ohne Test
+npx caw open --env local                   # die App, ohne Test
 ```
 
 Details: [Handbuch](docs/guide.de.md#jeden-zustand-erreichen-und-entwickeln).
@@ -222,7 +222,7 @@ abspielen kannst; siehe [`examples`](examples).
 | Ab einem geänderten Schritt bis zum Ende neu aufnehmen | `caw record <test>@S3 --env local` |
 | Claude ein Fehlerticket nachstellen lassen | `caw reproduce "<ticket>" --env local` |
 | Die App an den Anfang eines Schritts bringen und dort weiterentwickeln | `caw open <test>@S3 --env local` |
-| Die App angemeldet öffnen, ohne Test | `caw open --env local` |
+| Die App öffnen, ohne Test | `caw open --env local` |
 | Claude Fehler sofort erklären lassen | `caw run <test> --env local --explain` |
 | Einen Test nach Playwright exportieren | `caw export <test>` |
 | Config und Tests prüfen | `caw validate` |

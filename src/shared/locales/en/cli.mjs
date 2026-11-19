@@ -64,7 +64,7 @@ Commands:`,
       [--headless]                       No window
       [--report junit=<file>]            Also write the result as JUnit XML
       [--learn] [--start] [--reset | --no-reset]  as for one test; start and reset once for the whole row`,
-    'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Open the app signed in, with workbench and chat. Without a test: navigate, try
+    'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Open the app with workbench and chat. Without a test: navigate, try
                                          things, develop with Claude. With <test>: replay it first. With @<S4>: up to the
                                          entry of S4 (its navigation runs, its inputs and check stay open). Learns
                                          nothing, writes no test file

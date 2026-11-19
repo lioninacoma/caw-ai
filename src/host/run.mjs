@@ -398,7 +398,7 @@ const versionOf = () => {
  * the application may read anyway: names, flags, the home folder as ~ and line counts, never a note's content.
  * @param agent  the label of the sandbox Claude runs in, if known
  */
-export const benchSettings = ({ root, config, spec, checked, agent, env = process.env }) => {
+export const benchSettings = ({ root, config, spec, checked, agent, mode, run, env = process.env }) => {
     const personal = readPersonalContext(env);
     let project;
     try {
@@ -408,6 +408,11 @@ export const benchSettings = ({ root, config, spec, checked, agent, env = proces
     }
     return {
         project: basename(root),
+        // For caw.info in the console: which test, how and in which run folder.
+        test: spec.id,
+        ...(mode === undefined ? {} : { mode }),
+        ...(run === undefined ? {} : { run }),
+        framework: config.framework ?? 'web',
         config: CONFIG_FILE,
         env: { name: checked.name, url: checked.url, claude: checked.claude === true, writable: checked.writable === true, production: checked.production === true },
         ...(spec.role === undefined ? {} : { role: spec.role }),
@@ -509,6 +514,23 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         // The run is over: nothing runs any more, so the chip goes away.
         session?.workbench?.transport?.(null)?.catch?.(() => {});
     };
+    /**
+     * After the handover the result stands, but the window was still watched: hosts it blocked and errors it saw go into the report
+     * as a section of their own, written again when the window closes. The result itself does not change.
+     */
+    const noteAfterHandover = (handedAt) => {
+        const warned = (session.warnings?.() ?? []).flatMap(({ type, text, origin, url, count }) => {
+            const before = handedAt.warnings.get(`${type}
+${text}`) ?? 0;
+            return count > before ? [{ type, text, ...(origin === undefined ? {} : { origin }), ...(url === undefined ? {} : { url }), count: count - before }] : [];
+        });
+        const failed = (session.failures?.() ?? []).slice(handedAt.failures).map(({ type, text, url }) => ({ type, text, ...(url === undefined ? {} : { url }), count: 1 }));
+        const seen = [...failed, ...warned];
+        if (verdict === null || seen.length === 0) return;
+        verdict = redactDeep({ ...verdict, afterHandover: seen }, session.secrets?.() ?? []);
+        writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
+        writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
+    };
     const finishRun = () => {
         ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000, names: stepNames(), durations: durations() });
         // Missing saved sign-in or a TODO left in the config means nothing ran: an invalid invocation (3), not the environment (2).
@@ -548,7 +570,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
         session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps) });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         await session.workbench?.facts(benchFacts(config, spec, checked, titleOf(spec, ...headerMode), badgeOf(...headerMode)));
-        await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, agent: sandbox?.label ?? sandbox?.docker?.label }));
+        await session.workbench?.settings?.(benchSettings({ root, config, spec, checked, agent: sandbox?.label ?? sandbox?.docker?.label, mode: runCommand, run: runId }));
         await session.workbench?.transport?.(transportOf(replay));
         await session.workbench?.steps([...stepGroups(spec.steps, replay), ...(replay === undefined ? [] : [endGroup()])]);
     } catch (error) {
@@ -1165,6 +1187,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             await Promise.race([chat.linger(LINGER_MS), session.closed, aborted]);
         }
         if (handing) {
+            // What the session had noted when the window became the human's: whatever comes later goes into the report on closing.
+            const handedAt = { warnings: new Map((session.warnings?.() ?? []).map(({ type, text, count }) => [`${type}
+${text}`, count])), failures: (session.failures?.() ?? []).length };
             // The header says what applies now: the replay is over, it is the human's turn.
             let phase = ['handedOver'];
             const state = replay?.entry?.id ?? replay?.until;
@@ -1234,7 +1259,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
                         return restoreOther(loadStateTest(root, config, testId), until, { entry: stepId !== undefined });
                     };
                     const restore = () => (chosen.replay === undefined ? reloadApp() : restoreState());
-                    await Promise.race([develop({ chat, talk: ask, until: replay?.entry?.id ?? replay?.until, entry: replay?.entry !== undefined, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
+                    await Promise.race([develop({ chat, talk: ask, signedIn: session.signedIn, until: replay?.entry?.id ?? replay?.until, entry: replay?.entry !== undefined, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
                 } catch (error) {
                     ui.warn(t('run.develop.error', { message: String(error?.message ?? error).split(/\r?\n/)[0] }));
                 } finally {
@@ -1243,6 +1268,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
             } else {
                 await Promise.race([session.closed, aborted]);
             }
+            noteAfterHandover(handedAt);
         }
         stopSignals();
         await session.close();
