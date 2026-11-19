@@ -831,7 +831,8 @@ closeWindow.addEventListener('click',()=>{closeMenus();clearInterval(lingerTimer
 // A click into the input while the window counts down: the person stays, the countdown stops for good.
 const stay=()=>{if(lingerTimer===0||closeWindow.disabled)return;clearInterval(lingerTimer);lingerTimer=0;closeWindow.textContent=T['chat.page.closeNow'];$('stays').hidden=false;send('stay');};
 input.addEventListener('pointerdown',stay);input.addEventListener('focus',stay);
-window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();arrangeNext();
+// Without seconds (Save baselines is on the card): nothing counts down, the window waits for a choice.
+window.linger=(seconds)=>{if(seconds===null){clearInterval(lingerTimer);lingerTimer=0;closeWindow.textContent=T['chat.page.closeNow'];closeWindow.hidden=false;closeWindow.disabled=false;arrangeNext();return;}let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();arrangeNext();
   if(closeWindow.offsetParent!==null)closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
 
 // The slash commands: "/" at the start of the field opens them; arrows, Enter and Tab pick, Esc closes. Unavailable ones
@@ -1138,11 +1139,13 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         const clicked = new Promise((resolve) => { closeWanted = () => resolve('close'); });
         const stayed = new Promise((resolve) => { stayWanted = () => resolve('stay'); });
         let timer;
-        const elapsed = new Promise((resolve) => { timer = setTimeout(() => resolve('time'), ms); });
+        // With "Save baselines" on the card the window waits for a choice: a countdown would close it unseen behind More.
+        const counting = next?.learn !== true;
+        const elapsed = new Promise((resolve) => { if (counting) timer = setTimeout(() => resolve('time'), ms); });
         await quiet(render('closed'));
         // In App only the end card shows over the app, so the countdown does not run out unseen.
         await quiet(Promise.resolve(bench.showChat?.()));
-        await quiet(inChat((seconds) => window.linger(seconds), Math.round(ms / 1000)));
+        await quiet(inChat((seconds) => window.linger(seconds), counting ? Math.round(ms / 1000) : null));
         if (await Promise.race([clicked, elapsed, stayed]) === 'stay') {
             clearTimeout(timer);
             await clicked;

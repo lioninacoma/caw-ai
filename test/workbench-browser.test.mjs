@@ -1379,3 +1379,21 @@ test('console tools in the app context too (the DevTools switch there after pick
     assert.equal(await bench.page.evaluate(() => typeof window.caw.help), 'function', 'the workbench keeps its tools');
     return undefined;
 });
+
+test('chat: with Save baselines on the end card nothing counts down; the window waits for a choice', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command: 'caw run t', learn: true });
+    chat.human.closed();
+    let over = false;
+    const lingering = chat.linger(1000).then(() => { over = true; });
+    assert.ok(await until(() => frame.isVisible('#next.on')));
+    await pause(1600);
+    assert.equal(over, false, 'no countdown closes it');
+    assert.equal(await frame.textContent('#closeWindow'), 'Fenster schließen', 'no number');
+    await frame.click('#nextMore');
+    await frame.click('#closeWindow');
+    await lingering;
+    assert.equal(over, true);
+    return undefined;
+});
