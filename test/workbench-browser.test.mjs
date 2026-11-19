@@ -1224,6 +1224,9 @@ test('chat: notices are quiet icon lines, the token notice a card; Claude Code s
     chat.starting('Starte Claude');
     assert.ok(await until(() => frame.isVisible('.message.starting:not(.done) .spin')));
     assert.match(await frame.textContent('.message.starting small'), /^00:0\d$/);
+    chat.starting('Starte Claude');
+    await pause(200);
+    assert.equal(await frame.locator('.message.starting').count(), 1, 'preparing and starting show as one line');
     assert.ok(await until(async () => (await bench.page.textContent('#state')) === 'Claude Code startet'), 'the pill while Claude Code starts');
     assert.equal(await bench.page.getAttribute('#state', 'class'), 'pill on agent');
     chat.say('Ich schaue.');

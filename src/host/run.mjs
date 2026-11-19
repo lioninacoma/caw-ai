@@ -985,12 +985,15 @@ ${text}`) ?? 0;
                 await stopPump();
                 return result;
             }
+            // Until its first action or answer the chat shows that the agent starts (with the time): that takes a while.
+            if (talking && box?.kind !== 'session') chat.starting?.(t('run.flow.preparingSandbox'));
             agent = startAgent(box, command, talking ? TALK_LOG : ADVICE_LOG, mode);
             let adviceNote;
             try {
                 const ended = await Promise.race([done.then(() => 'done'), agent.ended, session.closed.then(() => 'browser-closed'), aborted.then(() => 'aborted')]);
                 // In a conversation Claude has only just learned of the end: give it a moment to fetch the last answer and stop cleanly.
-                if (ended === 'done' && talking) await Promise.race([agent.ended, new Promise((ok) => { setTimeout(ok, 3000).unref?.(); })]);
+                // Not while developing: the person ended it, nothing is left to fetch, and the window should close at once.
+                if (ended === 'done' && talking && mode !== 'develop') await Promise.race([agent.ended, new Promise((ok) => { setTimeout(ok, 3000).unref?.(); })]);
                 agent.stopTail();
                 if (ended !== 'done') {
                     const broke = talking ? 'run.consult.talkBroke' : 'run.consult.adviceBroke';
