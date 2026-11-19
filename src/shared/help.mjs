@@ -7,7 +7,7 @@ import { headLine, packageVersion } from './brand.mjs';
 import { colorEnabled, termPainter } from './color.mjs';
 
 /** The commands for people, in help order. */
-export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'doctor', 'role', 'export', 'overlay'];
+export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'doctor', 'role', 'skill', 'export', 'overlay'];
 /** Commands that exist but are not in the human help: the session MCP server and Claude's namespace. */
 const HIDDEN_COMMANDS = ['mcp', 'agent', 'attach'];
 /** Claude's commands, under `caw agent`; their help is `caw agent --help`. */
@@ -30,7 +30,7 @@ const MOVED = {
 };
 
 /** Commands removed before 1.0: the message says what replaces them. */
-const REMOVED = { skill: 'cli.removedSkill' };
+const REMOVED = {};
 
 /** A command's block; `here` names the environments Claude may work on, if the config knows them. */
 const block = (command, here) => t(`cli.help.${command}`, { here: here === undefined || here === '' ? '' : t('cli.help.here', { names: here }) });

@@ -16,6 +16,7 @@ import { frameworkOf } from './framework/index.mjs';
 import { parseEnvFile } from './linux.mjs';
 import { claudeVersion } from './local-agent.mjs';
 import { MCP_NAME, isNpxEntry, mcpEntry } from './mcp-entry.mjs';
+import { SKILL_PATH, skillState } from './skill.mjs';
 
 const browserName = (config) => {
     const launch = browserLaunch(config);
@@ -74,6 +75,11 @@ export const doctorChecks = async (root, { env = process.env, nodeVersion = proc
     } catch (error) {
         add({ ok: false, text: t('cli.doctorBrowserFail', { browser: browserName(config), error: String(error?.message ?? error).split('\n')[0] }), next: t('cli.doctorBrowserNext') });
     }
+
+    // The skill caw-attach lets the person's own session work with them in a caw window (--attach). Optional.
+    const skill = skillState(root);
+    if (skill === 'missing' || skill === 'outdated') add({ ok: false, optional: true, text: t(skill === 'missing' ? 'cli.doctorSkillMissing' : 'cli.doctorSkillOld', { file: SKILL_PATH }), next: t('cli.doctorSkillNext') });
+    else add({ ok: true, optional: true, text: t(skill === 'foreign' ? 'cli.doctorSkillForeign' : 'cli.doctorSkillOk', { file: SKILL_PATH }) });
 
     // Claude is only needed for record and the chat; locally Claude Code suffices, Docker also needs Docker and the token.
     const sandbox = agent ?? agentMode(config ?? {}, env);

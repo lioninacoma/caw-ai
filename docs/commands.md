@@ -263,6 +263,17 @@ When `record`, `run` or `open` needs a role without a test user, it stops before
 
 `role login` is for `signIn.type: session` (SSO, OAuth, MFA you can't automate). It opens Chrome on the sign-in and you sign in by hand. As soon as `signedInSelector` shows up, caw stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
 
+## skill
+
+```bash
+npx caw skill                         # writes or updates .claude/skills/caw-attach/SKILL.md
+```
+
+Writes the Claude Code skill `caw-attach`, which `init` also writes with the MCP entry. It tells your session when and how to
+attach to a caw window (`caw_attach`, the Monitor, `caw_start` with `open`): when you want to look at something in the app
+together, have a bug reproduced with you, or type `/caw-attach`. Run it again after updating caw. A file there that caw did
+not write stays as it is (exit 3, `skill-foreign`). `doctor` reports a missing or outdated skill as optional.
+
 ## export
 
 ```bash
@@ -352,6 +363,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `host-blocked` | 3 | `goto` to a host that is no app host: add it to `allowHosts` if the app really navigates there. In a run the same block is a failure of the step |
 | `env-certificate` | 2 | The environment's certificate is not trusted: for an internal certificate authority set `environments.<env>.insecureTls: true` |
 | `write-protected` | 3 | Recording and writing tests need `agent` / `writable` on the environment |
+| `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` exists and was not written by caw |
 | `auth-missing` | 3 | No stored session, or it expired: `caw role login <role> --env <env>` (the message names it) |
 | `credentials-missing` | 2 | Set the variables the message names in `caw/.env` or the environment (CI secrets); a new role first with `role add <role>` |
 | `login-form-missing`, `login-failed` | 2 | Is the backend up? Are the `signIn` selectors or steps and the credentials right? |

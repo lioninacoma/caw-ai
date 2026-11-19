@@ -165,6 +165,7 @@ const main = async ([command, ...args]) => {
             if (!overlayActive(root)) throw overlayInactive('cli.overlayCommandInactive');
             return (await import('../src/ext/overlay/overlay-check.mjs')).overlayCommand(root, args);
         case 'role': return (await import('../src/host/role-command.mjs')).roleCommand(root, args);
+        case 'skill': return (await import('../src/host/skill.mjs')).skillCommand(root, args);
         case 'run': return (await host()).run(root, args);
         case 'record': return (await host()).record(root, args);
         case 'open': return (await host()).open(root, args);

@@ -264,6 +264,18 @@ Braucht `record`, `run` oder `open` eine Rolle ohne Testnutzer, endet der Befehl
 
 `role login` ist für `signIn.type: session` (SSO, OAuth, MFA, die sich nicht automatisieren lassen). Es öffnet Chrome auf der Anmeldung, du meldest dich von Hand an. Sobald `signedInSelector` erscheint, speichert caw Cookies und Storage in `caw/.auth/<env>/<rolle>.json`. Erneut ausführen, wenn die Sitzung abläuft.
 
+## skill
+
+```bash
+npx caw skill                         # schreibt oder aktualisiert .claude/skills/caw-attach/SKILL.md
+```
+
+Schreibt den Claude-Code-Skill `caw-attach`, den `init` mit dem MCP-Eintrag ebenfalls schreibt. Er sagt deiner Session, wann
+und wie sie sich mit einem caw-Fenster verbindet (`caw_attach`, der Monitor, `caw_start` mit `open`): wenn du mit ihr etwas in
+der App ansehen willst, einen Fehler gemeinsam nachstellen lässt oder `/caw-attach` eingibst. Nach einem Update von caw erneut
+ausführen. Eine Datei dort, die caw nicht geschrieben hat, bleibt, wie sie ist (Exit 3, `skill-foreign`). `doctor` meldet einen
+fehlenden oder veralteten Skill als optional.
+
 ## export
 
 ```bash
@@ -353,6 +365,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `host-blocked` | 3 | `goto` zu einem Host, der kein Host der Anwendung ist: in `allowHosts` eintragen, wenn die Anwendung wirklich dorthin navigiert. In einem Lauf ist dieselbe Sperre ein Fehler des Schritts |
 | `env-certificate` | 2 | Dem Zertifikat der Umgebung wird nicht vertraut: bei einer internen Zertifizierungsstelle `environments.<env>.insecureTls: true` setzen |
 | `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `agent` / `writable` an der Umgebung |
+| `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` gibt es, nicht von caw geschrieben |
 | `auth-missing` | 3 | Keine gespeicherte Sitzung, oder sie ist abgelaufen: `caw role login <rolle> --env <env>` (die Meldung nennt ihn) |
 | `credentials-missing` | 2 | Die genannten Variablen in `caw/.env` oder in der Umgebung setzen (CI-Secrets); eine neue Rolle vorher mit `role add <rolle>` |
 | `login-form-missing`, `login-failed` | 2 | Läuft das Backend? Stimmen Selektoren oder Schritte in `signIn` und die Zugangsdaten? |

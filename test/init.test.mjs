@@ -32,9 +32,9 @@ test('init: passes validate at once, creates no example test, credentials are gi
     assert.equal(readFileSync(join(explored, 'caw', 'caw.md'), 'utf8'), 'eigen');
     const ignore = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/);
     assert.ok(ignore.includes('.caw/') && ignore.includes('caw/.env') && ignore.includes('caw/.auth/') && ignore.includes('caw/.explore.json'));
-    // Not installed here: npx, the way claude mcp add writes it. No skill.
+    // Not installed here: npx, the way claude mcp add writes it. The skill caw-attach comes with it.
     assert.deepEqual(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers.caw, npxEntry());
-    assert.ok(!existsSync(join(root, '.claude')));
+    assert.deepEqual(readdirSync(join(root, '.claude', 'skills')), ['caw-attach']);
 });
 
 test('init: extends an existing .mcp.json, leaves the rest alone, and skips it without mcp', (t) => {
@@ -192,7 +192,7 @@ test('doctor: names the next step per problem, optional items do not block, neve
     const loose = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes });
     assert.ok(loose.find(({ text }) => text.startsWith('.gitignore')).ok, 'gitignore compared loosely');
     const withoutClaude = await doctorChecks(root, { env: {}, nodeVersion: '22.4.0', probes: { ...probes, claude: () => undefined } });
-    assert.match(withoutClaude.find(({ text }) => /claude/.test(text)).next, /agent\.mode "docker"/);
+    assert.match(withoutClaude.find(({ text }) => /claude/.test(text) && !text.includes('caw-attach')).next, /agent\.mode "docker"/);
     // A selector explore did not find is TODO: doctor blocks until it is filled in.
     const configPath = join(root, 'caw.config.json');
     const saved = readFileSync(configPath, 'utf8');
@@ -305,10 +305,26 @@ test('missing test: the record hint only names flags the config does not determi
     await assert.rejects(record(root, ['neu', '--env', target]), (error) => error.code === 'usage' && /fehlt --role\. Aufruf: caw record neu/.test(error.message));
 });
 
-test('caw skill is removed: exit with what replaces it', async () => {
-    const { unknownCommandText } = await import('../src/shared/help.mjs');
-    assert.match(unknownCommandText('skill'), /caw skill gibt es nicht mehr: caw als MCP-Server anmelden \(claude mcp add caw --scope project -- npx caw-ai mcp\)/);
-    assert.match(unknownCommandText('skil'), /^Unbekannter Befehl: skil\./, 'no suggestion of a command that is gone');
+test('caw skill writes the skill caw-attach, updates only its own file, never one somebody wrote; init writes it with the MCP entry', async (t) => {
+    const { SKILL_PATH, skillCommand, skillState, skillText } = await import('../src/host/skill.mjs');
+    const root = mkdtempSync(join(tmpdir(), 'caw-skill-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    assert.equal(skillState(root), 'missing');
+    assert.equal(skillCommand(root), 0);
+    const file = join(root, SKILL_PATH);
+    assert.equal(readFileSync(file, 'utf8'), skillText());
+    assert.match(skillText(), /^---\r?\nname: caw-attach\r?\ndescription: .*reproduced together.*--attach/s, 'the triggers are in the description');
+    assert.equal(skillState(root), 'current');
+    writeFileSync(file, skillText().replace('caw_attach', 'caw_attach (old)'));
+    assert.equal(skillState(root), 'outdated');
+    skillCommand(root);
+    assert.equal(skillState(root), 'current');
+    const own = '---\nname: caw-attach\n---\nOur own.\n';
+    writeFileSync(file, own);
+    assert.equal(skillState(root), 'foreign');
+    assert.throws(() => skillCommand(root), (error) => error.code === 'skill-foreign');
+    assert.equal(readFileSync(file, 'utf8'), own, 'left as it is');
+    assert.throws(() => skillCommand(root, ['extra']), (error) => error.code === 'usage');
 });
 
 test('record: options for an already described test may match, only contradictions abort', async () => {
@@ -366,7 +382,7 @@ test('init: explore is required, asks for address and roles, checks every answer
     assert.equal(config.signIn.signedInSelector, 'TODO', 'what explore did not find');
     assert.deepEqual(config.roles['sach-bearbeiter'], {});
     assert.match(readFileSync(join(root, 'caw', '.env.example'), 'utf8'), /^# Nach caw\/\.env kopieren[^\n]*\n# [^\n]*\nCAW_ADMIN_USER=\nCAW_ADMIN_PASSWORD=\nCAW_SACH_BEARBEITER_USER=\nCAW_SACH_BEARBEITER_PASSWORD=\n$/);
-    assert.ok(!existsSync(join(root, '.claude')), 'no skill');
+    assert.ok(existsSync(join(root, '.claude', 'skills', 'caw-attach', 'SKILL.md')), 'the skill comes with the MCP entry');
 
     // If explore already ran, init takes its result without asking; the role is then neutral.
     const again = await initAnswers(root, [], { interactive: false, runExplore: async () => { throw new Error('no second explore'); } });

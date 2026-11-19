@@ -13,6 +13,7 @@ import { language, t, teamLanguage } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { closest } from '../shared/suggest.mjs';
 import { createUi } from '../shared/ui.mjs';
+import { SKILL_PATH, skillState, writeSkill } from './skill.mjs';
 import { selectDocker } from './docker.mjs';
 import { DEFAULT_MAX_ACTIONS } from './step-budget.mjs';
 import { CLAUDE_TIMEOUT_MIN, optionValue, parseRunArgs, toWslPath } from './linux.mjs';
@@ -351,6 +352,10 @@ export const init = (root, answers = {}) => {
     if (!existsSync(join(root, TEST_DIR))) write(`${TEST_DIR}/.gitkeep`, '');
     write(CONTEXT_FILE, t('cli.contextTemplate'));
     if (answers.mcp !== false && addMcpEntry(root)) created.push('.mcp.json');
+    // With the MCP entry the skill that lets the person's session attach to caw windows; a file somebody wrote stays as it is.
+    if (answers.mcp !== false) {
+        if (skillState(root) !== 'foreign' && writeSkill(root) !== 'current') created.push(SKILL_PATH);
+    }
 
     const ignore = join(root, '.gitignore');
     const existing = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';

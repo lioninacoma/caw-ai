@@ -90,6 +90,8 @@ Commands:`,
     'cli.help.doctor': `  doctor [--agent local|docker|session]  Check Node, Chrome, {agent} (local) or Docker and token (docker),
                                          test users and environments, each with the next step
       [--env <name>]                     only this environment's test users and address`,
+    'cli.help.skill': `  skill                                  Write or update the Claude Code skill caw-attach (.claude/skills/caw-attach): it tells your
+                                         session when and how to work with you in a caw window. Check it in.`,
     'cli.help.role': `  role [list] [--json]                   Roles, whether a test user is set (never the values), and which tests use them
   role add <role>                        Add the role to the config and its variable names to caw/.env.example; you put
                                          the test user into caw/.env (or CI secrets) by hand
@@ -164,6 +166,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.reproduceDraft': 'Draft test: {from}. To adopt: copy it to {to}, review it, then {record}',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker|session] [--env <name>]',
+    'cli.synopsis.skill': 'caw skill',
     'cli.synopsis.role': 'caw role [list [--json] | add <role> | remove <role> | login <role> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  or  caw run <test> <test> … | --all [--env <name>]',
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <role>]  or  caw record <test>@<S4> [--env <name>]',
@@ -192,7 +195,10 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.movedCommand': 'caw {command} is now caw {now}.',
     'cli.overlayCommandInactive': 'caw overlay is an extension and is not active here: it needs an overlay block in caw.config.json. See docs/extensions/overlay.md.',
     'cli.overlayFlagInactive': '--overlay is an extension and is not active here: it needs an overlay block in caw.config.json. See docs/extensions/overlay.md.',
-    'cli.removedSkill': 'caw skill was removed: register caw as an MCP server (claude mcp add caw --scope project -- npx caw-ai mcp); it brings the guidance itself. Delete .claude/skills/caw-ai/ by hand.',
+    'cli.skillCreated': 'Skill written: {file}. Check it in; your Claude Code session uses it from its next start (or /reload-plugins).',
+    'cli.skillUpdated': 'Skill updated: {file}.',
+    'cli.skillCurrent': 'Skill is up to date: {file}.',
+    'cli.skillForeign': '{file} exists and was not written by caw; it stays as it is. Move it away, then run caw skill again.',
     'cli.unknownAgentCommand': 'Unknown command: caw agent {command}.{suggestion} See caw agent --help.',
     'cli.didYouMean': ' Did you mean {name}?',
 
@@ -370,6 +376,11 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.doctorBrowserNext': 'Install Google Chrome (Stable), caw uses the system Chrome; or set browser.channel or browser.executablePath in the config.',
     'cli.doctorPersonalOk': 'Personal notes for {agent}: {path} ({lines} lines), read in every project before caw/caw.md',
     'cli.doctorPersonalNone': 'No personal notes for {agent} (optional: {path})',
+    'cli.doctorSkillMissing': 'No skill caw-attach for your {agent} session ({file})',
+    'cli.doctorSkillOld': 'The skill caw-attach is older than this caw ({file})',
+    'cli.doctorSkillNext': 'caw skill writes it; then check it in.',
+    'cli.doctorSkillOk': 'Skill caw-attach for your {agent} session ({file})',
+    'cli.doctorSkillForeign': '{file} exists and is not caw’s; caw leaves it as it is',
     'cli.doctorSessionOk': 'Your {agent} session takes over (caw entry in .mcp.json)',
     'cli.doctorSessionMissing': 'caw entry in .mcp.json is missing',
     'cli.doctorSessionNpx': 'The caw entry in .mcp.json starts caw through npx although caw is installed in the project',
