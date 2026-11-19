@@ -153,7 +153,8 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
         if (background !== null) return background;
         return paused ? 'pausing' : 'running';
     };
-    const publish = () => status(state(), choice?.options);
+    // The question of a waiting card goes along: the terminal names it instead of a general status.
+    const publish = () => status(state(), choice?.options, choice?.question);
     /** Ends a wait for the human. */
     const answerPlan = (answer) => {
         const resolve = planAnswer;
@@ -295,6 +296,8 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                 choice = {
                     kind,
                     options,
+                    // What the human sees: a decision card asks its own question, `question` is then only for the log.
+                    question: card === undefined || card.kind === 'tokens' ? question : card.question,
                     resolve: parked === null ? resolve : (id) => {
                         if (!ended) choice = parked;
                         resolve(id);
@@ -1026,7 +1029,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
                 quiet(Promise.resolve(bench.chatState?.(current[0])));
             }
         },
-        status: (state, options) => {
+        status: (state, options, question) => {
             quiet(render(state, options));
             // A decision has to be seen: in App only (F8) the chat is hidden, e.g. the confirmation after F1 while developing.
             if (NEEDS_HUMAN.includes(state)) {
@@ -1036,7 +1039,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
             // Whoever waits in the terminal sees there that the window is waiting. Repeating the same state does not count.
             if (NEEDS_HUMAN.includes(state) && state !== waitingFor) {
                 waitingFor = state;
-                onWaiting?.(t('chat.waiting', { status: statusTexts(state).text }));
+                onWaiting?.(t('chat.waiting', { status: question ?? statusTexts(state).text }));
             } else if (!NEEDS_HUMAN.includes(state)) waitingFor = null;
             quiet(Promise.resolve(bench.mood?.(ASKS_HUMAN.includes(state) ? 'ask' : 'wait')));
             startingShown = false;

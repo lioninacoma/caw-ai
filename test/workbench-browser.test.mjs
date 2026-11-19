@@ -405,7 +405,7 @@ test('chat: the decision is a card, discard needs a second click', async (t) => 
     assert.match(await frame.textContent('.decision strong'), /Prüflauf bestanden$/, 'title, preceded by the mark');
     assert.equal(await frame.locator('.decision > ul > li').count(), 1);
     assert.equal(await frame.locator('.decision details').getAttribute('open'), null, 'warnings collapsed');
-    assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Der Testplan ändert sich erst mit deiner Wahl.'], 'once in the terminal');
+    assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Soll das der neue Testplan werden?'], 'once in the terminal, with the question the card asks');
     // The application bar says so too, and the pill: the chat waits for the human.
     assert.ok(await until(async () => (await bench.page.textContent('#browserState')) === 'DU BIST DRAN'));
     assert.equal(await bench.page.textContent('#state'), 'Du bist dran');
@@ -1407,5 +1407,16 @@ test('chat: an advice card starts with its icon and heading, never with "null" (
     assert.equal(await frame.locator('.message.advice strong svg').count(), 1, 'the agent icon');
     chat.say('Hallo.');
     assert.ok(await until(async () => (await frame.locator('.message.claude .who svg').count()) === 1), 'the sender has its icon too');
+    return undefined;
+});
+
+test('chat: the terminal names the token notice it waits for', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, waiting } = await open(t);
+    const chosen = chat.choose('choosing', 'Claude Code arbeitet jetzt, das kostet Token.', [{ id: 'go', label: 'Weiter', primary: true }], { kind: 'tokens', text: 'x' });
+    assert.ok(await until(() => waiting.length === 1));
+    assert.deepEqual(waiting, ['Wartet im Chrome-Fenster auf dich: Claude Code arbeitet jetzt, das kostet Token.']);
+    chat.closed?.();
+    void chosen;
     return undefined;
 });

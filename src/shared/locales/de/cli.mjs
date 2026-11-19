@@ -548,7 +548,7 @@ Browser:
     'cli.code.agoMinutes': 'vor {count} min',
     'cli.code.agoHours': 'vor {count} h',
     'cli.code.agoDays': 'vor {count} Tagen',
-    'cli.uiMaxActions': 'bis {count} Aktionen',
+    'cli.uiMaxActions': 'bis {count} Browser-Aktionen',
     'cli.uiLanguage': 'Teamsprache {language}',
     'cli.uiWarnings': '{count} Warnung(en) im Bericht.',
     'cli.uiReport': 'Bericht:',

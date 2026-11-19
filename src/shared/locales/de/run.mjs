@@ -156,7 +156,7 @@ export default {
     'run.agentWorking': 'Der Agent arbeitet ...',
     'run.noVerdict': 'Der Lauf endete ohne Urteil (kein finish).',
     'run.sandboxNoAgent': 'Die Sandbox endete mit Exit {code}, ohne den Agenten zu starten; siehe Ausgabe oben.',
-    'run.budget': '{agent} hat {used} von {max} Schritten genutzt.',
+    'run.budget': '{agent} hat {used} von {max} Browser-Aktionen genutzt (Lesen ist frei).',
     'run.writes': '{id} hat geschrieben ({labels}) und gilt deshalb als schreibend (writes: true).',
     'run.budget.unlimited': 'beliebig vielen',
     'run.noRecording': 'Keine neue Aufzeichnung: {problems}',

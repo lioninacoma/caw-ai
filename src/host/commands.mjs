@@ -1326,7 +1326,6 @@ export const reproduce = async (root, args, deps = {}) => {
             },
         });
         const outcome = result.verdict?.reproduce;
-        if (outcome?.reproduced !== undefined) ui.info(t(`cli.reproduceVerdict.${outcome.reproduced}`));
         if (outcome?.draft !== undefined) ui.info(t('cli.reproduceDraft', outcome.draft));
         return result.exitCode;
     });

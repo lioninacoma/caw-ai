@@ -544,7 +544,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.code.agoMinutes': '{count} min ago',
     'cli.code.agoHours': '{count} h ago',
     'cli.code.agoDays': '{count} days ago',
-    'cli.uiMaxActions': 'up to {count} actions',
+    'cli.uiMaxActions': 'up to {count} browser actions',
     'cli.uiLanguage': 'team language {language}',
     'cli.uiWarnings': '{count} warning(s) in the report.',
     'cli.uiReport': 'Report:',

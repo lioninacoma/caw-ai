@@ -10,6 +10,16 @@ const capture = (fancy, full) => {
 };
 // eslint-disable-next-line no-control-regex -- strips ANSI colour codes
 const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
+test('a reproduction reports what it found, not passed', () => {
+    for (const fancy of [true, false]) {
+        const { lines, ui } = capture(fancy);
+        ui.verdict({ status: 'pass', testId: 'reproduce', target: 'a/local', reproduce: { reproduced: 'yes' } }, { report: 'r.md', elapsed: 2 });
+        const text = plain(lines.join('\n'));
+        assert.match(text, /Nachgestellt\./);
+        if (fancy) assert.doesNotMatch(text, /Bestanden\./);
+    }
+});
+
 const VERDICT = {
     status: 'fail',
     testId: 'r1',

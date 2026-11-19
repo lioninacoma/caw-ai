@@ -243,7 +243,7 @@ export const createUi = ({ fancy = colorEnabled(), out: own, err = (text) => con
          * @param names     step id -> name (otherwise the expectation's text is shown)
          * @param durations step id -> seconds
          */
-        verdict: ({ status, reason, note, code, testId, target, expectations = [], results = [], failures = [], warnings = [] }, { report, reportUrl, elapsed, names = {}, durations = {} }) => {
+        verdict: ({ status, reason, note, code, testId, target, expectations = [], results = [], failures = [], warnings = [], reproduce }, { report, reportUrl, elapsed, names = {}, durations = {} }) => {
             const { color } = STATUS[status];
             // An error always names its code, as when a command stops (fatal).
             const codeLabel = status === 'error' && isErrorCode(code) ? t('cli.errorCode', { code, exit: exitOf(code) }) : '';
@@ -253,6 +253,7 @@ export const createUi = ({ fancy = colorEnabled(), out: own, err = (text) => con
                 // Without a window or in CI this is all there is: the reason belongs in the terminal, not only in report.md.
                 if (status === 'fail' && why !== undefined) out(`[caw] ${safe(why)}`);
                 if (warnings.length > 0) out(`[caw] ${t('cli.uiWarnings', { count: warnings.length })}`);
+                if (reproduce?.reproduced !== undefined) out(`[caw] ${t(`cli.reproduceVerdict.${reproduce.reproduced}`)}`);
                 out(`[caw] ${t('cli.uiReport')} ${report}`);
                 return;
             }
@@ -289,7 +290,9 @@ export const createUi = ({ fancy = colorEnabled(), out: own, err = (text) => con
             if (failures.length > MAX_FAILURES) out(`${indent}${paint.muted(t('cli.uiMoreFailures', { count: failures.length - MAX_FAILURES }))}`);
             if (note) out(`${indent}${paint.muted(safe(note))}`);
             // "Failed. 2 of 4 steps passed. 1 warning · 8.7s"
-            const parts = [color(paint.bold(t(`cli.uiStatus.${status}`)))];
+            // A reproduction reports what it found, not whether a test passed.
+            const headline = reproduce?.reproduced === undefined ? t(`cli.uiStatus.${status}`) : t(`cli.reproduceVerdict.${reproduce.reproduced}`);
+            const parts = [color(paint.bold(headline))];
             if (expectations.length > 0) parts.push(paint.text(t('cli.uiStepsPassed', { passed: counts.pass, total: expectations.length })));
             if (warnings.length > 0) parts.push(paint.warn(t('cli.uiWarningCount', { count: warnings.length })));
             out('');
