@@ -31,6 +31,7 @@ export default {
     'workbench.chatFold': 'Chat einklappen',
     'workbench.chatUnfold': 'Chat ausklappen',
     'workbench.chat': 'Chat',
+    'workbench.chatNew': 'Neue Nachricht im Chat',
     'workbench.chatPlaceholder': 'Hier erscheint der Chat,<br>sobald es etwas zu entscheiden gibt.',
 
     'workbench.set.back': 'Zurück zum Lauf',
@@ -73,6 +74,7 @@ export default {
     'workbench.keys.drawer': 'Requests · Konsole',
     'workbench.keys.panels': 'Schritte · Chat',
     'workbench.keys.reload': 'Anwendung neu laden',
+    'workbench.keys.chatPop': 'Chat über der Anwendung (Nur Anwendung)',
     'workbench.keys.pause': 'Pause oder weiter',
     'workbench.keys.cancel': 'Lauf abbrechen',
 

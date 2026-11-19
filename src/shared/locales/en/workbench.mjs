@@ -31,6 +31,7 @@ export default {
     'workbench.chatFold': 'Collapse chat',
     'workbench.chatUnfold': 'Expand chat',
     'workbench.chat': 'Chat',
+    'workbench.chatNew': 'New message in the chat',
     'workbench.chatPlaceholder': 'The chat appears here<br>once there is something to decide.',
 
     'workbench.set.back': 'Back to the run',
@@ -73,6 +74,7 @@ export default {
     'workbench.keys.drawer': 'Requests · Console',
     'workbench.keys.panels': 'Steps · Chat panel',
     'workbench.keys.reload': 'Reload the app',
+    'workbench.keys.chatPop': 'Chat over the app (App only)',
     'workbench.keys.pause': 'Pause or continue',
     'workbench.keys.cancel': 'Cancel the run',
 

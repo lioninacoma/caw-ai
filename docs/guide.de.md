@@ -79,7 +79,7 @@ Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 - **Rechts:** der Chat mit Claude.
 - **Menü ⋯** (auch Strg+K): jede Funktion mit ihrer Taste, in zwei Gruppen. Lauf: Pause (F9), Anwendung neu laden (F5), Lauf abbrechen (Esc) und nach der Übergabe Öffnen… (F1). Ansicht: Requests (F2), Konsole (F3), Schritte ausblenden (F4), Chat ausblenden (F6), Nur Anwendung (F8). Darunter Animationen aus (F10), Einstellungen (Strg+,) und Tastenkürzel (?). Die Pfeiltasten bewegen, Enter wählt, Esc schließt. Die Tasten wirken auch, wenn der Fokus im Chat liegt.
 - **Einklappen:** Ein Klick auf den Titel „Schritte“ oder „Chat“ (oder F4, F6) klappt den Bereich zu einer schmalen Leiste ein. Braucht der Chat dich, klappt er von selbst auf.
-- **Nur Anwendung:** F8 zeigt nur die Anwendung, mit einer Zeile darüber und „Zurück zur Werkbank F8“.
+- **Nur Anwendung:** F8 zeigt nur die Anwendung, mit einer Zeile darüber und „Zurück zur Werkbank F8“. **Chat** in dieser Zeile (Strg+J, auch mit dem Fokus in der Anwendung) blendet denselben Chat schwebend unten rechts über der Anwendung ein, 380 × 520; Esc, Strg+J oder × blenden ihn wieder aus. Ein Punkt an Chat sagt, dass der Agent geschrieben hat, während er ausgeblendet war. Eine Entscheidung oder das Laufende blendet ihn von selbst ein, damit der Countdown zum Schließen nie ungesehen abläuft. Die Zeile nennt auch, wer antwortet, wenn deine Session verbunden ist („Claude Code verbunden · k7f2“). Das Fenster merkt sich die Wahl, bis es schließt; ein neuer Lauf beginnt mit ausgeblendetem Chat.
 - **Neu laden:** F5 (auch Strg+R, in der Anwendung und im Chat, ⋯ → Anwendung neu laden oder `/reload` im Chat) lädt nach der Übergabe die aktuelle Seite ohne Cache neu; Chat und Schritte bleiben. Solange der Test läuft, auch während „Neu öffnen“ oder F1 einen Zustand herstellt, ist das gesperrt und der Menüeintrag ausgegraut: Ein Neuladen würde den Zustand für die folgenden Schritte verfälschen. Lädt jemand die ganze Werkbank über den Browser neu, baut caw sie wieder auf; lief gerade der Test, bricht er ohne Ergebnis ab.
 
 #### Einstellungen
@@ -103,6 +103,7 @@ Hell und dunkel: Werkbank, Chat, Berichtsseite und die Karte „caw explore“ f
 | F4, F6 | Schritte, Chat ein- oder ausklappen |
 | F5 | Die Anwendung ohne Cache neu laden (nach der Übergabe) |
 | F8 | Nur Anwendung und zurück |
+| Strg+J | In Nur Anwendung: Chat über der Anwendung ein- oder ausblenden |
 | F9 | Claude anhalten oder weitermachen lassen |
 | F10 | Animationen aus oder an |
 | Esc | Schließt das offene Menü, den Dialog, die Einstellungen oder die Schublade, bricht das Wählen eines Elements ab; sonst fragt es den Abbruch des Laufs an, ein zweites Esc innerhalb von 4 Sekunden bestätigt |

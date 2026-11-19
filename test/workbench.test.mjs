@@ -69,7 +69,7 @@ test('workbench: no toolbars; one ⋯ menu lists every function with its key, th
     assert.match(menu, /role="menuitemcheckbox" tabindex="-1" id="still" aria-checked="true"/);
     assert.match(html, /id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu"/);
     // The chat forwards these keys and posts them for its slash commands: views and menus only, never a decision.
-    assert.deepEqual(CHAT_KEYS, ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', '?']);
+    assert.deepEqual(CHAT_KEYS, ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', 'Ctrl+J', '?']);
 });
 
 test('workbench: the chat placeholder takes a new mode only from its parent and only one of the three', () => {

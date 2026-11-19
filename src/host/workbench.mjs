@@ -35,6 +35,8 @@ export const PREF_BINDING = 'cawPref';
 export const REFRESH_BINDING = 'cawRefresh';
 /** Application only (F8): toggles the solo view. */
 export const FULLSCREEN_BINDING = 'cawFullscreen';
+/** The chat over the app in App only (Ctrl+J): the host remembers it for reloads of the workbench. */
+export const CHAT_POP_BINDING = 'cawChatPop';
 /** Pick a state (F1): run a test up to a step. */
 export const STATE_BINDING = 'cawState';
 /** Console tools (caw.ready(), caw.locator(el)): read-only answers from the host. */
@@ -50,7 +52,7 @@ export const LOCATE_BINDING = 'cawLocate';
 export const CHAT_SANDBOX = 'allow-scripts allow-forms';
 /** Keys the chat may pass on to the workbench, also for its slash commands: they open views and menus, never decide. A message
  * from the chat cannot trigger more. */
-export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', '?'];
+export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', 'Ctrl+J', '?'];
 const RELOADED_MS = 15000;
 /** The preparation group: Chrome, login, local code, loading. */
 export const PREP = 'prep';
@@ -94,7 +96,7 @@ const menuItems = (ctrl, still) => [
 /** The key list of the settings page. */
 const keyList = (ctrl) => [
     [t('workbench.keys.more'), `${ctrl} K`], [t('workbench.keys.open'), 'F1'], [t('workbench.keys.drawer'), 'F2 · F3'], [t('workbench.keys.panels'), 'F4 · F6'],
-    [t('workbench.keys.reload'), 'F5'], [t('workbench.solo'), 'F8'], [t('workbench.keys.pause'), 'F9'], [t('workbench.still'), 'F10'], [t('workbench.keys.cancel'), 'Esc Esc'],
+    [t('workbench.keys.reload'), 'F5'], [t('workbench.solo'), 'F8'], [t('workbench.keys.chatPop'), `${ctrl} J`], [t('workbench.keys.pause'), 'F9'], [t('workbench.still'), 'F10'], [t('workbench.keys.cancel'), 'Esc Esc'],
     [t('workbench.page.settings'), `${ctrl} ,`], [t('workbench.shortcuts'), '?'],
 ];
 
@@ -292,6 +294,18 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 .solo .top,.solo .pa-steps,.solo .pa-chat,.solo .appbar,.solo .drawer,.solo .afoot{display:none}
 .solo .panes{grid-template-columns:minmax(0,1fr);grid-template-areas:"browser"}
 .solo .pa-browser{border:0}
+/* App only with the chat (Ctrl+J): the same chat frame floats over the app, 380 x 520 at the bottom right; nothing is copied. */
+.soloBar{overflow:visible}
+#soloConn{font:500 12px/1 var(--font);color:var(--muted);white-space:nowrap}
+.soloBar .cbtn{position:relative;height:26px;gap:6px;padding:0 6px 0 8px;font-size:12px}
+.soloBar .cbtn .i{width:14px;height:14px;color:var(--muted)}
+.soloBar .cbtn[aria-pressed=true]{background:var(--accent-soft);border-color:transparent;color:var(--accent-text)}
+.soloBar .cbtn[aria-pressed=true] .i{color:var(--accent-text)}
+.soloBar .cbtn .new{position:absolute;top:-4px;right:-4px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--nav)}
+.solo.chat-pop .pa-chat{display:flex;flex-direction:column;position:fixed;right:16px;bottom:16px;z-index:30;width:380px;height:min(520px,calc(100vh - 68px));border:1px solid var(--line2);border-radius:var(--r3);box-shadow:var(--shadow-lg);overflow:hidden;background:var(--panel)}
+.solo.chat-pop .pa-chat>.pane-h{display:flex!important}.solo.chat-pop #chat{display:block!important}.solo.chat-pop #chatStrip,.solo.chat-pop #chatFold{display:none!important}
+#chatHide{display:none}.solo.chat-pop #chatHide{display:inline-grid;margin-left:auto}
+@media (max-width:479px){.solo.chat-pop .pa-chat{width:calc(100vw - 32px)}}
 /* Open… (F1): tests on the left, their steps on the right, the explanation and Open at the bottom. Also in solo view. */
 #stateDlg{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:var(--overlay)}
 #stateDlg>.dlg{width:min(860px,calc(100vw - 32px));height:min(600px,calc(100vh - 48px));display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r3);box-shadow:var(--shadow-lg);overflow:hidden}
@@ -365,7 +379,7 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 .pa-steps{max-height:none}#track{overflow:visible}.pa-chat{height:72vh}.pa-browser{height:78vh;border-left:0;border-top:1px solid var(--line)}
 .top{padding:6px 16px}.top-r{margin-left:0}}
 </style></head><body class="${classes}"><div class="pa"><div id="bench">
-<div class="soloBar">${logo({ size: 18, label: 'caw' })}<span id="soloUrl"></span><button class="lnk" type="button" data-solo data-press="F8">${t('workbench.backToBench')}<kbd>F8</kbd></button></div>
+<div class="soloBar">${logo({ size: 18, label: 'caw' })}<span id="soloUrl"></span><span id="soloConn" hidden></span><button class="btn btn-s btn-sm cbtn" type="button" id="chatPop" data-press="Ctrl+J" aria-pressed="false" title="${t('workbench.page.showChat')} (${ctrl} J)">${icon('msg')}${t('workbench.chat')}<kbd>${ctrl} J</kbd><span class="new" title="${t('workbench.chatNew')}" hidden></span></button><button class="lnk" type="button" data-solo data-press="F8">${t('workbench.backToBench')}<kbd>F8</kbd></button></div>
 <header class="top"><div class="brand" title="${esc(LONG_NAME)}">${logo({ size: 28, label: 'caw' })}<b class="word" aria-hidden="true">caw</b></div>
 <nav class="crumb" aria-label="${t('workbench.crumb')}"><span class="sl" id="projectSep" hidden>/</span><span id="project" hidden></span><span class="sl">/</span><b id="crumbTest">${esc(test || 'caw')}</b><span id="title" class="bdg line" data-test="${esc(test)}">${esc(test || 'caw')}</span></nav>
 <div class="top-r"><ul class="facts" id="facts" aria-label="${t('workbench.runFacts')}"></ul><span id="notice" role="status" hidden></span><span id="state" class="pill" role="status"></span><span id="transport" class="tp" role="img"><i></i><span></span></span><button type="button" class="ib" id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="${t('workbench.more')}" title="${t('workbench.more')} (${ctrl} K)">${icon('more')}</button></div></header>
@@ -378,7 +392,7 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><span class="end"><span>F2 · F3 ·</span><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}">${t('workbench.drawerEsc')}</button></span></div>
 <div class="panel" id="panel"></div></div>
 <div class="afoot"><button type="button" id="footRequests" data-tabkey="requests" data-press="F2" title="${t('workbench.requests')} (F2)"></button><span class="sep">·</span><button type="button" id="footConsole" data-tabkey="console" data-press="F3" title="${t('workbench.console')} (F3)"></button><span class="keys">F2 · F3</span></div></section>
-<section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${pane('chat', t('workbench.chat'), t('workbench.chatFold'), t('workbench.chatUnfold'), 'F6', 'chev-r', 'chev-l')}<iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(prefs.mode))}"></iframe></section>
+<section class="pa-chat win" id="chatCard" aria-label="${t('workbench.chatLabel')}">${pane('chat', t('workbench.chat'), t('workbench.chatFold'), t('workbench.chatUnfold'), 'F6', 'chev-r', 'chev-l', `<button class="ib" id="chatHide" type="button" data-press="Ctrl+J" aria-label="${t('workbench.page.hideChat')}" title="${t('workbench.page.hideChat')} (${ctrl} J · Esc)">${icon('x')}</button>`)}<iframe id="chat" name="${CHAT_FRAME}" title="${t('workbench.chatLabel')}" sandbox="${CHAT_SANDBOX}" allow="clipboard-write" srcdoc="${esc(chatPlaceholder(prefs.mode))}"></iframe></section>
 </main>
 ${settingsView(ctrl)}
 </div></div>
@@ -388,6 +402,7 @@ ${settingsView(ctrl)}
 <div class="sfoot"><p id="sfoot"></p><button type="button" class="lnk lnk-m" id="scancel">${t('workbench.page.stateCancel')}</button><button type="button" class="btn btn-p" id="sgo" disabled>${t('workbench.page.stateGo')}<kbd>↵</kbd></button></div></div></div>
 <script>
 const T=${json(texts('workbench.page.'))};
+const AGENT_FACT=${json(t('run.fact.agent'))};
 // The chat header labels (Claude working, caw working, pausing …, paused): the pill shows them first.
 const PILL=${json(Object.fromEntries(Object.entries(texts('chat.status.')).filter(([name]) => name.endsWith('.label'))))};
 const MODES=${json(MODES)};
@@ -524,7 +539,11 @@ $('chatFold').addEventListener('click',()=>fold('chat',true));$('chatStrip').add
 $('stepsTitle').addEventListener('click',()=>{if(wide())toggleFold('steps');});$('chatTitle').addEventListener('click',()=>{if(wide())toggleFold('chat');});
 // Application only: the workbench steps back, the browser window stays as it is (no fullscreen like F11). The host remembers
 // it and restores it after a workbench reload.
-const showSolo=(on)=>{document.body.classList.toggle('solo',on);};
+const showSolo=(on)=>{document.body.classList.toggle('solo',on);try{chatWindow()?.postMessage({caw:'solo',on},'*');}catch{}};
+// The chat over the app (App only, Ctrl+J). Leaving App only keeps the choice for the next F8; showing clears the new-message dot.
+const popped=()=>document.body.classList.contains('chat-pop');
+const showPop=(on)=>{document.body.classList.toggle('chat-pop',on);const b=$('chatPop');b.setAttribute('aria-pressed',String(on));b.title=T['workbench.page.'+(on?'hideChat':'showChat')]+' ('+T['workbench.page.keyCtrl']+' J)';if(on)b.querySelector('.new').hidden=true;try{chatWindow()?.postMessage({caw:'pop',on},'*');}catch{}};
+const popChat=(on=!popped())=>{if(!document.body.classList.contains('solo'))return false;showPop(on);if(on)$('chat').focus();else $('app').focus();try{const result=window.${CHAT_POP_BINDING}?.(on);result?.catch?.(()=>{});}catch{}return true;};
 const solo=(on=!document.body.classList.contains('solo'))=>{if(on)openSettings(false);showSolo(on);try{const result=window.${FULLSCREEN_BINDING}?.(on);result?.catch?.(()=>{});}catch{}};
 // Animations off (F10): no blinking, no spinner, no cursor. Also applies to the next runs.
 const setStill=(on)=>{document.body.classList.toggle('still',on);$('still').setAttribute('aria-checked',String(on));$('setStill').setAttribute('aria-checked',String(!on));pref('animations',on?'off':'on');};
@@ -693,6 +712,7 @@ const press=(key)=>{
   if(key==='Ctrl+,'){openSettings(true);return true;}
   if(key==='?'){openSettings(true,'keys');return true;}
   if(key==='Ctrl+K'){if(menuBox.hidden)openMenu();else closeMenu();return true;}
+  if(key==='Ctrl+J')return popChat();
   if(key==='F2'||key==='F3'){openSettings(false);select(key==='F2'?'requests':'console');}else if(key==='F4')toggleFold('steps');else if(key==='F6')toggleFold('chat');
   else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
   return true;};
@@ -702,9 +722,12 @@ addEventListener('keydown',(event)=>{
   if(event.key==='Escape'){
     if(!menuBox.hidden){event.preventDefault();closeMenu();return;}
     if(!stateDlg.hidden){event.preventDefault();openStates(false);return;}
+    if(document.body.classList.contains('solo')&&popped()){event.preventDefault();popChat(false);return;}
     if(field)return;
     if(settingsOn()){event.preventDefault();openSettings(false);return;}
     if(state.tab!==null){event.preventDefault();closeDrawer();return;}}
+  // Ctrl+J only in App only: elsewhere it stays Chrome's downloads.
+  if((event.ctrlKey||event.metaKey)&&!event.altKey&&event.key.toLowerCase()==='j'&&document.body.classList.contains('solo')){event.preventDefault();popChat();return;}
   if((event.ctrlKey||event.metaKey)&&!event.altKey&&(event.key===','||event.key.toLowerCase()==='k')){event.preventDefault();press(event.key===','?'Ctrl+,':'Ctrl+K');return;}
   if(event.ctrlKey||event.altKey||event.metaKey)return;
   if(event.key==='?'){if(!field&&stateDlg.hidden){event.preventDefault();press('?');}return;}
@@ -714,7 +737,9 @@ const CHAT_KEYS=${json(CHAT_KEYS)};
 addEventListener('message',(event)=>{const fromChat=event.source===chatWindow();
   if(event.data?.caw==='refresh'&&(event.source===$('app').contentWindow||fromChat))refresh();
   if(event.data?.caw==='key'&&fromChat&&CHAT_KEYS.includes(event.data.key))press(event.data.key);
-  if(event.data?.caw==='key'&&event.data.key==='F1'&&event.source===$('app').contentWindow)press('F1');});
+  if(event.data?.caw==='key'&&['F1','Ctrl+J'].includes(event.data.key)&&event.source===$('app').contentWindow)press(event.data.key);
+  // Something new from the agent while the chat is hidden in App only: a dot on Chat.
+  if(event.data?.caw==='unread'&&fromChat&&document.body.classList.contains('solo')&&!popped())$('chatPop').querySelector('.new').hidden=false;});
 
 // The current item always stays in view: running, else failed, else the first open one; it sits in the upper third.
 const track=$('track');let followFrame=0;
@@ -748,6 +773,8 @@ window.workbench={
   facts:(entries)=>{const [first,...rest]=entries;const title=$('title');
     if(first){const text=String(first[1]);const nodes=[document.createTextNode(first[2]===undefined||first[2]===null?text:String(first[2]))];
       if(settingsOn())titleNodes=nodes;else title.replaceChildren(...nodes);title.title=text;}
+    // App only names who answers in its bar: the agent fact (--attach), e.g. "Claude Code connected".
+    const conn=rest.find(([label])=>label===AGENT_FACT);$('soloConn').hidden=!conn;$('soloConn').textContent=conn?String(conn[1]):'';
     $('facts').replaceChildren(...rest.map(([label,value])=>{const li=document.createElement('li');li.title=label+': '+value;li.setAttribute('aria-label',label+': '+value);li.textContent=String(value);return li;}));},
   url:(url)=>{appUrl=url;$('url').textContent=$('soloUrl').textContent=url;$('url').title=url;},
   steps:(groups)=>{aborted=false;$('steps').replaceChildren(...groups.map(makeGroup));if(groups.length>0)showSteps();openable();summarize();},
@@ -785,6 +812,8 @@ window.workbench={
   chatState:(value)=>{chatState=typeof value==='string'?value:null;summarize();},
   // Application only, set by the host: automatically after the hand-over, again after a reload.
   solo:(on)=>{if(on===true)openSettings(false);showSolo(on===true);},
+  // The chat over the app, set by the host: after a reload, or because the chat needs a decision while App only is on.
+  chatPop:(on)=>{showPop(on===true);},
   // Record (Claude records or fixes), play (replay, check run, restoring a state) or pause; anything else hides the chip.
   transport:(value)=>{transport=['record','play','pause'].includes(value)?value:null;summarize();},
   // The tests from which a state can be reached here; empty hides F1 and the steps' hover action.
@@ -850,7 +879,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, state: null, debug: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null };
         bench = holder;
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
@@ -898,6 +927,10 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (frame !== page.mainFrame() || holder.fullscreen === null) return;
             await holder.fullscreen(on === true);
         });
+        await page.exposeBinding(CHAT_POP_BINDING, async ({ frame }, on) => {
+            if (frame !== page.mainFrame() || holder.chatPop === null) return;
+            await holder.chatPop(on === true);
+        });
         // caw.ready() and caw.locator(el) in the console: answers only, from whatever document calls them.
         await page.exposeBinding(READY_BINDING, async () => (holder.debug === null ? null : holder.debug.ready()));
         await page.exposeBinding(LOCATE_BINDING, async (_source, mark) => (holder.debug === null || typeof mark !== 'string' ? null : holder.debug.locator(mark)));
@@ -917,10 +950,14 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     const view = frameView(page, frame, () => bench.app);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // The host remembers what it has shown and restores it after a workbench reload.
-    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, catalog: null, viewport: null, settings: null };
+    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, chatPop: false, catalog: null, viewport: null, settings: null };
     // The host remembers solo view so it comes back after a workbench reload. The browser window stays untouched.
     bench.fullscreen = async (on) => {
         shown.solo = on;
+    };
+    // The chat over the app in App only: remembered for this run's window, a new run starts with it hidden.
+    bench.chatPop = async (on) => {
+        shown.chatPop = on;
     };
     // When an item started running: the host measures the duration so it survives a workbench reload.
     const started = new Map();
@@ -961,6 +998,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (shown.transport !== null) await call('transport', shown.transport);
             // Solo view survives the reload; the window is still in that mode anyway.
             if (shown.solo) await call('solo', true);
+            if (shown.chatPop) await call('chatPop', true);
             if (shown.catalog !== null) await call('states', shown.catalog);
             if (shown.viewport !== null) await call('viewport', shown.viewport);
             await call('refreshable', bench.refresh !== null);
@@ -1116,11 +1154,11 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             await bench.fullscreen(on === true);
             await call('solo', on === true);
         },
-        /** The chat needs a decision: App only hides it, so bring steps and chat back. Nothing happens otherwise. */
+        /** The chat needs a decision or the run has ended: in App only it shows over the app (Ctrl+J). Nothing happens otherwise. */
         showChat: async () => {
             if (!shown.solo) return;
-            await bench.fullscreen(false);
-            await call('solo', false);
+            await bench.chatPop(true);
+            await call('chatPop', true);
         },
         /**
          * After a reload of the whole workbench, once steps and counters are back. The listener gets { human }: true for

@@ -703,7 +703,12 @@ const list=(title,items,cls)=>{if(!items||items.length===0)return null;const det
   for(const text of items){const li=el('li',cls);li.append(ic(cls==='e'?'x':cls==='w'?'alert':'dot'),el('span','',text));ul.append(li);}details.append(summary,ul);return details;};
 const copyButton=(text,select)=>{const copy=el('button','lnk copy');copy.type='button';copy.append(ic('copy'),el('span','',T['chat.page.copyPrompt']));
   copy.addEventListener('click',async()=>{let done=false;try{await navigator.clipboard.writeText(text);done=true;}catch{}if(!done){const range=document.createRange();range.selectNodeContents(select);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);try{done=document.execCommand('copy');}catch{}}copy.querySelector('span').textContent=done?T['chat.page.copied']:T['chat.page.copyManual'];});return copy;};
+// Over the app in App only (Ctrl+J): Esc hides the chat instead of cancelling; the workbench says when (pop).
+let popped=false,solo=false;
+// What the agent says or asks reaches the workbench as "new" (a dot on Chat while hidden); replayed history after a reload does not.
+const UNREAD=['claude','plan','failure','decision','advice','question','tokens'];
 window.addMessage=(who,text,about,at)=>{
+  if(UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
   if(who==='starting'){endGroup();started();const row=el('div','message starting');row.dataset.t0=String(at||Date.now());row.append(ic('loader'),el('span','',text),el('small'));elapsed(row);starting=row;place(row);return;}
   started();
   if(who==='activity'){
@@ -871,6 +876,7 @@ document.addEventListener('keydown',(event)=>{
     if(openMenus().length>0){event.preventDefault();closeMenus(true);return;}
     if(pick.classList.contains('on'))return;
     if(document.activeElement===input&&input.value!==''){event.preventDefault();input.value='';fit();renderSlash();return;}
+    if(popped){event.preventDefault();toBench('Ctrl+J');return;}
     if(canAbort()){event.preventDefault();abort.click();}}
 });
 // The workbench's keys apply here too: the chat passes them on (CHAT_KEYS). It handles F9 and Esc itself, F11 and F12 stay with the browser.
@@ -882,11 +888,14 @@ addEventListener('keydown',(event)=>{const plain=!event.ctrlKey&&!event.metaKey&
   // Ctrl+, opens the workbench's settings, Ctrl+K its ⋯ menu, ? (when not typing) the keys.
   else if(ctrl&&event.key===','){event.preventDefault();toBench('Ctrl+,');}
   else if(ctrl&&event.key.toLowerCase()==='k'){event.preventDefault();toBench('Ctrl+K');}
+  // Ctrl+J shows or hides the chat over the app; outside App only the workbench ignores it.
+  else if(ctrl&&event.key.toLowerCase()==='j'&&solo){event.preventDefault();toBench('Ctrl+J');}
   else if(event.key==='?'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target?.closest?.('input,textarea')){event.preventDefault();toBench('?');}
   else if(event.key==='F9'&&plain){event.preventDefault();pauseKey();}});
 // A new mode from the workbench's settings: only from it, only one of the three modes.
 addEventListener('message',(event)=>{const pref=event.data?.pref;if(event.source===parent&&event.data?.caw==='mode'&&['system','light','dark'].includes(pref))document.documentElement.dataset.pref=pref;});
 // F9 and Esc from the workbench: only from it, only these two.
+addEventListener('message',(event)=>{if(event.source!==parent)return;if(event.data?.caw==='pop')popped=event.data.on===true;if(event.data?.caw==='solo')solo=event.data.on===true;});
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();
   else if(event.data.key==='Escape'){if(openMenus().length>0)closeMenus(true);else if(!pick.classList.contains('on')&&canAbort())abort.click();}});
@@ -1104,6 +1113,8 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         let timer;
         const elapsed = new Promise((resolve) => { timer = setTimeout(() => resolve('time'), ms); });
         await quiet(render('closed'));
+        // In App only the end card shows over the app, so the countdown does not run out unseen.
+        await quiet(Promise.resolve(bench.showChat?.()));
         await quiet(inChat((seconds) => window.linger(seconds), Math.round(ms / 1000)));
         if (await Promise.race([clicked, elapsed, stayed]) === 'stay') {
             clearTimeout(timer);

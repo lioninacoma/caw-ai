@@ -653,17 +653,50 @@ test('workbench: solo view and the open tab survive a reload of the whole workbe
     return undefined;
 });
 
-test('workbench: a decision in the chat ends App only, so the question is visible; without App only nothing changes', async (t) => {
+test('workbench: in App only the chat floats over the app (Ctrl+J, Esc, x), a dot for news, decisions show it, reloads keep it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
-    const { bench } = await open(t);
-    const solo = () => bench.page.evaluate(() => document.body.classList.contains('solo'));
+    const { bench, chat } = await open(t);
+    const page = bench.page;
+    const popped = () => page.evaluate(() => document.body.classList.contains('chat-pop'));
+    const dot = () => page.evaluate(() => !document.querySelector('#chatPop .new').hidden);
     await bench.showChat();
-    assert.equal(await solo(), false);
+    assert.equal(await popped(), false, 'without App only nothing changes');
+    await page.keyboard.press('Control+j');
+    assert.equal(await popped(), false, 'Ctrl+J only in App only');
     await bench.solo(true);
-    assert.equal(await solo(), true);
+    assert.equal(await page.isVisible('#chatCard'), false);
+    assert.equal(await page.isVisible('#chatPop'), true, 'Chat in the bar');
+    // News from the agent while hidden: a dot on Chat.
+    chat.say('Das Feld ist gesperrt, weil die Rolle fehlt.');
+    assert.ok(await until(dot), 'a dot for a new message');
+    await page.keyboard.press('Control+j');
+    assert.equal(await popped(), true);
+    const box = await page.locator('#chatCard').boundingBox();
+    const view = page.viewportSize();
+    assert.deepEqual([Math.round(box.width), Math.round(view.width - box.x - box.width), Math.round(view.height - box.y - box.height)], [380, 16, 16], '380 wide, 16 from the edges');
+    assert.ok(box.height <= 520);
+    assert.equal(await dot(), false, 'showing clears the dot');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'chat', 'the cursor goes to the chat');
+    // Esc in the chat hides it (and cancels nothing); Ctrl+J in the chat too.
+    await bench.chatFrame().locator('#input').press('Escape');
+    assert.ok(await until(async () => !(await popped())), 'Esc in the chat hides it');
+    await page.click('#chatPop');
+    assert.equal(await popped(), true);
+    await bench.chatFrame().locator('#input').press('Control+j');
+    assert.ok(await until(async () => !(await popped())), 'Ctrl+J in the chat hides it');
+    await page.click('#chatPop');
+    await page.click('#chatHide');
+    assert.equal(await popped(), false, 'x hides it');
+    // A decision shows it over the app, App only stays.
     await bench.showChat();
-    assert.equal(await solo(), false, 'steps and chat are back');
-    assert.equal(await bench.page.isVisible('#chatCard'), true);
+    assert.equal(await popped(), true);
+    assert.equal(await page.evaluate(() => document.body.classList.contains('solo')), true, 'App only stays');
+    // A reload of the workbench keeps it; leaving App only puts the chat back into its pane, F8 brings the overlay back.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    assert.ok(await until(() => page.evaluate(() => document.body.classList.contains('solo') && document.body.classList.contains('chat-pop')).catch(() => false)), 'kept over a reload');
+    await bench.solo(false);
+    assert.equal(await page.isVisible('#chatHide'), false);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('chatCard')).position !== 'fixed'), true, 'back in its pane');
     return undefined;
 });
 

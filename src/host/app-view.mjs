@@ -240,6 +240,8 @@ export const RELOAD_SCRIPT = `if (window !== top && window.parent === top && win
     if (event.key === 'F5' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r')) { event.preventDefault(); top.postMessage({ caw: 'refresh' }, '*'); }
     // F1: choose a state in the workbench instead of Chrome's help.
     else if (event.key === 'F1' && !event.ctrlKey && !event.altKey && !event.metaKey) { event.preventDefault(); top.postMessage({ caw: 'key', key: 'F1' }, '*'); }
+    // Ctrl+J: the chat over the app in App only. Only there: elsewhere Chrome's downloads stay as they are.
+    else if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'j' && top.document.body.classList.contains('solo')) { event.preventDefault(); top.postMessage({ caw: 'key', key: 'Ctrl+J' }, '*'); }
 }, true);`;
 
 const descendants = (frame) => [frame, ...frame.childFrames().flatMap(descendants)];

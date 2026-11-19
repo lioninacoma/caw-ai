@@ -79,7 +79,7 @@ With chat, everything runs on one page, like Cypress:
 - **Right:** the chat with Claude.
 - **⋯ menu** (also Ctrl+K): every function with its key, in two groups. Run: Pause (F9), Reload app (F5), Cancel run (Esc) and, after the handover, Open… (F1). View: Requests (F2), Console (F3), Hide steps (F4), Hide chat (F6), App only (F8). Below them Animations off (F10), Settings (Ctrl+,) and Keyboard shortcuts (?). Arrow keys move, Enter picks, Esc closes. The keys also work while the focus is in the chat.
 - **Collapse:** a click on the title "Steps" or "Chat" (or F4, F6) collapses the pane to a narrow strip. When the chat needs you, it opens by itself.
-- **App only:** F8 shows only the application, with one line above it and "Back to workbench F8".
+- **App only:** F8 shows only the application, with one line above it and "Back to workbench F8". **Chat** in that line (Ctrl+J, also with the focus in the app) shows the same chat floating over the app at the bottom right, 380 × 520; Esc, Ctrl+J or × hide it again. A dot on Chat says the agent wrote while it was hidden. A decision or the end of the run shows it by itself, so the close countdown never runs out unseen. The bar also says who answers when your session is attached ("Claude Code connected · k7f2"). The window keeps the choice until it closes; a new run starts with the chat hidden.
 - **Reload:** F5 (also Ctrl+R, inside the application and in the chat, ⋯ → Reload app, or `/reload` in the chat) reloads the current page without cache after handover; chat and steps stay. While the test is running, also while "Open again" or F1 restores a state, this is blocked and the menu item is greyed out: a reload would corrupt the state for the following steps. If someone reloads the whole workbench via the browser, caw rebuilds it; if the test was running, it aborts without a result.
 
 #### Settings
@@ -103,6 +103,7 @@ Light and dark: the workbench, the chat, the report page and the "caw explore" c
 | F4, F6 | Collapse or expand steps, chat |
 | F5 | Reload the app without cache (after the handover) |
 | F8 | App only, and back |
+| Ctrl+J | In App only: show or hide the chat over the app |
 | F9 | Pause or continue Claude |
 | F10 | Animations off or on |
 | Esc | Closes the open menu, dialog, settings page or drawer, cancels picking an element; otherwise asks to cancel the run, and a second Esc within 4 seconds confirms |
