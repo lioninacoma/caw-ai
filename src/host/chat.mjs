@@ -567,9 +567,9 @@ footer{flex:none;position:relative;display:flex;flex-direction:column;gap:8px;pa
 .quote{padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px;font-style:italic;overflow-wrap:anywhere}
 .banner.ro{padding:7px 10px}.banner.ro span{font-size:12px}
 .cmd{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--code);color:var(--code-text);font:400 11.5px/1.45 var(--font-mono)}
-.cmd>.i{width:14px;height:14px;margin-top:1px;color:var(--muted)}.cmd>span{min-width:0;flex:1;overflow-x:auto}
-/* A command wraps only between its words, never inside one (not even after a hyphen); the spaces stay. */
-.cmd code{white-space:normal;overflow-wrap:normal;word-break:normal}.cmd .w{white-space:nowrap}
+.cmd>.i{width:14px;height:14px;margin-top:1px;color:var(--muted)}.cmd>span{min-width:0;flex:1}
+/* A command wraps between its words; only a word longer than the line breaks inside (a long draft id). The spaces stay. */
+.cmd code{white-space:normal;overflow-wrap:normal;word-break:normal}.cmd .w{display:inline-block;max-width:100%;overflow-wrap:anywhere}
 .cmd small{display:block;margin-bottom:2px;font:400 11.5px/1.4 var(--font);color:var(--muted)}.cmd code{font:inherit}
 .cmd .ib{width:22px;height:22px;margin:-2px -4px -2px 0}.cmd .ib .i{width:14px;height:14px}.cmd:empty{display:none}
 /* The input: chip, field with the send arrow, the hint line; "/" opens the commands above it. */
