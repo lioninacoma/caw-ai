@@ -1397,3 +1397,15 @@ test('chat: with Save baselines on the end card nothing counts down; the window 
     assert.equal(over, true);
     return undefined;
 });
+
+test('chat: an advice card starts with its icon and heading, never with "null" (every icon the chat uses exists)', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { chat, frame } = await chatReady(t);
+    chat.advice({ side: 'test', title: 'Answer in German', target: 'home/caw.md (personal)', reason: 'Because.', changes: [{ label: 'Section "Language"', before: '', after: '- Answer me in German.' }] }, [{ id: 'adopt', label: 'Übernehmen', primary: true }]);
+    assert.ok(await until(() => frame.isVisible('.message.advice')));
+    assert.match(await frame.evaluate(() => document.querySelector('.message.advice').innerText), /^Empfehlung für den Test/);
+    assert.equal(await frame.locator('.message.advice strong svg').count(), 1, 'the agent icon');
+    chat.say('Hallo.');
+    assert.ok(await until(async () => (await frame.locator('.message.claude .who svg').count()) === 1), 'the sender has its icon too');
+    return undefined;
+});

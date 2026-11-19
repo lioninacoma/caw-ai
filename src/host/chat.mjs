@@ -477,7 +477,7 @@ const slashCommands = (ctrl) => [
 export const chatPage = (nonce = '', mode = readPrefs().mode) => {
     const ctrl = t('workbench.page.keyCtrl');
     const slash = slashCommands(ctrl).map(([name, id, glyph, key, bench]) => `<button type="button" class="pop-i${name === 'cancel' ? ' danger' : ''}" role="option" tabindex="-1" id="${id}" data-cmd="${name}" data-name="/${name}"${bench ? ` data-key="${bench}"` : ''}${id === 'pick' ? ` title="${t('chat.page.pickTitle')}"` : ''}>${icon(glyph)}<span><span class="nm">/${name}</span><small>${t(`chat.page.cmd.${name}`)}</small></span>${key ? `<kbd>${key}</kbd>` : '<span></span>'}</button>`).join('');
-    const icons = { claude: 'agent', you: 'user', cross: 'cross', flag: 'flag', info: 'info', chev: 'chev-r', chevd: 'chev-d', loader: 'loader', check: 'check', x: 'x', alert: 'alert', help: 'help', list: 'list', file: 'file', copy: 'copy', terminal: 'terminal', bug: 'bug', coins: 'coins', lock: 'lock', msg: 'msg', pause: 'pause', play: 'play', stop: 'stop', spark: 'spark', bookmark: 'bookmark', dot: 'circle' };
+    const icons = { agent: 'agent', you: 'user', cross: 'cross', flag: 'flag', info: 'info', chev: 'chev-r', chevd: 'chev-d', loader: 'loader', check: 'check', x: 'x', alert: 'alert', help: 'help', list: 'list', file: 'file', copy: 'copy', terminal: 'terminal', bug: 'bug', coins: 'coins', lock: 'lock', msg: 'msg', pause: 'pause', play: 'play', stop: 'stop', bookmark: 'bookmark', dot: 'circle' };
     const ICON = Object.fromEntries(Object.entries(icons).map(([name, glyph]) => [name, icon(glyph, { cls: name === 'loader' ? 'spin' : '' })]));
     return `<!doctype html><html lang="${language()}"${modeAttr(mode)}><head><meta charset="utf-8"><title>caw · Chat</title><script>${MODE_SCRIPT}${sourceTag}</script>${FAVICON}<style>
 ${styleSheet()}
@@ -703,7 +703,7 @@ if(window.ResizeObserver)new ResizeObserver(()=>{if(follow)toEnd();}).observe(me
 new MutationObserver(()=>grown()).observe(messages,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['open','hidden','class']});
 const place=(element)=>{messages.insertBefore(element,thinking);grown();};
 const clock=(at)=>{if(!at)return null;const d=new Date(at);return el('small','',String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));};
-const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?${JSON.stringify(AGENT_NAME)}:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'claude':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
+const whoLine=(who,at,extra)=>{const line=el('span','who '+(who==='claude'?'c':'h'));const name=el('span','',who==='claude'?${JSON.stringify(AGENT_NAME)}:T['chat.page.you']);name.dataset.who=who;line.append(ic(who==='claude'?'agent':'you'),name);if(extra)line.append(extra);const time=clock(at);if(time)line.append(time);return line;};
 const head=(glyph,title,meta)=>{const strong=el('strong');strong.append(ic(glyph),el('span','',title));if(meta)strong.append(el('span','meta',meta));return strong;};
 const card=(cls)=>el('div','message card '+cls);
 // "Starting Claude": a spinner and the time since, until anything else arrives.
