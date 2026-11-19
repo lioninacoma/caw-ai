@@ -1326,10 +1326,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                         if (!human) return;
                         await listener();
                     });
-                    // After the handover (open) the workbench shows only the application full-screen; F8 brings the workbench back.
-                    // The recorded size held while replaying; the window is the human's now, the app gets the whole pane.
+                    // After the handover (open) the workbench stays as it is, with steps and chat; F8 shows the application alone
+                    // and stays so across reloads. The recorded size held while replaying; the window is the human's now.
                     await bench?.viewport?.(null);
-                    await bench?.solo?.(true);
                     // F1: states from all tests of this target, each in its role's account. Without a step the test runs to the last
                     // restorable one. With basic auth the account is tied to the browser: only the own role.
                     const scope = checked.signIn?.type === 'basic' ? { role: spec.role, target } : { target };

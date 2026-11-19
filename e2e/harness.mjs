@@ -100,13 +100,10 @@ export const startServer = async (script, args, { cwd, port }) => {
 // ---- The human at the workbench
 
 export const stateOf = (page, name) => page.locator(`body[data-state=${name}]`).waitFor({ timeout: 90000 });
-// After a handover (open) the workbench starts in "App only" and hides steps and chat; the human brings them back
-// with F8 (here the button in the solo bar) to work in the chat.
+// After a handover (open) the workbench keeps steps and chat: waits until the chat is the human's (developing).
 export const benchBack = async (chat) => {
-    const bench = chat.page();
-    await bench.locator('body.solo').waitFor({ state: 'attached', timeout: 90000 });
-    await bench.locator('.soloBar [data-solo]').click();
-    await bench.locator('body:not(.solo)').waitFor({ state: 'attached', timeout: 10000 });
+    await chat.locator('body[data-state=developing]').waitFor({ state: 'attached', timeout: 90000 });
+    await chat.page().locator('body:not(.solo)').waitFor({ state: 'attached', timeout: 10000 });
 };
 /**
  * Clicks a choice in the chat. A card shows one primary choice; with more than one other they are behind "More"
