@@ -257,7 +257,7 @@ The sequence is deterministic, the environment isn't: this is not a snapshot. Th
 
 With chat, the chat stays open after handover (state "Develop"):
 
-The workbench starts in **App only** (F8 brings steps and chat back); the browser window stays as it is. The app now fills the whole pane; the recorded size holds only while caw replays, also when it restores a state.
+The workbench stays as it is, with steps and chat; F8 shows the app alone (**App only**) and keeps it across reloads. The browser window stays as it is. The app now fills the whole pane; the recorded size holds only while caw replays, also when it restores a state.
 
 - **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with `/element`. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
 - **Let Claude use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.

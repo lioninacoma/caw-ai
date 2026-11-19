@@ -258,7 +258,7 @@ Der Ablauf ist deterministisch, die Umgebung nicht: Das ist kein Snapshot. Der W
 
 Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“):
 
-Die Werkbank startet in **Nur Anwendung** (F8 holt Schritte und Chat zurück); das Browserfenster bleibt, wie es ist. Die Anwendung füllt jetzt die ganze Fläche; die aufgenommene Größe gilt nur, solange caw abspielt, auch beim Herstellen eines Zustands.
+Die Werkbank bleibt, wie sie ist, mit Schritten und Chat; F8 zeigt nur die Anwendung (**Nur Anwendung**) und behält das auch beim Neuladen. Das Browserfenster bleibt, wie es ist. Die Anwendung füllt jetzt die ganze Fläche; die aufgenommene Größe gilt nur, solange caw abspielt, auch beim Herstellen eines Zustands.
 
 - **Fragen:** Du fragst Claude im Chat, gern zu einem Element, das du mit `/element` in der App gewählt hast. Claude liest den Quellcode und antwortet. Code ändert es nie selbst, es schlägt geprüfte Änderungen vor: „Änderung übernehmen“ schreibt sie in deinen Projektordner, „Prompt kopieren“ gibt sie dir für deine eigene Session.
 - **Claude bedienen lassen:** Auf deine Bitte klickt Claude, füllt aus, drückt Tasten, navigiert oder lädt neu, etwa „klick den gewählten Button“. Vor allem, was Daten speichert oder löscht, fragt es nach.
