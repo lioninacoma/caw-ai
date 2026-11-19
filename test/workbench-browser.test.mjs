@@ -165,10 +165,10 @@ test('workbench: the application tampers with the chat of a new workbench after 
     await bench.view.frame.evaluate((url) => { top.location.href = url; }, `${base}/tamper`);
     assert.ok(await until(() => bench.chatFrame() !== chatBefore), 'new workbench');
     assert.ok(await until(() => bench.page.evaluate(() => window.workbench !== undefined).catch(() => false)), 'new workbench loaded');
-    await pause(1500);
+    // The check needs the new chat to be written; a slow machine takes longer than a fixed pause.
+    assert.ok(await until(() => tampered()?.code === 'chat-tampered'), 'the run ends as tampered');
     assert.equal(await bench.page.evaluate(() => window.__stolen ?? null), null, 'no token for the application');
     assert.equal(aborts(), 0, 'the application decides nothing');
-    assert.equal(tampered()?.code, 'chat-tampered');
     assert.equal(chat.available(), false);
 });
 
