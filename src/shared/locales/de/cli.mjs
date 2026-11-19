@@ -300,7 +300,7 @@ Browser:
     'cli.attachUsage': 'caw attach --watch <key> ist für den Monitor deiner Session nach caw_attach; der Schlüssel hat vier Zeichen, etwa k7f2.',
     'cli.attachListening': 'caw: listening as {key}. Each line below is something a caw window wants from you.',
     'cli.attachGone': 'caw: listener {key} is gone (its session ended). Call caw_attach again to listen.',
-    'cli.sessionAgent': 'Deine eigene {agentDash}-Session antwortet (--attach): Sie hört von diesem Fenster nach /caw-attach dort, ohne zusätzliche Token.',
+    'cli.sessionAgent': 'Deine eigene {agentDash}-Session antwortet (--attach): Sie hört von diesem Fenster nach /caw-attach dort.',
     'cli.sessionLabel': 'deine {agentDash}-Session',
     'cli.localAgent': '{agent} läuft lokal ohne Docker, nur mit Lesen und dem Browser-Werkzeug ({agent} {version}). Abgeschottet: agent.mode "docker".',
     'cli.usingDocker': 'Nutze {label}.',

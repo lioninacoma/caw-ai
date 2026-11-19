@@ -153,14 +153,14 @@ test('caw_config: read returns raw config and effective environments, patch goes
     assert.equal((await call('caw_config', {})).structuredContent.state, 'missing');
 });
 
-test('caw_init: mode offline without questions, existing files stay, no skill; explore first when only a url is given', async (t) => {
+test('caw_init: mode offline without questions, existing files stay, the skill caw-attach comes along; explore first when only a url is given', async (t) => {
     const root = tempDir(t);
     const { call } = session(root);
     const first = await call('caw_init', { mode: 'offline', roles: ['admin', 'sachbearbeiter'] });
     const data = first.structuredContent;
     assert.equal(data.state, 'done');
     assert.ok(['caw.config.json', 'caw/.env.example', 'caw/caw.md', '.mcp.json', '.gitignore'].every((file) => data.created.includes(file)), data.created.join(', '));
-    assert.ok(!existsSync(join(root, '.claude')), 'no skill');
+    assert.ok(data.created.includes('.claude/skills/caw-attach/SKILL.md') && existsSync(join(root, '.claude', 'skills', 'caw-attach', 'SKILL.md')), 'the skill with the MCP entry');
     assert.ok(JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8')).mcpServers.caw !== undefined);
     assert.ok(data.todo.includes('signIn.path'));
     assert.match(first.content[0].text, /Noch TODO: signIn\./);
@@ -170,7 +170,7 @@ test('caw_init: mode offline without questions, existing files stay, no skill; e
 
     const again = (await call('caw_init', { mode: 'offline' })).structuredContent;
     assert.deepEqual(again.created, []);
-    assert.ok(again.skipped.includes('caw.config.json'));
+    assert.ok(again.skipped.includes('caw.config.json') && again.skipped.includes('.claude/skills/caw-attach/SKILL.md'));
     assert.deepEqual(again.todo, data.todo, 'TODO of the config on disk');
 
     const fresh = tempDir(t);

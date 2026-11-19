@@ -12,6 +12,7 @@ import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../share
 import { describeCode } from './code-source.mjs';
 import { answersFromExplore, detectApp, envExample, starterConfig } from './commands.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
+import { SKILL_PATH, skillState, writeSkill } from './skill.mjs';
 import { projectPath } from './project-path.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
 import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
@@ -198,6 +199,13 @@ export const initProject = (root, { url, offline = false, fromExplore, roles, no
         if (mcp === 'created') created.push('.mcp.json');
         else if (mcp === 'updated') updated.push('.mcp.json');
         else skipped.push(mcp === 'invalid' ? '.mcp.json (invalid JSON)' : '.mcp.json');
+        // The skill caw-attach comes with the entry, as with caw init; a file somebody wrote stays as it is.
+        const skill = skillState(root);
+        if (skill === 'foreign' || skill === 'current') skipped.push(SKILL_PATH);
+        else {
+            writeSkill(root);
+            (skill === 'missing' ? created : updated).push(SKILL_PATH);
+        }
     }
     const ignore = join(root, '.gitignore');
     const existing = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';

@@ -297,7 +297,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.attachUsage': 'caw attach --watch <key> is for your session’s Monitor after caw_attach; the key is four characters such as k7f2.',
     'cli.attachListening': 'caw: listening as {key}. Each line below is something a caw window wants from you.',
     'cli.attachGone': 'caw: listener {key} is gone (its session ended). Call caw_attach again to listen.',
-    'cli.sessionAgent': 'Your own {agent} session answers (--attach): it hears of this window after /caw-attach there, no extra tokens.',
+    'cli.sessionAgent': 'Your own {agent} session answers (--attach): it hears of this window after /caw-attach there.',
     'cli.sessionLabel': 'your {agent} session',
     'cli.localAgent': '{agent} runs locally without Docker, with read access and the browser tool only ({agent} {version}). Isolated: agent.mode "docker".',
     'cli.usingDocker': 'Using {label}.',

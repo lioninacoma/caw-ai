@@ -288,7 +288,7 @@ scenario('B2', 'Setup with the packed CLI: init writes language and environment 
 
 // ---- P6: MCP bootstrap
 
-scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instructions and caw_guide, caw_init explore and write, no skill, list_changed for the overlay', spa, async () => {
+scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instructions and caw_guide, caw_init explore and write, the skill caw-attach, list_changed for the overlay', spa, async () => {
     const blank = mkdtempSync(join(tmpdir(), 'caw-e2e-b1-'));
     const tarball = await packTarball();
     // The stand-in for `npx caw-ai mcp` of an unpublished package, as `claude mcp add caw --scope project -- npx caw-ai mcp` starts it.
@@ -299,7 +299,7 @@ scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instr
             hello.serverInfo?.name === 'caw' && typeof hello.instructions === 'string' && hello.instructions.split('\n').length <= 12 && /caw_guide/.test(hello.instructions) && hello.capabilities?.tools?.listChanged === true,
             JSON.stringify({ serverInfo: hello.serverInfo, capabilities: hello.capabilities }));
         const names = async () => (await client.request('tools/list')).tools.map(({ name }) => name);
-        const core = ['caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_role', 'caw_guide', 'caw'];
+        const core = ['caw_attach', 'caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_role', 'caw_guide', 'caw'];
         const listed = await names();
         verify('(3) tools/list: the core tools, no caw_overlay, no caw_explore', JSON.stringify([...listed].sort()) === JSON.stringify([...core].sort()), listed.join(' '));
         const index = await client.callTool('caw_guide');
@@ -325,7 +325,7 @@ scenario('B1', 'Bootstrap from a blank folder through MCP: server caw with instr
         // Selectors may name a password field (#password); a credential would be a key of its own.
         verify('(7) the config holds no credential', !/"(user|username|password|secret|token|totp)"\s*:/i.test(JSON.stringify(config)), JSON.stringify(config.signIn));
         const mcp = existsSync(join(blank, '.mcp.json')) ? JSON.parse(readFileSync(join(blank, '.mcp.json'), 'utf8')).mcpServers : {};
-        verify('(8) no .claude/skills; .mcp.json has the entry caw through npx (nothing installed here)', !existsSync(join(blank, '.claude')) && Array.isArray(mcp.caw?.args) && mcp.caw.args.some((arg) => /^caw-ai(@|$)/.test(arg)) && mcp['caw-ai'] === undefined, JSON.stringify(mcp));
+        verify('(8) the skill caw-attach comes with it; .mcp.json has the entry caw through npx (nothing installed here)', existsSync(join(blank, '.claude', 'skills', 'caw-attach', 'SKILL.md')) && Array.isArray(mcp.caw?.args) && mcp.caw.args.some((arg) => /^caw-ai(@|$)/.test(arg)) && mcp['caw-ai'] === undefined, JSON.stringify(mcp));
         const doctor = await client.callTool('caw_doctor');
         // Unattended nobody signed in: what the window would have filled in blocks, each with its next step, and nothing else.
         const blocking = doctor.structuredContent?.checks?.filter(({ ok, optional }) => !ok && !optional) ?? [];
