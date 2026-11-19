@@ -155,7 +155,8 @@ test('advice: knowledge, config and test file are extended, comments and line en
         mkdirSync(join(root, 'caw/tests'), { recursive: true });
         writeFileSync(join(root, CONTEXT_FILE), '# Knowledge\r\n\r\n## Admin app\r\n- Old.\r\n\r\n## Other\r\n- Something.\r\n');
         applyToFiles(root, { kind: 'context', section: 'Admin app', text: 'New\non two lines.' });
-        applyToFiles(root, { kind: 'context', section: 'Brand new', text: 'First.' });
+        // The agent may write its own bullet: the note keeps one.
+        applyToFiles(root, { kind: 'context', section: 'Brand new', text: '- First.' });
         assert.equal(readFileSync(join(root, CONTEXT_FILE), 'utf8'), '# Knowledge\r\n\r\n## Admin app\r\n- Old.\r\n- New on two lines.\r\n\r\n## Other\r\n- Something.\r\n\r\n## Brand new\r\n- First.\r\n');
 
         writeFileSync(join(root, CONFIG_FILE), '{\n    "foreignCode": []\n}\n');

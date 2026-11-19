@@ -307,7 +307,7 @@ export const adviceView = (item, spec, failures = [], config = {}) => {
         return { ...base, target: `${step.id} ${step.name}`, changes: [{ label: t('run.advice.action', { number: change.index, label: stepLabel(action) }), before: word(action.optional === true), after: word(change.optional) }] };
     }
     if (change.kind === 'test') return { ...base, target: t('run.advice.testCase'), changes: [{ label: labelOf('notes'), before: spec.notes ?? '', after: change.notes }] };
-    if (change.kind === 'context') return { ...base, target: t(change.file === 'personal' ? 'run.advice.contextPersonal' : 'run.advice.contextProject', { path: contextTarget('', change).shown }), changes: [{ label: t('run.advice.section', { section: change.section }), before: '', after: change.text }] };
+    if (change.kind === 'context') return { ...base, target: t(change.file === 'personal' ? 'run.advice.contextPersonal' : 'run.advice.contextProject', { path: contextTarget('', change).shown }), changes: [{ label: t('run.advice.section', { section: change.section }), before: '', after: contextEntry(change.text) }] };
     if (change.key === SELECTOR_KEY) return { ...base, target: CONFIG_FILE, changes: [{ label: labelOf(SELECTOR_KEY), before: (config[SELECTOR_KEY] ?? []).join('  ·  '), after: change.selectors.join('  ·  ') }] };
     return { ...base, target: CONFIG_FILE, changes: [{ label: labelOf(change.key), before: '', after: change.pattern }] };
 };
@@ -335,13 +335,16 @@ export const applyToSpec = (spec, change) => {
     return { spec: replaceStep(spec, next), id: step.id, stale };
 };
 
+/** The line a note becomes: one bullet, also when the agent wrote one itself ("- Answer in German"). */
+const contextEntry = (text) => `- ${text.trim().replace(/^[-*•]\s+/, '').replaceAll(/\s*\n\s*/g, ' ')}`;
+
 const appendContext = (root, change) => {
     const { section, text } = change;
     const { path, shown, personal } = contextTarget(root, change);
     if (personal) mkdirSync(dirname(path), { recursive: true });
     const raw = existsSync(path) ? readFileSync(path, 'utf8') : `# caw\n\n${t(personal ? 'run.advice.personalIntro' : 'run.advice.contextIntro')}\n`;
     const lines = raw.replaceAll('\r\n', '\n').replace(/\n+$/, '').split('\n');
-    const entry = `- ${text.trim().replaceAll(/\s*\n\s*/g, ' ')}`;
+    const entry = contextEntry(text);
     const heading = lines.findIndex((line) => line.trim() === `## ${section.trim()}`);
     if (heading === -1) {
         lines.push('', `## ${section.trim()}`, entry);
