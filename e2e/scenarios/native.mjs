@@ -839,7 +839,7 @@ $A screenshot after-save.png > /dev/null
 S=$($A eval "document.getElementById('status').textContent")
 V=no; echo "$S" | grep -q Saved && V=yes
 cat > /tmp/f.json <<JSON
-{"reproduced":"$V","observed":"The status reads Saved after saving.","expected":"The status is in German.","steps":[{"name":"Speichern","do":"Klicke auf Save.","expect":"Der Status steht auf Deutsch da."}],"cause":"site/index.html:91 sets an English text.","screenshots":["after-save.png"]}
+{"reproduced":"$V","observed":"The status reads Saved after saving.","expected":"The status is in German.","writes":false,"steps":[{"name":"Speichern","do":"Klicke auf Save.","expect":"Der Status steht auf Deutsch da."}],"cause":"site/index.html:91 sets an English text.","screenshots":["after-save.png"]}
 JSON
 $A finish --file /tmp/f.json`;
         const code = await reproduceOf(['Nach dem Speichern steht der Status auf Englisch da.'], { agent: found, onChatOpen: seen.onChatOpen });

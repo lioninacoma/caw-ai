@@ -104,10 +104,10 @@ const rejected = (message) => new CawError('finish-rejected', message);
 /**
  * Claude's verdict of a reproduction. Messages go to Claude, so they are in English like the other agent messages.
  * @param fileExists (name) => whether a screenshot exists in the agent folder
- * @returns { reproduced, observed, expected, steps: [{ name, do, expect }], cause?, screenshots }
+ * @returns { reproduced, observed, expected, steps: [{ name, do, expect }], writes, cause?, screenshots }
  */
 export const readReproduction = (results, { fileExists = () => false } = {}) => {
-    if (results === null || typeof results !== 'object') throw rejected('finish needs { reproduced, observed, expected, steps }.');
+    if (results === null || typeof results !== 'object') throw rejected('finish needs { reproduced, observed, expected, steps, writes }.');
     if (!VERDICTS.includes(results.reproduced)) throw rejected('reproduced is yes (the bug shows as reported), no (it does not) or unclear.');
     for (const key of ['observed', 'expected']) {
         if (!plainText(results[key], 2000)) throw rejected(`${key} is a short text: what the page did, and what the bug report expects instead.`);
@@ -119,6 +119,8 @@ export const readReproduction = (results, { fileExists = () => false } = {}) => 
         if (step.name !== undefined && (!plainText(step.name, 80) || step.name.includes('\n'))) throw rejected(`steps[${index}].name is a short single-line title.`);
         if ([step.do, step.expect, step.name ?? ''].some((text) => EMAIL.test(text))) throw rejected(`steps[${index}] contains an email address; describe the account by its role instead.`);
     });
+    // Whether the steps create, change or delete data: the draft's writes, so recording it needs no question.
+    if (typeof results.writes !== 'boolean') throw rejected('writes is true when your steps create, change or delete data in the app (like adding a todo), otherwise false.');
     if (results.cause !== undefined && !plainText(results.cause, 2000)) throw rejected('cause is a short text (with file:line if you read the source), or leave it out.');
     const screenshots = results.screenshots ?? [];
     if (!Array.isArray(screenshots) || screenshots.length > 10 || !screenshots.every((name) => typeof name === 'string' && /^[\w.-]+\.png$/.test(name))) {
@@ -131,6 +133,7 @@ export const readReproduction = (results, { fileExists = () => false } = {}) => 
         observed: results.observed.trim(),
         expected: results.expected.trim(),
         steps: steps.map((step) => ({ name: (step.name ?? shortName(step.do)).trim(), do: step.do.trim(), expect: step.expect.trim() })),
+        writes: results.writes,
         ...(results.cause === undefined ? {} : { cause: results.cause.trim() }),
         screenshots,
     };

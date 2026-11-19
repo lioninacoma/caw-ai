@@ -716,9 +716,11 @@ ${text}`) ?? 0;
     // The agent's latest activity in the step list; it is done once the agent speaks or waits for the person.
     let closeActivity = () => {};
     const forClaude = (handler) => async (command) => {
-        if (command?.action === 'say' || command?.action === 'chat') closeActivity();
-        // The chat shows "working" until the agent waits for the person again (chat).
-        if (typeof command?.action === 'string') chat?.working?.(command.action !== 'chat');
+        // Commands with which the agent waits for the person: a chat answer or a question to show in the browser.
+        const waits = ['chat', 'ask-operator'].includes(command?.action);
+        if (command?.action === 'say' || waits) closeActivity();
+        // The chat shows "working" until the agent waits for the person again.
+        if (typeof command?.action === 'string') chat?.working?.(!waits);
         if (signingIn && !['task', 'say', 'chat'].includes(command?.action)) throw new CawError('signing-in', t('run.agent.signingIn'));
         let value;
         try {
@@ -1914,7 +1916,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const done = new Promise((ok) => { doneSignal = ok; });
         const finishReproduction = (command) => {
             const result = readReproduction(command.results, { fileExists: (name) => existsSync(join(agentDir, name)) });
-            const writes = (session.writes?.() ?? []).length > 0;
+            // The steps write when the agent says so or when the run wrote; never on an environment that may not write.
+            const writes = reproduce.writes === true && (result.writes || (session.writes?.() ?? []).length > 0);
             const draft = draftTestPlan({ id: reproduce.draftId, role: spec.role, environment: target, writes, steps: result.steps, runId });
             writeFileSync(join(runDir, 'draft-test.yaml'), draft.text);
             reportBase.reproduce = { ...reportBase.reproduce, ...result, actions, draft: adoptHint(draft, root, runDir) };

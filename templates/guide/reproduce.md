@@ -41,13 +41,16 @@ searching and navigating, and say so in the verdict if the bug needs writing. `p
        { "name": "Open the todo", "do": "Open the todo \"Feed the raven {{runTag}}\" from the list.", "expect": "Its detail view is visible." },
        { "name": "Rename it", "do": "Change the title to \"Feed the crow {{runTag}}\" and save.", "expect": "The list shows \"Feed the crow {{runTag}}\"." }
      ],
+     "writes": true,
      "cause": "server.mjs:212 answers the save before the cache is updated.",
      "screenshots": ["after-save.png"]
    }
    ```
 
    `steps` (1 to 20) are what a person would do to see the bug, in plain language like a test plan: each `expect` is the
-   correct behaviour, so the draft test fails while the bug is there and passes once it is fixed. No email addresses or real
+   correct behaviour, so the draft test fails while the bug is there and passes once it is fixed. `writes` is `true` when the
+   steps create, change or delete data (adding or renaming a todo), `false` when they only read; it becomes the draft's
+   `writes`, also when you did not perform the writing step yourself. No email addresses or real
    personal data; refer to accounts by their role. `cause` only with evidence (file:line when you read the source), otherwise
    leave it out. caw turns `steps` into the draft test plan and writes the report; a rejected finish says what to fix.
 

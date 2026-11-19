@@ -141,6 +141,7 @@ heard:
             steps: [
                 { name: 'Search by tag', do: 'Search the list for "home".', expect: 'The todos tagged "#home" are listed.' },
             ],
+            writes: false,
             cause: `${SEARCH_LINE} compares the search with the title only, never with the tag.`,
             screenshots: ['search-home.png'],
         })));

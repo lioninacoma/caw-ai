@@ -72,11 +72,13 @@ test('rules: never on production, only where Claude may work, the role is clear'
 
 test("verdict: Claude's finish is checked before anything is written", () => {
     const shot = (name) => name === 'after.png';
-    const good = { reproduced: 'yes', observed: 'Nothing.', expected: 'Results.', steps: [{ do: 'Search for "raven".', expect: 'One result.' }], screenshots: ['after.png'] };
+    const good = { reproduced: 'yes', observed: 'Nothing.', expected: 'Results.', steps: [{ do: 'Search for "raven".', expect: 'One result.' }], writes: false, screenshots: ['after.png'] };
     assert.deepEqual(readReproduction(good, { fileExists: shot }).steps, [{ name: 'Search for "raven"', do: 'Search for "raven".', expect: 'One result.' }]);
     const reject = (results, pattern) => assert.throws(() => readReproduction(results, { fileExists: shot }), (error) => error.code === 'finish-rejected' && pattern.test(error.message));
     reject({ ...good, reproduced: 'maybe' }, /yes .*no .*unclear/);
     reject({ ...good, observed: '' }, /observed/);
+    reject({ ...good, writes: undefined }, /writes is true when your steps create/);
+    assert.equal(readReproduction({ ...good, writes: true }, { fileExists: shot }).writes, true);
     reject({ ...good, steps: [] }, /1 to 20/);
     reject({ ...good, steps: [{ do: 'Sign in as a@example.org.', expect: 'Signed in.' }] }, /email/);
     reject({ ...good, screenshots: ['../x.png'] }, /up to 10/);
