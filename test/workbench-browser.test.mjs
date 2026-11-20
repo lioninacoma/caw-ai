@@ -655,6 +655,30 @@ test('workbench: solo view and the open tab survive a reload of the whole workbe
     return undefined;
 });
 
+test('workbench: the chat over the app shows the newest message that came while it was hidden', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat } = await open(t);
+    const page = bench.page;
+    chat.develop('Bereit.', [{ id: 'end', label: 'Ende' }]);
+    await bench.chatFrame().waitForFunction(() => document.body.dataset.state === 'developing');
+    for (let i = 1; i <= 12; i++) chat.say(`Nachricht ${i}: ${'Text '.repeat(30)}`);
+    await bench.solo(true);
+    await page.click('#chatPop');
+    assert.ok(await until(() => page.evaluate(() => document.body.classList.contains('chat-pop'))));
+    await page.click('#chatPop');
+    assert.ok(await until(async () => !(await page.evaluate(() => document.body.classList.contains('chat-pop')))));
+    chat.say('Hallo');
+    assert.ok(await until(() => page.evaluate(() => !document.querySelector('#chatPop .new').hidden)), 'a dot');
+    await page.click('#chatPop');
+    const lastInView = () => bench.chatFrame().evaluate(() => {
+        const box = document.getElementById('messages').getBoundingClientRect();
+        const last = [...document.querySelectorAll('#messages .message')].at(-1).getBoundingClientRect();
+        return last.bottom <= box.bottom + 1 && last.top >= box.top - 1;
+    });
+    assert.ok(await until(lastInView), 'the newest message is in view');
+    return undefined;
+});
+
 test('workbench: Ctrl+J in the application while developing puts the cursor into the chat input over the app', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat } = await open(t);
