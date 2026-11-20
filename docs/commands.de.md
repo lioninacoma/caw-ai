@@ -12,6 +12,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`doctor`](#doctor) | Rechner, Config, Zugangsdaten und Umgebungen prüfen | nein |
 | [`overlay`](extensions/overlay.de.md) | Erweiterung: lokaler Code auf einer ausgelieferten Umgebung (nur mit einem `overlay`-Block) | nein |
 | [`validate`](#validate) | Config und Tests offline prüfen | nein |
+| [`audit`](#audit) | Auflisten, was die Tests seit einem Branch oder Commit abschwächt, für den PR | nein |
 | [`list`](#list) | Tests und Schritte mit Stand der Aufnahme auflisten | nein |
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen, auch ab einem Schritt | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
@@ -102,6 +103,30 @@ Prüft `caw.config.json` und alle Dateien in `caw/tests/` ohne Browser und ohne 
 Werte in `signIn`, die noch `TODO` sind, lassen die Prüfung scheitern (Exit 3, Code `config-invalid`); jeder sagt, was hineingehört.
 
 Je Test und Umgebung nennt es, welcher Code dort läuft, etwa `smoke (staging): ausgelieferter Stand` oder `smoke (local): Dev-Server localhost:5173, dein aktueller Stand`.
+
+## audit
+
+```bash
+npx caw audit origin/main
+npx caw audit origin/main --json
+```
+
+Kein Test wird unbemerkt schwächer. caw selbst hält eine Prüfung fest, solange ihr erwartetes Ergebnis bleibt, aber ein Chat-Button, ein übernommener Rat oder eine Änderung von Hand kann einen Test trotzdem abschwächen. `audit` vergleicht die Testdaten (`caw/tests`, `caw/recordings`, `caw.config.json`) an der Merge-Base von `<ref>` und `HEAD` mit deinem Arbeitsstand und gibt die Änderungen als Markdown in der Teamsprache aus, fertig für einen PR-Kommentar. Kein Browser, kein Claude; nötig sind `git` im `PATH` und in CI die Geschichte (`fetch-depth: 0`).
+
+**Abgeschwächt** (Exit 1):
+
+- eine Prüfung hat sich geändert, obwohl das erwartete Ergebnis ihres Schritts gleich blieb (zugeordnet über das erwartete Ergebnis wie bei der Aufnahme: ein nur verschobener Schritt ist in Ordnung)
+- ein Test oder ein Schritt entfernt; eine Test- oder Aufnahmedatei, die nicht lesbar ist (`validate` sagt, warum)
+- der Test läuft auf weniger Umgebungen (`environments`, auch gegenüber dem Standard der Config)
+- `retry` neu oder erhöht; `timeoutMs` eines Schritts oder einer Aktion erhöht (über 30 s, wenn es keins gab)
+- eine Aktion `optional` gemacht
+- `knownMessages` ergänzt
+- gelernte Effekte: Zeilen aus einer Liste in `effects.fail` entfernt (Standard `controls`, `console`), neue Konsolenzeilen übernommen oder die gelernten Effekte ganz verworfen (sie werden neu gelernt); nur solange die Aktionen des Schritts gleich bleiben, ein neu aufgenommener Schritt lernt seine Effekte neu
+- Config: Einträge in `consoleIgnore`, `foreignCode` oder `reads` ergänzt, `messageSelectors` beobachten weniger, `effects.fail` enger, ein geschützter Schlüssel geändert (Befehle und Schalter der Umgebungen, `lintCommand`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
+
+**Geändert** (aufgelistet, keine Abschwächung): ein geändertes erwartetes Ergebnis, mit seiner Prüfung; neue Tests und Schritte. Das erwartete Ergebnis zu ändern ist der Weg, eine Prüfung bewusst zu ändern: Wer den PR prüft, sieht dann beides. **Zur Info:** geänderte Request-Baselines, gelernte Effekte aus Listen, die nur warnen.
+
+Exit `0` nichts abgeschwächt, `1` abgeschwächt, `3` die Ref ist unbekannt, hat keine gemeinsame Geschichte mit `HEAD` (`git-ref`) oder es gibt kein Git (`git-missing`). `--json` gibt `{ ref, base, weakened, findings }` aus, jeder Befund mit `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` für die Config), `step`, `before`, `after` und `text`.
 
 ## list
 
@@ -331,7 +356,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | Code | |
 |---|---|
 | `0` | bestanden |
-| `1` | fehlgeschlagen: Die App tut nicht, was der Test erwartet |
+| `1` | fehlgeschlagen: Die App tut nicht, was der Test erwartet; bei `audit`: ein Test wurde abgeschwächt |
 | `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …), oder ein unerwarteter interner Fehler (der Stack steht in der Ausgabe) |
 | `3` | abgewiesen: Aufruf, Config (auch `TODO`-Werte aus `init`) oder Testdatei ungültig. Es lief nichts. |
 | `4` | Aufnahme nötig: Die Aufzeichnung fehlt (`record`) oder ein Schritt hat sich seit der Aufnahme geändert (`record <test>@<schritt>`). Es lief nichts. |
@@ -368,6 +393,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `host-blocked` | 3 | `goto` zu einem Host, der kein Host der Anwendung ist: in `allowHosts` eintragen, wenn die Anwendung wirklich dorthin navigiert. In einem Lauf ist dieselbe Sperre ein Fehler des Schritts |
 | `env-certificate` | 2 | Dem Zertifikat der Umgebung wird nicht vertraut: bei einer internen Zertifizierungsstelle `environments.<env>.insecureTls: true` setzen |
 | `write-protected` | 3 | Aufnehmen und schreibende Tests brauchen `agent` / `writable` an der Umgebung |
+| `git-missing`, `git-ref` | 3 | `audit`: Git installieren, im Repository aufrufen, eine Ref nennen, die Git kennt; in CI die Geschichte holen (`fetch-depth: 0`) |
 | `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` gibt es, nicht von caw geschrieben |
 | `auth-missing` | 3 | Keine gespeicherte Sitzung, oder sie ist abgelaufen: `caw role login <rolle> --env <env>` (die Meldung nennt ihn) |
 | `credentials-missing` | 2 | Die genannten Variablen in `caw/.env` oder in der Umgebung setzen (CI-Secrets); eine neue Rolle vorher mit `role add <rolle>` |

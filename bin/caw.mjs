@@ -151,6 +151,7 @@ const main = async ([command, ...args]) => {
         }
         case 'validate': return (await host()).validate(root);
         case 'list': return (await host()).list(root, args);
+        case 'audit': return (await import('../src/host/audit.mjs')).auditCommand(root, args);
         case 'export': return (await import('../src/host/export.mjs')).exportCommand(root, args);
         case 'doctor': {
             const [{ doctor }, { createUi }, { optionValue }] = await Promise.all([import('../src/host/doctor.mjs'), import('../src/shared/ui.mjs'), import('../src/host/linux.mjs')]);

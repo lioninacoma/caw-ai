@@ -12,7 +12,8 @@ How caw works in detail. For quick lookup see [Commands](commands.md), [Configur
 4. [Triage and repair](#triage-and-repair)
 5. [Drive it from Claude Code](#drive-it-from-claude-code)
 6. [Safe with credentials and production](#safe-with-credentials-and-production)
-7. [Export to Playwright](#export-to-playwright)
+7. [No test gets weaker unnoticed: `audit`](#no-test-gets-weaker-unnoticed-audit)
+8. [Export to Playwright](#export-to-playwright)
 
 ## Plain-language tests: record once, replay without AI
 
@@ -541,6 +542,26 @@ Test accounts stay in your `caw/.env`, production is read-only, and Claude reach
 - **Corporate policies:** A centrally enforced Chrome policy (e.g. a proxy) can override the lock. Check this on the machine running the tests (`chrome://policy`).
 
 **Verdict:** Only the host writes report and `result.json`, outside the agent folder. Only screenshots the host took itself count.
+
+## No test gets weaker unnoticed: `audit`
+
+A check belongs to its expected result: while the expected result stays, caw keeps the check, also when a step is fixed or recorded again. People can still weaken a test, by a button in the chat, adopted advice or a hand edit. `caw audit <ref>` lists every such change since the branch left `<ref>`, as Markdown in the team language; to change a check on purpose, change the step's expected result, and the reviewer sees both.
+
+### In a PR
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- run: npx caw validate
+- run: npx caw audit origin/${{ github.base_ref }} > audit.md
+- run: gh pr comment ${{ github.event.pull_request.number }} --body-file audit.md
+  if: always()
+  env:
+    GH_TOKEN: ${{ github.token }}
+```
+
+The step fails (exit 1) when a test got weaker; the comment says which and how, e.g. "The check of S2 changed although its expected result „One order is listed.“ stayed the same." with the check before and now. What counts: [Commands](commands.md#audit).
 
 ## Export to Playwright
 

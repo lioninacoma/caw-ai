@@ -12,6 +12,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`doctor`](#doctor) | Check machine, config, credentials and environments | no |
 | [`overlay`](extensions/overlay.md) | Extension: local code on a deployed environment (only with an `overlay` block) | no |
 | [`validate`](#validate) | Check config and tests offline | no |
+| [`audit`](#audit) | List what weakens the tests since a branch or commit, for the PR | no |
 | [`list`](#list) | List tests and steps with their recording status | no |
 | [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
@@ -102,6 +103,30 @@ Checks `caw.config.json` and every file in `caw/tests/` without browser or Claud
 `signIn` values still `TODO` fail validation (exit 3, code `config-invalid`): each one says what belongs there.
 
 Per test and environment it prints which code runs there, e.g. `smoke (staging): deployed` or `smoke (local): dev server localhost:5173, your current version`.
+
+## audit
+
+```bash
+npx caw audit origin/main
+npx caw audit origin/main --json
+```
+
+No test gets weaker unnoticed. caw itself keeps a check as long as its expected result stays, but a chat button, adopted advice or a hand edit can still weaken a test. `audit` compares the test data (`caw/tests`, `caw/recordings`, `caw.config.json`) at the merge base of `<ref>` and `HEAD` with your working tree and prints the changes as Markdown in the team language, ready for a PR comment. No browser, no Claude; it needs `git` on the `PATH` and, in CI, the history (`fetch-depth: 0`).
+
+**Weakened** (exit 1):
+
+- a check changed while its step's expected result stayed the same (matched by the expected result, like recording does: a step that only moved is fine)
+- a test or a step removed; a test or recording file that can't be read (`validate` says why)
+- the test runs on fewer environments (`environments`, also against the config's default)
+- `retry` added or raised; a step's or an action's `timeoutMs` raised (above 30 s when it had none)
+- an action made `optional`
+- `knownMessages` added
+- learned effects: lines dropped from a list in `effects.fail` (default `controls`, `console`), new console lines taken in, or the learned effects dropped altogether (they are learned anew); only while the step's actions stay the same, a step recorded anew learns its effects anew
+- config: `consoleIgnore`, `foreignCode` or `reads` entries added, `messageSelectors` watching less, `effects.fail` narrowed, a guarded key changed (environment commands and flags, `lintCommand`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
+
+**Changed** (listed, not a weakening): a changed expected result, with its check; new tests and steps. Changing the expected result is the way to change a check on purpose: the reviewer then sees both. **For information:** changed request baselines, learned effects dropped from lists that only warn.
+
+Exit `0` nothing weakened, `1` weakened, `3` the ref is unknown, has no common history with `HEAD` (`git-ref`), or there is no Git (`git-missing`). `--json` prints `{ ref, base, weakened, findings }`, each finding with `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` for the config), `step`, `before`, `after` and `text`.
 
 ## list
 
@@ -329,7 +354,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | Code | |
 |---|---|
 | `0` | pass |
-| `1` | fail: the app didn't do what the test expects |
+| `1` | fail: the app didn't do what the test expects; for `audit`: a test was weakened |
 | `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …), or an unexpected internal error (the stack is printed) |
 | `3` | rejected: invalid call, config (also `TODO` values left from `init`) or test file. Nothing ran. |
 | `4` | needs recording: the recording is missing (`record`) or a step changed since it was recorded (`record <test>@<step>`). Nothing ran. |
@@ -366,6 +391,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `host-blocked` | 3 | `goto` to a host that is no app host: add it to `allowHosts` if the app really navigates there. In a run the same block is a failure of the step |
 | `env-certificate` | 2 | The environment's certificate is not trusted: for an internal certificate authority set `environments.<env>.insecureTls: true` |
 | `write-protected` | 3 | Recording and writing tests need `agent` / `writable` on the environment |
+| `git-missing`, `git-ref` | 3 | `audit`: install Git, run it inside the repository, name a ref Git knows; in CI fetch the history (`fetch-depth: 0`) |
 | `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` exists and was not written by caw |
 | `auth-missing` | 3 | No stored session, or it expired: `caw role login <role> --env <env>` (the message names it) |
 | `credentials-missing` | 2 | Set the variables the message names in `caw/.env` or the environment (CI secrets); a new role first with `role add <role>` |

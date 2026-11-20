@@ -12,7 +12,8 @@ Wie caw im Einzelnen arbeitet. Zum Nachschlagen: [Befehle](commands.de.md), [Kon
 4. [Einordnen und reparieren](#einordnen-und-reparieren)
 5. [Aus Claude Code steuern](#aus-claude-code-steuern)
 6. [Sicher mit Zugangsdaten und Produktion](#sicher-mit-zugangsdaten-und-produktion)
-7. [Export nach Playwright](#export-nach-playwright)
+7. [Kein Test wird unbemerkt schwächer: `audit`](#kein-test-wird-unbemerkt-schwächer-audit)
+8. [Export nach Playwright](#export-nach-playwright)
 
 ## Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen
 
@@ -542,6 +543,26 @@ Testkonten bleiben in deiner `caw/.env`, Produktion wird nur gelesen, und Claude
 - **Firmenrichtlinien:** Eine zentral erzwungene Chrome-Richtlinie (z. B. ein Proxy) kann die Sperre aushebeln. Prüfe das auf dem Rechner, auf dem die Tests laufen (`chrome://policy`).
 
 **Urteil:** Bericht und `result.json` schreibt nur der Host, außerhalb des Agent-Ordners. Als Screenshot zählt nur, was der Host selbst aufgenommen hat.
+
+## Kein Test wird unbemerkt schwächer: `audit`
+
+Eine Prüfung gehört zu ihrem erwarteten Ergebnis: Solange das erwartete Ergebnis bleibt, hält caw die Prüfung fest, auch wenn ein Schritt repariert oder neu aufgenommen wird. Menschen können einen Test trotzdem abschwächen, mit einem Button im Chat, einem übernommenen Rat oder von Hand. `caw audit <ref>` listet jede solche Änderung, seit der Branch von `<ref>` abging, als Markdown in der Teamsprache; eine Prüfung änderst du bewusst, indem du das erwartete Ergebnis des Schritts änderst, und wer den PR prüft, sieht beides.
+
+### In einem PR
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- run: npx caw validate
+- run: npx caw audit origin/${{ github.base_ref }} > audit.md
+- run: gh pr comment ${{ github.event.pull_request.number }} --body-file audit.md
+  if: always()
+  env:
+    GH_TOKEN: ${{ github.token }}
+```
+
+Der Schritt schlägt fehl (Exit 1), wenn ein Test schwächer wurde; der Kommentar sagt, welcher und wie, etwa „Die Prüfung von S2 hat sich geändert, obwohl das erwartete Ergebnis „Eine Bestellung steht in der Liste.“ gleich blieb.“ mit der Prüfung vorher und jetzt. Was zählt: [Befehle](commands.de.md#audit).
 
 ## Export nach Playwright
 
