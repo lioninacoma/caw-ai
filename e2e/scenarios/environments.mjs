@@ -1,6 +1,7 @@
 // P2 core model against the spa fixture (e2e/spa): environment choice (S8), sign-in and test users per environment with Keycloak
 // (A5), HTTP Basic and a gate (A6), several roles (A9), TLS and http exceptions (D6), tenants as environments (D7) and setup
 // with the packed CLI (B2). No Claude: the tests carry recordings written by hand and run headless.
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { request as httpRequest } from 'node:http';
@@ -703,6 +704,67 @@ scenario('S11', 'CI triage: --retry-env repeats only an environment failure, the
     verify('(4) CAW_URL__FLAKY: passes against the other address, named in the mode line, config unchanged', moved.exit === 0 && /Address from CAW_URL__FLAKY: http:\/\/abortive\.localhost/.test(moved.output) && config.environments.flaky.url === LIFECYCLE_ENVIRONMENTS.flaky.url, shown(moved));
     const refused = await go(['search', '--env', 'flaky'], { env: { CAW_URL__LOCAL: 'http://other.localhost:1' } });
     verify('(5) CAW_URL__LOCAL on an agent environment: url-override, exit 3', refused.exit === 3 && refused.code === 'url-override', shown(refused));
+});
+
+scenario('S12', 'caw bisect under git bisect run: three commits, the test from refs/bisect/bad, the environment started and stopped per commit, the first bad commit found; 128 when the environment already answers', spa, async () => {
+    // The app's code is the shared spa server: app.mode in the commit decides whether life's page aborts its search (ctl.mjs mode).
+    lifecycleConfig();
+    const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
+    config.environments.life = { ...config.environments.life, start: 'node ../ctl.mjs up 18512 && node ../ctl.mjs mode 18512' };
+    setConfig(config);
+    writeSpaTest(root, 'search');
+    writeFileSync(join(root, 'app.mode'), 'ok\n');
+    // Baselines learned on the good version: the diagnosis needs them to put the aborted search on the app.
+    const learned = await go(['search', '--env', 'life', '--start', '--learn']);
+    verify('(0) search passes on life and learns its baselines', learned.exit === 0, shown(learned));
+    const cli = join(here, '..', 'bin', 'caw.mjs');
+    // INIT_CWD from npm would point caw at another folder.
+    const inherited = { ...process.env };
+    delete inherited.INIT_CWD;
+    const git = (...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', env: { ...inherited, CI: '' }, timeout: 600_000, windowsHide: true });
+    const head = () => git('rev-parse', 'HEAD').stdout.trim();
+    try {
+        git('init', '-q', '-b', 'main');
+        git('config', 'user.email', 'bisect@example.test');
+        git('config', 'user.name', 'Bisect');
+        git('config', 'core.autocrlf', 'false');
+        writeFileSync(join(root, '.gitignore'), '.caw/\ncaw/.env\ncaw/.auth/\nlifecycle.log\n.ctl-*.pid\nout/\n');
+        git('add', '-A');
+        git('commit', '-q', '-m', 'good');
+        const good = head();
+        writeFileSync(join(root, 'notes.txt'), 'unrelated\n');
+        git('add', '-A');
+        git('commit', '-q', '-m', 'still good');
+        const middle = head();
+        writeFileSync(join(root, 'app.mode'), 'abort\n');
+        git('add', '-A');
+        git('commit', '-q', '-m', 'the bug');
+        const bad = head();
+        writeFileSync(join(root, 'notes.txt'), 'later\n');
+        git('add', '-A');
+        git('commit', '-q', '-m', 'after the bug');
+        const last = head();
+        rmSync(join(root, 'lifecycle.log'), { force: true });
+        git('bisect', 'start', last, good);
+        const bisected = git('bisect', 'run', process.execPath, cli, 'bisect', 'search', '--env', 'life');
+        const output = `${bisected.stdout}${bisected.stderr}`;
+        verify('(1) git bisect names the commit with the bug as the first bad commit', new RegExp(`${bad} is the first bad commit`).test(output), output.split('\n').filter((line) => /first bad|caw bisect/.test(line)).join(' | '));
+        const short = (hash) => git('rev-parse', '--short', hash).stdout.trim();
+        verify('(2) one line per commit: passed and good on the middle commit', new RegExp(`caw bisect ${short(middle)}: passed, assessment –, exit 0 \\(good\\)`).test(output), output.split('\n').filter((line) => /caw bisect/.test(line)).join(' | '));
+        verify('(3) the commit with the bug: failed at S1 on the app, exit 1 (bad)', new RegExp(`caw bisect ${short(bad)}: failed at S1, assessment app bug, exit 1 \\(bad\\)`).test(output), output.split('\n').filter((line) => /caw bisect/.test(line)).join(' | '));
+        verify('(4) every commit started and stopped life; nothing listens afterwards', ran('up') > 0 && ran('up') === ran('down') && !await listening(LIFECYCLE_PORTS.life), JSON.stringify(markers()));
+        verify('(5) nothing learned: the working tree stays clean', git('status', '--porcelain').stdout.trim() === '', git('status', '--porcelain').stdout);
+        git('bisect', 'reset');
+        // An environment that already answers could be any commit's build: the bisect stops.
+        spawnSync(process.execPath, [join(spaDir, 'ctl.mjs'), 'up', String(LIFECYCLE_PORTS.life)], { cwd: root, windowsHide: true });
+        const running = spawnSync(process.execPath, [cli, 'bisect', 'search', '--env', 'life', '--tests-from', bad], { cwd: root, encoding: 'utf8', env: { ...inherited, CI: '' }, windowsHide: true });
+        spawnSync(process.execPath, [join(spaDir, 'ctl.mjs'), 'down', String(LIFECYCLE_PORTS.life)], { cwd: root, windowsHide: true });
+        verify('(6) life already answers: exit 128, naming it', running.status === 128 && /life already answers at http:\/\/life\.localhost:18512/.test(`${running.stdout}${running.stderr}`), `${running.status} ${running.stderr}`);
+    } finally {
+        git('bisect', 'reset');
+        rmSync(join(root, '.git'), { recursive: true, force: true });
+        for (const name of ['.gitignore', 'app.mode', 'notes.txt']) rmSync(join(root, name), { force: true });
+    }
 });
 
 // ---- P5: actions and data

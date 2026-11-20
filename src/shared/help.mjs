@@ -7,7 +7,7 @@ import { headLine, packageVersion } from './brand.mjs';
 import { colorEnabled, termPainter } from './color.mjs';
 
 /** The commands for people, in help order. */
-export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'audit', 'doctor', 'role', 'skill', 'export', 'overlay'];
+export const HOST_COMMANDS = ['init', 'record', 'run', 'open', 'reproduce', 'list', 'validate', 'audit', 'bisect', 'doctor', 'role', 'skill', 'export', 'overlay'];
 /** Commands that exist but are not in the human help: the session MCP server and Claude's namespace. */
 const HIDDEN_COMMANDS = ['mcp', 'agent', 'attach'];
 /** Claude's commands, under `caw agent`; their help is `caw agent --help`. */

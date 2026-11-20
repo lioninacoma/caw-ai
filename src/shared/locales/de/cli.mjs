@@ -661,4 +661,29 @@ Browser:
     'cli.attemptLine': 'Versuch {attempt}: {status}{why}',
     'cli.summary.heading': 'caw: {count} Test(s) auf {target}, Exit {exit}',
     'cli.summary.columns': 'Ergebnis | Test | Gescheiterter Schritt | Einschätzung | Befund | Bericht',
+    // bisect.mjs: caw bisect <test> --env <name> für git bisect run
+    'cli.help.bisect': `  bisect <test> --env <name>             Ein Schritt von git bisect run: startet die Umgebung mit ihrem Startbefehl und
+                                         spielt den Test so, wie er in --tests-from steht, ohne Fenster, ohne Chat und
+                                         ohne Lernen
+      [--tests-from <ref>]               Woher Test, Aufnahme und caw.config.json kommen, Standard refs/bisect/bad
+      [--step-timeout <dauer>]           Zeitlimit pro Schritt, Standard 30s
+                                         Exit 0 gut, 1 schlecht (ein Schritt scheiterte an der Anwendung), 125
+                                         überspringen (Umgebung, Test, unklar, Fehler), 128 bricht git bisect ab
+                                         (Aufruf, Test oder Umgebung nicht brauchbar)`,
+    'cli.synopsis.bisect': 'caw bisect <test> --env <name> [--tests-from <ref>] [--step-timeout <dauer>]',
+    'cli.bisect.envMissing': 'Nenn die Umgebung: caw bisect <test> --env <name>. Ihr Startbefehl baut jeden Commit neu.',
+    'cli.bisect.noBisect': '{ref} gibt es nicht: Ruf caw bisect aus git bisect run auf (nach git bisect start <schlecht> <gut>) oder nenn mit --tests-from <ref> den Commit mit den Tests, die gelten sollen.',
+    'cli.bisect.missingAtRef': '{path} fehlt im Commit von --tests-from.',
+    'cli.bisect.noStart': '{env} hat keinen Startbefehl: caw bisect startet die Umgebung auf jedem Commit, damit sie den Code dieses Commits ausführt. Trag environments.{env}.start in caw.config.json ein.',
+    'cli.bisect.alreadyRunning': '{env} antwortet unter {url}, bevor caw sie gestartet hat: Das könnte der Build eines beliebigen Commits sein. Halt sie an und starte git bisect run neu.',
+    'cli.bisect.line': 'caw bisect {commit}: {result}, Einschätzung {side}, Exit {exit} ({meaning})',
+    'cli.bisect.result.pass': 'bestanden',
+    'cli.bisect.result.failed': 'gescheitert',
+    'cli.bisect.result.failedAt': 'gescheitert bei {step}',
+    'cli.bisect.result.error': 'kein Urteil ({code})',
+    'cli.bisect.result.notRun': 'nicht gelaufen ({code})',
+    'cli.bisect.meaning.good': 'gut',
+    'cli.bisect.meaning.bad': 'schlecht',
+    'cli.bisect.meaning.skip': 'übersprungen',
+    'cli.bisect.meaning.abort': 'git bisect bricht ab',
 };

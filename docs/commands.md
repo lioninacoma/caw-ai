@@ -13,6 +13,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`overlay`](extensions/overlay.md) | Extension: local code on a deployed environment (only with an `overlay` block) | no |
 | [`validate`](#validate) | Check config and tests offline | no |
 | [`audit`](#audit) | List what weakens the tests since a branch or commit, for the PR | no |
+| [`bisect`](#bisect) | One step of `git bisect run`: find the commit that broke a test | no |
 | [`list`](#list) | List tests and steps with their recording status | no |
 | [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
@@ -127,6 +128,27 @@ No test gets weaker unnoticed. caw itself keeps a check as long as its expected 
 **Changed** (listed, not a weakening): a changed expected result, with its check; new tests and steps. Changing the expected result is the way to change a check on purpose: the reviewer then sees both. **For information:** changed request baselines, learned effects dropped from lists that only warn.
 
 Exit `0` nothing weakened, `1` weakened, `3` the ref is unknown, has no common history with `HEAD` (`git-ref`), or there is no Git (`git-missing`). `--json` prints `{ ref, base, weakened, findings }`, each finding with `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` for the config), `step`, `before`, `after` and `text`.
+
+## bisect
+
+```bash
+git bisect start <bad> <good>
+git bisect run npx -p caw-ai@<version> caw bisect <test> --env <env>
+git bisect reset
+```
+
+Finds the commit that broke a test. `git bisect run` checks out one commit after another and calls `caw bisect` on each. It checks out `caw/` too, so the old commit's test would be another one or missing: the test, its recording and `caw.config.json` come from `--tests-from <ref>` (default `refs/bisect/bad`, the commit `git bisect start` was given as bad). The test must be recorded there; pending steps at its end are left out as in `run`.
+
+On each commit `caw bisect` starts the environment with its `start` command (so it runs that commit's code), plays the test headless without chat and stops the environment again. It learns nothing, so the working tree stays clean for the next checkout, and learned effects fail no step: they were learned on another version of the app. Per commit it prints one line, e.g. `caw bisect 3f2a1c9: failed at S3, assessment app bug, exit 1 (bad)`.
+
+| Exit | For git bisect | When |
+|---|---|---|
+| `0` | good | the test passed |
+| `1` | bad | a step failed and caw puts it on the app |
+| `125` | skip | a step failed on the environment, the test or unclear; the environment didn't start (e.g. the commit doesn't build); any other error |
+| `128` | stops the bisect | the call, or the test or config at the ref, is invalid; the test isn't recorded there or changed after recording; the environment has no `start`, or it already answers before caw starts it (it could be any commit's build: stop it first) |
+
+Run caw from a fixed install, as `npx -p caw-ai@<version>` does: the project's `node_modules` changes from commit to commit, and an old commit may have no caw or another version. `--step-timeout <duration>` limits each step (default 30s). Errors never end with exit 2, which `git bisect` would read as bad.
 
 ## list
 
