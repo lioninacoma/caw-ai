@@ -1,0 +1,248 @@
+// Target designs (design.mjs): the structure comparison as pure functions, what caw_design may write, and rendering a design
+// against a page in real Chrome (skipped without Chrome).
+import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+
+import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, tokensProblem, writeDesign } from '../src/host/design.mjs';
+import { frameworkOf } from '../src/host/framework/index.mjs';
+import { launchChrome } from './chrome.mjs';
+
+const EXAMPLE = new URL('../examples/errand/caw/', import.meta.url);
+
+const tempCaw = (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'caw-design-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    return dir;
+};
+
+/** A PNG header: signature, IHDR with width and height, and a few bytes after it. */
+const png = (width, height) => {
+    const bytes = Buffer.alloc(45);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
+    bytes.writeUInt32BE(13, 8);
+    bytes.write('IHDR', 12, 'latin1');
+    bytes.writeUInt32BE(width, 16);
+    bytes.writeUInt32BE(height, 20);
+    return bytes;
+};
+
+test('design names: under design/, plain segments, .html or .png; caw_design also writes tokens.json', () => {
+    assert.ok(isDesignName('design/order.html'));
+    assert.ok(isDesignName('design/screens/order.png'));
+    for (const name of ['order.html', '../design/order.html', 'design/../x.html', 'design/a\\b.html', 'design/x.svg', '/design/x.html', 'design/', 'design/.hidden/x.html']) {
+        assert.equal(isDesignName(name), false, name);
+    }
+    assert.equal(designKind('design/brand.tokens.json'), 'tokens');
+    assert.equal(designKind('design/tokens.json'), 'tokens');
+    assert.equal(designKind('design/x.json'), null);
+    assert.equal(designKind('design/../tokens.json'), null);
+});
+
+test('the view without data rows and free text; numbers neutral', () => {
+    const aria = [
+        '- heading "Order 12" [level=1]',
+        '- list:',
+        '  - listitem:',
+        '    - button "Complete Feed the raven"',
+        '  - listitem:',
+        '    - button "Complete Water plants"',
+        '- paragraph: Some sample text',
+        '- text: more text',
+        '- button "Save"',
+        '- combobox "Move to": Tomorrow',
+        '  - option "Today"',
+    ].join('\n');
+    assert.deepEqual(maskedView(aria), ['- heading "Order #" [level=#]', '- button "Save"', '- combobox "Move to"']);
+});
+
+test('styles become whole pixels and hex colors', () => {
+    assert.deepEqual(normalStyle({ fontSize: '14.4px', fontWeight: '700', color: 'rgb(255, 255, 255)', backgroundColor: 'rgba(0, 0, 0, 0)', borderRadius: '12.8px', padding: '8.25px 16.5px' }), {
+        'font-size': '14px', 'font-weight': '700', color: '#ffffff', 'background-color': 'transparent', 'border-radius': '13px', padding: '8px 17px',
+    });
+    assert.equal(normalStyle({ color: 'rgba(35, 28, 23, 0.5)' }).color, '#231c1780');
+});
+
+test('structure comparison: missing lines and differing styles are not met; extra lines and data are not counted', () => {
+    const target = structureFrom({
+        controls: [
+            { line: 'button "Save"', style: { color: 'rgb(255, 255, 255)', fontSize: '15px' } },
+            { line: 'input "Title" required,empty', style: { fontSize: '15px' } },
+            { line: 'list "Todos" rows' },
+        ],
+        aria: '- heading "Errand" [level=1]\n- button "Save"',
+    });
+    const actual = structureFrom({
+        controls: [
+            { line: 'button "Save"', style: { color: 'rgb(0, 0, 0)', fontSize: '15px' } },
+            { line: 'input "Title" required,filled', style: { fontSize: '15px' } },
+            { line: 'list "Todos" empty' },
+            { line: 'a "Sign out"' },
+        ],
+        aria: '- heading "Errand" [level=1]\n- button "Save"\n- link "Sign out"',
+    });
+    const result = compareStructure(target, actual);
+    assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.extra, ['a "Sign out"', '- link "Sign out"']);
+    assert.deepEqual(result.styleDiffs, ['button "Save": color #ffffff → #000000']);
+    assert.equal(result.met, false);
+    const same = compareStructure(target, { ...actual, styles: { ...actual.styles, 'button "Save"': target.styles['button "Save"'] } });
+    assert.equal(same.met, true, 'only extra lines left');
+    const without = compareStructure(target, structureFrom({ controls: [{ line: 'list "Todos" rows' }], aria: '' }));
+    assert.deepEqual(without.missing, ['button "Save"', 'input "Title" required', '- heading "Errand" [level=#]', '- button "Save"']);
+});
+
+test('the same control twice is told apart for its styles', () => {
+    const { styles } = structureFrom({ controls: [{ line: 'button "Delete"', style: { color: 'rgb(1, 1, 1)' } }, { line: 'button "Delete"', style: { color: 'rgb(2, 2, 2)' } }] });
+    assert.deepEqual(Object.keys(styles), ['button "Delete"', 'button "Delete" #2']);
+});
+
+test('caw_design checks: PNG signature and size, DTCG tokens, html, size caps', () => {
+    assert.deepEqual(pngSize(png(390, 844)), { width: 390, height: 844 });
+    assert.equal(pngSize(Buffer.from('not a png at all, just some text here')), null);
+    assert.equal(designProblem('png', png(390, 844)), null);
+    assert.match(designProblem('png', Buffer.from('GIF89a and more bytes to be long enough....')), /kein PNG/);
+    assert.match(designProblem('png', png(0, 844)), /0×844/);
+    assert.match(designProblem('png', png(100_000, 10)), /100000×10/);
+    assert.match(designProblem('html', Buffer.alloc(3 * 1024 * 1024, 'a')), /größer als 2 MB/);
+    assert.match(designProblem('html', Buffer.from('just text')), /keine HTML-Seite/);
+    assert.equal(designProblem('html', Buffer.from('<!doctype html><body><button>Save</button></body>')), null);
+    assert.match(designProblem('html', Buffer.from([0x3c, 0x64, 0x69, 0x76, 0x3e, 0xff, 0xfe])), /kein UTF-8/);
+    assert.equal(tokensProblem({ color: { $type: 'color', ink: { $value: '#231c17' } } }), null);
+    assert.match(tokensProblem({ color: { ink: '#231c17' } }), /\/color\/ink/);
+    assert.match(tokensProblem({ color: { $type: 'color' } }), /kein Token/);
+    assert.match(designProblem('tokens', Buffer.from('{ nope')), /kein JSON/);
+    assert.equal(designProblem('tokens', readFileSync(new URL('design/tokens.json', EXAMPLE))), null, 'the example tokens are DTCG');
+    assert.match(designProblem('html', Buffer.alloc(0)), /leer/);
+});
+
+test('writeDesign: only under caw/design, never through a link, and listDesigns finds what it wrote', (t) => {
+    const caw = tempCaw(t);
+    const written = writeDesign(caw, 'design/screens/order.png', png(390, 844));
+    assert.deepEqual(written, { file: 'design/screens/order.png', kind: 'png', bytes: 45, replaced: false, width: 390, height: 844 });
+    assert.ok(existsSync(join(caw, 'design', 'screens', 'order.png')));
+    assert.equal(writeDesign(caw, 'design/screens/order.png', png(10, 10)).replaced, true);
+    assert.throws(() => writeDesign(caw, 'design/../tests/x.html', Buffer.from('<body></body>')), /unter design\//);
+    assert.throws(() => writeDesign(caw, 'tests/x.html', Buffer.from('<body></body>')), /unter design\//);
+    assert.throws(() => writeDesign(caw, 'design/x.html', Buffer.from('plain')), /keine HTML-Seite/);
+    writeDesign(caw, 'design/brand.tokens.json', Buffer.from('{"c":{"$value":"#fff"}}'));
+    assert.deepEqual(listDesigns(caw).map(({ file, kind }) => [file, kind]), [['design/brand.tokens.json', 'tokens'], ['design/screens/order.png', 'png']]);
+    assert.equal(designPath(caw, 'design/screens/order.png'), join(caw, 'design', 'screens', 'order.png'));
+    assert.equal(designPath(caw, 'design/missing.html'), null);
+
+    // A folder under caw/design that is a link to elsewhere: nothing is written through it, and a step cannot name a file there.
+    const outside = tempCaw(t);
+    try {
+        symlinkSync(outside, join(caw, 'design', 'linked'), 'junction');
+    } catch {
+        t.diagnostic('no links on this system');
+        return;
+    }
+    assert.throws(() => writeDesign(caw, 'design/linked/x.html', Buffer.from('<body></body>')), /außerhalb von caw\/design/);
+    assert.equal(existsSync(join(outside, 'x.html')), false);
+    writeFileSync(join(outside, 'y.html'), '<body></body>');
+    assert.equal(designPath(caw, 'design/linked/y.html'), null);
+});
+
+let browser = null;
+before(async () => {
+    browser = await launchChrome();
+});
+after(async () => {
+    await browser?.close();
+});
+const needsChrome = () => browser === null;
+
+/** The errand app's detail page as it looks after S4: the example design with real data and the app's frame around it. */
+const appPage = (design, { save = 'Save', saveColor } = {}) => design
+    .replace('#7 Feed the raven CAW-1', '#12 Feed the raven CAW-2026112012345601')
+    .replace('<div class="app"><main>', '<div class="app"><div class="me"><b>D</b>demo · <a href="/logout">Sign out</a></div><main>')
+    .replace('id="save">Save<', `id="save">${save}<`)
+    .replace('</style>', `${saveColor === undefined ? '' : `.btn{color:${saveColor}}`}</style>`);
+
+test('rendered: the errand example design is met by its screen, a renamed button and a changed color are not', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const design = readFileSync(new URL('design/todo-detail.html', EXAMPLE), 'utf8');
+    const viewport = { width: 390, height: 844 };
+    const target = await structureOf(await renderDesign(browser, design, viewport));
+    assert.ok(target.lines.includes('button "Save"'), target.lines.join('\n'));
+    assert.ok(target.lines.includes('select "Move to"'), 'a select is a control, its value is data');
+    assert.equal(target.styles['button "Save"']['background-color'], '#e5533a');
+
+    const context = await browser.newContext({ viewport });
+    try {
+        const page = await context.newPage();
+        const judgeOn = async (html) => {
+            await page.setContent(html);
+            return compareStructure(target, await structureOf(page));
+        };
+        const met = await judgeOn(appPage(design));
+        assert.deepEqual(met.missing, []);
+        assert.deepEqual(met.styleDiffs, []);
+        assert.ok(met.extra.some((line) => line.includes('Sign out')), 'the app frame is only extra');
+        assert.equal(met.met, true);
+
+        const renamed = await judgeOn(appPage(design, { save: 'Store' }));
+        assert.ok(renamed.missing.includes('button "Save"'));
+        assert.equal(renamed.met, false);
+        const recolored = await judgeOn(appPage(design, { saveColor: '#000' }));
+        assert.deepEqual(recolored.styleDiffs, ['button "Save": color #ffffff → #000000']);
+    } finally {
+        await context.close();
+    }
+});
+
+test('rendered: the design page runs no scripts and loads nothing', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const page = await renderDesign(browser, '<!doctype html><body><img src="https://example.invalid/x.png"><script>document.body.dataset.ran = "yes"</script><button>Go</button></body>');
+    try {
+        assert.equal(await page.evaluate('document.body.dataset.ran ?? "no"'), 'no');
+    } finally {
+        await page.context().close();
+    }
+});
+
+test('the judge: met, missing file, image; its own browser closes', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const caw = tempCaw(t);
+    writeDesign(caw, 'design/a.html', Buffer.from('<!doctype html><body><button>Go</button></body>'));
+    writeDesign(caw, 'design/b.png', png(390, 844));
+    let launched = 0;
+    const judge = createDesignJudge({ cawDir: caw, launch: async () => { launched += 1; return launchChrome(); }, read: (path) => readFileSync(path, 'utf8') });
+    const context = await browser.newContext();
+    try {
+        const page = await context.newPage();
+        await page.setContent('<!doctype html><body><button>Go</button></body>');
+        assert.equal((await judge.judge({ file: 'design/a.html' }, page)).verdict, 'met');
+        assert.equal((await judge.judge({ file: 'design/b.png' }, page)).verdict, 'image');
+        assert.equal((await judge.judge({ file: 'design/none.html' }, page)).verdict, 'missing');
+        await page.setContent('<!doctype html><body><button>Stop</button></body>');
+        const notMet = await judge.judge({ file: 'design/a.html' }, page);
+        assert.equal(notMet.verdict, 'not-met');
+        assert.deepEqual(notMet.missing, ['button "Go"', '- button "Go"']);
+        assert.equal(launched, 1, 'one design browser per run');
+    } finally {
+        await judge.close();
+        await context.close();
+    }
+});
+
+test('needs: the locators missing on the page', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const context = await browser.newContext();
+    try {
+        const page = await context.newPage();
+        await page.setContent('<!doctype html><body><button>Save</button></body>');
+        const missing = await missingNeeds(frameworkOf(), () => page.mainFrame(), ['getByRole("button", { name: "Save" })', 'getByRole("button", { name: "Delete" })'], { timeoutMs: 300 });
+        assert.deepEqual(missing, ['getByRole("button", { name: "Delete" })']);
+    } finally {
+        await context.close();
+    }
+});
+
+test('the errand example has its design and tokens, and no step links a design that would fail', () => {
+    assert.ok(existsSync(new URL('design/todo-detail.html', EXAMPLE)));
+    assert.doesNotMatch(readFileSync(new URL('tests/first-errand.yaml', EXAMPLE), 'utf8'), /^\s+design:/m);
+});

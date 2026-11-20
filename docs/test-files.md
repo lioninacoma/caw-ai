@@ -62,6 +62,8 @@ Per step:
 | `expect` | yes | Exactly one result you can check. |
 | `note` | no | Context for this step only. |
 | `retry` | no | `{ times: 2, waitMs: 15000, from: S1 }`: reload and retry when the step fails for a known reason, e.g. a cold backend. Not for steps that submit data. |
+| `design` | no | Only written by a person: the step's target design, a file under `caw/design` relative to the caw folder (`design/order-form.html`), see [Target design](#target-design). |
+| `needs` | no | Only written by a person: locators that must be on the page before a pending step can be recorded, e.g. `['getByRole("button", { name: "Save" })']`. |
 
 Tips:
 
@@ -78,7 +80,7 @@ npx caw run create-ticket --env local       # exit 4: S2 changed, prints the rec
 npx caw record create-ticket@S2 --env local # re-record from S2 to the end, S1 stays
 ```
 
-`notes`, `role`, `writes`, `environments`, `start`, `retry` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.
+`notes`, `role`, `writes`, `environments`, `start`, `retry`, `design`, `needs` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.
 
 ## Pending steps
 
@@ -92,6 +94,16 @@ npx caw run create-ticket --env local --strict # exit 4 while anything is pendin
 ```
 
 `run` plays the recorded steps and passes without the pending ones; `list` shows `pending (S4, S5)`, `report.md` and `result.json` (`pending`, and `status: "pending"` under `steps`) name them, the workbench shows them as not reached. Only the tail counts: an unrecorded step before a recorded one, a step changed after recording and a test with nothing recorded still stop with exit 4, so editing a step's text never quietly drops its check from CI.
+
+When the first pending step has `needs`, a run that ends healthy checks them on the page (about 2 s each): all there, it says `S4 is ready to record: caw record create-ticket@S4`; otherwise it lists the missing ones. `result.json` has them under `needs`.
+
+## Target design
+
+A step can name the screen it should end on: `design: design/order-form.html`. Only people write `design` and `needs` into the test file (or have their Claude Code session link a design with `caw_design` when they ask); Claude's plan may not carry them, and when caw rewrites a step (fix, re-record) it keeps them.
+
+After the step's check passed, caw renders the `.html` design in a separate headless browser without scripts or network, at the step's recorded viewport, and compares its structure with the app's page: controls (role, label, flags), view lines (headings, buttons, links, landmarks) and per control `font-size`, `font-weight`, `color`, `background-color`, `border-radius` and `padding`. List rows, free text, numbers and whether a field is filled are data and are left out. Something missing or a differing style fails the step with kind `design`; controls that only the app has are reported but do not fail. The replay goes on, the step gets no retry and learns no effects in that run. With `design.fail: []` in the config it only warns. A `.png` design is not judged yet: pixel comparison comes later.
+
+`result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs }` under `steps`.
 
 ## Recording
 

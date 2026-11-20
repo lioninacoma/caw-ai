@@ -16,6 +16,7 @@ import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
 import { dialogFindings, recordedDialog } from './dialogs.mjs';
+import { DEFAULT_DESIGN_FAIL, designText } from './design.mjs';
 import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, stepDeviation, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
 import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
@@ -606,6 +607,8 @@ const flatten = (spec, steps, until) => ({
     baselines: Object.fromEntries(steps.filter(({ recording }) => recording?.network !== undefined).map(({ id, recording }) => [id, recording.network])),
     // Effects per action from healthy runs: they show the first action after which the app behaves differently.
     effects: Object.fromEntries(steps.filter((step) => currentEffects(spec, step) !== undefined).map((step) => [step.id, currentEffects(spec, step)])),
+    // Target designs per step, judged once its check passed, at the viewport the step was recorded in.
+    designs: Object.fromEntries(steps.filter(({ design }) => design !== undefined).map(({ id, design, recording }) => [id, { file: design, ...(recording?.viewport === undefined ? {} : { viewport: recording.viewport }) }])),
     steps: steps.flatMap(({ id, expect, recording }) => [
         ...recording.actions,
         // The expectation goes along: a check that is not met names it, the code stays in the report's evidence.
@@ -621,7 +624,9 @@ export const replayOf = (spec) => {
     const pending = pendingSteps(spec);
     if (pending.length === 0) return flatten(spec, spec.steps);
     const recorded = spec.steps.slice(0, spec.steps.length - pending.length);
-    return { ...flatten(spec, recorded, recorded.at(-1).id), pending };
+    // What the first pending step needs on the page before it can be recorded: checked when the run ends there.
+    const { needs } = spec.steps[recorded.length];
+    return { ...flatten(spec, recorded, recorded.at(-1).id), pending, ...(needs === undefined ? {} : { needs: { step: pending[0], locators: needs } }) };
 };
 
 /**
@@ -782,7 +787,11 @@ export const stepGroups = (steps, replay) => {
  *
  * @param filesDir  the project's caw folder: files for upload live there, e.g. caw/fixtures/.
  */
-export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL }) => {
+/**
+ * @param judgeDesign (design, page) => judged design (design.mjs createDesignJudge); without it designs are not judged
+ * @param designFail  config design.fail: with 'target' a design not met fails its step, otherwise it only warns
+ */
+export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL, judgeDesign, designFail = DEFAULT_DESIGN_FAIL }) => {
     // Effects per action: what this run saw (last attempt) and the first deviation from the learned effects per step.
     const measure = session.trail === undefined ? null : createEffects({ session });
     const observed = new Map();
@@ -796,6 +805,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const effectKeys = new Map();
     const repeated = new Set();
     const results = new Map();
+    // The judged target design per step (design.mjs), for result.json.
+    const designs = new Map();
     // What stopped the earlier attempts, per step. It stays visible in the report even if a later attempt passes.
     const history = new Map();
     // Steps whose retry did not run because a new attempt cannot change anything, with the reason.
@@ -1067,6 +1078,25 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         await handler({ action: 'screenshot', name }).then(() => { broken.screenshot = name; }, () => {});
     };
 
+    /**
+     * The step's check passed: does its screen match the target design? Not met fails the step with kind 'design' (or only
+     * warns), but the replay goes on: the app works, it just does not look as designed yet. No new attempt, since waiting
+     * does not build a screen, and the failed result keeps its effects from being learned in this run.
+     */
+    const judge = async (id, result) => {
+        const design = replay.designs?.[id];
+        if (design === undefined || judgeDesign === undefined) return;
+        const judged = await judgeDesign(design, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
+        designs.set(id, judged);
+        if (judged.verdict === 'met' || judged.verdict === 'image') return;
+        const text = judged.verdict === 'not-met' ? t('session.design.notMet', { id, details: designText(judged) }) : judged.note;
+        if (judged.verdict === 'error' || !designFail.includes('target')) {
+            session.warn?.({ type: 'design', text });
+            return;
+        }
+        results.set(id, { ...result, status: 'fail', kind: 'design', evidence: { type: 'eval', value: judged.verdict === 'not-met' ? designText(judged) : judged.note }, note: text });
+    };
+
     // Where each step starts in the flat list.
     const starts = new Map();
     let segment = 0;
@@ -1162,6 +1192,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         pending = null;
         ids.slice(0, ids.indexOf(owner) + 1).forEach((id) => {
             results.delete(id);
+            designs.delete(id);
             observed.delete(id);
             deviations.delete(id);
             // Only warm-up for the retried step: the previous attempt already changed the app, e.g. opened a task.
@@ -1307,6 +1338,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 await stop(position, stepLabel(step), 'check', result.note);
                 break;
             }
+            await judge(step.id, result);
         }
         index += 1;
     }
@@ -1326,7 +1358,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', text: deviationText(deviation) });
     }
     // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
-    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried };
+    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])) };
 };
 
 /**
@@ -1402,8 +1434,11 @@ export const withBaselines = (spec, baselines) => ({
  *          fixing works there without a warm-up. After a failed check playback continued, so never then.
  */
 export const failedStep = ({ results, broken, expectations, failures = [] }) => {
-    const failed = expectations.find(({ id }) => results.get(id)?.status === 'fail');
+    // A design not met leaves the replay running: a later step that really failed, or the break, says more and comes first.
+    const fails = expectations.filter(({ id }) => results.get(id)?.status === 'fail');
+    const failed = fails.find(({ id }) => results.get(id).kind !== 'design') ?? (broken === null ? fails[0] : undefined);
     const suspect = broken?.kind === 'external' || failures.length > 0;
+    if (failed !== undefined && results.get(failed.id).kind === 'design') return { id: failed.id, reason: results.get(failed.id).note, kind: 'design', suspect: false, clean: false };
     if (failed !== undefined) return { id: failed.id, reason: results.get(failed.id).note, suspect, clean: false };
     return broken === null ? null : { id: broken.step, reason: `${broken.label}: ${broken.message}`, suspect, clean: broken.clean === true && failures.length === 0 };
 };
@@ -1415,12 +1450,15 @@ export const failedStep = ({ results, broken, expectations, failures = [] }) => 
  * @param ids          the test's step ids in order
  * @param durations    seconds per step id, as measured by the run
  * @param withEffects  false on production: effect lines carry visible names, which may be personal data
- * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation? }]
+ * @param designs      the judged target designs per step id (playReplay)
+ * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design? }]; `kind` 'design': its screen does not
+ *          match its target design
  */
-export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
+export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
     const status = results?.get(id)?.status ?? 'skipped';
     const deviation = deviations?.get(id);
-    const kind = status !== 'fail' ? undefined : broken?.step === id ? broken.kind : deviation?.fails === true ? 'effect' : 'check';
+    const kind = status !== 'fail' ? undefined : results?.get(id)?.kind ?? (broken?.step === id ? broken.kind : deviation?.fails === true ? 'effect' : 'check');
+    const design = designs?.get(id);
     const seen = effects?.get(id);
     const shownDeviation = deviation === undefined ? undefined
         : effectsShown ? { number: deviation.number, learned: deviation.learned, lists: deviation.lists, missing: deviation.missing, extra: deviation.extra, instead: deviation.instead, ...(deviation.fails === true ? { fails: true } : {}) }
@@ -1433,6 +1471,7 @@ export const stepRecords = ({ ids, results, broken = null, requests, effects, de
         ...(requests?.has(id) ? { requests: summarizeRequests(requests.get(id)) } : {}),
         ...(effectsShown && seen !== undefined ? { effects: [...seen].map(([action, effect]) => ({ action, ...effect })) } : {}),
         ...(shownDeviation === undefined ? {} : { deviation: shownDeviation }),
+        ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [] } }),
     };
 });
 

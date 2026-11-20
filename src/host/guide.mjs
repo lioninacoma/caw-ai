@@ -29,6 +29,7 @@ export const GUIDE_TOPICS = [
     { name: 'advise', about: 'run agent: recommendations after a run' },
     { name: 'talk', about: 'run agent: clarify a failure or help while the person develops' },
     { name: 'reproduce', about: 'reproduce a bug report: as run agent on your own, or start it for the person' },
+    { name: 'design', about: 'develop against a target design: fetch it, write it with caw_design, build until the step meets it' },
     { name: 'rules', about: 'run agent: the rules' },
     { name: 'overlay', about: 'local code on a deployed environment', extension: 'overlay' },
     { name: 'extjs', about: 'ExtJS applications: waiting, reading state, locators', extension: 'extjs' },

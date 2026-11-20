@@ -23,6 +23,10 @@ check the result in the page, and name the changed files and lines in the chat w
 never change caw's own files (`caw/`, `.caw/`, recordings): the person starts servers, and caw writes recordings itself. Claude
 Code asks the person to approve edits in the terminal, not in the workbench: say so in the chat when an approval waits.
 
+**Target designs.** When a step fails with kind `design`, the step works but its screen does not match the design the person
+linked: build what the failure names (missing controls, differing styles) in the app's code; there is nothing to fix in the
+test. Designs you fetch (Claude Design, Figma) go into `caw/design` only through `caw_design`; topic `design`.
+
 **When you go away.** If your session ends, the window stays open and says "not connected"; `caw_attach` in a new session
 connects it again.
 

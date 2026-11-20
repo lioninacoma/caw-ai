@@ -960,3 +960,57 @@ scenario('N13', 'Pending steps: run passes with S1–S2 and names S3, S4; --stri
     const wholeCode = await open(native, [PENDING, ...target], { interactive: true, onChatOpen: whole.onChatOpen });
     verify('open <test>: Exit 0, one window', wholeCode === 0 && await whole.done() === 1, String(wholeCode));
 });
+
+// ---- N14: target designs. S2 of n9-shadow ends on the page with "Errands" and Save; a design that matches, one that does not,
+// an image, and the needs of a pending S3.
+
+const DESIGNED = 'rec-design';
+// The fixture's own font and a default button: the same controls and styles as the site after S2. Free text and the rest of the
+// page are left out on purpose: what only the app has does not fail.
+const MATCHING = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}</style></head><body><main><h1>Errands</h1><p>Sample text</p><button>Save</button></main></body></html>';
+const OTHER = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}button{background:#e5533a;color:#fff}</style></head><body><main><h1>Errands</h1><button>Save</button><button>Export</button></main></body></html>';
+// A PNG header (signature and IHDR, 390×844): the run only looks at the extension, caw_design checks the bytes.
+const PNG_390 = (() => {
+    const bytes = Buffer.alloc(45);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
+    bytes.writeUInt32BE(13, 8);
+    bytes.write('IHDR', 12, 'latin1');
+    bytes.writeUInt32BE(390, 16);
+    bytes.writeUInt32BE(844, 20);
+    return bytes;
+})();
+
+scenario('N14', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on, a .png is not judged; needs of the pending S3', async () => {
+    const designDir = join(native, 'caw/design');
+    mkdirSync(designDir, { recursive: true });
+    writeFileSync(join(designDir, 'n14-match.html'), MATCHING);
+    writeFileSync(join(designDir, 'n14-other.html'), OTHER);
+    writeFileSync(join(designDir, 'n14.png'), PNG_390);
+    const parsed = parseTest(testText(DESIGNED, TESTS['n9-shadow']));
+    const withDesign = (file, extra = []) => writeTest(native, { ...parsed, id: DESIGNED, steps: [parsed.steps[0], { ...parsed.steps[1], design: file }, ...extra] });
+    const stepOf = (result, id) => (result?.steps ?? []).find((step) => step.id === id);
+    try {
+        withDesign('design/n14-match.html', [{ id: 'S3', name: 'Exportieren', do: 'Exportiere.', expect: 'Die Datei ist da.', needs: ["getByRole('button', { name: 'Save', exact: true })"] }]);
+        const met = await runQuietly(DESIGNED);
+        const first = newestRunOf(native, DESIGNED).result;
+        verify('matching design: Exit 0, verdict met', met.code === 0 && stepOf(first, 'S2')?.design?.verdict === 'met', `${met.code} ${met.note} ${JSON.stringify(stepOf(first, 'S2')?.design)}`);
+        verify('the app frame is only extra', (stepOf(first, 'S2')?.design?.extra ?? []).some((line) => /Orders|Customers|Add/.test(line)), JSON.stringify(stepOf(first, 'S2')?.design?.extra));
+        verify('needs of S3 all there: ready to record', first?.needs?.step === 'S3' && first.needs.ready === true, JSON.stringify(first?.needs));
+
+        withDesign('design/n14-other.html', [{ id: 'S3', name: 'Exportieren', do: 'Exportiere.', expect: 'Die Datei ist da.', needs: ["getByRole('button', { name: 'Export', exact: true })"] }]);
+        const notMet = await runQuietly(DESIGNED);
+        const second = newestRunOf(native, DESIGNED).result;
+        const s2 = stepOf(second, 'S2');
+        verify('other design: Exit 1, S2 fails with kind design', notMet.code === 1 && s2?.status === 'fail' && s2.kind === 'design', `${notMet.code} ${JSON.stringify(s2)}`);
+        verify('names the missing button and the differing style', /Fehlt: .*button "Export"/.test(notMet.note) && /button "Save": background-color .* → /.test(notMet.note), notMet.note);
+        verify('needs of S3 missing: named, not ready', second?.needs?.ready === false && /Export/.test(JSON.stringify(second.needs.missing)), JSON.stringify(second?.needs));
+
+        withDesign('design/n14.png');
+        const image = await runQuietly(DESIGNED);
+        const third = newestRunOf(native, DESIGNED).result;
+        verify('image design: Exit 0, not judged', image.code === 0 && stepOf(third, 'S2')?.design?.verdict === 'image', `${image.code} ${JSON.stringify(stepOf(third, 'S2')?.design)}`);
+    } finally {
+        rmSync(designDir, { recursive: true, force: true });
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DESIGNED}.yaml`), { force: true });
+    }
+});

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, replayBefore, replayOf, replayToEntry, replayUpToStale, trailingNumbers } from '../src/host/replay.mjs';
-import { brokenChain, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, renderPlan, renderTest, staleSteps, stepHash, testPath, writeTest } from '../src/host/test-file.mjs';
+import { brokenChain, humanFields, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, renderPlan, renderTest, setStepDesign, staleSteps, stepHash, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
 
 const NEXT = "getByRole('button', { name: 'Next', exact: true })";
@@ -530,4 +530,65 @@ test('recording viewport: stored, read back and checked; wait-ready waits with f
     assert.deepEqual(recordingHints(root), [], 'a pinned viewport: no hint');
     assert.throws(() => parseRecordings(text.replace('width: 1280', 'width: 12')), /recording\.viewport muss \{ width, height \}/);
     assert.throws(() => parseRecordings(text.replace(/for: "?#orders li"?/, 'store: liste')), /store heißt jetzt for/);
+});
+
+const HUMAN = '    note: Check only.\n    design: design/order.html\n    needs: [\'getByRole("button", { name: "Save" })\']\n';
+
+test('design and needs: read from the test file, written back, outside the hash', () => {
+    const parsed = parseTest(YAML.replace('    note: Check only.\n', HUMAN), undefined, { description: true });
+    assert.equal(parsed.steps[1].design, 'design/order.html');
+    assert.deepEqual(parsed.steps[1].needs, ['getByRole("button", { name: "Save" })']);
+    // Pinned: changing them never makes a step stale.
+    assert.equal(stepHash(parsed.steps[1]), stepHash({ ...parsed.steps[1], design: 'design/other.png', needs: ['getByText("x")'] }));
+    assert.equal(stepHash(parsed.steps[1]), stepHash(parseTest(YAML).steps[1]));
+    assert.deepEqual(humanFields(parseTest(renderTest(parsed)).steps[1]), { design: 'design/order.html', needs: ['getByRole("button", { name: "Save" })'] });
+    assert.doesNotMatch(renderPlan(parsed), /design|needs/, 'the plan for Claude has no human-only fields');
+});
+
+test('design and needs: wrong values are rejected, and Claude\'s plan may not carry them', () => {
+    for (const [field, pattern] of [
+        ['design: order.html', /design nennt eine Datei unter design\//],
+        ['design: design/../tests/t.yaml', /design nennt/],
+        ['design: design/x.svg', /design nennt/],
+        ['needs: getByText("x")', /needs ist eine Liste/],
+        ['needs: []', /needs ist eine Liste/],
+        ['needs: [\'page.evaluate("1")\']', /needs: .*page/],
+    ]) {
+        assert.throws(() => parseTest(YAML.replace('    note: Check only.\n', `    note: Check only.\n    ${field}\n`)), pattern, field);
+    }
+    const plan = 'steps:\n  - id: S1\n    name: A\n    do: ""\n    expect: B\n    design: design/order.html\n    needs: [\'getByText("x")\']\n';
+    const { problems } = parsePlan(plan);
+    assert.equal(problems.length, 2);
+    assert.match(problems[0], /design schreibt nur ein Mensch/);
+    assert.match(problems[1], /needs schreibt nur ein Mensch/);
+});
+
+test('design and needs: kept when caw rewrites a step from Claude\'s plan, whole or from a step', (t) => {
+    const root = testRoot(t, YAML.replace('    note: Check only.\n', HUMAN));
+    // Fixing S2: the plan's step has new text but no human fields; the file keeps them.
+    const fixed = spec(plain('S1'), plain('S2', { expect: 'Something else' }));
+    writeTest(root, fixed, new Set(['S2']));
+    assert.deepEqual(humanFields(loadTest(root, 't').steps[1]), { design: 'design/order.html', needs: ['getByRole("button", { name: "Save" })'] });
+    // A whole new plan (re-record): the same.
+    writeTest(root, spec(plain('S1'), plain('S2', { expect: 'Third text' })));
+    assert.equal(loadTest(root, 't').steps[1].design, 'design/order.html');
+    // Re-recording from S2 with pruning.
+    writeTest(root, spec(plain('S1'), plain('S2', { expect: 'Fourth text' }), plain('S3')), new Set(['S2', 'S3']), { prune: true });
+    assert.equal(loadTest(root, 't').steps[1].design, 'design/order.html');
+    assert.equal(loadTest(root, 't').steps[2].design, undefined);
+});
+
+test('setStepDesign: one node edit, line endings and comments stay, a missing test or step is refused', (t) => {
+    const root = testRoot(t, YAML.replaceAll('\n', '\r\n'));
+    assert.deepEqual(setStepDesign(root, 't', 'S1', 'design/start.html'), { file: 'caw/tests/t.yaml', changed: true });
+    const text = readFileSync(testPath(root, 't'), 'utf8');
+    assert.match(text, /# Human comment\r\n/);
+    assert.match(text, / {4}expect: There\.\r\n {4}design: design\/start\.html\r\n/);
+    assert.equal(loadTest(root, 't').steps[0].design, 'design/start.html');
+    assert.equal(setStepDesign(root, 't', 'S1', 'design/start.html').changed, false);
+    setStepDesign(root, 't', 'S1', null);
+    assert.equal(readFileSync(testPath(root, 't'), 'utf8'), YAML.replaceAll('\n', '\r\n'));
+    assert.throws(() => setStepDesign(root, 't', 'S9', 'design/a.html'), (error) => error.code === 'step-unknown');
+    assert.throws(() => setStepDesign(root, '../t', 'S1', 'design/a.html'), (error) => error.code === 'test-missing');
+    assert.throws(() => setStepDesign(root, 't', 'S1', 'elsewhere/a.html'), /design nennt/);
 });

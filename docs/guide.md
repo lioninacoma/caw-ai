@@ -307,6 +307,12 @@ You can open your own tabs at any time, even during a run: only the application 
 
 In the window you stay behind the same host lock and are signed in as the test user. Playwright dismisses dialogs like `alert()` automatically, so they never block. The profile is fresh and deleted at the end. If it is left behind, e.g. after an abort, the next run removes it once its process is gone.
 
+### Develop against a target design
+
+The test plan can be the spec before the screen exists. Write the next steps at the end of the test (they stay [pending](test-files.md#pending-steps)) and give a step the screen it should end on: `design: design/order-form.html`, and `needs:` with the locators that must be there before it can be recorded. The design usually comes from a Claude Design artifact or a Figma export: ask your Claude Code session to fetch it; it writes it with `caw_design` into `caw/design` and links it to the step when you ask. caw never fetches anything itself.
+
+Each run then judges the design without AI, after the step's check passed: the controls, headings, labels and a few styles per control of the rendered design against the app's page ([details](test-files.md#target-design)). Not met, the step fails with kind `design`, and the chat offers to have it built by your attached session or to close, never to fix the step: the test is right, the screen is not built yet. When the first pending step's `needs` are all on the page, the run says it is ready to record: `caw record <test>@S4`.
+
 ## Triage and repair
 
 When a step fails, caw classifies the failure without AI; Claude explains it on request, re-records a step or proposes a code change.
@@ -503,6 +509,7 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_attach` | attaches this session to caw windows: returns its key and the command it starts with its Monitor tool; chat messages and tasks of an attached window then reach the session as lines | no |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
 | `caw_reproductions` | the reproductions in `.caw/runs` with verdict, `ref`, covering test, draft and report; `refs` names those without a run as `missing`, `since` filters by date | no |
+| `caw_design` | target designs under `caw/design`: write (`put`), list, link to a step on the person's request | no |
 | `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (or `args`) | none beyond your session |
 | `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |

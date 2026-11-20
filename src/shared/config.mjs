@@ -60,7 +60,7 @@ export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
 const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys', 'reads',
-    'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'maxActions', 'keepRuns', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
+    'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'design', 'maxActions', 'keepRuns', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport', 'noSandbox'];
 /** A CSS viewport { width, height } in whole pixels, as a recording stores it and browser.viewport sets it. */
@@ -472,6 +472,12 @@ export const validateConfig = (given) => {
     if (config.effects !== undefined && !(isObject(config.effects) && Object.keys(config.effects).every((key) => key === 'fail')
         && (config.effects.fail === undefined || (Array.isArray(config.effects.fail) && config.effects.fail.every((list) => effectLists.includes(list)))))) {
         issues.push(t('config.effects', { lists: effectLists.join(', ') }));
+    }
+    // A target design that is not met fails its step; `[]` only warns. More kinds (pixels, tokens) come later.
+    const designKinds = ['target'];
+    if (config.design !== undefined && !(isObject(config.design) && Object.keys(config.design).every((key) => key === 'fail')
+        && (config.design.fail === undefined || (Array.isArray(config.design.fail) && config.design.fail.every((kind) => designKinds.includes(kind)))))) {
+        issues.push(t('config.design', { kinds: designKinds.join(', ') }));
     }
     if (config.overlay !== undefined) checkOverlay(config, issues);
     // Gaps from init: not wrong, but nothing that signs in can run until they are filled in.

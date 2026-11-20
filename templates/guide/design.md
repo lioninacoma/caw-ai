@@ -1,0 +1,27 @@
+# caw: develop against a target design
+
+A step in a test plan can carry a target design: what its screen should look like once it is built. The person writes it into
+the test file (`design: design/order-form.html`), next to `needs:` (locators that must be on the page before the step can be
+recorded). Both belong to the person: they are never part of a plan you write, and changing them never makes a step stale.
+
+**What caw judges.** In a run, after a step's check passed, caw renders its `.html` design in a separate headless browser
+(no scripts, no network, the step's recorded viewport) and compares the structure with the app's page: the controls (role,
+label, flags), the view lines (headings, buttons, links, landmarks, field labels) and per control font-size, font-weight,
+color, background-color, border-radius and padding. List rows, free text, numbers and whether a field is filled are data and
+do not count. Anything missing or a differing style: the step fails with kind `design` (with `design.fail: []` in the config it
+only warns). Controls only in the app are reported but do not fail. The replay goes on; the step is not retried and learns no
+effects in that run. A `.png` design is not judged yet: pixel comparison comes later. `result.json` holds per judged step
+`design: { file, verdict, missing, extra, styleDiffs }`.
+
+**Fetch and write a design.**
+1. Get the design yourself: a Claude Design artifact (read it with your own tools and save one screen as a self-contained
+   `.html` page with inline CSS), or a Figma export (HTML or PNG, tokens as DTCG JSON). caw never fetches anything.
+2. Write it with `caw_design` `{action: "put", file: "design/<name>.html", content}`; a PNG goes as `base64`, design tokens as
+   `design/<name>tokens.json` (DTCG: every token has `$value`). Never write into `caw/` with your own Edit or Write tools.
+3. Link it to a step only when the person asked for exactly that: `caw_design` `{action: "link", test, step, file,
+   personAsked: true}`. `{action: "list"}` shows the design files and which steps link them.
+
+**Implement until it is met.** Change the application's code (when the person asked you to), then let the person run the test
+(`caw_start` `run`) or run it yourself when they asked. A failed `design` step names what is missing and which styles differ:
+build exactly that. The test file stays as it is; there is nothing to fix in the step. When the first pending step's `needs`
+are all on the page at the end of a run, caw says it is ready to record: `caw record <test>@S<n>`.

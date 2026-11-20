@@ -19,6 +19,7 @@ import { renamedDates } from './dates.mjs';
 import { EFFECT_LISTS } from './effects.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { checkLocator } from './locator.mjs';
+import { isDesignName } from './design.mjs';
 import { dialogProblem } from './dialogs.mjs';
 import { isPattern } from './patterns.mjs';
 
@@ -32,7 +33,10 @@ const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
 const MAX_RETRY_WAIT_MS = 300_000;
-const STEP_FIELDS = [...PLAN_STEP_FIELDS, 'recording'];
+// Only people write these, into the test file: the target design of a step and what must be there before it can be recorded.
+// They are outside stepHash (changing them never makes a step stale) and Claude's plan may not carry them.
+const HUMAN_STEP_FIELDS = ['design', 'needs'];
+const STEP_FIELDS = [...PLAN_STEP_FIELDS, ...HUMAN_STEP_FIELDS, 'recording'];
 // `locale`, `timezone` and `viewport`: the recording browser's, pinned on replay (the viewport headless, or browser.viewport).
 const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects'];
 const EFFECT_FIELDS = new Set(['action', ...EFFECT_LISTS]);
@@ -271,8 +275,29 @@ export const retryProblems = (steps) => steps.flatMap(({ id, retry }, position) 
     return [t('config.test.retry.order', { id: String(id), from: retry.from })];
 });
 
-/** Checks the steps. Shared by plan and test file; only the test file may carry recordings. */
-const readSteps = (raw, problems, lineOf, { allowRecording, description = false, framework = 'web' }) => {
+/** A step's `needs`: locators that must be on the page before the step can be recorded. Parsed, never run as code. */
+const checkNeeds = (raw, at, report, framework) => {
+    if (!Array.isArray(raw) || raw.length === 0 || !raw.every((code) => typeof code === 'string' && code.trim() !== '')) {
+        report(at, t('config.test.needs.list'));
+        return;
+    }
+    raw.forEach((code, index) => {
+        try {
+            checkLocator(code, { framework });
+        } catch (error) {
+            report([...at, index], t('config.test.needs.locator', { message: String(error?.message ?? error).split('\n')[0] }));
+        }
+    });
+};
+
+/** The human-only fields of a step that are set, for carrying them over when caw rewrites the step. */
+export const humanFields = (step) => Object.fromEntries(HUMAN_STEP_FIELDS.filter((key) => step?.[key] !== undefined).map((key) => [key, step[key]]));
+
+/**
+ * Checks the steps. Shared by plan and test file; only the test file may carry recordings.
+ * @param plan Claude's plan: the human-only fields are rejected
+ */
+const readSteps = (raw, problems, lineOf, { allowRecording, description = false, framework = 'web', plan = false }) => {
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
     if (!Array.isArray(raw) || raw.length === 0) {
         report(['steps'], t('config.test.steps.list'));
@@ -298,6 +323,9 @@ const readSteps = (raw, problems, lineOf, { allowRecording, description = false,
         if (!isText(step.expect)) report([...at, 'expect'], t('config.test.missing', { key: 'expect' }));
         if (step.note !== undefined && typeof step.note !== 'string') report([...at, 'note'], t('config.test.text', { key: 'note' }));
         if (step.retry !== undefined) checkRetry(step.retry, [...at, 'retry'], report);
+        for (const key of HUMAN_STEP_FIELDS.filter((field) => plan && step[field] !== undefined)) report([...at, key], t('config.test.plan.humanOnly', { key }));
+        if (!plan && step.design !== undefined && !isDesignName(step.design)) report([...at, 'design'], t('config.test.design'));
+        if (!plan && step.needs !== undefined) checkNeeds(step.needs, [...at, 'needs'], report, framework);
         if (description && step.recording !== undefined) report([...at, 'recording'], t('config.test.recordingOnly', { key: 'recording' }));
         const plain = {
             id: step.id,
@@ -306,6 +334,7 @@ const readSteps = (raw, problems, lineOf, { allowRecording, description = false,
             expect: clean(step.expect),
             ...(step.note === undefined ? {} : { note: clean(step.note) }),
             ...(step.retry === undefined ? {} : { retry: step.retry }),
+            ...(plan ? {} : humanFields(step)),
         };
         // A recording in the plan is ignored: only the tool writes recordings.
         if (!allowRecording || step.recording === undefined) return plain;
@@ -398,7 +427,7 @@ export const parsePlan = (text) => {
     if (problems.length === 0 && !isObject(value)) problems.push(t('config.test.plan.object'));
     if (problems.length > 0) return { problems };
     if (value.notes !== undefined && value.notes !== null && typeof value.notes !== 'string') problems.push(t('config.test.line', { line: lineOf(['notes']), message: t('config.test.text', { key: 'notes' }) }));
-    const steps = readSteps(value.steps, problems, lineOf, { allowRecording: false });
+    const steps = readSteps(value.steps, problems, lineOf, { allowRecording: false, plan: true });
     const heard = readHeard(value.heard, problems, lineOf);
     return problems.length > 0 ? { problems } : { problems, plan: { notes: clean(value.notes), steps, ...(heard.length === 0 ? {} : { heard }) } };
 };
@@ -659,7 +688,10 @@ export const overlayChoice = (config, name, flag, { required = true, start = fal
     return only;
 };
 
-/** Only what defines the step's content. A manual change makes exactly this step stale. `retry` does not change the path. */
+/**
+ * Only what defines the step's content. A manual change makes exactly this step stale. `retry` does not change the path, and
+ * neither do `design` and `needs`: they say what the screen should become, not what the step does.
+ */
 export const stepHash = ({ name, do: action, expect, note }) => createHash('sha256')
     .update(JSON.stringify([clean(name), clean(action), clean(expect), clean(note)]))
     .digest('hex')
@@ -734,6 +766,7 @@ const stepNode = (doc, step, { withRecording = true } = {}) => {
     const { recording } = step;
     const node = doc.createNode({
         ...planFields(step),
+        ...humanFields(step),
         ...(recording === undefined || !withRecording ? {} : { recording: recordingFields(recording) }),
     }, { aliasDuplicateObjects: false });
     const retry = node.get('retry', true);
@@ -758,7 +791,9 @@ const setSteps = (doc, spec, only, { prune = false, ...options } = {}) => {
     }
     const known = new Map(list.items.map((item) => [item.get('id'), item]));
     const renew = (step) => {
-        const node = stepNode(doc, step, options);
+        // design and needs belong to the human: a step from Claude's plan never has them, the file keeps them.
+        const before = known.get(step.id)?.toJS(doc);
+        const node = stepNode(doc, { ...humanFields(before), ...step }, options);
         // Comments above the step belong to the human.
         node.commentBefore = known.get(step.id)?.commentBefore;
         return node;
@@ -888,4 +923,26 @@ export const writeTest = (root, spec, only, { withNotes = false, prune = false }
     mkdirSync(join(root, RECORDING_DIR), { recursive: true });
     if (writeIfChanged(recordingFile, renderRecordings(recorded), oldRecordings)) changed.push(`${RECORDING_DIR}/${spec.id}.yaml`);
     return changed.length === 0 ? t('config.test.unchanged') : changed.join(', ');
+};
+
+/**
+ * Sets or removes one step's `design:` in the description, as a node edit: comments, order and line endings stay. Only for a
+ * person's explicit request (caw_design link); the file is checked as a whole before it is written.
+ * @param file the design relative to the caw folder, or null to remove it
+ * @returns { file: the test file relative to the project, changed }
+ */
+export const setStepDesign = (root, id, step, file) => {
+    const label = `${TEST_DIR}/${id}.yaml`;
+    // A plain file name: the test is looked up in caw/tests, never elsewhere.
+    if (typeof id !== 'string' || !/^\w[\w.-]*$/.test(id) || !existsSync(testPath(root, id))) throw new CawError('test-missing', t('config.test.notFound', { path: label }));
+    const path = testPath(root, id);
+    const raw = readFileSync(path, 'utf8');
+    const doc = parseDocument(raw.replaceAll('\r\n', '\n'), { schema: 'core', merge: false, version: '1.2' });
+    const node = doc.get('steps', true)?.items?.find((item) => isMap(item) && item.get('id') === step);
+    if (node === undefined) throw new CawError('step-unknown', t('session.replay.stepUnknown', { id, until: String(step) }));
+    if (file === null) node.delete('design');
+    else node.set('design', file);
+    const text = doc.toString(STRINGIFY);
+    parseTest(text, label, { description: true });
+    return { file: label, changed: writeIfChanged(path, text, raw) };
 };

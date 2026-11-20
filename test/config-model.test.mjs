@@ -68,6 +68,16 @@ test('lifecycle keys: inherited, ready filled with defaults; validated per envir
     assert.match(issues({ dev: { url: 'http://localhost:1', start: 'x' }, live: { extends: 'dev', url: 'https://l.test', production: true } }).join('\n'), /live ist Produktion/);
 });
 
+test('design.fail: ["target"] or [] (only warn); anything else is named', () => {
+    const plainConfig = { signIn: { type: 'none' }, environments: { local: { url: 'http://localhost:5173' } } };
+    assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: ['target'] } }).issues, []);
+    assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: [] } }).issues, []);
+    assert.deepEqual(validateConfig({ ...plainConfig, design: {} }).issues, []);
+    for (const design of [{ fail: ['pixels'] }, { fail: 'target' }, { strict: true }, ['target']]) {
+        assert.deepEqual(validateConfig({ ...plainConfig, design }).issues, ['design.fail muss eine Liste aus target oder [] sein, etwa ["target"]'], JSON.stringify(design));
+    }
+});
+
 test('names: lowercase, digits and -, at most 32 characters; no underscore (maps 1:1 to the variable suffix)', () => {
     for (const ok of ['local', 'north-dev', 'ci2', 'a'.repeat(32)]) assert.ok(NAME.test(ok), ok);
     for (const bad of ['north_dev', 'Local', '2ci', '-x', 'a'.repeat(33), '']) assert.ok(!NAME.test(bad), bad);
