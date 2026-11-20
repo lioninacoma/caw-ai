@@ -80,6 +80,19 @@ npx caw record create-ticket@S2 --env local # re-record from S2 to the end, S1 s
 
 `notes`, `role`, `writes`, `environments`, `start`, `retry` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.
 
+## Pending steps
+
+Steps you write at the end without recording them yet are **pending**: the part of the test still to be built, e.g. while you develop the feature they describe. They are the unrecorded steps after the last recorded one.
+
+```bash
+npx caw run create-ticket --env local          # S1–S3 play, exit 0, "Pending, not recorded yet: S4, S5"
+npx caw open create-ticket@S4 --env local      # S1–S3 play, the window is yours at the entry of S4
+npx caw record create-ticket@S4 --env local    # record them once the app can do it
+npx caw run create-ticket --env local --strict # exit 4 while anything is pending
+```
+
+`run` plays the recorded steps and passes without the pending ones; `list` shows `pending (S4, S5)`, `report.md` and `result.json` (`pending`, and `status: "pending"` under `steps`) name them, the workbench shows them as not reached. Only the tail counts: an unrecorded step before a recorded one, a step changed after recording and a test with nothing recorded still stop with exit 4, so editing a step's text never quietly drops its check from CI.
+
 ## Recording
 
 Written by `record` and by "Fix step" in a run's chat. Review it; change it only for the [hand-written additions](#hand-written-additions). An excerpt:

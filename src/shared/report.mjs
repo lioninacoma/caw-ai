@@ -164,7 +164,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [] }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [] }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -184,6 +184,8 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
             lines.push(`| ${id} | ${cell(text)} | ${skipped ? 'skipped' : item?.status ?? '-'} | ${skipped ? '-' : evidenceCell(item?.evidence)} | ${cell(item?.note)} |`);
         }
     }
+    // Not part of the verdict: the steps still to be recorded did not run.
+    if (pending.length > 0) lines.push('', t('config.report.pending', { ids: pending.join(', ') }));
     if (diagnosis !== undefined) lines.push(...diagnosisLines(diagnosis));
     if (failures.length > 0) {
         lines.push('', `## ${t('config.report.failures')}`, '');

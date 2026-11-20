@@ -209,6 +209,7 @@ export default {
     'config.report.reproduce.draft': 'Draft test',
     'config.report.reproduce.adopt': 'In draft-test.yaml in this folder. To adopt: copy it to {to} (from {from}), review it, then `{record}`.',
     'config.report.note': 'Note: {note}',
+    'config.report.pending': 'Pending, not recorded yet: {ids}. These steps did not run.',
     'config.report.results.header': '| Step | Expectation | Status | Evidence | Note |',
     'config.report.failures': 'Hard errors',
     'config.report.failures.at': ' at {at}',

@@ -162,6 +162,7 @@ export default {
     'run.noRecording': 'No new recording: {problems}',
     'run.repairInPlace': '{agent} fixes {id} in the same browser',
     'run.replaying': 'Replaying the recording ({count} steps, recorded on {on}) ...',
+    'run.pendingStep': 'pending: not recorded yet',
     'run.failedBefore': '{id} failed before {target} was reached: {reason}',
 
     // Flows in the chat

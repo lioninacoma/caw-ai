@@ -104,3 +104,9 @@ test('what the window saw after the handover is a section of its own and leaves 
     assert.doesNotMatch(md, /## Warnungen/);
     assert.doesNotMatch(renderReport({ status: 'pass', testId: 'open', target: 'local' }), /Übergabe/);
 });
+
+test('report: pending steps are named below the results, outside the verdict', () => {
+    const text = renderReport({ status: 'pass', testId: 'smoke', target: 'local', testedCode: 'deployed', expectations: rb.expectations, results: [ok('E1'), ok('E2')], pending: ['E3', 'E4'] });
+    assert.match(text, /\| E2 \| b \| pass \|.*\n\nOffen, noch nicht aufgenommen: E3, E4\. Diese Schritte liefen nicht\.\n/);
+    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'smoke', target: 'local', testedCode: 'deployed', expectations: rb.expectations, results: [ok('E1'), ok('E2')] }), /Offen/);
+});

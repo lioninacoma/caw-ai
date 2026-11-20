@@ -135,7 +135,7 @@ npx caw list
 npx caw list create-ticket
 ```
 
-Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)`. Ohne Browser und ohne Claude.
+Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `offen (S4, S5)`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)` oder `S4  Export  (offen)`. [Offen](test-files.de.md#offene-schritte) ist das nicht aufgenommene Ende nach dem letzten aufgenommenen Schritt. Ohne Browser und ohne Claude.
 
 Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
 
@@ -188,6 +188,8 @@ Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen 
 
 Außerhalb von CI lernt jeder Lauf die fehlenden Vergleichswerte und Effekte seiner bestandenen Schritte in `caw/recordings/<test>.yaml`, headless wie im Fenster, wo der Chat sagt, welche Schritte sie bekommen haben. In CI (`CI` gesetzt) ändert ein Lauf keine Datei, außer du gibst `--learn` an. Die erste Zeile nennt Umgebung, Teamsprache und ob der Lauf lernt, etwa `Modus auf local (Teamsprache en): mit Chat; lernt: ja, fehlende Vergleichswerte und Effekte in caw/recordings/create-ticket.yaml.` Am Ende sagt ein Lauf, der gelernt hat, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `open <test>@<schritt>` bis zum Einstieg in den gescheiterten Schritt. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs. `result.json` führt unter `steps` jeden Schritt: seinen Status (`pass`, `fail`, `skipped`), warum er scheiterte (`kind`: `check`, `effect`, `target`, `state`, `external`), seine Zeit in Sekunden, seine Requests und die Effekte seiner Aktionen mit einer Abweichung von den gelernten; auf Produktion ohne die Effekte, da sie sichtbare Namen zeigen.
 
+Ein Test, der mit [offenen Schritten](test-files.de.md#offene-schritte) endet (geschrieben, noch nicht aufgenommen), spielt seine aufgenommenen Schritte ab und besteht ohne sie: Das Terminal endet mit `Offen, noch nicht aufgenommen: S4, S5. Sie liefen nicht. Nimm sie auf: caw record <test>@S4 --env <env>`, `report.md` nennt sie unter den Ergebnissen, `result.json` führt sie unter `pending` und unter `steps` mit `status: "pending"`, die Werkbank zeigt sie als nicht erreicht. Mit `--strict` hält so ein Test, bevor etwas läuft (Exit 4, `replay-pending`). Ein nicht aufgenommener Schritt vor einem aufgenommenen, ein nach der Aufnahme geänderter Schritt und ein Test ohne jede Aufnahme enden wie bisher mit Exit 4.
+
 | Option | |
 |---|---|
 | `--overlay` | Nur mit der [Overlay-Erweiterung](extensions/overlay.de.md): lokaler Code über die ausgelieferte Umgebung |
@@ -197,6 +199,7 @@ Außerhalb von CI lernt jeder Lauf die fehlenden Vergleichswerte und Effekte sei
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
 | `--headless` | Kein Fenster, kein Chat. In der aufgenommenen Größe (sonst 1920×1080). |
 | `--learn` | In CI: fehlende Vergleichswerte und Effekte bestandener Schritte in `caw/recordings/` lernen. Außerhalb von CI tut das jeder Lauf ohnehin. |
+| `--strict` | Offene Schritte lassen den Lauf mit Exit 4 scheitern, statt dass er ohne sie besteht, etwa in einer Release-Pipeline. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
 | `--agent-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Aktionen beim Beheben. |
@@ -213,13 +216,15 @@ npx caw run create-ticket close-ticket --env dev
 
 Spielt die Tests nacheinander ab, ohne Chat (`--explain` wird abgelehnt). `--all` nimmt jeden Test, der das Ziel nennt. Ohne `--env` gilt das einzige Ziel der Tests. Ein Test, der nicht laufen kann (Aufnahme fehlt, Tippfehler), hält die anderen nicht auf. Am Ende zeigt eine Tabelle je Test `PASS`, `FAIL`, `ERROR`, `AUFNAHME NÖTIG` oder `ABGELEHNT`. Der Exit-Code ist der des schlimmsten Laufs, in dieser Reihenfolge: `2` error > `1` fail > `4` Aufnahme nötig > `3` abgelehnt > `0` pass.
 
+Ein Test mit offenen Schritten besteht und zeigt in der Tabelle `S4–S5 offen` (mit `--strict` ist er `AUFNAHME NÖTIG`).
+
 Ein gescheiterter Schritt endet mit `1`, egal wie caw ihn einschätzt (Anwendung, Umgebung, Test, unklar): Die Einschätzung ist eine Heuristik aus den Belegen des Browsers. Sie gibt den Berichten ihren Typ und entscheidet über `--retry-env`, macht aber nie aus einem Fehlschlag ein Bestanden oder einen Fehler.
 
 `--report <art>=<datei>` schreibt das Ergebnis zusätzlich in eine Datei, je Art einmal, mehrfach für mehrere Arten. Die Datei ist relativ zum Projektordner und muss darin bleiben; ein Pfad außerhalb, auch über einen Link, wird abgelehnt, bevor ein Test läuft. Ein einzelner Test mit `--report` oder `--retry-env` nimmt denselben Weg.
 
 | Art | Inhalt |
 |---|---|
-| `junit=<datei>` | JUnit-XML. Ein gescheiterter Schritt ist `<failure type="app\|environment\|test\|unclear" message="S3: <grund>">` mit Einschätzung, Befunden und Berichtspfad als Text; alles andere, was nicht bestanden hat, ist `<error type="<fehlercode>">` (etwa `replay-missing`, `browser-closed`). Ein wiederholter Test listet jeden Versuch in `<system-out>`. |
+| `junit=<datei>` | JUnit-XML. Ein bestandener Test mit offenen Schritten bleibt ein bestandener Testfall und trägt `S4–S5 offen` in `<system-out>`; `<skipped>` würde den ganzen Test als übersprungen zählen, obwohl seine aufgenommenen Schritte liefen. Ein gescheiterter Schritt ist `<failure type="app\|environment\|test\|unclear" message="S3: <grund>">` mit Einschätzung, Befunden und Berichtspfad als Text; alles andere, was nicht bestanden hat, ist `<error type="<fehlercode>">` (etwa `replay-missing`, `browser-closed`). Ein wiederholter Test listet jeden Versuch in `<system-out>`. |
 | `summary=<datei>` | Markdown, eine Zeile je Test: Ergebnis, gescheiterter Schritt mit Grund, Einschätzung, erster Befund und Berichtspfad. Gemacht für die Zusammenfassung eines CI-Jobs: `cat out/summary.md >> "$GITHUB_STEP_SUMMARY"`. |
 | `json=<datei>` | Für Skripte: `target`, `startedAt`, `exit` und je Test `id`, `status`, `exit`, `failedStep`, `reason`, `side`, `strength`, `findings`, `code` (soweit zutreffend), `steps` (`id`, `status`, `seconds`), `report` und `attempts`. |
 
@@ -237,7 +242,7 @@ npx caw open create-ticket@S3 --env local
 
 - **Ohne Test** öffnet es die Startseite der App. Hat die Umgebung eine Formular-Anmeldung, siehst du sie zuerst in der App, als Schritt „Anmelden“ unter Vorbereitung; danach geht caw zur Startseite. Ohne `--env` nimmt es die einzige Umgebung, auf der Claude arbeiten darf.
 - **`open <test>`** spielt erst den ganzen Test ab, dann gehört dir das Fenster.
-- **`open <test>@S3`** hält am Einstieg in S3: S1 und S2 laufen ganz, von S3 nur die Navigation (`goto`, Klicks, Warten auf die Seite). Seine Eingaben und seine Prüfung bleiben für dich offen; das Terminal meldet `Bereit für S3 …: Navigation ausgeführt, Eingaben offen`. Hat S3 gar keine Eingaben (etwa nur ein Klick auf „Absenden“), läuft von S3 nichts; hat einer seiner Klicks in früheren Läufen Daten geschrieben, hält es vor diesem Klick; ist S3 nicht oder nicht aktuell aufgenommen, läuft davon nichts. Das Terminal nennt den Grund.
+- **`open <test>@S3`** hält am Einstieg in S3: S1 und S2 laufen ganz, von S3 nur die Navigation (`goto`, Klicks, Warten auf die Seite). Seine Eingaben und seine Prüfung bleiben für dich offen; das Terminal meldet `Bereit für S3 …: Navigation ausgeführt, Eingaben offen`. Hat S3 gar keine Eingaben (etwa nur ein Klick auf „Absenden“), läuft von S3 nichts; hat einer seiner Klicks in früheren Läufen Daten geschrieben, hält es vor diesem Klick; ist S3 nicht oder nicht aktuell aufgenommen, läuft davon nichts. Das Terminal nennt den Grund. Ist S3 der erste [offene Schritt](test-files.de.md#offene-schritte), baust du ihn hier; `open <test>@S4` hinter einem offenen S3 wird abgelehnt und nennt S3 (erst aufnehmen), `open <test>` spielt bis zum letzten aufgenommenen Schritt.
 
 Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab; der Schritt, an dem es hält, wird nicht bewertet. Es läuft der ausgelieferte Stand, außer du gibst `--overlay` an.
 
@@ -369,7 +374,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | `1` | fehlgeschlagen: Ein Schritt tut nicht, was der Test erwartet, egal wie caw ihn einschätzt (Anwendung, Umgebung, Test, unklar); bei `audit`: ein Test wurde abgeschwächt |
 | `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …), oder ein unerwarteter interner Fehler (der Stack steht in der Ausgabe) |
 | `3` | abgewiesen: Aufruf, Config (auch `TODO`-Werte aus `init`) oder Testdatei ungültig. Es lief nichts. |
-| `4` | Aufnahme nötig: Die Aufzeichnung fehlt (`record`) oder ein Schritt hat sich seit der Aufnahme geändert (`record <test>@<schritt>`). Es lief nichts. |
+| `4` | Aufnahme nötig: Die Aufzeichnung fehlt (`record`), ein Schritt hat sich seit der Aufnahme geändert (`record <test>@<schritt>`) oder `run --strict` traf auf offene Schritte. Es lief nichts. |
 
 ## Umgebungsvariablen
 
@@ -400,6 +405,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `test-missing`, `test-invalid` | 3 | Testdatei anlegen oder korrigieren, dann `validate` |
 | `replay-missing` | 4 | Test mit `record` aufnehmen |
 | `replay-stale` | 4 | Ein Schritt hat sich seit der Aufnahme geändert: `record <test>@<schritt>` |
+| `replay-pending` | 4 | `run --strict` und der Test endet mit offenen Schritten: `record <test>@<erster offener Schritt>` |
 | `step-unknown` | 3 | Eine Schritt-ID aus der Testdatei nehmen (`list <test>`) |
 | `env-invalid`, `env-denied` | 3 | Eine Umgebung aus der Config nehmen; Produktion lässt sich nicht aufnehmen |
 | `host-blocked` | 3 | `goto` zu einem Host, der kein Host der Anwendung ist: in `allowHosts` eintragen, wenn die Anwendung wirklich dorthin navigiert. In einem Lauf ist dieselbe Sperre ein Fehler des Schritts |

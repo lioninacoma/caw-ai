@@ -46,7 +46,7 @@ const CLAUDE_OPTIONS = ['--env', '--agent-timeout', '--max-actions', '--step-tim
 const COMMAND_OPTIONS = {
     // --agent-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
-    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
+    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--strict', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
     record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
     open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout'],
 };
@@ -56,7 +56,7 @@ export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--agent-timeou
 export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'config.removed.also', '--no-learn': 'config.removed.noLearn' };
 // --start: start the environment (its start command) and, with --overlay, the parts' local code servers if they do not answer, and
 // stop at the end what caw started. --reset runs the environment's reset before the first test, --no-reset never.
-const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--all', '--read-only', '--start', '--reset', '--no-reset']);
+const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--strict', '--all', '--read-only', '--start', '--reset', '--no-reset']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
     '--env': 'local', '--role': 'admin', '--agent': 'local', '--agent-timeout': '60m',
@@ -116,7 +116,7 @@ export const splitStep = (arg) => {
  */
 export const parseRunArgs = (command, args) => {
     const allowed = COMMAND_OPTIONS[command];
-    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { advise: false, headless: false, noChat: false, learn: false, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }) };
+    const options = { stepTimeoutSec: 30, ...(command === 'run' ? { advise: false, headless: false, noChat: false, learn: false, strict: false, all: false, tests: [] } : { timeoutMin: CLAUDE_TIMEOUT_MIN }) };
     const rest = [...args];
     while (rest.length > 0) {
         const arg = rest.shift();
@@ -157,6 +157,7 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--headless') options.headless = true;
         else if (flag === '--no-chat') options.noChat = true;
         else if (flag === '--learn') options.learn = true;
+        else if (flag === '--strict') options.strict = true;
         else if (flag === '--reset') options.reset = options.reset === 'off' ? 'clash' : 'force';
         else if (flag === '--no-reset') options.reset = options.reset === 'force' ? 'clash' : 'off';
         else if (flag === '--all') options.all = true;
