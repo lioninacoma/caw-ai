@@ -712,7 +712,8 @@ scenario('S12', 'caw bisect under git bisect run: three commits, the test from r
     const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
     config.environments.life = { ...config.environments.life, start: 'node ../ctl.mjs up 18512 && node ../ctl.mjs mode 18512' };
     setConfig(config);
-    writeSpaTest(root, 'search');
+    // Recorded on life: request baselines are learned only on the recording's environment.
+    writeSpaTest(root, 'search', { recordedOn: 'life' });
     writeFileSync(join(root, 'app.mode'), 'ok\n');
     // Baselines learned on the good version: the diagnosis needs them to put the aborted search on the app.
     const learned = await go(['search', '--env', 'life', '--start', '--learn']);
