@@ -237,7 +237,7 @@ test('caw mcp: caw_attach gives a key and the Monitor command, caw_start binds t
     const call = async (name, args) => (await handler({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })).result;
     const list = await handler({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
     // Without an overlay block no caw_overlay; caw_explore is now caw_init with mode explore.
-    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_attach', 'caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_config', 'caw_init', 'caw_role', 'caw_guide', 'caw']);
+    assert.deepEqual(list.result.tools.map(({ name }) => name), ['caw_attach', 'caw_start', 'caw_status', 'caw_selection', 'caw_doctor', 'caw_validate', 'caw_list', 'caw_reproductions', 'caw_config', 'caw_init', 'caw_role', 'caw_guide', 'caw']);
     const hello = (await handler({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })).result;
     assert.equal(hello.serverInfo.name, 'caw');
     assert.equal(hello.serverInfo.version, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);

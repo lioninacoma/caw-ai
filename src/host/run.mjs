@@ -14,13 +14,13 @@ import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared
 import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { foldAction } from './activity.mjs';
-import { DEFAULT_KEEP_RUNS, markRunAlive, pruneRuns } from './runs.mjs';
+import { DEFAULT_KEEP_RUNS, REPRODUCE_RUN, markRunAlive, pruneRuns } from './runs.mjs';
 import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { pollChannel } from '../shared/channel.mjs';
 import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
 import { prefsDir, readPrefs } from '../shared/prefs.mjs';
 import { renderReport, renderReproduceReport } from '../shared/report.mjs';
-import { readReproduction, draftTestPlan, adoptHint } from './reproduce.mjs';
+import { readReproduction, draftTestPlan, adoptHint, coverageIn } from './reproduce.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
@@ -51,8 +51,6 @@ import { redactDeep } from './secrets.mjs';
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 50;
 const AGENT_DIR = 'agent';
-// The run folder and report name of every reproduction, with or without a starting test.
-const REPRODUCE_RUN = 'reproduce';
 const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
 // How long the window stays open after the last decision, with a countdown, unless the human closes it.
@@ -519,7 +517,7 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // The pending tail (replayOf) did not play: result.json and report.md name it, the verdict only covers the recorded steps.
     const reportBase = { testId: runName, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }), ...(replay?.pending === undefined ? {} : { pending: replay.pending }) };
     // A reproduction's report shows the bug report and the run's rules also when it ends early; finish adds Claude's verdict.
-    if (reproduce !== undefined) reportBase.reproduce = { bug: reproduce.bug, writable: reproduce.writes, ...(reproduce.from === undefined ? {} : { from: reproduce.from }) };
+    if (reproduce !== undefined) reportBase.reproduce = { ...(reproduce.ref === undefined ? {} : { ref: reproduce.ref }), bug: reproduce.bug, writable: reproduce.writes, ...(reproduce.from === undefined ? {} : { from: reproduce.from }) };
     let verdict = null;
     // --attach: the link to the person's session, its line in the header, and the tasks it has not heard of yet.
     let link = null;
@@ -1969,10 +1967,10 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             return action;
         };
         const finishReproduction = (command) => {
-            const result = readReproduction(command.results, { fileExists: (name) => existsSync(join(agentDir, name)) });
+            const result = readReproduction(command.results, { fileExists: (name) => existsSync(join(agentDir, name)), coverage: coverageIn(root) });
             // The steps write when the agent says so or when the run wrote; never on an environment that may not write.
             const writes = reproduce.writes === true && (result.writes || (session.writes?.() ?? []).length > 0);
-            const draft = draftTestPlan({ id: reproduce.draftId, role: spec.role, environment: target, writes, steps: result.steps, runId });
+            const draft = draftTestPlan({ id: reproduce.draftId, role: spec.role, environment: target, writes, steps: result.steps, runId, ref: reproduce.ref });
             writeFileSync(join(runDir, 'draft-test.yaml'), draft.text);
             reportBase.reproduce = { ...reportBase.reproduce, ...result, actions, draft: adoptHint(draft, root, runDir) };
             // Exit code and terminal follow the verdict: reproduced is a pass, not reproduced or unclear a fail.

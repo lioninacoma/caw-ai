@@ -34,6 +34,7 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 | `caw_config` | Read the config, or patch it (validated); commands and environment flags only with your Edit tool (topic `config`) |
 | `caw_role` | Test users per role: list, add (names the variables), login (saved session), remove |
 | `caw_doctor`, `caw_validate`, `caw_list` | Checks and overview, no tokens |
+| `caw_reproductions` | Past reproductions with verdict and `ref`; `refs` names those without a run (topic `reproduce`) |
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` with you as the agent |
 | `caw_status` | Wait for a run; says which topics apply when it waits for you |
 | `caw` | The agent commands while a run waits for you |

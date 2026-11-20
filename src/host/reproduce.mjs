@@ -9,12 +9,13 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { isAttachValue } from '../shared/attach.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
-import { TEST_DIR } from '../shared/names.mjs';
+import { REF_PATTERN, TEST_DIR } from '../shared/names.mjs';
 import { AGENT_CHOICES, splitStep } from './linux.mjs';
-import { parseTest, renderTest } from './test-file.mjs';
+import { newestRunOf } from './runs.mjs';
+import { loadTest, parseTest, renderTest, staleSteps, testPath } from './test-file.mjs';
 import { CONTROL, EMAIL, composeTest } from './test-plan.mjs';
 
-const OPTIONS = ['--env', '--role', '--from', '--headless', '--agent', '--attach', '--file'];
+const OPTIONS = ['--env', '--role', '--from', '--headless', '--agent', '--attach', '--file', '--ref'];
 // A bug report is a paragraph or a page, not a document.
 const MAX_BUG = 8000;
 const MAX_STEPS = 20;
@@ -29,7 +30,7 @@ const valueOf = (flag, value) => {
 /**
  * The command line of caw reproduce. The bug report comes as the one argument, from --file, or from stdin with "-".
  * @param readStdin () => the text on stdin (only called for "-")
- * @returns { bug, target?, role?, from?: { test, step? }, headless, agent? }
+ * @returns { bug, target?, role?, from?: { test, step? }, headless, agent?, ref? }
  */
 export const parseReproduceArgs = (args, { root, readStdin = () => readFileSync(0, 'utf8') } = {}) => {
     const options = { headless: false };
@@ -63,6 +64,10 @@ export const parseReproduceArgs = (args, { root, readStdin = () => readFileSync(
         if (flag === '--env') options.target = value;
         else if (flag === '--role') options.role = value;
         else if (flag === '--file') file = value;
+        else if (flag === '--ref') {
+            if (!REF_PATTERN.test(value)) throw usage('cli.reproduceRef', { ref: value.slice(0, 80) });
+            options.ref = value;
+        }
         else if (flag === '--agent') {
             if (!AGENT_CHOICES.includes(value)) throw usage('session.args.agentChoice', { choices: AGENT_CHOICES.join(', ') });
             options.agent = value;
@@ -104,9 +109,10 @@ const rejected = (message) => new CawError('finish-rejected', message);
 /**
  * Claude's verdict of a reproduction. Messages go to Claude, so they are in English like the other agent messages.
  * @param fileExists (name) => whether a screenshot exists in the agent folder
- * @returns { reproduced, observed, expected, steps: [{ name, do, expect }], writes, cause?, screenshots }
+ * @param coverage   ({ test, step? }) => the covering test's newest run or undefined; throws when it is no recorded test
+ * @returns { reproduced, observed, expected, steps: [{ name, do, expect }], writes, cause?, covered?, screenshots }
  */
-export const readReproduction = (results, { fileExists = () => false } = {}) => {
+export const readReproduction = (results, { fileExists = () => false, coverage = () => undefined } = {}) => {
     if (results === null || typeof results !== 'object') throw rejected('finish needs { reproduced, observed, expected, steps, writes }.');
     if (!VERDICTS.includes(results.reproduced)) throw rejected('reproduced is yes (the bug shows as reported), no (it does not) or unclear.');
     for (const key of ['observed', 'expected']) {
@@ -128,6 +134,7 @@ export const readReproduction = (results, { fileExists = () => false } = {}) => 
     }
     const missing = screenshots.filter((name) => !fileExists(name));
     if (missing.length > 0) throw rejected(`No such screenshot: ${missing.join(', ')}.`);
+    const covered = readCovered(results.covered, results.reproduced, coverage);
     return {
         reproduced: results.reproduced,
         observed: results.observed.trim(),
@@ -135,8 +142,51 @@ export const readReproduction = (results, { fileExists = () => false } = {}) => 
         steps: steps.map((step) => ({ name: (step.name ?? shortName(step.do)).trim(), do: step.do.trim(), expect: step.expect.trim() })),
         writes: results.writes,
         ...(results.cause === undefined ? {} : { cause: results.cause.trim() }),
+        ...(covered === undefined ? {} : { covered }),
         screenshots,
     };
+};
+
+/**
+ * `covered`: Claude names an existing test that already checks the reported behaviour, with that test's newest run. Its last
+ * run passed while the bug may be there (reproduced or unclear): its check may miss the bug, which is worth a hint.
+ */
+const readCovered = (covered, reproduced, coverage) => {
+    if (covered === undefined) return undefined;
+    if (covered === null || typeof covered !== 'object' || Array.isArray(covered)) throw rejected('covered is { test, step?, why }: an existing test that already covers the reported behaviour, or leave it out.');
+    if (typeof covered.test !== 'string' || !/^[\w.-]{1,80}$/.test(covered.test)) throw rejected('covered.test is the id of a test in knownTests (its file name without .yaml).');
+    if (covered.step !== undefined && (typeof covered.step !== 'string' || !/^S[1-9]\d*$/.test(covered.step))) throw rejected('covered.step is a step id like S3, or leave it out.');
+    if (!plainText(covered.why, 600)) throw rejected('covered.why is a short text: why this test covers the reported behaviour.');
+    const lastRun = coverage({ test: covered.test, ...(covered.step === undefined ? {} : { step: covered.step }) });
+    return {
+        test: covered.test,
+        ...(covered.step === undefined ? {} : { step: covered.step }),
+        why: covered.why.trim(),
+        ...(lastRun === undefined ? {} : { lastRun }),
+        ...(lastRun?.status === 'pass' && reproduced !== 'no' ? { checkMayMiss: true } : {}),
+    };
+};
+
+/**
+ * Checks a covering test on disk: it exists in caw/tests and is recorded (with a step: that step), since a test without a
+ * recording checks nothing yet. Returns its newest run in .caw/runs, undefined when none is left.
+ */
+export const coverageIn = (root) => ({ test, step }) => {
+    if (!existsSync(testPath(root, test))) throw rejected(`covered.test: there is no test ${test} in ${TEST_DIR}. Name one of knownTests, or leave covered out.`);
+    let spec;
+    try {
+        spec = loadTest(root, test);
+    } catch (error) {
+        throw rejected(`covered.test: ${test} does not load (${String(error.message).split('\n')[0]}). Leave covered out.`);
+    }
+    const stale = new Set(staleSteps(spec).map(({ id }) => id));
+    if (step !== undefined) {
+        if (!spec.steps.some(({ id }) => id === step)) throw rejected(`covered.step: ${test} has no step ${step}; its steps are ${spec.steps.map(({ id }) => id).join(', ')}.`);
+        if (stale.has(step)) throw rejected(`covered.step: ${test}@${step} is not recorded (or changed since), so it checks nothing yet. Leave covered out.`);
+    } else if (spec.steps.length === 0 || stale.size > 0) {
+        throw rejected(`covered.test: ${test} is not fully recorded (${[...stale].join(', ') || 'no steps'}), so it does not check everything yet. Name the recorded step with covered.step, or leave covered out.`);
+    }
+    return newestRunOf(root, test);
 };
 
 /** A step title from its action: the first words, at most 60 characters, on a word boundary. */
@@ -152,9 +202,10 @@ const shortName = (text) => {
  * by itself; the human copies it there and records it.
  * @returns { id, text }
  */
-export const draftTestPlan = ({ id, role, environment, writes, steps, runId }) => {
+export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref }) => {
     const spec = composeTest({ id, ...(role === undefined ? {} : { role }), writes, environments: [environment] }, {
-        notes: t('run.reproduce.draftNotes', { run: runId }),
+        // The ticket id stays with the test once adopted: where the bug came from.
+        notes: ref === undefined ? t('run.reproduce.draftNotes', { run: runId }) : t('run.reproduce.draftNotesRef', { run: runId, ref }),
         steps: steps.map((step, index) => ({ id: `S${index + 1}`, name: step.name, do: step.do, expect: step.expect })),
     });
     const text = renderTest(spec);

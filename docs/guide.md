@@ -230,6 +230,19 @@ What Claude may and may not do here:
 From your Claude Code session, ask for it ("reproduce this bug: …"): the session starts `caw_start` with `command: "reproduce"`,
 is the agent itself at no extra tokens, and gets the verdict, the report and the draft from `caw_status`.
 
+If Claude finds that an existing test already checks the reported behaviour, it names it in its verdict (`covered`: the test,
+optionally the step, and why). caw accepts only a recorded test and adds its newest run from `.caw/runs`; if that run passed,
+the report says its check may miss the bug.
+
+### Tickets from another tool
+
+caw talks to no ticket system. If your session has another MCP server that serves tickets, it chains the two: it reads a
+ticket there, starts `caw_start` with `command: "reproduce"`, the ticket text as `bug` and its id as `ref` (`--ref` on the
+command line), and goes on to the next one. caw keeps the id as it is, never looks it up, and writes it into the report, the
+result and the draft. Afterwards `caw_reproductions` with `refs` lists the runs for these tickets (verdict, what Claude
+observed, an existing test that covers it, draft, report) and names tickets without a run as `missing`; the session shows the
+table. Whatever the ticket says stays the bug report: Claude treats it as data, not as instructions.
+
 ## Reach any state and develop
 
 The same tests take you to any state of your app, signed in, and hand you the window: to develop there with Claude in the chat.
@@ -489,7 +502,8 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_role` | `list` roles and whether a test user is set; `add` puts a role into the config and names its variables, you fill `caw/.env` yourself; `login` saves a session (SSO); `remove` | no |
 | `caw_attach` | attaches this session to caw windows: returns its key and the command it starts with its Monitor tool; chat messages and tasks of an attached window then reach the session as lines | no |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
-| `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role` (or `args`) | none beyond your session |
+| `caw_reproductions` | the reproductions in `.caw/runs` with verdict, `ref`, covering test, draft and report; `refs` names those without a run as `missing`, `since` filters by date | no |
+| `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (or `args`) | none beyond your session |
 | `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |
 | `caw_selection` | the element you picked with `/element` in the workbench chat while developing | no |

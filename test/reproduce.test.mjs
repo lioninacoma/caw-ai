@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { reproduce } from '../src/host/commands.mjs';
-import { draftId, draftTestPlan, parseReproduceArgs, readReproduction } from '../src/host/reproduce.mjs';
+import { coverageIn, draftId, draftTestPlan, parseReproduceArgs, readReproduction } from '../src/host/reproduce.mjs';
 import { BUG_FILE, startArgs } from '../src/host/session-mcp.mjs';
-import { parseTest } from '../src/host/test-file.mjs';
+import { parseTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { renderReproduceReport } from '../src/shared/report.mjs';
 
 const tempDir = (t) => {
@@ -105,6 +105,14 @@ test('report: verdict, bug report, steps, evidence and how to adopt the draft', 
     for (const expected of [/^# Fehler nachstellen auf local: nachgestellt$/m, /Nur lesend/, /^> Line one\.$/m, /^> Line two\.$/m, /Hinweis auf die Ursache: search\.mjs:12/, /^1\. Search\. → One result\.$/m, /click e12/, /agent\/after\.png/, /write-blocked/, /caw record bug-x/]) {
         assert.match(text, expected);
     }
+    const covered = { test: 'search', step: 'S2', why: 'S2 checks the hits.', lastRun: { status: 'pass', runId: '2026-11-19T08-00-00-000Z-search', date: '2026-11-19T08:00:00.000Z' }, checkMayMiss: true };
+    const withRef = renderReproduceReport({ status: 'pass', target: 'local', testedCode: 'deployed', reproduce: { ref: 'TCK-1234', bug: 'x', writable: false, reproduced: 'yes', observed: 'o', expected: 'e', covered } });
+    for (const expected of [/^Referenz: TCK-1234$/m, /^## Schon abgedeckt$/m, /nennt search@S2 als Test, der dieses Verhalten schon abdeckt: S2 checks the hits\./, /Sein neuester Lauf: pass \(Lauf 2026-11-19T08-00-00-000Z-search, 2026-11-19T08:00:00\.000Z\)/, /Prüfung übersieht diesen Fehler vielleicht/]) {
+        assert.match(withRef, expected);
+    }
+    const noRun = renderReproduceReport({ status: 'fail', target: 'local', testedCode: 'deployed', reproduce: { bug: 'x', reproduced: 'no', observed: 'o', expected: 'e', covered: { test: 'search', why: 'w' } } });
+    assert.match(noRun, /Kein Lauf davon mehr in \.caw\/runs/);
+    assert.doesNotMatch(noRun, /Referenz|übersieht/);
 });
 
 test('MCP: caw_start reproduce takes bug, from, env, role and headless; the bug goes through a file', () => {
@@ -113,4 +121,57 @@ test('MCP: caw_start reproduce takes bug, from, env, role and headless; the bug 
     assert.throws(() => startArgs({ command: 'reproduce', bug: 'x', test: 't' }), /test/);
     assert.throws(() => startArgs({ command: 'reproduce', bug: ' ' }), /bug/);
     assert.throws(() => startArgs({ command: 'run', test: 't', bug: 'x' }), /bug/);
+});
+
+test('ref: an opaque id, checked on the command line and in caw_start, never resolved', () => {
+    assert.equal(parseReproduceArgs(['Bug.', '--ref', 'TCK-1234']).ref, 'TCK-1234');
+    assert.equal(parseReproduceArgs(['Bug.', '--ref=proj/TCK#12:a.b_c']).ref, 'proj/TCK#12:a.b_c');
+    for (const bad of ['TCK 1234', 'x'.repeat(65), 'TCK;rm', 'Ä-1']) {
+        assert.throws(() => parseReproduceArgs(['Bug.', `--ref=${bad}`]), (error) => error.code === 'usage' && /keine Referenz/.test(error.message), bad);
+    }
+    assert.throws(() => parseReproduceArgs(['Bug.', '--ref']), (error) => error.code === 'usage');
+    assert.deepEqual(startArgs({ command: 'reproduce', bug: 'x', ref: 'TCK-1' }), ['--file', BUG_FILE, '--ref=TCK-1']);
+    assert.throws(() => startArgs({ command: 'reproduce', bug: 'x', ref: 'a b' }), /keine Referenz/);
+    assert.throws(() => startArgs({ command: 'run', test: 't', ref: 'TCK-1' }), /ref/);
+    const { text } = draftTestPlan({ id: 'bug-x', role: 'tester', environment: 'local', writes: false, runId: 'r1', ref: 'TCK-1234', steps: [{ name: 'Search', do: 'Search.', expect: 'One result.' }] });
+    assert.match(parseTest(text).notes, /Lauf r1, Referenz TCK-1234/);
+});
+
+test('covered: Claude names a recorded test that already covers the bug; caw adds its newest run', (t) => {
+    const good = { reproduced: 'yes', observed: 'Nothing.', expected: 'Results.', steps: [{ do: 'Search.', expect: 'One result.' }], writes: false };
+    const lastRun = { status: 'pass', runId: '2026-11-19T08-00-00-000Z-search', date: '2026-11-19T08:00:00.000Z' };
+    const asked = [];
+    const coverage = (covered) => { asked.push(covered); return lastRun; };
+    const read = (covered, extra = {}) => readReproduction({ ...good, covered, ...extra }, { coverage });
+    assert.deepEqual(read({ test: 'search', step: 'S2', why: ' S2 checks the hits. ' }).covered, { test: 'search', step: 'S2', why: 'S2 checks the hits.', lastRun, checkMayMiss: true });
+    assert.deepEqual(asked, [{ test: 'search', step: 'S2' }]);
+    assert.equal(read({ test: 'search', why: 'w' }, { reproduced: 'no' }).covered.checkMayMiss, undefined, 'not reproduced: a passing test fits');
+    assert.equal(readReproduction(good, { coverage }).covered, undefined);
+    const reject = (covered, pattern) => assert.throws(() => read(covered), (error) => error.code === 'finish-rejected' && pattern.test(error.message));
+    reject('search', /covered is \{ test, step\?, why \}/);
+    reject({ test: '../x', why: 'w' }, /covered\.test is the id/);
+    reject({ test: 'search', step: '2', why: 'w' }, /covered\.step is a step id/);
+    reject({ test: 'search' }, /covered\.why/);
+
+    // On disk: the test must exist and be recorded, the step too; the newest run of that test comes along.
+    const root = tempDir(t);
+    const step = (id, recorded) => {
+        const plain = { id, name: `Step ${id}`, do: `Do ${id}.`, expect: `Expect ${id}.` };
+        return recorded ? { ...plain, recording: { hash: stepHash(plain), recordedOn: 'local', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: `check${id}()` } } : plain;
+    };
+    writeTest(root, { id: 'search', role: 'tester', writes: false, notes: '', steps: [step('S1', true), step('S2', true), step('S3', false)] });
+    const onDisk = coverageIn(root);
+    const fails = (covered, pattern) => assert.throws(() => onDisk(covered), (error) => error.code === 'finish-rejected' && pattern.test(error.message));
+    fails({ test: 'missing' }, /no test missing in caw\/tests/);
+    fails({ test: 'search', step: 'S9' }, /has no step S9; its steps are S1, S2, S3/);
+    fails({ test: 'search', step: 'S3' }, /search@S3 is not recorded/);
+    fails({ test: 'search' }, /not fully recorded \(S3\)/);
+    assert.equal(onDisk({ test: 'search', step: 'S2' }), undefined, 'no run left');
+    const runs = join(root, '.caw', 'runs');
+    for (const [runId, status] of [['2026-11-18T08-00-00-000Z-search', 'fail'], ['2026-11-19T08-00-00-000Z-search', 'pass'], ['2026-11-20T08-00-00-000Z-search-other', 'fail']]) {
+        mkdirSync(join(runs, runId), { recursive: true });
+        writeFileSync(join(runs, runId, 'result.json'), JSON.stringify({ status, testId: runId.slice(25) }));
+    }
+    mkdirSync(join(runs, '2026-11-21T08-00-00-000Z-search'));
+    assert.deepEqual(onDisk({ test: 'search', step: 'S2' }), lastRun, 'the newest run with a result, of this test only');
 });
