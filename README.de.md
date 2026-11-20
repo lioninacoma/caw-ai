@@ -71,8 +71,8 @@ Schreiben erlaubt ist. `caw record <test>@S3` nimmt nach einer gewollten Änderu
 
 Gib Claude ein Fehlerticket. Es meldet sich als Testrolle an, geht das Ticket selbstständig durch und sagt dir, ob der Fehler
 echt ist: ja, nein oder unklar, mit dem Beobachteten gegen das Erwartete, seinen Schritten, Screenshots und einem Hinweis auf die
-Ursache in deinem Code. Dazu schreibt es den Entwurf eines Testplans, der scheitert, solange der Fehler da ist: bereit, als
-Regressionstest übernommen zu werden.
+Ursache in deinem Code. Dazu schreibt es aus seinen Schritten den Entwurf eines Testplans: Ist der Fehler behoben, nimmst du
+ihn als Regressionstest auf.
 
 <img src="docs/media/reproduce.webp" width="100%" alt="caw reproduce: Claude hat ein Fehlerticket im Errand-Beispiel durchgespielt; die Abschlusskarte sagt, dass der Fehler nachgestellt ist, und nennt Bericht und Testentwurf">
 
@@ -143,7 +143,8 @@ installierte Kopie um, sobald caw in `node_modules` liegt. Um mit deiner Session
 ## Sicher mit Zugangsdaten und Produktion
 
 - **Testkonten bleiben bei dir:** Du trägst sie selbst in `caw/.env` (oder CI-Secrets) ein. caw meldet sich an, fragt nie
-  danach und schreibt sie nie; Claude kann die Datei nicht lesen, und das Passwort wird in allem, was Claude bekommt, maskiert.
+  danach und schreibt sie nie; das Claude, das caw startet, kann die Datei nicht lesen (mit `--attach` gelten die Rechte
+  deiner eigenen Session), und das Passwort wird in allem, was Claude bekommt, maskiert.
 - **Produktion wird nur gelesen:** Ein Lauf auf Produktion sendet keine schreibenden Requests, und Produktions-Hosts sind von
   jeder anderen Umgebung aus unerreichbar. Claude arbeitet nie auf Produktion.
 - **Claude bleibt in seinem Rahmen:** Es bedient den Browser nur über feste Befehle, und solange es dabei ist, erreicht der
@@ -310,6 +311,25 @@ Claude (Wiedergaben, CI) laden Seiten von jedem Host außer Produktion. Details:
 `trace.zip`. Der Trace enthält Seiteninhalte und Netzwerkdaten samt Cookies; lade ihn und Laufordner nicht öffentlich hoch.
 `init` trägt `.caw/` in `.gitignore` ein.
 
+## Warum nicht einfach Playwright?
+
+Playwright, sein MCP-Server und seine Test-Agenten lassen Claude schon heute Tests schreiben, ausführen und reparieren, und caw
+läuft auf Playwright. caw ergänzt, was generierter Testcode nicht mitbringt:
+
+- **Prüfungen, die ein Agent nicht verbiegen kann.** Jede Prüfung gehört zu einem Erwartungssatz in normaler Sprache. Solange
+  die Erwartung bleibt, muss ein Agent, der einen Schritt behebt oder ab einem Schritt neu aufnimmt, die Prüfung behalten.
+  Zeigen die Belege auf deine Anwendung, nennt caw die Ursache, statt eine Änderung am Test anzubieten.
+- **Einordnung ohne KI.** Jeder Fehlschlag wird anhand von Requests, Konsole und gelernten Wirkungen als Test, Anwendung oder
+  Umgebung eingeordnet; geändertes Verhalten lässt den Schritt standardmäßig scheitern.
+- **Ein Rahmen für den Agenten** (wenn caw ihn startet): nur lesende Werkzeuge oder ein Container mit Firewall, ein Browser,
+  der nur deine Umgebungen erreicht, Produktion nur lesend.
+- **Zustände, nicht nur Tests.** Jeder Schritt jedes Tests ist ein Ort, den du öffnen, von dem aus du einen Fehler nachstellen
+  oder an dem du entwickeln kannst.
+
+Nimm Playwright direkt für Cross-Browser-Läufe, paralleles Sharding, Netzwerk-Mocking oder eine große Suite, die Entwickler im
+Code pflegen. `caw export` schreibt einen aufgenommenen Test als Playwright-Spec; Einordnung und gelernte Wirkungen von caw
+bleiben dabei zurück.
+
 ## Was caw nicht ist
 
 - Ein autonomer Agent für exploratives Testen: Claude folgt deinem Plan oder deinem Fehlerticket.
@@ -331,7 +351,8 @@ Agent ist); den Hinweis kannst du abschalten. Das Lauflog zeigt die Kosten, die 
 
 **Sieht Claude meine Passwörter?**
 Nicht aus Versehen. caw meldet sich selbst an, bevor Claude startet (und nimmt während einer neuen Anmeldung keine Befehle
-an), Claude kann `caw/.env` nicht lesen und bedient den Browser nur über feste Befehle, und das Passwort wird in allem, was
+an), das Claude, das caw startet, kann `caw/.env` nicht lesen (eine verbundene Session hat ihre eigenen Rechte) und bedient
+den Browser nur über feste Befehle, und das Passwort wird in allem, was
 Claude bekommt, maskiert. Gegen einen absichtlich fehlgeleiteten Agenten ist die Maske kein Schutz: Mit `eval` kann er einen
 Wert in der Seite umformen. Nimm deshalb Testkonten: Claude handelt als dieser Nutzer.
 

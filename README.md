@@ -68,7 +68,7 @@ environment it fits (local dev server, staging, a CI stack caw starts itself), w
 
 Hand Claude a bug report. It signs in as a test role, walks the report on its own and tells you whether the bug is real:
 yes, no or unclear, with what it observed against what was expected, the steps it took, screenshots and a hint at the cause
-in your code. It also writes a draft test plan that fails while the bug is there, ready to adopt as a regression test.
+in your code. It also writes a draft test plan from its steps: once the bug is fixed, record it as a regression test.
 
 <img src="docs/media/reproduce.webp" width="100%" alt="caw reproduce: Claude has walked a bug report in the Errand example; the end card says the bug is reproduced and names the report and the draft test">
 
@@ -139,7 +139,8 @@ with `caw init` or `caw skill`) or pass `--attach` to `run`, `record`, `open` or
 ## Safe with credentials and production
 
 - **Test accounts stay yours:** you put them into `caw/.env` (or CI secrets) yourself. caw signs in, never asks for them and
-  never writes them; Claude can't read the file, and the password is masked in everything Claude gets.
+  never writes them; the Claude that caw starts can't read the file (with `--attach` your own session's permissions apply),
+  and the password is masked in everything Claude gets.
 - **Production is read-only:** a run on production sends no write requests, and production hosts are unreachable from every
   other environment. Claude never works on production.
 - **Claude stays in a box:** it drives the browser only through fixed commands, and while it is attached the browser reaches
@@ -302,6 +303,23 @@ load from any host except production. Details: [Sandbox boundaries](docs/guide.m
 The trace contains page contents and network data including cookies; don't upload it or run folders publicly. `init` adds
 `.caw/` to `.gitignore`.
 
+## Why not just Playwright?
+
+Playwright, its MCP server and its test agents already let Claude write, run and heal tests, and caw runs on Playwright. caw
+adds what generated test code doesn't give you:
+
+- **Checks an agent can't bend.** Each check belongs to a plain-language expected result. While the expectation stays, an
+  agent that fixes a step or re-records from one must keep the check. When the evidence points at your app, caw shows the
+  cause instead of offering a test edit.
+- **Triage without AI.** Every failure is classed as test, app or environment from requests, console and learned effects;
+  changed behaviour fails by default.
+- **A box for the agent** (when caw starts it): read-only tools or a firewalled container, a browser that reaches only your
+  environments, production read-only.
+- **States, not just tests.** Any step of any test is a place to open, reproduce a bug from or develop in.
+
+Use plain Playwright for cross-browser runs, parallel sharding, network mocking or a large suite developers maintain in code.
+`caw export` writes a recorded test as a Playwright spec; caw's triage and learned effects stay behind.
+
 ## What caw is not
 
 - An autonomous exploratory-testing agent: Claude follows your plan or your bug report.
@@ -321,8 +339,9 @@ and in CI. Before Claude starts, the chat asks once per run (not when your own C
 that notice off. The run log shows the cost Claude Code reports.
 
 **Does Claude see my passwords?**
-Not by accident. caw signs in itself before Claude starts (and takes no commands while it signs in again), Claude can't
-read `caw/.env` and only drives the browser through fixed commands, and the password is masked in everything Claude gets.
+Not by accident. caw signs in itself before Claude starts (and takes no commands while it signs in again), the Claude that
+caw starts can't read `caw/.env` (an attached session has its own permissions) and only drives the browser through fixed
+commands, and the password is masked in everything Claude gets.
 The mask is no defence against a deliberately misbehaving agent: with `eval` it can transform a value in the page. So use
 test accounts: Claude acts as that user.
 
