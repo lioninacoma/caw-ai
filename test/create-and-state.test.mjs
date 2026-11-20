@@ -641,7 +641,7 @@ test('Choice: only offered buttons count, and the question is in the chat', asyn
     assert.equal(states.at(-1)[0], 'deciding');
     chat.human.choose('adopt');
     assert.equal(await pending, 'adopt');
-    assert.deepEqual(shown, [['question', 'Übernehmen?'], ['human', 'Testplan übernehmen']]);
+    assert.deepEqual(shown, [['result', 'Übernehmen?'], ['human', 'Testplan übernehmen']]);
     const closing = createChat();
     const waiting = closing.choose('choosing', 'Wie?', options);
     closing.human.closed();
@@ -723,7 +723,7 @@ test('Discussing a failure: a message or a button answers, a card interrupts, th
     assert.equal(states.at(-1), 'discussing', 'after the card the conversation continues');
     chat.human.choose('fix');
     assert.deepEqual(await second, { choice: 'fix' });
-    assert.deepEqual(shown.filter(([who]) => who === 'question'), [['question', 'S2 ist gescheitert.']]);
+    assert.deepEqual(shown.filter(([who]) => who === 'result'), [['result', 'S2 ist gescheitert.']]);
     const closing = createChat();
     const waiting = closing.discuss('Und?', options);
     closing.human.closed();

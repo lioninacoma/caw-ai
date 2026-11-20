@@ -773,18 +773,25 @@ const draftTest = (root, config, { id, target, role: chosenRole, readOnly = fals
 
 const DIALOG_OK = () => ({ id: 'ok', label: t('cli.dialogOk'), primary: true });
 const DIALOG_CANCEL = () => ({ id: 'cancel', label: t('cli.dialogCancel') });
+const quoted = (message) => t('cli.dialogQuoted', { message });
 /**
  * A native dialog of the app during a demonstration: the chat shows its text with OK and Cancel (an alert only OK); for a prompt
  * the human may type the value. @returns { accept, value? }, or null when the chat is gone (the dialog is then dismissed)
  */
 const askDialog = async (chat, { type, message, defaultValue }) => {
     if (type === 'prompt') {
-        const answer = await chat.choose('discussing', t('cli.dialogPrompt', { message, value: defaultValue ?? '' }), [DIALOG_OK(), DIALOG_CANCEL()]);
+        const card = { kind: 'result', tone: 'ask', title: t('cli.dialogValue'), text: quoted(message), muted: t('cli.dialogPrompt', { value: defaultValue ?? '' }) };
+        const answer = await chat.choose('discussing', card.title, [DIALOG_OK(), DIALOG_CANCEL()], card);
         if (answer === null) return null;
         if (typeof answer === 'object') return { accept: true, value: answer.message };
         return answer === 'ok' ? { accept: true, value: defaultValue ?? '' } : { accept: false };
     }
-    const answer = await chat.choose('deciding', t(type === 'beforeunload' ? 'cli.dialogLeave' : 'cli.dialogAsks', { message }), type === 'alert' ? [DIALOG_OK()] : [DIALOG_OK(), DIALOG_CANCEL()]);
+    // An alert only tells; confirm and beforeunload ask.
+    let title = t('cli.dialogAsks');
+    if (type === 'alert') title = t('cli.dialogSays');
+    else if (type === 'beforeunload') title = t('cli.dialogLeave');
+    const card = { kind: 'result', tone: type === 'alert' ? 'info' : 'ask', title, text: quoted(message) };
+    const answer = await chat.choose('deciding', title, type === 'alert' ? [DIALOG_OK()] : [DIALOG_OK(), DIALOG_CANCEL()], card);
     return answer === null ? null : { accept: answer === 'ok' };
 };
 
@@ -852,10 +859,10 @@ const startRecording = async (root, config, spec, checked, { exists, conversatio
         if (options.length > 1) {
             // Described but never recorded is no old plan: there is nothing to replace.
             const recorded = exists && spec.steps.some((step) => step.recording !== undefined);
-            let question = t('cli.questionNew', { id: spec.id });
-            if (recorded) question = t('cli.questionRecorded', { id: spec.id });
-            else if (exists) question = t('cli.questionDescribed', { id: spec.id });
-            const choice = await Promise.race([chat.choose('choosing', question, options), session.closed.then(() => null)]);
+            let card = { kind: 'result', tone: 'ask', title: t('cli.questionNew', { id: spec.id }) };
+            if (recorded) card = { ...card, title: t('cli.questionRecorded', { id: spec.id }), text: t('cli.questionRecordedWhy', { id: spec.id }) };
+            else if (exists) card = { ...card, title: t('cli.questionDescribed', { id: spec.id }), text: t('cli.questionDescribedWhy', { id: spec.id }) };
+            const choice = await Promise.race([chat.choose('choosing', card.title, options, card), session.closed.then(() => null)]);
             if (choice === null) throw aborted();
             if (choice === 'follow' || choice === 'reuse') handOver();
             if (choice === 'follow') return undefined;

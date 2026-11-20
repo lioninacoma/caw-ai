@@ -39,6 +39,11 @@ const withoutDot = (text) => text.replace(/\.$/, '');
 const closed = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 /** Added baselines in one sentence for the chat. */
+/** A result card for the chat: what happened (title), details (text) and the consequence (muted); tone fail, warn, next, info, ask. */
+const resultCard = (tone, title, text, muted) => ({ kind: 'result', tone, title, ...(text ? { text } : {}), ...(muted ? { muted } : {}) });
+/** Waits for a button under a result card. */
+const decide = (chat, card, options) => chat.choose('deciding', card.title, options, card);
+
 /** Why a run did not pass, in one sentence for the chat. */
 const failureText = (verdict) => {
     const failed = (verdict?.results ?? []).find(({ status }) => status === 'fail');
@@ -112,13 +117,13 @@ const createFixer = ({ sandbox, openSandbox }) => {
             return null;
         }
     };
-    const cannotFix = (chat) => (message) => chat.choose('deciding', t('run.flow.cannotFix', { message }), [ONLY_CLOSE]);
+    const cannotFix = (chat) => (message) => decide(chat, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE]);
     return {
         sandbox: () => box,
         open,
         /** A step whose plan changed through advice needs a new recording. @returns the step or null */
         offerChanged: async ({ id, title }, chat) => {
-            const choice = await chat.choose('deciding', t('run.flow.offerChanged', { id, title: withoutDot(title) }), [RERECORD, CLOSE]);
+            const choice = await decide(chat, resultCard('next', t('run.flow.offerChanged', { id }), t('run.flow.offerChangedWhy', { id, title: withoutDot(title) })), [RERECORD, CLOSE]);
             if (choice !== RERECORD.id) return null;
             return await open(chat, cannotFix(chat)) === null ? null : { id, reason: t('run.flow.planChanged', { title: withoutDot(title) }), rerecord: true };
         },
@@ -216,7 +221,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
                 if (repairHere === undefined) return { advice, target: { ...failed, ...context } };
                 const repaired = await repairHere({ sandbox: box, reason: failed.reason, ...context });
                 if (repaired.candidate === undefined) {
-                    await chat.choose('deciding', t('run.flow.noNewRecording', { id: failed.id, reason: failureText(repaired.verdict) }), [ONLY_CLOSE]);
+                    await decide(chat, resultCard('fail', t('run.flow.noNewRecording', { id: failed.id }), `${failureText(repaired.verdict)}.`, t('run.flow.planUnchanged')), [ONLY_CLOSE]);
                 }
                 return { advice: advice ?? repaired.repairAdvice ?? null, target: null, repaired: { ...repaired, id: failed.id, reason: failed.reason } };
             }
@@ -361,7 +366,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     offered = repairAdvice === undefined ? await takeAdvice(concluded) : await absorb(repairAdvice, chat);
                     if (offered !== null) return { next: 'claude' };
                     if (failed) ({ next: offered, recheck: rechecking = false } = await settle(concluded));
-                    else await chat.choose('deciding', t('run.flow.noNewRecording', { id, reason: failureText(verdict) }), [ONLY_CLOSE]);
+                    else await decide(chat, resultCard('fail', t('run.flow.noNewRecording', { id }), `${failureText(verdict)}.`, t('run.flow.planUnchanged')), [ONLY_CLOSE]);
                     if (rechecking) return { next: 'check' };
                     return offered === null ? undefined : { next: 'claude' };
                 },
@@ -400,7 +405,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     const count = current.steps.length;
                     const options = again === null ? [adoptButton(count), DISCARD] : [again, adoptButton(count, { primary: false }), DISCARD];
                     choice = await chat.choose('deciding', decisionText(current, changes, seen, verdict.warnings, { fresh, whole }), options, decisionCard(current, changes, seen, verdict.warnings, { fresh, whole }));
-                    if (choice === 'rerecord-next' && await fixer.open(chat, (message) => chat.choose('deciding', t('run.flow.cannotFix', { message }), [ONLY_CLOSE])) !== null) {
+                    if (choice === 'rerecord-next' && await fixer.open(chat, (message) => decide(chat, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE])) !== null) {
                         offered = { id: stale.id, reason: t('run.flow.stillStale'), rerecord: true };
                         return { next: 'claude' };
                     }
@@ -421,7 +426,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                 }
                 // All steps passed, but hard failures: if they are only script errors, they can be ignored and the run repeated.
                 const ignorable = concluded.ignore !== undefined;
-                const answer = await chat.choose('deciding', t('run.flow.checkFailed', { reason: failureText(verdict), findings: findingsText(verdict) }),
+                const answer = await decide(chat, resultCard('fail', t('run.flow.checkFailed'), `${failureText(verdict)}.${findingsText(verdict)}`, t('run.flow.planUnchanged')),
                     ignorable ? [IGNORE_ERRORS, { ...ONLY_CLOSE, primary: false }] : [ONLY_CLOSE]);
                 if (ignorable && answer === IGNORE_ERRORS.id) {
                     const added = concluded.ignore();
@@ -469,7 +474,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
         conclude: async ({ verdict, candidate, chat }) => {
             // The recording is done: the check run comes in a new window.
             if (candidate !== undefined) return { next: 'check' };
-            await chat.choose('deciding', t('run.flow.noRecording', { reason: failureText(verdict) }), [ONLY_CLOSE]);
+            await decide(chat, resultCard('fail', t('run.flow.noRecording'), `${failureText(verdict)}.`, t('run.flow.oldPlanUnchanged')), [ONLY_CLOSE]);
             return undefined;
         },
     });
@@ -642,7 +647,7 @@ export const runFlow = async (options) => {
                         // Only what really changed: whoever rejected the code change and only adopted the config reads it that way.
                         const app = appFilesOf(advised.files);
                         const what = app.length > 0 ? t('run.flow.appChanged', { files: app.join(', ') }) : t('run.flow.filesChanged', { files: advised.files.join(', ') });
-                        rerun = await chat.choose('deciding', t('run.flow.rerunOffer', { id: failed.id, what }), [RERUN, CLOSE]) === RERUN.id;
+                        rerun = await decide(chat, resultCard('next', t('run.flow.rerunTitle'), t('run.flow.rerunOffer', { id: failed.id, what })), [RERUN, CLOSE]) === RERUN.id;
                         return true;
                     }
                     return false;
@@ -654,7 +659,14 @@ export const runFlow = async (options) => {
                     // A passed run waits for nobody, not even with warnings. open passed nothing: only name findings.
                     if (spec.steps.length === 0 && advised === null && verdict.status === 'pass' && findingsText(verdict) === '') return;
                     if (advised === null && verdict.status === 'pass') chat.notice(summary);
-                    else await chat.choose('deciding', summary, [ONLY_CLOSE]);
+                    else {
+                        // A card that says what happened: failed, passed with findings, or passed with recommendations in the report.
+                        const details = `${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`.trim();
+                        let card = resultCard('info', t('run.flow.runPassedTitle'), details);
+                        if (verdict.status !== 'pass') card = resultCard('fail', t('run.flow.runFailedTitle'), details);
+                        else if (findingsText(verdict) !== '') card = resultCard('warn', t(hardFailures(verdict).length > 0 ? 'run.flow.runErrorsTitle' : 'run.flow.runWarnedTitle'), details);
+                        await decide(chat, card, [ONLY_CLOSE]);
+                    }
                     return;
                 }
                 // With --explain Claude already advised; otherwise Claude looks for the cause only on click, same as --explain, just on demand.

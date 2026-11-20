@@ -102,7 +102,7 @@ export default {
     'chat.page.copied': 'Kopiert',
     'chat.page.copyManual': 'Markiert, mit Strg+C kopieren',
     'chat.page.thinking': '{agent} arbeitet',
-    'chat.page.question': 'Frage an dich',
+    'chat.page.agentAsks': '{agent} fragt',
     'chat.page.intro': 'So geht es weiter',
     'chat.page.oneStep': '1 Schritt',
     'chat.page.steps': '{n} Schritte',

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { fixFlow, recordFlow, runFlow } from '../src/host/flows.mjs';
+import { resultText } from '../src/host/chat.mjs';
 import { stepHash } from '../src/host/test-file.mjs';
 import { planView, samePlanStep } from '../src/host/test-plan.mjs';
 import { CawError, EXIT } from '../src/shared/errors.mjs';
@@ -28,7 +29,8 @@ const harness = ({ outcomes, answers = ['adopt'] }) => {
     const said = [];
     const pick = (kind, text, options, card) => {
         const ids = options.map(({ id }) => id);
-        questions.push({ kind, text, options: ids, labels: options.map(({ label }) => label), card, confirm: options.map(({ confirm }) => confirm) });
+        // A result card stands for its whole text: title, details and consequence.
+        questions.push({ kind, text: card?.kind === 'result' ? resultText(card) : text, options: ids, labels: options.map(({ label }) => label), card, confirm: options.map(({ confirm }) => confirm) });
         // A message appears as { message } in the answers and only goes to discuss.
         const wish = wishes.find((candidate) => (typeof candidate === 'object' ? kind === 'discussing' : ids.includes(candidate)));
         if (wish !== undefined) wishes.splice(wishes.indexOf(wish), 1);
@@ -160,7 +162,7 @@ test('Fix: if a step before fails, that one is offered', async () => {
 test('Fix: Claude Code does not make it, the test plan stays', async () => {
     const h = harness({ outcomes: [nothing] });
     assert.equal(await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Grund' }, sandbox: 's', ...h }), EXIT.fail);
-    assert.match(h.questions[0].text, /Für S2 ist keine neue Aufzeichnung entstanden/);
+    assert.match(h.questions[0].text, /^Keine neue Aufzeichnung für S2: kaputt\. Der Testplan bleibt unverändert\.$/);
     assert.deepEqual(h.adopted, []);
 });
 

@@ -80,7 +80,7 @@ const followAndAdopt = async (page) => {
         }
         // The check run after the recording failed: nothing to adopt, the scenario's checks report it.
         const close = page.locator('#choices button', { hasText: /Ohne Beheben beenden|Lauf beenden/ });
-        if (await page.locator('.message:is(.question,.notice)', { hasText: /ist gescheitert|[Kk]eine (neue )?Aufzeichnung/ }).count().catch(() => 0) > 0 && await close.count().catch(() => 0) > 0) {
+        if (await page.locator('.message:is(.question,.result,.notice)', { hasText: /ist gescheitert|[Kk]eine (neue )?Aufzeichnung/ }).count().catch(() => 0) > 0 && await close.count().catch(() => 0) > 0) {
             await clickChoice(page, close);
             return;
         }
@@ -259,7 +259,7 @@ scenario('N4', 'open <test>@S3: the steps before run, S3 does not; F1 "Öffnen�
         verify('F1 explains the entry', /bis zum Einstieg in S2/.test(await bench.locator('#sfoot').textContent()));
         await bench.locator('#sgo').click();
         // The chat asks before it replaces the state.
-        await chat.locator('.message:is(.question,.notice)', { hasText: 'bis zum Einstieg in S2 öffnen?' }).waitFor({ timeout: 30000 });
+        await chat.locator('.message:is(.question,.result,.notice)', { hasText: 'bis zum Einstieg in S2 öffnen?' }).waitFor({ timeout: 30000 });
         await decide(chat, 'S2 öffnen');
         await chat.locator('.message', { hasText: 'Einstieg in n9-shadow S2 ist neu hergestellt' }).waitFor({ timeout: 60000 });
         const shadow = await appOf(bench).evaluate(() => `${document.querySelector('caw-rating').shadowRoot.querySelector('[role=status]').textContent}|${document.getElementById('status').textContent}`);
@@ -803,8 +803,8 @@ scenario('N11', 'Failures: renamed (similar name), covered (diagnosis with the m
     let dockerUsed = 0;
     const docker = { get label() { dockerUsed += 1; return 'spy'; } };
     const h = humans(async (page) => {
-        await page.locator('.message:is(.question,.notice)', { hasText: 'S1 ist gescheitert' }).waitFor({ timeout: 60000 });
-        const text = await page.locator('.message:is(.question,.notice)').last().textContent();
+        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'S1 ist gescheitert' }).waitFor({ timeout: 60000 });
+        const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
         verify('Chat: the failed step with its locator label and the similar name', /button "Archive"/.test(text) && /Archive all/.test(text), text.slice(0, 400));
         verify('Repair offered', await page.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 1);
         await decide(page, 'Close');

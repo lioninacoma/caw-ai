@@ -28,12 +28,21 @@ const BINDING = '__cawChat';
 const MAX_TEXT = 4000;
 const MAX_ACTIVITY = 300;
 const TAIL_MS = 500;
-const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'intro', 'notice', 'tokens', 'plan', 'advice', 'failure', 'decision']);
+const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'result', 'intro', 'notice', 'tokens', 'plan', 'advice', 'failure', 'decision']);
 // The human is demonstrating: a reload is then part of the path, not a break of the run.
 const SHOWING_STATES = ['showing', 'asking', 'paused'];
 const PICK_STATES = ['paused', 'asking', 'showing', 'describing', 'planning', 'discussing', 'developing'];
 // Conversations with open input: a message goes to the flow together with the picked element.
 const TALK_KINDS = ['discussing', 'developing'];
+/**
+ * A result card: what happened as its title, details and consequence below, and its tone (fail, warn, next, info, ask) as
+ * icon and colour. As one line for the log and the waiting line: "<title>: <text> <muted>".
+ */
+export const resultText = ({ title, text, muted }) => [`${title}${/[.?!:]$/.test(title) || (!text && !muted) ? '' : ':'}`, text, muted].filter(Boolean).join(' ');
+const waitingText = (question, card) => {
+    if (card === undefined || card.kind === 'tokens') return question;
+    return card.kind === 'result' ? resultText(card) : card.question;
+};
 // The human has to act here, so the window must not stay behind the application.
 const NEEDS_HUMAN = ['choosing', 'planning', 'deciding', 'reviewing', 'discussing'];
 // Then the workbench unfolds the chat and says it is the human's turn.
@@ -296,15 +305,17 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                 choice = {
                     kind,
                     options,
-                    // What the human sees: a decision card asks its own question, `question` is then only for the log.
-                    question: card === undefined || card.kind === 'tokens' ? question : card.question,
+                    // What the human sees: a decision card asks its own question, a result card says what happened; `question`
+                    // is then only for the log.
+                    question: waitingText(question, card),
                     resolve: parked === null ? resolve : (id) => {
                         if (!ended) choice = parked;
                         resolve(id);
                         publish();
                     },
                 };
-                if (card === undefined) show('question', question);
+                if (card === undefined) show('result', question, { kind: 'result', tone: 'ask', title: question });
+                else if (card.kind === 'result') show('result', resultText(card), card);
                 else if (card.kind === 'tokens') show('tokens', question, card);
                 else show('decision', question, card);
                 publish();
@@ -345,7 +356,7 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                 offer({ kind: 'discussing', options, resolve: (answer) => resolve(typeof answer === 'string' ? { choice: answer } : answer) });
                 // The test run is over: between two answers the chat no longer shows it as running.
                 if (background === 'testing') background = null;
-                if (question !== undefined) show(card === undefined ? 'question' : 'failure', question, card);
+                if (question !== undefined) show(card === undefined ? 'result' : 'failure', question, card ?? { kind: 'result', tone: 'ask', title: question });
                 publish();
             });
         },
@@ -526,7 +537,9 @@ details.activity li{overflow-wrap:anywhere}
 .card>strong{display:flex;align-items:center;gap:8px;font:500 13px/1.25 var(--font);color:var(--text)}
 .card>strong .i{width:16px;height:16px}.card>strong .meta{margin-left:auto;font:400 11px/1 var(--font-mono);color:var(--faint)}
 .card p{margin:0}.card .txt{white-space:pre-wrap}.card .muted{color:var(--muted);font-size:12px}
-.message.question{box-shadow:inset 0 2px 0 var(--run)}.question>strong .i{color:var(--run)}
+.message.question{box-shadow:inset 0 2px 0 var(--agent)}.question>strong .i{color:var(--agent)}
+.message.r-ask,.message.r-next,.message.r-info{box-shadow:inset 0 2px 0 var(--run)}:is(.r-ask,.r-next,.r-info)>strong .i{color:var(--run)}
+.message.r-fail{box-shadow:inset 0 2px 0 var(--fail)}.r-fail>strong .i{color:var(--fail)}.message.r-warn{box-shadow:inset 0 2px 0 var(--warn)}.r-warn>strong .i{color:var(--warn)}
 .plan>strong .i{color:var(--accent-text)}.advice>strong .i{color:var(--agent)}.decision>strong .i{color:var(--pass)}.tokens>strong .i{color:var(--warn)}
 .message.failure{box-shadow:inset 0 2px 0 var(--fail)}.failure>strong .i{color:var(--fail)}
 .heard{display:flex;gap:8px;padding:8px 10px;border-radius:var(--r1);background:var(--panel2);font-size:12.5px}
@@ -724,7 +737,7 @@ const copyButton=(text,select)=>{const copy=el('button','lnk copy');copy.type='b
 // Over the app in App only (Ctrl+J): Esc hides the chat instead of cancelling; the workbench says when (pop).
 let popped=false,solo=false;
 // What the agent says or asks reaches the workbench as "new" (a dot on Chat while hidden); replayed history after a reload does not.
-const UNREAD=['claude','plan','failure','decision','advice','question','intro','tokens'];
+const UNREAD=['claude','plan','failure','decision','advice','question','result','intro','tokens'];
 window.addMessage=(who,text,about,at)=>{
   if(UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
   // Its start (after Continue) begins "working"; the host ends it once the agent waits for the person (setWorking).
@@ -787,7 +800,10 @@ window.addMessage=(who,text,about,at)=>{
     place(box);return;
   }
   if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));place(box);return;}
-  if(who==='question'){const box=card('question');box.append(head('help',T['chat.page.question']),el('p','txt',text));place(box);return;}
+  // Claude's own question (ask-operator): the head says who asks.
+  if(who==='question'){const box=card('question');box.append(head('agent',fill('chat.page.agentAsks',{agent:${JSON.stringify(AGENT_NAME)}})),el('p','txt',text));place(box);return;}
+  // What happened and waits for a button: the head says what, the tone gives icon and colour.
+  if(who==='result'){const glyph={fail:'x',warn:'alert',next:'play',info:'info',ask:'help'}[about.tone]??'info';const box=card('result r-'+(about.tone??'info'));box.append(head(glyph,about.title));if(about.text)box.append(el('p','txt',about.text));if(about.muted)box.append(el('p','muted',about.muted));place(box);return;}
   if(who==='intro'){const box=card('intro');box.append(head('info',T['chat.page.intro']),el('p','txt',text));place(box);return;}
   if(who==='notice'){const item=el('div','message notice');item.append(ic('info'),el('span','txt',text));place(item);return;}
   const item=el('div','message '+who);

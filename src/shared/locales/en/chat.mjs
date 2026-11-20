@@ -101,7 +101,7 @@ export default {
     'chat.page.copied': 'Copied',
     'chat.page.copyManual': 'Selected, copy with Ctrl+C',
     'chat.page.thinking': '{agent} working',
-    'chat.page.question': 'Question for you',
+    'chat.page.agentAsks': '{agent} asks',
     'chat.page.intro': 'What you can do now',
     'chat.page.oneStep': '1 step',
     'chat.page.steps': '{n} steps',
