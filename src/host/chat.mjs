@@ -28,7 +28,7 @@ const BINDING = '__cawChat';
 const MAX_TEXT = 4000;
 const MAX_ACTIVITY = 300;
 const TAIL_MS = 500;
-const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'notice', 'tokens', 'plan', 'advice', 'failure', 'decision']);
+const LOGGED = new Set(['human', 'checkpoint', 'claude', 'question', 'intro', 'notice', 'tokens', 'plan', 'advice', 'failure', 'decision']);
 // The human is demonstrating: a reload is then part of the path, not a break of the run.
 const SHOWING_STATES = ['showing', 'asking', 'paused'];
 const PICK_STATES = ['paused', 'asking', 'showing', 'describing', 'planning', 'discussing', 'developing'];
@@ -358,7 +358,8 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
             return new Promise((resolve) => {
                 offer({ kind: 'developing', options, resolve: (answer) => resolve(typeof answer === 'string' ? { choice: answer } : answer) });
                 background = null;
-                if (question !== undefined) show('question', question);
+                // An explanation of what the window offers now, not a question: its own card.
+                if (question !== undefined) show('intro', question);
                 publish();
             });
         },
@@ -723,7 +724,7 @@ const copyButton=(text,select)=>{const copy=el('button','lnk copy');copy.type='b
 // Over the app in App only (Ctrl+J): Esc hides the chat instead of cancelling; the workbench says when (pop).
 let popped=false,solo=false;
 // What the agent says or asks reaches the workbench as "new" (a dot on Chat while hidden); replayed history after a reload does not.
-const UNREAD=['claude','plan','failure','decision','advice','question','tokens'];
+const UNREAD=['claude','plan','failure','decision','advice','question','intro','tokens'];
 window.addMessage=(who,text,about,at)=>{
   if(UNREAD.includes(who)&&Date.now()-(at||Date.now())<5000)parent.postMessage({caw:'unread'},'*');
   // Its start (after Continue) begins "working"; the host ends it once the agent waits for the person (setWorking).
@@ -787,6 +788,7 @@ window.addMessage=(who,text,about,at)=>{
   }
   if(who==='tokens'){const box=card('tokens');box.append(head('coins',text));if(about?.text)box.append(el('p','muted',about.text));place(box);return;}
   if(who==='question'){const box=card('question');box.append(head('help',T['chat.page.question']),el('p','txt',text));place(box);return;}
+  if(who==='intro'){const box=card('intro');box.append(head('info',T['chat.page.intro']),el('p','txt',text));place(box);return;}
   if(who==='notice'){const item=el('div','message notice');item.append(ic('info'),el('span','txt',text));place(item);return;}
   const item=el('div','message '+who);
   if(who==='checkpoint'){const cp=el('span','cp');cp.append(ic('flag'),T['chat.page.checkpoint']);item.append(whoLine('human',at,cp));}
