@@ -547,7 +547,7 @@ const showSolo=(on)=>{document.body.classList.toggle('solo',on);try{chatWindow()
 // The chat over the app (App only, Ctrl+J). Leaving App only keeps the choice for the next F8; showing clears the new-message dot.
 const popped=()=>document.body.classList.contains('chat-pop');
 const showPop=(on)=>{document.body.classList.toggle('chat-pop',on);const b=$('chatPop');b.setAttribute('aria-pressed',String(on));b.title=T['workbench.page.'+(on?'hideChat':'showChat')]+' ('+T['workbench.page.keyCtrl']+' J)';if(on)b.querySelector('.new').hidden=true;try{chatWindow()?.postMessage({caw:'pop',on},'*');}catch{}};
-const popChat=(on=!popped())=>{if(!document.body.classList.contains('solo'))return false;showPop(on);if(on)$('chat').focus();else $('app').focus();try{const result=window.${CHAT_POP_BINDING}?.(on);result?.catch?.(()=>{});}catch{}return true;};
+const popChat=(on=!popped())=>{if(!document.body.classList.contains('solo'))return false;showPop(on);if(on){$('chat').focus();try{chatWindow()?.postMessage({caw:'focus'},'*');}catch{}}else $('app').focus();try{const result=window.${CHAT_POP_BINDING}?.(on);result?.catch?.(()=>{});}catch{}return true;};
 const solo=(on=!document.body.classList.contains('solo'))=>{if(on)openSettings(false);showSolo(on);try{const result=window.${FULLSCREEN_BINDING}?.(on);result?.catch?.(()=>{});}catch{}};
 // Animations off (F10): no blinking, no spinner, no cursor. Also applies to the next runs.
 const setStill=(on)=>{document.body.classList.toggle('still',on);$('still').setAttribute('aria-checked',String(on));$('setStill').setAttribute('aria-checked',String(!on));pref('animations',on?'off':'on');};

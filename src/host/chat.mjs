@@ -921,7 +921,7 @@ addEventListener('keydown',(event)=>{const plain=!event.ctrlKey&&!event.metaKey&
 // A new mode from the workbench's settings: only from it, only one of the three modes.
 addEventListener('message',(event)=>{const pref=event.data?.pref;if(event.source===parent&&event.data?.caw==='mode'&&['system','light','dark'].includes(pref))document.documentElement.dataset.pref=pref;});
 // F9 and Esc from the workbench: only from it, only these two.
-addEventListener('message',(event)=>{if(event.source!==parent)return;if(event.data?.caw==='pop')popped=event.data.on===true;if(event.data?.caw==='solo')solo=event.data.on===true;});
+addEventListener('message',(event)=>{if(event.source!==parent)return;if(event.data?.caw==='pop')popped=event.data.on===true;if(event.data?.caw==='focus')input.focus();if(event.data?.caw==='solo')solo=event.data.on===true;});
 addEventListener('message',(event)=>{if(event.source!==parent||event.data?.caw!=='key')return;
   if(event.data.key==='F9')pauseKey();
   else if(event.data.key==='Escape'){if(openMenus().length>0)closeMenus(true);else if(!pick.classList.contains('on')&&canAbort())abort.click();}});

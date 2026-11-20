@@ -655,6 +655,19 @@ test('workbench: solo view and the open tab survive a reload of the whole workbe
     return undefined;
 });
 
+test('workbench: Ctrl+J in the application while developing puts the cursor into the chat input over the app', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat } = await open(t);
+    assert.ok(await until(async () => (await bench.view.locator('#feld').count()) === 1), 'application loaded');
+    chat.develop('Bereit.', [{ id: 'end', label: 'Ende' }]);
+    await bench.chatFrame().waitForFunction(() => document.body.dataset.state === 'developing');
+    await bench.solo(true);
+    await bench.view.locator('#feld').press('Control+j');
+    assert.ok(await until(() => bench.page.evaluate(() => document.body.classList.contains('chat-pop'))), 'the chat over the app');
+    assert.ok(await until(() => bench.chatFrame().evaluate(() => document.activeElement?.id === 'input')), 'the cursor in the chat input');
+    return undefined;
+});
+
 test('workbench: in App only the chat floats over the app (Ctrl+J, Esc, x), a dot for news, decisions show it, reloads keep it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat } = await open(t);
