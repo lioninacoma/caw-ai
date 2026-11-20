@@ -80,6 +80,19 @@ npx caw record create-ticket@S2 --env local # ab S2 bis zum Ende neu aufnehmen, 
 
 `notes`, `role`, `writes`, `environments`, `start`, `retry` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
 
+## Offene Schritte
+
+Schritte, die du ans Ende schreibst und noch nicht aufnimmst, sind **offen**: der Teil des Tests, der noch entsteht, etwa während du die Funktion entwickelst, die sie beschreiben. Es sind die nicht aufgenommenen Schritte nach dem letzten aufgenommenen.
+
+```bash
+npx caw run create-ticket --env local          # S1–S3 laufen, Exit 0, „Offen, noch nicht aufgenommen: S4, S5“
+npx caw open create-ticket@S4 --env local      # S1–S3 laufen, am Einstieg in S4 gehört dir das Fenster
+npx caw record create-ticket@S4 --env local    # aufnehmen, sobald die Anwendung es kann
+npx caw run create-ticket --env local --strict # Exit 4, solange etwas offen ist
+```
+
+`run` spielt die aufgenommenen Schritte ab und besteht ohne die offenen; `list` zeigt `offen (S4, S5)`, `report.md` und `result.json` (`pending` und `status: "pending"` unter `steps`) nennen sie, die Werkbank zeigt sie als nicht erreicht. Nur das Ende zählt: ein nicht aufgenommener Schritt vor einem aufgenommenen, ein nach der Aufnahme geänderter Schritt und ein Test ohne jede Aufnahme enden weiter mit Exit 4, damit das Ändern eines Schritttexts nie still seine Prüfung aus CI nimmt.
+
 ## Aufzeichnung
 
 Schreiben `record` und „Schritt beheben“ im Chat eines Laufs. Ansehen ja, ändern nur für die [Ergänzungen von Hand](#von-hand-ergänzen). Ein Auszug:

@@ -48,6 +48,8 @@ Commands:`,
       [--headless]                       No window and no chat
       [--learn]                          In CI: learn missing baselines and effects into caw/recordings/ (outside CI
                                          every run does)
+      [--strict]                         Pending steps (the unrecorded tail) fail the run with exit 4 instead of
+                                         passing without them
       [--start]                          Start the environment with its start command if it doesn't answer, stop it at
                                          the end; with --overlay also the parts' local code servers
       [--reset] | [--no-reset]           The environment's reset runs once before the first writing test; --reset
@@ -65,7 +67,7 @@ Commands:`,
       [--env <name>]                     worst run. --all takes every test that lists the environment
       [--headless]                       No window
       [--report junit=<file>]            Also write the result as JUnit XML
-      [--learn] [--start] [--reset | --no-reset]  as for one test; start and reset once for the whole row`,
+      [--learn] [--strict] [--start] [--reset | --no-reset]  as for one test; start and reset once for the whole row`,
     'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Open the app with workbench and chat. Without a test: navigate, try
                                          things, develop with the agent. With <test>: replay it first. With @<S4>: up to the
                                          entry of S4 (its navigation runs, its inputs and check stay open). Learns
@@ -251,6 +253,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     // commands.mjs: validate
     'cli.validateChain': '{file}: {chain}, record again.',
     'cli.validateNotRecorded': '{file}: not recorded yet.',
+    'cli.validatePending': '{file}: {ids} pending, not recorded yet (run passes without them, --strict does not).',
     'cli.validateOk': '{config} and {count} test(s) are valid.',
     'cli.validateCode': '{id} ({target}): {code}',
     'cli.validateCodeOverlay': '{id} ({target}): {code}; with --overlay: {overlay}',
@@ -269,12 +272,14 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.listRecorded': 'recorded',
     'cli.listStale': 'stale ({ids})',
     'cli.listNotRecorded': 'not recorded',
+    'cli.listPending': 'pending ({ids})',
     'cli.listInvalid': 'invalid',
     'cli.listWrites': 'writes',
     'cli.listReadOnly': 'read-only',
     'cli.listStepRecorded': 'recorded',
     'cli.listStepStale': 'stale',
     'cli.listStepNotRecorded': 'not recorded',
+    'cli.listStepPending': 'pending',
     'cli.listTestHead': '{test}: start {start}, role {role}, environments {environments}, {writes}',
     'cli.knownTests': 'Known tests: {tests}.',
     'cli.noTests': 'There are no tests in caw/tests yet.',
@@ -357,6 +362,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.batchStatus.rejected': 'REJECTED',
     'cli.batchStatus.needsRecording': 'NEEDS RECORDING',
     'cli.batchAt': 'at {step}',
+    'cli.batchPending': '{steps} pending',
     'cli.junitWritten': 'JUnit report: {file}',
     'cli.stepUnknown': '{test} has no step {step}.{suggestion} {steps}',
     'cli.adviseAgentOnly': '--explain only on environments where {agent} may work (here: {environments}), not on {target}.',
@@ -367,6 +373,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.failedHint': '{step} failed. Find the cause in a run with chat: caw run {test} --env {target}',
     'cli.failedHintNoAgent': '{step} failed. A run with chat finds the cause, on an environment where {agent} may work (here: {environments}).',
     'cli.untilHint': 'Up to the entry of the step: caw open {test}@{step} --env {target}',
+    'cli.pendingSteps': 'Pending, not recorded yet: {ids}. They did not run. Record them: caw record {test}@{step} --env {target}',
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role and --read-only must match the file or be left out.',
     'cli.recordStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
     'cli.recordFromReason': 'Re-recording from {step} on was requested',

@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { changeTracker, chooseEnv, init, junitXml, list, open, record, run, runMode, stepsText, validate } from '../src/host/commands.mjs';
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
+import { listProject, validateProject } from '../src/host/project-data.mjs';
 import { EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
 import { helpText, synopsisOf, unknownCommandText } from '../src/shared/help.mjs';
 import { closest, editDistance } from '../src/shared/suggest.mjs';
@@ -50,6 +51,7 @@ test('editDistance and closest: typos find their command, a tie gives no suggest
 test('exit codes: needs recording is 4, the worst run decides the batch', () => {
     assert.equal(exitOf('replay-missing'), EXIT.needsRecording);
     assert.equal(exitOf('replay-stale'), 4);
+    assert.equal(exitOf('replay-pending'), 4, 'run --strict with pending steps');
     assert.equal(exitOf('usage'), EXIT.rejected);
     assert.equal(exitOf('chrome-weg'), EXIT.error);
     assert.equal(worstExit([]), 0);
@@ -82,6 +84,9 @@ test('parseRunArgs: several tests or --all run without chat, --explain only for 
     assert.equal(parseRunArgs('run', ['a', 'b', '--learn', '--headless']).learn, true, '--learn in every mode (SC-21)');
     assert.throws(() => parseRunArgs('run', ['a', '--no-learn']), (error) => error.code === 'usage' && /--no-learn gibt es nicht mehr: jeder Lauf außerhalb von CI lernt fehlende Vergleichswerte und Effekte; in CI tut das --learn/.test(error.message));
     assert.equal(parseRunArgs('run', ['a']).batch, undefined);
+    assert.equal(parseRunArgs('run', ['a']).strict, false, 'pending steps pass unless asked');
+    assert.equal(parseRunArgs('run', ['--all', '--strict']).strict, true);
+    assert.throws(() => parseRunArgs('open', ['a', '--strict']), /open kennt die Option --strict nicht/);
 });
 
 test('chooseEnv: the only candidate, for run outside CI the only one with Claude, otherwise the choices; logged', () => {
@@ -112,19 +117,47 @@ test('list: per test environments, recording state and writes; with a test one l
     assert.equal(list(root, [], { out }), EXIT.pass);
     assert.match(lines[0], /^Test\s+Umgebungen\s+Aufnahme\s+Daten$/);
     assert.match(lines.find((line) => line.startsWith('anmelden')), /local\s+aufgenommen\s+liest nur/);
-    assert.match(lines.find((line) => line.startsWith('bestellen')), /local, staging\s+veraltet \(S2, S3\)\s+schreibt/);
+    // S3 is the unrecorded tail (pending), but S2 is stale: the test stays stale and names S2 only.
+    assert.match(lines.find((line) => line.startsWith('bestellen')), /local, staging\s+veraltet \(S2\)\s+schreibt/);
     assert.match(lines.find((line) => line.startsWith('neu')), /nicht aufgenommen/);
     lines.length = 0;
     list(root, ['bestellen'], { out });
     assert.match(lines[0], /bestellen: Start \/, Rolle tester, Umgebungen local, staging, schreibt/);
     assert.match(lines[1], /^\s+S1\s+Liste\s+\(aufgenommen\)$/);
     assert.match(lines[2], /^\s+S2\s+geaendert\s+\(veraltet\)$/);
-    assert.match(lines[3], /^\s+S3\s+Ende\s+\(nicht aufgenommen\)$/);
+    assert.match(lines[3], /^\s+S3\s+Ende\s+\(offen\)$/);
     // A typo gets the closest name; recording under the typo is only offered as a new test.
     assert.throws(() => list(root, ['bestelen'], { out }), (error) => error.code === 'test-missing'
         && /Meintest du bestellen\? Bekannte Tests: anmelden, bestellen, neu\. Einen neuen Test unter diesem Namen nimmt auf: caw record bestelen/.test(error.message));
     assert.throws(() => list(root, ['zzzzzz'], { out }), (error) => /Neu aufnehmen: caw record zzzzzz/.test(error.message) && !/Meintest/.test(error.message));
     assert.throws(() => list(root, ['a', 'b'], { out }), /Unerwartetes Argument: b/);
+});
+
+test('pending steps: list, validate and caw_list name them; --strict, a gap and open behind them stop with exit 4 before a browser starts', async (t) => {
+    const root = project(t);
+    const base = { role: 'tester', source: 'deployed', notes: '', knownMessages: undefined, environments: ['local'], writes: true };
+    writeTest(root, { ...base, id: 'ausbauen', steps: [recorded(step('S1', 'Liste')), recorded(step('S2', 'Filter')), step('S3', 'Export'), step('S4', 'Download')] });
+    writeTest(root, { ...base, id: 'luecke', steps: [recorded(step('S1', 'Liste')), step('S2', 'Filter'), recorded(step('S3', 'Export'))] });
+    const lines = [];
+    const out = (text) => lines.push(text);
+    list(root, [], { out });
+    assert.match(lines.find((line) => line.startsWith('ausbauen')), /local\s+offen \(S3, S4\)\s+schreibt/);
+    assert.match(lines.find((line) => line.startsWith('luecke')), /local\s+veraltet \(S2\)\s+schreibt/, 'a gap is no pending tail');
+    lines.length = 0;
+    list(root, ['ausbauen'], { out });
+    assert.deepEqual(lines.slice(1).map((line) => line.replace(/\s+/g, ' ').trim()), ['S1 Liste (aufgenommen)', 'S2 Filter (aufgenommen)', 'S3 Export (offen)', 'S4 Download (offen)']);
+    const listed = listProject(root).tests.find(({ id }) => id === 'ausbauen');
+    assert.deepEqual(listed.recording, { state: 'pending', stale: [], pending: ['S3', 'S4'] });
+    assert.deepEqual(listed.steps.map(({ recording }) => recording), ['recorded', 'recorded', 'pending', 'pending']);
+    const checked = validateProject(root).tests.find(({ id }) => id === 'ausbauen');
+    assert.deepEqual(checked.problems, [], 'pending steps are no problem');
+    assert.deepEqual(checked.pending, ['S3', 'S4']);
+    assert.deepEqual(checked.hints, ['ausbauen.yaml: S3, S4 offen, noch nicht aufgenommen (run besteht ohne sie, --strict nicht).']);
+    // --strict does not pass pending steps; nothing starts.
+    await assert.rejects(run(root, ['ausbauen', '--env', 'local', '--strict']), (error) => error.code === 'replay-pending' && /S3, S4 von ausbauen offen.*caw record ausbauen@S3 --env local$/.test(error.message));
+    await assert.rejects(run(root, ['luecke', '--env', 'local']), (error) => error.code === 'replay-stale' && /^S2 hat keine Aufzeichnung/.test(error.message));
+    // open behind a pending step names the first one; open at it lands after S2 (replayToEntry, see test-file.test.mjs).
+    await assert.rejects(open(root, ['ausbauen@S4', '--env', 'local'], { interactive: true }), (error) => error.code === 'replay-stale' && /^S3 ist offen, noch nicht aufgenommen\. Nimm ihn zuerst auf: caw record ausbauen@S3 --env local$/.test(error.message));
 });
 
 test('list without caw.config.json reports the missing config like every other command', (t) => {
@@ -230,6 +263,13 @@ test('junitXml: fail as failure, needs recording and errors as error, text safel
     assert.match(xml, /<testcase classname="caw\.local" name="a" time="1.000"\/>/);
     assert.match(xml, /<failure type="fail" message="at S2 &lt;x&gt; &amp; &quot;y&quot;"\/>/);
     assert.match(xml, /<error type="needs-recording" message="no recording"\/>/);
+});
+
+test('junitXml: a pass with pending steps stays a pass and carries its note in system-out, not as skipped', () => {
+    const xml = junitXml({ target: 'local', rows: [{ test: 'a', exit: 0, seconds: 1, note: 'S4–S5 offen', pending: ['S4', 'S5'] }] });
+    assert.match(xml, /<testsuite name="caw local" tests="1" failures="0" errors="0" skipped="0"/);
+    assert.match(xml, /<testcase classname="caw\.local" name="a" time="1\.000">\n {6}<system-out>S4–S5 offen<\/system-out>\n {4}<\/testcase>/);
+    assert.doesNotMatch(xml, /<skipped/);
 });
 
 test('runMode: environment, team language and whether the run learns; open never', () => {

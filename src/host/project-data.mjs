@@ -15,7 +15,7 @@ import { ensureMcpEntry } from './mcp-entry.mjs';
 import { SKILL_PATH, skillState, writeSkill } from './skill.mjs';
 import { projectPath } from './project-path.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
-import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
+import { brokenChain, checkTest, environmentProblems, loadTest, pendingSteps, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
 
 
 const testIds = (root) => {
@@ -69,7 +69,14 @@ const validateTest = (root, id, config) => {
         if (chain !== null) entry.hints.push(t('cli.validateChain', { file, chain }));
         const stale = staleSteps(spec);
         if (stale.length === spec.steps.length && spec.steps.every(({ recording }) => recording === undefined)) entry.hints.push(t('cli.validateNotRecorded', { file }));
-        else for (const { id: step, why } of stale) entry.hints.push(`${step} ${why}.`);
+        else {
+            const pending = pendingSteps(spec);
+            for (const { id: step, why } of stale.filter(({ id: staleId }) => !pending.includes(staleId))) entry.hints.push(`${step} ${why}.`);
+            if (pending.length > 0) {
+                entry.pending = pending;
+                entry.hints.push(t('cli.validatePending', { file, ids: pending.join(', ') }));
+            }
+        }
     } catch (error) {
         entry.problems.push(error.message);
     }
@@ -77,8 +84,9 @@ const validateTest = (root, id, config) => {
 };
 
 /**
- * `caw validate` as data. `ok` is false when the config is invalid or has TODO values, or a test has a problem.
- * @returns { ok, config: { issues, todo, notes }, tests: [{ id, problems, hints, code: [{ env, code, overlay }] }], recordings: { problems, hints } }
+ * `caw validate` as data. `ok` is false when the config is invalid or has TODO values, or a test has a problem. Pending steps
+ * are no problem: a test lists them under `pending`.
+ * @returns { ok, config: { issues, todo, notes }, tests: [{ id, problems, hints, pending?, code: [{ env, code, overlay }] }], recordings: { problems, hints } }
  */
 export const validateProject = (root) => {
     const recordings = { problems: [], hints: [] };
@@ -100,19 +108,23 @@ export const validateProject = (root) => {
     return { ok, config: { issues: [], todo, notes }, tests, recordings };
 };
 
-/** How far a test is recorded: recorded, stale (with the steps) or none. Same as `recordingState` in commands.mjs. */
+/**
+ * How far a test is recorded: recorded, pending (recorded up to an unrecorded tail, `pending` names it), stale (with the steps)
+ * or none. Same as `recordingState` in commands.mjs.
+ */
 const recordingState = (spec) => {
-    if (spec.steps.every(({ recording }) => recording === undefined)) return { state: 'none', stale: [] };
-    const stale = staleSteps(spec).map(({ id }) => id);
+    if (spec.steps.every(({ recording }) => recording === undefined)) return { state: 'none', stale: [], pending: [] };
+    const pending = pendingSteps(spec);
+    const stale = staleSteps(spec).map(({ id }) => id).filter((id) => !pending.includes(id));
     const chain = brokenChain(spec);
-    if (stale.length === 0 && chain === null) return { state: 'recorded', stale: [] };
-    return { state: 'stale', stale, ...(chain === null ? {} : { chain }) };
+    if (stale.length === 0 && chain === null) return { state: pending.length === 0 ? 'recorded' : 'pending', stale: [], pending };
+    return { state: 'stale', stale, pending, ...(chain === null ? {} : { chain }) };
 };
 
 /**
  * `caw list` as data: per test start path, role, environments, whether it writes and the recording state per step. Without a
  * readable config the tests are listed as written (no defaults for role and environments).
- * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, start, role, environments, writes, recording, steps: [{ id, name, recording }] } | { id, error }] }
+ * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, start, role, environments, writes, recording, steps: [{ id, name, recording: 'recorded'|'stale'|'pending'|'none' }] } | { id, error }] }
  */
 export const listProject = (root) => {
     let config = null;
@@ -128,6 +140,7 @@ export const listProject = (root) => {
             const spec = config === null ? raw : withDefaults(raw, config);
             const recording = recordingState(spec);
             const stale = new Set(recording.stale);
+            const pending = new Set(recording.pending);
             return {
                 id,
                 start: config === null ? (spec.start ?? null) : startPath(config, spec),
@@ -138,7 +151,7 @@ export const listProject = (root) => {
                 steps: spec.steps.map((step) => ({
                     id: step.id,
                     name: step.name ?? '',
-                    recording: step.recording === undefined ? 'none' : stale.has(step.id) ? 'stale' : 'recorded',
+                    recording: pending.has(step.id) ? 'pending' : step.recording === undefined ? 'none' : stale.has(step.id) ? 'stale' : 'recorded',
                 })),
             };
         } catch (error) {

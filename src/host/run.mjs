@@ -516,7 +516,8 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const durations = () => Object.fromEntries([...stepTimes].filter(([, { end }]) => end !== undefined).map(([id, { start, end }]) => [id, (end - start) / 1000]));
 
     // `code`: the same words as the CLI line, e.g. "dev server localhost:5173, your current version" instead of just "deployed".
-    const reportBase = { testId: runName, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }) };
+    // The pending tail (replayOf) did not play: result.json and report.md name it, the verdict only covers the recorded steps.
+    const reportBase = { testId: runName, target, source: checked.source, testedCode: codeLine, expectations: spec.expectations, ...(note === undefined ? {} : { note }), ...(replay?.pending === undefined ? {} : { pending: replay.pending }) };
     // A reproduction's report shows the bug report and the run's rules also when it ends early; finish adds Claude's verdict.
     if (reproduce !== undefined) reportBase.reproduce = { bug: reproduce.bug, writable: reproduce.writes, ...(reproduce.from === undefined ? {} : { from: reproduce.from }) };
     let verdict = null;
@@ -1778,7 +1779,10 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             return closeRun(ended);
         }
         // Per step what it did: status, time, requests and effects. Redacted with the verdict in writeResult.
-        reportBase.steps = stepRecords({ ids: spec.expectations.map(({ id }) => id), ...ended, durations: durations(), withEffects: checked.production !== true });
+        reportBase.steps = [
+            ...stepRecords({ ids: spec.expectations.map(({ id }) => id), ...ended, durations: durations(), withEffects: checked.production !== true }),
+            ...(replay.pending ?? []).map((id) => ({ id, status: 'pending' })),
+        ];
         await session.workbench?.point(END, 'effects', 'running');
         await agentHandler({ action: 'finish', results: replayVerdict({ ...ended, expectations: spec.expectations }) });
         played = ended;
@@ -1787,6 +1791,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             const status = ended.results?.get(id)?.status;
             await session.workbench?.step(id, id === failed?.id || (status !== undefined && status !== 'pass') ? 'fail' : status === 'pass' ? 'pass' : 'skipped');
         }
+        // The workbench knows no state of its own for them: skipped, with a note that says why.
+        for (const id of replay.pending ?? []) await session.workbench?.step(id, 'skipped', t('run.pendingStep'));
         await markEntry(replay, failed);
         if (failed !== null) {
             // Test, application or environment: evidence from the browser and the comparison with the step's recording.

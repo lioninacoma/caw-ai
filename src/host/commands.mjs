@@ -24,7 +24,7 @@ import { describeCode } from './code-source.mjs';
 import { ignoreAuthDir, requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
 import { projectPath } from './project-path.mjs';
-import { brokenChain, checkTest, environmentProblems, loadTest, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
+import { brokenChain, checkTest, environmentProblems, loadTest, pendingSteps, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
 // Only what the container runs. Browser code and devlink stay out.
@@ -449,7 +449,12 @@ export const validate = (root) => {
             if (chain !== null) hints.push(t('cli.validateChain', { file, chain }));
             const stale = staleSteps(spec);
             if (stale.length === spec.steps.length && spec.steps.every(({ recording }) => recording === undefined)) hints.push(t('cli.validateNotRecorded', { file }));
-            else for (const { id, why } of stale) hints.push(`${file}: ${id} ${why}.`);
+            else {
+                // Pending steps are no defect: they are named once as the tail still to be recorded.
+                const pending = pendingSteps(spec);
+                for (const { id, why } of stale.filter(({ id: staleId }) => !pending.includes(staleId))) hints.push(`${file}: ${id} ${why}.`);
+                if (pending.length > 0) hints.push(t('cli.validatePending', { file, ids: pending.join(', ') }));
+            }
         } catch (error) {
             problems.push(error.message);
         }
@@ -584,6 +589,9 @@ export const stepsText = (spec) => {
     return plain && ids.length > 2 ? `${ids[0]}–${ids.at(-1)}` : ids.join(', ');
 };
 
+/** Pending steps are one tail in a row: "S4–S6", or "S4" alone. */
+const stepRange = (ids) => (ids.length === 1 ? ids[0] : `${ids[0]}–${ids.at(-1)}`);
+
 /** The step does not exist: with a suggestion and the test's steps. */
 const stepUnknown = (key, spec, step, extra = {}) => new CawError('step-unknown', t(key, {
     test: spec.id,
@@ -640,12 +648,16 @@ const testLoader = (root) => {
     return (id) => (config === null ? loadTest(root, id) : withDefaults(loadTest(root, id), config));
 };
 
-/** How far a test is recorded: recorded, stale (with the steps) or none. */
+/**
+ * How far a test is recorded: recorded, pending (recorded up to an unrecorded tail, with its steps), stale (with the steps) or
+ * none. Stale wins over pending: such a test does not run.
+ */
 const recordingState = (spec) => {
     if (spec.steps.every(({ recording }) => recording === undefined)) return { state: 'none', ids: [] };
-    const stale = staleSteps(spec).map(({ id }) => id);
+    const pending = pendingSteps(spec);
+    const stale = staleSteps(spec).map(({ id }) => id).filter((id) => !pending.includes(id));
     const chain = brokenChain(spec);
-    if (stale.length === 0 && chain === null) return { state: 'recorded', ids: [] };
+    if (stale.length === 0 && chain === null) return pending.length === 0 ? { state: 'recorded', ids: [] } : { state: 'pending', ids: pending };
     return { state: 'stale', ids: stale, chain };
 };
 
@@ -678,10 +690,12 @@ export const list = (root, args, { out = console.log } = {}) => {
         }
         const spec = testLoader(root)(test);
         const stale = new Set(staleSteps(spec).map(({ id }) => id));
+        const pending = new Set(pendingSteps(spec));
         out(t('cli.listTestHead', { test: spec.id, start: startPath(displayConfig(root), spec), role: spec.role ?? '–', environments: (spec.runsOn ?? spec.environments ?? []).join(', '), writes: writesText(spec) }));
         const rows = spec.steps.map((step) => {
             let state = 'cli.listStepRecorded';
-            if (step.recording === undefined) state = 'cli.listStepNotRecorded';
+            if (pending.has(step.id)) state = 'cli.listStepPending';
+            else if (step.recording === undefined) state = 'cli.listStepNotRecorded';
             else if (stale.has(step.id)) state = 'cli.listStepStale';
             return [`  ${step.id}`, step.name ?? '', `(${t(state)})`];
         });
@@ -704,6 +718,7 @@ export const list = (root, args, { out = console.log } = {}) => {
             let text = t('cli.listRecorded');
             if (state === 'none') text = t('cli.listNotRecorded');
             else if (state === 'stale') text = t('cli.listStale', { ids: staleIds.join(', ') || chain });
+            else if (state === 'pending') text = t('cli.listPending', { ids: staleIds.join(', ') });
             return [id, (spec.runsOn ?? spec.environments ?? []).join(', '), text, writesText(spec)];
         } catch (error) {
             // The table stays narrow, the reason goes below it; validate lists all findings.
@@ -1007,20 +1022,23 @@ export const changeTracker = (root) => {
  * run prepares a state and hands over the window, to continue working on the local build from there: with `entry` at the
  * entry of that step, otherwise after the whole test. With --explain Claude advises on errors and warnings, which costs
  * tokens. --no-chat runs as in CI, --headless additionally without a window. Outside CI every run writes missing baselines
- * and effects of its passed steps; in CI only with --learn.
+ * and effects of its passed steps; in CI only with --learn. A pending tail (pendingSteps) does not play and does not fail the
+ * run; with --strict it stops the run before anything starts (exit 4).
  * @param quiet in a batch: no mode line, the batch prints it once
- * @returns { code, failed } with the failed step ({ id, reason }), if one failed
+ * @returns { code, failed, pending } with the failed step ({ id, reason }), if one failed, and the pending steps' ids
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
-    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
+    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
     const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
     const { assertPlayable } = await import('./replay.mjs');
     // open without a test has no steps: nothing to play back, just log in and hand over. At the entry of a step the steps before
-    // it must be playable; the step itself only leads in, and if it is stale, nothing of it runs.
-    if (loaded === undefined && entry === undefined) assertPlayable(spec, target);
+    // it must be playable; the step itself only leads in, and if it is stale, nothing of it runs. The whole test may end in
+    // pending steps: they are the part still to be built, the run plays up to the last recorded one (unless --strict).
+    if (loaded === undefined && entry === undefined) assertPlayable(spec, target, undefined, { pending: !strict });
     else if (loaded === undefined && position > 0) assertPlayable(spec, target, spec.steps[position - 1].id);
+    const pending = entry === undefined ? pendingSteps(spec) : [];
     // The environment's reset before the first writing test (or the first test with --reset), before anything signs in.
     await lifecycle?.beforeTest(spec);
     // A missing test user stops the run here, before Chrome or Claude start.
@@ -1077,7 +1095,9 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         },
     });
     if (canFix || learns) ui.info(tracker.summary());
-    return { code, failed };
+    // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
+    if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), test, step: pending[0], target }));
+    return { code, failed, pending };
 };
 
 const XML_ESCAPES = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' };
@@ -1086,13 +1106,20 @@ const XML_ESCAPES = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'"
 const xmlText = (text) => String(text).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/[<>&"']/g, (char) => XML_ESCAPES[char]);
 const JUNIT_TYPES = { [EXIT.fail]: 'fail', [EXIT.error]: 'error', [EXIT.rejected]: 'rejected', [EXIT.needsRecording]: 'needs-recording' };
 
-/** The run table as JUnit XML, as CI systems read it: fail as failure, everything else except pass as error. */
+/**
+ * The run table as JUnit XML, as CI systems read it: fail as failure, everything else except pass as error. A pass with pending
+ * steps stays a pass and carries its note in system-out: `<skipped>` would count the whole test as skipped, though its
+ * recorded steps ran and passed.
+ */
 export const junitXml = ({ target, rows }) => {
     const failures = rows.filter(({ exit }) => exit === EXIT.fail).length;
     const errors = rows.filter(({ exit }) => exit !== EXIT.fail && exit !== EXIT.pass).length;
     const time = rows.reduce((sum, { seconds = 0 }) => sum + seconds, 0).toFixed(3);
-    const cases = rows.map(({ test, exit, seconds = 0, note = '' }) => {
+    const cases = rows.map(({ test, exit, seconds = 0, note = '', pending = [] }) => {
         const open = `    <testcase classname="caw.${xmlText(target)}" name="${xmlText(test)}" time="${seconds.toFixed(3)}"`;
+        if (exit === EXIT.pass && pending.length > 0) return `${open}>
+      <system-out>${xmlText(note)}</system-out>
+    </testcase>`;
         if (exit === EXIT.pass) return `${open}/>`;
         const tag = exit === EXIT.fail ? 'failure' : 'error';
         return `${open}>\n      <${tag} type="${JUNIT_TYPES[exit] ?? 'error'}" message="${xmlText(note)}"/>\n    </testcase>`;
@@ -1139,17 +1166,20 @@ const runBatch = async (root, options, deps, { tests, target }) => {
         const started = Date.now();
         let exit;
         let note = '';
+        let pending = [];
         try {
             const result = await runOne(root, { ...options, test, target, quiet: options.batch === true }, deps);
             exit = result.code;
+            pending = result.pending;
             if (result.failed !== undefined && exit !== EXIT.pass) note = t('cli.batchAt', { step: result.failed.id });
+            else if (exit === EXIT.pass && pending.length > 0) note = t('cli.batchPending', { steps: stepRange(pending) });
         } catch (error) {
             if (error?.code === 'env-reset-failed') throw error;
             // As in bin/caw.mjs: an expected error by its code, an unexpected one is error.
             exit = error instanceof CawError ? exitOf(error.code) : EXIT.error;
             note = String(error?.message ?? error).split('\n')[0];
         }
-        rows.push({ test, exit, seconds: (Date.now() - started) / 1000, note });
+        rows.push({ test, exit, seconds: (Date.now() - started) / 1000, note, pending });
     }
     ui.batch({ target, rows });
     if (options.junit !== undefined) {

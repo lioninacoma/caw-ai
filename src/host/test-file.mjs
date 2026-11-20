@@ -672,6 +672,17 @@ export const staleSteps = (spec) => spec.steps.flatMap((step) => {
 });
 
 /**
+ * The pending steps: the unrecorded tail after the last recorded step, the steps still to be built. A run plays the recorded
+ * steps and passes without them. Only the tail: an unrecorded step before a recorded one (a gap) and a step changed after
+ * recording stay stale, otherwise editing a step's text would quietly drop its check from CI. Nothing recorded: none pending.
+ * @returns the ids, e.g. ['S4', 'S5']
+ */
+export const pendingSteps = (spec) => {
+    const last = spec.steps.findLastIndex(({ recording }) => recording !== undefined);
+    return last === -1 ? [] : spec.steps.slice(last + 1).map(({ id }) => id);
+};
+
+/**
  * Does a recording build on a step that no longer precedes it? An inserted step is fine, a deleted or moved one is not, because
  * what follows relies on its state.
  * @returns the first step at such a place, or null

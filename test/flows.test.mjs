@@ -707,3 +707,15 @@ test('Developing: a state picked with F1 is restored only after the human confir
     ]);
     assert.deepEqual(restored, [['anderer-test', 'S1']], 'cancelled is not restored, confirmed is');
 });
+
+test('Test run with a pending tail: the recorded steps play and count, the run passes, the pending ones go along by name', async () => {
+    const plain = { id: 'S2', name: 'S2', do: '', expect: 'S2 da' };
+    const building = { id: 't', steps: [stepOf('S1'), plain], expectations: [{ id: 'S1' }, { id: 'S2' }] };
+    const h = harness({ outcomes: [pass] });
+    assert.equal(await runFlow({ spec: building, handover: false, canFix: false, openSandbox: async () => 's', ...h }), EXIT.pass);
+    const { replay, command } = h.calls[0];
+    assert.equal(command, undefined, 'still a test run, not open');
+    assert.equal(replay.until, 'S1');
+    assert.deepEqual(replay.pending, ['S2']);
+    assert.deepEqual(replay.steps.map(({ action, id }) => `${action}${id === undefined ? '' : ` ${id}`}`), ['reload', 'check S1']);
+});

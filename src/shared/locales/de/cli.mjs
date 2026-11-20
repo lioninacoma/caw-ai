@@ -48,6 +48,8 @@ Befehle:`,
       [--headless]                       Ohne Fenster und ohne Chat
       [--learn]                          In CI: fehlende Vergleichswerte und Effekte in caw/recordings/ lernen (außerhalb
                                          von CI tut das jeder Lauf)
+      [--strict]                         Offene Schritte (der nicht aufgenommene Rest) lassen den Lauf mit Exit 4
+                                         scheitern, statt dass er ohne sie besteht
       [--start]                          Die Umgebung mit ihrem start-Befehl starten, wenn sie nicht antwortet, am Ende
                                          stoppen; mit --overlay auch die lokalen Code-Server der Teile
       [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
@@ -65,7 +67,7 @@ Befehle:`,
       [--env <name>]                     schlimmsten Laufs. --all nimmt jeden Test, der die Umgebung nennt
       [--headless]                       Ohne Fenster
       [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML
-      [--learn] [--start] [--reset | --no-reset]  wie bei einem Test; start und reset einmal für die ganze Reihe`,
+      [--learn] [--strict] [--start] [--reset | --no-reset]  wie bei einem Test; start und reset einmal für die ganze Reihe`,
     'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Die Anwendung öffnen, mit Werkbank und Chat. Ohne Test: navigieren,
                                          ausprobieren, mit {agent} entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
                                          zum Einstieg in S4 (seine Navigation läuft, Eingaben und Prüfung bleiben offen).
@@ -255,6 +257,7 @@ Browser:
     // commands.mjs: validate
     'cli.validateChain': '{file}: {chain}, neu aufnehmen.',
     'cli.validateNotRecorded': '{file}: noch nicht aufgenommen.',
+    'cli.validatePending': '{file}: {ids} offen, noch nicht aufgenommen (run besteht ohne sie, --strict nicht).',
     'cli.validateOk': '{config} und {count} Test(s) sind gültig.',
     'cli.validateCode': '{id} ({target}): {code}',
     'cli.validateCodeOverlay': '{id} ({target}): {code}; mit --overlay: {overlay}',
@@ -273,12 +276,14 @@ Browser:
     'cli.listRecorded': 'aufgenommen',
     'cli.listStale': 'veraltet ({ids})',
     'cli.listNotRecorded': 'nicht aufgenommen',
+    'cli.listPending': 'offen ({ids})',
     'cli.listInvalid': 'ungültig',
     'cli.listWrites': 'schreibt',
     'cli.listReadOnly': 'liest nur',
     'cli.listStepRecorded': 'aufgenommen',
     'cli.listStepStale': 'veraltet',
     'cli.listStepNotRecorded': 'nicht aufgenommen',
+    'cli.listStepPending': 'offen',
     'cli.listTestHead': '{test}: Start {start}, Rolle {role}, Umgebungen {environments}, {writes}',
     'cli.knownTests': 'Bekannte Tests: {tests}.',
     'cli.noTests': 'In caw/tests gibt es noch keine Tests.',
@@ -361,6 +366,7 @@ Browser:
     'cli.batchStatus.rejected': 'ABGELEHNT',
     'cli.batchStatus.needsRecording': 'AUFNAHME NÖTIG',
     'cli.batchAt': 'bei {step}',
+    'cli.batchPending': '{steps} offen',
     'cli.junitWritten': 'JUnit-Bericht: {file}',
     'cli.stepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps}',
     'cli.adviseAgentOnly': '--explain nur auf Umgebungen, auf denen {agent} arbeiten darf (hier: {environments}), nicht auf {target}.',
@@ -371,6 +377,7 @@ Browser:
     'cli.failedHint': '{step} ist gescheitert. Ursache klären im Lauf mit Chat: caw run {test} --env {target}',
     'cli.failedHintNoAgent': '{step} ist gescheitert. Die Ursache klärt ein Lauf mit Chat, auf einer Umgebung, auf der {agent} arbeiten darf (hier: {environments}).',
     'cli.untilHint': 'Bis zum Einstieg in den Schritt: caw open {test}@{step} --env {target}',
+    'cli.pendingSteps': 'Offen, noch nicht aufgenommen: {ids}. Sie liefen nicht. Nimm sie auf: caw record {test}@{step} --env {target}',
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role und --read-only müssen zur Datei passen oder entfallen.',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
     'cli.recordFromReason': 'Neu aufnehmen ab {step} ist gewünscht',

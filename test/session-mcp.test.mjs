@@ -76,7 +76,7 @@ test('caw_doctor, caw_validate and caw_list: data with counts, problems and reco
     const listed = (await call('caw_list')).structuredContent;
     assert.equal(listed.config, 'ok');
     assert.deepEqual(listed.tests[0], {
-        id: 'bestellung', start: '/', role: 'tester', environments: ['local'], writes: false, recording: { state: 'none', stale: [] },
+        id: 'bestellung', start: '/', role: 'tester', environments: ['local'], writes: false, recording: { state: 'none', stale: [], pending: [] },
         steps: [{ id: 'S1', name: 'Öffnen', recording: 'none' }, { id: 'S2', name: 'Bestellen', recording: 'none' }],
     });
 

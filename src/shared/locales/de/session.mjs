@@ -184,6 +184,8 @@ export default {
     'session.replay.missing': '{id} hat noch keine Aufzeichnung. Einmal aufnehmen: caw record {id} --env {target}',
     'session.replay.chainStale': '{chain}. Neu aufnehmen ab dort: caw record {id}@{step} --env {target}',
     'session.replay.stepStale': '{step} {why}. Neu aufnehmen ab dort: caw record {id}@{step} --env {target}',
+    'session.replay.stepPending': '{step} ist offen, noch nicht aufgenommen. Nimm ihn zuerst auf: caw record {id}@{step} --env {target}',
+    'session.replay.pendingStrict': '{ids} von {id} offen, noch nicht aufgenommen; mit --strict besteht das nicht. Nimm sie auf: caw record {id}@{step} --env {target}',
     'session.replay.stepUnknown': '{id} hat keinen Schritt {until}.',
     'session.replay.locked': 'Das Ziel war da, blieb aber gesperrt: Die Anwendung hat es in dieser Zeit nicht freigegeben.',
     'session.replay.allTriesFailed': 'In allen {count} Versuchen gescheitert: {reason}{why}',

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, replayBefore, replayOf, replayUpToStale, trailingNumbers } from '../src/host/replay.mjs';
-import { brokenChain, loadTest, parsePlan, parseRecordings, parseTest, recordingHints, recordingPath, renderPlan, renderTest, staleSteps, stepHash, testPath, writeTest } from '../src/host/test-file.mjs';
+import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, replayBefore, replayOf, replayToEntry, replayUpToStale, trailingNumbers } from '../src/host/replay.mjs';
+import { brokenChain, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, renderPlan, renderTest, staleSteps, stepHash, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
 
 const NEXT = "getByRole('button', { name: 'Next', exact: true })";
@@ -180,6 +180,35 @@ test('stale: the steps before it still play, the full run suggests re-recording 
     assertPlayable(changed, 'a/dev', 'S2');
     assert.throws(() => assertPlayable(changed, 'a/dev'), (error) => error.code === 'replay-stale' && /S3 .*Neu aufnehmen ab dort: caw record t@S3 --env a\/dev$/.test(error.message));
     assert.throws(() => assertPlayable(spec(plain('S1')), 'a/dev'), (error) => error.code === 'replay-missing' && /record t/.test(error.message));
+});
+
+test('pending: only the unrecorded tail after a recorded step; gaps, stale steps and nothing recorded stay as they were', () => {
+    const click = { action: 'click', target: NEXT };
+    const building = spec(recorded('S1', [click]), recorded('S2', [], { after: 'S1' }), plain('S3'), plain('S4'));
+    assert.deepEqual(pendingSteps(building), ['S3', 'S4']);
+    assert.deepEqual(pendingSteps(spec(plain('S1'), plain('S2'))), [], 'nothing recorded: nothing pending, record the test');
+    assert.deepEqual(pendingSteps(spec(recorded('S1'), plain('S2'), recorded('S3'))), [], 'a gap is no tail');
+    assert.deepEqual(pendingSteps(spec(recorded('S1'), recorded('S2'))), []);
+    // run: plays up to S2 and passes; --strict (no pending allowed) names the tail and the command that records it.
+    assertPlayable(building, 'a/dev', undefined, { pending: true });
+    assert.throws(() => assertPlayable(building, 'a/dev'), (error) => error.code === 'replay-pending' && /^S3, S4 von t offen, noch nicht aufgenommen; mit --strict .*caw record t@S3 --env a\/dev$/.test(error.message));
+    // The rest keeps exit 4: a gap, a step changed after recording before the tail, nothing recorded.
+    assert.throws(() => assertPlayable(spec(recorded('S1'), plain('S2'), recorded('S3')), 'a/dev', undefined, { pending: true }), (error) => error.code === 'replay-stale' && /^S2 hat keine Aufzeichnung/.test(error.message));
+    assert.throws(() => assertPlayable(spec({ ...recorded('S1'), do: 'edited' }, plain('S2')), 'a/dev', undefined, { pending: true }), (error) => error.code === 'replay-stale' && /^S1 wurde nach der Aufzeichnung geändert/.test(error.message));
+    assert.throws(() => assertPlayable(spec(plain('S1'), plain('S2')), 'a/dev', undefined, { pending: true }), (error) => error.code === 'replay-missing');
+    // open @S4 behind the pending S3: S3 gets recorded first.
+    assert.throws(() => assertPlayable(building, 'a/dev', 'S3'), (error) => error.code === 'replay-stale' && /^S3 ist offen, noch nicht aufgenommen\. Nimm ihn zuerst auf: caw record t@S3 --env a\/dev$/.test(error.message));
+    // The replay stops after the last recorded step: `until` limits the verdict to S1 and S2, `pending` names the rest.
+    const replay = replayOf(building);
+    assert.equal(replay.until, 'S2');
+    assert.deepEqual(replay.pending, ['S3', 'S4']);
+    assert.deepEqual(replay.steps.map(({ action, id }) => id ?? action), ['click', 'S1', 'S2']);
+    assert.equal(replayOf(spec(recorded('S1'), recorded('S2'))).pending, undefined, 'fully recorded: as before');
+    // open @S3 with S3 the first pending step: everything up to S2 runs, nothing of S3.
+    const entry = replayToEntry(building, 'S3');
+    assert.equal(entry.until, 'S2');
+    assert.equal(entry.entry.skipped, 'recording');
+    assert.deepEqual(entry.steps.map(({ action, id }) => id ?? action), ['click', 'S1', 'S2']);
 });
 
 test('deleted or moved steps require re-recording, inserted ones do not', () => {

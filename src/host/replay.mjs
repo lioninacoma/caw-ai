@@ -21,7 +21,7 @@ import { summarizeRequests } from './network-log.mjs';
 import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
 import { escapeRegex, isPositional, locatorLabel, locatorText, mapStrings, parseLocator, printLocator } from './locator.mjs';
 import { recordLocator } from './record-locator.mjs';
-import { brokenChain, brokenChainAt, staleSteps, stepHash, withExpectations } from './test-file.mjs';
+import { brokenChain, brokenChainAt, pendingSteps, staleSteps, stepHash, withExpectations } from './test-file.mjs';
 
 const HINT_TIMEOUT_MS = 5000;
 const CHECK_POLL_MS = 250;
@@ -540,16 +540,27 @@ const positional = (target) => {
 export const positionalActions = (spec, ids) => spec.steps.filter(({ id }) => ids === undefined || ids.has(id)).flatMap(({ id, recording }) => (recording?.actions ?? [])
     .filter(({ target }) => positional(target)).map((action) => `${id} ${stepLabel(action)}`));
 
-/** Checks before a browser opens: anything stale names the command that fixes it. */
-export const assertPlayable = (spec, target, until) => {
+/**
+ * Checks before a browser opens: anything stale names the command that fixes it. Without `until` the whole test must be
+ * playable; with `pending` a pending tail (pendingSteps) may stay open, then the check ends at the last recorded step.
+ */
+export const assertPlayable = (spec, target, until, { pending = false } = {}) => {
     if (spec.steps.every(({ recording }) => recording === undefined)) {
         throw new CawError('replay-missing', t('session.replay.missing', { id: spec.id, target }));
     }
-    const end = until === undefined ? spec.steps.length : spec.steps.findIndex(({ id }) => id === until) + 1;
+    const open = pendingSteps(spec);
+    let last = until;
+    if (last === undefined && open.length > 0) {
+        if (!pending) throw new CawError('replay-pending', t('session.replay.pendingStrict', { ids: open.join(', '), id: spec.id, step: open[0], target }));
+        last = spec.steps[spec.steps.length - open.length - 1].id;
+    }
+    const end = last === undefined ? spec.steps.length : spec.steps.findIndex(({ id }) => id === last) + 1;
     const reached = { ...spec, steps: spec.steps.slice(0, end) };
     const chain = brokenChain(reached);
     if (chain !== null) throw new CawError('replay-stale', t('session.replay.chainStale', { chain, id: spec.id, step: brokenChainAt(reached).id, target }));
     const [stale] = staleSteps(reached);
+    // A pending step on the way (open @S5 behind a pending S4) is not stale: it was never recorded, so it gets recorded first.
+    if (stale !== undefined && open.includes(stale.id)) throw new CawError('replay-stale', t('session.replay.stepPending', { step: stale.id, id: spec.id, target }));
     if (stale !== undefined) throw new CawError('replay-stale', t('session.replay.stepStale', { step: stale.id, why: stale.why, id: spec.id, target }));
 };
 
@@ -602,8 +613,16 @@ const flatten = (spec, steps, until) => ({
     ]),
 });
 
-/** The actions of all steps in one row, as they are played back. */
-export const replayOf = (spec) => flatten(spec, spec.steps);
+/**
+ * The actions of all recorded steps in one row, as they are played back. A pending tail (pendingSteps) does not play: `until`
+ * marks the last recorded step, so only the steps up to it count for the run, and `pending` names the rest.
+ */
+export const replayOf = (spec) => {
+    const pending = pendingSteps(spec);
+    if (pending.length === 0) return flatten(spec, spec.steps);
+    const recorded = spec.steps.slice(0, spec.steps.length - pending.length);
+    return { ...flatten(spec, recorded, recorded.at(-1).id), pending };
+};
 
 /**
  * The part of the recording up to a state. Nothing happens after it, not even a write.

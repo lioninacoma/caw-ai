@@ -110,7 +110,7 @@ npx caw list
 npx caw list create-ticket
 ```
 
-Without a test: one row per test with its targets, its recording status (`recorded`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)`. No browser, no Claude.
+Without a test: one row per test with its targets, its recording status (`recorded`, `pending (S4, S5)`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)` or `S4  Export  (pending)`. [Pending](test-files.md#pending-steps) is the unrecorded tail after the last recorded step. No browser, no Claude.
 
 Without `caw.config.json` it stops like every other command (`config-missing`). A test name that doesn't exist names the known tests and, for a typo, the closest one (`Did you mean create-ticket?`); `record <name>` is offered only for a new test. An unknown step names the test's steps (`Steps: S1–S6.`).
 
@@ -163,6 +163,8 @@ Replays the recording. No Claude, no tokens. On environments where Claude may wo
 
 Outside CI every run learns the missing baselines and effects of its passed steps into `caw/recordings/<test>.yaml`, headless as well as in the window, where the chat says which steps got them. In CI (`CI` set) a run changes no file, unless you pass `--learn`. The first line says which environment, which team language and whether the run learns, e.g. `Mode on local (team language en): with chat; learns: yes, missing baselines and effects into caw/recordings/create-ticket.yaml.` At the end a run that learned says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder. `result.json` lists every step under `steps`: its status (`pass`, `fail`, `skipped`), why it failed (`kind`: `check`, `effect`, `target`, `state`, `external`), its time in seconds, its requests and the effects of its actions with any deviation from the learned ones; on production without the effects, as they show visible names.
 
+A test that ends in [pending steps](test-files.md#pending-steps) (written, not recorded yet) plays its recorded steps and passes without them: the terminal ends with `Pending, not recorded yet: S4, S5. They did not run. Record them: caw record <test>@S4 --env <env>`, `report.md` names them below the results, `result.json` lists them under `pending` and under `steps` with `status: "pending"`, the workbench marks them as not reached. With `--strict` such a test stops before anything runs (exit 4, `replay-pending`). An unrecorded step before a recorded one, a step changed after recording and a test with nothing recorded stop with exit 4 as before.
+
 | Option | |
 |---|---|
 | `--overlay` | Only with the [overlay extension](extensions/overlay.md): local code over the deployed environment |
@@ -172,6 +174,7 @@ Outside CI every run learns the missing baselines and effects of its passed step
 | `--no-chat` | Visible window, no chat, no Claude. Like CI. |
 | `--headless` | No window, no chat. The recorded viewport (else 1920×1080). |
 | `--learn` | In CI: learn missing baselines and effects from passed steps into `caw/recordings/`. Outside CI every run does that anyway. |
+| `--strict` | Pending steps fail the run with exit 4 instead of passing without them, e.g. for a release pipeline. |
 | `--step-timeout <duration>` | Time limit per step, default `30s`. |
 | `--agent-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's actions when fixing. |
@@ -188,7 +191,9 @@ npx caw run create-ticket close-ticket --env dev
 
 Runs the tests one after another, without chat (`--explain` is rejected). `--all` takes every test that lists the target. Without `--env` the only target of the tests is used. A test that can't run (missing recording, typo) doesn't stop the others. At the end a table shows `PASS`, `FAIL`, `ERROR`, `NEEDS RECORDING` or `REJECTED` per test. The exit code is that of the worst run, in this order: `2` error > `1` fail > `4` needs recording > `3` rejected > `0` pass.
 
-`--report junit=<file>` also writes the table as JUnit XML (relative to the project folder and inside it; a path outside, also through a link, is refused before any test runs): `fail` as `<failure>`, everything else that didn't pass as `<error>`.
+A test with pending steps passes and shows `S4–S5 pending` in the table (with `--strict` it is `NEEDS RECORDING`).
+
+`--report junit=<file>` also writes the table as JUnit XML (relative to the project folder and inside it; a path outside, also through a link, is refused before any test runs): `fail` as `<failure>`, everything else that didn't pass as `<error>`. A pass with pending steps stays a passed test case and carries `S4–S5 pending` in `<system-out>`; `<skipped>` would count the whole test as skipped, though its recorded steps ran.
 
 ## open
 
@@ -202,7 +207,7 @@ Opens the app with workbench and chat: navigate, try things, develop with Claude
 
 - **Without a test** it opens the app's start page. If the environment has a form sign-in, you watch it in the app first, as the step "Sign in" under Preparation, then caw goes to the start page. Without `--env` it takes the only environment where Claude may work.
 - **`open <test>`** replays the whole test first, then the window is yours.
-- **`open <test>@S3`** stops at the entry of S3: S1 and S2 replay completely, of S3 only its navigation (`goto`, clicks, waiting for the page). Its inputs and its check stay open for you; the terminal says `Ready for S3 …: navigation done, inputs open`. If S3 has no inputs at all (e.g. only a submit click), none of S3 runs; if one of its clicks wrote data in earlier runs, it stops before that click; if S3 isn't recorded or is stale, none of it runs. The terminal names the reason.
+- **`open <test>@S3`** stops at the entry of S3: S1 and S2 replay completely, of S3 only its navigation (`goto`, clicks, waiting for the page). Its inputs and its check stay open for you; the terminal says `Ready for S3 …: navigation done, inputs open`. If S3 has no inputs at all (e.g. only a submit click), none of S3 runs; if one of its clicks wrote data in earlier runs, it stops before that click; if S3 isn't recorded or is stale, none of it runs. The terminal names the reason. With S3 the first [pending step](test-files.md#pending-steps) this is where you build it; `open <test>@S4` behind a pending S3 is refused and names S3 (record it first), `open <test>` plays up to the last recorded step.
 
 With a test, `open` signs in with the test's role and replays without Claude; the step it stops at isn't judged. It runs the code of the environment.
 
@@ -332,7 +337,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `1` | fail: the app didn't do what the test expects |
 | `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …), or an unexpected internal error (the stack is printed) |
 | `3` | rejected: invalid call, config (also `TODO` values left from `init`) or test file. Nothing ran. |
-| `4` | needs recording: the recording is missing (`record`) or a step changed since it was recorded (`record <test>@<step>`). Nothing ran. |
+| `4` | needs recording: the recording is missing (`record`), a step changed since it was recorded (`record <test>@<step>`), or `run --strict` met pending steps. Nothing ran. |
 
 ## Environment variables
 
@@ -361,6 +366,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `test-missing`, `test-invalid` | 3 | Create or fix the test file, then `validate` |
 | `replay-missing` | 4 | `record` the test |
 | `replay-stale` | 4 | A step changed since recording: `record <test>@<step>` |
+| `replay-pending` | 4 | `run --strict` and the test ends in pending steps: `record <test>@<first pending step>` |
 | `step-unknown` | 3 | Use a step ID from the test file (`list <test>`) |
 | `env-invalid`, `env-denied` | 3 | Use an environment from the config; production can't be recorded |
 | `host-blocked` | 3 | `goto` to a host that is no app host: add it to `allowHosts` if the app really navigates there. In a run the same block is a failure of the step |

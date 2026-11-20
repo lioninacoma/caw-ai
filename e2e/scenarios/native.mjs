@@ -889,3 +889,51 @@ $A finish --file /tmp/f.json`;
         writeFileSync(join(native, 'caw.config.json'), before);
     }
 });
+
+// ---- N13: pending steps (the unrecorded tail) pass, --strict does not; open lands before the first pending step
+
+// A copy of n9-shadow (S1, S2 recorded) with S3 and S4 written but not recorded yet.
+const PENDING = 'rec-pending';
+scenario('N13', 'Pending steps: run passes with S1–S2 and names S3, S4; --strict exits 4; open @S4 names S3; open @S3 lands after S2; the workbench marks them', async () => {
+    const parsed = parseTest(testText(PENDING, TESTS['n9-shadow']));
+    const later = [
+        { id: 'S3', name: 'Exportieren', do: 'Exportiere die Bewertung.', expect: 'Die Datei ist da.' },
+        { id: 'S4', name: 'Teilen', do: 'Teile die Bewertung.', expect: 'Der Link ist kopiert.' },
+    ];
+    writeTest(native, { ...parsed, id: PENDING, steps: [...parsed.steps, ...later] });
+    const plain = await runQuietly(PENDING);
+    const { result, report } = newestRunOf(native, PENDING);
+    verify('run: Exit 0 with S3, S4 pending', plain.code === 0, `${plain.code} ${plain.note}`);
+    verify('result.json: pending and the step statuses', JSON.stringify(result?.pending) === '["S3","S4"]'
+        && JSON.stringify((result?.steps ?? []).map(({ id, status }) => `${id}:${status}`)) === '["S1:pass","S2:pass","S3:pending","S4:pending"]', JSON.stringify({ pending: result?.pending, steps: result?.steps?.map(({ id, status }) => `${id}:${status}`) }));
+    verify('report.md names them', /Offen, noch nicht aufgenommen: S3, S4\./.test(report), report.slice(0, 600));
+    const strict = await runQuietly(PENDING, ['--strict']);
+    verify('--strict: replay-pending (exit 4), names the record command', /^error replay-pending: .*caw record rec-pending@S3/.test(String(strict.code)), String(strict.code));
+    const behind = await open(native, [`${PENDING}@S4`, ...target], { interactive: true }).catch((error) => `error ${error.code}: ${error.message}`);
+    verify('open @S4 behind the pending S3: refused, names S3', /^error replay-stale: S3 ist offen, noch nicht aufgenommen\. Nimm ihn zuerst auf: caw record rec-pending@S3/.test(String(behind)), String(behind));
+    // open @S3: S1 and S2 ran (shadow status and Saved), nothing of S3.
+    const atEntry = humans(async (chat) => {
+        const bench = chat.page();
+        await benchBack(chat);
+        await stateOf(chat, 'developing');
+        const state = await appOf(bench).evaluate(() => `${document.querySelector('caw-rating').shadowRoot.querySelector('[role=status]').textContent}|${document.getElementById('status').textContent}`);
+        verify('open @S3: S1 and S2 ran', state === 'Thanks: Good|Saved', state);
+        await decide(chat, 'Beenden');
+    });
+    const entryCode = await open(native, [`${PENDING}@S3`, ...target], { interactive: true, onChatOpen: atEntry.onChatOpen });
+    verify('open @S3: Exit 0, one window', entryCode === 0 && await atEntry.done() === 1, String(entryCode));
+    // open <test>: plays up to S2; the step list shows S3 and S4 as skipped with the pending note.
+    const whole = humans(async (chat) => {
+        const bench = chat.page();
+        await benchBack(chat);
+        await stateOf(chat, 'developing');
+        const marks = await bench.evaluate(() => ['S1', 'S2', 'S3', 'S4'].map((id) => {
+            const li = document.querySelector(`#steps>li[data-id="${id}"]`);
+            return `${id}:${li?.dataset.state}:${li?.querySelector(':scope>.note')?.textContent ?? ''}`;
+        }).join(' '));
+        verify('workbench: S1, S2 pass, S3, S4 skipped as pending', marks === 'S1:pass: S2:pass: S3:skipped:offen: noch nicht aufgenommen S4:skipped:offen: noch nicht aufgenommen', marks);
+        await decide(chat, 'Beenden');
+    });
+    const wholeCode = await open(native, [PENDING, ...target], { interactive: true, onChatOpen: whole.onChatOpen });
+    verify('open <test>: Exit 0, one window', wholeCode === 0 && await whole.done() === 1, String(wholeCode));
+});

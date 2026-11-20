@@ -66,7 +66,7 @@ test('parseRunArgs: --start and --reset for run, record and open; --no-reset for
 
 test('parseRunArgs: each command only knows its own options', () => {
     const base = ['smoke', '--env', 'shop/dev'];
-    assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', advise: false, headless: false, noChat: false, learn: false, all: false, stepTimeoutSec: 30 });
+    assert.deepEqual(parseRunArgs('run', base), { test: 'smoke', tests: ['smoke'], target: 'shop/dev', advise: false, headless: false, noChat: false, learn: false, strict: false, all: false, stepTimeoutSec: 30 });
     assert.equal(parseRunArgs('run', [...base, '--explain']).advise, true);
     // Limit Claude when clarifying and fixing, as for record and fix.
     assert.deepEqual((({ timeoutMin, maxActions }) => [timeoutMin, maxActions])(parseRunArgs('run', [...base, '--agent-timeout', '5m', '--max-actions=20'])), [5, 20]);

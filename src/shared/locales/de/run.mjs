@@ -162,6 +162,7 @@ export default {
     'run.noRecording': 'Keine neue Aufzeichnung: {problems}',
     'run.repairInPlace': '{agent} behebt {id} im selben Browser',
     'run.replaying': 'Spiele die Aufzeichnung ab ({count} Schritte, aufgezeichnet auf {on}) ...',
+    'run.pendingStep': 'offen: noch nicht aufgenommen',
     'run.failedBefore': '{id} ist gescheitert, bevor {target} an der Reihe war: {reason}',
 
     // Flows in the chat
