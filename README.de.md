@@ -316,11 +316,13 @@ Claude (Wiedergaben, CI) laden Seiten von jedem Host außer Produktion. Details:
 Playwright, sein MCP-Server und seine Test-Agenten lassen Claude schon heute Tests schreiben, ausführen und reparieren, und caw
 läuft auf Playwright. caw ergänzt, was generierter Testcode nicht mitbringt:
 
-- **Prüfungen, die ein Agent nicht verbiegen kann.** Jede Prüfung gehört zu einem Erwartungssatz in normaler Sprache. Solange
-  die Erwartung bleibt, muss ein Agent, der einen Schritt behebt oder ab einem Schritt neu aufnimmt, die Prüfung behalten.
+- **Prüfungen, die ein reparierender Agent behalten muss.** Jede Prüfung gehört zu einem Erwartungssatz in normaler Sprache.
+  Solange die Erwartung bleibt, muss ein Agent, der einen Schritt behebt oder ab einem späteren Schritt neu aufnimmt, die
+  Prüfung behalten; eine komplette Neuaufnahme ist eine neue Aufnahme, die du freigibst.
   Zeigen die Belege auf deine Anwendung, nennt caw die Ursache, statt eine Änderung am Test anzubieten.
-- **Einordnung ohne KI.** Jeder Fehlschlag wird anhand von Requests, Konsole und gelernten Wirkungen als Test, Anwendung oder
-  Umgebung eingeordnet; geändertes Verhalten lässt den Schritt standardmäßig scheitern.
+- **Einordnung ohne KI.** Ein Fehlschlag wird anhand von Requests, Konsole und gelernten Wirkungen als Test, Anwendung oder
+  Umgebung eingeordnet (oder als unklar); haben zwei gesunde Läufe die Wirkungen eines Schritts gelernt, lassen geänderte
+  Bedienelemente oder Konsolenmeldungen ihn standardmäßig scheitern.
 - **Ein Rahmen für den Agenten** (wenn caw ihn startet): nur lesende Werkzeuge oder ein Container mit Firewall, ein Browser,
   der nur deine Umgebungen erreicht, Produktion nur lesend.
 - **Zustände, nicht nur Tests.** Jeder Schritt jedes Tests ist ein Ort, den du öffnen, von dem aus du einen Fehler nachstellen
