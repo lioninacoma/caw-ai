@@ -64,7 +64,9 @@ Befehle:`,
   run <test> <test> … | --all            Mehrere Tests nacheinander, für CI: ohne Chat, am Ende eine Tabelle, Exit-Code des
       [--env <name>]                     schlimmsten Laufs. --all nimmt jeden Test, der die Umgebung nennt
       [--headless]                       Ohne Fenster
-      [--report junit=<datei>]           Ergebnis zusätzlich als JUnit-XML
+      [--report <art>=<datei>]           Ergebnis zusätzlich schreiben: junit (XML), summary (Markdown) oder json;
+                                         mehrfach, etwa --report junit=out/junit.xml --report summary=out/summary.md
+      [--retry-env <n>]                  Einen Test bis zu n-mal neu laufen lassen, solange er an der Umgebung scheitert
       [--learn] [--start] [--reset | --no-reset]  wie bei einem Test; start und reset einmal für die ganze Reihe`,
     'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Die Anwendung öffnen, mit Werkbank und Chat. Ohne Test: navigieren,
                                          ausprobieren, mit {agent} entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
@@ -180,7 +182,7 @@ Browser:
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
-    'cli.junitOutside': '--report junit={file} muss eine Datei im Projekt nennen.',
+    'cli.reportOutside': '--report {kind}={file} muss eine Datei im Projekt nennen.',
     'cli.fromOutside': '{from} liegt nicht im Projekt.',
     'cli.fromMissing': 'nicht gefunden',
     'cli.fromNotJson': 'kein Explore-Ergebnis (JSON)',
@@ -590,4 +592,13 @@ Browser:
     'cli.roleKnown': 'Rolle {role} steht schon in der Config.',
     'cli.roleAdded': 'Rolle {role} in der Config angelegt.',
     'cli.roleFillHint': 'Testnutzer für {role} auf {target}: {names} selbst in caw/.env eintragen (oder als CI-Secrets).',
+    'cli.summaryWritten': 'Zusammenfassung: {file}',
+    'cli.jsonWritten': 'JSON-Bericht: {file}',
+    'cli.modeUrl': 'Adresse aus {variable}: {url}.',
+    'cli.retryEnv': '{test}: Versuch {attempt} scheiterte an der Umgebung, er läuft noch einmal.',
+    'cli.retriedPass': 'bestanden im {attempt}. Versuch (Umgebung)',
+    'cli.retriedOther': 'im {attempt}. Versuch, davor an der Umgebung gescheitert',
+    'cli.attemptLine': 'Versuch {attempt}: {status}{why}',
+    'cli.summary.heading': 'caw: {count} Test(s) auf {target}, Exit {exit}',
+    'cli.summary.columns': 'Ergebnis | Test | Gescheiterter Schritt | Einschätzung | Befund | Bericht',
 };

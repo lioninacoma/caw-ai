@@ -92,7 +92,7 @@ export default {
     'session.args.maxActions': '--max-actions must be a positive integer.',
     'session.args.clash': '{without} can\'t be combined with {other}.',
     'session.args.batchClash': '{other} only works for a single test; several tests or --all run without chat and handover.',
-    'session.args.report': '--report expects junit=<file>, e.g. --report junit=caw-junit.xml',
+    'session.args.report': '--report expects <kind>=<file> with junit, summary or json, e.g. --report junit=caw-junit.xml',
     'session.claude.tokenInvalid': '{agent} rejected the access as invalid or expired. Locally: sign in to {agent} again (/login). In Docker: check ANTHROPIC_API_KEY.',
     'session.claude.timeout': '{agent} exceeded the time limit. Longer limit with --agent-timeout, e.g. --agent-timeout 120m.',
     'session.claude.exit': '{agent} exited with code {code}, see claude.log.',
@@ -241,4 +241,6 @@ export default {
     'session.explain.hidden': ' It is there but invisible.',
     'session.explain.covered': ' It is there but covered by {by}.',
     'session.explain.coveredSays': ' It is there but covered by {by}, which says: {messages}{end}',
+    'session.args.reportTwice': '--report {kind}= is given twice: one file per kind.',
+    'session.args.retryEnv': '--retry-env expects a whole number from 1 to {max}, e.g. --retry-env 1',
 };

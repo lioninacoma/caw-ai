@@ -64,7 +64,9 @@ Commands:`,
   run <test> <test> … | --all            Several tests in a row, for CI: no chat, a table at the end, exit code of the
       [--env <name>]                     worst run. --all takes every test that lists the environment
       [--headless]                       No window
-      [--report junit=<file>]            Also write the result as JUnit XML
+      [--report <kind>=<file>]           Also write the result: junit (XML), summary (Markdown) or json;
+                                         repeatable, e.g. --report junit=out/junit.xml --report summary=out/summary.md
+      [--retry-env <n>]                  Run a test again up to n times while it fails on the environment
       [--learn] [--start] [--reset | --no-reset]  as for one test; start and reset once for the whole row`,
     'cli.help.open': `  open [<test>[@<S4>]] [--env <name>]    Open the app with workbench and chat. Without a test: navigate, try
                                          things, develop with the agent. With <test>: replay it first. With @<S4>: up to the
@@ -176,7 +178,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <part>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
-    'cli.junitOutside': '--report junit={file} must name a file inside the project.',
+    'cli.reportOutside': '--report {kind}={file} must name a file inside the project.',
     'cli.fromOutside': '{from} is not inside the project.',
     'cli.fromMissing': 'not found',
     'cli.fromNotJson': 'not an explore result (JSON)',
@@ -586,4 +588,13 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.roleKnown': 'Role {role} is already in the config.',
     'cli.roleAdded': 'Role {role} added to the config.',
     'cli.roleFillHint': 'Test user for {role} on {target}: put {names} into caw/.env yourself (or set them as CI secrets).',
+    'cli.summaryWritten': 'Summary: {file}',
+    'cli.jsonWritten': 'JSON report: {file}',
+    'cli.modeUrl': 'Address from {variable}: {url}.',
+    'cli.retryEnv': '{test}: attempt {attempt} failed on the environment, running it again.',
+    'cli.retriedPass': 'passed on attempt {attempt} (environment)',
+    'cli.retriedOther': 'on attempt {attempt}, after failures on the environment',
+    'cli.attemptLine': 'Attempt {attempt}: {status}{why}',
+    'cli.summary.heading': 'caw: {count} test(s) on {target}, exit {exit}',
+    'cli.summary.columns': 'Result | Test | Failed step | Assessment | Finding | Report',
 };

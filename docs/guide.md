@@ -316,6 +316,16 @@ If a step fails, the tool classifies the failure without Claude and without toke
 
 The strongest finding decides; the others are listed below it. Without notable evidence it stays "unclear". The assessment appears in the chat, as the "Assessment" section in `report.md` with a table of requests next to the recorded ones, in `result.json` and in Claude's task (`diagnosis`, `evidence`). Claude reads it there first and can fetch the latest requests with `network`.
 
+**In CI** the assessment types the reports of `run --report` ([Commands](commands.md#several-tests-ci)): JUnit gets `<failure type="app|environment|test|unclear" message="S3: <reason>">` with the findings, `summary=<file>` one Markdown line per test for the job summary, `json=<file>` the same for scripts. `--retry-env <n>` runs a test again only when it failed on the environment (exit 2, or the assessment `environment`), and says e.g. "passed on attempt 2 (environment)". The exit code stays `1` for every failed step: the assessment is a heuristic and never decides pass or fail. A PR preview gets its address from `CAW_URL__<ENV>` ([Configuration](configuration.md#url-override-for-pr-previews)):
+
+```yaml
+- run: npx caw run --all --env preview --headless --retry-env 1 --report junit=out/caw.xml --report summary=out/summary.md
+  env:
+    CAW_URL__PREVIEW: ${{ steps.deploy.outputs.url }}
+- run: cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+  if: always()
+```
+
 Without `recording.network` the report says so. The baseline is never created while recording or fixing: under Claude's control misclicks and detours also run, which are dropped from the recording, and their requests didn't belong to the step. It is created without Claude and tokens by the next `run` outside CI (in CI by `run --learn`), from the cleaned-up recording: every passed step without a baseline then gets one from this run, if it was recorded on the same environment. The same goes for the effect per action. Chat and terminal name the steps; only this field changes in the file, the hash stays untouched. A `run` never overwrites existing values, unless they date from before parameter names (entries without `params`). Otherwise a run changes no file.
 
 #### Effect per action

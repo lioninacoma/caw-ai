@@ -1,8 +1,11 @@
 // The environment and credential model: extends, defaults, choosing without --env, navigation hosts, test users by name.
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { validateConfig } from '../src/shared/config.mjs';
+import { loadConfig, urlOverride, urlVariable, validateConfig, withUrlOverrides, writeConfig } from '../src/shared/config.mjs';
 import { credentialNames, credentialState, resolveCredentials, roleLinePattern } from '../src/shared/credentials.mjs';
 import {
     NAME, chooseEnvironment, effectiveEnvironment, effectiveEnvironments, environmentCandidates, environmentNames, navigationHosts,
@@ -126,4 +129,45 @@ test('roleLinePattern: exactly the role\'s lines, both sets; another role with t
     const pattern = roleLinePattern('clerk');
     for (const line of ['CAW_CLERK_USER=a', 'CAW_CLERK_PASSWORD__SOUTH_DEV="b"', 'export CAW_CLERK_TOTP=c']) assert.ok(pattern.test(line), line);
     for (const line of ['CAW_CLERK_LEAD_USER=a', 'CAW_CLERKS_USER=a', '# CAW_CLERK_USER=a', 'CAW_CLERK_USERNAME=a']) assert.ok(!pattern.test(line), line);
+});
+
+test('CAW_URL__<ENV>: points a test environment at a preview for this process; its children keep their address', () => {
+    const withPreview = { ...config, environments: { ...config.environments, 'pr-preview': { url: 'https://pr.example.test', writable: true }, 'pr-child': { extends: 'pr-preview' } } };
+    const changed = withUrlOverrides(withPreview, { CAW_URL__PR_PREVIEW: 'https://pr-42.preview.example.test', PATH: '/bin' });
+    assert.equal(effectiveEnvironment(changed, 'pr-preview').url, 'https://pr-42.preview.example.test');
+    assert.equal(effectiveEnvironment(changed, 'pr-child').url, 'https://pr.example.test', 'the variable names one environment only');
+    assert.equal(withPreview.environments['pr-preview'].url, 'https://pr.example.test', 'the given config is not changed');
+    assert.equal(withUrlOverrides(withPreview, {}), withPreview);
+    assert.equal(urlVariable('pr-preview'), 'CAW_URL__PR_PREVIEW');
+    // http on this machine as for the config itself.
+    assert.equal(effectiveEnvironment(withUrlOverrides(config, { CAW_URL__CI: 'http://localhost:9090' }), 'ci').url, 'http://localhost:9090');
+});
+
+test('CAW_URL__<ENV>: refused for production, agent environments, a production host, an invalid origin and an unknown name', () => {
+    const refused = (env, pattern) => assert.throws(() => withUrlOverrides(config, env), (error) => error.code === 'url-override' && pattern.test(error.message), JSON.stringify(env));
+    refused({ CAW_URL__PROD: 'https://other.example.test' }, /CAW_URL__PROD würde die Produktionsumgebung prod umlenken/);
+    refused({ CAW_URL__LOCAL: 'http://localhost:1234' }, /CAW_URL__LOCAL: Auf local darf der Agent arbeiten/);
+    refused({ CAW_URL__NORTH_DEV: 'https://x.example.test' }, /Auf north-dev darf der Agent arbeiten/);
+    refused({ CAW_URL__CI: 'https://www.example.test' }, /www\.example\.test ist der Host einer Produktionsumgebung; ci dorthin gelenkt würde die Produktionssperre aufheben/);
+    refused({ CAW_URL__CI: 'https://south.example.test' }, /Host einer Produktionsumgebung/);
+    refused({ CAW_URL__CI: 'http://preview.example.test' }, /CAW_URL__CI: "http:\/\/preview\.example\.test": http nur auf dem eigenen Rechner/);
+    refused({ CAW_URL__CI: 'https://preview.example.test/app' }, /nur der Origin/);
+    refused({ CAW_URL__CI: '' }, /ist keine Adresse/);
+    refused({ CAW_URL__STAGING: 'https://s.example.test' }, /CAW_URL__STAGING nennt keine Umgebung der Konfiguration; möglich: CAW_URL__LOCAL, .*CAW_URL__CI/);
+});
+
+test('CAW_URL__<ENV>: loadConfig applies it, writeConfig never writes it back', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-url-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    writeFileSync(join(root, 'caw.config.json'), JSON.stringify({ environments: { preview: { url: 'https://preview.example.test', writable: true } } }, null, 4));
+    const before = process.env.CAW_URL__PREVIEW;
+    process.env.CAW_URL__PREVIEW = 'https://pr-7.preview.example.test';
+    t.after(() => {
+        if (before === undefined) delete process.env.CAW_URL__PREVIEW;
+        else process.env.CAW_URL__PREVIEW = before;
+    });
+    assert.equal(loadConfig(root).environments.preview.url, 'https://pr-7.preview.example.test');
+    assert.equal(urlOverride('preview'), 'https://pr-7.preview.example.test');
+    assert.equal(writeConfig(root, { consoleIgnore: ['x'] }).ok, true);
+    assert.equal(JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8')).environments.preview.url, 'https://preview.example.test');
 });

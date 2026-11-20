@@ -93,6 +93,17 @@ Which environment a command takes: the one you name with `--env`. Without it, a 
 takes that one; on your machine the only environment with `agent: true` among its candidates is taken; in CI caw never
 guesses and names the candidates (exit 3).
 
+### URL override for PR previews
+
+A preview environment whose address is only known in the CI job gets it from the variable `CAW_URL__<ENV>` (environment
+name in capitals, `-` as `_`, as for [credentials](#roles)), e.g. `CAW_URL__PREVIEW=https://pr-42.preview.example.com` for
+`"preview": { "url": "https://preview.example.com", "writable": true }`. It applies to this process only and is never written
+to `caw.config.json`; the first line of `run` names it (`Address from CAW_URL__PREVIEW: …`). Environments that inherit the
+`url` through `extends` keep theirs. caw refuses it (`url-override`, exit 3) for an unknown environment, a production
+environment, an environment with `agent: true` (a variable must not redirect where Claude works unseen), an address that is
+no valid origin (the same rule as `url`) and the host of a production environment, since a run never blocks its own host and
+the production block would be gone.
+
 ### Starting, stopping and resetting an environment
 
 An environment may name your own commands to start, stop and reset it. caw never runs them on a `production` environment.

@@ -182,13 +182,23 @@ Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`
 ### Mehrere Tests (CI)
 
 ```bash
-npx caw run --all --env dev --headless --report junit=caw-junit.xml
+npx caw run --all --env dev --headless --report junit=out/caw-junit.xml --report summary=out/summary.md --retry-env 1
 npx caw run create-ticket close-ticket --env dev
 ```
 
 Spielt die Tests nacheinander ab, ohne Chat (`--explain` wird abgelehnt). `--all` nimmt jeden Test, der das Ziel nennt. Ohne `--env` gilt das einzige Ziel der Tests. Ein Test, der nicht laufen kann (Aufnahme fehlt, Tippfehler), hält die anderen nicht auf. Am Ende zeigt eine Tabelle je Test `PASS`, `FAIL`, `ERROR`, `AUFNAHME NÖTIG` oder `ABGELEHNT`. Der Exit-Code ist der des schlimmsten Laufs, in dieser Reihenfolge: `2` error > `1` fail > `4` Aufnahme nötig > `3` abgelehnt > `0` pass.
 
-`--report junit=<datei>` schreibt die Tabelle zusätzlich als JUnit-XML (relativ zum Projektordner und darin; ein Pfad außerhalb, auch über einen Link, wird abgelehnt, bevor ein Test läuft): `fail` als `<failure>`, alles andere, was nicht bestanden hat, als `<error>`.
+Ein gescheiterter Schritt endet mit `1`, egal wie caw ihn einschätzt (Anwendung, Umgebung, Test, unklar): Die Einschätzung ist eine Heuristik aus den Belegen des Browsers. Sie gibt den Berichten ihren Typ und entscheidet über `--retry-env`, macht aber nie aus einem Fehlschlag ein Bestanden oder einen Fehler.
+
+`--report <art>=<datei>` schreibt das Ergebnis zusätzlich in eine Datei, je Art einmal, mehrfach für mehrere Arten. Die Datei ist relativ zum Projektordner und muss darin bleiben; ein Pfad außerhalb, auch über einen Link, wird abgelehnt, bevor ein Test läuft. Ein einzelner Test mit `--report` oder `--retry-env` nimmt denselben Weg.
+
+| Art | Inhalt |
+|---|---|
+| `junit=<datei>` | JUnit-XML. Ein gescheiterter Schritt ist `<failure type="app\|environment\|test\|unclear" message="S3: <grund>">` mit Einschätzung, Befunden und Berichtspfad als Text; alles andere, was nicht bestanden hat, ist `<error type="<fehlercode>">` (etwa `replay-missing`, `browser-closed`). Ein wiederholter Test listet jeden Versuch in `<system-out>`. |
+| `summary=<datei>` | Markdown, eine Zeile je Test: Ergebnis, gescheiterter Schritt mit Grund, Einschätzung, erster Befund und Berichtspfad. Gemacht für die Zusammenfassung eines CI-Jobs: `cat out/summary.md >> "$GITHUB_STEP_SUMMARY"`. |
+| `json=<datei>` | Für Skripte: `target`, `startedAt`, `exit` und je Test `id`, `status`, `exit`, `failedStep`, `reason`, `side`, `strength`, `findings`, `code` (soweit zutreffend), `steps` (`id`, `status`, `seconds`), `report` und `attempts`. |
+
+`--retry-env <n>` (1 bis 5) lässt einen Test noch einmal laufen, wenn er an der Umgebung gescheitert ist: Exit `2`, oder Exit `1` mit der Einschätzung `environment`. Höchstens `n` weitere Versuche; was die Einschätzung der Anwendung, dem Test oder nichts Klarem zuschreibt, wird nie wiederholt. Es zählt das Ergebnis des letzten Versuchs, jeder Versuch bleibt in den Berichten, und Tabelle, JUnit und Zusammenfassung sagen etwa „bestanden im 2. Versuch (Umgebung)“.
 
 ## open
 
@@ -331,7 +341,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | Code | |
 |---|---|
 | `0` | bestanden |
-| `1` | fehlgeschlagen: Die App tut nicht, was der Test erwartet |
+| `1` | fehlgeschlagen: Ein Schritt tut nicht, was der Test erwartet, egal wie caw ihn einschätzt (Anwendung, Umgebung, Test, unklar) |
 | `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …), oder ein unerwarteter interner Fehler (der Stack steht in der Ausgabe) |
 | `3` | abgewiesen: Aufruf, Config (auch `TODO`-Werte aus `init`) oder Testdatei ungültig. Es lief nichts. |
 | `4` | Aufnahme nötig: Die Aufzeichnung fehlt (`record`) oder ein Schritt hat sich seit der Aufnahme geändert (`record <test>@<schritt>`). Es lief nichts. |
@@ -346,6 +356,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 | `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Modell und Budget in US-Dollar für Claude-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
 | `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record` und `open` werden abgelehnt. |
+| `CAW_URL__<ENV>` | Eine andere Adresse für eine Umgebung in diesem Prozess, etwa eine PR-Vorschau; wird nie in die Konfiguration geschrieben. Siehe [Konfiguration](configuration.de.md#url-für-pr-vorschauen). |
 | `NO_COLOR`, `FORCE_COLOR` | Farben im Terminal aus oder an. |
 | `MCP_TOOL_TIMEOUT` | In der Umgebung von Claude Code: erhöhen, wenn `plan` oder `chat` in deiner Sitzung abbrechen. |
 
@@ -360,6 +371,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `reproduce-state` | 2 | Der Ausgangszustand von `--from` wurde nicht erreicht: den Test mit `run` laufen lassen und erst reparieren |
 | `config-missing` | 3 | `npx caw init --url <adresse>` |
 | `config-invalid` | 3 | Das genannte Feld korrigieren oder die `TODO`-Werte eintragen, dann `doctor` |
+| `url-override` | 3 | Eine Variable `CAW_URL__<ENV>` nennt keine Umgebung, eine Produktions- oder Agent-Umgebung, einen Produktionshost oder keinen gültigen Origin: korrigieren oder entfernen |
 | `test-missing`, `test-invalid` | 3 | Testdatei anlegen oder korrigieren, dann `validate` |
 | `replay-missing` | 4 | Test mit `record` aufnehmen |
 | `replay-stale` | 4 | Ein Schritt hat sich seit der Aufnahme geändert: `record <test>@<schritt>` |

@@ -447,7 +447,7 @@ export const benchSettings = ({ root, config, spec, checked, agent, mode, run, e
  *                 failed, with `alsoOnWarnings` also for failures and warnings of an otherwise passed run;
  *                 `conclude` runs while the chat is still open and gets `advise`, which lets Claude give advice;
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
- * @returns { exitCode, verdict, failed, candidate, fresh, expectChange, ids, removed }
+ * @returns { exitCode, verdict, report, failed, candidate, fresh, expectChange, ids, removed } with report the run's report.md relative to the project
  */
 /**
  * Same expected result, same check: the recorded step a new check would replace although its expected result is unchanged.
@@ -633,7 +633,7 @@ ${text}`) ?? 0;
         stopSignals();
         if (!(error instanceof CawError)) throw error;
         writeResult({ status: 'error', code: error.code, reason: error.message });
-        return { exitCode: finishRun(), verdict };
+        return { exitCode: finishRun(), verdict, report: posix.join(relativeRun, 'report.md') };
     }
 
     // On abort the workbench shows the run as cancelled.
@@ -662,7 +662,7 @@ ${text}`) ?? 0;
             await session.close();
             if (!(error instanceof CawError)) throw error;
             writeResult({ status: 'error', code: error.code, reason: error.message });
-            return { exitCode: finishRun(), verdict };
+            return { exitCode: finishRun(), verdict, report: posix.join(relativeRun, 'report.md') };
         }
     }
 
@@ -1385,7 +1385,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         link?.stop();
         stopSignals();
         await session.close();
-        return { exitCode, verdict, ...found };
+        return { exitCode, verdict, report: posix.join(relativeRun, 'report.md'), ...found };
     };
     const writeInterrupted = (ended) => {
         if (ended === 'browser-closed') writeResult({ status: 'error', code: 'browser-closed', reason: t('run.interrupted.browserClosed') });

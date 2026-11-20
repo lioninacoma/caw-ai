@@ -182,13 +182,23 @@ With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`. `rec
 ### Several tests (CI)
 
 ```bash
-npx caw run --all --env dev --headless --report junit=caw-junit.xml
+npx caw run --all --env dev --headless --report junit=out/caw-junit.xml --report summary=out/summary.md --retry-env 1
 npx caw run create-ticket close-ticket --env dev
 ```
 
 Runs the tests one after another, without chat (`--explain` is rejected). `--all` takes every test that lists the target. Without `--env` the only target of the tests is used. A test that can't run (missing recording, typo) doesn't stop the others. At the end a table shows `PASS`, `FAIL`, `ERROR`, `NEEDS RECORDING` or `REJECTED` per test. The exit code is that of the worst run, in this order: `2` error > `1` fail > `4` needs recording > `3` rejected > `0` pass.
 
-`--report junit=<file>` also writes the table as JUnit XML (relative to the project folder and inside it; a path outside, also through a link, is refused before any test runs): `fail` as `<failure>`, everything else that didn't pass as `<error>`.
+A failed step exits `1` whatever caw's assessment of it (app, environment, test, unclear): the assessment is a heuristic from the browser's evidence, so it types the reports and decides `--retry-env`, but never turns a failure into a pass or an error.
+
+`--report <kind>=<file>` also writes the result to a file, once per kind and repeatable for several kinds. The file is relative to the project folder and must stay inside it; a path outside, also through a link, is refused before any test runs. A single test with `--report` or `--retry-env` takes the same path.
+
+| Kind | Content |
+|---|---|
+| `junit=<file>` | JUnit XML. A failed step is `<failure type="app\|environment\|test\|unclear" message="S3: <reason>">` with the assessment, its findings and the report path as text; anything else that didn't pass is `<error type="<error code>">` (e.g. `replay-missing`, `browser-closed`). A retried test lists every attempt in `<system-out>`. |
+| `summary=<file>` | Markdown, one line per test: result, failed step with its reason, assessment, first finding and report path. Made for a CI job summary: `cat out/summary.md >> "$GITHUB_STEP_SUMMARY"`. |
+| `json=<file>` | For scripts: `target`, `startedAt`, `exit` and per test `id`, `status`, `exit`, `failedStep`, `reason`, `side`, `strength`, `findings`, `code` (as far as they apply), `steps` (`id`, `status`, `seconds`), `report` and `attempts`. |
+
+`--retry-env <n>` (1 to 5) runs a test again when it failed on the environment: exit `2`, or exit `1` with the assessment `environment`. At most `n` more attempts; a failure the assessment puts on the app, the test or nothing clear is never repeated. The last attempt's result counts, every attempt stays in the reports, and the table, JUnit and the summary say e.g. `passed on attempt 2 (environment)`.
 
 ## open
 
@@ -329,7 +339,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | Code | |
 |---|---|
 | `0` | pass |
-| `1` | fail: the app didn't do what the test expects |
+| `1` | fail: a step didn't do what the test expects, whatever caw's assessment (app, environment, test, unclear) |
 | `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …), or an unexpected internal error (the stack is printed) |
 | `3` | rejected: invalid call, config (also `TODO` values left from `init`) or test file. Nothing ran. |
 | `4` | needs recording: the recording is missing (`record`) or a step changed since it was recorded (`record <test>@<step>`). Nothing ran. |
@@ -344,6 +354,7 @@ These are the only way Claude can touch the browser. They exist for the agent du
 | `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
 | `CI` | Set: no chat, `docker` agent only; `record` and `open` are rejected. |
+| `CAW_URL__<ENV>` | Another address for one environment in this process, e.g. a PR preview; never written to the config. See [configuration](configuration.md#url-override-for-pr-previews). |
 | `NO_COLOR`, `FORCE_COLOR` | Terminal colors off or on. |
 | `MCP_TOOL_TIMEOUT` | In Claude Code's environment: raise it if `plan` or `chat` time out in your session. |
 
@@ -358,6 +369,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `reproduce-state` | 2 | The starting state of `--from` was not reached: `run` the test and fix it first |
 | `config-missing` | 3 | `npx caw init --url <address>` |
 | `config-invalid` | 3 | Fix the field named in the message or fill in the `TODO` values, then `doctor` |
+| `url-override` | 3 | A `CAW_URL__<ENV>` variable names no environment, a production or agent environment, a production host or no valid origin: fix or unset it |
 | `test-missing`, `test-invalid` | 3 | Create or fix the test file, then `validate` |
 | `replay-missing` | 4 | `record` the test |
 | `replay-stale` | 4 | A step changed since recording: `record <test>@<step>` |

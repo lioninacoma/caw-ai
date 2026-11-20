@@ -46,7 +46,7 @@ const CLAUDE_OPTIONS = ['--env', '--agent-timeout', '--max-actions', '--step-tim
 const COMMAND_OPTIONS = {
     // --agent-timeout and --max-actions apply to Claude when clarifying, explaining and fixing; playback itself is limited by
     // --step-timeout.
-    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
+    run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
     record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
     open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout'],
 };
@@ -60,7 +60,7 @@ const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
     '--env': 'local', '--role': 'admin', '--agent': 'local', '--agent-timeout': '60m',
-    '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
+    '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--retry-env': '1', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
 /** Where caw starts its own agent; the person's own session answers with --attach instead. */
@@ -70,6 +70,8 @@ const overlayValue = (value) => ['build', 'dev'].includes(value) || /^https?:\/\
 // The human is at the chat, which takes longer than a run without them.
 export const CLAUDE_TIMEOUT_MIN = 60;
 const STEP_ID = /^S[1-9]\d*$/;
+// More attempts than this hide an environment that is down rather than one that hiccups.
+const MAX_RETRY_ENV = 5;
 
 /** A missing option value, or the next option in its place (--env --headless), is a usage error with an example. */
 const requireValue = (flag, value) => {
@@ -164,9 +166,15 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--role') options.role = value;
         else if (flag === '--step-timeout') options.stepTimeoutSec = parseDuration(flag, value) / 1000;
         else if (flag === '--report') {
-            const match = /^junit=(.+)$/.exec(value);
+            const match = /^(junit|summary|json)=(.+)$/.exec(value);
             if (match === null) throw new CawError('usage', t('session.args.report'));
-            options.junit = match[1];
+            options.reports ??= {};
+            if (options.reports[match[1]] !== undefined) throw new CawError('usage', t('session.args.reportTwice', { kind: match[1] }));
+            options.reports[match[1]] = match[2];
+        }
+        else if (flag === '--retry-env') {
+            options.retryEnv = Number(value);
+            if (!Number.isInteger(options.retryEnv) || options.retryEnv < 1 || options.retryEnv > MAX_RETRY_ENV) throw new CawError('usage', t('session.args.retryEnv', { max: MAX_RETRY_ENV }));
         }
         else if (flag === '--agent') {
             if (!AGENT_CHOICES.includes(value)) throw new CawError('usage', t('session.args.agentChoice', { choices: AGENT_CHOICES.join(', ') }));
