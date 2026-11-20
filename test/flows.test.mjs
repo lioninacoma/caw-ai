@@ -734,3 +734,30 @@ test('Test run with a pending tail: the recorded steps play and count, the run p
     assert.deepEqual(replay.pending, ['S2']);
     assert.deepEqual(replay.steps.map(({ action, id }) => `${action}${id === undefined ? '' : ` ${id}`}`), ['reload', 'check S1']);
 });
+
+test('Test run: a proven proposal for a renamed target is the first button; it changes only that target, then a new run', async () => {
+    const SPEICHERN = "getByRole('button', { name: 'Speichern', exact: true })";
+    const SICHERN = "getByRole('button', { name: 'Sichern', exact: true })";
+    const effects = { runs: 2, actions: [{ action: 1, view: ['+ - status: Gespeichert'] }] };
+    const withClick = { ...spec, steps: [spec.steps[0], { ...spec.steps[1], recording: { ...spec.steps[1].recording, actions: [{ action: 'click', target: SPEICHERN }], effects } }] };
+    const proposal = { step: 'S2', action: 1, from: SPEICHERN, to: SICHERN, evidence: { effect: { view: ['+ - status: Gespeichert'] }, check: 'c => true' } };
+    const h = harness({ outcomes: [failing('S2', { proposal }), pass], answers: ['use-target'] });
+    assert.equal(await runFlow({ spec: withClick, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude'), ...h }), EXIT.pass);
+    assert.equal(h.questions[0].options[0], 'use-target');
+    assert.equal(h.questions[0].labels[0], '„Sichern“ verwenden');
+    assert.equal(h.adopted.length, 1);
+    assert.deepEqual([...h.adopted[0].only], ['S2']);
+    const adopted = h.adopted[0].draft.steps[1];
+    assert.deepEqual(adopted.recording.actions, [{ action: 'click', target: SICHERN }]);
+    assert.equal(adopted.recording.hash, withClick.steps[1].recording.hash, 'the hash stays');
+    assert.deepEqual(adopted.recording.effects, effects, 'the learned effects stay');
+    assert.equal(adopted.do, withClick.steps[1].do);
+    assert.match(h.notices[0], /^Aktion 1 von S2 nutzt jetzt button "Sichern": caw\/tests\/t\.yaml\. Bitte prüfen und committen\.$/);
+    assert.equal(h.calls.length, 2, 'a new run with the adopted target');
+    assert.equal(h.calls[1].spec.steps[1].recording.actions[0].target, SICHERN);
+
+    // Without a proposal there is no such button.
+    const plain = harness({ outcomes: [failing('S2')], answers: ['close'] });
+    await runFlow({ spec: withClick, handover: false, canFix: true, openSandbox: async () => 's', ...plain });
+    assert.equal(plain.questions[0].options.includes('use-target'), false);
+});

@@ -2,9 +2,9 @@
 // download from a page with a certificate error once the page has been open for a few seconds, even with ignoreHTTPSErrors.
 //   node serve.mjs <port>
 // /api/errands keeps added errands; /api/slow?ms=N answers after N ms (a request wait-ready has to wait for); /report.csv is a download;
-// /api/cover switches the message box of ext.html. ext-data.html (N10b, N10c) and aria.html (N10d, N10e)
+// /api/cover switches the message box of ext.html; /api/rename (N16) serves index.html with "Archive" renamed to "Archive all". ext-data.html (N10b, N10c) and aria.html (N10d, N10e)
 // need nothing from the server.
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,7 @@ const port = Number(process.argv[2] ?? 8451);
 // The errands added in this server's lifetime (GET and POST /api/errands): they outlive a run, as in a real application.
 const errands = [];
 let cover = false;
+let renamed = false;
 
 createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
@@ -31,6 +32,13 @@ createServer((req, res) => {
         res.end(JSON.stringify({ on: cover }));
         return;
     }
+    // N16: whether the app renamed its button, after a test learned its effects with the old name; POST ?on=1 or ?on=0 switches it.
+    if (url.pathname === '/api/rename') {
+        if (req.method === 'POST') renamed = url.searchParams.get('on') === '1';
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ on: renamed }));
+        return;
+    }
     if (url.pathname === '/api/slow') {
         setTimeout(() => {
             res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -42,6 +50,12 @@ createServer((req, res) => {
     if (!file.startsWith(site) || !existsSync(file) || statSync(file).isDirectory()) {
         res.writeHead(404);
         res.end('404');
+        return;
+    }
+    // Renamed in the served page itself: a script renaming it after load could lose the race against the replay's click.
+    if (renamed && file === join(site, 'index.html')) {
+        res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-cache' });
+        res.end(readFileSync(file, 'utf8').replace('<button id="archive">Archive</button>', '<button id="archive">Archive all</button>'));
         return;
     }
     const download = extname(file) === '.csv' ? { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="report.csv"' } : { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' };

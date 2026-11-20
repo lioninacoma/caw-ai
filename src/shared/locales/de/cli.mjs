@@ -686,4 +686,5 @@ Browser:
     'cli.bisect.meaning.bad': 'schlecht',
     'cli.bisect.meaning.skip': 'übersprungen',
     'cli.bisect.meaning.abort': 'git bisect bricht ab',
+    'cli.audit.kind.locator-changed': 'Aktion {number} von {step} nutzt ein anderes Element, ihre Prüfung blieb: {was} → {now}.',
 };

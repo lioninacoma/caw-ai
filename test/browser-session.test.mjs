@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { isBrowserClosedError, removeProfile, sweepStaleProfiles, trackAgentPages, watchBroken } from '../src/host/browser-session.mjs';
+import { createWriteBlock, isBrowserClosedError, removeProfile, sweepStaleProfiles, trackAgentPages, watchBroken } from '../src/host/browser-session.mjs';
 import { createPlaywrightLauncher } from '../src/host/devlink-core.mjs';
 import { CawError } from '../src/shared/errors.mjs';
 
@@ -189,4 +189,32 @@ test('certificateError: an untrusted certificate becomes an environment error na
     assert.match(certificateError(cert, { name: 'tls', insecureTls: true }).message, /obwohl environments\.tls\.insecureTls gesetzt ist/);
     assert.equal(certificateError(new Error('page.goto: net::ERR_CONNECTION_REFUSED at http://x/'), { name: 'tls' }), null);
     assert.equal(certificateError(new CawError('login-failed', 'net::ERR_CERT_DATE_INVALID at https://x/'), { name: 'tls' }), null);
+});
+
+test('createWriteBlock: always fails each write; a hold aborts writes only until release, as evidence, never as a failure', () => {
+    const nameOf = ({ method, url }) => (method === 'GET' ? null : `${method} ${new URL(url).pathname}`);
+    const save = { method: 'POST', url: 'https://app.test/api/save' };
+    const read = { method: 'GET', url: 'https://app.test/api/list' };
+
+    const production = createWriteBlock({ always: true, nameOf });
+    assert.equal(production.active(), true);
+    assert.deepEqual(production.refuse(save), { fail: 'POST /api/save' });
+    assert.equal(production.refuse(read), null);
+
+    const run = createWriteBlock({ always: false, nameOf });
+    assert.equal(run.active(), false);
+    assert.equal(run.refuse(save), null, 'not held: the write goes out');
+    run.hold();
+    assert.equal(run.active(), true);
+    assert.deepEqual(run.refuse(save), { held: 'POST /api/save' });
+    assert.equal(run.refuse(read), null);
+    assert.deepEqual(run.release(), ['POST /api/save']);
+    assert.equal(run.active(), false);
+    assert.equal(run.refuse(save), null, 'released: writes go out again');
+    assert.deepEqual(run.release(), [], 'a release without hold names nothing');
+
+    // A hold on a session that blocks anyway changes nothing: the write still fails the run.
+    production.hold();
+    assert.deepEqual(production.refuse(save), { fail: 'POST /api/save' });
+    assert.deepEqual(production.release(), []);
 });

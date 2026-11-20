@@ -429,4 +429,7 @@ export default {
     'config.urlOverride.agent': '{variable}: Auf {env} darf der Agent arbeiten ("agent": true); ihre Adresse bleibt die aus der Konfiguration, eine Variable darf sie nicht unbemerkt umlenken.',
     'config.urlOverride.invalid': '{variable}: {problem}',
     'config.urlOverride.productionHost': '{variable}: {host} ist der Host einer Produktionsumgebung; {env} dorthin gelenkt würde die Produktionssperre aufheben.',
+    'config.report.proposals': 'Vorgeschlagene Ziele',
+    'config.report.proposals.intro': 'Ein aufgenommenes Element fehlt, ein ähnliches trat an seine Stelle: Es bewirkte die gelernte Wirkung des Schritts, schrieb nichts, und die unveränderte Prüfung bestand. Übernimm es mit dem Knopf im Chat oder ändere das Ziel in der Aufnahme.',
+    'config.report.proposals.item': '- {step}, Aktion {number}: `{from}` → `{to}`',
 };

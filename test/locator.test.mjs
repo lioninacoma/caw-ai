@@ -7,7 +7,7 @@ import { after, before, test } from 'node:test';
 
 import {
     buildLocator, chainPrefix, checkLocator, escapeRegex, isGeneratedId, isPositional, locatorLabel, mapStrings, parseLocator,
-    printLocator, rejectReason,
+    printLocator, rejectReason, renamedLocator,
 } from '../src/host/locator.mjs';
 import { launchChrome } from './chrome.mjs';
 
@@ -160,6 +160,26 @@ test('locatorLabel: element and nearest scope, extjs components, positions', () 
     };
     for (const [code, label] of Object.entries(cases)) assert.equal(locatorLabel(code), label, code);
     assert.equal(locatorLabel(parseLocator("getByRole('button', { name: 'Save' })")), 'button "Save"', 'takes an AST too');
+});
+
+test('renamedLocator: swaps the name of the element\'s own getByRole, keeps scope, options and narrowing', () => {
+    assert.deepEqual(renamedLocator("getByRole('button', { name: 'Speichern', exact: true })", 'Sichern'), { code: "getByRole('button', { name: 'Sichern', exact: true })", from: 'Speichern' });
+    assert.deepEqual(renamedLocator("getByRole('dialog', { name: 'Speichern' }).getByRole('button', { name: 'Speichern' }).first()", 'Sichern „neu“'), {
+        code: "getByRole('dialog', { name: 'Speichern' }).getByRole('button', { name: 'Sichern „neu“' }).first()",
+        from: 'Speichern',
+    });
+    assert.equal(renamedLocator("getByRole('button', { name: \"It's\" })", "It's new").code, "getByRole('button', { name: 'It\\'s new' })");
+    // Nothing caw could prove: no name of its own, a regex, a placeholder, the same name, or another kind of locator.
+    assert.equal(renamedLocator("getByRole('button')", 'Sichern'), null);
+    assert.equal(renamedLocator("getByRole('button', { name: /Speichern/ })", 'Sichern'), null);
+    assert.equal(renamedLocator("getByRole('button', { name: 'Speichern {{runTag}}' })", 'Sichern'), null);
+    assert.equal(renamedLocator("getByRole('button', { name: 'Speichern' })", 'Speichern'), null);
+    assert.equal(renamedLocator("getByRole('button', { name: 'Speichern' }).getByText('x')", 'Sichern'), null);
+    assert.equal(renamedLocator("getByText('Speichern')", 'Sichern'), null);
+    assert.equal(renamedLocator('nonsense(', 'Sichern'), null);
+    assert.equal(renamedLocator("getByRole('button', { name: 'Speichern' })", ' '), null);
+    // The result must still be a recording locator: a generated ExtJS id in the scope stays rejected.
+    assert.equal(renamedLocator("locator('#button-1023').getByRole('button', { name: 'Speichern' })", 'Sichern', { framework: 'extjs' }), null);
 });
 
 test('isPositional: nth/first/last or a bare tag', () => {

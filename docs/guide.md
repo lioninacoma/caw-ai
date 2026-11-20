@@ -372,6 +372,10 @@ Numbers become `#`, so order numbers and dates don't interfere.
 - **Self-cleaning:** If a whole run passes without retry and a step deviates only in lists outside `effects.fail`, that evidently fluctuates. The missing lines drop out of the learned effect, e.g. a request that doesn't come in every run. So the warning appears only once. Deviations in lists from `effects.fail` remain findings.
 - Otherwise a step with a learned deviation doesn't learn, so no error disappears from the comparison. To accept a changed effect, choose **"Accept new effect"** in the chat. The button appears when only the effect deviates and the check holds. It deletes this step's `effects` from the file, without Claude and without tokens; the next two healthy runs learn it anew. Without chat, do the same by deleting `effects` from the file.
 
+#### Renamed targets
+
+If a click or input finds its element gone because the UI renamed it (button "Speichern" now says "Sichern") and exactly one similar element is there, caw tries that one, without Claude and without tokens, and proves it: only for a click, double click, fill or type whose effect is learned and does not write. caw runs the action on the candidate while it aborts every write, and keeps it only if the learned effect comes again, nothing tried to write, and the step's unchanged check passes. The step still fails (kind `target`), the replay goes on, since the check holds, and the step carries `proposal` (`step`, `action`, `from`, `to`, `evidence`) in `result.json`; `report.md` lists it under "Proposed targets". In the chat **Use "Sichern"** changes only that action's target in the recording (hash, description and learned effects stay) and runs the test again. In CI there is only the report section. `caw audit` lists such a change, it is no weakening.
+
 ### Advice on errors and warnings
 
 Without fix parameters nothing costs tokens as long as you don't write or click: on a failed step a `run` shows the reason, hard errors and warnings in the chat. Claude advises on its own only here, and in conversation when you ask:

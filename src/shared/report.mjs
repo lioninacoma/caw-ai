@@ -164,7 +164,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [] }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [] }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -187,6 +187,12 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
     // Not part of the verdict: the steps still to be recorded did not run.
     if (pending.length > 0) lines.push('', t('config.report.pending', { ids: pending.join(', ') }));
     if (diagnosis !== undefined) lines.push(...diagnosisLines(diagnosis));
+    // Renamed targets with a proven replacement (replay.mjs): in CI this section is all there is, the chat offers a button.
+    const proposals = steps.filter(({ proposal }) => proposal !== undefined).map(({ proposal }) => proposal);
+    if (proposals.length > 0) {
+        lines.push('', `## ${t('config.report.proposals')}`, '', t('config.report.proposals.intro'), '');
+        for (const { step, action, from, to } of proposals) lines.push(t('config.report.proposals.item', { step: String(step), number: String(action), from: cell(from), to: cell(to) }));
+    }
     if (failures.length > 0) {
         lines.push('', `## ${t('config.report.failures')}`, '');
         for (const failure of failures) lines.push(`- ${failure.type}: ${failure.text}${failure.url ? ` (${failure.url})` : ''}${failure.at ? t('config.report.failures.at', { at: String(failure.at) }) : ''}`);

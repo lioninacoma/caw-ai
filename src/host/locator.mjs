@@ -415,6 +415,36 @@ export const checkLocator = (code, { framework = 'web' } = {}) => {
     throw invalid(code, t(`config.locator.reject.${reason}`, { id }), reason);
 };
 
+// Calls that only narrow what the element's own call found (explainLocator in framework/index.mjs skips the same).
+const NARROWING = new Set(['filter', 'nth', 'first', 'last', 'visible']);
+
+/**
+ * The locator with its element's name swapped, everything else as it was: `getByRole('button', { name: 'Speichern', exact:
+ * true })` becomes `{ name: 'Sichern', exact: true }`. Only the element's own getByRole (the last call before narrowing ones)
+ * and only a plain string name: one with a placeholder (`{{runTag}}`) or a regex is no rename caw can prove.
+ * @returns { code, from } with the new code, checked as a recording locator, and the old name; or null
+ */
+export const renamedLocator = (code, to, { framework = 'web' } = {}) => {
+    if (typeof to !== 'string' || to.trim() === '') return null;
+    let ast;
+    try {
+        ast = parseLocator(code);
+    } catch {
+        return null;
+    }
+    const at = ast.findLastIndex(({ method }) => !NARROWING.has(method));
+    const own = ast[at];
+    const from = isOptions(own?.args[1]) ? own.args[1].name : undefined;
+    if (own?.method !== 'getByRole' || typeof from !== 'string' || from.includes('{{') || from === to) return null;
+    const renamed = printLocator([...ast.slice(0, at), { method: 'getByRole', args: [own.args[0], { ...own.args[1], name: to }] }, ...ast.slice(at + 1)]);
+    try {
+        checkLocator(renamed, { framework });
+    } catch {
+        return null;
+    }
+    return { code: renamed, from };
+};
+
 const astOf = (code) => (typeof code === 'string' ? parseLocator(code) : canonical(code));
 
 /** The frame part of the chain: everything up to and including the last contentFrame(); [] in the main frame. */

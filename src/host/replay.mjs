@@ -20,7 +20,7 @@ import { DEFAULT_DESIGN_FAIL, designText } from './design.mjs';
 import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, stepDeviation, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
 import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
-import { escapeRegex, isPositional, locatorLabel, locatorText, mapStrings, parseLocator, printLocator } from './locator.mjs';
+import { escapeRegex, isPositional, locatorLabel, locatorText, mapStrings, parseLocator, printLocator, renamedLocator } from './locator.mjs';
 import { recordLocator } from './record-locator.mjs';
 import { brokenChain, brokenChainAt, pendingSteps, staleSteps, stepHash, withExpectations } from './test-file.mjs';
 
@@ -36,6 +36,8 @@ const REPEAT_CLICK_MS = 1500;
 const OPTIONAL_CLICK_MS = 3000;
 const CHANGES_PAGE = new Set(['click', 'dblclick', 'press', 'goto', 'reload']);
 const EFFECT_ACTIONS = new Set(['click', 'dblclick', 'fill', 'type', 'press', 'upload', 'download']);
+// Actions whose renamed target caw proposes (proposeTarget in playReplay): what they do shows in their learned effect.
+const REPAIRABLE = new Set(['click', 'dblclick', 'fill', 'type']);
 // How much of a message goes into reasons and reports. Comparisons always use the full text.
 const MESSAGE_SHOWN = 300;
 const EFFECT_SETTLE_MS = 5000;
@@ -790,8 +792,9 @@ export const stepGroups = (steps, replay) => {
 /**
  * @param judgeDesign (design, page) => judged design (design.mjs createDesignJudge); without it designs are not judged
  * @param designFail  config design.fail: with 'target' a design not met fails its step, otherwise it only warns
+ * @param reads       the config's `reads` patterns: what they name is no write when a renamed target is proposed
  */
-export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL, judgeDesign, designFail = DEFAULT_DESIGN_FAIL }) => {
+export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, reads = [], log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL, judgeDesign, designFail = DEFAULT_DESIGN_FAIL }) => {
     // Effects per action: what this run saw (last attempt) and the first deviation from the learned effects per step.
     const measure = session.trail === undefined ? null : createEffects({ session });
     const observed = new Map();
@@ -1112,6 +1115,45 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     // How many write requests there were at the start of each step: a new attempt after a write would create things twice.
     const writeMarks = new Map();
     const writeCount = () => (session.writes?.() ?? []).reduce((sum, { count }) => sum + count, 0);
+    const readMatchers = compileReads(reads);
+    // Per step the proposed replacement of a renamed target, until its check decides: { step, action, from, to, effect, ... }.
+    const proposals = new Map();
+
+    /**
+     * A target that is gone because the UI renamed it ("Speichern" to "Sichern"): caw proposes the one similar element without
+     * AI and proves it. Gates: exactly one similar name, an action whose work shows in its learned effect (learned, for this
+     * action, and not writing), a name the recording spells out. The candidate runs with writes held (aborted, no failure) and
+     * must cause the learned effect again without any write; the step's unchanged check decides later (see the check below).
+     * @returns { step, action, from, to, effect } or null
+     */
+    const proposeTarget = async ({ index, recorded, step, owner, kind, error }) => {
+        if (kind !== 'target' || !REPAIRABLE.has(step.action) || recorded.entry !== undefined || measure === null || session.holdWrites === undefined || proposals.has(owner)) return null;
+        const similar = error?.blocker?.similar ?? [];
+        if (similar.length !== 1 || error.blocker.missing !== true) return null;
+        const learned = replay.effects?.[owner];
+        const number = index - starts.get(owner) + 1;
+        const effect = learned?.actions?.find(({ action }) => action === number);
+        if (learned === undefined || learned.runs < LEARN_RUNS || effect === undefined || writesIn(effect, readMatchers)) return null;
+        const candidate = renamedLocator(recorded.target, similar[0].name, { framework: (session.framework ?? frameworkOf()).name });
+        if (candidate === null) return null;
+        let seen = null;
+        let blocked = [];
+        try {
+            await session.holdWrites();
+            await measure.before();
+            const tried = fillStep({ ...recorded, target: candidate.code });
+            if (await run(tried, tried.timeoutMs ?? stepTimeoutMs, undefined) !== undefined) return null;
+            await session.waitReady({ timeout: EFFECT_SETTLE_MS }).catch(() => {});
+            seen = await measure.after();
+        } catch {
+            return null;
+        } finally {
+            blocked = session.releaseWrites();
+        }
+        // effectChange ignores requests the learned effect does not name, so a write needs its own look.
+        if (seen === null || blocked.length > 0 || writesIn(seen, readMatchers) || stepDeviation(learned, number, seen) !== null) return null;
+        return { step: owner, action: number, from: recorded.target, to: candidate.code, effect: seen };
+    };
 
     /** Records the effect and compares it with the learned one. A new attempt replaces what the old one saw. */
     const noteEffect = (owner, number, effect, label) => {
@@ -1195,6 +1237,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             designs.delete(id);
             observed.delete(id);
             deviations.delete(id);
+            proposals.delete(id);
             // Only warm-up for the retried step: the previous attempt already changed the app, e.g. opened a task.
             // Its effects then rightly deviate and do not count.
             if (id !== owner) warmup.add(id);
@@ -1290,8 +1333,43 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 index = restart;
                 continue;
             }
+            const proposal = await proposeTarget({ index, recorded, step, owner, kind, error });
+            if (proposal !== null) {
+                // The step goes on with the candidate; its check decides whether the proposal holds.
+                proposals.set(owner, { ...proposal, position, label: stepLabel(step), message: withTries(owner, message), blocker: error.blocker });
+                if (!observed.has(owner)) observed.set(owner, new Map());
+                observed.get(owner).set(proposal.action, proposal.effect);
+                index += 1;
+                continue;
+            }
             await stop(position, stepLabel(step), kind, withTries(owner, message), error.blocker);
             break;
+        }
+        if (step.action === 'check' && proposals.has(step.id)) {
+            await settleEffect();
+            const proposal = proposals.get(step.id);
+            const result = results.get(step.id);
+            // Proven only if the step ends as recorded: its unchanged check passes, nothing deviates, nothing failed hard.
+            const proven = result.status === 'pass' && !deviations.has(step.id) && await externalProblem() === null;
+            if (!proven) {
+                // The missing target stands as it was found; what the candidate did is no evidence for the step.
+                results.delete(step.id);
+                observed.delete(step.id);
+                deviations.delete(step.id);
+                await stop(proposal.position, proposal.label, 'target', proposal.message, proposal.blocker);
+                break;
+            }
+            // Still a failure: the recording names a target that is gone. The replay goes on, since the step's check holds.
+            results.set(step.id, {
+                id: step.id,
+                status: 'fail',
+                kind: 'target',
+                evidence: result.evidence,
+                note: `${proposal.message} ${t('session.replay.proposal', { target: locatorLabel(proposal.to), number: proposal.action })}`,
+                proposal: { step: step.id, action: proposal.action, from: proposal.from, to: proposal.to, evidence: { effect: proposal.effect, check: result.evidence.value } },
+            });
+            index += 1;
+            continue;
         }
         if (step.action === 'check') {
             await settleEffect();
@@ -1421,6 +1499,18 @@ export const withoutEffects = (spec, id) => ({
     }),
 });
 
+/**
+ * Adopts a proposed target (playReplay): only that action's target changes. Hash, description and learned effects stay, since
+ * the proof showed the same effect and the same check. Nothing changes if the action no longer has the old target.
+ */
+export const withProposal = (spec, { step: id, action, from, to }) => ({
+    ...spec,
+    steps: spec.steps.map((step) => (step.id !== id || step.recording?.actions?.[action - 1]?.target !== from ? step : {
+        ...step,
+        recording: { ...step.recording, actions: step.recording.actions.map((entry, index) => (index === action - 1 ? { ...entry, target: to } : entry)) },
+    })),
+});
+
 /** Adds baselines to the recordings. The hash stays; `network` is not part of it. */
 export const withBaselines = (spec, baselines) => ({
     ...spec,
@@ -1439,7 +1529,9 @@ export const failedStep = ({ results, broken, expectations, failures = [] }) => 
     const failed = fails.find(({ id }) => results.get(id).kind !== 'design') ?? (broken === null ? fails[0] : undefined);
     const suspect = broken?.kind === 'external' || failures.length > 0;
     if (failed !== undefined && results.get(failed.id).kind === 'design') return { id: failed.id, reason: results.get(failed.id).note, kind: 'design', suspect: false, clean: false };
-    if (failed !== undefined) return { id: failed.id, reason: results.get(failed.id).note, suspect, clean: false };
+    // A proposed target (playReplay) goes along: the chat offers it as a button.
+    const proposal = failed === undefined ? undefined : results.get(failed.id).proposal;
+    if (failed !== undefined) return { id: failed.id, reason: results.get(failed.id).note, suspect, clean: false, ...(proposal === undefined ? {} : { proposal }) };
     return broken === null ? null : { id: broken.step, reason: `${broken.label}: ${broken.message}`, suspect, clean: broken.clean === true && failures.length === 0 };
 };
 
@@ -1451,14 +1543,16 @@ export const failedStep = ({ results, broken, expectations, failures = [] }) => 
  * @param durations    seconds per step id, as measured by the run
  * @param withEffects  false on production: effect lines carry visible names, which may be personal data
  * @param designs      the judged target designs per step id (playReplay)
- * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design? }]; `kind` 'design': its screen does not
- *          match its target design
+ * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design?, proposal? }]; `kind` 'design': its screen
+ *          does not match its target design; `proposal`: the proven replacement of a renamed target (without the effect on
+ *          production)
  */
 export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
     const status = results?.get(id)?.status ?? 'skipped';
     const deviation = deviations?.get(id);
     const kind = status !== 'fail' ? undefined : results?.get(id)?.kind ?? (broken?.step === id ? broken.kind : deviation?.fails === true ? 'effect' : 'check');
     const design = designs?.get(id);
+    const proposal = results?.get(id)?.proposal;
     const seen = effects?.get(id);
     const shownDeviation = deviation === undefined ? undefined
         : effectsShown ? { number: deviation.number, learned: deviation.learned, lists: deviation.lists, missing: deviation.missing, extra: deviation.extra, instead: deviation.instead, ...(deviation.fails === true ? { fails: true } : {}) }
@@ -1472,6 +1566,7 @@ export const stepRecords = ({ ids, results, broken = null, requests, effects, de
         ...(effectsShown && seen !== undefined ? { effects: [...seen].map(([action, effect]) => ({ action, ...effect })) } : {}),
         ...(shownDeviation === undefined ? {} : { deviation: shownDeviation }),
         ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [] } }),
+        ...(proposal === undefined ? {} : { proposal: effectsShown ? proposal : { ...proposal, evidence: { check: proposal.evidence.check } } }),
     };
 });
 

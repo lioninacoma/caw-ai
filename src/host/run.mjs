@@ -1772,6 +1772,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             stepTimeoutMs,
             filesDir: join(root, PROJECT_DIR),
             runTag,
+            // A proposed renamed target must not write: what `reads` names is a read.
+            reads: config.reads ?? [],
             // The terminal adds the total itself, the chat gets the finished label.
             log: (entry) => {
                 const { position, number, owner, label } = entry;

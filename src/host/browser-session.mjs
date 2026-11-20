@@ -889,6 +889,34 @@ export const productionWriteName = (described, { reads = [], requestKeys = [], s
 };
 
 /**
+ * Which writes a session aborts. `always` (production, a read-only reproduce): every write, and each one fails the run. A held
+ * block (hold() until release()) aborts them only while a replay tries a locator candidate: an aborted write there is no failure
+ * of the app, only evidence that the candidate would have written, which release() hands to the proof.
+ * @param nameOf { method, url, postData, contentType } -> the request's name if it writes, else null
+ */
+export const createWriteBlock = ({ always, nameOf }) => {
+    let held = null;
+    return {
+        active: () => always || held !== null,
+        /** @returns null (passes), { fail: name } (aborted, a failure) or { held: name } (aborted during a hold) */
+        refuse: (described) => {
+            if (!always && held === null) return null;
+            const name = nameOf(described);
+            if (name === null) return null;
+            if (always) return { fail: name };
+            held.push(name);
+            return { held: name };
+        },
+        hold: () => { held = []; },
+        release: () => {
+            const names = held ?? [];
+            held = null;
+            return names;
+        },
+    };
+};
+
+/**
  * Opens Chrome, signs in, injects the local code and waits until the app settles.
  * @param spec.overlay null or the result of prepareOverlay, which then answers the code requests
  */
@@ -1235,17 +1263,25 @@ export const openBrowserSession = async (spec) => {
         // Not covered: messages an open WebSocket sends. Reading apps send them too (socket.io pings, a GraphQL subscription's
         // connection_init and subscribe), so blocking them would break reading; production WebSockets stay a documented gap.
         const signInHosts = new Set(withLoopbackPair(hosts));
-        // The same block on a run that must not write elsewhere: caw reproduce on an environment without writable.
-        const blocksWrites = resolved.production === true || resolved.blockWrites === true;
+        // The same block on a run that must not write elsewhere: caw reproduce on an environment without writable. A replay's
+        // locator proposal switches it on only while it tries a candidate (holdWrites).
+        const writeBlock = createWriteBlock({
+            always: resolved.production === true || resolved.blockWrites === true,
+            nameOf: (described) => productionWriteName(described, { reads, requestKeys: config.requestKeys ?? [], signingIn, signInHosts }),
+        });
         const refuseWrite = (described, url) => {
-            if (!blocksWrites) return false;
-            const name = productionWriteName(described, { reads, requestKeys: config.requestKeys ?? [], signingIn, signInHosts });
-            if (name === null) return false;
+            const refused = writeBlock.refuse(described);
+            if (refused === null) return false;
             blockedUrls.add(url);
-            failures.push({ type: 'write-blocked', text: t(resolved.production === true ? 'session.browser.writeBlocked' : 'session.browser.writeBlockedReadOnly', { name, env: resolved.name }), url });
+            if (refused.fail !== undefined) failures.push({ type: 'write-blocked', text: t(resolved.production === true ? 'session.browser.writeBlocked' : 'session.browser.writeBlockedReadOnly', { name: refused.fail, env: resolved.name }), url });
             return true;
         };
-        if (blocksWrites) {
+        // Routing every request costs time on each one: a session that never blocks never routes, one that holds only for a
+        // try routes from then on (passing everything through outside the try).
+        let routed = false;
+        const routeWrites = async () => {
+            if (routed) return;
+            routed = true;
             await raw.route((url) => /^https?:$/.test(url.protocol), async (route) => {
                 const request = route.request();
                 if (!refuseWrite(describedRequest(request), request.url())) {
@@ -1254,7 +1290,8 @@ export const openBrowserSession = async (spec) => {
                 }
                 await route.abort('blockedbyclient').catch(() => {});
             });
-        }
+        };
+        if (writeBlock.active()) await routeWrites();
         // A form POST into the workbench's top window is sent by caw itself (interceptDocuments), past the routes: the same check.
         const refuseTopWrite = ({ method, url, headers, postData }) => refuseWrite({
             method,
@@ -1467,6 +1504,13 @@ export const openBrowserSession = async (spec) => {
             /** Whether caw signed in to show the application (any sign-in but none). */
             signedIn: auth.type !== 'none',
             writes: () => [...writes].sort(([a], [b]) => a.localeCompare(b)).map(([label, count]) => ({ label, count })),
+            /** Aborts every write from now on, without failing the run: a replay tries a locator candidate (replay.mjs). */
+            holdWrites: async () => {
+                await routeWrites();
+                writeBlock.hold();
+            },
+            /** Ends holdWrites. @returns the names of the writes aborted meanwhile */
+            releaseWrites: () => writeBlock.release(),
             /** Hosts outside the navigation hosts the pages contacted: request count, resource types, failed requests. */
             thirdParty: () => [...thirdPartyHosts.values()].sort((a, b) => a.host.localeCompare(b.host)).map(({ types, ...rest }) => ({ ...rest, types: [...types].sort() })),
             // Only for recording a demonstration; the agent never gets at it through the channel.

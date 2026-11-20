@@ -429,4 +429,7 @@ export default {
     'config.urlOverride.agent': '{variable}: on {env} the agent may work ("agent": true); its address stays the one in the config, a variable must not redirect it unseen.',
     'config.urlOverride.invalid': '{variable}: {problem}',
     'config.urlOverride.productionHost': '{variable}: {host} is the host of a production environment; {env} pointed there would lift the production block.',
+    'config.report.proposals': 'Proposed targets',
+    'config.report.proposals.intro': 'A recorded element is gone, one similar element took its place: it caused the step\'s learned effect, wrote nothing, and the unchanged check passed. Adopt it with the button in the chat, or change the target in the recording.',
+    'config.report.proposals.item': '- {step}, action {number}: `{from}` → `{to}`',
 };

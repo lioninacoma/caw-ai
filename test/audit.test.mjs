@@ -157,3 +157,19 @@ test('renderAudit: Markdown for the PR, weakenings first, checks as code', () =>
     assert.match(markdown, / {2}- jetzt: ``a`b``/);
     assert.match(renderAudit({ ref: 'main', base: 'abc', findings: [] }), /Kein Test, keine Aufnahme und keine Config geändert\./);
 });
+
+test('auditChanges: an adopted proposal (only a target swapped) is listed with both locators, not a weakening', () => {
+    const SICHERN = "getByRole('button', { name: 'Sichern', exact: true })";
+    const effects = learned([{ action: 2, view: ['+ - status: Gespeichert'] }]);
+    const before = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', actions: [{ action: 'fill', target: NAME, value: 'x' }, { action: 'click', target: SAVE }], recording: { effects } })]);
+    const after = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', actions: [{ action: 'fill', target: NAME, value: 'x' }, { action: 'click', target: SICHERN }], recording: { effects } })]);
+    const findings = audit(after, { before });
+    assert.deepEqual(kinds(findings), ['listed:locator-changed']);
+    assert.equal(findings[0].step, 'S2');
+    assert.equal(findings[0].before, SAVE);
+    assert.equal(findings[0].after, SICHERN);
+    assert.equal(findings[0].text, `Aktion 2 von S2 nutzt ein anderes Element, ihre Prüfung blieb: ${SAVE} → ${SICHERN}.`);
+    // Another action besides the target: a new recording, not a swapped locator.
+    const rerecorded = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', actions: [{ action: 'fill', target: NAME, value: 'y' }, { action: 'click', target: SICHERN }] })]);
+    assert.equal(kinds(audit(rerecorded, { before })).includes('listed:locator-changed'), false);
+});

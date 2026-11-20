@@ -94,6 +94,12 @@ const runsOn = (config, spec) => {
 
 /** An action without what does not change what it does: wait time, optional, the diagnosis hints. */
 const bare = ({ timeoutMs: _timeoutMs, optional: _optional, component: _component, source: _source, ...rest }) => rest;
+// The same action, only possibly on another element.
+const bareTarget = (action) => {
+    const rest = bare(action);
+    delete rest.target;
+    return rest;
+};
 const actionLabel = (action) => [action.action, action.target ?? action.url ?? action.key ?? action.name].filter((part) => part !== undefined).join(' ');
 const sameActions = (before, after) => before.length === after.length && before.every((action, index) => same(bare(action), bare(after[index])));
 
@@ -141,6 +147,17 @@ const stepChanges = (finding, { before, after }, failLists) => {
     if (was === undefined || now === undefined) return out;
     if (now.timeoutMs !== undefined && now.timeoutMs > (was.timeoutMs ?? DEFAULT_TIMEOUT_MS)) {
         out.push(finding('timeout-raised', 'weakening', { ...at, before: was.timeoutMs, after: now.timeoutMs, vars: { was: seconds(was.timeoutMs ?? DEFAULT_TIMEOUT_MS), now: seconds(now.timeoutMs) } }));
+    }
+    // Targets swapped while everything else stayed, the learned effects too: an adopted proposal (a renamed element whose
+    // replacement caused the learned effect and passed the unchanged check). A re-recording learns its effects anew instead.
+    // Listed, not a weakening: the check is the same, the reviewer sees the new element.
+    const sameWork = was.actions.length === now.actions.length && was.actions.every((old, index) => same(bareTarget(old), bareTarget(now.actions[index])));
+    if (sameWork && was.effects !== undefined && same(was.effects, now.effects)) {
+        now.actions.forEach((action, index) => {
+            const old = was.actions[index];
+            if (old.target === action.target) return;
+            out.push(finding('locator-changed', 'listed', { ...at, before: old.target, after: action.target, number: index + 1, vars: { number: index + 1, was: old.target, now: action.target } }));
+        });
     }
     // Per action of the new recording the same action of the old one, in order: a re-recording keeps most actions.
     const olds = [...was.actions];

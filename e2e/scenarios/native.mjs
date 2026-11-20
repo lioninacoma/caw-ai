@@ -1015,3 +1015,50 @@ scenario('N14', 'Target design: a matching .html passes, another fails S2 with k
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DESIGNED}.yaml`), { force: true });
     }
 });
+
+// ---- N16: a renamed target repaired with proof. Two runs learn the effect of clicking "Archive", the server renames it to
+// "Archive all" (/api/rename), a run proposes the one similar button without AI; adopting it in the chat changes only that target.
+
+const REPAIRED = 'rec-repair';
+const ARCHIVE = "getByRole('button', { name: 'Archive', exact: true })";
+const ARCHIVE_ALL = "getByRole('button', { name: 'Archive all', exact: true })";
+const renameSwitch = (on) => fetch(`http://127.0.0.1:${PORT}/api/rename?on=${on ? 1 : 0}`, { method: 'POST' });
+
+scenario('N16', 'Locator repair: learned effect, rename, run proposes "Archive all" with proof (CI: report only), adopting it in the chat changes only the target, then green', async () => {
+    writeTest(native, { ...parseTest(testText(REPAIRED, [{ name: 'Archivieren', expect: 'Archiviert.', actions: [{ click: ARCHIVE }], check: "document.getElementById('status').textContent==='Archived'" }])), id: REPAIRED });
+    const hashOf = () => loadTest(native, REPAIRED).steps[0].recording.hash;
+    const hash = hashOf();
+    try {
+        await renameSwitch(false);
+        const learning = [await runQuietly(REPAIRED, ['--learn']), await runQuietly(REPAIRED, ['--learn'])];
+        const effects = loadTest(native, REPAIRED).steps[0].recording.effects;
+        verify('two runs learn the click\'s effect', learning.every(({ code }) => code === 0) && effects?.runs === 2 && effects.actions.some(({ action }) => action === 1), `${JSON.stringify(learning)} ${JSON.stringify(effects)}`);
+
+        await renameSwitch(true);
+        const proposed = await runQuietly(REPAIRED);
+        const { result, report } = newestRunOf(native, REPAIRED);
+        const step = (result?.steps ?? []).find(({ id }) => id === 'S1');
+        verify('without chat (as in CI): Exit 1, S1 fails on its target with the proposal', proposed.code === 1 && step?.status === 'fail' && step.kind === 'target'
+            && step.proposal?.action === 1 && step.proposal.from === ARCHIVE && step.proposal.to === ARCHIVE_ALL && /=> true$/.test(step.proposal.evidence?.check ?? ''), `${proposed.code} ${JSON.stringify(step)}`);
+        verify('the note says why it is proven', /caw schlägt für Aktion 1 stattdessen button "Archive all" vor: Es bewirkte dieselbe gelernte Wirkung, schrieb nichts/.test(proposed.note), proposed.note);
+        verify('report.md: the section with both locators', /## Vorgeschlagene Ziele/.test(report) && report.includes(`- S1, Aktion 1: \`${ARCHIVE}\` → \`${ARCHIVE_ALL}\``), report.slice(0, 900));
+        verify('CI changed nothing in the recording', loadTest(native, REPAIRED).steps[0].recording.actions[0].target === ARCHIVE);
+
+        const h = humans(async (page) => {
+            const use = page.locator('#choices button', { hasText: '„Archive all“ verwenden' });
+            await use.waitFor({ state: 'attached', timeout: 90000 });
+            const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
+            verify('Chat: the failure names the proposal', /S1 ist gescheitert/.test(text) && /stattdessen button "Archive all" vor/.test(text), text.slice(0, 500));
+            await clickChoice(page, use);
+        }, async () => {});
+        const code = await run(native, [REPAIRED, ...target], { interactive: true, onChatOpen: h.onChatOpen });
+        const recording = loadTest(native, REPAIRED).steps[0].recording;
+        verify('adopted: Exit 0 after the new run, two windows', code === 0 && await h.done() === 2, String(code));
+        verify('only the target changed: hash and learned effects stay', recording.actions[0].target === ARCHIVE_ALL && hashOf() === hash && JSON.stringify(recording.effects) === JSON.stringify(effects), JSON.stringify(recording));
+        const green = newestRunOf(native, REPAIRED).result;
+        verify('the new run: S1 passes with the new target', (green?.steps ?? []).find(({ id }) => id === 'S1')?.status === 'pass', JSON.stringify(green?.steps));
+    } finally {
+        await renameSwitch(false).catch(() => {});
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${REPAIRED}.yaml`), { force: true });
+    }
+});

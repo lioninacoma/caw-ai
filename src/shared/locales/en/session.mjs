@@ -252,4 +252,5 @@ export default {
     'session.explain.coveredSays': ' It is there but covered by {by}, which says: {messages}{end}',
     'session.args.reportTwice': '--report {kind}= is given twice: one file per kind.',
     'session.args.retryEnv': '--retry-env expects a whole number from 1 to {max}, e.g. --retry-env 1',
+    'session.replay.proposal': 'caw proposes {target} for action {number} instead: it caused the same learned effect, wrote nothing, and the step\'s unchanged check passed.',
 };

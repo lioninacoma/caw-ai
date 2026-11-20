@@ -679,4 +679,5 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.bisect.meaning.bad': 'bad',
     'cli.bisect.meaning.skip': 'skip',
     'cli.bisect.meaning.abort': 'git bisect stops',
+    'cli.audit.kind.locator-changed': 'Action {number} of {step} uses another element, its check stayed: {was} → {now}.',
 };

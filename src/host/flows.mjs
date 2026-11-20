@@ -4,8 +4,9 @@
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE } from '../shared/names.mjs';
-import { positionalActions, replayOf, replayToEntry, replayUpToStale, withBaselines, withEffects, withoutEffects } from './replay.mjs';
+import { positionalActions, replayOf, replayToEntry, replayUpToStale, withBaselines, withEffects, withoutEffects, withProposal } from './replay.mjs';
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
+import { locatorLabel, locatorText } from './locator.mjs';
 import { staleSteps } from './test-file.mjs';
 
 // Labels as getters: the language is not settled at import time. Copies via spread are only made at runtime.
@@ -143,10 +144,11 @@ const createFixer = ({ sandbox, openSandbox }) => {
          * click starts Claude.
          * @param spec the test that advice in the conversation refers to
          * @param canAsk the "ask Claude for the cause" button: Claude advises as with --explain, only on click
-         * @returns { advice, target, repaired, ask, forget }: `advice` from the conversation or null; `forget`: forget the learned effects of this step; `target` is fixed with a warm-up; `repaired`
-         *          is already fixed in the same browser; `ask`: Claude should find the cause and advise
+         * @param proposals the button that adopts a proposed target (failed.proposal from playReplay); only a test run offers it
+         * @returns { advice, target, repaired, ask, forget, adoptTarget }: `advice` from the conversation or null; `forget`: forget the learned effects of this step; `target` is fixed with a warm-up; `repaired`
+         *          is already fixed in the same browser; `ask`: Claude should find the cause and advise; `adoptTarget`: the proposal to write into the recording
          */
-        settle: async ({ failed, chat, verdict, talk, repairHere, ignore, cleared }, spec, { canAsk = false, repeated = false } = {}) => {
+        settle: async ({ failed, chat, verdict, talk, repairHere, ignore, cleared }, spec, { canAsk = false, repeated = false, proposals = false } = {}) => {
             const { diagnosis } = failed;
             const app = diagnosis?.side === 'app';
             let hint = failed.suspect ? t('run.flow.suspect') : '';
@@ -185,6 +187,10 @@ const createFixer = ({ sandbox, openSandbox }) => {
             if (effectOnly) options = [secondary(FORGET_EFFECT), ...options];
             // Only script errors: Ignore comes first, fixing via Claude stays possible.
             if (ignore !== undefined) options = [IGNORE_ERRORS, ...options.map(secondary)];
+            // A renamed target with a proven replacement: adopting it comes first, it changes only that target in the recording.
+            const proposal = proposals ? failed.proposal : undefined;
+            const useTarget = proposal === undefined ? null : { id: 'use-target', primary: true, label: t('run.button.useTarget', { name: locatorText(proposal.to) ?? locatorLabel(proposal.to) }) };
+            if (useTarget !== null) options = [useTarget, ...options.map(secondary)];
             if (design) options = canAsk ? [BUILD_DESIGN, CLOSE] : [ONLY_CLOSE];
             /** The config now allows all hard failures: a check run without Claude is enough, no fix. */
             const recheck = async (advice) => {
@@ -218,6 +224,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
                     return recheck(advice);
                 }
                 if (answer?.choice === FORGET_EFFECT.id) return { advice, target: null, forget: failed.id };
+                if (useTarget !== null && answer?.choice === useTarget.id) return { advice, target: null, adoptTarget: proposal };
                 if (answer?.choice === ASK.id) return { advice, target: null, ask: true };
                 if (answer?.choice !== FIX.id) return { advice, target: null };
                 if (await open(chat, cannotFix(chat)) === null) return { advice, target: null };
@@ -677,11 +684,20 @@ export const runFlow = async (options) => {
                     return;
                 }
                 // With --explain Claude already advised; otherwise Claude looks for the cause only on click, same as --explain, just on demand.
-                let settled = await fixer.settle(concluded, current, { canAsk: !advise });
+                let settled = await fixer.settle(concluded, current, { canAsk: !advise, proposals: true });
                 if (settled.ask) {
                     await keep(settled.advice, chat, { offer: false });
                     if (await afterAdvice(await fixer.advise(concluded, current))) return windowAfter();
-                    settled = await fixer.settle(concluded, current);
+                    settled = await fixer.settle(concluded, current, { proposals: true });
+                }
+                // The proven target goes into the recording, nothing else; a new run shows the step green with it.
+                if (settled.adoptTarget !== undefined) {
+                    const { step, action, to } = settled.adoptTarget;
+                    current = withProposal(current, settled.adoptTarget);
+                    const text = t('run.flow.targetAdopted', { id: step, number: action, target: locatorLabel(to), file: adopt(current, new Set([step])) });
+                    log(text);
+                    chat.notice(text);
+                    rerun = true;
                 }
                 if (settled.forget !== undefined) {
                     current = withoutEffects(current, settled.forget);

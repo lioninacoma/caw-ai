@@ -453,4 +453,6 @@ export default {
     'run.mcp.endedWithout': 'explore ended without a result (window closed or an error). Last output: {tail}',
     'run.mcp.roleDone': 'Session saved for: {roles}.',
     'run.mcp.roleNothing': 'No session saved (window closed or an error). Last output: {tail}',
+    'run.button.useTarget': 'Use "{name}"',
+    'run.flow.targetAdopted': 'Action {number} of {id} now uses {target}: {file}. Please review and commit.',
 };

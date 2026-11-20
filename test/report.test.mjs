@@ -110,3 +110,10 @@ test('report: pending steps are named below the results, outside the verdict', (
     assert.match(text, /\| E2 \| b \| pass \|.*\n\nOffen, noch nicht aufgenommen: E3, E4\. Diese Schritte liefen nicht\.\n/);
     assert.doesNotMatch(renderReport({ status: 'pass', testId: 'smoke', target: 'local', testedCode: 'deployed', expectations: rb.expectations, results: [ok('E1'), ok('E2')] }), /Offen/);
 });
+
+test('report: a proposed target has its own section with both locators', () => {
+    const proposal = { step: 'S2', action: 1, from: "getByRole('button', { name: 'Speichern' })", to: "getByRole('button', { name: 'Sichern' })", evidence: { check: 'c => true' } };
+    const text = renderReport({ status: 'fail', testId: 'smoke', target: 'local', testedCode: 'deployed', steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail', kind: 'target', proposal }] });
+    assert.match(text, /## Vorgeschlagene Ziele\n\nEin aufgenommenes Element fehlt, ein ähnliches trat an seine Stelle: .*\n\n- S2, Aktion 1: `getByRole\('button', \{ name: 'Speichern' \}\)` → `getByRole\('button', \{ name: 'Sichern' \}\)`\n/);
+    assert.doesNotMatch(renderReport({ status: 'pass', testId: 'smoke', target: 'local', testedCode: 'deployed', steps: [{ id: 'S1', status: 'pass' }] }), /Vorgeschlagene Ziele/);
+});

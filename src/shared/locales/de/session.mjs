@@ -252,4 +252,5 @@ export default {
     'session.explain.coveredSays': ' Es ist da, aber verdeckt von {by}, der meldet: {messages}{end}',
     'session.args.reportTwice': '--report {kind}= steht zweimal: eine Datei je Art.',
     'session.args.retryEnv': '--retry-env erwartet eine ganze Zahl von 1 bis {max}, etwa --retry-env 1',
+    'session.replay.proposal': 'caw schlägt für Aktion {number} stattdessen {target} vor: Es bewirkte dieselbe gelernte Wirkung, schrieb nichts, und die unveränderte Prüfung des Schritts bestand.',
 };
