@@ -20,8 +20,12 @@ const shortHash = (value) => createHash('sha256').update(JSON.stringify(value)).
 // Numbers change from run to run (order numbers, dates, counters).
 const neutral = (text) => text.replace(/\d+/g, '#');
 
-/** Runs in the browser: state of the visible controls, without values. */
-export function controlsProbe() {
+/**
+ * Runs in the browser: state of the visible controls, without values.
+ * @param withStyle also a few computed styles per control, for comparing against a target design (design.mjs): then each
+ *                  entry is { line, style? } instead of the line
+ */
+export function controlsProbe(withStyle = false) {
     const seen = (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
     const short = (text) => (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
     // Without its own label: the first text line of the nearest enclosing area, e.g. the heading of a card. Otherwise
@@ -64,12 +68,18 @@ export function controlsProbe() {
     const ROW = '[role=row], [role=gridcell], [role=listitem], [role=option], [role=treeitem], tr, li';
     const controls = [...document.querySelectorAll('input, select, textarea, button, [role=button], [role=tab], [role=checkbox], [role=combobox], [role=textbox]')]
         .filter((node) => node.type !== 'hidden' && seen(node) && node.closest(ROW) === null)
-        .map((node) => `${node.getAttribute('role') ?? node.tagName.toLowerCase()} "${labelOf(node)}" ${flags(node).join(',')}`.trim());
+        .map((node) => {
+            const line = `${node.getAttribute('role') ?? node.tagName.toLowerCase()} "${labelOf(node)}" ${flags(node).join(',')}`.trim();
+            if (!withStyle) return line;
+            const style = getComputedStyle(node);
+            return { line, style: { fontSize: style.fontSize, fontWeight: style.fontWeight, color: style.color, backgroundColor: style.backgroundColor, borderRadius: style.borderRadius, padding: style.padding } };
+        });
     const lists = [...document.querySelectorAll('[role=grid], [role=treegrid], [role=listbox], [role=tree], [role=table], table')]
         .filter((node) => seen(node) && (node.parentElement?.closest('[role=grid], [role=treegrid], [role=listbox], [role=tree], [role=table], table') ?? null) === null)
         .map((node) => {
             const rows = [...node.querySelectorAll('[role=row], [role=option], [role=treeitem], tr')].filter((row) => seen(row) && row.querySelector('[role=columnheader], th') === null);
-            return `list "${short(node.getAttribute('aria-label') || contextOf(node))}" ${rows.length === 0 ? 'empty' : 'rows'}`;
+            const line = `list "${short(node.getAttribute('aria-label') || contextOf(node))}" ${rows.length === 0 ? 'empty' : 'rows'}`;
+            return withStyle ? { line } : line;
         });
     return [...controls, ...lists];
 }

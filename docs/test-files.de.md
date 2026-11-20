@@ -62,6 +62,8 @@ Je Schritt:
 | `expect` | ja | Genau ein prüfbares Ergebnis. |
 | `note` | nein | Kontext nur für diesen Schritt. |
 | `retry` | nein | `{ times: 2, waitMs: 15000, from: S1 }`: neu laden und wiederholen, wenn der Schritt aus bekanntem Grund scheitert, etwa ein kaltes Backend. Nicht für Schritte, die Daten absenden. |
+| `design` | nein | Schreibt nur ein Mensch: das Zielbild des Schritts, eine Datei unter `caw/design` relativ zum caw-Ordner (`design/order-form.html`), siehe [Zielbild](#zielbild). |
+| `needs` | nein | Schreibt nur ein Mensch: Locatoren, die auf der Seite sein müssen, bevor ein offener Schritt aufgenommen werden kann, etwa `['getByRole("button", { name: "Save" })']`. |
 
 Tipps:
 
@@ -78,7 +80,7 @@ npx caw run create-ticket --env local       # Exit 4: S2 geändert, nennt den re
 npx caw record create-ticket@S2 --env local # ab S2 bis zum Ende neu aufnehmen, S1 bleibt
 ```
 
-`notes`, `role`, `writes`, `environments`, `start`, `retry` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
+`notes`, `role`, `writes`, `environments`, `start`, `retry`, `design`, `needs` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
 
 ## Offene Schritte
 
@@ -92,6 +94,16 @@ npx caw run create-ticket --env local --strict # Exit 4, solange etwas offen ist
 ```
 
 `run` spielt die aufgenommenen Schritte ab und besteht ohne die offenen; `list` zeigt `offen (S4, S5)`, `report.md` und `result.json` (`pending` und `status: "pending"` unter `steps`) nennen sie, die Werkbank zeigt sie als nicht erreicht. Nur das Ende zählt: ein nicht aufgenommener Schritt vor einem aufgenommenen, ein nach der Aufnahme geänderter Schritt und ein Test ohne jede Aufnahme enden weiter mit Exit 4, damit das Ändern eines Schritttexts nie still seine Prüfung aus CI nimmt.
+
+Hat der erste offene Schritt `needs`, prüft ein Lauf, der gesund endet, sie auf der Seite (je etwa 2 s): Sind alle da, meldet er „S4 ist bereit zum Aufnehmen: caw record create-ticket@S4“, sonst nennt er die fehlenden. `result.json` führt sie unter `needs`.
+
+## Zielbild
+
+Ein Schritt kann den Bildschirm nennen, auf dem er enden soll: `design: design/order-form.html`. `design` und `needs` schreiben nur Menschen in die Testdatei (oder lassen ihre Claude-Code-Session einen Entwurf mit `caw_design` verknüpfen, wenn sie darum bitten); Claudes Plan darf sie nicht enthalten, und wenn caw einen Schritt neu schreibt (beheben, neu aufnehmen), bleiben sie erhalten.
+
+Nachdem die Prüfung des Schritts bestanden hat, rendert caw den `.html`-Entwurf in einem eigenen headless Browser ohne Skripte und Netz, im aufgenommenen Viewport des Schritts, und vergleicht seine Struktur mit der Seite der App: Bedienelemente (Rolle, Beschriftung, Merkmale), Ansichtszeilen (Überschriften, Buttons, Links, Bereiche) und je Bedienelement `font-size`, `font-weight`, `color`, `background-color`, `border-radius` und `padding`. Listenzeilen, freier Text, Zahlen und ob ein Feld gefüllt ist, sind Daten und bleiben außen vor. Fehlt etwas oder weicht ein Stil ab, scheitert der Schritt mit kind `design`; Bedienelemente, die nur die App hat, werden genannt, lassen aber nichts scheitern. Das Abspielen geht weiter, der Schritt wird nicht wiederholt und lernt in diesem Lauf keine Wirkungen. Mit `design.fail: []` in der Config warnt er nur. Ein `.png`-Entwurf wird noch nicht beurteilt: Der Pixelvergleich kommt später.
+
+`result.json` führt je beurteiltem Schritt `design: { file, verdict, missing, extra, styleDiffs }` unter `steps`.
 
 ## Aufzeichnung
 

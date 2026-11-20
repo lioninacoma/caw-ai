@@ -35,6 +35,9 @@ steps:
   texts from the application. Text the run creates is recognised by `{{runTag}}`, which caw makes unique per run.
 - Write plans, step names and expectations in the team language (`language` in the config).
 - A YAML value with ` #` must be quoted; `caw_validate` reports a comment that cut a value.
+- **`design`** (a target design under `caw/design`) and **`needs`** (locators that must be on the page before a pending step
+  can be recorded) belong to the person: leave them as they are, never put them into a plan, and link a design only through
+  `caw_design` when the person asks (topic `design`).
 
 After writing, check it with `caw_validate` (unknown role, wrong environment, invalid fields), then record it (topic `run`).
 A test may use a role that has no test user yet, but `record` and `run` then stop with `credentials-missing` before Chrome

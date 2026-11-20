@@ -21,6 +21,8 @@ const RERUN = button('rerun', 'run.button.rerun', { primary: true });
 // Ends regularly with the result of the run. Cancel in the chat header ends immediately, as an error without a result.
 const CLOSE = button('close', 'run.button.close');
 const ASK = button('ask', 'run.button.ask', { primary: true });
+// A target design not met: asking means having the screen built, the app's code changes, not the test.
+const BUILD_DESIGN = button('ask', 'run.button.buildDesign', { primary: true });
 // Only the effects deviate, the check is met: forget the learned effects, without Claude and without tokens.
 const FORGET_EFFECT = button('forget-effect', 'run.button.forgetEffect');
 // Only script errors, e.g. from third-party code: add them to consoleIgnore and re-check right away, without Claude and tokens.
@@ -152,7 +154,11 @@ const createFixer = ({ sandbox, openSandbox }) => {
                 const warn = app ? ` ${t('run.flow.hideWarn')}` : '';
                 hint = ` ${diagnosis.text} ${diagnosis.findings.join(' ')}${warn}`;
             }
-            const where = t(repairHere === undefined ? 'run.flow.whereFresh' : 'run.flow.whereHere');
+            // A design not met: the step works, its screen is not built yet. Fixing the step or forgetting its effects would hide
+            // that, so only asking (the app's code changes, not the test) and closing remain.
+            const design = failed.kind === 'design';
+            if (design) hint = '';
+            const where = design ? ` ${t('run.flow.designNext')}` : t(repairHere === undefined ? 'run.flow.whereFresh' : 'run.flow.whereHere');
             // The status line below says that Claude can be asked.
             // Same failure after a fix: fixing the same step again changes nothing, the cause lies elsewhere.
             const again = repeated ? t('run.flow.again', { config: CONFIG_FILE }) : '';
@@ -179,6 +185,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
             if (effectOnly) options = [secondary(FORGET_EFFECT), ...options];
             // Only script errors: Ignore comes first, fixing via Claude stays possible.
             if (ignore !== undefined) options = [IGNORE_ERRORS, ...options.map(secondary)];
+            if (design) options = canAsk ? [BUILD_DESIGN, CLOSE] : [ONLY_CLOSE];
             /** The config now allows all hard failures: a check run without Claude is enough, no fix. */
             const recheck = async (advice) => {
                 chat.notice(t('run.flow.ignoredRecheck'));

@@ -308,6 +308,12 @@ Eigene Tabs kannst du jederzeit öffnen, auch während des Laufs: Gesteuert wird
 
 Du bleibst im Fenster hinter derselben Host-Sperre und bist als Testnutzer angemeldet. Dialoge wie `alert()` schließt Playwright automatisch, sie bleiben also nicht stehen. Das Profil ist frisch und wird am Ende gelöscht. Bleibt es etwa nach einem Abbruch liegen, entfernt es der nächste Lauf, sofern dessen Prozess nicht mehr läuft.
 
+### Gegen ein Zielbild entwickeln
+
+Der Testplan kann die Vorgabe sein, bevor es den Bildschirm gibt. Schreib die nächsten Schritte ans Ende des Tests (sie bleiben [offen](test-files.de.md#offene-schritte)) und gib einem Schritt den Bildschirm, auf dem er enden soll: `design: design/order-form.html`, dazu `needs:` mit den Locatoren, die da sein müssen, bevor er aufgenommen werden kann. Der Entwurf kommt meist aus einem Claude-Design-Artefakt oder einem Figma-Export: Bitte deine Claude-Code-Session, ihn zu holen; sie schreibt ihn mit `caw_design` nach `caw/design` und hängt ihn an den Schritt, wenn du darum bittest. caw selbst holt nie etwas.
+
+Jeder Lauf beurteilt den Entwurf dann ohne KI, nachdem die Prüfung des Schritts bestanden hat: Bedienelemente, Überschriften, Beschriftungen und einige Stile je Bedienelement des gerenderten Entwurfs gegen die Seite der App ([Einzelheiten](test-files.de.md#zielbild)). Ist er nicht erfüllt, scheitert der Schritt mit kind `design`, und der Chat bietet an, ihn von deiner verbundenen Session umsetzen zu lassen oder zu schließen, nie den Schritt zu beheben: Der Test stimmt, der Bildschirm ist noch nicht gebaut. Sind alle `needs` des ersten offenen Schritts auf der Seite, meldet der Lauf, dass er bereit zum Aufnehmen ist: `caw record <test>@S4`.
+
 ## Einordnen und reparieren
 
 Scheitert ein Schritt, ordnet caw den Fehler ohne KI ein; Claude erklärt ihn auf Wunsch, nimmt einen Schritt neu auf oder schlägt eine Code-Änderung vor.
@@ -504,6 +510,7 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | `caw_attach` | verbindet diese Session mit caw-Fenstern: liefert ihren Schlüssel und den Befehl, den sie mit ihrem Monitor-Werkzeug startet; Chat-Nachrichten und Aufgaben eines verbundenen Fensters erreichen die Session dann als Zeilen | nein |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
 | `caw_reproductions` | die Nachstellungen in `.caw/runs` mit Urteil, `ref`, abdeckendem Test, Entwurf und Bericht; `refs` nennt die ohne Lauf als `missing`, `since` filtert nach Datum | nein |
+| `caw_design` | Zielbilder unter `caw/design`: schreiben (`put`), auflisten, auf Wunsch des Menschen an einen Schritt hängen | nein |
 | `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role`, `ref` (oder `args`) | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |

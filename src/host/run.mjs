@@ -7,11 +7,13 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { pathToFileURL } from 'node:url';
 
+import { chromium } from 'playwright-core';
+
 import { colorEnabled } from '../shared/color.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { resolveCredentials } from '../shared/credentials.mjs';
 import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared/environments.mjs';
-import { buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
+import { browserLaunch, buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { foldAction } from './activity.mjs';
 import { DEFAULT_KEEP_RUNS, REPRODUCE_RUN, markRunAlive, pruneRuns } from './runs.mjs';
@@ -24,13 +26,14 @@ import { readReproduction, draftTestPlan, adoptHint, coverageIn } from './reprod
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
 import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
-import { renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
+import { humanFields, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
 import { codeText, createAgentHandler, hiddenAnswer, hiddenError, locatorFor } from './agent-commands.mjs';
 import { locatorLabel } from './locator.mjs';
 import { recordLocator } from './record-locator.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
+import { createDesignJudge, missingNeeds } from './design.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
@@ -1459,9 +1462,11 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             } else if (repairing !== undefined && (parsed.steps.length !== 1 || parsed.steps[0].id !== repair.id)) {
                 throw new CawError('plan-invalid', `When repairing, the plan contains exactly step ${repair.id}.`);
             }
-            // A manually set retry survives the repair even if Claude does not repeat it, per step.
+            // What the human wrote survives Claude's plan, per step: a manually set retry the repair even if Claude does not repeat
+            // it; design and needs always, also on a whole re-record, since Claude's plan may not carry them at all.
             const retryOf = (id) => (range ?? (repairing === undefined ? [] : [repairing])).find((step) => step.id === id)?.retry;
-            const steps = parsed.steps.map((step) => (retryOf(step.id) === undefined ? step : { retry: retryOf(step.id), ...step }));
+            const humanOf = (id) => humanFields((givenSpec?.steps ?? []).find((step) => step.id === id));
+            const steps = parsed.steps.map((step) => ({ ...(retryOf(step.id) === undefined ? {} : { retry: retryOf(step.id) }), ...step, ...humanOf(step.id) }));
             let whole = steps;
             if (range !== undefined) whole = [...fixed, ...steps];
             else if (repairing !== undefined) whole = replaceStep(givenSpec, steps[0]).steps;
@@ -1469,7 +1474,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             if (retryIssues.length > 0) throw new CawError('plan-invalid', retryIssues.join(' '));
             const heardIssues = repairing === undefined ? heardProblems(parsed, humanNotes) : [];
             if (heardIssues.length > 0) throw new CawError('plan-invalid', heardIssues.join(' '));
-            const composed = repairing === undefined ? composeTest(givenSpec, parsed) : { ...spec, steps, expectations: steps.map(({ id, expect }) => ({ id, text: expect })) };
+            const composed = repairing === undefined ? composeTest(givenSpec, { ...parsed, steps }) : { ...spec, steps, expectations: steps.map(({ id, expect }) => ({ id, text: expect })) };
             // Same plan as in the test file: the human already adopted it, nothing to approve. The human can still write.
             const unchanged = range === undefined
                 ? repairing !== undefined && samePlanStep(steps[0], repairing)
@@ -1747,11 +1752,21 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             else seen.end = undefined;
             timedOwner = owner;
         };
+        // Target designs are rendered in a browser of their own, started only when a step has a design. Not while reaching a
+        // state to develop in (open): there the screen is still being built, and a run judges it.
+        const designJudge = Object.keys(replay.designs ?? {}).length === 0 || develop !== undefined ? null : createDesignJudge({
+            cawDir: join(root, PROJECT_DIR),
+            launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
+            read: (path) => readFileSync(path, 'utf8'),
+            secrets: () => session.secrets?.() ?? [],
+        });
         const play = playReplay({
             replay,
             handler: agentHandler,
             session,
             ...(config.effects?.fail === undefined ? {} : { effectFail: config.effects.fail }),
+            ...(designJudge === null ? {} : { judgeDesign: designJudge.judge }),
+            ...(config.design?.fail === undefined ? {} : { designFail: config.design.fail }),
             base: checked.url,
             authMarker: checked.signIn?.signedInSelector,
             stepTimeoutMs,
@@ -1772,9 +1787,21 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             aborted.then(() => 'aborted'),
         ]);
         if (timedOwner !== undefined) stepTimes.get(timedOwner).end ??= Date.now();
+        await designJudge?.close();
         if (typeof ended === 'string') {
             writeInterrupted(ended);
             return closeRun(ended);
+        }
+        for (const judged of ended.designs?.values() ?? []) if (judged.verdict === 'image') ui.info(judged.note);
+        // The run ended healthy before the pending steps: is the first one ready to record? Only its needs say so.
+        const healthy = ended.broken === null && [...ended.results.values()].every(({ status, kind }) => status === 'pass' || kind === 'design');
+        if (replay.needs !== undefined && healthy) {
+            const missing = await missingNeeds(session.framework ?? frameworkOf(config), () => session.page().mainFrame(), replay.needs.locators);
+            const { step } = replay.needs;
+            reportBase.needs = { step, ready: missing.length === 0, missing };
+            const text = missing.length === 0 ? t('run.needs.ready', { step, command: `caw record ${spec.id}@${step}` }) : t('run.needs.missing', { step, list: missing.join('; ') });
+            ui.info(text);
+            chat?.notice(text);
         }
         // Per step what it did: status, time, requests and effects. Redacted with the verdict in writeResult.
         reportBase.steps = [
@@ -1792,7 +1819,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         // The workbench knows no state of its own for them: skipped, with a note that says why.
         for (const id of replay.pending ?? []) await session.workbench?.step(id, 'skipped', t('run.pendingStep'));
         await markEntry(replay, failed);
-        if (failed !== null) {
+        // A design not met is no failure of test, app or environment: the step works, its screen is not built yet.
+        if (failed !== null && failed.kind !== 'design') {
             // Test, application or environment: evidence from the browser and the comparison with the step's recording.
             const requests = ended.requests?.get(failed.id) ?? [];
             const baseline = givenSpec.steps.find(({ id }) => id === failed.id)?.recording?.network;

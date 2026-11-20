@@ -560,6 +560,21 @@ test('Test run: if only the effects deviate, "forget effect" forgets them withou
     assert.equal(other.questions[0].options.includes('forget-effect'), false);
 });
 
+test('Test run: a design not met offers to have it built or to close, never to fix the step or forget its effects', async () => {
+    const reason = 'S2 entspricht nicht seinem Zielbild: design/s2.html Fehlt: button "Speichern".';
+    const h = harness({ outcomes: [failing('S2', { reason, kind: 'design' })], answers: ['close'] });
+    assert.equal(await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude without a click'), ...h }), EXIT.fail);
+    assert.deepEqual(h.questions[0].options, ['ask', 'close']);
+    assert.match(h.questions[0].labels[0], /umsetzen lassen/);
+    assert.match(h.questions[0].text, /Zielbild.*Der Schritt selbst klappt/);
+    assert.doesNotMatch(h.questions[0].text, /Beheben (beginnt|geht)/);
+
+    // Claude already advised (--explain): only closing remains.
+    const advised = harness({ outcomes: [{ ...failing('S2', { reason, kind: 'design' }), concluded: { flawed: true, advise: async () => null } }], answers: ['close'] });
+    await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', ...advised });
+    assert.deepEqual(advised.questions[0].options, ['close']);
+});
+
 test('If a step is still stale after the check run, the decision offers to re-record it', async () => {
     const stale = { ...spec, steps: [spec.steps[0], { ...spec.steps[1], expect: 'S2 anders' }] };
     const h = harness({ outcomes: [pass, repaired(), pass], answers: ['rerecord-next', 'adopt'] });

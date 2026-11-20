@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReplay, createRecorder, failedStep, fillTarget, playReplay, replayOf, replayToEntry, replayVerdict, positionalActions, stepGroups, stepLabel, swapToken } from '../src/host/replay.mjs';
+import { buildReplay, createRecorder, failedStep, fillTarget, playReplay, replayOf, replayToEntry, replayVerdict, positionalActions, stepGroups, stepLabel, stepRecords, swapToken } from '../src/host/replay.mjs';
 import { stepHash } from '../src/host/test-file.mjs';
 import { extjs } from '../src/ext/extjs/extjs.mjs';
 import { classifyFailure, renderReport, stackOrigin } from '../src/shared/report.mjs';
@@ -883,4 +883,72 @@ test('an unmet check names the expectation, the code stays in the evidence', asy
 test('the replay carries the expectation to the check', () => {
     const spec = { id: 't', steps: [{ id: 'S1', name: 'n', do: 'd', expect: 'Shown.', recording: { actions: [], check: 'true' } }] };
     assert.equal(replayOf(spec).steps.at(-1).expect, 'Shown.');
+});
+
+test('the replay carries the designs of recorded steps and the needs of the first pending step', () => {
+    const recorded = (id, extra = {}) => ({ id, name: id, do: '', expect: 'x', ...extra, recording: { actions: [], check: 'true', viewport: { width: 390, height: 844 } } });
+    const spec = { id: 't', steps: [recorded('S1', { design: 'design/a.html' }), recorded('S2'), { id: 'S3', name: 'S3', do: '', expect: 'y', needs: ['getByRole("button", { name: "Save" })'] }, { id: 'S4', name: 'S4', do: '', expect: 'z', needs: ['getByText("x")'] }] };
+    const replay = replayOf(spec);
+    assert.deepEqual(replay.designs, { S1: { file: 'design/a.html', viewport: { width: 390, height: 844 } } });
+    assert.deepEqual(replay.needs, { step: 'S3', locators: ['getByRole("button", { name: "Save" })'] }, 'only the first pending step');
+});
+
+/** Plays two checks that pass; S1 has a design that the judge decides. */
+const playDesign = async ({ verdict, designFail, retries, failS2 = false }) => {
+    const warnings = [];
+    const seen = [];
+    const session = { ...fakeSession(), warn: (warning) => warnings.push(warning) };
+    const handler = async (command) => {
+        seen.push(command.action);
+        return command.action === 'check' ? { pass: !(failS2 && command.id === 'S2'), value: true } : 'ok';
+    };
+    const judged = [];
+    const judgeDesign = async (design) => {
+        judged.push(design.file);
+        return verdict === 'not-met'
+            ? { file: design.file, verdict, missing: ['button "Speichern"'], extra: [], styleDiffs: ['button "Abbrechen": color #ffffff → #000000'] }
+            : { file: design.file, verdict, ...(verdict === 'image' ? { note: 'Bild' } : { missing: [], extra: [], styleDiffs: [] }) };
+    };
+    const clock = fakeClock();
+    const played = await playReplay({
+        replay: { steps: TWO_STEPS, designs: { S1: { file: 'design/s1.html' } }, ...(retries === undefined ? {} : { retries }) },
+        handler, session, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, judgeDesign,
+        ...(designFail === undefined ? {} : { designFail }),
+    });
+    return { ...played, warnings, seen, judged };
+};
+
+test('design: a design not met fails its step with kind design, the replay goes on without a retry', async () => {
+    const played = await playDesign({ verdict: 'not-met', retries: { S1: { times: 2, waitMs: 0 } } });
+    assert.equal(played.broken, null, 'no stop');
+    assert.equal(played.results.get('S1').status, 'fail');
+    assert.equal(played.results.get('S1').kind, 'design');
+    assert.equal(played.results.get('S1').evidence.type, 'eval');
+    assert.match(played.results.get('S1').note, /S1 entspricht nicht seinem Zielbild.*Fehlt: button "Speichern"/);
+    assert.equal(played.results.get('S2').status, 'pass', 'S2 still ran');
+    assert.ok(!played.seen.includes('reload'), 'no new attempt');
+    assert.deepEqual(played.judged, ['design/s1.html']);
+    const [record] = stepRecords({ ids: ['S1'], ...played });
+    assert.equal(record.kind, 'design');
+    assert.deepEqual(record.design, { file: 'design/s1.html', verdict: 'not-met', missing: ['button "Speichern"'], extra: [], styleDiffs: ['button "Abbrechen": color #ffffff → #000000'] });
+    const failed = failedStep({ ...played, expectations: [{ id: 'S1' }, { id: 'S2' }] });
+    assert.equal(failed.kind, 'design');
+    assert.equal(failed.id, 'S1');
+});
+
+test('design: with design.fail [] a design not met only warns; an image design passes', async () => {
+    const warned = await playDesign({ verdict: 'not-met', designFail: [] });
+    assert.equal(warned.results.get('S1').status, 'pass');
+    assert.equal(warned.warnings[0].type, 'design');
+    const image = await playDesign({ verdict: 'image' });
+    assert.equal(image.results.get('S1').status, 'pass');
+    assert.equal(image.designs.get('S1').verdict, 'image');
+    assert.equal(image.warnings.length, 0, 'an image is no warning: it would make Claude advise');
+});
+
+test('design: a later step that really failed comes first, before a design not met', async () => {
+    const played = await playDesign({ verdict: 'not-met', failS2: true });
+    const failed = failedStep({ ...played, expectations: [{ id: 'S1' }, { id: 'S2' }] });
+    assert.equal(failed.id, 'S2');
+    assert.equal(failed.kind, undefined);
 });

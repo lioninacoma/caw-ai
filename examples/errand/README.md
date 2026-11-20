@@ -41,6 +41,7 @@ Things to try next:
 - Paste a bug into the chat: searching for "home" finds nothing although todos are tagged #home. Claude reproduces it and proposes the fix in `server.mjs`.
 - Let Claude reproduce that bug on its own, without a chat: `node ../../bin/caw.mjs reproduce "Searching for home finds nothing although todos are tagged #home." --env local`. The run folder gets a report with the verdict and a draft test plan.
 - Rename the "Add todo" button in `server.mjs`, restart, and `run` again. The step fails; ask Claude in the chat why.
+- Develop against a target design: `caw/design/todo-detail.html` is the screen S4 ends on (with `caw/design/tokens.json`, the colors and sizes as design tokens). Add `design: design/todo-detail.html` to S4 in `caw/tests/first-errand.yaml` and `run`: caw compares the page with the design after S4's check. Change the Save button's color in `server.mjs`, restart, and the step fails with kind `design`, naming the style that differs.
 - Record the whole test yourself with Claude in the chat: `node ../../bin/caw.mjs record first-errand --env local`. That replaces the shipped recording.
 - Try the setup flow in a copy of this folder: delete `caw.config.json`, then `node <repo>/bin/caw.mjs init --url http://localhost:4174`.
 

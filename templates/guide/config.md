@@ -25,6 +25,7 @@ automatically; then edit the file with your own Edit tool.
 | `consoleIgnore`, `foreignCode` | Regular expressions: console messages that never matter; errors from third-party code (they become warnings) |
 | `readyIgnore`, `readyTimeoutMs` | Elements that never count as loading; how long to wait for a quiet page |
 | `effects` | `{ "fail": [...] }`: which learned effects fail a step (`controls`, `view`, `requests`, `responses`, `console`) |
+| `design` | `{ "fail": ["target"] }`: a step whose screen does not match its target design fails; `[]` only warns (topic `design`) |
 | `maxActions` | Claude's action budget per run (default 100) |
 | `keepRuns` | how many run folders in `.caw/runs` caw keeps (default 30, 0 keeps all); older ones go when a run starts |
 | `lintCommand` | The project's lint command, named in recommendations |

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG_FILE, loadConfig, validateConfig } from '../shared/config.mjs';
 import { effectiveEnvironments } from '../shared/environments.mjs';
 import { AGENT_NAME, t } from '../shared/i18n.mjs';
-import { REF_PATTERN, RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
+import { PROJECT_DIR, REF_PATTERN, RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
 import { listenerOf, newKey, registerListener } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
@@ -619,6 +619,69 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 // The environments as runs see them: extends resolved, defaults filled in.
                 state: all.length === 0 ? 'ok' : 'invalid', file: CONFIG_FILE, raw, environments: effectiveEnvironments(raw), issues: all, notes, todo,
             });
+        },
+    },
+    {
+        name: 'caw_design',
+        description: 'Target designs for test steps, under caw/design. You fetch a design yourself (a Claude Design artifact, a Figma export) '
+            + 'and write it here; never write into caw/ with your own tools. {action: "put", file, content | base64}: writes '
+            + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network), design/<name>.png (base64) or '
+            + 'design/<name>tokens.json (DTCG: every token has $value). {action: "list"}: the design files and which steps link them. '
+            + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml. '
+            + 'Link only when the person asked for exactly that in this conversation; design: and needs: belong to the person. '
+            + 'A run judges a linked .html design after the step\'s check passed; read caw_guide topic design. No tokens.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['put', 'list', 'link'] },
+                file: { type: ['string', 'null'], description: 'Relative to the caw folder, e.g. design/order-form.html' },
+                content: { type: 'string', description: 'put: the text of an .html or tokens.json file' },
+                base64: { type: 'string', description: 'put: the bytes of a .png file, base64-encoded' },
+                test: { type: 'string', description: 'link: the test id' },
+                step: { type: 'string', description: 'link: the step id, e.g. S3' },
+                personAsked: { type: 'boolean', description: 'link: true only when the person asked to link this design to this step' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        call: async (input = {}) => {
+            const design = await import('./design.mjs');
+            const cawDir = join(root, PROJECT_DIR);
+            if (input.action === 'put') {
+                if ((input.content === undefined) === (input.base64 === undefined)) throw new Error(t('run.mcp.designContent'));
+                if (input.base64 !== undefined && (typeof input.base64 !== 'string' || !/^[A-Za-z0-9+/\s]*={0,2}\s*$/.test(input.base64))) throw new Error(t('run.mcp.designBase64'));
+                if (input.content !== undefined && typeof input.content !== 'string') throw new Error(t('run.mcp.designContent'));
+                const kind = design.designKind(input.file);
+                if (kind === null) throw new Error(t('run.mcp.designName'));
+                // A PNG comes as bytes, html and tokens as text: the wrong field for the kind is refused, not converted.
+                if ((kind === 'png') !== (input.base64 !== undefined)) throw new Error(t('run.mcp.designContent'));
+                const data = input.base64 === undefined ? Buffer.from(input.content, 'utf8') : Buffer.from(input.base64, 'base64');
+                const written = design.writeDesign(cawDir, input.file, data);
+                return answer(t('run.mcp.designWritten', { file: `${PROJECT_DIR}/${written.file}` }), written);
+            }
+            if (input.action === 'link') {
+                if (input.personAsked !== true) throw new Error(t('run.mcp.designAsk'));
+                if (input.file !== null && design.designPath(cawDir, input.file) === null) throw new Error(t('run.mcp.designMissing', { file: String(input.file) }));
+                const { setStepDesign } = await import('./test-file.mjs');
+                const { file, changed } = setStepDesign(root, input.test, input.step, input.file);
+                return answer(t(input.file === null ? 'run.mcp.designUnlinked' : 'run.mcp.designLinked', { test: String(input.test), step: String(input.step), file: input.file }), { test: input.test, step: input.step, design: input.file, testFile: file, changed });
+            }
+            if (input.action === 'list') {
+                const { TEST_DIR, loadTest } = await import('./test-file.mjs');
+                const testsDir = join(root, TEST_DIR);
+                const ids = existsSync(testsDir) ? readdirSync(testsDir).filter((name) => name.endsWith('.yaml')).map((name) => name.slice(0, -'.yaml'.length)).sort() : [];
+                const links = ids.flatMap((id) => {
+                    try {
+                        return loadTest(root, id).steps.filter((step) => step.design !== undefined || step.needs !== undefined)
+                            .map((step) => ({ test: id, step: step.id, ...(step.design === undefined ? {} : { design: step.design, exists: design.designPath(cawDir, step.design) !== null }), ...(step.needs === undefined ? {} : { needs: step.needs }) }));
+                    } catch {
+                        return []; // an invalid test is reported by caw_validate
+                    }
+                });
+                const designs = design.listDesigns(cawDir);
+                return answer(t('run.mcp.designList', { count: designs.length, links: links.filter((link) => link.design !== undefined).length }), { designs, links });
+            }
+            throw new Error(t('run.mcp.designAction'));
         },
     },
     {
