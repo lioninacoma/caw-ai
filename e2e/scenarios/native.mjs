@@ -893,14 +893,15 @@ A='caw agent'
 cat > /tmp/f.json <<JSON
 {"reproduced":"no","observed":"The counter counts.","expected":"The counter counts.","writes":false,"steps":[{"do":"Klicke zweimal auf Add one.","expect":"Der Zaehler steht auf 2."}],"covered":{"test":"no-such-test","why":"x"}}
 JSON
-if $A finish --file /tmp/f.json 2>&1 | grep -q 'no test no-such-test'; then echo COVER-REFUSED; fi
+if $A finish --file /tmp/f.json 2>&1 | grep -q 'no test no-such-test'; then echo COVER-REFUSED >> "$CAW_AGENT_DIR/n12.txt"; fi
 cat > /tmp/f.json <<JSON
 {"reproduced":"no","observed":"The counter counts.","expected":"The counter counts.","writes":false,"steps":[{"do":"Klicke zweimal auf Add one.","expect":"Der Zaehler steht auf 2."}],"covered":{"test":"n3-layers","step":"S2","why":"S2 prueft den Zaehler."}}
 JSON
 $A finish --file /tmp/f.json`;
         const withRef = await reproduceOf(['Der Zaehler zaehlt nicht.', '--headless', '--ref', 'TCK-1234'], { agent: coveredBy });
         const fourth = newestRunOf(native, 'reproduce');
-        const fourthLog = ['agent/claude.log', 'claude.log'].map((name) => join(fourth.dir, name)).filter((path) => existsSync(path)).map((path) => readFileSync(path, 'utf8')).join('');
+        const marks = join(fourth.dir, 'agent/n12.txt');
+        const fourthLog = existsSync(marks) ? readFileSync(marks, 'utf8') : '';
         verify('(4) an unknown covering test is refused', /COVER-REFUSED/.test(fourthLog), fourthLog.slice(-400));
         const cover = fourth.result?.reproduce?.covered;
         verify('(4) ref and covering test in result.json, with that test\'s newest run',
