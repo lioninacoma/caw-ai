@@ -11,6 +11,7 @@ English · [Deutsch](README.de.md)
 > End-to-end regression tests for your own web app, written in plain language, recorded once with Claude, replayed without AI.
 > Claude reproduces your bug reports, and the same tests take you to any state of your app to develop there.
 
+- [Quick start](#quick-start)
 - [Plain-language tests, replayed without AI](#plain-language-tests-replayed-without-ai)
 - [Reproduce bugs](#reproduce-bugs)
 - [Reach any state and develop](#reach-any-state-and-develop)
@@ -18,6 +19,21 @@ English · [Deutsch](README.de.md)
 - [Drive it from Claude Code](#drive-it-from-claude-code)
 - [Safe with credentials and production](#safe-with-credentials-and-production)
 - [Export to Playwright](#export-to-playwright)
+
+## Quick start
+
+Node 22.4+, Chrome and, for recording, [Claude Code](https://claude.com/claude-code). Start your app, then:
+
+```bash
+npm i -D caw-ai
+npx caw init --url http://localhost:5173   # writes caw.config.json
+npx caw doctor                             # lists what is still missing
+# describe a test in caw/tests/smoke.yaml (example below), then:
+npx caw record smoke --env local           # once, with Claude
+npx caw run smoke --env local              # from then on, without AI
+```
+
+Details in [Install and first test](#install-and-first-test); to try it without your own app, use [`examples/errand`](examples/errand).
 
 ## Plain-language tests, replayed without AI
 

@@ -11,6 +11,7 @@
 > End-to-End-Regressionstests für deine eigene Web-App, in normaler Sprache geschrieben, einmal mit Claude aufgenommen, ohne KI abgespielt.
 > Claude stellt deine Fehlertickets nach, und dieselben Tests bringen dich in jeden Zustand deiner App, um dort zu entwickeln.
 
+- [Schnellstart](#schnellstart)
 - [Tests in normaler Sprache, ohne KI abgespielt](#tests-in-normaler-sprache-ohne-ki-abgespielt)
 - [Fehler nachstellen](#fehler-nachstellen)
 - [Jeden Zustand erreichen und entwickeln](#jeden-zustand-erreichen-und-entwickeln)
@@ -18,6 +19,22 @@
 - [Aus Claude Code steuern](#aus-claude-code-steuern)
 - [Sicher mit Zugangsdaten und Produktion](#sicher-mit-zugangsdaten-und-produktion)
 - [Export nach Playwright](#export-nach-playwright)
+
+## Schnellstart
+
+Node 22.4+, Chrome und zum Aufnehmen [Claude Code](https://claude.com/claude-code). Starte deine App, dann:
+
+```bash
+npm i -D caw-ai
+npx caw init --url http://localhost:5173   # schreibt caw.config.json
+npx caw doctor                             # nennt, was noch fehlt
+# einen Test in caw/tests/smoke.yaml beschreiben (Beispiel unten), dann:
+npx caw record smoke --env local           # einmal, mit Claude
+npx caw run smoke --env local              # ab dann ohne KI
+```
+
+Details unter [Installation und erster Test](#installation-und-erster-test); ohne eigene App zum Ausprobieren:
+[`examples/errand`](examples/errand).
 
 ## Tests in normaler Sprache, ohne KI abgespielt
 
