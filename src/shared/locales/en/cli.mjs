@@ -83,6 +83,8 @@ Commands:`,
       [--file <file>] | -                The bug report from a file, or from stdin
       [--from <test>[@<S4>]]             Start in a test's state: its steps up to the entry of S4, without {agent}
       [--role <role>]                    Without --from; not needed if the config has just one
+      [--ref <id>]                       An id from another tool (a ticket), kept in report, result and draft;
+                                         caw never looks it up
       [--headless]                       No window
       [--agent local|docker] [--attach [<key>]]`,
     'cli.help.list': `  list [<test>]                          Tests with environments, recording state (recorded, stale, not recorded) and
@@ -151,7 +153,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw init [--url <address>] [--env <name>] [--language <code>] [--explore-only] [--login | --no-login] [--yes] [--from <file>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <dir>]',
-    'cli.synopsis.reproduce': 'caw reproduce "<bug report>" | --file <file> | -  [--env <name>] [--role <role>] [--from <test>[@<S4>]] [--headless] [--agent local|docker] [--attach [<key>]]',
+    'cli.synopsis.reproduce': 'caw reproduce "<bug report>" | --file <file> | -  [--env <name>] [--role <role>] [--from <test>[@<S4>]] [--ref <id>] [--headless] [--agent local|docker] [--attach [<key>]]',
     'cli.reproduceOneSource': 'Give the bug report as the argument, with --file or with - from stdin, only once.',
     'cli.reproduceBugMissing': 'Which bug? caw reproduce "After saving, the list does not show the entry" (or --file <file>, or - for stdin).',
     'cli.reproduceBugLong': 'The bug report is longer than {max} characters. Cut it down to what happens and what you expect.',
@@ -165,6 +167,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.reproduceVerdict.yes': 'Reproduced.',
     'cli.reproduceVerdict.no': 'Not reproduced.',
     'cli.reproduceVerdict.unclear': 'Unclear whether the bug occurs.',
+    'cli.reproduceRef': '--ref {ref} is no reference: up to 64 letters, digits and . _ # : / -, e.g. --ref TCK-1234.',
     'cli.reproduceDraft': 'Draft test: {from}. To adopt: copy it to {to}, review it, then {record}',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker | --attach] [--env <name>]',

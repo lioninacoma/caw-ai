@@ -2,7 +2,7 @@
 // (keepRuns, default 30) and deletes older ones when a run starts; a run whose process still lives is never deleted.
 
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import { RUN_DIR } from '../shared/names.mjs';
 import { isAlive } from '../shared/session-agent.mjs';
@@ -42,4 +42,69 @@ export const pruneRuns = (root, keep = DEFAULT_KEEP_RUNS, { except } = {}) => {
         }
     }
     return deleted;
+};
+
+/** The run folder name of every reproduction, with or without a starting test: `<time>-reproduce`. */
+export const REPRODUCE_RUN = 'reproduce';
+// A run id is its start time with - for : and ., then the test id (run.mjs).
+const RUN_ID = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z-(.+)$/;
+
+/** When a run started, from its id, as an ISO date; undefined for a folder that is no run. */
+export const runDate = (runId) => {
+    const match = RUN_ID.exec(runId);
+    return match === null ? undefined : `${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`;
+};
+
+const readResult = (dir) => {
+    try {
+        return JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8'));
+    } catch {
+        return undefined;
+    }
+};
+
+/** The run folders of one name with their result, newest first; a folder without a readable result.json has none to give. */
+const runsWithResult = (root, name) => {
+    const runs = join(root, RUN_DIR, 'runs');
+    if (!existsSync(runs)) return [];
+    return readdirSync(runs, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && RUN_ID.exec(entry.name)?.[6] === name)
+        .map(({ name: runId }) => ({ runId, dir: join(runs, runId), result: readResult(join(runs, runId)) }))
+        .filter(({ result }) => typeof result?.status === 'string')
+        .sort((a, b) => b.runId.localeCompare(a.runId));
+};
+
+/** A test's newest run with a result (run, record or open): { status, runId, date }, or undefined if none is left. */
+export const newestRunOf = (root, testId) => {
+    const [newest] = runsWithResult(root, testId);
+    return newest === undefined ? undefined : { status: newest.result.status, runId: newest.runId, date: runDate(newest.runId) };
+};
+
+/**
+ * The reproductions in .caw/runs as rows for the session, newest first. `refs` keeps only runs with one of these ids and
+ * names those without any run as missing (never run, or pruned by keepRuns); `since` keeps runs started at or after it.
+ * @returns { reproductions: [{ runId, date, ref?, status, reproduced, observed?, covered?, draft?, report }], missing: [ref] }
+ */
+export const listReproductions = (root, { refs, since } = {}) => {
+    const from = since === undefined ? undefined : Date.parse(since);
+    const rows = runsWithResult(root, REPRODUCE_RUN)
+        .filter(({ runId }) => from === undefined || Date.parse(runDate(runId)) >= from)
+        .filter(({ result }) => refs === undefined || refs.includes(result.reproduce?.ref))
+        .map(({ runId, dir, result }) => {
+            const { ref, reproduced, observed, covered, draft } = result.reproduce ?? {};
+            return {
+                runId,
+                date: runDate(runId),
+                ...(ref === undefined ? {} : { ref }),
+                status: result.status,
+                // null: the run ended before a verdict (state not reached, browser closed, no finish).
+                reproduced: reproduced ?? null,
+                ...(observed === undefined ? {} : { observed }),
+                ...(covered === undefined ? {} : { covered }),
+                ...(draft === undefined ? {} : { draft: draft.from }),
+                report: relative(root, join(dir, 'report.md')).replaceAll('\\', '/'),
+            };
+        });
+    const missing = refs === undefined ? [] : refs.filter((ref) => !rows.some((row) => row.ref === ref));
+    return { reproductions: rows, missing };
 };

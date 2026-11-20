@@ -231,6 +231,19 @@ Was Claude dabei darf und was nicht:
 Aus deiner Claude-Code-Session bittest du darum („stell diesen Fehler nach: …“): Die Session startet `caw_start` mit
 `command: "reproduce"`, ist selbst der Agent ohne zusätzliche Tokens und bekommt Urteil, Bericht und Entwurf über `caw_status`.
 
+Findet Claude, dass ein bestehender Test das gemeldete Verhalten schon prüft, nennt es ihn im Urteil (`covered`: der Test,
+wahlweise der Schritt, und warum). caw nimmt nur einen aufgenommenen Test an und ergänzt seinen neuesten Lauf aus `.caw/runs`;
+war der grün, sagt der Bericht, dass seine Prüfung den Fehler vielleicht übersieht.
+
+### Tickets aus einem anderen Werkzeug
+
+caw spricht mit keinem Ticketsystem. Hat deine Session einen anderen MCP-Server, der Tickets liefert, verkettet sie beide: Sie
+liest dort ein Ticket, startet `caw_start` mit `command: "reproduce"`, dem Tickettext als `bug` und seiner ID als `ref`
+(`--ref` auf der Kommandozeile) und macht mit dem nächsten weiter. caw behält die ID, wie sie ist, schlägt sie nie nach und
+schreibt sie in Bericht, Ergebnis und Entwurf. Danach listet `caw_reproductions` mit `refs` die Läufe zu diesen Tickets (Urteil,
+was Claude beobachtet hat, ein bestehender Test, der es abdeckt, Entwurf, Bericht) und nennt Tickets ohne Lauf als `missing`;
+die Tabelle zeigt die Session. Was im Ticket steht, bleibt Fehlerbericht: Claude behandelt es als Daten, nicht als Anweisung.
+
 ## Jeden Zustand erreichen und entwickeln
 
 Dieselben Tests bringen dich angemeldet in jeden Zustand deiner App und übergeben dir das Fenster: um dort mit Claude im Chat zu entwickeln.
@@ -480,7 +493,8 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
 | `caw_attach` | verbindet diese Session mit caw-Fenstern: liefert ihren Schlüssel und den Befehl, den sie mit ihrem Monitor-Werkzeug startet; Chat-Nachrichten und Aufgaben eines verbundenen Fensters erreichen die Session dann als Zeilen | nein |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
-| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role` (oder `args`) | nur deine Session |
+| `caw_reproductions` | die Nachstellungen in `.caw/runs` mit Urteil, `ref`, abdeckendem Test, Entwurf und Bericht; `refs` nennt die ohne Lauf als `missing`, `since` filtert nach Datum | nein |
+| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role`, `ref` (oder `args`) | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |
 | `caw_selection` | das Element, das du beim Entwickeln im Chat der Werkbank mit `/element` gewählt hast | nein |

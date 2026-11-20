@@ -229,8 +229,9 @@ export const isCaughtScriptError = (failure) => failure?.type === 'console' && t
  * (hard errors, warnings, write requests), the cause hint and the draft test plan to adopt.
  */
 export const renderReproduceReport = ({ status, code, reason, target, testedCode, failures = [], warnings = [], writes = [], thirdParty = [], personalContext, reproduce = {} }) => {
-    const { bug, reproduced, observed, expected, steps = [], cause, screenshots = [], actions = [], from, writable, draft } = reproduce;
+    const { ref, bug, reproduced, observed, expected, steps = [], cause, covered, screenshots = [], actions = [], from, writable, draft } = reproduce;
     const lines = [t('config.report.reproduce.title', { target: String(target), verdict: t(`config.report.reproduce.verdict.${reproduced ?? 'none'}`) }), ''];
+    if (ref !== undefined) lines.push(t('config.report.reproduce.ref', { ref: cell(ref) }));
     lines.push(t('config.report.source', { source: String(testedCode) }));
     if (from !== undefined) lines.push(t('config.report.reproduce.from', { from: from.step === undefined ? from.test : `${from.test}@${from.step}` }));
     lines.push(t(writable ? 'config.report.reproduce.writable' : 'config.report.reproduce.readOnly'));
@@ -240,6 +241,12 @@ export const renderReproduceReport = ({ status, code, reason, target, testedCode
     if (observed !== undefined) {
         lines.push('', `## ${t('config.report.reproduce.result')}`, '', `- ${t('config.report.reproduce.observed')}: ${cell(observed)}`, `- ${t('config.report.reproduce.expected')}: ${cell(expected)}`);
         if (cause !== undefined) lines.push(`- ${t('config.report.reproduce.cause')}: ${cell(cause)}`);
+    }
+    if (covered !== undefined) {
+        const { test, step, why, lastRun, checkMayMiss } = covered;
+        lines.push('', `## ${t('config.report.reproduce.covered')}`, '', t('config.report.reproduce.coveredBy', { test: step === undefined ? test : `${test}@${step}`, why: cell(why) }));
+        lines.push(lastRun === undefined ? t('config.report.reproduce.coveredNoRun') : t('config.report.reproduce.coveredLastRun', { status: lastRun.status, run: lastRun.runId, date: lastRun.date ?? '' }));
+        if (checkMayMiss === true) lines.push('', t('config.report.reproduce.checkMayMiss'));
     }
     if (steps.length > 0) {
         lines.push('', `## ${t('config.report.reproduce.steps')}`, '');

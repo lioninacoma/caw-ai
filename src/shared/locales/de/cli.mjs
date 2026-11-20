@@ -85,6 +85,8 @@ Befehle:`,
       [--from <test>[@<S4>]]             In einem Zustand eines Tests anfangen: dessen Schritte bis zum Einstieg in
                                          S4, ohne {agent}
       [--role <rolle>]                   Ohne --from; unnötig, wenn die Config nur eine hat
+      [--ref <id>]                       Eine ID aus einem anderen Werkzeug (ein Ticket), steht in Bericht, Ergebnis
+                                         und Entwurf; caw schlägt sie nie nach
       [--headless]                       Ohne Fenster
       [--agent local|docker] [--attach [<key>]]`,
     'cli.help.list': `  list [<test>]                          Tests mit Umgebungen, Stand der Aufnahme (aufgenommen, veraltet, nicht
@@ -155,7 +157,7 @@ Browser:
     // The synopsis per command, shown below a usage error.
     'cli.synopsis.init': 'caw init [--url <adresse>] [--env <name>] [--language <kürzel>] [--explore-only] [--login | --no-login] [--yes] [--from <datei>] [--offline] [--insecure-tls] [--allow-http] [--no-mcp]',
     'cli.synopsis.export': 'caw export <test> [--env <name>] [--out <ordner>]',
-    'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--headless] [--agent local|docker] [--attach [<key>]]',
+    'cli.synopsis.reproduce': 'caw reproduce "<fehlerbericht>" | --file <datei> | -  [--env <name>] [--role <rolle>] [--from <test>[@<S4>]] [--ref <id>] [--headless] [--agent local|docker] [--attach [<key>]]',
     'cli.reproduceOneSource': 'Den Fehlerbericht entweder als Argument, mit --file oder mit - von stdin, nicht mehrfach.',
     'cli.reproduceBugMissing': 'Welchen Fehler? caw reproduce "Nach dem Speichern zeigt die Liste den Eintrag nicht" (oder --file <datei>, oder - für stdin).',
     'cli.reproduceBugLong': 'Der Fehlerbericht ist länger als {max} Zeichen. Kürze ihn auf das, was passiert und was du erwartest.',
@@ -169,6 +171,7 @@ Browser:
     'cli.reproduceVerdict.yes': 'Nachgestellt.',
     'cli.reproduceVerdict.no': 'Nicht nachgestellt.',
     'cli.reproduceVerdict.unclear': 'Unklar, ob der Fehler auftritt.',
+    'cli.reproduceRef': '--ref {ref} ist keine Referenz: bis zu 64 Buchstaben, Ziffern und . _ # : / -, z. B. --ref TCK-1234.',
     'cli.reproduceDraft': 'Entwurf eines Tests: {from}. Übernehmen: nach {to} kopieren, prüfen, dann {record}',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker | --attach] [--env <name>]',

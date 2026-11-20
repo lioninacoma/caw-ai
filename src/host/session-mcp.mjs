@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG_FILE, loadConfig, validateConfig } from '../shared/config.mjs';
 import { effectiveEnvironments } from '../shared/environments.mjs';
 import { AGENT_NAME, t } from '../shared/i18n.mjs';
-import { RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
+import { REF_PATTERN, RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
 import { listenerOf, newKey, registerListener } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
@@ -33,9 +33,9 @@ const FIELDS = {
     run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'start', 'reset'] },
     record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
     open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
-    reproduce: { needs: ['bug'], takes: ['bug', 'from', 'env', 'role', 'headless'] },
+    reproduce: { needs: ['bug'], takes: ['bug', 'from', 'env', 'role', 'ref', 'headless'] },
 };
-const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'start', 'reset', 'bug', 'from', 'role'];
+const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
 /** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
 const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', start: '--start', reset: '--reset' };
 /** A field renamed before 1.0: named with its new name instead of "does not apply". */
@@ -185,6 +185,8 @@ export const startArgs = (input) => {
     }
     // A step without its test: open would open without a test and drop it.
     if (input.step !== undefined && input.test === undefined) throw new Error(t('run.mcp.fieldMissing', { field: 'test', command }));
+    // Checked here too: the command runs detached, its usage error would only show in the log.
+    if (input.ref !== undefined && (typeof input.ref !== 'string' || !REF_PATTERN.test(input.ref))) throw new Error(t('cli.reproduceRef', { ref: String(input.ref).slice(0, 80) }));
     if (given.includes('overlay') && !isOverlayInput(input.overlay)) throw new Error(t('run.mcp.overlayInvalid'));
     for (const field of Object.keys(SWITCH_FLAGS).filter((name) => given.includes(name))) {
         if (input[field] !== true) throw new Error(t('run.mcp.fieldText', { field }));
@@ -194,6 +196,7 @@ export const startArgs = (input) => {
     if (command === 'reproduce') args.push('--file', BUG_FILE);
     if (input.from !== undefined) args.push('--from', input.from);
     if (input.role !== undefined) args.push('--role', input.role);
+    if (input.ref !== undefined) args.push(`--ref=${input.ref}`);
     if (input.test !== undefined) args.push(input.step === undefined ? input.test : `${input.test}@${input.step}`);
     if (input.env !== undefined) args.push('--env', input.env);
     if (given.includes('overlay')) args.push(input.overlay === true ? '--overlay' : `--overlay=${input.overlay}`);
@@ -309,8 +312,8 @@ const statusData = (root, { waiting, running, log }) => {
             data.result = Object.fromEntries(RESULT_FIELDS.filter((key) => result[key] !== undefined).map((key) => [key, result[key]]));
             // A reproduction: the verdict, what Claude saw, and where report and draft test plan are.
             if (result.reproduce !== undefined) {
-                const { reproduced, observed, expected, cause, draft } = result.reproduce;
-                data.reproduce = { ...(reproduced === undefined ? {} : { reproduced, observed, expected }), ...(cause === undefined ? {} : { cause }), report: shown(root, join(run.runDir, 'report.md')), ...(draft === undefined ? {} : { draft: draft.from, adopt: { copyTo: draft.to, then: draft.record } }) };
+                const { ref, reproduced, observed, expected, cause, covered, draft } = result.reproduce;
+                data.reproduce = { ...(ref === undefined ? {} : { ref }), ...(reproduced === undefined ? {} : { reproduced, observed, expected }), ...(cause === undefined ? {} : { cause }), ...(covered === undefined ? {} : { covered }), report: shown(root, join(run.runDir, 'report.md')), ...(draft === undefined ? {} : { draft: draft.from, adopt: { copyTo: draft.to, then: draft.record } }) };
             }
             const last = Array.isArray(result.results) ? result.results.at(-1) : undefined;
             if (last !== undefined) data.lastStep = { id: last.id, status: last.status, ...(last.note === undefined ? {} : { note: last.note }) };
@@ -387,7 +390,8 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'With overlay the local code server is checked first (as caw_overlay status): down, wrong-app or stale returns state, url, start '
             + 'and partDir instead of starting; then ask the human, start the project\'s start command in your own session in the background '
             + 'and poll caw_overlay status until ready. moved starts against the found URL and reports it. Then call caw_status until the run waits for you. '
-            + 'reproduce (topic reproduce): bug (the report as text), optionally from ("<test>" or "<test>@S3": start in that state), env, role, headless; '
+            + 'reproduce (topic reproduce): bug (the report as text), optionally from ("<test>" or "<test>@S3": start in that state), env, role, '
+            + 'ref (an id of the ticket the bug came from, kept as is; caw_reproductions finds the run by it), headless; '
             + 'only on environments with agent: true, never production, read-only unless writable; you reproduce alone and finish with the verdict, caw_status then names report and draft test plan.',
         inputSchema: {
             type: 'object',
@@ -397,6 +401,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 bug: { type: 'string', description: 'reproduce: the bug report as the person wrote it (what they did, saw and expected)' },
                 from: { type: 'string', description: 'reproduce: start in a test\'s state, "<test>" or "<test>@S3" (its steps up to the entry of S3)' },
                 role: { type: 'string', description: 'reproduce without from: the test role to sign in as (not needed with one role)' },
+                ref: { type: 'string', description: 'reproduce: an id from another tool (a ticket), up to 64 of letters, digits and . _ # : / -; caw never looks it up' },
                 env: { type: 'string', description: 'The environment (--env); without it caw picks the only fitting one or says which to choose' },
                 step: { type: 'string', description: 'record: re-record from this step to the end; open: hand over at the entry of this step. E.g. S3, needs test' },
                 overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
@@ -545,6 +550,30 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             const { listProject } = await import('./project-data.mjs');
             const data = listProject(root);
             return answer(t('run.mcp.list', { count: data.tests.length }), data);
+        },
+    },
+    {
+        name: 'caw_reproductions',
+        description: 'The reproductions in .caw/runs as data, newest first: per run runId, date, ref, status, reproduced (yes, no, unclear, '
+            + 'null without a verdict), observed, covered (an existing test that already covers the behaviour, with its newest run; '
+            + 'checkMayMiss when that run passed), draft and report. refs (a list of references) keeps only those runs and names refs '
+            + 'without a run as missing (never run, or pruned by keepRuns); since (ISO date) keeps newer runs. Render the table yourself. No tokens.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                refs: { type: 'array', items: { type: 'string' }, description: 'Only runs with one of these references; those without a run come back as missing' },
+                since: { type: 'string', description: 'Only runs started at or after this ISO date or time' },
+            },
+            additionalProperties: false,
+        },
+        call: async (input = {}) => {
+            const { refs, since } = input;
+            if (refs !== undefined && (!Array.isArray(refs) || !refs.every((ref) => typeof ref === 'string' && REF_PATTERN.test(ref)))) throw new Error(t('run.mcp.refsInvalid'));
+            if (since !== undefined && (typeof since !== 'string' || Number.isNaN(Date.parse(since)))) throw new Error(t('run.mcp.sinceInvalid'));
+            const { listReproductions } = await import('./runs.mjs');
+            const data = listReproductions(root, { ...(refs === undefined ? {} : { refs: [...new Set(refs)] }), ...(since === undefined ? {} : { since }) });
+            const count = data.reproductions.length;
+            return answer(data.missing.length === 0 ? t('run.mcp.reproductions', { count }) : t('run.mcp.reproductionsMissing', { count, refs: data.missing.join(', ') }), data);
         },
     },
     {

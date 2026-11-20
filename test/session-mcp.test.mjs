@@ -557,3 +557,58 @@ test('caw_start reproduce: the bug report goes into a file, the session is the a
     assert.deepEqual(data.reproduce, { reproduced: 'yes', observed: 'o', expected: 'e', report: '.caw/runs/2026-11-18T12-00-00-000Z-reproduce/report.md', draft: draft.from, adopt: { copyTo: draft.to, then: draft.record } });
     assert.ok(data.artefacts.includes('.caw/runs/2026-11-18T12-00-00-000Z-reproduce/draft-test.yaml'));
 });
+
+test('caw_start reproduce with ref: passed on as --ref, checked before starting; caw_status names ref and covering test', async (t) => {
+    const root = project(t);
+    const { call, spawned } = session(root);
+    const refused = await call('caw_start', { command: 'reproduce', bug: 'x', ref: 'TCK 1234' });
+    assert.equal(refused.isError, true);
+    assert.match(refused.content[0].text, /keine Referenz/);
+    assert.equal(spawned.length, 0);
+    await call('caw_start', { command: 'reproduce', bug: 'x', ref: 'TCK-1234' });
+    assert.deepEqual(spawned[0].args.slice(1, -1), ['reproduce', '--file', '.caw/reproduce-bug.md', '--ref=TCK-1234']);
+
+    const runId = '2026-11-18T12-00-00-000Z-reproduce';
+    const runDir = join(root, '.caw', 'runs', runId);
+    mkdirSync(runDir, { recursive: true });
+    const covered = { test: 'bestellung', step: 'S2', why: 'S2 prüft die Bestätigung.', lastRun: { status: 'pass', runId: '2026-11-17T08-00-00-000Z-bestellung', date: '2026-11-17T08:00:00.000Z' }, checkMayMiss: true };
+    writeFileSync(join(runDir, 'result.json'), JSON.stringify({ status: 'pass', reproduce: { ref: 'TCK-1234', bug: 'x', reproduced: 'yes', observed: 'o', expected: 'e', covered } }));
+    writeFileSync(join(root, '.caw', 'last-run.json'), JSON.stringify({ runId, runDir, pid: 1, command: 'reproduce', test: 'reproduce', target: 'local', startedAt: new Date().toISOString() }));
+    const data = (await call('caw_status')).structuredContent;
+    assert.equal(data.reproduce.ref, 'TCK-1234');
+    assert.deepEqual(data.reproduce.covered, covered);
+});
+
+test('caw_reproductions: rows from the reproduce run folders, newest first, by refs (missing named) or since', async (t) => {
+    const root = project(t);
+    const { call } = session(root);
+    const runs = join(root, '.caw', 'runs');
+    const run = (runId, result) => {
+        mkdirSync(join(runs, runId), { recursive: true });
+        if (result !== undefined) writeFileSync(join(runs, runId, 'result.json'), JSON.stringify(result));
+    };
+    const draft = { from: '.caw/runs/2026-11-19T09-00-00-000Z-reproduce/draft-test.yaml', to: 'caw/tests/bug-x.yaml', record: 'caw record bug-x' };
+    run('2026-11-18T09-00-00-000Z-reproduce', { status: 'fail', reproduce: { ref: 'TCK-1', bug: 'a', reproduced: 'no', observed: 'Alles gut.' } });
+    run('2026-11-19T09-00-00-000Z-reproduce', { status: 'pass', reproduce: { ref: 'TCK-2', bug: 'b', reproduced: 'yes', observed: 'Leer.', draft, covered: { test: 'bestellung', why: 'w' } } });
+    run('2026-11-20T09-00-00-000Z-reproduce', { status: 'error', code: 'reproduce-state', reproduce: { bug: 'c' } });
+    // Not a reproduction, and a reproduction without a result yet: neither is a row.
+    run('2026-11-20T10-00-00-000Z-bestellung', { status: 'pass' });
+    run('2026-11-20T11-00-00-000Z-reproduce');
+
+    const all = await call('caw_reproductions');
+    assert.equal(all.isError, false);
+    assert.match(all.content[0].text, /^3 Nachstellungen\./);
+    const rows = all.structuredContent.reproductions;
+    assert.deepEqual(rows.map(({ runId }) => runId), ['2026-11-20T09-00-00-000Z-reproduce', '2026-11-19T09-00-00-000Z-reproduce', '2026-11-18T09-00-00-000Z-reproduce']);
+    assert.deepEqual(rows[0], { runId: '2026-11-20T09-00-00-000Z-reproduce', date: '2026-11-20T09:00:00.000Z', status: 'error', reproduced: null, report: '.caw/runs/2026-11-20T09-00-00-000Z-reproduce/report.md' });
+    assert.deepEqual(rows[1], { runId: '2026-11-19T09-00-00-000Z-reproduce', date: '2026-11-19T09:00:00.000Z', ref: 'TCK-2', status: 'pass', reproduced: 'yes', observed: 'Leer.', covered: { test: 'bestellung', why: 'w' }, draft: draft.from, report: '.caw/runs/2026-11-19T09-00-00-000Z-reproduce/report.md' });
+
+    const byRef = await call('caw_reproductions', { refs: ['TCK-1', 'TCK-9', 'TCK-1'] });
+    assert.deepEqual(byRef.structuredContent.reproductions.map(({ ref }) => ref), ['TCK-1']);
+    assert.deepEqual(byRef.structuredContent.missing, ['TCK-9']);
+    assert.match(byRef.content[0].text, /Kein Lauf für: TCK-9/);
+    const since = await call('caw_reproductions', { since: '2026-11-19' });
+    assert.deepEqual(since.structuredContent.reproductions.map(({ runId }) => runId.slice(0, 10)), ['2026-11-20', '2026-11-19']);
+    assert.equal((await call('caw_reproductions', { since: 'gestern' })).isError, true);
+    assert.equal((await call('caw_reproductions', { refs: ['a b'] })).isError, true);
+});

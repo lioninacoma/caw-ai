@@ -1329,6 +1329,7 @@ export const reproduce = async (root, args, deps = {}) => {
                 bug: options.bug,
                 writes: writable,
                 draftId: draftId(root, options.bug),
+                ...(options.ref === undefined ? {} : { ref: options.ref }),
                 ...(prefix === undefined ? {} : { prefix }),
                 ...(options.from === undefined ? {} : { from: options.from }),
             },

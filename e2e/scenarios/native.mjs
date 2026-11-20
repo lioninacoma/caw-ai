@@ -885,6 +885,29 @@ $A finish --file /tmp/f.json`;
         verify('(3) read-only: the POST is blocked and named, the page never confirms, the report says read-only',
             readOnly === 1 && !/status: Added/.test(JSON.stringify(third.result?.reproduce ?? {})) && /write-blocked/.test(JSON.stringify(third.result?.failures ?? [])) && /Nur lesend/.test(third.report),
             `${readOnly} ${JSON.stringify(third.result?.failures ?? []).slice(0, 300)}`);
+
+        // (4) With a ticket id and a covering test: an unknown test is refused, a recorded one is taken with its newest run.
+        writeFileSync(join(native, 'caw.config.json'), before);
+        const coveredBy = `exec 2>&1
+A='caw agent'
+cat > /tmp/f.json <<JSON
+{"reproduced":"no","observed":"The counter counts.","expected":"The counter counts.","writes":false,"steps":[{"do":"Klicke zweimal auf Add one.","expect":"Der Zaehler steht auf 2."}],"covered":{"test":"no-such-test","why":"x"}}
+JSON
+if $A finish --file /tmp/f.json 2>&1 | grep -q 'no test no-such-test'; then echo COVER-REFUSED; fi
+cat > /tmp/f.json <<JSON
+{"reproduced":"no","observed":"The counter counts.","expected":"The counter counts.","writes":false,"steps":[{"do":"Klicke zweimal auf Add one.","expect":"Der Zaehler steht auf 2."}],"covered":{"test":"n3-layers","step":"S2","why":"S2 prueft den Zaehler."}}
+JSON
+$A finish --file /tmp/f.json`;
+        const withRef = await reproduceOf(['Der Zaehler zaehlt nicht.', '--headless', '--ref', 'TCK-1234'], { agent: coveredBy });
+        const fourth = newestRunOf(native, 'reproduce');
+        const fourthLog = ['agent/claude.log', 'claude.log'].map((name) => join(fourth.dir, name)).filter((path) => existsSync(path)).map((path) => readFileSync(path, 'utf8')).join('');
+        verify('(4) an unknown covering test is refused', /COVER-REFUSED/.test(fourthLog), fourthLog.slice(-400));
+        const cover = fourth.result?.reproduce?.covered;
+        verify('(4) ref and covering test in result.json, with that test\'s newest run',
+            withRef === 1 && fourth.result?.reproduce?.ref === 'TCK-1234' && cover?.test === 'n3-layers' && cover?.step === 'S2' && (cover.lastRun === undefined || /-n3-layers$/.test(cover.lastRun.runId)),
+            `${withRef} ${JSON.stringify(fourth.result?.reproduce ?? {}).slice(0, 400)}`);
+        verify('(4) report: the reference and the section on the covering test', /^Referenz: TCK-1234$/m.test(fourth.report) && /## Schon abgedeckt/.test(fourth.report) && /n3-layers@S2/.test(fourth.report), fourth.report.slice(0, 600));
+        verify('(4) the draft notes name the reference', /Referenz TCK-1234/.test(readFileSync(join(fourth.dir, 'draft-test.yaml'), 'utf8')));
     } finally {
         writeFileSync(join(native, 'caw.config.json'), before);
     }
