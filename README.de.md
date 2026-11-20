@@ -137,7 +137,8 @@ bring mich auf die Ticket-Detailseite, ich will am Statusfeld arbeiten
 ```
 
 Unter Windows (nicht WSL): `claude mcp add caw --scope project -- cmd /c npx caw-ai mcp`. `caw init` stellt den Eintrag auf die
-installierte Kopie um, sobald caw in `node_modules` liegt. Details: [Handbuch](docs/guide.de.md#aus-claude-code-steuern).
+installierte Kopie um, sobald caw in `node_modules` liegt. Um mit deiner Session in einem caw-Fenster zu arbeiten, gib
+`/caw-attach` ein (den Skill schreiben `caw init` und `caw skill`) oder hänge `--attach` an `run`, `record`, `open` oder `reproduce`. Details: [Handbuch](docs/guide.de.md#aus-claude-code-steuern).
 
 ## Sicher mit Zugangsdaten und Produktion
 

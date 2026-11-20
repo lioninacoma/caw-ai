@@ -58,7 +58,7 @@ export default {
     'workbench.set.token': 'Ask before {agent} uses tokens',
     'workbench.set.tokenHint': '“Don’t ask again” in the notice turns it off; removing tokenNotice from prefs.json brings it back. The workbench can’t change it: it shares its origin with the app under test.',
     'workbench.set.agent': 'Agent for this run',
-    'workbench.set.agentHint': 'Chosen with --agent local, docker or session, or "agent" in caw.config.json.',
+    'workbench.set.agentHint': 'Chosen with --agent local or docker, --attach, or "agent" in caw.config.json.',
     'workbench.set.personal': 'Your caw.md',
     'workbench.set.personalHint': 'Notes for {agent} in every project, read before caw/caw.md. caw shows where it is, never what it says.',
     'workbench.set.projectNotes': 'Project notes',

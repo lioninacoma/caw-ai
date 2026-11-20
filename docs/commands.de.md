@@ -4,7 +4,7 @@
 
 Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `pnpm exec`, `yarn`). `<env>` ist ein Name aus `environments` in `caw.config.json`, etwa `local`. Mandanten sind eigene Umgebungen (`extends`).
 
-`--env` darf fehlen, wenn die Wahl klar ist: Ein Test, der auf genau eine Umgebung passt, nimmt sie; sonst auf deinem Rechner die einzige seiner Kandidaten, auf der Claude arbeiten darf (bei `record` eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf). In CI rät caw nie. Das Terminal nennt die Wahl, etwa `Umgebung: local (die einzige mit claude)`. Ist sie nicht eindeutig, bricht der Befehl ab und nennt die Auswahl (Exit 3).
+`--env` darf fehlen, wenn die Wahl klar ist: Ein Test, der auf genau eine Umgebung passt, nimmt sie; sonst auf deinem Rechner die einzige seiner Kandidaten, auf der Claude arbeiten darf (bei `record` eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf). In CI rät caw nie. Das Terminal nennt die Wahl, etwa `Umgebung: local (die einzige, auf der Claude Code arbeiten darf)`. Ist sie nicht eindeutig, bricht der Befehl ab und nennt die Auswahl (Exit 3).
 
 | Befehl | Was er tut | Claude? |
 |---|---|---|
@@ -15,9 +15,10 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`list`](#list) | Tests und Schritte mit Stand der Aufnahme auflisten | nein |
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen, auch ab einem Schritt | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
-| [`reproduce`](#reproduce) | Claude stellt einen Fehlerbericht allein nach: Bericht und Entwurf eines Testplans | ja |
 | [`open`](#open) | Die App öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
+| [`reproduce`](#reproduce) | Claude stellt einen Fehlerbericht allein nach: Bericht und Entwurf eines Testplans | ja |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
+| [`skill`](#skill) | Den Claude-Code-Skill `caw-attach` für deine eigene Session schreiben oder aktualisieren | nein |
 | [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
 | [`mcp`](#mcp) | MCP-Server für deine eigene Claude-Code-Sitzung (startet Claude Code, nicht in `--help`) | – |
 
@@ -27,7 +28,7 @@ Bricht ein Befehl ab, steht im Terminal zuerst der Grund, bei einem ungültigen 
 
 ```
 ✕ create-ticket@s2: Ein Schritt steht als <test>@S<n> hinter dem Test, etwa bestellung@S3.
-  Aufruf: caw record <test> [--env <umgebung>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <umgebung>]
+  Aufruf: caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]
   (code: usage, exit 3)
 ```
 
@@ -45,6 +46,7 @@ Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Ch
 - `caw/.env.example` mit den Variablen für die Zugangsdaten je Rolle
 - einen Eintrag `caw` in `.mcp.json` (auf die installierte Kopie, wenn caw in `node_modules` des Projekts oder eines Ordners darüber bis zur Wurzel des Repositorys liegt, sonst `npx caw-ai@<diese Version> mcp`; ein `npx`-Eintrag wird auf die installierte Kopie umgestellt, sobald es eine gibt)
 - `caw/tests/` für deine Testpläne und `caw/caw.md` für Notizen, die Claude in jedem Lauf liest
+- `.claude/skills/caw-attach/SKILL.md`, der Skill für deine eigene Claude-Code-Session (siehe [`skill`](#skill))
 - Einträge in `.gitignore` für `caw/.env`, `.caw/` und `caw/.auth/`
 
 Was es nicht erkennen konnte, steht auf `TODO`. `doctor` listet es auf, `validate` scheitert mit Exit 3, bis es eingetragen ist. Vorhandene Dateien bleiben unberührt.
@@ -57,7 +59,7 @@ Was es nicht erkennen konnte, steht auf `TODO`. `doctor` listet es auf, `validat
 | `--login`, `--no-login` | Die Frage nach der Anmeldung vorab beantworten (Skripte). |
 | `--yes` | Nicht aufs Anmelden warten, nichts fragen. Gut für Apps ohne Anmeldung. Mit Anmeldung meldet sich niemand an: `signedInSelector` bleibt `TODO`, `start` bleibt `/` (oder der Pfad aus `--url`). |
 | `--from <datei>` | Ein vorhandenes Ergebnis von `--explore-only` nehmen, statt die App zu öffnen. Gibt es `caw/.explore.json`, nimmt `init` es von selbst. |
-| `--no-mcp` | `.mcp.json` nicht anfassen. |
+| `--no-mcp` | `.mcp.json` nicht anfassen und den Skill nicht schreiben. |
 | `--offline` | Die App nicht öffnen: die Vorlage schreiben, die Anmeldung bleibt `TODO`. Ohne Terminal und ohne `--url` macht `init` das von selbst. |
 | `--insecure-tls` | Selbstsignierte Zertifikate annehmen; an der Umgebung gespeichert. |
 | `--allow-http` | Einfaches `http` zu einem anderen Rechner erlauben; an der Umgebung gespeichert. |
@@ -303,7 +305,7 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | Tool | | Tokens |
 |---|---|---|
 | `caw_guide` | Die Anleitung je Thema (`topic`); ohne Thema die Übersicht. `overlay` und `extjs` nur, wenn das Projekt sie nutzt | nein |
-| `caw_doctor` | `doctor` als Daten (`agent`, `env`) | nein |
+| `caw_doctor` | `doctor` als Daten (`agent`, `attach`, `env`) | nein |
 | `caw_init` | `mode: explore` (`url`, `login` oder `yes`): das Fenster, wartet und liefert die Vorschläge (`wait: false` startet nur); `mode: write` (`fromExplore`) und `mode: offline` schreiben die Dateien; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | nein |
 | `caw_role` | Rollen als Daten (`list`), eine neue in der Config mit ihren Variablennamen (`add`, `name`; `caw/.env` füllt der Mensch), eine gespeicherte Sitzung (`login`), `remove`; nie Benutzernamen oder Passwörter | nein |
 | `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste. Abgelehnt: Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), Umgebungs-Schalter, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; die ändert die Session in der Datei, wo du den Diff siehst | nein |
@@ -340,7 +342,7 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 |---|---|
 | `CAW_LANG` | `en` oder `de`: deine eigene Sprache für caws Texte (CLI, Werkbank) statt der Teamsprache (`language` in der Config). Claude schreibt Pläne weiter in der Teamsprache. |
 | `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` oder `~/.config/caw-ai`. |
-| `ANTHROPIC_API_KEY` | API-Schlüssel aus der Claude Console für den Agenten `docker`. `local` und `session` nutzen deine Claude-Code-Anmeldung. |
+| `ANTHROPIC_API_KEY` | API-Schlüssel aus der Claude Console für den Agenten `docker`. `local` nutzt deine Claude-Code-Anmeldung; mit `--attach` arbeitet deine eigene Session. |
 | `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Modell und Budget in US-Dollar für Claude-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
 | `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record` und `open` werden abgelehnt. |
@@ -353,9 +355,9 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 
 | Code | Exit | Abhilfe |
 |---|---|---|
+| `usage`, `unknown-command` | 3 | `npx caw <befehl> --help` |
 | `reproduce-not-allowed` | 3 | `reproduce` nur auf einer Umgebung mit `agent`, nie auf Produktion |
 | `reproduce-state` | 2 | Der Ausgangszustand von `--from` wurde nicht erreicht: den Test mit `run` laufen lassen und erst reparieren |
-| `usage`, `unknown-command` | 3 | `npx caw <befehl> --help` |
 | `config-missing` | 3 | `npx caw init --url <adresse>` |
 | `config-invalid` | 3 | Das genannte Feld korrigieren oder die `TODO`-Werte eintragen, dann `doctor` |
 | `test-missing`, `test-invalid` | 3 | Testdatei anlegen oder korrigieren, dann `validate` |
@@ -371,6 +373,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `credentials-missing` | 2 | Die genannten Variablen in `caw/.env` oder in der Umgebung setzen (CI-Secrets); eine neue Rolle vorher mit `role add <rolle>` |
 | `login-form-missing`, `login-failed` | 2 | Läuft das Backend? Stimmen Selektoren oder Schritte in `signIn` und die Zugangsdaten? |
 | `env-unreachable` | 2 | Umgebung starten (oder `--start` angeben, wenn sie einen `start`-Befehl hat), Adresse prüfen |
+| `browser-sandbox` | 2 | Die Sandbox von Chrome startet nicht (Linux als root, manche Container): den Rechner richten oder bewusst `browser.noSandbox: true` setzen |
 | `env-start-failed` | 2 | Der `start` der Umgebung endete mit Fehler: siehe Log-Ende und `.caw/env/<env>-start.log` |
 | `env-not-ready` | 2 | `ready` antwortete nicht rechtzeitig unter 500: `ready.timeoutMs` erhöhen oder den `start`-Befehl prüfen |
 | `env-reset-failed` | 2 | Der `reset` der Umgebung scheiterte oder dauerte länger als 10 Minuten; kein Test lief. Siehe `.caw/env/<env>-reset.log` |

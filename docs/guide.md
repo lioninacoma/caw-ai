@@ -87,10 +87,10 @@ With chat, everything runs on one page, like Cypress:
 Ctrl+, (or ⋯ → Settings, `/settings` in the chat) turns the workbench into its settings page; Esc or "Back to the run" returns. The page is yours, for every project, and names the `prefs.json` it saves to. It changes only how the workbench looks; everything else it shows read-only:
 
 - **General:** Appearance System, Light or Dark, applied at once to workbench and chat (System follows your operating system until you pick Light or Dark); Animations (F10); the language with where it comes from (`CAW_LANG`, `prefs.json`, `caw.config.json` or the system), read-only. Layout: whether the steps panel (F4) and the chat panel (F6) are open when a run starts.
-- **Claude:** "Ask before Claude Code uses tokens", read-only: "Don't ask again" in the notice turns it off, removing `tokenNotice` from `prefs.json` brings it back. The workbench cannot change it, because it shares its origin with the application under test. With an agent, the agent of this run (from `--agent` or the config).
-- **Notes for Claude:** your own `caw.md` and the project's `caw/caw.md`, each with its path and number of lines, never its content; "Copy path" copies yours.
+- **Agent:** "Ask before Claude Code uses tokens", read-only: "Don't ask again" in the notice turns it off, removing `tokenNotice` from `prefs.json` brings it back. The workbench cannot change it, because it shares its origin with the application under test. With an agent, the agent of this run (from `--agent` or the config).
+- **Notes for Claude Code:** your own `caw.md` and the project's `caw/caw.md`, each with its path and number of lines, never its content; "Copy path" copies yours.
 - **Keyboard:** the keys below.
-- **This run**, read-only: project, environment with its switches (Claude allowed, writable, production), role, code and version.
+- **This run**, read-only: project, environment with its switches (Agent allowed, writable, production), role, code and version.
 
 Light and dark: the workbench, the chat, the report page and the "caw explore" card follow your system unless you set a mode; the choice is `mode` in `prefs.json` (`system`, `light` or `dark`).
 
@@ -255,7 +255,7 @@ The sequence is deterministic, the environment isn't: this is not a snapshot. Th
 
 ### Developing in the reached state
 
-With chat, the chat stays open after handover (state "Develop"):
+With chat, the chat stays open after handover (state "Develop"). Its first card, "What you can do now", says what the window offers:
 
 The workbench stays as it is, with steps and chat; F8 shows the app alone (**App only**) and keeps it across reloads. The browser window stays as it is. The app now fills the whole pane; the recorded size holds only while caw replays, also when it restores a state.
 
@@ -287,7 +287,7 @@ The call doesn't work inside the devcontainer itself: Chrome is missing there (a
 - **Keyboard in the chat:** Ctrl+↵ (Cmd+↵) triggers the main action while the input is empty, e.g. "Approve plan" or "Finish demo"; that button shows `Ctrl ↵`. Alt+↵ sends a checkpoint while you demonstrate. Esc first closes an open menu, then clears the input field if you are typing in it. Otherwise Esc requests cancellation ("Really cancel? (Esc)" and "No"); only a second Esc within 4 seconds confirms it. New choice buttons get focus unless you are typing.
 - **Your turn:** When the chat waits for you (plan, decision, clarifying a failure), "YOUR TURN" shows above the application, and the terminal prints once "Waiting for you in the Chrome window: …".
 - **Record, play, pause:** A chip at the top right of the workbench shows what the run does: "REC" while Claude records or fixes, "PLAY" while caw replays (run, check run, restoring a state), "PAUSE" while such a run is paused (F9). When nothing runs (after the run, after the handover, after cancelling) there is no chip.
-- **After the run:** The outcome is the last line in the chat, e.g. "Saved: caw/tests/bestellung.yaml". Below it the end card says "Run passed" or "Run failed" (for `reproduce` the verdict, with observed, expected and cause), counts the steps and shows the command for a new run, with a button to copy it. Its main action is "Save baselines" when the run can learn them, otherwise "Close window" or "Open report"; the other choices sit beside it, or behind "More" when there are two. "Open report" opens the [report page](#the-report-page) in a new tab. The window stays open for 15 seconds, counting down on "Close window", and then closes itself. If a new window is about to open (for Claude or the check run), chat and terminal say so first.
+- **After the run:** The outcome is the last line in the chat, e.g. "Saved: caw/tests/bestellung.yaml". Below it the end card says "Run passed" or "Run failed" (for `reproduce` the verdict, with observed, expected and cause), counts the steps and shows the command for a new run, with a button to copy it. Its main action is "Save baselines" when the run can learn them, otherwise "Close window" or "Open report"; the other choices sit beside it, or behind "More" when there are two. "Open report" opens the [report page](#the-report-page) in a new tab. Without "Save baselines" the window stays open for 15 seconds, counting down on "Close window", and then closes itself; a click into the chat input stops the countdown for good ("Stays open"). With "Save baselines" on the card it does not count down and waits for your choice. If a new window is about to open (for Claude or the check run), chat and terminal say so first.
 
 You can open your own tabs at any time, even during a run: only the application tab and its popups are controlled, and only their errors count. Clicking in the application tab while a run is working, however, affects the test.
 
@@ -434,7 +434,7 @@ Claude runs as your own Claude Code, in a Docker sandbox or as your Claude Code 
 
 ### Agent: local, Docker or your session
 
-Where Claude runs when a run needs it is set by `agent.mode` in the config (`local`, `docker` or `session`, default `local`). `--agent local|docker|session` overrides it for one run. In CI (`CI` set) it is always `docker`; other values abort.
+Where Claude runs when a run needs it is set by `agent.mode` in the config (`local`, `docker` or `session`, default `local`). `--agent local|docker` overrides it for one run; `--attach [<key>]` lets your own Claude Code session work for it. In CI (`CI` set) it is always `docker`; other values abort.
 
 | Agent | How Claude runs | Good for |
 |---|---|---|
@@ -454,7 +454,7 @@ In CI (`CI` set) `run` runs without chat and without Claude; `agent.mode` only a
 
 **Personal settings:** What you set for yourself in the workbench is stored per user in `prefs.json` under `CAW_AI_HOME`, otherwise `%APPDATA%\caw-ai` (Windows) or `~/.config/caw-ai`: "Animations off" (F10: no spinner, no pulsing dots, no blinking cursor), collapsed steps or chat, and the mode (`system`, `light` or `dark`; `system` follows your operating system and is the default). You change them on the [settings page](#settings) (Ctrl+,). In the same folder your own `caw.md` holds notes for Claude in every project, read before the project's `caw/caw.md` ([Configuration](configuration.md#your-own-cawmd)).
 
-**Token notice:** Before Claude works (record, fix a step, investigate a failure, questions in the chat, `--explain`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude Code" (investigate a failure, questions in the chat) or "Cancel run" (record, fix a step). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--agent session` there is no notice: your session is already running.
+**Token notice:** Before Claude works (record, fix a step, investigate a failure, questions in the chat, `--explain`), the chat asks once per run: "Continue", "Don't ask again" or a decline that says what it does: "Continue without Claude Code" (investigate a failure, questions in the chat) or "Cancel run" (record, fix a step). "Don't ask again" sets `"tokenNotice": "off"` in `prefs.json`; remove the entry to get the notice back. With `--attach` (or `agent.mode: session`) there is no notice: your session is already running.
 
 **Try it** without a project of your own: [`examples/errand`](../examples/errand) in the repository, a small app with login and one test.
 
@@ -476,8 +476,9 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_init` | `mode: explore` opens the app for you to sign in and returns the suggestions; `mode: write` writes the config from them; `mode: offline` the template with TODO | no |
 | `caw_config` | `{ read: true }`: config as written and effective, with validation; `{ patch, dryRun }`: validated change, an invalid result is not written. Commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), the environment flags (`production`, `agent`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` and `agent.mode` are refused: the session edits those in the file, where Claude Code shows you the diff | no |
 | `caw_role` | `list` roles and whether a test user is set; `add` puts a role into the config and names its variables, you fill `caw/.env` yourself; `login` saves a session (SSO); `remove` | no |
+| `caw_attach` | attaches this session to caw windows: returns its key and the command it starts with its Monitor tool; chat messages and tasks of an attached window then reach the session as lines | no |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
-| `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role` (or `args`) | none beyond your session |
+| `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role` (or `args`) | none beyond your session |
 | `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |
 | `caw_selection` | the element you picked with `/element` in the workbench chat while developing | no |

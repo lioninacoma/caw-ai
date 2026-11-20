@@ -58,7 +58,7 @@ export default {
     'workbench.set.token': 'Fragen, bevor {agent} Token verbraucht',
     'workbench.set.tokenHint': '„Nicht mehr fragen“ im Hinweis schaltet es aus; tokenNotice aus prefs.json zu entfernen bringt ihn zurück. Die Werkbank kann es nicht ändern: Sie teilt ihren Ursprung mit der getesteten Anwendung.',
     'workbench.set.agent': 'Agent dieses Laufs',
-    'workbench.set.agentHint': 'Gewählt mit --agent local, docker oder session, oder "agent" in caw.config.json.',
+    'workbench.set.agentHint': 'Gewählt mit --agent local oder docker, --attach oder "agent" in caw.config.json.',
     'workbench.set.personal': 'Deine caw.md',
     'workbench.set.personalHint': 'Notizen für {agent} in jedem Projekt, gelesen vor caw/caw.md. caw zeigt, wo sie liegt, nie, was darin steht.',
     'workbench.set.projectNotes': 'Projektnotizen',

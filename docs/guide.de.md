@@ -87,10 +87,10 @@ Mit Chat läuft alles auf einer Seite, wie bei Cypress:
 Strg+, (oder ⋯ → Einstellungen, `/settings` im Chat) macht aus der Werkbank ihre Einstellungsseite; Esc oder „Zurück zum Lauf“ führt zurück. Die Seite gehört dir, gilt für jedes Projekt und nennt die `prefs.json`, in die sie speichert. Sie ändert nur, wie die Werkbank aussieht; alles andere zeigt sie nur lesend:
 
 - **Allgemein:** Erscheinungsbild System, Hell oder Dunkel, sofort in Werkbank und Chat (System folgt deinem Betriebssystem, bis du Hell oder Dunkel wählst); Animationen (F10); die Sprache mit ihrer Herkunft (`CAW_LANG`, `prefs.json`, `caw.config.json` oder das System), nur lesend. Aufteilung: ob Schrittliste (F4) und Chat (F6) offen sind, wenn ein Lauf beginnt.
-- **Claude:** „Fragen, bevor Claude Code Token verbraucht“, nur lesend: „Nicht mehr fragen“ im Hinweis schaltet es aus, `tokenNotice` aus `prefs.json` zu entfernen bringt ihn zurück. Die Werkbank kann es nicht ändern, weil sie ihren Ursprung mit der getesteten Anwendung teilt. Mit einem Agenten der Agent dieses Laufs (aus `--agent` oder der Config).
-- **Notizen für Claude:** deine eigene `caw.md` und die `caw/caw.md` des Projekts, jede mit Pfad und Zahl der Zeilen, nie mit ihrem Inhalt; „Pfad kopieren“ kopiert deinen.
+- **Agent:** „Fragen, bevor Claude Code Token verbraucht“, nur lesend: „Nicht mehr fragen“ im Hinweis schaltet es aus, `tokenNotice` aus `prefs.json` zu entfernen bringt ihn zurück. Die Werkbank kann es nicht ändern, weil sie ihren Ursprung mit der getesteten Anwendung teilt. Mit einem Agenten der Agent dieses Laufs (aus `--agent` oder der Config).
+- **Notizen für Claude Code:** deine eigene `caw.md` und die `caw/caw.md` des Projekts, jede mit Pfad und Zahl der Zeilen, nie mit ihrem Inhalt; „Pfad kopieren“ kopiert deinen.
 - **Tastatur:** die Tasten unten.
-- **Dieser Lauf**, nur lesend: Projekt, Umgebung mit ihren Schaltern (Claude erlaubt, beschreibbar, Produktion), Rolle, Code und Version.
+- **Dieser Lauf**, nur lesend: Projekt, Umgebung mit ihren Schaltern (Agent erlaubt, beschreibbar, Produktion), Rolle, Code und Version.
 
 Hell und dunkel: Werkbank, Chat, Berichtsseite und die Karte „caw explore“ folgen deinem System, solange du keinen Modus festlegst; die Wahl steht als `mode` in `prefs.json` (`system`, `light` oder `dark`).
 
@@ -256,7 +256,7 @@ Der Ablauf ist deterministisch, die Umgebung nicht: Das ist kein Snapshot. Der W
 
 ### Im hergestellten Zustand entwickeln
 
-Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“):
+Mit Chat bleibt der Chat nach der Übergabe offen (Zustand „Entwickeln“). Seine erste Karte, „So geht es weiter“, sagt, was das Fenster bietet:
 
 Die Werkbank bleibt, wie sie ist, mit Schritten und Chat; F8 zeigt nur die Anwendung (**Nur Anwendung**) und behält das auch beim Neuladen. Das Browserfenster bleibt, wie es ist. Die Anwendung füllt jetzt die ganze Fläche; die aufgenommene Größe gilt nur, solange caw abspielt, auch beim Herstellen eines Zustands.
 
@@ -288,7 +288,7 @@ Im Devcontainer selbst geht der Aufruf nicht, dort fehlt Chrome (und für den Ag
 - **Tastatur im Chat:** Strg+↵ (Cmd+↵) löst die Hauptaktion aus, solange das Eingabefeld leer ist, etwa „Plan freigeben“ oder „Vorführung beenden“; der Knopf zeigt dazu `Strg ↵`. Alt+↵ schickt einen Prüfpunkt, während du vorführst. Esc schließt zuerst ein offenes Menü und leert dann das Eingabefeld, wenn du darin tippst. Sonst fragt Esc den Abbruch an („Wirklich abbrechen? (Esc)“ und „Nein“), erst ein zweites Esc innerhalb von 4 Sekunden bestätigt ihn. Neue Auswahlknöpfe bekommen den Fokus, außer du tippst gerade.
 - **Du bist dran:** Wartet der Chat auf dich (Plan, Entscheidung, Fehler klären), steht „DU BIST DRAN“ über der Anwendung, und das Terminal meldet einmal „Wartet im Chrome-Fenster auf dich: …“.
 - **Aufnahme, Wiedergabe, Pause:** Ein Chip oben rechts in der Werkbank zeigt, was der Lauf tut: „REC“, solange Claude aufnimmt oder repariert, „PLAY“, solange caw abspielt (run, Prüflauf, Zustand herstellen), „PAUSE“, solange ein solcher Lauf pausiert (F9). Läuft nichts (nach dem Lauf, nach der Übergabe, nach dem Abbruch), gibt es keinen Chip.
-- **Nach dem Lauf:** Das Ergebnis steht als letzte Zeile im Chat, etwa „Gespeichert: caw/tests/bestellung.yaml“. Darunter sagt die Abschlusskarte „Lauf bestanden“ oder „Lauf gescheitert“ (bei `reproduce` das Urteil, mit Beobachtet, Erwartet und Ursache), zählt die Schritte und zeigt den Befehl für einen neuen Lauf, mit einem Knopf zum Kopieren. Ihre Hauptaktion ist „Vergleichswerte speichern“, wenn der Lauf welche lernen kann, sonst „Fenster schließen“ oder „Bericht öffnen“; die übrigen stehen daneben oder, wenn es zwei sind, hinter „Mehr“. „Bericht öffnen“ öffnet die [Berichtsseite](#die-berichtsseite) in einem neuen Tab. Das Fenster bleibt noch 15 Sekunden offen, „Fenster schließen“ zählt herunter, und schließt sich dann selbst. Öffnet sich gleich ein neues Fenster (für Claude oder den Prüflauf), sagen Chat und Terminal das vorher.
+- **Nach dem Lauf:** Das Ergebnis steht als letzte Zeile im Chat, etwa „Gespeichert: caw/tests/bestellung.yaml“. Darunter sagt die Abschlusskarte „Lauf bestanden“ oder „Lauf gescheitert“ (bei `reproduce` das Urteil, mit Beobachtet, Erwartet und Ursache), zählt die Schritte und zeigt den Befehl für einen neuen Lauf, mit einem Knopf zum Kopieren. Ihre Hauptaktion ist „Vergleichswerte speichern“, wenn der Lauf welche lernen kann, sonst „Fenster schließen“ oder „Bericht öffnen“; die übrigen stehen daneben oder, wenn es zwei sind, hinter „Mehr“. „Bericht öffnen“ öffnet die [Berichtsseite](#die-berichtsseite) in einem neuen Tab. Ohne „Vergleichswerte speichern“ bleibt das Fenster noch 15 Sekunden offen, „Fenster schließen“ zählt herunter, und schließt sich dann selbst; ein Klick ins Eingabefeld des Chats hält den Countdown endgültig an („Bleibt offen“). Mit „Vergleichswerte speichern“ auf der Karte zählt nichts herunter, das Fenster wartet auf deine Wahl. Öffnet sich gleich ein neues Fenster (für Claude oder den Prüflauf), sagen Chat und Terminal das vorher.
 
 Eigene Tabs kannst du jederzeit öffnen, auch während des Laufs: Gesteuert wird nur der Anwendungs-Tab samt Popups, und nur deren Fehler zählen. Klickst du dagegen im Anwendungs-Tab, während ein Lauf arbeitet, beeinflusst du den Test.
 
@@ -435,7 +435,7 @@ Claude läuft als dein eigenes Claude Code, in einer Docker-Sandbox oder als dei
 
 ### Agent: lokal, Docker oder deine Session
 
-Wo Claude läuft, wenn ein Lauf es braucht, legt `agent.mode` in der Config fest (`local`, `docker` oder `session`, Standard `local`). `--agent local|docker|session` überschreibt das für einen Lauf. In CI (`CI` gesetzt) gilt immer `docker`, andere Werte brechen ab.
+Wo Claude läuft, wenn ein Lauf es braucht, legt `agent.mode` in der Config fest (`local`, `docker` oder `session`, Standard `local`). `--agent local|docker` überschreibt das für einen Lauf; `--attach [<key>]` lässt deine eigene Claude-Code-Session dafür arbeiten. In CI (`CI` gesetzt) gilt immer `docker`, andere Werte brechen ab.
 
 | Agent | Wie Claude läuft | Gut für |
 |---|---|---|
@@ -455,7 +455,7 @@ In CI (`CI` gesetzt) läuft `run` ohne Chat und ohne Claude; `agent.mode` greift
 
 **Persönliche Einstellungen:** Was du in der Werkbank für dich festlegst, merkt sich caw je Nutzer in `prefs.json` unter `CAW_AI_HOME`, sonst `%APPDATA%\caw-ai` (Windows) bzw. `~/.config/caw-ai`: „Animationen aus“ (F10: kein Spinner, keine pulsierenden Punkte, kein blinkender Cursor), eingeklappte Schritte oder Chat und der Modus (`system`, `light` oder `dark`; `system` folgt deinem Betriebssystem und ist der Standard). Du änderst sie auf der [Einstellungsseite](#einstellungen) (Strg+,). Im selben Ordner hält deine eigene `caw.md` Notizen für Claude in jedem Projekt, gelesen vor der `caw/caw.md` des Projekts ([Konfiguration](configuration.de.md#deine-eigene-cawmd)).
 
-**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--explain`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude Code weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--agent session` gibt es den Hinweis nicht: Deine Session läuft ohnehin.
+**Hinweis auf Token:** Bevor Claude arbeitet (aufnehmen, beheben, Ursache untersuchen, Fragen im Chat, `--explain`), fragt der Chat einmal je Lauf: „Weiter“, „Nicht mehr fragen“ oder eine Ablehnung, die sagt, was sie bewirkt: „Ohne Claude Code weiter“ (Ursache untersuchen, Fragen im Chat) oder „Lauf abbrechen“ (aufnehmen, beheben). „Nicht mehr fragen“ setzt `"tokenNotice": "off"` in `prefs.json`; löschst du den Eintrag, kommt der Hinweis wieder. Mit `--attach` (oder `agent.mode: session`) gibt es den Hinweis nicht: Deine Session läuft ohnehin.
 
 **Ausprobieren** ohne eigenes Projekt: [`examples/errand`](../examples/errand) im Repository, eine kleine App mit Anmeldung und einem Test.
 
@@ -477,8 +477,9 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | `caw_init` | `mode: explore` öffnet dir die App zum Anmelden und liefert die Vorschläge; `mode: write` schreibt daraus die Config; `mode: offline` die Vorlage mit TODO | nein |
 | `caw_config` | `{ read: true }`: Config wie geschrieben und wirksam, mit Prüfung; `{ patch, dryRun }`: geprüfte Änderung, ein ungültiges Ergebnis wird nicht geschrieben. Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), die Umgebungs-Schalter (`production`, `agent`, `writable`, `allowHttp`, `insecureTls`), `browser.executablePath`, `sandboxImage`, `sandboxUser` und `agent.mode` lehnt es ab: Die ändert die Session in der Datei, wo Claude Code dir den Diff zeigt | nein |
 | `caw_role` | `list` Rollen und ob ein Testnutzer gesetzt ist; `add` trägt eine Rolle in die Config ein und nennt ihre Variablen, `caw/.env` füllst du selbst; `login` speichert eine Sitzung (SSO); `remove` | nein |
+| `caw_attach` | verbindet diese Session mit caw-Fenstern: liefert ihren Schlüssel und den Befehl, den sie mit ihrem Monitor-Werkzeug startet; Chat-Nachrichten und Aufgaben eines verbundenen Fensters erreichen die Session dann als Zeilen | nein |
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
-| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role` (oder `args`) | nur deine Session |
+| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role` (oder `args`) | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |
 | `caw_selection` | das Element, das du beim Entwickeln im Chat der Werkbank mit `/element` gewählt hast | nein |

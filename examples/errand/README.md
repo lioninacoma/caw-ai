@@ -44,4 +44,4 @@ Things to try next:
 - Record the whole test yourself with Claude in the chat: `node ../../bin/caw.mjs record first-errand --env local`. That replaces the shipped recording.
 - Try the setup flow in a copy of this folder: delete `caw.config.json`, then `node <repo>/bin/caw.mjs init --url http://localhost:4174`.
 
-In your own project the command is `npx caw-ai`.
+In your own project the command is `npx caw`.
