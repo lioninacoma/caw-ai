@@ -93,7 +93,9 @@ test('a field that unlocks the next one only when it is left: replay leaves it, 
         { action: 'fill', target: "getByRole('textbox', { name: 'Bereich', exact: true })", value: 'Sons' },
         { action: 'click', target: "getByRole('listitem').filter({ hasText: /^Sonstiges$/ })" },
     ]);
-    assert.equal(typed.broken, null);
+    // Fails only now and then on Windows CI (click timeout on the list entry): say what the page looked like then.
+    const seen = typed.broken === null ? '' : JSON.stringify(await page.evaluate(() => ({ focused: document.activeElement?.id ?? null, listHidden: document.getElementById('list').hidden, area: document.getElementById('area').value, focus: document.hasFocus() })));
+    assert.equal(typed.broken, null, `${typed.broken?.message ?? ''} ${seen}`);
     assert.equal(await page.locator('#area').inputValue(), 'Sonstiges');
     return undefined;
 });
