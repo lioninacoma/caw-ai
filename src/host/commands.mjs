@@ -929,7 +929,7 @@ export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environ
     else if (noChat) how = t('cli.modeNoChat');
     else if (inCi) how = t('cli.modeCi');
     else how = t('cli.modeChat', { advice: withAdvice && !opened ? t('cli.modeAdvice') : '' });
-    // open never learns; a run learns only with --learn (Q7), and then names the file it may change.
+    // open never learns; a run outside CI always learns (in CI only with --learn), and then names the file it may change.
     const learns = learn && !opened ? t('cli.modeLearnsYes', { file }) : t('cli.modeLearnsNo');
     return t('cli.modeLine', { env, language: team, how, learns });
 };
@@ -999,7 +999,8 @@ export const changeTracker = (root) => {
  * except in CI (variable CI); if a step fails, the human clarifies it there and can have it fixed. For open (`handover`) the
  * run prepares a state and hands over the window, to continue working on the local build from there: with `entry` at the
  * entry of that step, otherwise after the whole test. With --explain Claude advises on errors and warnings, which costs
- * tokens. --no-chat runs as in CI, --headless additionally without a window. --learn writes missing baselines in every mode.
+ * tokens. --no-chat runs as in CI, --headless additionally without a window. Outside CI every run writes missing baselines
+ * and effects of its passed steps; in CI only with --learn.
  * @param quiet in a batch: no mode line, the batch prints it once
  * @returns { code, failed } with the failed step ({ id, reason }), if one failed
  */
@@ -1021,13 +1022,16 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     // The chat lives in the workbench and needs no terminal. Only in CI nobody waits for it.
     const inCi = !(interactive ?? (process.env.CI === undefined || process.env.CI === ''));
     const canFix = withAgent && !noChat && !inCi;
+    // Baselines are learned by every run outside CI, headless or in the window; a CI job only with --learn (its files are
+    // usually gone after the job). open never learns.
+    const learns = !handover && (learn || !inCi);
     // Reject right away rather than run silently without advice: whoever passes --explain expects it.
     if (withAdvice && !withAgent) throw new CawError('usage', t('cli.adviseAgentOnly', { environments: agentEnvironments(config), target }));
     if (withAdvice && !canFix) throw new CawError('usage', t('cli.adviseNeedsChat'));
     // Nobody waits in CI: a handover would keep the job open until the runner times out.
     if (inCi && handover) throw new CawError('usage', t('cli.ciHandover', { option: 'open' }));
     if (!quiet) ui.head();
-    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
+    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
     const tracker = changeTracker(root);
@@ -1044,10 +1048,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         // The developer's Claude Code session is there at once and costs nothing here: it may read the page in the state right away.
         sessionAgent: attach !== undefined || (agent === undefined && agentMode(config) === 'session'),
         reads: config.reads ?? [],
-        // Only with --learn, in every mode (SC-21): otherwise a run never changes tracked files on its own (Q7). With chat the end
-        // card offers to learn this run's baselines instead.
-        fillBaselines: learn && !handover,
-        offerLearning: canFix && !learn && !handover,
+        fillBaselines: learns,
         openSandbox: () => openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach }),
         execute,
         adopt: tracker.adopt,
@@ -1068,7 +1069,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
             ui.next(lines);
         },
     });
-    if (canFix || learn) ui.info(tracker.summary());
+    if (canFix || learns) ui.info(tracker.summary());
     return { code, failed };
 };
 

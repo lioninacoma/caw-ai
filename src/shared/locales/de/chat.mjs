@@ -56,8 +56,6 @@ export default {
     'chat.page.closeNow': 'Fenster schließen',
     'chat.page.stays': 'Bleibt offen',
     'chat.page.endedPlaceholder': 'Der Lauf ist beendet. Ein Klick hier hält das Fenster offen.',
-    'chat.page.learn': 'Vergleichswerte speichern',
-    'chat.page.learning': 'Speichere …',
     'chat.page.newRun': 'Neuer Lauf: ',
     'chat.page.adoptDraft': 'Entwurf nach caw/tests kopieren, dann: ',
     'chat.page.removeElement': 'Element entfernen',

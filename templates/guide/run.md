@@ -7,7 +7,7 @@ project folder (on Windows from PowerShell). Report the result including the pat
   with exit 4 (recording needed) and names `record`; if a step is outdated it names `record <test>@S<n>`. If a step fails on an
   environment with `agent: true` and not in CI, the chat offers "{{label:run.button.fix}}"; only the person starts Claude from there. With
   `--explain` (only on such environments, not in CI) Claude gives recommendations right away on errors or warnings; that costs
-  tokens, so add it only if the person wants it. `--learn` writes missing baselines into the recording: only when asked.
+  tokens, so add it only if the person wants it. Outside CI every run writes missing baselines into the recording and says so; in CI only `--learn` does.
 - **Reach a state** ("take me to where the cart is filled"): read `caw/tests/` and find the step `S<n>` the person wants to work
   in, the one after the step whose `expect` describes the state. `open <test>@S<n>` replays the steps before completely and of
   `S<n>` only its navigation, so the person lands at that step with its inputs open; `S<n>` is not judged. If `S<n>` has no

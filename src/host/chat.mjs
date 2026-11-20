@@ -620,7 +620,7 @@ textarea.full{overflow-y:auto}textarea::placeholder{color:var(--faint)}textarea:
 <div id="bar"><div id="status" role="status" aria-live="polite"></div><button id="toggle" type="button" class="lnk"><span class="tic"></span><span id="toggleText"></span><kbd class="key" aria-hidden="true"></kbd></button></div>
 <div id="choices"></div>
 <div id="next" class="card" role="region" aria-label="${t('chat.page.nextStep')}"><strong id="nextHead"><span id="nextIcon"></span><span id="nextTitle">${t('chat.page.nextStep')}</span></strong><p id="nextText"></p><div id="nextRepro"></div><div class="cmd" id="nextCmd"></div>
-<div class="acts" id="nextActs"><button id="learn" type="button" class="btn btn-p" hidden>${icon('bookmark')}<span>${t('chat.page.learn')}</span></button><button id="closeWindow" type="button" class="btn btn-s" hidden></button><button id="report" type="button" class="btn btn-s">${t('chat.page.openReport')}</button></div><p id="stays" hidden>${icon('clock')}<span>${t('chat.page.stays')}</span></p></div>
+<div class="acts" id="nextActs"><button id="closeWindow" type="button" class="btn btn-s" hidden></button><button id="report" type="button" class="btn btn-s">${t('chat.page.openReport')}</button></div><p id="stays" hidden>${icon('clock')}<span>${t('chat.page.stays')}</span></p></div>
 <form id="form"><div id="slash" class="pop" role="listbox" aria-label="${t('chat.page.commands')}" hidden><div class="pop-h">${t('chat.page.commands')}</div>${slash}<div id="slashEmpty" hidden>${t('chat.page.noCommand')}</div></div>
 <div id="chip"><span id="chipText"></span><button id="chipRemove" type="button" aria-label="${t('chat.page.removeElement')}" title="${t('chat.page.removeElement')}">${icon('x')}</button></div>
 <div class="inp-row"><textarea id="input" rows="1" aria-label="${t('chat.page.inputLabel')}" aria-controls="slash" aria-autocomplete="list" placeholder="${t('chat.page.placeholder')}"></textarea><button id="send" type="submit" aria-label="${t('chat.page.send')}" title="${t('chat.page.send')} (Enter)" disabled>${icon('up')}</button></div>
@@ -809,12 +809,11 @@ const confirmFirst=(choice,option)=>{if(choice.classList.contains('sure'))return
   let timer=0;const reset=()=>{clearTimeout(timer);choice.classList.remove('sure');choice.textContent=option.label;no.remove();};no.addEventListener('click',()=>{reset();choice.focus();});choice.after(no);timer=setTimeout(reset,4000);choice.disarm=()=>{clearTimeout(timer);no.remove();};return true;};
 
 // After the run: the end card with one main action; the others next to it or behind "More".
-const learn=$('learn'),closeWindow=$('closeWindow'),report=$('report');
-// The main action: save baselines if offered, else close the window, else the report; beside it the report first.
-const arrangeNext=()=>{const shown=[learn,closeWindow,report].filter((b)=>!b.hidden);const rest=shown.slice(1).sort((a,b)=>(a===report?-1:b===report?1:0));arrange($('nextActs'),'nextMore',shown.slice(0,1),rest);};
+const closeWindow=$('closeWindow'),report=$('report');
+// The main action: close the window, else the report.
+const arrangeNext=()=>{const shown=[closeWindow,report].filter((b)=>!b.hidden);const rest=shown.slice(1).sort((a,b)=>(a===report?-1:b===report?1:0));arrange($('nextActs'),'nextMore',shown.slice(0,1),rest);};
 const KINDS={pass:['check','chat.page.endPass'],fail:['x','chat.page.endFail'],reproduce:['bug','']};
 window.setNext=(info)=>{const box=$('next');box.classList.toggle('on',!!info);if(!info)return;
-  if(!learn.disabled)learn.hidden=!info.learn;
   const kind=KINDS[info.kind];box.dataset.kind=info.kind??'';$('nextIcon').replaceChildren(...(kind?[ic(kind[0])]:[]));
   // A reproduction's verdict is the title itself; a run's title says passed or failed, the text counts the steps.
   const title=kind?(kind[1]?T[kind[1]]:info.text):T['chat.page.nextStep'];$('nextTitle').textContent=title;$('nextText').textContent=title===info.text?'':info.text;
@@ -831,13 +830,11 @@ window.setNext=(info)=>{const box=$('next');box.classList.toggle('on',!!info);if
 report.addEventListener('click',()=>{closeMenus();send('report','');});
 // After the last decision the window stays open briefly: the human sees the result and closes it, otherwise it closes on timeout.
 let lingerTimer=0;
-learn.addEventListener('click',()=>{closeMenus();learn.disabled=true;learn.querySelector('span').textContent=T['chat.page.learning'];send('learn');});
 closeWindow.addEventListener('click',()=>{closeMenus();clearInterval(lingerTimer);closeWindow.disabled=true;send('close');});
 // A click into the input while the window counts down: the person stays, the countdown stops for good.
 const stay=()=>{if(lingerTimer===0||closeWindow.disabled)return;clearInterval(lingerTimer);lingerTimer=0;closeWindow.textContent=T['chat.page.closeNow'];$('stays').hidden=false;send('stay');};
 input.addEventListener('pointerdown',stay);input.addEventListener('focus',stay);
-// Without seconds (Save baselines is on the card): nothing counts down, the window waits for a choice.
-window.linger=(seconds)=>{if(seconds===null){clearInterval(lingerTimer);lingerTimer=0;closeWindow.textContent=T['chat.page.closeNow'];closeWindow.hidden=false;closeWindow.disabled=false;arrangeNext();return;}let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();arrangeNext();
+window.linger=(seconds)=>{let left=seconds;const paint=()=>{closeWindow.textContent=fill('chat.page.closeIn',{n:left});};closeWindow.hidden=false;closeWindow.disabled=false;paint();arrangeNext();
   if(closeWindow.offsetParent!==null)closeWindow.focus({preventScroll:true});clearInterval(lingerTimer);lingerTimer=setInterval(()=>{left=Math.max(0,left-1);paint();if(left===0)clearInterval(lingerTimer);},1000);};
 
 // The slash commands: "/" at the start of the field opens them; arrows, Enter and Tab pick, Esc closes. Unavailable ones
@@ -1008,7 +1005,6 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
     let stayWanted = null;
     // After the run: { report: absolute path, shown: path for humans, text, command, learn }.
     let next = null;
-    let learnClicked = false;
     const openReport = async () => {
         const page = await chatWindow.context().newPage();
         await page.setContent(reportPage({ markdown: readFileSync(next.report, 'utf8'), path: next.shown ?? next.report, dir: dirname(next.report) }));
@@ -1090,16 +1086,9 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();
         else if (event?.type === 'stay') stayWanted?.();
-        // "Save baselines" on the end card: learning happens once the window is closed, like --learn would have done.
-        else if (event?.type === 'learn' && next?.learn === true) {
-            learnClicked = true;
-            closeWanted?.();
-        }
     });
     /** While developing: who additionally receives an element picked with the crosshair (the Claude Code session). null: nobody. */
     chat.onPicked = (handler) => { onPicked = handler ?? null; };
-    /** Did the human click "Save baselines" on the end card? */
-    chat.learnWanted = () => learnClicked;
     /** The page under test touched the chat: close it, nothing more goes in or out, the run ends with chat-tampered. */
     const tamper = () => {
         if (tampered !== null) return;
@@ -1147,13 +1136,11 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         const clicked = new Promise((resolve) => { closeWanted = () => resolve('close'); });
         const stayed = new Promise((resolve) => { stayWanted = () => resolve('stay'); });
         let timer;
-        // With "Save baselines" on the card the window waits for a choice: a countdown would close it unseen behind More.
-        const counting = next?.learn !== true;
-        const elapsed = new Promise((resolve) => { if (counting) timer = setTimeout(() => resolve('time'), ms); });
+        const elapsed = new Promise((resolve) => { timer = setTimeout(() => resolve('time'), ms); });
         await quiet(render('closed'));
         // In App only the end card shows over the app, so the countdown does not run out unseen.
         await quiet(Promise.resolve(bench.showChat?.()));
-        await quiet(inChat((seconds) => window.linger(seconds), counting ? Math.round(ms / 1000) : null));
+        await quiet(inChat((seconds) => window.linger(seconds), Math.round(ms / 1000)));
         if (await Promise.race([clicked, elapsed, stayed]) === 'stay') {
             clearTimeout(timer);
             await clicked;

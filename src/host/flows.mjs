@@ -39,8 +39,6 @@ const withoutDot = (text) => text.replace(/\.$/, '');
 const closed = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 /** Added baselines in one sentence for the chat. */
-const baselineText = (baselines) => t('run.flow.baselines', { ids: [...baselines.keys()].join(', ') });
-
 /** Why a run did not pass, in one sentence for the chat. */
 const failureText = (verdict) => {
     const failed = (verdict?.results ?? []).find(({ status }) => status === 'fail');
@@ -487,14 +485,13 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * @param advise    --explain: on failures or warnings Claude advises on its own, even in a passed run. Costs tokens
  * @param handover  the human wants the window afterwards (open)
  * @param entry     open at the entry of this step: the steps before it, then its leading navigation (replayToEntry)
- * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens (--learn)
- * @param offerLearning  without --learn, with chat: a passed run that could learn shows "Save baselines" on the end card; only
- *                       the human's click learns (Q7)
+ * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens (every run
+ *                      outside CI, in CI with --learn)
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  */
 export const runFlow = async (options) => {
-    const { spec, entry, handover, canFix, advise = false, fillBaselines: learnAlways = false, offerLearning = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
+    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
     const fixer = createFixer({ openSandbox });
     let target = null;
     let repaired = null;
@@ -520,8 +517,7 @@ export const runFlow = async (options) => {
         replay: entry === undefined ? replayOf(spec) : replayToEntry(spec, entry, { reads }),
         handover: () => handover && target === null && repaired === null && !rerun,
         ...(handover ? { command: 'open' } : {}),
-        learns: learnAlways,
-        ...(offerLearning ? { offerLearning: true } : {}),
+        learns: fillBaselines,
         ...(canFix ? {
             testing: true,
             /**
@@ -654,8 +650,7 @@ export const runFlow = async (options) => {
                 const advised = advise ? await fixer.advise(concluded, current) : null;
                 if (await afterAdvice(advised)) return windowAfter();
                 if (!failed) {
-                    const filled = learnAlways && concluded.baselines !== undefined ? ` ${baselineText(concluded.baselines)}` : '';
-                    const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${filled}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
+                    const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
                     // A passed run waits for nobody, not even with warnings. open passed nothing: only name findings.
                     if (spec.steps.length === 0 && advised === null && verdict.status === 'pass' && findingsText(verdict) === '') return;
                     if (advised === null && verdict.status === 'pass') chat.notice(summary);
@@ -682,8 +677,6 @@ export const runFlow = async (options) => {
         } : {}),
     });
     options.onPlayed?.(played);
-    // --learn, or the human's click on "Save baselines" on the end card of this run.
-    const fillBaselines = learnAlways || played.learn === true;
     if (fillBaselines && played.baselines !== undefined) {
         current = withBaselines(current, played.baselines);
         log(t('run.flow.baselinesAdded', { ids: [...played.baselines.keys()].join(', '), file: adopt(current, new Set(played.baselines.keys()), { learned: 'baselines' }) }));

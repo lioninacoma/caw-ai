@@ -19,7 +19,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - Your own `caw.md` next to `prefs.json`: notes for Claude in every project, read before the project's `caw/caw.md`, which wins on a conflict, also by the Docker agent. The report and `caw doctor` name the file and its number of lines, never its content. Claude's context advice can go to either file; the card names which, and only your click writes.
 
 ### Changed
-- "Learn baselines" is now "Save baselines". Labels have no brackets any more.
+- Labels have no brackets any more.
 - One design, Graphite, replaces the themes: one look with a new logo and the fonts Geist and Geist Mono, in a light and a dark mode that follow the system unless you pick one (`mode` in `prefs.json`: `system`, `light` or `dark`). Workbench, chat, report page, the `caw explore` card, the element picker and the terminal use it.
 - The workbench has no toolbars. The header shows the logo, `/ project / test`, a badge with what the run does, the facts, a status pill, the REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. Requests and console open from the counts under the app (F2, F3), and Esc closes that drawer first. A click on the title "Steps" or "Chat" collapses the pane.
 - A settings page (Ctrl+, or ⋯ → Settings, Esc back): the mode, applied at once in workbench and chat, animations (F10) and the panels (F4, F6); read-only the language, the token notice, your own and the project's `caw.md` (path and number of lines only), the keys and this run.
@@ -34,7 +34,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - caw never takes user names or passwords from a page and never writes them: you fill `caw/.env` (or CI secrets) yourself. `init` asks for the role names in the terminal and lists their variables in `caw/.env.example`; `caw role add <role>` (and `caw_role add`) adds the role and names its variables, without a window; `role remove` leaves `caw/.env` as it is. A run whose role has no test user stops before Chrome or Claude start with `credentials-missing`, naming the variables, instead of opening a sign-in window.
 - After `open` hands over, the workbench keeps steps and chat; F8 (App only) is your choice and stays across reloads.
 - The chat's first message after `open` hands over is a card "What you can do now" instead of "Question for you": it explains, it asks nothing.
-- With "Save baselines" on the end card nothing counts down: the window waits for your choice. Its notice tells missing baselines from ones a second healthy run confirms.
+- Baselines are saved automatically: every run outside CI, headless or in the window, learns the missing baselines and effects of its passed steps, and the chat names the steps in a notice. The end card no longer offers "Learn baselines". In CI a run writes only with `--learn`.
 - `reproduce`: the result line says "Reproduced.", "Not reproduced." or "Unclear …" instead of "Passed."; the report names browser actions by their element (`fill searchbox "Search todos"`); a run with `--from` is named `reproduce`; the draft's `writes` comes from the agent (required in its finish).
 - The budget reads "up to 100 browser actions" and "used 3 of 100 browser actions (reading is free)". The terminal names the question a card waits for instead of "What next?".
 - An unmet check names the step's expectation ("Not met after 30 s: The list shows …"); its code stays in the report.

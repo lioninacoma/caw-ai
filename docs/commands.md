@@ -161,7 +161,7 @@ npx caw run create-ticket --env local
 
 Replays the recording. No Claude, no tokens. On environments where Claude may work (`agent`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
 
-A run changes no file on its own. With `--learn` it learns missing baselines and effects into `caw/recordings/<test>.yaml`, in every mode, CI included; with the chat, a passed run that could learn offers "Save baselines" on its end card instead, and only that click writes. The first line says which environment, which team language and whether the run learns, e.g. `Mode on local (team language en): with chat; learns: no.` At the end a run that learned says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
+Outside CI every run learns the missing baselines and effects of its passed steps into `caw/recordings/<test>.yaml`, headless as well as in the window, where the chat says which steps got them. In CI (`CI` set) a run changes no file, unless you pass `--learn`. The first line says which environment, which team language and whether the run learns, e.g. `Mode on local (team language en): with chat; learns: yes, missing baselines and effects into caw/recordings/create-ticket.yaml.` At the end a run that learned says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder.
 
 | Option | |
 |---|---|
@@ -171,7 +171,7 @@ A run changes no file on its own. With `--learn` it learns missing baselines and
 | `--explain` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
 | `--no-chat` | Visible window, no chat, no Claude. Like CI. |
 | `--headless` | No window, no chat. The recorded viewport (else 1920×1080). |
-| `--learn` | Learn missing baselines and effects from passed steps into `caw/recordings/`. Without it a run leaves every file as it is. |
+| `--learn` | In CI: learn missing baselines and effects from passed steps into `caw/recordings/`. Outside CI every run does that anyway. |
 | `--step-timeout <duration>` | Time limit per step, default `30s`. |
 | `--agent-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's actions when fixing. |

@@ -165,7 +165,6 @@ export default {
     'run.failedBefore': '{id} failed before {target} was reached: {reason}',
 
     // Flows in the chat
-    'run.flow.baselines': 'Baselines recorded for {ids}: if a step fails later, the tool uses them to tell test, app or environment apart.',
     'run.flow.seeReport': 'see report',
     'run.flow.notMet': '{id} not met',
     'run.flow.at': ' at {at}',
@@ -226,8 +225,8 @@ export default {
     'run.flow.filesChanged': 'the change to {files} is applied, the app is unchanged',
     'run.flow.rerunOffer': '{id} failed, {what}. A new run shows whether that fixes it.',
     'run.flow.runPassed': 'The run passed.',
-    'run.flow.learnConfirm': 'Steps {ids} have baselines from one run. "Save baselines" below adds this run: their effects then keep only what stayed the same in both. Without the click nothing changes.',
-    'run.flow.learnOffer': 'Steps {ids} have no baselines yet. "Save baselines" below writes the requests and effects of this run into the recording, so later failures can be told apart as test, app or environment. Without the click nothing changes.',
+    'run.flow.learnConfirmed': 'Steps {ids}: their effects now keep only what stayed the same in this run and the one before.',
+    'run.flow.learnSaved': 'Baselines saved for steps {ids}: the requests and effects of this run, so later failures can be told apart as test, app or environment.',
     'run.flow.runFailed': 'The run failed.',
     'run.flow.adviceInReport': ' The recommendations are in the report.',
     'run.flow.effectForgotten': 'Forgot learned effect of {id}: {file}. Please review and commit.',

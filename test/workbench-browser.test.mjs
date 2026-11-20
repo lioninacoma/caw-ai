@@ -1168,25 +1168,20 @@ test('chat: two choices need no menu; a confirming choice in "Mehr" still needs 
     return undefined;
 });
 
-test('chat: the end card has one main action; report and close are beside it or behind "Mehr"', async (t) => {
+test('chat: the end card has one main action, closing the window; the report beside it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { chat, frame } = await chatReady(t);
-    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command: 'caw run t', learn: true });
+    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command: 'caw run t' });
     chat.human.closed();
     const lingering = chat.linger(60000);
     assert.ok(await until(() => frame.isVisible('#next.on')));
     assert.equal(await frame.textContent('#nextTitle'), 'Lauf bestanden');
     assert.equal(await frame.textContent('#nextText'), '4 von 4 Schritten bestanden.');
     assert.match(await frame.textContent('#nextCmd'), /Neuer Lauf: caw run t/);
-    assert.ok(await until(async () => (await frame.getAttribute('#learn', 'class')) === 'btn btn-p'), 'Save baselines is the main action');
-    assert.equal(await frame.isVisible('#report'), false);
-    await frame.click('#nextMore');
-    assert.deepEqual(await frame.$$eval('#nextMoreMenu button', (list) => list.map((b) => b.id)), ['report', 'closeWindow']);
-    assert.equal(await frame.isVisible('#closeWindow'), true);
-    await frame.focus('#nextMoreMenu button');
-    await frame.locator('#report').press('Escape');
-    assert.equal(await frame.isVisible('#nextMoreMenu'), false);
-    await frame.click('#nextMore');
+    assert.ok(await until(async () => (await frame.getAttribute('#closeWindow', 'class'))?.includes('btn-p')), 'closing is the main action');
+    assert.equal(await frame.isVisible('#report'), true, 'the report beside it');
+    assert.match(await frame.getAttribute('#report', 'class'), /btn-s/);
+    assert.equal(await frame.isVisible('#nextMore'), false, 'nothing behind More');
     await frame.click('#closeWindow');
     await lingering;
     return undefined;
@@ -1196,7 +1191,7 @@ test('chat: the end card\'s command wraps only between its words, keeps every sp
     if (browser === null) return t.skip('no Chrome');
     const { chat, frame } = await chatReady(t);
     const command = 'caw run first-errand --env local';
-    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command, learn: true });
+    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command });
     chat.human.closed();
     const lingering = chat.linger(60000);
     assert.ok(await until(() => frame.isVisible('#next.on')));
@@ -1227,7 +1222,6 @@ test('chat: the end card\'s command wraps only between its words, keeps every sp
     for (const line of seen.lines) assert.ok(line.split(' ').every((word) => words.includes(word)), `no word broken: ${JSON.stringify(seen.lines)}`);
     assert.equal(seen.ligatures, 'none');
     assert.ok(Math.max(...seen.widths) - Math.min(...seen.widths) < 0.5, `one cell per character: ${seen.widths}`);
-    await frame.click('#nextMore');
     await frame.click('#closeWindow');
     await lingering;
     return undefined;
@@ -1416,24 +1410,6 @@ test('console tools in the app context too (the DevTools switch there after pick
     assert.equal(await app.evaluate(() => caw === top.caw && typeof caw.help === 'function'), true);
     assert.equal(await app.evaluate(() => { window.caw = 'own'; return caw; }), 'own', 'an assignment by the app wins');
     assert.equal(await bench.page.evaluate(() => typeof window.caw.help), 'function', 'the workbench keeps its tools');
-    return undefined;
-});
-
-test('chat: with Save baselines on the end card nothing counts down; the window waits for a choice', async (t) => {
-    if (browser === null) return t.skip('no Chrome');
-    const { chat, frame } = await chatReady(t);
-    await chat.finished({ kind: 'pass', report: join(dir, 'x.md'), text: '4 von 4 Schritten bestanden.', command: 'caw run t', learn: true });
-    chat.human.closed();
-    let over = false;
-    const lingering = chat.linger(1000).then(() => { over = true; });
-    assert.ok(await until(() => frame.isVisible('#next.on')));
-    await pause(1600);
-    assert.equal(over, false, 'no countdown closes it');
-    assert.equal(await frame.textContent('#closeWindow'), 'Fenster schließen', 'no number');
-    await frame.click('#nextMore');
-    await frame.click('#closeWindow');
-    await lingering;
-    assert.equal(over, true);
     return undefined;
 });
 

@@ -46,8 +46,8 @@ Commands:`,
                                          environments where {agent} may work
       [--no-chat]                        No chat and no {agent}, like in CI
       [--headless]                       No window and no chat
-      [--learn]                          Learn missing baselines and effects into caw/recordings/, in every mode;
-                                         without it a run changes no file on its own (with chat the end offers it)
+      [--learn]                          In CI: learn missing baselines and effects into caw/recordings/ (outside CI
+                                         every run does)
       [--start]                          Start the environment with its start command if it doesn't answer, stop it at
                                          the end; with --overlay also the parts' local code servers
       [--reset] | [--no-reset]           The environment's reset runs once before the first writing test; --reset
@@ -333,7 +333,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.modeCi': 'no chat, because the variable CI is set',
     'cli.modeChat': 'with chat{advice}',
     'cli.modeLearnsNo': 'no',
-    'cli.modeLearnsYes': 'yes (--learn), missing baselines and effects into {file}',
+    'cli.modeLearnsYes': 'yes, missing baselines and effects into {file}',
     'cli.modeAdvice': ' and advice from {agent} (--explain, costs tokens)',
     'cli.changed': 'Changed: {files}',
     'cli.changedWhat': '{file} ({what})',

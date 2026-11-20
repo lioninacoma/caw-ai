@@ -221,8 +221,8 @@ scenario('C', 'Failed run: offer, no Docker without a click', async () => {
     verify('One window', await h.done() === 1);
     verify('Exit 1', code === 1, String(code));
     verify('No Docker', dockerUsed === 0);
-    // A run learns nothing without --learn (Q7): not even the missing comparison of the passed S1.
-    verify('File unchanged', read() === broken);
+    // Outside CI a run learns the missing comparison values of its passed steps (S1); nothing else changes.
+    verify('File unchanged except comparison values', noNet(read()) === noNet(broken));
     restore();
 });
 
@@ -263,8 +263,8 @@ ${finishOf(['S2'])}`;
     verify('Three windows', await h.done() === 3);
     verify('Exit 0', code === 0, String(code));
     const now = read();
-    // The lead-in run learns nothing without --learn (Q7): S1 and S3 stay as they were.
-    verify('S1 and S3 identical character for character', stepText(now, 'S1') === stepText(broken, 'S1') && stepText(now, 'S3') === stepText(broken, 'S3'), stepText(now, 'S1'));
+    // S1 and S3 stay as they were, apart from comparison values the runs learn.
+    verify('S1 and S3 identical apart from comparison values', noNet(stepText(now, 'S1')) === noNet(stepText(broken, 'S1')) && noNet(stepText(now, 'S3')) === noNet(stepText(broken, 'S3')), stepText(now, 'S1'));
     verify('S2 new', /Fuelle das Anliegen neu/.test(stepText(now, 'S2')) && !/Verschwunden/.test(now));
     verify('Header comment stays', now.startsWith(ORIGINAL_HEAD));
     verify('Check keeps the placeholder', /\{\{nr\}\}/.test(stepText(now, 'S2')));
@@ -341,7 +341,7 @@ scenario('G', 'No window in CI', async () => {
 
 scenario('H', 'Fix step: dropped remembered value is rejected, environment error leaves everything', async () => {
     // A remembered value a later step needs can only be dropped when fixing a single step ("Schritt beheben" in a run's chat):
-    // record @S<n> re-records every step after it as well. Without --learn the run adds no comparison values to the file.
+    // record @S<n> re-records every step after it as well.
     const broken = breakStep(good, 'Senden');
     restore(broken);
     const agent = `A='caw agent'
@@ -360,7 +360,8 @@ echo '{"status":"error","reason":"Does not work this way"}' > /tmp/e.json; $A fi
     });
     const code = await run(fake, [ID, ...short], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
     verify('Two windows: test run, repair', await h.done() === 2);
-    verify('Exit 2, file unchanged', code === 2 && read() === broken, String(code));
+    // The test run learned the comparison values of the passed S1; nothing else changes.
+    verify('Exit 2, file unchanged except comparison values', code === 2 && noNet(read()) === noNet(broken), String(code));
     restore();
 });
 

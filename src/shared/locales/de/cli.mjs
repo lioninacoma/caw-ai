@@ -46,8 +46,8 @@ Befehle:`,
                                          Umgebungen, auf denen {agent} arbeiten darf
       [--no-chat]                        Ohne Chat und ohne {agent}, wie in CI
       [--headless]                       Ohne Fenster und ohne Chat
-      [--learn]                          Fehlende Vergleichswerte und Effekte in caw/recordings/ lernen, in jedem Modus;
-                                         ohne die Option ändert ein Lauf von sich aus keine Datei (mit Chat bietet das Ende es an)
+      [--learn]                          In CI: fehlende Vergleichswerte und Effekte in caw/recordings/ lernen (außerhalb
+                                         von CI tut das jeder Lauf)
       [--start]                          Die Umgebung mit ihrem start-Befehl starten, wenn sie nicht antwortet, am Ende
                                          stoppen; mit --overlay auch die lokalen Code-Server der Teile
       [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
@@ -337,7 +337,7 @@ Browser:
     'cli.modeCi': 'ohne Chat, weil die Variable CI gesetzt ist',
     'cli.modeChat': 'mit Chat{advice}',
     'cli.modeLearnsNo': 'nein',
-    'cli.modeLearnsYes': 'ja (--learn), fehlende Vergleichswerte und Effekte in {file}',
+    'cli.modeLearnsYes': 'ja, fehlende Vergleichswerte und Effekte in {file}',
     'cli.modeAdvice': ' und Empfehlungen von {agent} (--explain, kostet Token)',
     'cli.changed': 'Geändert: {files}',
     'cli.changedWhat': '{file} ({what})',

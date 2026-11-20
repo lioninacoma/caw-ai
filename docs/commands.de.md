@@ -161,7 +161,7 @@ npx caw run create-ticket --env local
 
 Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen Claude arbeiten darf (`agent`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
 
-Ein Lauf ändert von sich aus keine Datei. Mit `--learn` lernt er fehlende Vergleichswerte und Effekte in `caw/recordings/<test>.yaml`, in jedem Modus, auch in CI; mit Chat bietet ein bestandener Lauf, der lernen könnte, stattdessen „Vergleichswerte speichern“ auf seiner Abschlusskarte an, und nur dieser Klick schreibt. Die erste Zeile nennt Umgebung, Teamsprache und ob der Lauf lernt, etwa `Modus auf local (Teamsprache en): mit Chat; lernt: nein.` Am Ende sagt ein Lauf, der gelernt hat, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `open <test>@<schritt>` bis zum Einstieg in den gescheiterten Schritt. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs.
+Außerhalb von CI lernt jeder Lauf die fehlenden Vergleichswerte und Effekte seiner bestandenen Schritte in `caw/recordings/<test>.yaml`, headless wie im Fenster, wo der Chat sagt, welche Schritte sie bekommen haben. In CI (`CI` gesetzt) ändert ein Lauf keine Datei, außer du gibst `--learn` an. Die erste Zeile nennt Umgebung, Teamsprache und ob der Lauf lernt, etwa `Modus auf local (Teamsprache en): mit Chat; lernt: ja, fehlende Vergleichswerte und Effekte in caw/recordings/create-ticket.yaml.` Am Ende sagt ein Lauf, der gelernt hat, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `open <test>@<schritt>` bis zum Einstieg in den gescheiterten Schritt. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs.
 
 | Option | |
 |---|---|
@@ -171,7 +171,7 @@ Ein Lauf ändert von sich aus keine Datei. Mit `--learn` lernt er fehlende Vergl
 | `--explain` | Bei Fehlern oder Warnungen erklärt Claude die Ursache ungefragt. Kostet Token. |
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
 | `--headless` | Kein Fenster, kein Chat. In der aufgenommenen Größe (sonst 1920×1080). |
-| `--learn` | Fehlende Vergleichswerte und Effekte bestandener Schritte in `caw/recordings/` lernen. Ohne die Option lässt ein Lauf jede Datei, wie sie ist. |
+| `--learn` | In CI: fehlende Vergleichswerte und Effekte bestandener Schritte in `caw/recordings/` lernen. Außerhalb von CI tut das jeder Lauf ohnehin. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
 | `--agent-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
 | `--max-actions <n>` | Grenze für Claudes Aktionen beim Beheben. |

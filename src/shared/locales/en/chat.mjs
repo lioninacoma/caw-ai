@@ -55,8 +55,6 @@ export default {
     'chat.page.closeNow': 'Close window',
     'chat.page.stays': 'Stays open',
     'chat.page.endedPlaceholder': 'The run has ended. Clicking here keeps the window open.',
-    'chat.page.learn': 'Save baselines',
-    'chat.page.learning': 'Saving…',
     'chat.page.newRun': 'New run: ',
     'chat.page.adoptDraft': 'Copy the draft to caw/tests, then: ',
     'chat.page.removeElement': 'Remove element',

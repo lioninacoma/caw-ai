@@ -165,7 +165,6 @@ export default {
     'run.failedBefore': '{id} ist gescheitert, bevor {target} an der Reihe war: {reason}',
 
     // Flows in the chat
-    'run.flow.baselines': 'Vergleichswerte für {ids} aufgezeichnet: Scheitert ein Schritt später, ordnet das Tool ihn damit als Test, Anwendung oder Umgebung ein.',
     'run.flow.seeReport': 'siehe Bericht',
     'run.flow.notMet': '{id} nicht erfüllt',
     'run.flow.at': ' bei {at}',
@@ -226,8 +225,8 @@ export default {
     'run.flow.filesChanged': 'die Änderung an {files} ist übernommen, die Anwendung ist unverändert',
     'run.flow.rerunOffer': '{id} ist gescheitert, {what}. Ein neuer Lauf zeigt, ob das den Fehler behebt.',
     'run.flow.runPassed': 'Der Lauf hat bestanden.',
-    'run.flow.learnConfirm': 'Schritte {ids} haben Vergleichswerte aus einem Lauf. „Vergleichswerte speichern“ unten fügt diesen Lauf hinzu: Ihre Effekte behalten dann nur, was in beiden gleich war. Ohne den Klick ändert sich nichts.',
-    'run.flow.learnOffer': 'Schritte {ids} haben noch keine Vergleichswerte. „Vergleichswerte speichern“ unten schreibt Requests und Effekte dieses Laufs in die Aufzeichnung, damit spätere Fehler als Test, Anwendung oder Umgebung erkennbar sind. Ohne den Klick ändert sich nichts.',
+    'run.flow.learnConfirmed': 'Schritte {ids}: Ihre Wirkungen behalten jetzt nur, was in diesem und dem vorigen Lauf gleich blieb.',
+    'run.flow.learnSaved': 'Vergleichswerte gespeichert für Schritte {ids}: Requests und Wirkungen dieses Laufs, damit spätere Fehler sich Test, Anwendung oder Umgebung zuordnen lassen.',
     'run.flow.runFailed': 'Der Lauf hat nicht bestanden.',
     'run.flow.adviceInReport': ' Die Empfehlungen stehen im Bericht.',
     'run.flow.effectForgotten': 'Gelernte Wirkung von {id} vergessen: {file}. Bitte prüfen und committen.',

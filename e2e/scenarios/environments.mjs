@@ -561,32 +561,30 @@ const withoutLearned = (id) => JSON.stringify(loadTest(root, id).steps.map(({ re
 }));
 const learnedNetwork = (id) => loadTest(root, id).steps[0].recording?.network;
 
-scenario('S3', 'No learning without asking: a chat run leaves the files, the end card learns on click, --learn learns, CI never writes', spa, async () => {
+scenario('S3', 'Baselines are learned by every run outside CI: in the window with a notice, headless too; CI only with --learn', spa, async () => {
     quietTokens();
     const before = files('see-tickets');
     const plain = withoutLearned('see-tickets');
-    const closer = humans(async (chat) => {
-        await chat.locator('#learn').waitFor({ state: 'visible', timeout: 90000 });
+    const watcher = humans(async (chat) => {
+        await chat.locator('.message.notice', { hasText: 'Baselines saved for steps' }).waitFor({ timeout: 90000 });
+        verify('(1) the chat says which steps get baselines', true);
         await endAction(chat, 'closeWindow', { timeout: 30000 });
     });
-    const first = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: closer.onChatOpen }));
-    await closer.done();
-    verify('(1) a chat run passes and says "learns: no"', first.value.exit === 0 && /learns: no\./.test(first.output), `${shown(first.value)} ${(/Mode on .*/.exec(first.output) ?? [''])[0]}`);
-    verify('(1) test plan and recording are byte-identical afterwards, though "Save baselines" was offered', JSON.stringify(files('see-tickets')) === JSON.stringify(before));
-    const learner = humans(async (chat) => { await chat.locator('#learn').click({ timeout: 90000 }); });
-    const second = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: learner.onChatOpen }));
-    await learner.done();
+    const first = await callWith({ CI: '' }, () => run(root, ['see-tickets', '--env', 'local'], { interactive: true, onChatOpen: watcher.onChatOpen }));
+    await watcher.done();
     const after = files('see-tickets');
     // S1 sends no request of its own (the list loads with the page before it): its learned baseline is the empty list.
-    verify('(2) "Save baselines" on the end card: the run passes and S1 gets its network baseline', second.value.exit === 0 && Array.isArray(learnedNetwork('see-tickets')), `${shown(second.value)} ${JSON.stringify(learnedNetwork('see-tickets'))}`);
-    verify('(2) only network and effects changed: the plan file is identical, the recording otherwise too', after[0] === before[0] && after[1] !== before[1] && withoutLearned('see-tickets') === plain);
+    verify('(1) a chat run passes, says "learns: yes" and S1 gets its network baseline', first.value.exit === 0 && /learns: yes,/.test(first.output) && Array.isArray(learnedNetwork('see-tickets')), `${shown(first.value)} ${(/Mode on .*/.exec(first.output) ?? [''])[0]}`);
+    verify('(1) only network and effects changed: the plan file is identical, the recording otherwise too', after[0] === before[0] && after[1] !== before[1] && withoutLearned('see-tickets') === plain);
     writeSpaTest(root, 'see-tickets');
-    const headless = await go(['see-tickets', '--env', 'local', '--learn']);
-    verify('(3) run --learn --headless learns and says so', headless.exit === 0 && Array.isArray(learnedNetwork('see-tickets')) && /learns: yes \(--learn\)/.test(headless.output), `${shown(headless)} ${(/Mode on .*/.exec(headless.output) ?? [''])[0]}`);
+    const headless = await go(['see-tickets', '--env', 'local'], { env: { CI: '' } });
+    verify('(2) a headless run learns too and says so', headless.exit === 0 && Array.isArray(learnedNetwork('see-tickets')) && /learns: yes,/.test(headless.output), `${shown(headless)} ${(/Mode on .*/.exec(headless.output) ?? [''])[0]}`);
     writeSpaTest(root, 'see-tickets');
     const ciBefore = files('see-tickets');
     const ci = await go(['see-tickets', '--env', 'local'], { env: { CI: '1' } });
-    verify('(4) CI=1 run never writes', ci.exit === 0 && JSON.stringify(files('see-tickets')) === JSON.stringify(ciBefore), shown(ci));
+    verify('(3) CI=1 without --learn never writes', ci.exit === 0 && JSON.stringify(files('see-tickets')) === JSON.stringify(ciBefore) && /learns: no\./.test(ci.output), shown(ci));
+    const ciLearn = await go(['see-tickets', '--env', 'local', '--learn'], { env: { CI: '1' } });
+    verify('(4) CI=1 with --learn learns', ciLearn.exit === 0 && Array.isArray(learnedNetwork('see-tickets')), shown(ciLearn));
 });
 
 scenario('S4', 'CI: --all on an environment caw starts, resets once before the first writing test and stops; JUnit; CI refuses what needs a person', spa, async () => {

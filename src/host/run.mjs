@@ -449,7 +449,7 @@ export const benchSettings = ({ root, config, spec, checked, agent, mode, run, e
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
  * @returns { exitCode, verdict, failed, candidate, fresh, expectChange, ids, removed }
  */
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, offerLearning = false, reproduce }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -1256,22 +1256,21 @@ ${text}`) ?? 0;
             const draft = verdict.reproduce?.draft;
             let command = `caw run ${spec.id}`;
             if (reproduce !== undefined) command = draft === undefined ? 'caw reproduce' : draft.record;
-            // Without --learn a passed run that could learn offers it here; only a click writes (Q7).
-            const learnable = offerLearning && !found.failed && (found.baselines !== undefined || found.effects !== undefined);
-            if (learnable) {
+            // A run that learns says in the chat which steps get baselines: written once the window has closed.
+            if (learns && (found.baselines !== undefined || found.effects !== undefined)) {
                 // Steps without any baselines yet, and steps whose effects a second healthy run confirms (effects learn over two runs).
                 const ids = [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])];
                 const has = (id) => spec.steps.find((step) => step.id === id)?.recording?.effects !== undefined && !found.baselines?.has(id);
-                const missing = ids.filter((id) => !has(id));
-                const confirming = ids.filter(has);
-                if (missing.length > 0) chat.notice(t('run.flow.learnOffer', { ids: missing.join(', ') }));
-                if (confirming.length > 0) chat.notice(t('run.flow.learnConfirm', { ids: confirming.join(', ') }));
+                const fresh = ids.filter((id) => !has(id));
+                const confirmed = ids.filter(has);
+                if (fresh.length > 0) chat.notice(t('run.flow.learnSaved', { ids: fresh.join(', ') }));
+                if (confirmed.length > 0) chat.notice(t('run.flow.learnConfirmed', { ids: confirmed.join(', ') }));
             }
             // The card's kind (passed, failed, reproduced) and for a reproduction what Claude found, as plain text.
             const kind = reproduce !== undefined ? 'reproduce' : verdict.status === 'pass' ? 'pass' : 'fail';
             const repro = verdict.reproduce;
             const reproduced = reproduce === undefined ? {} : { reproduce: { bug: repro?.bug, observed: repro?.observed, expected: repro?.expected, cause: repro?.cause, readOnly: repro?.writable === false } };
-            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, adopt: reproduce !== undefined && draft !== undefined, learn: learnable, kind, ...reproduced });
+            await chat.finished?.({ report: join(runDir, 'report.md'), shown: posix.join(relativeRun, 'report.md'), text, command, adopt: reproduce !== undefined && draft !== undefined, kind, ...reproduced });
             // The window changes: chat and terminal say so before it closes.
             if (after.next !== undefined) {
                 const line = t('run.newWindow', { what: t(`run.newWindow.${after.next}`) });
@@ -1375,7 +1374,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         link?.stop();
         stopSignals();
         await session.close();
-        return { exitCode, verdict, ...found, ...(chat?.learnWanted?.() === true ? { learn: true } : {}) };
+        return { exitCode, verdict, ...found };
     };
     const writeInterrupted = (ended) => {
         if (ended === 'browser-closed') writeResult({ status: 'error', code: 'browser-closed', reason: t('run.interrupted.browserClosed') });
@@ -1809,7 +1808,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         });
         const deviating = ended.deviations?.size ?? 0;
         await session.workbench?.point(END, 'effects', 'pass', { label: deviating === 0 ? t('run.effects.asRecorded') : t('run.effects.deviations', { count: deviating }) });
-        // Only a run that writes them (--learn) shows learning: other runs compute them but keep the file as it is.
+        // Only a run that writes them shows learning (in CI only with --learn): other runs compute them but keep the file as it is.
         if (learns && baselines.size + effects.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
         return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }) });
     }

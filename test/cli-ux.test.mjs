@@ -80,7 +80,7 @@ test('parseRunArgs: several tests or --all run without chat, --explain only for 
     assert.equal(parseRunArgs('run', ['a']).learn, false, 'a run learns nothing unless asked (Q7)');
     assert.equal(parseRunArgs('run', ['a', '--learn']).learn, true);
     assert.equal(parseRunArgs('run', ['a', 'b', '--learn', '--headless']).learn, true, '--learn in every mode (SC-21)');
-    assert.throws(() => parseRunArgs('run', ['a', '--no-learn']), (error) => error.code === 'usage' && /--no-learn gibt es nicht mehr: run lernt nichts, solange niemand fragt; --learn/.test(error.message));
+    assert.throws(() => parseRunArgs('run', ['a', '--no-learn']), (error) => error.code === 'usage' && /--no-learn gibt es nicht mehr: jeder Lauf außerhalb von CI lernt fehlende Vergleichswerte und Effekte; in CI tut das --learn/.test(error.message));
     assert.equal(parseRunArgs('run', ['a']).batch, undefined);
 });
 
@@ -232,10 +232,10 @@ test('junitXml: fail as failure, needs recording and errors as error, text safel
     assert.match(xml, /<error type="needs-recording" message="no recording"\/>/);
 });
 
-test('runMode: environment, team language and whether the run learns; only --learn learns, open never', () => {
+test('runMode: environment, team language and whether the run learns; open never', () => {
     const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'local', env: 'local', language: 'en' };
     assert.equal(runMode(base), 'Modus auf local (Teamsprache en): mit Chat; lernt: nein.');
-    assert.equal(runMode({ ...base, inCi: true, learn: true, file: 'caw/recordings/x.yaml' }), 'Modus auf local (Teamsprache en): ohne Chat, weil die Variable CI gesetzt ist; lernt: ja (--learn), fehlende Vergleichswerte und Effekte in caw/recordings/x.yaml.');
+    assert.equal(runMode({ ...base, inCi: true, learn: true, file: 'caw/recordings/x.yaml' }), 'Modus auf local (Teamsprache en): ohne Chat, weil die Variable CI gesetzt ist; lernt: ja, fehlende Vergleichswerte und Effekte in caw/recordings/x.yaml.');
     assert.match(runMode({ ...base, learn: true, opened: true, withAdvice: true }), /mit Chat; lernt: nein\.$/, 'open learns and advises nothing');
 });
 
