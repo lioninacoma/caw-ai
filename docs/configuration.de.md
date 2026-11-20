@@ -93,6 +93,17 @@ Welche Umgebung ein Befehl nimmt: die, die du mit `--env` nennst. Ohne läuft ei
 kann, dort; auf deinem Rechner wird die einzige Umgebung mit `agent: true` unter seinen Kandidaten genommen; in CI rät caw nie
 und nennt die Kandidaten (Exit 3).
 
+### URL für PR-Vorschauen
+
+Eine Vorschau-Umgebung, deren Adresse erst im CI-Job feststeht, bekommt sie aus der Variable `CAW_URL__<ENV>` (Name der
+Umgebung in Großbuchstaben, `-` als `_`, wie bei den [Zugangsdaten](#roles)), etwa `CAW_URL__PREVIEW=https://pr-42.preview.example.com`
+für `"preview": { "url": "https://preview.example.com", "writable": true }`. Sie gilt nur für diesen Prozess und wird nie in
+`caw.config.json` geschrieben; die erste Zeile von `run` nennt sie („Adresse aus CAW_URL__PREVIEW: …“). Umgebungen, die die
+`url` über `extends` erben, behalten ihre. caw lehnt sie ab (`url-override`, Exit 3) für eine unbekannte Umgebung, eine
+Produktionsumgebung, eine Umgebung mit `agent: true` (eine Variable darf nicht unbemerkt umlenken, wo Claude arbeitet), eine
+Adresse, die kein gültiger Origin ist (dieselbe Regel wie für `url`), und den Host einer Produktionsumgebung, denn ein Lauf
+sperrt nie seinen eigenen Host, und die Produktionssperre wäre weg.
+
 ### Umgebung starten, stoppen und zurücksetzen
 
 Eine Umgebung kann eigene Befehle zum Starten, Stoppen und Zurücksetzen nennen. caw führt sie nie auf einer

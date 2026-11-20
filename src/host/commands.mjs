@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields } from '../shared/config.mjs';
+import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields, urlOverride, urlVariable } from '../shared/config.mjs';
 import { credentialNames } from '../shared/credentials.mjs';
 import { NAME, blockedHosts, chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
@@ -938,8 +938,11 @@ export const runMode = ({ withAgent, noChat, headless, inCi, withAdvice, environ
     else how = t('cli.modeChat', { advice: withAdvice && !opened ? t('cli.modeAdvice') : '' });
     // open never learns; a run outside CI always learns (in CI only with --learn), and then names the file it may change.
     const learns = learn && !opened ? t('cli.modeLearnsYes', { file }) : t('cli.modeLearnsNo');
-    return t('cli.modeLine', { env, language: team, how, learns });
+    return `${t('cli.modeLine', { env, language: team, how, learns })}${urlLine(env)}`;
 };
+
+/** The address a CAW_URL__<ENV> variable gave the environment, so a run against a PR preview says where it went. */
+const urlLine = (env) => (urlOverride(env) === undefined ? '' : ` ${t('cli.modeUrl', { variable: urlVariable(env), url: urlOverride(env) })}`);
 
 /**
  * The environment lifecycle of one invocation (§2.9). --start needs a start command unless it only starts overlay parts; --reset
@@ -1009,7 +1012,8 @@ export const changeTracker = (root) => {
  * tokens. --no-chat runs as in CI, --headless additionally without a window. Outside CI every run writes missing baselines
  * and effects of its passed steps; in CI only with --learn.
  * @param quiet in a batch: no mode line, the batch prints it once
- * @returns { code, failed } with the failed step ({ id, reason }), if one failed
+ * @returns { code, failed, verdict, report } with the failed step ({ id, reason, diagnosis }), if one failed, the playback's verdict
+ *          and its report.md relative to the project
  */
 const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
     const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
@@ -1043,6 +1047,7 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
     const tracker = changeTracker(root);
     let failed;
+    let played;
     // Where the human can clarify the failure in the chat: the test's first environment Claude may work on.
     const claude = new Set(environmentsWith(config, 'agent'));
     const chatTarget = spec.runsOn.find((name) => claude.has(name));
@@ -1060,7 +1065,10 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         execute,
         adopt: tracker.adopt,
         log: ui.info,
-        onPlayed: (played) => { failed = played.failed; },
+        onPlayed: (result) => {
+            played = result;
+            failed = result.failed;
+        },
         // Cause first, then change: `record <test>@<step>` re-records without looking for a cause, which only suits an intended change.
         // In the terminal the first line is labelled "next", the commands stand out.
         hint: (step, { canFix: hadChat }) => {
@@ -1077,25 +1085,50 @@ const runOne = async (root, options, { containerCommand, adviseCommand, talkComm
         },
     });
     if (canFix || learns) ui.info(tracker.summary());
-    return { code, failed };
+    // The batch reports carry the playback's verdict (diagnosis, steps) and its report.md.
+    return { code, failed, verdict: played?.verdict, report: played?.report };
 };
 
 const XML_ESCAPES = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' };
 // XML 1.0 forbids these control characters.
 // eslint-disable-next-line no-control-regex
 const xmlText = (text) => String(text).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/[<>&"']/g, (char) => XML_ESCAPES[char]);
-const JUNIT_TYPES = { [EXIT.fail]: 'fail', [EXIT.error]: 'error', [EXIT.rejected]: 'rejected', [EXIT.needsRecording]: 'needs-recording' };
+/** A run's outcome by exit code, as the JSON report and an error without its own code name it. */
+const STATUS = { [EXIT.pass]: 'pass', [EXIT.fail]: 'fail', [EXIT.error]: 'error', [EXIT.rejected]: 'rejected', [EXIT.needsRecording]: 'needs-recording' };
+const LABELS = { [EXIT.pass]: 'pass', [EXIT.fail]: 'fail', [EXIT.error]: 'error', [EXIT.rejected]: 'rejected', [EXIT.needsRecording]: 'needsRecording' };
+const statusLabel = (exit) => t(`cli.batchStatus.${LABELS[exit] ?? 'error'}`);
+const firstLine = (text) => String(text ?? '').split('\n')[0];
+/** The assessment as the report words it: "app bug (clear)"; unclear has no strength. */
+const assessmentText = ({ side, strength }) => (side === 'unclear' ? t('config.diag.side.unclear') : `${t(`config.diag.side.${side}`)} (${t(`config.diag.${strength}`)})`);
+/** One earlier or final attempt for system-out: "Attempt 1: ERROR, browser-closed, .caw/runs/…/report.md". */
+const attemptLine = (attempt, index) => t('cli.attemptLine', {
+    attempt: index + 1,
+    status: statusLabel(attempt.exit),
+    why: [attempt.side === undefined ? attempt.code : assessmentText(attempt), attempt.report].filter(Boolean).map((part) => `, ${part}`).join(''),
+});
 
-/** The run table as JUnit XML, as CI systems read it: fail as failure, everything else except pass as error. */
+/**
+ * The run table as JUnit XML, as CI systems read it. A failed step is a failure typed by its assessment (app, environment, test,
+ * unclear) with "S3: <reason>" as message and the findings as text; everything else that did not pass is an error typed by its
+ * error code. Retried tests list every attempt in system-out.
+ */
 export const junitXml = ({ target, rows }) => {
     const failures = rows.filter(({ exit }) => exit === EXIT.fail).length;
     const errors = rows.filter(({ exit }) => exit !== EXIT.fail && exit !== EXIT.pass).length;
     const time = rows.reduce((sum, { seconds = 0 }) => sum + seconds, 0).toFixed(3);
-    const cases = rows.map(({ test, exit, seconds = 0, note = '' }) => {
+    const cases = rows.map((row) => {
+        const { test, exit, seconds = 0, note = '', attempts = [] } = row;
         const open = `    <testcase classname="caw.${xmlText(target)}" name="${xmlText(test)}" time="${seconds.toFixed(3)}"`;
-        if (exit === EXIT.pass) return `${open}/>`;
-        const tag = exit === EXIT.fail ? 'failure' : 'error';
-        return `${open}>\n      <${tag} type="${JUNIT_TYPES[exit] ?? 'error'}" message="${xmlText(note)}"/>\n    </testcase>`;
+        const out = attempts.length > 1 ? [`      <system-out>${xmlText([row.retried, ...attempts.map(attemptLine)].join('\n'))}</system-out>`] : [];
+        if (exit === EXIT.pass) return out.length === 0 ? `${open}/>` : [`${open}>`, ...out, '    </testcase>'].join('\n');
+        const failure = exit === EXIT.fail;
+        const tag = failure ? 'failure' : 'error';
+        // Without an assessment (no failed step was found) a failure is unclear; an error without a code is named by its exit.
+        const type = failure ? row.side ?? 'unclear' : row.code ?? STATUS[exit] ?? 'error';
+        const message = failure && row.step !== undefined ? `${row.step}: ${firstLine(row.reason)}` : note;
+        const body = [...(failure && row.side !== undefined ? [row.assessment, ...(row.findings ?? [])] : []), row.report].filter(Boolean).join('\n');
+        const element = `      <${tag} type="${xmlText(type)}" message="${xmlText(message)}"${body === '' ? '/>' : `>${xmlText(body)}</${tag}>`}`;
+        return [`${open}>`, element, ...out, '    </testcase>'].join('\n');
     });
     return [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -1106,6 +1139,71 @@ export const junitXml = ({ target, rows }) => {
         '</testsuites>',
         '',
     ].join('\n');
+};
+
+// A table cell holds one line, and | would end the cell.
+const cell = (text) => String(text ?? '').replace(/\s*\n\s*/g, ' ').replaceAll('|', '\\|');
+
+/**
+ * The run table as Markdown, one line per test: result, failed step, assessment, first finding and report. Made to be appended
+ * to a CI job summary ($GITHUB_STEP_SUMMARY).
+ */
+export const summaryMarkdown = ({ target, exit, rows }) => {
+    const heads = t('cli.summary.columns').split(' | ');
+    const lines = rows.map((row) => {
+        const result = [statusLabel(row.exit), row.retried].filter(Boolean).join(' · ');
+        const failure = row.exit === EXIT.fail && row.step !== undefined ? `${row.step}: ${firstLine(row.reason)}` : row.exit === EXIT.pass ? '' : row.note;
+        let assessment = '';
+        if (row.exit !== EXIT.pass) assessment = row.side === undefined ? row.code ?? '' : assessmentText(row);
+        const report = row.report === undefined ? '' : `\`${row.report}\``;
+        return `| ${[result, row.test, failure, assessment, row.findings?.[0] ?? '', report].map((text, index) => (index === 5 ? text : cell(text))).join(' | ')} |`;
+    });
+    return [
+        `### ${cell(t('cli.summary.heading', { count: rows.length, target, exit }))}`,
+        '',
+        `| ${heads.join(' | ')} |`,
+        `|${heads.map(() => ' --- ').join('|')}|`,
+        ...lines,
+        '',
+    ].join('\n');
+};
+
+/** The run table for machines: per test its outcome, the failed step with its assessment, the steps, the report and every attempt. */
+export const reportJson = ({ target, startedAt, exit, rows }) => {
+    const outcome = (row) => ({
+        status: STATUS[row.exit] ?? 'error',
+        exit: row.exit,
+        ...(row.step === undefined ? {} : { failedStep: row.step, reason: row.reason }),
+        ...(row.side === undefined ? {} : { side: row.side, strength: row.strength, findings: row.findings ?? [] }),
+        ...(row.code === undefined ? {} : { code: row.code }),
+    });
+    const tests = rows.map((row) => ({
+        id: row.test,
+        ...outcome(row),
+        seconds: Math.round((row.seconds ?? 0) * 1000) / 1000,
+        steps: row.steps ?? [],
+        ...(row.report === undefined ? {} : { report: row.report }),
+        attempts: (row.attempts ?? [row]).map((attempt) => ({ ...outcome(attempt), seconds: Math.round((attempt.seconds ?? 0) * 1000) / 1000, ...(attempt.report === undefined ? {} : { report: attempt.report }) })),
+    }));
+    return `${JSON.stringify({ target, startedAt, exit, tests }, null, 2)}\n`;
+};
+
+const REPORT_WRITTEN = { junit: 'cli.junitWritten', summary: 'cli.summaryWritten', json: 'cli.jsonWritten' };
+/** A --report file inside the project only, also after links: a session passes --report through caw_start's args. */
+const reportFile = (root, kind, given) => {
+    const file = projectPath(root, given);
+    if (file === null) throw new CawError('usage', t('cli.reportOutside', { kind, file: given }));
+    return file;
+};
+const writeReport = (root, kind, given, text) => {
+    const file = reportFile(root, kind, given);
+    mkdirSync(dirname(file), { recursive: true });
+    // Again after creating the folders: one of them may be a link out of the project.
+    reportFile(root, kind, given);
+    // A new file, not one a link points to.
+    rmSync(file, { force: true });
+    writeFileSync(file, text, { flag: 'wx' });
+    ui.info(t(REPORT_WRITTEN[kind], { file: given }));
 };
 
 /**
@@ -1128,55 +1226,88 @@ const runMany = async (root, options, deps) => {
     // --all: every test that runs on the environment; an unreadable one stays in and shows up as rejected.
     if (options.all) tests = tests.filter((id) => !specs.has(id) || (specs.get(id).runsOn ?? []).includes(target));
     if (tests.length === 0) throw new CawError('usage', t('cli.batchNone', { target }));
-    if (options.batch) ui.info(t('cli.batchStart', { count: tests.length, target, headless: options.headless ? '' : t('cli.batchWindow') }));
+    if (options.batch) ui.info(`${t('cli.batchStart', { count: tests.length, target, headless: options.headless ? '' : t('cli.batchWindow') })}${urlLine(target)}`);
     return withLifecycle(lifecycleOf(root, loadConfig(root), target, options, 'run'), (lifecycle) => runBatch(root, { ...options, lifecycle }, deps, { tests, target }));
 };
 
-/** The tests of a batch in a row, then table, JUnit and the worst exit code. A failed reset ends the batch: no further test runs. */
-const runBatch = async (root, options, deps, { tests, target }) => {
-    const rows = [];
-    for (const test of tests) {
-        const started = Date.now();
-        let exit;
-        let note = '';
-        try {
-            const result = await runOne(root, { ...options, test, target, quiet: options.batch === true }, deps);
-            exit = result.code;
-            if (result.failed !== undefined && exit !== EXIT.pass) note = t('cli.batchAt', { step: result.failed.id });
-        } catch (error) {
-            if (error?.code === 'env-reset-failed') throw error;
-            // As in bin/caw.mjs: an expected error by its code, an unexpected one is error.
-            exit = error instanceof CawError ? exitOf(error.code) : EXIT.error;
-            note = String(error?.message ?? error).split('\n')[0];
-        }
-        rows.push({ test, exit, seconds: (Date.now() - started) / 1000, note });
+/**
+ * One attempt of a test in a batch: exit, time, the failed step with its assessment or the error code, the steps and the report.
+ * A failed reset ends the batch.
+ */
+const attemptTest = async (root, options, deps, { test, target }) => {
+    const started = Date.now();
+    const seconds = () => (Date.now() - started) / 1000;
+    try {
+        const { code: exit, failed, verdict, report } = await (deps.runOne ?? runOne)(root, { ...options, test, target, quiet: options.batch === true }, deps);
+        const diagnosis = exit === EXIT.pass ? undefined : failed?.diagnosis;
+        const step = exit === EXIT.pass ? undefined : failed?.id;
+        const code = exit === EXIT.pass ? undefined : verdict?.code;
+        return {
+            exit,
+            seconds: seconds(),
+            note: step === undefined ? firstLine(code === undefined ? '' : verdict?.reason) : t('cli.batchAt', { step }),
+            ...(step === undefined ? {} : { step, reason: failed.reason }),
+            ...(diagnosis === undefined ? {} : { side: diagnosis.side, strength: diagnosis.strength, findings: diagnosis.findings ?? [], assessment: diagnosis.text }),
+            ...(code === undefined ? {} : { code }),
+            steps: (verdict?.steps ?? []).map(({ id, status, seconds: took }) => ({ id, status, ...(took === undefined ? {} : { seconds: took }) })),
+            ...(report === undefined ? {} : { report }),
+        };
+    } catch (error) {
+        if (error?.code === 'env-reset-failed') throw error;
+        // As in bin/caw.mjs: an expected error by its code, an unexpected one is error.
+        const known = error instanceof CawError;
+        return { exit: known ? exitOf(error.code) : EXIT.error, seconds: seconds(), note: firstLine(error?.message ?? error), ...(known ? { code: error.code } : {}) };
     }
-    ui.batch({ target, rows });
-    if (options.junit !== undefined) {
-        // Inside the project only, also after links: a session passes --report through caw_start's args.
-        const file = projectPath(root, options.junit);
-        if (file === null) throw new CawError('usage', t('cli.junitOutside', { file: options.junit }));
-        mkdirSync(dirname(file), { recursive: true });
-        if (projectPath(root, options.junit) === null) throw new CawError('usage', t('cli.junitOutside', { file: options.junit }));
-        // A new file, not one a link points to.
-        rmSync(file, { force: true });
-        writeFileSync(file, junitXml({ target, rows }), { flag: 'wx' });
-        ui.info(t('cli.junitWritten', { file: options.junit }));
-    }
-    return worstExit(rows.map(({ exit }) => exit));
 };
 
 /**
- * `caw run`: one test as usual; several tests or --all run one after another without chat (runMany). With --report junit=<file>
- * a single test takes that path too, so CI always gets the file.
+ * Worth another attempt with --retry-env: an environment error (exit 2) or a failed step the diagnosis puts on the environment.
+ * The exit code stays 1 for every failed step whatever the assessment: the diagnosis is a heuristic; it only decides the retry.
+ */
+const environmental = ({ exit, side }) => exit === EXIT.error || (exit === EXIT.fail && side === 'environment');
+
+/**
+ * The tests of a batch in a row, then table, the --report files and the worst exit code. With --retry-env a test that failed on
+ * the environment runs again, at most that many times; its last attempt counts, every attempt is kept for the reports.
+ */
+const runBatch = async (root, options, deps, { tests, target }) => {
+    const startedAt = new Date().toISOString();
+    const rows = [];
+    for (const test of tests) {
+        const attempts = [];
+        for (;;) {
+            const attempt = await attemptTest(root, options, deps, { test, target });
+            attempts.push(attempt);
+            if (attempts.length > (options.retryEnv ?? 0) || !environmental(attempt)) break;
+            ui.info(t('cli.retryEnv', { test, attempt: attempts.length }));
+        }
+        const last = attempts.at(-1);
+        let retried = '';
+        if (attempts.length > 1) retried = last.exit === EXIT.pass ? t('cli.retriedPass', { attempt: attempts.length }) : t('cli.retriedOther', { attempt: attempts.length });
+        const seconds = attempts.reduce((sum, attempt) => sum + attempt.seconds, 0);
+        rows.push({ test, ...last, seconds, note: [last.note, retried].filter(Boolean).join('; '), attempts, ...(retried === '' ? {} : { retried }) });
+    }
+    ui.batch({ target, rows });
+    const exit = worstExit(rows.map((row) => row.exit));
+    const reports = options.reports ?? {};
+    if (reports.junit !== undefined) writeReport(root, 'junit', reports.junit, junitXml({ target, rows }));
+    if (reports.summary !== undefined) writeReport(root, 'summary', reports.summary, summaryMarkdown({ target, exit, rows }));
+    if (reports.json !== undefined) writeReport(root, 'json', reports.json, reportJson({ target, startedAt, exit, rows }));
+    return exit;
+};
+
+/**
+ * `caw run`: one test as usual; several tests or --all run one after another without chat (runMany). With --report or
+ * --retry-env a single test takes that path too, so CI always gets the files and the retry.
  * @param interactive   tests only: replaces CI detection
  * @param adviseCommand tests only: replaces Claude when advising
  * @param talkCommand   tests only: replaces Claude in the conversation
+ * @param runOne        tests only: replaces one test's run in a batch
  */
 export const run = async (root, args, deps = {}) => {
     const options = parseRunArgs('run', args);
-    if (options.junit !== undefined && projectPath(root, options.junit) === null) throw new CawError('usage', t('cli.junitOutside', { file: options.junit }));
-    if (options.batch || options.junit !== undefined) return runMany(root, options, deps);
+    for (const [kind, given] of Object.entries(options.reports ?? {})) reportFile(root, kind, given);
+    if (options.batch || options.reports !== undefined || options.retryEnv !== undefined) return runMany(root, options, deps);
     const { config, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
     return withLifecycle(lifecycleOf(root, config, target, options, 'run'), async (lifecycle) => (await runOne(root, { ...options, target, lifecycle }, deps)).code);
 };

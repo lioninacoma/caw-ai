@@ -611,7 +611,7 @@ scenario('S4', 'CI: --all on an environment caw starts, resets once before the f
     verify('(2) reset runs once, before the first writing test', ran('reset') === 1 && markers().indexOf('reset 18512 life') === 1, JSON.stringify(markers()));
     verify('(3) stop runs at the end; nothing listens on 18512 afterwards', ran('down') === 1 && markers().at(-1) === 'down 18512 life' && !await listening(LIFECYCLE_PORTS.life), JSON.stringify(markers()));
     const xml = existsSync(join(root, 'out/caw.xml')) ? readFileSync(join(root, 'out/caw.xml'), 'utf8') : '';
-    verify('(4) JUnit: classname caw.life, pass, failure and needs-recording mapped', /classname="caw\.life" name="see-tickets" time="[\d.]+"\/>/.test(xml) && /name="fail-one"[^]*?<failure type="fail"/.test(xml) && /name="stale-one"[^]*?<error type="needs-recording"/.test(xml) && /name="create-second" time="[\d.]+"\/>/.test(xml), xml.split('\n').filter((line) => /testcase|failure|error/.test(line)).join(' '));
+    verify('(4) JUnit: classname caw.life, pass, a failure typed by its assessment with "S<n>: <reason>", needs-recording typed by its code', /classname="caw\.life" name="see-tickets" time="[\d.]+"\/>/.test(xml) && /name="fail-one"[^]*?<failure type="(app|environment|test|unclear)" message="S\d+: /.test(xml) && /name="stale-one"[^]*?<error type="replay-stale"/.test(xml) && /name="create-second" time="[\d.]+"\/>/.test(xml), xml.split('\n').filter((line) => /testcase|failure|error/.test(line)).join(' '));
     verify('(5) exit = the worst run (fail)', batch.exit === 1, shown(batch));
     const claudeLogs = runDirsOf(root, 'see-tickets').concat(runDirsOf(root, 'create-second')).flatMap((dir) => readdirSync(join(root, '.caw/runs', dir)).filter((name) => /claude/i.test(name)));
     verify('(6) no Claude and no sandbox in the run folders', claudeLogs.length === 0 && !/docker/i.test(batch.output), JSON.stringify(claudeLogs));
@@ -676,6 +676,33 @@ scenario('D3', 'Slow, cold or flaky backend: a cold first call passes on retry w
     await poke('abortive', '/test/abort-off');
     const abortedResult = newestRunOf(root, 'search').result ?? {};
     verify('the page aborts its own search after 1 ms, without navigating: application, clear (baseline from --learn)', learned.exit === 0 && aborted.exit === 1 && abortedResult.diagnosis?.side === 'app' && abortedResult.diagnosis?.strength === 'clear', `${shown(learned)} | ${shown(aborted)} ${JSON.stringify(abortedResult.diagnosis ?? {})}`);
+});
+
+scenario('S11', 'CI triage: --retry-env repeats only an environment failure, the summary and JSON name every attempt; CAW_URL__<ENV> points an environment elsewhere', spa, async () => {
+    lifecycleConfig({ reads: ['POST /api/search'] });
+    writeSpaTest(root, 'search');
+    rmSync(join(root, 'out'), { recursive: true, force: true });
+    await poke('abortive', '/test/abort-off');
+    // flaky resets every search: the assessment says environment, so --retry-env 1 runs it twice, and the exit stays 1.
+    const flaky = await go(['search', '--env', 'flaky', '--retry-env', '1', '--report', 'json=out/flaky.json', '--report', 'summary=out/flaky.md'], { env: { CI: '1' } });
+    const json = existsSync(join(root, 'out/flaky.json')) ? JSON.parse(readFileSync(join(root, 'out/flaky.json'), 'utf8')) : {};
+    const attempts = json.tests?.[0]?.attempts ?? [];
+    verify('(1) flaky: two attempts, both environment, exit 1', flaky.exit === 1 && attempts.length === 2 && attempts.every(({ side }) => side === 'environment') && /attempt 1 failed on the environment, running it again/.test(flaky.output), `${shown(flaky)} ${JSON.stringify(attempts)}`);
+    const summary = existsSync(join(root, 'out/flaky.md')) ? readFileSync(join(root, 'out/flaky.md'), 'utf8') : '';
+    verify('(2) the summary: FAIL on attempt 2 after the environment, the failed step, environment, the report path', /\| FAIL · on attempt 2, after failures on the environment \| search \| S\d+: .*\| environment problem \((likely|clear)\) \|.*`\.caw\/runs\/[^`]+\/report\.md` \|/.test(summary), summary);
+    // An app failure is never repeated: the page aborts its own search on abortive.
+    await go(['search', '--env', 'local', '--learn']);
+    await poke('abortive', '/test/abort-on');
+    const app = await go(['search', '--env', 'abortive', '--retry-env', '2', '--report', 'json=out/app.json'], { env: { CI: '1' } });
+    await poke('abortive', '/test/abort-off');
+    const appJson = existsSync(join(root, 'out/app.json')) ? JSON.parse(readFileSync(join(root, 'out/app.json'), 'utf8')) : {};
+    verify('(3) abortive: one attempt, side app, exit 1', app.exit === 1 && appJson.tests?.[0]?.attempts?.length === 1 && appJson.tests?.[0]?.side === 'app', `${shown(app)} ${JSON.stringify(appJson.tests?.[0] ?? {})}`);
+    // flaky pointed at the healthy abortive backend for this process only: the search passes, the mode line names the variable.
+    const moved = await go(['search', '--env', 'flaky'], { env: { CAW_URL__FLAKY: LIFECYCLE_ENVIRONMENTS.abortive.url } });
+    const config = JSON.parse(readFileSync(join(root, 'caw.config.json'), 'utf8'));
+    verify('(4) CAW_URL__FLAKY: passes against the other address, named in the mode line, config unchanged', moved.exit === 0 && /Address from CAW_URL__FLAKY: http:\/\/abortive\.localhost/.test(moved.output) && config.environments.flaky.url === LIFECYCLE_ENVIRONMENTS.flaky.url, shown(moved));
+    const refused = await go(['search', '--env', 'flaky'], { env: { CAW_URL__LOCAL: 'http://other.localhost:1' } });
+    verify('(5) CAW_URL__LOCAL on an agent environment: url-override, exit 3', refused.exit === 3 && refused.code === 'url-override', shown(refused));
 });
 
 // ---- P5: actions and data

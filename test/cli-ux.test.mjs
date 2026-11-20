@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-import { changeTracker, chooseEnv, init, junitXml, list, open, record, run, runMode, stepsText, validate } from '../src/host/commands.mjs';
+import { changeTracker, chooseEnv, init, junitXml, list, open, record, reportJson, run, runMode, stepsText, summaryMarkdown, validate } from '../src/host/commands.mjs';
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
@@ -72,11 +72,11 @@ test('parseRunArgs: several tests or --all run without chat, --explain only for 
     const many = parseRunArgs('run', ['a', 'b', '--env', 'local']);
     assert.deepEqual([many.tests, many.batch, many.noChat], [['a', 'b'], true, true]);
     const all = parseRunArgs('run', ['--all', '--headless', '--report', 'junit=out/x.xml']);
-    assert.deepEqual([all.all, all.batch, all.junit, all.test], [true, true, 'out/x.xml', undefined]);
+    assert.deepEqual([all.all, all.batch, all.reports, all.test], [true, true, { junit: 'out/x.xml' }, undefined]);
     assert.throws(() => parseRunArgs('run', ['--all', 'a']), /--all/);
     assert.throws(() => parseRunArgs('run', ['a', 'b', '--zzz', 'S2']), /run kennt die Option --zzz nicht/);
     assert.throws(() => parseRunArgs('run', ['--all', '--explain']), /--explain gilt nur/);
-    assert.throws(() => parseRunArgs('run', ['a', '--report', 'xml']), /junit=<datei>/);
+    assert.throws(() => parseRunArgs('run', ['a', '--report', 'xml']), /<art>=<datei> mit junit, summary oder json/);
     assert.equal(parseRunArgs('run', ['a']).learn, false, 'a run learns nothing unless asked (Q7)');
     assert.equal(parseRunArgs('run', ['a', '--learn']).learn, true);
     assert.equal(parseRunArgs('run', ['a', 'b', '--learn', '--headless']).learn, true, '--learn in every mode (SC-21)');
@@ -220,16 +220,99 @@ test('run with several tests: each runs, the table shows the outcome, the exit i
     assert.match(said.join('\n'), /Ergebnis: 1 Test auf staging/);
 });
 
-test('junitXml: fail as failure, needs recording and errors as error, text safely escaped', () => {
+test('junitXml: a failure typed by its assessment with the findings, errors typed by their code, text safely escaped', () => {
     const xml = junitXml({ target: 'local', rows: [
         { test: 'a', exit: 0, seconds: 1 },
-        { test: 'b', exit: 1, seconds: 2, note: 'at S2 <x> & "y"' },
-        { test: 'c', exit: 4, seconds: 0, note: 'no recording' },
+        { test: 'b', exit: 1, seconds: 2, note: 'bei S2', step: 'S2', reason: 'Liste <x> & "y" fehlt\nzweite Zeile', side: 'app', strength: 'clear', assessment: 'Einschätzung: Anwendungsfehler (eindeutig).', findings: ['POST /api/orders antwortete 500'], report: '.caw/runs/r1/report.md' },
+        { test: 'c', exit: 4, seconds: 0, note: 'no recording', code: 'replay-missing' },
+        { test: 'd', exit: 1, seconds: 0, note: 'bei S1' },
+        { test: 'e', exit: 2, seconds: 0, note: 'kaputt' },
     ] });
-    assert.match(xml, /<testsuite name="caw local" tests="3" failures="1" errors="1"/);
+    assert.match(xml, /<testsuite name="caw local" tests="5" failures="2" errors="2"/);
     assert.match(xml, /<testcase classname="caw\.local" name="a" time="1.000"\/>/);
-    assert.match(xml, /<failure type="fail" message="at S2 &lt;x&gt; &amp; &quot;y&quot;"\/>/);
-    assert.match(xml, /<error type="needs-recording" message="no recording"\/>/);
+    assert.match(xml, /<failure type="app" message="S2: Liste &lt;x&gt; &amp; &quot;y&quot; fehlt">Einschätzung: Anwendungsfehler \(eindeutig\)\.\nPOST \/api\/orders antwortete 500\n\.caw\/runs\/r1\/report\.md<\/failure>/);
+    assert.match(xml, /<error type="replay-missing" message="no recording"\/>/);
+    assert.match(xml, /<failure type="unclear" message="bei S1"\/>/, 'no assessment: unclear');
+    assert.match(xml, /<error type="error" message="kaputt"\/>/, 'no code: named by the exit');
+});
+
+/** Rows as runBatch builds them: a pass on the second attempt after an environment error, and an app failure. */
+const batchRows = () => [
+    { test: 'a', exit: 0, seconds: 3, note: 'bestanden im 2. Versuch (Umgebung)', retried: 'bestanden im 2. Versuch (Umgebung)', steps: [{ id: 'S1', status: 'pass', seconds: 1.2 }], report: '.caw/runs/r2/report.md',
+        attempts: [{ exit: 2, seconds: 1, code: 'browser-closed', note: 'weg', report: '.caw/runs/r1/report.md' }, { exit: 0, seconds: 2, note: '', report: '.caw/runs/r2/report.md' }] },
+    { test: 'b|c', exit: 1, seconds: 2, note: 'bei S3', step: 'S3', reason: 'Dialog | fehlt\nmehr', side: 'environment', strength: 'likely', assessment: 'x', findings: ['GET /api 503', 'zweiter'], steps: [{ id: 'S3', status: 'fail' }], report: '.caw/runs/r3/report.md',
+        attempts: [{ exit: 1, seconds: 2, step: 'S3', side: 'environment', strength: 'likely' }] },
+];
+
+test('junitXml: a retried test lists every attempt in system-out', () => {
+    const xml = junitXml({ target: 'dev', rows: batchRows() });
+    assert.match(xml, /name="a" time="3.000">\n {6}<system-out>bestanden im 2\. Versuch \(Umgebung\)\nVersuch 1: ERROR, browser-closed, \.caw\/runs\/r1\/report\.md\nVersuch 2: PASS, \.caw\/runs\/r2\/report\.md<\/system-out>\n {4}<\/testcase>/);
+    assert.match(xml, /<failure type="environment" message="S3: Dialog \| fehlt">/);
+});
+
+test('summaryMarkdown: one line per test with result, failed step, assessment, first finding and report', () => {
+    const text = summaryMarkdown({ target: 'dev', exit: 1, rows: batchRows() });
+    const lines = text.split('\n');
+    assert.equal(lines[0], '### caw: 2 Test(s) auf dev, Exit 1');
+    assert.equal(lines[2], '| Ergebnis | Test | Gescheiterter Schritt | Einschätzung | Befund | Bericht |');
+    assert.equal(lines[4], '| PASS · bestanden im 2. Versuch (Umgebung) | a |  |  |  | `.caw/runs/r2/report.md` |');
+    assert.equal(lines[5], '| FAIL | b\\|c | S3: Dialog \\| fehlt | Problem der Umgebung (wahrscheinlich) | GET /api 503 | `.caw/runs/r3/report.md` |');
+});
+
+test('reportJson: target, start, exit and per test outcome, assessment, steps, report and attempts', () => {
+    const json = JSON.parse(reportJson({ target: 'dev', startedAt: '2026-11-20T10:00:00.000Z', exit: 1, rows: batchRows() }));
+    assert.deepEqual([json.target, json.startedAt, json.exit], ['dev', '2026-11-20T10:00:00.000Z', 1]);
+    assert.deepEqual(json.tests[0], {
+        id: 'a', status: 'pass', exit: 0, seconds: 3, steps: [{ id: 'S1', status: 'pass', seconds: 1.2 }], report: '.caw/runs/r2/report.md',
+        attempts: [{ status: 'error', exit: 2, code: 'browser-closed', seconds: 1, report: '.caw/runs/r1/report.md' }, { status: 'pass', exit: 0, seconds: 2, report: '.caw/runs/r2/report.md' }],
+    });
+    assert.deepEqual([json.tests[1].failedStep, json.tests[1].reason, json.tests[1].side, json.tests[1].strength, json.tests[1].findings], ['S3', 'Dialog | fehlt\nmehr', 'environment', 'likely', ['GET /api 503', 'zweiter']]);
+});
+
+test('run --retry-env: only environment failures run again, at most n times, the last attempt counts; all reports written', async (t) => {
+    const root = project(t);
+    const said = [];
+    t.mock.method(console, 'log', (text) => said.push(text));
+    // Per test the outcomes of its attempts in order.
+    const script = {
+        anmelden: [{ code: 2, verdict: { status: 'error', code: 'browser-closed', reason: 'Fenster zu' }, report: '.caw/runs/r1/report.md' }, { code: 0, verdict: { status: 'pass', steps: [{ id: 'S1', status: 'pass', seconds: 1 }] }, report: '.caw/runs/r2/report.md' }],
+        bestellen: [{ code: 1, failed: { id: 'S2', reason: 'Knopf fehlt', diagnosis: { side: 'app', strength: 'clear', text: 'Einschätzung: Anwendungsfehler (eindeutig).', findings: ['POST /api 500'] } }, verdict: { status: 'fail', steps: [] }, report: '.caw/runs/r3/report.md' }],
+        neu: Array.from({ length: 3 }, () => ({ code: 1, failed: { id: 'S1', reason: 'langsam', diagnosis: { side: 'environment', strength: 'likely', text: 'x', findings: ['GET /api 503'] } }, verdict: { status: 'fail', steps: [] } })),
+    };
+    const calls = [];
+    const runOne = async (_root, { test: id }) => {
+        calls.push(id);
+        return script[id].shift();
+    };
+    const reports = ['--report', 'junit=out/junit.xml', '--report', 'summary=out/summary.md', '--report', 'json=out/caw.json'];
+    const code = await run(root, ['anmelden', 'bestellen', 'neu', '--env', 'local', '--retry-env', '2', ...reports], { runOne });
+    assert.equal(code, EXIT.fail);
+    // anmelden: error then pass; bestellen: an app failure is not retried; neu: the environment failure three times (1 + 2).
+    assert.deepEqual(calls, ['anmelden', 'anmelden', 'bestellen', 'neu', 'neu', 'neu']);
+    const text = said.join('\n');
+    assert.match(text, /anmelden: Versuch 1 scheiterte an der Umgebung, er läuft noch einmal\./);
+    assert.match(text, /PASS\s+anmelden.*bestanden im 2\. Versuch \(Umgebung\)/);
+    assert.match(text, /FAIL\s+neu.*im 3\. Versuch, davor an der Umgebung gescheitert/);
+    assert.match(text, /Zusammenfassung: out\/summary\.md/);
+    const xml = readFileSync(join(root, 'out', 'junit.xml'), 'utf8');
+    assert.match(xml, /<failure type="app" message="S2: Knopf fehlt">/);
+    assert.match(xml, /<failure type="environment" message="S1: langsam">/);
+    assert.match(readFileSync(join(root, 'out', 'summary.md'), 'utf8'), /\| PASS · bestanden im 2\. Versuch \(Umgebung\) \| anmelden \|/);
+    const json = JSON.parse(readFileSync(join(root, 'out', 'caw.json'), 'utf8'));
+    assert.deepEqual(json.tests.map(({ id, status, attempts }) => [id, status, attempts.length]), [['anmelden', 'pass', 2], ['bestellen', 'fail', 1], ['neu', 'fail', 3]]);
+    assert.equal(json.tests[0].attempts[0].code, 'browser-closed');
+    // Without --retry-env nothing runs twice.
+    calls.length = 0;
+    script.neu = [{ code: 2, verdict: { status: 'error', code: 'browser-closed', reason: 'zu' } }];
+    assert.equal(await run(root, ['neu', '--env', 'local', '--report', 'json=out/one.json'], { runOne }), EXIT.error);
+    assert.deepEqual(calls, ['neu']);
+});
+
+test('parseRunArgs: --report per kind once, --retry-env a whole number from 1 to 5', () => {
+    const options = parseRunArgs('run', ['a', '--report', 'junit=j.xml', '--report=summary=s.md', '--report', 'json=r.json', '--retry-env', '2']);
+    assert.deepEqual([options.reports, options.retryEnv], [{ junit: 'j.xml', summary: 's.md', json: 'r.json' }, 2]);
+    assert.throws(() => parseRunArgs('run', ['a', '--report', 'junit=a.xml', '--report', 'junit=b.xml']), /--report junit= steht zweimal/);
+    for (const value of ['0', '6', '1.5', 'x']) assert.throws(() => parseRunArgs('run', ['a', '--retry-env', value]), /--retry-env erwartet eine ganze Zahl von 1 bis 5/, value);
 });
 
 test('runMode: environment, team language and whether the run learns; open never', () => {
@@ -237,6 +320,13 @@ test('runMode: environment, team language and whether the run learns; open never
     assert.equal(runMode(base), 'Modus auf local (Teamsprache en): mit Chat; lernt: nein.');
     assert.equal(runMode({ ...base, inCi: true, learn: true, file: 'caw/recordings/x.yaml' }), 'Modus auf local (Teamsprache en): ohne Chat, weil die Variable CI gesetzt ist; lernt: ja, fehlende Vergleichswerte und Effekte in caw/recordings/x.yaml.');
     assert.match(runMode({ ...base, learn: true, opened: true, withAdvice: true }), /mit Chat; lernt: nein\.$/, 'open learns and advises nothing');
+    // A PR preview's address from CAW_URL__<ENV> is named in the line (loadConfig has checked it).
+    process.env.CAW_URL__PREVIEW = 'https://pr-3.preview.example.test';
+    try {
+        assert.match(runMode({ ...base, env: 'preview' }), /lernt: nein\. Adresse aus CAW_URL__PREVIEW: https:\/\/pr-3\.preview\.example\.test\.$/);
+    } finally {
+        delete process.env.CAW_URL__PREVIEW;
+    }
 });
 
 test('help: the overlay extension (command, --overlay, the --start remark) only with an overlay block', () => {

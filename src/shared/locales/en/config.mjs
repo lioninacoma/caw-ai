@@ -411,4 +411,9 @@ export default {
     'config.locator.reject.aria-ref': 'aria-ref= only holds for one snapshot of the page; replay would not find the element.',
     'config.locator.reject.generated-id': 'the id {id} is generated and changes between page loads; use role and name, text or the component instead.',
     'config.locator.reject.nth-child': ':nth-child and :nth-of-type depend on the position in the page; use role and name or text instead.',
+    'config.urlOverride.unknown': '{variable} names no environment of the config; possible: {names}.',
+    'config.urlOverride.production': '{variable} would point the production environment {env} elsewhere; production keeps the address in the config.',
+    'config.urlOverride.agent': '{variable}: on {env} the agent may work ("agent": true); its address stays the one in the config, a variable must not redirect it unseen.',
+    'config.urlOverride.invalid': '{variable}: {problem}',
+    'config.urlOverride.productionHost': '{variable}: {host} is the host of a production environment; {env} pointed there would lift the production block.',
 };

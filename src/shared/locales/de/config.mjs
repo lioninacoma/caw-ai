@@ -411,4 +411,9 @@ export default {
     'config.locator.reject.aria-ref': 'aria-ref= gilt nur für einen Snapshot der Seite; die Wiedergabe fände das Element nicht.',
     'config.locator.reject.generated-id': 'die ID {id} ist generiert und ändert sich zwischen Seitenaufrufen; nimm stattdessen Rolle und Name, Text oder die Komponente.',
     'config.locator.reject.nth-child': ':nth-child und :nth-of-type hängen von der Position in der Seite ab; nimm stattdessen Rolle und Name oder Text.',
+    'config.urlOverride.unknown': '{variable} nennt keine Umgebung der Konfiguration; möglich: {names}.',
+    'config.urlOverride.production': '{variable} würde die Produktionsumgebung {env} umlenken; Produktion behält die Adresse aus der Konfiguration.',
+    'config.urlOverride.agent': '{variable}: Auf {env} darf der Agent arbeiten ("agent": true); ihre Adresse bleibt die aus der Konfiguration, eine Variable darf sie nicht unbemerkt umlenken.',
+    'config.urlOverride.invalid': '{variable}: {problem}',
+    'config.urlOverride.productionHost': '{variable}: {host} ist der Host einer Produktionsumgebung; {env} dorthin gelenkt würde die Produktionssperre aufheben.',
 };

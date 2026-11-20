@@ -318,6 +318,16 @@ Scheitert ein Schritt, ordnet das Tool den Fehler ein, ohne Claude und ohne Toke
 
 Der stärkste Befund entscheidet, die übrigen stehen darunter. Ohne auffällige Belege bleibt es „unklar“. Die Einschätzung steht im Chat, als Abschnitt „Einschätzung“ in `report.md` samt Tabelle der Requests neben denen der Aufnahme, in `result.json` und im Auftrag an Claude (`diagnosis`, `evidence`). Claude liest dort zuerst und kann mit `network` die letzten Requests abrufen.
 
+**In CI** gibt die Einschätzung den Berichten von `run --report` ihren Typ ([Befehle](commands.de.md#mehrere-tests-ci)): JUnit bekommt `<failure type="app|environment|test|unclear" message="S3: <grund>">` mit den Befunden, `summary=<datei>` eine Markdown-Zeile je Test für die Job-Zusammenfassung, `json=<datei>` dasselbe für Skripte. `--retry-env <n>` lässt einen Test nur dann noch einmal laufen, wenn er an der Umgebung gescheitert ist (Exit 2 oder die Einschätzung `environment`), und sagt etwa „bestanden im 2. Versuch (Umgebung)“. Der Exit-Code bleibt `1` für jeden gescheiterten Schritt: Die Einschätzung ist eine Heuristik und entscheidet nie über bestanden oder gescheitert. Eine PR-Vorschau bekommt ihre Adresse aus `CAW_URL__<ENV>` ([Konfiguration](configuration.de.md#url-für-pr-vorschauen)):
+
+```yaml
+- run: npx caw run --all --env preview --headless --retry-env 1 --report junit=out/caw.xml --report summary=out/summary.md
+  env:
+    CAW_URL__PREVIEW: ${{ steps.deploy.outputs.url }}
+- run: cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+  if: always()
+```
+
 Ohne `recording.network` sagt der Bericht das. Der Vergleich entsteht nie beim Aufnehmen oder Beheben: Unter Claudes Steuerung laufen auch Fehlklicks und Umwege, die aus der Aufzeichnung gestrichen werden, ihre Requests gehörten nicht zum Schritt. Er entsteht ohne Claude und Token durch den nächsten `run` außerhalb von CI (in CI durch `run --learn`), aus der bereinigten Aufzeichnung: Jeder bestandene Schritt ohne Vergleich bekommt ihn dann aus diesem Lauf, wenn er auf derselben Umgebung aufgenommen wurde. Ebenso die Wirkung je Aktion. Der Chat und das Terminal nennen die Schritte, nur dieses Feld ändert sich in der Datei, der Hash bleibt unberührt. Vorhandene Werte überschreibt ein `run` nie, außer sie stammen aus der Zeit vor den Parameternamen (Einträge ohne `params`). Sonst ändert ein Lauf keine Datei.
 
 #### Wirkung je Aktion

@@ -10,8 +10,8 @@ import { t } from './i18n.mjs';
 import { CONFIG_FILE } from './names.mjs';
 import { compileRead } from './requests.mjs';
 import { didYouMean } from './suggest.mjs';
-import { RESERVED_ROLES } from './credentials.mjs';
-import { NAME, effectiveEnvironment, effectiveEnvironments, environmentNames, signInTypes } from './environments.mjs';
+import { RESERVED_ROLES, variablePart } from './credentials.mjs';
+import { NAME, effectiveEnvironment, effectiveEnvironments, environmentNames, normalizeHost, signInTypes } from './environments.mjs';
 
 export { CONFIG_FILE } from './names.mjs';
 export { environmentsWith } from './environments.mjs';
@@ -497,7 +497,50 @@ export const loadConfigWithNotes = (root) => {
     }
     const { issues, notes, todo } = validateConfig(config);
     if (issues.length > 0) throw configInvalid(issues);
-    return { config, notes, todo };
+    return { config: withUrlOverrides(config), notes, todo };
+};
+
+const URL_PREFIX = 'CAW_URL__';
+/** The variable that points an environment at another address for one process, e.g. CAW_URL__PREVIEW (scheme of credentials.mjs). */
+export const urlVariable = (name) => `${URL_PREFIX}${variablePart(name)}`;
+/** The override in effect for an environment, or undefined. loadConfig has already refused an invalid one. */
+export const urlOverride = (name, env = process.env) => env[urlVariable(name)];
+
+const urlHost = (value) => normalizeHost(new URL(value).hostname);
+
+/**
+ * CAW_URL__<ENV> from the process environment, for a PR preview whose address is only known in the CI job. Applied to the loaded
+ * config only: writeConfig and every other writer read the raw file, so the address never lands in caw.config.json. Refused
+ * (exit 3) for production and agent environments, which a variable must not redirect unseen, and for a production host: blockedHosts
+ * spares the run's own host, so a test environment pointed at production would lift the production block.
+ */
+export const withUrlOverrides = (config, env = process.env) => {
+    const given = Object.keys(env).filter((key) => key.toUpperCase().startsWith(URL_PREFIX));
+    if (given.length === 0) return config;
+    const before = effectiveEnvironments(config);
+    const productionHosts = new Set(Object.values(before).filter(({ production }) => production).map(({ url }) => urlHost(url)));
+    const environments = { ...config.environments };
+    const overridden = new Set();
+    for (const variable of given) {
+        const value = env[variable];
+        const name = Object.keys(before).find((candidate) => urlVariable(candidate) === variable.toUpperCase());
+        const refuse = (key, vars = {}) => new CawError('url-override', t(key, { variable, env: name, value, ...vars }));
+        if (name === undefined) throw refuse('config.urlOverride.unknown', { names: Object.keys(before).map(urlVariable).join(', ') });
+        if (before[name].production === true) throw refuse('config.urlOverride.production');
+        if (before[name].agent === true) throw refuse('config.urlOverride.agent');
+        const problem = originProblem(value, { allowHttp: before[name].allowHttp === true });
+        if (problem !== null) throw refuse('config.urlOverride.invalid', { problem });
+        if (productionHosts.has(urlHost(value))) throw refuse('config.urlOverride.productionHost', { host: urlHost(value) });
+        environments[name] = { ...environments[name], url: value };
+        overridden.add(name);
+    }
+    const result = { ...config, environments };
+    // An environment that inherits its url through extends keeps the address it had: the variable names one environment only.
+    const after = effectiveEnvironments(result);
+    for (const name of Object.keys(after)) {
+        if (!overridden.has(name) && after[name].url !== before[name].url) environments[name] = { ...environments[name], url: before[name].url };
+    }
+    return result;
 };
 
 export const loadConfig = (root) => loadConfigWithNotes(root).config;
