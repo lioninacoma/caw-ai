@@ -1,4 +1,4 @@
-// Git for `caw audit`: the project's test data at an older commit. Shells out to the git on PATH (git.exe on Windows) like
+// Git for `caw audit` and `caw bisect`: the project's test data at another commit. Shells out to the git on PATH (git.exe on Windows) like
 // project-files.mjs; no library. Paths are relative to the project folder (the cwd), which need not be the repository's top.
 
 import { execFileSync } from 'node:child_process';
@@ -49,6 +49,23 @@ export const mergeBase = (root, ref) => {
         throw new CawError('git-ref', t('cli.audit.noBase', { ref }));
     }
 };
+
+/**
+ * The commit a ref names, for `caw bisect --tests-from`. Rejects a ref git does not know, like mergeBase.
+ * @returns the commit hash
+ */
+export const resolveCommit = (root, ref) => {
+    if (typeof ref !== 'string' || ref.trim() === '' || ref.startsWith('-')) throw new CawError('git-ref', t('cli.audit.badRef', { ref: String(ref ?? '') }));
+    try {
+        return git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).toString('utf8').trim();
+    } catch (error) {
+        if (error instanceof CawError) throw error;
+        throw new CawError('git-ref', t('cli.audit.badRef', { ref }));
+    }
+};
+
+/** The short hash of what is checked out (`git rev-parse --short HEAD`), for one line per bisect step. */
+export const shortHead = (root) => git(root, ['rev-parse', '--short', 'HEAD']).toString('utf8').trim();
 
 /** Is this file part of the test data audit compares? Test and recording files directly in their folders, and the config. */
 export const isAuditFile = (path) => path === CONFIG_FILE

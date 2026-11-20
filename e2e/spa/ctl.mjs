@@ -5,6 +5,7 @@
 //   node ../ctl.mjs down <port>    end the server started by up
 //   node ../ctl.mjs reset <port>   clear the environment's data (POST /test/reset on life.localhost)
 //   node ../ctl.mjs fail           print a reason and exit 3 (a broken start or reset)
+//   node ../ctl.mjs mode <port>    app.mode in the project root says abort: the page aborts its search (a commit with the bug, S12)
 //   node ../ctl.mjs hang           run until killed, never ready (a start that never gets ready)
 import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -47,6 +48,9 @@ if (command === 'up') {
     }
 } else if (command === 'reset') {
     process.exit(await call('POST', '/test/reset') === 200 ? 0 : 1);
+} else if (command === 'mode') {
+    const mode = existsSync(join(process.cwd(), 'app.mode')) ? readFileSync(join(process.cwd(), 'app.mode'), 'utf8').trim() : 'ok';
+    process.exit(await call('POST', mode === 'abort' ? '/test/abort-on' : '/test/abort-off') === 200 ? 0 : 1);
 } else if (command === 'fail') {
     console.log('seed: table tickets is missing (fictitious failure)');
     process.exit(3);

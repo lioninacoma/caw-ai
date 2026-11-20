@@ -656,4 +656,27 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.attemptLine': 'Attempt {attempt}: {status}{why}',
     'cli.summary.heading': 'caw: {count} test(s) on {target}, exit {exit}',
     'cli.summary.columns': 'Result | Test | Failed step | Assessment | Finding | Report',
+    // bisect.mjs: caw bisect <test> --env <name> for git bisect run
+    'cli.help.bisect': `  bisect <test> --env <name>             One step of git bisect run: starts the environment with its start command, plays
+                                         the test headless as it is in --tests-from, without chat and without learning
+      [--tests-from <ref>]               Where test, recording and caw.config.json come from, default refs/bisect/bad
+      [--step-timeout <duration>]        Time limit per step, default 30s
+                                         Exit 0 good, 1 bad (a step failed on the app), 125 skip (environment, test,
+                                         unclear, error), 128 stops the bisect (call, test or environment not usable)`,
+    'cli.synopsis.bisect': 'caw bisect <test> --env <name> [--tests-from <ref>] [--step-timeout <duration>]',
+    'cli.bisect.envMissing': 'Name the environment: caw bisect <test> --env <name>. Its start command builds every commit fresh.',
+    'cli.bisect.noBisect': '{ref} does not exist: run caw bisect from git bisect run (after git bisect start <bad> <good>), or name the commit with the tests to use with --tests-from <ref>.',
+    'cli.bisect.missingAtRef': '{path} is not in the commit of --tests-from.',
+    'cli.bisect.noStart': '{env} has no start command: caw bisect starts the environment on every commit so it runs that commit\'s code. Give it environments.{env}.start in caw.config.json.',
+    'cli.bisect.alreadyRunning': '{env} already answers at {url} before caw started it: that could be any commit\'s build. Stop it, then run git bisect run again.',
+    'cli.bisect.line': 'caw bisect {commit}: {result}, assessment {side}, exit {exit} ({meaning})',
+    'cli.bisect.result.pass': 'passed',
+    'cli.bisect.result.failed': 'failed',
+    'cli.bisect.result.failedAt': 'failed at {step}',
+    'cli.bisect.result.error': 'no verdict ({code})',
+    'cli.bisect.result.notRun': 'not run ({code})',
+    'cli.bisect.meaning.good': 'good',
+    'cli.bisect.meaning.bad': 'bad',
+    'cli.bisect.meaning.skip': 'skip',
+    'cli.bisect.meaning.abort': 'git bisect stops',
 };

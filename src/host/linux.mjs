@@ -49,6 +49,8 @@ const COMMAND_OPTIONS = {
     run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--strict', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
     record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
     open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout'],
+    // bisect always runs headless, without chat and learning, and always starts the environment: nothing to switch.
+    bisect: ['--env', '--tests-from', '--step-timeout'],
 };
 /** Flags that were renamed before 1.0: the message names the new one instead of listing every allowed option. */
 export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--agent-timeout', '--max-steps': '--max-actions', '--advise': '--explain' };
@@ -61,6 +63,7 @@ const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--
 const VALUE_EXAMPLES = {
     '--env': 'local', '--role': 'admin', '--agent': 'local', '--agent-timeout': '60m',
     '--max-actions': '100', '--step-timeout': '30s', '--report': 'junit=caw-junit.xml', '--retry-env': '1', '--url': 'http://localhost:5173', '--from': 'caw/.explore.json',
+    '--tests-from': 'refs/bisect/bad',
 };
 /** Where Claude works: started locally, in Docker or as the developer's Claude Code session. */
 /** Where caw starts its own agent; the person's own session answers with --attach instead. */
@@ -112,7 +115,7 @@ export const splitStep = (arg) => {
  * Each command only knows its own options. --env may be omitted: then the command picks the only matching environment.
  * run also takes several tests or --all; they then run one after another without chat, with a table at the end.
  * record and open take one test, optionally with a step: `<test>@S<n>`.
- * @param command run, record or open
+ * @param command run, record, open or bisect
  */
 export const parseRunArgs = (command, args) => {
     const allowed = COMMAND_OPTIONS[command];
@@ -165,6 +168,7 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--start') options.start = true;
         else if (flag === '--max-actions') options.maxActions = Number(value);
         else if (flag === '--role') options.role = value;
+        else if (flag === '--tests-from') options.testsFrom = value;
         else if (flag === '--step-timeout') options.stepTimeoutSec = parseDuration(flag, value) / 1000;
         else if (flag === '--report') {
             const match = /^(junit|summary|json)=(.+)$/.exec(value);
@@ -188,6 +192,8 @@ export const parseRunArgs = (command, args) => {
     if (options.attach !== undefined && options.agent !== undefined) throw new CawError('usage', t('session.args.clash', { without: '--attach', other: '--agent' }));
     if (command !== 'open' && options.test === undefined && !options.all) throw new CawError('usage', t('session.args.testMissing'));
     for (const test of command === 'run' ? options.tests : options.test === undefined ? [] : [options.test]) checkTestId(test);
+    // bisect plays the whole test: a step would need the steps before it from the same commit anyway.
+    if (command === 'bisect' && options.step !== undefined) throw new CawError('usage', t('session.args.unexpected', { arg: `${options.test}@${options.step}` }));
     // A test brings its role; with a step it also exists already, so its metadata stays as it is.
     if (command === 'open' && options.test !== undefined) {
         const clash = [['--role', options.role]].find(([, value]) => value !== undefined);

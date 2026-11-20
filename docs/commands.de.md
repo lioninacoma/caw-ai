@@ -13,6 +13,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`overlay`](extensions/overlay.de.md) | Erweiterung: lokaler Code auf einer ausgelieferten Umgebung (nur mit einem `overlay`-Block) | nein |
 | [`validate`](#validate) | Config und Tests offline prüfen | nein |
 | [`audit`](#audit) | Auflisten, was die Tests seit einem Branch oder Commit abschwächt, für den PR | nein |
+| [`bisect`](#bisect) | Ein Schritt von `git bisect run`: den Commit finden, der einen Test kaputt gemacht hat | nein |
 | [`list`](#list) | Tests und Schritte mit Stand der Aufnahme auflisten | nein |
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen, auch ab einem Schritt | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
@@ -127,6 +128,27 @@ Kein Test wird unbemerkt schwächer. caw selbst hält eine Prüfung fest, solang
 **Geändert** (aufgelistet, keine Abschwächung): ein geändertes erwartetes Ergebnis, mit seiner Prüfung; neue Tests und Schritte. Das erwartete Ergebnis zu ändern ist der Weg, eine Prüfung bewusst zu ändern: Wer den PR prüft, sieht dann beides. **Zur Info:** geänderte Request-Baselines, gelernte Effekte aus Listen, die nur warnen.
 
 Exit `0` nichts abgeschwächt, `1` abgeschwächt, `3` die Ref ist unbekannt, hat keine gemeinsame Geschichte mit `HEAD` (`git-ref`) oder es gibt kein Git (`git-missing`). `--json` gibt `{ ref, base, weakened, findings }` aus, jeder Befund mit `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` für die Config), `step`, `before`, `after` und `text`.
+
+## bisect
+
+```bash
+git bisect start <schlecht> <gut>
+git bisect run npx -p caw-ai@<version> caw bisect <test> --env <umgebung>
+git bisect reset
+```
+
+Findet den Commit, der einen Test kaputt gemacht hat. `git bisect run` checkt einen Commit nach dem anderen aus und ruft auf jedem `caw bisect` auf. Dabei wird auch `caw/` ausgecheckt, der Test des alten Commits wäre also ein anderer oder fehlte: Test, Aufzeichnung und `caw.config.json` kommen aus `--tests-from <ref>` (Standard `refs/bisect/bad`, der Commit, den `git bisect start` als schlecht bekam). Dort muss der Test aufgenommen sein; offene Schritte an seinem Ende bleiben wie bei `run` weg.
+
+Auf jedem Commit startet `caw bisect` die Umgebung mit ihrem `start`-Befehl (damit sie den Code dieses Commits ausführt), spielt den Test ohne Fenster und Chat ab und hält die Umgebung wieder an. Es lernt nichts, damit der Arbeitsstand für den nächsten Checkout sauber bleibt, und gelernte Effekte lassen keinen Schritt scheitern: Sie wurden an einer anderen Version der Anwendung gelernt. Pro Commit gibt es eine Zeile aus, z. B. `caw bisect 3f2a1c9: gescheitert bei S3, Einschätzung Fehler der Anwendung, Exit 1 (schlecht)`.
+
+| Exit | Für git bisect | Wann |
+|---|---|---|
+| `0` | gut | Der Test hat bestanden. |
+| `1` | schlecht | Ein Schritt ist gescheitert, und caw schreibt es der Anwendung zu. |
+| `125` | überspringen | Ein Schritt scheiterte an Umgebung oder Test oder unklar; die Umgebung startete nicht (z. B. baut der Commit nicht); jeder andere Fehler |
+| `128` | bricht ab | Der Aufruf oder Test oder Config an der Ref sind ungültig; der Test ist dort nicht aufgenommen oder wurde nach der Aufnahme geändert; die Umgebung hat kein `start` oder antwortet schon, bevor caw sie startet (das könnte der Build eines beliebigen Commits sein: erst anhalten) |
+
+Ruf caw aus einer festen Installation auf, wie es `npx -p caw-ai@<version>` tut: Das `node_modules` des Projekts ändert sich von Commit zu Commit, und ein alter Commit hat vielleicht kein caw oder eine andere Version. `--step-timeout <dauer>` begrenzt jeden Schritt (Standard 30s). Fehler enden nie mit Exit 2, das `git bisect` als schlecht lesen würde.
 
 ## list
 
