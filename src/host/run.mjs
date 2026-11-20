@@ -35,7 +35,7 @@ import { frameworkOf } from './framework/index.mjs';
 import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
 import { fillDates, zonedNow } from './dates.mjs';
-import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, tidyNumbers, trailingNumbers } from './replay.mjs';
+import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, stepRecords, tidyNumbers, trailingNumbers } from './replay.mjs';
 import { canRestore, loadStateTest, stateCatalog } from './states.mjs';
 import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
@@ -449,6 +449,17 @@ export const benchSettings = ({ root, config, spec, checked, agent, mode, run, e
  *                 `adviseCommand` replaces Claude for that, like `containerCommand` when recording
  * @returns { exitCode, verdict, failed, candidate, fresh, expectChange, ids, removed }
  */
+/**
+ * Same expected result, same check: the recorded step a new check would replace although its expected result is unchanged.
+ * Matched by the expected result, so a step that only moved keeps its check too.
+ * @param olds  the recorded steps that bind
+ * @returns the old step whose check must stay, or null
+ */
+export const keptCheck = (olds, step, check) => {
+    const same = olds.filter((old) => old.recording !== undefined && old.expect === step.expect);
+    return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
+};
+
 export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
@@ -1504,6 +1515,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             if (notes.length === 0) return { approved: true };
             return { approved: true, ...(redo.length === 0 ? {} : { invalidated: redo }), ...(restored.length === 0 ? {} : { restored }), note: notes.join(' ') };
         };
+        // The recorded steps whose checks bind: the fixed ones, those from the step on, or all of the old test when re-recording it.
+        const checkOwners = () => (repairing !== undefined ? range ?? [repairing] : creating && previous !== undefined ? previous.steps : []);
         /** The verdict refers to the approved plan, and every passed step must be in it. */
         const checkAgainstPlan = (results) => {
             // If the application is at fault, Claude only reports fail when repairing: that changes nothing in the test and needs no plan.
@@ -1516,14 +1529,15 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             // A step submitted as fail cannot have a passed check: that is a result too.
             const missing = [...known].filter((id) => !groups.has(id) && !failed.has(id));
             if (missing.length > 0) throw new CawError('finish-rejected', `Without a passed check: ${missing.join(', ')}.`);
-            if (repairing === undefined || failed.size > 0) return;
-            // Per step: an unchanged expected result keeps its check.
+            if (failed.size > 0) return;
+            // Per step: an unchanged expected result keeps its check, when fixing a step, re-recording from one or the whole test.
             for (const step of plan.steps) {
-                const old = (range ?? [repairing]).find(({ id }) => id === step.id);
-                if (old?.recording !== undefined && step.expect === old.expect && groups.get(step.id).check !== old.recording.check) {
+                const old = keptCheck(checkOwners(), step, groups.get(step.id).check);
+                if (old !== null) {
                     throw new CawError('finish-rejected', `The expected result of ${step.id} is unchanged, so the check must stay the same too: ${fillIn(old.recording.check)}. To change it, submit a plan with a changed expect.`);
                 }
             }
+            if (repairing === undefined) return;
             const withRecording = (step) => ({ ...step, recording: { actions: groups.get(step.id).actions, check: groups.get(step.id).check } });
             const lost = missingRemembered(range === undefined
                 ? replaceStep(givenSpec, withRecording(plan.steps[0]))
@@ -1678,8 +1692,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             writeFileSync(join(runDir, DRAFT_FILE), renderTest(candidate));
         }
         // The steps whose expected result changed: the human sees the old one before deciding.
-        const expectChange = repairing === undefined || candidate === undefined ? [] : plan.steps.flatMap((step) => {
-            const old = (range ?? [repairing]).find(({ id }) => id === step.id);
+        const expectChange = candidate === undefined ? [] : plan.steps.flatMap((step) => {
+            const old = checkOwners().find(({ id }) => id === step.id);
             return old === undefined || old.expect === step.expect ? [] : [{ id: step.id, before: old.expect, after: step.expect }];
         });
         return {
@@ -1763,6 +1777,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             writeInterrupted(ended);
             return closeRun(ended);
         }
+        // Per step what it did: status, time, requests and effects. Redacted with the verdict in writeResult.
+        reportBase.steps = stepRecords({ ids: spec.expectations.map(({ id }) => id), ...ended, durations: durations(), withEffects: checked.production !== true });
         await session.workbench?.point(END, 'effects', 'running');
         await agentHandler({ action: 'finish', results: replayVerdict({ ...ended, expectations: spec.expectations }) });
         played = ended;

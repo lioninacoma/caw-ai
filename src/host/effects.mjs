@@ -230,6 +230,17 @@ export const effectChange = (recorded, observed) => {
     return summarized({ byList, extra: extra.slice(0, 5), instead });
 };
 
+/**
+ * How an action's effect deviates from the step's learned effects: the comparison of a replay, also usable without a browser.
+ * @param learned the step's learned effects ({ runs, actions }) or undefined
+ * @returns { number, learned, missing, extra, instead, lists, byList } or null
+ */
+export const stepDeviation = (learned, number, effect) => {
+    if (learned === undefined) return null;
+    const change = effectChange(learned.actions.find(({ action }) => action === number) ?? {}, effect);
+    return change === null ? null : { number, learned: learned.runs >= LEARN_RUNS, ...change };
+};
+
 /** Summarizes the deviation per list; null if nothing remains. */
 const summarized = ({ byList, extra, instead }) => {
     const missing = Object.values(byList).flat();

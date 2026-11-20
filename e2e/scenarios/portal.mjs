@@ -413,6 +413,61 @@ sleep 60`;
     verify('Exit 2, file unchanged', code === 2 && read() === good, String(code));
 });
 
+scenario('I3', 'Whole test recorded again: an unchanged expected result keeps its check, a changed one is listed', async () => {
+    restore();
+    const walk = (s2Check, s3Check) => `$A click '#weiter'
+$A check S1 "${TARGET_REACHED}"
+$A fill '#anliegen' "Vorgang $TAG"
+$A click '#senden'
+$A remember nr "${CASE_TEXT}"
+$A check S2 "${s2Check}"
+$A click '#spaeter'
+$A check S3 "${s3Check}"`;
+    // S2 keeps its expected result: a weaker check is refused, the recording ends without a new one.
+    const weaker = `A='caw agent'
+${tag}
+${planOf(WHOLE)}
+$A plan --file /tmp/p.yaml >/dev/null
+${walk('true', `${CASE_DONE} && ${CASE_TEXT}==='Vorgang $TAG'`)}
+${count(finishOf(['S1', 'S2', 'S3']), 'check must stay the same', 'KEPT')} >> "$CAW_AGENT_DIR/i3.txt"
+echo '{"status":"error","reason":"Check refused"}' > /tmp/e.json; $A finish --file /tmp/e.json`;
+    // The test is recorded already: caw asks how in a window of its own; Claude follows the plan in the next one.
+    const follow = async (page) => {
+        await stateOf(page, 'choosing');
+        await decide(page, 'geht dem Testplan nach');
+    };
+    const first = humans(follow, async (page) => {
+        await approve(page);
+        await page.locator('.message:is(.question,.result,.notice)', { hasText: 'Keine Aufzeichnung entstanden' }).waitFor({ timeout: 90000 });
+        await decide(page, 'Close');
+    });
+    const refused = await record(fake, [ID, ...opts], { interactive: true, containerCommand: ['bash', '-c', weaker], onChatOpen: first.onChatOpen });
+    await first.done();
+    const runs = join(fake, '.caw/runs');
+    const marks = readdirSync(runs).sort().map((name) => join(runs, name, 'agent/i3.txt')).filter((path) => existsSync(path)).at(-1);
+    const said = marks === undefined ? '' : readFileSync(marks, 'utf8');
+    verify('Weaker check of S2 refused', /KEPT=1/.test(said), said);
+    verify('Exit 2, file unchanged', refused === 2 && read() === good, String(refused));
+    // S3 gets a new expected result: its new check is fine, and the decision names the change.
+    const changed = `A='caw agent'
+${tag}
+${planOf(`notes: Stay with your case.\nsteps:\n${S1}\n${S2()}\n${S3('Der Vorgang ist erledigt.')}`)}
+$A plan --file /tmp/p.yaml >/dev/null
+${walk(`${CASE_TEXT}==='Vorgang $TAG'`, CASE_DONE)}
+${finishOf(['S1', 'S2', 'S3'])}`;
+    const second = humans(follow, approve, async (page) => {
+        await page.locator('#choices button.primary', { hasText: 'Testplan' }).waitFor({ timeout: 90000 });
+        verify('Decision names the changed expected result', await page.locator('.message', { hasText: 'Geändertes Ergebnis in S3' }).count() > 0);
+        await decide(page, 'Testplan übernehmen');
+    });
+    const code = await record(fake, [ID, ...opts], { interactive: true, containerCommand: ['bash', '-c', changed], onChatOpen: second.onChatOpen });
+    verify('Three windows: choice, recording, check', await second.done() === 3);
+    verify('Exit 0', code === 0, String(code));
+    const spec = parseTest(read());
+    verify('S2 keeps its check, S3 has the new one', spec.steps[1].recording.check === parseTest(good).steps[1].recording.check && spec.steps[2].recording.check === CASE_DONE && spec.steps[2].expect === 'Der Vorgang ist erledigt.', JSON.stringify(spec.steps.map(({ recording }) => recording?.check)));
+    restore();
+});
+
 scenario('J', 'retry: pageerror without stack, reload, second attempt passes and is in the report', async () => {
     const stepOf = (retry) => {
         const step = { id: 'S4', name: 'Wackelt', do: '', expect: 'Besteht nach dem Neuladen.' };

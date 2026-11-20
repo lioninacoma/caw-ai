@@ -5,6 +5,8 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 ## [Unreleased]
 
 ### Added
+- Recording a whole test again (`record <test>`, `@S1`) keeps the rule of fixing a step: a step whose expected result stays must keep its check, also when it moved; a changed expected result is shown at the decision.
+- `result.json` lists every step under `steps`: status, why it failed (`kind`), its time, its requests and the effects of its actions with any deviation from the learned ones (on production without effects).
 - `caw reproduce "<bug report>"` (also `--file`, or `-` for stdin): Claude reproduces a bug on its own, signed in as a test role, optionally from a test's state (`--from <test>@S3`, those steps replayed without Claude). No plan to approve, no question, no advice and no code change; Claude ends with reproduced yes, no or unclear, observed against expected, the steps, screenshots and a hint at the cause. The run folder gets `report.md` and `draft-test.yaml`, a test plan you can adopt and record; `caw/tests` stays untouched. Only on environments with `agent`, never production (`reproduce-not-allowed`), with the browser's network lock; without `writable` every write request is blocked. Exit `0` reproduced, `1` not or unclear, `2` environment (`reproduce-state` when `--from` does not reach its state). From Claude Code: `caw_start` with `command: "reproduce"`, `caw_status` names verdict, report and draft.
 - In the workbench's DevTools console `caw` holds tools: `caw.app` (the app's window), `caw.info` (project, test, running step, mode, run, environment, URL, role, framework, version), `caw.requests()` and `caw.console()` (the footer lists), `caw.locator(el)` (the locator caw would record, e.g. `caw.locator($0)` after Inspect) and `caw.ready()` (the ready probe and open requests). Read-only and without secrets: the app shares the origin. `caw.help()` lists them.
 - What the window saw after the handover (blocked hosts, errors) is added to `report.md` and `result.json` as "After the handover" when it closes; the result itself stays.
@@ -49,6 +51,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - The F-key bar under the workbench and the chat's tool row ("Element", "Add checkpoint", the Pause button). Their functions are in the ⋯ menu, the slash commands and the keys.
 
 ### Fixed
+- A console error from a third-party script (a CDN widget, analytics) during an action no longer fails the step through its learned effects; like the hard-failure rules it is a warning.
 - Commands in the workbench, chat and report read as written: Geist Mono's ligatures drew `--` in one cell, so `caw run first-errand --env local` read like `first-errand--env`; they are off everywhere, and a command wraps only between words.
 - Esc while picking an element no longer crashes the page when the app has iframes.
 - `caw open` without a test crashed at once (`Cannot read properties of undefined (reading 'find')`).

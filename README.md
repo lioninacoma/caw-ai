@@ -308,10 +308,9 @@ The trace contains page contents and network data including cookies; don't uploa
 Playwright, its MCP server and its test agents already let Claude write, run and heal tests, and caw runs on Playwright. caw
 adds what generated test code doesn't give you:
 
-- **Checks a repairing agent must keep.** Each check belongs to a plain-language expected result. While the expectation
-  stays, an agent that fixes a step or re-records from a later step must keep the check; a full re-record is a new recording
-  you approve. When the evidence points at your app, caw shows the
-  cause instead of offering a test edit.
+- **Checks an agent must keep.** Each check belongs to a plain-language expected result. While the expectation stays, an
+  agent that fixes a step or records the test again must keep the check; a changed expectation is your decision. When the
+  evidence points at your app, caw shows the cause instead of offering a test edit.
 - **Triage without AI.** A failure is classed as test, app or environment (or unclear) from requests, console and learned
   effects; once two healthy runs have taught a step's effects, changed controls or console fail it by default.
 - **A box for the agent** (when caw starts it): read-only tools or a firewalled container, a browser that reaches only your

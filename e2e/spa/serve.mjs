@@ -8,7 +8,8 @@
 //   node serve.mjs <port> --only   only that port: an environment started by caw's lifecycle (life, dev2; see ctl.mjs)
 //
 // Test endpoints: POST /test/reset clears this environment's tickets (and re-arms cold), POST /test/abort-on and /test/abort-off
-// switch abortive's page between aborting its search request and not, GET /healthz answers ok.
+// switch abortive's page between aborting its search request and not, POST /test/widget-console-on and -off make the CDN script
+// log a console error on every click (on that environment's page), GET /healthz answers ok.
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createServer as createHttps } from 'node:https';
@@ -93,6 +94,8 @@ const data = new Map();
 // Environments whose next search is the cold one; abortive environments whose page aborts its search.
 const coldPending = new Set(['cold']);
 const aborting = new Set();
+// Environments whose CDN script logs a console error on every click: third-party noise during an action.
+const widgetConsole = new Set();
 const sessions = new Map();
 const pendingStates = new Map();
 // totp: password checked, code outstanding (cookie pre); the last code each account used.
@@ -154,7 +157,7 @@ const codePage = (message) => `<!doctype html><html lang="en"><head><meta charse
 <button type="submit">Verify</button></form></main></body></html>`;
 
 const thirdPartyHead = (env) => (env.thirdParty === undefined ? '' : `<link rel="stylesheet" href="${thirdParty('cdn')}/css2?family=E2E">
-<script src="${thirdParty('cdn')}/lib/widget.js${env.thirdParty === 'fault' ? '?fault=1' : ''}"></script>`);
+<script src="${thirdParty('cdn')}/lib/widget.js${env.thirdParty === 'fault' ? '?fault=1' : widgetConsole.has(env.name) ? '?console=1' : ''}"></script>`);
 const thirdPartyBody = (env) => (env.thirdParty === undefined ? '' : `<section id="outside"><a id="away" href="${thirdParty('elsewhere')}/">Elsewhere</a>
 <button id="popup" type="button">Popup</button><button id="prodcall" type="button">Call production</button>
 <iframe id="pay" title="Payment" src="${thirdParty('pay')}/widget.html"></iframe></section>
@@ -256,7 +259,9 @@ load();
 const external = (req, res, env, url) => {
     if (env.name === 'cdn' && url.pathname === '/css2') return send(res, 200, 'body{font-family:E2E,sans-serif}', 'text/css');
     if (env.name === 'cdn' && url.pathname === '/lib/widget.js') {
-        return send(res, 200, url.searchParams.get('fault') === '1' ? 'window.widgetLoaded = true; throw new Error("widget fault (third-party)");' : 'window.widgetLoaded = true;', 'text/javascript');
+        if (url.searchParams.get('fault') === '1') return send(res, 200, 'window.widgetLoaded = true; throw new Error("widget fault (third-party)");', 'text/javascript');
+        const noisy = url.searchParams.get('console') === '1' ? 'document.addEventListener("click", () => console.error("widget: event dropped (third-party)"));' : '';
+        return send(res, 200, `window.widgetLoaded = true;${noisy}`, 'text/javascript');
     }
     if (env.name === 'stats' && url.pathname === '/collect') return send(res, 204, '', 'text/plain', { 'access-control-allow-origin': '*' });
     if (env.name === 'pay' && url.pathname === '/widget.html') return send(res, 200, '<!doctype html><p id="pay">Pay with E2E</p>');
@@ -341,6 +346,11 @@ const handler = async (req, res) => {
     if (url.pathname === '/test/revoke' && req.method === 'POST') {
         for (const [sid, session] of sessions) if (session.env === env.name) sessions.delete(sid);
         return send(res, 200, 'revoked', 'text/plain');
+    }
+    if (url.pathname === '/test/widget-console-on' || url.pathname === '/test/widget-console-off') {
+        if (url.pathname.endsWith('on')) widgetConsole.add(env.name);
+        else widgetConsole.delete(env.name);
+        return send(res, 200, 'ok', 'text/plain');
     }
     if (url.pathname === '/test/abort-on' || url.pathname === '/test/abort-off') {
         if (url.pathname.endsWith('on')) aborting.add(env.name);

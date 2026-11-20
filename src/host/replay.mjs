@@ -16,7 +16,7 @@ import { classifyRequest, compileReads } from '../shared/requests.mjs';
 import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
 import { dialogFindings, recordedDialog } from './dialogs.mjs';
-import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, withoutLate } from './effects.mjs';
+import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, stepDeviation, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
 import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
 import { escapeRegex, isPositional, locatorLabel, locatorText, mapStrings, parseLocator, printLocator } from './locator.mjs';
@@ -1068,10 +1068,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const noteEffect = (owner, number, effect, label) => {
         if (!observed.has(owner)) observed.set(owner, new Map());
         observed.get(owner).set(number, effect);
-        const learned = replay.effects?.[owner];
-        if (learned === undefined || deviations.has(owner)) return;
-        const change = effectChange(learned.actions.find(({ action }) => action === number) ?? {}, effect);
-        if (change !== null) deviations.set(owner, { step: owner, number, label, learned: learned.runs >= LEARN_RUNS, ...change });
+        if (deviations.has(owner)) return;
+        const deviation = stepDeviation(replay.effects?.[owner], number, effect);
+        if (deviation !== null) deviations.set(owner, { step: owner, label, ...deviation });
     };
     // The action whose effect is still being measured.
     let pending = null;
@@ -1389,6 +1388,34 @@ export const failedStep = ({ results, broken, expectations, failures = [] }) => 
     if (failed !== undefined) return { id: failed.id, reason: results.get(failed.id).note, suspect, clean: false };
     return broken === null ? null : { id: broken.step, reason: `${broken.label}: ${broken.message}`, suspect, clean: broken.clean === true && failures.length === 0 };
 };
+
+/**
+ * One record per step for result.json: what each step did in this run, the same data a later comparison or trend needs.
+ * A step the replay did not reach is `skipped`. `kind` says why a step failed: its check, its effect, or the break that
+ * stopped the replay there (target, state, check, external).
+ * @param ids          the test's step ids in order
+ * @param durations    seconds per step id, as measured by the run
+ * @param withEffects  false on production: effect lines carry visible names, which may be personal data
+ * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation? }]
+ */
+export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
+    const status = results?.get(id)?.status ?? 'skipped';
+    const deviation = deviations?.get(id);
+    const kind = status !== 'fail' ? undefined : broken?.step === id ? broken.kind : deviation?.fails === true ? 'effect' : 'check';
+    const seen = effects?.get(id);
+    const shownDeviation = deviation === undefined ? undefined
+        : effectsShown ? { number: deviation.number, learned: deviation.learned, lists: deviation.lists, missing: deviation.missing, extra: deviation.extra, instead: deviation.instead, ...(deviation.fails === true ? { fails: true } : {}) }
+            : { lists: deviation.lists, learned: deviation.learned, ...(deviation.fails === true ? { fails: true } : {}) };
+    return {
+        id,
+        status,
+        ...(kind === undefined ? {} : { kind }),
+        ...(durations[id] === undefined ? {} : { seconds: Math.round(durations[id] * 1000) / 1000 }),
+        ...(requests?.has(id) ? { requests: summarizeRequests(requests.get(id)) } : {}),
+        ...(effectsShown && seen !== undefined ? { effects: [...seen].map(([action, effect]) => ({ action, ...effect })) } : {}),
+        ...(shownDeviation === undefined ? {} : { deviation: shownDeviation }),
+    };
+});
 
 /** Builds the result for `finish` from playback: what was not reached is fail, never silently pass. */
 export const replayVerdict = ({ results, broken, expectations }) => {

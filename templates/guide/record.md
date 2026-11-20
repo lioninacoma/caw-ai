@@ -40,4 +40,6 @@ what they did. The browser is new and at the start:
 `previous` contains the existing test plan: `plan` as YAML, `steps` with the old actions and checks per step, and `remembered`, the values they read via
 `remember`. Both can be empty or outdated. Without `demonstration` you follow it; with `demonstration` the demonstration counts and `previous` is only background.
 Adopt what is still right and align it with the page. The human started the re-recording for a good reason: Do not repeat known misclicks,
-and ask them if it is unclear what should change. Keep the IDs of existing steps. The new plan may change steps; if the plan shows that, the human decides.
+and ask them if it is unclear what should change. Keep the IDs of existing steps. The new plan may change steps; if the plan shows that, the human decides. A step whose `expect` stays
+the same keeps its old `check`, also in a demonstration and when it moves; otherwise `finish` rejects. Change the `expect` only when the
+person wants a different result.

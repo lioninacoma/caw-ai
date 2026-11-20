@@ -18,6 +18,15 @@ const STALE_MS = 10_000;
 const GATEWAY = new Set([502, 503, 504]);
 // Rejected data, not a wrong call: a conflict (e.g. a name that already exists) or a business validation.
 const DATA_STATUS = new Set([409, 422]);
+/**
+ * Is an answered request slow? With a baseline: over 5 s and over three times the recorded time; without: 10 s or more.
+ * @param then the request's baseline from the recording ({ ms }) or undefined
+ * @returns 'slow', 'verySlow' or null
+ */
+export const slowness = (ms, then) => {
+    if (then !== undefined) return ms > Math.max(SLOW_MS, then.ms * SLOW_FACTOR) ? 'slow' : null;
+    return ms >= VERY_SLOW_MS ? 'verySlow' : null;
+};
 /** When only the effect deviates: the data may have changed, in which case the new effect is correct. */
 export const dataStateHint = () => t('config.diag.dataStateHint');
 // Messages about data rather than the application: something already exists, must be unique, is invalid. German and English,
@@ -161,9 +170,9 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
             add('app', 'likely', t('config.diag.http', { name: request.name, status: String(request.status), recorded: recorded(then) }));
         } else if (request.outcome === 'failed') {
             add('environment', 'likely', t('config.diag.failed', { name: request.name, outcome: outcomeText(request) }));
-        } else if (then !== undefined && ms > Math.max(SLOW_MS, then.ms * SLOW_FACTOR)) {
+        } else if (slowness(ms, then) === 'slow') {
             add('environment', 'likely', t('config.diag.slow', { name: request.name, time: seconds(ms), recorded: recorded(then) }));
-        } else if (then === undefined && ms >= VERY_SLOW_MS) {
+        } else if (slowness(ms, then) === 'verySlow') {
             add('environment', 'likely', t('config.diag.verySlow', { name: request.name, time: seconds(ms) }));
         }
     }

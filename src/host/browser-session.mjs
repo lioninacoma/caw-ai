@@ -1317,11 +1317,12 @@ export const openBrowserSession = async (spec) => {
             const page = message.page();
             const url = message.location().url;
             if ((page !== null && !pages.owns(page)) || fromWorkbench(url)) return;
-            // Only errors, and only those not ignored or foreign: otherwise a rare log, a timing-dependent Chrome warning or an
-            // allowed page message would fail the step as an application error.
+            // Only errors, and only those not ignored, foreign or from a third-party host: otherwise a rare log, a timing-dependent
+            // Chrome warning, an allowed page message or a CDN widget would fail the step as an application error. The hard-failure
+            // rules make the same third-party errors a warning (classifyFailure).
             if (message.type() !== 'error' || networkEcho(message)) return;
             if (rules.ignored.some((pattern) => pattern.test(message.text()) || (url && pattern.test(url)))) return;
-            if (url && rules.foreign.some((pattern) => pattern.test(url))) return;
+            if (url && (rules.thirdParty(url) || rules.foreign.some((pattern) => pattern.test(url)))) return;
             trail.push({ kind: 'console', line: `${message.type()}: ${message.text()}` });
         });
         raw.on('response', (response) => {

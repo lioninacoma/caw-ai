@@ -244,7 +244,7 @@ const adoptedText = (current, changes, whole) => {
     });
 };
 
-const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole = false } = {}) => [
+const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole = false, expectChange = [] } = {}) => [
     t('run.flow.checkPassed'),
     ...(adoptedText(current, changes, whole) === '' ? [] : [adoptedText(current, changes, whole)]),
     ...(warnings.length === 0 ? [] : [t('run.flow.decisionWarnings', { list: warnings.map(({ text }) => withoutDot(text)).join('; ') })]),
@@ -257,7 +257,7 @@ const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole
         const positional = positionalActions(current, whole ? undefined : new Set(changedIds(changes)));
         return positional.length === 0 ? [] : [t('run.flow.decisionPositional', { list: positional.join(', ') })];
     })(),
-    ...expectTexts(changes),
+    ...expectTexts([...changes, { expectChange }]),
     ...(staleSteps(current).length === 0 ? [] : [t('run.flow.decisionStale', { ids: staleSteps(current).map(({ id }) => id).join(', ') })]),
     t('run.flow.decisionQuestion'),
 ].join(' ');
@@ -266,7 +266,7 @@ const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole
  * The same decision as a card: on top what would be adopted and what the human needs to know first, one point each;
  * warnings, known messages and actions chosen by position collapsible.
  */
-const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole = false } = {}) => {
+const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole = false, expectChange = [] } = {}) => {
     const adopted = adoptedText(current, changes, whole);
     const known = [...new Set([...fresh, ...changes.flatMap((change) => change.fresh)])];
     const stale = staleSteps(current);
@@ -274,7 +274,7 @@ const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole
         title: t('run.flow.decisionTitle'),
         facts: [
             ...(adopted === '' ? [] : [adopted]),
-            ...expectTexts(changes),
+            ...expectTexts([...changes, { expectChange }]),
             ...(stale.length === 0 ? [] : [t('run.flow.decisionStale', { ids: stale.map(({ id }) => id).join(', ') })]),
         ],
         ...(seen.length === 0 ? {} : { warn: t('run.flow.decisionSeen', { list: [...new Set(seen)].join('; ') }) }),
@@ -307,7 +307,7 @@ const changeNote = (changes) => {
  * @param advising     Claude advises on its own on failures and warnings; after a recording only once a step gets fixed
  * @param log          message in the terminal
  */
-export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, log, advising: advisingFirst = true }) => {
+export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, log, advising: advisingFirst = true }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
@@ -404,7 +404,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     const again = stale === undefined ? null : { id: 'rerecord-next', label: t('run.button.rerecordStep', { id: stale.id }), primary: true };
                     const count = current.steps.length;
                     const options = again === null ? [adoptButton(count), DISCARD] : [again, adoptButton(count, { primary: false }), DISCARD];
-                    choice = await chat.choose('deciding', decisionText(current, changes, seen, verdict.warnings, { fresh, whole }), options, decisionCard(current, changes, seen, verdict.warnings, { fresh, whole }));
+                    choice = await chat.choose('deciding', decisionText(current, changes, seen, verdict.warnings, { fresh, whole, expectChange }), options, decisionCard(current, changes, seen, verdict.warnings, { fresh, whole, expectChange }));
                     if (choice === 'rerecord-next' && await fixer.open(chat, (message) => decide(chat, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE])) !== null) {
                         offered = { id: stale.id, reason: t('run.flow.stillStale'), rerecord: true };
                         return { next: 'claude' };
@@ -480,7 +480,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
     // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
-    return fixFlow({ draft: recorded.candidate, whole: true, fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, log, advising: false });
+    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, log, advising: false });
 };
 
 /**

@@ -8,7 +8,7 @@ import { createAgentHandler } from '../src/host/agent-commands.mjs';
 import { createChat, parseClaudeLog, tailLines } from '../src/host/chat.mjs';
 import { captureInPage, demonstrate, feedLabel, itemLabel, recordableSteps } from '../src/host/demonstrate.mjs';
 import { RUN_TAG_PLACEHOLDER, createRecorder, dropNumbers, fillRun, newRunTag, playReplay, tagRun, tidyNumbers } from '../src/host/replay.mjs';
-import { readContext } from '../src/host/run.mjs';
+import { keptCheck, readContext } from '../src/host/run.mjs';
 import { withStepBudget } from '../src/host/step-budget.mjs';
 import { isAllowedFailure, renderReport } from '../src/shared/report.mjs';
 
@@ -795,4 +795,20 @@ test('Demonstration: application failures appear in place, the human sees them a
     const { readFileSync } = await import('node:fs');
     assert.deepEqual(JSON.parse(readFileSync(join(dir, 'failures.json'), 'utf8')).map(({ text }) => text), ['HTTP 500'], 'only failures of this demonstration');
     assert.deepEqual(JSON.parse(readFileSync(join(dir, 'network.json'), 'utf8')), [{ name: 'POST /abschliessen ab 3' }]);
+});
+
+test('Same expected result, same check: also when the whole test is recorded again, matched by the expected result', () => {
+    const olds = [
+        { id: 'S1', expect: 'The list is empty.', recording: { actions: [], check: 'document.querySelectorAll("li").length === 0' } },
+        { id: 'S2', expect: 'One todo is listed.', recording: { actions: [], check: 'document.querySelectorAll("li").length === 1' } },
+    ];
+    // Unchanged check, a changed expected result, a new step: nothing binds.
+    assert.equal(keptCheck(olds, { id: 'S1', expect: 'The list is empty.' }, olds[0].recording.check), null);
+    assert.equal(keptCheck(olds, { id: 'S2', expect: 'Two todos are listed.' }, 'true'), null);
+    assert.equal(keptCheck([], { id: 'S1', expect: 'The list is empty.' }, 'true'), null);
+    // Same expected result with another check: refused, also when the step moved to another id.
+    assert.equal(keptCheck(olds, { id: 'S1', expect: 'The list is empty.' }, 'true'), olds[0]);
+    assert.equal(keptCheck(olds, { id: 'S3', expect: 'One todo is listed.' }, 'true'), olds[1]);
+    // A step without a recording binds nothing.
+    assert.equal(keptCheck([{ id: 'S1', expect: 'The list is empty.' }], { id: 'S1', expect: 'The list is empty.' }, 'true'), null);
 });

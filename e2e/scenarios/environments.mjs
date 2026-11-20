@@ -497,6 +497,19 @@ scenario('D4', 'Third-party hosts and the host lock: subresources and iframes lo
     verify('(8) a throwing third-party script is a warning, the run passes', fault.exit === 0 && /widget fault/.test(JSON.stringify(resultOf('third-party').warnings ?? [])), `${shown(fault)} ${failNote('third-party')}`);
 });
 
+scenario('D4b', 'A third-party script logging a console error during an action is a warning, also once the step\'s effects are learned', spa, async () => {
+    networkConfig();
+    writeSpaTest(root, 'gql-list', { environments: ['tp'], recordedOn: 'tp' });
+    await poke('tp', '/test/widget-console-off');
+    const learning = [await go(['gql-list', '--env', 'tp', '--learn']), await go(['gql-list', '--env', 'tp', '--learn'])];
+    const runs = loadTest(root, 'gql-list').steps[0].recording?.effects?.runs ?? 0;
+    verify('(1) two healthy runs learn the click\'s effects', learning.every(({ exit }) => exit === 0) && runs >= 2, `${learning.map(shown).join(' | ')} runs=${runs}`);
+    await poke('tp', '/test/widget-console-on');
+    const noisy = await go(['gql-list', '--env', 'tp']);
+    await poke('tp', '/test/widget-console-off');
+    verify('(2) the CDN script\'s console error on the click: the run passes with a warning', noisy.exit === 0 && /event dropped/.test(warningsOf('gql-list')), `${shown(noisy)} ${failNote('gql-list')} ${warningsOf('gql-list')}`);
+});
+
 scenario('D5', 'Production: a read-only test runs there, writing tests and recording are refused, write requests are blocked at runtime', spa, async () => {
     networkConfig();
     writeSpaTest(root, 'see-tickets', { environments: ['local', 'prod'] });
