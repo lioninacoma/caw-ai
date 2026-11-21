@@ -165,11 +165,22 @@ test('auditChanges: an adopted look is listed with its day; a look learned over 
     const adopted = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look({ styles: ['button "Speichern": color #000000'], adopted: '2026-11-21' }) } })]);
     const findings = audit(adopted, { before });
     assert.deepEqual(kinds(findings), ['listed:look-adopted']);
-    assert.equal(findings[0].text, 'Für S2 wurde am 2026-11-21 ein neuer Look übernommen: sein Bildschirm wird ab jetzt mit dem neuen Bild verglichen.');
+    assert.equal(findings[0].text, 'Für S2 wurde am 2026-11-21 ein neuer Look übernommen: seine Stile gelten ab jetzt, sein Bild lernen die nächsten Läufe headless neu.');
     assert.deepEqual(findings[0].after, ['button "Speichern": color #000000']);
     const learnedLook = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look({ images: { linux: 2, win32: 1 } }) } })]);
     assert.deepEqual(audit(learnedLook, { before }), []);
     assert.deepEqual(audit(adopted, { before: adopted }), [], 'the same adoption is not listed again');
+});
+
+test('auditChanges: look: true taken off a step with a learned look weakens it; put on, it is listed', () => {
+    const learnedLook = { runs: 2, styles: ['button ×1: color #ffffff'], images: { linux: 2 } };
+    const withLook = (look, visual = learnedLook) => spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', ...(look ? { look: true } : {}), recording: { visual } })]);
+    const off = audit(withLook(false), { before: withLook(true) });
+    assert.deepEqual(kinds(off), ['weakening:look-off']);
+    assert.match(off[0].text, /^S2 vergleicht sein gelerntes Aussehen nicht mehr/);
+    assert.deepEqual(audit(withLook(false, { ...learnedLook, runs: 1 }), { before: withLook(true, { ...learnedLook, runs: 1 }) }), [], 'still learning: nothing was compared yet');
+    assert.deepEqual(kinds(audit(withLook(true), { before: withLook(false) })), ['listed:look-on']);
+    assert.deepEqual(audit(withLook(true), { before: withLook(true) }), []);
 });
 
 test('auditChanges: an adopted proposal (only a target swapped) is listed with both locators, not a weakening', () => {

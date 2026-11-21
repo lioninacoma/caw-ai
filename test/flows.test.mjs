@@ -575,22 +575,28 @@ test('Test run: a design not met offers to have it built or to close, never to f
     assert.deepEqual(advised.questions[0].options, ['close']);
 });
 
-test('Test run: a changed look offers "Adopt new look" first; adopting writes it as learned and adopted, without Claude', async () => {
-    const observed = { png: Buffer.from('neu'), styles: ['button "Speichern": color #000000'], imageRuns: 2, ratio: 0.2, platform: 'linux', basis: 'b', changed: true };
-    const reason = 'S2 sieht anders aus als gelernt: 20 % der Pixel weichen ab.';
-    const h = harness({ outcomes: [failing('S2', { reason, kind: 'visual', look: observed })], answers: ['adopt-look'] });
+test('Test run: a changed look offers "Adopt new look" first; adopting takes the styles of every changed step at once, without Claude', async () => {
+    // Seen in a window: styles only, no image.
+    const observed = (styles) => ({ styles, platform: 'linux', basis: 'b', changed: true });
+    const looks = new Map([['S1', observed(['button ×1: color #000000'])], ['S2', observed(['button ×2: color #000000'])]]);
+    const reason = 'S1 sieht anders aus als gelernt: Styles geändert: 1 button weniger mit color #ffffff.';
+    const h = harness({ outcomes: [failing('S1', { reason, kind: 'visual', looks })], answers: ['adopt-look'] });
     await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude without a click'), ...h });
     assert.deepEqual(h.questions[0].options, ['adopt-look', 'ask', 'close']);
     assert.equal(h.questions[0].labels[0], 'Neuen Look übernehmen');
-    assert.match(h.questions[0].text, /sieht nur anders aus als gelernt/);
+    assert.match(h.questions[0].text, /nur das Aussehen von S1, S2 weicht vom gelernten ab/);
+    assert.match(h.questions[0].text, /ihr Bild lernen die nächsten Läufe headless neu/);
     const { draft, only } = h.adopted[0];
-    assert.deepEqual([...only], ['S2']);
-    const step = draft.steps.find(({ id }) => id === 'S2');
-    assert.equal(step.recording.visual.runs, 2);
-    assert.deepEqual(step.recording.visual.images, { linux: 2 });
-    assert.match(step.recording.visual.adopted, /^\d{4}-\d{2}-\d{2}$/);
-    assert.equal(step.recording.lookPng.data, observed.png);
-    assert.ok(h.notices.some((text) => text.includes('Neuer Look von S2 übernommen')), JSON.stringify(h.notices));
+    assert.deepEqual([...only], ['S1', 'S2']);
+    for (const id of ['S1', 'S2']) {
+        const step = draft.steps.find((entry) => entry.id === id);
+        assert.equal(step.recording.visual.runs, 2);
+        assert.deepEqual(step.recording.visual.styles, looks.get(id).styles);
+        assert.deepEqual(step.recording.visual.images, {}, 'the window\'s view has no comparable image: learned anew headless');
+        assert.match(step.recording.visual.adopted, /^\d{4}-\d{2}-\d{2}$/);
+        assert.deepEqual(step.recording.lookPng, { platform: 'linux', data: null }, 'the old image is deleted');
+    }
+    assert.ok(h.notices.some((text) => text.includes('Neuer Look von S1, S2 übernommen') && text.includes('headless neu')), JSON.stringify(h.notices));
     // Without the run's look (nothing captured) only asking and closing remain.
     const without = harness({ outcomes: [failing('S2', { reason, kind: 'visual' })], answers: ['close'] });
     await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...without });

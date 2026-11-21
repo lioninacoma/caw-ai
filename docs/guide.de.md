@@ -341,7 +341,7 @@ Der Testplan kann die Vorgabe sein, bevor es den Bildschirm gibt. Schreib die n�
 
 Jeder Lauf beurteilt den Entwurf dann ohne KI, nachdem die Prüfung des Schritts bestanden hat: Bedienelemente, Überschriften, Beschriftungen und einige Stile je Bedienelement des gerenderten Entwurfs gegen die Seite der App ([Einzelheiten](test-files.de.md#zielbild)). Ist er nicht erfüllt, scheitert der Schritt mit kind `design`, und der Chat bietet an, ihn von deiner verbundenen Session umsetzen zu lassen oder zu schließen, nie den Schritt zu beheben: Der Test stimmt, der Bildschirm ist noch nicht gebaut. Sind alle `needs` des ersten offenen Schritts auf der Seite, meldet der Lauf, dass er bereit zum Aufnehmen ist: `caw record <test>@S4`.
 
-Ein `.png`-Entwurf wird nach Pixeln gegen den Bildschirm des Schritts beurteilt, Lauf-Kennung, gemerkte Werte, Datumsangaben, Listenzeilen und `visualIgnore` maskiert ([Einzelheiten](test-files.de.md#zielbild)). Um zu sehen, wo der Bildschirm abweicht, öffne den Schritt mit dem Entwurf darüber:
+Ein `.png`-Entwurf wird nach Pixeln gegen den Bildschirm des Schritts beurteilt, Lauf-Kennung, gemerkte Werte, Datumsangaben, Listenzeilen, Listeneinträge, Karten und `visualIgnore` maskiert ([Einzelheiten](test-files.de.md#zielbild)). Um zu sehen, wo der Bildschirm abweicht, öffne den Schritt mit dem Entwurf darüber:
 
 ```bash
 caw open <test>@S4 --design --env local
@@ -353,7 +353,7 @@ Mit Design-Tokens in `caw/design` prüft jeder Lauf außerdem jeden erreichten Z
 
 ### Visuelle Regression
 
-Ist ein Bildschirm gebaut, hält `"visual": { "regression": true }` ihn so: caw lernt das Aussehen jedes bestandenen Schritts über zwei gesunde Läufe, und ein späterer Lauf, in dem sich Stile oder Pixel geändert haben, lässt diesen Schritt mit kind `visual` scheitern. Ist die Änderung gewollt, übernimmt **Neuen Look übernehmen** im Chat sie; `caw audit` nennt das. Grenzen: Das Bild gilt je Plattform (Schriften rendern unter Windows und Linux verschieden), Datenbereiche werden maskiert statt verglichen, und die Schwellen sind Startwerte, bis sie gemessen sind ([Einzelheiten](test-files.de.md#visuelle-regression)).
+Ist ein Bildschirm gebaut, hält `look: true` an seinem Schritt in der Testdatei ihn so: caw lernt das Aussehen des Schritts über zwei gesunde Läufe, und ein späterer Lauf, in dem sich Stile oder Pixel geändert haben, lässt diesen Schritt mit kind `visual` scheitern. Setze es nur an Schritten, deren Bildschirm feste Daten zeigt (ein Zustand, den der Test selbst herstellt, Fixtures): Daten, die sich ändern, machen es unruhig. Maskiert sind Lauf-Kennung, gemerkte Werte, Datumsangaben in Ziffern, Listen- und Tabellenzeilen, Listeneinträge und Karten; `visualIgnore` in der Config deckt den Rest ab. Pixel vergleichen nur headless Läufe (`--headless`, ein fester Viewport); ein Lauf im Fenster vergleicht nur die Stile. Ist die Änderung gewollt, übernimmt **Neuen Look übernehmen** im Chat das neue Aussehen aller geänderten Schritte auf einmal, und die nächsten headless Läufe lernen ihre Bilder neu; `caw audit` nennt das. Grenzen: Das Bild gilt je Plattform (Schriften rendern unter Windows und Linux verschieden), und die Schwellen sind Startwerte, bis sie gemessen sind ([Einzelheiten](test-files.de.md#visuelle-regression)).
 
 ## Einordnen und reparieren
 

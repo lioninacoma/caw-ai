@@ -1535,7 +1535,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                 throw new CawError('plan-invalid', `When repairing, the plan contains exactly step ${repair.id}.`);
             }
             // What the human wrote survives Claude's plan, per step: a manually set retry the repair even if Claude does not repeat
-            // it; design and needs always, also on a whole re-record, since Claude's plan may not carry them at all.
+            // it; design, needs and look always, also on a whole re-record, since Claude's plan may not carry them at all.
             const retryOf = (id) => (range ?? (repairing === undefined ? [] : [repairing])).find((step) => step.id === id)?.retry;
             const humanOf = (id) => humanFields((givenSpec?.steps ?? []).find((step) => step.id === id));
             const steps = parsed.steps.map((step) => ({ ...(retryOf(step.id) === undefined ? {} : { retry: retryOf(step.id) }), ...step, ...humanOf(step.id) }));
@@ -1841,7 +1841,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const visual = visualSettings(config);
         const tokens = opening ? null : readTokens(cawDir);
         const pngDesign = Object.values(replay.designs ?? {}).some(({ file }) => file.toLowerCase().endsWith('.png'));
-        const looking = !opening && (visual.screenshots || visual.regression || tokens !== null || pngDesign);
+        const looking = !opening && (visual.screenshots || givenSpec.steps.some(({ look: on }) => on === true) || tokens !== null || pngDesign);
         const designJudge = (Object.keys(replay.designs ?? {}).length === 0 && !looking) || opening ? null : createDesignJudge({
             cawDir,
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
@@ -1863,6 +1863,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             readImage: (path) => (existsSync(path) && lstatSync(path).isFile() ? readFileSync(path) : null),
             designFail: config.design?.fail ?? DEFAULT_DESIGN_FAIL,
             secrets: () => session.secrets?.() ?? [],
+            // Pixels of a learned look only headless, at a fixed viewport; a window compares its styles.
+            pixels: headless,
         }) : undefined;
         const play = playReplay({
             replay,
@@ -1927,8 +1929,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         for (const id of replay.pending ?? []) await session.workbench?.step(id, 'skipped', t('run.pendingStep'));
         await markEntry(replay, failed);
         // A design not met is no failure of test, app or environment: the step works, its screen is not built yet (or looks
-        // different than learned). A changed look goes along, for the chat's "Adopt new look".
-        if (failed?.kind === 'visual' && ended.seenLooks?.has(failed.id)) failed.look = ended.seenLooks.get(failed.id);
+        // different than learned). Every look that changed in this run goes along, for the chat's "Adopt new look".
+        if (failed?.kind === 'visual') failed.looks = new Map([...(ended.seenLooks ?? new Map())].filter(([, seen]) => seen.changed));
         if (failed !== null && !LOOK_KINDS.has(failed.kind)) {
             // Test, application or environment: evidence from the browser and the comparison with the step's recording.
             const requests = ended.requests?.get(failed.id) ?? [];

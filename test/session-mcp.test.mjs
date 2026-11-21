@@ -660,4 +660,8 @@ test('caw_design: put checks name, kind and content, link needs the person\'s re
     assert.deepEqual(listed.links, [{ test: 'bestellung', step: 'S2', design: 'design/bestellung.html', exists: true }]);
     await call('caw_design', { action: 'link', test: 'bestellung', step: 'S2', file: null, personAsked: true });
     assert.equal(readFileSync(join(root, 'caw', 'tests', 'bestellung.yaml'), 'utf8'), STEPS);
+    // look: true, set by hand, is listed with its step.
+    writeFileSync(join(root, 'caw', 'tests', 'bestellung.yaml'), STEPS.replace('    expect: Bestätigung\n', '    expect: Bestätigung\n    look: true\n'));
+    assert.deepEqual((await call('caw_design', { action: 'list' })).structuredContent.links, [{ test: 'bestellung', step: 'S2', look: true }]);
+    writeFileSync(join(root, 'caw', 'tests', 'bestellung.yaml'), STEPS);
 });

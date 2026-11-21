@@ -480,8 +480,9 @@ export const validateConfig = (given) => {
         && (config.design.fail === undefined || (Array.isArray(config.design.fail) && config.design.fail.every((kind) => designKinds.includes(kind)))))) {
         issues.push(t('config.design', { kinds: designKinds.join(', ') }));
     }
-    // The visual layer: screenshots per step and visual regression are opt-in; the thresholds are measured (e2e/spike/visual).
-    const VISUAL_FLAGS = ['screenshots', 'regression'];
+    // The visual layer: screenshots per step are opt-in (a learned look is per step, look: true in the test file); the thresholds
+    // are measured (e2e/spike/visual).
+    const VISUAL_FLAGS = ['screenshots'];
     const VISUAL_LIMITS = { tolerance: [0, 255], maxRatio: [0, 1], designMaxRatio: [0, 1] };
     if (config.visual !== undefined && !(isObject(config.visual)
         && Object.entries(config.visual).every(([key, value]) => (VISUAL_FLAGS.includes(key) && typeof value === 'boolean')

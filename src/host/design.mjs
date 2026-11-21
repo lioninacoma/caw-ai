@@ -14,7 +14,7 @@ import { DEFAULT_VISUAL, comparePixels, percent } from './visual.mjs';
 export const DESIGN_DIR = 'design';
 /** What a step's `design:` may name: a page (judged by structure) or an image (judged by pixels, visual.mjs). */
 export const DESIGN_KINDS = ['.html', '.png'];
-// A target design not met and a changed learned look fail their step (the look only once visual.regression learns it);
+// A target design not met and a changed learned look fail their step (the look only on steps with look: true, once learned);
 // the token lint only warns until design.fail names "lint".
 export const DEFAULT_DESIGN_FAIL = ['target', 'visual'];
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };

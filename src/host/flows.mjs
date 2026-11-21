@@ -8,7 +8,7 @@ import { cutReplay, positionalActions, replayOf, replayToEntry, replayUpToStale,
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { locatorLabel, locatorText } from './locator.mjs';
 import { redStep, staleSteps } from './test-file.mjs';
-import { withAdoptedLook, withLooks } from './visual.mjs';
+import { withAdoptedLooks, withLooks } from './visual.mjs';
 
 // Labels as getters: the language is not settled at import time. Copies via spread are only made at runtime.
 const button = (id, key, extra = {}) => ({ id, get label() { return t(key); }, ...extra });
@@ -165,7 +165,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
             // A changed look: the step works, it only looks different than learned. Adopt the new look, ask, or close.
             const look = failed.kind === 'visual';
             if (design || look) hint = '';
-            const where = design || look ? ` ${t(look ? 'run.flow.lookNext' : 'run.flow.designNext')}` : t(repairHere === undefined ? 'run.flow.whereFresh' : 'run.flow.whereHere');
+            const where = design || look ? ` ${t(look ? 'run.flow.lookNext' : 'run.flow.designNext', { ids: [...(failed.looks?.keys() ?? [])].join(', ') || failed.id })}` : t(repairHere === undefined ? 'run.flow.whereFresh' : 'run.flow.whereHere');
             // The status line below says that Claude can be asked.
             // Same failure after a fix: fixing the same step again changes nothing, the cause lies elsewhere.
             const again = repeated ? t('run.flow.again', { config: CONFIG_FILE }) : '';
@@ -197,7 +197,8 @@ const createFixer = ({ sandbox, openSandbox }) => {
             const useTarget = proposal === undefined ? null : { id: 'use-target', primary: true, label: t('run.button.useTarget', { name: locatorText(proposal.to) ?? locatorLabel(proposal.to) }) };
             if (useTarget !== null) options = [useTarget, ...options.map(secondary)];
             if (design) options = canAsk ? [BUILD_DESIGN, CLOSE] : [ONLY_CLOSE];
-            if (look) options = [...(failed.look === undefined ? [] : [ADOPT_LOOK]), ...(canAsk ? [failed.look === undefined ? ASK : secondary(ASK)] : []), failed.look === undefined && !canAsk ? ONLY_CLOSE : CLOSE];
+            const adoptable = (failed.looks?.size ?? 0) > 0;
+            if (look) options = [...(adoptable ? [ADOPT_LOOK] : []), ...(canAsk ? [adoptable ? secondary(ASK) : ASK] : []), !adoptable && !canAsk ? ONLY_CLOSE : CLOSE];
             /** The config now allows all hard failures: a check run without Claude is enough, no fix. */
             const recheck = async (advice) => {
                 chat.notice(t('run.flow.ignoredRecheck'));
@@ -230,7 +231,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
                     return recheck(advice);
                 }
                 if (answer?.choice === FORGET_EFFECT.id) return { advice, target: null, forget: failed.id };
-                if (answer?.choice === ADOPT_LOOK.id) return { advice, target: null, adoptLook: { id: failed.id, observed: failed.look } };
+                if (answer?.choice === ADOPT_LOOK.id) return { advice, target: null, adoptLooks: failed.looks };
                 if (useTarget !== null && answer?.choice === useTarget.id) return { advice, target: null, adoptTarget: proposal };
                 if (answer?.choice === ASK.id) return { advice, target: null, ask: true };
                 if (answer?.choice !== FIX.id) return { advice, target: null };
@@ -755,10 +756,12 @@ export const runFlow = async (options) => {
                     chat.notice(text);
                     rerun = true;
                 }
-                // The new look becomes the learned one, for this platform; audit lists it as adopted.
-                if (settled.adoptLook !== undefined) {
-                    current = withAdoptedLook(current, settled.adoptLook.id, settled.adoptLook.observed);
-                    const text = t('run.flow.lookAdopted', { id: settled.adoptLook.id, file: adopt(current, new Set([settled.adoptLook.id]), { learned: 'looks' }) });
+                // The new look of every changed step becomes the learned one at once; audit lists it as adopted. Its image is
+                // learned by the next headless runs.
+                if (settled.adoptLooks !== undefined) {
+                    current = withAdoptedLooks(current, settled.adoptLooks);
+                    const ids = [...settled.adoptLooks.keys()];
+                    const text = t('run.flow.lookAdopted', { ids: ids.join(', '), file: adopt(current, new Set(ids), { learned: 'looks' }) });
                     log(text);
                     chat.notice(text);
                 }

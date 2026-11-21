@@ -3,7 +3,7 @@
 //   node serve.mjs <port>
 // /api/errands keeps added errands; /api/slow?ms=N answers after N ms (a request wait-ready has to wait for); /report.csv is a download;
 // /api/cover switches the message box of ext.html; /api/rename (N16) serves index.html with "Archive" renamed to "Archive all";
-// /api/fix-bug the bug of fix.html's total (N15). ext-data.html (N10b, N10c) and aria.html (N10d, N10e) need nothing from the server.
+// /api/restyle (N17) serves it with that button bold; /api/fix-bug the bug of fix.html's total (N15). ext-data.html (N10b, N10c) and aria.html (N10d, N10e) need nothing from the server.
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
@@ -16,6 +16,7 @@ const port = Number(process.argv[2] ?? 8451);
 const errands = [];
 let cover = false;
 let renamed = false;
+let restyled = false;
 let totalBug = false;
 
 createServer((req, res) => {
@@ -40,6 +41,13 @@ createServer((req, res) => {
         res.end(JSON.stringify({ on: renamed }));
         return;
     }
+    // N17: whether the app restyled its Archive button (bold), a change of style that the look's style lines see.
+    if (url.pathname === '/api/restyle') {
+        if (req.method === 'POST') restyled = url.searchParams.get('on') === '1';
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ on: restyled }));
+        return;
+    }
     // N15: the basket's total (fix.html); POST /api/fix-bug?on=1 brings in the bug (0 instead of 5), ?on=0 is the fix.
     if (url.pathname === '/api/fix-bug' || url.pathname === '/api/total') {
         if (url.pathname === '/api/fix-bug' && req.method === 'POST') totalBug = url.searchParams.get('on') === '1';
@@ -60,10 +68,13 @@ createServer((req, res) => {
         res.end('404');
         return;
     }
-    // Renamed in the served page itself: a script renaming it after load could lose the race against the replay's click.
-    if (renamed && file === join(site, 'index.html')) {
+    // Renamed (and restyled) in the served page itself: a script renaming it after load could lose the race against the replay's click.
+    if ((renamed || restyled) && file === join(site, 'index.html')) {
         res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-cache' });
-        res.end(readFileSync(file, 'utf8').replace('<button id="archive">Archive</button>', '<button id="archive">Archive all</button>'));
+        let page = readFileSync(file, 'utf8');
+        if (renamed) page = page.replace('<button id="archive">Archive</button>', '<button id="archive">Archive all</button>');
+        if (restyled) page = page.replace('<button id="archive">', '<button id="archive" style="font-weight:700">');
+        res.end(page);
         return;
     }
     const download = extname(file) === '.csv' ? { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="report.csv"' } : { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' };

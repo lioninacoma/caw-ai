@@ -11,12 +11,13 @@ color, background-color, border-radius and padding. List rows, free text, number
 do not count. Anything missing or a differing style: the step fails with kind `design` (with `design.fail: []` in the config it
 only warns). Controls only in the app are reported but do not fail. The replay goes on; the step is not retried and learns no
 effects in that run. A `.png` design is judged by pixels against the step's screen (run tag, remembered values, dates, list
-rows and `visualIgnore` masked): above `visual.designMaxRatio` differing pixels it fails the same way, with a difference image
-`agent/step-S<n>-diff.png`. `result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs }` (a
-`.png` also `ratio` and `diff`). With design tokens in `caw/design` each passed step also gets `lint` findings (colors off
-the tokens, spacing off the scale, contrast, clipped text, unnamed controls): warnings unless `design.fail` has `"lint"`.
-The person sees the design over the app with `caw open <test>@S<n> --design` (F7 toggles it); a deviation they click there
-reaches you as an element, as `/element` does.
+rows, list entries, cards and `visualIgnore` masked): above `visual.designMaxRatio` differing pixels it fails the same way,
+with a difference image `agent/step-S<n>-diff.png`. `result.json` holds per judged step `design: { file, verdict, missing,
+extra, styleDiffs }` (a `.png` also `ratio` and `diff`). With design tokens in `caw/design` each passed step also gets `lint`
+findings (colors off the tokens, spacing off the scale, contrast, clipped text, unnamed controls): warnings unless
+`design.fail` has `"lint"`. A step with `look: true` (also only the person's, never set it yourself) learns its look and
+fails with kind `visual` when it changes. The person sees the design over the app with `caw open <test>@S<n> --design` (F7
+toggles it); a deviation they click there reaches you as an element, as `/element` does.
 
 **Fetch and write a design.**
 1. Get the design yourself: a Claude Design artifact (read it with your own tools and save one screen as a self-contained

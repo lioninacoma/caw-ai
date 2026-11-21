@@ -1,6 +1,6 @@
 // The visual layer: what a step's screen looks like, in pixels and in computed styles. Three uses build on the same capture:
 // a .png target design is judged pixel by pixel, design tokens are linted per reached state, and a learned look (visual
-// regression) is compared in later runs. Everything is decided without AI and without a new dependency: PNGs are decoded and
+// regression, per step with `look: true`) is compared in later runs. Everything is decided without AI and without a new dependency: PNGs are decoded and
 // compared in a Chrome canvas, the design browser's (design.mjs), which has neither the app's scripts nor network.
 
 import { createHash } from 'node:crypto';
@@ -20,10 +20,11 @@ import { compareStructure, cssHex, designPath, listDesigns, renderDesign, struct
  */
 export const DEFAULT_VISUAL = { tolerance: 24, maxRatio: 0.01, designMaxRatio: 0.03 };
 /** The config's visual settings with the defaults. */
-export const visualSettings = (config = {}) => ({ ...DEFAULT_VISUAL, screenshots: false, regression: false, ...(config.visual ?? {}), ignore: config.visualIgnore ?? [] });
+export const visualSettings = (config = {}) => ({ ...DEFAULT_VISUAL, screenshots: false, ...(config.visual ?? {}), ignore: config.visualIgnore ?? [] });
 
 /** Healthy runs until a look counts as learned. Not the effects' number: the baseline spike did not measure looks. */
-const LEARN_RUNS = 2;
+export const LOOK_LEARN_RUNS = 2;
+const LEARN_RUNS = LOOK_LEARN_RUNS;
 
 // A capture waits this long for its masks; the page is quiet after a passed check, it only has to measure.
 const MASK_TIMEOUT_MS = 5000;
@@ -35,7 +36,8 @@ const COMPARE_TIMEOUT_MS = 20_000;
  * - text containing the run tag or a remembered value (`texts`);
  * - numeric dates (11/23/2026, 23.11.2026, 2026-11-23): a screen also shows creation and change dates that no placeholder
  *   (dates.mjs) covers, since only dates near today become placeholders;
- * - rows of lists and tables (as effects.mjs counts them): data, often of other records. Bare `li` stays, menus are built of it;
+ * - rows of lists and tables (as effects.mjs counts them), list entries and cards (`li`, listitem, `article`): data, often of
+ *   other records. Header rows stay, and so do entries of navigation, menus and tab lists: they are the app's, not data;
  * - what the config's `visualIgnore` selectors find (an invalid selector finds nothing).
  * @returns [{ x, y, width, height, why }]
  */
@@ -62,6 +64,11 @@ export function maskProbe({ texts, ignore, max }) {
     }
     for (const row of document.querySelectorAll('[role=row], [role=option], [role=treeitem], tr')) {
         if (row.querySelector('th, [role=columnheader]') === null && shown(row)) add(row.getBoundingClientRect(), 'row');
+    }
+    const NAVIGATION = 'nav, [role=navigation], [role=menu], [role=menubar], [role=tablist], [role=toolbar]';
+    for (const entry of document.querySelectorAll('li:not([role]), [role=listitem], article, [role=article]')) {
+        const card = entry.matches('article, [role=article]');
+        if ((card || entry.closest(NAVIGATION) === null) && shown(entry)) add(entry.getBoundingClientRect(), 'row');
     }
     for (const selector of ignore) {
         let found = [];
@@ -410,10 +417,44 @@ export const lintText = (findings) => {
 
 // ----------------------------------------------------------------------------------------------------------- visual regression
 
-/** The computed styles per control (design.mjs structureFrom) as lines, the part of a look that YAML can show. */
-export const styleLines = (styles) => Object.entries(styles)
-    .map(([control, style]) => `${control}: ${Object.entries(style).map(([name, value]) => `${name} ${value}`).join(', ')}`)
-    .sort();
+/**
+ * The computed styles per control (design.mjs structureFrom) as lines, the part of a look that YAML can show: one line per
+ * role and style with how many controls have it, `button ×3: color #ffffff, font-size 13px`. Not by the control's name:
+ * names carry data (`button "Complete Feed the raven"`), a look is what the controls look like.
+ */
+export const styleLines = (styles) => {
+    const count = new Map();
+    for (const [control, style] of Object.entries(styles)) {
+        const role = control.split(' ')[0];
+        const key = `${role}: ${Object.entries(style).map(([name, value]) => `${name} ${value}`).join(', ')}`;
+        count.set(key, (count.get(key) ?? 0) + 1);
+    }
+    return [...count].map(([key, times]) => key.replace(': ', ` ×${times}: `)).sort();
+};
+
+// A style line's parts: `button ×3: color #fff` is { key: 'button: color #fff', role: 'button', style: 'color #fff', count: 3 };
+// `×?` (the count differed while learning) has count null.
+const COUNTED = /^(\S+) ×(\d+|\?): (.*)$/;
+const lineParts = (line) => {
+    const match = COUNTED.exec(line);
+    if (match === null) return { key: line, role: line, style: '', count: null };
+    return { key: `${match[1]}: ${match[3]}`, role: match[1], style: match[3], count: match[2] === '?' ? null : Number(match[2]) };
+};
+const byKey = (lines) => new Map(lines.map((line) => [lineParts(line).key, lineParts(line)]));
+
+/**
+ * Style lines of two runs while learning: a role and style both have with the same count stays as it is; one whose count
+ * differs, or that only one run has, keeps its style with `×?` (there, any number is right, also none).
+ */
+const mergeStyles = (learned, now) => {
+    const [was, is] = [byKey(learned), byKey(now)];
+    const keys = [...new Set([...was.keys(), ...is.keys()])];
+    return keys.map((key) => {
+        const { role, style } = was.get(key) ?? is.get(key);
+        const same = was.get(key)?.count !== null && was.get(key)?.count === is.get(key)?.count;
+        return same ? `${role} ×${was.get(key).count}: ${style}` : `${role} ×?: ${style}`;
+    }).sort();
+};
 
 /** Where a learned look's image lives, relative to the project: per test and step, per platform (fonts render differently). */
 export const lookImage = (test, step, platform = process.platform) => `${RECORDING_DIR}/${test}/${step}.${platform}.png`;
@@ -437,21 +478,31 @@ export const currentLook = (step, basis) => {
 /** The step's design content hash, when it has a design file. */
 const designHashOf = (cawDir, step) => (step.design === undefined ? undefined : fileHash(designPath(cawDir, step.design)));
 
-/** A style line's properties: `button "Save": color #fff, padding 1px 6px` as Map name -> value. */
-const styleOf = (line) => new Map(line.slice(line.indexOf(': ') + 2).split(', ').map((part) => [part.slice(0, part.indexOf(' ')), part.slice(part.indexOf(' ') + 1)]));
-/** Learned style lines that differ in this run, as `button "Save": color #ff0000 → #000000`, or the control that is gone. */
-const styleChanges = (learned, now) => learned.filter((line) => !now.includes(line)).flatMap((line) => {
-    const control = line.slice(0, line.indexOf(': '));
-    const instead = now.find((other) => other.startsWith(`${control}: `));
-    if (instead === undefined) return [t('session.visual.styleGone', { line: control })];
-    const [was, is] = [styleOf(line), styleOf(instead)];
-    return [...was].filter(([name, value]) => is.get(name) !== value).map(([name, value]) => `${control}: ${name} ${value} → ${is.get(name) ?? '-'}`);
-});
+/**
+ * What differs from the learned style lines in this run, in plain words: a role and style with fewer or more controls than
+ * learned (`1 button fewer with color #000000`), also none any more, or a role and style that was not there. A `×?` line
+ * allows any number.
+ */
+const styleChanges = (learned, now) => {
+    const [was, is] = [byKey(learned), byKey(now)];
+    const changes = [];
+    for (const [key, { role, style, count }] of was) {
+        const seen = is.get(key)?.count ?? 0;
+        if (count === null || seen === count) continue;
+        changes.push(t(seen < count ? 'session.visual.fewer' : 'session.visual.more', { count: Math.abs(seen - count), role, style }));
+    }
+    for (const [key, { role, style, count }] of is) if (!was.has(key)) changes.push(t('session.visual.more', { count, role, style }));
+    return changes;
+};
 
 /**
  * The visual layer after a passed check (playReplay `look`): screenshot (opt-in), token lint (when caw/design has tokens) and
- * the learned look (visual regression, opt-in). Lint and look fail the step only when design.fail names them, else they warn.
+ * the learned look (visual regression, for steps with `look: true`). Lint and look fail the step only when design.fail names
+ * them, else they warn. Pixels of a look are learned and compared only headless: the viewport is fixed there (the recorded
+ * one, else the headless default), while a window's app view has the size of its pane. A run in a window compares the style
+ * lines only and leaves the image as it is.
  * @param settings   visualSettings(config)
+ * @param pixels     headless run: the image is learned and compared too
  * @param tokens     readTokens(cawDir), or null: no lint
  * @param compare    (actual, target, masks) => comparePixels result, in the design browser
  * @param save       (name, png) => the file name in the run folder, or undefined
@@ -459,7 +510,7 @@ const styleChanges = (learned, now) => learned.filter((line) => !now.includes(li
  * @param secrets    () => values the style lines must not show
  * @returns (id, { capture, page }) => { record, warnings, fail?, observed? }
  */
-export const createLook = ({ spec, cawDir, root, settings, tokens = null, compare, save, readImage, designFail = [], secrets = () => [], platform = process.platform }) => {
+export const createLook = ({ spec, cawDir, root, settings, tokens = null, compare, save, readImage, designFail = [], secrets = () => [], platform = process.platform, pixels = true }) => {
     const steps = new Map(spec.steps.map((step) => [step.id, step]));
     return async (id, { capture, page }) => {
         const record = {};
@@ -481,24 +532,26 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
             }
         }
         const step = steps.get(id);
-        if (settings.regression && step?.recording !== undefined) {
+        if (step?.look === true && step.recording !== undefined) {
             const basis = lookBasis(spec, step, designHashOf(cawDir, step));
             const learned = currentLook(step, basis);
-            const shot = await capture();
+            const shot = pixels ? await capture() : undefined;
             const styles = styleLines((await structureOf(page, { secrets: secrets() })).styles);
-            let imageRuns = learned?.images?.[platform] ?? 0;
+            let imageRuns = pixels ? learned?.images?.[platform] ?? 0 : 0;
             const stored = imageRuns === 0 ? null : readImage(join(root, lookImage(spec.id, id, platform)));
             // The YAML names an image that is not there (not committed, deleted): learned anew.
             if (stored === null) imageRuns = 0;
             const compared = stored === null ? null : await compare(shot.png, stored, shot.masks);
             const ratio = compared?.ratio;
-            const changedStyles = (learned?.runs ?? 0) >= LEARN_RUNS ? styleChanges(learned.styles, styles) : [];
+            const stylesLearned = (learned?.runs ?? 0) >= LEARN_RUNS;
+            const changedStyles = stylesLearned ? styleChanges(learned.styles, styles) : [];
             const changedPixels = imageRuns >= LEARN_RUNS && ratio > settings.maxRatio;
             const changed = changedStyles.length > 0 || changedPixels;
             const diff = changedPixels ? save(`step-${id}-look-diff.png`, compared.diffPng) : undefined;
-            const verdict = changed ? 'changed' : (learned?.runs ?? 0) >= LEARN_RUNS && imageRuns >= LEARN_RUNS ? 'same' : 'learning';
-            record.visual = { verdict, ...(ratio === undefined ? {} : { ratio }), ...(diff === undefined ? {} : { diff }), ...(changedStyles.length === 0 ? {} : { styles: changedStyles }) };
-            observed = { png: shot.png, styles, imageRuns, ...(ratio === undefined ? {} : { ratio }), ...(basis === undefined ? {} : { basis }), platform, changed };
+            // In a window the styles alone decide; `pixels` says that the image was not looked at.
+            const verdict = changed ? 'changed' : stylesLearned && (!pixels || imageRuns >= LEARN_RUNS) ? 'same' : 'learning';
+            record.visual = { verdict, ...(pixels ? {} : { pixels: 'headless-only' }), ...(ratio === undefined ? {} : { ratio }), ...(diff === undefined ? {} : { diff }), ...(changedStyles.length === 0 ? {} : { styles: changedStyles }) };
+            observed = { ...(pixels ? { png: shot.png, imageRuns } : {}), styles, ...(ratio === undefined ? {} : { ratio }), ...(basis === undefined ? {} : { basis }), platform, changed };
             if (changed) {
                 const details = [
                     ...(changedPixels ? [t('session.visual.pixels', { ratio: percent(ratio), max: percent(settings.maxRatio), diff: diff ?? '-' })] : []),
@@ -515,17 +568,19 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
 
 /**
  * One step's look after a healthy run, learned like effects: the first run stores it, a second one that matches confirms it
- * (LEARN_RUNS). Style lines that differ while learning drop out; an image that differs while learning is replaced and counts
- * from one again. A learned look stays as it is.
+ * (LEARN_RUNS). A count that differs while learning becomes `×?` (mergeStyles); an image that differs while learning is
+ * replaced and counts from one again. A run in a window (no `png`) learns the styles only. A learned look stays as it is.
  * @returns { visual, png? } or null when nothing changes; `png` { platform, data } is the image to write
  */
 export const learnLook = (current, observed, { maxRatio }) => {
     const runs = current?.runs ?? 0;
     const learnedStyles = runs >= LEARN_RUNS;
-    const styles = current === undefined ? observed.styles : learnedStyles ? current.styles : current.styles.filter((line) => observed.styles.includes(line));
+    const styles = current === undefined ? observed.styles : learnedStyles ? current.styles : mergeStyles(current.styles, observed.styles);
     const images = { ...(current?.images ?? {}) };
     let png;
-    if (observed.imageRuns === 0) {
+    if (observed.png === undefined) {
+        // A window's view: its image is not comparable, the stored one stays.
+    } else if (observed.imageRuns === 0) {
         images[observed.platform] = 1;
         png = { platform: observed.platform, data: observed.png };
     } else if (observed.imageRuns < LEARN_RUNS) {
@@ -565,13 +620,22 @@ export const withLooks = (spec, looks) => ({
 });
 
 /**
- * The human adopts the new look of a step ("Adopt new look"): it counts as learned at once, on this platform only (the others
- * learn it anew), and carries the day it was adopted, which audit lists.
+ * The human adopts the new look ("Adopt new look") of every step whose look changed in the run, at once: the styles count as
+ * learned, and the day it was adopted goes along, which audit lists. The images of all platforms learn anew. A look seen in a
+ * window has no comparable image: its stored image on this platform is deleted (`png.data` null, writeTest) and the next
+ * headless runs learn it. One seen headless brings its image and counts as learned on this platform.
+ * @param looks Map step -> observed (createLook)
  */
-export const withAdoptedLook = (spec, id, observed, day = new Date().toISOString().slice(0, 10)) => withLooks(spec, new Map([[id, {
-    visual: { runs: LEARN_RUNS, ...(observed.basis === undefined ? {} : { basis: observed.basis }), styles: observed.styles, images: { [observed.platform]: LEARN_RUNS }, adopted: day },
-    png: { platform: observed.platform, data: observed.png },
-}]]));
+export const withAdoptedLooks = (spec, looks, day = new Date().toISOString().slice(0, 10)) => withLooks(spec, new Map([...looks].map(([id, observed]) => [id, {
+    visual: {
+        runs: LEARN_RUNS,
+        ...(observed.basis === undefined ? {} : { basis: observed.basis }),
+        styles: observed.styles,
+        images: observed.png === undefined ? {} : { [observed.platform]: LEARN_RUNS },
+        adopted: day,
+    },
+    png: { platform: observed.platform, data: observed.png ?? null },
+}])));
 
 // ------------------------------------------------------------------------------------------------------------ design overlay
 

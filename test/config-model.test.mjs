@@ -81,8 +81,8 @@ test('design.fail: target, lint and visual, or [] (only warn); anything else is 
 
 test('visual and visualIgnore: opt-in switches, thresholds in range, selectors as text', () => {
     const plainConfig = { signIn: { type: 'none' }, environments: { local: { url: 'http://localhost:5173' } } };
-    assert.deepEqual(validateConfig({ ...plainConfig, visual: { screenshots: true, regression: true, tolerance: 16, maxRatio: 0.005, designMaxRatio: 0.05 }, visualIgnore: ['#clock'] }).issues, []);
-    for (const visual of [{ regression: 'yes' }, { tolerance: 300 }, { maxRatio: 2 }, { pixels: true }, []]) {
+    assert.deepEqual(validateConfig({ ...plainConfig, visual: { screenshots: true, tolerance: 16, maxRatio: 0.005, designMaxRatio: 0.05 }, visualIgnore: ['#clock'] }).issues, []);
+    for (const visual of [{ screenshots: 'yes' }, { regression: true }, { tolerance: 300 }, { maxRatio: 2 }, { pixels: true }, []]) {
         assert.equal(validateConfig({ ...plainConfig, visual }).issues.length, 1, JSON.stringify(visual));
     }
     for (const visualIgnore of ['#clock', [''], [3]]) {

@@ -4,7 +4,7 @@
 // sandbox has no yaml package and reads its plan as text.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
@@ -36,9 +36,10 @@ const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
 const RETRY_FIELDS = ['times', 'waitMs', 'from'];
 const MAX_RETRY_TIMES = 10;
 const MAX_RETRY_WAIT_MS = 300_000;
-// Only people write these, into the test file: the target design of a step and what must be there before it can be recorded.
-// They are outside stepHash (changing them never makes a step stale) and Claude's plan may not carry them.
-const HUMAN_STEP_FIELDS = ['design', 'needs'];
+// Only people write these, into the test file: the target design of a step, what must be there before it can be recorded, and
+// whether its look is learned and compared (`look: true`, visual regression). They are outside stepHash (changing them never
+// makes a step stale) and Claude's plan may not carry them.
+const HUMAN_STEP_FIELDS = ['design', 'needs', 'look'];
 const STEP_FIELDS = [...PLAN_STEP_FIELDS, ...HUMAN_STEP_FIELDS, 'recording'];
 // `locale`, `timezone` and `viewport`: the recording browser's, pinned on replay (the viewport headless, or browser.viewport).
 const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects', 'visual'];
@@ -343,6 +344,7 @@ const readSteps = (raw, problems, lineOf, { allowRecording, description = false,
         for (const key of HUMAN_STEP_FIELDS.filter((field) => plan && step[field] !== undefined)) report([...at, key], t('config.test.plan.humanOnly', { key }));
         if (!plan && step.design !== undefined && !isDesignName(step.design)) report([...at, 'design'], t('config.test.design'));
         if (!plan && step.needs !== undefined) checkNeeds(step.needs, [...at, 'needs'], report, framework);
+        if (!plan && step.look !== undefined && step.look !== true) report([...at, 'look'], t('config.test.look'));
         if (description && step.recording !== undefined) report([...at, 'recording'], t('config.test.recordingOnly', { key: 'recording' }));
         const plain = {
             id: step.id,
@@ -746,7 +748,7 @@ export const overlayChoice = (config, name, flag, { required = true, start = fal
 
 /**
  * Only what defines the step's content. A manual change makes exactly this step stale. `retry` does not change the path, and
- * neither do `design` and `needs`: they say what the screen should become, not what the step does.
+ * neither do `design`, `needs` and `look`: they say what the screen should become or keep, not what the step does.
  */
 export const stepHash = ({ name, do: action, expect, note }) => createHash('sha256')
     .update(JSON.stringify([clean(name), clean(action), clean(expect), clean(note)]))
@@ -850,7 +852,7 @@ const setSteps = (doc, spec, only, { prune = false, ...options } = {}) => {
     }
     const known = new Map(list.items.map((item) => [item.get('id'), item]));
     const renew = (step) => {
-        // design and needs belong to the human: a step from Claude's plan never has them, the file keeps them.
+        // design, needs and look belong to the human: a step from Claude's plan never has them, the file keeps them.
         const before = known.get(step.id)?.toJS(doc);
         const node = stepNode(doc, { ...humanFields(before), ...step }, options);
         // Comments above the step belong to the human.
@@ -985,11 +987,19 @@ export const writeTest = (root, spec, only, { withNotes = false, prune = false }
     if (empty && oldRecordings === undefined) return changed.length === 0 ? t('config.test.unchanged') : changed.join(', ');
     mkdirSync(join(root, RECORDING_DIR), { recursive: true });
     if (writeIfChanged(recordingFile, renderRecordings(recorded), oldRecordings)) changed.push(`${RECORDING_DIR}/${spec.id}.yaml`);
-    // A learned or adopted look brings its image (withLooks): beside the recording, per test, step and platform.
+    // A learned or adopted look brings its image (withLooks): beside the recording, per test, step and platform. A look adopted
+    // in a window has none (data null): its old image goes, the next headless runs learn it.
     for (const step of spec.steps) {
         const image = (only === undefined || only.has(step.id)) ? step.recording?.lookPng : undefined;
         if (image === undefined) continue;
         const file = lookImage(spec.id, step.id, image.platform);
+        if (image.data === null) {
+            if (existsSync(join(root, file))) {
+                rmSync(join(root, file), { force: true });
+                changed.push(file);
+            }
+            continue;
+        }
         if (existsSync(join(root, file)) && readFileSync(join(root, file)).equals(image.data)) continue;
         mkdirSync(dirname(join(root, file)), { recursive: true });
         writeFileSync(join(root, file), image.data);

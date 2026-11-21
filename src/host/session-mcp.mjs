@@ -627,9 +627,10 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         description: 'Target designs for test steps, under caw/design. You fetch a design yourself (a Claude Design artifact, a Figma export) '
             + 'and write it here; never write into caw/ with your own tools. {action: "put", file, content | base64}: writes '
             + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network), design/<name>.png (base64) or '
-            + 'design/<name>tokens.json (DTCG: every token has $value). {action: "list"}: the design files and which steps link them. '
+            + 'design/<name>tokens.json (DTCG: every token has $value). {action: "list"}: the design files and which steps link them '
+            + '(or carry look: true, a learned look the person set by hand). '
             + '{action: "link", test, step, file | null, personAsked: true}: sets or removes design: on one step of caw/tests/<test>.yaml. '
-            + 'Link only when the person asked for exactly that in this conversation; design: and needs: belong to the person. '
+            + 'Link only when the person asked for exactly that in this conversation; design:, needs: and look: belong to the person. '
             + 'A run judges a linked .html design after the step\'s check passed; read caw_guide topic design. No tokens.',
         inputSchema: {
             type: 'object',
@@ -673,8 +674,14 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 const ids = existsSync(testsDir) ? readdirSync(testsDir).filter((name) => name.endsWith('.yaml')).map((name) => name.slice(0, -'.yaml'.length)).sort() : [];
                 const links = ids.flatMap((id) => {
                     try {
-                        return loadTest(root, id).steps.filter((step) => step.design !== undefined || step.needs !== undefined)
-                            .map((step) => ({ test: id, step: step.id, ...(step.design === undefined ? {} : { design: step.design, exists: design.designPath(cawDir, step.design) !== null }), ...(step.needs === undefined ? {} : { needs: step.needs }) }));
+                        return loadTest(root, id).steps.filter((step) => step.design !== undefined || step.needs !== undefined || step.look === true)
+                            .map((step) => ({
+                                test: id,
+                                step: step.id,
+                                ...(step.design === undefined ? {} : { design: step.design, exists: design.designPath(cawDir, step.design) !== null }),
+                                ...(step.needs === undefined ? {} : { needs: step.needs }),
+                                ...(step.look === true ? { look: true } : {}),
+                            }));
                     } catch {
                         return []; // an invalid test is reported by caw_validate
                     }

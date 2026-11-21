@@ -710,5 +710,7 @@ Browser:
     'cli.fixReport.changedNone': 'Keine.',
     'cli.fixReport.changedUnknown': 'Unbekannt: Zum roten Lauf ist kein Commit vermerkt, oder git konnte es nicht sagen.',
     'cli.changedLooks': 'Aussehen {ids}',
-    'cli.audit.kind.look-adopted': 'Für {step} wurde am {day} ein neuer Look übernommen: sein Bildschirm wird ab jetzt mit dem neuen Bild verglichen.',
+    'cli.audit.kind.look-adopted': 'Für {step} wurde am {day} ein neuer Look übernommen: seine Stile gelten ab jetzt, sein Bild lernen die nächsten Läufe headless neu.',
+    'cli.audit.kind.look-on': '{step} lernt und vergleicht jetzt sein Aussehen (look: true).',
+    'cli.audit.kind.look-off': '{step} vergleicht sein gelerntes Aussehen nicht mehr (look: true entfernt): Sieht der Schritt anders aus, scheitert er nicht mehr.',
 };

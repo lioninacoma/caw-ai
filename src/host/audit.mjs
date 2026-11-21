@@ -15,6 +15,7 @@ import { DEFAULT_EFFECT_FAIL, EFFECT_LISTS, LEARN_RUNS } from './effects.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { auditFiles, isAuditFile, mergeBase, readAtCommit } from './git.mjs';
 import { mergeRecordings, parseRecordings, parseTest } from './test-file.mjs';
+import { LOOK_LEARN_RUNS } from './visual.mjs';
 
 // What a step or action waits without its own timeoutMs (browser-session.mjs STEP_TIMEOUT_MS; --step-timeout can change it per
 // run, which a file comparison cannot see).
@@ -142,6 +143,11 @@ const stepChanges = (finding, { before, after }, failLists) => {
             ...at, before: before.retry, after: after.retry, vars: { times: triesAfter, was: triesBefore },
         }));
     }
+    // `look: true` off a step whose look was learned: a step that looks different passes from now on. On: only listed.
+    if (before.look === true && after.look !== true && (before.recording?.visual?.runs ?? 0) >= LOOK_LEARN_RUNS) {
+        out.push(finding('look-off', 'weakening', { ...at, before: true, after: after.look ?? null }));
+    }
+    if (before.look !== true && after.look === true) out.push(finding('look-on', 'listed', { ...at, before: before.look ?? null, after: true }));
     const was = before.recording;
     const now = after.recording;
     if (was === undefined || now === undefined) return out;
@@ -175,8 +181,9 @@ const stepChanges = (finding, { before, after }, failLists) => {
         }
     });
     if (was.network !== undefined && !same(was.network, now.network)) out.push(finding('baselines-changed', 'info', { ...at, before: was.network, after: now.network }));
-    // A look a person adopted ("Adopt new look"): the step is compared against the new image from now on. Listed, so the
-    // reviewer looks at the image in the diff; a look learned over runs is not listed, it only confirms what was there.
+    // A look a person adopted ("Adopt new look"): the step is compared against the adopted styles from now on, its image is
+    // learned anew. Listed, so the reviewer looks at the styles in the diff; a look learned over runs is not listed, it only
+    // confirms what was there.
     if (now.visual?.adopted !== undefined && now.visual.adopted !== was.visual?.adopted) {
         out.push(finding('look-adopted', 'listed', { ...at, before: was.visual?.styles, after: now.visual.styles, vars: { day: now.visual.adopted } }));
     }

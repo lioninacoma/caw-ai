@@ -338,7 +338,7 @@ The test plan can be the spec before the screen exists. Write the next steps at 
 
 Each run then judges the design without AI, after the step's check passed: the controls, headings, labels and a few styles per control of the rendered design against the app's page ([details](test-files.md#target-design)). Not met, the step fails with kind `design`, and the chat offers to have it built by your attached session or to close, never to fix the step: the test is right, the screen is not built yet. When the first pending step's `needs` are all on the page, the run says it is ready to record: `caw record <test>@S4`.
 
-A `.png` design is judged by pixels against the step's screen, with run tag, remembered values, dates, list rows and `visualIgnore` masked ([details](test-files.md#target-design)). To see where the screen is off, open the step with its design over it:
+A `.png` design is judged by pixels against the step's screen, with run tag, remembered values, dates, list rows, list entries, cards and `visualIgnore` masked ([details](test-files.md#target-design)). To see where the screen is off, open the step with its design over it:
 
 ```bash
 caw open <test>@S4 --design --env local
@@ -350,7 +350,7 @@ With design tokens in `caw/design` every run also lints each reached state: colo
 
 ### Visual regression
 
-Once a screen is built, `"visual": { "regression": true }` keeps it that way: caw learns each passed step's look over two healthy runs and a later run whose styles or pixels changed fails that step with kind `visual`. If the change is intended, **Adopt new look** in the chat takes it over; `caw audit` lists that. Limits: the image is per platform (fonts render differently on Windows and Linux), data areas are masked rather than compared, and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
+Once a screen is built, `look: true` on its step in the test file keeps it that way: caw learns the step's look over two healthy runs, and a later run whose styles or pixels changed fails that step with kind `visual`. Set it only on steps whose screen shows fixed data (a state the test sets up itself, fixtures): changing data makes it noisy. Masked are the run tag, remembered values, numeric dates, list and table rows, list entries and cards; `visualIgnore` in the config covers the rest. Pixels are compared only in headless runs (`--headless`, a fixed viewport); a run in the window compares the styles only. If the change is intended, **Adopt new look** in the chat takes over the new look of every changed step at once, and the next headless runs learn their images anew; `caw audit` lists that. Limits: the image is per platform (fonts render differently on Windows and Linux), and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
 
 ## Triage and repair
 

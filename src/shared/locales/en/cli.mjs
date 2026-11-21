@@ -703,5 +703,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.fixReport.changedNone': 'None.',
     'cli.fixReport.changedUnknown': 'Unknown: no commit was recorded with the red run, or git could not tell.',
     'cli.changedLooks': 'look {ids}',
-    'cli.audit.kind.look-adopted': 'A person adopted a new look for {step} on {day}: its screen is compared against the new image from now on.',
+    'cli.audit.kind.look-adopted': 'A person adopted a new look for {step} on {day}: its styles count from now on, its image is learned anew by the next headless runs.',
+    'cli.audit.kind.look-on': '{step} now learns and compares its look (look: true).',
+    'cli.audit.kind.look-off': '{step} no longer compares its learned look (look: true removed): a step that looks different no longer fails.',
 };
