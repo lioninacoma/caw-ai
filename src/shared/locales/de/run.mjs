@@ -455,4 +455,11 @@ export default {
     'run.mcp.roleNothing': 'Keine Sitzung gespeichert (Fenster geschlossen oder Fehler). Letzte Ausgabe: {tail}',
     'run.button.useTarget': '„{name}“ verwenden',
     'run.flow.targetAdopted': 'Aktion {number} von {id} nutzt jetzt {target}: {file}. Bitte prüfen und committen.',
+    'run.button.adoptLook': 'Neuen Look übernehmen',
+    'run.flow.lookNext': 'Der Schritt selbst klappt; er sieht nur anders aus als gelernt. Wenn der neue Look stimmt, übernimm ihn; er gilt dann für diese Plattform als gelernt.',
+    'run.flow.lookAdopted': 'Neuer Look von {id} übernommen: {file}. Bitte prüfen und committen.',
+    'run.flow.looksLearned': 'Aussehen von {ids} gelernt: {file}. Bitte prüfen und committen.',
+    'run.develop.noDesign': '{id} hat kein Zielbild („design:“ in der Testdatei), es gibt also nichts, was über der App liegen könnte.',
+    'run.develop.designFailed': 'Entwurf {file} ließ sich nicht zeigen: {message}',
+    'run.develop.designShown': 'Entwurf {file} liegt über der App, in der Größe, in der {id} aufgenommen wurde; F7 zeigt und verbirgt ihn. Darunter stehen {count} Abweichungen; eine mit Element gibt es an {agent} weiter, wie /element.',
 };

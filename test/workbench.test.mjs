@@ -32,11 +32,11 @@ test('workbench: Graphite in the personal mode, no theme machinery, and a title 
     assert.match(html, /font-family:"Geist"/);
     assert.match(html, /<svg class="logo"/);
     assert.match(workbenchHtml({ appUrl: 'about:blank', title: 't' }), /data-pref="system"/);
-    assert.doesNotMatch(html.replace(/base64,[A-Za-z0-9+/=]+/g, ''), /theme|cawRaven|cawGlyph|<b>F7<|'F7'|font-crt/i);
+    // F7 was the theme switch; it is the target design over the app now (the menu entry with id mDesign).
+    assert.doesNotMatch(html.replace(/base64,[A-Za-z0-9+/=]+/g, ''), /theme|cawRaven|cawGlyph|font-crt/i);
     const script = html.slice(html.lastIndexOf('<script>'));
     assert.doesNotMatch(script.slice(0, script.indexOf('</script>')), /<\/script><b>/);
     assert.ok(!CHAT_KEYS.includes('F5') && !CHAT_KEYS.includes('Escape'), 'the chat triggers neither reload nor abort in the workbench');
-    assert.ok(!CHAT_KEYS.includes('F7'));
 });
 
 test('workbench header: the title is a sentence with the test; chips only where the project offers a choice', () => {
@@ -63,13 +63,14 @@ test('workbench: no toolbars; one ⋯ menu lists every function with its key, th
     assert.doesNotMatch(html, /class="fkeys"|class="fk[ "]|solo-btn/, 'no F-key bar, no button row');
     const menu = html.slice(html.indexOf('<div id="menu"'), html.indexOf('<main class="panes">'));
     const keys = [...menu.matchAll(/<kbd>([^<]+)<\/kbd>/g)].map(([, key]) => key);
-    assert.deepEqual(keys, ['F9', 'F5', 'Esc', 'F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Strg ,', '?']);
+    assert.deepEqual(keys, ['F9', 'F5', 'Esc', 'F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F10', 'Strg ,', '?']);
+    assert.match(menu, /id="mDesign" data-press="F7" hidden/, 'the target design only when open --design shows one');
     assert.match(menu, /id="reload" data-press="F5" disabled/, 'reload locked until the hand-over');
     assert.match(menu, /data-states data-press="F1" hidden/, 'Open… only when offered');
     assert.match(menu, /role="menuitemcheckbox" tabindex="-1" id="still" aria-checked="true"/);
     assert.match(html, /id="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu"/);
     // The chat forwards these keys and posts them for its slash commands: views and menus only, never a decision.
-    assert.deepEqual(CHAT_KEYS, ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', 'Ctrl+J', '?']);
+    assert.deepEqual(CHAT_KEYS, ['F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', 'Ctrl+J', '?']);
 });
 
 test('workbench: the chat placeholder takes a new mode only from its parent and only one of the three', () => {

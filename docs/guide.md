@@ -103,6 +103,7 @@ Light and dark: the workbench, the chat, the report page and the "caw explore" c
 | F2, F3 | Requests, console |
 | F4, F6 | Collapse or expand steps, chat |
 | F5 | Reload the app without cache (after the handover) |
+| F7 | Target design over the app, and away (`open … --design`) |
 | F8 | App only, and back |
 | Ctrl+J | In App only: show or hide the chat over the app |
 | F9 | Pause or continue Claude |
@@ -312,6 +313,20 @@ In the window you stay behind the same host lock and are signed in as the test u
 The test plan can be the spec before the screen exists. Write the next steps at the end of the test (they stay [pending](test-files.md#pending-steps)) and give a step the screen it should end on: `design: design/order-form.html`, and `needs:` with the locators that must be there before it can be recorded. The design usually comes from a Claude Design artifact or a Figma export: ask your Claude Code session to fetch it; it writes it with `caw_design` into `caw/design` and links it to the step when you ask. caw never fetches anything itself.
 
 Each run then judges the design without AI, after the step's check passed: the controls, headings, labels and a few styles per control of the rendered design against the app's page ([details](test-files.md#target-design)). Not met, the step fails with kind `design`, and the chat offers to have it built by your attached session or to close, never to fix the step: the test is right, the screen is not built yet. When the first pending step's `needs` are all on the page, the run says it is ready to record: `caw record <test>@S4`.
+
+A `.png` design is judged by pixels against the step's screen, with run tag, remembered values, dates, list rows and `visualIgnore` masked ([details](test-files.md#target-design)). To see where the screen is off, open the step with its design over it:
+
+```bash
+caw open <test>@S4 --design --env local
+```
+
+It plays through S4 (a pending S4: up to its entry) and lays the design over the app at the recorded size, half transparent; **F7** shows and hides it, also across reloads. Below it the deviations are listed: missing controls, differing styles, the share of differing pixels and, with design tokens, the lint findings. A finding with an element hands it to your attached session when you click it, as `/element` does, so you can say "make this one match".
+
+With design tokens in `caw/design` every run also lints each reached state: colors that are no token, spacing off the scale, contrast below WCAG AA, clipped text and unnamed controls, as warnings unless `design.fail` has `"lint"` ([token lint](test-files.md#token-lint)).
+
+### Visual regression
+
+Once a screen is built, `"visual": { "regression": true }` keeps it that way: caw learns each passed step's look over two healthy runs, like the effects, and a later run whose styles or pixels changed fails that step with kind `visual`. If the change is intended, **Adopt new look** in the chat takes it over; `caw audit` lists that. Limits: the image is per platform (fonts render differently on Windows and Linux), data areas are masked rather than compared, and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
 
 ## Triage and repair
 

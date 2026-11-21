@@ -4,10 +4,11 @@
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
 import { CONFIG_FILE, CONTEXT_FILE } from '../shared/names.mjs';
-import { positionalActions, replayOf, replayToEntry, replayUpToStale, withBaselines, withEffects, withoutEffects, withProposal } from './replay.mjs';
+import { cutReplay, positionalActions, replayOf, replayToEntry, replayUpToStale, withBaselines, withEffects, withoutEffects, withProposal } from './replay.mjs';
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { locatorLabel, locatorText } from './locator.mjs';
 import { staleSteps } from './test-file.mjs';
+import { withAdoptedLook, withLooks } from './visual.mjs';
 
 // Labels as getters: the language is not settled at import time. Copies via spread are only made at runtime.
 const button = (id, key, extra = {}) => ({ id, get label() { return t(key); }, ...extra });
@@ -24,6 +25,8 @@ const CLOSE = button('close', 'run.button.close');
 const ASK = button('ask', 'run.button.ask', { primary: true });
 // A target design not met: asking means having the screen built, the app's code changes, not the test.
 const BUILD_DESIGN = button('ask', 'run.button.buildDesign', { primary: true });
+// The learned look changed: if the new one is right, adopting it is the human's decision, without Claude and tokens.
+const ADOPT_LOOK = button('adopt-look', 'run.button.adoptLook', { primary: true });
 // Only the effects deviate, the check is met: forget the learned effects, without Claude and without tokens.
 const FORGET_EFFECT = button('forget-effect', 'run.button.forgetEffect');
 // Only script errors, e.g. from third-party code: add them to consoleIgnore and re-check right away, without Claude and tokens.
@@ -159,8 +162,10 @@ const createFixer = ({ sandbox, openSandbox }) => {
             // A design not met: the step works, its screen is not built yet. Fixing the step or forgetting its effects would hide
             // that, so only asking (the app's code changes, not the test) and closing remain.
             const design = failed.kind === 'design';
-            if (design) hint = '';
-            const where = design ? ` ${t('run.flow.designNext')}` : t(repairHere === undefined ? 'run.flow.whereFresh' : 'run.flow.whereHere');
+            // A changed look: the step works, it only looks different than learned. Adopt the new look, ask, or close.
+            const look = failed.kind === 'visual';
+            if (design || look) hint = '';
+            const where = design || look ? ` ${t(look ? 'run.flow.lookNext' : 'run.flow.designNext')}` : t(repairHere === undefined ? 'run.flow.whereFresh' : 'run.flow.whereHere');
             // The status line below says that Claude can be asked.
             // Same failure after a fix: fixing the same step again changes nothing, the cause lies elsewhere.
             const again = repeated ? t('run.flow.again', { config: CONFIG_FILE }) : '';
@@ -192,6 +197,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
             const useTarget = proposal === undefined ? null : { id: 'use-target', primary: true, label: t('run.button.useTarget', { name: locatorText(proposal.to) ?? locatorLabel(proposal.to) }) };
             if (useTarget !== null) options = [useTarget, ...options.map(secondary)];
             if (design) options = canAsk ? [BUILD_DESIGN, CLOSE] : [ONLY_CLOSE];
+            if (look) options = [...(failed.look === undefined ? [] : [ADOPT_LOOK]), ...(canAsk ? [failed.look === undefined ? ASK : secondary(ASK)] : []), failed.look === undefined && !canAsk ? ONLY_CLOSE : CLOSE];
             /** The config now allows all hard failures: a check run without Claude is enough, no fix. */
             const recheck = async (advice) => {
                 chat.notice(t('run.flow.ignoredRecheck'));
@@ -224,6 +230,7 @@ const createFixer = ({ sandbox, openSandbox }) => {
                     return recheck(advice);
                 }
                 if (answer?.choice === FORGET_EFFECT.id) return { advice, target: null, forget: failed.id };
+                if (answer?.choice === ADOPT_LOOK.id) return { advice, target: null, adoptLook: { id: failed.id, observed: failed.look } };
                 if (useTarget !== null && answer?.choice === useTarget.id) return { advice, target: null, adoptTarget: proposal };
                 if (answer?.choice === ASK.id) return { advice, target: null, ask: true };
                 if (answer?.choice !== FIX.id) return { advice, target: null };
@@ -504,13 +511,14 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * @param advise    --explain: on failures or warnings Claude advises on its own, even in a passed run. Costs tokens
  * @param handover  the human wants the window afterwards (open)
  * @param entry     open at the entry of this step: the steps before it, then its leading navigation (replayToEntry)
+ * @param through   open after this step, played completely (open --design: its screen is what the design is laid over)
  * @param fillBaselines passed steps without a request baseline get it from this run, without Claude and tokens (every run
  *                      outside CI, in CI with --learn)
  * @param onPlayed  gets the playback result before things continue
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  */
 export const runFlow = async (options) => {
-    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
+    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
     const fixer = createFixer({ openSandbox });
     let target = null;
     let repaired = null;
@@ -533,7 +541,7 @@ export const runFlow = async (options) => {
     };
     const played = await execute({
         spec,
-        replay: entry === undefined ? replayOf(spec) : replayToEntry(spec, entry, { reads }),
+        replay: entry !== undefined ? replayToEntry(spec, entry, { reads }) : through === undefined ? replayOf(spec) : cutReplay(spec, through),
         handover: () => handover && target === null && repaired === null && !rerun,
         ...(handover ? { command: 'open' } : {}),
         learns: fillBaselines,
@@ -699,6 +707,13 @@ export const runFlow = async (options) => {
                     chat.notice(text);
                     rerun = true;
                 }
+                // The new look becomes the learned one, for this platform; audit lists it as adopted.
+                if (settled.adoptLook !== undefined) {
+                    current = withAdoptedLook(current, settled.adoptLook.id, settled.adoptLook.observed);
+                    const text = t('run.flow.lookAdopted', { id: settled.adoptLook.id, file: adopt(current, new Set([settled.adoptLook.id]), { learned: 'looks' }) });
+                    log(text);
+                    chat.notice(text);
+                }
                 if (settled.forget !== undefined) {
                     current = withoutEffects(current, settled.forget);
                     log(t('run.flow.effectForgotten', { id: settled.forget, file: adopt(current, new Set([settled.forget])) }));
@@ -719,6 +734,10 @@ export const runFlow = async (options) => {
     if (fillBaselines && played.effects !== undefined) {
         current = withEffects(current, played.effects);
         log(t('run.flow.effectsLearned', { ids: [...played.effects.keys()].join(', '), file: adopt(current, new Set(played.effects.keys()), { learned: 'effects' }) }));
+    }
+    if (fillBaselines && played.looks !== undefined) {
+        current = withLooks(current, played.looks);
+        log(t('run.flow.looksLearned', { ids: [...played.looks.keys()].join(', '), file: adopt(current, new Set(played.looks.keys()), { learned: 'looks' }) }));
     }
     if (rerun) {
         log(t('run.flow.rerunning'));

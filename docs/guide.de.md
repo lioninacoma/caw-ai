@@ -103,6 +103,7 @@ Hell und dunkel: Werkbank, Chat, Berichtsseite und die Karte „caw explore“ f
 | F2, F3 | Requests, Konsole |
 | F4, F6 | Schritte, Chat ein- oder ausklappen |
 | F5 | Die Anwendung ohne Cache neu laden (nach der Übergabe) |
+| F7 | Zielbild über der App ein und aus (`open … --design`) |
 | F8 | Nur Anwendung und zurück |
 | Strg+J | In Nur Anwendung: Chat über der Anwendung ein- oder ausblenden |
 | F9 | Claude anhalten oder weitermachen lassen |
@@ -313,6 +314,20 @@ Du bleibst im Fenster hinter derselben Host-Sperre und bist als Testnutzer angem
 Der Testplan kann die Vorgabe sein, bevor es den Bildschirm gibt. Schreib die nächsten Schritte ans Ende des Tests (sie bleiben [offen](test-files.de.md#offene-schritte)) und gib einem Schritt den Bildschirm, auf dem er enden soll: `design: design/order-form.html`, dazu `needs:` mit den Locatoren, die da sein müssen, bevor er aufgenommen werden kann. Der Entwurf kommt meist aus einem Claude-Design-Artefakt oder einem Figma-Export: Bitte deine Claude-Code-Session, ihn zu holen; sie schreibt ihn mit `caw_design` nach `caw/design` und hängt ihn an den Schritt, wenn du darum bittest. caw selbst holt nie etwas.
 
 Jeder Lauf beurteilt den Entwurf dann ohne KI, nachdem die Prüfung des Schritts bestanden hat: Bedienelemente, Überschriften, Beschriftungen und einige Stile je Bedienelement des gerenderten Entwurfs gegen die Seite der App ([Einzelheiten](test-files.de.md#zielbild)). Ist er nicht erfüllt, scheitert der Schritt mit kind `design`, und der Chat bietet an, ihn von deiner verbundenen Session umsetzen zu lassen oder zu schließen, nie den Schritt zu beheben: Der Test stimmt, der Bildschirm ist noch nicht gebaut. Sind alle `needs` des ersten offenen Schritts auf der Seite, meldet der Lauf, dass er bereit zum Aufnehmen ist: `caw record <test>@S4`.
+
+Ein `.png`-Entwurf wird nach Pixeln gegen den Bildschirm des Schritts beurteilt, Lauf-Kennung, gemerkte Werte, Datumsangaben, Listenzeilen und `visualIgnore` maskiert ([Einzelheiten](test-files.de.md#zielbild)). Um zu sehen, wo der Bildschirm abweicht, öffne den Schritt mit dem Entwurf darüber:
+
+```bash
+caw open <test>@S4 --design --env local
+```
+
+Das spielt bis einschließlich S4 (bei offenem S4: bis zu seinem Einstieg) und legt den Entwurf halb durchsichtig in der aufgenommenen Größe über die App; **F7** zeigt und verbirgt ihn, auch über ein Neuladen hinweg. Darunter stehen die Abweichungen: fehlende Bedienelemente, abweichende Stile, der Anteil abweichender Pixel und mit Design-Tokens die Lint-Befunde. Ein Befund mit Element gibt es beim Klick an deine verbundene Session weiter, wie `/element`, und du kannst sagen: „Bring das hier in Ordnung.“
+
+Mit Design-Tokens in `caw/design` prüft jeder Lauf außerdem jeden erreichten Zustand: Farben, die kein Token sind, Abstände außerhalb der Skala, Kontrast unter WCAG AA, abgeschnittenen Text und unbenannte Bedienelemente, als Warnungen, außer `design.fail` enthält `"lint"` ([Token-Lint](test-files.de.md#token-lint)).
+
+### Visuelle Regression
+
+Ist ein Bildschirm gebaut, hält `"visual": { "regression": true }` ihn so: caw lernt das Aussehen jedes bestandenen Schritts über zwei gesunde Läufe, wie die Wirkungen, und ein späterer Lauf, in dem sich Stile oder Pixel geändert haben, lässt diesen Schritt mit kind `visual` scheitern. Ist die Änderung gewollt, übernimmt **Neuen Look übernehmen** im Chat sie; `caw audit` nennt das. Grenzen: Das Bild gilt je Plattform (Schriften rendern unter Windows und Linux verschieden), Datenbereiche werden maskiert statt verglichen, und die Schwellen sind Startwerte, bis sie gemessen sind ([Einzelheiten](test-files.de.md#visuelle-regression)).
 
 ## Einordnen und reparieren
 

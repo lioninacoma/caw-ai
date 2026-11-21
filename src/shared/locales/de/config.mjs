@@ -432,4 +432,9 @@ export default {
     'config.report.proposals': 'Vorgeschlagene Ziele',
     'config.report.proposals.intro': 'Ein aufgenommenes Element fehlt, ein ähnliches trat an seine Stelle: Es bewirkte die gelernte Wirkung des Schritts, schrieb nichts, und die unveränderte Prüfung bestand. Übernimm es mit dem Knopf im Chat oder ändere das Ziel in der Aufnahme.',
     'config.report.proposals.item': '- {step}, Aktion {number}: `{from}` → `{to}`',
+    'config.visual': 'visual muss ein Objekt sein mit screenshots und regression (true/false), tolerance (0-255), maxRatio und designMaxRatio (0-1), etwa { "regression": true }',
+    'config.visualIgnore': 'visualIgnore muss eine Liste von CSS-Selektoren sein, etwa ["#clock", ".avatar"]',
+    'config.test.visual': 'recording.visual braucht runs (Zahl), styles: [Zeilen], images: { <Plattform>: runs } und optional basis und adopted (JJJJ-MM-TT), wie caw es lernt.',
+    'config.report.warning.lint': 'Token-Lint',
+    'config.report.warning.visual': 'Aussehen',
 };

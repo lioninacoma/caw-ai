@@ -382,6 +382,30 @@ test('two files: when the tool learns, only the recording changes', (t) => {
     assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung');
 });
 
+test('two files: a learned look goes into the recording, its image beside it per platform; written once', (t) => {
+    const root = testRoot(t);
+    const whole = spec(recorded('S1'), recorded('S2', [], { after: 'S1' }));
+    writeTest(root, whole);
+    const description = readFileSync(testPath(root, 't'), 'utf8');
+    const image = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    const visual = { runs: 1, styles: ['button "Save": color #ffffff'], images: { linux: 1 } };
+    const learned = { ...whole, steps: [whole.steps[0], { ...whole.steps[1], recording: { ...whole.steps[1].recording, visual, lookPng: { platform: 'linux', data: image } } }] };
+    assert.equal(writeTest(root, learned, new Set(['S2'])), 'caw/recordings/t.yaml, caw/recordings/t/S2.linux.png');
+    assert.equal(readFileSync(testPath(root, 't'), 'utf8'), description, 'the description stays');
+    assert.deepEqual(readFileSync(join(root, 'caw/recordings/t/S2.linux.png')), image);
+    assert.match(readFileSync(recordingPath(root, 't'), 'utf8'), /images: \{linux: 1\}/);
+    assert.deepEqual(loadTest(root, 't').steps[1].recording.visual, visual);
+    assert.equal(writeTest(root, learned, new Set(['S2'])), 'keine Änderung', 'the same image is not written again');
+});
+
+test('recordings: a visual field that is not as caw learns it is an error', () => {
+    const recording = (visual) => `test: t\nsteps:\n  - id: S1\n    hash: h\n    recordedOn: a/dev\n    recordedAt: x\n    locale: de-DE\n    timezone: Europe/Berlin\n    actions: []\n    check: "true"\n    visual: ${visual}\n`;
+    assert.doesNotThrow(() => parseRecordings(recording('{runs: 2, styles: [], images: {win32: 2}, adopted: "2026-11-21"}')));
+    for (const bad of ['{runs: 2, styles: []}', '{runs: 0, styles: [], images: {}}', '{runs: 1, styles: [], images: {win32: 1}, adopted: yesterday}', '{runs: 1, styles: [], images: {"../x": 1}}', '{runs: 1, styles: [], images: {}, png: x}']) {
+        assert.throws(() => parseRecordings(recording(bad)), /recording\.visual/, bad);
+    }
+});
+
 test('writeTest: a hand-written read-only plan that wrote while recording is saved as writes: true; never back to false', (t) => {
     const root = testRoot(t);
     const plan = { ...spec(recorded('S1')), writes: false };

@@ -404,7 +404,7 @@ test('help: per command only its block, agent commands under caw agent --help, s
     assert.match(helpText('agent'), /fill <ziel> <text>/);
     assert.match(helpText('agent'), /wait-ready \[--for <selektor>\] \[--min-count <n>\] \[--timeout <dauer>\]/);
     assert.equal(synopsisOf('qqqq'), undefined);
-    assert.equal(synopsisOf('open'), 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>] [--agent local|docker | --attach [<key>]]');
+    assert.equal(synopsisOf('open'), 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]');
     assert.equal(synopsisOf('click'), undefined);
     assert.equal(unknownCommandText('lsit'), 'Unbekannter Befehl: lsit. Meintest du list? Siehe caw --help.');
     assert.equal(unknownCommandText('qqqq'), 'Unbekannter Befehl: qqqq. Siehe caw --help.');

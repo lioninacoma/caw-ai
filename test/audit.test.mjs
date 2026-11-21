@@ -158,6 +158,19 @@ test('renderAudit: Markdown for the PR, weakenings first, checks as code', () =>
     assert.match(renderAudit({ ref: 'main', base: 'abc', findings: [] }), /Kein Test, keine Aufnahme und keine Config geändert\./);
 });
 
+test('auditChanges: an adopted look is listed with its day; a look learned over runs is not', () => {
+    const look = (extra) => ({ runs: 2, styles: ['button "Speichern": color #ffffff'], images: { linux: 2 }, ...extra });
+    const before = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look() } })]);
+    const adopted = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look({ styles: ['button "Speichern": color #000000'], adopted: '2026-11-21' }) } })]);
+    const findings = audit(adopted, { before });
+    assert.deepEqual(kinds(findings), ['listed:look-adopted']);
+    assert.equal(findings[0].text, 'Für S2 wurde am 2026-11-21 ein neuer Look übernommen: sein Bildschirm wird ab jetzt mit dem neuen Bild verglichen.');
+    assert.deepEqual(findings[0].after, ['button "Speichern": color #000000']);
+    const learnedLook = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', recording: { visual: look({ images: { linux: 2, win32: 1 } }) } })]);
+    assert.deepEqual(audit(learnedLook, { before }), []);
+    assert.deepEqual(audit(adopted, { before: adopted }), [], 'the same adoption is not listed again');
+});
+
 test('auditChanges: an adopted proposal (only a target swapped) is listed with both locators, not a weakening', () => {
     const SICHERN = "getByRole('button', { name: 'Sichern', exact: true })";
     const effects = learned([{ action: 2, view: ['+ - status: Gespeichert'] }]);

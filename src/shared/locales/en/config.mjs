@@ -432,4 +432,9 @@ export default {
     'config.report.proposals': 'Proposed targets',
     'config.report.proposals.intro': 'A recorded element is gone, one similar element took its place: it caused the step\'s learned effect, wrote nothing, and the unchanged check passed. Adopt it with the button in the chat, or change the target in the recording.',
     'config.report.proposals.item': '- {step}, action {number}: `{from}` → `{to}`',
+    'config.visual': 'visual must be an object with screenshots and regression (true/false), tolerance (0-255), maxRatio and designMaxRatio (0-1), e.g. { "regression": true }',
+    'config.visualIgnore': 'visualIgnore must be a list of CSS selectors, e.g. ["#clock", ".avatar"]',
+    'config.test.visual': 'recording.visual needs runs (number), styles: [lines], images: { <platform>: runs } and optionally basis and adopted (YYYY-MM-DD), as caw learns it.',
+    'config.report.warning.lint': 'Token lint',
+    'config.report.warning.visual': 'Look',
 };

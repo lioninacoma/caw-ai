@@ -33,12 +33,12 @@ import { locatorLabel } from './locator.mjs';
 import { recordLocator } from './record-locator.mjs';
 import { adviceView, applyEdits, applyToFiles, applyToSpec, adviceReader, changesFiles, configValue } from './advice.mjs';
 import { diagnose } from './diagnose.mjs';
-import { createDesignJudge, missingNeeds } from './design.mjs';
+import { DEFAULT_DESIGN_FAIL, createDesignJudge, missingNeeds } from './design.mjs';
 import { frameworkOf } from './framework/index.mjs';
-import { demonstrate, feedLabel, itemLabel, recordableSteps } from './demonstrate.mjs';
+import { demonstrate, feedLabel, itemLabel, markedTarget, recordableSteps } from './demonstrate.mjs';
 import { CLAUDE_TIMEOUT_MIN, claudeFailureReason, parseEnvFile } from './linux.mjs';
 import { fillDates, zonedNow } from './dates.mjs';
-import { buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, stepRecords, tidyNumbers, trailingNumbers } from './replay.mjs';
+import { LOOK_KINDS, buildReplay, createRecorder, cutReplay, dropNumbers, failedStep, fillRun, groupSteps, learnedEffects, missingBaselines, missingRemembered, newRunTag, playReplay, recordedBrowser, replayBefore, replayToEntry, replayVerdict, stepGroups, stepLabel, stepRecords, tidyNumbers, trailingNumbers } from './replay.mjs';
 import { canRestore, loadStateTest, stateCatalog } from './states.mjs';
 import { IDLE_AGENT, createTokenGate } from './token-gate.mjs';
 import { sandboxRunArgs } from './sandbox-config.mjs';
@@ -50,6 +50,8 @@ import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
+import { captureStep, createLook, designOverlay, learnedLooks, markPath, readTokens, visualSettings } from './visual.mjs';
+import { MARK_ATTRIBUTE } from './record-locator.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 50;
@@ -461,7 +463,7 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -483,6 +485,20 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     const relativeRun = posix.join(RUN_DIR, 'runs', runId);
     const runDir = join(root, relativeRun);
     const agentDir = join(runDir, AGENT_DIR);
+    /**
+     * An image the host takes of the run (step screen, diff) into the agent folder, like failure-step-N.png. The folder is the
+     * container's too: a link planted there is removed, not written through, and the file is created anew.
+     * @returns the file name, or undefined when it could not be written
+     */
+    const saveImage = (name, png) => {
+        try {
+            rmSync(join(agentDir, name), { force: true });
+            writeFileSync(join(agentDir, name), png, { flag: 'wx' });
+            return name;
+        } catch {
+            return undefined;
+        }
+    };
     const channel = join(agentDir, CHANNEL_DIR);
     mkdirSync(channel, { recursive: true });
     // Old runs go (the newest keepRuns stay, open ones always); this one is open now.
@@ -1215,6 +1231,50 @@ ${text}`) ?? 0;
         return selection;
     };
 
+    /**
+     * open <test>@S3 --design: the step's target design over the app (F7 toggles it), its deviations as rows. A row with an
+     * element hands that element to the attached session, as /element does.
+     * @returns whether the overlay is shown
+     */
+    const showDesign = async (bench) => {
+        const id = chosen.replay?.entry?.id ?? chosen.replay?.until;
+        const step = chosen.spec.steps.find((entry) => entry.id === id);
+        if (step?.design === undefined) {
+            chat?.notice(t('run.develop.noDesign', { id: id ?? '-' }));
+            return false;
+        }
+        const viewport = step.recording?.viewport ?? chosen.replay?.browser?.viewport ?? config.browser?.viewport ?? { width: 1280, height: 720 };
+        const cawDir = join(root, PROJECT_DIR);
+        const overlay = await designOverlay({
+            cawDir,
+            file: step.design,
+            viewport,
+            page: session.page(),
+            launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
+            settings: visualSettings(config),
+            tokens: readTokens(cawDir),
+            unscaled: bench.unscaled,
+            secrets: session.secrets?.() ?? [],
+        }).catch((error) => {
+            chat?.notice(t('run.develop.designFailed', { file: step.design, message: String(error?.message ?? error).split(/\r?\n/)[0] }));
+            return null;
+        });
+        if (overlay === null) return false;
+        await bench.viewport(viewport);
+        await bench.design({ ...overlay, opacity: 0.5, blend: 'normal', on: true });
+        bench.onDesignRow(async (row) => {
+            const frame = session.page().mainFrame();
+            const mark = `design-${randomBytes(6).toString('hex')}`;
+            const found = await frame.evaluate(markPath, { path: row.element, attribute: MARK_ATTRIBUTE, mark }).catch(() => false);
+            const { target: located } = found ? await markedTarget(session, frame, mark) : { target: null };
+            const element = { label: located === null ? row.label : locatorLabel(located), target: located, text: row.text };
+            handToCode(element);
+            chat?.notice(t('run.develop.picked', { label: element.label }));
+        });
+        chat?.notice(t('run.develop.designShown', { file: step.design, id, count: overlay.rows.length }));
+        return true;
+    };
+
     /** Common end: save the trace, print the verdict, hand over the window if needed. */
     const closeRun = async (ended, found = {}) => {
         await session.stopTrace();
@@ -1270,9 +1330,9 @@ ${text}`) ?? 0;
             let command = `caw run ${spec.id}`;
             if (reproduce !== undefined) command = draft === undefined ? 'caw reproduce' : draft.record;
             // A run that learns says in the chat which steps get baselines: written once the window has closed.
-            if (learns && (found.baselines !== undefined || found.effects !== undefined)) {
+            if (learns && (found.baselines !== undefined || found.effects !== undefined || found.looks !== undefined)) {
                 // Steps without any baselines yet, and steps whose effects a second healthy run confirms (effects learn over two runs).
-                const ids = [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? [])])];
+                const ids = [...new Set([...(found.baselines?.keys() ?? []), ...(found.effects?.keys() ?? []), ...(found.looks?.keys() ?? [])])];
                 const has = (id) => spec.steps.find((step) => step.id === id)?.recording?.effects !== undefined && !found.baselines?.has(id);
                 const fresh = ids.filter((id) => !has(id));
                 const confirmed = ids.filter(has);
@@ -1349,8 +1409,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                         await listener();
                     });
                     // After the handover (open) the workbench stays as it is, with steps and chat; F8 shows the application alone
-                    // and stays so across reloads. The recorded size held while replaying; the window is the human's now.
-                    await bench?.viewport?.(null);
+                    // and stays so across reloads. The recorded size held while replaying; the window is the human's now. With
+                    // --design the frame keeps it: the design is drawn at that size, else design and app would not line up.
+                    if (!(withDesign && bench !== undefined && await showDesign(bench))) await bench?.viewport?.(null);
                     // F1: states from all tests of this target, each in its role's account. Without a step the test runs to the last
                     // restorable one. With basic auth the account is tied to the browser: only the own role.
                     const scope = checked.signIn?.type === 'basic' ? { role: spec.role, target } : { target };
@@ -1752,14 +1813,35 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             else seen.end = undefined;
             timedOwner = owner;
         };
-        // Target designs are rendered in a browser of their own, started only when a step has a design. Not while reaching a
-        // state to develop in (open): there the screen is still being built, and a run judges it.
-        const designJudge = Object.keys(replay.designs ?? {}).length === 0 || develop !== undefined ? null : createDesignJudge({
-            cawDir: join(root, PROJECT_DIR),
+        // Target designs are rendered (and screens compared) in a browser of their own, started only when a step needs it. Not
+        // while reaching a state to develop in (open): there the screen is still being built, and a run judges it.
+        const cawDir = join(root, PROJECT_DIR);
+        const visual = visualSettings(config);
+        const tokens = develop === undefined ? readTokens(cawDir) : null;
+        const pngDesign = Object.values(replay.designs ?? {}).some(({ file }) => file.toLowerCase().endsWith('.png'));
+        const looking = develop === undefined && (visual.screenshots || visual.regression || tokens !== null || pngDesign);
+        const designJudge = (Object.keys(replay.designs ?? {}).length === 0 && !looking) || develop !== undefined ? null : createDesignJudge({
+            cawDir,
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
             read: (path) => readFileSync(path, 'utf8'),
             secrets: () => session.secrets?.() ?? [],
+            pixels: visual,
+            save: saveImage,
         });
+        // The visual layer per passed check: one capture of the step at its recorded viewport (unscaled in the workbench).
+        const capture = looking ? (id, { texts }) => captureStep(session.page(), { unscaled: session.workbench?.unscaled, texts, ignore: visual.ignore }) : undefined;
+        const look = looking ? createLook({
+            spec: givenSpec,
+            cawDir,
+            root,
+            settings: visual,
+            tokens,
+            compare: (actual, image, masks) => designJudge.compare(actual, image, masks),
+            save: saveImage,
+            readImage: (path) => (existsSync(path) && lstatSync(path).isFile() ? readFileSync(path) : null),
+            designFail: config.design?.fail ?? DEFAULT_DESIGN_FAIL,
+            secrets: () => session.secrets?.() ?? [],
+        }) : undefined;
         const play = playReplay({
             replay,
             handler: agentHandler,
@@ -1767,6 +1849,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             ...(config.effects?.fail === undefined ? {} : { effectFail: config.effects.fail }),
             ...(designJudge === null ? {} : { judgeDesign: designJudge.judge }),
             ...(config.design?.fail === undefined ? {} : { designFail: config.design.fail }),
+            ...(capture === undefined ? {} : { capture, look }),
             base: checked.url,
             authMarker: checked.signIn?.signedInSelector,
             stepTimeoutMs,
@@ -1796,7 +1879,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         }
         for (const judged of ended.designs?.values() ?? []) if (judged.verdict === 'image') ui.info(judged.note);
         // The run ended healthy before the pending steps: is the first one ready to record? Only its needs say so.
-        const healthy = ended.broken === null && [...ended.results.values()].every(({ status, kind }) => status === 'pass' || kind === 'design');
+        const healthy = ended.broken === null && [...ended.results.values()].every(({ status, kind }) => status === 'pass' || LOOK_KINDS.has(kind));
         if (replay.needs !== undefined && healthy) {
             const missing = await missingNeeds(session.framework ?? frameworkOf(config), () => session.page().mainFrame(), replay.needs.locators);
             const { step } = replay.needs;
@@ -1821,8 +1904,10 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         // The workbench knows no state of its own for them: skipped, with a note that says why.
         for (const id of replay.pending ?? []) await session.workbench?.step(id, 'skipped', t('run.pendingStep'));
         await markEntry(replay, failed);
-        // A design not met is no failure of test, app or environment: the step works, its screen is not built yet.
-        if (failed !== null && failed.kind !== 'design') {
+        // A design not met is no failure of test, app or environment: the step works, its screen is not built yet (or looks
+        // different than learned). A changed look goes along, for the chat's "Adopt new look".
+        if (failed?.kind === 'visual' && ended.seenLooks?.has(failed.id)) failed.look = ended.seenLooks.get(failed.id);
+        if (failed !== null && !LOOK_KINDS.has(failed.kind)) {
             // Test, application or environment: evidence from the browser and the comparison with the step's recording.
             const requests = ended.requests?.get(failed.id) ?? [];
             const baseline = givenSpec.steps.find(({ id }) => id === failed.id)?.recording?.network;
@@ -1856,11 +1941,13 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             prune: failed === null && (ended.retried?.size ?? 0) === 0,
             ...(config.effects?.fail === undefined ? {} : { fail: config.effects.fail }),
         });
+        // Looks learn like effects: passed steps, on the recording target; a changed look is the human's to adopt.
+        const looks = learnedLooks({ spec: givenSpec, results: ended.results, seen: ended.seenLooks, target, maxRatio: visual.maxRatio });
         const deviating = ended.deviations?.size ?? 0;
         await session.workbench?.point(END, 'effects', 'pass', { label: deviating === 0 ? t('run.effects.asRecorded') : t('run.effects.deviations', { count: deviating }) });
         // Only a run that writes them shows learning (in CI only with --learn): other runs compute them but keep the file as it is.
-        if (learns && baselines.size + effects.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
-        return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }) });
+        if (learns && baselines.size + effects.size + looks.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
+        return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }), ...(looks.size === 0 ? {} : { looks }) });
     }
 
     // Repair starts before the step: a half-executed step would yield an incomplete recording.

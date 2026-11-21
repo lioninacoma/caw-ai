@@ -793,8 +793,12 @@ export const stepGroups = (steps, replay) => {
  * @param judgeDesign (design, page) => judged design (design.mjs createDesignJudge); without it designs are not judged
  * @param designFail  config design.fail: with 'target' a design not met fails its step, otherwise it only warns
  * @param reads       the config's `reads` patterns: what they name is no write when a renamed target is proposed
+ * @param capture     (id, { texts }) => the step's screen (visual.mjs captureStep), taken at most once per passed check and shared by
+ *                    the .png design, the screenshot, the lint and the learned look; without it nothing visual is captured
+ * @param look        (id, { capture, page }) => { record?, observed?, fail?, warnings? } after the design: screenshot, token lint
+ *                    and visual regression (run.mjs); `fail` { kind, text, evidence } fails the passed step without stopping
  */
-export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, reads = [], log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL, judgeDesign, designFail = DEFAULT_DESIGN_FAIL }) => {
+export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, reads = [], log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL, judgeDesign, designFail = DEFAULT_DESIGN_FAIL, capture, look }) => {
     // Effects per action: what this run saw (last attempt) and the first deviation from the learned effects per step.
     const measure = session.trail === undefined ? null : createEffects({ session });
     const observed = new Map();
@@ -810,6 +814,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const results = new Map();
     // The judged target design per step (design.mjs), for result.json.
     const designs = new Map();
+    // Per step what the visual layer found (screenshot, lint, look) for result.json, and the look it saw, for learning.
+    const looks = new Map();
+    const seenLooks = new Map();
     // What stopped the earlier attempts, per step. It stays visible in the report even if a later attempt passes.
     const history = new Map();
     // Steps whose retry did not run because a new attempt cannot change anything, with the reason.
@@ -1086,18 +1093,45 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
      * warns), but the replay goes on: the app works, it just does not look as designed yet. No new attempt, since waiting
      * does not build a screen, and the failed result keeps its effects from being learned in this run.
      */
-    const judge = async (id, result) => {
+    const judge = async (id, result, shot) => {
         const design = replay.designs?.[id];
         if (design === undefined || judgeDesign === undefined) return;
-        const judged = await judgeDesign(design, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
+        const judged = await judgeDesign({ ...design, step: id }, session.page(), shot === undefined ? {} : { capture: shot }).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
         designs.set(id, judged);
         if (judged.verdict === 'met' || judged.verdict === 'image') return;
-        const text = judged.verdict === 'not-met' ? t('session.design.notMet', { id, details: designText(judged) }) : judged.note;
+        // A .png design is judged by pixels: its note names the share and the diff image.
+        const details = judged.ratio === undefined ? designText(judged) : judged.note;
+        const text = judged.verdict === 'not-met' ? t('session.design.notMet', { id, details }) : judged.note;
         if (judged.verdict === 'error' || !designFail.includes('target')) {
             session.warn?.({ type: 'design', text });
             return;
         }
-        results.set(id, { ...result, status: 'fail', kind: 'design', evidence: { type: 'eval', value: judged.verdict === 'not-met' ? designText(judged) : judged.note }, note: text });
+        results.set(id, { ...result, status: 'fail', kind: 'design', evidence: { type: 'eval', value: judged.verdict === 'not-met' ? details : judged.note }, note: text });
+    };
+
+    /**
+     * After the design: what the visual layer sees in this state. A finding that fails (design.fail with lint or visual) fails the
+     * passed step like a design not met: the replay goes on, nothing is retried or learned in this step.
+     */
+    const inspect = async (id, shot) => {
+        if (look === undefined) return;
+        const seen = await look(id, { capture: shot, page: session.page() }).catch((error) => ({ warnings: [t('session.visual.error', { id, error: firstLine(error) })] }));
+        if (seen.record !== undefined && Object.keys(seen.record).length > 0) looks.set(id, seen.record);
+        if (seen.observed !== undefined) seenLooks.set(id, seen.observed);
+        for (const warning of seen.warnings ?? []) session.warn?.(typeof warning === 'string' ? { type: 'visual', text: warning } : warning);
+        const result = results.get(id);
+        if (seen.fail === undefined || result?.status !== 'pass') return;
+        results.set(id, { ...result, status: 'fail', kind: seen.fail.kind, evidence: { type: 'eval', value: seen.fail.evidence }, note: seen.fail.text });
+    };
+    /** The step's screen, captured on first use: design, screenshot, lint and look share one capture per passed check. */
+    const shotOf = (id) => {
+        if (capture === undefined) return undefined;
+        let taken = null;
+        const texts = () => [...(runTag === undefined ? [] : [runTag, runTag.toLowerCase()]), ...remembered.values()];
+        return () => {
+            taken ??= capture(id, { texts: texts() });
+            return taken;
+        };
     };
 
     // Where each step starts in the flat list.
@@ -1235,6 +1269,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         ids.slice(0, ids.indexOf(owner) + 1).forEach((id) => {
             results.delete(id);
             designs.delete(id);
+            looks.delete(id);
+            seenLooks.delete(id);
             observed.delete(id);
             deviations.delete(id);
             proposals.delete(id);
@@ -1416,7 +1452,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 await stop(position, stepLabel(step), 'check', result.note);
                 break;
             }
-            await judge(step.id, result);
+            const shot = shotOf(step.id);
+            await judge(step.id, result, shot);
+            await inspect(step.id, shot);
         }
         index += 1;
     }
@@ -1436,7 +1474,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', text: deviationText(deviation) });
     }
     // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
-    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])) };
+    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks };
 };
 
 /**
@@ -1517,6 +1555,9 @@ export const withBaselines = (spec, baselines) => ({
     steps: spec.steps.map((step) => (baselines.has(step.id) && step.recording !== undefined ? { ...step, recording: { ...step.recording, network: baselines.get(step.id) } } : step)),
 });
 
+/** Kinds of a failed step that works but does not look as it should (design, learned look): the replay went on past it. */
+export const LOOK_KINDS = new Set(['design', 'visual']);
+
 /**
  * The first failed step and why. Hard failures and unexpected messages look like the app, not like a stale step; the
  * human may still fix it, it is their call.
@@ -1526,9 +1567,9 @@ export const withBaselines = (spec, baselines) => ({
 export const failedStep = ({ results, broken, expectations, failures = [] }) => {
     // A design not met leaves the replay running: a later step that really failed, or the break, says more and comes first.
     const fails = expectations.filter(({ id }) => results.get(id)?.status === 'fail');
-    const failed = fails.find(({ id }) => results.get(id).kind !== 'design') ?? (broken === null ? fails[0] : undefined);
+    const failed = fails.find(({ id }) => !LOOK_KINDS.has(results.get(id).kind)) ?? (broken === null ? fails[0] : undefined);
     const suspect = broken?.kind === 'external' || failures.length > 0;
-    if (failed !== undefined && results.get(failed.id).kind === 'design') return { id: failed.id, reason: results.get(failed.id).note, kind: 'design', suspect: false, clean: false };
+    if (failed !== undefined && LOOK_KINDS.has(results.get(failed.id).kind)) return { id: failed.id, reason: results.get(failed.id).note, kind: results.get(failed.id).kind, suspect: false, clean: false };
     // A proposed target (playReplay) goes along: the chat offers it as a button.
     const proposal = failed === undefined ? undefined : results.get(failed.id).proposal;
     if (failed !== undefined) return { id: failed.id, reason: results.get(failed.id).note, suspect, clean: false, ...(proposal === undefined ? {} : { proposal }) };
@@ -1543,11 +1584,12 @@ export const failedStep = ({ results, broken, expectations, failures = [] }) => 
  * @param durations    seconds per step id, as measured by the run
  * @param withEffects  false on production: effect lines carry visible names, which may be personal data
  * @param designs      the judged target designs per step id (playReplay)
- * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design?, proposal? }]; `kind` 'design': its screen
- *          does not match its target design; `proposal`: the proven replacement of a renamed target (without the effect on
- *          production)
+ * @param looks        what the visual layer recorded per step id (playReplay): screenshot, lint, visual
+ * @returns [{ id, status, kind?, seconds?, requests?, effects?, deviation?, design?, screenshot?, lint?, visual?, proposal? }];
+ *          `kind` 'design': its screen does not match its target design (or fails the token lint), 'visual': its learned look
+ *          changed; `proposal`: the proven replacement of a renamed target (without the effect on production)
  */
-export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
+export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, looks, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
     const status = results?.get(id)?.status ?? 'skipped';
     const deviation = deviations?.get(id);
     const kind = status !== 'fail' ? undefined : results?.get(id)?.kind ?? (broken?.step === id ? broken.kind : deviation?.fails === true ? 'effect' : 'check');
@@ -1565,7 +1607,8 @@ export const stepRecords = ({ ids, results, broken = null, requests, effects, de
         ...(requests?.has(id) ? { requests: summarizeRequests(requests.get(id)) } : {}),
         ...(effectsShown && seen !== undefined ? { effects: [...seen].map(([action, effect]) => ({ action, ...effect })) } : {}),
         ...(shownDeviation === undefined ? {} : { deviation: shownDeviation }),
-        ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [] } }),
+        ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [], ...(design.ratio === undefined ? {} : { ratio: design.ratio }), ...(design.diff === undefined ? {} : { diff: design.diff }) } }),
+        ...(looks?.get(id) ?? {}),
         ...(proposal === undefined ? {} : { proposal: effectsShown ? proposal : { ...proposal, evidence: { check: proposal.evidence.check } } }),
     };
 });

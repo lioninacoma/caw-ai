@@ -175,4 +175,5 @@ export default {
     'workbench.page.stateWhy.after': 'blocked',
     'workbench.page.stateGo': 'Open',
     'workbench.page.stateCancel': 'Cancel',
+    'workbench.design': 'Target design',
 };

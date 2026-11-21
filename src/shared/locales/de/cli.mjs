@@ -74,6 +74,7 @@ Befehle:`,
                                          ausprobieren, mit {agent} entwickeln. Mit <test>: erst abspielen. Mit @<S4>: bis
                                          zum Einstieg in S4 (seine Navigation läuft, Eingaben und Prüfung bleiben offen).
                                          Lernt nichts, schreibt keine Testdatei
+      [--design]                         Mit @<S4>: bis einschließlich S4, sein Zielbild über der App (F7)
       [--role <rolle>]                   Nur ohne Test; nicht nötig, wenn die Config nur eine hat
       [--step-timeout <dauer>]           Zeitlimit je Schritt beim Abspielen, Standard 30s
       [--agent local|docker] [--attach [<key>]] [--agent-timeout <dauer>] [--max-actions <n>]
@@ -183,7 +184,7 @@ Browser:
     'cli.synopsis.role': 'caw role [list [--json] | add <rolle> | remove <rolle> | login <rolle> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
-    'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>] [--agent local|docker | --attach [<key>]]',
+    'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Aufruf: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
@@ -687,4 +688,6 @@ Browser:
     'cli.bisect.meaning.skip': 'übersprungen',
     'cli.bisect.meaning.abort': 'git bisect bricht ab',
     'cli.audit.kind.locator-changed': 'Aktion {number} von {step} nutzt ein anderes Element, ihre Prüfung blieb: {was} → {now}.',
+    'cli.changedLooks': 'Aussehen {ids}',
+    'cli.audit.kind.look-adopted': 'Für {step} wurde am {day} ein neuer Look übernommen: sein Bildschirm wird ab jetzt mit dem neuen Bild verglichen.',
 };

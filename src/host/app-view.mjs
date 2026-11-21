@@ -238,8 +238,9 @@ export const FOCUS_SCRIPT = `addEventListener('focusin', (event) => { window.__c
 /** F5 and Ctrl+R in the application do not reload the workbench but send it "refresh": it restores the state. */
 export const RELOAD_SCRIPT = `if (window !== top && window.parent === top && window.name === ${JSON.stringify(APP_FRAME)}) addEventListener('keydown', (event) => {
     if (event.key === 'F5' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r')) { event.preventDefault(); top.postMessage({ caw: 'refresh' }, '*'); }
-    // F1: choose a state in the workbench instead of Chrome's help. F8: App only and back, wherever the focus is.
-    else if ((event.key === 'F1' || event.key === 'F8') && !event.ctrlKey && !event.altKey && !event.metaKey) { event.preventDefault(); top.postMessage({ caw: 'key', key: event.key }, '*'); }
+    // F1: choose a state in the workbench instead of Chrome's help. F7: the target design over the app (instead of Chrome's caret
+    // browsing). F8: App only and back, wherever the focus is.
+    else if ((event.key === 'F1' || event.key === 'F7' || event.key === 'F8') && !event.ctrlKey && !event.altKey && !event.metaKey) { event.preventDefault(); top.postMessage({ caw: 'key', key: event.key }, '*'); }
     // Ctrl+J: the chat over the app in App only. Only there: elsewhere Chrome's downloads stay as they are.
     else if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'j' && top.document.body.classList.contains('solo')) { event.preventDefault(); top.postMessage({ caw: 'key', key: 'Ctrl+J' }, '*'); }
 }, true);

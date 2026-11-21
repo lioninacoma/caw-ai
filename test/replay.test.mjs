@@ -946,6 +946,45 @@ test('design: with design.fail [] a design not met only warns; an image design p
     assert.equal(image.warnings.length, 0, 'an image is no warning: it would make Claude advise');
 });
 
+test('design: a .png design gets the step\'s capture; one capture per passed check, shared with the look; its kinds fail without stopping', async () => {
+    const warnings = [];
+    const session = { ...fakeSession(), warn: (warning) => warnings.push(warning) };
+    const handler = async (command) => (command.action === 'check' ? { pass: true, value: true } : 'ok');
+    const captured = [];
+    const capture = async (id, { texts }) => {
+        captured.push([id, texts]);
+        return { png: Buffer.from(id), masks: [] };
+    };
+    const judgeDesign = async (design, _page, { capture: shot }) => {
+        const { png } = await shot();
+        return { file: design.file, verdict: 'not-met', ratio: 0.2, diff: `step-${design.step}-diff.png`, note: `${design.file}: 20 % (${png})` };
+    };
+    const look = async (id, { capture: shot }) => {
+        await shot();
+        return id === 'S2'
+            ? { record: { screenshot: `step-${id}.png`, visual: { verdict: 'changed', ratio: 0.5 } }, observed: { styles: [] }, fail: { kind: 'visual', text: `${id} sieht anders aus`, evidence: 'x' }, warnings: [{ type: 'lint', text: 'Token-Lint' }] }
+            : { record: { screenshot: `step-${id}.png` }, observed: { styles: [] } };
+    };
+    const clock = fakeClock();
+    const played = await playReplay({
+        replay: { steps: TWO_STEPS, designs: { S1: { file: 'design/s1.png' } } },
+        handler, session, base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, judgeDesign, capture, look, runTag: 'CAW-7',
+    });
+    assert.deepEqual(captured, [['S1', ['CAW-7', 'caw-7']], ['S2', ['CAW-7', 'caw-7']]], 'design and look share one capture per step; run tag masked');
+    assert.equal(played.results.get('S1').kind, 'design');
+    assert.match(played.results.get('S1').note, /S1 entspricht nicht seinem Zielbild: design\/s1\.png: 20 % \(S1\)/);
+    assert.equal(played.results.get('S2').kind, 'visual');
+    assert.equal(played.broken, null, 'the replay went on');
+    assert.deepEqual(warnings, [{ type: 'lint', text: 'Token-Lint' }]);
+    const records = stepRecords({ ids: ['S1', 'S2'], ...played });
+    assert.deepEqual(records[0].design, { file: 'design/s1.png', verdict: 'not-met', missing: [], extra: [], styleDiffs: [], ratio: 0.2, diff: 'step-S1-diff.png' });
+    assert.equal(records[0].screenshot, 'step-S1.png');
+    assert.deepEqual(records[1].visual, { verdict: 'changed', ratio: 0.5 });
+    assert.ok(played.seenLooks.has('S2'));
+    // A real failure later in the run comes first; of two looks, the first.
+    assert.equal(failedStep({ ...played, expectations: [{ id: 'S1' }, { id: 'S2' }] }).id, 'S1');
+});
+
 test('design: a later step that really failed comes first, before a design not met', async () => {
     const played = await playDesign({ verdict: 'not-met', failS2: true });
     const failed = failedStep({ ...played, expectations: [{ id: 'S1' }, { id: 'S2' }] });

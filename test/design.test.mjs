@@ -4,10 +4,12 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 
 import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, tokensProblem, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
+import { captureStep, colorDistance, comparePixels, contrastRatio, createLook, learnLook, learnedLooks, lintFacts, lintFindings, readTokens, styleLines, withAdoptedLook } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
 
 const EXAMPLE = new URL('../examples/errand/caw/', import.meta.url);
@@ -245,4 +247,179 @@ test('needs: the locators missing on the page', async (t) => {
 test('the errand example has its design and tokens, and no step links a design that would fail', () => {
     assert.ok(existsSync(new URL('design/todo-detail.html', EXAMPLE)));
     assert.doesNotMatch(readFileSync(new URL('tests/first-errand.yaml', EXAMPLE), 'utf8'), /^\s+design:/m);
+});
+
+// ------------------------------------------------------------------------------------------------------------ visual layer
+
+/** A page as PNG at a small viewport: the fixture for pixel comparisons. */
+const shotOf = async (html, viewport = { width: 200, height: 100 }) => {
+    const context = await browser.newContext({ viewport });
+    try {
+        const page = await context.newPage();
+        await page.setContent(html);
+        return await page.screenshot({ scale: 'css' });
+    } finally {
+        await context.close();
+    }
+};
+const BOX = (left, color = '#e5533a') => `<body style="margin:0;background:#fff"><div style="position:absolute;left:${left}px;top:20px;width:40px;height:40px;background:${color}"></div></body>`;
+
+test('pixels: the share of differing pixels, masks leave areas out, the tolerance absorbs small shifts in colour', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const base = await shotOf(BOX(20));
+    const same = await comparePixels(browser, base, await shotOf(BOX(20)));
+    assert.equal(same.ratio, 0);
+    assert.deepEqual([same.width, same.height], [200, 100]);
+    const moved = await comparePixels(browser, base, await shotOf(BOX(120)));
+    // Two boxes of 40×40 that do not overlap: 3200 of 20000 pixels.
+    assert.ok(Math.abs(moved.ratio - 0.16) < 0.01, String(moved.ratio));
+    assert.deepEqual(pngSize(moved.diffPng), { width: 200, height: 100 }, 'the difference image has the actual size');
+    const masked = await comparePixels(browser, base, await shotOf(BOX(120)), { masks: [{ x: 0, y: 0, width: 200, height: 100 }] });
+    assert.equal(masked.compared, 0);
+    assert.equal(masked.ratio, 0, 'everything masked: nothing to differ');
+    const half = await comparePixels(browser, base, await shotOf(BOX(120)), { masks: [{ x: 100, y: 0, width: 100, height: 100 }] });
+    assert.ok(Math.abs(half.ratio - 1600 / 10000) < 0.01, String(half.ratio));
+    const tinted = await shotOf(BOX(20, '#ea5a40'));
+    assert.equal((await comparePixels(browser, base, tinted, { tolerance: 24 })).ratio, 0);
+    assert.ok((await comparePixels(browser, base, tinted, { tolerance: 2 })).ratio > 0);
+});
+
+test('pixels: a @2x export is scaled to the screen, a taller design is compared where both have pixels', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const actual = await shotOf(BOX(20));
+    const double = await shotOf('<body style="margin:0;background:#fff"><div style="position:absolute;left:40px;top:40px;width:80px;height:80px;background:#e5533a"></div></body>', { width: 400, height: 200 });
+    const scaled = await comparePixels(browser, actual, double);
+    assert.equal(scaled.scaled, true);
+    assert.ok(scaled.ratio < 0.01, String(scaled.ratio));
+    const tall = await comparePixels(browser, actual, await shotOf(BOX(20), { width: 200, height: 300 }));
+    assert.equal(tall.cropped, true);
+    assert.equal(tall.height, 100);
+    assert.equal(tall.ratio, 0);
+});
+
+test('capture: masks for run tag, remembered values, dates, list rows and visualIgnore', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const context = await browser.newContext({ viewport: { width: 400, height: 300 } });
+    try {
+        const page = await context.newPage();
+        await page.setContent(`<body><h1>Order CAW-77 for Ada</h1><p>Due 23.11.2026</p><p id="clock">12:00</p><p>Stable</p>
+            <table><tr><th>Name</th></tr><tr><td>Row one</td></tr><tr><td>Row two</td></tr></table></body>`);
+        const shot = await captureStep(page, { texts: ['CAW-77', 'Ada', 'x'], ignore: ['#clock', '::invalid('] });
+        assert.deepEqual([shot.width, shot.height], [400, 300]);
+        const why = shot.masks.map(({ why: reason }) => reason);
+        assert.equal(why.filter((reason) => reason === 'text').length, 2, 'the heading (run tag, value) and the date; "x" is too short to mask');
+        assert.equal(why.filter((reason) => reason === 'row').length, 2, 'data rows, not the header row');
+        assert.equal(why.filter((reason) => reason === 'ignore').length, 1);
+    } finally {
+        await context.close();
+    }
+});
+
+test('the judge: a .png design is judged by pixels against the step\'s capture; a miss saves the difference image', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const caw = tempCaw(t);
+    writeDesign(caw, 'design/box.png', await shotOf(BOX(20)));
+    const saved = [];
+    const judge = createDesignJudge({ cawDir: caw, launch: launchChrome, read: (path) => readFileSync(path, 'utf8'), pixels: { tolerance: 24, designMaxRatio: 0.02 }, save: (name, image) => { saved.push([name, image.length > 0]); return name; } });
+    try {
+        const capture = (html) => async () => ({ png: await shotOf(html), masks: [] });
+        const met = await judge.judge({ file: 'design/box.png', step: 'S3' }, null, { capture: capture(BOX(20)) });
+        assert.equal(met.verdict, 'met');
+        assert.equal(met.ratio, 0);
+        const notMet = await judge.judge({ file: 'design/box.png', step: 'S3' }, null, { capture: capture(BOX(120)) });
+        assert.equal(notMet.verdict, 'not-met');
+        assert.equal(notMet.diff, 'step-S3-diff.png');
+        assert.deepEqual(saved, [['step-S3-diff.png', true]]);
+        assert.match(notMet.note, /16 % der Pixel weichen ab, höchstens 2 % erlaubt; Differenzbild step-S3-diff\.png/);
+    } finally {
+        await judge.close();
+    }
+});
+
+test('token lint: colors off the tokens, spacing off the grid, contrast, clipped text, unnamed controls', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const tokens = { colors: [{ name: 'color.ink', rgb: [35, 28, 23] }, { name: 'color.paper', rgb: [245, 237, 224] }], spacing: [8, 16] };
+    const context = await browser.newContext({ viewport: { width: 400, height: 300 } });
+    try {
+        const page = await context.newPage();
+        await page.setContent(`<body style="margin:0;background:#f5ede0;color:#231c17">
+            <h1 style="margin:0;padding:8px">Fine</h1>
+            <p style="color:#cccccc;margin:0;padding:16px">Pale text</p>
+            <p style="margin:0;padding:13px">Odd padding</p>
+            <div style="width:40px;overflow:hidden;white-space:nowrap;margin:0">A long label that does not fit</div>
+            <button style="margin:0;padding:8px;background:#f5ede0;color:#231c17;border:0"><svg width="10" height="10"></svg></button></body>`);
+        const findings = lintFindings(await lintFacts(page.mainFrame()), tokens);
+        const rules = findings.map(({ rule }) => rule);
+        assert.ok(rules.includes('color'), rules.join());
+        assert.ok(findings.some(({ rule, text }) => rule === 'color' && text.includes('#cccccc') && text.includes('color.paper')), JSON.stringify(findings));
+        assert.ok(findings.some(({ rule, text }) => rule === 'spacing' && text.includes('13px') && text.includes('8px-Rasters')), JSON.stringify(findings));
+        assert.ok(findings.some(({ rule, label }) => rule === 'contrast' && label.includes('Pale text')), JSON.stringify(findings));
+        assert.ok(findings.some(({ rule, label }) => rule === 'clipped' && label.includes('A long label')), JSON.stringify(findings));
+        assert.ok(findings.some(({ rule, label, path }) => rule === 'unnamed' && label === 'button' && path.endsWith('button:nth-of-type(1)')), JSON.stringify(findings));
+        assert.ok(!findings.some(({ label }) => label.includes('Fine')), 'a heading in token colors on the grid is fine');
+        // Without tokens only what needs none: contrast, clipped, unnamed.
+        assert.deepEqual([...new Set(lintFindings(await lintFacts(page.mainFrame())).map(({ rule }) => rule))].sort(), ['clipped', 'contrast', 'unnamed']);
+    } finally {
+        await context.close();
+    }
+});
+
+test('token lint: tokens from DTCG files under caw/design; contrast and color distance', () => {
+    const tokens = readTokens(fileURLToPath(EXAMPLE));
+    assert.equal(tokens.colors.length, 7);
+    assert.deepEqual(tokens.colors.find(({ name }) => name === 'color.tomato').rgb, [229, 83, 58]);
+    assert.deepEqual(tokens.spacing, [], 'the example has no spacing scale, so spacing is not linted');
+    assert.equal(readTokens(join(tmpdir(), 'caw-no-design-here')), null);
+    assert.equal(Math.round(contrastRatio([0, 0, 0], [255, 255, 255])), 21);
+    assert.ok(colorDistance([229, 83, 58], [229, 83, 58]) === 0 && colorDistance([0, 0, 0], [255, 255, 255]) > 99);
+});
+
+test('look: learned over two runs like effects; styles that flicker drop out, an image that differs starts over', () => {
+    const observed = (extra = {}) => ({ png: Buffer.from('a'), styles: ['button "Save": color #ffffff', 'tab "x": color #000000'], imageRuns: 0, platform: 'linux', basis: 'b', changed: false, ...extra });
+    const first = learnLook(undefined, observed(), { maxRatio: 0.01 });
+    assert.deepEqual(first.visual, { runs: 1, basis: 'b', styles: ['button "Save": color #ffffff', 'tab "x": color #000000'], images: { linux: 1 } });
+    assert.equal(first.png.platform, 'linux');
+    const second = learnLook(first.visual, observed({ imageRuns: 1, ratio: 0.001, styles: ['button "Save": color #ffffff', 'tab "x": color #111111'] }), { maxRatio: 0.01 });
+    assert.deepEqual(second.visual, { runs: 2, basis: 'b', styles: ['button "Save": color #ffffff'], images: { linux: 2 } });
+    assert.equal(second.png, undefined, 'a confirmed image is not written again');
+    const restarted = learnLook(first.visual, observed({ imageRuns: 1, ratio: 0.2 }), { maxRatio: 0.01 });
+    assert.deepEqual(restarted.visual.images, { linux: 1 });
+    assert.ok(restarted.png !== undefined);
+    assert.equal(learnLook(second.visual, observed({ imageRuns: 2, ratio: 0, styles: second.visual.styles }), { maxRatio: 0.01 }), null, 'learned stays');
+    const other = learnLook(second.visual, observed({ platform: 'win32', styles: second.visual.styles }), { maxRatio: 0.01 });
+    assert.deepEqual(other.visual.images, { linux: 2, win32: 1 }, 'each platform learns its own image');
+
+    const spec = { id: 't', steps: [{ id: 'S1', recording: { recordedOn: 'a/dev', recordedAt: 'r1' } }, { id: 'S2', recording: { recordedOn: 'a/dev', recordedAt: 'r2' } }, { id: 'S3', recording: { recordedOn: 'b/dev', recordedAt: 'r3' } }] };
+    const results = new Map([['S1', { status: 'pass' }], ['S2', { status: 'fail' }], ['S3', { status: 'pass' }]]);
+    const seen = new Map([['S1', observed()], ['S2', observed()], ['S3', observed()]]);
+    assert.deepEqual([...learnedLooks({ spec, results, seen, target: 'a/dev' }).keys()], ['S1'], 'passed, on its recording target');
+    assert.deepEqual([...learnedLooks({ spec, results, seen: new Map([['S1', observed({ changed: true })]]), target: 'a/dev' }).keys()], [], 'a changed look is the human\'s to adopt');
+    const adopted = withAdoptedLook({ id: 't', steps: [{ id: 'S1', recording: { visual: second.visual } }] }, 'S1', observed({ platform: 'win32' }), '2026-11-21');
+    assert.deepEqual(adopted.steps[0].recording.visual, { runs: 2, basis: 'b', styles: observed().styles, images: { win32: 2 }, adopted: '2026-11-21' });
+    assert.equal(adopted.steps[0].recording.lookPng.platform, 'win32');
+    assert.deepEqual(styleLines({ 'button "Save"': { color: '#fff', 'font-size': '14px' } }), ['button "Save": color #fff, font-size 14px']);
+});
+
+test('look: a learned look whose style changed fails the step (design.fail visual) or only warns', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const caw = tempCaw(t);
+    const context = await browser.newContext({ viewport: { width: 200, height: 100 } });
+    try {
+        const page = await context.newPage();
+        await page.setContent('<body style="margin:0"><button style="color:#000000;background:#ffffff">Save</button></body>');
+        const spec = { id: 't', steps: [{ id: 'S1', recording: { recordedAt: 'r1', recordedOn: 'a/dev', visual: { runs: 2, styles: ['button "Save": color #ff0000'], images: {} } } }] };
+        const looks = (designFail) => createLook({ spec, cawDir: caw, root: caw, settings: { regression: true, screenshots: false, maxRatio: 0.01 }, compare: async () => ({ ratio: 0 }), save: (name) => name, readImage: () => null, designFail });
+        const capture = async () => ({ png: await page.screenshot(), masks: [] });
+        const failing = await looks(['visual'])('S1', { capture, page });
+        assert.equal(failing.fail.kind, 'visual');
+        assert.equal(failing.record.visual.verdict, 'changed');
+        assert.deepEqual(failing.record.visual.styles, ['button "Save": color #ff0000 → #000000']);
+        assert.equal(failing.observed.imageRuns, 0, 'no image yet: it is learned');
+        const warning = await looks([])('S1', { capture, page });
+        assert.equal(warning.fail, undefined);
+        assert.equal(warning.warnings[0].type, 'visual');
+        assert.match(warning.warnings[0].text, /S1 sieht anders aus als gelernt/);
+    } finally {
+        await context.close();
+    }
 });

@@ -919,7 +919,7 @@ document.addEventListener('keydown',(event)=>{
     if(canAbort()){event.preventDefault();abort.click();}}
 });
 // The workbench's keys apply here too: the chat passes them on (CHAT_KEYS). It handles F9 and Esc itself, F11 and F12 stay with the browser.
-const PASS_KEYS=['F1','F2','F3','F4','F6','F8','F10'];
+const PASS_KEYS=['F1','F2','F3','F4','F6','F7','F8','F10'];
 addEventListener('keydown',(event)=>{const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey,ctrl=(event.ctrlKey||event.metaKey)&&!event.altKey;
   // F5 in the chat does not reload the workbench but refreshes like there: application reloaded, state restored.
   if(event.key==='F5'||(ctrl&&event.key.toLowerCase()==='r')){event.preventDefault();parent.postMessage({caw:'refresh'},'*');}

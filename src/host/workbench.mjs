@@ -42,6 +42,10 @@ export const STATE_BINDING = 'cawState';
 /** Console tools (caw.ready(), caw.locator(el)): read-only answers from the host. */
 export const READY_BINDING = 'cawReady';
 export const LOCATE_BINDING = 'cawLocate';
+/** The target design over the app (F7): the workbench reports on/off, the host keeps it for reloads. */
+export const DESIGN_BINDING = 'cawDesign';
+/** A deviation row under the design overlay: its element goes to the attached session as with /element. */
+export const DESIGN_ROW_BINDING = 'cawDesignRow';
 /**
  * The chat runs in a sandboxed iframe without allow-same-origin, so with its own opaque origin. The workbench shares its
  * origin with the application (so top.Ext & co. work). Without the sandbox the application could reach the chat and decide
@@ -52,7 +56,7 @@ export const LOCATE_BINDING = 'cawLocate';
 export const CHAT_SANDBOX = 'allow-scripts allow-forms';
 /** Keys the chat may pass on to the workbench, also for its slash commands: they open views and menus, never decide. A message
  * from the chat cannot trigger more. */
-export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', 'Ctrl+J', '?'];
+export const CHAT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F10', 'Ctrl+,', 'Ctrl+K', 'Ctrl+J', '?'];
 const RELOADED_MS = 15000;
 /** The preparation group: Chrome, login, local code, loading. */
 export const PREP = 'prep';
@@ -60,6 +64,8 @@ const PANEL_MS = 1000;
 const MAX_ROWS = 300;
 // A binding can be exposed only once per page; per page the host remembers who currently handles refresh.
 const benches = new WeakMap();
+/** What the page gets of a design: the rows' texts and whether they hand over an element, never the element itself. */
+const pageDesign = ({ rows = [], ...rest }) => ({ ...rest, rows: rows.map(({ text, element }) => ({ text: String(text), element: element !== undefined })) });
 
 const esc = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 /** JSON for a <script>: `<` cannot end it. */
@@ -86,6 +92,7 @@ const menuItems = (ctrl, still) => [
     ['terminal', t('workbench.console'), 'F3', 'data-tabkey="console" data-press="F3"'],
     ['panel', t('workbench.page.hideSteps'), 'F4', 'id="fSteps" data-press="F4"'],
     ['msg', t('workbench.page.hideChat'), 'F6', 'id="fChat" data-press="F6"'],
+    ['cross', t('workbench.design'), 'F7', 'id="mDesign" data-press="F7" hidden'],
     ['expand', t('workbench.solo'), 'F8', 'data-solo data-press="F8"'],
     null,
     ['wave', t('workbench.still'), 'F10', `id="still" role="menuitemcheckbox" aria-checked="${still}" data-press="F10" title="${esc(t('workbench.stillTitle'))}"`],
@@ -96,7 +103,7 @@ const menuItems = (ctrl, still) => [
 /** The key list of the settings page. */
 const keyList = (ctrl) => [
     [t('workbench.keys.more'), `${ctrl} K`], [t('workbench.keys.open'), 'F1'], [t('workbench.keys.drawer'), 'F2 · F3'], [t('workbench.keys.panels'), 'F4 · F6'],
-    [t('workbench.keys.reload'), 'F5'], [t('workbench.solo'), 'F8'], [t('workbench.keys.chatPop'), `${ctrl} J`], [t('workbench.keys.pause'), 'F9'], [t('workbench.still'), 'F10'], [t('workbench.keys.cancel'), 'Esc Esc'],
+    [t('workbench.keys.reload'), 'F5'], [t('workbench.solo'), 'F8'], [t('workbench.design'), 'F7'], [t('workbench.keys.chatPop'), `${ctrl} J`], [t('workbench.keys.pause'), 'F9'], [t('workbench.still'), 'F10'], [t('workbench.keys.cancel'), 'Esc Esc'],
     [t('workbench.page.settings'), `${ctrl} ,`], [t('workbench.shortcuts'), '?'],
 ];
 
@@ -271,6 +278,12 @@ grid-template-areas:"steps browser chat"}
 #app{flex:1;min-height:0;width:100%;border:0;display:block;background:#fff}
 /* A pinned viewport: the frame has exactly the recorded size, scaled down (never up) to fit, centred. */
 #appBox.pinned{background:var(--sunk)}#appBox.pinned #app{flex:none;position:absolute;top:0;transform-origin:0 0}
+/* The target design over the app (F7): aligned with the frame, never in the way of the pointer. */
+#design{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none;max-width:none;z-index:2}#design.blend{mix-blend-mode:difference}
+#designRows{position:absolute;right:8px;bottom:8px;z-index:3;max-width:min(420px,60%);max-height:40%;overflow:auto;margin:0;padding:6px 0;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:12px}
+#designRows button{display:block;width:100%;text-align:left;padding:4px 10px;border:0;background:none;color:var(--text);cursor:pointer}#designRows button:hover{background:var(--panel2)}#designRows button:disabled{cursor:default;color:var(--muted)}
+/* Capturing a step's screen: the frame at its recorded size, unscaled and on top, without the overlay. */
+body.capture #appBox.pinned #app{position:fixed!important;left:0!important;top:0!important;transform:none!important;z-index:2147483647}body.capture #design,body.capture #designRows{display:none}
 .drawer{display:none;flex:none;border-top:1px solid var(--line);background:var(--panel)}.drawer.open{display:block}
 .tabs{display:flex;align-items:center;gap:16px;height:34px;padding:0 14px;border-bottom:1px solid var(--line)}
 .tabs button[role=tab]{font:400 12px/1 var(--font);color:var(--muted);background:none;border:0;padding:0;height:100%;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
@@ -392,7 +405,7 @@ td.m{width:64px;color:var(--muted)}td.m.w{color:var(--warn)}td.p{width:auto;colo
 <section class="pa-steps win" id="stepsCard" aria-label="${t('workbench.steps')}">${pane('steps', t('workbench.steps'), t('workbench.stepsFold'), t('workbench.stepsUnfold'), 'F4', 'chev-l', 'chev-r', '<span class="cnt" id="tally"></span>')}
 <p id="leftNote" hidden></p><p class="hint" id="stepsHint">${t('workbench.stepsHint')}</p><div id="track"><ol id="steps" aria-label="${t('workbench.steps')}"></ol></div></section>
 <section class="pa-browser win" aria-label="${t('workbench.app')}"><div class="appbar"><span id="url"></span><span id="envBadge" class="bdg" hidden></span><span id="browserState"></span><span id="vp" hidden></span></div>
-<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe></div>
+<div id="appBox"><iframe id="app" name="${APP_FRAME}" title="${t('workbench.app')}" src="${esc(appUrl)}" allow="clipboard-write"></iframe><img id="design" alt="" hidden><ul id="designRows" hidden aria-label="${t('workbench.design')}"></ul></div>
 <div class="drawer" id="drawer"><div class="tabs" role="tablist"><button type="button" role="tab" data-tab="requests" aria-selected="false">${t('workbench.requests')}<span class="count" data-count="requests">0</span></button><button type="button" role="tab" data-tab="console" aria-selected="false">${t('workbench.console')}<span class="count" data-count="console">0</span></button><span class="end"><span>F2 · F3 ·</span><button type="button" id="drawerClose" aria-label="${t('workbench.drawerCloseLabel')}">${t('workbench.drawerEsc')}</button></span></div>
 <div class="panel" id="panel"></div></div>
 <div class="afoot"><button type="button" id="footRequests" data-tabkey="requests" data-press="F2" title="${t('workbench.requests')} (F2)"></button><span class="sep">·</span><button type="button" id="footConsole" data-tabkey="console" data-press="F3" title="${t('workbench.console')} (F3)"></button><span class="keys">F2 · F3</span></div></section>
@@ -722,7 +735,7 @@ const press=(key)=>{
   if(key==='Ctrl+K'){if(menuBox.hidden)openMenu();else closeMenu();return true;}
   if(key==='Ctrl+J')return popChat();
   if(key==='F2'||key==='F3'){openSettings(false);select(key==='F2'?'requests':'console');}else if(key==='F4')toggleFold('steps');else if(key==='F6')toggleFold('chat');
-  else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
+  else if(key==='F7')toggleDesign();else if(key==='F8')solo();else if(key==='F10')setStill(!still());else if(key==='F9'||key==='Escape')toChat(key);else return false;
   return true;};
 addEventListener('keydown',(event)=>{
   if(isRefreshKey(event)){event.preventDefault();refresh();return;}
@@ -745,7 +758,7 @@ const CHAT_KEYS=${json(CHAT_KEYS)};
 addEventListener('message',(event)=>{const fromChat=event.source===chatWindow();
   if(event.data?.caw==='refresh'&&(event.source===$('app').contentWindow||fromChat))refresh();
   if(event.data?.caw==='key'&&fromChat&&CHAT_KEYS.includes(event.data.key))press(event.data.key);
-  if(event.data?.caw==='key'&&['F1','F8','Ctrl+J'].includes(event.data.key)&&event.source===$('app').contentWindow)press(event.data.key);
+  if(event.data?.caw==='key'&&['F1','F7','F8','Ctrl+J'].includes(event.data.key)&&event.source===$('app').contentWindow)press(event.data.key);
   // Something new from the agent while the chat is hidden in App only: a dot on Chat.
   if(event.data?.caw==='unread'&&fromChat&&document.body.classList.contains('solo')&&!popped())$('chatPop').querySelector('.new').hidden=false;});
 
@@ -765,17 +778,33 @@ new ResizeObserver(follow).observe(track);
 // The pinned viewport of the app frame: { width, height } or null (the frame fills its pane). The bar names its size.
 let pinned=null;
 const fitApp=()=>{const box=$('appBox');const app=$('app');box.classList.toggle('pinned',pinned!==null);$('vp').hidden=pinned===null;
-  if(pinned===null){app.style.width=app.style.height=app.style.transform=app.style.left='';box.removeAttribute('title');return;}
+  if(pinned===null){app.style.width=app.style.height=app.style.transform=app.style.left='';box.removeAttribute('title');placeDesign(1,0);return;}
   const scale=Math.min(1,box.clientWidth/pinned.width,box.clientHeight/pinned.height);
   app.style.width=pinned.width+'px';app.style.height=pinned.height+'px';app.style.transform='scale('+scale+')';
-  app.style.left=Math.max(0,Math.round((box.clientWidth-pinned.width*scale)/2))+'px';
+  app.style.left=Math.max(0,Math.round((box.clientWidth-pinned.width*scale)/2))+'px';placeDesign(scale,parseFloat(app.style.left));
   $('vp').textContent=pinned.width+' × '+pinned.height;
   box.title=$('vp').title=fill('workbench.page.viewportPinned',{width:pinned.width,height:pinned.height,percent:Math.round(scale*100)});};
 new ResizeObserver(fitApp).observe($('appBox'));
+// The step's target design over the app: { src, opacity, blend, width, rows, on } or null. Drawn at the recorded width and
+// scaled like the frame, so design and app line up pixel for pixel. F7 shows and hides it; the host keeps it for reloads.
+let design=null;let designAt={scale:1,left:0};
+const placeDesign=(scale,left)=>{designAt={scale,left};const img=$('design');const rows=$('designRows');$('mDesign').hidden=design===null;
+  if(design===null){img.hidden=rows.hidden=true;img.removeAttribute('src');rows.replaceChildren();return;}
+  if(img.getAttribute('src')!==design.src)img.src=design.src;
+  img.hidden=!design.on;rows.hidden=!design.on||rows.children.length===0;img.style.opacity=String(design.opacity);img.classList.toggle('blend',design.blend==='difference');
+  img.style.width=(design.width??pinned?.width??$('app').clientWidth)+'px';img.style.left=left+'px';img.style.transform='scale('+scale+')';};
+const designRows=(list)=>{$('designRows').replaceChildren(...list.map((row,index)=>{const li=document.createElement('li');const b=document.createElement('button');b.type='button';b.textContent=row.text;b.title=row.text;b.disabled=!row.element;
+  b.addEventListener('click',()=>{window.${DESIGN_ROW_BINDING}?.(index);});li.append(b);return li;}));};
+const toggleDesign=()=>{if(design===null)return;design.on=!design.on;placeDesign(designAt.scale,designAt.left);window.${DESIGN_BINDING}?.(design.on);};
 // The badge shows "Settings" while the settings page is open; the run's title waits here.
 let titleNodes=[];
 window.workbench={
   viewport:(size)=>{pinned=size&&size.width>0&&size.height>0?{width:Math.round(size.width),height:Math.round(size.height)}:null;fitApp();},
+  design:(given)=>{design=given?{src:String(given.src),opacity:Math.min(1,Math.max(0.05,Number(given.opacity)||0.5)),blend:given.blend==='difference'?'difference':'normal',width:Number(given.width)>0?Number(given.width):null,on:given.on!==false}:null;
+    designRows(given?.rows??[]);fitApp();},
+  designOn:(on)=>{if(design===null)return;design.on=on===true;placeDesign(designAt.scale,designAt.left);},
+  // While the host captures a step: the frame unscaled, on top, without the overlay; resolves once it is laid out.
+  unscaled:(on)=>{document.body.classList.toggle('capture',on===true);return new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))));},
   // The first entry is the title: [label, sentence, badge]. The badge shows the mode only ("Claude records"), the breadcrumb
   // already names the test; the sentence is its tooltip. Without a badge it shows the sentence. The rest are the facts, shown
   // by their values in mono.
@@ -891,7 +920,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // confirms it in the chat, which has an opaque origin and a token the application cannot read (chat.mjs).
     let bench = benches.get(page);
     if (bench === undefined) {
-        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null };
+        const holder = { refresh: null, rebuild: null, html: null, chat: null, app: null, navigations: new WeakMap(), fullscreen: null, chatPop: null, state: null, debug: null, designOn: null, designRow: null };
         bench = holder;
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
@@ -943,6 +972,16 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (frame !== page.mainFrame() || holder.chatPop === null) return;
             await holder.chatPop(on === true);
         });
+        // The design overlay shown or hidden (F7): the host keeps it for reloads. A deviation row: only its index comes from the
+        // page, the element it names is the host's (onDesignRow), so the page cannot hand over anything else.
+        await page.exposeBinding(DESIGN_BINDING, ({ frame }, on) => {
+            if (frame !== page.mainFrame() || holder.designOn === null) return;
+            holder.designOn(on === true);
+        });
+        await page.exposeBinding(DESIGN_ROW_BINDING, async ({ frame }, index) => {
+            if (frame !== page.mainFrame() || holder.designRow === null || !Number.isInteger(index)) return;
+            await holder.designRow(index);
+        });
         // caw.ready() and caw.locator(el) in the console: answers only, from whatever document calls them.
         await page.exposeBinding(READY_BINDING, async () => (holder.debug === null ? null : holder.debug.ready()));
         await page.exposeBinding(LOCATE_BINDING, async (_source, mark) => (holder.debug === null || typeof mark !== 'string' ? null : holder.debug.locator(mark)));
@@ -965,7 +1004,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     const view = frameView(page, frame, () => bench.app);
     const call = (name, ...args) => page.evaluate(([fn, values]) => window.workbench?.[fn](...values), [name, args]).catch(() => {});
     // The host remembers what it has shown and restores it after a workbench reload.
-    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, chatPop: false, catalog: null, viewport: null, settings: null };
+    const shown = { facts: null, steps: null, states: new Map(), points: new Map(), url: null, mood: null, left: null, chatState: null, transport: null, solo: false, chatPop: false, catalog: null, viewport: null, settings: null, design: null };
     // The host remembers solo view so it comes back after a workbench reload. The browser window stays untouched.
     bench.fullscreen = async (on) => {
         shown.solo = on;
@@ -973,6 +1012,15 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
     // The chat over the app in App only: remembered for this run's window, a new run starts with it hidden.
     bench.chatPop = async (on) => {
         shown.chatPop = on;
+    };
+    bench.designOn = (on) => {
+        if (shown.design !== null) shown.design = { ...shown.design, on };
+    };
+    // Who gets a deviation row's element (run.mjs: the attached session, as with /element); null: rows only show.
+    let onDesignRow = null;
+    bench.designRow = async (index) => {
+        const row = shown.design?.rows?.[index];
+        if (row?.element !== undefined && onDesignRow !== null) await onDesignRow(row);
     };
     // When an item started running: the host measures the duration so it survives a workbench reload.
     const started = new Map();
@@ -1016,6 +1064,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
             if (shown.chatPop) await call('chatPop', true);
             if (shown.catalog !== null) await call('states', shown.catalog);
             if (shown.viewport !== null) await call('viewport', shown.viewport);
+            if (shown.design !== null) await call('design', pageDesign(shown.design));
             await call('refreshable', bench.refresh !== null);
             // Reloaded by the human (F5, browser button) or by the application itself (top.location, form with target=_top).
             // Only the former disturbs a running test; the latter is the application's behaviour.
@@ -1163,6 +1212,31 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
         viewport: (size) => {
             shown.viewport = size ?? null;
             return call('viewport', shown.viewport);
+        },
+        /**
+         * The step's target design over the app frame (F7 toggles it): { src (data URL), opacity, blend ('normal' or
+         * 'difference'), width (CSS px, the recorded viewport's), rows: [{ text, element? }], on }; null removes it. The page
+         * gets the rows' texts only; a row's element (a CSS path in the app) stays with the host.
+         */
+        design: (given) => {
+            shown.design = given ?? null;
+            return call('design', shown.design === null ? null : pageDesign(shown.design));
+        },
+        /** Who receives a deviation row with an element; null: nobody. */
+        onDesignRow: (handler) => {
+            onDesignRow = typeof handler === 'function' ? handler : null;
+        },
+        /**
+         * Runs `shoot` while the app frame shows unscaled at its recorded size (a pinned viewport is scaled down to fit the pane):
+         * the capture of a step is then the same as headless. The overlay is hidden meanwhile.
+         */
+        unscaled: async (shoot) => {
+            await call('unscaled', true);
+            try {
+                return await shoot();
+            } finally {
+                await call('unscaled', false);
+            }
         },
         /** Application only (F8) on or off, e.g. automatically after the hand-over for developing. The window stays as it is. */
         solo: async (on) => {

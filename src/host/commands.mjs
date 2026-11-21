@@ -999,6 +999,7 @@ export const changeTracker = (root) => {
             let key = only === undefined ? 'cli.changedPlan' : 'cli.changedSteps';
             if (options.learned === 'baselines') key = 'cli.changedBaselines';
             else if (options.learned === 'effects') key = 'cli.changedEffects';
+            else if (options.learned === 'looks') key = 'cli.changedLooks';
             for (const file of result.split(', ')) {
                 const kinds = changes.get(file) ?? new Map();
                 const ids = kinds.get(key) ?? new Set();
@@ -1032,7 +1033,7 @@ export const changeTracker = (root) => {
  *          playback's verdict, its report.md relative to the project, and the pending steps' ids
  */
 export const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
-    const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
+    const { test, handover = false, stepTimeoutSec, entry, through, design = false, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
     const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
@@ -1040,9 +1041,10 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     // open without a test has no steps: nothing to play back, just log in and hand over. At the entry of a step the steps before
     // it must be playable; the step itself only leads in, and if it is stale, nothing of it runs. The whole test may end in
     // pending steps: they are the part still to be built, the run plays up to the last recorded one (unless --strict).
-    if (loaded === undefined && entry === undefined) assertPlayable(spec, target, undefined, { pending: !strict });
+    if (loaded === undefined && through !== undefined) assertPlayable(spec, target, through);
+    else if (loaded === undefined && entry === undefined) assertPlayable(spec, target, undefined, { pending: !strict });
     else if (loaded === undefined && position > 0) assertPlayable(spec, target, spec.steps[position - 1].id);
-    const pending = entry === undefined ? pendingSteps(spec) : [];
+    const pending = entry === undefined && through === undefined ? pendingSteps(spec) : [];
     // The environment's reset before the first writing test (or the first test with --reset), before anything signs in.
     await lifecycle?.beforeTest(spec);
     // A missing test user stops the run here, before Chrome or Claude start.
@@ -1062,7 +1064,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     if (!quiet) ui.head();
     if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
-    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
+    const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless, withDesign: design });
     const tracker = changeTracker(root);
     let failed;
     let played;
@@ -1072,6 +1074,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     const code = await runFlow({
         spec,
         entry,
+        through,
         handover,
         canFix,
         advise: withAdvice,
@@ -1508,7 +1511,11 @@ export const open = async (root, args, deps = {}) => {
     requireHuman('open', deps.interactive);
     if (options.test !== undefined) {
         const { config, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
-        const runOptions = { ...options, target, entry: options.step, handover: true, learn: false, advise: false, headless: false, noChat: false };
+        // --design: through the step, so its screen is reached, with the design over it; a pending step has no screen yet, so
+        // it opens at its entry as without --design.
+        const spec = options.design === true && options.step !== undefined ? loadTest(root, options.test) : null;
+        const through = spec?.steps.find(({ id }) => id === options.step)?.recording === undefined ? undefined : options.step;
+        const runOptions = { ...options, target, ...(through === undefined ? { entry: options.step } : { through }), handover: true, learn: false, advise: false, headless: false, noChat: false };
         return withLifecycle(lifecycleOf(root, config, target, options, 'open'), async (lifecycle) => (await runOne(root, { ...runOptions, lifecycle }, deps)).code);
     }
     const config = loadConfig(root);

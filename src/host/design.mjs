@@ -2,18 +2,21 @@
 // structure: the same controls, the same view lines and a few computed styles per control. A design comes from a person (Claude
 // Design, Figma), the attached Claude Code session writes it with caw_design; caw itself never fetches anything.
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
 import { controlsProbe, viewLines } from './effects.mjs';
 import { waitForLocator } from './framework/index.mjs';
 import { redactFor } from './secrets.mjs';
+import { DEFAULT_VISUAL, comparePixels, percent } from './visual.mjs';
 
 export const DESIGN_DIR = 'design';
-/** What a step's `design:` may name: a page (judged by structure) or an image (pixels come later). */
+/** What a step's `design:` may name: a page (judged by structure) or an image (judged by pixels, visual.mjs). */
 export const DESIGN_KINDS = ['.html', '.png'];
-export const DEFAULT_DESIGN_FAIL = ['target'];
+// A target design not met and a changed learned look fail their step (the look only once visual.regression learns it);
+// the token lint only warns until design.fail names "lint".
+export const DEFAULT_DESIGN_FAIL = ['target', 'visual'];
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
 // How long `needs` waits for each locator at the end of a run: the page is already quiet, it only has to be there.
 export const NEEDS_TIMEOUT_MS = 2000;
@@ -208,7 +211,7 @@ export const maskedView = (aria) => {
 const px = (value) => String(value).replace(/(-?\d+(?:\.\d+)?)px/g, (_, number) => `${Math.round(Number(number))}px`);
 const hex = (part) => Math.round(Number(part)).toString(16).padStart(2, '0');
 /** rgb()/rgba() as #rrggbb or #rrggbbaa; fully transparent as `transparent`. */
-const color = (value) => {
+export const cssHex = (value) => {
     const match = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/.exec(String(value).trim());
     if (match === null) return String(value);
     const alpha = match[4] === undefined ? 1 : match[4].endsWith('%') ? Number(match[4].slice(0, -1)) / 100 : Number(match[4]);
@@ -221,7 +224,7 @@ const STYLE_KEYS = { fontSize: 'font-size', fontWeight: 'font-weight', color: 'c
 /** Computed styles as the comparison sees them: whole pixels, colors as hex. */
 export const normalStyle = (style = {}) => Object.fromEntries(Object.entries(STYLE_KEYS)
     .filter(([key]) => style[key] !== undefined)
-    .map(([key, name]) => [name, key === 'color' || key === 'backgroundColor' ? color(style[key]) : px(style[key])]));
+    .map(([key, name]) => [name, key === 'color' || key === 'backgroundColor' ? cssHex(style[key]) : px(style[key])]));
 
 /**
  * The structure of a page as caw compares it: control lines, view lines and the styles per control (the same control twice is
@@ -291,21 +294,43 @@ export const designText = ({ file, missing = [], extra = [], styleDiffs = [] }) 
 ].join(' ');
 
 /**
- * Judges the target designs of a run. The design browser starts on the first .html design and is separate from the app's:
- * headless, no profile, no scripts, no network.
+ * Judges the target designs of a run. The design browser starts on the first design (or comparison) and is separate from the
+ * app's: headless, no profile, no network; scripts run only in the comparison page, which holds nothing but the two images.
  * @param cawDir  the project's caw folder
  * @param launch  () => a Playwright Browser (same binary as the session)
  * @param read    (path) => file text, for tests
- * @returns { judge(design, page), close() }; judge returns { file, verdict, missing?, extra?, styleDiffs?, note? } with verdict
- *          met, not-met, image (pixels come later, never fails), missing (no such file under caw/design)
+ * @param pixels  { tolerance, designMaxRatio } (visual.mjs visualSettings)
+ * @param save    (name, png) => the file name the diff image was saved as, or undefined (nothing saved)
+ * @returns { judge(design, page, { capture }), compare(actual, target, masks), close() }; judge returns { file, verdict,
+ *          missing?, extra?, styleDiffs?, ratio?, diff?, note? } with verdict met, not-met, image (a .png without a capture of
+ *          the step, never fails), missing (no such file under caw/design)
  */
-export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [] }) => {
+export const createDesignJudge = ({ cawDir, launch, read, secrets = () => [], pixels = DEFAULT_VISUAL, save = () => undefined }) => {
     let browser = null;
+    const compare = async (actual, target, masks) => {
+        browser ??= await launch();
+        return comparePixels(browser, actual, target, { masks, tolerance: pixels.tolerance ?? DEFAULT_VISUAL.tolerance });
+    };
     return {
-        judge: async ({ file, viewport }, page) => {
+        compare,
+        judge: async ({ file, viewport, step }, page, { capture } = {}) => {
             const path = designPath(cawDir, file);
             if (path === null) return { file, verdict: 'missing', note: t('session.design.noFile', { file }) };
-            if (path.toLowerCase().endsWith('.png')) return { file, verdict: 'image', note: t('session.design.image', { file }) };
+            if (path.toLowerCase().endsWith('.png')) {
+                if (capture === undefined) return { file, verdict: 'image', note: t('session.design.image', { file }) };
+                const shot = await capture();
+                const compared = await compare(shot.png, readFileSync(path), shot.masks);
+                const max = pixels.designMaxRatio ?? DEFAULT_VISUAL.designMaxRatio;
+                const met = compared.ratio <= max;
+                const diff = met ? undefined : save(`step-${step ?? 'design'}-diff.png`, compared.diffPng);
+                return {
+                    file,
+                    verdict: met ? 'met' : 'not-met',
+                    ratio: compared.ratio,
+                    ...(diff === undefined ? {} : { diff }),
+                    note: t(met ? 'session.design.pixelsMet' : 'session.design.pixelsNotMet', { file, ratio: percent(compared.ratio), max: percent(max), diff: diff ?? '-' }),
+                };
+            }
             browser ??= await launch();
             const html = await read(path);
             const rendered = await renderDesign(browser, html, viewport ?? DEFAULT_VIEWPORT);

@@ -455,4 +455,11 @@ export default {
     'run.mcp.roleNothing': 'No session saved (window closed or an error). Last output: {tail}',
     'run.button.useTarget': 'Use "{name}"',
     'run.flow.targetAdopted': 'Action {number} of {id} now uses {target}: {file}. Please review and commit.',
+    'run.button.adoptLook': 'Adopt new look',
+    'run.flow.lookNext': 'The step itself works; it only looks different than learned. If the new look is right, adopt it; it is then learned for this platform.',
+    'run.flow.lookAdopted': 'New look of {id} adopted: {file}. Please review and commit.',
+    'run.flow.looksLearned': 'Learned the look of {ids}: {file}. Please review and commit.',
+    'run.develop.noDesign': '{id} has no target design (design: in the test file), so there is nothing to lay over the app.',
+    'run.develop.designFailed': 'Design {file} could not be shown: {message}',
+    'run.develop.designShown': 'Design {file} lies over the app at the size {id} was recorded in; F7 shows and hides it. {count} deviations are listed below it; one with an element hands it to {agent}, as /element does.',
 };
