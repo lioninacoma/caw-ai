@@ -14,7 +14,7 @@
 > das Ziel erreicht, und hält ihn danach als Regressionstest. Es ordnet einen Fehlschlag ohne KI der App, der Umgebung oder dem
 > Test zu, hält einen Agenten an die Prüfungen, die er behalten muss, und bringt dich in jeden Zustand deiner App.
 
-<img src="docs/media/demo.webp" width="100%" alt="caw nimmt einen Test des Errand-Beispiels auf: Der Test wird im Chat beschrieben, Claude schlägt den Testplan vor und arbeitet ihn in der App ab; danach spielt caw die Aufnahme ohne KI ab und der Plan wird übernommen">
+<img src="docs/media/demo.webp" width="100%" alt="Ein Schritt des Errand-Beispiels bricht, und caw schätzt ohne KI einen Fehler der App ein; der Agent findet die Ursache, die Änderung wird übernommen und der Test besteht wieder; open an einem Schritt mit /element; ein Fehler nachgestellt; ein neuer Test entsteht; ein offener Schritt mit Zielbild; caw audit nennt eine abgeschwächte Prüfung; CI ordnet den Fehler als App ein">
 
 - [Warum nicht einfach Playwright?](#warum-nicht-einfach-playwright)
 - [Schnellstart](#schnellstart)
@@ -105,6 +105,8 @@ App oder beschreibst ihn im Chat; der Agent schlägt den Plan vor, du gibst ihn 
 die Aufnahme, und ein Lauf ohne KI prüft sie, bevor du sie übernimmst. Ab dann spielt der Test mit Playwright ab, lokal und in
 CI: deterministisch, schnell, ohne Tokens.
 
+<img src="docs/media/plan.webp" width="100%" alt="Der Agent schlägt im Chat den Testplan vor: je Schritt eine Aktion und ein erwartetes Ergebnis, mit einem Knopf &quot;Plan freigeben&quot;">
+
 ```yaml
 # caw/tests/first-errand.yaml
 id: first-errand
@@ -155,7 +157,9 @@ fünf gesunden Läufen, danach sind sie eingefroren: die Bedienelemente, die er 
 und seine Konsolenmeldungen. Geänderte Bedienelemente oder neue Konsolenmeldungen lassen den Schritt standardmäßig scheitern,
 der Rest warnt.
 
-<img src="docs/media/bugfix.webp" width="100%" alt="Claude stellt einen Suchfehler nach und schlägt eine Änderung an server.mjs mit einem Knopf &quot;Änderung übernehmen&quot; vor">
+<img src="docs/media/triage.webp" width="100%" alt="Ein Schritt scheitert mit HTTP 500; caw schätzt ohne KI einen Fehler der App ein und bietet an, den Agenten die Ursache suchen zu lassen">
+
+<img src="docs/media/fix.webp" width="100%" alt="Der Agent nennt die Ursache in server.mjs mit einem einzeiligen Diff und einem Knopf &quot;Änderung übernehmen&quot;">
 
 Im Chat findet der Agent auf Wunsch die Ursache, „Schritt beheben“ nimmt nach einer gewollten Änderung nur diesen Schritt neu
 auf, und eine Korrektur der App kommt als Code-Änderung, die du annimmst oder ablehnst. Wurde nur ein Knopf umbenannt, belegt

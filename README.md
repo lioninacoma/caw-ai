@@ -14,7 +14,7 @@ English · [Deutsch](README.de.md)
 > meets the target, then keeps it as a regression test. It judges a failure as app, environment or test without AI, holds an
 > agent to the checks it must keep, and takes you to any state of your app.
 
-<img src="docs/media/demo.webp" width="100%" alt="caw records a test of the Errand example: the test is described in the chat, Claude proposes the test plan and works through it in the app; then caw replays the recording without AI and the plan is adopted">
+<img src="docs/media/demo.webp" width="100%" alt="A step of the Errand example breaks and caw assesses it as an app bug without AI; the agent finds the cause, the change is applied and the test passes again; open at a step with /element; a bug reproduced; a new test created; a pending step with a target design; caw audit names a weakened check; CI types the failure as app">
 
 - [Why not just Playwright?](#why-not-just-playwright)
 - [Quick start](#quick-start)
@@ -100,6 +100,8 @@ it in the chat; the agent proposes the plan, you approve it, and the agent walks
 run without AI before you adopt it. From then on the test replays with Playwright, locally and in CI: deterministic, fast,
 without tokens.
 
+<img src="docs/media/plan.webp" width="100%" alt="The agent proposes the test plan in the chat: per step an action and one expected result, with an &quot;Approve plan&quot; button">
+
 ```yaml
 # caw/tests/first-errand.yaml
 id: first-errand
@@ -146,7 +148,9 @@ output it saw and the effects it learned. No AI is needed for that. A step's eff
 runs and then frozen: the controls it changes, its requests, the shape of their responses and its console messages. Changed
 controls or new console messages fail the step by default, the rest warns.
 
-<img src="docs/media/bugfix.webp" width="100%" alt="Claude reproduces a search bug and proposes a code change to server.mjs with an &quot;Apply change&quot; button">
+<img src="docs/media/triage.webp" width="100%" alt="A step fails with HTTP 500; caw assesses it as an app bug without AI and offers to let the agent find the cause">
+
+<img src="docs/media/fix.webp" width="100%" alt="The agent names the cause in server.mjs with a one-line diff and an &quot;Apply change&quot; button">
 
 In the chat the agent finds the cause on request, "Fix step" re-records only that step after an intended change, and a fix for
 the app comes as a code change you accept or reject. If a button was only renamed, caw proves the new target without AI and
