@@ -559,7 +559,7 @@ jobs:
           CAW_CLERK_USER__PROD: ${{ secrets.CAW_CLERK_USER__PROD }}
           CAW_CLERK_PASSWORD__PROD: ${{ secrets.CAW_CLERK_PASSWORD__PROD }}
       - run: cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
-        if: always()
+        if: always() && hashFiles('out/summary.md') != ''
 ```
 
 Auf einem eigenen Rechner, `alert.sh` steht für deine Alarmierung:
@@ -574,8 +574,8 @@ Auf einem eigenen Rechner, `alert.sh` steht für deine Alarmierung:
 |---|---|---|
 | `0` | alle Tests bestanden | bleibt still |
 | `1` | ein Schritt ist gescheitert: Die App tat nicht, was der Test erwartet | schlägt Alarm; die Berichte sagen, ob es nach Anwendung, Umgebung, Test oder unklar aussieht |
-| `2` | Umgebung: kein Urteil (Server aus, Anmeldung fehlgeschlagen, `credentials-missing`, Chrome fehlt, ein interner Fehler) | meldet Produktion als nicht erreichbar, oder schlägt erst nach mehreren Läufen in Folge Alarm |
-| `3` | abgewiesen, es lief nichts: Der Monitor selbst ist kaputt (Config, Testdatei, `auth-missing`, der Aufruf) | sagt es dem, der den Monitor pflegt |
+| `2` | Umgebung: kein Urteil (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, ein interner Fehler) | meldet Produktion als nicht erreichbar, oder schlägt erst nach mehreren Läufen in Folge Alarm |
+| `3` | abgewiesen, es lief nichts: Der Monitor selbst ist kaputt (Config, Testdatei, ein fehlendes Secret `credentials-missing`, `auth-missing`, der Aufruf) | sagt es dem, der den Monitor pflegt |
 | `4` | der Test braucht Pflege: Aufzeichnung fehlt (`replay-missing`), ein Schritt hat sich seit der Aufnahme geändert (`replay-stale`), offene Schritte mit `--strict` (`replay-pending`) | sagt es dem, der die Tests pflegt |
 
 Bei mehreren Tests gilt der schlimmste Exit-Code: `2` vor `1` vor `4` vor `3` vor `0`. Ein Test, der an der Umgebung endete, verdeckt also im Exit-Code den gescheiterten Schritt eines anderen; jedes einzelne Ergebnis steht in den Berichten. Hält caw schon vor dem ersten Test an (ungültige Config, unbekannte Umgebung, ein Berichtspfad außerhalb des Projekts), endet es mit `3` und schreibt keinen Bericht. Ein fehlender Bericht zählt also wie `3`. Alle Codes: [Befehle › Fehlercodes](commands.de.md#fehlercodes).
@@ -593,8 +593,8 @@ Bei mehreren Tests gilt der schlimmste Exit-Code: `2` vor `1` vor `4` vor `3` vo
 
 - **WebSocket:** Requests, Vergleiche, Wirkungen und Einschätzung sehen die Requests der App, keine Nachrichten über einen WebSocket. Gesperrt sind diese Nachrichten auf Produktion auch nicht. Ein kaputtes Live-Update fällt nur auf, wenn eine Prüfung oder die Bedienelemente es bemerken.
 - **Zugang per IP-Adresse:** caw kennt keine Proxy-Einstellung: Chrome startet mit `--no-proxy-server`, damit die Host-Sperre hält. Der Rechner des Monitors muss Produktion direkt erreichen. Lässt Produktion nur bestimmte Adressen zu, lass den Monitor auf einem Rechner mit bekannter Adresse laufen und gib diese frei.
-- **Ein eigenes Konto für den Monitor:** Melde dich mit einem Konto an, das nur für den Monitor da ist und nicht mehr Rechte hat, als die Tests brauchen, nie mit einem persönlichen. Die Zugangsdaten kommen wie gewohnt ([Konfiguration › roles](configuration.de.md#roles)): `CAW_<ROLE>_USER__PROD`, `CAW_<ROLE>_PASSWORD__PROD` und für Einmalcodes `CAW_<ROLE>_TOTP__PROD`, als CI-Secrets oder in `caw/.env` auf dem Rechner des Monitors. `caw role login` weist Produktion ab, eine gespeicherte Sitzung (`signIn.type: session`) kann caw dort also nicht anlegen; ohne die Datei hält ein Lauf mit `auth-missing` an (Exit `3`).
-- **Aufbewahrung:** Jeder Testlauf und jeder Versuch hinterlässt einen Ordner in `.caw/runs/`. `keepRuns` (Standard 30) behält die neuesten und löscht ältere, wenn ein Lauf startet. Bei zehn Tests sind das drei Monitorläufe. Setz den Wert hoch oder kopiere weg, was du brauchst; `0` behält jeden Lauf und füllt die Platte.
+- **Ein eigenes Konto für den Monitor:** Melde dich mit einem Konto an, das nur für den Monitor da ist und nicht mehr Rechte hat, als die Tests brauchen, nie mit einem persönlichen. Die Zugangsdaten kommen wie gewohnt ([Konfiguration › roles](configuration.de.md#roles)): `CAW_<ROLE>_USER__PROD`, `CAW_<ROLE>_PASSWORD__PROD` und für Einmalcodes `CAW_<ROLE>_TOTP__PROD`, als CI-Secrets oder in `caw/.env` auf dem Rechner des Monitors. `caw role login` weist Produktion ab, eine gespeicherte Sitzung (`signIn.type: session`) kann caw dort also nicht anlegen; ohne die Datei hält ein Lauf mit `auth-missing` an (Exit `3`). Ein Monitor auf Produktion meldet sich nur per Formular oder Basic-Anmeldung an (`signIn.type: form` oder `basic`).
+- **Aufbewahrung:** Jeder Testlauf und jeder Versuch hinterlässt einen Ordner in `.caw/runs/`. `keepRuns` (Standard 30) zählt jeden Testlauf, nicht jeden Monitorlauf: Es behält die neuesten und löscht ältere, wenn ein Lauf startet. Bei zehn Tests sind das drei Monitorläufe. Ein Monitor sollte `keepRuns` also hochsetzen oder seinen JSON-Bericht selbst archivieren; `0` behält jeden Lauf und füllt die Platte.
 - **Personenbezogene Daten in Artefakten:** Produktion zeigt echte Daten. caw ersetzt das Passwort der Rolle, Einmalcodes, mit `secret: true` markierte Werte und HTTP-Basic-Zugangsdaten durch `••••`, in `report.md`, `result.json` und im Trace. Request-Namen enthalten keine Parameterwerte (außer `requestKeys`), und auf Produktion fehlen in `result.json` die Wirkungszeilen. Nicht maskiert: Screenshots (der Fehlerbildschirm, `visual.screenshots`), der Trace (`trace.zip` mit Seiteninhalten, Requests und den Cookies des Kontos) und Texte, die die App gezeigt hat. Die landen in Gründen, Befunden, Meldungen und Konsolenzeilen in `report.md`, `result.json` und den Berichten JUnit, JSON und Zusammenfassung. Lass `.caw/runs` auf dem Rechner des Monitors, lade keine Laufordner als CI-Artefakte hoch, und behandle die Berichte als Daten, die aus der Seite zitieren können.
 
 ## Aus Claude Code steuern

@@ -8,8 +8,8 @@ export const EXIT = { pass: 0, fail: 1, error: 2, rejected: 3, needsRecording: 4
 const SEVERITY = [EXIT.pass, EXIT.rejected, EXIT.needsRecording, EXIT.fail, EXIT.error];
 export const worstExit = (codes) => codes.reduce((worst, code) => (SEVERITY.indexOf(code) > SEVERITY.indexOf(worst) ? code : worst), EXIT.pass);
 
-// Error codes for which nothing ran: a call, config or test file that is not right.
-const REJECTED = new Set(['usage', 'reproduce-not-allowed', 'reproduce-refused', 'auth-missing', 'finish-rejected', 'test-invalid', 'test-missing', 'write-protected', 'target-invalid', 'env-invalid', 'config-invalid', 'config-missing', 'url-override', 'env-denied', 'host-blocked', 'unknown-command', 'command-invalid', 'step-limit', 'step-order', 'step-unknown', 'human-message', 'plan-required', 'plan-invalid', 'advice-invalid', 'advise-only', 'skill-foreign', 'git-missing', 'git-ref']);
+// Error codes for which nothing ran: a call, config or test file that is not right, or a missing secret (setup, not environment).
+const REJECTED = new Set(['usage', 'reproduce-not-allowed', 'reproduce-refused', 'auth-missing', 'finish-rejected', 'test-invalid', 'test-missing', 'write-protected', 'target-invalid', 'env-invalid', 'config-invalid', 'config-missing', 'url-override', 'env-denied', 'credentials-missing', 'host-blocked', 'unknown-command', 'command-invalid', 'step-limit', 'step-order', 'step-unknown', 'human-message', 'plan-required', 'plan-invalid', 'advice-invalid', 'advise-only', 'skill-foreign', 'git-missing', 'git-ref']);
 // The test needs a (new) recording first: not a bad call, but work for record.
 const NEEDS_RECORDING = new Set(['replay-missing', 'replay-stale', 'replay-pending']);
 

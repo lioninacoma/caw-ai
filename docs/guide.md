@@ -555,7 +555,7 @@ jobs:
           CAW_CLERK_USER__PROD: ${{ secrets.CAW_CLERK_USER__PROD }}
           CAW_CLERK_PASSWORD__PROD: ${{ secrets.CAW_CLERK_PASSWORD__PROD }}
       - run: cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
-        if: always()
+        if: always() && hashFiles('out/summary.md') != ''
 ```
 
 On your own machine, with `alert.sh` standing for your alerting:
@@ -570,8 +570,8 @@ On your own machine, with `alert.sh` standing for your alerting:
 |---|---|---|
 | `0` | every test passed | stays quiet |
 | `1` | a step failed: the app didn't do what the test expects | alerts; the reports say whether it looks like the app, the environment, the test or unclear |
-| `2` | environment: no verdict (server down, sign-in failed, `credentials-missing`, Chrome missing, an internal error) | reports production as unavailable, or alerts after several runs in a row |
-| `3` | rejected, nothing ran: the monitor itself is broken (config, test file, `auth-missing`, the call) | tells whoever maintains the monitor |
+| `2` | environment: no verdict (server down, sign-in failed, Chrome missing, an internal error) | reports production as unavailable, or alerts after several runs in a row |
+| `3` | rejected, nothing ran: the monitor itself is broken (config, test file, a missing secret `credentials-missing`, `auth-missing`, the call) | tells whoever maintains the monitor |
 | `4` | the test needs maintenance: recording missing (`replay-missing`), a step changed since recording (`replay-stale`), pending steps with `--strict` (`replay-pending`) | tells whoever maintains the tests |
 
 With several tests the exit code is the worst one: `2` before `1` before `4` before `3` before `0`. So one test that ended on the environment hides another one's failed step in the exit code; the reports have each test's own result. If caw stops before the first test (invalid config, unknown environment, a report path outside the project), it exits `3` and writes no report. Treat a missing report like `3`. All codes: [Commands › Error codes](commands.md#error-codes).
@@ -589,8 +589,8 @@ With several tests the exit code is the worst one: `2` before `1` before `4` bef
 
 - **WebSocket:** Requests, baselines, effects and the assessment see the app's requests, not messages over a WebSocket. Those messages aren't blocked on production either. A broken live update shows only if a check or the controls notice it.
 - **Access by IP address:** caw has no proxy setting: Chrome starts with `--no-proxy-server`, so the host lock holds. The monitor's machine must reach production directly. If production admits only certain addresses, run the monitor on a machine with a known address and allow it.
-- **A monitoring account of its own:** Sign in with an account made for the monitor, with as few rights as the tests need, never a personal one. Its credentials come the usual way ([Configuration › roles](configuration.md#roles)): `CAW_<ROLE>_USER__PROD`, `CAW_<ROLE>_PASSWORD__PROD` and for one-time codes `CAW_<ROLE>_TOTP__PROD`, as CI secrets or in `caw/.env` on the monitor's machine. `caw role login` refuses production, so caw can't save a stored session (`signIn.type: session`) there; without the file a run stops with `auth-missing` (exit `3`).
-- **Retention:** Every test run and every attempt leaves a folder in `.caw/runs/`. `keepRuns` (default 30) keeps the newest and deletes older ones when a run starts. With ten tests that is three monitor runs. Raise it or copy what you need elsewhere; `0` keeps every run and fills the disk.
+- **A monitoring account of its own:** Sign in with an account made for the monitor, with as few rights as the tests need, never a personal one. Its credentials come the usual way ([Configuration › roles](configuration.md#roles)): `CAW_<ROLE>_USER__PROD`, `CAW_<ROLE>_PASSWORD__PROD` and for one-time codes `CAW_<ROLE>_TOTP__PROD`, as CI secrets or in `caw/.env` on the monitor's machine. `caw role login` refuses production, so caw can't save a stored session (`signIn.type: session`) there; without the file a run stops with `auth-missing` (exit `3`). A monitor on production signs in with a form or basic login only (`signIn.type: form` or `basic`).
+- **Retention:** Every test run and every attempt leaves a folder in `.caw/runs/`. `keepRuns` (default 30) counts every test run, not every monitor run: it keeps the newest and deletes older ones when a run starts. With ten tests that is three monitor runs. So a monitor should raise `keepRuns` or archive its JSON report itself; `0` keeps every run and fills the disk.
 - **Personal data in artifacts:** Production shows real data. caw masks the role's password, one-time codes, values marked `secret: true` and HTTP Basic credentials with `••••` in `report.md`, `result.json` and the trace. Request names carry no parameter values (except `requestKeys`), and on production `result.json` leaves out effect lines. Not masked: screenshots (the failure screen, `visual.screenshots`), the trace (`trace.zip` with page contents, requests and the account's cookies), and texts the app showed, which end up in reasons, findings, messages and console lines in `report.md`, `result.json` and the JUnit, JSON and summary reports. Keep `.caw/runs` on the monitor's machine, don't upload run folders as CI artifacts, and treat the reports as data that may quote the page.
 
 ## Drive it from Claude Code

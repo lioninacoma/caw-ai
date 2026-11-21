@@ -12,7 +12,7 @@ import { changeTracker, chooseEnv, init, junitXml, list, open, record, reportJso
 import { parseRunArgs } from '../src/host/linux.mjs';
 import { loadTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { listProject, validateProject } from '../src/host/project-data.mjs';
-import { EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
+import { CawError, EXIT, exitOf, worstExit } from '../src/shared/errors.mjs';
 import { helpText, synopsisOf, unknownCommandText } from '../src/shared/help.mjs';
 import { closest, editDistance } from '../src/shared/suggest.mjs';
 import { createUi } from '../src/shared/ui.mjs';
@@ -53,6 +53,7 @@ test('exit codes: needs recording is 4, the worst run decides the batch', () => 
     assert.equal(exitOf('replay-stale'), 4);
     assert.equal(exitOf('replay-pending'), 4, 'run --strict with pending steps');
     assert.equal(exitOf('usage'), EXIT.rejected);
+    assert.equal(exitOf('credentials-missing'), EXIT.rejected, 'a missing secret is the setup, not the environment');
     assert.equal(exitOf('chrome-weg'), EXIT.error);
     assert.equal(worstExit([]), 0);
     assert.equal(worstExit([0, 3, 4]), 4);
@@ -339,6 +340,15 @@ test('run --retry-env: only environment failures run again, at most n times, the
     script.neu = [{ code: 2, verdict: { status: 'error', code: 'browser-closed', reason: 'zu' } }];
     assert.equal(await run(root, ['neu', '--env', 'local', '--report', 'json=out/one.json'], { runOne }), EXIT.error);
     assert.deepEqual(calls, ['neu']);
+    // A missing secret is the setup's fault: rejected (3), not retried, typed by its code in JUnit.
+    calls.length = 0;
+    const secretless = async (_root, { test: id }) => {
+        calls.push(id);
+        throw new CawError('credentials-missing', 'CAW_CLERK_PASSWORD fehlt');
+    };
+    assert.equal(await run(root, ['neu', '--env', 'local', '--retry-env', '2', '--report', 'junit=out/secret.xml'], { runOne: secretless }), EXIT.rejected);
+    assert.deepEqual(calls, ['neu']);
+    assert.match(readFileSync(join(root, 'out', 'secret.xml'), 'utf8'), /<error type="credentials-missing" message="CAW_CLERK_PASSWORD fehlt"\/>/);
 });
 
 test('parseRunArgs: --report per kind once, --retry-env a whole number from 1 to 5', () => {

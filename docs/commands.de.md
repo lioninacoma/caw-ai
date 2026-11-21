@@ -466,7 +466,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 | `git-missing`, `git-ref` | 3 | `audit`: Git installieren, im Repository aufrufen, eine Ref nennen, die Git kennt; in CI die Geschichte holen (`fetch-depth: 0`) |
 | `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` gibt es, nicht von caw geschrieben |
 | `auth-missing` | 3 | Keine gespeicherte Sitzung, oder sie ist abgelaufen: `caw role login <rolle> --env <env>` (die Meldung nennt ihn) |
-| `credentials-missing` | 2 | Die genannten Variablen in `caw/.env` oder in der Umgebung setzen (CI-Secrets); eine neue Rolle vorher mit `role add <rolle>` |
+| `credentials-missing` | 3 | Die genannten Variablen in `caw/.env` oder in der Umgebung setzen (CI-Secrets); eine neue Rolle vorher mit `role add <rolle>` |
 | `login-form-missing`, `login-failed` | 2 | Läuft das Backend? Stimmen Selektoren oder Schritte in `signIn` und die Zugangsdaten? |
 | `env-unreachable` | 2 | Umgebung starten (oder `--start` angeben, wenn sie einen `start`-Befehl hat), Adresse prüfen |
 | `browser-sandbox` | 2 | Die Sandbox von Chrome startet nicht (Linux als root, manche Container): den Rechner richten oder bewusst `browser.noSandbox: true` setzen |

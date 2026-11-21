@@ -461,7 +461,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 | `git-missing`, `git-ref` | 3 | `audit`: install Git, run it inside the repository, name a ref Git knows; in CI fetch the history (`fetch-depth: 0`) |
 | `skill-foreign` | 3 | `caw skill`: `.claude/skills/caw-attach/SKILL.md` exists and was not written by caw |
 | `auth-missing` | 3 | No stored session, or it expired: `caw role login <role> --env <env>` (the message names it) |
-| `credentials-missing` | 2 | Set the variables the message names in `caw/.env` or the environment (CI secrets); a new role first with `role add <role>` |
+| `credentials-missing` | 3 | Set the variables the message names in `caw/.env` or the environment (CI secrets); a new role first with `role add <role>` |
 | `login-form-missing`, `login-failed` | 2 | Is the backend up? Are the `signIn` selectors or steps and the credentials right? |
 | `env-unreachable` | 2 | Start the environment (or pass `--start` when it has a `start` command), check the URL |
 | `browser-sandbox` | 2 | Chrome's sandbox cannot start (Linux as root, some containers): fix the machine, or knowingly set `browser.noSandbox: true` |
