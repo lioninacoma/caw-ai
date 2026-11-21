@@ -1295,7 +1295,7 @@ export const openBrowserSession = async (spec) => {
             });
         };
         if (writeBlock.active()) await routeWrites();
-        // A form POST into the workbench's top window is sent by caw itself (interceptDocuments), past the routes: the same check.
+        // A form POST into the workbench's top window is intercepted by caw (interceptDocuments): the same check there, before it goes out.
         const refuseTopWrite = ({ method, url, headers, postData }) => refuseWrite({
             method,
             url,
@@ -1468,7 +1468,7 @@ export const openBrowserSession = async (spec) => {
             }
             await bench.point(PREP, 'load', 'running');
         } else {
-            if (rewrite !== undefined) await interceptDocuments(raw, raw.pages()[0], appHosts, { request: raw.request, rewrite });
+            if (rewrite !== undefined) await interceptDocuments(raw, raw.pages()[0], appHosts, { rewrite });
             await raw.pages()[0].goto(startUrl, { waitUntil: 'load' });
         }
         // Quiet according to the framework adapter; for the neutral adapter also no open requests of the page.

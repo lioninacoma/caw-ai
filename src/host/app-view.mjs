@@ -63,8 +63,6 @@ export const postBody = (request) => {
     return request.postData === undefined ? undefined : Buffer.from(request.postData);
 };
 
-const HOP_HEADERS = new Set(['host', 'content-length', 'connection', 'cookie']);
-
 /**
  * Applies `rewrite` byte-exactly: the page goes in as a latin1 string (one char per byte) and comes back the same way. This keeps
  * UTF-8, ISO-8859-1 and any other ASCII-compatible encoding intact without knowing the page's encoding; the tags themselves are ASCII.
@@ -81,18 +79,18 @@ export const rewriteBytes = async (bytes, rewrite, url) => {
 /**
  * Intercepts the documents of the application's hosts:
  * - `workbench(url)` answers the top window's document with the workbench, and the application goes into its iframe;
- * - a POST of the top window (form with target=_top) goes out via the browser's request context, with the same cookies;
- *   a redirect then loads the application in the iframe, a direct response is handed to the iframe once as its document;
+ * - a POST of the top window (form with target=_top) goes out through Chrome (its resolver rules, proxy setting and cookies
+ *   apply) and is caught at the response stage, so the top window keeps the workbench: a redirect then loads the application in
+ *   the iframe, a direct response is handed to the iframe once as its document;
  * - the documents of the application iframe come without the headers that forbid embedding; other frames keep them.
  * Without `workbench` (no human watching) the top window stays the application; then only `rewrite` applies.
  * @param workbench (url) => workbench HTML with the application at url, or undefined
- * @param request   the browser's request context (context.request)
  * @param refuse    ({ method, url, headers, postData }) => true for a top-window POST that must not go out (a write on
  *                  production): it fails instead of being sent; optional
  * @param rewrite   async (html, { url }) => html, optional: changes every HTML page of the application, e.g. for local code. `html` is a
  *                  byte string (latin1, see rewriteBytes): the page keeps its encoding, and whatever is not changed stays byte for byte.
  */
-export const interceptDocuments = async (context, page, hosts, { workbench, request, rewrite, refuse }) => {
+export const interceptDocuments = async (context, page, hosts, { workbench, rewrite, refuse }) => {
     const cdp = await context.newCDPSession(page);
     const { frameTree } = await cdp.send('Page.getFrameTree');
     const topFrame = frameTree.frame.id;
@@ -126,27 +124,16 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
                 await fulfill(requestId, 200, html, workbench(url));
                 return;
             }
-            // POST etc. into the top window: send it for real once, the result belongs to the application. The browser context's
-            // request API does not pass the context's routes, so a request the session refuses (a write on production) fails here.
+            // POST etc. into the top window: it goes out once, through Chrome, and its response is caught at the response stage
+            // (onTopPost). Not from Node (context.request): that request bypasses Chrome's resolver rules (the host lock pins
+            // *.localhost, which Node does not resolve on Windows, and blocks production hosts there) and its proxy setting.
+            // A request the session refuses (a write on production) fails here.
             const body = postBody(event.request);
             if (refuse?.({ method, url, headers: headers ?? {}, postData: body === undefined ? null : body.toString('utf8') }) === true) {
                 await quiet(cdp.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }));
                 return;
             }
-            const sent = await request.fetch(url, {
-                method,
-                headers: Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !HOP_HEADERS.has(name.toLowerCase()))),
-                data: body,
-                maxRedirects: 0,
-                failOnStatusCode: false,
-            });
-            const location = sent.headers().location;
-            if (sent.status() >= 300 && sent.status() < 400 && location !== undefined) {
-                await fulfill(requestId, 200, html, workbench(new URL(location, url).href));
-                return;
-            }
-            pending.set(url, { status: sent.status(), headers: sent.headersArray(), body: await sent.body() });
-            await fulfill(requestId, 200, html, workbench(url));
+            await cdp.send('Fetch.continueRequest', { requestId, interceptResponse: true });
             return;
         }
         const stored = pending.get(url);
@@ -158,7 +145,32 @@ export const interceptDocuments = async (context, page, hosts, { workbench, requ
         }
         await quiet(cdp.send('Fetch.continueRequest', { requestId }));
     };
+    // The response to a POST of the top window belongs to the application: the top window gets the workbench instead, a redirect
+    // loads its target in the iframe, any other response is handed to the iframe once as its document. Without a response (the
+    // network failed) the top window shows Chrome's error, as without caw.
+    const onTopPost = async (event) => {
+        const { requestId } = event;
+        const { url } = event.request;
+        if (event.responseErrorReason !== undefined) {
+            await quiet(cdp.send('Fetch.failRequest', { requestId, errorReason: event.responseErrorReason }));
+            return;
+        }
+        const status = event.responseStatusCode;
+        const headers = event.responseHeaders ?? [];
+        const location = headers.find(({ name }) => name.toLowerCase() === 'location')?.value;
+        if (status >= 300 && status < 400 && location !== undefined) {
+            await fulfill(requestId, 200, html, workbench(new URL(location, url).href));
+            return;
+        }
+        const { body, base64Encoded } = await cdp.send('Fetch.getResponseBody', { requestId });
+        pending.set(url, { status, headers, body: base64Encoded ? Buffer.from(body, 'base64') : Buffer.from(body) });
+        await fulfill(requestId, 200, html, workbench(url));
+    };
     const onResponse = async (event) => {
+        if (workbench !== undefined && event.frameId === topFrame && !['GET', 'HEAD'].includes(event.request.method)) {
+            await onTopPost(event);
+            return;
+        }
         const original = event.responseHeaders ?? [];
         const headers = workbench === undefined || event.frameId !== appFrame ? null : embeddableHeaders(original);
         const status = event.responseStatusCode ?? 0;

@@ -66,6 +66,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 - The F-key bar under the workbench and the chat's tool row ("Element", "Add checkpoint", the Pause button). Their functions are in the ⋯ menu, the slash commands and the keys.
 
 ### Fixed
+- A form that posts into the workbench's top window (`target=_top`) on an app under a `*.localhost` name no longer replaces the workbench with the app's page: caw sent the POST from Node, which cannot resolve `.localhost` on Windows; it now goes out through Chrome (its host lock, proxy setting and cookies) and is caught at the response stage.
 - A console error from a third-party script (a CDN widget, analytics) during an action no longer fails the step through its learned effects; like the hard-failure rules it is a warning.
 - Commands in the workbench, chat and report read as written: Geist Mono's ligatures drew `--` in one cell, so `caw run first-errand --env local` read like `first-errand--env`; they are off everywhere, and a command wraps only between words.
 - Esc while picking an element no longer crashes the page when the app has iframes.
