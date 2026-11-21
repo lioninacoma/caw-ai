@@ -321,8 +321,8 @@ it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)
   environment, or the test's with `--from`.
 - **Writing:** only where the environment is `writable`. Elsewhere caw aborts every write request like on production, and
   Claude knows it may only read.
-- **Never:** code changes, advice, changes to tests or the config. The browser reaches only the project's hosts (as whenever Claude
-  is attached).
+- **Never:** code changes, advice, changes to tests or the config. The browser reaches only the project's hosts (as whenever an
+  agent can act in the window).
 - **The role:** the test's with `--from`, otherwise `--role` or the only one. A missing test user stops with `credentials-missing`.
 
 | Option | |

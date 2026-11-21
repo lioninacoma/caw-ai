@@ -326,7 +326,7 @@ auf, behebe den Fehler, `caw run <id>` zeigt ihn grün, und `caw run <id> --prom
 - **Schreiben:** nur, wo die Umgebung `writable` ist. Sonst bricht caw jeden schreibenden Request ab wie auf Produktion, und
   Claude weiß, dass es nur lesen darf.
 - **Nie:** Code-Änderungen, Empfehlungen, Änderungen an Tests oder Config. Der Browser erreicht nur die Hosts des Projekts (wie
-  immer, wenn Claude dabei ist).
+  immer, wenn ein Agent im Fenster handeln kann).
 - **Die Rolle:** mit `--from` die des Tests, sonst `--role` oder die einzige. Fehlt der Testnutzer, endet es mit `credentials-missing`.
 
 | Option | |
