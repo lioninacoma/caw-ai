@@ -6,7 +6,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { t } from '../shared/i18n.mjs';
-import { controlsProbe, viewLines } from './effects.mjs';
+import { controlsProbe } from './effects.mjs';
 import { waitForLocator } from './framework/index.mjs';
 import { redactFor } from './secrets.mjs';
 import { DEFAULT_VISUAL, comparePixels, percent } from './visual.mjs';
@@ -182,6 +182,20 @@ export const listDesigns = (cawDir) => {
 
 // Numbers change from run to run (counters, dates, run tags), as in effects.mjs.
 const neutral = (text) => text.replace(/\d+/g, '#');
+// Longer lines are mostly list data or free text.
+const MAX_LINE = 120;
+
+/**
+ * The ARIA tree as lines without values: links, field contents and long texts (mostly list data) are dropped, as are lines
+ * without a name. For comparing against a target design; effects do not use it.
+ */
+export const viewLines = (aria) => aria.split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '' && !/^\s*- \/url:/.test(line))
+    .map((line) => line.replace(/\[ref=[^\]]*\]/g, '').replace(/^(\s*- (?:textbox|combobox|searchbox|spinbutton|slider)(?: "[^"]*")?(?: \[[^\]]*\])*):.*$/, '$1'))
+    .filter((line) => line.length <= MAX_LINE && !/^\s*- (?:button|img|generic|list|listitem|group|row|cell|text)?:?$/.test(line))
+    .map((line) => neutral(line).trim());
+
 // Whether a field is filled or a list has rows depends on the data, not on the design.
 const withoutData = (line) => line.replace(/ (?:empty|filled)$/, '').replace(/,(?:empty|filled)$/, '').replace(/^(list "[^"]*") (?:empty|rows)$/, '$1');
 

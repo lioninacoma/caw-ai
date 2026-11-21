@@ -88,21 +88,32 @@ test('auditChanges: known messages added', () => {
     assert.deepEqual(audit(spec(BASE), { before: spec(BASE, { knownMessages: ['Gespeichert.'] }) }), []);
 });
 
-test('auditChanges: learned effects dropped from a fail list, console errors accepted, forgotten; dropped warn lines are info', () => {
+test('auditChanges: learned effect lines removed (any list), console errors accepted, forgotten', () => {
     const effects = learned([{ action: 1, controls: ['+ button "Stornieren"'], requests: ['GET /api/neu 200'], console: ['TypeError: x'] }]);
     const was = spec([step('S1', BASE[0].expect, { recording: { effects } }), BASE[1]]);
     const now = (changed) => spec([step('S1', BASE[0].expect, { recording: changed === undefined ? {} : { effects: changed } }), BASE[1]]);
     assert.deepEqual(audit(now(effects), { before: was }), []);
-    assert.deepEqual(kinds(audit(now(learned([{ action: 1, requests: ['GET /api/neu 200'], console: ['TypeError: x'] }])), { before: was })), ['weakening:effects-dropped']);
+    assert.deepEqual(kinds(audit(now(learned([{ action: 1, requests: ['GET /api/neu 200'], console: ['TypeError: x'] }])), { before: was })), ['weakening:effects-removed']);
     const accepted = audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], requests: ['GET /api/neu 200'], console: ['TypeError: x', 'ReferenceError: y'] }])), { before: was });
     assert.deepEqual(kinds(accepted), ['weakening:effects-accepted']);
     assert.match(accepted[0].text, /ReferenceError: y/);
     assert.deepEqual(kinds(audit(now(undefined), { before: was })), ['weakening:effects-forgotten']);
     assert.deepEqual(kinds(audit(now({ runs: 1, actions: [] }), { before: was })), ['weakening:effects-forgotten']);
-    assert.deepEqual(kinds(audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], console: ['TypeError: x'] }])), { before: was })), ['info:effects-pruned']);
-    // With requests in the config's fail list, the same line counts.
-    const strict = { ...CONFIG, effects: { fail: ['controls', 'console', 'requests'] } };
-    assert.deepEqual(kinds(audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], console: ['TypeError: x'] }])), { before: was, configBefore: strict })), ['weakening:effects-dropped']);
+    // Learned effects are frozen, caw never removes a line: one that only warns removed by hand weakens the step too.
+    const warnLine = audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], console: ['TypeError: x'] }])), { before: was });
+    assert.deepEqual(kinds(warnLine), ['weakening:effects-removed']);
+    assert.deepEqual(warnLine[0].before, ['1 requests: GET /api/neu 200']);
+    assert.match(warnLine[0].text, /von Hand entfernt.*GET \/api\/neu 200/);
+    // Lines gone and others new in the same list: learned anew, as after "Accept new effect" (forgotten, five runs). Listed with both.
+    const relearned = audit(now(learned([{ action: 1, controls: ['+ button "Abbrechen"'], requests: ['GET /api/neu 200'], console: ['TypeError: x'] }])), { before: was });
+    assert.deepEqual(kinds(relearned), ['listed:effects-replaced']);
+    assert.deepEqual(relearned[0].before, ['1 controls: + button "Stornieren"']);
+    assert.deepEqual(relearned[0].after, ['1 controls: + button "Abbrechen"']);
+    // A new line elsewhere does not cover a removal: requests lost one, only controls gained one.
+    assert.deepEqual(kinds(audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"', '+ button "Neu"'], console: ['TypeError: x'] }])), { before: was })), ['weakening:effects-removed']);
+    // A changed expected result is the deliberate way: listed, the removed lines are not a weakening then.
+    const reworded = spec([step('S1', 'Die Liste ist jetzt leer.', { recording: { effects: learned([{ action: 1, console: ['TypeError: x'] }]) } }), BASE[1]]);
+    assert.deepEqual(kinds(audit(reworded, { before: was })), ['listed:expect-changed']);
     // Still learning, or recorded anew with other actions: effects learn anew, nothing to compare.
     assert.deepEqual(audit(now(undefined), { before: spec([step('S1', BASE[0].expect, { recording: { effects: { runs: 1, actions: effects.actions } } }), BASE[1]]) }), []);
     assert.deepEqual(audit(spec([step('S1', BASE[0].expect, { actions: [{ action: 'click', target: NAME }] }), BASE[1]]), { before: was }), []);

@@ -218,6 +218,25 @@ export const answerChanges = (frozen, real) => {
     return [...changes, ...shapeChanges(shapeOf(frozen.body), shapeOf(real.json))];
 };
 
+/**
+ * The reads whose real answers no longer fit the frozen ones, matched like served answers (answerBook): for a run that served
+ * nothing, e.g. one with a window, which has no look pass. Only real answers that are JSON are compared.
+ * @param frozen the file's answers [{ name, key, status, body }]
+ * @param real   this run's answers [{ name, key, status, body }]
+ * @returns [{ name, changes }], one per read name, in the order they came
+ */
+export const outdatedAnswers = (frozen, real) => {
+    const book = answerBook(frozen);
+    const out = new Map();
+    for (const answer of real) {
+        const old = book.take(answer);
+        if (old === null || out.has(answer.name)) continue;
+        const changes = answerChanges(old, { status: answer.status, json: answer.body });
+        if (changes.length > 0) out.set(answer.name, changes);
+    }
+    return [...out].map(([name, changes]) => ({ name, changes }));
+};
+
 /** One change in plain words. */
 export const changeText = ({ change, path, was, now }) => t(`session.fixed.change.${change}`, {
     path,

@@ -12,7 +12,8 @@
 //   M4  generous start (no effect failures before 5 healthy runs) and only strong duration outliers count
 //   M5  rolling relearning over the last 5 healthy runs (a control: it shows how relearning absorbs creep and regressions)
 //   V   a modifier: view lines that carry list rows are dropped before learning and comparing
-import { DEFAULT_EFFECT_FAIL, deviationText, effectCause, failsStep, viewLines } from '../../src/host/effects.mjs';
+import { viewLines } from '../../src/host/design.mjs';
+import { DEFAULT_EFFECT_FAIL, deviationText, effectCause, failsStep } from '../../src/host/effects.mjs';
 import { diagnose, slowness } from '../../src/host/diagnose.mjs';
 
 const unique = (lines) => [...new Set(lines)];

@@ -133,7 +133,7 @@ const pairSteps = (beforeSteps, afterSteps) => {
 };
 
 /** The findings of one pair of steps besides check and expected result. */
-const stepChanges = (finding, { before, after }, failLists) => {
+const stepChanges = (finding, { before, after, sameExpect }, failLists) => {
     const out = [];
     const at = { step: after.id, expect: after.expect };
     const triesBefore = before.retry?.times ?? 0;
@@ -193,36 +193,46 @@ const stepChanges = (finding, { before, after }, failLists) => {
         out.push(finding('fixed-data-frozen', 'listed', { ...at, before: was.fixed, after: now.fixed, vars: { mode: t(`cli.audit.fixedMode.${now.fixed.mode}`), day: now.fixed.frozen } }));
     }
     if (was.fixed !== undefined && now.fixed === undefined) out.push(finding('fixed-data-removed', 'listed', { ...at, before: was.fixed }));
-    out.push(...effectChanges(finding, at, was, now, failLists));
+    out.push(...effectChanges(finding, at, was, now, failLists, sameExpect));
     return out;
 };
 
 /**
- * Learned effects fail a step only once learned, and only in the fail lists. Compared only while the actions are the same:
- * a step recorded anew learns its effects anew, numbered by its new actions.
+ * Learned effects are learned over LEARN_RUNS healthy runs and then frozen: no run removes a line from them. So a learned line
+ * that is gone while the expected result stayed (changing it is the deliberate way, listed) was removed by hand, and that
+ * change no longer shows: a weakening in every list. "Accept new effect" in the chat forgets the effects and the next runs learn
+ * them anew; in the files that looks like a hand edit, but a relearned list has new lines in place of the old ones. Such a
+ * replacement (lines gone and others new in the same list of the same action) is listed with both; only a pure removal weakens.
+ * Compared only while the actions are the same: a step recorded anew learns its effects anew, numbered by its new actions.
  */
-const effectChanges = (finding, at, was, now, failLists) => {
+const effectChanges = (finding, at, was, now, failLists, sameExpect) => {
     if (!((was.effects?.runs ?? 0) >= LEARN_RUNS) || !sameActions(was.actions, now.actions)) return [];
     if (!((now.effects?.runs ?? 0) >= LEARN_RUNS)) return [finding('effects-forgotten', 'weakening', { ...at, before: was.effects, after: now.effects })];
-    const dropped = [];
+    const removed = [];
+    const replaced = { was: [], now: [] };
     const accepted = [];
-    const pruned = [];
     for (const entry of was.effects.actions) {
         const fresh = now.effects.actions.find(({ action }) => action === entry.action) ?? {};
         for (const list of EFFECT_LISTS) {
-            // In the console new lines fail a step, elsewhere missing ones: so there taking lines in weakens, elsewhere dropping.
+            // In the console new lines fail a step, elsewhere missing ones: so there taking lines in weakens, elsewhere removing.
             if (list === 'console') {
                 if (failLists.includes(list)) accepted.push(...added(entry.console, fresh.console).map((line) => `${entry.action}: ${line}`));
                 continue;
             }
-            const gone = (entry[list] ?? []).filter((line) => !(fresh[list] ?? []).includes(line)).map((line) => `${entry.action} ${list}: ${line}`);
-            (failLists.includes(list) ? dropped : pruned).push(...gone);
+            if (!sameExpect) continue;
+            const gone = (entry[list] ?? []).filter((line) => !(fresh[list] ?? []).includes(line));
+            const fresher = added(entry[list], fresh[list]);
+            const lines = (from) => from.map((line) => `${entry.action} ${list}: ${line}`);
+            if (gone.length > 0 && fresher.length > 0) {
+                replaced.was.push(...lines(gone));
+                replaced.now.push(...lines(fresher));
+            } else removed.push(...lines(gone));
         }
     }
     return [
-        ...(dropped.length === 0 ? [] : [finding('effects-dropped', 'weakening', { ...at, before: dropped, vars: { lines: listed(dropped) } })]),
+        ...(removed.length === 0 ? [] : [finding('effects-removed', 'weakening', { ...at, before: removed, vars: { lines: listed(removed) } })]),
         ...(accepted.length === 0 ? [] : [finding('effects-accepted', 'weakening', { ...at, after: accepted, vars: { lines: listed(accepted) } })]),
-        ...(pruned.length === 0 ? [] : [finding('effects-pruned', 'info', { ...at, before: pruned, vars: { lines: listed(pruned) } })]),
+        ...(replaced.was.length === 0 ? [] : [finding('effects-replaced', 'listed', { ...at, before: replaced.was, after: replaced.now, vars: { was: listed(replaced.was), now: listed(replaced.now) } })]),
     ];
 };
 
