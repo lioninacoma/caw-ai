@@ -30,7 +30,7 @@ English · [Deutsch](README.de.md)
 
 ## Why not just Playwright?
 
-Playwright, its MCP server and its test agents already let Claude write, run and heal tests, and caw runs on Playwright. caw
+Playwright, its MCP server and its test agents already let an agent write, run and heal tests, and caw runs on Playwright. caw
 adds what generated test code doesn't give you:
 
 - **Checks an agent must keep.** Each check belongs to a plain-language expected result. While the expectation stays, an
@@ -179,7 +179,7 @@ Hand the agent a bug report. It signs in as a test role, walks the report on its
 yes, no or unclear, with what it observed against what was expected, the steps it took, screenshots and a hint at the cause
 in your code.
 
-<img src="docs/media/reproduce.webp" width="100%" alt="caw reproduce: Claude has walked a bug report in the Errand example; the end card says the bug is reproduced and names the report and the draft test">
+<img src="docs/media/reproduce.webp" width="100%" alt="caw reproduce: the agent has walked a bug report in the Errand example; the end card says the bug is reproduced and names the report and the draft test">
 
 ```bash
 npx caw reproduce "Searching for home finds nothing although todos are tagged #home." --env local
@@ -210,7 +210,7 @@ done, its inputs open. F1 ("Open…") picks any test and step of the environment
 Pick an element in the app (`/element` in the chat) and ask about it: the agent reads your source code and answers with file
 and line. Against your dev server, F5 loads your change.
 
-<img src="docs/media/develop.webp" width="100%" alt="An element is picked in the app; Claude explains in the chat why &quot;Add todo&quot; is disabled, with server.mjs:134">
+<img src="docs/media/develop.webp" width="100%" alt="An element is picked in the app; the agent explains in the chat why &quot;Add todo&quot; is disabled, with server.mjs:134">
 
 ```bash
 npx caw open first-errand@S3 --env local   # the state before S3, signed in, the window is yours
@@ -243,8 +243,8 @@ can and cannot do: [Data and privacy](#data-and-privacy).
 
 ## Visual checks
 
-- **Per step:** `look: true` on a step (only people set it) learns its look over two healthy runs: style lines per role and an
-  image. A later change fails the step with kind `visual`; **Adopt new look** in the chat takes it over, and `caw audit` lists
+- **Per step:** `look: true` on a step (only people set it) learns its look: style lines per role over two passed runs,
+  an image over two matching headless runs. A later change fails the step with kind `visual`; **Adopt new look** in the chat takes it over, and `caw audit` lists
   that. After `caw record` the check run suggests steps whose screen shows no data from the server.
 - **Pixels headless only:** pixels are learned and compared in `--headless` runs at a fixed viewport; a run in the window
   compares the styles only.
@@ -355,15 +355,15 @@ project. See [docs/configuration.md](docs/configuration.md).
 
 ## Data and privacy
 
-**When Claude runs** (`record`, `reproduce`, the chat, `--explain`), Claude Code sends to Anthropic what Claude works with: page
+**When the agent runs** (`record`, `reproduce`, the chat, `--explain`), Claude Code sends to Anthropic what the agent works with: page
 contents (accessibility snapshots, `eval` results, screenshots), console and network summaries, the project source it reads,
 your notes in `caw.md` and your chat messages. Your Claude Code account and its terms apply.
 
 **Masked or blocked:** caw signs in itself; the role's password, one-time codes and values marked `secret: true` are replaced
-with `••••` in everything Claude gets (error messages, URLs and dialog texts too). That keeps a value from reaching Claude by
+with `••••` in everything the agent gets (error messages, URLs and dialog texts too). That keeps a value from reaching the agent by
 accident; a deliberately misbehaving agent can transform a value in the page with `eval` (split, encode) and read it past the
-mask. `caw/.env`, `.env*`, `caw/.auth` and typical key files are blocked for Claude (Claude Code deny rules locally, hidden in
-the Docker container). Other secrets in project files Claude may read are not, and Claude sees everything the test user sees
+mask. `caw/.env`, `.env*`, `caw/.auth` and typical key files are blocked for the agent (Claude Code deny rules locally, hidden in
+the Docker container). Other secrets in project files the agent may read are not, and the agent sees everything the test user sees
 in the app: use test accounts and test data. Details: [Sandbox boundaries](docs/guide.md#sandbox-boundaries).
 
 **Replays** (`run` without chat, CI) send nothing to any AI.
@@ -378,7 +378,7 @@ reproduce, a run with chat, `open`), every request of its pages goes only to you
 elsewhere. Without an agent (replays, CI) pages load from any host except production. Details:
 [Sandbox boundaries](docs/guide.md#sandbox-boundaries).
 
-**Run data** stays on your machine in `.caw/runs/<run>/`: report, `result.json`, screenshots, Claude's logs and `trace.zip`.
+**Run data** stays on your machine in `.caw/runs/<run>/`: report, `result.json`, screenshots, the agent's logs and `trace.zip`.
 The trace contains page contents and network data including cookies; don't upload it or run folders publicly. `init` adds
 `.caw/` to `.gitignore`. Fixed data for a look is a file in the repository; check it for personal data before you commit it.
 
@@ -399,15 +399,15 @@ Other AI providers are not supported: recording, reproducing, fixing and the cha
 
 **Does every run cost tokens?**
 No. Recording, reproducing and the chat use Claude tokens, billed through your Claude Code account; replays use none, locally
-and in CI. Before Claude starts, the chat asks once per run (not when your own Claude Code session is the agent); you can turn
+and in CI. Before the agent starts, the chat asks once per run (not when your own Claude Code session is the agent); you can turn
 that notice off. The run log shows the cost Claude Code reports.
 
-**Does Claude see my passwords?**
-Not by accident. caw signs in itself before Claude starts (and takes no commands while it signs in again), the Claude that
+**Does the agent see my passwords?**
+Not by accident. caw signs in itself before the agent starts (and takes no commands while it signs in again), the the agent that
 caw starts can't read `caw/.env` (an attached session has its own permissions) and only drives the browser through fixed
-commands, and the password is masked in everything Claude gets.
+commands, and the password is masked in everything the agent gets.
 The mask is no defence against a deliberately misbehaving agent: with `eval` it can transform a value in the page. So use
-test accounts: Claude acts as that user.
+test accounts: the agent acts as that user.
 
 **Can `reproduce` break something?**
 Only where you let the agent write: on an environment without `writable` every write request is blocked, production is never

@@ -4,9 +4,9 @@
 
 Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `pnpm exec`, `yarn`). `<env>` ist ein Name aus `environments` in `caw.config.json`, etwa `local`. Mandanten sind eigene Umgebungen (`extends`).
 
-`--env` darf fehlen, wenn die Wahl klar ist: Ein Test, der auf genau eine Umgebung passt, nimmt sie; sonst auf deinem Rechner die einzige seiner Kandidaten, auf der Claude arbeiten darf (bei `record` eines neuen Tests die einzige Umgebung, auf der Claude arbeiten darf). In CI rät caw nie. Das Terminal nennt die Wahl, etwa `Umgebung: local (die einzige, auf der Claude Code arbeiten darf)`. Ist sie nicht eindeutig, bricht der Befehl ab und nennt die Auswahl (Exit 3).
+`--env` darf fehlen, wenn die Wahl klar ist: Ein Test, der auf genau eine Umgebung passt, nimmt sie; sonst auf deinem Rechner die einzige seiner Kandidaten, auf der der Agent arbeiten darf (bei `record` eines neuen Tests die einzige Umgebung, auf der der Agent arbeiten darf). In CI rät caw nie. Das Terminal nennt die Wahl, etwa `Umgebung: local (die einzige, auf der Claude Code arbeiten darf)`. Ist sie nicht eindeutig, bricht der Befehl ab und nennt die Auswahl (Exit 3).
 
-| Befehl | Was er tut | Claude? |
+| Befehl | Was er tut | Agent? |
 |---|---|---|
 | [`init`](#init) | Projekt einrichten: App ansehen, Config und `.mcp.json` schreiben; mit `--explore-only` nur Einstellungen vorschlagen | nein |
 | [`doctor`](#doctor) | Rechner, Config, Zugangsdaten und Umgebungen prüfen | nein |
@@ -18,7 +18,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen, auch ab einem Schritt | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
 | [`open`](#open) | Die App öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
-| [`reproduce`](#reproduce) | Claude stellt einen Fehlerbericht allein nach: Bericht und, wenn nachgestellt, ein Entwurf in `caw/drafts` | ja |
+| [`reproduce`](#reproduce) | Der Agent stellt einen Fehlerbericht allein nach: Bericht und, wenn nachgestellt, ein Entwurf in `caw/drafts` | ja |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
 | [`skill`](#skill) | Den Claude-Code-Skill `caw-attach` für deine eigene Session schreiben oder aktualisieren | nein |
 | [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
@@ -47,7 +47,7 @@ Fragt im Terminal, ob die App eine Anmeldung braucht, und öffnet sie dann in Ch
 - `caw.config.json`
 - `caw/.env.example` mit den Variablen für die Zugangsdaten je Rolle
 - einen Eintrag `caw` in `.mcp.json` (auf die installierte Kopie, wenn caw in `node_modules` des Projekts oder eines Ordners darüber bis zur Wurzel des Repositorys liegt, sonst `npx caw-ai@<diese Version> mcp`; ein `npx`-Eintrag wird auf die installierte Kopie umgestellt, sobald es eine gibt)
-- `caw/tests/` für deine Testpläne und `caw/caw.md` für Notizen, die Claude in jedem Lauf liest
+- `caw/tests/` für deine Testpläne und `caw/caw.md` für Notizen, die der Agent in jedem Lauf liest
 - `.claude/skills/caw-attach/SKILL.md`, der Skill für deine eigene Claude-Code-Session (siehe [`skill`](#skill))
 - Einträge in `.gitignore` für `caw/.env`, `.caw/` und `caw/.auth/`
 
@@ -57,7 +57,7 @@ Was es nicht erkennen konnte, steht auf `TODO`. `doctor` listet es auf, `validat
 |---|---|
 | `--url <adresse>` | Adresse der App. Ohne fragt `init` nach. |
 | `--env <name>` | Name der Umgebung. Standard: `local` auf diesem Rechner, sonst der erste Teil des Hostnamens (`staging.example.com` → `staging`); ein Name, der nach Produktion aussieht, wird `production: true`. |
-| `--language <code>` | Teamsprache für Pläne und Claudes Texte. Standard: die Sprache der App, erfragt. |
+| `--language <code>` | Teamsprache für Pläne und die Texte des Agenten. Standard: die Sprache der App, erfragt. |
 | `--login`, `--no-login` | Die Frage nach der Anmeldung vorab beantworten (Skripte). |
 | `--yes` | Nicht aufs Anmelden warten, nichts fragen. Gut für Apps ohne Anmeldung. Mit Anmeldung meldet sich niemand an: `signedInSelector` bleibt `TODO`, `start` bleibt `/` (oder der Pfad aus `--url`). |
 | `--from <datei>` | Ein vorhandenes Ergebnis von `--explore-only` nehmen, statt die App zu öffnen. Gibt es `caw/.explore.json`, nimmt `init` es von selbst. |
@@ -99,7 +99,7 @@ Mit der [Overlay-Erweiterung](extensions/overlay.de.md) und ExtJS-Teilen kommen 
 npx caw validate
 ```
 
-Prüft `caw.config.json` und alle Dateien in `caw/tests/` ohne Browser und ohne Claude. Fehler nennen Datei und Zeile, alle auf einmal. Gut für CI und Pre-Commit-Hooks.
+Prüft `caw.config.json` und alle Dateien in `caw/tests/` ohne Browser und ohne den Agenten. Fehler nennen Datei und Zeile, alle auf einmal. Gut für CI und Pre-Commit-Hooks.
 
 Werte in `signIn`, die noch `TODO` sind, lassen die Prüfung scheitern (Exit 3, Code `config-invalid`); jeder sagt, was hineingehört.
 
@@ -112,7 +112,7 @@ npx caw audit origin/main
 npx caw audit origin/main --json
 ```
 
-Kein Test wird unbemerkt schwächer. caw selbst hält eine Prüfung fest, solange ihr erwartetes Ergebnis bleibt, aber ein Chat-Button, ein übernommener Rat oder eine Änderung von Hand kann einen Test trotzdem abschwächen. `audit` vergleicht die Testdaten (`caw/tests`, `caw/recordings`, `caw.config.json`) an der Merge-Base von `<ref>` und `HEAD` mit deinem Arbeitsstand und gibt die Änderungen als Markdown in der Teamsprache aus, fertig für einen PR-Kommentar. Kein Browser, kein Claude; nötig sind `git` im `PATH` und in CI die Geschichte (`fetch-depth: 0`).
+Kein Test wird unbemerkt schwächer. caw selbst hält eine Prüfung fest, solange ihr erwartetes Ergebnis bleibt, aber ein Chat-Button, ein übernommener Rat oder eine Änderung von Hand kann einen Test trotzdem abschwächen. `audit` vergleicht die Testdaten (`caw/tests`, `caw/recordings`, `caw.config.json`) an der Merge-Base von `<ref>` und `HEAD` mit deinem Arbeitsstand und gibt die Änderungen als Markdown in der Teamsprache aus, fertig für einen PR-Kommentar. Kein Browser, kein Agent; nötig sind `git` im `PATH` und in CI die Geschichte (`fetch-depth: 0`).
 
 **Abgeschwächt** (Exit 1):
 
@@ -157,7 +157,7 @@ npx caw list
 npx caw list create-ticket
 ```
 
-Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `offen (S4, S5)`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)` oder `S4  Export  (offen)`. [Offen](test-files.de.md#offene-schritte) ist das nicht aufgenommene Ende nach dem letzten aufgenommenen Schritt. Ohne Browser und ohne Claude.
+Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `offen (S4, S5)`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)` oder `S4  Export  (offen)`. [Offen](test-files.de.md#offene-schritte) ist das nicht aufgenommene Ende nach dem letzten aufgenommenen Schritt. Ohne Browser und ohne den Agenten.
 
 Entwürfe aus [`reproduce`](#reproduce) in `caw/drafts` folgen in einer eigenen Tabelle, mit `rot bei S3 (Lauf …)`, sobald ein Lauf
 belegt hat, dass sie scheitern, solange der Fehler da ist, sonst `aufgenommen, noch nicht rot`; `list <entwurf>` zeigt seine
@@ -175,13 +175,13 @@ Nimmt den Testplan aus `caw/tests/create-ticket.yaml` auf, oder legt einen neuen
 Entwurf aus [`reproduce`](#reproduce) (`caw/drafts/<id>.yaml`) wird genauso aufgenommen und bleibt in seiner einen Datei; sein
 letzter Schritt muss scheitern, solange der Fehler da ist ([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)). Chrome öffnet sich mit Werkbank und Chat:
 
-1. Du führst den Ablauf vor, oder Claude geht dem Testplan nach.
-2. Claude zeigt einen Plan im Chat. Du gibst ihn frei oder schreibst, was sich ändern soll.
-3. Claude geht den Ablauf durch und prüft jeden Schritt.
-4. caw spielt die Aufzeichnung ohne Claude ab.
+1. Du führst den Ablauf vor, oder der Agent geht dem Testplan nach.
+2. Der Agent zeigt einen Plan im Chat. Du gibst ihn frei oder schreibst, was sich ändern soll.
+3. Der Agent geht den Ablauf durch und prüft jeden Schritt.
+4. caw spielt die Aufzeichnung ohne den Agenten ab.
 5. Du wählst „Testplan übernehmen“. Erst dann werden Dateien geschrieben.
 
-Nur auf Umgebungen, auf denen Claude arbeiten darf (`"agent": true`). Gibt es nur eine, darf `--env` fehlen.
+Nur auf Umgebungen, auf denen der Agent arbeiten darf (`"agent": true`). Gibt es nur eine, darf `--env` fehlen.
 
 | Option | |
 |---|---|
@@ -192,8 +192,8 @@ Nur auf Umgebungen, auf denen Claude arbeiten darf (`"agent": true`). Gibt es nu
 | `--reset` | Vor der Aufnahme den `reset` der Umgebung ausführen. |
 | `--agent local\|docker` | Wo caw seinen Agenten startet. Standard: `agent.mode` aus der Config, sonst `local`. |
 | `--attach [<key>]` | Stattdessen antwortet deine eigene Claude-Code-Session, ohne zusätzliche Token, nach `/caw-attach` dort (siehe [Leitfaden](guide.de.md#aus-claude-code-steuern)). Ohne `<key>` die einzige zuhörende Session; bei mehreren wählst du eine mit ihrem Schlüssel (`k7f2`) oder dem Anfang ihrer Session-ID. Das Fenster wartet, solange keine zuhört, und meldet „Nicht verbunden“, wenn sie geht. |
-| `--agent-timeout <dauer>` | Zeitgrenze für Claude, Standard `60m`. |
-| `--max-actions <n>` | Grenze für Claudes Browser-Aktionen, Standard `maxActions` oder 100. |
+| `--agent-timeout <dauer>` | Zeitgrenze für den Agenten, Standard `60m`. |
+| `--max-actions <n>` | Grenze für die Browser-Aktionen des Agenten, Standard `maxActions` oder 100. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt im Prüflauf, Standard `30s`. |
 
 ### Ab einem Schritt
@@ -202,7 +202,7 @@ Nur auf Umgebungen, auf denen Claude arbeiten darf (`"agent": true`). Gibt es nu
 npx caw record create-ticket@S3 --env local
 ```
 
-Nimmt den Test ab S3 bis zum Ende neu auf. Für eine gewollte Änderung der Anwendung ab dort, nachdem du den Text eines Schritts von Hand geändert hast, oder für neue Schritte am Ende. S1 und S2 laufen ohne Claude, dann folgt Claude dem alten Plan ab S3, du lenkst im Chat; eine Vorführung gibt es nicht. Ab S3 darf sich der Plan ändern: Claude kann Schritte ergänzen, entfernen, umbenennen oder umstellen. Die Schritte vor S3 und ihre Aufzeichnungen bleiben genau, wie sie sind; Schritte, die nicht mehr im Plan stehen, fallen beim Übernehmen weg. Vergleichswerte und Netzwerk-Wirkungen ab S3 lernt der nächste gesunde Lauf neu. `@S1` nimmt den ganzen Test auf, wie `record create-ticket`.
+Nimmt den Test ab S3 bis zum Ende neu auf. Für eine gewollte Änderung der Anwendung ab dort, nachdem du den Text eines Schritts von Hand geändert hast, oder für neue Schritte am Ende. S1 und S2 laufen ohne den Agenten, dann folgt der Agent dem alten Plan ab S3, du lenkst im Chat; eine Vorführung gibt es nicht. Ab S3 darf sich der Plan ändern: Der Agent kann Schritte ergänzen, entfernen, umbenennen oder umstellen. Die Schritte vor S3 und ihre Aufzeichnungen bleiben genau, wie sie sind; Schritte, die nicht mehr im Plan stehen, fallen beim Übernehmen weg. Vergleichswerte und Netzwerk-Wirkungen ab S3 lernt der nächste gesunde Lauf neu. `@S1` nimmt den ganzen Test auf, wie `record create-ticket`.
 
 Einen Prüflauf vorher gibt es nicht: Scheitert ein Schritt an einem Fehler der Anwendung, klärst du die Ursache stattdessen mit `run`. Nur den einen gescheiterten Schritt reparierst du mit „Schritt beheben“ im Chat eines Laufs. `--role` und `--read-only` gelten hier nicht (Exit 3): Der Test behält seine Metadaten.
 
@@ -212,7 +212,7 @@ Einen Prüflauf vorher gibt es nicht: Scheitert ein Schritt an einem Fehler der 
 npx caw run create-ticket --env local
 ```
 
-Spielt die Aufzeichnung ab. Kein Claude, keine Token. Auf Umgebungen, auf denen Claude arbeiten darf (`agent`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du Claude dort nach der Ursache oder lässt den Schritt gleich beheben.
+Spielt die Aufzeichnung ab. Kein Agent, keine Token. Auf Umgebungen, auf denen der Agent arbeiten darf (`agent`), steht der Chat neben der App: Schlägt ein Schritt fehl, fragst du den Agenten dort nach der Ursache oder lässt den Schritt gleich beheben.
 
 Außerhalb von CI lernt jeder Lauf die fehlenden Vergleichswerte und Effekte seiner bestandenen Schritte in `caw/recordings/<test>.yaml`, headless wie im Fenster, wo der Chat sagt, welche Schritte sie bekommen haben. In CI (`CI` gesetzt) ändert ein Lauf keine Datei, außer du gibst `--learn` an. Die erste Zeile nennt Umgebung, Teamsprache und ob der Lauf lernt, etwa `Modus auf local (Teamsprache en): mit Chat; lernt: ja, fehlende Vergleichswerte und Effekte in caw/recordings/create-ticket.yaml.` Am Ende sagt ein Lauf, der gelernt hat, was sich geändert hat, etwa `Geändert: caw/recordings/create-ticket.yaml (Vergleichswerte S2, S5)`, oder `Testdatei unverändert.` Nach einem Fehlschlag nennt er den Grund des gescheiterten Schritts (auch mit `--headless` und in CI) und die nächsten Aufrufe: einen Lauf mit Chat, der die Ursache klärt, und `open <test>@<schritt>` bis zum Einstieg in den gescheiterten Schritt. Den Bericht gibt es zusätzlich als `file://`-Link. In `report.md` stehen Schritte nach dem gescheiterten auf `skipped`, Screenshots verlinken in den Ordner `agent/` des Laufs. `result.json` führt unter `steps` jeden Schritt: seinen Status (`pass`, `fail`, `skipped`), warum er scheiterte (`kind`: `check`, `effect`, `target`, `state`, `external`), seine Zeit in Sekunden, seine Requests und die Effekte seiner Aktionen mit einer Abweichung von den gelernten; auf Produktion ohne die Effekte, da sie sichtbare Namen zeigen.
 
@@ -223,18 +223,18 @@ Ein Test, der mit [offenen Schritten](test-files.de.md#offene-schritte) endet (g
 | `--overlay` | Nur mit der [Overlay-Erweiterung](extensions/overlay.de.md): lokaler Code über die ausgelieferte Umgebung |
 | `--start` | Wie bei `record`. |
 | `--reset`, `--no-reset` | Der `reset` der Umgebung läuft einmal vor dem ersten schreibenden Test; `--reset` vor dem ersten Test, `--no-reset` nie. |
-| `--explain` | Bei Fehlern oder Warnungen erklärt Claude die Ursache ungefragt. Kostet Token. |
-| `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
+| `--explain` | Bei Fehlern oder Warnungen erklärt der Agent die Ursache ungefragt. Kostet Token. |
+| `--no-chat` | Sichtbares Fenster, kein Chat, kein Agent. Wie in der CI. |
 | `--headless` | Kein Fenster, kein Chat. In der aufgenommenen Größe (sonst 1920×1080). |
 | `--learn` | In CI: fehlende Vergleichswerte und Effekte bestandener Schritte in `caw/recordings/` lernen. Außerhalb von CI tut das jeder Lauf ohnehin. |
 | `--promote` | Nur für einen Entwurf in `caw/drafts`: siehe [Einen Entwurf übernehmen](#einen-entwurf-übernehmen). |
 | `--strict` | Offene Schritte lassen den Lauf mit Exit 4 scheitern, statt dass er ohne sie besteht, etwa in einer Release-Pipeline. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
-| `--agent-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
-| `--max-actions <n>` | Grenze für Claudes Aktionen beim Beheben. |
+| `--agent-timeout <dauer>` | Zeitgrenze für den Agenten beim Untersuchen und Beheben, Standard `60m`. |
+| `--max-actions <n>` | Grenze für die Aktionen des Agenten beim Beheben. |
 | `--agent local\|docker`, `--attach [<key>]` | Wie bei `record`. |
 
-Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`. `record` und `open` brauchen einen Menschen und werden in CI abgelehnt (Exit 3), denn niemand übernähme den Browser. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
+Mit gesetztem `CI` hat `run` keinen Chat und startet nie den Agenten, wie `--no-chat`. `record` und `open` brauchen einen Menschen und werden in CI abgelehnt (Exit 3), denn niemand übernähme den Browser. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
 
 ### Einen Entwurf übernehmen
 
@@ -284,13 +284,13 @@ npx caw open create-ticket --env local
 npx caw open create-ticket@S3 --env local
 ```
 
-Öffnet die App mit Werkbank und Chat: navigieren, ausprobieren, mit Claude entwickeln. Lernt nichts und schreibt keine Testdatei.
+Öffnet die App mit Werkbank und Chat: navigieren, ausprobieren, mit dem Agenten entwickeln. Lernt nichts und schreibt keine Testdatei.
 
-- **Ohne Test** öffnet es die Startseite der App. Hat die Umgebung eine Formular-Anmeldung, siehst du sie zuerst in der App, als Schritt „Anmelden“ unter Vorbereitung; danach geht caw zur Startseite. Ohne `--env` nimmt es die einzige Umgebung, auf der Claude arbeiten darf.
+- **Ohne Test** öffnet es die Startseite der App. Hat die Umgebung eine Formular-Anmeldung, siehst du sie zuerst in der App, als Schritt „Anmelden“ unter Vorbereitung; danach geht caw zur Startseite. Ohne `--env` nimmt es die einzige Umgebung, auf der der Agent arbeiten darf.
 - **`open <test>`** spielt erst den ganzen Test ab, dann gehört dir das Fenster.
 - **`open <test>@S3`** hält am Einstieg in S3: S1 und S2 laufen ganz, von S3 nur die Navigation (`goto`, Klicks, Warten auf die Seite). Seine Eingaben und seine Prüfung bleiben für dich offen; das Terminal meldet `Bereit für S3 …: Navigation ausgeführt, Eingaben offen`. Hat S3 gar keine Eingaben (etwa nur ein Klick auf „Absenden“), läuft von S3 nichts; hat einer seiner Klicks in früheren Läufen Daten geschrieben, hält es vor diesem Klick; ist S3 nicht oder nicht aktuell aufgenommen, läuft davon nichts. Das Terminal nennt den Grund. Ist S3 der erste [offene Schritt](test-files.de.md#offene-schritte), baust du ihn hier; `open <test>@S4` hinter einem offenen S3 wird abgelehnt und nennt S3 (erst aufnehmen), `open <test>` spielt bis zum letzten aufgenommenen Schritt.
 
-Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab; der Schritt, an dem es hält, wird nicht bewertet. Es läuft der ausgelieferte Stand, außer du gibst `--overlay` an.
+Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne den Agenten ab; der Schritt, an dem es hält, wird nicht bewertet. Es läuft der ausgelieferte Stand, außer du gibst `--overlay` an.
 
 | Option | |
 |---|---|
@@ -300,9 +300,9 @@ Mit Test meldet sich `open` mit der Rolle des Tests an und spielt ohne Claude ab
 | `--design` | Mit `@S3`: spielt bis einschließlich S3 (bei offenem S3: bis zu seinem Einstieg) und legt sein Zielbild in der aufgenommenen Größe über die App, die Abweichungen darunter; F7 zeigt und verbirgt es. Siehe [gegen ein Zielbild entwickeln](guide.de.md#gegen-ein-zielbild-entwickeln). |
 | `--agent local\|docker`, `--attach [<key>]`, `--agent-timeout <dauer>`, `--max-actions <n>` | Wie bei `record`. |
 
-Nach der Übergabe öffnet **F1** (oder ⋯ → Öffnen…, `/open` im Chat) in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne Claude. Bei Basic-Auth nur Tests der eigenen Rolle.
+Nach der Übergabe öffnet **F1** (oder ⋯ → Öffnen…, `/open` im Chat) in der Werkbank „Öffnen…“: einen beliebigen Test dieser Umgebung, optional mit Schritt. Ohne Schritt läuft der Test bis zum letzten Schritt, mit Schritt landet er an dessen Einstieg, wie `open <test>@<schritt>`. caw beginnt eine neue Sitzung (Cookies und Speicher der Seite gelöscht), meldet sich mit dem Konto der Rolle des Tests neu an und spielt ihn im selben Fenster ab, ohne den Agenten. Bei Basic-Auth nur Tests der eigenen Rolle.
 
-Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner, der schon weg ist), frag im Chat: Claude kann den Klick optional machen. Was du übernimmst, steht sofort in der Testdatei. Beim Aufnehmen geht das direkt mit `click <ziel> --optional`.
+Scheitert das Herstellen an etwas, das nicht immer kommt (etwa ein Cookie-Banner, der schon weg ist), frag im Chat: Der Agent kann den Klick optional machen. Was du übernimmst, steht sofort in der Testdatei. Beim Aufnehmen geht das direkt mit `click <ziel> --optional`.
 
 ## reproduce
 
@@ -312,11 +312,11 @@ npx caw reproduce --file fehler.md --from create-ticket@S3 --env local --headles
 befehl-der-das-ticket-ausgibt | npx caw reproduce - --env local
 ```
 
-Claude stellt einen Fehler allein nach, angemeldet mit einer Testrolle: kein Plan zum Freigeben, niemand zum Antworten, keine
-Entscheidung. Es liest und bedient die Seite wie ein Mensch und endet mit einem Urteil: nachgestellt, nicht nachgestellt oder
-unklar. Im Laufordner liegen dann `report.md` (Urteil, der Fehlerbericht, was Claude beobachtet und erwartet hat, seine Schritte,
+Der Agent stellt einen Fehler allein nach, angemeldet mit einer Testrolle: kein Plan zum Freigeben, niemand zum Antworten, keine
+Entscheidung. Er liest und bedient die Seite wie ein Mensch und endet mit einem Urteil: nachgestellt, nicht nachgestellt oder
+unklar. Im Laufordner liegen dann `report.md` (Urteil, der Fehlerbericht, was der Agent beobachtet und erwartet hat, seine Schritte,
 die Aktionen im Browser, Screenshots, harte Fehler, gesperrte oder auffällige Requests, ein Hinweis auf die Ursache) und
-wenn nachgestellt, `caw/drafts/<id>.yaml`, ein Testentwurf im Format von caw aus Claudes Schritten, mit Claudes Aktionen im
+wenn nachgestellt, `caw/drafts/<id>.yaml`, ein Testentwurf im Format von caw aus den Schritten des Agenten, mit seinen Aktionen im
 Browser und ihren Locatoren in seinen `notes`. Nichts landet in `caw/tests`: Prüf den Entwurf, nimm ihn mit `caw record <id>` rot
 auf, behebe den Fehler, `caw run <id>` zeigt ihn grün, und `caw run <id> --promote` macht ihn zum Test
 ([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)).
@@ -324,7 +324,7 @@ auf, behebe den Fehler, `caw run <id>` zeigt ihn grün, und `caw run <id> --prom
 - **Wo:** nur auf Umgebungen mit `agent`, nie auf Produktion (`reproduce-not-allowed`). Ohne `--env` die einzige solche
   Umgebung, mit `--from` die des Tests.
 - **Schreiben:** nur, wo die Umgebung `writable` ist. Sonst bricht caw jeden schreibenden Request ab wie auf Produktion, und
-  Claude weiß, dass es nur lesen darf.
+  der Agent weiß, dass er nur lesen darf.
 - **Nie:** Code-Änderungen, Empfehlungen, Änderungen an Tests oder Config. Der Browser erreicht nur die Hosts des Projekts (wie
   immer, wenn ein Agent im Fenster handeln kann).
 - **Die Rolle:** mit `--from` die des Tests, sonst `--role` oder die einzige. Fehlt der Testnutzer, endet es mit `credentials-missing`.
@@ -332,10 +332,10 @@ auf, behebe den Fehler, `caw run <id>` zeigt ihn grün, und `caw run <id> --prom
 | Option | |
 |---|---|
 | `"<fehlerbericht>"`, `--file <datei>`, `-` | Der Fehlerbericht: als Argument, aus einer Datei oder von stdin. Genau eins, höchstens 8000 Zeichen. |
-| `--from <test>[@<S4>]` | In einem Zustand eines Tests anfangen: dessen Schritte (bis zum Einstieg in S4) laufen vorher ohne Claude. |
+| `--from <test>[@<S4>]` | In einem Zustand eines Tests anfangen: dessen Schritte (bis zum Einstieg in S4) laufen vorher ohne den Agenten. |
 | `--role <rolle>` | Ohne `--from`; unnötig, wenn die Config nur eine hat. |
 | `--ref <id>` | Eine ID aus einem anderen Werkzeug, etwa ein Ticket (`TCK-1234`): bis zu 64 Buchstaben, Ziffern und `. _ # : / -`, sonst Exit 3. caw schlägt sie nie nach; sie steht in `report.md`, `result.json` (`reproduce.ref`), den Notizen des Entwurfs und in `caw_reproductions`. |
-| `--headless` | Ohne Fenster. Mit Fenster zeigt die Werkbank, was Claude tut; du kannst nur zusehen oder beenden (Esc). |
+| `--headless` | Ohne Fenster. Mit Fenster zeigt die Werkbank, was der Agent tut; du kannst nur zusehen oder beenden (Esc). |
 | `--agent local\|docker`, `--attach [<key>]` | Wie bei `record`. Aus deiner eigenen Claude-Code-Session (`caw_start` mit `command: "reproduce"`) ohne zusätzliche Tokens. |
 
 Exit-Codes: `0` nachgestellt, `1` nicht nachgestellt oder unklar, `2` Umgebungsfehler (auch wenn der Ausgangszustand von
@@ -353,7 +353,7 @@ npx caw role login sb --env dev       # signIn.type session: von Hand anmelden, 
 
 Eine Rolle ist ein Testnutzer. caw fragt nie nach Benutzernamen und Passwörtern, liest sie nicht aus einer Seite, schreibt und zeigt sie nicht: Du trägst sie selbst in `caw/.env` ein (oder setzt sie als CI-Secrets), unter `CAW_<ROLLE>_USER` und `CAW_<ROLLE>_PASSWORD` (`CAW_<ROLLE>_TOTP` für Einmalcodes, `__<ENV>` für ein anderes Konto auf einer Umgebung, siehe [Konfiguration](configuration.de.md#roles)). `role add` schreibt die Rolle (`{}`) in `caw.config.json`, die Variablennamen ohne Werte in `caw/.env.example` und `caw/.env` in `.gitignore` und nennt die Variablen, die du füllst. `role remove` nimmt die Rolle aus der Config und nennt ihre Zeilen, die noch in `caw/.env` stehen; löschen musst du sie selbst.
 
-Braucht `record`, `run` oder `open` eine Rolle ohne Testnutzer, endet der Befehl, bevor Chrome oder Claude starten, mit `credentials-missing` und nennt die Variablen. Bei `signIn.type: session` gilt `role login`: Du meldest dich von Hand an, caw speichert die Sitzung, nie ein Passwort.
+Braucht `record`, `run` oder `open` eine Rolle ohne Testnutzer, endet der Befehl, bevor Chrome oder der Agent starten, mit `credentials-missing` und nennt die Variablen. Bei `signIn.type: session` gilt `role login`: Du meldest dich von Hand an, caw speichert die Sitzung, nie ein Passwort.
 
 `role login` ist für `signIn.type: session` (SSO, OAuth, MFA, die sich nicht automatisieren lassen). Es öffnet Chrome auf der Anmeldung, du meldest dich von Hand an. Sobald `signedInSelector` erscheint, speichert caw Cookies und Storage in `caw/.auth/<env>/<rolle>.json`. Erneut ausführen, wenn die Sitzung abläuft.
 
@@ -390,7 +390,7 @@ Nicht exportiert: gelernte Wirkungen und Netzwerk-Vergleichswerte, `knownMessage
 
 ## mcp
 
-Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- npx caw-ai mcp`). Du rufst es nicht selbst auf. Der Server heißt `caw`; beim Start sagt er Claude, wofür caw da ist und dass es zuerst `caw_guide` liest. Deine Sitzung bekommt diese Tools:
+Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- npx caw-ai mcp`). Du rufst es nicht selbst auf. Der Server heißt `caw`; beim Start sagt er der Sitzung, wofür caw da ist und dass sie zuerst `caw_guide` liest. Deine Sitzung bekommt diese Tools:
 
 | Tool | | Tokens |
 |---|---|---|
@@ -416,7 +416,7 @@ Ergebnisse kommen als kurzer Text plus `structuredContent` (JSON).
 
 `caw agent <befehl>` mit `snapshot`, `click`, `dblclick`, `hover`, `drag`, `dialog`, `fill`, `type`, `press`, `upload`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
 
-Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agenten während `record` und im Chat da; du brauchst sie nicht. `npx caw agent --help` listet ihre Argumente.
+Nur über diese Befehle kann der Agent den Browser bedienen. Sie sind für den Agenten während `record` und im Chat da; du brauchst sie nicht. `npx caw agent --help` listet ihre Argumente.
 
 ## Exit-Codes
 
@@ -432,10 +432,10 @@ Nur über diese Befehle kann Claude den Browser bedienen. Sie sind für den Agen
 
 | Variable | |
 |---|---|
-| `CAW_LANG` | `en` oder `de`: deine eigene Sprache für caws Texte (CLI, Werkbank) statt der Teamsprache (`language` in der Config). Claude schreibt Pläne weiter in der Teamsprache. |
+| `CAW_LANG` | `en` oder `de`: deine eigene Sprache für caws Texte (CLI, Werkbank) statt der Teamsprache (`language` in der Config). Der Agent schreibt Pläne weiter in der Teamsprache. |
 | `CAW_AI_HOME` | Ordner für persönliche Einstellungen (`prefs.json`). Standard `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` oder `~/.config/caw-ai`. |
 | `ANTHROPIC_API_KEY` | API-Schlüssel aus der Claude Console für den Agenten `docker`. `local` nutzt deine Claude-Code-Anmeldung; mit `--attach` arbeitet deine eigene Session. |
-| `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Modell und Budget in US-Dollar für Claude-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |
+| `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Modell und Budget in US-Dollar für Agenten-Läufe (`--model`, `--max-budget-usd`); überschreiben `agent.model` und `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Nur Windows: `windows` oder `wsl` legt den Weg zu Docker fest. |
 | `CI` | Gesetzt: kein Chat, nur Agent `docker`; `record` und `open` werden abgelehnt. |
 | `CAW_URL__<ENV>` | Eine andere Adresse für eine Umgebung in diesem Prozess, etwa eine PR-Vorschau; wird nie in die Konfiguration geschrieben. Siehe [Konfiguration](configuration.de.md#url-für-pr-vorschauen). |

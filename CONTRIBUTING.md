@@ -12,7 +12,7 @@ cd caw-ai
 npm ci
 npm run lint          # ESLint (recommended rules of ESLint and eslint-plugin-n)
 npm test              # unit tests, no tokens; the *-browser, login and explore tests start a headless Chrome
-npm run pack:check    # what `npm pack` would ship
+npm run pack:check    # what `npm pack` would ship: no secrets, no tests, no project terms
 ```
 
 Without Chrome the browser tests are skipped locally. CI sets `CAW_REQUIRE_CHROME=1`: with it, a browser test must fail instead of skipping when Chrome is missing.
@@ -32,7 +32,7 @@ npx caw doctor
 |---|---|
 | `bin/` | CLI entry |
 | `src/host/` | Everything on your machine: browser session, replay, workbench and chat UI, reports |
-| `src/sandbox/` | The commands Claude may use while recording |
+| `src/sandbox/` | The commands the agent may use while recording |
 | `src/shared/` | Config, i18n (`locales/de`, `locales/en`), reports, helpers |
 | `templates/` | Config template, Docker sandbox and the guide topics `caw_guide` serves (`templates/guide/`) |
 | `test/` | Unit tests (`node --test`) |
@@ -52,7 +52,13 @@ npx caw doctor
 
 ## End-to-end tests
 
-`npm run e2e` starts Chrome and a fake app over HTTPS and takes a while. It runs nightly in CI (Linux with xvfb). Run it locally when you touch replay, the workbench or the browser session.
+`npm run e2e` starts Chrome and a fake portal under `e2e/` over HTTPS, with scripts in place of the agent and the human, and takes a while. It runs nightly in CI (Linux with xvfb). Run it locally when you touch replay, the workbench or the browser session.
+
+On Windows the E2E runs best from PowerShell via `e2e/watchdog.ps1`: the watchdog ends the run when the log stays silent too long. What counts are the results in `<log>.result` with the summary `RESULT OK=… FAIL=…`, also in `<log>.status`: the agent's processes write into the log too and can overwrite lines. If there is a FAIL, the E2E ends with exit 1. On its first run the E2E builds the sandbox image from `node:22-bookworm-slim` and needs Docker for it, but no token.
+
+## Tested frameworks and platforms
+
+caw has been tried with ExtJS 6.5.3 Modern, React 19 (Vite dev server), Vue 3.5 and Angular 19. `e2e/frameworks` tests React 19 (Vite 8), Vue 3.5 (Vite 8), Angular 21 (zoneless and with Zone.js), Next.js 16 and Nuxt 4, each on the dev server, as a production build over HTTPS and, where possible, with `--overlay` (`node e2e/frameworks/matrix.mjs`). Windows and Linux are officially supported as hosts; macOS is untested. For the `docker` agent, Docker in WSL has been tried; Docker Desktop is untested: firewall in the container, write permissions in the agent folder and the channel over its file sharing.
 
 ## Releases
 

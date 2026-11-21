@@ -8,7 +8,7 @@ caw reads three things from your project:
 |---|---|---|
 | `caw.config.json` | Environments, sign-in, roles | yes |
 | `caw/.env` | Test users' credentials | **no** (gitignored) |
-| `caw/caw.md` | Project notes Claude reads in every run | yes |
+| `caw/caw.md` | Project notes the agent reads in every run | yes |
 
 Tests live in `caw/tests/` and `caw/recordings/`, see [Test files](test-files.md).
 
@@ -74,7 +74,7 @@ starting with a letter, at most 32 characters.
 | Field | |
 |---|---|
 | `url` | Origin of the app. `https`, or `http` for this machine (`localhost`, `127.0.0.1`, `*.localhost`). |
-| `agent` | `true`: Claude may record, fix and investigate here. |
+| `agent` | `true`: the agent may record, fix and investigate here. |
 | `writable` | `true`: tests with `writes: true` may run here. |
 | `production` | Required for names that look like production (`prod`, `live`, `prod-eu` …). Such an environment can't have `agent` or `writable`. A run there sends no write requests, to any host: every request that is no GET, HEAD, OPTIONS, GraphQL query or `reads` pattern is aborted and fails the step with `write-blocked`, a form post into the top window too. Sign-in requests pass only while caw itself signs in; a token refresh the app sends later is a write unless `reads` names it. Not covered: messages the app sends over an open WebSocket (reading apps send them too, e.g. keep-alives and subscriptions). Runs on other environments never reach its host. A name that only looks like production says `"production": false`. |
 | `insecureTls` | `true`: accept a self-signed certificate on this environment. |
@@ -100,7 +100,7 @@ name in capitals, `-` as `_`, as for [credentials](#roles)), e.g. `CAW_URL__PREV
 `"preview": { "url": "https://preview.example.com", "writable": true }`. It applies to this process only and is never written
 to `caw.config.json`; the first line of `run` names it (`Address from CAW_URL__PREVIEW: …`). Environments that inherit the
 `url` through `extends` keep theirs. caw refuses it (`url-override`, exit 3) for an unknown environment, a production
-environment, an environment with `agent: true` (a variable must not redirect where Claude works unseen), an address that is
+environment, an environment with `agent: true` (a variable must not redirect where the agent works unseen), an address that is
 no valid origin (the same rule as `url`) and the host of a production environment, since a run never blocks its own host and
 the production block would be gone.
 
@@ -242,7 +242,7 @@ CAW_CLERK_PASSWORD__STAGING=secret2
 
 Add a role with `npx caw role add <role>`: it goes into the config and its variable names into `caw/.env.example`; the values
 you fill into `caw/.env` yourself, caw never asks for them. See [role](commands.md#role). Use test accounts with as few rights as
-possible: Claude drives a browser signed in as this user.
+possible: the agent drives a browser signed in as this user.
 
 ## Testing local code
 
@@ -278,16 +278,16 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 
 | Field | Default | |
 |---|---|---|
-| `language` | detected by init | The team language, a code such as `en`, `de` or `fr`: Claude writes plans, step names and `report.md` in it. caw's own texts (CLI, workbench) use it too when it is `en` or `de`, so a project speaks one language; `CAW_LANG` sets your own. Otherwise they follow your system. |
+| `language` | detected by init | The team language, a code such as `en`, `de` or `fr`: the agent writes plans, step names and `report.md` in it. caw's own texts (CLI, workbench) use it too when it is `en` or `de`, so a project speaks one language; `CAW_LANG` sets your own. Otherwise they follow your system. |
 | `framework` | `web` | `web`, `react`, `vue`, `angular` or [`extjs`](extensions/extjs.md). Decides when a page counts as ready and what a failure report names. |
 | `start` | `/` | Path where tests start; a test can set its own `start`. |
-| `source` | `.` | Where the app's source is, relative to the project, or `false` when it is not in this repository (then Claude gives no code advice). |
-| `agent.mode` | `local` | Where Claude runs: `local` (Claude Code on your machine, read-only tools), `docker` (isolated) or `session` (your own Claude Code session). Always `docker` in CI. |
-| `agent.model` | Claude Code's default | Model for Claude, passed as `--model`, e.g. `haiku` or `sonnet`. `CAW_AGENT_MODEL` overrides it for one run. |
-| `agent.maxBudgetUsd` | none | Stops a Claude run at this estimated spend in US dollars (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` overrides it. |
-| `maxActions` | `100` | Claude's action budget when recording and fixing. |
+| `source` | `.` | Where the app's source is, relative to the project, or `false` when it is not in this repository (then the agent gives no code advice). |
+| `agent.mode` | `local` | Where the agent runs: `local` (Claude Code on your machine, read-only tools), `docker` (isolated) or `session` (your own Claude Code session). Always `docker` in CI. |
+| `agent.model` | Claude Code's default | Model for the agent, passed as `--model`, e.g. `haiku` or `sonnet`. `CAW_AGENT_MODEL` overrides it for one run. |
+| `agent.maxBudgetUsd` | none | Stops an agent run at this estimated spend in US dollars (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` overrides it. |
+| `maxActions` | `100` | The agent's action budget when recording and fixing. |
 | `keepRuns` | `30` | How many run folders `.caw/runs` keeps. When a run starts, caw deletes the oldest beyond this; a run that is still open is never deleted. `0` keeps every run. |
-| `allowHosts` | `[]` | More hosts pages may navigate to, e.g. a sign-in service; also per environment. Pages navigate only to the environments' hosts and these (links, form posts, popups, redirects, `goto`); anything else fails with `host-blocked`. Without Claude, scripts, styles, fonts, images, XHR/fetch, WebSockets and iframes may go to any host. Production hosts of other environments stay unreachable for every request. Hosts are compared by name (case and a trailing dot do not matter); a host reached by its IP address is not recognised. |
+| `allowHosts` | `[]` | More hosts pages may navigate to, e.g. a sign-in service; also per environment. Pages navigate only to the environments' hosts and these (links, form posts, popups, redirects, `goto`); anything else fails with `host-blocked`. Without the agent, scripts, styles, fonts, images, XHR/fetch, WebSockets and iframes may go to any host. Production hosts of other environments stay unreachable for every request. Hosts are compared by name (case and a trailing dot do not matter); a host reached by its IP address is not recognised. |
 | `thirdPartyHosts` | `[]` | Hosts of other parties the app needs while an agent can act in the window (record, a run with chat, `open`), e.g. `["fonts.example-cdn.com"]`; also per environment. Then every request of the browser (pages, scripts, XHR/fetch, WebSockets, beacons, iframes) goes only to the environments, `allowHosts` and these; anything else is aborted and named as a warning in the run, with this key. A production host listed here stays blocked. Otherwise the list does nothing. |
 | `browser` | system Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) or `{ "executablePath": "/path/to/chromium" }` (an absolute path on this machine; no network share, `\\?\` or `/proc` path) |
 | `browser.noSandbox` | `false` | `true` starts Chrome without its sandbox. Unsafe: a page that breaks Chrome's renderer then runs with your rights. Only for machines where the sandbox cannot start (Linux as root, some containers); caw stops with `browser-sandbox` there instead of falling back on its own. |
@@ -304,11 +304,11 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 | `visual.maxRatio` | `0.01` | Share of differing pixels a learned look may have (only steps with `look: true` learn one, [visual regression](test-files.md#visual-regression); pixels only in headless runs). |
 | `visual.designMaxRatio` | `0.03` | The same against a `.png` target design. The three thresholds are starting values until `e2e/spike/visual` has measured the noise between runs. |
 | `visualIgnore` | `[]` | CSS selectors of areas no pixel comparison looks at, e.g. `["#clock", ".avatar"]`. The run tag, remembered values, numeric dates, list rows, list entries (`li`, `listitem`, not in navigation or menus) and cards (`article`) are masked anyway. Visual regression is meant for steps with fixed data; this covers the rest. |
-| `anonymize.command` | | Your own command that anonymizes [fixed data](test-files.md#fixed-data) before it is stored, as a list without a shell, e.g. `["node", "tools/anonymize.mjs"]`, run in the project folder. It gets `{ "version": 1, "keep": [...], "answers": [{ "name", "body" }] }` on stdin and writes `{ "answers": [{ "body" }] }` on stdout, in the same order and with the same structure. Without it caw uses its own replacement. Claude cannot change `anonymize`: it is edited in the file. |
+| `anonymize.command` | | Your own command that anonymizes [fixed data](test-files.md#fixed-data) before it is stored, as a list without a shell, e.g. `["node", "tools/anonymize.mjs"]`, run in the project folder. It gets `{ "version": 1, "keep": [...], "answers": [{ "name", "body" }] }` on stdin and writes `{ "answers": [{ "body" }] }` on stdout, in the same order and with the same structure. Without it caw uses its own replacement. The agent cannot change `anonymize`: it is edited in the file. |
 | `anonymize.keep` | `[]` | Values caw's own anonymization keeps as they are, e.g. currency codes or states the app interprets: `["EUR", "OPEN"]`. Every other text is replaced. |
 | `readyTimeoutMs` | | How long to wait for the app to settle. |
 | `readyIgnore` | `[]` | CSS selectors of areas that change by themselves, e.g. `["#ticker", ".clock", "footer [role=progressbar]"]`. Their DOM changes and progress indicators don't count when waiting for a quiet page. Spinners without size, hidden or outside the viewport never count. If a page never gets quiet, the run says so and names `readyIgnore`. |
-| `lintCommand` | | Your check command, e.g. `npm run lint`. Claude mentions it in code suggestions. |
+| `lintCommand` | | Your check command, e.g. `npm run lint`. The agent mentions it in code suggestions. |
 | `sandboxImage` | `node:22-bookworm-slim` | Base image for the `docker` agent. Falls back to `image` in `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | User inside the container. |
 | `overlay` | | Turns on the [overlay extension](extensions/overlay.md). |
@@ -317,7 +317,7 @@ Any other field is reported as unknown (`Unknown field: …`). That includes `th
 
 ## caw/caw.md
 
-Plain Markdown, like a `CLAUDE.md` for your tests. Write down things Claude can't see in the code but that matter in every test:
+Plain Markdown, like a `CLAUDE.md` for your tests. Write down things the agent can't see in the code but that matter in every test:
 
 ```markdown
 ## Search
@@ -328,13 +328,13 @@ Changing it never invalidates a recording. No personal data.
 
 ### Your own caw.md
 
-Next to `prefs.json` (see below) a `caw.md` holds your personal notes for Claude, the same in every project: how you want
-findings reported, what you always want looked at, words you use. Claude reads it in every run where it works (recording, the
+Next to `prefs.json` (see below) a `caw.md` holds your personal notes for the agent, the same in every project: how you want
+findings reported, what you always want looked at, words you use. The agent reads it in every run where it works (recording, the
 chat, `--explain`, developing, `reproduce`, your own session as the agent; in Docker as text in the task) before the project's
 `caw/caw.md`, which wins where the two disagree. It never goes into a test, a recording or the project. The report notes that it
 was read (path and number of lines, not its content), and `caw doctor` shows whether there is one.
 
-Both files can grow from a run: Claude's advice may propose a line for either. The card names the file (project, shared
+Both files can grow from a run: the agent's advice may propose a line for either. The card names the file (project, shared
 through git, or personal, with its path), and only your click on "Accept" writes it. Nothing else outside the project is ever written that way.
 
 ## Personal settings
@@ -347,7 +347,7 @@ or `~/.config/caw-ai`. Not in the project. Your own `caw.md` (see above) lies in
 | `mode` | `system` (default), `light`, `dark` | Light or dark for workbench, chat, report page and the "caw explore" card. `system` follows your operating system. |
 | `animations` | `on` (default), `off` | `off` stops the spinner, pulsing dots and the blinking cursor (F10). |
 | `steps`, `chat` | `open` (default), `closed` | Whether the steps and the chat panel are open when a run starts (F4, F6). |
-| `tokenNotice` | `on` (default), `off` | `off` skips the notice before Claude uses tokens. Set by "Don't ask again"; remove it to get the notice back. |
+| `tokenNotice` | `on` (default), `off` | `off` skips the notice before the agent uses tokens. Set by "Don't ask again"; remove it to get the notice back. |
 | `language` | `de`, `en` | Your language for caw's own texts. `CAW_LANG` wins over it. |
 
 The workbench's settings page (Ctrl+,) sets `mode`, `animations`, `steps` and `chat` and shows the rest read-only: the

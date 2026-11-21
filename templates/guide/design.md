@@ -18,10 +18,13 @@ findings (colors off the tokens, spacing off the scale, contrast, clipped text, 
 `design.fail` has `"lint"`.
 
 **A learned look.** `look: true` on a step (also only the person's: never set or remove it yourself; caw may suggest steps to
-the person after `record`) learns that step's look over two healthy runs and then fails with kind `visual` when it changes.
-The look is its style lines (per role and style, how many controls have it) and, only from headless runs, its pixels at a fixed
-viewport (the recorded one, else 1920 x 1080); a run with a window compares the styles only (`pixels: "headless-only"` in
-`result.json`). Only the person takes a changed look over ("{{label:run.button.adoptLook}}"). For screens whose data changes,
+the person after `record`) learns that step's look and then fails with kind `visual` when it changes. A look learns when
+the step passes in a run outside CI (in CI only with `--learn`) on the environment it was recorded on. Its style lines (per
+role and style, how many controls have it) learn in every such run, with a window too: the first stores them, the second
+confirms them (a count that differed becomes `×?`), then they are compared. Its pixels learn only in headless runs, per
+platform, at a fixed viewport (the recorded one, else 1920 x 1080): the first headless run stores the image, a second one
+whose image matches confirms it (one that differs replaces it and starts over), then it is compared. A run with a window
+compares the styles only (`pixels: "headless-only"` in `result.json`). Only the person takes a changed look over ("{{label:run.button.adoptLook}}"). For screens whose data changes,
 only the person freezes the data of the app's reads ("{{label:run.button.freezeData}}" after a passed run with a window, into
 `caw/recordings/<test>/fixed-data.json`); headless runs then compare those looks in a separate pass on the frozen answers. You
 cannot freeze data and never write that file; when the fixed data no longer fits the backend, say so and leave it to the

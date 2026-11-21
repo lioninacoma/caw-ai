@@ -10,7 +10,7 @@ Jeder Test hat zwei YAML-Dateien:
 | `caw/recordings/<id>.yaml` | caw: wie er abgespielt wird | ja, vorher ansehen |
 | `caw/drafts/<id>.yaml` | `reproduce`: ein [Entwurf](#entwürfe), Plan und Aufzeichnung in einer Datei | ja, bis er übernommen ist |
 
-Du schreibst den Testplan, `record` schreibt die Aufzeichnung. Von Hand trägst du dort nur die [Ergänzungen](#von-hand-ergänzen) ein, die Claude nicht aufnimmt. `recording` und `knownMessages` gehören nur in die Aufzeichnung; im Testplan lehnt `validate` sie ab.
+Du schreibst den Testplan, `record` schreibt die Aufzeichnung. Von Hand trägst du dort nur die [Ergänzungen](#von-hand-ergänzen) ein, die der Agent nicht aufnimmt. `recording` und `knownMessages` gehören nur in die Aufzeichnung; im Testplan lehnt `validate` sie ab.
 
 ## Testplan
 
@@ -41,7 +41,7 @@ steps:
     expect: The ticket shows the status "In progress".
 ```
 
-Testpläne kannst du in jeder Sprache schreiben, Claude liest sie so wie ein Tester.
+Testpläne kannst du in jeder Sprache schreiben, der Agent liest sie so wie ein Tester.
 
 | Feld | Pflicht | |
 |---|---|---|
@@ -70,7 +70,7 @@ Je Schritt:
 Tipps:
 
 - Eine Aktion und ein Ergebnis je Schritt: „Liste öffnen“ / „Die Liste ist sichtbar“.
-- Schreib `do` und `expect` so, wie ein Tester es sagen würde. Claude macht daraus Ziele und Prüfungen.
+- Schreib `do` und `expect` so, wie ein Tester es sagen würde. Der Agent macht daraus Ziele und Prüfungen.
 - Setz `{{runTag}}` in Namen, die du anlegst. Jeder Lauf bekommt einen eigenen Wert, so findet ein Lauf seinen eigenen Datensatz und nicht den von gestern.
 
 ## Was eine Aufzeichnung ungültig macht
@@ -82,7 +82,7 @@ npx caw run create-ticket --env local       # Exit 4: S2 geändert, nennt den re
 npx caw record create-ticket@S2 --env local # ab S2 bis zum Ende neu aufnehmen, S1 bleibt
 ```
 
-`notes`, `role`, `writes`, `environments`, `start`, `retry`, `design`, `needs`, `look` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf Claude auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
+`notes`, `role`, `writes`, `environments`, `start`, `retry`, `design`, `needs`, `look` und `caw/caw.md` gehen nicht in den Hash ein. Einen Schritt am Ende schreibst du in die Datei und nimmst den Test ab diesem Schritt auf (`record <test>@S7`). Ab dem genannten Schritt darf der Agent auch Schritte löschen, umbenennen oder umstellen; die Schritte davor bleiben unberührt.
 
 ## Offene Schritte
 
@@ -120,7 +120,7 @@ git). Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab.
 
 ## Zielbild
 
-Ein Schritt kann den Bildschirm nennen, auf dem er enden soll: `design: design/order-form.html`. `design` und `needs` schreiben nur Menschen in die Testdatei (oder lassen ihre Claude-Code-Session einen Entwurf mit `caw_design` verknüpfen, wenn sie darum bitten); Claudes Plan darf sie nicht enthalten, und wenn caw einen Schritt neu schreibt (beheben, neu aufnehmen), bleiben sie erhalten.
+Ein Schritt kann den Bildschirm nennen, auf dem er enden soll: `design: design/order-form.html`. `design` und `needs` schreiben nur Menschen in die Testdatei (oder lassen ihre Claude-Code-Session einen Entwurf mit `caw_design` verknüpfen, wenn sie darum bitten); der Plan des Agenten darf sie nicht enthalten, und wenn caw einen Schritt neu schreibt (beheben, neu aufnehmen), bleiben sie erhalten.
 
 Nachdem die Prüfung des Schritts bestanden hat, rendert caw den `.html`-Entwurf in einem eigenen headless Browser ohne Skripte und Netz, im aufgenommenen Viewport des Schritts, und vergleicht seine Struktur mit der Seite der App: Bedienelemente (Rolle, Beschriftung, Merkmale), Ansichtszeilen (Überschriften, Buttons, Links, Bereiche) und je Bedienelement `font-size`, `font-weight`, `color`, `background-color`, `border-radius` und `padding`. Listenzeilen, freier Text, Zahlen und ob ein Feld gefüllt ist, sind Daten und bleiben außen vor. Fehlt etwas oder weicht ein Stil ab, scheitert der Schritt mit kind `design`; Bedienelemente, die nur die App hat, werden genannt, lassen aber nichts scheitern. Das Abspielen geht weiter, der Schritt wird nicht wiederholt und lernt in diesem Lauf keine Wirkungen. Mit `design.fail: []` in der Config warnt er nur. Ein `.png`-Entwurf wird nach Pixeln beurteilt: caw nimmt den Bildschirm des Schritts im aufgenommenen Viewport auf (in CSS-Pixeln, auch dann unskaliert, wenn die Werkbank die App verkleinert), maskiert, was sich von Lauf zu Lauf ändert (Lauf-Kennung, gemerkte Werte, Datumsangaben in Ziffern, Listenzeilen, Listeneinträge, Karten und `visualIgnore` aus der Config), skaliert einen @2x-Export auf die Breite des Bildschirms und vergleicht, wo beide Pixel haben. Ein Pixel weicht ab, wenn ein Farbkanal um mehr als `visual.tolerance` abweicht; weichen mehr als `visual.designMaxRatio` der Pixel ab, scheitert der Schritt mit kind `design`, und das Differenzbild (`step-S3-diff.png`: rot weicht ab, blau ist maskiert) liegt im Ordner `agent` des Laufs.
 
@@ -132,7 +132,7 @@ Liegen in `caw/design` Design-Tokens (`tokens.json` oder `<name>.tokens.json`, D
 
 ### Visuelle Regression
 
-Ein Schritt mit `look: true` in der Testdatei lernt, wie er aussieht, wie die [Wirkungen](#aufzeichnung): seine Style-Zeilen und ein Bild je Plattform. `look` setzen nur Menschen, von Hand oder mit einem Haken im Chat (unten); Claudes Plan darf es nicht enthalten, caw behält es, wenn es den Schritt neu schreibt, und es macht einen Schritt nie veraltet. Eine Style-Zeile ist eine Rolle und ein Stil (dieselben Stile wie beim Zielbild) mit der Zahl der Bedienelemente, die ihn haben, `button ×3: font-size 13px, font-weight 400, color #ffffff, …`; Namen bleiben weg, sie tragen Daten. Der erste gesunde Lauf außerhalb von CI speichert das Aussehen, ein zweiter, der passt, bestätigt es (`runs: 2`); eine Zahl, die dazwischen abweicht, wird `×?` (jede Zahl stimmt), ein abweichendes Bild beginnt von vorn. In CI nur mit `--learn`.
+Ein Schritt mit `look: true` in der Testdatei lernt, wie er aussieht, wie die [Wirkungen](#aufzeichnung): seine Style-Zeilen und ein Bild je Plattform. `look` setzen nur Menschen, von Hand oder mit einem Haken im Chat (unten); der Plan des Agenten darf es nicht enthalten, caw behält es, wenn es den Schritt neu schreibt, und es macht einen Schritt nie veraltet. Eine Style-Zeile ist eine Rolle und ein Stil (dieselben Stile wie beim Zielbild) mit der Zahl der Bedienelemente, die ihn haben, `button ×3: font-size 13px, font-weight 400, color #ffffff, …`; Namen bleiben weg, sie tragen Daten. Das Aussehen lernt, wenn der Schritt in einem Lauf außerhalb von CI auf der Umgebung seiner Aufnahme besteht; in CI nur mit `--learn`. Die Style-Zeilen lernt jeder solche Lauf, auch im Fenster: Der erste speichert sie, der zweite bestätigt sie (`runs: 2`); eine Zahl, die dazwischen abweicht, wird `×?` (jede Zahl stimmt). Das Bild lernen nur headless Läufe, je Plattform: Der erste speichert es, ein zweiter, dessen Bild passt, bestätigt es (`images: {<plattform>: 2}`), ein abweichendes Bild beginnt von vorn.
 
 Pixel werden nur in headless Läufen (`--headless`) gelernt und verglichen: Dort steht der Viewport fest, der aufgenommene, sonst 1920 × 1080. Ein Lauf mit Fenster (die Werkbank oder ein Lauf ohne `--headless`) vergleicht nur die Style-Zeilen und lässt das Bild, wie es ist; `result.json` sagt das mit `pixels: "headless-only"`. Das Aussehen gehört zu seiner Grundlage, dem Aufnahmezeitpunkt des Schritts davor und dem Inhalt der Entwurfsdatei des Schritts: Ein früherer Schritt neu aufgenommen oder ein neuer Entwurf, und es wird neu gelernt. Ist es gelernt, vergleicht jeder Lauf: Eine Rolle und ein Stil, die weniger oder mehr Bedienelemente haben als gelernt oder die es nicht gab (`1 button weniger mit …`), oder mehr als `visual.maxRatio` abweichende Pixel (das Differenzbild ist `step-S3-look-diff.png`) lassen den Schritt mit kind `visual` scheitern, ohne das Abspielen anzuhalten (`design.fail` ohne `"visual"` warnt nur). Ein umbenannter Button behält Rolle und Stil: Nur seine Pixel zeigen es. Stimmt der neue Look, übernimmt **Neuen Look übernehmen** im Chat die Stile aller Schritte, deren Aussehen sich in diesem Lauf geändert hat, auf einmal und vermerkt den Tag; ihre Bilder werden gelöscht, die nächsten zwei headless Läufe lernen sie neu. `caw audit` nennt die Übernahme (`look-adopted`); `look: true` an einem Schritt mit gelerntem Aussehen zu entfernen, ist eine Abschwächung (`look-off`).
 
@@ -144,7 +144,7 @@ Nach `caw record` schlägt der Prüflauf ohne KI Schritte für `look: true` vor.
 
 Die Daten eines Portals ändern sich laufend, also ändert sich auch ein Aussehen darauf. caw kann die Daten für das Aussehen einfrieren: die JSON-Antworten der Lesezugriffe der App aus einem Lauf, die die App in späteren headless Läufen wieder bekommt, damit das Aussehen auf denselben Daten verglichen wird.
 
-**Einfrieren** ist der Klick einer Person, nie der von Claude oder dem aufnehmenden Agenten, und nie in CI (dort könnte niemand bestätigen, was gespeichert wird). Nach einem bestandenen Lauf mit Chat-Fenster, dessen Schritte mit `look: true` bestanden haben, bietet die Karte **Daten einfrieren** an. Die nächste Karte sagt, was gespeichert wird: die JSON-Antworten der Lesezugriffe bis zum letzten Aussehens-Schritt, in `caw/recordings/<test>/fixed-data.json`, im Repository neben der Aufzeichnung; dass sie personenbezogene Daten enthalten können; und dass du den Datenschutz prüfst, caw weist nur darauf hin. Du wählst, wie sie gespeichert werden:
+**Einfrieren** ist der Klick einer Person, nie der des Agenten, und nie in CI (dort könnte niemand bestätigen, was gespeichert wird). Nach einem bestandenen Lauf mit Chat-Fenster, dessen Schritte mit `look: true` bestanden haben, bietet die Karte **Daten einfrieren** an. Die nächste Karte sagt, was gespeichert wird: die JSON-Antworten der Lesezugriffe bis zum letzten Aussehens-Schritt, in `caw/recordings/<test>/fixed-data.json`, im Repository neben der Aufzeichnung; dass sie personenbezogene Daten enthalten können; und dass du den Datenschutz prüfst, caw weist nur darauf hin. Du wählst, wie sie gespeichert werden:
 
 - **Anonymisieren**: mit dem Befehl aus `anonymize.command` in der Config, falls es einen gibt (er bekommt die Antworten als JSON auf stdin und schreibt sie als JSON auf stdout zurück; die Daten gehen nur an diesen Befehl, nie an eine KI-Sitzung). Sonst ersetzt caw sie selbst, *im Zweifel ersetzt*: Jeder Text wird ersetzt, derselbe Wert innerhalb eines Einfrierens gleich. Nach Muster E-Mails, IBANs, Telefonnummern (Ziffern ersetzt, Format bleibt) und Datumsangaben (um eine feste Zahl an Tagen verschoben, ihre Reihenfolge bleibt); nach Schlüsselname Namen, Straßen, Orte, Postleitzahlen und Geburtsdaten; jeder andere Text wird neutraler Text gleicher Länge (Groß-/Kleinschreibung, Leerzeichen und Satzzeichen bleiben). IDs (Schlüssel wie `id`, `customerId`, UUIDs), Zahlen, Wahrheitswerte, `null` und alle Schlüssel bleiben, ebenso die Werte aus `anonymize.keep`, etwa Währungscodes oder Zustände, die die App auswertet (`["EUR", "OPEN"]`). Eine Anonymisierung, die die Struktur einer Antwort ändert, wird abgelehnt.
 - **Verschleiern**: nicht lesbar gespeichert und erst beim Ausliefern entschlüsselt. Das schützt nur davor, die Daten versehentlich zu lesen (in einem Diff, einer Suche); es ist kein Schutz.
@@ -201,7 +201,7 @@ steps:
 |---|---|
 | `actions` | Was zu tun ist. `dblclick` ist ein Doppelklick, etwa auf eine Tabellenzeile, die nur so öffnet; einen vorgeführten Doppelklick zeichnet caw als einen auf. Das Ziel von `click`, `dblclick`, `fill`, `type`, `upload` und `download` ist ein Playwright-Locator, geschrieben, wie Playwright ihn ausgibt, ohne `page.`: Rolle und voller Name mit `exact: true`, Beschriftung, Text, `data-testid`, die Zeile oder der Dialog drumherum, `contentFrame()` für ein iframe. caw liest ihn, führt ihn aber nie als Code aus; `validate` weist alles andere ab, ebenso Snapshot-Referenzen (`aria-ref=`), `:nth-child` und bei ExtJS generierte IDs wie `#button-1023`. ExtJS-Komponenten findet auch `locator('extjs=button[text="Speichern"]')` (`Ext.ComponentQuery`); ein Text oder Titel mit Komma kommt nie in eine solche Abfrage, weil ComponentQuery an jedem Komma trennt. |
 | `hover`, `dragTo` | `hover` bewegt den Zeiger über sein Ziel, etwa ein Menü, das sich beim Überfahren öffnet. `dragTo` zieht sein Ziel auf den Locator in `to`, etwa eine Karte auf eine Spalte. |
-| `dialog` | Die Antwort auf einen nativen Dialog (`alert`, `confirm`, `prompt`, `beforeunload`), den die Aktion öffnet: `{type, accept, value?, message?}`. `value` ist der Text für einen bestätigten `prompt` (Platzhalter erlaubt); `message` ist der Dialogtext bei der Aufnahme, Ziffern als `#`. Das Abspielen antwortet genauso. Einen Dialog, den niemand aufgezeichnet hat, schließt es und nennt ihn als Warnung `dialog-unexpected`; kommt ein aufgezeichneter nicht, gibt es die Warnung `dialog-missing`. Beim Vorführen zeigt der Chat den Dialog mit OK und Abbrechen; Claude antwortet mit `caw agent dialog accept|dismiss`. |
+| `dialog` | Die Antwort auf einen nativen Dialog (`alert`, `confirm`, `prompt`, `beforeunload`), den die Aktion öffnet: `{type, accept, value?, message?}`. `value` ist der Text für einen bestätigten `prompt` (Platzhalter erlaubt); `message` ist der Dialogtext bei der Aufnahme, Ziffern als `#`. Das Abspielen antwortet genauso. Einen Dialog, den niemand aufgezeichnet hat, schließt es und nennt ihn als Warnung `dialog-unexpected`; kommt ein aufgezeichneter nicht, gibt es die Warnung `dialog-missing`. Beim Vorführen zeigt der Chat den Dialog mit OK und Abbrechen; der Agent antwortet mit `caw agent dialog accept|dismiss`. |
 | `path` | Die Seite, auf der die Aktion aufgenommen wurde. Fehlt ein Ziel, sagt der Lauf, dass er auf einer anderen Seite ist. |
 | `locale`, `timezone`, `viewport` | Sprache, Zeitzone und Größe der App-Ansicht beim Aufnehmen; die Wiedergabe nimmt sie, sofern die Config nicht `browser.locale`/`browser.timezone`/`browser.viewport` setzt. Headless öffnet die Wiedergabe in dieser Größe; in der Werkbank bekommt der App-Rahmen genau diese Größe, verkleinert, wenn das Fenster kleiner ist. |
 | `check` | Ein JavaScript-Ausdruck, der `true` liefern muss. Er läuft in der angemeldeten Seite, also vor dem Commit lesen. |
@@ -216,19 +216,19 @@ Bei der Wiedergabe muss ein Locator genau ein Element finden, das sichtbar und n
 
 ## Von Hand ergänzen
 
-`download` und `secret` nimmt Claude nicht auf; du trägst sie selbst in `caw/recordings/<id>.yaml` ein. `validate` prüft sie. Nimmt Claude den Schritt neu auf, ersetzt das seine Aktionen: `download` danach wieder eintragen; `secret` an einem `remember` bleibt erhalten.
+`download` und `secret` nimmt der Agent nicht auf; du trägst sie selbst in `caw/recordings/<id>.yaml` ein. `validate` prüft sie. Nimmt der Agent den Schritt neu auf, ersetzt das seine Aktionen: `download` danach wieder eintragen; `secret` an einem `remember` bleibt erhalten.
 
-`upload` wird aufgezeichnet, aber nur mit Dateien aus `caw/fixtures`: Beim Vorführen vergleicht caw die gewählte Datei per Name, Größe und SHA-256 mit den Dateien dort. Passt sie, wird der Klick, der die Dateiauswahl geöffnet hat, zum `upload`; eine Datei von anderswo nennt der Chat, sie wird nicht aufgezeichnet und nichts wird kopiert. Leg Testdateien ohne personenbezogene Daten in `caw/fixtures` ab und wähle sie von dort. Claude lädt mit `upload <ziel> fixtures/<datei>` hoch, ebenfalls nur von dort.
+`upload` wird aufgezeichnet, aber nur mit Dateien aus `caw/fixtures`: Beim Vorführen vergleicht caw die gewählte Datei per Name, Größe und SHA-256 mit den Dateien dort. Passt sie, wird der Klick, der die Dateiauswahl geöffnet hat, zum `upload`; eine Datei von anderswo nennt der Chat, sie wird nicht aufgezeichnet und nichts wird kopiert. Leg Testdateien ohne personenbezogene Daten in `caw/fixtures` ab und wähle sie von dort. Der Agent lädt mit `upload <ziel> fixtures/<datei>` hoch, ebenfalls nur von dort.
 
 | Angabe | Bedeutung |
 |---|---|
 | `- upload: "getByRole('button', { name: 'Dateien wählen', exact: true })"`<br>`  files: [fixtures/brief.pdf]` | Setzt Dateien in ein Dateifeld. Ist das Ziel das Feld selbst (etwa `getByLabel('Anhang')`), bekommt es die Dateien direkt; ist es ein Knopf vor einem versteckten Feld, öffnet sein Klick die Dateiauswahl, und die bekommt sie. Pfade gelten relativ zum Ordner `caw` und beginnen mit `fixtures/`; nie absolut, nie außerhalb von `caw/fixtures`, nie ein Link heraus; fehlt eine Datei, bricht der Schritt vor dem Klick ab |
 | `- download: "getByRole('button', { name: 'Exportieren', exact: true })"`<br>`  file: "^akte-.*\\.zip$"` | Der Klick muss im Zeitlimit des Schritts einen Download starten, sein Dateiname muss zum regulären Ausdruck in `file` passen, und die Datei darf nicht leer sein. Sonst scheitert der Schritt wie eine nicht erfüllte Prüfung, ohne zweiten Klick. Das Tool löscht die Datei gleich danach |
-| `- remember: {name: davPassword, code: "...", secret: true}` | Wie `remember`, aber der Wert steht ab dann als `••••` im Terminal, in der Werkbank, in `result.json`, `report.md` und allem, was Claude bekommt, wie das Passwort der Rolle. Der Lauf selbst arbeitet mit dem echten Wert |
+| `- remember: {name: davPassword, code: "...", secret: true}` | Wie `remember`, aber der Wert steht ab dann als `••••` im Terminal, in der Werkbank, in `result.json`, `report.md` und allem, was der Agent bekommt, wie das Passwort der Rolle. Der Lauf selbst arbeitet mit dem echten Wert |
 | `getByRole('button', { name: /^Prüfen( \\d+)?$/ })` | Ein regulärer Ausdruck statt des genauen Namens, für einen mitlaufenden Zähler oder einen wechselnden Teil |
 | `knownMessages:`<br>`  - {pattern: "^Prüfsumme \\S+ kopiert$"}` | Neben festen Texten: ein Muster für eine Meldung mit wechselndem Inhalt, etwa einer Prüfsumme oder Uhrzeit. Wie feste Texte sieht es die Meldung mit Ziffern als `#`, immer ganz; nur der Bericht kürzt lange Meldungen. Eine neue Aufnahme behält Muster und ergänzt keinen festen Text, den ein Muster schon deckt |
 
-Eine Prüfung kann die Zwischenablage lesen: Solange eine Prüfung, ein `remember` oder Claudes `eval` läuft, hat der Browser `clipboard-read` für den Origin der Umgebung, sonst nur `clipboard-write` (so kann die getestete Seite deine Zwischenablage nicht nach Belieben lesen), etwa `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (ein Ausdruck, der ein Promise liefert, wird abgewartet).
+Eine Prüfung kann die Zwischenablage lesen: Solange eine Prüfung, ein `remember` oder das `eval` des Agenten läuft, hat der Browser `clipboard-read` für den Origin der Umgebung, sonst nur `clipboard-write` (so kann die getestete Seite deine Zwischenablage nicht nach Belieben lesen), etwa `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (ein Ausdruck, der ein Promise liefert, wird abgewartet).
 
 ## Platzhalter
 
@@ -239,4 +239,4 @@ Eine Prüfung kann die Zwischenablage lesen: Solange eine Prüfung, ein `remembe
 | `{{date}}`, `{{date+7}}`, `{{isoDate-1}}` | Datumswerte relativ zum Tag des Laufs: `{{date}}` im Format der Browsersprache (`de-DE` 23.11.2026, `en-US` 11/23/2026, `en-GB` 23/11/2026), `{{isoDate}}` als 2026-11-23. Beim Aufnehmen wird ein Datum höchstens 60 Tage vom Aufnahmetag im Format der Sprache oder ISO zu einem davon; ein Datum in der Reihenfolge einer anderen Sprache bleibt, wie es ist |
 | `{{ticketnr}}` | Einen Wert, den der Lauf per `remember` gelesen hat |
 
-Claude setzt sie beim Aufnehmen ein. Im Testplan brauchst du nur `{{runTag}}`. In einem Locator füllt caw sie je Text ein: Ein Wert mit Anführungszeichen bleibt ein Text, ein Wert in einem regulären Ausdruck wird maskiert.
+Der Agent setzt sie beim Aufnehmen ein. Im Testplan brauchst du nur `{{runTag}}`. In einem Locator füllt caw sie je Text ein: Ein Wert mit Anführungszeichen bleibt ein Text, ein Wert in einem regulären Ausdruck wird maskiert.

@@ -8,7 +8,7 @@ caw liest drei Dinge aus deinem Projekt:
 |---|---|---|
 | `caw.config.json` | Umgebungen, Anmeldung, Rollen | ja |
 | `caw/.env` | Zugangsdaten der Testnutzer | **nein** (gitignored) |
-| `caw/caw.md` | Projektnotizen, die Claude in jedem Lauf liest | ja |
+| `caw/caw.md` | Projektnotizen, die der Agent in jedem Lauf liest | ja |
 
 Tests liegen in `caw/tests/` und `caw/recordings/`, siehe [Testdateien](test-files.de.md).
 
@@ -74,7 +74,7 @@ und `-`, beginnend mit einem Buchstaben, höchstens 32 Zeichen.
 | Feld | |
 |---|---|
 | `url` | Origin der App. `https`, oder `http` für diesen Rechner (`localhost`, `127.0.0.1`, `*.localhost`). |
-| `agent` | `true`: Claude darf hier aufnehmen, beheben und untersuchen. |
+| `agent` | `true`: Der Agent darf hier aufnehmen, beheben und untersuchen. |
 | `writable` | `true`: Tests mit `writes: true` dürfen hier laufen. |
 | `production` | Pflicht für Namen, die nach Produktion aussehen (`prod`, `live`, `prod-eu` …). So eine Umgebung kann kein `agent` oder `writable` haben. Ein Lauf dort sendet keine schreibenden Requests, an keinen Host: Jeder Request, der kein GET, HEAD, OPTIONS, keine GraphQL-Query und kein `reads`-Muster ist, wird abgebrochen und lässt den Schritt mit `write-blocked` scheitern, auch ein Formular-Post ins oberste Fenster. Anmelde-Requests gehen nur durch, solange caw selbst anmeldet; ein Token-Refresh, den die App später schickt, schreibt, außer `reads` nennt ihn. Nicht abgedeckt: Nachrichten, die die App über einen offenen WebSocket schickt (auch lesende Apps schicken welche, etwa Keep-alives und Abonnements). Läufe auf anderen Umgebungen erreichen ihren Host nie. Ein Name, der nur so aussieht, sagt `"production": false`. |
 | `insecureTls` | `true`: ein selbstsigniertes Zertifikat auf dieser Umgebung akzeptieren. |
@@ -100,7 +100,7 @@ Umgebung in Großbuchstaben, `-` als `_`, wie bei den [Zugangsdaten](#roles)), e
 für `"preview": { "url": "https://preview.example.com", "writable": true }`. Sie gilt nur für diesen Prozess und wird nie in
 `caw.config.json` geschrieben; die erste Zeile von `run` nennt sie („Adresse aus CAW_URL__PREVIEW: …“). Umgebungen, die die
 `url` über `extends` erben, behalten ihre. caw lehnt sie ab (`url-override`, Exit 3) für eine unbekannte Umgebung, eine
-Produktionsumgebung, eine Umgebung mit `agent: true` (eine Variable darf nicht unbemerkt umlenken, wo Claude arbeitet), eine
+Produktionsumgebung, eine Umgebung mit `agent: true` (eine Variable darf nicht unbemerkt umlenken, wo der Agent arbeitet), eine
 Adresse, die kein gültiger Origin ist (dieselbe Regel wie für `url`), und den Host einer Produktionsumgebung, denn ein Lauf
 sperrt nie seinen eigenen Host, und die Produktionssperre wäre weg.
 
@@ -245,7 +245,7 @@ CAW_CLERK_PASSWORD__STAGING=geheim2
 
 Eine Rolle legst du mit `npx caw role add <rolle>` an: Sie kommt in die Config, ihre Variablennamen nach `caw/.env.example`; die
 Werte trägst du selbst in `caw/.env` ein, caw fragt nie danach. Siehe [role](commands.de.md#role). Nimm Testkonten mit möglichst wenig
-Rechten: Claude bedient einen Browser, der als dieser Nutzer angemeldet ist.
+Rechten: Der Agent bedient einen Browser, der als dieser Nutzer angemeldet ist.
 
 ## Lokalen Code testen
 
@@ -281,16 +281,16 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 
 | Feld | Standard | |
 |---|---|---|
-| `language` | von init erkannt | Die Teamsprache, ein Code wie `en`, `de` oder `fr`: Claude schreibt Pläne, Schrittnamen und `report.md` darin. caws eigene Texte (CLI, Werkbank) nutzen sie auch, wenn sie `en` oder `de` ist, damit ein Projekt eine Sprache spricht; `CAW_LANG` setzt deine eigene. Sonst folgen sie deinem System. |
+| `language` | von init erkannt | Die Teamsprache, ein Code wie `en`, `de` oder `fr`: Der Agent schreibt Pläne, Schrittnamen und `report.md` darin. caws eigene Texte (CLI, Werkbank) nutzen sie auch, wenn sie `en` oder `de` ist, damit ein Projekt eine Sprache spricht; `CAW_LANG` setzt deine eigene. Sonst folgen sie deinem System. |
 | `framework` | `web` | `web`, `react`, `vue`, `angular` oder [`extjs`](extensions/extjs.de.md). Entscheidet, wann eine Seite als bereit gilt und was ein Fehlerbericht nennt. |
 | `start` | `/` | Pfad, an dem Tests beginnen; ein Test kann sein eigenes `start` setzen. |
-| `source` | `.` | Wo der Quellcode der App liegt, relativ zum Projekt, oder `false`, wenn er nicht in diesem Repository ist (dann gibt Claude keine Code-Empfehlungen). |
-| `agent.mode` | `local` | Wo Claude läuft: `local` (Claude Code auf deinem Rechner, nur lesende Werkzeuge), `docker` (isoliert) oder `session` (deine eigene Claude-Code-Sitzung). In CI immer `docker`. |
-| `agent.model` | Standard von Claude Code | Modell für Claude, als `--model` übergeben, z. B. `haiku` oder `sonnet`. `CAW_AGENT_MODEL` ersetzt es für einen Lauf. |
-| `agent.maxBudgetUsd` | keins | Stoppt einen Claude-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` ersetzt es. |
-| `maxActions` | `100` | Aktionsbudget von Claude beim Aufnehmen und Beheben. |
+| `source` | `.` | Wo der Quellcode der App liegt, relativ zum Projekt, oder `false`, wenn er nicht in diesem Repository ist (dann gibt der Agent keine Code-Empfehlungen). |
+| `agent.mode` | `local` | Wo der Agent läuft: `local` (Claude Code auf deinem Rechner, nur lesende Werkzeuge), `docker` (isoliert) oder `session` (deine eigene Claude-Code-Sitzung). In CI immer `docker`. |
+| `agent.model` | Standard von Claude Code | Modell für den Agenten, als `--model` übergeben, z. B. `haiku` oder `sonnet`. `CAW_AGENT_MODEL` ersetzt es für einen Lauf. |
+| `agent.maxBudgetUsd` | keins | Stoppt einen Agenten-Lauf bei diesen geschätzten Kosten in US-Dollar (`--max-budget-usd`). `CAW_CLAUDE_BUDGET` ersetzt es. |
+| `maxActions` | `100` | Aktionsbudget des Agenten beim Aufnehmen und Beheben. |
 | `keepRuns` | `30` | Wie viele Lauf-Ordner `.caw/runs` behält. Beim Start eines Laufs löscht caw die ältesten darüber hinaus; ein noch offener Lauf wird nie gelöscht. `0` behält jeden Lauf. |
-| `allowHosts` | `[]` | Weitere Hosts, auf die Seiten navigieren dürfen, etwa ein Anmeldedienst; auch je Umgebung. Seiten navigieren nur zu den Hosts der Umgebungen und diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Ohne Claude dürfen Skripte, Styles, Schriften, Bilder, XHR/fetch, WebSockets und iframes zu jedem Host. Produktionshosts anderer Umgebungen bleiben für jeden Request unerreichbar. Hosts werden nach Namen verglichen (Groß-/Kleinschreibung und ein Punkt am Ende zählen nicht); ein Host, der über seine IP-Adresse erreicht wird, wird nicht erkannt. |
+| `allowHosts` | `[]` | Weitere Hosts, auf die Seiten navigieren dürfen, etwa ein Anmeldedienst; auch je Umgebung. Seiten navigieren nur zu den Hosts der Umgebungen und diesen (Links, Formular-Posts, Popups, Weiterleitungen, `goto`); alles andere scheitert mit `host-blocked`. Ohne den Agenten dürfen Skripte, Styles, Schriften, Bilder, XHR/fetch, WebSockets und iframes zu jedem Host. Produktionshosts anderer Umgebungen bleiben für jeden Request unerreichbar. Hosts werden nach Namen verglichen (Groß-/Kleinschreibung und ein Punkt am Ende zählen nicht); ein Host, der über seine IP-Adresse erreicht wird, wird nicht erkannt. |
 | `thirdPartyHosts` | `[]` | Hosts anderer Anbieter, die die App braucht, solange ein Agent im Fenster handeln kann (record, ein Lauf mit Chat, `open`), z. B. `["fonts.example-cdn.com"]`; auch je Umgebung. Dann geht jeder Request des Browsers (Seiten, Skripte, XHR/fetch, WebSockets, Beacons, iframes) nur an die Umgebungen, `allowHosts` und diese; alles andere wird abgebrochen und im Lauf als Warnung mit diesem Schlüssel genannt. Ein Produktionshost bleibt auch hier gesperrt. Sonst bewirkt die Liste nichts. |
 | `browser` | System-Chrome | `{ "channel": "msedge" }` (`chrome`, `chrome-beta`, `chrome-dev`, `msedge`, `msedge-beta`, `msedge-dev`) oder `{ "executablePath": "/pfad/zu/chromium" }` (ein absoluter Pfad auf diesem Rechner; keine Netzwerkfreigabe, kein `\\?\`- oder `/proc`-Pfad) |
 | `browser.noSandbox` | `false` | `true` startet Chrome ohne seine Sandbox. Unsicher: Eine Seite, die den Renderer von Chrome bricht, läuft dann mit deinen Rechten. Nur für Rechner, auf denen die Sandbox nicht starten kann (Linux als root, manche Container); caw hält dort mit `browser-sandbox` an, statt von selbst ohne Sandbox weiterzumachen. |
@@ -307,11 +307,11 @@ Für Anwendungen, die nur in einer ausgelieferten Umgebung laufen (Portal, Shell
 | `visual.maxRatio` | `0.01` | Anteil abweichender Pixel, den ein gelerntes Aussehen haben darf (nur Schritte mit `look: true` lernen eines, [visuelle Regression](test-files.de.md#visuelle-regression); Pixel nur in headless Läufen). |
 | `visual.designMaxRatio` | `0.03` | Dasselbe gegen ein `.png`-Zielbild. Die drei Schwellen sind Startwerte, bis `e2e/spike/visual` das Rauschen zwischen Läufen gemessen hat. |
 | `visualIgnore` | `[]` | CSS-Selektoren von Bereichen, die kein Pixelvergleich ansieht, z. B. `["#clock", ".avatar"]`. Lauf-Kennung, gemerkte Werte, Datumsangaben in Ziffern, Listenzeilen, Listeneinträge (`li`, `listitem`, nicht in Navigation oder Menüs) und Karten (`article`) sind ohnehin maskiert. Visuelle Regression ist für Schritte mit festen Daten gedacht; das hier deckt den Rest ab. |
-| `anonymize.command` | | Dein eigener Befehl, der [feste Daten](test-files.de.md#feste-daten) vor dem Speichern anonymisiert, als Liste ohne Shell, z. B. `["node", "tools/anonymize.mjs"]`, ausgeführt im Projektordner. Er bekommt `{ "version": 1, "keep": [...], "answers": [{ "name", "body" }] }` auf stdin und schreibt `{ "answers": [{ "body" }] }` auf stdout, in derselben Reihenfolge und mit derselben Struktur. Ohne ihn nutzt caw seine eigene Ersetzung. Claude kann `anonymize` nicht ändern: es wird in der Datei bearbeitet. |
+| `anonymize.command` | | Dein eigener Befehl, der [feste Daten](test-files.de.md#feste-daten) vor dem Speichern anonymisiert, als Liste ohne Shell, z. B. `["node", "tools/anonymize.mjs"]`, ausgeführt im Projektordner. Er bekommt `{ "version": 1, "keep": [...], "answers": [{ "name", "body" }] }` auf stdin und schreibt `{ "answers": [{ "body" }] }` auf stdout, in derselben Reihenfolge und mit derselben Struktur. Ohne ihn nutzt caw seine eigene Ersetzung. Der Agent kann `anonymize` nicht ändern: es wird in der Datei bearbeitet. |
 | `anonymize.keep` | `[]` | Werte, die caws eigene Anonymisierung unverändert lässt, etwa Währungscodes oder Zustände, die die App auswertet: `["EUR", "OPEN"]`. Jeder andere Text wird ersetzt. |
 | `readyTimeoutMs` | | Wie lange auf eine ruhige App gewartet wird. |
 | `readyIgnore` | `[]` | CSS-Selektoren von Bereichen, die sich von selbst ändern, z. B. `["#ticker", ".clock", "footer [role=progressbar]"]`. Ihre DOM-Änderungen und Fortschrittsanzeigen zählen beim Warten auf eine ruhige Seite nicht. Spinner ohne Größe, versteckt oder außerhalb des Viewports zählen nie. Wird eine Seite nie ruhig, sagt der Lauf das und nennt `readyIgnore`. |
-| `lintCommand` | | Dein Prüfbefehl, z. B. `npm run lint`. Claude nennt ihn in Code-Empfehlungen. |
+| `lintCommand` | | Dein Prüfbefehl, z. B. `npm run lint`. Der Agent nennt ihn in Code-Empfehlungen. |
 | `sandboxImage` | `node:22-bookworm-slim` | Basis-Image für den `docker`-Agenten. Sonst `image` aus `.devcontainer/devcontainer.json`. |
 | `sandboxUser` | `node` | Nutzer im Container. |
 | `overlay` | | Schaltet die [Overlay-Erweiterung](extensions/overlay.de.md) ein. |
@@ -320,7 +320,7 @@ Jedes andere Feld meldet caw als unbekannt (`Unbekanntes Feld: …`). Das gilt a
 
 ## caw/caw.md
 
-Schlichtes Markdown, wie eine `CLAUDE.md` für deine Tests. Schreib auf, was Claude im Code nicht sieht, was aber in jedem Test zählt:
+Schlichtes Markdown, wie eine `CLAUDE.md` für deine Tests. Schreib auf, was der Agent im Code nicht sieht, was aber in jedem Test zählt:
 
 ```markdown
 ## Suche
@@ -331,13 +331,13 @@ Eine Änderung macht nie eine Aufnahme ungültig. Keine personenbezogenen Daten.
 
 ### Deine eigene caw.md
 
-Neben `prefs.json` (siehe unten) hält eine `caw.md` deine persönlichen Notizen für Claude, gleich in jedem Projekt: wie du Befunde
-berichtet haben willst, worauf immer geschaut werden soll, Begriffe, die du verwendest. Claude liest sie in jedem Lauf, in dem es
+Neben `prefs.json` (siehe unten) hält eine `caw.md` deine persönlichen Notizen für den Agenten, gleich in jedem Projekt: wie du Befunde
+berichtet haben willst, worauf immer geschaut werden soll, Begriffe, die du verwendest. Der Agent liest sie in jedem Lauf, in dem er
 arbeitet (Aufnahme, Chat, `--explain`, Entwickeln, `reproduce`, deine eigene Session als Agent; in Docker als Text in der Aufgabe),
 vor der `caw/caw.md` des Projekts, die bei Widersprüchen gilt. Sie kommt nie in einen Test, eine Aufzeichnung oder ins Projekt. Der
 Bericht vermerkt, dass sie gelesen wurde (Pfad und Zeilenzahl, nicht der Inhalt), und `caw doctor` zeigt, ob es eine gibt.
 
-Beide Dateien können aus einem Lauf wachsen: Claudes Empfehlung kann eine Zeile für eine der beiden vorschlagen. Die Karte nennt
+Beide Dateien können aus einem Lauf wachsen: Die Empfehlung des Agenten kann eine Zeile für eine der beiden vorschlagen. Die Karte nennt
 die Datei (Projekt, über git geteilt, oder persönlich, mit Pfad), und erst dein Klick auf „Übernehmen“ schreibt sie. Sonst wird so
 nie etwas außerhalb des Projekts geschrieben.
 
@@ -351,7 +351,7 @@ Werkbank-Einstellungen und deine Sprache liegen je Nutzer in `prefs.json` unter 
 | `mode` | `system` (Standard), `light`, `dark` | Hell oder dunkel für Werkbank, Chat, Berichtsseite und die Karte „caw explore“. `system` folgt deinem Betriebssystem. |
 | `animations` | `on` (Standard), `off` | `off` hält Spinner, pulsierende Punkte und den blinkenden Cursor an (F10). |
 | `steps`, `chat` | `open` (Standard), `closed` | Ob Schrittliste und Chat offen sind, wenn ein Lauf beginnt (F4, F6). |
-| `tokenNotice` | `on` (Standard), `off` | `off` überspringt den Hinweis, bevor Claude Token verbraucht. Gesetzt von „Nicht mehr fragen“; entfernst du den Eintrag, kommt der Hinweis wieder. |
+| `tokenNotice` | `on` (Standard), `off` | `off` überspringt den Hinweis, bevor der Agent Token verbraucht. Gesetzt von „Nicht mehr fragen“; entfernst du den Eintrag, kommt der Hinweis wieder. |
 | `language` | `de`, `en` | Deine Sprache für caws eigene Texte. `CAW_LANG` gewinnt. |
 
 Die Einstellungsseite der Werkbank (Strg+,) setzt `mode`, `animations`, `steps` und `chat` und zeigt den Rest nur lesend:
