@@ -24,10 +24,14 @@ const neutral = (text) => text.replace(/\d+/g, '#');
 
 /**
  * Runs in the browser: state of the visible controls, without values.
- * @param withStyle also a few computed styles per control, for comparing against a target design (design.mjs): then each
- *                  entry is { line, style? } instead of the line
+ * @param style also a few computed styles per control, for comparing against a target design (design.mjs): then each entry
+ *              is { line, style? } instead of the line
+ * @param look  for a learned look (visual.mjs): { ignore } with the config's visualIgnore selectors. Then exactly the controls
+ *              in what the look's capture masks (maskProbe) are left out: rows except header rows, list entries except those of
+ *              navigation, menus, tab lists and toolbars, articles and cards, and what `ignore` finds. A list with one entry more
+ *              then has the same style lines.
  */
-export function controlsProbe(withStyle = false) {
+export function controlsProbe({ style: withStyle = false, look = null } = {}) {
     const seen = (node) => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
     const short = (text) => (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
     // Without its own label: the first text line of the nearest enclosing area, e.g. the heading of a card. Otherwise
@@ -68,8 +72,27 @@ export function controlsProbe(withStyle = false) {
     // Rows of lists and tables are data, often of other records: their controls do not count. Of a list, only whether it
     // has rows counts.
     const ROW = '[role=row], [role=gridcell], [role=listitem], [role=option], [role=treeitem], tr, li';
+    // The look's masks (visual.mjs maskProbe, the same selectors): the probe runs in the page, it cannot share them.
+    const MASKED_ROW = '[role=row], [role=option], [role=treeitem], tr';
+    const ENTRY = 'li:not([role]), [role=listitem]';
+    const NAVIGATION = 'nav, [role=navigation], [role=menu], [role=menubar], [role=tablist], [role=toolbar]';
+    const ignored = look === null ? [] : look.ignore.flatMap((selector) => {
+        try {
+            return [...document.querySelectorAll(selector)];
+        } catch {
+            return [];
+        }
+    });
+    const up = (node, selector) => node.parentElement?.closest(selector) ?? null;
+    const masked = (node) => {
+        if (node.closest('article, [role=article]') !== null || ignored.some((area) => area.contains(node))) return true;
+        for (let row = node.closest(MASKED_ROW); row !== null; row = up(row, MASKED_ROW)) if (row.querySelector('th, [role=columnheader]') === null) return true;
+        for (let entry = node.closest(ENTRY); entry !== null; entry = up(entry, ENTRY)) if (entry.closest(NAVIGATION) === null) return true;
+        return false;
+    };
+    const counted = (node) => (look === null ? node.closest(ROW) === null : !masked(node));
     const controls = [...document.querySelectorAll('input, select, textarea, button, [role=button], [role=tab], [role=checkbox], [role=combobox], [role=textbox]')]
-        .filter((node) => node.type !== 'hidden' && seen(node) && node.closest(ROW) === null)
+        .filter((node) => node.type !== 'hidden' && seen(node) && counted(node))
         .map((node) => {
             const line = `${node.getAttribute('role') ?? node.tagName.toLowerCase()} "${labelOf(node)}" ${flags(node).join(',')}`.trim();
             if (!withStyle) return line;

@@ -265,6 +265,8 @@ export default {
     'session.visual.styles': 'Styles changed: {list}.',
     'session.visual.fewer': '{count} {role} fewer with {style}',
     'session.visual.more': '{count} {role} more with {style}',
+    'session.visual.pixelsOnly': 'Only the pixels see this change, a run in the window does not, so it offers no "Adopt new look". If the new look is right, delete {file}: the next {runs} headless runs learn the image anew (in CI only with --learn).',
+    'session.visual.windowInCi': 'Pixels of the look steps {steps} are only compared headless; this CI run has a window and compared their styles only. Add --headless.',
     'session.lint.found': 'Token lint in {id}: {list}',
     'session.lint.color': '{label} uses {value}, no token (nearest {token} {tokenValue}, ΔE {distance}){more}',
     'session.lint.spacing': '{label} has spacing {value}, off the {grid} grid{more}',

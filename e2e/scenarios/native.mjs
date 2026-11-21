@@ -1169,8 +1169,9 @@ echo '{"expectations":[{"id":"S1","status":"pass","evidence":{"type":"eval","val
 // ---- N17: the visual layer on n9-shadow. Screenshots per step; S2's own screen as a .png design is met, a red page is not;
 // design tokens lint (warning, then failing with design.fail lint); visual regression (look: true on S1 and S2) learns both
 // looks over two headless runs. The rename switch ("Archive" to "Archive all") keeps role and style: a run with a window
-// passes (styles only), a headless one fails both steps by pixels. The restyle switch (Archive bold) changes a style: the chat
-// window fails S1 and S2, "Neuen Look übernehmen" adopts both at once and drops their images, two headless runs learn them
+// passes (styles only), a headless one fails both steps by pixels and names the image file to delete. The restyle switch
+// (Archive bold) changes a style: the chat window fails S1 and S2, "Neuen Look übernehmen" adopts both at once and drops their
+// images of every platform, two headless runs learn them
 // again and the third compares them; open @S2 --design lays the design over the app and F7 toggles it.
 
 const LOOKED = 'rec-visual';
@@ -1265,9 +1266,14 @@ scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels,
             verify('renamed, headless: Exit 1, S1 and S2 fail with kind visual by pixels, no style changed, difference image saved', changed.code === 1
                 && ['S1', 'S2'].every((id) => stepOf(changedRun.result, id)?.kind === 'visual') && changedStep?.visual?.verdict === 'changed'
                 && changedStep.visual.ratio > 0.00002 && changedStep.visual.styles === undefined && existsSync(join(changedRun.dir, 'agent', 'step-S2-look-diff.png')), `${changed.code} ${JSON.stringify(changedStep)}`);
+            verify('only pixels see it: the note names the image file to delete for learning anew', new RegExp(`ein Lauf im Fenster nicht.*lösche caw/recordings/${LOOKED}/S[12]\\.${process.platform}\\.png: Die nächsten 2 Läufe headless lernen das Bild neu`).test(changed.note), changed.note);
             verify('CI changed nothing in the recording', JSON.stringify(looks()) === JSON.stringify(learned));
 
-            // A style change (Archive bold) is what a window sees: the chat fails S1 and S2, adopting takes both at once.
+            // A style change (Archive bold) is what a window sees: the chat fails S1 and S2, adopting takes both at once. An image
+            // of another platform (stands in for one committed from CI) shows the old look too: adopting deletes it as well.
+            const otherPlatform = process.platform === 'linux' ? 'win32' : 'linux';
+            const otherImageOf = (id) => join(native, 'caw/recordings', LOOKED, `${id}.${otherPlatform}.png`);
+            for (const id of ['S1', 'S2']) copyFileSync(imageOf(id), otherImageOf(id));
             await restyleSwitch(true);
             const h = humans(async (page) => {
                 const adopt = page.locator('#choices button', { hasText: 'Neuen Look übernehmen' });
@@ -1280,9 +1286,9 @@ scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels,
             await run(native, [LOOKED, ...target], { interactive: true, onChatOpen: h.onChatOpen }).catch(() => {});
             await h.done();
             const adopted = looks();
-            verify('adopted for S1 and S2: styles learned at once with the bold button, the day, the images dropped', adopted.every((visual) => visual?.runs === 2
+            verify('adopted for S1 and S2: styles learned at once with the bold button, the day, no image files of any platform', adopted.every((visual) => visual?.runs === 2
                 && /^\d{4}-\d{2}-\d{2}$/.test(visual.adopted ?? '') && visual.images?.[process.platform] === undefined && visual.styles.some((line) => line.includes('font-weight 700')))
-                && !existsSync(imageOf('S1')) && !existsSync(imageOf('S2')), JSON.stringify(adopted));
+                && ['S1', 'S2'].every((id) => !existsSync(imageOf(id)) && !existsSync(otherImageOf(id))), JSON.stringify(adopted));
 
             // The next headless runs: styles match, the images are learned again over two runs, then compared.
             const relearning = [await runQuietly(LOOKED, ['--learn', ...headless]), await runQuietly(LOOKED, ['--learn', ...headless])];

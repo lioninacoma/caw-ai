@@ -39,6 +39,7 @@ const COMPARE_TIMEOUT_MS = 20_000;
  * - rows of lists and tables (as effects.mjs counts them), list entries and cards (`li`, listitem, `article`): data, often of
  *   other records. Header rows stay, and so do entries of navigation, menus and tab lists: they are the app's, not data;
  * - what the config's `visualIgnore` selectors find (an invalid selector finds nothing).
+ * The style lines leave out the controls in the same areas (effects.mjs controlsProbe with `look`): keep both in step.
  * @returns [{ x, y, width, height, why }]
  */
 export function maskProbe({ texts, ignore, max }) {
@@ -420,7 +421,8 @@ export const lintText = (findings) => {
 /**
  * The computed styles per control (design.mjs structureFrom) as lines, the part of a look that YAML can show: one line per
  * role and style with how many controls have it, `button ×3: color #ffffff, font-size 13px`. Not by the control's name:
- * names carry data (`button "Complete Feed the raven"`), a look is what the controls look like.
+ * names carry data (`button "Complete Feed the raven"`), a look is what the controls look like. The controls in masked areas
+ * (rows, list entries, cards, visualIgnore) are not measured at all (controlsProbe with `look`): their number is data.
  */
 export const styleLines = (styles) => {
     const count = new Map();
@@ -547,7 +549,8 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
             const basis = lookBasis(spec, step, designHashOf(cawDir, step), onFixed ? fixed.hash : undefined);
             const learned = currentLook(step, basis);
             const shot = pixels ? await capture() : undefined;
-            const styles = styleLines((await structureOf(page, { secrets: secrets() })).styles);
+            // Without the controls in masked areas: a list with one entry more has the same look.
+            const styles = styleLines((await structureOf(page, { secrets: secrets(), look: { ignore: settings.ignore ?? [] } })).styles);
             let imageRuns = pixels ? learned?.images?.[platform] ?? 0 : 0;
             const stored = imageRuns === 0 ? null : readImage(join(root, lookImage(spec.id, id, platform)));
             // The YAML names an image that is not there (not committed, deleted): learned anew.
@@ -564,9 +567,12 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
             record.visual = { verdict, ...(onFixed ? { fixed: 'served' } : {}), ...(pixels ? {} : { pixels: 'headless-only' }), ...(ratio === undefined ? {} : { ratio }), ...(diff === undefined ? {} : { diff }), ...(changedStyles.length === 0 ? {} : { styles: changedStyles }) };
             observed = { ...(pixels ? { png: shot.png, imageRuns } : {}), styles, ...(ratio === undefined ? {} : { ratio }), ...(basis === undefined ? {} : { basis }), platform, changed };
             if (changed) {
+                // Only pixels see it: a window compares the styles, sees nothing and offers no "Adopt new look". The way out is
+                // the image file: without it the next headless runs learn the image anew.
                 const details = [
                     ...(changedPixels ? [t('session.visual.pixels', { ratio: percent(ratio), max: percent(settings.maxRatio), diff: diff ?? '-' })] : []),
                     ...(changedStyles.length === 0 ? [] : [t('session.visual.styles', { list: changedStyles.join('; ') })]),
+                    ...(changedPixels && changedStyles.length === 0 ? [t('session.visual.pixelsOnly', { file: lookImage(spec.id, id, platform), runs: LEARN_RUNS })] : []),
                 ].join(' ');
                 const text = t('session.visual.changed', { id, details });
                 if (designFail.includes('visual')) fail ??= { kind: 'visual', text, evidence: details };
@@ -575,6 +581,18 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
         }
         return { record, warnings, ...(fail === undefined ? {} : { fail }), ...(observed === undefined ? {} : { observed }) };
     };
+};
+
+/**
+ * A CI run without --headless opens a window: the pixels of its look steps are never compared. One warning for the run, when
+ * it played at least one step with `look: true`.
+ * @param results the run's step results (played steps)
+ * @returns { type: 'visual', text } or null
+ */
+export const windowLookWarning = ({ spec, results, ci, headless }) => {
+    if (!ci || headless) return null;
+    const steps = spec.steps.filter((step) => step.look === true && results?.has(step.id)).map(({ id }) => id);
+    return steps.length === 0 ? null : { type: 'visual', text: t('session.visual.windowInCi', { steps: steps.join(', ') }) };
 };
 
 /**
@@ -632,9 +650,9 @@ export const withLooks = (spec, looks) => ({
 
 /**
  * The human adopts the new look ("Adopt new look") of every step whose look changed in the run, at once: the styles count as
- * learned, and the day it was adopted goes along, which audit lists. The images of all platforms learn anew. A look seen in a
- * window has no comparable image: its stored image on this platform is deleted (`png.data` null, writeTest) and the next
- * headless runs learn it. One seen headless brings its image and counts as learned on this platform.
+ * learned, and the day it was adopted goes along, which audit lists. The images of all platforms learn anew: writeTest deletes
+ * the step's image files of every platform (`png.allPlatforms`). A look seen in a window has no comparable image (`png.data`
+ * null), the next headless runs learn it. One seen headless brings its image and counts as learned on this platform.
  * @param looks Map step -> observed (createLook)
  */
 export const withAdoptedLooks = (spec, looks, day = new Date().toISOString().slice(0, 10)) => withLooks(spec, new Map([...looks].map(([id, observed]) => [id, {
@@ -645,7 +663,7 @@ export const withAdoptedLooks = (spec, looks, day = new Date().toISOString().sli
         images: observed.png === undefined ? {} : { [observed.platform]: LEARN_RUNS },
         adopted: day,
     },
-    png: { platform: observed.platform, data: observed.png ?? null },
+    png: { platform: observed.platform, data: observed.png ?? null, allPlatforms: true },
 }])));
 
 // ------------------------------------------------------------------------------------------------------------ design overlay

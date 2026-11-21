@@ -245,10 +245,14 @@ export const structureFrom = ({ controls = [], aria = '' }) => {
     return { lines: [...new Set([...controlLines, ...maskedView(aria)])], styles };
 };
 
-/** Reads the structure of a page or frame. @param secrets values that must not appear (the view goes into result.json) */
-export const structureOf = async (page, { secrets = [] } = {}) => {
+/**
+ * Reads the structure of a page or frame.
+ * @param secrets values that must not appear (the view goes into result.json)
+ * @param look    for a learned look: { ignore }, the controls in its masked areas are left out (controlsProbe)
+ */
+export const structureOf = async (page, { secrets = [], look = null } = {}) => {
     const [controls, aria] = await Promise.all([
-        page.evaluate(controlsProbe, true),
+        page.evaluate(controlsProbe, { style: true, look }),
         page.locator('body').ariaSnapshot({ timeout: RENDER_TIMEOUT_MS }),
     ]);
     return structureFrom({ controls, aria: await redactFor(page, aria, secrets) });

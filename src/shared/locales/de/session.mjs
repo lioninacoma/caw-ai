@@ -265,6 +265,8 @@ export default {
     'session.visual.styles': 'Styles geändert: {list}.',
     'session.visual.fewer': '{count} {role} weniger mit {style}',
     'session.visual.more': '{count} {role} mehr mit {style}',
+    'session.visual.pixelsOnly': 'Diese Änderung sehen nur die Pixel, ein Lauf im Fenster nicht, er bietet also kein „Neuen Look übernehmen“ an. Stimmt der neue Look, lösche {file}: Die nächsten {runs} Läufe headless lernen das Bild neu (in CI nur mit --learn).',
+    'session.visual.windowInCi': 'Die Pixel der Look-Schritte {steps} werden nur headless verglichen; dieser CI-Lauf hat ein Fenster und hat nur ihre Stile verglichen. Ergänze --headless.',
     'session.lint.found': 'Token-Lint in {id}: {list}',
     'session.lint.color': '{label} nutzt {value}, kein Token (am nächsten {token} {tokenValue}, ΔE {distance}){more}',
     'session.lint.spacing': '{label} hat Abstand {value}, außerhalb des {grid}-Rasters{more}',
