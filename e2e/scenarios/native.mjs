@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 
 import { TESTS, testText, writeTests } from '../native/project.mjs';
-import { stepHash } from '../../src/host/test-file.mjs';
+import { setStepDesign, stepHash } from '../../src/host/test-file.mjs';
 import {
     appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
     runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
@@ -968,7 +968,7 @@ scenario('N13', 'Pending steps: run passes with S1–S2 and names S3, S4; --stri
     verify('open <test>: Exit 0, one window', wholeCode === 0 && await whole.done() === 1, String(wholeCode));
 });
 
-// ---- N14: target designs. S2 of n9-shadow ends on the page with "Errands" and Save; a design that matches, one that does not,
+// ---- N18: target designs. S2 of n9-shadow ends on the page with "Errands" and Save; a design that matches, one that does not,
 // an image, and the needs of a pending S3.
 
 const DESIGNED = 'rec-design';
@@ -988,24 +988,24 @@ const PNG_390 = (() => {
     return bytes;
 })();
 
-scenario('N14', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on, a .png that is no image only warns; needs of the pending S3', async () => {
+scenario('N18', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on, a .png that is no image only warns; needs of the pending S3', async () => {
     const designDir = join(native, 'caw/design');
     mkdirSync(designDir, { recursive: true });
-    writeFileSync(join(designDir, 'n14-match.html'), MATCHING);
-    writeFileSync(join(designDir, 'n14-other.html'), OTHER);
-    writeFileSync(join(designDir, 'n14.png'), PNG_390);
+    writeFileSync(join(designDir, 'n18-match.html'), MATCHING);
+    writeFileSync(join(designDir, 'n18-other.html'), OTHER);
+    writeFileSync(join(designDir, 'n18.png'), PNG_390);
     const parsed = parseTest(testText(DESIGNED, TESTS['n9-shadow']));
     const withDesign = (file, extra = []) => writeTest(native, { ...parsed, id: DESIGNED, steps: [parsed.steps[0], { ...parsed.steps[1], design: file }, ...extra] });
     const stepOf = (result, id) => (result?.steps ?? []).find((step) => step.id === id);
     try {
-        withDesign('design/n14-match.html', [{ id: 'S3', name: 'Exportieren', do: 'Exportiere.', expect: 'Die Datei ist da.', needs: ["getByRole('button', { name: 'Save', exact: true })"] }]);
+        withDesign('design/n18-match.html', [{ id: 'S3', name: 'Exportieren', do: 'Exportiere.', expect: 'Die Datei ist da.', needs: ["getByRole('button', { name: 'Save', exact: true })"] }]);
         const met = await runQuietly(DESIGNED);
         const first = newestRunOf(native, DESIGNED).result;
         verify('matching design: Exit 0, verdict met', met.code === 0 && stepOf(first, 'S2')?.design?.verdict === 'met', `${met.code} ${met.note} ${JSON.stringify(stepOf(first, 'S2')?.design)}`);
         verify('the app frame is only extra', (stepOf(first, 'S2')?.design?.extra ?? []).some((line) => /Orders|Customers|Add/.test(line)), JSON.stringify(stepOf(first, 'S2')?.design?.extra));
         verify('needs of S3 all there: ready to record', first?.needs?.step === 'S3' && first.needs.ready === true, JSON.stringify(first?.needs));
 
-        withDesign('design/n14-other.html', [{ id: 'S3', name: 'Exportieren', do: 'Exportiere.', expect: 'Die Datei ist da.', needs: ["getByRole('button', { name: 'Export', exact: true })"] }]);
+        withDesign('design/n18-other.html', [{ id: 'S3', name: 'Exportieren', do: 'Exportiere.', expect: 'Die Datei ist da.', needs: ["getByRole('button', { name: 'Export', exact: true })"] }]);
         const notMet = await runQuietly(DESIGNED);
         const second = newestRunOf(native, DESIGNED).result;
         const s2 = stepOf(second, 'S2');
@@ -1013,7 +1013,7 @@ scenario('N14', 'Target design: a matching .html passes, another fails S2 with k
         verify('names the missing button and the differing style', /Fehlt: .*button "Export"/.test(notMet.note) && /button "Save": background-color .* → /.test(notMet.note), notMet.note);
         verify('needs of S3 missing: named, not ready', second?.needs?.ready === false && /Export/.test(JSON.stringify(second.needs.missing)), JSON.stringify(second?.needs));
 
-        withDesign('design/n14.png');
+        withDesign('design/n18.png');
         const image = await runQuietly(DESIGNED);
         const third = newestRunOf(native, DESIGNED).result;
         verify('undecodable image design: Exit 0, only a warning', image.code === 0 && stepOf(third, 'S2')?.design?.verdict === 'error' && (third?.warnings ?? []).some(({ type }) => type === 'design'), `${image.code} ${JSON.stringify(stepOf(third, 'S2')?.design)}`);
@@ -1085,7 +1085,7 @@ steps:
   - id: S2
     name: Summe
     do: Klicke auf Show total.
-    expect: Die Summe zeigt Total: 5.`;
+    expect: 'Die Summe zeigt Total: 5.'`;
 
 scenario('N15', 'Reproduce → red draft → fix (server switch) → green → promote: draft in caw/drafts, red as expected, still red, green, fix report, test in caw/tests', async () => {
     rmSync(join(fixRoot, 'caw'), { recursive: true, force: true });
@@ -1175,7 +1175,11 @@ scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels,
     const designDir = join(native, 'caw/design');
     mkdirSync(designDir, { recursive: true });
     const parsed = parseTest(testText(LOOKED, TESTS['n9-shadow']));
-    const writeWith = (design) => writeTest(native, { ...parsed, id: LOOKED, steps: [parsed.steps[0], { ...parsed.steps[1], ...(design === undefined ? {} : { design }) }] });
+    // writeTest keeps a design the file has (only people write it): without one, it is taken out explicitly.
+    const writeWith = (design) => {
+        writeTest(native, { ...parsed, id: LOOKED, steps: [parsed.steps[0], { ...parsed.steps[1], ...(design === undefined ? {} : { design }) }] });
+        if (design === undefined) setStepDesign(native, LOOKED, 'S2', null);
+    };
     const stepOf = (result, id) => (result?.steps ?? []).find((step) => step.id === id);
     const undo = patchJson(join(native, 'caw.config.json'), (config) => { config.visual = { screenshots: true }; });
     try {
