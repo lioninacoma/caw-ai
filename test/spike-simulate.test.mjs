@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { changedLines, decide, loadRows, renderReport, simulate } from '../e2e/spike/simulate.mjs';
+import { changedLines, decide, loadRows, renderReport, simulate, withBrokenStep } from '../e2e/spike/simulate.mjs';
 import { plan } from '../e2e/spike/capture.mjs';
 import { syntheticRows } from './spike-fixtures.mjs';
 
@@ -65,4 +65,11 @@ test('the capture plan interleaves kinds per environment and is seeded', () => {
     assert.equal(runs.length, 5 + 4 + 5);
     assert.deepEqual(runs, plan(options));
     assert.ok(runs.filter(({ env }) => env === 'b').every(({ kind }) => kind === 'healthy'));
+});
+
+test('Spike: a step the playback broke at, captured as skipped, becomes fail from its results', () => {
+    const row = { steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'skipped' }, { id: 'S3', status: 'skipped' }], results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail' }, { id: 'S3', status: 'fail' }] };
+    assert.deepEqual(withBrokenStep(row).steps.map(({ status }) => status), ['pass', 'fail', 'skipped']);
+    const healthy = { steps: [{ id: 'S1', status: 'pass' }], results: [{ id: 'S1', status: 'pass' }] };
+    assert.equal(withBrokenStep(healthy), healthy);
 });

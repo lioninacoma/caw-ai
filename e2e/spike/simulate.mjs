@@ -36,10 +36,21 @@ const CROSS_LABEL = {
     c: '(c) effects.fail [] on other environments',
 };
 
+/**
+ * A capture made before stepRecords marked the step a playback broke at as failed lists it as skipped; its results say which
+ * one failed. That step becomes fail, so the simulation sees the product's failure.
+ */
+export const withBrokenStep = (row) => {
+    if ((row.steps ?? []).some(({ status }) => status === 'fail')) return row;
+    const broken = (row.results ?? []).find(({ status }) => status === 'fail')?.id;
+    if (broken === undefined) return row;
+    return { ...row, steps: row.steps.map((step) => (step.id === broken && step.status === 'skipped' ? { ...step, status: 'fail' } : step)) };
+};
+
 /** The captured runs; lines that do not parse are skipped (a capture killed mid-write). */
 export const loadRows = (path) => readFileSync(path, 'utf8').split('\n').filter((line) => line.trim() !== '').flatMap((line) => {
     try {
-        return [JSON.parse(line)];
+        return [withBrokenStep(JSON.parse(line))];
     } catch {
         return [];
     }

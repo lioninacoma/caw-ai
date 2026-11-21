@@ -1608,7 +1608,8 @@ export const failedStep = ({ results, broken, expectations, failures = [], evalu
  *          changed; `proposal`: the proven replacement of a renamed target (without the effect on production)
  */
 export const stepRecords = ({ ids, results, broken = null, requests, effects, deviations, designs, looks, durations = {}, withEffects: effectsShown = true }) => ids.map((id) => {
-    const status = results?.get(id)?.status ?? 'skipped';
+    // The step the playback broke at has no result yet (replayVerdict fills it in): it failed, the ones after it were not reached.
+    const status = results?.get(id)?.status ?? (broken?.step === id ? 'fail' : 'skipped');
     const deviation = deviations?.get(id);
     const kind = status !== 'fail' ? undefined : results?.get(id)?.kind ?? (broken?.step === id ? broken.kind : deviation?.fails === true ? 'effect' : 'check');
     const design = designs?.get(id);

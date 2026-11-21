@@ -52,6 +52,14 @@ test('Step records: status, kind, seconds, requests and effects per step; unreac
     assert.deepEqual(s3, { id: 'S3', status: 'skipped' });
 });
 
+test('Step records: the step a playback broke at fails though it has no result yet; the ones after it are skipped', () => {
+    const given = run();
+    given.results.delete('S2');
+    const [, s2, s3] = stepRecords(given);
+    assert.deepEqual(s2, { id: 'S2', status: 'fail', kind: 'target', seconds: 0.5 });
+    assert.deepEqual(s3, { id: 'S3', status: 'skipped' });
+});
+
 test('Step records: a failed check, a failed effect; on production no effect lines', () => {
     const given = run();
     given.broken = null;
