@@ -1385,3 +1385,84 @@ ${finishOf(['S1', 'S2'])}`;
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${LOOK_SUGGESTED}.yaml`), { force: true });
     }
 });
+
+// ---- N20: fixed data for a look. S1 shows the contacts look.html loads from /api/contacts, with look: true. A run with a window
+// passes and offers "Daten einfrieren": the notice names the file and personal data, Anonymisieren (caw's own replacement) shows
+// the anonymized data for review, Daten speichern writes caw/recordings/rec-fixed/fixed-data.json without the server's names and
+// marks S1. Then the server sends other contacts: two headless runs learn the look on the frozen answers, a third compares it
+// and stays green. Then the answers get a new field: the headless run names the fixed data as outdated (a warning by default).
+
+const FIXED = 'rec-fixed';
+const contactsMode = (mode) => fetch(`http://127.0.0.1:${PORT}/api/contacts-mode?mode=${mode}`, { method: 'POST' });
+
+scenario('N20', 'Fixed data: freeze anonymized in the window, the headless look stays green on frozen data while the server data changes, a changed answer shape names the data outdated', async () => {
+    const parsed = parseTest(testText(FIXED, [{ name: 'Kontakte', expect: 'Die Kontakte vom Server stehen da.', actions: [{ goto: '/look.html' }], check: "document.getElementById('rows').dataset.loaded==='yes'" }]));
+    const stepOf = (result, id) => (result?.steps ?? []).find((step) => step.id === id);
+    const file = join(native, 'caw/recordings', FIXED, 'fixed-data.json');
+    const undo = patchJson(join(native, 'caw.config.json'), (config) => { config.visual = { maxRatio: 0.00002 }; });
+    try {
+        await contactsMode('fixed');
+        writeTest(native, { ...parsed, id: FIXED, steps: [{ ...parsed.steps[0], look: true }] });
+
+        // The window: the passed run offers to freeze; notice, anonymize, review, store.
+        const h = humans(async (page) => {
+            const freeze = page.locator('#choices button', { hasText: 'Daten einfrieren' });
+            await freeze.waitFor({ state: 'attached', timeout: 90000 });
+            const offer = await page.locator('.message').last().textContent();
+            verify('Chat: the passed run offers to freeze the data of S1', /caw kann die Daten einfrieren/.test(offer) && /S1/.test(offer), offer.slice(0, 400));
+            await clickChoice(page, freeze);
+            const anonymize = page.locator('#choices button', { hasText: 'Anonymisieren' });
+            await anonymize.waitFor({ state: 'attached', timeout: 30000 });
+            const notice = await page.locator('.message').last().textContent();
+            verify('Chat: the notice names the file, personal data, that data protection is the person\'s, and that obfuscating is no protection', /caw\/recordings\/rec-fixed\/fixed-data\.json/.test(notice)
+                && /personenbezogene Daten/.test(notice) && /Den Datenschutz prüfst du/.test(notice) && /es ist kein Schutz/.test(notice), notice.slice(0, 900));
+            await clickChoice(page, anonymize);
+            const store = page.locator('#choices button', { hasText: 'Daten speichern' });
+            await store.waitFor({ state: 'attached', timeout: 30000 });
+            const review = await page.locator('.message').last().textContent();
+            verify('Chat: the review shows the anonymized answer of /api/contacts, without the server\'s names', /Anonymisiert \(caws eigene Ersetzung\)/.test(review) && /GET \/api\/contacts/.test(review)
+                && !/Ada Example|Sampletown|Bo Placeholder|Testville/.test(review), review.slice(0, 600));
+            await clickChoice(page, store);
+            await page.locator('.message', { hasText: 'eingefroren' }).waitFor({ timeout: 30000 });
+        });
+        const windowed = await run(native, [FIXED, ...target], { interactive: true, onChatOpen: h.onChatOpen }).catch((error) => `error ${error.message}`);
+        await h.done();
+        verify('the window run: Exit 0', windowed === 0, String(windowed));
+        const stored = existsSync(file) ? readFileSync(file, 'utf8') : '';
+        const data = stored === '' ? null : JSON.parse(stored);
+        verify('fixed-data.json: anonymized by caw, steps S1, the contacts answer, no name or city of the server', data?.mode === 'anonymized' && data.by === 'built-in' && JSON.stringify(data.steps) === '["S1"]'
+            && data.answers.some(({ name, body }) => name === 'GET /api/contacts' && Array.isArray(body) && body.length === 2) && !/Ada Example|Sampletown|Bo Placeholder|Testville/.test(stored), stored.slice(0, 500));
+        const marked = loadTest(native, FIXED).steps[0].recording.fixed;
+        verify('the recording marks S1 as compared on fixed data', marked?.mode === 'anonymized' && /^\d{4}-\d{2}-\d{2}$/.test(marked.frozen ?? ''), JSON.stringify(marked));
+        const freezeRun = newestRunOf(native, FIXED).result;
+        verify('the report holds the choice, not the data', freezeRun?.fixedData?.stored === true && freezeRun.fixedData.mode === 'anonymized' && freezeRun.fixedData.confirmed === false
+            && !/Ada Example|Sampletown/.test(JSON.stringify(freezeRun.fixedData)), JSON.stringify(freezeRun?.fixedData));
+
+        // Other contacts on the server: the look pass serves the frozen answers, learns the look and then compares it, green.
+        await contactsMode('changed');
+        const headless = ['--headless'];
+        const learning = [await runQuietly(FIXED, ['--learn', ...headless]), await runQuietly(FIXED, ['--learn', ...headless])];
+        const visual = loadTest(native, FIXED).steps[0].recording.visual;
+        verify('two headless runs learn the look on the frozen data, with the data in its basis', learning.every(({ code }) => code === 0) && visual?.runs === 2
+            && visual.images?.[process.platform] === 2 && /fixed:[0-9a-f]{12}/.test(visual.basis ?? ''), `${JSON.stringify(learning)} ${JSON.stringify(visual)}`);
+        const green = await runQuietly(FIXED, headless);
+        const greenRun = newestRunOf(native, FIXED).result;
+        const greenStep = stepOf(greenRun, 'S1');
+        verify('other data on the server, headless: Exit 0, the look the same on the frozen data, no fixed-data warning', green.code === 0 && greenStep?.visual?.verdict === 'same'
+            && greenStep.visual.fixed === 'served' && !(greenRun?.warnings ?? []).some(({ type }) => type === 'fixed-data'), `${green.code} ${green.note} ${JSON.stringify(greenStep?.visual)}`);
+
+        // A new field in the answer: the real request's shape no longer fits the frozen one.
+        await contactsMode('shape');
+        const outdated = await runQuietly(FIXED, headless);
+        const outdatedRun = newestRunOf(native, FIXED).result;
+        const warning = (outdatedRun?.warnings ?? []).find(({ type }) => type === 'fixed-data');
+        verify('a new field: Exit 0 (a warning by default), the warning says the fixed data no longer fits and names the field, S1 outdated', outdated.code === 0
+            && /passen nicht mehr zum Backend/.test(warning?.text ?? '') && /GET \/api\/contacts/.test(warning.text) && /Feld \[\]\.phone ist neu/.test(warning.text)
+            && stepOf(outdatedRun, 'S1')?.visual?.fixed === 'outdated', `${outdated.code} ${JSON.stringify(warning)} ${JSON.stringify(stepOf(outdatedRun, 'S1')?.visual)}`);
+    } finally {
+        undo();
+        await contactsMode('fixed').catch(() => {});
+        rmSync(join(native, 'caw/recordings', FIXED), { recursive: true, force: true });
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${FIXED}.yaml`), { force: true });
+    }
+});

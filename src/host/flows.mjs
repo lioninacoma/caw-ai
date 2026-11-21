@@ -9,6 +9,7 @@ import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { locatorLabel, locatorText } from './locator.mjs';
 import { redStep, staleSteps } from './test-file.mjs';
 import { withAdoptedLooks, withLooks } from './visual.mjs';
+import { previewLines, withFixedData } from './fixed-data.mjs';
 
 // Labels as getters: the language is not settled at import time. Copies via spread are only made at runtime.
 const button = (id, key, extra = {}) => ({ id, get label() { return t(key); }, ...extra });
@@ -327,6 +328,73 @@ const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole
     };
 };
 
+// Fixed data for a look (fixed-data.mjs): only a person's clicks freeze it, each choice on its own card.
+const FREEZE = button('freeze', 'run.button.freezeData', { primary: true });
+const FIXED_ANONYMIZED = button('anonymized', 'run.button.fixedAnonymized', { primary: true });
+const FIXED_OBFUSCATED = button('obfuscated', 'run.button.fixedObfuscated');
+const FIXED_PLAIN = button('plain', 'run.button.fixedPlain');
+const FIXED_CONFIRM = button('confirm-plain', 'run.button.fixedConfirm');
+const FIXED_SAVE = button('save-fixed', 'run.button.fixedSave', { primary: true });
+const FIXED_CANCEL = button('cancel-fixed', 'run.button.fixedCancel');
+
+/**
+ * Freezing a look's data, after a passed run with a window: the notice what is stored where and that it can contain personal
+ * data, the person's choice how (anonymized, obfuscated, readable only after confirming that they checked data protection), then
+ * the data as it would be served for review. Without a choice, or without "Save", nothing is stored. Every choice goes into the
+ * run's report (offer.save, offer.declined).
+ * @param offer run.mjs freezeOffer: { steps, answers, file, command, again, prepare(mode), save(prepared, meta), declined(meta) }
+ * @param passed the passed run's card: { title, details }
+ * @returns { steps, mode, frozen, file } when stored, else null
+ */
+export const offerFreeze = async (chat, offer, passed) => {
+    const ids = offer.steps.join(', ');
+    const asked = await decide(chat, resultCard('info', passed.title, [passed.details, t(offer.again ? 'run.fixed.offerAgain' : 'run.fixed.offer', { ids })].filter(Boolean).join(' ')), [FREEZE, { ...ONLY_CLOSE, primary: false }]);
+    if (asked !== FREEZE.id) return null;
+    const notice = {
+        title: t('run.fixed.noticeTitle'),
+        facts: [
+            t('run.fixed.noticeWhat', { count: offer.answers, ids, file: offer.file }),
+            t('run.fixed.noticeUse'),
+            t(offer.command ? 'run.fixed.howCommand' : 'run.fixed.howBuiltIn'),
+            t('run.fixed.howObfuscated'),
+            t('run.fixed.howPlain'),
+        ],
+        warn: t('run.fixed.noticePrivacy'),
+        question: t('run.fixed.noticeQuestion'),
+    };
+    const declined = (choice) => {
+        offer.declined(choice);
+        chat.notice(t('run.fixed.nothingStored'));
+        return null;
+    };
+    const mode = await chat.choose('deciding', notice.title, [FIXED_ANONYMIZED, FIXED_OBFUSCATED, FIXED_PLAIN, FIXED_CANCEL], notice);
+    if (![FIXED_ANONYMIZED.id, FIXED_OBFUSCATED.id, FIXED_PLAIN.id].includes(mode)) return declined({});
+    let confirmed = false;
+    if (mode === FIXED_PLAIN.id) {
+        const sure = await decide(chat, resultCard('ask', t('run.fixed.confirmTitle'), t('run.fixed.confirmText', { file: offer.file })), [FIXED_CONFIRM, FIXED_CANCEL]);
+        if (sure !== FIXED_CONFIRM.id) return declined({ mode });
+        confirmed = true;
+    }
+    let prepared;
+    try {
+        chat.progress?.(t('run.fixed.preparing'));
+        prepared = await offer.prepare(mode);
+    } catch (error) {
+        await decide(chat, resultCard('fail', t('run.fixed.prepareFailed'), `${withoutDot(String(error?.message ?? error))}.`, t('run.fixed.nothingStored')), [ONLY_CLOSE]);
+        offer.declined({ mode });
+        return null;
+    }
+    const review = {
+        title: t('run.fixed.reviewTitle'),
+        facts: [t(`run.fixed.review.${mode}`, { by: t(prepared.by === 'command' ? 'run.fixed.byCommand' : 'run.fixed.byBuiltIn') }), ...previewLines(prepared.answers)],
+        question: t('run.fixed.reviewQuestion'),
+    };
+    const save = await chat.choose('deciding', review.title, [FIXED_SAVE, FIXED_CANCEL], review);
+    if (save !== FIXED_SAVE.id) return declined({ mode, ...(confirmed ? { confirmed } : {}) });
+    const { file, frozen } = offer.save(prepared, { mode, ...(prepared.by === undefined ? {} : { by: prepared.by }), confirmed });
+    return { steps: offer.steps, mode, frozen, file };
+};
+
 /**
  * The steps a recording's check run offers for `look: true` (look-hints.mjs), as the card's checkboxes: none ticked, the human
  * ticks what really shows fixed data.
@@ -617,6 +685,8 @@ export const runFlow = async (options) => {
         learns: fillBaselines,
         ...(canFix ? {
             testing: true,
+            // A passed run may offer to freeze its look steps' data; not when the window becomes the person's afterwards.
+            ...(handover ? {} : { offerFreeze: true }),
             /**
              * The human develops in the prepared state. The test is over: reloading no longer changes any result, the workbench
              * only shows afterwards that the page left the state. Restore plays the steps back from the start.
@@ -756,6 +826,19 @@ export const runFlow = async (options) => {
                 if (await afterAdvice(advised)) return windowAfter();
                 if (!failed) {
                     const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
+                    // Look steps that passed: the card offers to freeze their data (fixed-data.mjs). Only a person's click does it.
+                    if (verdict.status === 'pass' && concluded.freezeData !== undefined) {
+                        const details = `${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`.trim();
+                        const frozen = await offerFreeze(chat, concluded.freezeData, { title: t('run.flow.runPassedTitle'), details });
+                        if (frozen !== null) {
+                            const changed = current.steps.filter((step) => step.recording !== undefined && (frozen.steps.includes(step.id) || step.recording.fixed !== undefined)).map(({ id }) => id);
+                            current = withFixedData(current, frozen.steps, frozen);
+                            const text = t('run.fixed.saved', { ids: frozen.steps.join(', '), file: frozen.file, test: adopt(current, new Set(changed)) });
+                            log(text);
+                            chat.notice(text);
+                        }
+                        return;
+                    }
                     // A passed run waits for nobody, not even with warnings. open passed nothing: only name findings.
                     if (spec.steps.length === 0 && advised === null && verdict.status === 'pass' && findingsText(verdict) === '') return;
                     if (advised === null && verdict.status === 'pass') chat.notice(summary);

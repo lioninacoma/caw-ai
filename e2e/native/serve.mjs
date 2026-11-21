@@ -4,7 +4,7 @@
 // /api/errands keeps added errands; /api/slow?ms=N answers after N ms (a request wait-ready has to wait for); /report.csv is a download;
 // /api/cover switches the message box of ext.html; /api/rename (N16) serves index.html with "Archive" renamed to "Archive all";
 // /api/restyle (N17) serves it with that button bold; /api/fix-bug the bug of fix.html's total (N15); /api/contacts the list of
-// look.html (N19). ext-data.html (N10b, N10c) and aria.html (N10d, N10e) need nothing from the server.
+// look.html (N19), /api/contacts-mode (N20) switches it: other contacts (changed) or the same with a new field (shape). ext-data.html (N10b, N10c) and aria.html (N10d, N10e) need nothing from the server.
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
@@ -19,6 +19,8 @@ let cover = false;
 let renamed = false;
 let restyled = false;
 let totalBug = false;
+// N20: what /api/contacts answers: the fixed sample, other values of the same shape, or the same with a new field.
+let contactsMode = 'fixed';
 
 createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
@@ -56,10 +58,20 @@ createServer((req, res) => {
         res.end(JSON.stringify(url.pathname === '/api/total' ? { total: totalBug ? 0 : 5 } : { on: totalBug }));
         return;
     }
-    // N19: the contacts look.html shows, fixed sample data.
-    if (url.pathname === '/api/contacts') {
+    // N20: POST ?mode=fixed|changed|shape switches what /api/contacts answers.
+    if (url.pathname === '/api/contacts-mode') {
+        if (req.method === 'POST') contactsMode = ['fixed', 'changed', 'shape'].includes(url.searchParams.get('mode')) ? url.searchParams.get('mode') : 'fixed';
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        res.end(JSON.stringify([{ id: 1, name: 'Ada Example', city: 'Sampletown' }, { id: 2, name: 'Bo Placeholder', city: 'Testville' }]));
+        res.end(JSON.stringify({ mode: contactsMode }));
+        return;
+    }
+    // N19: the contacts look.html shows, fixed sample data. N20 changes them: other people (same shape), or a new field.
+    if (url.pathname === '/api/contacts') {
+        const contacts = contactsMode === 'changed'
+            ? [{ id: 3, name: 'Cy Invented', city: 'Newtown' }, { id: 4, name: 'Di Madeup', city: 'Otherville' }, { id: 5, name: 'Ed Fictional', city: 'Elsewhere' }]
+            : [{ id: 1, name: 'Ada Example', city: 'Sampletown' }, { id: 2, name: 'Bo Placeholder', city: 'Testville' }];
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify(contactsMode === 'shape' ? contacts.map((contact) => ({ ...contact, phone: '000' })) : contacts));
         return;
     }
     if (url.pathname === '/api/slow') {

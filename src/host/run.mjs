@@ -52,6 +52,7 @@ import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
 import { captureStep, createLook, designOverlay, learnedLooks, markPath, maskProbe, readTokens, visualSettings } from './visual.mjs';
 import { MAX_TEXTS, lookCandidates, showsServed, textProbe } from './look-hints.mjs';
+import { answerBook, answerChanges, answersBySteps, answersUpTo, changeText, fixedDataFile, fixedSteps, prepareAnswers, readFixedData, writeFixedData } from './fixed-data.mjs';
 import { MARK_ATTRIBUTE } from './record-locator.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
@@ -232,7 +233,7 @@ export const certificateError = (error, checked) => {
  * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
  * @param interactive with a chat, i.e. with a human in front of it
  */
-export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, agent = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, servedTexts = false, info = (text) => ui.info(text) }) => {
+export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, agent = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, servedTexts = false, collectAnswers = false, info = (text) => ui.info(text) }) => {
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = todoFields(config);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
@@ -281,6 +282,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             overlayStrict: strict,
             // The values the app's reads answer, for the look suggestion after a recording; in memory only.
             servedTexts,
+            // The JSON answers of the app's reads, for freezing them as a look's fixed data; in memory until the person chooses.
+            collectAnswers,
         });
     } catch (error) {
         overlay?.stop();
@@ -468,7 +471,7 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, offerFreeze = false }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -479,6 +482,10 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // The check run after a recording suggests steps for `look: true` in its chat (look-hints.mjs). Without a chat window
     // nobody would see the suggestion: nothing is measured then.
     const hinting = suggestLooks === true && replay !== undefined && conversation !== undefined && conversation.lazy !== true && !headless && runAs !== 'open';
+    // A test run with a chat window may offer to freeze the data of its look steps (fixed-data.mjs): only then are the answers of
+    // the app's reads kept, in memory. Never in CI (no chat there): nobody could confirm what is stored.
+    const freezing = offerFreeze === true && replay !== undefined && conversation !== undefined && conversation.lazy !== true && !headless && runAs !== 'open'
+        && givenSpec.steps.some(({ look: on }) => on === true);
     let spec = givenSpec;
     if (reached !== null) spec = { ...givenSpec, expectations: givenSpec.expectations.filter(({ id }) => reached.has(id)) };
     if (repairing !== undefined) {
@@ -600,6 +607,41 @@ ${text}`) ?? 0;
         writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
         writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
     };
+    /** The person's choice about a look's fixed data goes into the report (how it is stored, the confirmation), never the data. */
+    const noteFixed = (record) => {
+        if (verdict === null) return;
+        verdict = { ...verdict, fixedData: record };
+        writeFileSync(join(runDir, 'result.json'), JSON.stringify(verdict, null, 2));
+        writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(verdict)));
+    };
+    /**
+     * After a passed run with a chat window: what the chat offers to freeze for the look steps (fixed-data.mjs), or undefined.
+     * The look steps that passed on their recording target, and the JSON answers of the app's reads up to the last of them.
+     * Secret values (the role's password, secret remembered values) are taken out before anything is shown or stored.
+     */
+    const freezeOffer = (results, marks) => {
+        if (!freezing || session.answers === undefined) return undefined;
+        const order = givenSpec.steps.map(({ id }) => id);
+        const steps = givenSpec.steps.filter((step) => step.look === true && step.recording?.recordedOn === target && results.get(step.id)?.status === 'pass').map(({ id }) => id);
+        if (steps.length === 0) return undefined;
+        const answers = redactDeep(answersUpTo(answersBySteps(session.answers.since(0), marks), order, steps), session.secrets?.() ?? []);
+        if (answers.length === 0) return undefined;
+        const base = { steps, answers: answers.length };
+        return {
+            ...base,
+            file: fixedDataFile(givenSpec.id),
+            command: config.anonymize?.command !== undefined,
+            again: fixedSteps(givenSpec).length > 0,
+            prepare: (mode) => prepareAnswers({ mode, answers, anonymize: config.anonymize ?? {}, root }),
+            save: (prepared, { mode, by, confirmed }) => {
+                const frozen = new Date().toISOString().slice(0, 10);
+                const file = writeFixedData(root, { test: givenSpec.id, mode, by, frozen, steps, answers: prepared.answers });
+                noteFixed({ ...base, stored: true, mode, ...(by === undefined ? {} : { by }), confirmed, file });
+                return { file, frozen };
+            },
+            declined: (choice = {}) => noteFixed({ ...base, stored: false, ...choice }),
+        };
+    };
     const finishRun = () => {
         ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000, names: stepNames(), durations: durations() });
         // Missing saved sign-in or a TODO left in the config means nothing ran: an invalid invocation (3), not the environment (2).
@@ -636,7 +678,7 @@ ${text}`) ?? 0;
     const aborted = new Promise((ok) => { abortSignal = ok; });
     const stopSignals = onAbortSignals(abortSignal);
     try {
-        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting });
+        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting, collectAnswers: freezing });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         // --attach: the person's own session answers. The header says whether it is there, the chat when that changes. Linked
         // when the session box is first used: at the start, or only after the handover (open, develop).
@@ -1832,10 +1874,13 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const started = Date.now();
         // A step runs from its first action until the next step's first action, the last one until the replay ends.
         let timedOwner;
+        const answerMarks = [];
         const timeStep = (owner) => {
             const now = Date.now();
             if (owner === timedOwner) return;
             if (timedOwner !== undefined) stepTimes.get(timedOwner).end = now;
+            // Which step the collected answers belong to: the one that ran when they arrived.
+            if (session.answers !== undefined) answerMarks.push({ owner, at: session.answers.mark() });
             const seen = stepTimes.get(owner);
             if (seen === undefined) stepTimes.set(owner, { start: now });
             else seen.end = undefined;
@@ -1858,6 +1903,14 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             pixels: visual,
             save: saveImage,
         });
+        // Look steps on fixed data (fixed-data.mjs): the normal run leaves their look out, a look pass after it compares them on the
+        // frozen answers (headless only, like every pixel comparison). Without the file their look is compared on live data.
+        const frozenIds = opening ? [] : fixedSteps(givenSpec);
+        const stored = frozenIds.length === 0 ? null : readFixedData(root, givenSpec.id);
+        if (frozenIds.length > 0 && (stored === null || stored.broken !== undefined)) {
+            session.warn({ type: 'fixed-data', text: t(stored === null ? 'session.fixed.missing' : 'session.fixed.broken', { steps: frozenIds.join(', '), file: fixedDataFile(givenSpec.id) }) });
+        }
+        const fixed = stored?.data === undefined ? undefined : { steps: new Set(frozenIds), hash: stored.hash, pass: false };
         // The visual layer per passed check: one capture of the step at its recorded viewport (unscaled in the workbench).
         const capture = looking ? (id, { texts }) => captureStep(session.page(), { unscaled: session.workbench?.unscaled, texts, ignore: visual.ignore }) : undefined;
         const look = looking ? createLook({
@@ -1873,6 +1926,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             secrets: () => session.secrets?.() ?? [],
             // Pixels of a learned look only headless, at a fixed viewport; a window compares its styles.
             pixels: headless,
+            ...(fixed === undefined ? {} : { fixed }),
         }) : undefined;
         // After a recording, per passed step: text from the server on the screen, or masks (rows, list entries, cards, dates,
         // remembered values, the run tag)? Neither makes the step a candidate for look: true. Only with the chat that shows it.
@@ -1885,6 +1939,90 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             ]).then(([masks, shown]) => ({ masks: masks.length, served: showsServed(shown, served()) }));
             // A page that does not answer in time is no candidate.
             return Promise.race([measured, new Promise((resolve) => { setTimeout(() => resolve(null), HINT_TIMEOUT_MS).unref?.(); })]);
+        };
+        /**
+         * The look pass on fixed data: after the normal run, from the start page again up to the last look step on fixed data, with
+         * the frozen answers served to the app's reads and every write held. Only the looks of those steps count; checks, effects,
+         * requests and failures of this pass judge nothing (the normal run did that on the real backend). Every frozen answer's
+         * real request goes out too: a shape other than the frozen one makes the data outdated (a warning, with design.fail
+         * fixedData a failure of the look steps). The pass's looks, findings and learned images go into the normal run's.
+         */
+        const lookPass = async ({ ended: normal, fixed: onFixed, stored: data, capture: shoot, designJudge: judge }) => {
+            const order = givenSpec.steps.map(({ id }) => id);
+            const wanted = [...onFixed.steps].filter((id) => normal.results.get(id)?.status === 'pass').sort((a, b) => order.indexOf(a) - order.indexOf(b));
+            if (wanted.length === 0) return null;
+            ui.info(t('run.fixed.lookPass', { steps: wanted.join(', ') }));
+            const failuresBefore = session.failures().length;
+            const warningsBefore = session.warnings().map((entry) => ({ ...entry }));
+            const outdated = new Map();
+            const kept = [];
+            // The pass's own view of the session: no effects, and only look findings become warnings.
+            const quiet = Object.assign(Object.create(session), { trail: undefined, warn: (entry) => { if (entry.type === 'visual') kept.push(entry); } });
+            const passLook = createLook({
+                spec: givenSpec,
+                cawDir,
+                root,
+                settings: { ...visual, screenshots: false },
+                compare: (actual, image, masks) => judge.compare(actual, image, masks),
+                save: saveImage,
+                readImage: (path) => (existsSync(path) && lstatSync(path).isFile() ? readFileSync(path) : null),
+                designFail: config.design?.fail ?? DEFAULT_DESIGN_FAIL,
+                secrets: () => session.secrets?.() ?? [],
+                pixels: true,
+                fixed: { ...onFixed, pass: true },
+            });
+            let passed = null;
+            let stop = async () => {};
+            try {
+                await session.holdWrites();
+                stop = await session.serveFixed(answerBook(data.answers), ({ answer, real }) => {
+                    const changes = answerChanges(answer, real);
+                    if (changes.length > 0 && !outdated.has(answer.name)) outdated.set(answer.name, changes.slice(0, 4).map(changeText).join('; '));
+                });
+                await session.restart();
+                passed = await playReplay({
+                    replay: cutReplay(givenSpec, wanted.at(-1)),
+                    handler: createAgentHandler({ session: quiet, run: { expectations: givenSpec.expectations }, hosts: navigationHosts(config, checked.name), agentDir, onVerdict: () => {} }),
+                    session: quiet,
+                    capture: shoot,
+                    look: passLook,
+                    base: checked.url,
+                    authMarker: checked.signIn?.signedInSelector,
+                    stepTimeoutMs,
+                    filesDir: join(root, PROJECT_DIR),
+                    runTag,
+                    reads: config.reads ?? [],
+                });
+            } catch (error) {
+                passed = { results: new Map(), broken: { message: String(error?.message ?? error).split('\n')[0] }, looks: new Map(), seenLooks: new Map() };
+            } finally {
+                await stop();
+                session.releaseWrites();
+                session.retractFailures(failuresBefore);
+                session.warnings().splice(0, session.warnings().length, ...warningsBefore);
+            }
+            for (const entry of kept) session.warn(entry);
+            for (const [name, changes] of outdated) session.warn({ type: 'fixed-data', text: t('session.fixed.outdated', { name, changes, test: givenSpec.id }) });
+            const failsOutdated = outdated.size > 0 && (config.design?.fail ?? DEFAULT_DESIGN_FAIL).includes('fixedData');
+            for (const id of wanted) {
+                const result = passed.results.get(id);
+                const before = normal.looks.get(id) ?? {};
+                if (result === undefined || (result.status !== 'pass' && !LOOK_KINDS.has(result.kind))) {
+                    session.warn({ type: 'fixed-data', text: t('session.fixed.unreached', { id, reason: result?.note ?? passed.broken?.message ?? '-' }) });
+                    normal.looks.set(id, { ...before, visual: { verdict: 'skipped', fixed: 'unreached' } });
+                    continue;
+                }
+                const seen = passed.looks.get(id)?.visual;
+                if (seen !== undefined) normal.looks.set(id, { ...before, visual: { ...seen, ...(outdated.size > 0 ? { fixed: 'outdated' } : {}) } });
+                if (passed.seenLooks.has(id)) normal.seenLooks.set(id, passed.seenLooks.get(id));
+                const mine = normal.results.get(id);
+                if (result.status === 'fail' && mine?.status === 'pass') normal.results.set(id, { ...mine, status: 'fail', kind: result.kind, evidence: result.evidence, note: result.note });
+                else if (failsOutdated && mine?.status === 'pass') {
+                    const why = t('session.fixed.outdatedStep', { id, names: [...outdated.keys()].join(', ') });
+                    normal.results.set(id, { ...mine, status: 'fail', kind: 'visual', evidence: { type: 'eval', value: why }, note: why });
+                }
+            }
+            return null;
         };
         const play = playReplay({
             replay,
@@ -1917,10 +2055,15 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             aborted.then(() => 'aborted'),
         ]);
         if (timedOwner !== undefined) stepTimes.get(timedOwner).end ??= Date.now();
+        const passEnded = typeof ended === 'string' || fixed === undefined || !headless ? null : await Promise.race([
+            lookPass({ ended, fixed, stored: stored.data, capture, designJudge }),
+            session.closed.then(() => 'browser-closed'),
+            aborted.then(() => 'aborted'),
+        ]);
         await designJudge?.close();
-        if (typeof ended === 'string') {
-            writeInterrupted(ended);
-            return closeRun(ended);
+        if (typeof ended === 'string' || typeof passEnded === 'string') {
+            writeInterrupted(typeof ended === 'string' ? ended : passEnded);
+            return closeRun(typeof ended === 'string' ? ended : passEnded);
         }
         for (const judged of ended.designs?.values() ?? []) if (judged.verdict === 'image') ui.info(judged.note);
         // The run ended healthy before the pending steps: is the first one ready to record? Only its needs say so.
@@ -1985,7 +2128,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         if (learns && baselines.size + effects.size + looks.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
         // Steps the chat offers for look: true (only step ids: what the screen showed stays in memory and goes nowhere).
         const offered = hintLook === undefined ? [] : lookCandidates({ spec: givenSpec, results: ended.results, hints: ended.lookHints });
-        return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }), ...(looks.size === 0 ? {} : { looks }), ...(offered.length === 0 ? {} : { lookCandidates: offered }) });
+        const freezeData = failed === null ? freezeOffer(ended.results, answerMarks) : undefined;
+        return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }), ...(looks.size === 0 ? {} : { looks }), ...(offered.length === 0 ? {} : { lookCandidates: offered }), ...(freezeData === undefined ? {} : { freezeData }) });
     }
 
     // Repair starts before the step: a half-executed step would yield an incomplete recording.

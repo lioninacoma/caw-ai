@@ -2,7 +2,7 @@ import { CawError } from './errors.mjs';
 import { t } from './i18n.mjs';
 
 /** Warning type as the human reads it (text under config.report.warning.<type>). Unknown types are shown by their key. */
-const WARNING_TYPES = ['console', 'pageerror', 'requestfailed', 'http', 'retry', 'effect', 'note', 'design', 'lint', 'visual'];
+const WARNING_TYPES = ['console', 'pageerror', 'requestfailed', 'http', 'retry', 'effect', 'note', 'design', 'lint', 'visual', 'fixed-data'];
 const warningLabel = (type) => (WARNING_TYPES.includes(type) ? t(`config.report.warning.${type}`) : type);
 
 const rejected = (message) => new CawError('finish-rejected', message);
@@ -164,7 +164,7 @@ const diagnosisLines = ({ step, text, findings = [], requests = [], recorded }) 
 /** An error code such as `unreachable`, as opposed to the describeCode line ("dev server localhost:4174, …"). */
 export const isErrorCode = (value) => typeof value === 'string' && /^[a-z][a-z0-9-]*$/.test(value);
 
-export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [] }) => {
+export const renderReport = ({ status, reason, note, testId, target, testedCode, expectations = [], results = [], failures = [], warnings = [], writes = [], thirdParty = [], dropped = [], advice, diagnosis, overlay, personalContext, afterHandover = [], pending = [], steps = [], fixedData }) => {
     const lines = [
         t('config.report.title', { testId: String(testId), target: String(target), status: String(status) }),
         '',
@@ -214,6 +214,14 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         for (const step of dropped) lines.push(`- ${cell(step)}`);
     }
     if (advice !== undefined) lines.push(...adviceLines(advice));
+    // The person's choice for freezing a look's data (host/fixed-data.mjs): how it is stored, and whether they confirmed that
+    // they checked data protection. Never the data itself.
+    if (fixedData !== undefined) {
+        const how = fixedData.stored ? t(`config.report.fixedData.${fixedData.mode}`, { by: t(`config.report.fixedData.by.${fixedData.by ?? 'built-in'}`) }) : t('config.report.fixedData.none');
+        lines.push('', `## ${t('config.report.fixedData')}`, '', t('config.report.fixedData.steps', { steps: (fixedData.steps ?? []).join(', '), count: String(fixedData.answers ?? 0) }), '', how);
+        if (fixedData.stored) lines.push('', t('config.report.fixedData.file', { file: String(fixedData.file) }));
+        if (fixedData.confirmed === true) lines.push('', t('config.report.fixedData.confirmed'));
+    }
     if (afterHandover.length > 0) {
         lines.push('', `## ${t('config.report.afterHandover')}`, '', t('config.report.afterHandover.intro'), '');
         for (const { type, text, origin, url, count } of afterHandover) lines.push(`- ${warningLabel(type)}: ${text}${origin || url ? ` (${origin ?? url})` : ''}${count > 1 ? ` (${count}x)` : ''}`);

@@ -583,7 +583,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + '{patch, dryRun?} deep-merges patch into the file, validates the result and writes only a valid config (dryRun: only validate). '
             + 'Refused: any change to the commands caw runs or to where Claude runs and what it may do (environments.*.start/stop/reset/ready, '
             + 'the environment flags production, agent, writable, allowHttp, insecureTls, adding or removing an environment that has them, '
-            + 'overlay part start, lintCommand, sandboxImage, sandboxUser, browser.executablePath, agent.mode). For those, name the exact change '
+            + 'overlay part start, lintCommand, anonymize, sandboxImage, sandboxUser, browser.executablePath, agent.mode). For those, name the exact change '
             + 'and wait for the person\'s explicit yes in the conversation (also when your edits are approved automatically), then use your own Edit tool. Credentials never go into the config; caw/.env is not read.',
         inputSchema: {
             type: 'object',

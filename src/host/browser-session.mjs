@@ -19,6 +19,7 @@ import { frameworkOf, waitQuiet } from './framework/index.mjs';
 import { registerEngines } from '../ext/extjs/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
 import { responseValues } from './look-hints.mjs';
+import { createAnswerLog, isJsonType, requestKey, serveAnswers } from './fixed-data.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { basicAuthToken, scrubTrace } from './trace-scrub.mjs';
@@ -1243,6 +1244,7 @@ export const openBrowserSession = async (spec) => {
         const ownHosts = new Set(appHostsOf(config));
         const reads = compileReads(config.reads);
         let signingIn = false;
+        let serving = false;
         const hidden = [];
         // Evidence for classifying a failure: only the application's own requests, no pages, scripts or images.
         const network = createNetworkLog();
@@ -1320,7 +1322,8 @@ export const openBrowserSession = async (spec) => {
                 tally.requests += 1;
                 tally.types.add(request.resourceType());
             }
-            if (!signingIn && ownHosts.has(hostOfRequest(request))) {
+            // While fixed data is served (a look pass) writes are held and belong to no run: they are not the run's writes.
+            if (!signingIn && !serving && ownHosts.has(hostOfRequest(request))) {
                 const label = requestName(describedRequest(request), config.requestKeys ?? []);
                 if (classifyRequest(label, reads) === 'write') writes.set(label, (writes.get(label) ?? 0) + 1);
             }
@@ -1386,6 +1389,23 @@ export const openBrowserSession = async (spec) => {
                 if (!/json/i.test(response.headers()['content-type'] ?? '')) return;
                 if (classifyRequest(requestName(describedRequest(request), config.requestKeys ?? []), reads) !== 'read') return;
                 response.text().then((body) => { responseValues(JSON.parse(body), served); }).catch(() => {});
+            });
+        }
+        // The JSON answers of the app's reads with their bodies, for freezing them as fixed data of a look (fixed-data.mjs): in
+        // memory only, and only when asked for (collectAnswers, a run with a chat window that may offer it). Written only after the
+        // person chose how and reviewed them.
+        const answers = spec.collectAnswers === true ? createAnswerLog() : null;
+        if (answers !== null) {
+            raw.on('response', (response) => {
+                const request = response.request();
+                const page = pageOfRequest(request);
+                if (!asked(request) || page === false || (page !== null && !pages.owns(page))) return;
+                if (!isJsonType(response.headers()['content-type'])) return;
+                const described = describedRequest(request);
+                const name = requestName(described, config.requestKeys ?? []);
+                if (classifyRequest(name, reads) !== 'read') return;
+                const entry = answers.add({ name, key: requestKey(described), status: response.status(), type: response.headers()['content-type'] });
+                if (entry !== null) response.text().then(entry.fill, () => {});
             });
         }
         raw.on('requestfailed', (request) => network.failed(request, request.failure()?.errorText ?? ''));
@@ -1525,6 +1545,28 @@ export const openBrowserSession = async (spec) => {
             },
             /** Ends holdWrites. @returns the names of the writes aborted meanwhile */
             releaseWrites: () => writeBlock.release(),
+            /**
+             * Serves frozen answers to the app's reads (fixed-data.mjs answerBook) until the returned stop(): only xhr and fetch to
+             * the app's hosts, only reads. The real request still goes out; onAnswer gets its status and JSON for the shape check.
+             */
+            serveFixed: async (book, onAnswer) => {
+                await routeWrites();
+                serving = true;
+                const stop = await serveAnswers(raw, {
+                    book,
+                    onAnswer,
+                    isRead: (request) => {
+                        if (!asked(request)) return null;
+                        const described = describedRequest(request);
+                        const name = requestName(described, config.requestKeys ?? []);
+                        return classifyRequest(name, reads) === 'read' ? { name, key: requestKey(described) } : null;
+                    },
+                });
+                return async () => {
+                    await stop();
+                    serving = false;
+                };
+            },
             /** Hosts outside the navigation hosts the pages contacted: request count, resource types, failed requests. */
             thirdParty: () => [...thirdPartyHosts.values()].sort((a, b) => a.host.localeCompare(b.host)).map(({ types, ...rest }) => ({ ...rest, types: [...types].sort() })),
             // Only for recording a demonstration; the agent never gets at it through the channel.
@@ -1607,6 +1649,8 @@ export const openBrowserSession = async (spec) => {
             trail: { mark: () => trail.length, since: (mark) => trail.slice(mark).filter(({ line }) => line !== null) },
             /** With servedTexts: the normalized values the app's reads answered so far (look-hints.mjs), else undefined. */
             ...(served === null ? {} : { served: () => served }),
+            /** With collectAnswers: the JSON answers of the app's reads, `mark()` and `since(mark)` (fixed-data.mjs), else undefined. */
+            ...(answers === null ? {} : { answers: { mark: () => answers.mark(), since: (mark) => answers.since(mark) } }),
             /** A warning that does not come from the browser, e.g. a deviating effect in a passed run. */
             warn: (entry) => addWarning(entry),
             /** CSS selectors of messages on the page, from the config. */
