@@ -4,11 +4,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { auditChanges, readProjectData, renderAudit } from '../src/host/audit.mjs';
+import { LEARN_RUNS } from '../src/host/effects.mjs';
 import { renderDescription, renderRecordings, stepHash } from '../src/host/test-file.mjs';
 
 const SAVE = "getByRole('button', { name: 'Speichern', exact: true })";
 const NAME = "getByRole('textbox', { name: 'Name', exact: true })";
-const learned = (actions) => ({ runs: 2, actions });
+const learned = (actions) => ({ runs: LEARN_RUNS, actions });
 const step = (id, expect, { check = `check${id}()`, actions = [{ action: 'click', target: SAVE }], recording = {}, ...extra } = {}) => {
     const plain = { id, name: `Schritt ${id}`, do: `Tu ${id}`, expect, ...extra };
     return { ...plain, recording: { hash: stepHash(plain), recordedOn: 'local', recordedAt: '2026-11-06T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions, check, ...recording } };
@@ -87,20 +88,20 @@ test('auditChanges: known messages added', () => {
     assert.deepEqual(audit(spec(BASE), { before: spec(BASE, { knownMessages: ['Gespeichert.'] }) }), []);
 });
 
-test('auditChanges: learned effects dropped from a fail list, console errors accepted, forgotten; pruned warn lines are info', () => {
-    const effects = learned([{ action: 1, controls: ['+ button "Stornieren"'], view: ['- heading "Neu"'], console: ['TypeError: x'] }]);
+test('auditChanges: learned effects dropped from a fail list, console errors accepted, forgotten; dropped warn lines are info', () => {
+    const effects = learned([{ action: 1, controls: ['+ button "Stornieren"'], requests: ['GET /api/neu 200'], console: ['TypeError: x'] }]);
     const was = spec([step('S1', BASE[0].expect, { recording: { effects } }), BASE[1]]);
     const now = (changed) => spec([step('S1', BASE[0].expect, { recording: changed === undefined ? {} : { effects: changed } }), BASE[1]]);
     assert.deepEqual(audit(now(effects), { before: was }), []);
-    assert.deepEqual(kinds(audit(now(learned([{ action: 1, view: ['- heading "Neu"'], console: ['TypeError: x'] }])), { before: was })), ['weakening:effects-dropped']);
-    const accepted = audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], view: ['- heading "Neu"'], console: ['TypeError: x', 'ReferenceError: y'] }])), { before: was });
+    assert.deepEqual(kinds(audit(now(learned([{ action: 1, requests: ['GET /api/neu 200'], console: ['TypeError: x'] }])), { before: was })), ['weakening:effects-dropped']);
+    const accepted = audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], requests: ['GET /api/neu 200'], console: ['TypeError: x', 'ReferenceError: y'] }])), { before: was });
     assert.deepEqual(kinds(accepted), ['weakening:effects-accepted']);
     assert.match(accepted[0].text, /ReferenceError: y/);
     assert.deepEqual(kinds(audit(now(undefined), { before: was })), ['weakening:effects-forgotten']);
     assert.deepEqual(kinds(audit(now({ runs: 1, actions: [] }), { before: was })), ['weakening:effects-forgotten']);
     assert.deepEqual(kinds(audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], console: ['TypeError: x'] }])), { before: was })), ['info:effects-pruned']);
-    // With view in the config's fail list, the same line counts.
-    const strict = { ...CONFIG, effects: { fail: ['controls', 'console', 'view'] } };
+    // With requests in the config's fail list, the same line counts.
+    const strict = { ...CONFIG, effects: { fail: ['controls', 'console', 'requests'] } };
     assert.deepEqual(kinds(audit(now(learned([{ action: 1, controls: ['+ button "Stornieren"'], console: ['TypeError: x'] }])), { before: was, configBefore: strict })), ['weakening:effects-dropped']);
     // Still learning, or recorded anew with other actions: effects learn anew, nothing to compare.
     assert.deepEqual(audit(now(undefined), { before: spec([step('S1', BASE[0].expect, { recording: { effects: { runs: 1, actions: effects.actions } } }), BASE[1]]) }), []);
@@ -173,7 +174,7 @@ test('auditChanges: an adopted look is listed with its day; a look learned over 
 
 test('auditChanges: an adopted proposal (only a target swapped) is listed with both locators, not a weakening', () => {
     const SICHERN = "getByRole('button', { name: 'Sichern', exact: true })";
-    const effects = learned([{ action: 2, view: ['+ - status: Gespeichert'] }]);
+    const effects = learned([{ action: 2, controls: ['+ button "Rückgängig"'] }]);
     const before = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', actions: [{ action: 'fill', target: NAME, value: 'x' }, { action: 'click', target: SAVE }], recording: { effects } })]);
     const after = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', actions: [{ action: 'fill', target: NAME, value: 'x' }, { action: 'click', target: SICHERN }], recording: { effects } })]);
     const findings = audit(after, { before });

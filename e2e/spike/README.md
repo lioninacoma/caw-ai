@@ -8,7 +8,7 @@ Decides by data how caw should learn request baselines and step effects. Not shi
 | `app.mjs` | Todo app (from examples/errand). Host `a.localhost` is the recording environment (empty list, no third-party script), `b.localhost` a shared one (foreign rows, a third-party widget, twice the latency), `cdn.localhost` serves the widget. `POST /test/profile` sets the seeded noise and one injected regression. |
 | `project.mjs` | caw config with environments a and b, and the test `spike-errand` with a hand-written recording (recordedOn a, no baselines, no effects). |
 | `capture.mjs` | Runs the test headless through `caw run` and appends one JSON line per run: `steps[]` of result.json, results, failures, diagnosis, profile, environment and the row titles. |
-| `methods.mjs` | M0 (today, using the real effects.mjs and diagnose.mjs functions), M1, M2, M3, M4, M5 and the modifier V. |
+| `methods.mjs` | M0 (the logic before the spike decision: two learning runs, pruning and view lines, kept in methods.mjs so the report stays reproducible), M1 (what the product does since), M2, M3, M4, M5 and the modifier V. |
 | `simulate.mjs` | Bootstrap sequences over the capture, every metric, the decision rule, a Markdown report. |
 | `visual/measure.mjs` | Pixel noise between unchanged runs (fresh Chrome per run, caw's own capture and comparison), per channel tolerance: p50, p99, max and a proposed `visual.maxRatio` (p99 × 2 + 0.0005). Run on Windows and Linux: `node e2e/spike/visual/measure.mjs [--runs 30]`. |
 
@@ -32,8 +32,9 @@ fresh capture). Flags:
 - `--healthy N`, `--regressions N`, `--kinds control-removed,view-text,...` (default all), `--envs a,b`
 - `--regression-envs a,b` also injects regressions on b: needed for the detection row of the cross-environment table
   (adds 300 runs)
-- `--mode live` runs outside CI, so the product learns as today and the recording changes: a check of the offline M0
-  against the product (each line then says whether the run changed the recording)
+- `--mode live` runs outside CI, so the product learns and the recording changes: a check of the offline method the
+  product implements (M0 before the decision, M1 since) against the product (each line then says whether the run
+  changed the recording)
 - `--out file`, `--seed N`, `--port N`
 
 Then:
@@ -70,6 +71,8 @@ once per 20 runs in dev mode from run 10 on. The winner is then confirmed with 5
 
 - result.json keeps view lines without their indentation, so V is simulated with the app's row titles as an oracle. In the
   product it is a filter on the ARIA tree (`viewLinesWithoutRows` in methods.mjs).
+- A capture made after the decision has no view lines: the product no longer measures them. The report's capture has
+  them; M0 and V read them from there.
 - Raw runs never learn, so replay's re-measuring of controls that would fail (replay.mjs `controlsFail`) never happens in
   the capture; a capture in `--mode live` shows whether that matters.
 - Retries and warm-up steps of the product are not modelled: the spike test has no retry.

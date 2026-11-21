@@ -313,7 +313,7 @@ adds what generated test code doesn't give you:
   agent that fixes a step or records the test again must keep the check; a changed expectation is your decision. When the
   evidence points at your app, caw shows the cause instead of offering a test edit.
 - **Triage without AI.** A failure is classed as test, app or environment (or unclear) from requests, console and learned
-  effects; once two healthy runs have taught a step's effects, changed controls or console fail it by default.
+  effects; once five healthy runs have taught a step's effects, changed controls or console fail it by default.
 - **A box for the agent** (when caw starts it): read-only tools or a firewalled container, a browser that reaches only your
   environments, production read-only.
 - **States, not just tests.** Any step of any test is a place to open, reproduce a bug from or develop in.

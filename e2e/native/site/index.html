@@ -57,11 +57,13 @@ li.done span{text-decoration:line-through}
 <!-- N9: a web component with an open shadow root. -->
 <caw-rating></caw-rating>
 
-<!-- N11: an action covered by a message box, and a button whose name changes. -->
+<!-- N11: an action covered by a message box, and a button whose name changes. N16: archiving offers Undo, a learned
+     effect among the controls that writes nothing (a status text alone is no effect). -->
 <section aria-label="Danger">
   <button id="message">Show message</button>
   <button id="delete-all">Delete all</button>
   <button id="archive">Archive</button>
+  <button id="undo" hidden>Undo</button>
 </section>
 
 <!-- N8: an iframe with an iframe inside. -->
@@ -134,7 +136,7 @@ document.getElementById('message').onclick = () => {
   document.getElementById('layer').innerHTML = '<div class="backdrop"></div><div class="box" role="alertdialog" aria-label="Error"><p role="alert">Session expired.</p><button>Close</button></div>';
 };
 document.getElementById('delete-all').onclick = () => status('Deleted');
-document.getElementById('archive').onclick = () => status('Archived');
+document.getElementById('archive').onclick = () => { status('Archived'); document.getElementById('undo').hidden = false; };
 // ?rename=1 renames the button: the recording then misses it, a similar name is offered.
 if (new URLSearchParams(location.search).has('rename')) document.getElementById('archive').textContent = 'Archive all';
 </script>

@@ -111,7 +111,7 @@ export const diagnose = ({ failed, broken = null, failures = [], requests = [], 
     const uiChanged = deviation !== null && !deviation.fails && broken?.kind === 'target' && (deviation.instead ?? []).length > 0;
     // Only the UI differs, no different requests and no console errors: an intended change or a bug; only a look at the code
     // can tell.
-    const pageOnly = deviation !== null && (deviation.lists ?? []).every((list) => list === 'controls' || list === 'view');
+    const pageOnly = deviation !== null && (deviation.lists ?? []).every((list) => list === 'controls');
     if (deviation !== null && pageOnly && (deviation.fails || (deviation.learned === true && !uiChanged))) {
         add('unclear', 'likely', t('config.diag.pageOnly', { deviation: deviationText(deviation), hint: effectOnly ? ` ${dataStateHint()}` : '' }));
     } else if (deviation !== null && deviation.fails && effectOnly) {

@@ -468,7 +468,7 @@ export const validateConfig = (given) => {
     if (config.requestKeys !== undefined && (!Array.isArray(config.requestKeys) || !config.requestKeys.every((key) => typeof key === 'string' && /^(json\.)?[\w-]+$/.test(key)))) {
         issues.push(t('config.requestKeys'));
     }
-    const effectLists = ['controls', 'view', 'requests', 'responses', 'console'];
+    const effectLists = ['controls', 'requests', 'responses', 'console'];
     if (config.effects !== undefined && !(isObject(config.effects) && Object.keys(config.effects).every((key) => key === 'fail')
         && (config.effects.fail === undefined || (Array.isArray(config.effects.fail) && config.effects.fail.every((list) => effectLists.includes(list)))))) {
         issues.push(t('config.effects', { lists: effectLists.join(', ') }));

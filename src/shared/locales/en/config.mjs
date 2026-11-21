@@ -236,7 +236,7 @@ export default {
     // test-file.mjs
     'config.test.line': ({ line, message }) => `Line ${line}: ${yamlMessage(message)}`,
     'config.test.aliases': 'Aliases are not allowed.',
-    'config.test.effects': 'recording.effects needs runs (number), actions: [{ action: number, controls/view/requests/responses/console: [lines] }] and optionally basis (recording time of the previous step).',
+    'config.test.effects': 'recording.effects needs runs (number), actions: [{ action: number, controls/requests/responses/console: [lines] }] and optionally basis (recording time of the previous step).',
     'config.test.network.list': 'recording.network must be a list.',
     'config.test.network.entry': 'recording.network: entries need name, status and ms, optionally count and params (names without values).',
     'config.test.action.object': 'Action must be an object.',

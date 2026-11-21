@@ -2,18 +2,25 @@
 // run's result.json has per step (status, requests with duration, observed effects per action) and decides, as the product
 // would, whether a step fails on its effects, warns, or flags a slow request, and what it writes into the recording.
 //
-// M0 is today's logic and calls the real functions of src/host/effects.mjs and src/host/diagnose.mjs, so the spike measures
-// the product, not a copy of it. The other methods change one thing each:
+// M0 is the logic before the spike decision (two learning runs, pruning by healthy runs, view lines among the effects). It
+// is kept here, not taken from src/host/effects.mjs, so the report stays reproducible after the product moved to M1. The
+// comparison of effects is kept here too, with the view lines; deviation text, failure rule and diagnosis are the
+// product's. The other methods change one thing each:
 //   M1  learning phase of the first 5 healthy runs (intersection), then frozen, no pruning
 //   M2  a line is learned if seen in at least 4 of the first 5 healthy runs, then frozen
 //   M3  request baselines are the median of 5 healthy runs instead of one run
 //   M4  generous start (no effect failures before 5 healthy runs) and only strong duration outliers count
 //   M5  rolling relearning over the last 5 healthy runs (a control: it shows how relearning absorbs creep and regressions)
 //   V   a modifier: view lines that carry list rows are dropped before learning and comparing
-import { DEFAULT_EFFECT_FAIL, EFFECT_LISTS, LEARN_RUNS, deviationText, effectCause, effectChange, failsStep, learnEffects, pruneEffects, viewLines, withoutLate } from '../../src/host/effects.mjs';
+import { DEFAULT_EFFECT_FAIL, deviationText, effectCause, failsStep, viewLines } from '../../src/host/effects.mjs';
 import { diagnose, slowness } from '../../src/host/diagnose.mjs';
 
 const unique = (lines) => [...new Set(lines)];
+
+/** The effect lists as captured: with the view lines the product measured before the spike decision. */
+export const EFFECT_LISTS = ['controls', 'view', 'requests', 'responses', 'console'];
+/** M0's learning runs: the logic before the spike decision. */
+export const M0_LEARN_RUNS = 2;
 
 const median = (values) => {
     const sorted = [...values].sort((a, b) => a - b);
@@ -82,11 +89,64 @@ export const rawRequests = (requests = []) => requests.map(({ name, status, ms, 
     return { ...base, outcome: 'failed', error: String(status) };
 });
 
+// ---- Comparing, as the product did before the spike decision (src/host/effects.mjs, with the view lines)
+
+/** Summarizes the deviation per list; null if nothing remains. */
+const summarized = ({ byList, extra, instead }) => {
+    const missing = Object.values(byList).flat();
+    if (missing.length === 0 && extra.length === 0) return null;
+    const lists = EFFECT_LISTS.filter((list) => (list === 'console' ? extra.length > 0 : (byList[list] ?? []).length > 0));
+    return { missing: missing.slice(0, 8), extra, instead, lists, byList };
+};
+
+/** effectChange with the view lines: missing entries count, in the console new ones; `instead` from controls and view. */
+export const effectChange = (recorded, observed) => {
+    if (recorded === undefined || observed === undefined) return null;
+    const now = observed ?? {};
+    const nameOf = (line) => line.replace(/ form [0-9a-f]+.*$/, '');
+    const answered = new Set((now.responses ?? []).map(nameOf));
+    const counts = (list, line) => list !== 'responses' || answered.has(nameOf(line));
+    const byList = Object.fromEntries(EFFECT_LISTS.filter((list) => list !== 'console')
+        .map((list) => [list, (recorded[list] ?? []).filter((line) => !(now[list] ?? []).includes(line) && counts(list, line))]));
+    const extra = (now.console ?? []).filter((line) => !(recorded.console ?? []).includes(line));
+    const instead = ['controls', 'view'].flatMap((list) => (now[list] ?? []).filter((line) => !(recorded[list] ?? []).includes(line))).slice(0, 6);
+    return summarized({ byList, extra: extra.slice(0, 5), instead });
+};
+
+/** withoutLate with the view lines: a request answered later in the same step is not missing. */
+export const withoutLate = (deviation, answered) => {
+    if (deviation === undefined || deviation === null) return null;
+    const late = new Set(answered);
+    const byList = { ...deviation.byList, requests: (deviation.byList?.requests ?? []).filter((line) => !late.has(line)) };
+    const rest = summarized({ byList, extra: deviation.extra, instead: deviation.instead });
+    return rest === null ? null : { ...deviation, ...rest };
+};
+
+/**
+ * M0's self-cleanup: what was missing in a fully healthy run in a list outside `fail` dropped out of the learned effects.
+ * @returns the new effects or null if there is nothing to drop
+ */
+export const pruneEffects = (recorded, deviation, fail = DEFAULT_EFFECT_FAIL) => {
+    if (recorded === undefined || deviation === undefined || deviation === null || deviation.lists.some((list) => fail.includes(list))) return null;
+    const drop = Object.entries(deviation.byList ?? {}).filter(([list]) => !fail.includes(list));
+    if (drop.every(([, lines]) => lines.length === 0)) return null;
+    const actions = recorded.actions.map((entry) => {
+        if (entry.action !== deviation.number) return entry;
+        const kept = Object.fromEntries(EFFECT_LISTS.map((list) => {
+            const gone = new Set(drop.find(([name]) => name === list)?.[1] ?? []);
+            return [list, (entry[list] ?? []).filter((line) => !gone.has(line))];
+        }).filter(([, lines]) => lines.length > 0));
+        return { action: entry.action, ...kept };
+    }).filter((entry) => Object.keys(entry).length > 1);
+    return { ...recorded, actions };
+};
+
 // ---- Learners
 
 /**
- * learnEffects of the product with the number of learning runs as a parameter: the intersection of the first `runs` healthy
- * runs, the console as a union. With runs = LEARN_RUNS it is the product's function (a unit test pins that).
+ * The product's learnEffects with the number of learning runs as a parameter: the intersection of the first `runs` healthy
+ * runs, the console as a union. M0 uses it with two runs; with the product's LEARN_RUNS and without view lines it is the
+ * product's function (a unit test pins that).
  */
 export const learnIntersect = (recorded, observed, runs) => {
     if (recorded !== undefined && recorded.runs >= runs) return null;
@@ -128,16 +188,17 @@ export const learnFrequency = (history, threshold, runs = history.length) => {
 // ---- The methods
 
 /**
- * effects: how effects are learned (product: today's learnEffects + pruneEffects; intersect; frequency; rolling)
+ * effects: how effects are learned (before: two learning runs + pruneEffects, the logic before the spike decision;
+ *          intersect; frequency; rolling)
  * durations: how request baselines are learned (single: the first healthy run, as missingBaselines; median; strong; rolling)
  * generous: healthy runs a step must have seen before its effects may fail it
  */
 const METHOD_LIST = [
-    { id: 'M0', label: "today's logic", effects: { kind: 'product' }, durations: { kind: 'single' }, learnRuns: LEARN_RUNS },
+    { id: 'M0', label: "today's logic", effects: { kind: 'before' }, durations: { kind: 'single' }, learnRuns: M0_LEARN_RUNS },
     { id: 'M1', label: 'learn 5, then frozen', effects: { kind: 'intersect', runs: 5 }, durations: { kind: 'single' }, learnRuns: 5 },
     { id: 'M2', label: 'lines seen in >=4 of 5', effects: { kind: 'frequency', runs: 5, threshold: 4 }, durations: { kind: 'single' }, learnRuns: 5 },
-    { id: 'M3', label: 'median of 5 durations', effects: { kind: 'product' }, durations: { kind: 'median', runs: 5 }, learnRuns: LEARN_RUNS },
-    { id: 'M4', label: 'strong outliers only', effects: { kind: 'product' }, durations: { kind: 'strong', runs: 5 }, generous: 5, learnRuns: 5 },
+    { id: 'M3', label: 'median of 5 durations', effects: { kind: 'before' }, durations: { kind: 'median', runs: 5 }, learnRuns: M0_LEARN_RUNS },
+    { id: 'M4', label: 'strong outliers only', effects: { kind: 'before' }, durations: { kind: 'strong', runs: 5 }, generous: 5, learnRuns: 5 },
     { id: 'M5', label: 'rolling relearning', effects: { kind: 'rolling', runs: 5, threshold: 4 }, durations: { kind: 'rolling', runs: 5 }, learnRuns: 5 },
 ];
 export const METHODS = Object.fromEntries([
@@ -150,7 +211,7 @@ export const METHODS = Object.fromEntries([
 export const initState = () => ({ steps: {} });
 const stepState = (state, id) => state.steps[id] ?? { healthy: 0 };
 
-const isLearned = (method, learned) => learned !== undefined && learned.runs >= (method.effects.kind === 'product' ? LEARN_RUNS : method.effects.runs);
+const isLearned = (method, learned) => learned !== undefined && learned.runs >= (method.effects.kind === 'before' ? M0_LEARN_RUNS : method.effects.runs);
 
 /** The request baseline used for duration and diagnosis: name -> { ms, status, params } or undefined while learning. */
 const baselineOf = (method, own) => {
@@ -234,10 +295,11 @@ export const judgeRun = (method, state, row, { fail = DEFAULT_EFFECT_FAIL, compa
 /** Learns the effects of one passed step; returns the new effects or undefined to keep them. */
 const learnedEffectsOf = (method, own, observed, deviation, { healthyRun, fail }) => {
     const { effects } = method;
-    if (effects.kind === 'product') {
-        // replay.mjs learnedEffects: a learned deviation is never learned; a fully healthy run prunes it outside `fail`.
+    if (effects.kind === 'before') {
+        // replay.mjs learnedEffects before the decision: a learned deviation is never learned; a fully healthy run prunes it
+        // outside `fail`.
         if (deviation?.learned) return (healthyRun ? pruneEffects(own.effects, deviation, fail) : null) ?? undefined;
-        return learnEffects(own.effects, observed) ?? undefined;
+        return learnIntersect(own.effects, observed, M0_LEARN_RUNS) ?? undefined;
     }
     if (effects.kind === 'intersect') return deviation?.learned ? undefined : learnIntersect(own.effects, observed, effects.runs) ?? undefined;
     if (effects.kind === 'frequency') {
@@ -321,7 +383,9 @@ export const diagnoseRun = (method, state, row, judgment) => {
     const reason = effectFail ? `${effectCause()} ${deviationText(verdict.deviation)}` : row.results?.find(({ id }) => id === step.id)?.note ?? '';
     const broken = effectFail ? { kind: 'check', step: step.id } : step.kind === undefined ? null : { kind: step.kind, step: step.id };
     // The first deviation up to this step: where the app first behaved differently.
-    const deviation = judgment.steps.slice(0, index + 1).map(({ deviation: found }) => found).find((found) => found !== null && found !== undefined) ?? null;
+    const first = judgment.steps.slice(0, index + 1).map(({ deviation: found }) => found).find((found) => found !== null && found !== undefined) ?? null;
+    // Before the decision diagnose counted view lines like controls as a page-only deviation.
+    const deviation = first === null ? null : { ...first, lists: unique(first.lists.map((list) => (list === 'view' ? 'controls' : list))) };
     const previous = index > 0 ? row.steps[index - 1] : null;
     const found = diagnose({
         failed: { id: step.id, reason },

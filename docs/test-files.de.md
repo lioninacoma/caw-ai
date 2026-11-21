@@ -182,7 +182,7 @@ steps:
 | `check` | Ein JavaScript-Ausdruck, der `true` liefern muss. Er läuft in der angemeldeten Seite, also vor dem Commit lesen. |
 | `remember` | Liest einen Wert, den der Lauf erzeugt, hier die Ticketnummer. Sein `code` läuft wie `check` in der angemeldeten Seite, also vor dem Commit lesen. Spätere Schritte nutzen ihn als `{{ticketnr}}`. Jeder nicht leere Wert; einer mit weniger als vier Zeichen (eine Id wie `7`) wird nur in eingetippten Werten, URLs, Zeichenketten von Prüfungen und Zieltexten ersetzt, die genau dieser Wert sind. |
 | `network` | Requests je Schritt aus einem gesunden Lauf. Damit trennt caw App-Fehler von Umgebungsproblemen. |
-| `effects` | Was jede Aktion an der Seite geändert hat, gelernt aus gesunden Läufen (`runs` zählt sie). Eine Abweichung lässt den Schritt scheitern oder erscheint als Warnung. |
+| `effects` | Was jede Aktion an der Seite geändert hat, gelernt aus den ersten fünf gesunden Läufen (`runs` zählt sie), danach eingefroren. Eine Abweichung lässt den Schritt scheitern oder erscheint als Warnung. |
 | `visual` | Das gelernte Aussehen des Schritts ([visuelle Regression](#visuelle-regression)): `styles` (Zeilen), `images` (Läufe je Plattform; das PNG ist `caw/recordings/<test>/<schritt>.<plattform>.png`, committe es mit der Aufzeichnung), `basis` und `adopted` (der Tag, an dem jemand es übernommen hat). |
 | `knownMessages` | Meldungen, die beim Aufnehmen sichtbar waren und keine Fehler sind. |
 

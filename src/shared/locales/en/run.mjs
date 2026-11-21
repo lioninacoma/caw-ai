@@ -244,7 +244,7 @@ export default {
     'run.flow.adviceInReport': ' The recommendations are in the report.',
     'run.flow.effectForgotten': 'Forgot learned effect of {id}: {file}. Please review and commit.',
     'run.flow.baselinesAdded': 'Baselines added for {ids}: {file}. Please review and commit.',
-    'run.flow.effectsLearned': 'Learned or cleaned up per-action effects for {ids}: {file}. Please review and commit.',
+    'run.flow.effectsLearned': 'Learned per-action effects for {ids}: {file}. Please review and commit.',
     'run.flow.rerunning': 'Testing again with the changed app ...',
 
     // Developing in a state

@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
+import { LEARN_RUNS } from '../src/host/effects.mjs';
 import { failedStep, playReplay, stepRecords } from '../src/host/replay.mjs';
 import { launchChrome } from './chrome.mjs';
 
@@ -17,11 +18,11 @@ const needsChrome = () => browser === null;
 
 const SPEICHERN = "getByRole('button', { name: 'Speichern', exact: true })";
 const SICHERN = "getByRole('button', { name: 'Sichern', exact: true })";
-// The app after the rename: the button says "Sichern", clicking it shows the status the recording learned.
-const RENAMED = `<button onclick="document.getElementById('s').textContent='Gespeichert'">Sichern</button><p role="status" id="s"></p>`;
+// The app after the rename: the button says "Sichern", clicking it shows the status and the undo button the recording learned.
+const RENAMED = `<button onclick="document.getElementById('s').textContent='Gespeichert';document.getElementById('u').hidden=false">Sichern</button><p role="status" id="s"></p><button id="u" hidden>Rückgängig</button>`;
 const SAVED = "document.getElementById('s').textContent === 'Gespeichert'";
-// What two healthy runs learned for the click.
-const LEARNED = { runs: 2, actions: [{ action: 1, view: ['+ - status: Gespeichert', '- - status'] }] };
+// What the healthy runs learned for the click.
+const LEARNED = { runs: LEARN_RUNS, actions: [{ action: 1, controls: ['+ button "Rückgängig"'] }] };
 
 /**
  * Plays S1 (click, check) and S2 (check true) against the page.
@@ -74,7 +75,7 @@ test('proposal: the one similar button causes the learned effect without writing
     assert.equal(s1.status, 'fail');
     assert.equal(s1.kind, 'target');
     assert.deepEqual({ ...s1.proposal, evidence: undefined }, { step: 'S1', action: 1, from: SPEICHERN, to: SICHERN, evidence: undefined });
-    assert.deepEqual(s1.proposal.evidence.effect, { view: LEARNED.actions[0].view });
+    assert.deepEqual(s1.proposal.evidence.effect, { controls: LEARNED.actions[0].controls });
     assert.match(s1.proposal.evidence.check, /=> true$/);
     assert.match(s1.note, /button "Speichern" war nach 1 s nicht klickbar.*caw schlägt für Aktion 1 stattdessen button "Sichern" vor: Es bewirkte dieselbe gelernte Wirkung, schrieb nichts, und die unveränderte Prüfung des Schritts bestand\./);
     assert.equal(played.results.get('S2').status, 'pass', 'the replay went on: the check holds');
@@ -106,15 +107,15 @@ test('proposal gates: two similar names, another action, no learned effect, a wr
     for (const [why, effects] of [
         ['no learned effects', {}],
         ['still learning', { S1: { ...LEARNED, runs: 1 } }],
-        ['no effect for this action', { S1: { runs: 2, actions: [{ action: 2, view: ['+ x'] }] } }],
-        ['the learned effect writes', { S1: { runs: 2, actions: [{ action: 1, ...LEARNED.actions[0], requests: ['POST /speichern 200'] }] } }],
+        ['no effect for this action', { S1: { runs: LEARN_RUNS, actions: [{ action: 2, controls: ['+ x'] }] } }],
+        ['the learned effect writes', { S1: { runs: LEARN_RUNS, actions: [{ action: 1, ...LEARNED.actions[0], requests: ['POST /speichern 200'] }] } }],
     ]) {
         const played = await play({ effects });
         noProposal(played, why);
         assert.deepEqual(played.holds, [], `${why}: nothing was tried`);
     }
     // A request `reads` names is no write.
-    const read = await play({ effects: { S1: { runs: 2, actions: [{ action: 1, ...LEARNED.actions[0], requests: ['POST /suche 200'] }] } }, requests: [{ name: 'POST /suche', status: 200, outcome: 'ok' }], reads: ['POST /suche'] });
+    const read = await play({ effects: { S1: { runs: LEARN_RUNS, actions: [{ action: 1, ...LEARNED.actions[0], requests: ['POST /suche 200'] }] } }, requests: [{ name: 'POST /suche', status: 200, outcome: 'ok' }], reads: ['POST /suche'] });
     assert.equal(read.results.get('S1').proposal?.to, SICHERN);
     noProposal(await play({ hold: false }), 'a session that cannot hold writes');
     noProposal(await play({ steps: [{ action: 'click', target: "getByRole('button', { name: /Speichern/ })" }] }), 'a regex name');
@@ -123,7 +124,7 @@ test('proposal gates: two similar names, another action, no learned effect, a wr
 
 test('proposal proof: another effect, a held or an observed write, or a failing check leave the missing target', async (t) => {
     if (needsChrome()) return t.skip('no Chrome');
-    const other = await play({ effects: { S1: { runs: 2, actions: [{ action: 1, view: ['+ - status: Gesichert'] }] } } });
+    const other = await play({ effects: { S1: { runs: LEARN_RUNS, actions: [{ action: 1, controls: ['+ button "Rückgängig machen"'] }] } } });
     noProposal(other, 'the candidate causes another effect');
     assert.deepEqual(other.holds, ['hold', 'release']);
     noProposal(await play({ blocked: ['POST /speichern'] }), 'the candidate tried to write');

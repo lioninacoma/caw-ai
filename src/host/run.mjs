@@ -1951,16 +1951,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => renderReport(verdict)));
         }
         const baselines = missingBaselines({ spec: givenSpec, results: ended.results, requests: ended.requests, target });
-        // Prune only from a fully healthy run: if something fails later, an earlier deviation may be the first clue.
-        const effects = learnedEffects({
-            spec: givenSpec,
-            results: ended.results,
-            effects: ended.effects,
-            deviations: ended.deviations,
-            target,
-            prune: failed === null && (ended.retried?.size ?? 0) === 0,
-            ...(config.effects?.fail === undefined ? {} : { fail: config.effects.fail }),
-        });
+        const effects = learnedEffects({ spec: givenSpec, results: ended.results, effects: ended.effects, deviations: ended.deviations, target });
         // Looks learn like effects: passed steps, on the recording target; a changed look is the human's to adopt.
         const looks = learnedLooks({ spec: givenSpec, results: ended.results, seen: ended.seenLooks, target, maxRatio: visual.maxRatio });
         const deviating = ended.deviations?.size ?? 0;

@@ -5,7 +5,7 @@ import { buildReplay, createRecorder, failedStep, fillTarget, playReplay, replay
 import { stepHash } from '../src/host/test-file.mjs';
 import { extjs } from '../src/ext/extjs/extjs.mjs';
 import { classifyFailure, renderReport, stackOrigin } from '../src/shared/report.mjs';
-import { controlsProbe } from '../src/host/effects.mjs';
+import { LEARN_RUNS, controlsProbe } from '../src/host/effects.mjs';
 
 const runbook = { expectations: [{ id: 'S1', text: 'a' }, { id: 'S2', text: 'b' }] };
 const NEXT_BUTTON = "locator('extjs=app_actionButton[text=\"Weiter\"]')";
@@ -674,9 +674,8 @@ test('Playback: missing controls are re-measured, a slowly completed form does n
             // First measurement before the action, then the form only completes after `readyAfter` measurements.
             return reads > readyAfter ? ['button "Weiter"', 'input "Kategorie" disabled'] : ['button "Weiter"'];
         };
-        page.locator = () => ({ ariaSnapshot: async () => '- main' });
         const clock = fakeClock();
-        const effects = { S1: { runs: 2, actions: [{ action: 1, controls: ['+ input "Kategorie" disabled'] }] } };
+        const effects = { S1: { runs: LEARN_RUNS, actions: [{ action: 1, controls: ['+ input "Kategorie" disabled'] }] } };
         const out = await playReplay({
             replay: { steps: [{ action: 'click', target: NEXT_BUTTON }, { action: 'check', id: 'S1', code: 'x' }], effects },
             handler: async ({ action }) => (action === 'check' ? { pass: true, value: true } : 'ok'),
@@ -875,7 +874,7 @@ test('replayToEntry: guards keep a step without inputs, a writing click and a st
 });
 
 test('Playback at the entry of a step: its actions belong to it, are neither compared nor learned, and it is not judged', async () => {
-    const effects = { S1: { runs: 2, actions: [{ action: 1, controls: ['+ input "Kategorie" disabled'] }] }, S2: { runs: 2, actions: [{ action: 1, controls: ['+ button "Absenden"'] }] } };
+    const effects = { S1: { runs: LEARN_RUNS, actions: [{ action: 1, controls: ['+ input "Kategorie" disabled'] }] }, S2: { runs: LEARN_RUNS, actions: [{ action: 1, controls: ['+ button "Absenden"'] }] } };
     const steps = [CLICK, { action: 'check', id: 'S1', code: 'x' }, { ...CLICK, entry: 'S2' }];
     const session = fakeSession();
     const page = session.page();
@@ -885,7 +884,6 @@ test('Playback at the entry of a step: its actions belong to it, are neither com
         reads += 1;
         return reads > 1 ? ['button "Weiter"', 'input "Kategorie" disabled'] : ['button "Weiter"'];
     };
-    page.locator = () => ({ ariaSnapshot: async () => '- main' });
     const clock = fakeClock();
     const out = await playReplay({
         replay: { steps, effects },

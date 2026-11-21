@@ -1023,7 +1023,7 @@ scenario('N14', 'Target design: a matching .html passes, another fails S2 with k
     }
 });
 
-// ---- N16: a renamed target repaired with proof. Two runs learn the effect of clicking "Archive", the server renames it to
+// ---- N16: a renamed target repaired with proof. Five runs learn the effect of clicking "Archive" (Undo appears), the server renames it to
 // "Archive all" (/api/rename), a run proposes the one similar button without AI; adopting it in the chat changes only that target.
 
 const REPAIRED = 'rec-repair';
@@ -1037,9 +1037,11 @@ scenario('N16', 'Locator repair: learned effect, rename, run proposes "Archive a
     const hash = hashOf();
     try {
         await renameSwitch(false);
-        const learning = [await runQuietly(REPAIRED, ['--learn']), await runQuietly(REPAIRED, ['--learn'])];
+        const learning = [];
+        for (let count = 0; count < 5; count += 1) learning.push(await runQuietly(REPAIRED, ['--learn']));
         const effects = loadTest(native, REPAIRED).steps[0].recording.effects;
-        verify('two runs learn the click\'s effect', learning.every(({ code }) => code === 0) && effects?.runs === 2 && effects.actions.some(({ action }) => action === 1), `${JSON.stringify(learning)} ${JSON.stringify(effects)}`);
+        verify('five runs learn the click\'s effect: Undo appears', learning.every(({ code }) => code === 0) && effects?.runs === 5
+            && effects.actions.some(({ action, controls }) => action === 1 && (controls ?? []).includes('+ button "Undo"')), `${JSON.stringify(learning)} ${JSON.stringify(effects)}`);
 
         await renameSwitch(true);
         const proposed = await runQuietly(REPAIRED);

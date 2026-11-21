@@ -5,20 +5,21 @@ import assert from 'node:assert/strict';
 
 import { LEARN_RUNS, learnEffects } from '../src/host/effects.mjs';
 import { seeded } from '../e2e/spike/app.mjs';
-import { METHODS, diagnoseRun, initState, judgeRun, learnFrequency, learnIntersect, learnRun, observedOf, rawRequests, rowlessView, viewLinesWithoutRows } from '../e2e/spike/methods.mjs';
+import { METHODS, M0_LEARN_RUNS, diagnoseRun, initState, judgeRun, learnFrequency, learnIntersect, learnRun, observedOf, rawRequests, rowlessView, viewLinesWithoutRows } from '../e2e/spike/methods.mjs';
 import { syntheticRow } from './spike-fixtures.mjs';
 
 /** Learns from the given runs in order, as dev runs do. */
 const learnAll = (method, rows) => rows.reduce((state, row) => learnRun(method, state, row, judgeRun(method, state, row)), initState());
 const healthyRuns = (random, count, options = {}) => Array.from({ length: count }, () => syntheticRow(random, { flickerP: 0, ...options }));
 
-test('learnIntersect with LEARN_RUNS is the product learnEffects', () => {
+test('learnIntersect with LEARN_RUNS is the product learnEffects on lists without view', () => {
     const random = seeded(4);
+    const withoutView = (observed) => new Map([...observed].map(([number, effect]) => [number, Object.fromEntries(Object.entries(effect).filter(([list]) => list !== 'view'))]));
     for (let round = 0; round < 20; round += 1) {
         let mine;
         let product;
-        for (let run = 0; run < 3; run += 1) {
-            const observed = observedOf(syntheticRow(random).steps[1]);
+        for (let run = 0; run < LEARN_RUNS + 1; run += 1) {
+            const observed = withoutView(observedOf(syntheticRow(random).steps[1]));
             mine = learnIntersect(mine, observed, LEARN_RUNS) ?? mine;
             product = learnEffects(product, observed) ?? product;
         }
@@ -51,7 +52,7 @@ test('M0: a learned view line that changes warns, and the next healthy run prune
 test('M0 learns on the second run and is frozen after that; M1 needs five', () => {
     const random = seeded(7);
     const runs = healthyRuns(random, 5);
-    assert.equal(learnAll(METHODS.M0, runs).steps.S1.effects.runs, LEARN_RUNS);
+    assert.equal(learnAll(METHODS.M0, runs).steps.S1.effects.runs, M0_LEARN_RUNS);
     assert.equal(learnAll(METHODS.M1, runs.slice(0, 2)).steps.S1.effects.runs, 2);
     const early = judgeRun(METHODS.M1, learnAll(METHODS.M1, runs.slice(0, 2)), syntheticRow(random, { kind: 'control-removed', flickerP: 0 }));
     assert.equal(early.failed, null, 'not learned yet: only a note');

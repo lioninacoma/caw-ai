@@ -97,6 +97,9 @@ test('config: browser.locale, browser.timezone and readyIgnore', () => {
     assert.match(issues({ ...simple(), maxActions: 0 }), /maxActions muss eine positive ganze Zahl sein/);
     assert.match(issues({ ...simple(), readyIgnore: '.uhr' }), /readyIgnore muss eine Liste von CSS-Selektoren sein/);
     assert.match(issues({ ...simple(), readyIgnore: [''] }), /readyIgnore/);
+    // effects.fail names effect lists; view lines are none.
+    assert.equal(issues({ ...simple(), effects: { fail: ['controls', 'requests', 'responses', 'console'] } }), '');
+    assert.match(issues({ ...simple(), effects: { fail: ['controls', 'view'] } }), /effects\.fail muss eine Liste aus controls, requests, responses, console sein/);
 });
 
 test('config: required fields, login per type', () => {
