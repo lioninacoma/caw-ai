@@ -7,6 +7,7 @@ import { test } from 'node:test';
 
 import { language, setLanguage } from '../src/shared/i18n.mjs';
 import { GUIDE_TOPICS, SESSION_INSTRUCTIONS, agentGuide, guideIndex, guideTopic, listedTopics, runTopics } from '../src/host/guide.mjs';
+import { sessionTools } from '../src/host/session-mcp.mjs';
 
 const DIR = fileURLToPath(new URL('../templates/guide/', import.meta.url));
 
@@ -47,6 +48,18 @@ test('run topics: per mode, record or repair by creating; extjs added when the a
 test('session instructions: at most 12 lines, name caw_guide and the four entry topics', () => {
     assert.ok(SESSION_INSTRUCTIONS.split('\n').length <= 12);
     for (const word of ['caw_guide', '"setup"', '"tests"', '"run"', '"session"', 'caw/.env']) assert.ok(SESSION_INSTRUCTIONS.includes(word), word);
+});
+
+test('guide: the overview starts with the principle, names every tool and every session topic; rules carry both rules', () => {
+    const overview = guideTopic('overview');
+    assert.match(overview.split('\n').slice(0, 6).join('\n'), /\*\*The principle:\*\*.*check stays/s);
+    for (const { name } of sessionTools({ root: '.' })) assert.ok(overview.includes(`\`${name}\``), `overview names ${name}`);
+    for (const topic of ['setup', 'tests', 'run', 'reproduce', 'session', 'attach', 'design']) assert.ok(overview.includes(`\`${topic}\``), topic);
+    const rules = guideTopic('rules');
+    assert.match(rules, /An unchanged expectation keeps its check/);
+    assert.match(rules, /When the assessment points to the app, find the cause before any change/);
+    assert.match(guideTopic('attach'), /Never edit `caw\/tests` or recordings to make a run pass/);
+    assert.match(SESSION_INSTRUCTIONS, /An unchanged expectation keeps its check/);
 });
 
 test('guide: caw buttons appear as the person sees them, in the UI language, and no placeholder stays', () => {

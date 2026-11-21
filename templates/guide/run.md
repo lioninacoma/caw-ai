@@ -8,6 +8,15 @@ project folder (on Windows from PowerShell). Report the result including the pat
   environment with `agent: true` and not in CI, the chat offers "{{label:run.button.fix}}"; only the person starts Claude from there. With
   `--explain` (only on such environments, not in CI) Claude gives recommendations right away on errors or warnings; that costs
   tokens, so add it only if the person wants it. Outside CI every run writes missing baselines into the recording and says so; in CI only `--learn` does.
+  A step's effects (its controls, requests, answers and console) are learned over its first five healthy runs and then frozen:
+  no run changes them any more, only the person's "{{label:run.button.forgetEffect}}". Pending steps (an unrecorded tail) do not
+  fail a run; `--strict` makes them exit 4.
+- **CI:** `run --all --env <name> --headless` runs every test of that environment without chat. `--report junit=<file>`
+  (typed by caw's assessment: `app`, `environment`, `test`, `unclear`), `summary=<file>` and `json=<file>` are repeatable;
+  `--retry-env <n>` runs a test again only while it fails on the environment. `CAW_URL__<ENV>` points an environment at a
+  preview address for one process (never production or an environment with `agent`). `caw audit <ref>` compares tests,
+  recordings and config of the working tree with the merge base of `<ref>` and `HEAD` and exits 1 when a test got weaker (a check changed under an unchanged expected result,
+  a step removed, a retry added, a look taken off ...); a changed expected result is only listed.
 - **Reach a state** ("take me to where the cart is filled"): read `caw/tests/` and find the step `S<n>` the person wants to work
   in, the one after the step whose `expect` describes the state. `open <test>@S<n>` replays the steps before completely and of
   `S<n>` only its navigation, so the person lands at that step with its inputs open; `S<n>` is not judged. If `S<n>` has no

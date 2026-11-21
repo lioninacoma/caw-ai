@@ -13,16 +13,19 @@ later its recording in one file) and `next` (the command that records it). Tell 
 
 **From the bug to a proven fix**, each step only when the person asks for it:
 
-1. **Red:** `caw_start` with `command: "record"`, `test: "<id>"`. You record the draft; its last step must fail while the bug
-   is there (topic `record`, "A draft from caw reproduce"). The check run without you shows "S3 red as expected" and the person
-   saves the draft with that proof.
+1. **Red:** `caw_start` with `command: "record"`, `test: "<id>"`. You record the draft; its last step is the red step: you
+   check its expected result, and that check must evaluate and return `false` (topic `record`, "A draft from caw reproduce").
+   caw keeps exactly that failing check. The check run without you must then pass every step before it and fail the red step
+   at its check ("S3 red as expected: the test catches the bug"); the person saves the draft with that proof (`red: { step,
+   run, head }` in the file). If the red step passes, the draft does not catch the bug: without `red` it is never promoted.
 2. **Fix:** the person fixes the bug, by hand or with you in this session; every code change needs their approval. caw's own
    agent never changes code.
-3. **Green:** `caw_start` with `command: "run"`, `test: "<id>"`. The same recording, without AI: the red step passes now.
-4. **Promote:** `caw_start` with `command: "run"`, `test: "<id>"`, `promote: true`. The draft must pass and so must every
-   other test on that environment (`run --all`); then it moves to `caw/tests` and the run folder gets `fix-report.md` (red at
-   which step and commit, green in which run, the files changed since, how many other tests passed). Show the person the
-   report.
+3. **Green:** `caw_start` with `command: "run"`, `test: "<id>"`. The same recording and the same check, without AI. Still
+   red, the run says so and offers no fix; green, it names the command that promotes the draft.
+4. **Promote:** `caw_start` with `command: "run"`, `test: "<id>"`, `promote: true`. The draft must have been saved red,
+   must pass now and so must every other test on that environment (`run --all`); then it moves to `caw/tests` and the run
+   folder gets `fix-report.md` (red at which step and commit, green in which run, the files changed since, how many other
+   tests passed). Show the person the report.
 
 Drafts are not in `run --all`; `caw_list` and `caw_validate` list them under `drafts`. Never move or edit a draft yourself.
 
@@ -75,8 +78,8 @@ searching and navigating, and say so in the verdict if the bug needs writing. `p
    may miss the bug, and the report says so. Leave `covered` out when no test checks this behaviour; with `yes` the draft is still written.
 
    `steps` (1 to 20) are what a person would do to see the bug, in plain language like a test plan: each `expect` is the
-   correct behaviour, so the draft test fails while the bug is there and passes once it is fixed. End with the step that shows
-   the bug: recording the draft proves that this last step fails. `writes` is `true` when the
+   correct behaviour, never the buggy one. End with the step that shows the bug: recording the draft proves it red (its check of
+   the correct behaviour evaluates and returns `false`), and once the bug is fixed a run of the same check proves it green. `writes` is `true` when the
    steps create, change or delete data (adding or renaming a todo), `false` when they only read; it becomes the draft's
    `writes`, also when you did not perform the writing step yourself. No email addresses or real
    personal data; refer to accounts by their role. `cause` only with evidence (file:line when you read the source), otherwise

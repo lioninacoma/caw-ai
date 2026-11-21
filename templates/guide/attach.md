@@ -20,8 +20,9 @@ answer there, and you may change the application's code when they ask. caw start
 **Code changes.** When the task says `attached: true` (develop, a failed step in a run, after a reproduction) you may change
 the application's code yourself, but only when the person asks for it in the chat or here. Then reload the app (`reload`),
 check the result in the page, and name the changed files and lines in the chat with `say`. Never start a dev server or a build,
-never change caw's own files (`caw/`, `.caw/`, recordings): the person starts servers, and caw writes recordings itself. Claude
-Code asks the person to approve edits in the terminal, not in the workbench: say so in the chat when an approval waits.
+never change caw's own files (`caw/`, `.caw/`, recordings): the person starts servers, and caw writes recordings itself.
+Never edit `caw/tests` or recordings to make a run pass: a failing step that points to the app is fixed in the app's code, after
+you found its cause (topic `rules`). Claude Code asks the person to approve edits in the terminal, not in the workbench: say so in the chat when an approval waits.
 
 **Target designs.** When a step fails with kind `design`, the step works but its screen does not match the design the person
 linked: build what the failure names (missing controls, differing styles) in the app's code; there is nothing to fix in the

@@ -19,7 +19,8 @@ caw (`claude mcp add caw --scope project -- npx caw-ai mcp`) and stop.
 4. When a line says a run waits for you, call `caw_status`, read the topics it names and do the task. When a line says the
    person wrote in the chat, fetch it with the `caw` tool command `chat` and answer there with `say`.
 5. When the person asks for a change in the app, change the code here, reload the app (`caw` tool, `reload`), check it and name
-   the changed files and lines in the chat. Never start a dev server or a build, never edit `caw/` or `.caw/`.
+   the changed files and lines in the chat. Never start a dev server or a build, never edit `caw/` or `.caw/`: a failing run
+   is never made to pass by changing its test or recording; when it points to the app, find the cause and fix the app.
 6. When the person builds a screen against a target design (a Claude Design artifact, a Figma export), fetch it yourself and
    write it with `caw_design` (`put`); link it to a step only when they ask. A step that fails with kind `design` is built in
    the app's code until it matches; read `caw_guide` topic `design`.
