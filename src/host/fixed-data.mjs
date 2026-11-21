@@ -514,38 +514,111 @@ export const withFixedData = (spec, steps, { mode, frozen }) => ({
 export const fixedSteps = (spec) => spec.steps.filter((step) => step.look === true && step.recording?.fixed !== undefined).map(({ id }) => id);
 
 /**
- * Serves frozen answers in a browser context: a read that has one gets it, everything else goes on to the next route (the write
- * block, the network). The real request still goes out (route.fetch), and its answer goes to onAnswer for the shape comparison.
- * @param isRead   (request) => { name, key } for a read that may be served, else null
+ * The request of a paused Fetch event as far as isRead reads it, with Playwright's Request methods: header names in lower case
+ * (as Playwright gives them), the body also when Chrome only hands it over as entries.
+ */
+const pausedRequest = ({ request, resourceType }) => {
+    const headers = Object.fromEntries(Object.entries(request.headers ?? {}).map(([name, value]) => [name.toLowerCase(), value]));
+    const entries = request.postDataEntries ?? [];
+    const postData = request.postData ?? (entries.length === 0 ? null : Buffer.concat(entries.map(({ bytes = '' }) => Buffer.from(bytes, 'base64'))).toString('utf8'));
+    return {
+        method: () => request.method,
+        url: () => request.url,
+        resourceType: () => String(resourceType ?? '').toLowerCase(),
+        headers: () => headers,
+        postData: () => postData,
+    };
+};
+
+/**
+ * Serves frozen answers in a browser context: a read that has one gets it, everything else passes untouched. The real request
+ * still goes out, through Chrome: each page's xhr and fetch requests are paused at the response stage (CDP Fetch, beside
+ * Playwright's own routes, which act at the request stage: the host lock and the write block abort first), the real answer is
+ * read there and goes to onAnswer for the shape comparison, then the frozen answer replaces it. Not route.fetch: that request
+ * runs in Node and bypasses Chrome's resolver rules (the host lock pins *.localhost and blocks production hosts there), its proxy
+ * setting and the sandbox's view, so it could reach another server than the app or none at all.
+ * Covers the context's pages and popups (a new page's xhr and fetch wait until its session is attached); not requests of
+ * out-of-process iframes or workers, which have their own targets. Used by the headless look pass, never with the workbench.
+ * @param isRead   (request) => { name, key } for a read that may be served, else null; request has Playwright's method(), url(),
+ *                 resourceType(), headers(), postData()
  * @param onAnswer ({ answer, real: { status, json } }) after a frozen answer was served
  * @returns stop(): the frozen answers end
  */
 export const serveAnswers = async (context, { book, isRead, onAnswer = () => {} }) => {
-    const matches = (url) => /^https?:$/.test(url.protocol);
-    const handler = async (route) => {
-        const read = isRead(route.request());
+    const sessions = new Set();
+    let stopped = false;
+    const patterns = ['XHR', 'Fetch'].flatMap((resourceType) => ['http://*', 'https://*'].map((urlPattern) => ({ urlPattern, resourceType, requestStage: 'Response' })));
+    const serve = async (cdp, event) => {
+        const { requestId, responseStatusCode: status = 0, responseHeaders = [] } = event;
+        const pass = () => cdp.send('Fetch.continueResponse', { requestId }).catch(() => cdp.send('Fetch.continueRequest', { requestId })).catch(() => {});
+        // A redirect is followed by the browser; its target pauses again and is served there.
+        const redirect = status >= 300 && status < 400 && responseHeaders.some(({ name }) => name.toLowerCase() === 'location');
+        const read = stopped || redirect ? null : isRead(pausedRequest(event));
         const answer = read === null ? null : book.take(read);
         if (answer === null) {
-            await route.fallback().catch(() => {});
+            await pass();
             return;
         }
-        const real = await route.fetch().then(async (response) => {
-            const text = await response.text().catch(() => '');
+        let real = { status: 0, json: undefined };
+        if (event.responseErrorReason === undefined) {
+            const type = responseHeaders.find(({ name }) => name.toLowerCase() === 'content-type')?.value;
             let json;
-            if (isJsonType(response.headers()['content-type'])) {
+            if (isJsonType(type)) {
                 try {
-                    json = JSON.parse(text);
+                    const { body, base64Encoded } = await cdp.send('Fetch.getResponseBody', { requestId });
+                    json = JSON.parse(base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body);
                 } catch {
                     json = undefined;
                 }
             }
-            return { status: response.status(), json };
-        }, () => ({ status: 0, json: undefined }));
+            real = { status, json };
+        }
         onAnswer({ answer, real });
-        await route.fulfill({ status: answer.status, contentType: answer.type, headers: { 'cache-control': 'no-store' }, body: JSON.stringify(answer.body) }).catch(() => {});
+        await cdp.send('Fetch.fulfillRequest', {
+            requestId,
+            responseCode: answer.status,
+            responseHeaders: [{ name: 'Content-Type', value: answer.type }, { name: 'Cache-Control', value: 'no-store' }],
+            body: Buffer.from(JSON.stringify(answer.body)).toString('base64'),
+        }).catch(pass);
     };
-    await context.route(matches, handler);
-    return () => context.unroute(matches, handler).catch(() => {});
+    const attached = new WeakMap();
+    const attach = (page) => {
+        if (!attached.has(page)) {
+            attached.set(page, (async () => {
+                const cdp = await context.newCDPSession(page).catch(() => null);
+                if (cdp === null) return;
+                sessions.add(cdp);
+                cdp.on('Fetch.requestPaused', (event) => { serve(cdp, event).catch(() => {}); });
+                await cdp.send('Fetch.enable', { patterns }).catch(() => sessions.delete(cdp));
+            })());
+        }
+        return attached.get(page);
+    };
+    // A new page (a popup) may ask before its session is attached: its xhr and fetch wait at the request stage until then.
+    const matches = (url) => /^https?:$/.test(url.protocol);
+    const pageOf = (request) => {
+        try {
+            return request.frame().page();
+        } catch {
+            return null;
+        }
+    };
+    const gate = async (route) => {
+        const request = route.request();
+        const page = !stopped && ['xhr', 'fetch'].includes(request.resourceType()) ? pageOf(request) : null;
+        if (page !== null) await attach(page);
+        await route.fallback().catch(() => {});
+    };
+    await Promise.all(context.pages().map(attach));
+    context.on('page', attach);
+    await context.route(matches, gate);
+    return async () => {
+        stopped = true;
+        context.off('page', attach);
+        await context.unroute(matches, gate).catch(() => {});
+        await Promise.all([...sessions].map((cdp) => cdp.send('Fetch.disable').catch(() => {}).then(() => cdp.detach()).catch(() => {})));
+        sessions.clear();
+    };
 };
 
 const MAX_PREVIEW = 12;
