@@ -15,8 +15,17 @@ rows, list entries, cards and `visualIgnore` masked): above `visual.designMaxRat
 with a difference image `agent/step-S<n>-diff.png`. `result.json` holds per judged step `design: { file, verdict, missing,
 extra, styleDiffs }` (a `.png` also `ratio` and `diff`). With design tokens in `caw/design` each passed step also gets `lint`
 findings (colors off the tokens, spacing off the scale, contrast, clipped text, unnamed controls): warnings unless
-`design.fail` has `"lint"`. A step with `look: true` (also only the person's, never set it yourself) learns its look and
-fails with kind `visual` when it changes. The person sees the design over the app with `caw open <test>@S<n> --design` (F7
+`design.fail` has `"lint"`.
+
+**A learned look.** `look: true` on a step (also only the person's: never set or remove it yourself; caw may suggest steps to
+the person after `record`) learns that step's look over two healthy runs and then fails with kind `visual` when it changes.
+The look is its style lines (per role and style, how many controls have it) and, only from headless runs, its pixels at a fixed
+viewport (the recorded one, else 1920 x 1080); a run with a window compares the styles only (`pixels: "headless-only"` in
+`result.json`). Only the person takes a changed look over ("{{label:run.button.adoptLook}}"). For screens whose data changes,
+only the person freezes the data of the app's reads ("{{label:run.button.freezeData}}" after a passed run with a window, into
+`caw/recordings/<test>/fixed-data.json`); headless runs then compare those looks in a separate pass on the frozen answers. You
+cannot freeze data and never write that file; when the fixed data no longer fits the backend, say so and leave it to the
+person. The person sees the design over the app with `caw open <test>@S<n> --design` (F7
 toggles it); a deviation they click there reaches you as an element, as `/element` does.
 
 **Fetch and write a design.**

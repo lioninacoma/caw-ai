@@ -1,7 +1,8 @@
 # caw: test plans
 
 A test plan is `caw/tests/<test>.yaml`. You may write a new one as the session; an existing one changes only through a run
-(`record <test>@S<n>`, "{{label:run.button.fix}}") or a recommendation the person accepts. `caw/recordings/` is written only by caw.
+(`record <test>@S<n>`, "{{label:run.button.fix}}") or a recommendation the person accepts. A step whose `expect` stays the same
+keeps its check (topic `rules`). `caw/recordings/` is written only by caw.
 
 ```yaml
 id: order-cancel            # optional; if given, equal to the file name
@@ -35,9 +36,11 @@ steps:
   texts from the application. Text the run creates is recognised by `{{runTag}}`, which caw makes unique per run.
 - Write plans, step names and expectations in the team language (`language` in the config).
 - A YAML value with ` #` must be quoted; `caw_validate` reports a comment that cut a value.
-- **`design`** (a target design under `caw/design`) and **`needs`** (locators that must be on the page before a pending step
-  can be recorded) belong to the person: leave them as they are, never put them into a plan, and link a design only through
-  `caw_design` when the person asks (topic `design`).
+- **`design`** (a target design under `caw/design`), **`needs`** (locators that must be on the page before a pending step
+  can be recorded) and **`look: true`** (the step's look is learned and compared) belong to the person: leave them as they
+  are, never put them into a plan, and link a design only through `caw_design` when the person asks (topic `design`).
+- Steps at the end that are not recorded yet are pending: `run` plays the recorded ones and names the rest (`--strict` exits
+  4 while any are pending).
 
 After writing, check it with `caw_validate` (unknown role, wrong environment, invalid fields), then record it (topic `run`).
 A test may use a role that has no test user yet, but `record` and `run` then stop with `credentials-missing` before Chrome

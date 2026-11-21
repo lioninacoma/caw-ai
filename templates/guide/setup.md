@@ -23,7 +23,7 @@ only be learned from the code or from the person.
    - Domain terms and peculiarities (date formats, slow services, known messages) go into `caw/caw.md`.
 5. **Commands and environment flags with your Edit tool.** `caw_config` refuses everything that runs a command or decides
    what Claude may do: `start`, `stop`, `reset`, `ready`, `production`, `agent`, `writable`, `allowHttp`, `insecureTls`,
-   an overlay part's `start`, `lintCommand`, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and
+   an overlay part's `start`, `lintCommand`, `anonymize`, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and
    adding or removing an environment that has them. For these, name the exact change to the person and wait for their
    explicit yes in the conversation, even if your edits are approved automatically; then edit `caw.config.json` yourself
    and validate with `caw_config` `read` afterwards. Propose them from the code:

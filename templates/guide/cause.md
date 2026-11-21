@@ -4,7 +4,7 @@ A failed step can be due to the test, the application or the environment. That a
 conversation. Before you adjust the test, you clarify what it is due to.
 
 1. **Read caw's assessment:** `diagnosis` (`side`: app, test, environment or unclear; `strength`; `findings`) and `evidence`
-   (`requests` of the step in the run, `recorded` from the recording, `effect`: the first action that acts differently than in healthy runs,
+   (`requests` of the step in the run, `recorded` from the recording, `effect`: the first action that acts differently than in healthy runs (learned over the first five, then frozen),
    with `missing`, `instead` and `extra`). `effect` shows where the application first behaved differently; the search starts there, not
    only at the failed target. The lines name controls with their label or, without one of their own, with the heading of their area,
    e.g. `textarea "Message" disabled,empty`: You search for this text in the source code; that is where the element is and what it is bound to. When fixing this is in `repair`, otherwise in `outcome`. `network` shows the

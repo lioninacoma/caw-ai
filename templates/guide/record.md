@@ -47,8 +47,8 @@ person wants a different result.
 ## A draft from caw reproduce: the last step is red
 
 If `task` contains `red: { step }`, you record a draft from `caw/drafts`: a bug report turned into a test plan. That step
-(the last one) checks the correct behaviour, so it must fail while the bug is there; that failure is the proof that the test
-catches the bug. Its `notes` list what the reproduction did in the browser, with locators, as orientation.
+(the last one) checks the correct behaviour; while the bug shows, its check must evaluate and return `false`. That evaluated
+failing check is the proof that the test catches the bug. Its `notes` list what the reproduction did in the browser, with locators, as orientation.
 
 - Walk the steps before it as usual; each must pass.
 - For the red step, do its actions, then `check` the **expected** result as its `expect` says. The check must evaluate and
