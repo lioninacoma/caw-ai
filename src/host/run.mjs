@@ -50,7 +50,7 @@ import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
-import { captureStep, createLook, designOverlay, learnedLooks, markPath, maskProbe, readTokens, visualSettings } from './visual.mjs';
+import { captureStep, createLook, designOverlay, learnedLooks, markPath, maskProbe, readTokens, visualSettings, windowLookWarning } from './visual.mjs';
 import { MAX_TEXTS, lookCandidates, showsServed, textProbe } from './look-hints.mjs';
 import { answerBook, answerChanges, answersBySteps, answersUpTo, changeText, fixedDataFile, fixedSteps, prepareAnswers, readFixedData, writeFixedData } from './fixed-data.mjs';
 import { MARK_ATTRIBUTE } from './record-locator.mjs';
@@ -471,7 +471,7 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, offerFreeze = false }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, ci = false, learns = true, reproduce, withDesign = false, suggestLooks = false, offerFreeze = false }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -2066,6 +2066,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             return closeRun(typeof ended === 'string' ? ended : passEnded);
         }
         for (const judged of ended.designs?.values() ?? []) if (judged.verdict === 'image') ui.info(judged.note);
+        // CI with a window: the look steps compared their styles only, never their pixels.
+        const windowLooks = opening ? null : windowLookWarning({ spec: givenSpec, results: ended.results, ci, headless });
+        if (windowLooks !== null) session.warn(windowLooks);
         // The run ended healthy before the pending steps: is the first one ready to record? Only its needs say so.
         const healthy = ended.broken === null && [...ended.results.values()].every(({ status, kind }) => status === 'pass' || LOOK_KINDS.has(kind));
         if (replay.needs !== undefined && healthy) {

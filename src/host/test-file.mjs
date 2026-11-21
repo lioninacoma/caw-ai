@@ -1002,11 +1002,20 @@ export const writeTest = (root, spec, only, { withNotes = false, prune = false }
     mkdirSync(join(root, RECORDING_DIR), { recursive: true });
     if (writeIfChanged(recordingFile, renderRecordings(recorded), oldRecordings)) changed.push(`${RECORDING_DIR}/${spec.id}.yaml`);
     // A learned or adopted look brings its image (withLooks): beside the recording, per test, step and platform. A look adopted
-    // in a window has none (data null): its old image goes, the next headless runs learn it.
+    // in a window has none (data null): its old image goes, the next headless runs learn it. An adopted look (allPlatforms)
+    // also takes the images of the other platforms along: they show the old look.
     for (const step of spec.steps) {
         const image = (only === undefined || only.has(step.id)) ? step.recording?.lookPng : undefined;
         if (image === undefined) continue;
         const file = lookImage(spec.id, step.id, image.platform);
+        if (image.allPlatforms === true) {
+            const dir = dirname(join(root, file));
+            const others = existsSync(dir) ? readdirSync(dir).filter((name) => name !== `${step.id}.${image.platform}.png` && name.startsWith(`${step.id}.`) && /^[a-z\d]+\.png$/.test(name.slice(step.id.length + 1))) : [];
+            for (const name of others.sort()) {
+                rmSync(join(dir, name), { force: true });
+                changed.push(lookImage(spec.id, step.id, name.slice(step.id.length + 1, -'.png'.length)));
+            }
+        }
         if (image.data === null) {
             if (existsSync(join(root, file))) {
                 rmSync(join(root, file), { force: true });

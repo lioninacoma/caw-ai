@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 
 import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, tokensProblem, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
-import { captureStep, colorDistance, comparePixels, contrastRatio, createLook, learnLook, learnedLooks, lintFacts, lintFindings, readTokens, styleLines, withAdoptedLooks } from '../src/host/visual.mjs';
+import { captureStep, colorDistance, comparePixels, contrastRatio, createLook, learnLook, learnedLooks, lintFacts, lintFindings, readTokens, styleLines, windowLookWarning, withAdoptedLooks } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
 
 const EXAMPLE = new URL('../examples/errand/caw/', import.meta.url);
@@ -408,7 +408,7 @@ test('look: learned over two runs like effects; a count that flickers becomes ×
     const adopted = withAdoptedLooks(two, new Map([['S1', seenInWindow], ['S2', seenInWindow]]), '2026-11-21');
     for (const step of adopted.steps.slice(0, 2)) {
         assert.deepEqual(step.recording.visual, { runs: 2, basis: 'b', styles: ['button ×3: color #000000'], images: {}, adopted: '2026-11-21' });
-        assert.deepEqual(step.recording.lookPng, { platform: 'win32', data: null });
+        assert.deepEqual(step.recording.lookPng, { platform: 'win32', data: null, allPlatforms: true }, 'the images of every platform go');
     }
     assert.deepEqual(adopted.steps[2].recording.visual, second.visual, 'an unchanged step stays');
     const headless = withAdoptedLooks(two, new Map([['S1', observed({ platform: 'win32', changed: true })]]), '2026-11-21');
@@ -465,6 +465,13 @@ test('look: a learned look whose style changed fails the step (design.fail visua
         assert.equal(headless.record.visual.ratio, 0.5);
         assert.equal(headless.record.visual.diff, 'step-S1-look-diff.png');
         assert.equal(headless.record.visual.pixels, undefined);
+        // Only pixels see it, a window offers no adopting: the finding names the image file to delete.
+        const file = `caw/recordings/t/S1.${process.platform}.png`;
+        assert.ok(headless.fail.text.includes(`ein Lauf im Fenster nicht`) && headless.fail.text.includes(`lösche ${file}: Die nächsten 2 Läufe headless lernen das Bild neu`), headless.fail.text);
+        assert.ok(headless.fail.evidence.includes(file), headless.fail.evidence);
+        assert.doesNotMatch(failing.fail.text, /lösche/, 'a style change is seen in the window too');
+        const both = await looks(['visual'], stepWith(changedStyle), true)('S1', { capture, page });
+        assert.doesNotMatch(both.fail.text, /lösche/, 'styles and pixels: the window offers adopting');
         // A count that flickered while learning (×?) allows any number.
         const flickered = await looks(['visual'], stepWith([learned[0].replace('×1', '×?')]), false)('S1', { capture, page });
         assert.equal(flickered.record.visual.verdict, 'same');
@@ -475,4 +482,48 @@ test('look: a learned look whose style changed fails the step (design.fail visua
     } finally {
         await context.close();
     }
+});
+
+test('look: the style lines leave out the controls in masked areas, a list with one entry more looks the same', async (t) => {
+    if (needsChrome()) return t.skip('no Chrome');
+    const caw = tempCaw(t);
+    const context = await browser.newContext({ viewport: { width: 400, height: 600 } });
+    try {
+        const page = await context.newPage();
+        const button = (label, color = '#000000') => `<button style="color:${color}">${label}</button>`;
+        const screen = (count) => {
+            const many = (make) => Array.from({ length: count }, (_, index) => make(index)).join('');
+            return '<body>'
+                + `<nav><ul><li>${button('Home', '#0000ff')}</li><li>${button('Tasks', '#0000ff')}</li></ul></nav>`
+                + `<table><tr><th>Name ${button('Sort', '#00ff00')}</th></tr>${many((index) => `<tr><td>Row ${index} ${button('Open')}</td></tr>`)}</table>`
+                + `<ul>${many((index) => `<li>Entry ${index} ${button('Done')}</li>`)}</ul>`
+                + many((index) => `<article>Card ${index} ${button('Edit')}</article>`)
+                + `<div role="list">${many((index) => `<div role="listitem">${button(`Item ${index}`)}</div>`)}</div>`
+                + `<section class="feed">${many((index) => `<div>${button(`Feed ${index}`)}</div>`)}</section>`
+                + `${button('Save', '#ff0000')}</body>`;
+        };
+        const step = { id: 'S1', look: true, recording: { recordedAt: 'r1', recordedOn: 'a/dev' } };
+        const look = createLook({ spec: { id: 't', steps: [step] }, cawDir: caw, root: caw, settings: { screenshots: false, maxRatio: 0.01, ignore: ['.feed'] }, compare: async () => assert.fail('no pixels'), save: () => undefined, readImage: () => null, pixels: false });
+        const linesOf = async (count) => {
+            await page.setContent(screen(count));
+            return (await look('S1', { capture: async () => assert.fail('no capture in a window'), page })).observed.styles;
+        };
+        const two = await linesOf(2);
+        assert.deepEqual(await linesOf(3), two, 'the third row, entry, card and feed item change nothing');
+        // Counted: the page's own button, the header row's and the navigation's entries.
+        assert.deepEqual(two.map((line) => `${line.split(':')[0]} ${/, color (#\w+)/.exec(line)[1]}`).sort(), ['button ×1 #00ff00', 'button ×1 #ff0000', 'button ×2 #0000ff']);
+    } finally {
+        await context.close();
+    }
+});
+
+test('look: a CI run with a window warns once that the pixels of its played look steps were not compared', () => {
+    const spec = { steps: [{ id: 'S1', look: true }, { id: 'S2' }, { id: 'S3', look: true }, { id: 'S4', look: true }] };
+    const results = new Map([['S1', { status: 'pass' }], ['S2', { status: 'pass' }], ['S3', { status: 'fail' }]]);
+    const warning = windowLookWarning({ spec, results, ci: true, headless: false });
+    assert.equal(warning.type, 'visual');
+    assert.match(warning.text, /Look-Schritte S1, S3 werden nur headless verglichen.*Ergänze --headless\./);
+    assert.equal(windowLookWarning({ spec, results, ci: true, headless: true }), null, 'headless compares the pixels');
+    assert.equal(windowLookWarning({ spec, results, ci: false, headless: false }), null, 'outside CI the window is the person\'s choice');
+    assert.equal(windowLookWarning({ spec, results: new Map([['S2', { status: 'pass' }]]), ci: true, headless: false }), null, 'no look step played');
 });

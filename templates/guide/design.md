@@ -21,7 +21,11 @@ findings (colors off the tokens, spacing off the scale, contrast, clipped text, 
 the person after `record`) learns that step's look over two healthy runs and then fails with kind `visual` when it changes.
 The look is its style lines (per role and style, how many controls have it) and, only from headless runs, its pixels at a fixed
 viewport (the recorded one, else 1920 x 1080); a run with a window compares the styles only (`pixels: "headless-only"` in
-`result.json`). Only the person takes a changed look over ("{{label:run.button.adoptLook}}"). For screens whose data changes,
+`result.json`; a CI run without `--headless` warns about it). Controls inside masked areas (rows, list entries, cards,
+`visualIgnore`) do not count in the style lines. Only the person takes a changed look over ("{{label:run.button.adoptLook}}",
+which deletes the step's images of every platform). A change only pixels see has no such button: the failure names the image
+file `caw/recordings/<test>/<step>.<platform>.png`; only the person deletes it, the next two headless runs then learn it anew.
+For screens whose data changes,
 only the person freezes the data of the app's reads ("{{label:run.button.freezeData}}" after a passed run with a window, into
 `caw/recordings/<test>/fixed-data.json`); headless runs then compare those looks in a separate pass on the frozen answers. You
 cannot freeze data and never write that file; when the fixed data no longer fits the backend, say so and leave it to the

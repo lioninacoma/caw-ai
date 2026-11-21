@@ -511,9 +511,9 @@ Two kinds of visual check, both without AI. A [target design](#develop-against-a
 
 - **Fixed data only:** set it only on steps whose screen shows fixed data, e.g. a state the test sets up itself. Changing data makes it noisy.
 - **Suggested after recording:** after `caw record` the check run suggests such steps in its "Check run passed" card. It judges where their text comes from: values from the server's answers, rows, list entries, cards, dates. None is ticked, because caw cannot be sure. Ticked steps get `look: true` when you adopt.
-- **Masked:** the run tag, remembered values, numeric dates, list and table rows, list entries and cards. `visualIgnore` in the config covers the rest.
-- **Pixels only headless:** pixels are learned and compared only in headless runs (`--headless`, a fixed viewport: the recorded one, else 1920 × 1080). A run in the window compares the styles only.
-- **Intended change:** **Adopt new look** in the chat takes over the new look of every changed step at once; the next headless runs learn their images anew. `caw audit` lists it, and taking `look: true` off a step with a learned look counts as a weakening.
+- **Masked:** the run tag, remembered values, numeric dates, list and table rows, list entries and cards. `visualIgnore` in the config covers the rest. The controls inside masked areas do not count in the style lines either, so one list entry more changes nothing.
+- **Pixels only headless:** pixels are learned and compared only in headless runs (`--headless`, a fixed viewport: the recorded one, else 1920 × 1080). A run in the window compares the styles only. A CI run without `--headless` has a window too and warns: add `--headless`.
+- **Intended change:** **Adopt new look** in the chat takes over the new look of every changed step at once; their images of every platform are deleted and the next headless runs learn them anew. A change only pixels see offers no adopting, since the window sees nothing: the failed headless run names the step's image file, delete it and the next two headless runs learn it anew. `caw audit` lists it, and taking `look: true` off a step with a learned look counts as a weakening.
 - **Limits:** the image is per platform (fonts render differently on Windows and Linux), and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
 
 ### Fixed data

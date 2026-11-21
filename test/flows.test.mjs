@@ -635,7 +635,7 @@ test('Test run: a changed look offers "Adopt new look" first; adopting takes the
         assert.deepEqual(step.recording.visual.styles, looks.get(id).styles);
         assert.deepEqual(step.recording.visual.images, {}, 'the window\'s view has no comparable image: learned anew headless');
         assert.match(step.recording.visual.adopted, /^\d{4}-\d{2}-\d{2}$/);
-        assert.deepEqual(step.recording.lookPng, { platform: 'linux', data: null }, 'the old image is deleted');
+        assert.deepEqual(step.recording.lookPng, { platform: 'linux', data: null, allPlatforms: true }, 'the old images of every platform are deleted');
     }
     assert.ok(h.notices.some((text) => text.includes('Neuer Look von S1, S2 übernommen') && text.includes('headless neu')), JSON.stringify(h.notices));
     // Without the run's look (nothing captured) only asking and closing remain.
