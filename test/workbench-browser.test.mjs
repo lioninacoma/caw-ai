@@ -279,7 +279,7 @@ test('local code: application popups and new tabs also get their HTML without su
     const context = await browser.newContext();
     t.after(() => context.close());
     const page = await context.newPage();
-    await interceptDocuments(context, page, ['127.0.0.1'], { request: context.request, rewrite: withoutIntegrity });
+    await interceptDocuments(context, page, ['127.0.0.1'], { rewrite: withoutIntegrity });
     await page.goto(url);
     const integrity = (target) => target.evaluate(() => document.querySelector('script')?.getAttribute('integrity') ?? null);
     assert.equal(await integrity(page), null, 'the page itself');
@@ -308,7 +308,7 @@ test('workbench: a form POST into the top window that the session refuses is not
         t.after(() => context.close());
         const page = await context.newPage();
         const asked = [];
-        await interceptDocuments(context, page, ['127.0.0.1'], { workbench: () => '<p id="bench">Bench</p>', request: context.request, refuse: (request) => { asked.push(request); return refuse; } });
+        await interceptDocuments(context, page, ['127.0.0.1'], { workbench: () => '<p id="bench">Bench</p>', refuse: (request) => { asked.push(request); return refuse; } });
         await page.goto(`${url}/`);
         await page.evaluate((action) => {
             const form = document.createElement('form');
@@ -365,7 +365,7 @@ test('local code: an ISO-8859-1 page keeps its umlauts even when rewritten', asy
     const context = await browser.newContext();
     t.after(() => context.close());
     const page = await context.newPage();
-    await interceptDocuments(context, page, ['127.0.0.1'], { request: context.request, rewrite: withoutIntegrity });
+    await interceptDocuments(context, page, ['127.0.0.1'], { rewrite: withoutIntegrity });
     await page.goto(url);
     assert.equal(await page.locator('#x').textContent(), 'Grüße', 'the page itself');
     assert.equal(await page.evaluate(() => document.querySelector('script').getAttribute('integrity')), null);

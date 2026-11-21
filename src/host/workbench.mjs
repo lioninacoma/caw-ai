@@ -925,7 +925,7 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
         benches.set(page, holder);
         // The workbench lives at the application's address: the tool answers only the top window's document.
         // Settings are read fresh per delivery, so a reload shows what was chosen last.
-        await interceptDocuments(context, page, hosts, { workbench: (url) => holder.html(url), request: context.request, rewrite, refuse });
+        await interceptDocuments(context, page, hosts, { workbench: (url) => holder.html(url), rewrite, refuse });
         await context.addInitScript(FOCUS_SCRIPT);
         await context.addInitScript(RELOAD_SCRIPT);
         // A new document in the top window is always a freshly delivered workbench: F5, the address bar button or the

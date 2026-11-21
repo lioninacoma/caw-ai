@@ -76,7 +76,7 @@ test('Overlay build in the browser: local state despite different split, nonce C
     page.on('pageerror', (error) => errors.push(error.message));
     const problems = [];
     await routeOverlay(context, overlay, { onProblem: (error) => problems.push(error.message) });
-    await interceptDocuments(context, page, ['127.0.0.1'], { request: context.request, rewrite: overlay.rewritePage });
+    await interceptDocuments(context, page, ['127.0.0.1'], { rewrite: overlay.rewritePage });
     await page.goto(`${origin}/bestellung/5`);
     await page.waitForFunction(() => window.BUILD !== undefined);
     assert.equal(await page.evaluate(() => window.BUILD), 'lokal AB');
