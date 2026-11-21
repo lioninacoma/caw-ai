@@ -381,7 +381,9 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.failedHint': '{step} failed. Find the cause in a run with chat: caw run {test} --env {target}',
     'cli.failedHintNoAgent': '{step} failed. A run with chat finds the cause, on an environment where {agent} may work (here: {environments}).',
     'cli.untilHint': 'Up to the entry of the step: caw open {test}@{step} --env {target}',
-    'cli.pendingSteps': 'Pending, not recorded yet: {ids}. They did not run. Record them: caw record {test}@{step} --env {target}',
+    'cli.pendingSteps': ({ ids, count, test, step, target }) => (count === 1
+        ? `Pending, not recorded yet: ${ids}. It did not run. Record it: caw record ${test}@${step} --env ${target}`
+        : `Pending, not recorded yet: ${ids}. They did not run. Record them: caw record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Test {test} already exists, its metadata stays. --role and --read-only must match the file or be left out.',
     'cli.recordStepUnknown': '{test} has no step {step}.{suggestion} {steps} Add a new step to {file} first.',
     'cli.recordFromReason': 'Re-recording from {step} on was requested',

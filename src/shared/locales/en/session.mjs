@@ -186,7 +186,7 @@ export default {
     'session.replay.chainStale': '{chain}. Re-record from there: caw record {id}@{step} --env {target}',
     'session.replay.stepStale': '{step} {why}. Re-record from there: caw record {id}@{step} --env {target}',
     'session.replay.stepPending': '{step} is pending, not recorded yet. Record it first: caw record {id}@{step} --env {target}',
-    'session.replay.pendingStrict': '{ids} of {id} pending, not recorded yet; --strict does not pass that. Record them: caw record {id}@{step} --env {target}',
+    'session.replay.pendingStrict': ({ ids, count, id, step, target }) => `${ids} of ${id} pending, not recorded yet; --strict does not pass that. Record ${count === 1 ? 'it' : 'them'}: caw record ${id}@${step} --env ${target}`,
     'session.replay.stepUnknown': '{id} has no step {until}.',
     'session.replay.locked': 'The target was there but stayed disabled: the app didn\'t enable it in time.',
     'session.replay.allTriesFailed': 'Failed in all {count} attempts: {reason}{why}',

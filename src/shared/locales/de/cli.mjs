@@ -385,7 +385,9 @@ Browser:
     'cli.failedHint': '{step} ist gescheitert. Ursache klären im Lauf mit Chat: caw run {test} --env {target}',
     'cli.failedHintNoAgent': '{step} ist gescheitert. Die Ursache klärt ein Lauf mit Chat, auf einer Umgebung, auf der {agent} arbeiten darf (hier: {environments}).',
     'cli.untilHint': 'Bis zum Einstieg in den Schritt: caw open {test}@{step} --env {target}',
-    'cli.pendingSteps': 'Offen, noch nicht aufgenommen: {ids}. Sie liefen nicht. Nimm sie auf: caw record {test}@{step} --env {target}',
+    'cli.pendingSteps': ({ ids, count, test, step, target }) => (count === 1
+        ? `Offen, noch nicht aufgenommen: ${ids}. Er lief nicht. Nimm ihn auf: caw record ${test}@${step} --env ${target}`
+        : `Offen, noch nicht aufgenommen: ${ids}. Sie liefen nicht. Nimm sie auf: caw record ${test}@${step} --env ${target}`),
     'cli.recordExists': 'Den Test {test} gibt es schon, seine Metadaten bleiben. --role und --read-only müssen zur Datei passen oder entfallen.',
     'cli.recordStepUnknown': '{test} hat keinen Schritt {step}.{suggestion} {steps} Einen neuen Schritt trägst du zuerst in {file} ein.',
     'cli.recordFromReason': 'Neu aufnehmen ab {step} ist gewünscht',

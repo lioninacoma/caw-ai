@@ -217,7 +217,7 @@ export default {
     'config.report.reproduce.checkMayMiss': 'Sein letzter Lauf war grün: Seine Prüfung übersieht diesen Fehler vielleicht.',
     'config.report.reproduce.adopt': 'Geschrieben nach {file}. Prüfe ihn, dann nimm ihn mit `{record}` auf: Sein letzter Schritt muss scheitern, solange der Fehler da ist.',
     'config.report.note': 'Hinweis: {note}',
-    'config.report.pending': 'Offen, noch nicht aufgenommen: {ids}. Diese Schritte liefen nicht.',
+    'config.report.pending': ({ ids, count }) => `Offen, noch nicht aufgenommen: ${ids}. ${count === 1 ? 'Dieser Schritt lief' : 'Diese Schritte liefen'} nicht.`,
     'config.report.results.header': '| Schritt | Erwartung | Status | Nachweis | Notiz |',
     'config.report.failures': 'Harte Fehler',
     'config.report.failures.at': ' bei {at}',

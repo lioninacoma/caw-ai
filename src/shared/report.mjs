@@ -185,7 +185,7 @@ export const renderReport = ({ status, reason, note, testId, target, testedCode,
         }
     }
     // Not part of the verdict: the steps still to be recorded did not run.
-    if (pending.length > 0) lines.push('', t('config.report.pending', { ids: pending.join(', ') }));
+    if (pending.length > 0) lines.push('', t('config.report.pending', { ids: pending.join(', '), count: pending.length }));
     if (diagnosis !== undefined) lines.push(...diagnosisLines(diagnosis));
     // Renamed targets with a proven replacement (replay.mjs): in CI this section is all there is, the chat offers a button.
     const proposals = steps.filter(({ proposal }) => proposal !== undefined).map(({ proposal }) => proposal);

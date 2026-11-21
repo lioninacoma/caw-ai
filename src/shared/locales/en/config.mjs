@@ -217,7 +217,7 @@ export default {
     'config.report.reproduce.checkMayMiss': 'Its last run passed: its check may miss this bug.',
     'config.report.reproduce.adopt': 'Written to {file}. Review it, then record it with `{record}`: its last step must fail while the bug is there.',
     'config.report.note': 'Note: {note}',
-    'config.report.pending': 'Pending, not recorded yet: {ids}. These steps did not run.',
+    'config.report.pending': ({ ids, count }) => `Pending, not recorded yet: ${ids}. ${count === 1 ? 'This step' : 'These steps'} did not run.`,
     'config.report.results.header': '| Step | Expectation | Status | Evidence | Note |',
     'config.report.failures': 'Hard errors',
     'config.report.failures.at': ' at {at}',

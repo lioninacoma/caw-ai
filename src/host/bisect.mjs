@@ -146,7 +146,7 @@ export const bisectCommand = async (root, args, deps = {}) => {
     try {
         await lifecycle.begin();
         const runOne = deps.runOne ?? (await import('./commands.mjs')).runOne;
-        const runOptions = { test: spec.id, target, stepTimeoutSec: options.stepTimeoutSec, headless: true, noChat: true, learn: false, strict: false, lifecycle, quiet: true };
+        const runOptions = { test: spec.id, target, stepTimeoutSec: options.stepTimeoutSec, headless: true, noChat: true, learn: false, strict: false, lifecycle, quiet: true, nextSteps: false };
         // interactive false: a run as in CI, which learns nothing and opens no chat.
         outcome = await runOne(root, runOptions, { interactive: false }, { config, spec, target, checked });
     } catch (error) {

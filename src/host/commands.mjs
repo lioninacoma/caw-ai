@@ -1049,11 +1049,12 @@ export const changeTracker = (root) => {
  * and effects of its passed steps; in CI only with --learn. A pending tail (pendingSteps) does not play and does not fail the
  * run; with --strict it stops the run before anything starts (exit 4).
  * @param quiet in a batch: no mode line, the batch prints it once
+ * @param nextSteps false: no "next" hints after a failed step (caw bisect, where neither a chat nor a re-record belongs)
  * @returns { code, failed, verdict, report, pending } with the failed step ({ id, reason, diagnosis }), if one failed, the
  *          playback's verdict, its report.md relative to the project, and the pending steps' ids
  */
 export const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, git } = {}, loaded = undefined) => {
-    const { test, handover = false, stepTimeoutSec, entry, through, design = false, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
+    const { test, handover = false, stepTimeoutSec, entry, through, design = false, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false, nextSteps = true } = options;
     const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
     if (entry !== undefined && position === -1) throw stepUnknown('cli.stepUnknown', spec, entry);
@@ -1114,6 +1115,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
         // Cause first, then change: `record <test>@<step>` re-records without looking for a cause, which only suits an intended change.
         // In the terminal the first line is labelled "next", the commands stand out.
         hint: (step, { canFix: hadChat }) => {
+            if (!nextSteps) return;
             const lines = [];
             const rerun = (env) => `caw run ${test} --env ${env}`;
             if (!hadChat) {
@@ -1128,7 +1130,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     });
     if (canFix || learns) ui.info(tracker.summary());
     // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
-    if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), test, step: pending[0], target }));
+    if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), count: pending.length, test, step: pending[0], target }));
     // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests.
     if (spec.draft === true && spec.red !== undefined && code === EXIT.pass && !quiet && !handover) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
     // The batch reports carry the playback's verdict (diagnosis, steps) and its report.md.

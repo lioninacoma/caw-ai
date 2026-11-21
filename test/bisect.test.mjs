@@ -84,6 +84,8 @@ test('bisect: runs headless without chat and learning, the environment always st
     assert.equal(options.noChat, true);
     assert.equal(options.learn, false);
     assert.equal(options.stepTimeoutSec, 10);
+    // No "clear the cause in the chat / re-record" hints between the commits git bisect checks out.
+    assert.equal(options.nextSteps, false);
     // As in CI: a run that learns nothing.
     assert.equal(runDeps.interactive, false);
     assert.deepEqual(loaded.config.effects.fail, []);

@@ -564,7 +564,7 @@ export const assertPlayable = (spec, target, until, { pending = false } = {}) =>
     const open = pendingSteps(spec);
     let last = until;
     if (last === undefined && open.length > 0) {
-        if (!pending) throw new CawError('replay-pending', t('session.replay.pendingStrict', { ids: open.join(', '), id: spec.id, step: open[0], target }));
+        if (!pending) throw new CawError('replay-pending', t('session.replay.pendingStrict', { ids: open.join(', '), count: open.length, id: spec.id, step: open[0], target }));
         last = spec.steps[spec.steps.length - open.length - 1].id;
     }
     const end = last === undefined ? spec.steps.length : spec.steps.findIndex(({ id }) => id === last) + 1;

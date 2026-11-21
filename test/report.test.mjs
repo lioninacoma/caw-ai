@@ -117,3 +117,9 @@ test('report: a proposed target has its own section with both locators', () => {
     assert.match(text, /## Vorgeschlagene Ziele\n\nEin aufgenommenes Element fehlt, ein ähnliches trat an seine Stelle: .*\n\n- S2, Aktion 1: `getByRole\('button', \{ name: 'Speichern' \}\)` → `getByRole\('button', \{ name: 'Sichern' \}\)`\n/);
     assert.doesNotMatch(renderReport({ status: 'pass', testId: 'smoke', target: 'local', testedCode: 'deployed', steps: [{ id: 'S1', status: 'pass' }] }), /Vorgeschlagene Ziele/);
 });
+
+test('pending steps: one step is named in the singular, several in the plural', () => {
+    assert.equal(t('config.report.pending', { ids: 'S5', count: 1 }), 'Offen, noch nicht aufgenommen: S5. Dieser Schritt lief nicht.');
+    assert.equal(t('cli.pendingSteps', { ids: 'S5', count: 1, test: 'a', step: 'S5', target: 'local' }), 'Offen, noch nicht aufgenommen: S5. Er lief nicht. Nimm ihn auf: caw record a@S5 --env local');
+    assert.match(t('cli.pendingSteps', { ids: 'S4, S5', count: 2, test: 'a', step: 'S4', target: 'local' }), /Sie liefen nicht\. Nimm sie auf: caw record a@S4/);
+});
