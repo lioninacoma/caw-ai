@@ -21,5 +21,5 @@ What it adds:
   is the part's source; `overlay status` checks that it serves this app (`app.json`, `bootstrap.json`) and finds it on another
   port (`moved`); `doctor` shows these lines for ExtJS parts.
 - **Export:** `caw export` brings the `extjs=` engine along in `caw-support.mjs`, so exported ExtJS tests run in Playwright.
-- **Claude:** the guide topic `extjs` (read state through `Ext.ComponentQuery`, `isVisible()`, stores) goes to every run agent and
+- **Agent:** the guide topic `extjs` (read state through `Ext.ComponentQuery`, `isVisible()`, stores) goes to every run agent and
   is listed by `caw_guide`.

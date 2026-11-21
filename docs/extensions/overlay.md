@@ -69,7 +69,7 @@ Is the part's local code server ready? No browser, starts nothing.
 npx caw overlay check --env dev --apply
 ```
 
-Opens the app headless with `--overlay` (signed in, no steps, no Claude) and compares the page's script requests with what the
+Opens the app headless with `--overlay` (signed in, no steps, no agent) and compares the page's script requests with what the
 overlay should replace. Per part `local`, `deployed` (a mixed version) or `not loaded`. For a source that came from the server it
 suggests an `assetUrlPattern`; `--apply` writes the missing ones into the config (validated) and checks again. It runs `overlay
 status` first and starts nothing unless `--start`. The result also goes to `.caw/overlay-check.json`. Exit 0 complete, 2
@@ -79,7 +79,7 @@ incomplete or server problem, 3 no overlay environment or part. `--env` defaults
 ## From Claude Code
 
 With the block, the MCP server lists `caw_overlay` (`status`, `check`, `apply`) and the guide topic `overlay`, and `caw_start`
-takes `overlay`. caw never starts your local code server from the session: Claude asks you and starts it in its own session, unless
+takes `overlay`. caw never starts your local code server from the session: the agent asks you and starts it in its own session, unless
 your project's rules say otherwise.
 
 ## Error codes

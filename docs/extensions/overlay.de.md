@@ -71,7 +71,7 @@ Ist der lokale Code-Server des Teils bereit? Ohne Browser, startet nichts.
 npx caw overlay check --env dev --apply
 ```
 
-Öffnet die App headless mit `--overlay` (angemeldet, ohne Schritte, ohne Claude) und vergleicht die Skript-Requests der Seite mit
+Öffnet die App headless mit `--overlay` (angemeldet, ohne Schritte, ohne Agent) und vergleicht die Skript-Requests der Seite mit
 dem, was das Overlay ersetzen soll. Je Teil `local`, `deployed` (ein Mischstand) oder `not loaded`. Für eine Quelle, die vom Server
 kam, schlägt es ein `assetUrlPattern` vor; `--apply` schreibt die fehlenden in die Config (geprüft) und prüft noch einmal. Vorher
 läuft `overlay status`; gestartet wird nichts außer mit `--start`. Das Ergebnis steht auch in `.caw/overlay-check.json`. Exit 0
@@ -81,7 +81,7 @@ Overlay-Umgebung, `--part` und `--role` der einzige Teil und die erste Rolle.
 ## Aus Claude Code
 
 Mit dem Block listet der MCP-Server `caw_overlay` (`status`, `check`, `apply`) und das Guide-Thema `overlay`, und `caw_start` nimmt
-`overlay`. caw startet deinen lokalen Code-Server nie aus der Session: Claude fragt dich und startet ihn in seiner eigenen Session,
+`overlay`. caw startet deinen lokalen Code-Server nie aus der Session: Der Agent fragt dich und startet ihn in seiner eigenen Session,
 außer die Regeln deines Projekts sagen etwas anderes.
 
 ## Fehlercodes
