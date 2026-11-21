@@ -12,8 +12,9 @@ Wie caw im Einzelnen arbeitet. Zum Nachschlagen: [Befehle](commands.de.md), [Kon
 4. [Einordnen und reparieren](#einordnen-und-reparieren)
 5. [Aus Claude Code steuern](#aus-claude-code-steuern)
 6. [Sicher mit Zugangsdaten und Produktion](#sicher-mit-zugangsdaten-und-produktion)
-7. [Kein Test wird unbemerkt schwächer: `audit`](#kein-test-wird-unbemerkt-schwächer-audit)
-8. [Export nach Playwright](#export-nach-playwright)
+7. [Produktion überwachen](#produktion-überwachen)
+8. [Kein Test wird unbemerkt schwächer: `audit`](#kein-test-wird-unbemerkt-schwächer-audit)
+9. [Export nach Playwright](#export-nach-playwright)
 
 ## Tests in normaler Sprache: einmal aufnehmen, ohne KI abspielen
 
@@ -618,6 +619,93 @@ Testkonten bleiben in deiner `caw/.env`, Produktion wird nur gelesen, und Claude
 - **Firmenrichtlinien:** Eine zentral erzwungene Chrome-Richtlinie (z. B. ein Proxy) kann die Sperre aushebeln. Prüfe das auf dem Rechner, auf dem die Tests laufen (`chrome://policy`).
 
 **Urteil:** Bericht und `result.json` schreibt nur der Host, außerhalb des Agent-Ordners. Als Screenshot zählt nur, was der Host selbst aufgenommen hat.
+
+## Produktion überwachen
+
+Ein Monitor ist ein `run` lesender Tests gegen Produktion, der nach Zeitplan läuft. Er braucht weder Claude noch Token: caw schreibt das Ergebnis, dein Scheduler oder dein CI schlägt Alarm. Zu CI allgemein: Berichte und PR-Vorschauen unter [Einschätzung](#einschätzung-test-anwendung-oder-umgebung), das Audit [In einem PR](#in-einem-pr) und [Befehle › Mehrere Tests (CI)](commands.de.md#mehrere-tests-ci).
+
+### Rezept
+
+```bash
+npx caw run --all --env prod --headless --retry-env 1 --report junit=out/caw.xml --report json=out/caw.json
+```
+
+- **Welche Tests:** `--all --env prod` nimmt jeden Test, der `prod` unter `environments` nennt. Ohne dieses Feld läuft ein Test überall außer auf Produktion. Trag die Umgebung also in jeden Test ein, den der Monitor fahren soll ([Testdateien](test-files.de.md#testplan)). Das geht nur bei lesenden Tests: Ein Test mit `writes: true`, der eine Produktionsumgebung nennt, ist ungültig.
+- **Ohne Fenster:** `--headless`. Eine Produktionsumgebung hat kein `agent`, Chat und Claude gibt es dort ohnehin nicht.
+- **Wiederholen:** `--retry-env 1` gibt einem Test einen weiteren Versuch, wenn die Umgebung schuld ist ([Wiederholungen](#wiederholungen)).
+- **Berichte:** `junit=` für dein CI oder Alarmierungswerkzeug, `json=` für Skripte. In GitHub Actions zusätzlich `summary=` für die Job-Zusammenfassung. Die Pfade müssen im Projektordner bleiben; jeder Lauf ersetzt die Dateien.
+- **Offene Schritte:** Ein Test mit noch nicht aufgenommenen Schritten besteht ohne sie. Mit `--strict` wird daraus Exit `4`.
+
+GitHub Actions, alle 15 Minuten, mit dem Konto aus den Secrets des Repositorys:
+
+```yaml
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npx caw run --all --env prod --headless --retry-env 1 --report junit=out/caw.xml --report json=out/caw.json --report summary=out/summary.md
+        env:
+          CAW_CLERK_USER__PROD: ${{ secrets.CAW_CLERK_USER__PROD }}
+          CAW_CLERK_PASSWORD__PROD: ${{ secrets.CAW_CLERK_PASSWORD__PROD }}
+      - run: cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+        if: always()
+```
+
+Auf einem eigenen Rechner, `alert.sh` steht für deine Alarmierung:
+
+```bash
+*/15 * * * * cd /srv/shop && npx caw run --all --env prod --headless --retry-env 1 --report junit=out/caw.xml --report json=out/caw.json >> out/monitor.log 2>&1 || ./alert.sh $?
+```
+
+### Exit-Codes
+
+| Exit | Bedeutet | Der Monitor |
+|---|---|---|
+| `0` | alle Tests bestanden | bleibt still |
+| `1` | ein Schritt ist gescheitert: Die App tat nicht, was der Test erwartet | schlägt Alarm; die Berichte sagen, ob es nach Anwendung, Umgebung, Test oder unklar aussieht |
+| `2` | Umgebung: kein Urteil (Server aus, Anmeldung fehlgeschlagen, `credentials-missing`, Chrome fehlt, ein interner Fehler) | meldet Produktion als nicht erreichbar, oder schlägt erst nach mehreren Läufen in Folge Alarm |
+| `3` | abgewiesen, es lief nichts: Der Monitor selbst ist kaputt (Config, Testdatei, `auth-missing`, der Aufruf) | sagt es dem, der den Monitor pflegt |
+| `4` | der Test braucht Pflege: Aufzeichnung fehlt (`replay-missing`), ein Schritt hat sich seit der Aufnahme geändert (`replay-stale`), offene Schritte mit `--strict` (`replay-pending`) | sagt es dem, der die Tests pflegt |
+
+Bei mehreren Tests gilt der schlimmste Exit-Code: `2` vor `1` vor `4` vor `3` vor `0`. Ein Test, der an der Umgebung endete, verdeckt also im Exit-Code den gescheiterten Schritt eines anderen; jedes einzelne Ergebnis steht in den Berichten. Hält caw schon vor dem ersten Test an (ungültige Config, unbekannte Umgebung, ein Berichtspfad außerhalb des Projekts), endet es mit `3` und schreibt keinen Bericht. Ein fehlender Bericht zählt also wie `3`. Alle Codes: [Befehle › Fehlercodes](commands.de.md#fehlercodes).
+
+### Wiederholungen
+
+`--retry-env <n>` (1 bis 5) startet einen Test sofort noch einmal, wenn er mit Exit `2` endete, oder mit Exit `1` und der Einschätzung `environment`. Höchstens `n` weitere Versuche. Was die Einschätzung der Anwendung, dem Test oder nichts Klarem zuschreibt, wird nie wiederholt, ebenso wenig Exit `3` oder `4`. Es zählt der letzte Versuch. Jeder Versuch bleibt mit seinem eigenen Berichtspfad in den Berichten: JUnit listet sie in `<system-out>`, das JSON unter `attempts`, und Tabelle, JUnit und Zusammenfassung sagen etwa „bestanden im 2. Versuch (Umgebung)“.
+
+### Berichte als Alarmquelle
+
+**JUnit:** ein `<testcase>` je Test. Ein gescheiterter Schritt ist `<failure type="app|environment|test|unclear" message="S3: <grund>">`, mit Einschätzung, Befunden und Berichtspfad als Text. Alles andere, was nicht bestanden hat, ist `<error type="<code>">` mit dem Fehlercode, etwa `env-unreachable`, `auth-missing` oder `replay-stale`. Leite Alarme nach `type` weiter.
+
+**JSON:** `target`, `startedAt`, `exit` und je Test `id`, `status` (`pass`, `fail`, `error`, `rejected`, `needs-recording`), `exit`, `failedStep`, `reason`, `side` (`app`, `environment`, `test`, `unclear`), `strength`, `findings`, `code`, `steps`, `report` und `attempts`, jeweils soweit zutreffend. Zum Beispiel:
+
+```bash
+jq -r '.tests[] | select(.status != "pass") | "\(.id) \(.status) \(.side // .code) \(.failedStep // "")"' out/caw.json
+```
+
+Die Einschätzung ist eine Heuristik aus dem, was der Browser belegt. Sie gibt den Berichten ihren Typ und entscheidet über eine Wiederholung; aus einem Fehlschlag macht sie nie ein Bestanden.
+
+### Was auf Produktion anders ist
+
+- **In der Config markiert:** `"production": true` an der Umgebung. Ein Name, der nach Produktion aussieht (`prod`, `live`, `prod-eu` …), muss `true` oder `false` angeben; bei `prod`, `production`, `prd`, `live` und ähnlichen muss es `true` sein. Sonst ist die Config ungültig (Exit `3`).
+- **Kein Claude, kein Schreiben:** Eine Produktionsumgebung kann weder `agent` noch `writable` haben, auch kein `start`, `stop`, `reset` oder `ready`. `record`, `reproduce`, der Chat und `--explain` laufen dort also nicht; aufgenommen wird ein Test auf einer anderen Umgebung. `role login`, das Overlay und eine Adresse aus `CAW_URL__<ENV>` (`url-override`, Exit `3`) weist caw für sie ab, und `doctor` spricht sie nie an.
+- **Schreiben gesperrt:** Jeder Request, der nicht liest, wird abgebrochen und lässt den Schritt mit `write-blocked` scheitern ([Konfiguration › environments](configuration.de.md#environments)).
+- **Für andere Läufe unerreichbar:** Ein Lauf auf einer anderen Umgebung kann den Produktions-Host nicht auflösen.
+- **Weniger in `result.json`:** Die Schritte haben auf Produktion keine Wirkungszeilen, denn die nennen, was auf der Seite sichtbar ist.
+- **Lernen:** Vergleiche, Wirkungen und gelerntes Aussehen lernt caw nur auf der Umgebung, auf der ein Test aufgenommen wurde (`recordedOn` in der Aufzeichnung); verglichen wird auf jeder Umgebung. Ein Lauf auf Produktion lernt nichts und ändert keine Testdatei. Wirkungen (Bedienelemente, Requests, Antworten, Konsole) entstehen aus fünf gesunden Läufen und bleiben dann fest. Produktion hat andere Daten als die Umgebung der Aufnahme, eine Wirkung kann dort also abweichen, etwa eine Liste, die beim Lernen leer war. Was einen Schritt scheitern lässt und was nur warnt, steht unter [Wirkung je Aktion](#wirkung-je-aktion).
+
+### Grenzen
+
+- **WebSocket:** Requests, Vergleiche, Wirkungen und Einschätzung sehen die Requests der App, keine Nachrichten über einen WebSocket. Gesperrt sind diese Nachrichten auf Produktion auch nicht. Ein kaputtes Live-Update fällt nur auf, wenn eine Prüfung oder die Bedienelemente es bemerken.
+- **Zugang per IP-Adresse:** caw kennt keine Proxy-Einstellung: Chrome startet mit `--no-proxy-server`, damit die Host-Sperre hält. Der Rechner des Monitors muss Produktion direkt erreichen. Lässt Produktion nur bestimmte Adressen zu, lass den Monitor auf einem Rechner mit bekannter Adresse laufen und gib diese frei.
+- **Ein eigenes Konto für den Monitor:** Melde dich mit einem Konto an, das nur für den Monitor da ist und nicht mehr Rechte hat, als die Tests brauchen, nie mit einem persönlichen. Die Zugangsdaten kommen wie gewohnt ([Konfiguration › roles](configuration.de.md#roles)): `CAW_<ROLE>_USER__PROD`, `CAW_<ROLE>_PASSWORD__PROD` und für Einmalcodes `CAW_<ROLE>_TOTP__PROD`, als CI-Secrets oder in `caw/.env` auf dem Rechner des Monitors. `caw role login` weist Produktion ab, eine gespeicherte Sitzung (`signIn.type: session`) kann caw dort also nicht anlegen; ohne die Datei hält ein Lauf mit `auth-missing` an (Exit `3`).
+- **Aufbewahrung:** Jeder Testlauf und jeder Versuch hinterlässt einen Ordner in `.caw/runs/`. `keepRuns` (Standard 30) behält die neuesten und löscht ältere, wenn ein Lauf startet. Bei zehn Tests sind das drei Monitorläufe. Setz den Wert hoch oder kopiere weg, was du brauchst; `0` behält jeden Lauf und füllt die Platte.
+- **Personenbezogene Daten in Artefakten:** Produktion zeigt echte Daten. caw ersetzt das Passwort der Rolle, Einmalcodes, mit `secret: true` markierte Werte und HTTP-Basic-Zugangsdaten durch `••••`, in `report.md`, `result.json` und im Trace. Request-Namen enthalten keine Parameterwerte (außer `requestKeys`), und auf Produktion fehlen in `result.json` die Wirkungszeilen. Nicht maskiert: Screenshots (der Fehlerbildschirm, `visual.screenshots`), der Trace (`trace.zip` mit Seiteninhalten, Requests und den Cookies des Kontos) und Texte, die die App gezeigt hat. Die landen in Gründen, Befunden, Meldungen und Konsolenzeilen in `report.md`, `result.json` und den Berichten JUnit, JSON und Zusammenfassung. Lass `.caw/runs` auf dem Rechner des Monitors, lade keine Laufordner als CI-Artefakte hoch, und behandle die Berichte als Daten, die aus der Seite zitieren können.
 
 ## Kein Test wird unbemerkt schwächer: `audit`
 
