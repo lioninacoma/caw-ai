@@ -35,6 +35,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ### Changed
 - `credentials-missing` exits `3` (rejected) instead of `2` (environment): a missing secret is the setup's fault, so a monitor no longer reports it as production unavailable, and `--retry-env` no longer retries it.
+- Docs: READMEs, guide, commands, configuration and test files say "the agent" for the role ("der Agent" in German) and keep "Claude" for the product, its costs and the trademark notice; the contributor notes (E2E watchdog, tested frameworks and platforms) moved from the guide to CONTRIBUTING.md; how a look learns is stated exactly: style lines in every passed run outside CI on the recording environment, with a window too, the image per platform only in headless runs, each confirmed by a second run.
 - Labels have no brackets any more.
 - One design, Graphite, replaces the themes: one look with a new logo and the fonts Geist and Geist Mono, in a light and a dark mode that follow the system unless you pick one (`mode` in `prefs.json`: `system`, `light` or `dark`). Workbench, chat, report page, the `caw explore` card, the element picker and the terminal use it.
 - The workbench has no toolbars. The header shows the logo, `/ project / test`, a badge with what the run does, the facts, a status pill, the REC/PLAY/PAUSE chip and one ⋯ menu (also Ctrl+K) that lists every function with its key. Requests and console open from the counts under the app (F2, F3), and Esc closes that drawer first. A click on the title "Steps" or "Chat" collapses the pane.

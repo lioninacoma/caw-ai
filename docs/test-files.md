@@ -10,7 +10,7 @@ Each test has two YAML files:
 | `caw/recordings/<id>.yaml` | caw: how to replay it | yes, review it first |
 | `caw/drafts/<id>.yaml` | `reproduce`: a [draft](#drafts), plan and recording in one file | yes, until promoted |
 
-You write the test plan. `record` writes the recording; by hand you only add the [extras](#hand-written-additions) Claude does not record. `recording` and `knownMessages` belong in the recording only; in the test plan `validate` rejects them.
+You write the test plan. `record` writes the recording; by hand you only add the [extras](#hand-written-additions) the agent does not record. `recording` and `knownMessages` belong in the recording only; in the test plan `validate` rejects them.
 
 ## Test plan
 
@@ -41,7 +41,7 @@ steps:
     expect: The ticket shows the status "In progress".
 ```
 
-Write test plans in any language; Claude reads them like a tester would.
+Write test plans in any language; the agent reads them like a tester would.
 
 | Field | Required | |
 |---|---|---|
@@ -70,7 +70,7 @@ Per step:
 Tips:
 
 - One action and one result per step: "Open the list" / "The list is visible".
-- Write `do` and `expect` the way a tester would say it. Claude turns them into targets and checks.
+- Write `do` and `expect` the way a tester would say it. The agent turns them into targets and checks.
 - Put `{{runTag}}` in names you create. Every run gets its own value, so a run finds its own record and not one from yesterday.
 
 ## What invalidates a recording
@@ -82,7 +82,7 @@ npx caw run create-ticket --env local       # exit 4: S2 changed, prints the rec
 npx caw record create-ticket@S2 --env local # re-record from S2 to the end, S1 stays
 ```
 
-`notes`, `role`, `writes`, `environments`, `start`, `retry`, `design`, `needs`, `look` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, Claude may also delete, rename or reorder steps; the steps before it stay untouched.
+`notes`, `role`, `writes`, `environments`, `start`, `retry`, `design`, `needs`, `look` and `caw/caw.md` are not part of the hash. To add a step at the end, write it and `record` the test from that step (`record <test>@S7`). From the step you name on, the agent may also delete, rename or reorder steps; the steps before it stay untouched.
 
 ## Pending steps
 
@@ -119,7 +119,7 @@ to `caw/tests` and `caw/recordings` without `red` ([commands](commands.md#promot
 
 ## Target design
 
-A step can name the screen it should end on: `design: design/order-form.html`. Only people write `design` and `needs` into the test file (or have their Claude Code session link a design with `caw_design` when they ask); Claude's plan may not carry them, and when caw rewrites a step (fix, re-record) it keeps them.
+A step can name the screen it should end on: `design: design/order-form.html`. Only people write `design` and `needs` into the test file (or have their Claude Code session link a design with `caw_design` when they ask); the agent's plan may not carry them, and when caw rewrites a step (fix, re-record) it keeps them.
 
 After the step's check passed, caw renders the `.html` design in a separate headless browser without scripts or network, at the step's recorded viewport, and compares its structure with the app's page: controls (role, label, flags), view lines (headings, buttons, links, landmarks) and per control `font-size`, `font-weight`, `color`, `background-color`, `border-radius` and `padding`. List rows, free text, numbers and whether a field is filled are data and are left out. Something missing or a differing style fails the step with kind `design`; controls that only the app has are reported but do not fail. The replay goes on, the step gets no retry and learns no effects in that run. With `design.fail: []` in the config it only warns. A `.png` design is judged by pixels: caw captures the step's screen at its recorded viewport (in CSS pixels, unscaled also when the workbench scales the app down), masks what changes from run to run (the run tag, remembered values, numeric dates, list rows, list entries, cards and the config's `visualIgnore`), scales a @2x export to the screen's width and compares where both have pixels. A pixel differs when a color channel differs by more than `visual.tolerance`; more than `visual.designMaxRatio` differing pixels fails the step with kind `design`, and the difference image (`step-S3-diff.png`: red differs, blue is masked) lies in the run's `agent` folder.
 
@@ -131,7 +131,7 @@ When `caw/design` holds design tokens (`tokens.json` or `<name>.tokens.json`, DT
 
 ### Visual regression
 
-A step with `look: true` in the test file learns what it looks like, like the [effects](#recording): its style lines and an image per platform. Only people set `look`, by hand or with a tick in the chat (below); Claude's plan may not carry it, caw keeps it when it rewrites the step, and it never makes a step stale. A style line is a role and a style (the same styles as for a target design) with how many controls have it, `button ×3: font-size 13px, font-weight 400, color #ffffff, …`; names are left out, they carry data. The first healthy run outside CI stores the look, a second one that matches confirms it (`runs: 2`); a count that differs meanwhile becomes `×?` (any number is right), an image that differs starts over. In CI only with `--learn`.
+A step with `look: true` in the test file learns what it looks like, like the [effects](#recording): its style lines and an image per platform. Only people set `look`, by hand or with a tick in the chat (below); the agent's plan may not carry it, caw keeps it when it rewrites the step, and it never makes a step stale. A style line is a role and a style (the same styles as for a target design) with how many controls have it, `button ×3: font-size 13px, font-weight 400, color #ffffff, …`; names are left out, they carry data. A look learns when the step passes in a run outside CI on the environment it was recorded on; in CI only with `--learn`. The style lines learn in every such run, in a window too: the first stores them, the second confirms them (`runs: 2`); a count that differs meanwhile becomes `×?` (any number is right). The image learns only in headless runs, per platform: the first stores it, a second one whose image matches confirms it (`images: {<platform>: 2}`), an image that differs starts over.
 
 Pixels are learned and compared only in headless runs (`--headless`): there the viewport is fixed, the recorded one, else 1920 × 1080. A run with a window (the workbench, or a run without `--headless`) compares the style lines only and leaves the image as it is; `result.json` says so with `pixels: "headless-only"`. The look belongs to its basis, the previous step's recording time and the content of the step's design file: re-recording an earlier step or a new design makes it learn anew. Once learned, a run compares: a role and style that fewer or more controls have than learned, or that was not there (`1 button fewer with …`), or more than `visual.maxRatio` differing pixels (the difference image is `step-S3-look-diff.png`) fail the step with kind `visual` without stopping the replay (`design.fail` without `"visual"` only warns). A renamed button keeps its role and style: only its pixels show it. If the new look is right, **Adopt new look** in the chat takes over the styles of every step whose look changed in that run, at once, and marks the day; their images are deleted and the next two headless runs learn them anew. `caw audit` lists the adoption (`look-adopted`); taking `look: true` off a step whose look was learned is a weakening (`look-off`).
 
@@ -143,7 +143,7 @@ After `caw record`, the check run without AI suggests steps for `look: true`. Fo
 
 A portal's data changes all the time, so a look on it changes too. caw can freeze the data for the look: the JSON answers of the app's reads in one run, served to the app again in later headless runs, so the look is compared on the same data.
 
-**Freezing** is a person's click, never Claude's or the recording agent's, and never in CI (nobody there could confirm what is stored). After a passed run with a chat window whose steps with `look: true` passed, the card offers **Freeze data**. The next card says what is stored: the JSON answers of the reads up to the last look step, in `caw/recordings/<test>/fixed-data.json`, in the repository beside the recording; that they can contain personal data; and that checking data protection is up to you, caw only points it out. You choose how they are stored:
+**Freezing** is a person's click, never the agent's, and never in CI (nobody there could confirm what is stored). After a passed run with a chat window whose steps with `look: true` passed, the card offers **Freeze data**. The next card says what is stored: the JSON answers of the reads up to the last look step, in `caw/recordings/<test>/fixed-data.json`, in the repository beside the recording; that they can contain personal data; and that checking data protection is up to you, caw only points it out. You choose how they are stored:
 
 - **Anonymize**: with the command from `anonymize.command` in the config, if there is one (it gets the answers as JSON on stdin and writes them back as JSON on stdout; the data goes to that command only, never to an AI session). Otherwise caw replaces them itself, *when in doubt replaced*: every text is replaced, the same value the same way within one freeze. By pattern e-mails, IBANs, phone numbers (digits replaced, format kept) and dates (shifted by a fixed number of days, so their order stays); by key name names, streets, places, postal codes and birth dates; any other text becomes neutral text of the same length (case, spaces and punctuation in place). Ids (keys like `id`, `customerId`, UUIDs), numbers, booleans, `null` and all keys stay, and the values listed in `anonymize.keep`, e.g. currency codes or states the app interprets (`["EUR", "OPEN"]`). An anonymizer that changes an answer's structure is refused.
 - **Obfuscate**: stored not human-readable and decoded only when served. This only keeps people from reading the data by accident (in a diff, a search); it is no protection.
@@ -200,7 +200,7 @@ steps:
 |---|---|
 | `actions` | What to do. `dblclick` is one double-click, e.g. on a grid row that only opens that way; a double-click you demonstrate is recorded as one. The target of `click`, `dblclick`, `fill`, `type`, `upload` and `download` is one Playwright locator, written as Playwright prints it, without `page.`: role and full name with `exact: true`, label, text, `data-testid`, the row or dialog around it, `contentFrame()` for an iframe. caw parses it and never runs it as code; `validate` rejects anything else, snapshot references (`aria-ref=`), `:nth-child` and, for ExtJS, generated ids like `#button-1023`. ExtJS components can also be found with `locator('extjs=button[text="Save"]')` (`Ext.ComponentQuery`); a text or title with a comma never goes into such a query, because ComponentQuery splits at every comma. |
 | `hover`, `dragTo` | `hover` moves the pointer over its target, e.g. a menu that opens on hover. `dragTo` drags its target onto the locator in `to`, e.g. a card onto a column. |
-| `dialog` | The answer to a native dialog (`alert`, `confirm`, `prompt`, `beforeunload`) that the action opens: `{type, accept, value?, message?}`. `value` is the text for an accepted `prompt` (placeholders allowed); `message` is the dialog text at recording, digits as `#`. Replay answers the dialog that way. A dialog nobody recorded is dismissed and listed as warning `dialog-unexpected`; a recorded one that doesn't come is warning `dialog-missing`. When you demonstrate, the chat shows the dialog with OK and Cancel; Claude answers with `caw agent dialog accept|dismiss`. |
+| `dialog` | The answer to a native dialog (`alert`, `confirm`, `prompt`, `beforeunload`) that the action opens: `{type, accept, value?, message?}`. `value` is the text for an accepted `prompt` (placeholders allowed); `message` is the dialog text at recording, digits as `#`. Replay answers the dialog that way. A dialog nobody recorded is dismissed and listed as warning `dialog-unexpected`; a recorded one that doesn't come is warning `dialog-missing`. When you demonstrate, the chat shows the dialog with OK and Cancel; the agent answers with `caw agent dialog accept|dismiss`. |
 | `path` | The page the action was recorded on. If a target is missing, the run tells you it is on a different page. |
 | `locale`, `timezone`, `viewport` | Language, time zone and size of the app view while recording; replay uses them unless the config sets `browser.locale`/`browser.timezone`/`browser.viewport`. Headless replay opens at that size; in the workbench the app frame gets exactly that size, scaled down if the window is smaller. |
 | `check` | A JavaScript expression that must return `true`. It runs in the signed-in page, so read it before you commit. |
@@ -215,19 +215,19 @@ On replay a locator must find exactly one element that is visible and not covere
 
 ## Hand-written additions
 
-Claude doesn't record `download` and `secret`; you add them to `caw/recordings/<id>.yaml` yourself. `validate` checks them. A new recording of the step by Claude replaces its actions, so add `download` again afterwards; `secret` on a `remember` survives it.
+The agent doesn't record `download` and `secret`; you add them to `caw/recordings/<id>.yaml` yourself. `validate` checks them. A new recording of the step by the agent replaces its actions, so add `download` again afterwards; `secret` on a `remember` survives it.
 
-`upload` is recorded, but only with files from `caw/fixtures`: when you demonstrate, caw compares the file you choose by name, size and SHA-256 with the files there. A match turns the click that opened the file chooser into the `upload`; a file from anywhere else is named in the chat and not recorded, and nothing is copied. Put test files without personal data into `caw/fixtures` and choose them from there. Claude uploads with `upload <target> fixtures/<file>`, also only from there.
+`upload` is recorded, but only with files from `caw/fixtures`: when you demonstrate, caw compares the file you choose by name, size and SHA-256 with the files there. A match turns the click that opened the file chooser into the `upload`; a file from anywhere else is named in the chat and not recorded, and nothing is copied. Put test files without personal data into `caw/fixtures` and choose them from there. The agent uploads with `upload <target> fixtures/<file>`, also only from there.
 
 | Syntax | Meaning |
 |---|---|
 | `- upload: "getByRole('button', { name: 'Choose files', exact: true })"`<br>`  files: [fixtures/brief.pdf]` | Sets files on a file field. If the target is the field itself (e.g. `getByLabel('Attachment')`), it gets the files directly; if it is a button in front of a hidden field, its click opens the file chooser and that gets them. Paths are relative to the `caw` folder and start with `fixtures/`; never absolute, never outside `caw/fixtures`, never a link out of it; a missing file stops the step before the click |
 | `- download: "getByRole('button', { name: 'Export', exact: true })"`<br>`  file: "^report-.*\\.zip$"` | The click must start a download within the step's time limit, its file name must match the regular expression in `file` and the file must not be empty. Otherwise the step fails like an unmet check, without a second click. The tool deletes the file right after |
-| `- remember: {name: davPassword, code: "...", secret: true}` | Like `remember`, but from then on the value is masked as `••••` in the terminal, the workbench, `result.json`, `report.md` and everything Claude gets, like the role's password. The run itself keeps using the real value |
+| `- remember: {name: davPassword, code: "...", secret: true}` | Like `remember`, but from then on the value is masked as `••••` in the terminal, the workbench, `result.json`, `report.md` and everything the agent gets, like the role's password. The run itself keeps using the real value |
 | `getByRole('button', { name: /^Review( \\d+)?$/ })` | A regular expression instead of the exact name, for a live count or a changing part |
 | `knownMessages:`<br>`  - {pattern: "^Checksum \\S+ copied$"}` | Next to fixed texts: a pattern for a message with changing content, such as a checksum or a time. Like fixed texts it sees the message with digits as `#`, always in full; only the report shortens long messages. A new recording keeps patterns and adds no fixed text a pattern already covers |
 
-A check can read the clipboard: while a check, a `remember` or Claude's `eval` runs, the browser has `clipboard-read` for the environment's origin, at other times only `clipboard-write` (so the page under test cannot read your clipboard whenever it likes), e.g. `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (an expression that returns a promise is awaited).
+A check can read the clipboard: while a check, a `remember` or the agent's `eval` runs, the browser has `clipboard-read` for the environment's origin, at other times only `clipboard-write` (so the page under test cannot read your clipboard whenever it likes), e.g. `check: navigator.clipboard.readText().then((text) => text.startsWith('sha256:'))` (an expression that returns a promise is awaited).
 
 ## Placeholders
 
@@ -238,4 +238,4 @@ A check can read the clipboard: while a check, a `remember` or Claude's `eval` r
 | `{{date}}`, `{{date+7}}`, `{{isoDate-1}}` | Dates relative to the day of the run: `{{date}}` in the browser's locale (`de-DE` 23.11.2026, `en-US` 11/23/2026, `en-GB` 23/11/2026), `{{isoDate}}` as 2026-11-23. While recording, a date at most 60 days from the recording day in the locale's format or ISO becomes one of them; a date in another locale's order stays as it is |
 | `{{ticketnr}}` | A value read during the run with `remember` |
 
-Claude adds these while recording. In the test plan you only need `{{runTag}}`. In a locator they are filled per text, so a value with a quote stays one string and a value inside a regular expression is escaped.
+The agent adds these while recording. In the test plan you only need `{{runTag}}`. In a locator they are filled per text, so a value with a quote stays one string and a value inside a regular expression is escaped.

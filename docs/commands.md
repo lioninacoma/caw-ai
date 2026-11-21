@@ -4,9 +4,9 @@ English · [Deutsch](commands.de.md)
 
 Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `yarn`). `<env>` is a name from `environments` in `caw.config.json`, e.g. `local`. Tenants are environments of their own (`extends`).
 
-`--env` may be left out when the choice is clear: a test that fits exactly one environment takes it; otherwise, on your machine, the only environment among its candidates where Claude may work (for `record` of a new test, the only environment where Claude may work). In CI caw never guesses. The terminal names the choice, e.g. `Environment: local (the only one where Claude Code may work)`. If it is ambiguous, the command stops and lists the choices (exit 3).
+`--env` may be left out when the choice is clear: a test that fits exactly one environment takes it; otherwise, on your machine, the only environment among its candidates where the agent may work (for `record` of a new test, the only environment where the agent may work). In CI caw never guesses. The terminal names the choice, e.g. `Environment: local (the only one where Claude Code may work)`. If it is ambiguous, the command stops and lists the choices (exit 3).
 
-| Command | What it does | Claude? |
+| Command | What it does | Agent? |
 |---|---|---|
 | [`init`](#init) | Set up a project: look at the app, write config and `.mcp.json`; with `--explore-only` only suggest settings | no |
 | [`doctor`](#doctor) | Check machine, config, credentials and environments | no |
@@ -18,7 +18,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
 | [`open`](#open) | Open the app with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
-| [`reproduce`](#reproduce) | Claude reproduces a bug report on its own: report and, when reproduced, a draft in `caw/drafts` | yes |
+| [`reproduce`](#reproduce) | The agent reproduces a bug report on its own: report and, when reproduced, a draft in `caw/drafts` | yes |
 | [`role`](#role) | List, add or remove roles and their test users; `role login` stores a session (SSO) | no |
 | [`skill`](#skill) | Write or update the Claude Code skill `caw-attach` for your own session | no |
 | [`export`](#export) | The recorded test as a Playwright test that runs without caw | no |
@@ -47,7 +47,7 @@ Asks in the terminal whether the app needs a sign-in, then opens it in Chrome. S
 - `caw.config.json`
 - `caw/.env.example` with the credential variables per role
 - a `caw` entry in `.mcp.json` (to the installed copy if caw is in `node_modules` of the project or a parent folder up to the repository root, otherwise `npx caw-ai@<this version> mcp`; an `npx` entry is switched to the installed copy once there is one)
-- `caw/tests/` for your test plans and `caw/caw.md` for notes Claude reads in every run
+- `caw/tests/` for your test plans and `caw/caw.md` for notes the agent reads in every run
 - `.claude/skills/caw-attach/SKILL.md`, the skill for your own Claude Code session (see [`skill`](#skill))
 - `.gitignore` entries for `caw/.env`, `.caw/` and `caw/.auth/`
 
@@ -57,7 +57,7 @@ Anything it couldn't detect is set to `TODO`. `doctor` lists it, `validate` fail
 |---|---|
 | `--url <address>` | The app's address. Without it, `init` asks. |
 | `--env <name>` | Name of the environment. Default: `local` on this machine, else the first part of the host name (`staging.example.com` → `staging`); a name that looks like production becomes `production: true`. |
-| `--language <code>` | Team language for plans and Claude's texts. Default: the app's own language, asked. |
+| `--language <code>` | Team language for plans and the agent's texts. Default: the app's own language, asked. |
 | `--login`, `--no-login` | Answer the sign-in question up front (scripts). |
 | `--yes` | Don't wait for you to sign in, ask no questions. Good for apps without sign-in. With a sign-in nobody signs in: `signedInSelector` stays `TODO` and `start` stays `/` (or the path of `--url`). |
 | `--from <file>` | Use an existing `--explore-only` result instead of opening the app. If `caw/.explore.json` exists, `init` uses it automatically. |
@@ -99,7 +99,7 @@ With the [overlay extension](extensions/overlay.md) and ExtJS parts, doctor adds
 npx caw validate
 ```
 
-Checks `caw.config.json` and every file in `caw/tests/` without browser or Claude. Errors name file and line, all of them at once. Use it in CI and pre-commit hooks.
+Checks `caw.config.json` and every file in `caw/tests/` without a browser or the agent. Errors name file and line, all of them at once. Use it in CI and pre-commit hooks.
 
 `signIn` values still `TODO` fail validation (exit 3, code `config-invalid`): each one says what belongs there.
 
@@ -112,7 +112,7 @@ npx caw audit origin/main
 npx caw audit origin/main --json
 ```
 
-No test gets weaker unnoticed. caw itself keeps a check as long as its expected result stays, but a chat button, adopted advice or a hand edit can still weaken a test. `audit` compares the test data (`caw/tests`, `caw/recordings`, `caw.config.json`) at the merge base of `<ref>` and `HEAD` with your working tree and prints the changes as Markdown in the team language, ready for a PR comment. No browser, no Claude; it needs `git` on the `PATH` and, in CI, the history (`fetch-depth: 0`).
+No test gets weaker unnoticed. caw itself keeps a check as long as its expected result stays, but a chat button, adopted advice or a hand edit can still weaken a test. `audit` compares the test data (`caw/tests`, `caw/recordings`, `caw.config.json`) at the merge base of `<ref>` and `HEAD` with your working tree and prints the changes as Markdown in the team language, ready for a PR comment. No browser, no agent; it needs `git` on the `PATH` and, in CI, the history (`fetch-depth: 0`).
 
 **Weakened** (exit 1):
 
@@ -157,7 +157,7 @@ npx caw list
 npx caw list create-ticket
 ```
 
-Without a test: one row per test with its targets, its recording status (`recorded`, `pending (S4, S5)`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)` or `S4  Export  (pending)`. [Pending](test-files.md#pending-steps) is the unrecorded tail after the last recorded step. No browser, no Claude.
+Without a test: one row per test with its targets, its recording status (`recorded`, `pending (S4, S5)`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)` or `S4  Export  (pending)`. [Pending](test-files.md#pending-steps) is the unrecorded tail after the last recorded step. No browser, no agent.
 
 Drafts from [`reproduce`](#reproduce) in `caw/drafts` follow in a table of their own, with `red at S3 (run …)` once a run proved
 they fail while the bug is there, else `recorded, not red yet`; `list <draft>` shows its steps like a test's.
@@ -174,13 +174,13 @@ Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test i
 [`reproduce`](#reproduce) (`caw/drafts/<id>.yaml`) records the same way and stays in its one file; its last step must fail
 while the bug is there ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)). Chrome opens with the workbench and a chat:
 
-1. You demonstrate the flow or, for a new test, describe it in the chat; for an existing test Claude can also follow the test plan.
-2. Claude shows a plan in the chat. You approve it or ask for changes.
-3. Claude walks the flow and checks each step.
-4. caw replays the recording without Claude.
+1. You demonstrate the flow or, for a new test, describe it in the chat; for an existing test the agent can also follow the test plan.
+2. The agent shows a plan in the chat. You approve it or ask for changes.
+3. The agent walks the flow and checks each step.
+4. caw replays the recording without the agent.
 5. You choose "Adopt test plan". Only then are files written.
 
-Runs only on environments where Claude may work (`"agent": true`). `--env` can be left out if there is only one.
+Runs only on environments where the agent may work (`"agent": true`). `--env` can be left out if there is only one.
 
 | Option | |
 |---|---|
@@ -191,8 +191,8 @@ Runs only on environments where Claude may work (`"agent": true`). `--env` can b
 | `--reset` | Run the environment's `reset` before recording. |
 | `--agent local\|docker` | Where caw starts its agent. Default: `agent.mode` from the config, else `local`. |
 | `--attach [<key>]` | Your own Claude Code session answers instead, at no extra tokens, after `/caw-attach` there (see [the guide](guide.md#drive-it-from-claude-code)). Without `<key>` the only listening session; with several, name one by its key (`k7f2`) or the start of its session id. The window waits while none listens and says "not connected" when it goes. |
-| `--agent-timeout <duration>` | Time limit for Claude, default `60m`. |
-| `--max-actions <n>` | Limit on Claude's browser actions, default `maxActions` or 100. |
+| `--agent-timeout <duration>` | Time limit for the agent, default `60m`. |
+| `--max-actions <n>` | Limit on the agent's browser actions, default `maxActions` or 100. |
 | `--step-timeout <duration>` | Time limit per step in the check run, default `30s`. |
 
 ### From a step on
@@ -201,7 +201,7 @@ Runs only on environments where Claude may work (`"agent": true`). `--env` can b
 npx caw record create-ticket@S3 --env local
 ```
 
-Re-records the test from S3 to the end. Use it when the app changed on purpose from there on, after you changed a step's text by hand, or to add steps at the end. S1 and S2 replay without Claude, then Claude follows the old plan from S3 while you steer in the chat; there is no demonstration. From S3 on the plan may change: Claude can add, remove, rename or reorder steps. The steps before S3 and their recordings stay exactly as they are; steps no longer in the plan are deleted when you adopt. Baselines and network effects from S3 on are learned again on the next healthy run. `@S1` records the whole test, like `record create-ticket`.
+Re-records the test from S3 to the end. Use it when the app changed on purpose from there on, after you changed a step's text by hand, or to add steps at the end. S1 and S2 replay without the agent, then the agent follows the old plan from S3 while you steer in the chat; there is no demonstration. From S3 on the plan may change: the agent can add, remove, rename or reorder steps. The steps before S3 and their recordings stay exactly as they are; steps no longer in the plan are deleted when you adopt. Baselines and network effects from S3 on are learned again on the next healthy run. `@S1` records the whole test, like `record create-ticket`.
 
 There is no check run first: if a step fails because of a bug in the app, find the cause with `run` instead. To repair just the one step that failed, use "Fix step" in the chat of a run. `--role` and `--read-only` don't apply here (exit 3): the test keeps its metadata.
 
@@ -211,7 +211,7 @@ There is no check run first: if a step fails because of a bug in the app, find t
 npx caw run create-ticket --env local
 ```
 
-Replays the recording. No Claude, no tokens. On environments where Claude may work (`agent`) the chat sits next to the app: if a step fails you can ask Claude for the cause or have the step fixed right there.
+Replays the recording. No agent, no tokens. On environments where the agent may work (`agent`) the chat sits next to the app: if a step fails you can ask the agent for the cause or have the step fixed right there.
 
 Outside CI every run learns the missing baselines and effects of its passed steps into `caw/recordings/<test>.yaml`, headless as well as in the window, where the chat says which steps got them. In CI (`CI` set) a run changes no file, unless you pass `--learn`. The first line says which environment, which team language and whether the run learns, e.g. `Mode on local (team language en): with chat; learns: yes, missing baselines and effects into caw/recordings/create-ticket.yaml.` At the end a run that learned says what changed, e.g. `Changed: caw/recordings/create-ticket.yaml (baselines S2, S5)`, or `Test file unchanged.` After a failure it prints the reason of the failed step (also with `--headless` and in CI) and the next commands: a run with chat to find the cause and `open <test>@<step>` up to the entry of the failed step. The report path is also printed as a `file://` link. In `report.md`, steps after the failed one are `skipped`, and screenshots link to the run's `agent/` folder. `result.json` lists every step under `steps`: its status (`pass`, `fail`, `skipped`), why it failed (`kind`: `check`, `effect`, `target`, `state`, `external`), its time in seconds, its requests and the effects of its actions with any deviation from the learned ones; on production without the effects, as they show visible names.
 
@@ -222,18 +222,18 @@ A test that ends in [pending steps](test-files.md#pending-steps) (written, not r
 | `--overlay` | Only with the [overlay extension](extensions/overlay.md): local code over the deployed environment |
 | `--start` | As for `record`. |
 | `--reset`, `--no-reset` | The environment's `reset` runs once before the first writing test; `--reset` before the first test, `--no-reset` never. |
-| `--explain` | On errors or warnings Claude explains the cause without being asked. Costs tokens. |
-| `--no-chat` | Visible window, no chat, no Claude. Like CI. |
+| `--explain` | On errors or warnings the agent explains the cause without being asked. Costs tokens. |
+| `--no-chat` | Visible window, no chat, no agent. Like CI. |
 | `--headless` | No window, no chat. The recorded viewport (else 1920×1080). |
 | `--learn` | In CI: learn missing baselines and effects from passed steps into `caw/recordings/`. Outside CI every run does that anyway. |
 | `--strict` | Pending steps fail the run with exit 4 instead of passing without them, e.g. for a release pipeline. |
 | `--promote` | Only for a draft in `caw/drafts`: see [Promoting a draft](#promoting-a-draft). |
 | `--step-timeout <duration>` | Time limit per step, default `30s`. |
-| `--agent-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
-| `--max-actions <n>` | Limit on Claude's actions when fixing. |
+| `--agent-timeout <duration>` | Time limit for the agent when it investigates or fixes, default `60m`. |
+| `--max-actions <n>` | Limit on the agent's actions when fixing. |
 | `--agent local\|docker`, `--attach [<key>]` | As for `record`. |
 
-With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`. `record` and `open` need a person and are rejected in CI (exit 3), since nobody would take over the browser. On runners without a display add `--headless` or use `xvfb-run`.
+With `CI` set, `run` has no chat and never starts the agent, like `--no-chat`. `record` and `open` need a person and are rejected in CI (exit 3), since nobody would take over the browser. On runners without a display add `--headless` or use `xvfb-run`.
 
 ### Promoting a draft
 
@@ -281,13 +281,13 @@ npx caw open create-ticket --env local
 npx caw open create-ticket@S3 --env local
 ```
 
-Opens the app with workbench and chat: navigate, try things, develop with Claude. Learns nothing and writes no test file.
+Opens the app with workbench and chat: navigate, try things, develop with the agent. Learns nothing and writes no test file.
 
-- **Without a test** it opens the app's start page. If the environment has a form sign-in, you watch it in the app first, as the step "Sign in" under Preparation, then caw goes to the start page. Without `--env` it takes the only environment where Claude may work.
+- **Without a test** it opens the app's start page. If the environment has a form sign-in, you watch it in the app first, as the step "Sign in" under Preparation, then caw goes to the start page. Without `--env` it takes the only environment where the agent may work.
 - **`open <test>`** replays the whole test first, then the window is yours.
 - **`open <test>@S3`** stops at the entry of S3: S1 and S2 replay completely, of S3 only its navigation (`goto`, clicks, waiting for the page). Its inputs and its check stay open for you; the terminal says `Ready for S3 …: navigation done, inputs open`. If S3 has no inputs at all (e.g. only a submit click), none of S3 runs; if one of its clicks wrote data in earlier runs, it stops before that click; if S3 isn't recorded or is stale, none of it runs. The terminal names the reason. With S3 the first [pending step](test-files.md#pending-steps) this is where you build it; `open <test>@S4` behind a pending S3 is refused and names S3 (record it first), `open <test>` plays up to the last recorded step.
 
-With a test, `open` signs in with the test's role and replays without Claude; the step it stops at isn't judged. It runs the code of the environment.
+With a test, `open` signs in with the test's role and replays without the agent; the step it stops at isn't judged. It runs the code of the environment.
 
 | Option | |
 |---|---|
@@ -297,9 +297,9 @@ With a test, `open` signs in with the test's role and replays without Claude; th
 | `--design` | With `@S3`: plays through S3 (a pending S3: up to its entry) and lays its target design over the app at the recorded size, with the deviations listed below it; F7 shows and hides it. See [develop against a target design](guide.md#develop-against-a-target-design). |
 | `--agent local\|docker`, `--attach [<key>]`, `--agent-timeout <duration>`, `--max-actions <n>` | As for `record`. |
 
-After the handover, **F1** (or ⋯ → Open…, `/open` in the chat) in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without Claude. With Basic auth only tests of your own role.
+After the handover, **F1** (or ⋯ → Open…, `/open` in the chat) in the workbench opens "Open…": any test for this environment, and optionally a step. Without a step the test runs to its last step; with a step it lands at that step's entry, like `open <test>@<step>`. caw starts a new session (cookies and site storage cleared), signs in with the account of the test's role and plays it in the same window, without the agent. With Basic auth only tests of your own role.
 
-If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: Claude can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
+If restoring fails on something that does not always show up (a cookie banner already dismissed), ask in the chat: the agent can mark the click optional. What you accept goes into the test file right away. While recording, use `click <target> --optional`.
 
 ## reproduce
 
@@ -309,18 +309,18 @@ npx caw reproduce --file bug.md --from create-ticket@S3 --env local --headless
 some-command-that-prints-the-ticket | npx caw reproduce - --env local
 ```
 
-Claude reproduces a bug on its own, signed in as a test role: no plan to approve, nobody to answer, no decision. It reads and
+The agent reproduces a bug on its own, signed in as a test role: no plan to approve, nobody to answer, no decision. It reads and
 operates the page like a person would and ends with a verdict: reproduced, not reproduced, or unclear. The run folder then holds
-`report.md` (verdict, the bug report, what Claude observed and expected, its steps, the browser actions, screenshots, hard errors,
+`report.md` (verdict, the bug report, what the agent observed and expected, its steps, the browser actions, screenshots, hard errors,
 blocked or notable requests, a hint at the cause). When reproduced, `caw/drafts/<id>.yaml` holds a draft test in caw's format
-made from Claude's steps, with Claude's browser actions and their locators in its `notes`. Nothing goes into `caw/tests`: review
+made from the agent's steps, with the agent's browser actions and their locators in its `notes`. Nothing goes into `caw/tests`: review
 the draft, record it red with `caw record <id>`, fix the bug, `caw run <id>` shows it green, and `caw run <id> --promote` makes
 it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)).
 
 - **Where:** only on environments with `agent`, never on production (`reproduce-not-allowed`). Without `--env` the only such
   environment, or the test's with `--from`.
 - **Writing:** only where the environment is `writable`. Elsewhere caw aborts every write request like on production, and
-  Claude knows it may only read.
+  the agent knows it may only read.
 - **Never:** code changes, advice, changes to tests or the config. The browser reaches only the project's hosts (as whenever an
   agent can act in the window).
 - **The role:** the test's with `--from`, otherwise `--role` or the only one. A missing test user stops with `credentials-missing`.
@@ -328,10 +328,10 @@ it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)
 | Option | |
 |---|---|
 | `"<bug report>"`, `--file <file>`, `-` | The bug report: as the argument, from a file, or from stdin. Exactly one, at most 8000 characters. |
-| `--from <test>[@<S4>]` | Start in a test's state: its steps (up to the entry of S4) replay without Claude first. |
+| `--from <test>[@<S4>]` | Start in a test's state: its steps (up to the entry of S4) replay without the agent first. |
 | `--role <role>` | Without `--from`; not needed if the config has only one. |
 | `--ref <id>` | An id from another tool, e.g. a ticket (`TCK-1234`): up to 64 letters, digits and `. _ # : / -`, otherwise exit 3. caw never looks it up; it stands in `report.md`, `result.json` (`reproduce.ref`), the draft's notes and `caw_reproductions`. |
-| `--headless` | No window. With a window the workbench shows what Claude does; you can only watch or end it (Esc). |
+| `--headless` | No window. With a window the workbench shows what the agent does; you can only watch or end it (Esc). |
 | `--agent local\|docker`, `--attach [<key>]` | As for `record`. From your own Claude Code session (`caw_start` with `command: "reproduce"`) at no extra tokens. |
 
 Exit codes: `0` reproduced, `1` not reproduced or unclear, `2` environment error (also when the starting state of `--from` was
@@ -349,7 +349,7 @@ npx caw role login clerk --env dev    # signIn.type session: sign in by hand, st
 
 A role is a test user. caw never asks for, reads from a page, writes or shows user names and passwords: you put them into `caw/.env` yourself (or set them as CI secrets), under `CAW_<ROLE>_USER` and `CAW_<ROLE>_PASSWORD` (`CAW_<ROLE>_TOTP` for one-time codes, `__<ENV>` for another account on one environment, see [configuration](configuration.md#roles)). `role add` writes the role (`{}`) to `caw.config.json`, the variable names without values to `caw/.env.example` and `caw/.env` to `.gitignore`, and names the variables to fill in. `role remove` takes the role out of the config and names the role's lines left in `caw/.env`; deleting them is up to you.
 
-When `record`, `run` or `open` needs a role without a test user, it stops before Chrome or Claude start with `credentials-missing`, naming the variables. For `signIn.type: session` use `role login`: you sign in by hand and caw stores the session, never a password.
+When `record`, `run` or `open` needs a role without a test user, it stops before Chrome or the agent start with `credentials-missing`, naming the variables. For `signIn.type: session` use `role login`: you sign in by hand and caw stores the session, never a password.
 
 `role login` is for `signIn.type: session` (SSO, OAuth, MFA you can't automate). It opens Chrome on the sign-in and you sign in by hand. As soon as `signedInSelector` shows up, caw stores cookies and storage in `caw/.auth/<env>/<role>.json`. Run it again when the session expires.
 
@@ -385,7 +385,7 @@ Not exported: learned effects and network baselines, `knownMessages`, the consol
 
 ## mcp
 
-Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project -- npx caw-ai mcp`). You don't call it yourself. The server is named `caw`; on start it tells Claude what caw is for and to read `caw_guide` first. It gives your session these tools:
+Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project -- npx caw-ai mcp`). You don't call it yourself. The server is named `caw`; on start it tells the session what caw is for and to read `caw_guide` first. It gives your session these tools:
 
 | Tool | | Tokens |
 |---|---|---|
@@ -411,7 +411,7 @@ Results come as short text plus `structuredContent` (JSON).
 
 `caw agent <command>` with `snapshot`, `click`, `dblclick`, `hover`, `drag`, `dialog`, `fill`, `type`, `press`, `upload`, `eval`, `check`, `goto`, `reload`, `wait-ready`, `console`, `network`, `screenshot`, `remember`, `plan`, `ask-operator`, `chat`, `say`, `recording`, `finish`, `advise`, `task`, `url`.
 
-These are the only way Claude can touch the browser. They exist for the agent during `record` and in the chat; you won't need them. `npx caw agent --help` lists their arguments.
+These are the only way the agent can touch the browser. They exist for the agent during `record` and in the chat; you won't need them. `npx caw agent --help` lists their arguments.
 
 ## Exit codes
 
@@ -427,10 +427,10 @@ These are the only way Claude can touch the browser. They exist for the agent du
 
 | Variable | |
 |---|---|
-| `CAW_LANG` | `en` or `de`: your own language for caw's texts (CLI, workbench), instead of the team language (`language` in the config). Claude keeps writing plans in the team language. |
+| `CAW_LANG` | `en` or `de`: your own language for caw's texts (CLI, workbench), instead of the team language (`language` in the config). The agent keeps writing plans in the team language. |
 | `CAW_AI_HOME` | Folder for personal settings (`prefs.json`). Default `%APPDATA%\caw-ai`, `$XDG_CONFIG_HOME/caw-ai` or `~/.config/caw-ai`. |
 | `ANTHROPIC_API_KEY` | API key from the Claude Console for the `docker` agent. `local` uses your Claude Code login; with `--attach` your own session works. |
-| `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for Claude runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
+| `CAW_AGENT_MODEL`, `CAW_CLAUDE_BUDGET` | Model and budget in US dollars for agent runs (`--model`, `--max-budget-usd`); override `agent.model` and `agent.maxBudgetUsd`. |
 | `CAW_DOCKER` | Windows only: `windows` or `wsl` to pick the Docker route. |
 | `CI` | Set: no chat, `docker` agent only; `record` and `open` are rejected. |
 | `CAW_URL__<ENV>` | Another address for one environment in this process, e.g. a PR preview; never written to the config. See [configuration](configuration.md#url-override-for-pr-previews). |
