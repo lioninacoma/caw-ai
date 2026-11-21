@@ -89,21 +89,21 @@ test('workbench: a top-window POST answered with a redirect and a cookie loads t
     assert.deepEqual((await context.cookies()).map(({ name, value }) => `${name}=${value}`), ['session=abc']);
 });
 
-// Known open bug, red with the current code: rewriteOtherPages fetches the popup's first document from Node (route.fetch), which
-// does not resolve app.localhost (ENOTFOUND); the popup never opens. Chrome cannot fetch it instead through Playwright's API: while
-// that request waits there is no page yet to attach a CDP session to. Skipped until the fix is decided.
-test('local code: a popup of an app under .localhost gets its rewritten document', { skip: 'known: popup document fetched from Node (rewriteOtherPages)' }, async (t) => {
+// rewriteOtherPages fetches a popup's first document from Node (no page exists yet to ask Chrome through), which does not resolve
+// app.localhost. Owner decision: the popup then opens as the server delivers it, without the local code, and caw says so.
+test('local code: a popup of an app under .localhost opens without the local code, and caw names it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const context = await browser.newContext();
     t.after(() => context.close());
     const page = await context.newPage();
     const rewrite = async (html) => html.replace('<p id="app">', '<p id="app" data-rewritten="yes">');
-    await interceptDocuments(context, page, [host], { rewrite });
+    const unrewritten = [];
+    await interceptDocuments(context, page, [host], { rewrite, onUnrewritten: (url) => unrewritten.push(url) });
     await page.goto(`${base}/start`);
     assert.equal(await page.locator('#app').getAttribute('data-rewritten'), 'yes', 'the page itself');
-    const [popup] = await Promise.all([context.waitForEvent('page'), page.evaluate((address) => { window.open(address); }, `${base}/popup`)]);
-    await popup.waitForLoadState().catch(() => {});
-    const text = await popup.locator('#app').textContent({ timeout: 5000 }).catch((error) => `error: ${error.message.split('\n')[0]}`);
-    assert.equal(text, 'App /popup', 'the popup reached the app');
-    assert.equal(await popup.locator('#app').getAttribute('data-rewritten'), 'yes', 'the popup is rewritten');
+    const [popup] = await Promise.all([context.waitForEvent('page', { timeout: 10000 }), page.evaluate((address) => { window.open(address); }, `${base}/popup`)]);
+    await popup.waitForLoadState();
+    assert.equal(await popup.locator('#app').textContent({ timeout: 5000 }), 'App /popup', 'the popup reached the app');
+    assert.equal(await popup.locator('#app').getAttribute('data-rewritten'), null, 'the popup runs the deployed code');
+    assert.deepEqual(unrewritten, [`${base}/popup`]);
 });

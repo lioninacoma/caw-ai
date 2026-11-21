@@ -1,6 +1,7 @@
 // Texts: session (en). Keys prefixed with "session.".
 export default {
     // app-files
+    'session.overlay.unrewritten': 'A new tab of the app opened without your local code ({url}): caw could not fetch its page to swap the code in. Only that tab runs the deployed code.',
     'session.overlay.buildMissing': 'The build folder {dir} holds no build.',
     'session.overlay.buildBelow': 'The build is deeper than {dir}: set "build": "{path}" on the part in overlay.parts.',
     'session.overlay.buildStale': 'The build {dir} is older than your last change ({file}, {ago}).',

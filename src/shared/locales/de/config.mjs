@@ -443,6 +443,7 @@ export default {
     'config.test.fixed': 'recording.fixed braucht mode ({modes}) und frozen (JJJJ-MM-TT), wie caw es schreibt, wenn jemand die Daten einfriert.',
     'config.anonymize': 'anonymize muss ein Objekt sein mit command (eine Liste: Programm und Argumente, keine Shell) und/oder keep (eine Liste von Werten, die caws eigene Anonymisierung behält), etwa { "keep": ["EUR"] }',
     'config.report.warning.fixed-data': 'Feste Daten',
+    'config.report.warning.overlay': 'Lokaler Code',
     'config.report.fixedData': 'Feste Daten',
     'config.report.fixedData.steps': 'Aussehens-Schritte {steps}: {count} JSON-Antworten von Lesezugriffen.',
     'config.report.fixedData.anonymized': 'Anonymisiert gespeichert ({by}).',

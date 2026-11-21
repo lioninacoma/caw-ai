@@ -443,6 +443,7 @@ export default {
     'config.test.fixed': 'recording.fixed needs mode ({modes}) and frozen (YYYY-MM-DD), as caw writes it when a person freezes the data.',
     'config.anonymize': "anonymize must be an object with command (a list: program and arguments, no shell) and/or keep (a list of values caw's own anonymization keeps), e.g. { \"keep\": [\"EUR\"] }",
     'config.report.warning.fixed-data': 'Fixed data',
+    'config.report.warning.overlay': 'Local code',
     'config.report.fixedData': 'Fixed data',
     'config.report.fixedData.steps': 'Look steps {steps}: {count} JSON answers of reads.',
     'config.report.fixedData.anonymized': 'Stored anonymized ({by}).',

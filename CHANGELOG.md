@@ -67,6 +67,7 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ### Fixed
 - A form that posts into the workbench's top window (`target=_top`) on an app under a `*.localhost` name no longer replaces the workbench with the app's page: caw sent the POST from Node, which cannot resolve `.localhost` on Windows; it now goes out through Chrome (its host lock, proxy setting and cookies) and is caught at the response stage.
+- With `--overlay`, a new tab the app opens itself on an app under a `*.localhost` name no longer hangs: caw fetches that tab's page from Node to swap in the local code, which cannot resolve `.localhost`. The tab now opens with the deployed code, and the run warns that this tab ran without the local code.
 - A console error from a third-party script (a CDN widget, analytics) during an action no longer fails the step through its learned effects; like the hard-failure rules it is a warning.
 - Commands in the workbench, chat and report read as written: Geist Mono's ligatures drew `--` in one cell, so `caw run first-errand --env local` read like `first-errand--env`; they are off everywhere, and a command wraps only between words.
 - Esc while picking an element no longer crashes the page when the app has iframes.

@@ -1426,12 +1426,14 @@ export const openBrowserSession = async (spec) => {
         // With an overlay, every application page swaps the app's code tags for those of the local page (rewritePage), without
         // integrity: local code has different bytes. The rest of the page stays the server's.
         const rewrite = overlay === null ? undefined : overlay.rewritePage;
+        // A new tab of the app whose document caw cannot fetch: it opens with the deployed code, and the run says so.
+        const onUnrewritten = (url) => addWarning({ type: 'overlay', text: t('session.overlay.unrewritten', { url }) });
         const appHosts = [new URL(resolved.url).hostname];
         if (spec.embed === true) {
             // Embed only documents of the application itself, not further allowed hosts such as a sign-in service.
             // A live sign-in opens on the sign-in page, so the application never loads signed out.
             const firstUrl = liveSignIn ? `${resolved.url}${auth.path}` : startUrl;
-            bench = await openWorkbench(raw, { appUrl: firstUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite, refuse: refuseTopWrite });
+            bench = await openWorkbench(raw, { appUrl: firstUrl, hosts: appHosts, title: spec.title ?? 'caw', rewrite, refuse: refuseTopWrite, onUnrewritten });
             pages.embed(bench.page, bench.view);
             // A recorded (or configured) viewport pins the app frame to that size, as headless replay uses it (OPEN-15).
             if (region?.viewport !== undefined) await bench.viewport(region.viewport);
@@ -1468,7 +1470,7 @@ export const openBrowserSession = async (spec) => {
             }
             await bench.point(PREP, 'load', 'running');
         } else {
-            if (rewrite !== undefined) await interceptDocuments(raw, raw.pages()[0], appHosts, { rewrite });
+            if (rewrite !== undefined) await interceptDocuments(raw, raw.pages()[0], appHosts, { rewrite, onUnrewritten });
             await raw.pages()[0].goto(startUrl, { waitUntil: 'load' });
         }
         // Quiet according to the framework adapter; for the neutral adapter also no open requests of the page.

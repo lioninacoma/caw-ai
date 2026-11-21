@@ -90,7 +90,7 @@ export const rewriteBytes = async (bytes, rewrite, url) => {
  * @param rewrite   async (html, { url }) => html, optional: changes every HTML page of the application, e.g. for local code. `html` is a
  *                  byte string (latin1, see rewriteBytes): the page keeps its encoding, and whatever is not changed stays byte for byte.
  */
-export const interceptDocuments = async (context, page, hosts, { workbench, rewrite, refuse }) => {
+export const interceptDocuments = async (context, page, hosts, { workbench, rewrite, refuse, onUnrewritten = () => {} }) => {
     const cdp = await context.newCDPSession(page);
     const { frameTree } = await cdp.send('Page.getFrameTree');
     const topFrame = frameTree.frame.id;
@@ -209,15 +209,17 @@ export const interceptDocuments = async (context, page, hosts, { workbench, rewr
     const urls = hosts.flatMap((host) => [`*://${host}/*`, `*://${host}:*`]);
     const patterns = urls.flatMap((urlPattern) => ['Request', 'Response'].map((requestStage) => ({ urlPattern, resourceType: 'Document', requestStage })));
     await cdp.send('Fetch.enable', { patterns });
-    if (rewrite !== undefined) await rewriteOtherPages(context, page, hosts, rewrite);
+    if (rewrite !== undefined) await rewriteOtherPages(context, page, hosts, rewrite, onUnrewritten);
     return cdp;
 };
 
 /**
  * Popups and new tabs of the application: the CDP session above only covers one page. A context route applies to every new page
  * before its first request; it only changes documents of other pages, the own page is still answered via CDP.
+ * The document is fetched from Node (no page exists yet to ask Chrome through): a name only Chrome resolves (*.localhost via the
+ * host lock) fails there. Then the page opens as the server delivers it, without the local code, and `onUnrewritten` says so.
  */
-const rewriteOtherPages = (context, page, hosts, rewrite) => context.route((url) => hosts.includes(url.hostname), async (route) => {
+const rewriteOtherPages = (context, page, hosts, rewrite, onUnrewritten) => context.route((url) => hosts.includes(url.hostname), async (route) => {
     const request = route.request();
     // A popup's first navigation arrives before its frame exists: then it is never the own page, which has long existed.
     let own = false;
@@ -230,7 +232,14 @@ const rewriteOtherPages = (context, page, hosts, rewrite) => context.route((url)
         await route.fallback();
         return;
     }
-    const response = await route.fetch({ maxRedirects: 0 });
+    let response;
+    try {
+        response = await route.fetch({ maxRedirects: 0 });
+    } catch {
+        onUnrewritten(request.url());
+        await route.fallback().catch(() => {});
+        return;
+    }
     const isHtml = /text\/html/i.test(response.headers()['content-type'] ?? '');
     if (!isHtml || response.status() < 200 || response.status() >= 300) {
         await route.fulfill({ response });
