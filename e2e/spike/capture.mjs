@@ -7,8 +7,8 @@
 //                              [--mode raw|live] [--out e2e/spike/data/capture.jsonl] [--seed 1] [--port 18320]
 //
 // --mode raw (default): CI=1, so no run learns and the recording stays as written: every run is a raw observation and the
-//   methods learn offline. --mode live: outside CI, so the product learns as it does today (M0 live); the line then also
-//   carries how many recording lines the run changed, to check the offline M0 against the product.
+//   methods learn offline. --mode live: outside CI, so the product learns (M0 before the spike decision, M1 since); the
+//   line then also carries how many recording lines the run changed, to check the offline method against the product.
 // Healthy and regression runs are interleaved per environment, so slow drifts of the machine hit every kind alike.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';

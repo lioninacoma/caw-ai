@@ -6,14 +6,16 @@ import { createHash } from 'node:crypto';
 
 import { t } from '../shared/i18n.mjs';
 import { CATALOGS } from '../shared/locales/index.mjs';
-import { redactFor } from './secrets.mjs';
 
-/** Healthy runs until the effects count as learned. Until then, whatever fluctuates between runs is dropped. */
-export const LEARN_RUNS = 2;
+/**
+ * Healthy runs until the effects count as learned. Until then, whatever fluctuates between runs is dropped; after that
+ * they are frozen. Measured in the baseline spike (e2e/spike): five runs learned no flicker by chance.
+ */
+export const LEARN_RUNS = 5;
 const MAX_LINES = 12;
 const MAX_CONTROLS = 40;
 const MAX_LINE = 120;
-export const EFFECT_LISTS = ['controls', 'view', 'requests', 'responses', 'console'];
+export const EFFECT_LISTS = ['controls', 'requests', 'responses', 'console'];
 
 const shortHash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 10);
 
@@ -86,7 +88,7 @@ export function controlsProbe(withStyle = false) {
 
 /**
  * The ARIA tree as lines without values: links, field contents and long texts (mostly list data) are dropped, as are lines
- * without a name.
+ * without a name. For comparing against a target design (design.mjs); effects do not use it.
  */
 export const viewLines = (aria) => aria.split('\n')
     .map((line) => line.trimEnd())
@@ -135,14 +137,8 @@ const unique = (lines) => [...new Set(lines)].slice(0, MAX_LINES);
  */
 export const createEffects = ({ session }) => {
     const read = async () => {
-        const page = session.page();
-        const [controls, aria] = await Promise.all([
-            page.evaluate(controlsProbe).catch(() => null),
-            page.locator('body').ariaSnapshot({ timeout: 5000 }).catch(() => null),
-        ]);
-        // The effects end up in the recording, i.e. in the repository: without passwords.
-        const view = aria === null ? null : viewLines(await redactFor(page, aria, session.secrets?.() ?? []));
-        return { controls: controls?.map(neutral) ?? null, view };
+        const controls = await session.page().evaluate(controlsProbe).catch(() => null);
+        return controls?.map(neutral) ?? null;
     };
     let before = null;
     let netMark = 0;
@@ -156,21 +152,19 @@ export const createEffects = ({ session }) => {
         /** @returns the effect, lists without entries are omitted; null if the page could not be read */
         after: async () => {
             const after = await read();
-            if ((before?.controls ?? null) === null || after.controls === null || before.view === null || after.view === null) return null;
+            if (before === null || after === null) return null;
             const requests = (session.network?.since(netMark) ?? [])
                 .filter(({ outcome }) => outcome === 'ok' || outcome === 'http')
                 .map(({ name, status }) => `${name} ${status}`);
             const trail = session.trail?.since(trailMark) ?? [];
             const effect = {
-                controls: lineDelta(before.controls, after.controls),
-                view: lineDelta(before.view, after.view),
+                controls: lineDelta(before, after),
                 requests: unique(requests),
                 responses: unique(trail.filter(({ kind }) => kind === 'response').map(({ line }) => line)),
                 console: unique(trail.filter(({ kind }) => kind === 'console').map(({ line }) => neutral(line).slice(0, MAX_LINE))),
             };
             // Controls are short lines and the most reliable signal: a form quickly has more than a dozen of them.
             effect.controls = effect.controls.slice(0, MAX_CONTROLS);
-            effect.view = effect.view.slice(0, MAX_LINES);
             return Object.fromEntries(Object.entries(effect).filter(([, lines]) => lines.length > 0));
         },
     };
@@ -202,26 +196,6 @@ export const learnEffects = (recorded, observed) => {
 };
 
 /**
- * Self-cleanup: what was missing in a passed run in a list that does not decide on failure apparently fluctuates and
- * drops out of the learned effects. Lists from `fail` stay: a deviation there is a finding.
- * @returns the new recording.effects or null if there is nothing to drop
- */
-export const pruneEffects = (recorded, deviation, fail = DEFAULT_EFFECT_FAIL) => {
-    if (recorded === undefined || deviation === undefined || deviation === null || deviation.lists.some((list) => fail.includes(list))) return null;
-    const drop = Object.entries(deviation.byList ?? {}).filter(([list]) => !fail.includes(list));
-    if (drop.every(([, lines]) => lines.length === 0)) return null;
-    const actions = recorded.actions.map((entry) => {
-        if (entry.action !== deviation.number) return entry;
-        const kept = Object.fromEntries(EFFECT_LISTS.map((list) => {
-            const gone = new Set(drop.find(([name]) => name === list)?.[1] ?? []);
-            return [list, (entry[list] ?? []).filter((line) => !gone.has(line))];
-        }).filter(([, lines]) => lines.length > 0));
-        return { action: entry.action, ...kept };
-    }).filter((entry) => Object.keys(entry).length > 1);
-    return { ...recorded, actions };
-};
-
-/**
  * Do the effects deviate from the learned ones? Missing entries count for everything except the console, where new ones count.
  * @returns { missing, extra, instead } or null
  */
@@ -235,8 +209,8 @@ export const effectChange = (recorded, observed) => {
     const byList = Object.fromEntries(EFFECT_LISTS.filter((list) => list !== 'console')
         .map((list) => [list, (recorded[list] ?? []).filter((line) => !(now[list] ?? []).includes(line) && counts(list, line))]));
     const extra = (now.console ?? []).filter((line) => !(recorded.console ?? []).includes(line));
-    // What happened instead, from the same lists: it shows how the form rearranges itself now.
-    const instead = ['controls', 'view'].flatMap((list) => (now[list] ?? []).filter((line) => !(recorded[list] ?? []).includes(line))).slice(0, 6);
+    // What happened instead, among the controls: it shows how the form rearranges itself now.
+    const instead = (now.controls ?? []).filter((line) => !(recorded.controls ?? []).includes(line)).slice(0, 6);
     return summarized({ byList, extra: extra.slice(0, 5), instead });
 };
 
@@ -295,11 +269,9 @@ export const isEffectCause = (reason) => {
 };
 
 // Controls appear as changes in the effects: "+ x" appears through the action, "- x" disappears. Spelled out for humans.
-// The line itself may come from a snapshot ("- link \"x\":"): the leading dash and trailing colon are not part of the name.
 const changeWords = (line) => {
-    const plain = (text) => text.replace(/^- /, '').replace(/:$/, '');
-    if (line.startsWith('+ ')) return t('run.effect.appears', { what: plain(line.slice(2)) });
-    if (line.startsWith('- ')) return t('run.effect.disappears', { what: plain(line.slice(2)) });
+    if (line.startsWith('+ ')) return t('run.effect.appears', { what: line.slice(2) });
+    if (line.startsWith('- ')) return t('run.effect.disappears', { what: line.slice(2) });
     return line;
 };
 

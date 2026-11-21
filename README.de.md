@@ -322,7 +322,7 @@ läuft auf Playwright. caw ergänzt, was generierter Testcode nicht mitbringt:
   Erwartung entscheidest du.
   Zeigen die Belege auf deine Anwendung, nennt caw die Ursache, statt eine Änderung am Test anzubieten.
 - **Einordnung ohne KI.** Ein Fehlschlag wird anhand von Requests, Konsole und gelernten Wirkungen als Test, Anwendung oder
-  Umgebung eingeordnet (oder als unklar); haben zwei gesunde Läufe die Wirkungen eines Schritts gelernt, lassen geänderte
+  Umgebung eingeordnet (oder als unklar); haben fünf gesunde Läufe die Wirkungen eines Schritts gelernt, lassen geänderte
   Bedienelemente oder Konsolenmeldungen ihn standardmäßig scheitern.
 - **Ein Rahmen für den Agenten** (wenn caw ihn startet): nur lesende Werkzeuge oder ein Container mit Firewall, ein Browser,
   der nur deine Umgebungen erreicht, Produktion nur lesend.

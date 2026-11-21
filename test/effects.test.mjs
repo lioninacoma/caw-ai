@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { diagnose } from '../src/host/diagnose.mjs';
-import { deviationText, effectChange, failsStep, jsonShape, learnEffects, lineDelta, pruneEffects, responseLine, viewLines, withoutLate } from '../src/host/effects.mjs';
+import { EFFECT_LISTS, LEARN_RUNS, deviationText, effectChange, failsStep, jsonShape, learnEffects, lineDelta, responseLine, viewLines, withoutLate } from '../src/host/effects.mjs';
 import { learnedEffects, replayOf, withEffects } from '../src/host/replay.mjs';
 import { parseTest, renderTest, stepHash } from '../src/host/test-file.mjs';
 import { composeTest } from '../src/host/test-plan.mjs';
 
-test('Effects: ARIA lines without links, field contents, long texts and numbers', () => {
+test('View lines (target designs): ARIA lines without links, field contents, long texts and numbers', () => {
     const aria = [
         '- textbox "Bereich*": Kammerbeitrag',
         '- textbox "Kategorie*" [disabled]',
@@ -29,12 +29,17 @@ test('Effects: responses as shape without values, with business error markers', 
     assert.match(responseLine('GET /a', { success: false, fehler: 'x' }), /success=false fehler=filled/);
 });
 
-test('Effects: learning keeps what was equal in all healthy runs and is fixed afterwards', () => {
-    const first = learnEffects(undefined, new Map([[1, { controls: ['+ input "A" filled', '+ button "Rauschen"'], console: ['log: a'] }], [2, { view: ['+ - dialog "X"'] }]]));
-    assert.deepEqual(first, { runs: 1, actions: [{ action: 1, controls: ['+ input "A" filled', '+ button "Rauschen"'], console: ['log: a'] }, { action: 2, view: ['+ - dialog "X"'] }] });
-    const second = learnEffects(first, new Map([[1, { controls: ['+ input "A" filled'], console: ['log: b'] }], [2, { view: ['+ - dialog "Y"'] }]]));
+test('Effects: learning keeps what was equal in all five healthy runs and is frozen afterwards', () => {
+    assert.equal(LEARN_RUNS, 5);
+    assert.deepEqual(EFFECT_LISTS, ['controls', 'requests', 'responses', 'console'], 'no view lines');
+    const first = learnEffects(undefined, new Map([[1, { controls: ['+ input "A" filled', '+ button "Rauschen"'], console: ['log: a'] }], [2, { requests: ['GET /x 200'] }]]));
+    assert.deepEqual(first, { runs: 1, actions: [{ action: 1, controls: ['+ input "A" filled', '+ button "Rauschen"'], console: ['log: a'] }, { action: 2, requests: ['GET /x 200'] }] });
+    const second = learnEffects(first, new Map([[1, { controls: ['+ input "A" filled'], console: ['log: b'] }], [2, { requests: ['GET /y 200'] }]]));
     assert.deepEqual(second, { runs: 2, actions: [{ action: 1, controls: ['+ input "A" filled'], console: ['log: a', 'log: b'] }] });
-    assert.equal(learnEffects(second, new Map()), null);
+    let learned = second;
+    for (let run = 3; run <= LEARN_RUNS; run += 1) learned = learnEffects(learned, new Map([[1, { controls: ['+ input "A" filled'] }]]));
+    assert.deepEqual(learned, { runs: LEARN_RUNS, actions: [{ action: 1, controls: ['+ input "A" filled'], console: ['log: a', 'log: b'] }] });
+    assert.equal(learnEffects(learned, new Map()), null);
 });
 
 test('Effects: a deviation shows what is missing, what happened instead, and what is new in the console', () => {
@@ -55,15 +60,12 @@ test('Effects: a deviation shows what is missing, what happened instead, and wha
     assert.match(text, /Bleibt jetzt aus: input "Kategorie\*" empty erscheint/);
     assert.match(text, /Stattdessen: input "Bereich\*" filled erscheint/);
     assert.match(text, /Neu in der Konsole: error: Laden fehlgeschlagen/);
-    // Snapshot lines bring their own leading dash and, for links, a trailing colon.
-    const snapshot = deviationText({ step: 'S1', number: 1, label: 'click', missing: ['+ - option "Alle"', '- - button "Weiter"'], instead: ['+ - link "Akte 1":'], extra: [] });
-    assert.match(snapshot, /Bleibt jetzt aus: option "Alle" erscheint; button "Weiter" verschwindet\. Stattdessen: link "Akte 1" erscheint\./);
     // Failing: only learned, and only in the lists from `fail`; the default is controls and console.
     assert.deepEqual(change.lists, ['controls', 'console']);
     assert.equal(failsStep({ ...change, learned: false }), false);
     assert.equal(failsStep({ ...change, learned: true }), true);
-    assert.equal(failsStep({ ...change, learned: true, lists: ['view', 'requests'] }), false);
-    assert.equal(failsStep({ ...change, learned: true, lists: ['view'] }, ['view']), true);
+    assert.equal(failsStep({ ...change, learned: true, lists: ['responses', 'requests'] }), false);
+    assert.equal(failsStep({ ...change, learned: true, lists: ['requests'] }, ['requests']), true);
     const strict = diagnose({ failed: { id: 'S2', reason: 'x' }, deviation: { step: 'S2', number: 3, label: 'press Enter', ...change, fails: true } });
     assert.deepEqual([strict.side, strict.strength], ['app', 'clear']);
     // Response shape: only a different shape of the same request counts, a missing response does not.
@@ -95,22 +97,14 @@ test('Effects: learned only from passed steps without a learned deviation, on th
     assert.equal(filled.steps[1], spec.steps[1]);
 });
 
-test('Effects: noise outside `fail` drops out of the learned effects after a fully healthy run', () => {
-    const recorded = { runs: 2, actions: [{ action: 1, controls: ['+ x'], requests: ['GET /docs 200', 'GET /a 200'] }, { action: 2, view: ['+ - dialog "X"'] }] };
+test('Effects: a deviation outside `fail` in a fully healthy run leaves the learned effects as they are', () => {
+    const recorded = { runs: LEARN_RUNS, actions: [{ action: 1, controls: ['+ x'], requests: ['GET /docs 200', 'GET /a 200'] }] };
     const noise = effectChange(recorded.actions[0], { controls: ['+ x'], requests: ['GET /a 200'] });
-    assert.deepEqual(pruneEffects(recorded, { ...noise, number: 1 }), { runs: 2, actions: [{ action: 1, controls: ['+ x'], requests: ['GET /a 200'] }, recorded.actions[1]] });
-    // If a list becomes empty, the action disappears.
-    const gone = effectChange(recorded.actions[1], {});
-    assert.deepEqual(pruneEffects(recorded, { ...gone, number: 2 }).actions, [recorded.actions[0]]);
-    // Controls and console are findings, not noise.
-    const real = effectChange(recorded.actions[0], { requests: ['GET /a 200'] });
-    assert.equal(pruneEffects(recorded, { ...real, number: 1 }), null);
-    assert.equal(pruneEffects(recorded, { ...noise, number: 1 }, ['requests']), null);
-    // In a run: only with `prune`, i.e. fully healthy and without retries.
+    assert.deepEqual(noise.lists, ['requests']);
     const spec = { steps: [{ id: 'S1', name: 'S1', do: '', expect: 'x', recording: { hash: 'h', recordedOn: 'a/dev', actions: [], check: 'c', effects: recorded } }] };
-    const args = { spec, results: new Map([['S1', { status: 'pass' }]]), effects: new Map(), deviations: new Map([['S1', { ...noise, number: 1, learned: true }]]), target: 'a/dev' };
-    assert.equal(learnedEffects(args).size, 0);
-    assert.deepEqual(learnedEffects({ ...args, prune: true }).get('S1').actions[0].requests, ['GET /a 200']);
+    const observed = new Map([['S1', new Map([[1, { controls: ['+ x'], requests: ['GET /a 200'] }]])]]);
+    const found = learnedEffects({ spec, results: new Map([['S1', { status: 'pass' }]]), effects: observed, deviations: new Map([['S1', { ...noise, number: 1, learned: true }]]), target: 'a/dev' });
+    assert.equal(found.size, 0, 'no pruning: the missing request stays a warning in every later run');
 });
 
 test('Test file: recording.effects is read and written, the hash stays', () => {
@@ -123,11 +117,13 @@ test('Test file: recording.effects is read and written, the hash stays', () => {
     assert.deepEqual(back.steps[0].recording.effects, effects);
     assert.equal(stepHash(back.steps[0]), stepHash(step));
     assert.throws(() => parseTest(text.replace('runs: 2', 'runs: null')), /recording\.effects/);
+    // View lines are no effect list: a recording that has them is invalid.
+    assert.throws(() => parseTest(text.replace('requests:', 'view:')), /recording\.effects/);
 });
 
 test('Effects only apply to the state before: after fixing the previous step they are learned anew', () => {
     const step = (id, recordedAt, effects) => ({ id, recording: { recordedOn: 'a/dev', recordedAt, actions: [], check: 'true', ...(effects === undefined ? {} : { effects }) } });
-    const learned = { runs: 2, basis: 'S1-alt', actions: [{ action: 1, controls: ['alt'] }] };
+    const learned = { runs: LEARN_RUNS, basis: 'S1-alt', actions: [{ action: 1, controls: ['alt'] }] };
     const observed = new Map([['S2', new Map([[1, { controls: ['neu'] }]])]]);
     const results = new Map([['S1', { status: 'pass' }], ['S2', { status: 'pass' }]]);
     const fixed = { id: 't', steps: [step('S1', 'S1-neu'), step('S2', 'S2-x', learned)] };

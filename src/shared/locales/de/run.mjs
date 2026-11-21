@@ -244,7 +244,7 @@ export default {
     'run.flow.adviceInReport': ' Die Empfehlungen stehen im Bericht.',
     'run.flow.effectForgotten': 'Gelernte Wirkung von {id} vergessen: {file}. Bitte prüfen und committen.',
     'run.flow.baselinesAdded': 'Vergleichswerte für {ids} eingetragen: {file}. Bitte prüfen und committen.',
-    'run.flow.effectsLearned': 'Wirkung je Aktion für {ids} gelernt oder bereinigt: {file}. Bitte prüfen und committen.',
+    'run.flow.effectsLearned': 'Wirkung je Aktion für {ids} gelernt: {file}. Bitte prüfen und committen.',
     'run.flow.rerunning': 'Erneut testen mit der geänderten Anwendung ...',
 
     // Developing in a state

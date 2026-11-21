@@ -11,7 +11,6 @@ import { t } from '../shared/i18n.mjs';
 import { RECORDING_DIR } from '../shared/names.mjs';
 import { roleAndName } from './accessible-name.mjs';
 import { compareStructure, cssHex, designPath, listDesigns, renderDesign, structureOf } from './design.mjs';
-import { LEARN_RUNS } from './effects.mjs';
 
 /**
  * Thresholds until measured (e2e/spike/visual): conservative, so that noise between runs does not fail a step.
@@ -22,6 +21,9 @@ import { LEARN_RUNS } from './effects.mjs';
 export const DEFAULT_VISUAL = { tolerance: 24, maxRatio: 0.01, designMaxRatio: 0.03 };
 /** The config's visual settings with the defaults. */
 export const visualSettings = (config = {}) => ({ ...DEFAULT_VISUAL, screenshots: false, regression: false, ...(config.visual ?? {}), ignore: config.visualIgnore ?? [] });
+
+/** Healthy runs until a look counts as learned. Not the effects' number: the baseline spike did not measure looks. */
+const LEARN_RUNS = 2;
 
 // A capture waits this long for its masks; the page is quiet after a passed check, it only has to measure.
 const MASK_TIMEOUT_MS = 5000;

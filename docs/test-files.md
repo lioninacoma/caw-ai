@@ -181,7 +181,7 @@ steps:
 | `check` | A JavaScript expression that must return `true`. It runs in the signed-in page, so read it before you commit. |
 | `remember` | Reads a value the run creates, here the ticket number. Its `code` runs in the signed-in page like `check`, so read it before you commit. Later steps use it as `{{ticketnr}}`. Any value that is not empty; one shorter than four characters (an id like `7`) is replaced only in typed values, URLs, string literals of checks and target texts that are exactly that value. |
 | `network` | Requests per step from a healthy run. Used to tell app bugs from environment problems. |
-| `effects` | What each action changed on the page, learned from healthy runs (`runs` counts them). A change fails the step or shows as a warning. |
+| `effects` | What each action changed on the page, learned from the first five healthy runs (`runs` counts them), then frozen. A change fails the step or shows as a warning. |
 | `visual` | The step's learned look ([visual regression](#visual-regression)): `styles` (lines), `images` (runs per platform; the PNG is `caw/recordings/<test>/<step>.<platform>.png`, commit it with the recording), `basis`, and `adopted` (the day a person adopted it). |
 | `knownMessages` | Messages that were visible during recording and are not errors. |
 

@@ -502,9 +502,10 @@ scenario('D4b', 'A third-party script logging a console error during an action i
     networkConfig();
     writeSpaTest(root, 'gql-list', { environments: ['tp'], recordedOn: 'tp' });
     await poke('tp', '/test/widget-console-off');
-    const learning = [await go(['gql-list', '--env', 'tp', '--learn']), await go(['gql-list', '--env', 'tp', '--learn'])];
+    const learning = [];
+    for (let count = 0; count < 5; count += 1) learning.push(await go(['gql-list', '--env', 'tp', '--learn']));
     const runs = loadTest(root, 'gql-list').steps[0].recording?.effects?.runs ?? 0;
-    verify('(1) two healthy runs learn the click\'s effects', learning.every(({ exit }) => exit === 0) && runs >= 2, `${learning.map(shown).join(' | ')} runs=${runs}`);
+    verify('(1) five healthy runs learn the click\'s effects', learning.every(({ exit }) => exit === 0) && runs >= 5, `${learning.map(shown).join(' | ')} runs=${runs}`);
     await poke('tp', '/test/widget-console-on');
     const noisy = await go(['gql-list', '--env', 'tp']);
     await poke('tp', '/test/widget-console-off');
@@ -857,14 +858,14 @@ scenario('U6', 'Viewport: headless replay uses the recorded 600×800 and takes t
 
 scenario('D2', 'Shared environment with foreign data: look-alikes and a changing order break neither the test nor its learned effects', spa, async () => {
     actionConfig();
-    // Recorded on shared: baselines and effects are learned there (two healthy runs fix an effect), then compared.
+    // Recorded on shared: baselines and effects are learned there (five healthy runs fix an effect), then compared.
     writeSpaTest(root, 'create-find', { environments: ['local', 'shared'], recordedOn: 'shared' });
-    const first = await go(['create-find', '--env', 'shared', '--learn']);
-    const second = await go(['create-find', '--env', 'shared', '--learn']);
+    const learning = [];
+    for (let count = 0; count < 5; count += 1) learning.push(await go(['create-find', '--env', 'shared', '--learn']));
     const learned = loadTest(root, 'create-find').steps[0].recording?.effects?.runs ?? 0;
-    const third = await go(['create-find', '--env', 'shared']);
-    verify('each run finds its own ticket among look-alikes ("Ticket", "Ticket CAW-…") in another order', [first, second, third].every(({ exit }) => exit === 0), [first, second, third].map(shown).join(' | '));
-    verify('effects learned on shared (2 runs)', learned >= 2, String(learned));
+    const compared = await go(['create-find', '--env', 'shared']);
+    verify('each run finds its own ticket among look-alikes ("Ticket", "Ticket CAW-…") in another order', [...learning, compared].every(({ exit }) => exit === 0), [...learning, compared].map(shown).join(' | '));
+    verify('effects learned on shared (5 runs)', learned >= 5, String(learned));
     verify('no effect deviation from the foreign rows', !/effect/.test(warningsOf('create-find')), warningsOf('create-find'));
 });
 

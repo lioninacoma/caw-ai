@@ -17,7 +17,7 @@ import { selfAbort } from './diagnose.mjs';
 import { DATE_NAMES, fillDates, markDates, zonedNow } from './dates.mjs';
 import { dialogFindings, recordedDialog } from './dialogs.mjs';
 import { DEFAULT_DESIGN_FAIL, designText } from './design.mjs';
-import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, pruneEffects, stepDeviation, withoutLate } from './effects.mjs';
+import { DEFAULT_EFFECT_FAIL, LEARN_RUNS, createEffects, deviationText, effectCause, effectChange, failsStep, isEffectCause, learnEffects, stepDeviation, withoutLate } from './effects.mjs';
 import { summarizeRequests } from './network-log.mjs';
 import { ambiguityText, elementHint, explainLocator, explainText, frameworkOf, readPageState, waitForLocator } from './framework/index.mjs';
 import { escapeRegex, isPositional, locatorLabel, locatorText, mapStrings, parseLocator, printLocator, renamedLocator } from './locator.mjs';
@@ -1514,23 +1514,16 @@ export const missingBaselines = ({ spec, results, requests, target }) => {
 
 /**
  * Learned effects per action from passed steps, only on the recording target. After LEARN_RUNS healthy runs they are
- * fixed. A step with a deviation does not learn: otherwise a bug would vanish from the comparison instead of standing out.
+ * frozen: only adopting or forgetting them changes them. A step with a deviation does not learn: otherwise a bug would
+ * vanish from the comparison instead of standing out.
  * @returns Map step -> recording.effects
  */
-export const learnedEffects = ({ spec, results, effects, deviations, target, prune = false, fail = DEFAULT_EFFECT_FAIL }) => {
+export const learnedEffects = ({ spec, results, effects, deviations, target }) => {
     const found = new Map();
     for (const step of spec.steps) {
         const { recording } = step;
         if (recording === undefined || recording.recordedOn !== target || results.get(step.id)?.status !== 'pass') continue;
-        const deviation = deviations?.get(step.id);
-        // `prune`: the whole run passed without retries. If a step then deviated only in lists outside `fail`, that is
-        // noise and drops out of what was learned.
-        if (deviation?.learned) {
-            const pruned = prune ? pruneEffects(currentEffects(spec, step), deviation, fail) : null;
-            if (pruned !== null) found.set(step.id, withBasis(spec, step, pruned));
-            continue;
-        }
-        if (!effects?.has(step.id)) continue;
+        if (deviations?.get(step.id)?.learned || !effects?.has(step.id)) continue;
         const learned = learnEffects(currentEffects(spec, step), effects.get(step.id));
         if (learned !== null) found.set(step.id, withBasis(spec, step, learned));
     }

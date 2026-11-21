@@ -350,7 +350,7 @@ With design tokens in `caw/design` every run also lints each reached state: colo
 
 ### Visual regression
 
-Once a screen is built, `"visual": { "regression": true }` keeps it that way: caw learns each passed step's look over two healthy runs, like the effects, and a later run whose styles or pixels changed fails that step with kind `visual`. If the change is intended, **Adopt new look** in the chat takes it over; `caw audit` lists that. Limits: the image is per platform (fonts render differently on Windows and Linux), data areas are masked rather than compared, and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
+Once a screen is built, `"visual": { "regression": true }` keeps it that way: caw learns each passed step's look over two healthy runs and a later run whose styles or pixels changed fails that step with kind `visual`. If the change is intended, **Adopt new look** in the chat takes it over; `caw audit` lists that. Limits: the image is per platform (fonts render differently on Windows and Linux), data areas are masked rather than compared, and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
 
 ## Triage and repair
 
@@ -394,22 +394,20 @@ Every action (click, input, key) has an effect on the page. The tool measures it
 | List | Content | Example |
 |---|---|---|
 | `controls` | State of visible controls: disabled, required, read-only, invalid, checked, expanded, selected, empty/filled. Elements in list and table rows don't count, since they are data, often someone else's. For a list only whether it has rows counts. | `+ input "Lieferadresse*" empty`, `+ list "Bestellungen" rows` |
-| `view` | ARIA tree without links, field contents and long texts (lists are data) | `+ - text: Bestellung vollständig? …` |
 | `requests` | answered requests of the action with status | `GET /api/orders 200` |
 | `responses` | shape of JSON responses (key paths as a short hash) and domain error markers such as `success=false` | `GET /… form 3fa2c… success=true` |
 | `console` | console messages | `error: Bestellung laden fehlgeschlagen` |
 
 Numbers become `#`, so order numbers and dates don't interfere.
 
-**Learning:** A passed `run` outside CI (in CI `run --learn`) records the effect. The first two healthy runs are reconciled: only what was equal in both is kept; the console collects everything that occurred. The effect then counts as learned (`runs: 2`) and no run changes it any more. A newly recorded step learns anew.
+**Learning:** A passed `run` outside CI (in CI `run --learn`) records the effect. The first five healthy runs are reconciled: only what was equal in all of them is kept; the console collects everything that occurred. The effect then counts as learned (`runs: 5`) and is frozen: no run changes it any more, only **"Accept new effect"** or deleting `effects` does. Five runs, because in two a fluctuating line is too often there both times by chance and is learned as if it were stable. A newly recorded step learns anew. The text of the page (its ARIA tree) is not compared: headings, button names and options there mostly come from data, which changes between runs.
 
 **Comparison:**
 - If something from the learned effect is missing during replay, that is a deviation, as is a new console message.
 - If a step fails, the assessment names the first deviating action up to that step (application, likely) and what happened instead. Claude gets it as `evidence.effect`.
-- If the check holds, the kind of deviation decides. If a learned effect deviates in a list from the config's `effects.fail`, **the step fails** (assessment: application, likely; different data than when learning can also explain it, e.g. a list that was empty back then). Default is `["controls", "console"]`: the state of controls and new console messages. These signals were completely stable in healthy runs. Deviations in `view`, `requests` and `responses` stay warnings in the report, so drift shows up before a check breaks. With `"effects": { "fail": [] }` all deviations stay warnings.
+- If the check holds, the kind of deviation decides. If a learned effect deviates in a list from the config's `effects.fail`, **the step fails** (assessment: application, likely; different data than when learning can also explain it, e.g. a list that was empty back then). Default is `["controls", "console"]`: the state of controls and new console messages. These signals were completely stable in healthy runs. Deviations in `requests` and `responses` stay warnings in the report, so drift shows up before a check breaks. With `"effects": { "fail": [] }` all deviations stay warnings.
 - **Retries (`retry`)** change the application, e.g. an entry is opened a second time and thereby locked. So after the first retry in a run: steps that run again only as lead-in (with `retry.from`) are neither compared nor learned; later steps only warn; only the retried step itself still fails on its effect. If it deviates the same way twice (measured by the lists from `effects.fail`), there is no further attempt.
-- **Self-cleaning:** If a whole run passes without retry and a step deviates only in lists outside `effects.fail`, that evidently fluctuates. The missing lines drop out of the learned effect, e.g. a request that doesn't come in every run. So the warning appears only once. Deviations in lists from `effects.fail` remain findings.
-- Otherwise a step with a learned deviation doesn't learn, so no error disappears from the comparison. To accept a changed effect, choose **"Accept new effect"** in the chat. The button appears when only the effect deviates and the check holds. It deletes this step's `effects` from the file, without Claude and without tokens; the next two healthy runs learn it anew. Without chat, do the same by deleting `effects` from the file.
+- A step with a learned deviation doesn't learn, so no error disappears from the comparison: a warning stays in every run until the effect is accepted, also one outside `effects.fail`, such as a request that is no longer sent. To accept a changed effect, choose **"Accept new effect"** in the chat. The button appears when only the effect deviates and the check holds. It deletes this step's `effects` from the file, without Claude and without tokens; the next five healthy runs learn it anew. Without chat, do the same by deleting `effects` from the file.
 
 #### Renamed targets
 

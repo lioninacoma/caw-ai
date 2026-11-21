@@ -553,7 +553,7 @@ test('Test run: if only the effects deviate, "forget effect" forgets them withou
     assert.equal(h.adopted[0].draft.steps[1].recording.effects, undefined);
     assert.deepEqual(h.adopted[0].draft.steps[0].recording.effects, effects);
     assert.equal(h.adopted[0].draft.steps[1].recording.hash, spec.steps[1].recording.hash);
-    assert.match(h.notices.at(-1), /^Die gelernte Wirkung von S2 ist vergessen\. Die nächsten 2 gesunden Läufe/);
+    assert.match(h.notices.at(-1), /^Die gelernte Wirkung von S2 ist vergessen\. Die nächsten 5 gesunden Läufe/);
 
     const other = harness({ outcomes: [failing('S2')], answers: ['close'] });
     await runFlow({ spec: learned, handover: false, canFix: true, openSandbox: async () => 's', ...other });
@@ -760,9 +760,9 @@ test('Test run with a pending tail: the recorded steps play and count, the run p
 test('Test run: a proven proposal for a renamed target is the first button; it changes only that target, then a new run', async () => {
     const SPEICHERN = "getByRole('button', { name: 'Speichern', exact: true })";
     const SICHERN = "getByRole('button', { name: 'Sichern', exact: true })";
-    const effects = { runs: 2, actions: [{ action: 1, view: ['+ - status: Gespeichert'] }] };
+    const effects = { runs: 5, actions: [{ action: 1, controls: ['+ button "Rückgängig"'] }] };
     const withClick = { ...spec, steps: [spec.steps[0], { ...spec.steps[1], recording: { ...spec.steps[1].recording, actions: [{ action: 'click', target: SPEICHERN }], effects } }] };
-    const proposal = { step: 'S2', action: 1, from: SPEICHERN, to: SICHERN, evidence: { effect: { view: ['+ - status: Gespeichert'] }, check: 'c => true' } };
+    const proposal = { step: 'S2', action: 1, from: SPEICHERN, to: SICHERN, evidence: { effect: { controls: ['+ button "Rückgängig"'] }, check: 'c => true' } };
     const h = harness({ outcomes: [failing('S2', { proposal }), pass], answers: ['use-target'] });
     assert.equal(await runFlow({ spec: withClick, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude'), ...h }), EXIT.pass);
     assert.equal(h.questions[0].options[0], 'use-target');
