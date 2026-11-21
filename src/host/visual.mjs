@@ -569,10 +569,11 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
             if (changed) {
                 // Only pixels see it: a window compares the styles, sees nothing and offers no "Adopt new look". The way out is
                 // the image file: without it the next headless runs learn the image anew.
+                // The way out first: the terminal shortens a failed step to one line.
                 const details = [
+                    ...(changedPixels && changedStyles.length === 0 ? [t('session.visual.pixelsOnly', { file: lookImage(spec.id, id, platform), runs: LEARN_RUNS })] : []),
                     ...(changedPixels ? [t('session.visual.pixels', { ratio: percent(ratio), max: percent(settings.maxRatio), diff: diff ?? '-' })] : []),
                     ...(changedStyles.length === 0 ? [] : [t('session.visual.styles', { list: changedStyles.join('; ') })]),
-                    ...(changedPixels && changedStyles.length === 0 ? [t('session.visual.pixelsOnly', { file: lookImage(spec.id, id, platform), runs: LEARN_RUNS })] : []),
                 ].join(' ');
                 const text = t('session.visual.changed', { id, details });
                 if (designFail.includes('visual')) fail ??= { kind: 'visual', text, evidence: details };

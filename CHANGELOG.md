@@ -35,6 +35,8 @@ All notable changes to caw-ai. The format follows [Keep a Changelog](https://kee
 
 ### Changed
 - One pending step is named in the singular ("It did not run. Record it"), in the terminal, the `--strict` error and the report.
+- A look that only the pixels see names the image file to delete first, so the one-line failure in the terminal keeps it.
+- The notes of a draft from `caw reproduce` are written in the team language, like its steps.
 - `caw bisect` no longer prints the hints to clear the cause in the chat or re-record after a failed step: they don't belong between the commits git bisect checks out.
 - `credentials-missing` exits `3` (rejected) instead of `2` (environment): a missing secret is the setup's fault, so a monitor no longer reports it as production unavailable, and `--retry-env` no longer retries it.
 - Docs: READMEs, guide, commands, configuration and test files say "the agent" for the role ("der Agent" in German) and keep "Claude" for the product, its costs and the trademark notice; the contributor notes (E2E watchdog, tested frameworks and platforms) moved from the guide to CONTRIBUTING.md; how a look learns is stated exactly: style lines in every passed run outside CI on the recording environment, with a window too, the image per platform only in headless runs, each confirmed by a second run.

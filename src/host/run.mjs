@@ -2293,7 +2293,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             // taken now, free in caw/tests and caw/drafts; the file is never overwritten.
             let hint;
             if (result.reproduced === 'yes') {
-                const draft = draftTestPlan({ id: draftId(root, reproduce.bug), role: spec.role, environment: target, writes, steps: result.steps, runId, ref: reproduce.ref, trail });
+                // The notes go into caw/drafts like the steps the agent wrote: in the team language.
+                const draft = inLanguage(teamLanguage(config), () => draftTestPlan({ id: draftId(root, reproduce.bug), role: spec.role, environment: target, writes, steps: result.steps, runId, ref: reproduce.ref, trail }));
                 mkdirSync(join(root, DRAFT_DIR), { recursive: true });
                 writeFileSync(join(root, DRAFT_DIR, `${draft.id}.yaml`), draft.text, { flag: 'wx' });
                 hint = draftHint(draft);
