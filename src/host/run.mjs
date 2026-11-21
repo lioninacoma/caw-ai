@@ -52,7 +52,7 @@ import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
 import { captureStep, createLook, designOverlay, learnedLooks, markPath, maskProbe, readTokens, visualSettings, windowLookWarning } from './visual.mjs';
 import { MAX_TEXTS, lookCandidates, showsServed, textProbe } from './look-hints.mjs';
-import { answerBook, answerChanges, answersBySteps, answersUpTo, changeText, fixedDataFile, fixedSteps, prepareAnswers, readFixedData, writeFixedData } from './fixed-data.mjs';
+import { answerBook, answerChanges, answersBySteps, answersUpTo, changeText, fixedDataFile, fixedSteps, outdatedAnswers, prepareAnswers, readFixedData, writeFixedData } from './fixed-data.mjs';
 import { MARK_ATTRIBUTE } from './record-locator.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
@@ -618,6 +618,8 @@ ${text}`) ?? 0;
      * After a passed run with a chat window: what the chat offers to freeze for the look steps (fixed-data.mjs), or undefined.
      * The look steps that passed on their recording target, and the JSON answers of the app's reads up to the last of them.
      * Secret values (the role's password, secret remembered values) are taken out before anything is shown or stored.
+     * `frozen` when these steps' data is frozen already (marked and the file readable): the day, and the reads whose real answer
+     * in this run no longer fits the frozen one by shape (a window run has no look pass, so it compares here).
      */
     const freezeOffer = (results, marks) => {
         if (!freezing || session.answers === undefined) return undefined;
@@ -627,11 +629,17 @@ ${text}`) ?? 0;
         const answers = redactDeep(answersUpTo(answersBySteps(session.answers.since(0), marks), order, steps), session.secrets?.() ?? []);
         if (answers.length === 0) return undefined;
         const base = { steps, answers: answers.length };
+        const marked = fixedSteps(givenSpec);
+        const kept = marked.length === 0 ? null : readFixedData(root, givenSpec.id);
+        const already = kept?.data !== undefined && steps.every((id) => marked.includes(id))
+            ? { day: kept.data.frozen, outdated: outdatedAnswers(kept.data.answers, answers).map(({ name, changes }) => `${name} (${changes.slice(0, 4).map(changeText).join('; ')})`) }
+            : undefined;
         return {
             ...base,
             file: fixedDataFile(givenSpec.id),
             command: config.anonymize?.command !== undefined,
-            again: fixedSteps(givenSpec).length > 0,
+            again: marked.length > 0,
+            ...(already === undefined ? {} : { frozen: already }),
             prepare: (mode) => prepareAnswers({ mode, answers, anonymize: config.anonymize ?? {}, root }),
             save: (prepared, { mode, by, confirmed }) => {
                 const frozen = new Date().toISOString().slice(0, 10);

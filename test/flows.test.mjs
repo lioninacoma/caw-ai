@@ -978,6 +978,22 @@ test('Test run: storing readable needs the confirmation that data protection was
     assert.deepEqual([closed.seen.prepared, closed.seen.declined, c.adopted], [[], [], []]);
 });
 
+test('Test run: data frozen already that still fits waits for nobody, a notice says how to freeze again; outdated data offers to freeze again', async () => {
+    const fitting = freezeOffer({ again: true, frozen: { day: '2026-11-01', outdated: [] } });
+    const h = harness({ outcomes: [{ ...pass, concluded: { freezeData: fitting.offer } }], answers: [] });
+    assert.equal(await runFlow({ spec: lookSpec, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude'), ...h }), EXIT.pass);
+    assert.deepEqual(h.questions, [], 'no card to click');
+    assert.match(h.notices[0], /Das Aussehen von S1 wird auf den am 2026-11-01 eingefrorenen Daten verglichen \(caw\/recordings\/t\/fixed-data\.json\)\..*früher einfrieren: caw\/recordings\/t\/fixed-data\.json löschen/);
+    assert.match(h.notices[1], /^Der Lauf hat bestanden\./);
+    assert.deepEqual([fitting.seen.prepared, fitting.seen.declined, h.adopted], [[], [], []]);
+
+    const outdated = freezeOffer({ again: true, frozen: { day: '2026-11-01', outdated: ['GET /api/contacts (Feld [].email ist neu)'] } });
+    const o = harness({ outcomes: [{ ...pass, concluded: { freezeData: outdated.offer } }], answers: ['close'] });
+    await runFlow({ spec: lookSpec, handover: false, canFix: true, openSandbox: async () => 's', ...o });
+    assert.deepEqual(o.questions.map(({ options }) => options), [['freeze', 'close']]);
+    assert.match(o.questions[0].text, /am 2026-11-01 für das Aussehen von S1 eingefrorenen Daten passen nicht mehr zum Backend: GET \/api\/contacts \(Feld \[\]\.email ist neu\)/);
+});
+
 test('Test run: an anonymizer that fails says why, nothing is stored; handing over the window offers no freezing', async () => {
     const broken = freezeOffer({ prepare: async () => { throw new CawError('anonymize-failed', 'Der Anonymisierungsbefehl anon ist gescheitert: Exit-Code 2'); } });
     const h = harness({ outcomes: [{ ...pass, concluded: { freezeData: broken.offer } }], answers: ['freeze', 'anonymized', 'close'] });

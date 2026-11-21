@@ -109,17 +109,6 @@ export function controlsProbe({ style: withStyle = false, look = null } = {}) {
     return [...controls, ...lists];
 }
 
-/**
- * The ARIA tree as lines without values: links, field contents and long texts (mostly list data) are dropped, as are lines
- * without a name. For comparing against a target design (design.mjs); effects do not use it.
- */
-export const viewLines = (aria) => aria.split('\n')
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim() !== '' && !/^\s*- \/url:/.test(line))
-    .map((line) => line.replace(/\[ref=[^\]]*\]/g, '').replace(/^(\s*- (?:textbox|combobox|searchbox|spinbutton|slider)(?: "[^"]*")?(?: \[[^\]]*\])*):.*$/, '$1'))
-    .filter((line) => line.length <= MAX_LINE && !/^\s*- (?:button|img|generic|list|listitem|group|row|cell|text)?:?$/.test(line))
-    .map((line) => neutral(line).trim());
-
 /** Difference of two lists as +/- lines. */
 export const lineDelta = (before, after) => {
     const was = new Set(before);

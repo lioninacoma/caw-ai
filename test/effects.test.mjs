@@ -2,21 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { diagnose } from '../src/host/diagnose.mjs';
-import { EFFECT_LISTS, LEARN_RUNS, deviationText, effectChange, failsStep, jsonShape, learnEffects, lineDelta, responseLine, viewLines, withoutLate } from '../src/host/effects.mjs';
+import { EFFECT_LISTS, LEARN_RUNS, deviationText, effectChange, failsStep, jsonShape, learnEffects, lineDelta, responseLine, withoutLate } from '../src/host/effects.mjs';
 import { learnedEffects, replayOf, withEffects } from '../src/host/replay.mjs';
 import { parseTest, renderTest, stepHash } from '../src/host/test-file.mjs';
 import { composeTest } from '../src/host/test-plan.mjs';
 
-test('View lines (target designs): ARIA lines without links, field contents, long texts and numbers', () => {
-    const aria = [
-        '- textbox "Bereich*": Kammerbeitrag',
-        '- textbox "Kategorie*" [disabled]',
-        '  - /url: https://portal/x?p_auth=abc',
-        '- button',
-        `- text: ${'x'.repeat(200)}`,
-        '- heading "Vorgang 4711" [level=2] [ref=e12]',
-    ].join('\n');
-    assert.deepEqual(viewLines(aria), ['- textbox "Bereich*"', '- textbox "Kategorie*" [disabled]', '- heading "Vorgang #" [level=#]']);
+test('Effects: lineDelta as +/- lines', () => {
     assert.deepEqual(lineDelta(['a', 'b'], ['b', 'c']), ['+ c', '- a']);
 });
 

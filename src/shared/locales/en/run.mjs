@@ -494,6 +494,8 @@ export default {
     'run.button.fixedCancel': 'Store nothing',
     'run.fixed.offer': 'The look of {ids} is compared on the data the server sends right now; when they change, the look changes too. caw can freeze the data: the answers of this run are then served to the app in headless runs, for the look only.',
     'run.fixed.offerAgain': 'The look of {ids} is compared on fixed data. To freeze the data of this run instead (e.g. because the backend changed), click Freeze data.',
+    'run.fixed.offerOutdated': 'The data frozen on {day} for the look of {ids} no longer fits the backend: {reads}. To freeze the data of this run instead, click Freeze data.',
+    'run.fixed.frozenNotice': 'The look of {ids} is compared on the data frozen on {day} ({file}). caw offers to freeze again once the backend answers no longer fit; to freeze sooner, delete {file} and run again with a window.',
     'run.fixed.noticeTitle': 'Freeze data: what is stored',
     'run.fixed.noticeWhat': 'The JSON answers of {count} reads up to {ids} are stored in {file}, in the repository beside the recording.',
     'run.fixed.noticeUse': 'Headless runs serve them to the app for the look of these steps; checks, effects and requests keep running against the real backend. A real answer with another structure makes caw report the data as outdated.',

@@ -342,13 +342,17 @@ const FIXED_CANCEL = button('cancel-fixed', 'run.button.fixedCancel');
  * data, the person's choice how (anonymized, obfuscated, readable only after confirming that they checked data protection), then
  * the data as it would be served for review. Without a choice, or without "Save", nothing is stored. Every choice goes into the
  * run's report (offer.save, offer.declined).
- * @param offer run.mjs freezeOffer: { steps, answers, file, command, again, prepare(mode), save(prepared, meta), declined(meta) }
+ * @param offer run.mjs freezeOffer: { steps, answers, file, command, again, frozen?, prepare(mode), save(prepared, meta), declined(meta) };
+ *              `frozen` ({ day, outdated }) when the data is frozen already; runFlow offers then only while `outdated` names reads
  * @param passed the passed run's card: { title, details }
  * @returns { steps, mode, frozen, file } when stored, else null
  */
 export const offerFreeze = async (chat, offer, passed) => {
     const ids = offer.steps.join(', ');
-    const asked = await decide(chat, resultCard('info', passed.title, [passed.details, t(offer.again ? 'run.fixed.offerAgain' : 'run.fixed.offer', { ids })].filter(Boolean).join(' ')), [FREEZE, { ...ONLY_CLOSE, primary: false }]);
+    const why = offer.frozen === undefined
+        ? t(offer.again ? 'run.fixed.offerAgain' : 'run.fixed.offer', { ids })
+        : t('run.fixed.offerOutdated', { ids, day: offer.frozen.day, reads: offer.frozen.outdated.join('; ') });
+    const asked = await decide(chat, resultCard('info', passed.title, [passed.details, why].filter(Boolean).join(' ')), [FREEZE, { ...ONLY_CLOSE, primary: false }]);
     if (asked !== FREEZE.id) return null;
     const notice = {
         title: t('run.fixed.noticeTitle'),
@@ -827,7 +831,11 @@ export const runFlow = async (options) => {
                 if (!failed) {
                     const summary = `${t(verdict.status === 'pass' ? 'run.flow.runPassed' : 'run.flow.runFailed')}${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`;
                     // Look steps that passed: the card offers to freeze their data (fixed-data.mjs). Only a person's click does it.
-                    if (verdict.status === 'pass' && concluded.freezeData !== undefined) {
+                    // Data frozen already that still fits the backend: no card, the run ends as any passed run, with a notice.
+                    const frozenBefore = concluded.freezeData?.frozen;
+                    const fits = verdict.status === 'pass' && frozenBefore !== undefined && frozenBefore.outdated.length === 0;
+                    if (fits) chat.notice(t('run.fixed.frozenNotice', { ids: concluded.freezeData.steps.join(', '), day: frozenBefore.day, file: concluded.freezeData.file }));
+                    if (verdict.status === 'pass' && concluded.freezeData !== undefined && !fits) {
                         const details = `${findingsText(verdict)}${advised === null ? '' : t('run.flow.adviceInReport')}`.trim();
                         const frozen = await offerFreeze(chat, concluded.freezeData, { title: t('run.flow.runPassedTitle'), details });
                         if (frozen !== null) {

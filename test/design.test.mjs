@@ -7,10 +7,22 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 
-import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, tokensProblem, writeDesign } from '../src/host/design.mjs';
+import { compareStructure, createDesignJudge, designKind, designPath, designProblem, isDesignName, listDesigns, maskedView, missingNeeds, normalStyle, pngSize, renderDesign, structureFrom, structureOf, tokensProblem, viewLines, writeDesign } from '../src/host/design.mjs';
 import { frameworkOf } from '../src/host/framework/index.mjs';
 import { captureStep, colorDistance, comparePixels, contrastRatio, createLook, learnLook, learnedLooks, lintFacts, lintFindings, readTokens, styleLines, windowLookWarning, withAdoptedLooks } from '../src/host/visual.mjs';
 import { launchChrome } from './chrome.mjs';
+
+test('View lines (target designs): ARIA lines without links, field contents, long texts and numbers', () => {
+    const aria = [
+        '- textbox "Bereich*": Kammerbeitrag',
+        '- textbox "Kategorie*" [disabled]',
+        '  - /url: https://portal/x?p_auth=abc',
+        '- button',
+        `- text: ${'x'.repeat(200)}`,
+        '- heading "Vorgang 4711" [level=2] [ref=e12]',
+    ].join('\n');
+    assert.deepEqual(viewLines(aria), ['- textbox "Bereich*"', '- textbox "Kategorie*" [disabled]', '- heading "Vorgang #" [level=#]']);
+});
 
 const EXAMPLE = new URL('../examples/errand/caw/', import.meta.url);
 

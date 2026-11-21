@@ -494,6 +494,8 @@ export default {
     'run.button.fixedCancel': 'Nichts speichern',
     'run.fixed.offer': 'Das Aussehen von {ids} wird auf den Daten verglichen, die der Server gerade schickt; ändern sie sich, ändert sich auch das Aussehen. caw kann die Daten einfrieren: Die Antworten dieses Laufs bekommt die App dann in headless Läufen, nur für das Aussehen.',
     'run.fixed.offerAgain': 'Das Aussehen von {ids} wird auf festen Daten verglichen. Um stattdessen die Daten dieses Laufs einzufrieren (etwa weil sich das Backend geändert hat): Daten einfrieren.',
+    'run.fixed.offerOutdated': 'Die am {day} für das Aussehen von {ids} eingefrorenen Daten passen nicht mehr zum Backend: {reads}. Um stattdessen die Daten dieses Laufs einzufrieren: Daten einfrieren.',
+    'run.fixed.frozenNotice': 'Das Aussehen von {ids} wird auf den am {day} eingefrorenen Daten verglichen ({file}). caw bietet erneutes Einfrieren an, sobald die Antworten des Backends nicht mehr passen; früher einfrieren: {file} löschen und erneut mit Fenster laufen lassen.',
     'run.fixed.noticeTitle': 'Daten einfrieren: was gespeichert wird',
     'run.fixed.noticeWhat': 'Die JSON-Antworten von {count} Lesezugriffen bis {ids} werden in {file} gespeichert, im Repository neben der Aufzeichnung.',
     'run.fixed.noticeUse': 'Headless Läufe geben sie der App für das Aussehen dieser Schritte; Prüfungen, Wirkungen und Requests laufen weiter gegen das echte Backend. Hat eine echte Antwort eine andere Struktur, meldet caw die Daten als veraltet.',

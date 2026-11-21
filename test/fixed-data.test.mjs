@@ -9,7 +9,7 @@ import { test } from 'node:test';
 
 import {
     FIXED_MODES, answerBook, answerChanges, answersBySteps, answersUpTo, changeText, createAnonymizer, createAnswerLog, deobfuscate, fixedDataFile, fixedDataText,
-    fixedSteps, isJsonType, obfuscate, parseFixedData, prepareAnswers, previewLines, readFixedData, requestKey, runAnonymizer, shapeChanges, shapeOf, withFixedData, writeFixedData,
+    fixedSteps, isJsonType, obfuscate, outdatedAnswers, parseFixedData, prepareAnswers, previewLines, readFixedData, requestKey, runAnonymizer, shapeChanges, shapeOf, withFixedData, writeFixedData,
 } from '../src/host/fixed-data.mjs';
 import { auditChanges } from '../src/host/audit.mjs';
 import { renderRecordings, parseRecordings, stepHash } from '../src/host/test-file.mjs';
@@ -132,6 +132,15 @@ test('answer book: the same request in its order, else the same name, the last a
     assert.equal(book.take({ key: 'p1', name: 'GET /api/list' }).body, 3);
     assert.equal(book.take({ key: 'p9', name: 'GET /api/list' }).body, 1, 'a cache buster in the query: by name');
     assert.equal(book.take({ key: 'p9', name: 'GET /api/other' }), null);
+});
+
+test('outdated answers: a run that served nothing compares its real answers with the frozen ones, one entry per read', () => {
+    const frozen = [{ name: 'GET /api/contacts', key: 'c', status: 200, body: CONTACTS }, { name: 'GET /api/me', key: 'm', status: 200, body: { id: 1 } }];
+    const fitting = [{ name: 'GET /api/contacts', key: 'c', status: 200, body: [{ ...CONTACTS[1], id: 99, name: 'Neu Erfunden' }] }, { name: 'GET /api/other', key: 'o', status: 200, body: 'x' }];
+    assert.deepEqual(outdatedAnswers(frozen, fitting), [], 'other values fit; a read without a frozen answer is not compared');
+    const renamed = CONTACTS.map(({ city, ...rest }) => ({ ...rest, town: city }));
+    const changed = [{ name: 'GET /api/contacts', key: 'c', status: 200, body: renamed }, { name: 'GET /api/contacts', key: 'c', status: 500, body: null }, { name: 'GET /api/me', key: 'm', status: 200, body: { id: 2 } }];
+    assert.deepEqual(outdatedAnswers(frozen, changed).map(({ name, changes }) => `${name}: ${changes.map(changeText).join('; ')}`), ['GET /api/contacts: Feld [].city fehlt; Feld [].town ist neu']);
 });
 
 const ANSWERS = [{ step: 'S1', name: 'GET /api/contacts', key: 'abc', status: 200, type: 'application/json', at: 0, body: CONTACTS }];

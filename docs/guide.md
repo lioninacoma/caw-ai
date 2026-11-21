@@ -518,7 +518,7 @@ Two kinds of visual check, both without AI. A [target design](#develop-against-a
 
 ### Fixed data
 
-For a screen whose data changes all the time (a portal), **Freeze data** in the card of a passed run with a window freezes the JSON answers of the app's reads for the look steps. You choose how they are stored: anonymized, obfuscated, or readable after confirming that you checked data protection. You review them before anything is written.
+For a screen whose data changes all the time (a portal), **Freeze data** in the card of a passed run with a window freezes the JSON answers of the app's reads for the look steps. You choose how they are stored: anonymized, obfuscated, or readable after confirming that you checked data protection. You review them before anything is written. Once frozen, a passed run with a window no longer asks: a notice says the looks use the frozen data, and the card comes back only when the backend's answers no longer fit.
 
 Headless runs then compare those looks in a pass of their own on the frozen answers, with writes held. The run's checks, effects and requests keep running against the real backend. If a real answer has another structure, caw warns that the frozen data no longer fits the backend. Nothing is frozen in CI ([details](test-files.md#fixed-data)).
 
