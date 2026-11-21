@@ -1132,7 +1132,8 @@ echo '{"expectations":[{"id":"S1","status":"pass","evidence":{"type":"eval","val
             verify('(2) no fix offered at the red card', await chat.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 0);
             await decide(chat, 'Testplan übernehmen');
         };
-        const h = humans(followAndAdopt, redCard);
+        // Windows: follow the test plan, the recording (approve the plan), the check run with the red card.
+        const h = humans(followAndAdopt, followAndAdopt, redCard);
         const recorded = await record(fixRoot, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', recorder], onChatOpen: h.onChatOpen });
         await h.done();
         const red = loadTest(fixRoot, id);

@@ -1835,12 +1835,14 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         };
         // Target designs are rendered (and screens compared) in a browser of their own, started only when a step needs it. Not
         // while reaching a state to develop in (open): there the screen is still being built, and a run judges it.
+        // Only open: a run with chat gets `develop` too, for developing after it ended, and judges its steps like any run.
+        const opening = runAs === 'open';
         const cawDir = join(root, PROJECT_DIR);
         const visual = visualSettings(config);
-        const tokens = develop === undefined ? readTokens(cawDir) : null;
+        const tokens = opening ? null : readTokens(cawDir);
         const pngDesign = Object.values(replay.designs ?? {}).some(({ file }) => file.toLowerCase().endsWith('.png'));
-        const looking = develop === undefined && (visual.screenshots || visual.regression || tokens !== null || pngDesign);
-        const designJudge = (Object.keys(replay.designs ?? {}).length === 0 && !looking) || develop !== undefined ? null : createDesignJudge({
+        const looking = !opening && (visual.screenshots || visual.regression || tokens !== null || pngDesign);
+        const designJudge = (Object.keys(replay.designs ?? {}).length === 0 && !looking) || opening ? null : createDesignJudge({
             cawDir,
             launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
             read: (path) => readFileSync(path, 'utf8'),
