@@ -1,11 +1,12 @@
-// Git for `caw audit` and `caw bisect`: the project's test data at another commit. Shells out to the git on PATH (git.exe on Windows) like
-// project-files.mjs; no library. Paths are relative to the project folder (the cwd), which need not be the repository's top.
+// Git for `caw audit` and `caw bisect` (the project's test data at another commit) and `caw run --promote` (what a fix
+// changed). Shells out to the git on PATH (git.exe on Windows) like project-files.mjs; no library. Paths are relative to the
+// project folder (the cwd), which need not be the repository's top.
 
 import { execFileSync } from 'node:child_process';
 
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
-import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 
 // Recordings with learned effects get big; a whole project's test data stays far below this.
 const MAX_BUFFER = 256 * 1024 * 1024;
@@ -66,6 +67,27 @@ export const resolveCommit = (root, ref) => {
 
 /** The short hash of what is checked out (`git rev-parse --short HEAD`), for one line per bisect step. */
 export const shortHead = (root) => git(root, ['rev-parse', '--short', 'HEAD']).toString('utf8').trim();
+
+/**
+ * What changed since a commit, for a promoted draft's fix report: committed and uncommitted changes (`git diff --name-only`)
+ * plus untracked files, relative to the project folder, without caw/ and .caw/ (the tests themselves and the runs). A path
+ * outside the project folder keeps its place in the repository, marked with a leading ../ per level.
+ * @param since a commit hash, as a draft's red.head records it
+ * @returns the paths, sorted, with forward slashes
+ */
+export const changedFiles = (root, since) => {
+    if (typeof since !== 'string' || !/^[0-9a-f]{4,40}$/.test(since)) throw new CawError('git-ref', t('cli.audit.badRef', { ref: String(since ?? '') }));
+    const prefix = git(root, ['rev-parse', '--show-prefix']).toString('utf8').trim();
+    const names = (args) => git(root, args).toString('utf8').split('\0').filter((path) => path !== '' && !path.includes('\n'));
+    // `:/` is the whole repository: app code may sit next to the project folder.
+    const diff = names(['diff', '--name-only', '-z', since, '--', ':/']);
+    const untracked = names(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ':/']);
+    const up = prefix === '' ? '' : prefix.split('/').filter(Boolean).map(() => '../').join('');
+    const shown = (path) => (path.startsWith(prefix) ? path.slice(prefix.length) : `${up}${path}`);
+    return [...new Set([...diff, ...untracked].map(shown))]
+        .filter((path) => ![PROJECT_DIR, RUN_DIR].some((dir) => path.startsWith(`${dir}/`)))
+        .sort();
+};
 
 /** Is this file part of the test data audit compares? Test and recording files directly in their folders, and the config. */
 export const isAuditFile = (path) => path === CONFIG_FILE

@@ -253,4 +253,5 @@ export default {
     'session.args.reportTwice': '--report {kind}= steht zweimal: eine Datei je Art.',
     'session.args.retryEnv': '--retry-env erwartet eine ganze Zahl von 1 bis {max}, etwa --retry-env 1',
     'session.replay.proposal': 'caw schlägt für Aktion {number} stattdessen {target} vor: Es bewirkte dieselbe gelernte Wirkung, schrieb nichts, und die unveränderte Prüfung des Schritts bestand.',
+    'session.args.promoteOne': '--promote nimmt genau einen Entwurf, ohne --all, --report oder --retry-env: Die anderen Tests läuft es selbst.',
 };

@@ -285,7 +285,7 @@ export const renderReproduceReport = ({ status, code, reason, target, testedCode
         for (const { host, requests } of thirdParty) lines.push(`- ${cell(host)} (${requests})`);
     }
     if (draft !== undefined) {
-        lines.push('', `## ${t('config.report.reproduce.draft')}`, '', t('config.report.reproduce.adopt', { from: draft.from, to: draft.to, record: draft.record }));
+        lines.push('', `## ${t('config.report.reproduce.draft')}`, '', t('config.report.reproduce.adopt', { file: draft.file, record: draft.record }));
     }
     return `${lines.join('\n')}\n`;
 };

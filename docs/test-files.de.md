@@ -8,6 +8,7 @@ Jeder Test hat zwei YAML-Dateien:
 |---|---|---|
 | `caw/tests/<id>.yaml` | du: was der Test tut, in normaler Sprache | ja |
 | `caw/recordings/<id>.yaml` | caw: wie er abgespielt wird | ja, vorher ansehen |
+| `caw/drafts/<id>.yaml` | `reproduce`: ein [Entwurf](#entwürfe), Plan und Aufzeichnung in einer Datei | ja, bis er übernommen ist |
 
 Du schreibst den Testplan, `record` schreibt die Aufzeichnung. Von Hand trägst du dort nur die [Ergänzungen](#von-hand-ergänzen) ein, die Claude nicht aufnimmt. `recording` und `knownMessages` gehören nur in die Aufzeichnung; im Testplan lehnt `validate` sie ab.
 
@@ -96,6 +97,25 @@ npx caw run create-ticket --env local --strict # Exit 4, solange etwas offen ist
 `run` spielt die aufgenommenen Schritte ab und besteht ohne die offenen; `list` zeigt `offen (S4, S5)`, `report.md` und `result.json` (`pending` und `status: "pending"` unter `steps`) nennen sie, die Werkbank zeigt sie als nicht erreicht. Nur das Ende zählt: ein nicht aufgenommener Schritt vor einem aufgenommenen, ein nach der Aufnahme geänderter Schritt und ein Test ohne jede Aufnahme enden weiter mit Exit 4, damit das Ändern eines Schritttexts nie still seine Prüfung aus CI nimmt.
 
 Hat der erste offene Schritt `needs`, prüft ein Lauf, der gesund endet, sie auf der Seite (je etwa 2 s): Sind alle da, meldet er „S4 ist bereit zum Aufnehmen: caw record create-ticket@S4“, sonst nennt er die fehlenden. `result.json` führt sie unter `needs`.
+
+## Entwürfe
+
+`caw reproduce` schreibt einen nachgestellten Fehler als Entwurf nach `caw/drafts/<id>.yaml`: dieselben Felder wie ein Testplan,
+und nach der Aufnahme je Schritt seine `recording` und `knownMessages` in derselben Datei. Entwürfe gehören nicht zu
+`run --all`; `list`, `validate`, `caw_list` und `caw_validate` zeigen sie getrennt. `record`, `run` und `open` nehmen einen
+Entwurf über seine ID wie einen Test; ein Test gleicher ID in `caw/tests` hat Vorrang.
+
+Sein letzter Schritt ist der, der scheitern muss, solange der Fehler da ist. Hat ein Lauf das gezeigt (alle Schritte davor
+bestanden, seine Prüfung wurde ausgewertet und ist gescheitert), trägt der Entwurf den Nachweis:
+
+```yaml
+red: { step: S3, run: 2026-11-21T09-12-03-417Z-bug-search-finds-nothing, head: "2314150" }
+```
+
+`step` ist der rote Schritt, `run` der Lauf, der ihn gezeigt hat, `head` der damals ausgecheckte Commit (fehlt außerhalb von
+git). Nur Entwürfe dürfen `red` tragen; in `caw/tests` lehnt `validate` es ab. Eine neue Aufnahme des Entwurfs lässt es fallen.
+`run <id> --promote` übernimmt einen grünen Entwurf ohne `red` nach `caw/tests` und `caw/recordings`
+([Befehle](commands.de.md#einen-entwurf-übernehmen)).
 
 ## Zielbild
 

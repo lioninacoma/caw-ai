@@ -8,14 +8,14 @@ import { AUTH_DIR, loadConfig, loadConfigWithNotes, todoFields } from '../shared
 import { startPath } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
-import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { describeCode } from './code-source.mjs';
 import { answersFromExplore, detectApp, envExample, starterConfig } from './commands.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
 import { SKILL_PATH, skillState, writeSkill } from './skill.mjs';
 import { projectPath } from './project-path.mjs';
 import { EXPLORE_FILE } from './explore.mjs';
-import { brokenChain, checkTest, environmentProblems, loadTest, pendingSteps, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
+import { brokenChain, checkTest, draftIds, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, staleSteps, withDefaults } from './test-file.mjs';
 
 
 const testIds = (root) => {
@@ -49,12 +49,15 @@ const codeOn = (spec, target, config) => {
     return { env: target, code, overlay: plain ?? (choices.length === 0 ? null : Object.fromEntries(choices.map(({ flag, code: text }) => [flag, text]))) };
 };
 
-/** One test for validate: problems (unrunnable), hints (stale or unrecorded steps) and the code per environment. */
-const validateTest = (root, id, config) => {
-    const file = `${id}.yaml`;
+/**
+ * One test for validate: problems (unrunnable), hints (stale or unrecorded steps) and the code per environment.
+ * @param draft a draft in caw/drafts instead of a test
+ */
+const validateTest = (root, id, config, { draft = false } = {}) => {
+    const file = draft ? `${DRAFT_DIR}/${id}.yaml` : `${id}.yaml`;
     const entry = { id, problems: [], hints: [], code: [] };
     try {
-        const spec = withDefaults(loadTest(root, id), config);
+        const spec = withDefaults(draft ? loadDraft(root, id) : loadTest(root, id), config);
         entry.problems.push(...testBasics(spec, config), ...environmentProblems(spec, config));
         if (spec.runsOn.length === 0) entry.problems.push(t('cli.validateNowhere', { id: spec.id }));
         if (entry.problems.length > 0) return entry;
@@ -86,7 +89,8 @@ const validateTest = (root, id, config) => {
 /**
  * `caw validate` as data. `ok` is false when the config is invalid or has TODO values, or a test has a problem. Pending steps
  * are no problem: a test lists them under `pending`.
- * @returns { ok, config: { issues, todo, notes }, tests: [{ id, problems, hints, pending?, code: [{ env, code, overlay }] }], recordings: { problems, hints } }
+ * Drafts from caw reproduce (caw/drafts) are listed apart, checked the same way.
+ * @returns { ok, config: { issues, todo, notes }, tests: [{ id, problems, hints, pending?, code: [{ env, code, overlay }] }], drafts: [same], recordings: { problems, hints } }
  */
 export const validateProject = (root) => {
     const recordings = { problems: [], hints: [] };
@@ -95,17 +99,18 @@ export const validateProject = (root) => {
         loaded = loadConfigWithNotes(root);
     } catch (error) {
         const issues = Array.isArray(error?.issues) ? error.issues : [String(error?.message ?? error)];
-        return { ok: false, code: error?.code ?? 'config-invalid', config: { issues, todo: [], notes: [] }, tests: [], recordings };
+        return { ok: false, code: error?.code ?? 'config-invalid', config: { issues, todo: [], notes: [] }, tests: [], drafts: [], recordings };
     }
     const { config, notes, todo } = loaded;
     const tests = testIds(root).map((id) => validateTest(root, id, config));
+    const drafts = draftIds(root).map((id) => validateTest(root, id, config, { draft: true }));
     try {
         recordings.hints.push(...recordingHints(root));
     } catch (error) {
         recordings.problems.push(error.message);
     }
-    const ok = todo.length === 0 && recordings.problems.length === 0 && tests.every(({ problems }) => problems.length === 0);
-    return { ok, config: { issues: [], todo, notes }, tests, recordings };
+    const ok = todo.length === 0 && recordings.problems.length === 0 && [...tests, ...drafts].every(({ problems }) => problems.length === 0);
+    return { ok, config: { issues: [], todo, notes }, tests, drafts, recordings };
 };
 
 /**
@@ -124,7 +129,9 @@ const recordingState = (spec) => {
 /**
  * `caw list` as data: per test start path, role, environments, whether it writes and the recording state per step. Without a
  * readable config the tests are listed as written (no defaults for role and environments).
- * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, start, role, environments, writes, recording, steps: [{ id, name, recording: 'recorded'|'stale'|'pending'|'none' }] } | { id, error }] }
+ * Drafts from caw reproduce come apart under `drafts`, each with `red`: { step, run, head? } once a run proved it fails while the
+ * bug is there, otherwise null.
+ * @returns { config: 'ok'|'missing'|'invalid', tests: [{ id, start, role, environments, writes, recording, steps: [{ id, name, recording: 'recorded'|'stale'|'pending'|'none' }] } | { id, error }], drafts: [the same with red] }
  */
 export const listProject = (root) => {
     let config = null;
@@ -134,9 +141,9 @@ export const listProject = (root) => {
     } catch (error) {
         state = error?.code === 'config-missing' ? 'missing' : 'invalid';
     }
-    const tests = testIds(root).map((id) => {
+    const entryOf = (id, load) => {
         try {
-            const raw = loadTest(root, id);
+            const raw = load(id);
             const spec = config === null ? raw : withDefaults(raw, config);
             const recording = recordingState(spec);
             const stale = new Set(recording.stale);
@@ -153,12 +160,15 @@ export const listProject = (root) => {
                     name: step.name ?? '',
                     recording: pending.has(step.id) ? 'pending' : step.recording === undefined ? 'none' : stale.has(step.id) ? 'stale' : 'recorded',
                 })),
+                ...(raw.draft === true ? { red: raw.red ?? null } : {}),
             };
         } catch (error) {
             return { id, error: String(error.message).split('\n')[0] };
         }
-    });
-    return { config: state, tests };
+    };
+    const tests = testIds(root).map((id) => entryOf(id, (one) => loadTest(root, one)));
+    const drafts = draftIds(root).map((id) => entryOf(id, (one) => loadDraft(root, one)));
+    return { config: state, tests, drafts };
 };
 
 /**

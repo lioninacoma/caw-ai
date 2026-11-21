@@ -761,3 +761,75 @@ test('Test run: a proven proposal for a renamed target is the first button; it c
     await runFlow({ spec: withClick, handover: false, canFix: true, openSandbox: async () => 's', ...plain });
     assert.equal(plain.questions[0].options.includes('use-target'), false);
 });
+
+// A draft from caw reproduce: S2 is the step that must fail while the bug is there.
+const draftSpec = { ...spec, id: 'bug-x', draft: true };
+const redRun = (extra = {}) => ({
+    exitCode: EXIT.fail,
+    runId: 'r-red',
+    verdict: { status: 'fail', reason: 'S2 nicht erfüllt.', results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail' }] },
+    failed: { id: 'S2', reason: 'Prüfung nicht erfüllt.', suspect: false, evaluated: true, ...extra },
+    concluded: { runId: 'r-red' },
+});
+const greenRun = { ...pass, runId: 'r-green', verdict: { status: 'pass', results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }] } };
+
+test('Recording a draft: red at its last step as expected is the proof, saved with run and commit, no fix offered', async () => {
+    const h = harness({ outcomes: [{ ...redRun(), exitCode: EXIT.fail, candidate: draftSpec }, redRun()] });
+    assert.equal(await recordFlow({ sandbox: 's', ...h, head: () => 'abc1234' }), EXIT.pass);
+    const [card] = h.questions;
+    assert.equal(card.card.title, 'S2 rot wie erwartet: der Test fängt den Fehler');
+    assert.equal(card.card.tone, 'info');
+    assert.deepEqual(card.options, ['adopt', 'discard']);
+    assert.equal(h.adopted.length, 1);
+    assert.deepEqual(h.adopted[0].draft.red, { step: 'S2', run: 'r-red', head: 'abc1234' });
+    assert.equal(h.adopted[0].draft.draft, true);
+    assert.deepEqual(h.said.at(-1), { outcome: 'Gespeichert: caw/tests/t.yaml' });
+    assert.equal(h.calls.length, 2, 'no Claude for the cause: fixing the app is the next step');
+});
+
+test('Recording a draft: discarding the red proof writes nothing; a check that threw or an earlier failure is no proof', async () => {
+    const discarded = harness({ outcomes: [{ ...redRun(), candidate: draftSpec }, redRun()], answers: ['discard'] });
+    assert.equal(await recordFlow({ sandbox: 's', ...discarded }), EXIT.fail);
+    assert.deepEqual(discarded.adopted, []);
+    const threw = harness({ outcomes: [{ ...redRun(), candidate: draftSpec }, redRun({ evaluated: undefined })], answers: ['close'] });
+    await recordFlow({ sandbox: 's', ...threw });
+    assert.match(threw.questions[0].text, /^S2 ist gescheitert/);
+    assert.deepEqual(threw.adopted, []);
+    const earlier = redRun();
+    earlier.verdict.results[0].status = 'fail';
+    const before = harness({ outcomes: [{ ...redRun(), candidate: draftSpec }, earlier], answers: ['close'] });
+    await recordFlow({ sandbox: 's', ...before });
+    assert.match(before.questions[0].text, /^S2 ist gescheitert/);
+});
+
+test('Recording a draft: when its last step passes, the decision says it does not catch the bug', async () => {
+    const h = harness({ outcomes: [{ ...pass, candidate: draftSpec }, greenRun] });
+    assert.equal(await recordFlow({ sandbox: 's', ...h }), EXIT.pass);
+    assert.deepEqual(h.notices, ['Der Entwurf besteht bei seinem letzten Schritt S2: Er fängt den Fehler (noch) nicht. Nimm ihn auf, solange der Fehler da ist.']);
+    assert.equal(h.adopted[0].draft.red, undefined);
+});
+
+test('Test run of a red draft: its red step passes, the run is green; still red it says so, offers no fix and no hint', async () => {
+    const proven = { ...draftSpec, red: { step: 'S2', run: 'r-red', head: 'abc1234' } };
+    const green = harness({ outcomes: [greenRun] });
+    assert.equal(await runFlow({ spec: proven, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude'), ...green }), EXIT.pass);
+    assert.deepEqual(green.adopted, []);
+
+    const red = harness({ outcomes: [redRun()] });
+    const hints = [];
+    const logged = [];
+    assert.equal(await runFlow({ spec: proven, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude'), hint: (failed) => hints.push(failed.id), ...red, log: (text) => logged.push(text) }), EXIT.fail);
+    assert.equal(red.questions[0].card.title, 'S2 noch rot: der Fehler ist noch da');
+    assert.deepEqual(red.questions[0].options, ['close']);
+    assert.deepEqual(hints, []);
+    assert.deepEqual(red.adopted, [], 'the first red proof stays');
+    assert.match(logged.at(-1), /^S2 noch rot: Der Fehler ist noch da\. Behebe ihn in der App, dann noch einmal caw run bug-x\.$/);
+});
+
+test('Test run of a draft not yet proven red (CI, no chat): red at its step writes the proof', async () => {
+    const h = harness({ outcomes: [redRun()] });
+    const hints = [];
+    assert.equal(await runFlow({ spec: draftSpec, handover: false, canFix: false, openSandbox: async () => assert.fail('never'), hint: (failed) => hints.push(failed.id), head: () => 'def5678', ...h }), EXIT.fail);
+    assert.deepEqual(h.adopted[0].draft.red, { step: 'S2', run: 'r-red', head: 'def5678' });
+    assert.deepEqual(hints, []);
+});

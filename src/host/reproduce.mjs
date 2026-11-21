@@ -1,18 +1,19 @@
 // caw reproduce: Claude tries to reproduce a bug report on its own, signed in as a test role, optionally from a test's step.
 // No plan to approve and no human decisions; Claude reads and operates the page and ends with a verdict. The run writes a
-// report and a draft test plan in its run folder, never into caw/tests: adopting the draft stays the human's decision.
+// report and, when reproduced, a draft in caw/drafts, never into caw/tests: recorded red, fixed and green, only
+// `caw run <draft> --promote` moves it there.
 // Hard rules (enforced in commands.mjs and run.mjs): only on environments with claude, never production; the agent network
 // lock applies; without writable every write request is blocked; no code changes and no advice.
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 
 import { isAttachValue } from '../shared/attach.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
-import { REF_PATTERN, TEST_DIR } from '../shared/names.mjs';
+import { DRAFT_DIR, REF_PATTERN, TEST_DIR } from '../shared/names.mjs';
 import { AGENT_CHOICES, splitStep } from './linux.mjs';
 import { newestRunOf } from './runs.mjs';
-import { loadTest, parseTest, renderTest, staleSteps, testPath } from './test-file.mjs';
+import { loadTest, parseTest, renderTest, staleSteps, testExists, testPath } from './test-file.mjs';
 import { CONTROL, EMAIL, composeTest } from './test-plan.mjs';
 
 const OPTIONS = ['--env', '--role', '--from', '--headless', '--agent', '--attach', '--file', '--ref'];
@@ -93,13 +94,13 @@ const readBugFile = (root, file) => {
     return readFileSync(path, 'utf8');
 };
 
-/** The draft's test id from the bug report's first words, e.g. "bug-search-finds-nothing"; free in caw/tests. */
+/** The draft's test id from the bug report's first words, e.g. "bug-search-finds-nothing"; free in caw/tests and caw/drafts. */
 export const draftId = (root, bug) => {
     const words = bug.split('\n')[0].normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ')
         .filter((word) => word !== '').slice(0, 6);
     const base = `bug-${words.join('-') || 'report'}`.slice(0, 60).replace(/-+$/, '');
     let id = base;
-    for (let n = 2; existsSync(join(root, TEST_DIR, `${id}.yaml`)); n += 1) id = `${base}-${n}`;
+    for (let n = 2; testExists(root, id); n += 1) id = `${base}-${n}`;
     return id;
 };
 
@@ -197,25 +198,30 @@ const shortName = (text) => {
     return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 20)).trim()} …`;
 };
 
+// The trail in the notes stays a hint, not a second recording.
+const MAX_TRAIL = 40;
+
 /**
- * The draft test plan in caw's format, from the steps Claude took: validated like any test file. It never lands in caw/tests
- * by itself; the human copies it there and records it.
+ * The draft test plan in caw's format, from the steps Claude took: validated like a draft in caw/drafts. Its last step is the
+ * one that must fail while the bug is there; recording it proves that (topic record).
+ * @param trail what Claude did in the browser, with resolved locators (`click getByRole('button', …)`): in the notes as
+ *              orientation for recording
  * @returns { id, text }
  */
-export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref }) => {
+export const draftTestPlan = ({ id, role, environment, writes, steps, runId, ref, trail = [] }) => {
+    // The ticket id stays with the test once promoted: where the bug came from.
+    const head = ref === undefined ? t('run.reproduce.draftNotes', { run: runId }) : t('run.reproduce.draftNotesRef', { run: runId, ref });
+    const shown = trail.slice(0, MAX_TRAIL).map((line) => `- ${line.replace(/\s+/g, ' ')}`);
+    const more = trail.length > MAX_TRAIL ? [t('run.reproduce.draftTrailMore', { count: trail.length - MAX_TRAIL })] : [];
     const spec = composeTest({ id, ...(role === undefined ? {} : { role }), writes, environments: [environment] }, {
-        // The ticket id stays with the test once adopted: where the bug came from.
-        notes: ref === undefined ? t('run.reproduce.draftNotes', { run: runId }) : t('run.reproduce.draftNotesRef', { run: runId, ref }),
+        notes: shown.length === 0 ? head : [head, '', t('run.reproduce.draftTrail'), ...shown, ...more].join('\n'),
         steps: steps.map((step, index) => ({ id: `S${index + 1}`, name: step.name, do: step.do, expect: step.expect })),
     });
     const text = renderTest(spec);
     // Same rules as a hand-written file: a draft that would not load is no draft.
-    parseTest(text);
+    parseTest(text, `${DRAFT_DIR}/${id}.yaml`, { draft: true });
     return { id, text };
 };
 
-/** The command that adopts the draft: copy it into caw/tests, then record it. */
-export const adoptHint = (draft, root, runDir) => {
-    const from = relative(root, join(runDir, 'draft-test.yaml')).replaceAll('\\', '/');
-    return { from, to: `${TEST_DIR}/${draft.id}.yaml`, record: `caw record ${draft.id}` };
-};
+/** Where the draft is and the command that records it. */
+export const draftHint = (draft) => ({ file: `${DRAFT_DIR}/${draft.id}.yaml`, record: `caw record ${draft.id}` });

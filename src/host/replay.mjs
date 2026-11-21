@@ -171,8 +171,10 @@ const relativeUrl = (url, base) => {
  * Records what actually moved the run forward: successful steps, no failed attempts and nothing read-only. The target is
  * resolved before the action, because afterwards the element is often gone.
  * @param recordTarget (locator, framework) => the locator code to record, or null; recordLocator on the application's main frame
+ * @param red          () => a draft's step that must fail while the bug is there, or undefined: for it the recorder keeps exactly
+ *                     one failing check, the last one that evaluated (a check that threw proves nothing)
  */
-export const createRecorder = ({ handler, session, base, authMarker, runTag, remembered = new Map(), now = () => new Date(), recordTarget = (locator, framework) => recordLocator(session.page().mainFrame(), locator, { framework: framework.name }) }) => {
+export const createRecorder = ({ handler, session, base, authMarker, runTag, remembered = new Map(), now = () => new Date(), red = () => undefined, recordTarget = (locator, framework) => recordLocator(session.page().mainFrame(), locator, { framework: framework.name }) }) => {
     const steps = [];
     const problems = [];
     // Messages belong to the action after which they were visible and are dropped with it. Otherwise e.g. a validation dialog
@@ -355,6 +357,9 @@ export const createRecorder = ({ handler, session, base, authMarker, runTag, rem
                     break;
                 case 'check':
                     if (value?.pass) add({ action: 'check', id: command.id, code: command.code });
+                    // The red step's check fails while the bug is there; it counts once it evaluated. Checked again, the last
+                    // one counts (groupSteps), so the recording keeps exactly one.
+                    else if (value?.pass === false && command.id !== undefined && command.id === red()) add({ action: 'check', id: command.id, code: command.code });
                     break;
                 case 'remember':
                     add({ action: 'remember', name: value.name, code: command.code });
@@ -465,13 +470,18 @@ export const missingRemembered = (spec) => {
  * @param from   with `draft`: re-recorded from this step on. The steps before it stay as they are, `spec` replaces all steps
  *               from it to the end (added, removed, reordered)
  * @param browser { locale, timezone, viewport } of the recording browser, stored with every step
+ * @param red     a draft's step that must fail while the bug is there: a verdict where only it failed, with its check
+ *                recorded, is a recording too
  * @returns { problems, candidate, fresh }; `fresh` lists messages the recording did not know so far
  */
-export const buildReplay = ({ recorder, outcome, spec, target, draft, from, previous, browser = {}, now = new Date() }) => {
+export const buildReplay = ({ recorder, outcome, spec, target, draft, from, previous, red, browser = {}, now = new Date() }) => {
     const problems = [...recorder.problems];
     // All steps proven, only a hard failure on the way, e.g. in a dropped failed attempt: the check run without Claude settles that.
     const onlyHardFailures = outcome?.status === 'fail' && outcome.failures?.length > 0 && outcome.results.every(({ status }) => status === 'pass');
-    if (outcome?.status !== 'pass' && !onlyHardFailures) problems.push(t('session.replay.endedWith', { status: outcome?.status ?? t('session.replay.noVerdict') }));
+    // The draft's red step failed as it should: the check run without Claude shows whether it fails there again.
+    const onlyRed = red !== undefined && outcome?.status === 'fail' && (outcome.results ?? []).some(({ id, status }) => id === red && status === 'fail')
+        && outcome.results.every(({ id, status }) => status === 'pass' || id === red);
+    if (outcome?.status !== 'pass' && !onlyHardFailures && !onlyRed) problems.push(t('session.replay.endedWith', { status: outcome?.status ?? t('session.replay.noVerdict') }));
     const { groups, trailing } = groupSteps(recorder.steps);
     const missing = spec.steps.map(({ id }) => id).filter((id) => !groups.has(id));
     if (missing.length > 0) problems.push(t('session.replay.withoutCheck', { ids: missing.join(', ') }));
@@ -808,6 +818,9 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const effectKeys = new Map();
     const repeated = new Set();
     const results = new Map();
+    // Steps whose check failed because it evaluated to something other than true, not because it threw: a draft's red step
+    // counts as red only like that.
+    const evaluated = new Set();
     // The judged target design per step (design.mjs), for result.json.
     const designs = new Map();
     // What stopped the earlier attempts, per step. It stays visible in the report even if a later attempt passes.
@@ -998,11 +1011,14 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
                 const timedOut = t('session.replay.checkTimeout', { seconds: Math.round(timeoutMs / 1000), code: step.expect ?? step.code });
                 const cause = await withSignIn(failedWith === null ? timedOut : `${timedOut} ${t('session.replay.checkError', { error: failedWith })}`);
                 causes.set(step.id, cause);
+                if (failedWith === null) evaluated.add(step.id);
+                else evaluated.delete(step.id);
                 results.set(step.id, { id: step.id, status: 'fail', evidence: { type: 'eval', value: `${step.code} => ${last}` }, note: withTries(step.id, cause) });
                 return;
             }
             await sleep(CHECK_POLL_MS);
         }
+        evaluated.delete(step.id);
         const tried = history.get(step.id);
         const notes = [
             ...(tried === undefined ? [] : [t('session.replay.passedOnTry', { count: tried.length + 1, tries: tried.join('; ') })]),
@@ -1234,6 +1250,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         pending = null;
         ids.slice(0, ids.indexOf(owner) + 1).forEach((id) => {
             results.delete(id);
+            evaluated.delete(id);
             designs.delete(id);
             observed.delete(id);
             deviations.delete(id);
@@ -1436,7 +1453,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', text: deviationText(deviation) });
     }
     // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
-    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])) };
+    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])) };
 };
 
 /**
@@ -1523,15 +1540,16 @@ export const withBaselines = (spec, baselines) => ({
  * @returns { id, reason, suspect, clean } or null if everything passed; `clean`: the browser is right before the step,
  *          fixing works there without a warm-up. After a failed check playback continued, so never then.
  */
-export const failedStep = ({ results, broken, expectations, failures = [] }) => {
+export const failedStep = ({ results, broken, expectations, failures = [], evaluated }) => {
     // A design not met leaves the replay running: a later step that really failed, or the break, says more and comes first.
     const fails = expectations.filter(({ id }) => results.get(id)?.status === 'fail');
     const failed = fails.find(({ id }) => results.get(id).kind !== 'design') ?? (broken === null ? fails[0] : undefined);
     const suspect = broken?.kind === 'external' || failures.length > 0;
     if (failed !== undefined && results.get(failed.id).kind === 'design') return { id: failed.id, reason: results.get(failed.id).note, kind: 'design', suspect: false, clean: false };
-    // A proposed target (playReplay) goes along: the chat offers it as a button.
+    // A proposed target (playReplay) goes along: the chat offers it as a button. evaluated: the check ran and answered "no"
+    // (playReplay), which is what a draft's red step must do while the bug is there.
     const proposal = failed === undefined ? undefined : results.get(failed.id).proposal;
-    if (failed !== undefined) return { id: failed.id, reason: results.get(failed.id).note, suspect, clean: false, ...(proposal === undefined ? {} : { proposal }) };
+    if (failed !== undefined) return { id: failed.id, reason: results.get(failed.id).note, suspect, clean: false, ...(proposal === undefined ? {} : { proposal }), ...(evaluated?.has(failed.id) ? { evaluated: true } : {}) };
     return broken === null ? null : { id: broken.step, reason: `${broken.label}: ${broken.message}`, suspect, clean: broken.clean === true && failures.length === 0 };
 };
 

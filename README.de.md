@@ -71,8 +71,9 @@ Schreiben erlaubt ist. `caw record <test>@S3` nimmt nach einer gewollten Änderu
 
 Gib Claude ein Fehlerticket. Es meldet sich als Testrolle an, geht das Ticket selbstständig durch und sagt dir, ob der Fehler
 echt ist: ja, nein oder unklar, mit dem Beobachteten gegen das Erwartete, seinen Schritten, Screenshots und einem Hinweis auf die
-Ursache in deinem Code. Dazu schreibt es aus seinen Schritten den Entwurf eines Testplans: Ist der Fehler behoben, nimmst du
-ihn als Regressionstest auf.
+Ursache in deinem Code. Ein nachgestellter Fehler hinterlässt dazu einen Testentwurf in `caw/drafts`: Nimm ihn rot auf, solange
+der Fehler da ist, behebe den Fehler, sieh ihn grün, und `caw run <entwurf> --promote` macht ihn zum Regressionstest mit
+Fix-Bericht.
 
 <img src="docs/media/reproduce.webp" width="100%" alt="caw reproduce: Claude hat ein Fehlerticket im Errand-Beispiel durchgespielt; die Abschlusskarte sagt, dass der Fehler nachgestellt ist, und nennt Bericht und Testentwurf">
 
@@ -82,8 +83,8 @@ npx caw reproduce --file bug.md --from first-errand@S3 --env local --headless   
 ```
 
 Kein Plan zum Freigeben und keine Frage an dich: Claude untersucht nur. Es läuft nur auf Umgebungen, auf denen du Claude
-zulässt, nie auf Produktion, liest nur, wo die Umgebung nicht `writable` ist, und ändert weder Code noch Tests. Bericht und
-Entwurf bleiben im Laufordner. Details: [Handbuch](docs/guide.de.md#einen-fehler-nachstellen-reproduce).
+zulässt, nie auf Produktion, liest nur, wo die Umgebung nicht `writable` ist, und ändert weder Code noch Tests. Der Bericht
+bleibt im Laufordner, der Entwurf in `caw/drafts`, bis du ihn übernimmst. Details: [Handbuch](docs/guide.de.md#einen-fehler-nachstellen-reproduce).
 
 ## Jeden Zustand erreichen und entwickeln
 
@@ -360,7 +361,7 @@ Wert in der Seite umformen. Nimm deshalb Testkonten: Claude handelt als dieser N
 
 **Kann `reproduce` etwas kaputt machen?**
 Nur wo du Claude schreiben lässt: Auf einer Umgebung ohne `writable` wird jeder schreibende Request gesperrt, Produktion ist nie
-erlaubt, und Claude ändert weder Code noch Tests. Der Testentwurf kommt erst nach `caw/tests`, wenn du ihn dorthin kopierst.
+erlaubt, und Claude ändert weder Code noch Tests. Der Testentwurf kommt erst nach `caw/tests`, wenn du ihn übernimmst, vorher rot und danach grün.
 
 **Was passiert, wenn sich die Oberfläche ändert?**
 Der Schritt scheitert, und der Chat sagt dir, warum. War die Änderung gewollt, nimmt „Schritt beheben“ diesen Schritt neu auf;

@@ -2,15 +2,15 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AUTH_DIR, FRAMEWORK_NAMES, TODO, agentMode, browserLaunch, environmentsWith, isLoopback, loadConfig, isStartPath, productionLike, loadConfigWithNotes, navigationHosts, sessionPath, todoFields, urlOverride, urlVariable } from '../shared/config.mjs';
 import { credentialNames } from '../shared/credentials.mjs';
 import { NAME, blockedHosts, chooseEnvironment, effectiveEnvironment, environmentCandidates, startPath, usesCredentials, usesTotp } from '../shared/environments.mjs';
 import { CawError, EXIT, exitOf, worstExit } from '../shared/errors.mjs';
-import { language, t, teamLanguage } from '../shared/i18n.mjs';
-import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
+import { inLanguage, language, t, teamLanguage } from '../shared/i18n.mjs';
+import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, PROJECT_DIR, RECORDING_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
 import { closest } from '../shared/suggest.mjs';
 import { createUi } from '../shared/ui.mjs';
 import { SKILL_PATH, skillState, writeSkill } from './skill.mjs';
@@ -24,7 +24,8 @@ import { describeCode } from './code-source.mjs';
 import { ignoreAuthDir, requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
 import { projectPath } from './project-path.mjs';
-import { brokenChain, checkTest, environmentProblems, loadTest, pendingSteps, recordingHints, staleSteps, testPath, withDefaults, writeTest } from './test-file.mjs';
+import { changedFiles, shortHead } from './git.mjs';
+import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
 // Only what the container runs. Browser code and devlink stay out.
@@ -412,10 +413,16 @@ export const validate = (root) => {
     const hints = [...notes];
     // One line per test and target saying which code runs there, so an unnoticed deployed build stands out here already.
     const codeLines = [];
-    for (const file of files) {
+    // Drafts from caw reproduce are checked the same way, named by their path in caw/drafts.
+    const drafts = draftIds(root);
+    const entries = [
+        ...files.map((file) => ({ file, load: () => loadTest(root, file.slice(0, -'.yaml'.length)) })),
+        ...drafts.map((id) => ({ file: `${DRAFT_DIR}/${id}.yaml`, load: () => loadDraft(root, id) })),
+    ];
+    for (const { file, load } of entries) {
         try {
             // Description plus recording from caw/recordings; loadTest reports a mismatching id.
-            const spec = withDefaults(loadTest(root, file.slice(0, -'.yaml'.length)), config);
+            const spec = withDefaults(load(), config);
             // Role and listed environments all at once: checkTest stops at the first.
             const basics = [...testBasics(spec, config), ...environmentProblems(spec, config)];
             const badTargets = [];
@@ -475,6 +482,7 @@ export const validate = (root) => {
     codeLines.forEach((line) => ui.info(line));
     hints.forEach((hint) => ui.note(hint));
     ui.success(t('cli.validateOk', { config: CONFIG_FILE, count: files.length }));
+    if (drafts.length > 0) ui.info(t('cli.validateDrafts', { count: drafts.length, dir: DRAFT_DIR }));
     return EXIT.pass;
 };
 
@@ -620,7 +628,7 @@ export const chooseEnv = (config, specs, { env, command, writes = true, ci = Boo
 
 const loadChecked = (root, id, given, command, { overlay, start } = {}) => {
     const config = loadConfig(root);
-    if (!existsSync(testPath(root, id))) throw testMissing(root, config, id, given);
+    if (!testExists(root, id)) throw testMissing(root, config, id, given);
     const spec = withDefaults(loadTest(root, id), config);
     const target = chooseEnv(config, [spec], { env: given, command });
     return { config, spec, target, checked: checkTest(spec, target, config, { overlay, start }) };
@@ -679,7 +687,7 @@ export const list = (root, args, { out = console.log } = {}) => {
     if (!existsSync(join(root, CONFIG_FILE))) loadConfig(root);
     const writesText = (spec) => t(spec.writes === false ? 'cli.listReadOnly' : 'cli.listWrites');
     if (test !== undefined) {
-        if (!existsSync(testPath(root, test))) {
+        if (!testExists(root, test)) {
             let config = {};
             try {
                 config = loadConfig(root);
@@ -701,35 +709,47 @@ export const list = (root, args, { out = console.log } = {}) => {
         });
         if (rows.length > 0) columns(rows).forEach((line) => out(line));
         const chain = brokenChain(spec);
-        if (chain !== null) out(`  ${t('cli.validateChain', { file: `${TEST_DIR}/${test}.yaml`, chain })}`);
+        if (chain !== null) out(`  ${t('cli.validateChain', { file: `${spec.draft === true ? DRAFT_DIR : TEST_DIR}/${test}.yaml`, chain })}`);
+        if (spec.draft === true) out(`  ${draftState(spec)}`);
         return EXIT.pass;
     }
     const ids = testIds(root);
-    if (ids.length === 0) {
-        out(t('cli.listNone', { dir: TEST_DIR }));
-        return EXIT.pass;
-    }
+    const drafts = draftIds(root);
     const invalid = [];
     const load = testLoader(root);
-    const rows = ids.map((id) => {
+    /** One row per test or draft; a draft's state says whether it is red yet. */
+    const rowOf = (id, loadOne, draft) => {
         try {
-            const spec = load(id);
+            const spec = loadOne(id);
             const { state, ids: staleIds, chain } = recordingState(spec);
             let text = t('cli.listRecorded');
             if (state === 'none') text = t('cli.listNotRecorded');
             else if (state === 'stale') text = t('cli.listStale', { ids: staleIds.join(', ') || chain });
             else if (state === 'pending') text = t('cli.listPending', { ids: staleIds.join(', ') });
+            if (draft && state === 'recorded') text = draftState(spec);
             return [id, (spec.runsOn ?? spec.environments ?? []).join(', '), text, writesText(spec)];
         } catch (error) {
             // The table stays narrow, the reason goes below it; validate lists all findings.
             invalid.push(`${id}: ${String(error.message).split('\n')[0]}`);
             return [id, '', t('cli.listInvalid'), ''];
         }
-    });
-    columns([t('cli.listHead').split('|'), ...rows]).forEach((line) => out(line));
+    };
+    if (ids.length === 0) out(t('cli.listNone', { dir: TEST_DIR }));
+    else columns([t('cli.listHead').split('|'), ...ids.map((id) => rowOf(id, load, false))]).forEach((line) => out(line));
+    // Drafts from caw reproduce stand apart: they are not in run --all until promoted.
+    if (drafts.length > 0) {
+        const config = displayConfig(root);
+        const loadOne = (id) => (Object.keys(config).length === 0 ? loadDraft(root, id) : withDefaults(loadDraft(root, id), config));
+        out('');
+        out(t('cli.listDrafts', { dir: DRAFT_DIR }));
+        columns([t('cli.listHead').split('|'), ...drafts.map((id) => rowOf(id, loadOne, true))]).forEach((line) => out(line));
+    }
     invalid.forEach((line) => out(line));
     return EXIT.pass;
 };
+
+/** A recorded draft: red at its step (proven, with the run) or not yet proven red. */
+const draftState = (spec) => (spec.red === undefined ? t('cli.listDraftNotRed') : t('cli.listDraftRed', { step: spec.red.step, run: spec.red.run }));
 /** The environments Claude may work on, as text: "dev" or "dev, local". */
 const agentEnvironments = (config) => environmentsWith(config, 'agent').join(', ') || t('cli.noEnvironment');
 
@@ -1031,7 +1051,7 @@ export const changeTracker = (root) => {
  * @returns { code, failed, verdict, report, pending } with the failed step ({ id, reason, diagnosis }), if one failed, the
  *          playback's verdict, its report.md relative to the project, and the pending steps' ids
  */
-export const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}, loaded = undefined) => {
+export const runOne = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive, git } = {}, loaded = undefined) => {
     const { test, handover = false, stepTimeoutSec, entry, advise: withAdvice, headless, noChat, learn = false, strict = false, agent, attach, timeoutMin, maxActions, overlay, start, lifecycle, quiet = false } = options;
     const { config, spec, target, checked } = loaded ?? loadChecked(root, test, options.target, 'run', { overlay, start });
     const position = entry === undefined ? -1 : spec.steps.findIndex(({ id }) => id === entry);
@@ -1060,7 +1080,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     // Nobody waits in CI: a handover would keep the job open until the runner times out.
     if (inCi && handover) throw new CawError('usage', t('cli.ciHandover', { option: 'open' }));
     if (!quiet) ui.head();
-    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${RECORDING_DIR}/${test}.yaml` }));
+    if (!quiet) ui.info(runMode({ withAgent, noChat, headless, inCi, withAdvice, environments: agentEnvironments(config), env: target, language: teamLanguage(config), learn: learns, opened: handover, file: `${spec.draft === true ? DRAFT_DIR : RECORDING_DIR}/${test}.yaml` }));
     const { runFlow } = await import('./flows.mjs');
     const { execute } = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, headless });
     const tracker = changeTracker(root);
@@ -1082,6 +1102,7 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
         openSandbox: () => openSandbox(root, { config, containerCommand, adviseCommand, talkCommand, docker, agent, attach }),
         execute,
         adopt: tracker.adopt,
+        head: () => headOf(root, git),
         log: ui.info,
         onPlayed: (result) => {
             played = result;
@@ -1105,6 +1126,8 @@ export const runOne = async (root, options, { containerCommand, adviseCommand, t
     if (canFix || learns) ui.info(tracker.summary());
     // After the result, so the pending steps are not mistaken for a failure; a batch names them in its table instead.
     if (pending.length > 0 && !quiet) ui.info(t('cli.pendingSteps', { ids: pending.join(', '), test, step: pending[0], target }));
+    // A draft proven red that passes now: the bug is fixed, promoting proves it against all other tests.
+    if (spec.draft === true && spec.red !== undefined && code === EXIT.pass && !quiet && !handover) ui.info(t('cli.draftGreen', { test, step: spec.red.step, target }));
     // The batch reports carry the playback's verdict (diagnosis, steps) and its report.md.
     return { code, failed, verdict: played?.verdict, report: played?.report, pending };
 };
@@ -1330,6 +1353,7 @@ const runBatch = async (root, options, deps, { tests, target }) => {
  */
 export const run = async (root, args, deps = {}) => {
     const options = parseRunArgs('run', args);
+    if (options.promote) return promote(root, options, deps);
     for (const [kind, given] of Object.entries(options.reports ?? {})) reportFile(root, kind, given);
     if (options.batch || options.reports !== undefined || options.retryEnv !== undefined) return runMany(root, options, deps);
     const { config, target } = loadChecked(root, options.test, options.target, 'run', { overlay: options.overlay, start: options.start });
@@ -1348,7 +1372,8 @@ export const contradicts = (spec, { role, readOnly = false }) => (role !== undef
  * old plan from there, the human steers in the chat. Claude may add, remove, rename or reorder steps from there on; the steps
  * before stay as they are. Without a demonstration: it would start at the sign-in, not at the step.
  */
-const recordFrom = async (root, options, { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = {}) => {
+const recordFrom = async (root, options, deps = {}) => {
+    const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen, interactive } = deps;
     const { test, step, target: given, timeoutMin, stepTimeoutSec, maxActions, agent, attach, overlay, start } = options;
     const { config, spec, target, checked } = loadChecked(root, test, given, 'record', { overlay, start });
     const position = spec.steps.findIndex(({ id }) => id === step);
@@ -1370,6 +1395,7 @@ const recordFrom = async (root, options, { containerCommand, adviseCommand, talk
             sandbox,
             execute,
             adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
+            head: () => headOf(root, deps.git),
             log: ui.info,
         });
     });
@@ -1387,7 +1413,8 @@ export const record = async (root, args, deps = {}) => {
     // In CI nobody demonstrates or decides: said first, before --role or the environment.
     requireHuman('record', interactive);
     const config = loadConfig(root);
-    const exists = existsSync(testPath(root, test));
+    // A draft in caw/drafts records like a test; its last step must then fail while the bug is there.
+    const exists = testExists(root, test);
     if (step !== undefined) {
         if (!exists) throw testMissing(root, config, test, given);
         const known = withDefaults(loadTest(root, test), config);
@@ -1417,9 +1444,114 @@ export const record = async (root, args, deps = {}) => {
             sandbox,
             execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
             adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
+            head: () => headOf(root, deps.git),
             log: ui.info,
         });
     });
+};
+
+/** The checked-out commit for a draft's red proof; undefined outside a git repository. */
+const headOf = (root, git) => {
+    try {
+        return (git ?? gitDefault).head(root);
+    } catch (error) {
+        if (error instanceof CawError) return undefined;
+        throw error;
+    }
+};
+const gitDefault = {
+    head: (root) => shortHead(root),
+    changedFiles: (root, since) => changedFiles(root, since),
+};
+
+/** A draft as a test for caw/tests: without the draft mark and the red proof. */
+const asTest = ({ draft: _draft, red: _red, ...test }) => test;
+
+/** The run id of a report path `.caw/runs/<run>/report.md`. */
+const runOf = (report) => basename(dirname(report));
+
+/**
+ * The fix report of a promoted draft: red at its step before (run, commit), green now (run), the files changed since the red
+ * commit outside caw/ and .caw/, and how many other tests passed on the environment.
+ */
+export const fixReport = ({ id, red, green, target, others, changed }) => {
+    const lines = [
+        `# ${t('cli.fixReport.title', { test: id })}`,
+        '',
+        `- ${t('cli.fixReport.red', { step: red.step, run: red.run, head: red.head ?? '–' })}`,
+        `- ${t('cli.fixReport.green', { run: green })}`,
+        `- ${t('cli.fixReport.others', { count: others, target })}`,
+        '',
+        `## ${t('cli.fixReport.changed', { head: red.head ?? '–' })}`,
+        '',
+    ];
+    if (changed === null) lines.push(t('cli.fixReport.changedUnknown'));
+    else if (changed.length === 0) lines.push(t('cli.fixReport.changedNone'));
+    else lines.push(...changed.map((file) => `- ${file}`));
+    return `${lines.join('\n')}\n`;
+};
+
+/**
+ * `caw run <draft> --promote`: the draft must pass (its red step green, the bug fixed) and so must every other test that runs
+ * on the same environment (`run --all`). Then the test goes to caw/tests and caw/recordings, the draft is deleted and the
+ * draft's run folder gets fix-report.md.
+ * @param git tests only: { head(root), changedFiles(root, since) }
+ * @returns 0 promoted, 1 the draft or another test did not pass, 4 the draft is not recorded or never proven red
+ */
+const promote = async (root, options, deps) => {
+    const { test } = options;
+    if (!existsSync(draftPath(root, test))) throw new CawError('usage', t('cli.promoteNoDraft', { test, dir: DRAFT_DIR }));
+    // A test of the same name would be overwritten: that stays the human's decision.
+    if (existsSync(testPath(root, test))) throw new CawError('usage', t('cli.promoteExists', { test, file: `${TEST_DIR}/${test}.yaml` }));
+    const { config, spec, target } = loadChecked(root, test, options.target, 'run', { overlay: options.overlay, start: options.start });
+    if (spec.steps.length === 0 || staleSteps(spec).length > 0) {
+        ui.warn(t('cli.promoteNotRecorded', { test }));
+        return EXIT.needsRecording;
+    }
+    if (spec.red === undefined) {
+        ui.warn(t('cli.promoteNotRed', { test }));
+        return EXIT.needsRecording;
+    }
+    const red = { ...spec.red };
+    const played = await withLifecycle(lifecycleOf(root, config, target, options, 'run'), async (lifecycle) => (deps.runOne ?? runOne)(root, { ...options, target, lifecycle }, deps));
+    if (played.code !== EXIT.pass) {
+        ui.warn(t('cli.promoteDraftFailed', { test, step: red.step }));
+        return EXIT.fail;
+    }
+    // The other tests on the same environment, as `run --all` picks them.
+    const load = testLoader(root);
+    const others = testIds(root).filter((id) => {
+        try {
+            return (load(id).runsOn ?? []).includes(target);
+        } catch {
+            // An unreadable test counts: run --all reports it as rejected.
+            return true;
+        }
+    });
+    if (others.length > 0) {
+        const code = await runMany(root, { ...options, promote: false, test: undefined, tests: [], all: true, batch: true, noChat: true, target }, deps);
+        if (code !== EXIT.pass) {
+            ui.warn(t('cli.promoteOthersFailed', { test, target }));
+            return EXIT.fail;
+        }
+    }
+    // The draft as the green run left it, learned baselines included, becomes the test; red stays in the fix report only.
+    const written = writeTest(root, asTest(loadDraft(root, test)));
+    rmSync(draftPath(root, test));
+    const git = deps.git ?? gitDefault;
+    let changed = null;
+    if (red.head !== undefined) {
+        try {
+            changed = git.changedFiles(root, red.head);
+        } catch (error) {
+            if (!(error instanceof CawError)) throw error;
+        }
+    }
+    const runDir = dirname(join(root, played.report));
+    const text = inLanguage(teamLanguage(config), () => fixReport({ id: test, red, green: runOf(played.report), target, others: others.length, changed }));
+    writeFileSync(join(runDir, 'fix-report.md'), text);
+    ui.success(t('cli.promoted', { test, files: written, report: posix.join(dirname(played.report), 'fix-report.md') }));
+    return EXIT.pass;
 };
 
 /** The name a reproduction runs under: report and window title. */
@@ -1428,11 +1560,11 @@ const REPRODUCE_ID = 'reproduce';
 /**
  * caw reproduce "<bug report>": Claude reproduces a bug on its own, signed in as a test role, optionally from a test's state
  * (--from <test>[@<step>]). Only on environments with claude, never on production; without writable every write request is
- * blocked. No plan, no decisions, no code change; the run folder gets the report and a draft test plan, caw/tests nothing.
+ * blocked. No plan, no decisions, no code change; the run folder gets the report, caw/drafts a draft when reproduced, caw/tests nothing.
  * @returns 0 reproduced, 1 not reproduced or unclear, 2 environment error, 3 invalid input
  */
 export const reproduce = async (root, args, deps = {}) => {
-    const { parseReproduceArgs, draftId } = await import('./reproduce.mjs');
+    const { parseReproduceArgs } = await import('./reproduce.mjs');
     const options = parseReproduceArgs(args, { root, ...(deps.readStdin === undefined ? {} : { readStdin: deps.readStdin }) });
     const { containerCommand, adviseCommand, talkCommand, docker, onChatOpen } = deps;
     const config = loadConfig(root);
@@ -1483,7 +1615,6 @@ export const reproduce = async (root, args, deps = {}) => {
             reproduce: {
                 bug: options.bug,
                 writes: writable,
-                draftId: draftId(root, options.bug),
                 ...(options.ref === undefined ? {} : { ref: options.ref }),
                 ...(prefix === undefined ? {} : { prefix }),
                 ...(options.from === undefined ? {} : { from: options.from }),

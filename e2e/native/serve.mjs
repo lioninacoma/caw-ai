@@ -2,8 +2,8 @@
 // download from a page with a certificate error once the page has been open for a few seconds, even with ignoreHTTPSErrors.
 //   node serve.mjs <port>
 // /api/errands keeps added errands; /api/slow?ms=N answers after N ms (a request wait-ready has to wait for); /report.csv is a download;
-// /api/cover switches the message box of ext.html; /api/rename (N16) serves index.html with "Archive" renamed to "Archive all". ext-data.html (N10b, N10c) and aria.html (N10d, N10e)
-// need nothing from the server.
+// /api/cover switches the message box of ext.html; /api/rename (N16) serves index.html with "Archive" renamed to "Archive all";
+// /api/fix-bug the bug of fix.html's total (N15). ext-data.html (N10b, N10c) and aria.html (N10d, N10e) need nothing from the server.
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
@@ -16,6 +16,7 @@ const port = Number(process.argv[2] ?? 8451);
 const errands = [];
 let cover = false;
 let renamed = false;
+let totalBug = false;
 
 createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
@@ -37,6 +38,13 @@ createServer((req, res) => {
         if (req.method === 'POST') renamed = url.searchParams.get('on') === '1';
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify({ on: renamed }));
+        return;
+    }
+    // N15: the basket's total (fix.html); POST /api/fix-bug?on=1 brings in the bug (0 instead of 5), ?on=0 is the fix.
+    if (url.pathname === '/api/fix-bug' || url.pathname === '/api/total') {
+        if (url.pathname === '/api/fix-bug' && req.method === 'POST') totalBug = url.searchParams.get('on') === '1';
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify(url.pathname === '/api/total' ? { total: totalBug ? 0 : 5 } : { on: totalBug }));
         return;
     }
     if (url.pathname === '/api/slow') {

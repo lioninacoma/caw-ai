@@ -7,7 +7,7 @@ import { CONFIG_FILE, CONTEXT_FILE } from '../shared/names.mjs';
 import { positionalActions, replayOf, replayToEntry, replayUpToStale, withBaselines, withEffects, withoutEffects, withProposal } from './replay.mjs';
 import { LEARN_RUNS, isEffectCause } from './effects.mjs';
 import { locatorLabel, locatorText } from './locator.mjs';
-import { staleSteps } from './test-file.mjs';
+import { redStep, staleSteps } from './test-file.mjs';
 
 // Labels as getters: the language is not settled at import time. Copies via spread are only made at runtime.
 const button = (id, key, extra = {}) => ({ id, get label() { return t(key); }, ...extra });
@@ -243,6 +243,23 @@ const createFixer = ({ sandbox, openSandbox }) => {
     };
 };
 
+/**
+ * Did a draft fail exactly as it should while the bug is there: at its red step, at that step's check, which evaluated (it
+ * did not throw), with every step before it passed?
+ */
+const redAsExpected = (spec, failed, verdict) => {
+    const red = redStep(spec);
+    if (red === undefined || failed?.id !== red || failed.evaluated !== true) return false;
+    const before = spec.steps.slice(0, spec.steps.findIndex(({ id }) => id === red)).map(({ id }) => id);
+    return before.every((id) => (verdict?.results ?? []).some((result) => result.id === id && result.status === 'pass'));
+};
+
+/** The draft with its red proof: the step, the run that showed it and the commit checked out then (if git knows one). */
+const withRed = (spec, run, head) => {
+    const commit = head();
+    return { ...spec, red: { step: redStep(spec), run, ...(commit === undefined ? {} : { head: commit }) } };
+};
+
 /** What happens after forgetting the learned effects, in one sentence. */
 const forgottenText = (id) => t('run.flow.forgotten', { id, runs: LEARN_RUNS });
 
@@ -320,8 +337,9 @@ const changeNote = (changes) => {
  * @param adopt        (test, changed steps or undefined for all, { withNotes }) writes the file and returns its name
  * @param advising     Claude advises on its own on failures and warnings; after a recording only once a step gets fixed
  * @param log          message in the terminal
+ * @param head         () => the checked-out commit's short hash or undefined: a draft's red proof records it
  */
-export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, log, advising: advisingFirst = true }) => {
+export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, log, head = () => undefined, advising: advisingFirst = true }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
@@ -404,15 +422,29 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         let rechecking = false;
         // The written test file: it is adopted right after the choice so the chat can still name it.
         let saved = null;
+        // A draft that failed at its red step as it should: that is the proof, not a failure to fix.
+        let red = false;
         const played = await execute({
             spec: current,
             replay: replayUpToStale(current),
             note: changeNote(changes),
             conclude: async (concluded) => {
-                const { verdict, failed, chat } = concluded;
+                const { verdict, failed, chat, runId } = concluded;
+                // Advice on the bug the draft catches would only cost tokens: fixing the app is the person's next step.
+                if (failed && redAsExpected(current, failed, verdict)) {
+                    red = true;
+                    const id = redStep(current);
+                    choice = await decide(chat, resultCard('info', t('run.flow.redTitle', { id }), t('run.flow.redText', { id }), t('run.flow.redMuted', { test: current.id })), [adoptButton(current.steps.length), DISCARD]);
+                    if (choice !== ADOPT.id) return { outcome: t('run.flow.discarded') };
+                    current = withRed(current, runId, head);
+                    saved = adopt(current, undefined, {});
+                    return { outcome: t('run.flow.saved', { file: saved }) };
+                }
                 offered = await takeAdvice(concluded);
                 if (offered !== null) return { next: 'claude' };
                 if (verdict.status === 'pass') {
+                    // A draft whose red step passes does not catch the bug (yet): the person decides with that in mind.
+                    if (redStep(current) !== undefined && current.red === undefined) chat.notice?.(t('run.flow.notRed', { id: redStep(current) }));
                     // If a step is still stale after the check run, e.g. the second of two adjusted ones, it comes next.
                     const [stale] = staleSteps(current);
                     const again = stale === undefined ? null : { id: 'rerecord-next', label: t('run.button.rerecordStep', { id: stale.id }), primary: true };
@@ -463,6 +495,14 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
             changes.push(changeOf(repairedHere));
             continue;
         }
+        if (red) {
+            if (choice === ADOPT.id && saved !== null) {
+                log(t('run.flow.redSaved', { file: saved, id: redStep(current), test: current.id }));
+                return EXIT.pass;
+            }
+            log(t('run.flow.discarded'));
+            return discardCode ?? played.exitCode;
+        }
         if (played.verdict.status !== 'pass') {
             log(t('run.flow.notRepeatable'));
             lostAdvice();
@@ -482,7 +522,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
  * @param sandbox  Docker, token and image
  * @param execute  a single run, returns { exitCode, verdict, candidate, failed }
  */
-export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
+export const recordFlow = async ({ sandbox, execute, adopt, log, head }) => {
     const recorded = await execute({
         sandbox,
         conclude: async ({ verdict, candidate, chat }) => {
@@ -494,7 +534,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
     // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
-    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, log, advising: false });
+    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, log, head, advising: false });
 };
 
 /**
@@ -510,7 +550,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log }) => {
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  */
 export const runFlow = async (options) => {
-    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint } = options;
+    const { spec, entry, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined } = options;
     const fixer = createFixer({ openSandbox });
     let target = null;
     let repaired = null;
@@ -652,6 +692,14 @@ export const runFlow = async (options) => {
             },
             conclude: async (concluded) => {
                 const { failed, chat, verdict } = concluded;
+                // A draft still red at its step: the bug is not fixed yet. Nothing in the test to fix or to ask about; the red
+                // proof is written after the run (also without a chat).
+                if (failed && redAsExpected(current, failed, verdict)) {
+                    const id = redStep(current);
+                    const known = current.red !== undefined;
+                    await decide(chat, resultCard('info', t(known ? 'run.flow.stillRedTitle' : 'run.flow.redTitle', { id }), t(known ? 'run.flow.stillRedText' : 'run.flow.redText', { id }), t('run.flow.stillRedMuted', { test: current.id })), [ONLY_CLOSE]);
+                    return undefined;
+                }
                 /** After Claude's advice. @returns true if that settles everything */
                 const afterAdvice = async (advised) => {
                     target = await keep(advised, chat);
@@ -724,11 +772,20 @@ export const runFlow = async (options) => {
         log(t('run.flow.rerunning'));
         return runFlow({ ...options, spec: current, openSandbox: fixer.sandbox() === undefined ? openSandbox : async () => fixer.sandbox() });
     }
-    const shared = { discardCode: EXIT.fail, sandbox: fixer.sandbox(), openSandbox, execute, adopt, log };
+    const shared = { discardCode: EXIT.fail, sandbox: fixer.sandbox(), openSandbox, execute, adopt, log, head };
     if (repaired !== null) {
         return fixFlow({ ...shared, draft: carry(repaired.candidate, current, repaired.id), changes: [changeOf(repaired)], seenFailures: hardFailures(repaired.verdict) });
     }
     if (target !== null) return fixFlow({ ...shared, draft: current, target });
+    // A draft red at its step: its first red run is the proof and is written into the draft; the hint to re-record the step
+    // would destroy it, so the next step is fixing the app.
+    if (!handover && played.failed && redAsExpected(current, played.failed, played.verdict)) {
+        if (current.red === undefined) {
+            current = withRed(current, played.runId, head);
+            log(t('run.flow.redSaved', { file: adopt(current, undefined, {}), id: redStep(current), test: current.id }));
+        } else log(t('run.flow.stillRedLog', { id: redStep(current), test: current.id }));
+        return played.exitCode;
+    }
     // After every failure the next commands; without a chat also where the cause can be clarified.
     if (played.failed) hint?.(played.failed, { canFix });
     return played.exitCode;

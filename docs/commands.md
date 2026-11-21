@@ -18,7 +18,7 @@ Run every command from your project root: `npx caw <command>` (or `pnpm exec`, `
 | [`record`](#record) | Record a test or replace its recording, also from a step on | yes |
 | [`run`](#run) | Replay a test, or several for CI | only if you ask |
 | [`open`](#open) | Open the app with workbench and chat; with a test at its end or at the entry of a step | only if you ask |
-| [`reproduce`](#reproduce) | Claude reproduces a bug report on its own: report and draft test plan | yes |
+| [`reproduce`](#reproduce) | Claude reproduces a bug report on its own: report and, when reproduced, a draft in `caw/drafts` | yes |
 | [`role`](#role) | List, add or remove roles and their test users; `role login` stores a session (SSO) | no |
 | [`skill`](#skill) | Write or update the Claude Code skill `caw-attach` for your own session | no |
 | [`export`](#export) | The recorded test as a Playwright test that runs without caw | no |
@@ -159,6 +159,9 @@ npx caw list create-ticket
 
 Without a test: one row per test with its targets, its recording status (`recorded`, `pending (S4, S5)`, `stale (S2, S3)`, `not recorded`) and whether it writes data. With a test: one line per step, e.g. `S2  Create a ticket  (stale)` or `S4  Export  (pending)`. [Pending](test-files.md#pending-steps) is the unrecorded tail after the last recorded step. No browser, no Claude.
 
+Drafts from [`reproduce`](#reproduce) in `caw/drafts` follow in a table of their own, with `red at S3 (run …)` once a run proved
+they fail while the bug is there, else `recorded, not red yet`; `list <draft>` shows its steps like a test's.
+
 Without `caw.config.json` it stops like every other command (`config-missing`). A test name that doesn't exist names the known tests and, for a typo, the closest one (`Did you mean create-ticket?`); `record <name>` is offered only for a new test. An unknown step names the test's steps (`Steps: S1–S6.`).
 
 ## record
@@ -167,7 +170,9 @@ Without `caw.config.json` it stops like every other command (`config-missing`). 
 npx caw record create-ticket --env local
 ```
 
-Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test if the file doesn't exist. Chrome opens with the workbench and a chat:
+Records a test plan from `caw/tests/create-ticket.yaml`, or creates a new test if the file doesn't exist. A draft from
+[`reproduce`](#reproduce) (`caw/drafts/<id>.yaml`) records the same way and stays in its one file; its last step must fail
+while the bug is there ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)). Chrome opens with the workbench and a chat:
 
 1. You demonstrate the flow or, for a new test, describe it in the chat; for an existing test Claude can also follow the test plan.
 2. Claude shows a plan in the chat. You approve it or ask for changes.
@@ -222,12 +227,28 @@ A test that ends in [pending steps](test-files.md#pending-steps) (written, not r
 | `--headless` | No window, no chat. The recorded viewport (else 1920×1080). |
 | `--learn` | In CI: learn missing baselines and effects from passed steps into `caw/recordings/`. Outside CI every run does that anyway. |
 | `--strict` | Pending steps fail the run with exit 4 instead of passing without them, e.g. for a release pipeline. |
+| `--promote` | Only for a draft in `caw/drafts`: see [Promoting a draft](#promoting-a-draft). |
 | `--step-timeout <duration>` | Time limit per step, default `30s`. |
 | `--agent-timeout <duration>` | Time limit for Claude when it investigates or fixes, default `60m`. |
 | `--max-actions <n>` | Limit on Claude's actions when fixing. |
 | `--agent local\|docker`, `--attach [<key>]` | As for `record`. |
 
 With `CI` set, `run` has no chat and never starts Claude, like `--no-chat`. `record` and `open` need a person and are rejected in CI (exit 3), since nobody would take over the browser. On runners without a display add `--headless` or use `xvfb-run`.
+
+### Promoting a draft
+
+```bash
+npx caw run bug-search-finds-nothing --promote --env local
+```
+
+A draft from [`reproduce`](#reproduce) that was recorded red (its `red` field) and passes now becomes a test. caw runs the
+draft; if it passes, every other test on the same environment (`run --all`); only when both are green does the test move to
+`caw/tests` and `caw/recordings` (without `red`), the draft is deleted and the draft's run folder gets `fix-report.md`: red at
+which step (run, commit), green in which run, the files changed since the red commit (`git diff --name-only` plus untracked,
+without `caw/` and `.caw/`) and how many other tests passed. A test of the same name is never overwritten (exit 3).
+
+Exit codes: `0` promoted, `1` the draft or another test did not pass, `4` the draft is not fully recorded or was never shown
+red. `--promote` takes one draft, not with `--all`, `--report` or `--retry-env` (exit 3). Drafts are never part of `--all`.
 
 ### Several tests (CI)
 
@@ -290,8 +311,10 @@ some-command-that-prints-the-ticket | npx caw reproduce - --env local
 Claude reproduces a bug on its own, signed in as a test role: no plan to approve, nobody to answer, no decision. It reads and
 operates the page like a person would and ends with a verdict: reproduced, not reproduced, or unclear. The run folder then holds
 `report.md` (verdict, the bug report, what Claude observed and expected, its steps, the browser actions, screenshots, hard errors,
-blocked or notable requests, a hint at the cause) and `draft-test.yaml`, a test plan in caw's format made from Claude's steps.
-Nothing goes into `caw/tests`: to keep the bug as a regression test, copy the draft there, review it and `caw record <id>`.
+blocked or notable requests, a hint at the cause). When reproduced, `caw/drafts/<id>.yaml` holds a draft test in caw's format
+made from Claude's steps, with Claude's browser actions and their locators in its `notes`. Nothing goes into `caw/tests`: review
+the draft, record it red with `caw record <id>`, fix the bug, `caw run <id>` shows it green, and `caw run <id> --promote` makes
+it a test ([from the bug to a proven fix](guide.md#from-the-bug-to-a-proven-fix)).
 
 - **Where:** only on environments with `agent`, never on production (`reproduce-not-allowed`). Without `--env` the only such
   environment, or the test's with `--from`.
@@ -370,13 +393,13 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_init` | `mode: explore` (`url`, `login` or `yes`): the window, waits and returns the suggestions (`wait: false` only starts it); `mode: write` (`fromExplore`) and `mode: offline` write the files; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | no |
 | `caw_role` | Roles as data (`list`), a new one in the config with its variable names (`add`, `name`; the human fills `caw/.env`), a saved session (`login`), `remove`; never user names or passwords | no |
 | `caw_config` | Read the config, or change it validated (`patch`, `dryRun`). A patch that adds or removes the `overlay` block changes the tool list. Refused: commands (`start`, `stop`, `reset`, `ready`, `lintCommand`, overlay `start`), environment flags, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; the session edits those in the file, where you see the diff | no |
-| `caw_validate` | `validate` as data | no |
-| `caw_list` | `list` as data | no |
+| `caw_validate` | `validate` as data; drafts from `caw/drafts` under `drafts` | no |
+| `caw_list` | `list` as data; drafts under `drafts`, each with `red` (`{ step, run, head }` or `null`) | no |
 | `caw_reproductions` | The reproductions in `.caw/runs`, newest first: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `covered`, `draft`, `report`; `refs` (list) keeps those and names refs without a run as `missing` (never run, or pruned by `keepRuns`), `since` (ISO date) keeps newer runs | no |
 | `caw_design` | Target designs under `caw/design`: `put` writes `design/<name>.html`, `.png` (base64) or `<name>tokens.json` (DTCG, every token has `$value`) after checking name, size, PNG signature and dimensions; `list` returns the design files and the steps that link them; `link` sets or removes one step's `design:` (with `personAsked: true`, only when the person asked) | no |
 | `caw_overlay` | Only with an `overlay` block: `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `env`, `part` | no |
 | `caw_attach` | Attach this session: returns its key and the command to start with the Monitor tool; every chat message and task of an attached window then reaches the session as a line. |
-| `caw_start` | Start `run`, `record`, `open` or `reproduce` attached to this session (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
+| `caw_start` | Start `run`, `record`, `open` or `reproduce` attached to this session (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`; `promote` for `run` of a draft). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
 | `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with `/element` in the workbench chat | no |

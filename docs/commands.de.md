@@ -18,7 +18,7 @@ Jeder Befehl läuft im Wurzelordner deines Projekts: `npx caw <befehl>` (oder `p
 | [`record`](#record) | Einen Test aufnehmen oder seine Aufzeichnung ersetzen, auch ab einem Schritt | ja |
 | [`run`](#run) | Einen Test abspielen, oder mehrere für CI | nur auf Wunsch |
 | [`open`](#open) | Die App öffnen, mit Werkbank und Chat; mit Test an seinem Ende oder am Einstieg in einen Schritt | nur auf Wunsch |
-| [`reproduce`](#reproduce) | Claude stellt einen Fehlerbericht allein nach: Bericht und Entwurf eines Testplans | ja |
+| [`reproduce`](#reproduce) | Claude stellt einen Fehlerbericht allein nach: Bericht und, wenn nachgestellt, ein Entwurf in `caw/drafts` | ja |
 | [`role`](#role) | Rollen und ihre Testnutzer auflisten, hinzufügen oder entfernen; `role login` speichert eine Sitzung (SSO) | nein |
 | [`skill`](#skill) | Den Claude-Code-Skill `caw-attach` für deine eigene Session schreiben oder aktualisieren | nein |
 | [`export`](#export) | Den aufgenommenen Test als Playwright-Test, der ohne caw läuft | nein |
@@ -159,6 +159,10 @@ npx caw list create-ticket
 
 Ohne Test: je Test eine Zeile mit Zielen, Stand der Aufnahme (`aufgenommen`, `offen (S4, S5)`, `veraltet (S2, S3)`, `nicht aufgenommen`) und ob er Daten schreibt. Mit Test: je Schritt eine Zeile, etwa `S2  Ticket anlegen  (veraltet)` oder `S4  Export  (offen)`. [Offen](test-files.de.md#offene-schritte) ist das nicht aufgenommene Ende nach dem letzten aufgenommenen Schritt. Ohne Browser und ohne Claude.
 
+Entwürfe aus [`reproduce`](#reproduce) in `caw/drafts` folgen in einer eigenen Tabelle, mit `rot bei S3 (Lauf …)`, sobald ein Lauf
+belegt hat, dass sie scheitern, solange der Fehler da ist, sonst `aufgenommen, noch nicht rot`; `list <entwurf>` zeigt seine
+Schritte wie die eines Tests.
+
 Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). Einen Testnamen, den es nicht gibt, beantwortet caw mit den bekannten Tests und bei einem Tippfehler mit dem nächstliegenden (`Meintest du create-ticket?`); `record <name>` bietet es nur für einen neuen Test an. Einen unbekannten Schritt mit den Schritten des Tests (`Schritte: S1–S6.`).
 
 ## record
@@ -167,7 +171,9 @@ Ohne `caw.config.json` bricht es ab wie jeder andere Befehl (`config-missing`). 
 npx caw record create-ticket --env local
 ```
 
-Nimmt den Testplan aus `caw/tests/create-ticket.yaml` auf, oder legt einen neuen Test an, wenn es die Datei nicht gibt. Chrome öffnet sich mit Werkbank und Chat:
+Nimmt den Testplan aus `caw/tests/create-ticket.yaml` auf, oder legt einen neuen Test an, wenn es die Datei nicht gibt. Ein
+Entwurf aus [`reproduce`](#reproduce) (`caw/drafts/<id>.yaml`) wird genauso aufgenommen und bleibt in seiner einen Datei; sein
+letzter Schritt muss scheitern, solange der Fehler da ist ([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)). Chrome öffnet sich mit Werkbank und Chat:
 
 1. Du führst den Ablauf vor, oder Claude geht dem Testplan nach.
 2. Claude zeigt einen Plan im Chat. Du gibst ihn frei oder schreibst, was sich ändern soll.
@@ -221,6 +227,7 @@ Ein Test, der mit [offenen Schritten](test-files.de.md#offene-schritte) endet (g
 | `--no-chat` | Sichtbares Fenster, kein Chat, kein Claude. Wie in der CI. |
 | `--headless` | Kein Fenster, kein Chat. In der aufgenommenen Größe (sonst 1920×1080). |
 | `--learn` | In CI: fehlende Vergleichswerte und Effekte bestandener Schritte in `caw/recordings/` lernen. Außerhalb von CI tut das jeder Lauf ohnehin. |
+| `--promote` | Nur für einen Entwurf in `caw/drafts`: siehe [Einen Entwurf übernehmen](#einen-entwurf-übernehmen). |
 | `--strict` | Offene Schritte lassen den Lauf mit Exit 4 scheitern, statt dass er ohne sie besteht, etwa in einer Release-Pipeline. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt, Standard `30s`. |
 | `--agent-timeout <dauer>` | Zeitgrenze für Claude beim Untersuchen und Beheben, Standard `60m`. |
@@ -228,6 +235,23 @@ Ein Test, der mit [offenen Schritten](test-files.de.md#offene-schritte) endet (g
 | `--agent local\|docker`, `--attach [<key>]` | Wie bei `record`. |
 
 Mit gesetztem `CI` hat `run` keinen Chat und startet nie Claude, wie `--no-chat`. `record` und `open` brauchen einen Menschen und werden in CI abgelehnt (Exit 3), denn niemand übernähme den Browser. Auf Runnern ohne Bildschirm zusätzlich `--headless` angeben oder `xvfb-run` nutzen.
+
+### Einen Entwurf übernehmen
+
+```bash
+npx caw run bug-search-finds-nothing --promote --env local
+```
+
+Ein Entwurf aus [`reproduce`](#reproduce), der rot aufgenommen wurde (sein Feld `red`) und jetzt besteht, wird ein Test. caw spielt
+den Entwurf ab; besteht er, alle anderen Tests auf derselben Umgebung (`run --all`); erst wenn beides grün ist, wandert der Test
+nach `caw/tests` und `caw/recordings` (ohne `red`), der Entwurf wird gelöscht, und der Laufordner des Entwurfs bekommt
+`fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit geänderten Dateien
+(`git diff --name-only` plus neue Dateien, ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben. Ein Test gleichen
+Namens wird nie überschrieben (Exit 3).
+
+Exit-Codes: `0` übernommen, `1` der Entwurf oder ein anderer Test hat nicht bestanden, `4` der Entwurf ist nicht ganz aufgenommen
+oder war nie rot. `--promote` nimmt einen Entwurf, nicht mit `--all`, `--report` oder `--retry-env` (Exit 3). Entwürfe gehören nie
+zu `--all`.
 
 ### Mehrere Tests (CI)
 
@@ -291,8 +315,10 @@ Claude stellt einen Fehler allein nach, angemeldet mit einer Testrolle: kein Pla
 Entscheidung. Es liest und bedient die Seite wie ein Mensch und endet mit einem Urteil: nachgestellt, nicht nachgestellt oder
 unklar. Im Laufordner liegen dann `report.md` (Urteil, der Fehlerbericht, was Claude beobachtet und erwartet hat, seine Schritte,
 die Aktionen im Browser, Screenshots, harte Fehler, gesperrte oder auffällige Requests, ein Hinweis auf die Ursache) und
-`draft-test.yaml`, ein Testplan im Format von caw aus Claudes Schritten. Nichts landet in `caw/tests`: Um den Fehler als
-Regressionstest zu behalten, kopierst du den Entwurf dorthin, prüfst ihn und nimmst ihn mit `caw record <id>` auf.
+wenn nachgestellt, `caw/drafts/<id>.yaml`, ein Testentwurf im Format von caw aus Claudes Schritten, mit Claudes Aktionen im
+Browser und ihren Locatoren in seinen `notes`. Nichts landet in `caw/tests`: Prüf den Entwurf, nimm ihn mit `caw record <id>` rot
+auf, behebe den Fehler, `caw run <id>` zeigt ihn grün, und `caw run <id> --promote` macht ihn zum Test
+([vom Fehler zum belegten Fix](guide.de.md#vom-fehler-zum-belegten-fix)).
 
 - **Wo:** nur auf Umgebungen mit `agent`, nie auf Produktion (`reproduce-not-allowed`). Ohne `--env` die einzige solche
   Umgebung, mit `--from` die des Tests.
@@ -372,13 +398,13 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_init` | `mode: explore` (`url`, `login` oder `yes`): das Fenster, wartet und liefert die Vorschläge (`wait: false` startet nur); `mode: write` (`fromExplore`) und `mode: offline` schreiben die Dateien; `env`, `language`, `insecureTls`, `allowHttp`, `roles`, `noMcp` | nein |
 | `caw_role` | Rollen als Daten (`list`), eine neue in der Config mit ihren Variablennamen (`add`, `name`; `caw/.env` füllt der Mensch), eine gespeicherte Sitzung (`login`), `remove`; nie Benutzernamen oder Passwörter | nein |
 | `caw_config` | Config lesen oder geprüft ändern (`patch`, `dryRun`). Ein Patch, der den `overlay`-Block hinzufügt oder entfernt, ändert die Tool-Liste. Abgelehnt: Befehle (`start`, `stop`, `reset`, `ready`, `lintCommand`, Overlay-`start`), Umgebungs-Schalter, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`; die ändert die Session in der Datei, wo du den Diff siehst | nein |
-| `caw_validate` | `validate` als Daten | nein |
-| `caw_list` | `list` als Daten | nein |
+| `caw_validate` | `validate` als Daten; Entwürfe aus `caw/drafts` unter `drafts` | nein |
+| `caw_list` | `list` als Daten; Entwürfe unter `drafts`, jeder mit `red` (`{ step, run, head }` oder `null`) | nein |
 | `caw_reproductions` | Die Nachstellungen in `.caw/runs`, die neueste zuerst: `runId`, `date`, `ref`, `status`, `reproduced`, `observed`, `covered`, `draft`, `report`; `refs` (Liste) behält nur diese und nennt Refs ohne Lauf als `missing` (nie gelaufen oder durch `keepRuns` gelöscht), `since` (ISO-Datum) behält neuere Läufe | nein |
 | `caw_design` | Zielbilder unter `caw/design`: `put` schreibt `design/<name>.html`, `.png` (base64) oder `<name>tokens.json` (DTCG, jedes Token hat `$value`), nachdem Name, Größe, PNG-Signatur und Abmessungen geprüft sind; `list` liefert die Entwurfsdateien und die Schritte, die sie nennen; `link` setzt oder entfernt `design:` an einem Schritt (mit `personAsked: true`, nur auf Wunsch des Menschen) | nein |
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
 | `caw_attach` | Diese Session verbinden: liefert ihren Schlüssel und den Befehl, den sie mit dem Monitor-Werkzeug startet; jede Chat-Nachricht und jede Aufgabe eines verbundenen Fensters erreicht die Session dann als Zeile. |
-| `caw_start` | `run`, `record`, `open` oder `reproduce` mit dieser Session verbunden starten (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
+| `caw_start` | `run`, `record`, `open` oder `reproduce` mit dieser Session verbunden starten (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`; `promote` bei `run` eines Entwurfs). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
 | `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit `/element` im Chat der Werkbank gewählt hast | nein |

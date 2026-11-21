@@ -215,7 +215,7 @@ export default {
     'config.report.reproduce.coveredLastRun': 'Sein neuester Lauf: {status} (Lauf {run}, {date}).',
     'config.report.reproduce.coveredNoRun': 'Kein Lauf davon mehr in .caw/runs (hier nie gelaufen oder durch keepRuns gelöscht).',
     'config.report.reproduce.checkMayMiss': 'Sein letzter Lauf war grün: Seine Prüfung übersieht diesen Fehler vielleicht.',
-    'config.report.reproduce.adopt': 'In draft-test.yaml in diesem Ordner. Übernehmen: nach {to} kopieren (von {from}), prüfen, dann `{record}`.',
+    'config.report.reproduce.adopt': 'Geschrieben nach {file}. Prüfe ihn, dann nimm ihn mit `{record}` auf: Sein letzter Schritt muss scheitern, solange der Fehler da ist.',
     'config.report.note': 'Hinweis: {note}',
     'config.report.pending': 'Offen, noch nicht aufgenommen: {ids}. Diese Schritte liefen nicht.',
     'config.report.results.header': '| Schritt | Erwartung | Status | Nachweis | Notiz |',
@@ -432,4 +432,6 @@ export default {
     'config.report.proposals': 'Vorgeschlagene Ziele',
     'config.report.proposals.intro': 'Ein aufgenommenes Element fehlt, ein ähnliches trat an seine Stelle: Es bewirkte die gelernte Wirkung des Schritts, schrieb nichts, und die unveränderte Prüfung bestand. Übernimm es mit dem Knopf im Chat oder ändere das Ziel in der Aufnahme.',
     'config.report.proposals.item': '- {step}, Aktion {number}: `{from}` → `{to}`',
+    'config.test.redDraftOnly': 'red gehört nur in einen Entwurf in {dir}: Es belegt, dass der Entwurf scheitert, solange der Fehler da ist. Entferne es hier.',
+    'config.test.red': 'red ist { step, run, head? }: ein Schritt dieses Entwurfs, der Lauf, der ihn rot gezeigt hat, und der damals ausgecheckte Commit (kurzer Hash).',
 };

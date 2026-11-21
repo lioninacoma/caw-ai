@@ -368,6 +368,41 @@ test('Playback: an unmet check is fail with the last value, the flow ends there'
     assert.ok(!seen.includes('reload'), 'nothing continues on an already wrong state');
 });
 
+test('Playback: a check that answered no is evaluated, one that threw is not; failedStep says so (a draft red step needs it)', async () => {
+    const answered = await play([{ action: 'check', id: 'S1', code: 'x' }], fakeSession(), async () => ({ pass: false, value: false }));
+    assert.deepEqual([...answered.evaluated], ['S1']);
+    assert.equal(failedStep({ ...answered, expectations: runbook.expectations }).evaluated, true);
+    const threw = await play([{ action: 'check', id: 'S1', code: 'x' }], fakeSession(), async () => { throw new Error('Ext is not defined'); });
+    assert.deepEqual([...threw.evaluated], []);
+    assert.equal(failedStep({ ...threw, expectations: runbook.expectations }).evaluated, undefined);
+});
+
+test('Recorder: for a draft red step it keeps the last failing check that evaluated, never one that threw', async () => {
+    let answer = { pass: false, value: false };
+    const recorder = createRecorder({ handler: async () => answer, session: { page: () => pageWith() }, base: 'https://portal.example', red: () => 'S2' });
+    await recorder.handler({ action: 'check', id: 'S1', code: 'a' });
+    await recorder.handler({ action: 'check', id: 'S2', code: 'first' });
+    await recorder.handler({ action: 'check', id: 'S2', code: 'last' });
+    answer = { pass: true, value: true };
+    await recorder.handler({ action: 'check', id: 'S1', code: 'a' });
+    assert.deepEqual(recorder.steps.map(({ id, code }) => `${id} ${code}`), ['S2 first', 'S2 last', 'S1 a'], 'S1 failing is no recording, only S2 is red');
+    const plain = createRecorder({ handler: async () => ({ pass: false, value: false }), session: { page: () => pageWith() }, base: 'https://portal.example' });
+    await plain.handler({ action: 'check', id: 'S2', code: 'x' });
+    assert.deepEqual(plain.steps, [], 'a test without a red step keeps only passed checks');
+});
+
+test('buildReplay: a draft failing only at its red step is a recording with that failing check', () => {
+    const spec = { id: 't', draft: true, steps: [{ id: 'S1', name: 'a', do: '', expect: 'b' }, { id: 'S2', name: 'c', do: '', expect: 'd' }], expectations: [{ id: 'S1', text: 'b' }, { id: 'S2', text: 'd' }] };
+    const recorder = { problems: [], steps: [{ action: 'check', id: 'S1', code: 'x' }, { action: 'reload' }, { action: 'check', id: 'S2', code: 'bugGone()' }] };
+    const outcome = { status: 'fail', results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'fail' }] };
+    const { candidate } = buildReplay({ recorder, outcome, spec, target: 'p/dev', red: 'S2' });
+    assert.equal(candidate.steps[1].recording.check, 'bugGone()');
+    assert.equal(candidate.draft, true);
+    assert.equal(buildReplay({ recorder, outcome, spec, target: 'p/dev' }).candidate, undefined, 'without red a failed step is no recording');
+    const earlier = { status: 'fail', results: [{ id: 'S1', status: 'fail' }, { id: 'S2', status: 'fail' }] };
+    assert.equal(buildReplay({ recorder, outcome: earlier, spec, target: 'p/dev', red: 'S2' }).candidate, undefined, 'a step before the red one must pass');
+});
+
 test('Playback: target never appears, abort with step, screenshot and no further steps', async () => {
     const seen = [];
     const session = fakeSession({ findAfter: Number.POSITIVE_INFINITY });

@@ -1239,7 +1239,7 @@ test('chat: a reproduction ends with its findings, the read-only note and Close 
     assert.equal(await frame.textContent('#nextRepro .quote'), '“Suche findet nichts”');
     assert.deepEqual(await frame.$$eval('#nextRepro dt', (list) => list.map((dt) => dt.textContent)), ['Beobachtet', 'Erwartet', 'Ursache']);
     assert.match(await frame.textContent('#nextRepro .banner.ro'), /Nur lesend/);
-    assert.match(await frame.textContent('#nextCmd'), /Entwurf nach caw\/tests kopieren, dann: caw record bug-x/);
+    assert.match(await frame.textContent('#nextCmd'), /Den Entwurf rot aufnehmen: caw record bug-x/);
     assert.equal(await frame.getAttribute('#closeWindow', 'class'), 'btn btn-p');
     assert.equal(await frame.getAttribute('#report', 'class'), 'btn btn-s');
     assert.equal(await frame.locator('#nextMore').count(), 0);
