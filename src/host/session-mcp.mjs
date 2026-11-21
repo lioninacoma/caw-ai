@@ -518,7 +518,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     },
     {
         name: 'caw_doctor',
-        description: 'caw doctor as data: every check with ok, text, next step and whether it is optional (only needed for runs with Claude). No tokens.',
+        description: 'caw doctor as data: every check with ok, text, next step and whether it is optional (only needed for runs with an agent). No tokens.',
         inputSchema: { type: 'object', properties: { agent: { type: 'string', enum: ['local', 'docker'] }, attach: { type: 'boolean', description: 'Check what this session needs to answer caw windows (the MCP entry), instead of local or docker' }, env: { type: 'string', description: 'Only this environment\'s test users and address' } }, additionalProperties: false },
         call: async (input) => {
             const { doctorChecks } = await import('./doctor.mjs');
@@ -581,7 +581,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         name: 'caw_config',
         description: `Reads or changes ${CONFIG_FILE}. {read: true} returns the file as written, the effective config (with extends) and the validation. `
             + '{patch, dryRun?} deep-merges patch into the file, validates the result and writes only a valid config (dryRun: only validate). '
-            + 'Refused: any change to the commands caw runs or to where Claude runs and what it may do (environments.*.start/stop/reset/ready, '
+            + 'Refused: any change to the commands caw runs or to where the agent runs and what it may do (environments.*.start/stop/reset/ready, '
             + 'the environment flags production, agent, writable, allowHttp, insecureTls, adding or removing an environment that has them, '
             + 'overlay part start, lintCommand, anonymize, sandboxImage, sandboxUser, browser.executablePath, agent.mode). For those, name the exact change '
             + 'and wait for the person\'s explicit yes in the conversation (also when your edits are approved automatically), then use your own Edit tool. Credentials never go into the config; caw/.env is not read.',

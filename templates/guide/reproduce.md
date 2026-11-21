@@ -1,6 +1,6 @@
 # caw: reproduce a bug report
 
-## Start a reproduction (in the person's Claude Code session)
+## Start a reproduction (in the person's own agent session)
 
 When the person reports a bug of their web app ("the search finds nothing after saving", a ticket, a log excerpt), caw can
 reproduce it in a real, signed-in browser: `caw_start` with `command: "reproduce"` and `bug` (the report as text). Optional:

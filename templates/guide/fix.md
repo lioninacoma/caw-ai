@@ -8,7 +8,7 @@ If `task` contains the field `repair`, you change exactly the one step in `steps
   no cause to search for: Present the plan with the step from `steps`, unchanged if nothing should change. An unchanged plan
   counts as accepted without approval. Then carry out the step and submit it.
 - **`repair.agreed`: What the human said and decided in the chat before** (`from`: human, claude or decision). That applies to you,
-  even if another Claude had the conversation. If they declared an error harmless, it is no reason for `fail`.
+  even if another agent session had the conversation. If they declared an error harmless, it is no reason for `fail`.
   If you deviate from it, then only with new evidence, and tell them with `say`.
 - **`repair.resolved` instead of `repair.diagnosis`:** The hard errors of the test run are now allowed (`consoleIgnore`, `foreignCode`).
   The old assessment no longer applies. Carry out the step and measure it by its `check`; warnings alone are no `fail`.

@@ -10,7 +10,7 @@ agent of its own: runs you start are attached to you (`--attach`, topic `attach`
    follows an existing plan without a demonstration; a new test without a plan starts with the person's demonstration.
 2. **Wait:** `caw_status` with `wait: 120`, again and again, until the run waits for you or ends. It returns early as soon as
    something changes, so don't poll without `wait` or read the log in between. With `run` it only waits for you once the person
-   chooses "{{label:run.button.fix}}" or asks Claude in the chat. While the window waits for the person's decision, say once what they have to
+   chooses "{{label:run.button.fix}}" or asks in the chat. While the window waits for the person's decision, say once what they have to
    choose and keep waiting.
 3. **Work:** when the run waits for you, `caw_status` names its task and the guide topics for it (`waiting.guide`, e.g. `agent`,
    `plan`, `record`, `chat`, `rules`). Read them with `caw_guide` and work with the tool `caw`: `args` as after `caw agent`

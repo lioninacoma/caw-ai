@@ -440,12 +440,12 @@ With chat, the chat stays open after handover (state "Develop"). Its first card,
 The workbench stays as it is, with steps and chat; F8 shows the app alone (**App only**) and keeps it across reloads. The browser window stays as it is. The app now fills the whole pane; the recorded size holds only while caw replays, also when it restores a state.
 
 - **Ask:** You ask Claude in the chat, ideally about an element you picked in the app with `/element`. Claude reads the source code and answers. It never changes code itself; it proposes verified changes: "Apply change" writes them into your project folder, "Copy prompt" hands them to you for your own session.
-- **Let Claude use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.
+- **Let the agent use the page:** On request Claude clicks, fills in, presses keys, navigates or reloads, e.g. "click the selected button". It asks before anything that saves or deletes data.
 - **Debug a bug:** Paste a bug ticket into the chat. Claude reproduces it in the reached state, looks at console, requests, component values and source, names the cause with file and line and proposes the fix as a change you apply with a click. Then reload or restore the state, and Claude checks whether the bug is gone.
 - **Reload** (F5): reloads the current page without cache so your change shows immediately. Chat and steps stay; the test is already over and its result doesn't change.
 - **Open again** (in the chat): starts a new session (cookies and site storage cleared), signs in again and replays the recording up to the same point (with `@S4` the entry of S4), with new test data, exactly like any other run.
 - **Open… (F1):** any test of this environment, of any role, and optionally a step. Before caw replaces your window, you confirm in the chat, e.g. with "Open S2". Then caw replays the test in the same window with the account of the test's role: without a step the whole test, with a step up to its entry, as with `open <test>@<step>`. If restoring fails, Claude in the chat knows why; it can also adjust the test, e.g. mark a cookie-banner click optional, and the change goes into the test file right away.
-- **Element to Claude Code:** With `/element` in the chat you click an element in the application, also a greyed-out button or one in a dialog; a ring with a label shows what the click picks (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
+- **Pick an element:** With `/element` in the chat you click an element in the application, also a greyed-out button or one in a dialog; a ring with a label shows what the click picks (the click does nothing there, Esc cancels). It is attached to your next question in the chat, and caw stores it with label, component or source, page and requests for your Claude Code session, retrievable with `caw_selection`.
 - **End:** "End run" or close the window.
 
 ### Take over and keep developing
@@ -579,7 +579,7 @@ With several tests the exit code is the worst one: `2` before `1` before `4` bef
 ### What is different on production
 
 - **Marked in the config:** `"production": true` on the environment. A name that looks like production (`prod`, `live`, `prod-eu` …) must say `true` or `false`; `prod`, `production`, `prd`, `live` and the like must say `true`. Otherwise the config is invalid (exit `3`).
-- **No Claude, no writing:** A production environment can't have `agent` or `writable`, nor `start`, `stop`, `reset` or `ready`. So `record`, `reproduce`, the chat and `--explain` don't run there; you record a test on another environment. `role login`, the overlay and a `CAW_URL__<ENV>` override (`url-override`, exit `3`) are refused for it, and `doctor` never contacts it.
+- **No agent, no writing:** A production environment can't have `agent` or `writable`, nor `start`, `stop`, `reset` or `ready`. So `record`, `reproduce`, the chat and `--explain` don't run there; you record a test on another environment. `role login`, the overlay and a `CAW_URL__<ENV>` override (`url-override`, exit `3`) are refused for it, and `doctor` never contacts it.
 - **Writes blocked:** every request that is no read is aborted and fails the step with `write-blocked` ([Configuration › environments](configuration.md#environments)).
 - **Out of reach for other runs:** a run on another environment can't resolve the production host.
 - **Less in `result.json`:** its steps carry no effect lines on production, since those name what is visible on the page.
