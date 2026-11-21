@@ -2,7 +2,7 @@
 
 JSON at the project root. Unknown keys are errors with a did-you-mean hint. Change it with `caw_config` `patch` (deep merge,
 `null` deletes a key; arrays are replaced as a whole); only a valid result is written. Credentials never go into the config.
-`caw_config` refuses commands and what decides where Claude runs and what it may do (`start`, `stop`, `reset`, `ready`, the
+`caw_config` refuses commands and what decides where the agent runs and what it may do (`start`, `stop`, `reset`, `ready`, the
 environment flags `production`, `agent`, `writable`, `allowHttp`, `insecureTls`, an overlay part's `start`, `lintCommand`,
 `anonymize`, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and adding or removing an environment that has them):
 name the exact change to the person and wait for their explicit yes in the conversation, even if your edits are approved
@@ -12,7 +12,7 @@ automatically; then edit the file with your own Edit tool.
 
 | Key | Meaning |
 |---|---|
-| `language` | Team language (plans, notes, Claude's chat texts), a tag such as `en`, `de`, `fr` |
+| `language` | Team language (plans, notes, the agent's chat texts), a tag such as `en`, `de`, `fr` |
 | `framework` | `web` (no assumption), `react`, `vue`, `angular` (`extjs` with its extension) |
 | `start` | Start path of every test, e.g. `/` or `/#/dashboard` |
 | `signIn` | How caw signs in, for every environment without its own (below) |
@@ -30,7 +30,7 @@ automatically; then edit the file with your own Edit tool.
 | `visual` | `screenshots` (a `step-S<n>.png` per passed step) and the thresholds `tolerance`, `maxRatio`, `designMaxRatio` |
 | `visualIgnore` | CSS selectors masked in pixel comparisons, e.g. a clock |
 | `anonymize` | The person's own `command` (program and arguments, JSON on stdin and stdout) and `keep` values for freezing data of a look; guarded |
-| `maxActions` | Claude's action budget per run (default 100) |
+| `maxActions` | The agent's action budget per run (default 100) |
 | `keepRuns` | how many run folders in `.caw/runs` caw keeps (default 30, 0 keeps all); older ones go when a run starts |
 | `lintCommand` | The project's lint command, named in recommendations |
 | `agent` | `{ "mode": "local"\|"docker"\|"session", "model", "maxBudgetUsd" }` |
@@ -44,9 +44,9 @@ Names match `^[a-z][a-z0-9-]{0,31}$`.
 | Key | Meaning |
 |---|---|
 | `url` | Origin, `https://host[:port]`; `http://` only on loopback or with `allowHttp: true` |
-| `agent` | The agent may record, fix, explain and talk here (page content goes to Claude) |
+| `agent` | The agent may record, fix, explain and talk here (page content goes to the agent) |
 | `writable` | Writing tests may run here |
-| `production` | Production rules: no Claude, no writing, no lifecycle. A name like prod/live must state it |
+| `production` | Production rules: no agent, no writing, no lifecycle. A name like prod/live must state it |
 | `extends` | Inherit another environment's keys (not `production`); values replace, never merge. Tenants: `south-dev` extends `north-dev` with another `url` |
 | `signIn` | Replaces the top-level sign-in as a whole for this environment |
 | `allowHosts`, `thirdPartyHosts` | Extra navigation hosts, extra hosts to load from, for runs here |

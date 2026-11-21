@@ -41,7 +41,7 @@ recommend what to do. The browser is still as the run left it.
     `caw.config.json`, `.mcp.json`, `package.json`, lock files, `.github`, editor and container config) are not editable: the host
     reports them as nonexistent. After 5 rejected submissions with `edits` a run accepts no more edits, so check `find` against
     the file with Read before you submit.
-  - `prompt`: for a Claude Code session of the human, even if there are `edits`: the error verbatim, file and line, the
+  - `prompt`: for the person's own agent session, even if there are `edits`: the error verbatim, file and line, the
     cause, the change and how to check it (`lintCommand` from the task, if set, and `caw run <test>` again). It must be understandable without this
     run.
 - **Submit:** Write the advice and call `advise --file <file>` (in the session: `advise` with the content in `file`). At most 10 entries, the

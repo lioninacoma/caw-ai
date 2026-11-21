@@ -75,3 +75,10 @@ test('guide: caw buttons appear as the person sees them, in the UI language, and
         setLanguage(saved);
     }
 });
+
+test('guide and tool descriptions name the role as "the agent"; Claude only where something is Claude\'s own', () => {
+    // Allowed: Claude Code's own behaviour (approvals in its terminal, a restart after .mcp.json) and the product Claude Design.
+    const own = /Claude (Code|Design)\b/g;
+    for (const { name } of GUIDE_TOPICS) assert.doesNotMatch(guideTopic(name).replace(own, ''), /Claude/, name);
+    for (const { name, description } of sessionTools({ root: '.' })) assert.doesNotMatch(description.replace(own, ''), /Claude/, name);
+});
