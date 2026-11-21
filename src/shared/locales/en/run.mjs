@@ -466,4 +466,11 @@ export default {
     'run.flow.stillRedText': 'The steps before {id} pass, its check fails as before.',
     'run.flow.stillRedMuted': 'Fix the bug in the app, then run caw run {test} again.',
     'run.flow.stillRedLog': '{id} still red: the bug is still there. Fix it in the app, then caw run {test} again.',
+    'run.button.adoptLook': 'Adopt new look',
+    'run.flow.lookNext': 'The step itself works; it only looks different than learned. If the new look is right, adopt it; it is then learned for this platform.',
+    'run.flow.lookAdopted': 'New look of {id} adopted: {file}. Please review and commit.',
+    'run.flow.looksLearned': 'Learned the look of {ids}: {file}. Please review and commit.',
+    'run.develop.noDesign': '{id} has no target design (design: in the test file), so there is nothing to lay over the app.',
+    'run.develop.designFailed': 'Design {file} could not be shown: {message}',
+    'run.develop.designShown': 'Design {file} lies over the app at the size {id} was recorded in; F7 shows and hides it. {count} deviations are listed below it; one with an element hands it to {agent}, as /element does.',
 };

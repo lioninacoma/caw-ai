@@ -48,7 +48,7 @@ const COMMAND_OPTIONS = {
     // --step-timeout.
     run: ['--env', '--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--report', '--retry-env', '--step-timeout', '--agent-timeout', '--max-actions', '--agent', '--attach', '--overlay', '--start', '--reset', '--no-reset'],
     record: [...CLAUDE_OPTIONS, '--role', '--read-only'],
-    open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout'],
+    open: ['--env', '--role', '--overlay', '--start', '--reset', '--agent', '--attach', '--agent-timeout', '--max-actions', '--step-timeout', '--design'],
     // bisect always runs headless, without chat and learning, and always starts the environment: nothing to switch.
     bisect: ['--env', '--tests-from', '--step-timeout'],
 };
@@ -58,7 +58,7 @@ export const RENAMED_FLAGS = { '--target': '--env', '--timeout': '--agent-timeou
 export const REMOVED_FLAGS = { '--app': 'config.removed.testApp', '--also': 'config.removed.also', '--no-learn': 'config.removed.noLearn' };
 // --start: start the environment (its start command) and, with --overlay, the parts' local code servers if they do not answer, and
 // stop at the end what caw started. --reset runs the environment's reset before the first test, --no-reset never.
-const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--read-only', '--start', '--reset', '--no-reset']);
+const SWITCHES = new Set(['--explain', '--headless', '--no-chat', '--learn', '--strict', '--promote', '--all', '--read-only', '--start', '--reset', '--no-reset', '--design']);
 /** One example value per option, for the message when the value is missing. */
 const VALUE_EXAMPLES = {
     '--env': 'local', '--role': 'admin', '--agent': 'local', '--agent-timeout': '60m',
@@ -167,6 +167,7 @@ export const parseRunArgs = (command, args) => {
         else if (flag === '--all') options.all = true;
         else if (flag === '--read-only') options.readOnly = true;
         else if (flag === '--start') options.start = true;
+        else if (flag === '--design') options.design = true;
         else if (flag === '--max-actions') options.maxActions = Number(value);
         else if (flag === '--role') options.role = value;
         else if (flag === '--tests-from') options.testsFrom = value;

@@ -175,4 +175,5 @@ export default {
     'workbench.page.stateWhy.after': 'gesperrt',
     'workbench.page.stateGo': 'Öffnen',
     'workbench.page.stateCancel': 'Abbrechen',
+    'workbench.design': 'Zielbild',
 };

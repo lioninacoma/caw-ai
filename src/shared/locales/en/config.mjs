@@ -434,4 +434,9 @@ export default {
     'config.report.proposals.item': '- {step}, action {number}: `{from}` → `{to}`',
     'config.test.redDraftOnly': 'red belongs to a draft in {dir} only: it proves the draft fails while the bug is there. Remove it here.',
     'config.test.red': 'red is { step, run, head? }: a step of this draft, the run that showed it red, and the commit checked out then (a short hash).',
+    'config.visual': 'visual must be an object with screenshots and regression (true/false), tolerance (0-255), maxRatio and designMaxRatio (0-1), e.g. { "regression": true }',
+    'config.visualIgnore': 'visualIgnore must be a list of CSS selectors, e.g. ["#clock", ".avatar"]',
+    'config.test.visual': 'recording.visual needs runs (number), styles: [lines], images: { <platform>: runs } and optionally basis and adopted (YYYY-MM-DD), as caw learns it.',
+    'config.report.warning.lint': 'Token lint',
+    'config.report.warning.visual': 'Look',
 };

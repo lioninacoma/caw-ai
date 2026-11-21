@@ -175,6 +175,11 @@ const stepChanges = (finding, { before, after }, failLists) => {
         }
     });
     if (was.network !== undefined && !same(was.network, now.network)) out.push(finding('baselines-changed', 'info', { ...at, before: was.network, after: now.network }));
+    // A look a person adopted ("Adopt new look"): the step is compared against the new image from now on. Listed, so the
+    // reviewer looks at the image in the diff; a look learned over runs is not listed, it only confirms what was there.
+    if (now.visual?.adopted !== undefined && now.visual.adopted !== was.visual?.adopted) {
+        out.push(finding('look-adopted', 'listed', { ...at, before: was.visual?.styles, after: now.visual.styles, vars: { day: now.visual.adopted } }));
+    }
     out.push(...effectChanges(finding, at, was, now, failLists));
     return out;
 };

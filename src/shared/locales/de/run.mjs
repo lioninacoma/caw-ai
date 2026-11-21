@@ -466,4 +466,11 @@ export default {
     'run.flow.stillRedText': 'Die Schritte vor {id} bestehen, seine Prüfung scheitert wie zuvor.',
     'run.flow.stillRedMuted': 'Behebe den Fehler in der App, dann starte caw run {test} noch einmal.',
     'run.flow.stillRedLog': '{id} noch rot: Der Fehler ist noch da. Behebe ihn in der App, dann noch einmal caw run {test}.',
+    'run.button.adoptLook': 'Neuen Look übernehmen',
+    'run.flow.lookNext': 'Der Schritt selbst klappt; er sieht nur anders aus als gelernt. Wenn der neue Look stimmt, übernimm ihn; er gilt dann für diese Plattform als gelernt.',
+    'run.flow.lookAdopted': 'Neuer Look von {id} übernommen: {file}. Bitte prüfen und committen.',
+    'run.flow.looksLearned': 'Aussehen von {ids} gelernt: {file}. Bitte prüfen und committen.',
+    'run.develop.noDesign': '{id} hat kein Zielbild („design:“ in der Testdatei), es gibt also nichts, was über der App liegen könnte.',
+    'run.develop.designFailed': 'Entwurf {file} ließ sich nicht zeigen: {message}',
+    'run.develop.designShown': 'Entwurf {file} liegt über der App, in der Größe, in der {id} aufgenommen wurde; F7 zeigt und verbirgt ihn. Darunter stehen {count} Abweichungen; eine mit Element gibt es an {agent} weiter, wie /element.',
 };

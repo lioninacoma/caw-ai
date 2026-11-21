@@ -1,13 +1,15 @@
 // N1–N15: native Playwright locators against the fixture site e2e/native (nested frames, shadow DOM, a dialog transition, a
 // virtual list, repeated rows, a select inside its label). The tests come from native/project.mjs; N1, N2 and N5 record their
 // own (rec-*) with a scripted agent and a scripted human.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { chromium } from 'playwright-core';
 
 import { TESTS, testText, writeTests } from '../native/project.mjs';
 import { stepHash } from '../../src/host/test-file.mjs';
 import {
-    appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, planOf, print, record, reproduce, run,
+    appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
     runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
 } from '../harness.mjs';
 
@@ -974,7 +976,8 @@ const DESIGNED = 'rec-design';
 // page are left out on purpose: what only the app has does not fail.
 const MATCHING = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}</style></head><body><main><h1>Errands</h1><p>Sample text</p><button>Save</button></main></body></html>';
 const OTHER = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}button{background:#e5533a;color:#fff}</style></head><body><main><h1>Errands</h1><button>Save</button><button>Export</button></main></body></html>';
-// A PNG header (signature and IHDR, 390×844): the run only looks at the extension, caw_design checks the bytes.
+// A PNG header (signature and IHDR, 390×844) without image data: caw_design would refuse nothing, the pixel comparison cannot
+// decode it, so the design only warns (N17 judges real images).
 const PNG_390 = (() => {
     const bytes = Buffer.alloc(45);
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
@@ -985,7 +988,7 @@ const PNG_390 = (() => {
     return bytes;
 })();
 
-scenario('N14', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on, a .png is not judged; needs of the pending S3', async () => {
+scenario('N14', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on, a .png that is no image only warns; needs of the pending S3', async () => {
     const designDir = join(native, 'caw/design');
     mkdirSync(designDir, { recursive: true });
     writeFileSync(join(designDir, 'n14-match.html'), MATCHING);
@@ -1013,7 +1016,7 @@ scenario('N14', 'Target design: a matching .html passes, another fails S2 with k
         withDesign('design/n14.png');
         const image = await runQuietly(DESIGNED);
         const third = newestRunOf(native, DESIGNED).result;
-        verify('image design: Exit 0, not judged', image.code === 0 && stepOf(third, 'S2')?.design?.verdict === 'image', `${image.code} ${JSON.stringify(stepOf(third, 'S2')?.design)}`);
+        verify('undecodable image design: Exit 0, only a warning', image.code === 0 && stepOf(third, 'S2')?.design?.verdict === 'error' && (third?.warnings ?? []).some(({ type }) => type === 'design'), `${image.code} ${JSON.stringify(stepOf(third, 'S2')?.design)}`);
     } finally {
         rmSync(designDir, { recursive: true, force: true });
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DESIGNED}.yaml`), { force: true });
@@ -1157,5 +1160,129 @@ echo '{"expectations":[{"id":"S1","status":"pass","evidence":{"type":"eval","val
             && /## Geänderte Dateien seit/.test(fixReport) && /1 andere\(r\) Test\(s\) auf test grün/.test(fixReport), fixReport);
     } finally {
         await switchBug(false).catch(() => {});
+    }
+});
+
+// ---- N17: the visual layer on n9-shadow. Screenshots per step; S2's own screen as a .png design is met, a red page is not;
+// design tokens lint (warning, then failing with design.fail lint); visual regression learns S2's look over two runs, the
+// rename switch changes it ("Archive" to "Archive all"), CI fails S2 with kind visual, "Neuen Look übernehmen" adopts it and
+// the next run is green; open @S2 --design lays the design over the app and F7 toggles it.
+
+const LOOKED = 'rec-visual';
+const pngSide = (png) => [png.readUInt32BE(16), png.readUInt32BE(20)];
+
+scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels, token lint, learned look changed and adopted, open --design with F7', async () => {
+    const designDir = join(native, 'caw/design');
+    mkdirSync(designDir, { recursive: true });
+    const parsed = parseTest(testText(LOOKED, TESTS['n9-shadow']));
+    const writeWith = (design) => writeTest(native, { ...parsed, id: LOOKED, steps: [parsed.steps[0], { ...parsed.steps[1], ...(design === undefined ? {} : { design }) }] });
+    const stepOf = (result, id) => (result?.steps ?? []).find((step) => step.id === id);
+    const undo = patchJson(join(native, 'caw.config.json'), (config) => { config.visual = { screenshots: true }; });
+    try {
+        await renameSwitch(false);
+        writeWith();
+        const shots = await runQuietly(LOOKED);
+        const first = newestRunOf(native, LOOKED);
+        const shot = join(first.dir, 'agent', 'step-S2.png');
+        verify('screenshots: Exit 0, steps[].screenshot and the file', shots.code === 0 && stepOf(first.result, 'S2')?.screenshot === 'step-S2.png' && existsSync(shot), `${shots.code} ${JSON.stringify(stepOf(first.result, 'S2'))}`);
+
+        // S2's own screen as its design: met. A red page of the same size: not met, with the difference image.
+        copyFileSync(shot, join(designDir, 'n17-own.png'));
+        const [width, height] = pngSide(readFileSync(shot));
+        const browser = await chromium.launch({ channel: 'chrome', headless: true });
+        try {
+            const page = await browser.newPage({ viewport: { width, height } });
+            await page.setContent('<body style="margin:0;background:#e5533a"></body>');
+            writeFileSync(join(designDir, 'n17-red.png'), await page.screenshot());
+        } finally {
+            await browser.close();
+        }
+        writeWith('design/n17-own.png');
+        const own = await runQuietly(LOOKED);
+        const ownDesign = stepOf(newestRunOf(native, LOOKED).result, 'S2')?.design;
+        verify('its own screen as .png design: Exit 0, met by pixels', own.code === 0 && ownDesign?.verdict === 'met' && ownDesign.ratio < 0.03, `${own.code} ${JSON.stringify(ownDesign)}`);
+        writeWith('design/n17-red.png');
+        const red = await runQuietly(LOOKED);
+        const redRun = newestRunOf(native, LOOKED);
+        const redDesign = stepOf(redRun.result, 'S2')?.design;
+        verify('a red page: Exit 1, S2 fails with kind design, difference image saved', red.code === 1 && stepOf(redRun.result, 'S2')?.kind === 'design' && redDesign?.verdict === 'not-met'
+            && redDesign.diff === 'step-S2-diff.png' && existsSync(join(redRun.dir, 'agent', 'step-S2-diff.png')), `${red.code} ${JSON.stringify(redDesign)}`);
+        verify('the note names the share and the limit', /der Pixel weichen ab, höchstens 3 % erlaubt/.test(red.note), red.note);
+
+        // Token lint: a palette the page does not use. A warning first, with design.fail lint a failure.
+        writeWith();
+        writeFileSync(join(designDir, 'tokens.json'), JSON.stringify({ color: { $type: 'color', ink: { $value: '#123456' } } }));
+        const linted = await runQuietly(LOOKED);
+        const lintRun = newestRunOf(native, LOOKED).result;
+        verify('lint: Exit 0, findings under steps[].lint and a lint warning', linted.code === 0 && (stepOf(lintRun, 'S2')?.lint ?? []).some(({ rule }) => rule === 'color')
+            && (lintRun?.warnings ?? []).some(({ type }) => type === 'lint'), `${linted.code} ${JSON.stringify(stepOf(lintRun, 'S2')?.lint?.slice(0, 2))}`);
+        const undoLint = patchJson(join(native, 'caw.config.json'), (config) => { config.design = { fail: ['target', 'lint'] }; });
+        try {
+            const strict = await runQuietly(LOOKED);
+            verify('design.fail lint: Exit 1, kind design', strict.code === 1 && stepOf(newestRunOf(native, LOOKED).result, 'S1')?.kind === 'design', `${strict.code} ${strict.note}`);
+        } finally {
+            undoLint();
+        }
+        rmSync(join(designDir, 'tokens.json'), { force: true });
+
+        // Visual regression: two runs learn S2's look, then the rename switch changes it.
+        const undoRegression = patchJson(join(native, 'caw.config.json'), (config) => { config.visual = { regression: true }; });
+        try {
+            const learning = [await runQuietly(LOOKED, ['--learn']), await runQuietly(LOOKED, ['--learn'])];
+            const visual = loadTest(native, LOOKED).steps[1].recording.visual;
+            const image = join(native, 'caw/recordings', LOOKED, `S2.${process.platform}.png`);
+            verify('two runs learn the look: styles, image per platform', learning.every(({ code }) => code === 0) && visual?.runs === 2 && visual.images?.[process.platform] === 2
+                && visual.styles.some((line) => line.startsWith('button "Save"')) && existsSync(image), `${JSON.stringify(learning)} ${JSON.stringify(visual)}`);
+
+            await renameSwitch(true);
+            const changed = await runQuietly(LOOKED);
+            const changedStep = stepOf(newestRunOf(native, LOOKED).result, 'S2');
+            verify('renamed button: Exit 1, S2 fails with kind visual, the gone control named', changed.code === 1 && changedStep?.kind === 'visual' && changedStep.visual?.verdict === 'changed'
+                && (changedStep.visual.styles ?? []).some((line) => line.includes('button "Archive"')), `${changed.code} ${JSON.stringify(changedStep)}`);
+            verify('CI changed nothing in the recording', JSON.stringify(loadTest(native, LOOKED).steps[1].recording.visual) === JSON.stringify(visual));
+
+            const h = humans(async (page) => {
+                const adopt = page.locator('#choices button', { hasText: 'Neuen Look übernehmen' });
+                await adopt.waitFor({ state: 'attached', timeout: 90000 });
+                const text = await page.locator('.message:is(.question,.result,.notice)').last().textContent();
+                verify('Chat: the step looks different than learned', /sieht anders aus als gelernt/.test(text), text.slice(0, 500));
+                await clickChoice(page, adopt);
+            });
+            await run(native, [LOOKED, ...target], { interactive: true, onChatOpen: h.onChatOpen }).catch(() => {});
+            await h.done();
+            const adopted = loadTest(native, LOOKED).steps[1].recording.visual;
+            verify('adopted: learned at once for this platform, with the day', adopted?.runs === 2 && adopted.images?.[process.platform] === 2 && /^\d{4}-\d{2}-\d{2}$/.test(adopted.adopted ?? '')
+                && adopted.styles.some((line) => line.startsWith('button "Archive all"')), JSON.stringify(adopted));
+            const green = await runQuietly(LOOKED);
+            verify('the next run with the new look: Exit 0', green.code === 0, `${green.code} ${green.note}`);
+        } finally {
+            undoRegression();
+            await renameSwitch(false).catch(() => {});
+        }
+
+        // open @S2 --design: through S2, the design over the app; F7 hides and shows it.
+        writeWith('design/n17-own.png');
+        const overlay = humans(async (chat) => {
+            const bench = chat.page();
+            await benchBack(chat);
+            await stateOf(chat, 'developing');
+            const shown = () => bench.evaluate(() => !document.getElementById('design').hidden && document.getElementById('design').getAttribute('src')?.startsWith('data:image/png') === true);
+            verify('open --design: the design lies over the app', await shown(), await bench.evaluate(() => document.getElementById('design')?.outerHTML.slice(0, 120)));
+            const status = await appOf(bench).evaluate(() => document.getElementById('status').textContent);
+            verify('open --design: through S2 (Saved)', status === 'Saved', status);
+            await bench.keyboard.press('F7');
+            verify('F7 hides it', !(await shown()));
+            await bench.keyboard.press('F7');
+            verify('F7 shows it again', await shown());
+            await decide(chat, 'Beenden');
+        });
+        const openCode = await open(native, [`${LOOKED}@S2`, '--design', ...target], { interactive: true, onChatOpen: overlay.onChatOpen });
+        verify('open --design: Exit 0, one window', openCode === 0 && await overlay.done() === 1, String(openCode));
+    } finally {
+        undo();
+        await renameSwitch(false).catch(() => {});
+        rmSync(designDir, { recursive: true, force: true });
+        rmSync(join(native, 'caw/recordings', LOOKED), { recursive: true, force: true });
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${LOOKED}.yaml`), { force: true });
     }
 });

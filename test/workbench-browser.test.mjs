@@ -1388,6 +1388,60 @@ test('chat follows the end: new entries, a card that grows in place; scrolled up
     return undefined;
 });
 
+test('workbench: the target design lies over the scaled app frame, aligned; F7 toggles it, a reload keeps it; a capture is unscaled', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, context } = await open(t);
+    const page = bench.page;
+    // A design as large as the pinned viewport, which is larger than the pane: the frame is scaled down.
+    const maker = await context.newPage();
+    await maker.setViewportSize({ width: 1600, height: 900 });
+    await maker.setContent('<body style="margin:0;background:#e5533a"></body>');
+    const src = `data:image/png;base64,${(await maker.screenshot()).toString('base64')}`;
+    await maker.close();
+    await bench.viewport({ width: 1600, height: 900 });
+    const handed = [];
+    bench.onDesignRow((row) => { handed.push(row); });
+    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [{ text: 'Fehlt: button "Speichern"' }, { text: 'Kontrast zu gering', element: 'body > h1', label: 'heading "App"' }], on: true });
+    const boxes = () => page.evaluate(() => {
+        const box = (id) => {
+            const rect = document.getElementById(id).getBoundingClientRect();
+            return { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) };
+        };
+        return { app: box('app'), design: box('design'), hidden: document.getElementById('design').hidden, blend: getComputedStyle(document.getElementById('design')).mixBlendMode, pointer: getComputedStyle(document.getElementById('design')).pointerEvents };
+    });
+    assert.ok(await until(async () => (await boxes()).design.width > 0), 'the design shows');
+    const shown = await boxes();
+    assert.ok(shown.app.width < 1600, 'the frame is scaled down');
+    assert.deepEqual(shown.design, shown.app, 'design and frame cover the same pixels');
+    assert.equal(shown.blend, 'difference');
+    assert.equal(shown.pointer, 'none', 'clicks go through to the app');
+    // Rows: one without an element only shows; one with an element hands the host's row over, never anything from the page.
+    const rows = page.locator('#designRows button');
+    assert.equal(await rows.count(), 2);
+    assert.equal(await rows.nth(0).isDisabled(), true);
+    await rows.nth(1).click();
+    assert.ok(await until(() => handed.length === 1));
+    assert.equal(handed[0].element, 'body > h1');
+    assert.equal(await page.evaluate(() => document.getElementById('designRows').textContent.includes('body > h1')), false, 'the path stays with the host');
+    // F7 hides it, also from the app; a reload of the whole workbench keeps that.
+    await page.keyboard.press('F7');
+    assert.ok(await until(async () => (await boxes()).hidden));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    assert.ok(await until(() => page.evaluate(() => document.getElementById('design')?.getAttribute('src')?.startsWith('data:image/png') === true).catch(() => false)), 'the design is back');
+    assert.equal((await boxes()).hidden, true, 'still hidden after the reload');
+    await page.frameLocator('#app').locator('body').click();
+    await page.keyboard.press('F7');
+    assert.ok(await until(async () => !(await boxes()).hidden), 'F7 from the app shows it again');
+    // A step's capture: the frame unscaled at its recorded size, without the design; afterwards scaled as before.
+    const png = await bench.unscaled(() => bench.view.screenshot({ scale: 'css' }));
+    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1600, 900]);
+    assert.ok(await until(async () => JSON.stringify((await boxes()).app) === JSON.stringify(shown.app)), 'scaled again');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('capture')), false);
+    await bench.design(null);
+    assert.equal(await page.evaluate(() => document.getElementById('design').hidden && document.getElementById('mDesign').hidden), true);
+    return undefined;
+});
+
 test('F8 with the focus in the app switches App only, both ways', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench } = await open(t);

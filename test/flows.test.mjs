@@ -575,6 +575,28 @@ test('Test run: a design not met offers to have it built or to close, never to f
     assert.deepEqual(advised.questions[0].options, ['close']);
 });
 
+test('Test run: a changed look offers "Adopt new look" first; adopting writes it as learned and adopted, without Claude', async () => {
+    const observed = { png: Buffer.from('neu'), styles: ['button "Speichern": color #000000'], imageRuns: 2, ratio: 0.2, platform: 'linux', basis: 'b', changed: true };
+    const reason = 'S2 sieht anders aus als gelernt: 20 % der Pixel weichen ab.';
+    const h = harness({ outcomes: [failing('S2', { reason, kind: 'visual', look: observed })], answers: ['adopt-look'] });
+    await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => assert.fail('no Claude without a click'), ...h });
+    assert.deepEqual(h.questions[0].options, ['adopt-look', 'ask', 'close']);
+    assert.equal(h.questions[0].labels[0], 'Neuen Look übernehmen');
+    assert.match(h.questions[0].text, /sieht nur anders aus als gelernt/);
+    const { draft, only } = h.adopted[0];
+    assert.deepEqual([...only], ['S2']);
+    const step = draft.steps.find(({ id }) => id === 'S2');
+    assert.equal(step.recording.visual.runs, 2);
+    assert.deepEqual(step.recording.visual.images, { linux: 2 });
+    assert.match(step.recording.visual.adopted, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(step.recording.lookPng.data, observed.png);
+    assert.ok(h.notices.some((text) => text.includes('Neuer Look von S2 übernommen')), JSON.stringify(h.notices));
+    // Without the run's look (nothing captured) only asking and closing remain.
+    const without = harness({ outcomes: [failing('S2', { reason, kind: 'visual' })], answers: ['close'] });
+    await runFlow({ spec, handover: false, canFix: true, openSandbox: async () => 's', ...without });
+    assert.deepEqual(without.questions[0].options, ['ask', 'close']);
+});
+
 test('If a step is still stale after the check run, the decision offers to re-record it', async () => {
     const stale = { ...spec, steps: [spec.steps[0], { ...spec.steps[1], expect: 'S2 anders' }] };
     const h = harness({ outcomes: [pass, repaired(), pass], answers: ['rerecord-next', 'adopt'] });

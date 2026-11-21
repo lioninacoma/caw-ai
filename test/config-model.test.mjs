@@ -68,13 +68,25 @@ test('lifecycle keys: inherited, ready filled with defaults; validated per envir
     assert.match(issues({ dev: { url: 'http://localhost:1', start: 'x' }, live: { extends: 'dev', url: 'https://l.test', production: true } }).join('\n'), /live ist Produktion/);
 });
 
-test('design.fail: ["target"] or [] (only warn); anything else is named', () => {
+test('design.fail: target, lint and visual, or [] (only warn); anything else is named', () => {
     const plainConfig = { signIn: { type: 'none' }, environments: { local: { url: 'http://localhost:5173' } } };
     assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: ['target'] } }).issues, []);
+    assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: ['target', 'lint', 'visual'] } }).issues, []);
     assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: [] } }).issues, []);
     assert.deepEqual(validateConfig({ ...plainConfig, design: {} }).issues, []);
     for (const design of [{ fail: ['pixels'] }, { fail: 'target' }, { strict: true }, ['target']]) {
-        assert.deepEqual(validateConfig({ ...plainConfig, design }).issues, ['design.fail muss eine Liste aus target oder [] sein, etwa ["target"]'], JSON.stringify(design));
+        assert.deepEqual(validateConfig({ ...plainConfig, design }).issues, ['design.fail muss eine Liste aus target, lint, visual oder [] sein, etwa ["target"]'], JSON.stringify(design));
+    }
+});
+
+test('visual and visualIgnore: opt-in switches, thresholds in range, selectors as text', () => {
+    const plainConfig = { signIn: { type: 'none' }, environments: { local: { url: 'http://localhost:5173' } } };
+    assert.deepEqual(validateConfig({ ...plainConfig, visual: { screenshots: true, regression: true, tolerance: 16, maxRatio: 0.005, designMaxRatio: 0.05 }, visualIgnore: ['#clock'] }).issues, []);
+    for (const visual of [{ regression: 'yes' }, { tolerance: 300 }, { maxRatio: 2 }, { pixels: true }, []]) {
+        assert.equal(validateConfig({ ...plainConfig, visual }).issues.length, 1, JSON.stringify(visual));
+    }
+    for (const visualIgnore of ['#clock', [''], [3]]) {
+        assert.equal(validateConfig({ ...plainConfig, visualIgnore }).issues.length, 1, JSON.stringify(visualIgnore));
     }
 });
 

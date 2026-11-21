@@ -76,6 +76,7 @@ Commands:`,
                                          things, develop with the agent. With <test>: replay it first. With @<S4>: up to the
                                          entry of S4 (its navigation runs, its inputs and check stay open). Learns
                                          nothing, writes no test file
+      [--design]                         With @<S4>: through S4, its target design over the app (F7)
       [--role <role>]                    Without a test only; not needed if the config has just one
       [--step-timeout <duration>]        Time limit per step while replaying, default 30s
       [--agent local|docker] [--attach [<key>]] [--agent-timeout <duration>] [--max-actions <n>]
@@ -181,7 +182,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.synopsis.role': 'caw role [list [--json] | add <role> | remove <role> | login <role> --env <name>]',
     'cli.synopsis.run': 'caw run <test> [--env <name>]  or  caw run <test> <test> … | --all [--env <name>] [--agent local|docker | --attach [<key>]]  or  caw run <draft> --promote [--env <name>]',
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <role>]  or  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
-    'cli.synopsis.open': 'caw open [--env <name>] [--role <role>]  or  caw open <test>[@<S4>] [--env <name>] [--agent local|docker | --attach [<key>]]',
+    'cli.synopsis.open': 'caw open [--env <name>] [--role <role>]  or  caw open <test>[@<S4>] [--design] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <part>] [--apply] [--start] [--json]',
     'cli.usageLine': 'Usage: {synopsis}',
     'cli.errorCode': '(code: {code}, exit {exit})',
@@ -701,4 +702,6 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.fixReport.changed': 'Changed files since {head} (without caw/ and .caw/)',
     'cli.fixReport.changedNone': 'None.',
     'cli.fixReport.changedUnknown': 'Unknown: no commit was recorded with the red run, or git could not tell.',
+    'cli.changedLooks': 'look {ids}',
+    'cli.audit.kind.look-adopted': 'A person adopted a new look for {step} on {day}: its screen is compared against the new image from now on.',
 };

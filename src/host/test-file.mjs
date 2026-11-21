@@ -5,7 +5,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { Document, LineCounter, isMap, parseDocument } from 'yaml';
 
@@ -22,6 +22,7 @@ import { checkLocator } from './locator.mjs';
 import { isDesignName } from './design.mjs';
 import { dialogProblem } from './dialogs.mjs';
 import { isPattern } from './patterns.mjs';
+import { lookImage } from './visual.mjs';
 
 export { DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
@@ -40,7 +41,7 @@ const MAX_RETRY_WAIT_MS = 300_000;
 const HUMAN_STEP_FIELDS = ['design', 'needs'];
 const STEP_FIELDS = [...PLAN_STEP_FIELDS, ...HUMAN_STEP_FIELDS, 'recording'];
 // `locale`, `timezone` and `viewport`: the recording browser's, pinned on replay (the viewport headless, or browser.viewport).
-const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects'];
+const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects', 'visual'];
 const EFFECT_FIELDS = new Set(['action', ...EFFECT_LISTS]);
 
 /** The learned effects: how many runs they were learned from, and per action number lists of lines without values. */
@@ -51,6 +52,19 @@ const checkEffects = (raw, at, report) => {
             && Number.isInteger(entry.action) && entry.action > 0
             && EFFECT_LISTS.every((list) => entry[list] === undefined || (Array.isArray(entry[list]) && entry[list].every(isText))));
     if (!ok) report(at, t('config.test.effects'));
+};
+const VISUAL_FIELDS = new Set(['runs', 'basis', 'styles', 'images', 'adopted']);
+/**
+ * The learned look (visual.mjs): how many runs confirmed its style lines, per platform how many confirmed its image (the PNG
+ * beside the recording), its basis, and the day a person adopted it.
+ */
+const checkVisual = (raw, at, report) => {
+    const ok = isObject(raw) && Object.keys(raw).every((key) => VISUAL_FIELDS.has(key))
+        && Number.isInteger(raw.runs) && raw.runs > 0 && (raw.basis === undefined || isText(raw.basis))
+        && Array.isArray(raw.styles) && raw.styles.every(isText)
+        && isObject(raw.images) && Object.entries(raw.images).every(([platform, runs]) => /^[a-z\d]+$/.test(platform) && Number.isInteger(runs) && runs > 0)
+        && (raw.adopted === undefined || (typeof raw.adopted === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.adopted)));
+    if (!ok) report(at, t('config.test.visual'));
 };
 const NETWORK_FIELDS = new Set(['name', 'status', 'ms', 'count', 'params']);
 
@@ -248,6 +262,7 @@ const readRecording = (raw, at, problems, lineOf, { framework }) => {
     if (raw.viewport !== undefined && !isViewport(raw.viewport)) report([...at, 'viewport'], t('config.test.recording.viewport'));
     if (raw.network !== undefined) checkNetwork(raw.network, [...at, 'network'], report);
     if (raw.effects !== undefined) checkEffects(raw.effects, [...at, 'effects'], report);
+    if (raw.visual !== undefined) checkVisual(raw.visual, [...at, 'visual'], report);
     if (!Array.isArray(raw.actions)) {
         report([...at, 'actions'], t('config.test.recording.actions'));
         return undefined;
@@ -791,12 +806,15 @@ const recordingFields = (recording) => ({
     ...(recording.timeoutMs === undefined ? {} : { timeoutMs: recording.timeoutMs }),
     ...(recording.network === undefined ? {} : { network: recording.network }),
     ...(recording.effects === undefined ? {} : { effects: recording.effects }),
+    ...(recording.visual === undefined ? {} : { visual: recording.visual }),
 });
 
 /** Actions and baselines on one line each: the recording gets much shorter and reads like a list. */
 const compactRecording = (node) => {
     for (const entry of node?.get('network', true)?.items ?? []) entry.flow = true;
     for (const action of node?.get('actions', true)?.items ?? []) if (isMap(action)) action.flow = true;
+    const images = node?.get('visual', true)?.get('images', true);
+    if (images !== undefined) images.flow = true;
 };
 
 /**
@@ -967,6 +985,16 @@ export const writeTest = (root, spec, only, { withNotes = false, prune = false }
     if (empty && oldRecordings === undefined) return changed.length === 0 ? t('config.test.unchanged') : changed.join(', ');
     mkdirSync(join(root, RECORDING_DIR), { recursive: true });
     if (writeIfChanged(recordingFile, renderRecordings(recorded), oldRecordings)) changed.push(`${RECORDING_DIR}/${spec.id}.yaml`);
+    // A learned or adopted look brings its image (withLooks): beside the recording, per test, step and platform.
+    for (const step of spec.steps) {
+        const image = (only === undefined || only.has(step.id)) ? step.recording?.lookPng : undefined;
+        if (image === undefined) continue;
+        const file = lookImage(spec.id, step.id, image.platform);
+        if (existsSync(join(root, file)) && readFileSync(join(root, file)).equals(image.data)) continue;
+        mkdirSync(dirname(join(root, file)), { recursive: true });
+        writeFileSync(join(root, file), image.data);
+        changed.push(file);
+    }
     return changed.length === 0 ? t('config.test.unchanged') : changed.join(', ');
 };
 
