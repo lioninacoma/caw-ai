@@ -18,6 +18,7 @@ import { DEFAULT_MESSAGE_SELECTORS, browserLaunch, isLoopback, isViewport } from
 import { frameworkOf, waitQuiet } from './framework/index.mjs';
 import { registerEngines } from '../ext/extjs/extjs-engine.mjs';
 import { responseLine } from './effects.mjs';
+import { responseValues } from './look-hints.mjs';
 import { APP_FRAME, WORKBENCH_MARK_SCRIPT, fromWorkbenchSource, interceptDocuments } from './app-view.mjs';
 import { createSourceMapper } from './source-maps.mjs';
 import { basicAuthToken, scrubTrace } from './trace-scrub.mjs';
@@ -1374,6 +1375,19 @@ export const openBrowserSession = async (spec) => {
                 entry.line = responseLine(requestName(describedRequest(request), config.requestKeys ?? []), JSON.parse(body));
             }).catch(() => {});
         });
+        // The values of answered reads, for the look suggestion after a recording (look-hints.mjs): in memory only, never written
+        // anywhere, they may be personal data. Only when asked for (servedTexts): a run without a chat does none of this.
+        const served = spec.servedTexts === true ? new Set() : null;
+        if (served !== null) {
+            raw.on('response', (response) => {
+                const request = response.request();
+                const page = pageOfRequest(request);
+                if (!asked(request) || page === false || (page !== null && !pages.owns(page))) return;
+                if (!/json/i.test(response.headers()['content-type'] ?? '')) return;
+                if (classifyRequest(requestName(describedRequest(request), config.requestKeys ?? []), reads) !== 'read') return;
+                response.text().then((body) => { responseValues(JSON.parse(body), served); }).catch(() => {});
+            });
+        }
         raw.on('requestfailed', (request) => network.failed(request, request.failure()?.errorText ?? ''));
 
         // Snapshots put requests including headers into the trace; with basic auth the password would be in the Authorization header.
@@ -1591,6 +1605,8 @@ export const openBrowserSession = async (spec) => {
             network: { mark: () => network.mark(), since: (mark, end) => network.since(mark, end) },
             /** Console and responses for an action's effect: `mark()` before, `since(mark)` after. */
             trail: { mark: () => trail.length, since: (mark) => trail.slice(mark).filter(({ line }) => line !== null) },
+            /** With servedTexts: the normalized values the app's reads answered so far (look-hints.mjs), else undefined. */
+            ...(served === null ? {} : { served: () => served }),
             /** A warning that does not come from the browser, e.g. a deviating effect in a passed run. */
             warn: (entry) => addWarning(entry),
             /** CSS selectors of messages on the page, from the config. */

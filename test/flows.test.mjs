@@ -18,7 +18,7 @@ const nothing = { exitCode: EXIT.fail, verdict: { status: 'fail', reason: 'kaput
 const repaired = (extra = {}) => ({ ...pass, candidate: { ...spec, repaired: true }, fresh: [], ...extra });
 
 /** Runs the flows without a browser: outcomes come in order, the human picks in order from `answers`. */
-const harness = ({ outcomes, answers = ['adopt'] }) => {
+const harness = ({ outcomes, answers = ['adopt'], ticks = [] }) => {
     const calls = [];
     const adopted = [];
     const questions = [];
@@ -38,6 +38,8 @@ const harness = ({ outcomes, answers = ['adopt'] }) => {
     };
     const chat = {
         choose: async (kind, text, options, card) => pick(kind, text, options, card),
+        // A card with checkboxes: the human ticks `ticks`, then picks a button as usual.
+        choosePicks: async (kind, text, options, card) => ({ choice: pick(kind, text, options, card), picked: ticks }),
         discuss: async (text, options) => {
             const wish = pick('discussing', text, options);
             return typeof wish === 'object' ? wish : { choice: wish };
@@ -76,6 +78,45 @@ test('Recording: passed and adopted writes the whole plan', async () => {
     assert.ok(h.calls[1].replay.steps.length > 0);
     assert.deepEqual(h.adopted, [{ draft: spec, only: undefined }]);
     assert.deepEqual(h.questions.map(({ kind, options }) => [kind, options]), [['deciding', ['adopt', 'discard']]]);
+});
+
+test('Recording: the check run measures look candidates; the card offers them unticked, adopting writes look only for the ticked ones', async () => {
+    const three = { ...spec, steps: [...spec.steps, { ...stepOf('S3'), look: true }] };
+    const h = harness({ outcomes: [{ ...pass, candidate: three }, { ...pass, concluded: { lookCandidates: ['S2', 'S3', 'S9'] } }], ticks: ['S2', 'S1'] });
+    const marked = [];
+    const markLooks = (draft, ids) => { marked.push([draft.id, ids]); return 'caw/tests/t.yaml'; };
+    assert.equal(await recordFlow({ sandbox: 's', ...h, markLooks }), EXIT.pass);
+    assert.equal(h.calls[1].suggestLooks, true, 'only the check run of a recording measures');
+    const { card, text } = h.questions[0];
+    // S3 has look already, S9 is no step: only S2 is offered.
+    assert.deepEqual(card.picks.items, [{ id: 'S2', label: 'S2' }]);
+    assert.equal(card.picks.title, 'Look fester Bildschirme vergleichen?');
+    assert.match(card.picks.text, /keine Daten vom Server und keine Listen.*Sicher ist das nicht: Prüfe, ob der Bildschirm wirklich feste Daten zeigt\./);
+    assert.match(text, /Können look: true bekommen: S2\. Soll das der neue Testplan werden\?$/);
+    assert.deepEqual(h.adopted.map(({ only }) => only), [undefined]);
+    assert.deepEqual(marked, [['t', ['S2']]], 'S1 was not offered: a tick on it does not count');
+    assert.ok(h.notices.includes('look: true bei S2: caw/tests/t.yaml. Spätere Läufe lernen ihren Look.'));
+});
+
+test('Recording: nothing ticked or discarded writes no look; without candidates the card has no checkboxes', async () => {
+    const none = harness({ outcomes: [{ ...pass, candidate: spec }, { ...pass, concluded: { lookCandidates: ['S2'] } }] });
+    const marked = [];
+    const markLooks = (draft, ids) => { marked.push(ids); return 'x'; };
+    await recordFlow({ sandbox: 's', ...none, markLooks });
+    assert.equal(none.adopted.length, 1);
+    const discarded = harness({ outcomes: [{ ...pass, candidate: spec }, { ...pass, concluded: { lookCandidates: ['S2'] } }], answers: ['discard'], ticks: ['S2'] });
+    await recordFlow({ sandbox: 's', ...discarded, markLooks });
+    assert.deepEqual(marked, []);
+    const plain = harness({ outcomes: [{ ...pass, candidate: spec }, pass] });
+    await recordFlow({ sandbox: 's', ...plain, markLooks });
+    assert.equal(plain.questions[0].card.picks, undefined);
+});
+
+test('Fixing a step suggests no look: only a whole recording does', async () => {
+    const h = harness({ outcomes: [repaired(), { ...pass, concluded: { lookCandidates: ['S2'] } }] });
+    await fixFlow({ draft: spec, target: { id: 'S2', reason: 'Grund' }, sandbox: 's', ...h, markLooks: () => 'x' });
+    assert.equal(h.calls[1].suggestLooks, undefined);
+    assert.equal(h.questions[0].card.picks, undefined);
 });
 
 test('Recording: discarding leaves everything as it is', async () => {

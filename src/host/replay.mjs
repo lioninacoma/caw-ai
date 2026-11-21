@@ -807,8 +807,10 @@ export const stepGroups = (steps, replay) => {
  *                    the .png design, the screenshot, the lint and the learned look; without it nothing visual is captured
  * @param look        (id, { capture, page }) => { record?, observed?, fail?, warnings? } after the design: screenshot, token lint
  *                    and visual regression (run.mjs); `fail` { kind, text, evidence } fails the passed step without stopping
+ * @param hintLook    (id, { page, texts }) => { served, masks } after a passed step, for the look suggestion after a recording
+ *                    (look-hints.mjs); returned per step as `lookHints`, only in memory
  */
-export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, reads = [], log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL, judgeDesign, designFail = DEFAULT_DESIGN_FAIL, capture, look }) => {
+export const playReplay = async ({ replay, handler, session, base, authMarker, stepTimeoutMs, runTag, filesDir, reads = [], log = () => {}, sleep = sleepMs, now = Date.now, effectFail = DEFAULT_EFFECT_FAIL, judgeDesign, designFail = DEFAULT_DESIGN_FAIL, capture, look, hintLook }) => {
     // Effects per action: what this run saw (last attempt) and the first deviation from the learned effects per step.
     const measure = session.trail === undefined ? null : createEffects({ session });
     const observed = new Map();
@@ -830,6 +832,8 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     // Per step what the visual layer found (screenshot, lint, look) for result.json, and the look it saw, for learning.
     const looks = new Map();
     const seenLooks = new Map();
+    // Per passed step whether its screen shows data that changes (hintLook), for the look suggestion.
+    const lookHints = new Map();
     // What stopped the earlier attempts, per step. It stays visible in the report even if a later attempt passes.
     const history = new Map();
     // Steps whose retry did not run because a new attempt cannot change anything, with the reason.
@@ -1140,12 +1144,13 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         results.set(id, { ...result, status: 'fail', kind: seen.fail.kind, evidence: { type: 'eval', value: seen.fail.evidence }, note: seen.fail.text });
     };
     /** The step's screen, captured on first use: design, screenshot, lint and look share one capture per passed check. */
+    /** What varies from run to run on a screen: the run tag and the remembered values. */
+    const varying = () => [...(runTag === undefined ? [] : [runTag, runTag.toLowerCase()]), ...remembered.values()];
     const shotOf = (id) => {
         if (capture === undefined) return undefined;
         let taken = null;
-        const texts = () => [...(runTag === undefined ? [] : [runTag, runTag.toLowerCase()]), ...remembered.values()];
         return () => {
-            taken ??= capture(id, { texts: texts() });
+            taken ??= capture(id, { texts: varying() });
             return taken;
         };
     };
@@ -1288,6 +1293,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             designs.delete(id);
             looks.delete(id);
             seenLooks.delete(id);
+            lookHints.delete(id);
             observed.delete(id);
             deviations.delete(id);
             proposals.delete(id);
@@ -1472,6 +1478,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
             const shot = shotOf(step.id);
             await judge(step.id, result, shot);
             await inspect(step.id, shot);
+            if (hintLook !== undefined && results.get(step.id)?.status === 'pass') lookHints.set(step.id, await hintLook(step.id, { page: session.page(), texts: varying() }).catch(() => null));
         }
         index += 1;
     }
@@ -1491,7 +1498,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', text: deviationText(deviation) });
     }
     // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
-    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks };
+    return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks, lookHints };
 };
 
 /**

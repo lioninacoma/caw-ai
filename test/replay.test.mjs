@@ -1018,6 +1018,21 @@ test('design: a .png design gets the step\'s capture; one capture per passed che
     assert.equal(failedStep({ ...played, expectations: [{ id: 'S1' }, { id: 'S2' }] }).id, 'S1');
 });
 
+test('look hints: measured after each passed step with the varying texts, a failing measurement is no hint, nothing in the step records', async () => {
+    const handler = async (command) => (command.action === 'check' ? { pass: true, value: true } : 'ok');
+    const asked = [];
+    const hintLook = async (id, { texts }) => {
+        asked.push([id, texts]);
+        if (id === 'S2') throw new Error('page gone');
+        return { served: false, masks: 0 };
+    };
+    const clock = fakeClock();
+    const played = await playReplay({ replay: { steps: TWO_STEPS }, handler, session: fakeSession(), base: 'https://portal.example', stepTimeoutMs: 1000, sleep: clock.sleep, now: clock.now, hintLook, runTag: 'CAW-7' });
+    assert.deepEqual(asked, [['S1', ['CAW-7', 'caw-7']], ['S2', ['CAW-7', 'caw-7']]]);
+    assert.deepEqual([...played.lookHints], [['S1', { served: false, masks: 0 }], ['S2', null]]);
+    assert.equal(JSON.stringify(stepRecords({ ids: ['S1', 'S2'], ...played })).includes('served'), false);
+});
+
 test('design: a later step that really failed comes first, before a design not met', async () => {
     const played = await playDesign({ verdict: 'not-met', failS2: true });
     const failed = failedStep({ ...played, expectations: [{ id: 'S1' }, { id: 'S2' }] });

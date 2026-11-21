@@ -195,6 +195,35 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
         waiter = null;
         resolve(line);
     };
+    /**
+     * Waits for a button under a card (choose, choosePicks).
+     * @param picks the ids of the card's checkboxes: the answer is then { choice, picked }
+     */
+    const ask = (kind, question, options, card, picks) => {
+        if (ended) return Promise.resolve(null);
+        // In the middle of a conversation (e.g. the token notice before Claude answers): the conversation reopens afterwards.
+        const parked = TALK_KINDS.includes(choice?.kind) ? choice : null;
+        return new Promise((resolve) => {
+            choice = {
+                kind,
+                options,
+                ...(picks === undefined ? {} : { picks }),
+                // What the human sees: a decision card asks its own question, a result card says what happened; `question`
+                // is then only for the log.
+                question: waitingText(question, card),
+                resolve: parked === null ? resolve : (id) => {
+                    if (!ended) choice = parked;
+                    resolve(id);
+                    publish();
+                },
+            };
+            if (card === undefined) show('result', question, { kind: 'result', tone: 'ask', title: question });
+            else if (card.kind === 'result') show('result', resultText(card), card);
+            else if (card.kind === 'tokens') show('tokens', question, card);
+            else show('decision', question, card);
+            publish();
+        });
+    };
     const claudeText = (who, raw) => {
         const text = String(raw ?? '').trim().slice(0, MAX_TEXT);
         if (text === '') throw new CawError('usage', 'The text is missing.');
@@ -244,12 +273,22 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
                 } else paused = !paused;
                 publish();
             },
-            /** One of the offered options. Unknown values are ignored. */
-            choose: (id) => {
+            /**
+             * One of the offered options. Unknown values are ignored. A card with checkboxes (choosePicks) also gets the ticked
+             * ones; anything the card did not offer is dropped.
+             */
+            choose: (id, picked) => {
                 const option = choice?.options.find((candidate) => candidate.id === id);
                 if (option === undefined) return;
-                show('human', option.label);
-                answerChoice(id);
+                if (choice.picks === undefined) {
+                    show('human', option.label);
+                    answerChoice(id);
+                } else {
+                    const ticked = new Set(Array.isArray(picked) ? picked : []);
+                    const kept = choice.picks.filter((pick) => ticked.has(pick));
+                    show('human', kept.length === 0 ? option.label : `${option.label}: ${kept.join(', ')}`);
+                    answerChoice({ choice: id, picked: kept });
+                }
                 publish();
             },
             abort: () => {
@@ -297,29 +336,14 @@ export const createChat = ({ show: shown = () => {}, status = () => {}, onAbort 
          *             title is `question`; otherwise `question` then only goes to the log
          * @returns the option id, null if the window closes or the human aborts
          */
-        choose: (kind, question, options, card) => {
-            if (ended) return Promise.resolve(null);
-            // In the middle of a conversation (e.g. the token notice before Claude answers): the conversation reopens afterwards.
-            const parked = TALK_KINDS.includes(choice?.kind) ? choice : null;
-            return new Promise((resolve) => {
-                choice = {
-                    kind,
-                    options,
-                    // What the human sees: a decision card asks its own question, a result card says what happened; `question`
-                    // is then only for the log.
-                    question: waitingText(question, card),
-                    resolve: parked === null ? resolve : (id) => {
-                        if (!ended) choice = parked;
-                        resolve(id);
-                        publish();
-                    },
-                };
-                if (card === undefined) show('result', question, { kind: 'result', tone: 'ask', title: question });
-                else if (card.kind === 'result') show('result', resultText(card), card);
-                else if (card.kind === 'tokens') show('tokens', question, card);
-                else show('decision', question, card);
-                publish();
-            });
+        choose: (kind, question, options, card) => ask(kind, question, options, card),
+        /**
+         * Like choose, with checkboxes in a decision card: `card.picks` { title, text, items: [{ id, label }] }, none ticked.
+         * @returns { choice, picked: [id] } in the card's order; choice null if the window closes or the human aborts
+         */
+        choosePicks: async (kind, question, options, card) => {
+            const answer = await ask(kind, question, options, card, card.picks.items.map(({ id }) => id));
+            return answer !== null && typeof answer === 'object' ? answer : { choice: answer ?? null, picked: [] };
         },
         /**
          * An advice as a card; the human decides by button.
@@ -558,6 +582,13 @@ details.activity li{overflow-wrap:anywhere}
 .card details ul,.card>ul{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .card>ul{margin:0;font-size:12.5px;color:var(--text)}.card li{display:flex;gap:6px}.card li .i{width:13px;height:13px;margin-top:2px}
 .card li.e .i{color:var(--fail)}.card li.w .i{color:var(--warn)}.card li.f .i,.card>ul li .i{color:var(--faint)}
+/* Checkboxes in a card (choosePicks): one row per item, locked after the choice. */
+.picks{margin:0;padding:8px 10px 10px;border:1px solid var(--line);border-radius:var(--r1);display:flex;flex-direction:column;gap:6px;min-width:0}
+.picks legend{padding:0 4px;font:600 11px/1.4 var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.picks .pick{display:flex;align-items:baseline;gap:8px;font-size:12.5px;cursor:pointer;overflow-wrap:anywhere}
+.picks .pick input{margin:0;flex:none;accent-color:var(--accent);transform:translateY(2px)}.picks .pick input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.picks .sid{font:500 11.5px/1.6 var(--font-mono);color:var(--accent-text)}
+.picks:disabled .pick{cursor:default;opacity:.6}
 .advice h2{margin:0;font:600 14px/1.3 var(--font)}.advice .target{font:400 11.5px/1.4 var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
 .diff-h{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--muted);font:400 11px/1.3 var(--font);background:var(--panel2)}
 .diff-h b{color:var(--text);font:500 11px/1.3 var(--font-mono)}.diff-h .i{width:13px;height:13px}.diff-h span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -646,7 +677,10 @@ const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.cla
 // The icons are static SVG from the host, never page content.
 const ic=(name,cls)=>{const box=document.createElement('template');box.innerHTML=ICON[name]??'';const svg=box.content.firstChild;if(cls)svg.classList.add(cls);return svg;};
 const fill=(key,vars)=>Object.entries(vars).reduce((text,[name,value])=>text.split('{'+name+'}').join(String(value)),T[key]);
-const send=(type,text,checkpoint)=>window.${BINDING}({type,text,checkpoint,nonce:${JSON.stringify(nonce)}});
+const send=(type,text,checkpoint,picked)=>window.${BINDING}({type,text,checkpoint,picked,nonce:${JSON.stringify(nonce)}});
+// The checkboxes of the card that waits for a button; after the choice they are locked.
+let openPicks=null;
+const takePicks=()=>{if(openPicks===null)return undefined;const ticked=[...openPicks.querySelectorAll('input:checked')].map((box)=>box.value);openPicks.disabled=true;openPicks=null;return ticked;};
 const toBench=(key)=>parent.postMessage({caw:'key',key},'*');
 const input=$('input'),messages=$('messages'),thinking=$('thinking'),abort=$('abort'),sendButton=$('send'),toggleButton=$('toggle'),statusBox=$('status');
 const KEY=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘ ↵':T['chat.page.ctrlEnter'];
@@ -782,6 +816,10 @@ window.addMessage=(who,text,about,at)=>{
     if(about.facts&&about.facts.length>0){const ul=el('ul');for(const fact of about.facts){const li=el('li');li.append(ic('dot'),el('span','',fact));ul.append(li);}box.append(ul);}
     if(about.warn){const warn=el('div','warnbox warn');warn.append(ic('alert'),el('span','',about.warn));box.append(warn);}
     for(const section of about.details??[]){const part=list(section.title,section.items,'w');if(part)box.append(part);}
+    // Checkboxes the human ticks before choosing, none ticked: they go along with the button they click (choosePicks).
+    if(about.picks){const set=el('fieldset','picks');set.append(el('legend','',about.picks.title));if(about.picks.text)set.append(el('p','muted',about.picks.text));
+      for(const item of about.picks.items){const label=el('label','pick');const tick=el('input');tick.type='checkbox';tick.value=item.id;label.append(tick,el('span','sid',item.id),el('span','nm',item.label));set.append(label);}
+      box.append(set);openPicks=set;}
     if(about.question)box.append(el('p','next',about.question));
     place(box);return;
   }
@@ -900,7 +938,9 @@ window.setStatus=(state,text,label,button,options)=>{if(state==='closed')documen
   closeMenus();
   const all=state==='planning'&&!(options?.length)?[{id:'approve',label:T['chat.page.approvePlan'],primary:true,big:true}]:options??[];
   const buttons=all.map((option)=>{const choice=el('button','',option.label);choice.type='button';if(option.primary)choice.classList.add('primary');if(option.big){choice.classList.add('big');choice.id='approve';const key=el('kbd','',KEY);key.setAttribute('aria-hidden','true');choice.append(key);}
-    choice.addEventListener('click',()=>{if(choice.disabled)return;if(option.confirm&&confirmFirst(choice,option))return;choice.disarm?.();closeMenus();lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id);});return choice;});
+    choice.addEventListener('click',()=>{if(choice.disabled)return;if(option.confirm&&confirmFirst(choice,option))return;choice.disarm?.();closeMenus();lockChoices(choice);if(option.id==='approve'&&state==='planning')send('toggle');else send('choose',option.id,undefined,takePicks());});return choice;});
+  // No button waits any more: the checkboxes of an earlier card stay as they were.
+  if(all.length===0&&openPicks!==null){openPicks.disabled=true;openPicks=null;}
   const primary=buttons.filter((b)=>b.classList.contains('primary')),rest=buttons.filter((b)=>!b.classList.contains('primary'));
   const row=el('div','acts rest');arrange(row,'choicesMore',primary,rest);choices.replaceChildren(...(buttons.length>0?[row]:[]));
   // New buttons get focus so keyboard and screen reader continue there; someone typing keeps the field.
@@ -1097,7 +1137,7 @@ export const openChat = async ({ session, logPath, onAbort, onOpen, onWaiting, o
         } else if (event?.type === 'pick') quiet(pick());
         else if (event?.type === 'unpick') chat.detach();
         else if (event?.type === 'toggle') chat.human.toggle();
-        else if (event?.type === 'choose') chat.human.choose(event.text);
+        else if (event?.type === 'choose') chat.human.choose(event.text, event.picked);
         else if (event?.type === 'abort') chat.human.abort();
         else if (event?.type === 'report' && next !== null) quiet(openReport());
         else if (event?.type === 'close') closeWanted?.();

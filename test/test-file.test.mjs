@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, replayBefore, replayOf, replayToEntry, replayUpToStale, trailingNumbers } from '../src/host/replay.mjs';
-import { brokenChain, draftIds, draftPath, humanFields, loadDraft, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, redStep, renderPlan, renderTest, setStepDesign, staleSteps, stepHash, testExists, testPath, writeTest } from '../src/host/test-file.mjs';
+import { brokenChain, draftIds, draftPath, humanFields, loadDraft, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, redStep, renderPlan, renderTest, setStepDesign, setStepLooks, staleSteps, stepHash, testExists, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
 
 const NEXT = "getByRole('button', { name: 'Next', exact: true })";
@@ -625,6 +625,22 @@ test('setStepDesign: one node edit, line endings and comments stay, a missing te
     assert.throws(() => setStepDesign(root, 't', 'S9', 'design/a.html'), (error) => error.code === 'step-unknown');
     assert.throws(() => setStepDesign(root, '../t', 'S1', 'design/a.html'), (error) => error.code === 'test-missing');
     assert.throws(() => setStepDesign(root, 't', 'S1', 'elsewhere/a.html'), /design nennt/);
+});
+
+test('setStepLooks: look: true as a node edit on the ticked steps, comments and line endings stay; a draft in caw/drafts; an unknown step is refused', (t) => {
+    const root = testRoot(t, YAML.replaceAll('\n', '\r\n'));
+    assert.equal(setStepLooks(root, { id: 't' }, ['S2']), 'caw/tests/t.yaml');
+    const text = readFileSync(testPath(root, 't'), 'utf8');
+    assert.match(text, /# Human comment\r\n/);
+    assert.match(text, / {4}note: Check only\.\r\n {4}look: true\r\n$/);
+    assert.deepEqual(loadTest(root, 't').steps.map(({ look }) => look), [undefined, true], 'only S2');
+    assert.equal(setStepLooks(root, { id: 't' }, ['S2']), 'keine Änderung');
+    assert.throws(() => setStepLooks(root, { id: 't' }, ['S9']), (error) => error.code === 'step-unknown');
+    assert.throws(() => setStepLooks(root, { id: 'other' }, ['S1']), (error) => error.code === 'test-missing');
+    mkdirSync(join(root, 'caw/drafts'), { recursive: true });
+    writeFileSync(draftPath(root, 'bug'), YAML.replace('id: t', 'id: bug'));
+    assert.equal(setStepLooks(root, { id: 'bug', draft: true }, ['S1']), 'caw/drafts/bug.yaml');
+    assert.equal(loadDraft(root, 'bug').steps[0].look, true);
 });
 
 test('drafts: red only in caw/drafts, with a known step, the run and an optional short hash', () => {

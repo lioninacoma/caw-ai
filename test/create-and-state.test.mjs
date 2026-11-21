@@ -583,6 +583,28 @@ test('Chat: caw\'s notices and Claude starting are entries of their own, the tok
     assert.deepEqual(shown, [['notice', 'Gespeichert', undefined], ['starting', 'Starte Claude', undefined], ['tokens', 'Das kostet Token.', { kind: 'tokens', text: 'Einmal pro Lauf.' }], ['human', 'Weiter', undefined]]);
 });
 
+test('Chat: a card with checkboxes answers with the ticked ones it offered; closing answers with nothing ticked', async () => {
+    const shown = [];
+    const chat = createChat({ show: (who, text) => shown.push([who, text]) });
+    const options = [{ id: 'adopt', label: 'Übernehmen', primary: true }];
+    const card = { title: 'Prüflauf bestanden', question: 'Übernehmen?', picks: { title: 'Look?', items: [{ id: 'S2', label: 'Form' }, { id: 'S3', label: 'Hilfe' }] } };
+    const first = chat.choosePicks('deciding', 'Protokoll', options, card);
+    // From the page: an id the card did not offer is dropped, the order is the card's.
+    chat.human.choose('adopt', ['S3', 'S9', 'S2', 'S3']);
+    assert.deepEqual(await first, { choice: 'adopt', picked: ['S2', 'S3'] });
+    assert.deepEqual(shown.at(-1), ['human', 'Übernehmen: S2, S3']);
+    const second = chat.choosePicks('deciding', 'Protokoll', options, card);
+    chat.human.choose('adopt', 'S2');
+    assert.deepEqual(await second, { choice: 'adopt', picked: [] }, 'no list, nothing ticked');
+    // A plain choice ignores what the page sends along.
+    const plain = chat.choose('deciding', 'Protokoll', options, { title: 'x', question: 'y' });
+    chat.human.choose('adopt', ['S2']);
+    assert.equal(await plain, 'adopt');
+    const third = chat.choosePicks('deciding', 'Protokoll', options, card);
+    chat.human.closed();
+    assert.deepEqual(await third, { choice: null, picked: [] });
+});
+
 const VIEW = { repairing: false, notes: '', steps: [{ id: 'S1', name: 'Los', do: 'Tu es', expect: 'Da' }] };
 
 test('Plan: a message is a change request, the button approves, and the wait lets nothing through', async () => {

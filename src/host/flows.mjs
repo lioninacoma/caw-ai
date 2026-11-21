@@ -283,7 +283,7 @@ const adoptedText = (current, changes, whole) => {
     });
 };
 
-const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole = false, expectChange = [] } = {}) => [
+const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole = false, expectChange = [], looks = [] } = {}) => [
     t('run.flow.checkPassed'),
     ...(adoptedText(current, changes, whole) === '' ? [] : [adoptedText(current, changes, whole)]),
     ...(warnings.length === 0 ? [] : [t('run.flow.decisionWarnings', { list: warnings.map(({ text }) => withoutDot(text)).join('; ') })]),
@@ -298,6 +298,7 @@ const decisionText = (current, changes, seen, warnings = [], { fresh = [], whole
     })(),
     ...expectTexts([...changes, { expectChange }]),
     ...(staleSteps(current).length === 0 ? [] : [t('run.flow.decisionStale', { ids: staleSteps(current).map(({ id }) => id).join(', ') })]),
+    ...(looks.length === 0 ? [] : [t('run.flow.decisionLooks', { ids: looks.join(', ') })]),
     t('run.flow.decisionQuestion'),
 ].join(' ');
 
@@ -326,6 +327,16 @@ const decisionCard = (current, changes, seen, warnings = [], { fresh = [], whole
     };
 };
 
+/**
+ * The steps a recording's check run offers for `look: true` (look-hints.mjs), as the card's checkboxes: none ticked, the human
+ * ticks what really shows fixed data.
+ */
+const lookPicks = (current, ids) => ({
+    title: t('run.flow.lookPicksTitle'),
+    text: t('run.flow.lookPicksText'),
+    items: ids.map((id) => ({ id, label: current.steps.find((step) => step.id === id)?.name ?? '' })),
+});
+
 const changeNote = (changes) => {
     if (changes.length === 0) return undefined;
     return changes.map(({ id, ids, reason, rerecord, expectChange = [] }) => `${t(rerecord ? 'run.flow.noteRerecorded' : 'run.flow.noteFixed', { id: (ids ?? [id]).join(', '), reason: withoutDot(reason) })}${expectChange.map(({ id: changed, before }) => t('run.flow.noteBefore', { id: changed, before })).join('')}`).join(' ');
@@ -346,8 +357,10 @@ const changeNote = (changes) => {
  * @param advising     Claude advises on its own on failures and warnings; after a recording only once a step gets fixed
  * @param log          message in the terminal
  * @param head         () => the checked-out commit's short hash or undefined: a draft's red proof records it
+ * @param markLooks    (test, step ids) => the file: writes `look: true` on the steps the human ticked when adopting a whole
+ *                     recording; without it nothing is suggested
  */
-export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, log, head = () => undefined, advising: advisingFirst = true }) => {
+export const fixFlow = async ({ draft, target = null, changes: done = [], whole = false, expectChange = [], fresh = [], discardCode, seenFailures = [], sandbox, openSandbox, execute, adopt, markLooks, log, head = () => undefined, advising: advisingFirst = true }) => {
     const fixer = createFixer({ sandbox, openSandbox });
     const changes = [...done];
     const seen = [...seenFailures];
@@ -432,10 +445,13 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
         let saved = null;
         // A draft that failed at its red step as it should: that is the proof, not a failure to fix.
         let red = false;
+        // A new recording: its check run measures which steps could get look: true, the card offers them.
+        const suggesting = whole && markLooks !== undefined;
         const played = await execute({
             spec: current,
             replay: replayUpToStale(current),
             note: changeNote(changes),
+            ...(suggesting ? { suggestLooks: true } : {}),
             conclude: async (concluded) => {
                 const { verdict, failed, chat, runId } = concluded;
                 // Advice on the bug the draft catches would only cost tokens: fixing the app is the person's next step.
@@ -458,7 +474,13 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                     const again = stale === undefined ? null : { id: 'rerecord-next', label: t('run.button.rerecordStep', { id: stale.id }), primary: true };
                     const count = current.steps.length;
                     const options = again === null ? [adoptButton(count), DISCARD] : [again, adoptButton(count, { primary: false }), DISCARD];
-                    choice = await chat.choose('deciding', decisionText(current, changes, seen, verdict.warnings, { fresh, whole, expectChange }), options, decisionCard(current, changes, seen, verdict.warnings, { fresh, whole, expectChange }));
+                    // Steps without data from the server or lists: the card offers them for look: true, none ticked.
+                    const looks = suggesting ? (concluded.lookCandidates ?? []).filter((id) => current.steps.some((step) => step.id === id && step.look !== true)) : [];
+                    const text = decisionText(current, changes, seen, verdict.warnings, { fresh, whole, expectChange, looks });
+                    const card = decisionCard(current, changes, seen, verdict.warnings, { fresh, whole, expectChange });
+                    let picked = [];
+                    if (looks.length === 0) choice = await chat.choose('deciding', text, options, card);
+                    else ({ choice, picked } = await chat.choosePicks('deciding', text, options, { ...card, picks: lookPicks(current, looks) }));
                     if (choice === 'rerecord-next' && await fixer.open(chat, (message) => decide(chat, resultCard('warn', t('run.flow.cannotFix'), `${withoutDot(message)}.`), [ONLY_CLOSE])) !== null) {
                         offered = { id: stale.id, reason: t('run.flow.stillStale'), rerecord: true };
                         return { next: 'claude' };
@@ -468,6 +490,13 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
                         // Re-recorded from a step on: steps no longer in the plan go, the steps before stay as they are.
                         const prune = changes.some(({ ids }) => ids !== undefined);
                         saved = adopt(current, only, { withNotes: advisedNotes, ...(prune ? { prune } : {}) });
+                        // The human's ticks: only steps the card offered.
+                        const marked = picked.filter((id) => looks.includes(id));
+                        if (marked.length > 0) {
+                            const line = t('run.flow.looksMarked', { ids: marked.join(', '), file: markLooks(current, marked) });
+                            log(line);
+                            chat.notice(line);
+                        }
                         return { outcome: t('run.flow.saved', { file: saved }) };
                     }
                     return { outcome: t('run.flow.discarded') };
@@ -530,7 +559,7 @@ export const fixFlow = async ({ draft, target = null, changes: done = [], whole 
  * @param sandbox  Docker, token and image
  * @param execute  a single run, returns { exitCode, verdict, candidate, failed }
  */
-export const recordFlow = async ({ sandbox, execute, adopt, log, head }) => {
+export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head }) => {
     const recorded = await execute({
         sandbox,
         conclude: async ({ verdict, candidate, chat }) => {
@@ -542,7 +571,7 @@ export const recordFlow = async ({ sandbox, execute, adopt, log, head }) => {
     });
     if (recorded.candidate === undefined) return recorded.exitCode;
     // The check run of a recording costs no further tokens unless asked: advice only comes once a step gets fixed.
-    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, log, head, advising: false });
+    return fixFlow({ draft: recorded.candidate, whole: true, expectChange: recorded.expectChange ?? [], fresh: recorded.fresh ?? [], seenFailures: hardFailures(recorded.verdict), sandbox, execute, adopt, markLooks, log, head, advising: false });
 };
 
 /**

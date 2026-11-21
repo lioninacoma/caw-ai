@@ -1041,3 +1041,26 @@ export const setStepDesign = (root, id, step, file) => {
     parseTest(text, label, { description: true });
     return { file: label, changed: writeIfChanged(path, text, raw) };
 };
+
+/**
+ * Sets `look: true` on steps of a written test, as a node edit: comments, order and line endings stay. Only for a person's
+ * click (the steps ticked in the chat after a recording); Claude's plan may never carry `look`.
+ * @param spec the test as just adopted: its id, and whether it is a draft
+ * @returns the file relative to the project, or "unchanged"
+ */
+export const setStepLooks = (root, spec, steps) => {
+    const draft = spec.draft === true;
+    const path = draft ? draftPath(root, spec.id) : testPath(root, spec.id);
+    const label = `${draft ? DRAFT_DIR : TEST_DIR}/${spec.id}.yaml`;
+    if (!existsSync(path)) throw new CawError('test-missing', t('config.test.notFound', { path: label }));
+    const raw = readFileSync(path, 'utf8');
+    const doc = parseDocument(raw.replaceAll('\r\n', '\n'), { schema: 'core', merge: false, version: '1.2' });
+    for (const step of steps) {
+        const node = doc.get('steps', true)?.items?.find((item) => isMap(item) && item.get('id') === step);
+        if (node === undefined) throw new CawError('step-unknown', t('session.replay.stepUnknown', { id: spec.id, until: String(step) }));
+        node.set('look', true);
+    }
+    const text = doc.toString(STRINGIFY);
+    parseTest(text, label, draft ? { draft: true } : { description: true });
+    return writeIfChanged(path, text, raw) ? label : t('config.test.unchanged');
+};

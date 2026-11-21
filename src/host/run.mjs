@@ -50,7 +50,8 @@ import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
-import { captureStep, createLook, designOverlay, learnedLooks, markPath, readTokens, visualSettings } from './visual.mjs';
+import { captureStep, createLook, designOverlay, learnedLooks, markPath, maskProbe, readTokens, visualSettings } from './visual.mjs';
+import { MAX_TEXTS, lookCandidates, showsServed, textProbe } from './look-hints.mjs';
 import { MARK_ATTRIBUTE } from './record-locator.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
@@ -60,6 +61,8 @@ const CHANNEL_DIR = '.channel';
 const CLAUDE_LOG = 'claude.log';
 // How long the window stays open after the last decision, with a countdown, unless the human closes it.
 const LINGER_MS = 15000;
+// The look suggestion reads a quiet page after a passed check: it only has to measure.
+const HINT_TIMEOUT_MS = 5000;
 const ADVICE_LOG = 'claude-advice.log';
 const DRAFT_FILE = 'test-draft.yaml';
 // Changes the page state or proves a step: only allowed once the plan is approved.
@@ -229,7 +232,7 @@ export const certificateError = (error, checked) => {
  * Opens Chrome signed in and with local code. Environment errors are thrown as CawError.
  * @param interactive with a chat, i.e. with a human in front of it
  */
-export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, agent = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, info = (text) => ui.info(text) }) => {
+export const openRunSession = async ({ root, config, spec, checked, runDir, headless = false, interactive = false, agent = false, recorded = recordedBrowser(spec.steps ?? []), strict = true, servedTexts = false, info = (text) => ui.info(text) }) => {
     // What explore did not find and nobody filled in yet: sign-in would fail, so stop before Chrome and Claude.
     const todo = todoFields(config);
     if (todo.length > 0) throw new CawError('config-invalid', t('run.error.todo', { keys: todo.join(', ') }));
@@ -276,6 +279,8 @@ export const openRunSession = async ({ root, config, spec, checked, runDir, head
             overlay,
             // strict false: a mixed or unused overlay is reported via diagnose instead of ending the session (overlay check).
             overlayStrict: strict,
+            // The values the app's reads answer, for the look suggestion after a recording; in memory only.
+            servedTexts,
         });
     } catch (error) {
         overlay?.stop();
@@ -463,7 +468,7 @@ export const keptCheck = (olds, step, check) => {
     return same.length === 0 || same.some((old) => old.recording.check === check) ? null : same[0];
 };
 
-export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false }) => {
+export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false }) => {
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -471,6 +476,9 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     // Up to a state only the steps on the way there count (at the entry of a step not that step), when repairing only the steps
     // being repaired, and a plan being created has none yet.
     const reached = replay?.until === undefined && replay?.entry === undefined ? null : new Set(replay.steps.filter(({ action }) => action === 'check').map(({ id }) => id));
+    // The check run after a recording suggests steps for `look: true` in its chat (look-hints.mjs). Without a chat window
+    // nobody would see the suggestion: nothing is measured then.
+    const hinting = suggestLooks === true && replay !== undefined && conversation !== undefined && conversation.lazy !== true && !headless && runAs !== 'open';
     let spec = givenSpec;
     if (reached !== null) spec = { ...givenSpec, expectations: givenSpec.expectations.filter(({ id }) => reached.has(id)) };
     if (repairing !== undefined) {
@@ -628,7 +636,7 @@ ${text}`) ?? 0;
     const aborted = new Promise((ok) => { abortSignal = ok; });
     const stopSignals = onAbortSignals(abortSignal);
     try {
-        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps) });
+        session = await openRunSession({ root, config, spec, checked, runDir, headless, interactive: conversation !== undefined, agent: reproduce !== undefined, recorded: recordedBrowser(givenSpec.steps), servedTexts: hinting });
         // Distinct fact names: otherwise "target" could mean a step's element and "version" the recording.
         // --attach: the person's own session answers. The header says whether it is there, the chat when that changes. Linked
         // when the session box is first used: at the start, or only after the handover (open, develop).
@@ -1866,6 +1874,18 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             // Pixels of a learned look only headless, at a fixed viewport; a window compares its styles.
             pixels: headless,
         }) : undefined;
+        // After a recording, per passed step: text from the server on the screen, or masks (rows, list entries, cards, dates,
+        // remembered values, the run tag)? Neither makes the step a candidate for look: true. Only with the chat that shows it.
+        const served = hinting && chat !== null ? session.served : undefined;
+        const hintLook = served === undefined ? undefined : async (id, { page, texts }) => {
+            const frame = page.mainFrame();
+            const measured = Promise.all([
+                frame.evaluate(maskProbe, { texts, ignore: visual.ignore, max: 1 }),
+                frame.evaluate(textProbe, { max: MAX_TEXTS }),
+            ]).then(([masks, shown]) => ({ masks: masks.length, served: showsServed(shown, served()) }));
+            // A page that does not answer in time is no candidate.
+            return Promise.race([measured, new Promise((resolve) => { setTimeout(() => resolve(null), HINT_TIMEOUT_MS).unref?.(); })]);
+        };
         const play = playReplay({
             replay,
             handler: agentHandler,
@@ -1874,6 +1894,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             ...(designJudge === null ? {} : { judgeDesign: designJudge.judge }),
             ...(config.design?.fail === undefined ? {} : { designFail: config.design.fail }),
             ...(capture === undefined ? {} : { capture, look }),
+            ...(hintLook === undefined ? {} : { hintLook }),
             base: checked.url,
             authMarker: checked.signIn?.signedInSelector,
             stepTimeoutMs,
@@ -1962,7 +1983,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         await session.workbench?.point(END, 'effects', 'pass', { label: deviating === 0 ? t('run.effects.asRecorded') : t('run.effects.deviations', { count: deviating }) });
         // Only a run that writes them shows learning (in CI only with --learn): other runs compute them but keep the file as it is.
         if (learns && baselines.size + effects.size + looks.size > 0) await session.workbench?.point(END, 'learn', 'pass', { kind: t('run.learn.kind'), label: t('run.learn.label') });
-        return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }), ...(looks.size === 0 ? {} : { looks }) });
+        // Steps the chat offers for look: true (only step ids: what the screen showed stays in memory and goes nowhere).
+        const offered = hintLook === undefined ? [] : lookCandidates({ spec: givenSpec, results: ended.results, hints: ended.lookHints });
+        return closeRun('verdict', { failed, ...(baselines.size === 0 ? {} : { baselines }), ...(effects.size === 0 ? {} : { effects }), ...(looks.size === 0 ? {} : { looks }), ...(offered.length === 0 ? {} : { lookCandidates: offered }) });
     }
 
     // Repair starts before the step: a half-executed step would yield an incomplete recording.

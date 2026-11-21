@@ -425,6 +425,26 @@ test('chat: the decision is a card, discard needs a second click', async (t) => 
     assert.equal(answer, 'discard');
 });
 
+test('chat: a decision card with checkboxes, none ticked; the ticked ones go along with the button, then they are locked', async (t) => {
+    if (browser === null) return t.skip('no Chrome');
+    const { bench, chat } = await open(t);
+    const frame = bench.chatFrame();
+    const card = { title: 'Prüflauf bestanden', facts: [], question: 'Soll das der neue Testplan werden?', picks: { title: 'Look fester Bildschirme vergleichen?', text: 'Sicher ist das nicht.', items: [{ id: 'S2', label: 'Formular' }, { id: 'S3', label: 'Hilfe' }] } };
+    const options = [{ id: 'adopt', label: 'Testplan übernehmen (3 Schritte)', primary: true }, { id: 'discard', label: 'Entwurf verwerfen', confirm: 'Wirklich verwerfen?' }];
+    const chosen = chat.choosePicks('deciding', 'Text fürs Protokoll', options, card);
+    assert.ok(await until(() => frame.isVisible('.decision fieldset.picks')), 'the checkboxes are in the card');
+    assert.equal(await frame.textContent('.decision fieldset.picks legend'), 'Look fester Bildschirme vergleichen?');
+    const boxes = frame.locator('.decision fieldset.picks input[type=checkbox]');
+    assert.equal(await boxes.count(), 2);
+    assert.deepEqual(await boxes.evaluateAll((list) => list.map((box) => box.checked)), [false, false], 'none ticked');
+    // Reachable by its label, as a screen reader names it.
+    await frame.getByRole('checkbox', { name: 'S3 Hilfe' }).check();
+    await frame.locator('#choices button', { hasText: 'Testplan übernehmen' }).click();
+    assert.deepEqual(await chosen, { choice: 'adopt', picked: ['S3'] });
+    assert.ok(await until(() => frame.getByRole('checkbox', { name: 'S2 Formular' }).isDisabled()), 'locked after the choice');
+    assert.match(await frame.locator('.message').last().textContent(), /Testplan übernehmen \(3 Schritte\): S3/, 'the chat says what was ticked');
+});
+
 test('workbench: demonstrating shows recording, refresh is locked until the host allows it', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, chat } = await open(t);

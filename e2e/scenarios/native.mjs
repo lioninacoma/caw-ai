@@ -1327,3 +1327,61 @@ scenario('N17', 'Visual layer: step screenshots, a .png design judged by pixels,
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${LOOKED}.yaml`), { force: true });
     }
 });
+
+// ---- N19: after a recording, the check run suggests steps for look: true by where their text comes from. S1 shows contacts
+// the server sends (look.html, /api/contacts), as paragraphs: nothing masked, only the text origin rules it out. S2 is a static
+// form with the list hidden: offered, none ticked. Ticking S2 and adopting writes look: true on S2 only.
+
+const LOOK_SUGGESTED = 'rec-look';
+const LOOK_PLAN = `notes: Kontakte ansehen und das leere Formular öffnen.
+steps:
+  - id: S1
+    name: Kontakte
+    do: Öffne die Kontakte.
+    expect: Die Kontakte vom Server stehen da.
+  - id: S2
+    name: Formular
+    do: Klicke auf New contact.
+    expect: Das leere Formular ist offen.`;
+
+scenario('N19', 'Look suggestion: the check run after a recording offers the static S2 (not S1 with server data) unticked; ticking S2 and adopting writes look: true only on S2', async () => {
+    const agent = `A='caw agent'
+${planOf(LOOK_PLAN)}
+$A plan --file /tmp/p.yaml > /dev/null
+$A check S1 "document.getElementById('rows').dataset.loaded==='yes' && document.querySelectorAll('#rows p').length===2"
+$A click '#new'
+$A check S2 "!document.getElementById('form').hidden && document.getElementById('list').hidden"
+${finishOf(['S1', 'S2'])}`;
+    // The description exists, the recording does not: the human lets Claude follow the plan.
+    rmSync(join(native, 'caw/recordings', `${LOOK_SUGGESTED}.yaml`), { force: true });
+    writeFileSync(join(native, 'caw/tests', `${LOOK_SUGGESTED}.yaml`), `id: ${LOOK_SUGGESTED}\nenvironments: [test]\nwrites: false\nstart: /look.html\n${LOOK_PLAN}\n`);
+    try {
+        const checkRun = async (chat) => {
+            const adopt = chat.locator('#choices button', { hasText: 'Testplan übernehmen' });
+            await adopt.waitFor({ state: 'attached', timeout: 180000 });
+            const boxes = chat.locator('.decision fieldset.picks input[type=checkbox]');
+            const offered = await boxes.evaluateAll((list) => list.map((box) => `${box.value}:${box.checked}`));
+            verify('the card offers S2, not S1, none ticked', JSON.stringify(offered) === '["S2:false"]', JSON.stringify(offered));
+            const explained = await chat.locator('.decision fieldset.picks').textContent().catch(() => '');
+            verify('the card explains it: no server data or lists, caw cannot be sure', /keine Daten vom Server und keine Listen/.test(explained) && /Sicher ist das nicht/.test(explained), explained);
+            await chat.getByRole('checkbox', { name: 'S2 Formular' }).check();
+            await clickChoice(chat, adopt);
+            await chat.locator('.message', { hasText: 'look: true bei S2' }).waitFor({ timeout: 30000 });
+        };
+        // Windows: follow the test plan, the recording (approve the plan), the check run with the card.
+        const h = humans(followAndAdopt, followAndAdopt, checkRun);
+        const code = await record(native, [LOOK_SUGGESTED, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+        await h.done();
+        verify('N19 recording: Exit 0, recording written', code === 0 && written(LOOK_SUGGESTED), String(code));
+        const steps = loadTest(native, LOOK_SUGGESTED).steps;
+        verify('look: true only on S2', JSON.stringify(steps.map(({ id, look }) => `${id}:${look === true}`)) === '["S1:false","S2:true"]', JSON.stringify(steps.map(({ id, look }) => [id, look])));
+        const file = readFileSync(join(native, 'caw/tests', `${LOOK_SUGGESTED}.yaml`), 'utf8');
+        verify('the test file keeps its start and carries look: true in S2 only', /^start: \/look\.html$/m.test(file) && (file.match(/^ {4}look: true$/gm) ?? []).length === 1 && file.indexOf('look: true') > file.indexOf('- id: S2'), file);
+        // The response values stay in memory: no text file of the check run names the server's contacts.
+        const { dir } = newestRunOf(native, LOOK_SUGGESTED);
+        const texts = readdirSync(dir, { recursive: true }).filter((name) => /\.(md|json|log|txt|yaml)$/.test(name)).map((name) => readFileSync(join(dir, name), 'utf8'));
+        verify('no file of the check run names the served values', texts.length > 0 && texts.every((text) => !/Sampletown|Testville/.test(text)), String(texts.length));
+    } finally {
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${LOOK_SUGGESTED}.yaml`), { force: true });
+    }
+});

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Contacts</title>
+</head>
+<body>
+<main>
+  <h1>Contacts</h1>
+  <!-- N19: the contacts come from the server (/api/contacts), shown as paragraphs: no list entry, no row, nothing masked. -->
+  <section id="list" aria-label="Contact list">
+    <div id="rows"></div>
+    <button id="new">New contact</button>
+  </section>
+  <!-- A static form: nothing from the server, the list hidden. -->
+  <div id="form" role="dialog" aria-label="New contact" hidden>
+    <h2>New contact</h2>
+    <label>Name <input id="name"></label>
+    <label>City <input id="city"></label>
+    <button id="cancel">Cancel</button>
+  </div>
+</main>
+<script>
+const rows = document.getElementById('rows');
+fetch('/api/contacts').then((answer) => answer.json()).then((contacts) => {
+  for (const { name, city } of contacts) {
+    const row = document.createElement('p');
+    row.textContent = name + ' · ' + city;
+    rows.append(row);
+  }
+  rows.dataset.loaded = 'yes';
+});
+document.getElementById('new').onclick = () => {
+  document.getElementById('list').hidden = true;
+  document.getElementById('form').hidden = false;
+};
+document.getElementById('cancel').onclick = () => {
+  document.getElementById('form').hidden = true;
+  document.getElementById('list').hidden = false;
+};
+</script>
+</body>
+</html>

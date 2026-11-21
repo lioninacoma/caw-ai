@@ -3,7 +3,8 @@
 //   node serve.mjs <port>
 // /api/errands keeps added errands; /api/slow?ms=N answers after N ms (a request wait-ready has to wait for); /report.csv is a download;
 // /api/cover switches the message box of ext.html; /api/rename (N16) serves index.html with "Archive" renamed to "Archive all";
-// /api/restyle (N17) serves it with that button bold; /api/fix-bug the bug of fix.html's total (N15). ext-data.html (N10b, N10c) and aria.html (N10d, N10e) need nothing from the server.
+// /api/restyle (N17) serves it with that button bold; /api/fix-bug the bug of fix.html's total (N15); /api/contacts the list of
+// look.html (N19). ext-data.html (N10b, N10c) and aria.html (N10d, N10e) need nothing from the server.
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
@@ -53,6 +54,12 @@ createServer((req, res) => {
         if (url.pathname === '/api/fix-bug' && req.method === 'POST') totalBug = url.searchParams.get('on') === '1';
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify(url.pathname === '/api/total' ? { total: totalBug ? 0 : 5 } : { on: totalBug }));
+        return;
+    }
+    // N19: the contacts look.html shows, fixed sample data.
+    if (url.pathname === '/api/contacts') {
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify([{ id: 1, name: 'Ada Example', city: 'Sampletown' }, { id: 2, name: 'Bo Placeholder', city: 'Testville' }]));
         return;
     }
     if (url.pathname === '/api/slow') {

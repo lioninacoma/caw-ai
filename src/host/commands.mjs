@@ -25,7 +25,7 @@ import { ignoreAuthDir, requireTestUser } from './test-users.mjs';
 import { ensureMcpEntry } from './mcp-entry.mjs';
 import { projectPath } from './project-path.mjs';
 import { changedFiles, shortHead } from './git.mjs';
-import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
+import { brokenChain, checkTest, draftIds, draftPath, environmentProblems, loadDraft, loadTest, pendingSteps, recordingHints, setStepLooks, staleSteps, testExists, testPath, withDefaults, writeTest } from './test-file.mjs';
 
 const TOOL_DIR = fileURLToPath(new URL('../../', import.meta.url));
 // Only what the container runs. Browser code and devlink stay out.
@@ -1447,6 +1447,8 @@ export const record = async (root, args, deps = {}) => {
             sandbox,
             execute: (call) => execute({ ...call, ...(call.replay === undefined && call.repair === undefined ? { demonstration } : {}) }),
             adopt: (draft, only, adoptOptions) => writeTest(root, draft, only, adoptOptions),
+            // The steps the human ticked in the check run's card get look: true, after adopting.
+            markLooks: (draft, steps) => setStepLooks(root, draft, steps),
             head: () => headOf(root, deps.git),
             log: ui.info,
         });
