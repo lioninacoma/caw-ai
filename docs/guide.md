@@ -224,11 +224,34 @@ What Claude may and may not do here:
 - Only on environments with `agent`, never on production; the browser reaches only the project's hosts.
 - Write only where the environment is `writable`; elsewhere every write request is aborted and named in the report.
 - No plan, no `check`, no question to you, no advice and no code change: these commands are refused.
-- Nothing goes into the project: the report and `draft-test.yaml` stay in the run folder. The draft's expectations describe the
-  correct behaviour, so the recorded test fails as long as the bug is there and passes once it is fixed.
+- Nothing goes into `caw/tests`: the report stays in the run folder. Only a reproduced bug (`yes`) leaves a draft in
+  `caw/drafts/<id>.yaml`, plan and later its recording in one file. Its expectations describe the correct behaviour, so the
+  recorded test fails as long as the bug is there and passes once it is fixed; its `notes` list what Claude did in the browser,
+  with locators, as orientation for recording. Drafts are not part of `run --all`; `list` shows them apart.
 
 From your Claude Code session, ask for it ("reproduce this bug: …"): the session starts `caw_start` with `command: "reproduce"`,
 is the agent itself at no extra tokens, and gets the verdict, the report and the draft from `caw_status`.
+
+### From the bug to a proven fix
+
+The draft turns the bug into a test that proves the fix: red before, green after, every other test still green.
+
+1. **Red:** `caw record <id>` records the draft. Its last step is the one that must fail: Claude checks the correct behaviour
+   there and the check answers "no" while the bug is there. caw keeps exactly that failing check, as long as it evaluated (a
+   check that threw proves nothing). The check run without Claude then shows "S3 red as expected: the test catches the bug"
+   when every step before passed and S3 failed at its check; saving keeps the draft with `red: {step, run, head}` (the run and
+   the commit checked out then). If S3 passes, the draft does not catch the bug, and the decision says so.
+2. **Fix:** you fix the bug, by hand or with your attached Claude Code session; every change needs your approval. caw's own
+   agent never changes code.
+3. **Green:** `caw run <id>` replays the same recording without AI. Still red, the chat says "S3 still red: the bug is still
+   there" and offers nothing to fix in the test; green, the terminal names the next command.
+4. **Promote:** `caw run <id> --promote` runs the draft and, if it passes, `run --all` on the same environment. Only when both
+   are green does the test move to `caw/tests` and `caw/recordings`, the draft is deleted, and the draft's run folder gets
+   `fix-report.md`: red at which step (run, commit), green in which run, the files changed since the red commit (committed,
+   uncommitted and untracked, without `caw/` and `.caw/`) and how many other tests passed. Exit 0 promoted, 1 not green,
+   4 not recorded or never red.
+
+From your session the same steps are `caw_start` with `command: "record"`, `"run"` and `"run"` with `promote: true`.
 
 If Claude finds that an existing test already checks the reported behaviour, it names it in its verdict (`covered`: the test,
 optionally the step, and why). caw accepts only a recorded test and adds its newest run from `.caw/runs`; if that run passed,
@@ -510,7 +533,7 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` and `list` as data | no |
 | `caw_reproductions` | the reproductions in `.caw/runs` with verdict, `ref`, covering test, draft and report; `refs` names those without a run as `missing`, `since` filters by date | no |
 | `caw_design` | target designs under `caw/design`: write (`put`), list, link to a step on the person's request | no |
-| `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (or `args`) | none beyond your session |
+| `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `overlay`, `headless`, `learn`, `promote`, `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (or `args`) | none beyond your session |
 | `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |
 | `caw_selection` | the element you picked with `/element` in the workbench chat while developing | no |

@@ -4,6 +4,11 @@ export const CONFIG_FILE = 'caw.config.json';
 export const PROJECT_DIR = 'caw';
 export const TEST_DIR = `${PROJECT_DIR}/tests`;
 export const RECORDING_DIR = `${PROJECT_DIR}/recordings`;
+/**
+ * Drafts from caw reproduce: plan and recording in one file, outside `run --all`, until `run <draft> --promote` moves the
+ * proven test to caw/tests.
+ */
+export const DRAFT_DIR = `${PROJECT_DIR}/drafts`;
 export const ENV_FILE = `${PROJECT_DIR}/.env`;
 /** Project context for the tests, like CLAUDE.md: quirks of the applications, relevant notes. Maintained by the human. */
 export const CONTEXT_FILE = `${PROJECT_DIR}/caw.md`;

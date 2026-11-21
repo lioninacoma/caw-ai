@@ -43,3 +43,19 @@ Adopt what is still right and align it with the page. The human started the re-r
 and ask them if it is unclear what should change. Keep the IDs of existing steps. The new plan may change steps; if the plan shows that, the human decides. A step whose `expect` stays
 the same keeps its old `check`, also in a demonstration and when it moves; otherwise `finish` rejects. Change the `expect` only when the
 person wants a different result.
+
+## A draft from caw reproduce: the last step is red
+
+If `task` contains `red: { step }`, you record a draft from `caw/drafts`: a bug report turned into a test plan. That step
+(the last one) checks the correct behaviour, so it must fail while the bug is there; that failure is the proof that the test
+catches the bug. Its `notes` list what the reproduction did in the browser, with locators, as orientation.
+
+- Walk the steps before it as usual; each must pass.
+- For the red step, do its actions, then `check` the **expected** result as its `expect` says. The check must evaluate and
+  return `false` (not `true`, not an error): caw keeps exactly this failing check, the last one that evaluated. Do not bend the
+  check until it passes, and do not check the buggy behaviour instead.
+- Finish with that step as `fail` and every other step as `pass`, with `omit` as usual. A `finish` without an evaluated check
+  of the red step is rejected.
+
+caw then replays the recording without you: when only the red step fails, at its check, the human saves the draft with that
+proof (`red` in the file). If the red step passes, the draft does not catch the bug; say so in the chat.

@@ -225,11 +225,36 @@ Was Claude dabei darf und was nicht:
 - Nur auf Umgebungen mit `agent`, nie auf Produktion; der Browser erreicht nur die Hosts des Projekts.
 - Schreiben nur, wo die Umgebung `writable` ist; sonst wird jeder schreibende Request abgebrochen und im Bericht genannt.
 - Kein Plan, kein `check`, keine Frage an dich, keine Empfehlung und keine Code-Änderung: Diese Befehle werden abgelehnt.
-- Nichts landet im Projekt: Bericht und `draft-test.yaml` bleiben im Laufordner. Die Erwartungen des Entwurfs beschreiben das
-  richtige Verhalten, der aufgenommene Test scheitert also, solange der Fehler da ist, und besteht, sobald er behoben ist.
+- Nichts landet in `caw/tests`: Der Bericht bleibt im Laufordner. Nur ein nachgestellter Fehler (`yes`) hinterlässt einen
+  Entwurf in `caw/drafts/<id>.yaml`, Plan und später seine Aufzeichnung in einer Datei. Seine Erwartungen beschreiben das
+  richtige Verhalten, der aufgenommene Test scheitert also, solange der Fehler da ist, und besteht, sobald er behoben ist; seine
+  `notes` listen, was Claude im Browser getan hat, mit Locatoren, als Orientierung für die Aufnahme. Entwürfe gehören nicht zu
+  `run --all`; `list` zeigt sie getrennt.
 
 Aus deiner Claude-Code-Session bittest du darum („stell diesen Fehler nach: …“): Die Session startet `caw_start` mit
 `command: "reproduce"`, ist selbst der Agent ohne zusätzliche Tokens und bekommt Urteil, Bericht und Entwurf über `caw_status`.
+
+### Vom Fehler zum belegten Fix
+
+Der Entwurf macht aus dem Fehler einen Test, der den Fix belegt: vorher rot, danach grün, alle anderen Tests weiter grün.
+
+1. **Rot:** `caw record <id>` nimmt den Entwurf auf. Sein letzter Schritt ist der, der scheitern muss: Claude prüft dort das
+   richtige Verhalten, und die Prüfung antwortet „nein“, solange der Fehler da ist. caw behält genau diese scheiternde Prüfung,
+   sofern sie ausgewertet wurde (eine Prüfung, die geworfen hat, belegt nichts). Der Prüflauf ohne Claude zeigt dann „S3 rot wie
+   erwartet: der Test fängt den Fehler“, wenn alle Schritte davor bestanden und S3 an seiner Prüfung scheiterte; Speichern
+   behält den Entwurf mit `red: {step, run, head}` (der Lauf und der damals ausgecheckte Commit). Besteht S3, fängt der Entwurf
+   den Fehler nicht, und die Entscheidung sagt das.
+2. **Fix:** Du behebst den Fehler, von Hand oder mit deiner verbundenen Claude-Code-Session; jede Änderung braucht deine
+   Zustimmung. caws eigener Agent ändert nie Code.
+3. **Grün:** `caw run <id>` spielt dieselbe Aufzeichnung ohne KI ab. Noch rot, sagt der Chat „S3 noch rot: der Fehler ist noch
+   da“ und bietet nichts an, was am Test zu beheben wäre; grün, nennt das Terminal den nächsten Befehl.
+4. **Übernehmen:** `caw run <id> --promote` spielt den Entwurf ab und, wenn er besteht, `run --all` auf derselben Umgebung. Erst
+   wenn beides grün ist, wandert der Test nach `caw/tests` und `caw/recordings`, der Entwurf wird gelöscht, und der Laufordner
+   des Entwurfs bekommt `fix-report.md`: rot bei welchem Schritt (Lauf, Commit), grün in welchem Lauf, die seit dem roten Commit
+   geänderten Dateien (committet, nicht committet und neu, ohne `caw/` und `.caw/`) und wie viele andere Tests bestanden haben.
+   Exit 0 übernommen, 1 nicht grün, 4 nicht aufgenommen oder nie rot.
+
+Aus deiner Session sind das `caw_start` mit `command: "record"`, `"run"` und `"run"` mit `promote: true`.
 
 Findet Claude, dass ein bestehender Test das gemeldete Verhalten schon prüft, nennt es ihn im Urteil (`covered`: der Test,
 wahlweise der Schritt, und warum). caw nimmt nur einen aufgenommenen Test an und ergänzt seinen neuesten Lauf aus `.caw/runs`;
@@ -511,7 +536,7 @@ Projekt installiert (`npm i -D caw-ai`), stellt `init` den Eintrag auf die insta
 | `caw_doctor`, `caw_validate`, `caw_list` | `doctor`, `validate` und `list` als Daten | nein |
 | `caw_reproductions` | die Nachstellungen in `.caw/runs` mit Urteil, `ref`, abdeckendem Test, Entwurf und Bericht; `refs` nennt die ohne Lauf als `missing`, `since` filtert nach Datum | nein |
 | `caw_design` | Zielbilder unter `caw/design`: schreiben (`put`), auflisten, auf Wunsch des Menschen an einen Schritt hängen | nein |
-| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role`, `ref` (oder `args`) | nur deine Session |
+| `caw_start` | startet `run`, `record`, `open` oder `reproduce` mit deiner Session als Agent: Felder `test`, `env`, `step`, `overlay`, `headless`, `learn`, `promote`, `start`, `reset`; bei `reproduce` `bug`, `from`, `role`, `ref` (oder `args`) | nur deine Session |
 | `caw_status` | ob ein Lauf auf die Session wartet und welche Guide-Themen gelten, die letzten Zeilen der Ausgabe und der letzte Lauf: Ergebnis, letzter Schritt, Artefakte | nein |
 | `caw` | die Befehle des Agenten (`snapshot`, `click`, `plan`, `finish` …) für den wartenden Lauf | im Lauf |
 | `caw_selection` | das Element, das du beim Entwickeln im Chat der Werkbank mit `/element` gewählt hast | nein |

@@ -3,8 +3,8 @@
 caw keeps end-to-end regression tests for this project's own web application. A test is a plain-language plan; caw records
 it once with Claude in the real application and from then on replays it with Playwright, without AI, locally and in CI. A
 second benefit: any state a test reaches can be restored to develop from ("take me to where the cart is filled"). A
-third: a reported bug can be reproduced on its own, signed in, with a report and a draft test as the result (topic
-`reproduce`).
+third: a reported bug can be reproduced on its own, signed in, with a report and a draft test as the result, which is
+recorded red, turns green with the fix and then joins the tests with a fix report (topic `reproduce`).
 
 caw is not a load test, not a crawler and not a test generator for apps the team does not own.
 

@@ -13,7 +13,7 @@ import { OVERLAY_KINDS, isLoopback, isServerUrl, isStartPath, isViewport, loadCo
 import { effectiveEnvironment, testEnvironments } from '../shared/environments.mjs';
 import { CawError } from '../shared/errors.mjs';
 import { t } from '../shared/i18n.mjs';
-import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 import { didYouMean } from '../shared/suggest.mjs';
 import { renamedDates } from './dates.mjs';
 import { EFFECT_LISTS } from './effects.mjs';
@@ -23,10 +23,12 @@ import { isDesignName } from './design.mjs';
 import { dialogProblem } from './dialogs.mjs';
 import { isPattern } from './patterns.mjs';
 
-export { RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
+export { DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
 const STEP_ID = /^S[1-9]\d*$/;
-const TOP_FIELDS = ['id', 'role', 'writes', 'environments', 'start', 'notes', 'steps', 'knownMessages'];
+// `red` only in a draft (caw/drafts): the run that proved the draft fails at that step while the bug is there.
+const TOP_FIELDS = ['id', 'role', 'writes', 'environments', 'start', 'notes', 'red', 'steps', 'knownMessages'];
+const RED_FIELDS = ['step', 'run', 'head'];
 /** Fields from before 1.0: rejected with what replaced them (now) or why they went (why). */
 const TEST_REMOVED = { app: { why: 'config.removed.testApp' }, also: { why: 'config.removed.also' }, targets: { now: 'environments' }, mutates: { now: 'writes' } };
 const PLAN_STEP_FIELDS = ['id', 'name', 'do', 'expect', 'note', 'retry'];
@@ -364,8 +366,9 @@ const commentCuts = (text) => String(text).split(/\r?\n/).flatMap((line, index) 
  * @param description the description in caw/tests: without recordings and knownMessages, which live in caw/recordings.
  *                    Otherwise a run's draft, a single file with both.
  * @param framework   the app's framework from the config: which generated ids a target must not contain
+ * @param draft       a draft in caw/drafts: a single file that may carry `red`
  */
-export const parseTest = (text, label = t('config.test.label'), { description = false, framework = 'web' } = {}) => {
+export const parseTest = (text, label = t('config.test.label'), { description = false, framework = 'web', draft = false } = {}) => {
     const { value, problems, lineOf } = readYaml(text);
     if (problems.length > 0) throw invalid(label, problems);
     const report = (path, message) => problems.push(t('config.test.line', { line: lineOf(path), message }));
@@ -385,6 +388,9 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
     if (description && value.knownMessages !== undefined) report(['knownMessages'], t('config.test.recordingOnly', { key: 'knownMessages' }));
     else if (!knownMessagesOk(value.knownMessages)) report(['knownMessages'], t('config.test.knownMessages'));
     const steps = readSteps(value.steps, problems, lineOf, { allowRecording: !description, description, framework });
+    // A test in caw/tests proves no bug: red belongs to the draft and goes when the draft is promoted.
+    if (value.red !== undefined && !draft) report(['red'], t('config.test.redDraftOnly', { dir: DRAFT_DIR }));
+    else if (value.red !== undefined && !redOk(value.red, steps)) report(['red'], t('config.test.red'));
     problems.push(...commentCuts(text));
     if (problems.length === 0) problems.push(...retryProblems(steps));
     if (problems.length > 0) throw invalid(label, problems);
@@ -395,10 +401,16 @@ export const parseTest = (text, label = t('config.test.label'), { description = 
         writes: value.writes,
         ...(value.start === undefined ? {} : { start: value.start }),
         notes: clean(value.notes),
+        ...(value.red === undefined ? {} : { red: { step: value.red.step, run: value.red.run, ...(value.red.head === undefined ? {} : { head: value.red.head }) } }),
         steps,
         ...(value.knownMessages === undefined ? {} : { knownMessages: value.knownMessages }),
     });
 };
+
+/** `red: { step, run, head? }`: a step of the draft, the run that showed it red, and the commit checked out then. */
+const redOk = (red, steps) => isObject(red) && Object.keys(red).every((key) => RED_FIELDS.includes(key))
+    && typeof red.step === 'string' && steps.some(({ id }) => id === red.step) && isText(red.run) && !LINE_BREAK.test(red.run)
+    && (red.head === undefined || (typeof red.head === 'string' && /^[0-9a-f]{4,40}$/.test(red.head)));
 
 /**
  * Reads the agent's plan: only `notes` and `steps`. Metadata and recordings it sends anyway are dropped, because role, environments
@@ -434,6 +446,20 @@ export const parsePlan = (text) => {
 
 export const testPath = (root, id) => join(root, TEST_DIR, `${id}.yaml`);
 export const recordingPath = (root, id) => join(root, RECORDING_DIR, `${id}.yaml`);
+export const draftPath = (root, id) => join(root, DRAFT_DIR, `${id}.yaml`);
+/** A test in caw/tests or a draft in caw/drafts: both run, record and list by their id. */
+export const testExists = (root, id) => existsSync(testPath(root, id)) || existsSync(draftPath(root, id));
+/** The drafts in caw/drafts, sorted. */
+export const draftIds = (root) => {
+    const dir = join(root, DRAFT_DIR);
+    return existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith('.yaml')).map((name) => name.slice(0, -'.yaml'.length)).sort() : [];
+};
+
+/**
+ * The step a draft must fail at while the bug is there: the step its red run proved, before that its last step. Undefined for
+ * a test in caw/tests.
+ */
+export const redStep = (spec) => (spec?.draft === true ? spec.red?.step ?? spec.steps.at(-1)?.id : undefined);
 
 // A known message is a fixed text or a pattern `{pattern}`, e.g. for a dialog showing a checksum or the time.
 const knownMessagesOk = (value) => value === undefined || (Array.isArray(value) && value.every((message) => typeof message === 'string' || isPattern(message)));
@@ -491,9 +517,24 @@ const readRecordingFile = (root, id, framework = frameworkIn(root)) => {
     return recordings;
 };
 
-/** @param framework the app's framework; read from the config when not given */
+/**
+ * A draft from caw/drafts: description and recording in one file, marked `draft` so that writing it goes back there.
+ * @param framework the app's framework; read from the config when not given
+ */
+export const loadDraft = (root, id, { framework = frameworkIn(root) } = {}) => {
+    const label = `${DRAFT_DIR}/${id}.yaml`;
+    const parsed = parseTest(readFileSync(draftPath(root, id), 'utf8'), label, { framework, draft: true });
+    if (parsed.id !== undefined && parsed.id !== id) throw new CawError('test-invalid', t('config.test.idMismatch', { path: label, id: String(parsed.id) }));
+    return { ...parsed, id, draft: true };
+};
+
+/**
+ * A test from caw/tests; without one, the draft of that id from caw/drafts (loadDraft).
+ * @param framework the app's framework; read from the config when not given
+ */
 export const loadTest = (root, id, { framework = frameworkIn(root) } = {}) => {
     const path = testPath(root, id);
+    if (!existsSync(path) && existsSync(draftPath(root, id))) return loadDraft(root, id, { framework });
     if (!existsSync(path)) throw new CawError('test-missing', t('config.test.notFound', { path: `${TEST_DIR}/${id}.yaml` }));
     const parsed = parseTest(readFileSync(path, 'utf8'), `${TEST_DIR}/${id}.yaml`, { description: true });
     // Without an id the file name applies; a given id must match it.
@@ -825,9 +866,12 @@ export const renderTest = (spec) => {
         ...(spec.environments === undefined ? {} : { environments: spec.environments }),
         ...(spec.start === undefined ? {} : { start: spec.start }),
         ...(spec.notes === '' || spec.notes === undefined ? {} : { notes: spec.notes }),
+        ...(spec.red === undefined ? {} : { red: spec.red }),
     });
-    const environments = doc.get('environments', true);
-    if (environments !== undefined) environments.flow = true;
+    for (const key of ['environments', 'red']) {
+        const node = doc.get(key, true);
+        if (node !== undefined) node.flow = true;
+    }
     setSteps(doc, spec);
     if (spec.knownMessages !== undefined) doc.set('knownMessages', spec.knownMessages);
     return doc.toString(STRINGIFY);
@@ -881,6 +925,7 @@ const writeIfChanged = (path, text, raw) => {
  * @returns the changed files relative to the project, comma-separated
  */
 export const writeTest = (root, spec, only, { withNotes = false, prune = false } = {}) => {
+    if (spec.draft === true) return writeDraft(root, spec);
     const path = testPath(root, spec.id);
     mkdirSync(join(root, TEST_DIR), { recursive: true });
     const changed = [];
@@ -923,6 +968,18 @@ export const writeTest = (root, spec, only, { withNotes = false, prune = false }
     mkdirSync(join(root, RECORDING_DIR), { recursive: true });
     if (writeIfChanged(recordingFile, renderRecordings(recorded), oldRecordings)) changed.push(`${RECORDING_DIR}/${spec.id}.yaml`);
     return changed.length === 0 ? t('config.test.unchanged') : changed.join(', ');
+};
+
+/**
+ * A draft is written whole, plan and recording in one file: whatever a run learns or a recording changes, the test in memory
+ * is complete. The file's line endings stay.
+ * @returns the file relative to the project, or "unchanged"
+ */
+const writeDraft = (root, spec) => {
+    const path = draftPath(root, spec.id);
+    mkdirSync(join(root, DRAFT_DIR), { recursive: true });
+    const raw = existsSync(path) ? readFileSync(path, 'utf8') : undefined;
+    return writeIfChanged(path, renderTest(spec), raw) ? `${DRAFT_DIR}/${spec.id}.yaml` : t('config.test.unchanged');
 };
 
 /**

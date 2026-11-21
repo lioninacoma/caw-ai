@@ -22,11 +22,11 @@ import { pollChannel } from '../shared/channel.mjs';
 import { personalContextPath, readPersonalContext, shownPath } from '../shared/personal-context.mjs';
 import { prefsDir, readPrefs } from '../shared/prefs.mjs';
 import { renderReport, renderReproduceReport } from '../shared/report.mjs';
-import { readReproduction, draftTestPlan, adoptHint, coverageIn } from './reproduce.mjs';
+import { readReproduction, draftId, draftTestPlan, draftHint, coverageIn } from './reproduce.mjs';
 import { openChat, parseClaudeLog, tailLines } from './chat.mjs';
 import { describeCode } from './code-source.mjs';
-import { CONFIG_FILE, CONTEXT_FILE, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
-import { humanFields, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
+import { CONFIG_FILE, CONTEXT_FILE, DRAFT_DIR, ENV_FILE, PROJECT_DIR, RUN_DIR, TEST_DIR } from '../shared/names.mjs';
+import { humanFields, redStep, renderPlan, renderTest, retryProblems, writeTest } from './test-file.mjs';
 import { PLAN_FILE, composeTest, heardProblems, planView, readPlan, replaceStep, samePlanStep, sessionFollowsOwnPlan, withNoteIds } from './test-plan.mjs';
 import { codeText, createAgentHandler, hiddenAnswer, hiddenError, locatorFor } from './agent-commands.mjs';
 import { locatorLabel } from './locator.mjs';
@@ -477,6 +477,15 @@ export const executeRun = async (root, config, sandbox, { spec: givenSpec, check
     }
     const runTag = newRunTag();
     const creating = replay === undefined && repair === undefined;
+    /**
+     * Recording a draft from caw reproduce: the step that must fail while the bug is there, the last step of the plan (which
+     * may still change), or the repaired step if it is the draft's red one. Undefined for a test and in a test run.
+     */
+    const redOf = () => {
+        if (redStep(givenSpec) === undefined || replay !== undefined) return undefined;
+        if (repairing !== undefined && range === undefined) return repairing.id === redStep(givenSpec) ? repairing.id : undefined;
+        return spec.steps.at(-1)?.id;
+    };
     // A reproduction is named as such, also when it starts from a test's step (--from).
     const runName = reproduce === undefined ? spec.id : REPRODUCE_RUN;
     const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${runName}`;
@@ -692,6 +701,8 @@ ${text}`) ?? 0;
         ...(personal === undefined ? {} : { personalContext: personal.text }),
         ...(context === undefined ? {} : { context }),
         ...(creating ? { create: { role: spec.role ?? null } } : {}),
+        // A draft from caw reproduce: its last step must fail while the bug is there (topic record, "Drafts").
+        ...(redOf() === undefined ? {} : { red: { step: redOf() } }),
         ...(!creating || previous === undefined ? {} : {
             previous: {
                 plan: renderPlan(previous),
@@ -1253,7 +1264,7 @@ ${text}`) ?? 0;
         // conclude says what comes next: { next: 'claude' | 'check' | 'run' } opens a new window right away, { outcome } is the result.
         let after = {};
         if (chat !== null && alive) {
-            const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere, ignore, cleared }), session.closed, aborted]);
+            const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere, ignore, cleared, runId }), session.closed, aborted]);
             if (said !== null && typeof said === 'object') after = said;
         }
         const handing = handover?.({ verdict, ...found }) && alive;
@@ -1264,7 +1275,7 @@ ${text}`) ?? 0;
             const results = verdict.results ?? [];
             const passed = results.filter((result) => result.status === 'pass').length;
             let text = results.length > 0 ? t('run.finished.steps', { passed, total: results.length }) : t(verdict.status === 'pass' ? 'run.finished.passed' : 'run.finished.failed');
-            // A reproduction: its verdict, and the command that records the draft once the human has copied it into caw/tests.
+            // A reproduction: its verdict, and the command that records its draft in caw/drafts.
             if (reproduce !== undefined) text = t(`run.reproduce.card.${verdict.reproduce?.reproduced ?? 'none'}`);
             const draft = verdict.reproduce?.draft;
             let command = `caw run ${spec.id}`;
@@ -1387,7 +1398,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         link?.stop();
         stopSignals();
         await session.close();
-        return { exitCode, verdict, report: posix.join(relativeRun, 'report.md'), ...found };
+        return { exitCode, verdict, report: posix.join(relativeRun, 'report.md'), runId, ...found };
     };
     const writeInterrupted = (ended) => {
         if (ended === 'browser-closed') writeResult({ status: 'error', code: 'browser-closed', reason: t('run.interrupted.browserClosed') });
@@ -1511,6 +1522,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             run.expectations = composed.expectations;
             run.notes = composed.notes;
             run.steps = composed.steps.map(planStep);
+            if (redOf() !== undefined) run.red = { step: redOf() };
             reportBase.expectations = composed.expectations;
             const notes = [
                 ...(restored.length === 0 ? [] : [`The checks of ${restored.join(', ')} apply again: the plan proves the same as when they passed.`]),
@@ -1533,7 +1545,13 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             // A step submitted as fail cannot have a passed check: that is a result too.
             const missing = [...known].filter((id) => !groups.has(id) && !failed.has(id));
             if (missing.length > 0) throw new CawError('finish-rejected', `Without a passed check: ${missing.join(', ')}.`);
-            if (failed.size > 0) return;
+            // A draft failing only at its red step is the recording it should be, as long as that check evaluated.
+            const red = redOf();
+            const onlyRed = red !== undefined && failed.size === 1 && failed.has(red);
+            if (onlyRed && !groups.has(red)) {
+                throw new CawError('finish-rejected', `${red} is the step this draft must fail at while the bug is there. Run its check of the expected result with check so that it evaluates (returns false, does not throw), then finish with ${red} as fail.`);
+            }
+            if (failed.size > 0 && !onlyRed) return;
             // Per step: an unchanged expected result keeps its check, when fixing a step, re-recording from one or the whole test.
             for (const step of plan.steps) {
                 const old = keptCheck(checkOwners(), step, groups.get(step.id).check);
@@ -1561,7 +1579,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             return budget.handler(command);
         };
         // Dates near today become placeholders relative to the browser's today, in its pinned time zone.
-        recorder = createRecorder({ handler, session, base: checked.url, authMarker: checked.signIn?.signedInSelector, runTag, remembered, now: () => zonedNow(session.browser?.timezone) });
+        recorder = createRecorder({ handler, session, base: checked.url, authMarker: checked.signIn?.signedInSelector, runTag, remembered, now: () => zonedNow(session.browser?.timezone), red: redOf });
         /** The human shows in the same browser what Claude cannot find. The budget only counts Claude's own steps. */
         const askOperator = async ({ question }) => {
             ui.heading(t('run.ask.heading', { question: String(question ?? '').slice(0, 500) }));
@@ -1591,7 +1609,9 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         const finishAndDrop = async (command) => {
             // Without this requirement misclicks would stay in the test: only a passed run becomes a recording.
             const items = command.results?.expectations;
-            const allPassed = Array.isArray(items) && items.every(({ status }) => status === 'pass');
+            // A draft that fails only at its red step is complete too: its detours go like those of a passed run.
+            const red = redOf();
+            const allPassed = Array.isArray(items) && items.every(({ id, status }) => status === 'pass' || (red !== undefined && id === red));
             if (allPassed && command.results.omit === undefined) {
                 throw new CawError('finish-rejected', `Check the actions for misclicks and detours and list them with "omit", even if there are none ("omit": []):\n${recorder.list().join('\n')}`);
             }
@@ -1680,7 +1700,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         if (budget.used() > 0) ui.info(t('run.budget', { used: budget.used(), max: maxActions ?? t('run.budget.unlimited') }));
 
         const viewport = await session.viewportSize?.();
-        const built = buildReplay({ recorder, outcome: verdict, spec, target, browser: { ...(session.browser ?? {}), ...(viewport ? { viewport } : {}) }, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(range === undefined ? {} : { from: repair.id }), ...(creating && previous !== undefined ? { previous } : {}) });
+        const built = buildReplay({ recorder, outcome: verdict, spec, target, red: redOf(), browser: { ...(session.browser ?? {}), ...(viewport ? { viewport } : {}) }, ...(repairing === undefined ? {} : { draft: givenSpec }), ...(range === undefined ? {} : { from: repair.id }), ...(creating && previous !== undefined ? { previous } : {}) });
         let { candidate } = built;
         // Created as read-only but it wrote: then the test writes, otherwise it would run on environments without writable.
         const written = verdict?.writes ?? [];
@@ -1909,8 +1929,8 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
     }
     /**
      * caw reproduce: optionally the steps of a test up to a state without Claude, then Claude alone in the browser, without a
-     * plan or a human decision, until its verdict. No advice, no code change, no test written: the verdict, the report and a
-     * draft test plan in the run folder.
+     * plan or a human decision, until its verdict. No advice, no code change, nothing in caw/tests: the verdict, the report and,
+     * when reproduced, a draft in caw/drafts to be recorded red.
      * @returns { ended, found } for closeRun
      */
     const reproduceWork = async (box) => {
@@ -1977,30 +1997,46 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
         };
         const handler = createAgentHandler({ session, run: task, hosts: navigationHosts(config, checked.name), agentDir, filesDir: join(root, PROJECT_DIR), expand: fillSecrets, onVerdict: () => {} });
         const budget = withStepBudget(handler, maxActions ?? Number.POSITIVE_INFINITY);
-        // What Claude did in the browser, for the report: the command and its target, never a typed value.
+        // What Claude did in the browser, for the report: the command and its target, never a typed value. The trail keeps the
+        // resolved locators as well: in the draft's notes they guide whoever records it.
         const actions = [];
+        const trail = [];
         const ACTS = new Set(['click', 'dblclick', 'hover', 'dragTo', 'dialog', 'upload', 'fill', 'type', 'press', 'goto', 'reload']);
         let doneSignal;
         const done = new Promise((ok) => { doneSignal = ok; });
-        /** An action for the report as record names it (`fill searchbox "Search todos"`), never a snapshot reference. */
+        /**
+         * An action for the report as record names it (`fill searchbox "Search todos"`), never a snapshot reference, and for the
+         * trail with its locator (`fill getByRole('searchbox', …)`).
+         * @returns { text, trail }
+         */
         const readableAction = async (command) => {
             const { action } = command;
-            if (typeof command.target !== 'string') return [action, command.url ?? command.key ?? ''].filter((part) => part !== '').join(' ');
+            if (typeof command.target !== 'string') {
+                const text = [action, command.url ?? command.key ?? ''].filter((part) => part !== '').join(' ');
+                return { text, trail: text };
+            }
             try {
                 const code = await recordLocator(session.page().mainFrame(), locatorFor(session.page(), command.target), { framework: (session.framework ?? frameworkOf()).name, timeout: 2000 });
-                if (code !== null) return `${action} ${locatorLabel(code)}`;
+                if (code !== null) return { text: `${action} ${locatorLabel(code)}`, trail: `${action} ${code}` };
             } catch {
                 // An element that cannot be named stays unnamed.
             }
-            return action;
+            return { text: action, trail: action };
         };
         const finishReproduction = (command) => {
             const result = readReproduction(command.results, { fileExists: (name) => existsSync(join(agentDir, name)), coverage: coverageIn(root) });
             // The steps write when the agent says so or when the run wrote; never on an environment that may not write.
             const writes = reproduce.writes === true && (result.writes || (session.writes?.() ?? []).length > 0);
-            const draft = draftTestPlan({ id: reproduce.draftId, role: spec.role, environment: target, writes, steps: result.steps, runId, ref: reproduce.ref });
-            writeFileSync(join(runDir, 'draft-test.yaml'), draft.text);
-            reportBase.reproduce = { ...reportBase.reproduce, ...result, actions, draft: adoptHint(draft, root, runDir) };
+            // Only a reproduced bug becomes a draft in caw/drafts: it is to be recorded red, fixed and proven green. The id is
+            // taken now, free in caw/tests and caw/drafts; the file is never overwritten.
+            let hint;
+            if (result.reproduced === 'yes') {
+                const draft = draftTestPlan({ id: draftId(root, reproduce.bug), role: spec.role, environment: target, writes, steps: result.steps, runId, ref: reproduce.ref, trail });
+                mkdirSync(join(root, DRAFT_DIR), { recursive: true });
+                writeFileSync(join(root, DRAFT_DIR, `${draft.id}.yaml`), draft.text, { flag: 'wx' });
+                hint = draftHint(draft);
+            }
+            reportBase.reproduce = { ...reportBase.reproduce, ...result, actions, ...(hint === undefined ? {} : { draft: hint }) };
             // Exit code and terminal follow the verdict: reproduced is a pass, not reproduced or unclear a fail.
             writeResult({ status: result.reproduced === 'yes' ? 'pass' : 'fail', failures: session.failures?.() ?? [] });
             doneSignal();
@@ -2018,7 +2054,11 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
             if (['plan', 'check', 'ask-operator', 'chat', 'advise', 'recording'].includes(action)) {
                 throw new CawError('reproduce-refused', `A reproduction has no plan, no steps to check and no human to ask, and changes no test or code: ${action} is not available. Read the page with snapshot, eval, console and network, operate it, and end with finish.`);
             }
-            if (ACTS.has(action)) actions.push(await readableAction(command));
+            if (ACTS.has(action)) {
+                const { text, trail: line } = await readableAction(command);
+                actions.push(text);
+                trail.push(line);
+            }
             return budget.handler(command);
         };
         chat?.advising(true);

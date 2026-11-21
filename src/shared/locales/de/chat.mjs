@@ -57,7 +57,7 @@ export default {
     'chat.page.stays': 'Bleibt offen',
     'chat.page.endedPlaceholder': 'Der Lauf ist beendet. Ein Klick hier hält das Fenster offen.',
     'chat.page.newRun': 'Neuer Lauf: ',
-    'chat.page.adoptDraft': 'Entwurf nach caw/tests kopieren, dann: ',
+    'chat.page.adoptDraft': 'Den Entwurf rot aufnehmen: ',
     'chat.page.removeElement': 'Element entfernen',
     'chat.page.inputLabel': 'Nachricht an {agent}',
     'chat.page.placeholder': 'Antworte oder gib {agent} eine Anweisung',

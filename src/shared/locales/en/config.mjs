@@ -215,7 +215,7 @@ export default {
     'config.report.reproduce.coveredLastRun': 'Its newest run: {status} (run {run}, {date}).',
     'config.report.reproduce.coveredNoRun': 'No run of it left in .caw/runs (never run here, or pruned by keepRuns).',
     'config.report.reproduce.checkMayMiss': 'Its last run passed: its check may miss this bug.',
-    'config.report.reproduce.adopt': 'In draft-test.yaml in this folder. To adopt: copy it to {to} (from {from}), review it, then `{record}`.',
+    'config.report.reproduce.adopt': 'Written to {file}. Review it, then record it with `{record}`: its last step must fail while the bug is there.',
     'config.report.note': 'Note: {note}',
     'config.report.pending': 'Pending, not recorded yet: {ids}. These steps did not run.',
     'config.report.results.header': '| Step | Expectation | Status | Evidence | Note |',
@@ -429,4 +429,6 @@ export default {
     'config.urlOverride.agent': '{variable}: on {env} the agent may work ("agent": true); its address stays the one in the config, a variable must not redirect it unseen.',
     'config.urlOverride.invalid': '{variable}: {problem}',
     'config.urlOverride.productionHost': '{variable}: {host} is the host of a production environment; {env} pointed there would lift the production block.',
+    'config.test.redDraftOnly': 'red belongs to a draft in {dir} only: it proves the draft fails while the bug is there. Remove it here.',
+    'config.test.red': 'red is { step, run, head? }: a step of this draft, the run that showed it red, and the commit checked out then (a short hash).',
 };

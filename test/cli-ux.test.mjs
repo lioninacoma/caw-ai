@@ -502,3 +502,92 @@ test('doctor never probes placeholder hosts', async () => {
     for (const url of ['https://staging.example.com', 'https://example.org', 'https://app.example', 'https://x.invalid', 'https://shop.test']) assert.ok(isPlaceholderHost(url), url);
     for (const url of ['http://localhost:5173', 'https://staging.firma.de', 'https://example.company.com', 'https://testing.io']) assert.ok(!isPlaceholderHost(url), url);
 });
+
+/** A draft from caw reproduce in the project: recorded, and proven red at S2 unless `red` is null. */
+const writeDraft = (root, { red = { step: 'S2', run: '2026-11-20T09-00-00-000Z-bug-x', head: 'abc1234' }, steps = [recorded(step('S1', 'Suche')), recorded(step('S2', 'Treffer'))] } = {}) => writeTest(root, {
+    id: 'bug-x', role: 'tester', environments: ['local'], writes: false, notes: '', draft: true, steps, ...(red === null ? {} : { red }),
+});
+
+test('drafts: list, caw_list and caw_validate show them apart; run --all leaves them out', async (t) => {
+    const root = project(t);
+    writeDraft(root);
+    const lines = [];
+    list(root, [], { out: (text) => lines.push(text) });
+    const at = lines.indexOf('Entwürfe in caw/drafts (nicht in run --all, bis sie übernommen sind):');
+    assert.ok(at > 3, 'after the tests');
+    assert.match(lines[at + 2], /^bug-x\s+local\s+rot bei S2 \(Lauf 2026-11-20T09-00-00-000Z-bug-x\)\s+liest nur$/);
+    assert.ok(!lines.slice(0, at).some((line) => line.startsWith('bug-x')));
+    lines.length = 0;
+    list(root, ['bug-x'], { out: (text) => lines.push(text) });
+    assert.match(lines.at(-1), /rot bei S2/);
+    const listed = listProject(root);
+    assert.deepEqual(listed.tests.map(({ id }) => id), ['anmelden', 'bestellen', 'neu']);
+    assert.deepEqual(listed.drafts.map(({ id, red }) => [id, red.step]), [['bug-x', 'S2']]);
+    const checked = validateProject(root);
+    assert.deepEqual(checked.drafts.map(({ id, problems }) => [id, problems]), [['bug-x', []]]);
+    const ran = [];
+    await run(root, ['--all', '--env', 'local'], { runOne: async (_root, { test: id }) => { ran.push(id); return { code: EXIT.pass, verdict: { status: 'pass' } }; } });
+    assert.deepEqual(ran, ['anmelden', 'bestellen', 'neu']);
+});
+
+test('run --promote: one draft only; no draft, no recording, never red, a red draft or another failing test promote nothing', async (t) => {
+    const root = project(t);
+    assert.throws(() => parseRunArgs('run', ['a', 'b', '--promote']), /--promote nimmt genau einen Entwurf/);
+    assert.throws(() => parseRunArgs('run', ['--all', '--promote']), /--promote nimmt genau einen Entwurf/);
+    assert.throws(() => parseRunArgs('run', ['a', '--promote', '--report', 'json=x.json']), /--promote nimmt genau einen Entwurf/);
+    assert.equal(parseRunArgs('run', ['a', '--promote']).promote, true);
+    await assert.rejects(run(root, ['anmelden', '--promote', '--env', 'local']), (error) => error.code === 'usage' && /keinen Entwurf anmelden in caw\/drafts/.test(error.message));
+    const runOne = async () => assert.fail('nothing runs');
+    writeDraft(root, { red: null, steps: [recorded(step('S1', 'Suche')), step('S2', 'Treffer')] });
+    assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne }), EXIT.needsRecording);
+    writeDraft(root, { red: null });
+    assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne }), EXIT.needsRecording, 'without the red run there is no proof');
+    writeDraft(root);
+    // The draft itself is still red: the bug is not fixed.
+    const calls = [];
+    const outcome = (results) => async (_root, { test: id }) => {
+        calls.push(id);
+        return results[id] ?? { code: EXIT.pass, verdict: { status: 'pass' }, report: `.caw/runs/r-${id}/report.md` };
+    };
+    assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne: outcome({ 'bug-x': { code: EXIT.fail, verdict: { status: 'fail' } } }) }), EXIT.fail);
+    assert.deepEqual(calls, ['bug-x'], 'the other tests only run once the draft is green');
+    calls.length = 0;
+    assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne: outcome({ bestellen: { code: EXIT.fail, verdict: { status: 'fail' } } }) }), EXIT.fail);
+    assert.deepEqual(calls, ['bug-x', 'anmelden', 'bestellen', 'neu']);
+    assert.ok(existsSync(join(root, 'caw', 'drafts', 'bug-x.yaml')), 'the draft stays');
+    assert.ok(!existsSync(join(root, 'caw', 'tests', 'bug-x.yaml')));
+    // A test of the same name is never overwritten.
+    writeTest(root, { id: 'bug-x', role: 'tester', environments: ['local'], writes: false, notes: '', steps: [recorded(step('S1', 'Suche'))] });
+    await assert.rejects(run(root, ['bug-x', '--promote', '--env', 'local'], { runOne }), (error) => error.code === 'usage' && /caw\/tests\/bug-x\.yaml gibt es schon/.test(error.message));
+});
+
+test('run --promote: green draft and green others move the test to caw/tests, delete the draft and write the fix report', async (t) => {
+    const root = project(t);
+    writeDraft(root);
+    const runDir = join(root, '.caw', 'runs', '2026-11-21T10-00-00-000Z-bug-x');
+    mkdirSync(runDir, { recursive: true });
+    const runOne = async (_root, { test: id }) => ({ code: EXIT.pass, verdict: { status: 'pass' }, report: id === 'bug-x' ? '.caw/runs/2026-11-21T10-00-00-000Z-bug-x/report.md' : `.caw/runs/r-${id}/report.md` });
+    const since = [];
+    const git = { head: () => 'fff0000', changedFiles: (_root, head) => { since.push(head); return ['server/search.mjs', 'web/list.js']; } };
+    assert.equal(await run(root, ['bug-x', '--promote', '--env', 'local'], { runOne, git }), EXIT.pass);
+    assert.ok(!existsSync(join(root, 'caw', 'drafts', 'bug-x.yaml')), 'the draft is gone');
+    const promoted = loadTest(root, 'bug-x');
+    assert.equal(promoted.draft, undefined);
+    assert.equal(promoted.red, undefined);
+    assert.equal(promoted.steps[1].recording.check, 'true');
+    assert.doesNotMatch(readFileSync(join(root, 'caw', 'tests', 'bug-x.yaml'), 'utf8'), /red|recording/);
+    assert.deepEqual(since, ['abc1234']);
+    assert.equal(readFileSync(join(runDir, 'fix-report.md'), 'utf8'), [
+        '# Fix-Bericht: bug-x',
+        '',
+        '- Rot bei S2: Lauf 2026-11-20T09-00-00-000Z-bug-x, Commit abc1234',
+        '- Grün: Lauf 2026-11-21T10-00-00-000Z-bug-x',
+        '- 3 andere(r) Test(s) auf local grün',
+        '',
+        '## Geänderte Dateien seit abc1234 (ohne caw/ und .caw/)',
+        '',
+        '- server/search.mjs',
+        '- web/list.js',
+        '',
+    ].join('\n'));
+});

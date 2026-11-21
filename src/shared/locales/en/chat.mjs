@@ -56,7 +56,7 @@ export default {
     'chat.page.stays': 'Stays open',
     'chat.page.endedPlaceholder': 'The run has ended. Clicking here keeps the window open.',
     'chat.page.newRun': 'New run: ',
-    'chat.page.adoptDraft': 'Copy the draft to caw/tests, then: ',
+    'chat.page.adoptDraft': 'Record the draft red: ',
     'chat.page.removeElement': 'Remove element',
     'chat.page.inputLabel': 'Message to {agent}',
     'chat.page.placeholder': 'Answer or give {agent} an instruction',

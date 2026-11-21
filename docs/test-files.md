@@ -8,6 +8,7 @@ Each test has two YAML files:
 |---|---|---|
 | `caw/tests/<id>.yaml` | you: what the test does, in plain language | yes |
 | `caw/recordings/<id>.yaml` | caw: how to replay it | yes, review it first |
+| `caw/drafts/<id>.yaml` | `reproduce`: a [draft](#drafts), plan and recording in one file | yes, until promoted |
 
 You write the test plan. `record` writes the recording; by hand you only add the [extras](#hand-written-additions) Claude does not record. `recording` and `knownMessages` belong in the recording only; in the test plan `validate` rejects them.
 
@@ -96,6 +97,24 @@ npx caw run create-ticket --env local --strict # exit 4 while anything is pendin
 `run` plays the recorded steps and passes without the pending ones; `list` shows `pending (S4, S5)`, `report.md` and `result.json` (`pending`, and `status: "pending"` under `steps`) name them, the workbench shows them as not reached. Only the tail counts: an unrecorded step before a recorded one, a step changed after recording and a test with nothing recorded still stop with exit 4, so editing a step's text never quietly drops its check from CI.
 
 When the first pending step has `needs`, a run that ends healthy checks them on the page (about 2 s each): all there, it says `S4 is ready to record: caw record create-ticket@S4`; otherwise it lists the missing ones. `result.json` has them under `needs`.
+
+## Drafts
+
+`caw reproduce` writes a reproduced bug as a draft to `caw/drafts/<id>.yaml`: the same fields as a test plan, and once recorded
+its `recording` per step and `knownMessages` in the same file. Drafts are not part of `run --all`; `list`, `validate`,
+`caw_list` and `caw_validate` show them apart. `record`, `run` and `open` take a draft by its id like a test; a test of the
+same id in `caw/tests` wins.
+
+Its last step is the one that must fail while the bug is there. Once a run showed that (every step before it passed, its check
+evaluated and failed), the draft carries the proof:
+
+```yaml
+red: { step: S3, run: 2026-11-21T09-12-03-417Z-bug-search-finds-nothing, head: "2314150" }
+```
+
+`step` is the red step, `run` the run that showed it, `head` the commit checked out then (left out outside git). Only drafts may
+carry `red`; in `caw/tests` `validate` rejects it. Recording the draft again drops it. `run <id> --promote` moves a green draft
+to `caw/tests` and `caw/recordings` without `red` ([commands](commands.md#promoting-a-draft)).
 
 ## Target design
 

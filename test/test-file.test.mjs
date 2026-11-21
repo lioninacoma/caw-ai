@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { assertPlayable, buildReplay, cutReplay, groupSteps, missingRemembered, replayBefore, replayOf, replayToEntry, replayUpToStale, trailingNumbers } from '../src/host/replay.mjs';
-import { brokenChain, humanFields, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, renderPlan, renderTest, setStepDesign, staleSteps, stepHash, testPath, writeTest } from '../src/host/test-file.mjs';
+import { brokenChain, draftIds, draftPath, humanFields, loadDraft, loadTest, parsePlan, parseRecordings, parseTest, pendingSteps, recordingHints, recordingPath, redStep, renderPlan, renderTest, setStepDesign, staleSteps, stepHash, testExists, testPath, writeTest } from '../src/host/test-file.mjs';
 import { composeTest, planView, readPlan, replaceStep } from '../src/host/test-plan.mjs';
 
 const NEXT = "getByRole('button', { name: 'Next', exact: true })";
@@ -591,4 +591,42 @@ test('setStepDesign: one node edit, line endings and comments stay, a missing te
     assert.throws(() => setStepDesign(root, 't', 'S9', 'design/a.html'), (error) => error.code === 'step-unknown');
     assert.throws(() => setStepDesign(root, '../t', 'S1', 'design/a.html'), (error) => error.code === 'test-missing');
     assert.throws(() => setStepDesign(root, 't', 'S1', 'elsewhere/a.html'), /design nennt/);
+});
+
+test('drafts: red only in caw/drafts, with a known step, the run and an optional short hash', () => {
+    const draftText = `${YAML}red: { step: S2, run: 2026-11-20T09-00-00-000Z-bug, head: "2314150" }\n`;
+    assert.throws(() => parseTest(draftText), /red gehört nur in einen Entwurf in caw\/drafts/);
+    assert.throws(() => parseTest(draftText, 'x', { description: true }), /red gehört nur/);
+    assert.deepEqual(parseTest(draftText, 'x', { draft: true }).red, { step: 'S2', run: '2026-11-20T09-00-00-000Z-bug', head: '2314150' });
+    for (const red of ['{ step: S9, run: r }', '{ step: S2 }', '{ step: S2, run: r, head: "HEAD~1" }', '{ step: S2, run: r, why: x }', 'S2']) {
+        assert.throws(() => parseTest(`${YAML}red: ${red}\n`, 'x', { draft: true }), /red ist \{ step, run, head\? \}/, red);
+    }
+});
+
+test('drafts: loaded from caw/drafts when caw/tests has none, written back there as one file with red; tests win', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'caw-draft-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    assert.equal(testExists(root, 'bug-x'), false);
+    const draft = { ...spec(recorded('S1'), recorded('S2')), id: 'bug-x', draft: true };
+    assert.equal(writeTest(root, draft), 'caw/drafts/bug-x.yaml');
+    assert.equal(existsSync(testPath(root, 'bug-x')), false, 'nothing in caw/tests');
+    assert.equal(existsSync(recordingPath(root, 'bug-x')), false, 'nothing in caw/recordings');
+    assert.deepEqual(draftIds(root), ['bug-x']);
+    assert.equal(testExists(root, 'bug-x'), true);
+    const loaded = loadTest(root, 'bug-x');
+    assert.equal(loaded.draft, true);
+    assert.equal(loaded.steps[1].recording.check, 'checkS2()');
+    assert.equal(redStep(loaded), 'S2', 'before a red run: the last step');
+    // CRLF stays when the red proof is added.
+    writeFileSync(draftPath(root, 'bug-x'), readFileSync(draftPath(root, 'bug-x'), 'utf8').replaceAll('\n', '\r\n'));
+    assert.equal(writeTest(root, { ...loaded, red: { step: 'S2', run: 'r1', head: 'abc1234' } }), 'caw/drafts/bug-x.yaml');
+    const text = readFileSync(draftPath(root, 'bug-x'), 'utf8');
+    assert.match(text, /^red: \{step: S2, run: r1, head: abc1234\}\r$/m);
+    assert.ok(!/[^\r]\n/.test(text), 'line endings kept');
+    assert.deepEqual(loadDraft(root, 'bug-x').red, { step: 'S2', run: 'r1', head: 'abc1234' });
+    assert.equal(writeTest(root, loadDraft(root, 'bug-x')), 'keine Änderung');
+    assert.equal(redStep({ ...loaded, draft: false }), undefined, 'a test has no red step');
+    // A test of the same name wins over the draft.
+    writeTest(root, { ...spec(recorded('S1')), id: 'bug-x' });
+    assert.equal(loadTest(root, 'bug-x').draft, undefined);
 });

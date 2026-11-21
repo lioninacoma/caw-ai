@@ -33,6 +33,8 @@ export const composeTest = (meta, { notes, steps }) => withExpectations({
     writes: meta.writes,
     ...(meta.environments === undefined ? {} : { environments: meta.environments }),
     ...(meta.start === undefined ? {} : { start: meta.start }),
+    // A draft stays one (it is written back to caw/drafts); its red proof does not survive a new plan.
+    ...(meta.draft === true ? { draft: true } : {}),
     notes,
     steps,
 });

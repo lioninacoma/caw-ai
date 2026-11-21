@@ -50,6 +50,8 @@ Befehle:`,
                                          von CI tut das jeder Lauf)
       [--strict]                         Offene Schritte (der nicht aufgenommene Rest) lassen den Lauf mit Exit 4
                                          scheitern, statt dass er ohne sie besteht
+      [--promote]                        Ein Entwurf aus caw/drafts: Besteht er und auch run --all auf derselben
+                                         Umgebung, wandert er nach caw/tests, und der Laufordner bekommt fix-report.md
       [--start]                          Die Umgebung mit ihrem start-Befehl starten, wenn sie nicht antwortet, am Ende
                                          stoppen; mit --overlay auch die lokalen Code-Server der Teile
       [--reset] | [--no-reset]           Der reset der Umgebung läuft einmal vor dem ersten schreibenden Test; --reset
@@ -176,12 +178,12 @@ Browser:
     'cli.reproduceVerdict.no': 'Nicht nachgestellt.',
     'cli.reproduceVerdict.unclear': 'Unklar, ob der Fehler auftritt.',
     'cli.reproduceRef': '--ref {ref} ist keine Referenz: bis zu 64 Buchstaben, Ziffern und . _ # : / -, z. B. --ref TCK-1234.',
-    'cli.reproduceDraft': 'Entwurf eines Tests: {from}. Übernehmen: nach {to} kopieren, prüfen, dann {record}',
+    'cli.reproduceDraft': 'Entwurf eines Tests: {file}. Prüfe ihn, dann nimm ihn rot auf: {record}',
     'cli.synopsis.list': 'caw list [<test>]',
     'cli.synopsis.doctor': 'caw doctor [--agent local|docker | --attach] [--env <name>]',
     'cli.synopsis.skill': 'caw skill',
     'cli.synopsis.role': 'caw role [list [--json] | add <rolle> | remove <rolle> | login <rolle> --env <name>]',
-    'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>] [--agent local|docker | --attach [<key>]]',
+    'cli.synopsis.run': 'caw run <test> [--env <name>]  oder  caw run <test> <test> … | --all [--env <name>] [--agent local|docker | --attach [<key>]]  oder  caw run <draft> --promote [--env <name>]',
     'cli.synopsis.record': 'caw record <test> [--env <name>] [--role <rolle>]  oder  caw record <test>@<S4> [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.open': 'caw open [--env <name>] [--role <rolle>]  oder  caw open <test>[@<S4>] [--env <name>] [--agent local|docker | --attach [<key>]]',
     'cli.synopsis.overlay': 'caw overlay status|check [--env <name>] [--part <teil>] [--apply] [--start] [--json]',
@@ -686,4 +688,23 @@ Browser:
     'cli.bisect.meaning.bad': 'schlecht',
     'cli.bisect.meaning.skip': 'übersprungen',
     'cli.bisect.meaning.abort': 'git bisect bricht ab',
+    'cli.listDrafts': 'Entwürfe in {dir} (nicht in run --all, bis sie übernommen sind):',
+    'cli.listDraftRed': 'rot bei {step} (Lauf {run})',
+    'cli.listDraftNotRed': 'aufgenommen, noch nicht rot',
+    'cli.validateDrafts': '{count} Entwurf/Entwürfe in {dir} ebenfalls geprüft.',
+    'cli.draftGreen': 'Der Entwurf besteht jetzt, auch {step}: Der Fehler ist behoben. Übernimm ihn, sobald auch die anderen Tests bestehen: caw run {test} --promote --env {target}',
+    'cli.promoteNoDraft': 'Es gibt keinen Entwurf {test} in {dir}. --promote übernimmt einen Entwurf aus caw reproduce nach caw/tests.',
+    'cli.promoteExists': '{file} gibt es schon. Benenne den Entwurf oder den Test um; --promote überschreibt nie einen Test.',
+    'cli.promoteNotRecorded': '{test} ist nicht ganz aufgenommen: Nimm ihn erst mit caw record {test} auf. Nichts übernommen.',
+    'cli.promoteNotRed': '{test} war noch nie rot: Ohne den roten Lauf ist nicht belegt, dass der Test den Fehler fängt. Nimm ihn auf, solange der Fehler da ist: caw record {test}. Nichts übernommen.',
+    'cli.promoteDraftFailed': '{test} besteht noch nicht ({step} ist der Schritt, der den Fehler fängt). Nichts übernommen.',
+    'cli.promoteOthersFailed': 'Nicht alle anderen Tests auf {target} haben bestanden. {test} bleibt ein Entwurf, bis sie es tun.',
+    'cli.promoted': '{test} übernommen: {files}. Fix-Bericht: {report}',
+    'cli.fixReport.title': 'Fix-Bericht: {test}',
+    'cli.fixReport.red': 'Rot bei {step}: Lauf {run}, Commit {head}',
+    'cli.fixReport.green': 'Grün: Lauf {run}',
+    'cli.fixReport.others': '{count} andere(r) Test(s) auf {target} grün',
+    'cli.fixReport.changed': 'Geänderte Dateien seit {head} (ohne caw/ und .caw/)',
+    'cli.fixReport.changedNone': 'Keine.',
+    'cli.fixReport.changedUnknown': 'Unbekannt: Zum roten Lauf ist kein Commit vermerkt, oder git konnte es nicht sagen.',
 };

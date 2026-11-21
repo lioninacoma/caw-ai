@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Basket</title>
+</head>
+<body>
+<main>
+  <h1>Basket</h1>
+  <ul>
+    <li>Raven feed: 2</li>
+    <li>Crow feed: 3</li>
+  </ul>
+  <button id="total">Show total</button>
+  <p role="status" id="sum"></p>
+</main>
+<script>
+// N15: the server computes the total; /api/fix-bug switches its bug (0 instead of 5).
+document.getElementById('total').onclick = () => fetch('/api/total').then((response) => response.json()).then(({ total }) => {
+  document.getElementById('sum').textContent = 'Total: ' + total;
+});
+</script>
+</body>
+</html>

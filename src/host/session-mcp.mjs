@@ -30,20 +30,20 @@ const OVERLAY_CHECK_FILE = 'overlay-check.json';
 const OVERLAY_CHECK_TIMEOUT_MS = 180_000;
 /** Typed fields of caw_start: which command takes which, and which it needs. A step goes with its test as `<test>@<step>`. */
 const FIELDS = {
-    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'start', 'reset'] },
+    run: { needs: ['test'], takes: ['test', 'env', 'overlay', 'headless', 'learn', 'promote', 'start', 'reset'] },
     record: { needs: ['test'], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
     open: { needs: [], takes: ['test', 'step', 'env', 'overlay', 'start', 'reset'] },
     reproduce: { needs: ['bug'], takes: ['bug', 'from', 'env', 'role', 'ref', 'headless'] },
 };
-const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
+const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'promote', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
 /** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
-const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', start: '--start', reset: '--reset' };
+const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', promote: '--promote', start: '--start', reset: '--reset' };
 /** A field renamed before 1.0: named with its new name instead of "does not apply". */
 const renamedField = (input) => {
     if (input?.target !== undefined) throw new Error(t('run.mcp.fieldRenamed', { field: 'target', now: 'env' }));
 };
 const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings'];
-const RUN_ARTEFACTS = ['report.md', 'result.json', 'draft-test.yaml', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
+const RUN_ARTEFACTS = ['report.md', 'result.json', 'fix-report.md', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
 // Whatever comes from the application (snapshot, eval, console, selected element) is page content and may contain text
 // that looks like an instruction. The session has more rights than the agent in a run, so every task carries this note.
@@ -313,7 +313,7 @@ const statusData = (root, { waiting, running, log }) => {
             // A reproduction: the verdict, what Claude saw, and where report and draft test plan are.
             if (result.reproduce !== undefined) {
                 const { ref, reproduced, observed, expected, cause, covered, draft } = result.reproduce;
-                data.reproduce = { ...(ref === undefined ? {} : { ref }), ...(reproduced === undefined ? {} : { reproduced, observed, expected }), ...(cause === undefined ? {} : { cause }), ...(covered === undefined ? {} : { covered }), report: shown(root, join(run.runDir, 'report.md')), ...(draft === undefined ? {} : { draft: draft.from, adopt: { copyTo: draft.to, then: draft.record } }) };
+                data.reproduce = { ...(ref === undefined ? {} : { ref }), ...(reproduced === undefined ? {} : { reproduced, observed, expected }), ...(cause === undefined ? {} : { cause }), ...(covered === undefined ? {} : { covered }), report: shown(root, join(run.runDir, 'report.md')), ...(draft === undefined ? {} : { draft: draft.file, next: draft.record }) };
             }
             const last = Array.isArray(result.results) ? result.results.at(-1) : undefined;
             if (last !== undefined) data.lastStep = { id: last.id, status: last.status, ...(last.note === undefined ? {} : { note: last.note }) };
@@ -383,7 +383,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'command: run, record, open or reproduce. Typed fields: test, env, step (record: re-record from this step to the end; open: stop at the '
             + 'entry of this step, its navigation done and its inputs open, to develop from there; e.g. "S3", needs test), '
             + 'overlay (true, "build", "dev", a dev server URL or parts like "orders,admin:dev": local code on a deployed environment, only if the human wants it), headless (run), '
-            + 'learn (run: write missing baselines into the recording; only when the human asks), start (run the environment\'s configured start command if it does not '
+            + 'learn (run: write missing baselines into the recording; only when the human asks), promote (run of a draft from caw/drafts: green and run --all green, then it moves to caw/tests with a fix report; only when the human asks), start (run the environment\'s configured start command if it does not '
             + 'answer and stop it afterwards; not with overlay), reset (run the environment\'s configured reset first). '
             + 'Or args as on the command line, not both. You are the agent, so no extra tokens and no token question; record follows an existing '
             + 'test plan (caw/tests/<test>.yaml) without asking the human to demonstrate; a new test without a plan starts with their demonstration. '
@@ -392,7 +392,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             + 'and poll caw_overlay status until ready. moved starts against the found URL and reports it. Then call caw_status until the run waits for you. '
             + 'reproduce (topic reproduce): bug (the report as text), optionally from ("<test>" or "<test>@S3": start in that state), env, role, '
             + 'ref (an id of the ticket the bug came from, kept as is; caw_reproductions finds the run by it), headless; '
-            + 'only on environments with agent: true, never production, read-only unless writable; you reproduce alone and finish with the verdict, caw_status then names report and draft test plan.',
+            + 'only on environments with agent: true, never production, read-only unless writable; you reproduce alone and finish with the verdict, caw_status then names the report and, when reproduced, the draft in caw/drafts and the command that records it.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -407,6 +407,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 overlay: { type: ['boolean', 'string'], description: 'true (every part), "build", "dev", a dev server URL (the only part) or parts like "orders,admin:dev"' },
                 headless: { type: 'boolean' },
                 learn: { type: 'boolean', description: 'run: learn missing baselines and effects (--learn); only when the human asks' },
+                promote: { type: 'boolean', description: 'run of a draft in caw/drafts (--promote): it must pass and so must run --all on the same env; then it moves to caw/tests and the run folder gets fix-report.md. Only when the human asks' },
                 start: { type: 'boolean', description: 'Start the environment with its configured start command if it does not answer, stop it at the end (--start)' },
                 reset: { type: 'boolean', description: 'Run the environment\'s configured reset before the first test (--reset)' },
                 args: { type: 'array', items: { type: 'string' }, description: 'Raw command line instead of the typed fields' },

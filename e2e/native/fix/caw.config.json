@@ -1,0 +1,15 @@
+{
+    "language": "de",
+    "framework": "web",
+    "start": "/fix.html",
+    "agent": {
+        "mode": "docker"
+    },
+    "environments": {
+        "test": {
+            "url": "http://native.localhost:8451",
+            "agent": true,
+            "writable": true
+        }
+    }
+}

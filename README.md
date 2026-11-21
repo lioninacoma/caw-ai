@@ -68,7 +68,8 @@ environment it fits (local dev server, staging, a CI stack caw starts itself), w
 
 Hand Claude a bug report. It signs in as a test role, walks the report on its own and tells you whether the bug is real:
 yes, no or unclear, with what it observed against what was expected, the steps it took, screenshots and a hint at the cause
-in your code. It also writes a draft test plan from its steps: once the bug is fixed, record it as a regression test.
+in your code. A reproduced bug also leaves a draft test in `caw/drafts`: record it red while the bug is there, fix the bug,
+see it green, and `caw run <draft> --promote` makes it a regression test with a fix report.
 
 <img src="docs/media/reproduce.webp" width="100%" alt="caw reproduce: Claude has walked a bug report in the Errand example; the end card says the bug is reproduced and names the report and the draft test">
 
@@ -78,8 +79,8 @@ npx caw reproduce --file bug.md --from first-errand@S3 --env local --headless   
 ```
 
 No plan to approve and no question to you: Claude only investigates. It runs only on environments you allow Claude on, never
-on production, only reads where the environment is not `writable`, and changes no code and no test. The report and the draft
-stay in the run folder. Details: [Guide](docs/guide.md#reproducing-a-bug-reproduce).
+on production, only reads where the environment is not `writable`, and changes no code and no test. The report stays in the run
+folder, the draft in `caw/drafts` until you promote it. Details: [Guide](docs/guide.md#reproducing-a-bug-reproduce).
 
 ## Reach any state and develop
 
@@ -347,7 +348,7 @@ test accounts: Claude acts as that user.
 
 **Can `reproduce` break something?**
 Only where you let Claude write: on an environment without `writable` every write request is blocked, production is never
-allowed, and Claude changes neither code nor tests. The draft test goes into `caw/tests` only when you copy it there.
+allowed, and Claude changes neither code nor tests. The draft test goes into `caw/tests` only when you promote it, red before and green after.
 
 **What happens when the UI changes?**
 The step fails and the chat tells you why. If the change was intended, "Fix step" re-records that step; the rest of the test

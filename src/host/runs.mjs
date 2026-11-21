@@ -101,7 +101,7 @@ export const listReproductions = (root, { refs, since } = {}) => {
                 reproduced: reproduced ?? null,
                 ...(observed === undefined ? {} : { observed }),
                 ...(covered === undefined ? {} : { covered }),
-                ...(draft === undefined ? {} : { draft: draft.from }),
+                ...(draft === undefined ? {} : { draft: draft.file }),
                 report: relative(root, join(dir, 'report.md')).replaceAll('\\', '/'),
             };
         });

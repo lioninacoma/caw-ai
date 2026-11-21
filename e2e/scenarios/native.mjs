@@ -1,10 +1,11 @@
-// N1–N11: native Playwright locators against the fixture site e2e/native (nested frames, shadow DOM, a dialog transition, a
+// N1–N15: native Playwright locators against the fixture site e2e/native (nested frames, shadow DOM, a dialog transition, a
 // virtual list, repeated rows, a select inside its label). The tests come from native/project.mjs; N1, N2 and N5 record their
 // own (rec-*) with a scripted agent and a scripted human.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { TESTS, testText, writeTests } from '../native/project.mjs';
+import { stepHash } from '../../src/host/test-file.mjs';
 import {
     appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, planOf, print, record, reproduce, run,
     runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
@@ -848,11 +849,14 @@ $A finish --file /tmp/f.json`;
         verify('(1) Exit 0: reproduced', code === 0 && result?.reproduce?.reproduced === 'yes', `${code} ${JSON.stringify(result?.reproduce ?? result).slice(0, 300)}`);
         const log = ['agent/claude.log', 'claude.log'].map((name) => join(dir, name)).filter((path) => existsSync(path)).map((path) => readFileSync(path, 'utf8')).join('') || readFileSync(join(here, 'n12.log'), 'utf8');
         verify('(1) task in mode reproduce, plan and check refused', /TASK-REPRODUCE/.test(log) && /PLAN-REFUSED/.test(log) && /CHECK-REFUSED/.test(log), log.slice(-400));
-        verify('(1) report: verdict, bug report, steps, cause, screenshot, draft', /nachgestellt/.test(report) && /> Nach dem Speichern/.test(report) && /Klicke auf Save/.test(report) && /index\.html:91/.test(report) && /after-save\.png/.test(report) && /draft-test\.yaml/.test(report), report.slice(0, 600));
+        verify('(1) report: verdict, bug report, steps, cause, screenshot, draft', /nachgestellt/.test(report) && /> Nach dem Speichern/.test(report) && /Klicke auf Save/.test(report) && /index\.html:91/.test(report) && /after-save\.png/.test(report) && /caw\/drafts\/bug-nach-dem-speichern/.test(report), report.slice(0, 600));
         verify('(1) report names the action by its element, never a reference', /^- click button "Save"/m.test(report), report.split('\n').filter((line) => line.startsWith('- click')).join(' | '));
-        const draft = readFileSync(join(dir, 'draft-test.yaml'), 'utf8');
+        // Reproduced: the draft is in caw/drafts, plan only, its last step to be recorded red.
+        const draftFile = join(native, result?.reproduce?.draft?.file ?? 'caw/drafts/missing.yaml');
+        const draft = existsSync(draftFile) ? readFileSync(draftFile, 'utf8') : '';
         let valid = true;
-        try { parseTest(draft); } catch { valid = false; }
+        try { parseTest(draft, 'draft', { draft: true }); } catch { valid = false; }
+        rmSync(draftFile, { force: true });
         verify('(1) the draft is a valid test plan with the step, the environment and the id from the bug', valid && /^id: bug-nach-dem-speichern-steht-der-status/m.test(draft) && /environments: \[ ?test ?\]/.test(draft) && /Klicke auf Save\./.test(draft), draft);
         verify('(1) caw/tests untouched', readdirSync(join(native, 'caw/tests')).sort().join(',') === tests);
 
@@ -908,7 +912,7 @@ $A finish --file /tmp/f.json`;
             withRef === 1 && fourth.result?.reproduce?.ref === 'TCK-1234' && cover?.test === 'n3-layers' && cover?.step === 'S2' && (cover.lastRun === undefined || /-n3-layers$/.test(cover.lastRun.runId)),
             `${withRef} ${JSON.stringify(fourth.result?.reproduce ?? {}).slice(0, 400)}`);
         verify('(4) report: the reference and the section on the covering test', /^Referenz: TCK-1234$/m.test(fourth.report) && /## Schon abgedeckt/.test(fourth.report) && /n3-layers@S2/.test(fourth.report), fourth.report.slice(0, 600));
-        verify('(4) the draft notes name the reference', /Referenz TCK-1234/.test(readFileSync(join(fourth.dir, 'draft-test.yaml'), 'utf8')));
+        verify('(4) not reproduced: no draft', fourth.result?.reproduce?.draft === undefined, JSON.stringify(fourth.result?.reproduce?.draft));
     } finally {
         writeFileSync(join(native, 'caw.config.json'), before);
     }
@@ -1013,5 +1017,98 @@ scenario('N14', 'Target design: a matching .html passes, another fails S2 with k
     } finally {
         rmSync(designDir, { recursive: true, force: true });
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DESIGNED}.yaml`), { force: true });
+    }
+});
+
+// ---- N15: from a reproduced bug to a proven fix: draft, red, the fix (a server switch), green, promote with a fix report
+
+// Its own project (fix/, start /fix.html): run --all there is the draft's neighbour fix-page only, not the native tests that fail on purpose.
+const fixRoot = join(native, 'fix');
+const FIX_URL = `http://127.0.0.1:${PORT}`;
+const switchBug = (on) => fetch(`${FIX_URL}/api/fix-bug?on=${on ? 1 : 0}`, { method: 'POST' });
+const FIX_PLAN = `notes: Die Summe des Warenkorbs.
+steps:
+  - id: S1
+    name: Warenkorb
+    do: Öffne den Warenkorb.
+    expect: Der Knopf Show total ist da.
+  - id: S2
+    name: Summe
+    do: Klicke auf Show total.
+    expect: Die Summe zeigt Total: 5.`;
+
+scenario('N15', 'Reproduce → red draft → fix (server switch) → green → promote: draft in caw/drafts, red as expected, still red, green, fix report, test in caw/tests', async () => {
+    rmSync(join(fixRoot, 'caw'), { recursive: true, force: true });
+    rmSync(join(fixRoot, '.caw'), { recursive: true, force: true });
+    // The neighbour that run --all checks before promoting, recorded by hand.
+    const page = { id: 'S1', name: 'Seite', do: 'Öffne den Warenkorb.', expect: 'Der Knopf ist da.' };
+    writeTest(fixRoot, { id: 'fix-page', environments: ['test'], writes: false, notes: '', steps: [{ ...page, recording: { hash: stepHash(page), recordedOn: 'test', recordedAt: '2026-11-21T09:00:00.000Z', locale: 'de-DE', timezone: 'Europe/Berlin', actions: [], check: "!!document.getElementById('total')" } }] });
+    await switchBug(true);
+    try {
+        // (1) reproduce: Claude (scripted) sees Total: 0 and finishes with yes; the draft lands in caw/drafts with the trail.
+        const found = `exec 2>&1
+A='caw agent'
+$A click '#total'
+sleep 1
+S=$($A eval "document.getElementById('sum').textContent")
+V=no; echo "$S" | grep -q 'Total: 0' && V=yes
+cat > /tmp/f.json <<JSON
+{"reproduced":"$V","observed":"$S","expected":"Total: 5","writes":false,"steps":[{"name":"Warenkorb","do":"Öffne den Warenkorb.","expect":"Der Knopf Show total ist da."},{"name":"Summe","do":"Klicke auf Show total.","expect":"Die Summe zeigt Total: 5."}]}
+JSON
+$A finish --file /tmp/f.json`;
+        const reproduced = await reproduce(fixRoot, ['Die Summe zeigt 0 statt 5.', '--env', 'test', '--headless'], { interactive: true, containerCommand: ['bash', '-c', found] });
+        const repro = newestRunOf(fixRoot, 'reproduce').result?.reproduce;
+        const id = repro?.draft?.file?.replace(/^caw\/drafts\/|\.yaml$/g, '');
+        verify('(1) reproduced: exit 0, the draft in caw/drafts', reproduced === 0 && id === 'bug-die-summe-zeigt-0-statt-5' && existsSync(join(fixRoot, repro.draft.file)), `${reproduced} ${JSON.stringify(repro?.draft)}`);
+        const draftFile = readFileSync(join(fixRoot, 'caw/drafts', `${id}.yaml`), 'utf8');
+        verify('(1) its notes carry the trail with the locator', /click getByRole\('button', \{ name: 'Show total', exact: true \}\)/.test(draftFile), draftFile);
+        verify('(1) not in caw/tests', !existsSync(join(fixRoot, 'caw/tests', `${id}.yaml`)));
+
+        // (2) record the draft: S1 passes, S2's check of the expected total evaluates to false; the check run is red as expected.
+        const recorder = `exec 2>&1
+A='caw agent'
+${planOf(FIX_PLAN)}
+$A plan --file /tmp/p.yaml > /dev/null
+$A task | grep -q '"red"' && echo TASK-RED
+$A check S1 "!!document.getElementById('total')"
+$A click '#total'
+sleep 1
+$A check S2 "document.getElementById('sum').textContent==='Total: 5'"
+echo '{"expectations":[{"id":"S1","status":"pass","evidence":{"type":"eval","value":"ok"}},{"id":"S2","status":"fail","evidence":{"type":"eval","value":"Total: 0"}}],"omit":[]}' > /tmp/e.json; $A finish --file /tmp/e.json; echo "finish Exit=$?"`;
+        const redCard = async (chat) => {
+            await chat.locator('.message:is(.question,.result,.notice)', { hasText: 'S2 rot wie erwartet: der Test fängt den Fehler' }).waitFor({ timeout: 120000 });
+            verify('(2) no fix offered at the red card', await chat.locator('#choices button', { hasText: 'Schritt beheben' }).count() === 0);
+            await decide(chat, 'Testplan übernehmen');
+        };
+        const h = humans(followAndAdopt, redCard);
+        const recorded = await record(fixRoot, [id, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', recorder], onChatOpen: h.onChatOpen });
+        await h.done();
+        const red = loadTest(fixRoot, id);
+        verify('(2) recorded red: exit 0, red at S2 with run and commit, still a draft', recorded === 0 && red.draft === true && red.red?.step === 'S2' && /Z-bug-die-summe/.test(red.red?.run ?? '') && /^[0-9a-f]{4,40}$/.test(red.red?.head ?? ''), `${recorded} ${JSON.stringify(red.red)}`);
+        verify('(2) S2 keeps the failing check of the expected total', red.steps[1].recording?.check === "document.getElementById('sum').textContent==='Total: 5'", red.steps[1].recording?.check);
+
+        // (3) Still red without the fix; --promote refuses (exit 1) and the draft stays.
+        const still = await runQuietly(id, [], fixRoot);
+        verify('(3) still red: exit 1 at S2', still.code === 1, `${still.code} ${still.note}`);
+        const early = await run(fixRoot, [id, '--promote', ...target]);
+        verify('(3) --promote while red: exit 1, the draft stays', early === 1 && existsSync(join(fixRoot, 'caw/drafts', `${id}.yaml`)), String(early));
+
+        // (4) The fix: the server computes the total again. The same recording without AI is green.
+        await switchBug(false);
+        const green = await runQuietly(id, [], fixRoot);
+        verify('(4) green after the fix: exit 0', green.code === 0, `${green.code} ${green.note}`);
+
+        // (5) Promote: the draft and run --all (fix-page) green; the test moves to caw/tests, the draft goes, the fix report is written.
+        const promoted = await run(fixRoot, [id, '--promote', ...target]);
+        const { dir } = newestRunOf(fixRoot, id);
+        const reportFile = join(dir, 'fix-report.md');
+        const fixReport = existsSync(reportFile) ? readFileSync(reportFile, 'utf8') : '';
+        verify('(5) promoted: exit 0, the test in caw/tests and caw/recordings, the draft gone', promoted === 0 && existsSync(join(fixRoot, 'caw/tests', `${id}.yaml`)) && existsSync(join(fixRoot, 'caw/recordings', `${id}.yaml`)) && !existsSync(join(fixRoot, 'caw/drafts', `${id}.yaml`)), String(promoted));
+        verify('(5) the test file carries no red', !/^red:/m.test(readFileSync(join(fixRoot, 'caw/tests', `${id}.yaml`), 'utf8')));
+        verify('(5) fix report: red at S2 with run and commit, green with its run, the changed files, one other test green',
+            new RegExp(`Rot bei S2: Lauf ${red.red.run}, Commit ${red.red.head}`).test(fixReport) && new RegExp(`Grün: Lauf .*-${id}`).test(fixReport)
+            && /## Geänderte Dateien seit/.test(fixReport) && /1 andere\(r\) Test\(s\) auf test grün/.test(fixReport), fixReport);
+    } finally {
+        await switchBug(false).catch(() => {});
     }
 });

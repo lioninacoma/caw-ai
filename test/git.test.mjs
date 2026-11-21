@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { auditCommand } from '../src/host/audit.mjs';
-import { auditFiles, mergeBase, readAtCommit } from '../src/host/git.mjs';
+import { auditFiles, changedFiles, mergeBase, readAtCommit } from '../src/host/git.mjs';
 import { CawError, exitOf } from '../src/shared/errors.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/caw.mjs', import.meta.url));
@@ -81,6 +81,20 @@ test('git: merge base, the test data at a commit, read in one batch; bad refs ar
     }
     assert.equal(exitOf('git-ref'), 3);
     assert.equal(exitOf('git-missing'), 3);
+});
+
+test('git: changed files since a commit for the fix report: committed, uncommitted and untracked, without caw/ and .caw/', (t) => {
+    const { top, root, git, write } = repository(t);
+    const start = git('rev-parse', '--short', 'HEAD');
+    write('src/app.js', 'export const fixed = true;');
+    git('commit', '-q', '-am', 'Fix');
+    write('src/search.js', 'export {};');
+    write('caw/drafts/bug-x.yaml', 'x');
+    write('.caw/runs/r1/report.md', 'x');
+    writeFileSync(join(top, 'server.js'), 'neben dem Projektordner');
+    git('add', 'server.js');
+    assert.deepEqual(changedFiles(root, start), ['../server.js', 'src/app.js', 'src/search.js']);
+    assert.throws(() => changedFiles(root, '--output=x'), (error) => error instanceof CawError && error.code === 'git-ref');
 });
 
 test('git: a folder outside any repository is git-missing', (t) => {

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { reproduce } from '../src/host/commands.mjs';
-import { coverageIn, draftId, draftTestPlan, parseReproduceArgs, readReproduction } from '../src/host/reproduce.mjs';
+import { coverageIn, draftHint, draftId, draftTestPlan, parseReproduceArgs, readReproduction } from '../src/host/reproduce.mjs';
 import { BUG_FILE, startArgs } from '../src/host/session-mcp.mjs';
 import { parseTest, stepHash, writeTest } from '../src/host/test-file.mjs';
 import { renderReproduceReport } from '../src/shared/report.mjs';
@@ -97,12 +97,29 @@ test('draft: a valid test plan with an id from the bug, never in caw/tests by it
     assert.deepEqual([spec.id, spec.role, spec.writes, spec.environments, spec.steps[0].id, spec.steps[0].expect], ['bug-search', 'tester', false, ['local'], 'S1', 'One result.']);
 });
 
+test('draft for caw/drafts: an id free in tests and drafts, the trail of locators in the notes, red not yet', (t) => {
+    const root = tempDir(t);
+    mkdirSync(join(root, 'caw/drafts'), { recursive: true });
+    writeFileSync(join(root, 'caw/drafts/bug-x.yaml'), '');
+    assert.equal(draftId(root, 'X'), 'bug-x-2', 'a draft of that name exists already');
+    const trail = ["fill getByRole('searchbox', { name: 'Search todos' })", "click getByRole('button', { name: 'Save' })", 'goto /todos'];
+    const draft = draftTestPlan({ id: 'bug-search', role: 'tester', environment: 'local', writes: true, runId: 'r1', ref: 'TCK-7', steps: [{ name: 'Search', do: 'Search for "raven".', expect: 'One result.' }], trail });
+    const spec = parseTest(draft.text, 'x', { draft: true });
+    assert.match(spec.notes, /Referenz TCK-7/);
+    assert.match(spec.notes, /der letzte Schritt muss scheitern, solange der Fehler da ist/);
+    assert.match(spec.notes, /Was .* getan hat, als Orientierung für die Aufnahme:\n- fill getByRole\('searchbox', \{ name: 'Search todos' \}\)\n- click getByRole\('button', \{ name: 'Save' \}\)\n- goto \/todos$/);
+    assert.equal(spec.red, undefined);
+    assert.deepEqual(draftHint(draft), { file: 'caw/drafts/bug-search.yaml', record: 'caw record bug-search' });
+    const long = draftTestPlan({ id: 'b', environment: 'local', writes: false, runId: 'r1', steps: [{ name: 'a', do: 'a', expect: 'b' }], trail: Array.from({ length: 45 }, (_, index) => `click e${index}`) });
+    assert.match(parseTest(long.text, 'x', { draft: true }).notes, /- click e39\n- … und 5 weitere$/);
+});
+
 test('report: verdict, bug report, steps, evidence and how to adopt the draft', () => {
     const text = renderReproduceReport({
         status: 'pass', target: 'local', testedCode: 'deployed', failures: [{ type: 'write-blocked', text: 'POST /api/save blocked' }],
-        reproduce: { bug: 'Line one.\nLine two.', writable: false, reproduced: 'yes', observed: 'Nothing.', expected: 'One result.', cause: 'search.mjs:12', steps: [{ do: 'Search.', expect: 'One result.' }], actions: ['click e12'], screenshots: ['after.png'], draft: { from: '.caw/runs/r1/draft-test.yaml', to: 'caw/tests/bug-x.yaml', record: 'caw record bug-x' } },
+        reproduce: { bug: 'Line one.\nLine two.', writable: false, reproduced: 'yes', observed: 'Nothing.', expected: 'One result.', cause: 'search.mjs:12', steps: [{ do: 'Search.', expect: 'One result.' }], actions: ['click e12'], screenshots: ['after.png'], draft: { file: 'caw/drafts/bug-x.yaml', record: 'caw record bug-x' } },
     });
-    for (const expected of [/^# Fehler nachstellen auf local: nachgestellt$/m, /Nur lesend/, /^> Line one\.$/m, /^> Line two\.$/m, /Hinweis auf die Ursache: search\.mjs:12/, /^1\. Search\. → One result\.$/m, /click e12/, /agent\/after\.png/, /write-blocked/, /caw record bug-x/]) {
+    for (const expected of [/^# Fehler nachstellen auf local: nachgestellt$/m, /Nur lesend/, /^> Line one\.$/m, /^> Line two\.$/m, /Hinweis auf die Ursache: search\.mjs:12/, /^1\. Search\. → One result\.$/m, /click e12/, /agent\/after\.png/, /write-blocked/, /caw record bug-x/, /caw\/drafts\/bug-x\.yaml/]) {
         assert.match(text, expected);
     }
     const covered = { test: 'search', step: 'S2', why: 'S2 checks the hits.', lastRun: { status: 'pass', runId: '2026-11-19T08-00-00-000Z-search', date: '2026-11-19T08:00:00.000Z' }, checkMayMiss: true };
@@ -121,6 +138,12 @@ test('MCP: caw_start reproduce takes bug, from, env, role and headless; the bug 
     assert.throws(() => startArgs({ command: 'reproduce', bug: 'x', test: 't' }), /test/);
     assert.throws(() => startArgs({ command: 'reproduce', bug: ' ' }), /bug/);
     assert.throws(() => startArgs({ command: 'run', test: 't', bug: 'x' }), /bug/);
+});
+
+test('MCP: caw_start run takes promote as a typed switch, only for run', () => {
+    assert.deepEqual(startArgs({ command: 'run', test: 'bug-x', promote: true, env: 'local' }), ['bug-x', '--env', 'local', '--promote']);
+    assert.deepEqual(startArgs({ command: 'run', test: 'bug-x', promote: false }), ['bug-x']);
+    assert.throws(() => startArgs({ command: 'record', test: 'bug-x', promote: true }), /promote gilt nicht für record/);
 });
 
 test('ref: an opaque id, checked on the command line and in caw_start, never resolved', () => {
