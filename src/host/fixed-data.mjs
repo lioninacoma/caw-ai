@@ -594,7 +594,9 @@ export const serveAnswers = async (context, { book, isRead, onAnswer = () => {} 
         }
         return attached.get(page);
     };
-    // A new page (a popup) may ask before its session is attached: its xhr and fetch wait at the request stage until then.
+    // A new page (a popup) may load before its session is attached. Every request of it, its document first, waits at the request
+    // stage until then: a read paused before Fetch.enable is not caught at the response stage afterwards, so the page must not
+    // even start before it.
     const matches = (url) => /^https?:$/.test(url.protocol);
     const pageOf = (request) => {
         try {
@@ -605,7 +607,7 @@ export const serveAnswers = async (context, { book, isRead, onAnswer = () => {} 
     };
     const gate = async (route) => {
         const request = route.request();
-        const page = !stopped && ['xhr', 'fetch'].includes(request.resourceType()) ? pageOf(request) : null;
+        const page = stopped ? null : pageOf(request);
         if (page !== null) await attach(page);
         await route.fallback().catch(() => {});
     };
