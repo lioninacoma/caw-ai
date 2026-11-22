@@ -1,6 +1,6 @@
 // The guided bug fix: where a draft from caw reproduce stands on its way to a proven fix, and what comes next. reproduced (the
-// draft is written, not yet recorded red), red (recorded red, the bug is still there), green (a run after the red one passed:
-// the bug is fixed) and promoted (the test is in caw/tests, the run folder has fix-report.md). The workbench guides a person
+// draft is written, not yet recorded red), red (recorded red, the bug is still there), green (a run after the red one judged the
+// red step and passed: the bug is fixed) and promoted (the test is in caw/tests, the run folder has fix-report.md). The workbench guides a person
 // through these phases in one process; the session reads them from caw_status and caw_reproductions as `phase` and `next`.
 
 import { existsSync } from 'node:fs';
@@ -34,7 +34,8 @@ export const redOf = (draft, cause) => {
  * The phase of a draft and the next step, without touching the disk.
  * @param id        the draft's id
  * @param draft     the draft as loadDraft reads it; undefined when caw/drafts has none (promoted or discarded)
- * @param runs      the id's runs with a result, newest first: [{ runId, status }]
+ * @param runs      the id's runs with a result, newest first: [{ runId, status, results }], results the judged steps
+ *                  as result.json has them ([{ id, status }])
  * @param promoted  caw/tests has the test and it came from this draft (a fix report or a reproduction names it)
  * @param fixReport the fix report of the promotion, relative to the project
  * @param cause     the cause the reproduction suspected
@@ -44,9 +45,11 @@ export const fixPhase = ({ id, draft, runs = [], promoted = false, fixReport, ca
     if (draft === undefined) return promoted ? { phase: 'promoted', next: { done: true, ...(fixReport === undefined ? {} : { fixReport }) } } : undefined;
     const run = { tool: 'caw_start', command: 'run', test: id };
     if (draft.red === undefined) return { phase: 'reproduced', next: { tool: 'caw_start', command: 'record', test: id } };
-    // Run ids start with their time: a later id is a later run. Only a run after the red proof shows the fix.
+    // Run ids start with their time: a later id is a later run. Only a run after the red proof shows the fix, and only if it
+    // judged the red step and passed it: an open at the red step's entry passes without ever checking it.
     const newest = runs.find(({ runId }) => runId > draft.red.run);
-    if (newest?.status === 'pass') return { phase: 'green', next: { ...run, promote: true } };
+    const judged = Array.isArray(newest?.results) && newest.results.some((item) => item?.id === draft.red.step && item.status === 'pass');
+    if (newest?.status === 'pass' && judged) return { phase: 'green', next: { ...run, promote: true } };
     return { phase: 'red', next: { do: 'fix-app', red: redOf(draft, cause), then: run } };
 };
 
@@ -81,5 +84,5 @@ export const fixState = (root, id, { fromDraft = false, cause } = {}) => {
     const fixReport = draft === undefined ? fixReportOf(root, runs) : undefined;
     const promoted = draft === undefined && existsSync(testPath(root, id)) && (fromDraft || fixReport !== undefined);
     const suspected = cause ?? (draft?.red === undefined ? undefined : reproductionOf(root, id)?.cause);
-    return fixPhase({ id, draft, runs: runs.map(({ runId, result }) => ({ runId, status: result.status })), promoted, fixReport, cause: suspected });
+    return fixPhase({ id, draft, runs: runs.map(({ runId, result }) => ({ runId, status: result.status, results: result.results })), promoted, fixReport, cause: suspected });
 };

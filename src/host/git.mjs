@@ -113,9 +113,10 @@ export const auditFiles = (root, commit) => {
 /**
  * Reads files at a commit in one `git cat-file --batch` call. The output is parsed as bytes: each object is
  * `<oid> <type> <size>\n<content>\n`, and the size counts bytes, not characters.
+ * @param raw the bytes as a Buffer instead of text (an image)
  * @returns Map path -> text (UTF-8); a path missing at the commit is left out
  */
-export const readAtCommit = (root, commit, paths) => {
+export const readAtCommit = (root, commit, paths, { raw = false } = {}) => {
     const files = new Map();
     if (paths.length === 0) return files;
     const prefix = git(root, ['rev-parse', '--show-prefix']).toString('utf8').trim();
@@ -131,7 +132,7 @@ export const readAtCommit = (root, commit, paths) => {
         // "<name> missing" (or ambiguous): nothing follows the header.
         if (match === null) continue;
         const size = Number(match[2]);
-        if (match[1] === 'blob') files.set(path, out.subarray(at, at + size).toString('utf8'));
+        if (match[1] === 'blob') files.set(path, raw ? Buffer.from(out.subarray(at, at + size)) : out.subarray(at, at + size).toString('utf8'));
         at += size + 1;
     }
     return files;

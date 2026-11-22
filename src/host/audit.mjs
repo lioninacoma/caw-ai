@@ -3,6 +3,7 @@
 // data at the merge base of <ref> and HEAD with the working tree and names every weakening in plain words, for PR review and CI.
 // The one deliberate way to change a check is to change the step's expected result: that is listed, not a weakening.
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -10,7 +11,8 @@ import { DEFAULT_MESSAGE_SELECTORS, guardedChanges } from '../shared/config.mjs'
 import { testEnvironments } from '../shared/environments.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { inLanguage, t, teamLanguage } from '../shared/i18n.mjs';
-import { CONFIG_FILE, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
+import { CONFIG_FILE, PROJECT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
+import { DEFAULT_DESIGN_FAIL, designPath, isDesignName } from './design.mjs';
 import { DEFAULT_EFFECT_FAIL, EFFECT_LISTS, LEARN_RUNS } from './effects.mjs';
 import { frameworkOf } from './framework/index.mjs';
 import { auditFiles, isAuditFile, mergeBase, readAtCommit } from './git.mjs';
@@ -102,7 +104,38 @@ const bareTarget = (action) => {
     return rest;
 };
 const actionLabel = (action) => [action.action, action.target ?? action.url ?? action.key ?? action.name].filter((part) => part !== undefined).join(' ');
-const sameActions = (before, after) => before.length === after.length && before.every((action, index) => same(bare(action), bare(after[index])));
+// A wait-ready only waits: it neither acts nor has effects, but it takes an action number (effects are numbered by position).
+const WAIT = 'wait-ready';
+const acting = (actions) => actions.map((action, index) => ({ action, number: index + 1 })).filter(({ action }) => action.action !== WAIT);
+/**
+ * The same actions apart from waits added or taken out: per action number of `before` the number of the same action in `after`.
+ * @returns Map old number -> new number, or null when the actions differ
+ */
+const sameActions = (before, after) => {
+    const was = acting(before);
+    const now = acting(after);
+    if (was.length !== now.length || !was.every(({ action }, index) => same(bare(action), bare(now[index].action)))) return null;
+    return new Map(was.map(({ number }, index) => [number, now[index].number]));
+};
+/**
+ * Actions taken out of a step by hand: the remaining ones are the old ones in their order, only fewer. Waits do not count. A
+ * re-recording with other actions is no removal.
+ * @returns the removed actions with their old number, or [] when it is not a pure removal
+ */
+const removedActions = (before, after) => {
+    const was = acting(before);
+    const now = acting(after);
+    if (now.length >= was.length) return [];
+    const kept = new Set();
+    let from = 0;
+    for (const { action } of now) {
+        const position = was.findIndex((old, index) => index >= from && same(bare(old.action), bare(action)));
+        if (position === -1) return [];
+        kept.add(position);
+        from = position + 1;
+    }
+    return was.filter((_, index) => !kept.has(index));
+};
 
 /**
  * Pairs the steps of both sides. Like keptCheck, by the expected result first, so a step that only moved or was renumbered
@@ -133,9 +166,18 @@ const pairSteps = (beforeSteps, afterSteps) => {
 };
 
 /** The findings of one pair of steps besides check and expected result. */
-const stepChanges = (finding, { before, after, sameExpect }, failLists) => {
+const stepChanges = (finding, { before, after, sameExpect }, failLists, designs) => {
     const out = [];
     const at = { step: after.id, expect: after.expect };
+    // The target design (a person's, never caw's): taken off, swapped or its file changed, the step is judged against less or
+    // something else. A design newly linked only adds a judgement. The file is compared only when both sides were read.
+    if (before.design !== undefined) {
+        if (after.design === undefined) out.push(finding('design-removed', 'weakening', { ...at, before: before.design, vars: { file: before.design } }));
+        else if (after.design !== before.design) out.push(finding('design-changed', 'weakening', { ...at, before: before.design, after: after.design, vars: { was: before.design, now: after.design } }));
+        else if (designs.before?.has(before.design) && designs.after !== undefined && designs.before.get(before.design) !== designs.after.get(before.design)) {
+            out.push(finding('design-file-changed', 'weakening', { ...at, vars: { file: before.design } }));
+        }
+    }
     const triesBefore = before.retry?.times ?? 0;
     const triesAfter = after.retry?.times ?? 0;
     if (triesAfter > triesBefore) {
@@ -151,6 +193,15 @@ const stepChanges = (finding, { before, after, sameExpect }, failLists) => {
     const was = before.recording;
     const now = after.recording;
     if (was === undefined || now === undefined) return out;
+    // A learned look gone from the recording while the step still asks for it: like forgotten effects, nothing is compared until
+    // it is learned again. Only while the actions are the same: a step recorded anew learns its look anew.
+    if (before.look === true && after.look === true && (was.visual?.runs ?? 0) >= LOOK_LEARN_RUNS && !((now.visual?.runs ?? 0) >= LOOK_LEARN_RUNS)
+        && sameActions(was.actions, now.actions) !== null) {
+        out.push(finding('look-forgotten', 'weakening', { ...at, before: was.visual, after: now.visual }));
+    }
+    for (const { action, number } of removedActions(was.actions, now.actions)) {
+        out.push(finding('action-removed', 'weakening', { ...at, before: action, number, vars: { number, action: actionLabel(action) } }));
+    }
     if (now.timeoutMs !== undefined && now.timeoutMs > (was.timeoutMs ?? DEFAULT_TIMEOUT_MS)) {
         out.push(finding('timeout-raised', 'weakening', { ...at, before: was.timeoutMs, after: now.timeoutMs, vars: { was: seconds(was.timeoutMs ?? DEFAULT_TIMEOUT_MS), now: seconds(now.timeoutMs) } }));
     }
@@ -203,16 +254,18 @@ const stepChanges = (finding, { before, after, sameExpect }, failLists) => {
  * change no longer shows: a weakening in every list. "Accept new effect" in the chat forgets the effects and the next runs learn
  * them anew; in the files that looks like a hand edit, but a relearned list has new lines in place of the old ones. Such a
  * replacement (lines gone and others new in the same list of the same action) is listed with both; only a pure removal weakens.
- * Compared only while the actions are the same: a step recorded anew learns its effects anew, numbered by its new actions.
+ * Compared only while the actions are the same: a step recorded anew learns its effects anew, numbered by its new actions. A
+ * wait added or taken out changes the numbers, not the actions: each learned line is compared at its action's new number.
  */
 const effectChanges = (finding, at, was, now, failLists, sameExpect) => {
-    if (!((was.effects?.runs ?? 0) >= LEARN_RUNS) || !sameActions(was.actions, now.actions)) return [];
+    const numbers = sameActions(was.actions, now.actions);
+    if (!((was.effects?.runs ?? 0) >= LEARN_RUNS) || numbers === null) return [];
     if (!((now.effects?.runs ?? 0) >= LEARN_RUNS)) return [finding('effects-forgotten', 'weakening', { ...at, before: was.effects, after: now.effects })];
     const removed = [];
     const replaced = { was: [], now: [] };
     const accepted = [];
     for (const entry of was.effects.actions) {
-        const fresh = now.effects.actions.find(({ action }) => action === entry.action) ?? {};
+        const fresh = now.effects.actions.find(({ action }) => action === (numbers.get(entry.action) ?? entry.action)) ?? {};
         for (const list of EFFECT_LISTS) {
             // In the console new lines fail a step, elsewhere missing ones: so there taking lines in weakens, elsewhere removing.
             if (list === 'console') {
@@ -239,12 +292,15 @@ const effectChanges = (finding, at, was, now, failLists, sameExpect) => {
 /** The page messages a run watches: the config's, else the framework's, else the default. */
 const messageSelectors = (config) => config?.messageSelectors ?? frameworkOf(config ?? {}).messageSelectors ?? DEFAULT_MESSAGE_SELECTORS;
 const effectFail = (config) => config?.effects?.fail ?? DEFAULT_EFFECT_FAIL;
+const designFail = (config) => config?.design?.fail ?? DEFAULT_DESIGN_FAIL;
 
 const configChanges = (finding, before, after) => {
     if (before === null || after === null) return [];
     const out = [];
     const at = { test: null };
-    for (const [key, kind] of [['consoleIgnore', 'config-console-ignore'], ['foreignCode', 'config-foreign-code'], ['reads', 'config-reads']]) {
+    // visualIgnore leaves areas out of every look (styles and image), readyIgnore lets a step go on while they still load.
+    const lists = [['consoleIgnore', 'config-console-ignore'], ['foreignCode', 'config-foreign-code'], ['reads', 'config-reads'], ['visualIgnore', 'config-visual-ignore'], ['readyIgnore', 'config-ready-ignore']];
+    for (const [key, kind] of lists) {
         const more = added(before[key], after[key]);
         if (more.length > 0) out.push(finding(kind, 'weakening', { ...at, before: before[key], after: after[key], vars: { list: listed(more) } }));
     }
@@ -254,6 +310,9 @@ const configChanges = (finding, before, after) => {
     const failing = effectFail(after);
     const notFailing = effectFail(before).filter((list) => !failing.includes(list));
     if (notFailing.length > 0) out.push(finding('config-effects-fail', 'weakening', { ...at, before: effectFail(before), after: failing, vars: { list: listed(notFailing) } }));
+    const designFailing = designFail(after);
+    const designWarning = designFail(before).filter((kind) => !designFailing.includes(kind));
+    if (designWarning.length > 0) out.push(finding('config-design-fail', 'weakening', { ...at, before: designFail(before), after: designFailing, vars: { list: listed(designWarning) } }));
     const guarded = guardedChanges(before, after);
     if (guarded.length > 0) out.push(finding('config-guarded', 'weakening', { ...at, after: guarded, vars: { list: listed(guarded) } }));
     return out;
@@ -305,7 +364,7 @@ export const auditChanges = (before, after) => {
                     vars: { was: pair.before.expect },
                 })));
             }
-            findings.push(...stepChanges((kind, severity, fields) => finding(kind, severity, { test, ...fields }), pair, failLists));
+            findings.push(...stepChanges((kind, severity, fields) => finding(kind, severity, { test, ...fields }), pair, failLists, { before: before.designs, after: after.designs }));
         }
     }
     for (const test of after.tests.keys()) if (!before.tests.has(test)) findings.push(finding('test-added', 'listed', { test }));
@@ -313,11 +372,26 @@ export const auditChanges = (before, after) => {
     return findings.sort((a, b) => SEVERITIES.indexOf(a.severity) - SEVERITIES.indexOf(b.severity));
 };
 
-/** Reads both sides and compares them. @returns { base, findings, config } with config the working tree's (team language) */
+/** The design files the steps of these tests link, as the steps name them (relative to the caw folder). */
+const linkedDesigns = (tests) => [...tests.values()].flatMap(({ steps }) => steps.map(({ design }) => design)).filter(isDesignName);
+const hashOf = (data) => createHash('sha256').update(data).digest('hex');
+
+/**
+ * Reads both sides and compares them. Besides the test data, the design files a step links on either side, as hashes
+ * (`designs`: Map name -> hash, a missing file left out): a replaced design changes what its step is judged against.
+ * @returns { base, before, after }
+ */
 export const auditProject = (root, ref) => {
     const base = mergeBase(root, ref);
     const before = readProjectData(readAtCommit(root, base, auditFiles(root, base)));
     const after = readProjectData(workingTreeFiles(root));
+    const names = [...new Set([...linkedDesigns(before.tests), ...linkedDesigns(after.tests)])];
+    const atBase = readAtCommit(root, base, names.map((name) => `${PROJECT_DIR}/${name}`), { raw: true });
+    before.designs = new Map(names.filter((name) => atBase.has(`${PROJECT_DIR}/${name}`)).map((name) => [name, hashOf(atBase.get(`${PROJECT_DIR}/${name}`))]));
+    after.designs = new Map(names.flatMap((name) => {
+        const path = designPath(join(root, PROJECT_DIR), name);
+        return path === null ? [] : [[name, hashOf(readFileSync(path))]];
+    }));
     return { base, before, after };
 };
 

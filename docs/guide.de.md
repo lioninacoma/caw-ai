@@ -419,7 +419,9 @@ die aktuelle hervorgehoben.
 Aus deiner Session sind das `caw_start` mit `command: "record"`, `"run"` und `"run"` mit `promote: true`. Deine Session muss
 nicht mitzählen: `caw_status` (zum Nachstellen und zu jedem Lauf des Entwurfs) und jede Zeile von `caw_reproductions` tragen
 `phase` (`reproduced`, `red`, `green`, `promoted`) und `next`, den Schritt danach: aufnehmen, die App beheben (mit dem roten
-Schritt, seiner Prüfung und der vermuteten Ursache), ablaufen lassen, übernehmen oder fertig mit dem Fix-Bericht.
+Schritt, seiner Prüfung und der vermuteten Ursache), ablaufen lassen, übernehmen oder fertig mit dem Fix-Bericht. `green` kommt
+nur aus einem Lauf nach dem Rot-Nachweis, der den roten Schritt geprüft und bestanden hat; `caw open <id>@<roter Schritt>` hält
+vor dieser Prüfung an und lässt die Phase `red`.
 
 Findet der Agent, dass ein bestehender Test das gemeldete Verhalten schon prüft, nennt er ihn im Urteil (`covered`: der Test,
 wahlweise der Schritt, und warum). caw nimmt nur einen aufgenommenen Test an und ergänzt seinen neuesten Lauf aus `.caw/runs`;

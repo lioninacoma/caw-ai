@@ -599,7 +599,7 @@ test('caw_status and caw_reproductions: phase and next of a draft on its way fro
     assert.deepEqual([status.phase, status.next], ['red', red], 'caw_status of the run of the draft');
 
     // Green after the fix: promote.
-    run('2026-11-18T14-00-00-000Z-bug-x', { status: 'pass' });
+    run('2026-11-18T14-00-00-000Z-bug-x', { status: 'pass', results: [{ id: 'S2', status: 'pass' }] });
     last('2026-11-18T14-00-00-000Z-bug-x', 'bug-x');
     const green = { tool: 'caw_start', command: 'run', test: 'bug-x', promote: true };
     assert.deepEqual([(await row()).phase, (await row()).next], ['green', green]);

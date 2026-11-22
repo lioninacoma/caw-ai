@@ -209,3 +209,67 @@ test('auditChanges: an adopted proposal (only a target swapped) is listed with b
     const rerecorded = spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', actions: [{ action: 'fill', target: NAME, value: 'y' }, { action: 'click', target: SICHERN }] })]);
     assert.equal(kinds(audit(rerecorded, { before })).includes('listed:locator-changed'), false);
 });
+
+test('auditChanges: a target design taken off a step, swapped for another or its file changed weakens the step', () => {
+    const FORM = 'design/form.html';
+    const designed = (design) => spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', ...(design === undefined ? {} : { design }) })]);
+    const withDesigns = (tests, designs) => ({ ...side(tests), designs: new Map(Object.entries(designs)) });
+    const off = audit(designed(undefined), { before: designed(FORM) });
+    assert.deepEqual(kinds(off), ['weakening:design-removed']);
+    assert.equal(off[0].step, 'S2');
+    assert.match(off[0].text, /design\/form\.html/);
+    assert.deepEqual(kinds(audit(designed('design/other.html'), { before: designed(FORM) })), ['weakening:design-changed']);
+    assert.deepEqual(audit(designed(FORM), { before: designed(undefined) }), [], 'a new target design only adds a judgement');
+    // The linked file itself replaced or gone: the step is judged against something else (or nothing) from now on.
+    const changed = auditChanges(withDesigns([designed(FORM)], { [FORM]: 'aaa' }), withDesigns([designed(FORM)], { [FORM]: 'bbb' }));
+    assert.deepEqual(kinds(changed), ['weakening:design-file-changed']);
+    assert.match(changed[0].text, /design\/form\.html/);
+    assert.deepEqual(kinds(auditChanges(withDesigns([designed(FORM)], { [FORM]: 'aaa' }), withDesigns([designed(FORM)], {}))), ['weakening:design-file-changed']);
+    assert.deepEqual(auditChanges(withDesigns([designed(FORM)], { [FORM]: 'aaa' }), withDesigns([designed(FORM)], { [FORM]: 'aaa' })), []);
+    assert.deepEqual(auditChanges(withDesigns([designed(FORM)], {}), withDesigns([designed(FORM)], { [FORM]: 'bbb' })), [], 'a file that was missing before judged nothing');
+});
+
+test('auditChanges: design.fail narrowed, visualIgnore and readyIgnore added weaken every test', () => {
+    const findings = audit(spec(BASE), { configAfter: { ...CONFIG, design: { fail: ['target'] }, visualIgnore: ['.chart'], readyIgnore: ['.spinner'] } });
+    assert.deepEqual(kinds(findings), ['weakening:config-visual-ignore', 'weakening:config-ready-ignore', 'weakening:config-design-fail']);
+    assert.match(findings[0].text, /\.chart/);
+    assert.match(findings[1].text, /\.spinner/);
+    assert.match(findings[2].text, /visual/);
+    assert.deepEqual(audit(spec(BASE), { configAfter: { ...CONFIG, design: { fail: ['target', 'visual', 'lint'] } } }), [], 'failing on more is fine');
+});
+
+test('auditChanges: a learned look removed from the recording while look: true stays weakens the step', () => {
+    const look = { runs: 2, styles: ['button ×1: color #ffffff'], images: { linux: 2 } };
+    const withLook = (visual) => spec([BASE[0], step('S2', BASE[1].expect, { check: 'rows() === 1', look: true, recording: visual === undefined ? {} : { visual } })]);
+    const findings = audit(withLook(undefined), { before: withLook(look) });
+    assert.deepEqual(kinds(findings), ['weakening:look-forgotten']);
+    assert.equal(findings[0].step, 'S2');
+    assert.deepEqual(kinds(audit(withLook({ ...look, runs: 1 }), { before: withLook(look) })), ['weakening:look-forgotten']);
+    assert.deepEqual(audit(withLook(undefined), { before: withLook({ ...look, runs: 1 }) }), [], 'still learning: nothing was compared yet');
+});
+
+const TWO = [{ action: 'fill', target: NAME, value: 'x' }, { action: 'click', target: SAVE }];
+
+test('auditChanges: an action removed from a step weakens it', () => {
+    const two = TWO;
+    const removed = audit(spec([step('S1', BASE[0].expect, { actions: [two[1]] }), BASE[1]]), { before: spec([step('S1', BASE[0].expect, { actions: two }), BASE[1]]) });
+    assert.deepEqual(kinds(removed), ['weakening:action-removed']);
+    assert.match(removed[0].text, /fill getByRole\('textbox'/);
+    // A wait taken out is no weaker check; another action in place of one is a new recording.
+    assert.deepEqual(audit(spec([step('S1', BASE[0].expect, { actions: two }), BASE[1]]), { before: spec([step('S1', BASE[0].expect, { actions: [two[0], { action: 'wait-ready' }, two[1]] }), BASE[1]]) }), []);
+    assert.deepEqual(audit(spec([step('S1', BASE[0].expect, { actions: [{ action: 'click', target: NAME }] }), BASE[1]]), { before: spec([step('S1', BASE[0].expect, { actions: two }), BASE[1]]) }), []);
+});
+
+test('auditChanges: learned effects removed behind an added wait-ready weaken the step', () => {
+    const two = TWO;
+    const effects = learned([{ action: 1, controls: ['+ button "Stornieren"'] }, { action: 2, requests: ['POST /api/orders 201'] }]);
+    const was = spec([step('S1', BASE[0].expect, { actions: two, recording: { effects } }), BASE[1]]);
+    const waiting = [two[0], { action: 'wait-ready' }, two[1]];
+    // The same effects renumbered behind the wait: nothing weakened.
+    const renumbered = learned([{ action: 1, controls: ['+ button "Stornieren"'] }, { action: 3, requests: ['POST /api/orders 201'] }]);
+    assert.deepEqual(audit(spec([step('S1', BASE[0].expect, { actions: waiting, recording: { effects: renumbered } }), BASE[1]]), { before: was }), []);
+    const dropped = audit(spec([step('S1', BASE[0].expect, { actions: waiting, recording: { effects: learned([{ action: 1, controls: ['+ button "Stornieren"'] }]) } }), BASE[1]]), { before: was });
+    assert.deepEqual(kinds(dropped), ['weakening:effects-removed']);
+    assert.match(dropped[0].text, /POST \/api\/orders 201/);
+    assert.deepEqual(kinds(audit(spec([step('S1', BASE[0].expect, { actions: waiting }), BASE[1]]), { before: was })), ['weakening:effects-forgotten']);
+});

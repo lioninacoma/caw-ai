@@ -112,7 +112,7 @@ npx caw audit origin/main
 npx caw audit origin/main --json
 ```
 
-No test gets weaker unnoticed. caw itself keeps a check as long as its expected result stays, but a chat button, adopted advice or a hand edit can still weaken a test. `audit` compares the test data (`caw/tests`, `caw/recordings`, `caw.config.json`) at the merge base of `<ref>` and `HEAD` with your working tree and prints the changes as Markdown in the team language, ready for a PR comment. No browser, no agent; it needs `git` on the `PATH` and, in CI, the history (`fetch-depth: 0`).
+No test gets weaker unnoticed. caw itself keeps a check as long as its expected result stays, but a chat button, adopted advice or a hand edit can still weaken a test. `audit` compares the test data (`caw/tests`, `caw/recordings`, `caw.config.json`, and the files under `caw/design` a step links) at the merge base of `<ref>` and `HEAD` with your working tree and prints the changes as Markdown in the team language, ready for a PR comment. No browser, no agent; it needs `git` on the `PATH` and, in CI, the history (`fetch-depth: 0`).
 
 **Weakened** (exit 1):
 
@@ -120,10 +120,12 @@ No test gets weaker unnoticed. caw itself keeps a check as long as its expected 
 - a test or a step removed; a test or recording file that can't be read (`validate` says why)
 - the test runs on fewer environments (`environments`, also against the config's default)
 - `retry` added or raised; a step's or an action's `timeoutMs` raised (above 30 s when it had none)
-- an action made `optional`
+- an action made `optional`; an action removed from a step (the others kept in their order; a `wait-ready` taken out doesn't count)
 - `knownMessages` added
-- learned effects: a learned line removed while the step's expected result stayed (`effects-removed`; effects are learned over 5 runs and then frozen, caw never removes a line, so only a hand edit does), new console lines taken in (when `console` is in `effects.fail`), or the learned effects dropped altogether (they are learned anew); only while the step's actions stay the same, a step recorded anew learns its effects anew
-- config: `consoleIgnore`, `foreignCode` or `reads` entries added, `messageSelectors` watching less, `effects.fail` narrowed, a guarded key changed (environment commands and flags, `lintCommand`, `anonymize`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
+- learned effects: a learned line removed while the step's expected result stayed (`effects-removed`; effects are learned over 5 runs and then frozen, caw never removes a line, so only a hand edit does), new console lines taken in (when `console` is in `effects.fail`), or the learned effects dropped altogether (they are learned anew); only while the step's actions stay the same, a step recorded anew learns its effects anew. A `wait-ready` added or taken out only renumbers the actions: each learned line is compared at its action's new number
+- a step's target design (`design:`) taken off or swapped for another, or the linked file under `caw/design` changed or removed
+- a learned look dropped from the recording while the step keeps `look: true` (only while the step's actions stay the same)
+- config: `consoleIgnore`, `foreignCode`, `reads`, `visualIgnore` or `readyIgnore` entries added, `messageSelectors` watching less, `effects.fail` or `design.fail` narrowed, a guarded key changed (environment commands and flags, `lintCommand`, `anonymize`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
 
 **Changed** (listed, not a weakening): a changed expected result, with its check; new tests and steps; an action's target swapped while the step's actions and learned effects stayed (an adopted proposal for a renamed element, see [Guide](guide.md#renamed-targets)); learned effect lines replaced by new ones in the same list of an action, as when "Accept new effect" forgot them and five runs learned them anew (`effects-replaced`, with the old and new lines; a removal without new lines is a weakening); data newly frozen for a look, with how it is stored, and a look no longer compared on fixed data ([fixed data](test-files.md#fixed-data): check the file for personal data). Changing the expected result is the way to change a check on purpose: the reviewer then sees both. **For information:** changed request baselines.
 

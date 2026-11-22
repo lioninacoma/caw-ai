@@ -160,3 +160,22 @@ test('caw audit: the working tree against the merge base, Markdown or JSON, exit
     assert.match(cli.stdout, /- vorher: `document\.title === 'Übersicht – Bestellungen'`/);
     assert.equal(run('gibts-nicht').status, 3);
 });
+
+test('caw audit: a design file a step links, replaced in the working tree, weakens that step; an unlinked one is not read', (t) => {
+    const { root, git, write } = repository(t);
+    write('caw/tests/bestellung.yaml', TEST.replace('    expect: Eine', '    design: design/form.html\n    expect: Eine'));
+    write('caw/design/form.html', '<main><button>Bestellen</button></main>');
+    write('caw/design/other.html', '<main>alt</main>');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'Design');
+    git('checkout', '-q', '-b', 'feature');
+    let printed = '';
+    const print = (text) => { printed = text; };
+    write('caw/design/other.html', '<main>neu</main>');
+    assert.equal(auditCommand(root, ['main', '--json'], { print }), 0, 'a design no step links changes no judgement');
+    write('caw/design/form.html', '<main></main>');
+    assert.equal(auditCommand(root, ['main', '--json'], { print }), 1);
+    assert.deepEqual(JSON.parse(printed).findings.map(({ kind, step }) => `${kind}:${step}`), ['design-file-changed:S1']);
+    rmSync(join(root, 'caw/design/form.html'));
+    assert.equal(auditCommand(root, ['main', '--json'], { print }), 1, 'a linked design that is gone weakens too');
+});

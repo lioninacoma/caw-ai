@@ -414,7 +414,9 @@ each card shows the phases Reproduced › Red › Fix › Green › Promoted: do
 From your session the same steps are `caw_start` with `command: "record"`, `"run"` and `"run"` with `promote: true`. Your
 session need not keep track: `caw_status` (for the reproduction and every run of the draft) and each row of
 `caw_reproductions` carry `phase` (`reproduced`, `red`, `green`, `promoted`) and `next`, the step after it: record, fix the app
-(with the red step, its check and the suspected cause), run, promote, or done with the fix report.
+(with the red step, its check and the suspected cause), run, promote, or done with the fix report. `green` comes only from a run
+after the red proof that checked the red step and passed it; `caw open <id>@<red step>` stops before that check and leaves the
+phase `red`.
 
 If the agent finds that an existing test already checks the reported behaviour, it names it in its verdict (`covered`: the test,
 optionally the step, and why). caw accepts only a recorded test and adds its newest run from `.caw/runs`; if that run passed,
