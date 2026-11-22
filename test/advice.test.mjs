@@ -127,6 +127,11 @@ test('advice: code edits are checked against the actual files and written only o
         // A second edit to the same file sees the state after the first.
         const chained = appItem({ edits: [{ file: 'src/fees.js', find: 'timeout: 1,', replace: 'timeout: 9,' }, { file: 'src/fees.js', find: 'timeout: 9,', replace: 'timeout: 40000,' }] });
         assert.equal(readAdvice({ items: [chained] }, SPEC, CONFIG, { root })[0].edits.length, 2);
+        // restart: the edits take effect only after the app's server restarts; only on app advice with edits, true or false.
+        assert.equal(readAdvice({ items: [{ ...edit({}), restart: true }] }, SPEC, CONFIG, { root })[0].restart, true);
+        assert.match(problems({ items: [{ ...edit({}), restart: 'yes' }] }, { root }), /restart is true or false, and only with edits/);
+        assert.match(problems({ items: [{ ...appItem({}), restart: true }] }, { root }), /restart is true or false, and only with edits/);
+        assert.match(problems({ items: [item({ kind: 'test', notes: 'x' }, { restart: true })] }), /restart is only for app-side advice with edits/);
 
         assert.equal(readFileSync(join(root, 'src/fees.js'), 'utf8').includes('timeout: 1,'), true);
         assert.deepEqual(applyEdits(root, ok.edits), ['src/fees.js']);

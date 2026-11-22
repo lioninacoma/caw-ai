@@ -1002,11 +1002,12 @@ ${text}`) ?? 0;
     };
     /**
      * Presents advice as cards and applies each decision: knowledge, config and code at once, the test only in the result.
-     * @returns { result, review(items) }; `result` collects { spec, touched, stale, notes, files, outside }, `outside` the
-     *          causes beyond the project ({ where, title }) that the human fixes there
+     * @returns { result, review(items) }; `result` collects { spec, touched, stale, notes, files, outside, restart }, `outside`
+     *          the causes beyond the project ({ where, title }) that the human fixes there, `restart` whether an applied code
+     *          change takes effect only after the app's server restarts (the agent says so with `restart: true`)
      */
     const createReviewer = (draft) => {
-        const result = { spec: draft, touched: [], stale: [], notes: false, files: [], outside: [] };
+        const result = { spec: draft, touched: [], stale: [], notes: false, files: [], outside: [], restart: false };
         const review = async (items, log) => {
             const start = decided.length;
             for (const item of items) {
@@ -1028,6 +1029,7 @@ ${text}`) ?? 0;
                 else if (answer === APPLY.id) decision = 'applied';
                 if (decision === 'applied') {
                     for (const file of applyEdits(root, item.edits)) if (!result.files.includes(file)) result.files.push(file);
+                    if (item.restart === true) result.restart = true;
                 } else if (decision === 'adopted' && changesFiles(item)) {
                     const file = applyToFiles(root, item.change);
                     // The personal notes are no file of the project: the project's list of changed files leaves them out.
@@ -1443,7 +1445,12 @@ ${text}`) ?? 0;
         // conclude says what comes next: { next: 'claude' | 'check' | 'run' } opens a new window right away, { outcome } is the result.
         let after = {};
         if (chat !== null && alive) {
-            const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere, ignore, cleared, runId }), session.closed, aborted]);
+            // While a card offers to test again after a code change, the app may be reloaded (F5) to look at the change first.
+            const reloadable = (on) => session.workbench?.onRefresh?.(on ? async () => {
+                await session.reloadPage();
+                return '';
+            } : null);
+            const said = await Promise.race([conclude?.({ verdict, chat, ...found, flawed, advise, talk, repairHere, ignore, cleared, runId, reloadable }), session.closed, aborted]);
             if (said !== null && typeof said === 'object') after = said;
         }
         const handing = handover?.({ verdict, ...found }) && alive;

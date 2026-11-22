@@ -193,24 +193,46 @@ export const resetEnvironment = async (root, env, { info = () => {}, spawnImpl, 
  * @param start  --start: start the environment if it does not answer, stop it at the end if caw started it
  * @param reset  'auto' (run: once before the first writing test), 'force' (--reset: before the first test) or 'off' (--no-reset,
  *               record and open without --reset)
- * @returns { begin(), beforeTest(spec), end() }; end() is safe to call more than once
+ * @returns { begin(), beforeTest(spec), end(), server }; end() is safe to call more than once. `server` says how the app's
+ *          server can be restarted after a change to its code: 'caw' (caw started it here and restarts it), 'running' (a start
+ *          command exists, but the server already ran and is not caw's to stop) or 'none' (no start command); `restart()` restarts
+ *          it only in the first case
  */
 export const environmentLifecycle = (root, env, { start = false, reset = 'off', info, warn, deps = {} } = {}) => {
     let handle = null;
     let resetDone = false;
     let aborted = false;
+    const startHere = async () => {
+        // Ctrl+C while waiting for the environment: stop waiting, clean up. Once only: a second Ctrl+C ends caw as usual.
+        const signals = ['SIGINT', 'SIGTERM', ...(process.platform === 'win32' ? ['SIGBREAK'] : [])];
+        const abort = () => { aborted = true; };
+        for (const signal of signals) process.once(signal, abort);
+        try {
+            handle = await startEnvironment(root, env, { info, warn, aborted: () => aborted, ...deps });
+        } finally {
+            for (const signal of signals) process.removeListener(signal, abort);
+        }
+    };
     return {
         begin: async () => {
             if (!start) return;
-            // Ctrl+C while waiting for the environment: stop waiting, clean up. Once only: a second Ctrl+C ends caw as usual.
-            const signals = ['SIGINT', 'SIGTERM', ...(process.platform === 'win32' ? ['SIGBREAK'] : [])];
-            const abort = () => { aborted = true; };
-            for (const signal of signals) process.once(signal, abort);
-            try {
-                handle = await startEnvironment(root, env, { info, warn, aborted: () => aborted, ...deps });
-            } finally {
-                for (const signal of signals) process.removeListener(signal, abort);
-            }
+            await startHere();
+        },
+        server: {
+            restartable: () => {
+                if (env.start === undefined) return 'none';
+                return handle?.started === true ? 'caw' : 'running';
+            },
+            /** Stops what caw started and starts it again (after a change to the server's code); nothing otherwise. */
+            restart: async () => {
+                if (handle?.started !== true) return false;
+                info?.(t('session.lifecycle.restarting', { env: env.name }));
+                const current = handle;
+                handle = null;
+                await current.stop();
+                await startHere();
+                return true;
+            },
         },
         beforeTest: async (spec) => {
             if (resetDone || reset === 'off' || env.reset === undefined) return;

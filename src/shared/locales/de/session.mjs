@@ -72,6 +72,7 @@ export default {
     'session.lifecycle.alreadyRunning': '{env} läuft schon: caw nutzt sie und stoppt sie nicht.',
     'session.lifecycle.starting': 'Starte {env}: {command} (Log: {log})',
     'session.lifecycle.ready': '{env} ist bereit.',
+    'session.lifecycle.restarting': 'Starte {env} nach der Änderung an seinem Server neu ...',
     'session.lifecycle.stopping': 'Stoppe {env}: {command}',
     'session.lifecycle.stopFailed': 'stop von {env} endete mit Exit-Code {code}; siehe {log}.',
     'session.lifecycle.stopTimeout': 'stop von {env} dauerte länger als {seconds} s und wurde beendet; siehe {log}.',

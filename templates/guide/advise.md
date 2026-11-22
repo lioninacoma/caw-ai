@@ -41,6 +41,9 @@ recommend what to do. The browser is still as the run left it.
     `caw.config.json`, `.mcp.json`, `package.json`, lock files, `.github`, editor and container config) are not editable: the host
     reports them as nonexistent. After 5 rejected submissions with `edits` a run accepts no more edits, so check `find` against
     the file with Read before you submit.
+  - `restart: true` with `edits` when they take effect only after the app's server restarts (server code, configuration it
+    reads at start); omit it for code the dev server reloads by itself. caw then restarts a server it started before testing
+    again, or tells the person to.
   - `prompt`: for the person's own agent session, even if there are `edits`: the error verbatim, file and line, the
     cause, the change and how to check it (`lintCommand` from the task, if set, and `caw run <test>` again). It must be understandable without this
     run.

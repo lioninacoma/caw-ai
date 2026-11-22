@@ -72,6 +72,7 @@ export default {
     'session.lifecycle.alreadyRunning': '{env} is already running: using it, will not stop it.',
     'session.lifecycle.starting': 'Starting {env}: {command} (log: {log})',
     'session.lifecycle.ready': '{env} is ready.',
+    'session.lifecycle.restarting': 'Restarting {env} after the change to its server ...',
     'session.lifecycle.stopping': 'Stopping {env}: {command}',
     'session.lifecycle.stopFailed': 'stop of {env} ended with exit code {code}; see {log}.',
     'session.lifecycle.stopTimeout': 'stop of {env} took longer than {seconds} s and was ended; see {log}.',

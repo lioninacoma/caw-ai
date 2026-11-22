@@ -767,11 +767,14 @@ export const recordFlow = async ({ sandbox, execute, adopt, markLooks, log, head
  * @param hint      (failed, { canFix }) after a failed step, if the run ends with it
  * @param guide     a draft with chat (the guided bug fix): { env, cause, promote }; red, the card offers the fix and testing again;
  *                  green, adopting it runs `promote({ runId })` -> { ok, test, report, others } or { ok: false, reason }
- * @param openDesign (step) => exit code: opens the window at that step with its design over the app (open <test>@S<n>
+ * @param openDesign (step) => exit code: opens the window at that step with its design beside the app (open <test>@S<n>
  *                  --design) in this process; a design not met offers it. The run's own exit code stays.
+ * @param server    the environment's lifecycle server ({ restartable(), restart() }, lifecycle.mjs): after an applied code change
+ *                  that takes effect only once the app's server restarts, testing again restarts what caw started, or the card
+ *                  names the restart the person does
  */
 export const runFlow = async (options) => {
-    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined, guide, openDesign } = options;
+    const { spec, entry, through, handover, canFix, advise = false, fillBaselines = false, sessionAgent = false, reads = [], openSandbox, execute, adopt, log, hint, head = () => undefined, guide, openDesign, server } = options;
     const fixer = createFixer({ openSandbox });
     // What the run learned (baselines, effects, looks) is written once: before promoting, which moves the draft, or afterwards.
     let learned = false;
@@ -794,6 +797,8 @@ export const runFlow = async (options) => {
     let target = null;
     let repaired = null;
     let rerun = false;
+    // Testing again after a code change to the app's server: caw restarts the server it started first.
+    let restartFirst = false;
     // The step a design not met is opened at, with its design, once this run's window has closed.
     let opening = null;
     let current = spec;
@@ -933,7 +938,7 @@ export const runFlow = async (options) => {
                 }
             },
             conclude: async (concluded) => {
-                const { failed, chat, verdict } = concluded;
+                const { failed, chat, verdict, reloadable } = concluded;
                 // A draft still red at its step: the bug is not fixed yet. Nothing in the test to fix or to ask about; the red
                 // proof is written after the run (also without a chat).
                 if (failed && redAsExpected(current, failed, verdict)) {
@@ -960,7 +965,17 @@ export const runFlow = async (options) => {
                         // Only what really changed: whoever rejected the code change and only adopted the config reads it that way.
                         const app = appFilesOf(advised.files);
                         const what = app.length > 0 ? t('run.flow.appChanged', { files: app.join(', ') }) : t('run.flow.filesChanged', { files: advised.files.join(', ') });
-                        rerun = await decide(chat, 'advice.rerun', { test: current.id, step: failed.id, files: advised.files }, resultCard('next', t('run.flow.rerunTitle'), t('run.flow.rerunOffer', { id: failed.id, what })), [RERUN, CLOSE]) === RERUN.id;
+                        // A change to the server's code takes effect only after a restart: caw restarts what it started, else the
+                        // card names it. The app can be reloaded meanwhile to look at the change before testing again.
+                        const restart = app.length > 0 && advised.restart === true ? server?.restartable?.() ?? 'none' : null;
+                        const offer = [t('run.flow.rerunOffer', { id: failed.id, what }), ...(restart === null ? [] : [t(`run.flow.restart.${restart}`)]), ...(app.length > 0 ? [t('run.flow.reloadFirst')] : [])].join(' ');
+                        await reloadable?.(app.length > 0);
+                        try {
+                            rerun = await decide(chat, 'advice.rerun', { test: current.id, step: failed.id, files: advised.files, ...(restart === null ? {} : { restart }) }, resultCard('next', t('run.flow.rerunTitle'), offer), [RERUN, CLOSE]) === RERUN.id;
+                        } finally {
+                            await reloadable?.(false);
+                        }
+                        restartFirst = rerun && restart === 'caw';
                         return true;
                     }
                     return false;
@@ -1049,6 +1064,7 @@ export const runFlow = async (options) => {
         log(t('run.flow.redSaved', { file: adopt(current, undefined, {}), id: redStep(current), test: current.id }));
     }
     if (rerun) {
+        if (restartFirst) await server.restart();
         log(t('run.flow.rerunning'));
         return runFlow({ ...options, spec: current, openSandbox: fixer.sandbox() === undefined ? openSandbox : async () => fixer.sandbox() });
     }

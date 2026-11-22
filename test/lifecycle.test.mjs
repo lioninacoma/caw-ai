@@ -140,3 +140,28 @@ test('environmentLifecycle: auto resets once before the first writing test, forc
     await none.beforeTest({ writes: true });
     await none.end();
 });
+
+test('environmentLifecycle: the server is caw\'s to restart only when caw started it; restarting stops and starts it again', async () => {
+    const root = project();
+    const count = (name) => (existsSync(join(root, name)) ? readFileSync(join(root, name), 'utf8').length : 0);
+    const start = script(root, 'up.js', `require('fs').appendFileSync('up.txt', 'u');`);
+    const stop = script(root, 'down.js', `require('fs').appendFileSync('down.txt', 'd');`);
+    // Up only once up.js ran since the last stop, as with docker compose up -d --wait.
+    const probe = async () => count('up.txt') > count('down.txt');
+    const said = [];
+    const own = environmentLifecycle(root, envAt(1, { start, stop }), { start: true, info: (text) => said.push(text), deps: { probe, pollMs: 50 } });
+    await own.begin();
+    assert.equal(own.server.restartable(), 'caw');
+    assert.equal(await own.server.restart(), true);
+    assert.deepEqual([count('up.txt'), count('down.txt')], [2, 1], 'stopped once, started twice');
+    assert.match(said.join('\n'), /Starte ci nach der Änderung an seinem Server neu/);
+    await own.end();
+    assert.equal(count('down.txt'), 2, 'what caw started again is stopped at the end');
+    // Already running (started by someone else) or without --start: not caw's to stop.
+    const theirs = environmentLifecycle(root, envAt(1, { start: 'never-run', stop: 'never-run' }), { start: true, deps: { probe: async () => true, spawnImpl: () => { throw new Error('nothing may start'); } } });
+    await theirs.begin();
+    assert.equal(theirs.server.restartable(), 'running');
+    assert.equal(await theirs.server.restart(), false);
+    assert.equal(environmentLifecycle(root, envAt(1, { start }), {}).server.restartable(), 'running');
+    assert.equal(environmentLifecycle(root, envAt(1), {}).server.restartable(), 'none');
+});

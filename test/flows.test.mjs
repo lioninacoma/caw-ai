@@ -332,6 +332,38 @@ test('Test run: after a change to the app there is "test again" instead of "fix 
     assert.equal(closed.calls.length, 1);
 });
 
+test('Test run: after an applied change the app can be reloaded while "test again" waits; a change to the server names its restart, or caw restarts what it started', async () => {
+    const advice = { spec, touched: [], stale: [], files: ['server.mjs'], notes: false, restart: true };
+    // The window stays usable: F5 reloads the app while the card waits, and is locked again once it is answered.
+    const reloads = [];
+    const waiting = harness({ outcomes: [{ ...failing('S2'), concluded: { flawed: true, advise: async () => ({ ...advice, restart: false }), reloadable: async (on) => { reloads.push(on); } } }], answers: ['close'] });
+    await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', ...waiting });
+    assert.deepEqual(reloads, [true, false]);
+    assert.match(waiting.questions[0].text, /Um die Änderung vorher anzusehen, lade die App neu \(F5\)\./);
+    assert.doesNotMatch(waiting.questions[0].text, /Server/, 'a change the dev server picks up by itself needs no restart');
+    // No start command: the card names the restart; testing again restarts nothing.
+    const none = harness({ outcomes: [{ ...failing('S2'), concluded: { flawed: true, advise: async () => advice } }], answers: ['close'] });
+    await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', server: { restartable: () => 'none', restart: async () => assert.fail('nothing to restart') }, ...none });
+    assert.match(none.questions[0].text, /Starte ihn vor dem erneuten Test selbst neu; die Umgebung hat keinen start-Befehl\./);
+    assert.equal(none.decisions[0].context.restart, 'none');
+    assert.deepEqual(none.decisions[0].options.map(({ id, gate }) => [id, gate]), [['rerun', 'free'], ['close', 'free']], 'no new gate');
+    // Started by someone else: named as well.
+    const running = harness({ outcomes: [{ ...failing('S2'), concluded: { flawed: true, advise: async () => advice } }], answers: ['close'] });
+    await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', server: { restartable: () => 'running', restart: async () => assert.fail('not caw\'s') }, ...running });
+    assert.match(running.questions[0].text, /er lief schon, caw hat ihn nicht gestartet/);
+    // caw started it (--start with a start command): testing again restarts it first, then the new run.
+    const order = [];
+    const started = harness({ outcomes: [{ ...failing('S2'), concluded: { flawed: true, advise: async () => advice } }, pass], answers: ['rerun'] });
+    const execute = started.execute;
+    started.execute = async (call) => {
+        order.push('run');
+        return execute(call);
+    };
+    assert.equal(await runFlow({ spec, handover: false, canFix: true, advise: true, openSandbox: async () => 's', server: { restartable: () => 'caw', restart: async () => { order.push('restart'); return true; } }, ...started }), EXIT.pass);
+    assert.match(started.questions[0].text, /caw startet ihn vor dem erneuten Test mit seinem start-Befehl neu/);
+    assert.deepEqual(order, ['run', 'restart', 'run']);
+});
+
 test('Test run: without --explain Claude Code looks for the cause on click, as the main button for an app failure', async () => {
     const advice = { spec, touched: [], stale: [], files: ['src/app.js'], notes: false };
     let advised = 0;

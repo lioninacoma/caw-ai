@@ -235,7 +235,8 @@ export const readAdvice = (raw, spec, config, { root, diagnosis } = {}) => {
             if (!isText(item.prompt, LIMITS.prompt)) report('App-side advice needs a prompt.');
             if (item.change !== undefined) report('App-side advice does not change the test; omit change.');
             if (item.edits !== undefined) edits = readEdits(item.edits, root, report);
-        }
+            if (item.restart !== undefined && (typeof item.restart !== 'boolean' || item.edits === undefined)) report('restart is true or false, and only with edits: whether the edits take effect only after the app\'s server restarts.');
+        } else if (item.restart !== undefined) report('restart is only for app-side advice with edits.');
         if (item.side === 'outside') {
             if (!isText(item.where, LIMITS.where) || /[\r\n]/.test(item.where)) report('Outside advice needs where: one line naming the place beyond the project (a repository, a service, the server configuration).');
             if (item.change !== undefined || item.edits !== undefined) report('Outside advice changes nothing here; omit change and edits, describe the change in prompt.');

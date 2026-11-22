@@ -1134,6 +1134,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
         log: ui.info,
         guide,
         openDesign,
+        server: lifecycle?.server,
         onPlayed: (result) => {
             played = result;
             failed = result.failed;

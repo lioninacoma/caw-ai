@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import { createChat } from '../src/host/chat.mjs';
 import { fixFlow, runFlow } from '../src/host/flows.mjs';
 import { executeRun } from '../src/host/run.mjs';
+import { replayOf } from '../src/host/replay.mjs';
 import { stepHash } from '../src/host/test-file.mjs';
 import { EXIT } from '../src/shared/errors.mjs';
 
@@ -307,4 +308,26 @@ test('Seam: the window with a design does not report a passed test in the termin
     const text = lines.join('\n');
     assert.doesNotMatch(text, /: pass\b|Bestanden\.|von \d+ Schritten bestanden/, text);
     assert.match(text, /kauf auf dev: Bis S2 abgespielt, um sein Zielbild zu zeigen; weder der Test noch das Zielbild wird hier bewertet./, text);
+});
+
+test('Seam: while a card after the run lets the app be reloaded, F5 reloads the app page; afterwards it is locked again', async () => {
+    const bench = benchSession();
+    let reloaded = 0;
+    const make = () => ({ ...bench.make(), reloadPage: async () => { reloaded += 1; } });
+    const h = harness({ session: make });
+    const seen = [];
+    const spec = testOf();
+    await h.execute({
+        spec,
+        replay: replayOf(spec),
+        conclude: async ({ reloadable }) => {
+            await reloadable(true);
+            seen.push(bench.handlers.refresh !== null);
+            await bench.handlers.refresh?.();
+            await reloadable(false);
+            seen.push(bench.handlers.refresh !== null);
+        },
+    });
+    assert.deepEqual(seen, [true, false]);
+    assert.equal(reloaded, 1);
 });

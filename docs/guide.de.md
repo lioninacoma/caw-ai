@@ -257,7 +257,7 @@ Was Übernehmen bewirkt:
 - **Geänderter Text** in `name`, `do`, `expect` oder `note`: Der Schritt ist danach veraltet, und der Chat bietet „Schritt beheben“ an.
 - **`caw.md` und Config:** werden sofort geschrieben, die Config gilt ab dem nächsten Lauf.
 - **Testdatei:** Im `run` steht die Änderung sofort in der Datei. Bei `record` und „Schritt beheben“ kommt sie in den Entwurf und gilt erst mit „Testplan übernehmen“.
-- **Änderung am Code:** steht sofort in der Datei. Prüfe sie mit dem Lint des Projekts und einem neuen `run`.
+- **Änderung am Code:** steht sofort in der Datei. Prüfe sie mit dem Lint des Projekts und einem neuen `run`. Solange die Karte **Erneut testen** wartet, gehört das Fenster dir: Lade die App neu (F5) und sieh dir die Änderung erst an. Kennzeichnet der Agent die Änderung als eine am Server der App (`restart: true`: Sie wirkt erst nach einem Neustart des Servers), sagt die Karte das: Mit `--start` und einem `start`-Befehl startet caw den Server, den es gestartet hat, vor dem erneuten Test neu; sonst, bei einer Umgebung ohne `start` oder einem Server, der schon lief, bittet die Karte dich, ihn vorher selbst neu zu starten.
 
 Der Abschnitt „Empfehlungen“ in `report.md` nennt jede Empfehlung mit Beleg und deiner Entscheidung, bei einer Anwendungsempfehlung samt Prompt und Änderungen als Diff. Committet wird nie.
 

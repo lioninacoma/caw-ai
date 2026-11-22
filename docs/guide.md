@@ -257,7 +257,7 @@ What accepting does:
 - **Changed text** in `name`, `do`, `expect` or `note`: the step is then outdated, and the chat offers "Fix step".
 - **`caw.md` and config:** written immediately; the config applies from the next run.
 - **Test file:** In `run` the change is in the file immediately. With `record` and "Fix step" it goes into the draft and only applies with "Adopt test plan".
-- **Code change:** in the file immediately. Check it with the project's lint and a new `run`.
+- **Code change:** in the file immediately. Check it with the project's lint and a new `run`. While the card **Test again** waits, the window stays yours: reload the app (F5) and look at the change first. When the agent marks the change as one to the app's server (`restart: true`: it takes effect only after the server restarts), the card says so: with `--start` and a `start` command caw restarts the server it started before testing again; otherwise, an environment without `start` or a server that was already running, the card asks you to restart it yourself first.
 
 The "Recommendations" section in `report.md` lists each piece of advice with evidence and your decision, for application advice including the prompt and changes as a diff. Nothing is ever committed.
 
