@@ -1099,7 +1099,7 @@ export const runOne = async (root, options, deps = {}, loaded = undefined) => {
     const { runFlow } = await import('./flows.mjs');
     const runs = claudeRuns(root, config, { spec, checked, target, timeoutMin: timeoutMin ?? CLAUDE_TIMEOUT_MIN, stepTimeoutSec, maxActions, containerCommand, adviseCommand, talkCommand, onChatOpen, conversation, headless, withDesign: design });
     const { execute } = runs;
-    // A design not met: "Open with design" opens the window at that step with the design over the app, as open <test>@S<n>
+    // A design not met: "Open with design" opens the window at that step with the design beside the app, as open <test>@S<n>
     // --design does (the step passed its check, so it is played through), in this process with the chat so far.
     const openDesign = canFix && !handover ? async (step) => (await runOne(root, { ...options, target, entry: undefined, through: step, design: true, handover: true, learn: false, advise: false, headless: false, noChat: false, quiet: true, guided: false, conversation: runs.conversation }, deps)).code : undefined;
     // A draft in the window: the chat guides through the fix (red: fix it, test again; green: promote). Headless, CI and

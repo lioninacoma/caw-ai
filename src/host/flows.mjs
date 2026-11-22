@@ -29,7 +29,7 @@ const CLOSE = button('close', 'run.button.close');
 const ASK = button('ask', 'run.button.ask', { primary: true });
 // A target design not met: asking means having the screen built, the app's code changes, not the test.
 const BUILD_DESIGN = button('ask', 'run.button.buildDesign', { primary: true });
-// Or look at it first: the window opens at that step with the design over the app (open <test>@S<n> --design), in this process.
+// Or look at it first: the window opens at that step with the design beside the app (open <test>@S<n> --design), in this process.
 const OPEN_DESIGN = button('open-design', 'run.button.openDesign');
 // The learned look changed: if the new one is right, adopting it is the human's decision, without Claude and tokens.
 const ADOPT_LOOK = button('adopt-look', 'run.button.adoptLook', { primary: true });

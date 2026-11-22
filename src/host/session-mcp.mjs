@@ -460,7 +460,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
                 headless: { type: 'boolean' },
                 learn: { type: 'boolean', description: 'run: learn missing baselines and effects (--learn); only when the human asks' },
                 strict: { type: 'boolean', description: 'run: fail with exit 4 while the test has pending steps (--strict)' },
-                design: { type: 'boolean', description: 'open with test and step: play through the step (a pending one: up to its entry) and lay its target design over the app with the deviations below it (--design)' },
+                design: { type: 'boolean', description: 'open with test and step: play through the step (a pending one: up to its entry) and show its target design beside the app with the deviations below it (--design)' },
                 promote: { type: 'boolean', description: 'run of a draft in caw/drafts (--promote): it must pass and so must run --all on the same env; then it moves to caw/tests and the run folder gets fix-report.md. Only when the human asks' },
                 start: { type: 'boolean', description: 'Start the environment with its configured start command if it does not answer, stop it at the end (--start)' },
                 reset: { type: 'boolean', description: 'Run the environment\'s configured reset before the first test (--reset)' },
