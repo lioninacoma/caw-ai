@@ -538,12 +538,6 @@ Two kinds of visual check, both without AI. A [target design](#develop-against-a
 - **Intended change:** **Adopt new look** in the chat takes over the new look of every changed step at once; their images of every platform are deleted and the next headless runs learn them anew. A change only pixels see offers no adopting, since the window sees nothing: the failed headless run names the step's image file, delete it and the next two headless runs learn it anew. `caw audit` lists it, and taking `look: true` off a step with a learned look counts as a weakening.
 - **Limits:** the image is per platform (fonts render differently on Windows and Linux), and the thresholds are starting values until measured ([details](test-files.md#visual-regression)).
 
-### Fixed data
-
-For a screen whose data changes all the time (a portal), **Freeze data** in the card of a passed run with a window freezes the JSON answers of the app's reads for the look steps. You choose how they are stored: anonymized, obfuscated, or readable after confirming that you checked data protection. You review them before anything is written. Once frozen, a passed run with a window no longer asks: a notice says the looks use the frozen data, and the card comes back only when the backend's answers no longer fit.
-
-Headless runs then compare those looks in a pass of their own on the frozen answers, with writes held. The run's checks, effects and requests keep running against the real backend. If a real answer has another structure, caw warns that the frozen data no longer fits the backend. Nothing is frozen in CI ([details](test-files.md#fixed-data)).
-
 ## Monitoring production
 
 A monitor is a `run` of read-only tests against production on a schedule. It needs no agent and no tokens: caw writes the result, your scheduler or CI raises the alert. Reports, retries and the rest of CI: [In CI](#in-ci).

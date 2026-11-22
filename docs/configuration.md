@@ -13,7 +13,7 @@ caw reads three things from your project:
 Tests live in `caw/tests/` and `caw/recordings/`, see [Test files](test-files.md).
 
 `caw.config.json` and the recordings are executable configuration: the config names shell commands caw runs (`start`,
-`stop`, `reset`, `lintCommand`, `anonymize.command`, an overlay part's `start`) and the browser it launches, and a recording's `check` and
+`stop`, `reset`, `lintCommand`, an overlay part's `start`) and the browser it launches, and a recording's `check` and
 `remember` steps run their code in the page. Review changes to them like code, whoever made them.
 
 ## Minimal config
@@ -298,14 +298,12 @@ For apps that only run inside a deployed environment (portal, shell, backend onl
 | `requestKeys` | `[]` | Parameters that name a request, for single-endpoint APIs: query parameters such as `["action"]`, or top-level JSON body fields as `json.<key>`, e.g. `["json.method"]` for JSON-RPC. A GraphQL request is named by its operation without this: `POST /graphql mutation CloseTicket`. |
 | `reads` | `[]` | Requests that only read although they are no GET, e.g. `["POST /api/search"]`. A pattern is a method (or `*`) and a path, then optionally key and GraphQL tokens: `*` matches within a path segment (any characters in the other tokens), `**` anything. `"POST /api/*/query"`, `"POST /api/proxy op=load*"`, `"POST /graphql mutation TrackView"`, `"* /api/telemetry/**"`. A pattern that ends in its path never matches a GraphQL request. Top level only: it is the same app in every environment. |
 | `effects.fail` | `["controls", "console"]` | Which learned effects fail a step when they change. `[]` makes all of them warnings. |
-| `design.fail` | `["target", "visual"]` | What fails a step: `target` its screen does not match its target design (`design:` in the test file), `visual` the learned look of a step with `look: true` changed (visual regression), `lint` the token lint found something, `fixedData` the [fixed data](test-files.md#fixed-data) of a look no longer fits the backend (otherwise warnings). `[]` only warns. |
+| `design.fail` | `["target", "visual"]` | What fails a step: `target` its screen does not match its target design (`design:` in the test file), `visual` the learned look of a step with `look: true` changed (visual regression), `lint` the token lint found something (otherwise warnings). `[]` only warns. |
 | `visual.screenshots` | `false` | Every passed step gets its screen as `step-S3.png` in the run's `agent` folder and `screenshot` in `result.json`. |
 | `visual.tolerance` | `24` | How far a color channel (0–255) may differ before a pixel counts as different. |
 | `visual.maxRatio` | `0.01` | Share of differing pixels a learned look may have (only steps with `look: true` learn one, [visual regression](test-files.md#visual-regression); pixels only in headless runs). |
 | `visual.designMaxRatio` | `0.03` | The same against a `.png` target design. The three thresholds are starting values until `e2e/spike/visual` has measured the noise between runs. |
 | `visualIgnore` | `[]` | CSS selectors of areas no pixel comparison looks at, e.g. `["#clock", ".avatar"]`. The run tag, remembered values, numeric dates, list rows, list entries (`li`, `listitem`, not in navigation or menus) and cards (`article`) are masked anyway. Visual regression is meant for steps with fixed data; this covers the rest. |
-| `anonymize.command` | | Your own command that anonymizes [fixed data](test-files.md#fixed-data) before it is stored, as a list without a shell, e.g. `["node", "tools/anonymize.mjs"]`, run in the project folder. It gets `{ "version": 1, "keep": [...], "answers": [{ "name", "body" }] }` on stdin and writes `{ "answers": [{ "body" }] }` on stdout, in the same order and with the same structure. Without it caw uses its own replacement. The agent cannot change `anonymize`: it is edited in the file. |
-| `anonymize.keep` | `[]` | Values caw's own anonymization keeps as they are, e.g. currency codes or states the app interprets: `["EUR", "OPEN"]`. Every other text is replaced. |
 | `readyTimeoutMs` | | How long to wait for the app to settle. |
 | `readyIgnore` | `[]` | CSS selectors of areas that change by themselves, e.g. `["#ticker", ".clock", "footer [role=progressbar]"]`. Their DOM changes and progress indicators don't count when waiting for a quiet page. Spinners without size, hidden or outside the viewport never count. If a page never gets quiet, the run says so and names `readyIgnore`. |
 | `lintCommand` | | Your check command, e.g. `npm run lint`. The agent mentions it in code suggestions. |

@@ -4,7 +4,7 @@ JSON at the project root. Unknown keys are errors with a did-you-mean hint. Chan
 `null` deletes a key; arrays are replaced as a whole); only a valid result is written. Credentials never go into the config.
 `caw_config` refuses commands and what decides where the agent runs and what it may do (`start`, `stop`, `reset`, `ready`, the
 environment flags `production`, `agent`, `writable`, `allowHttp`, `insecureTls`, an overlay part's `start`, `lintCommand`,
-`anonymize`, `browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and adding or removing an environment that has them):
+`browser.executablePath`, `sandboxImage`, `sandboxUser`, `agent.mode`, and adding or removing an environment that has them):
 name the exact change to the person and wait for their explicit yes in the conversation, even if your edits are approved
 automatically; then edit the file with your own Edit tool.
 
@@ -26,10 +26,9 @@ automatically; then edit the file with your own Edit tool.
 | `consoleIgnore`, `foreignCode` | Regular expressions: console messages that never matter; errors from third-party code (they become warnings) |
 | `readyIgnore`, `readyTimeoutMs` | Elements that never count as loading; how long to wait for a quiet page |
 | `effects` | `{ "fail": [...] }`: which learned effects fail a step (`controls`, `requests`, `responses`, `console`) |
-| `design` | `{ "fail": [...] }`: which design findings fail a step: `target` (target design not met) and `visual` (learned look changed) by default, `lint` (design tokens), `fixedData` (fixed data no longer fits the backend); `[]` only warns (topic `design`) |
+| `design` | `{ "fail": [...] }`: which design findings fail a step: `target` (target design not met) and `visual` (learned look changed) by default, `lint` (design tokens); `[]` only warns (topic `design`) |
 | `visual` | `screenshots` (a `step-S<n>.png` per passed step) and the thresholds `tolerance`, `maxRatio`, `designMaxRatio` |
 | `visualIgnore` | CSS selectors masked in pixel comparisons, e.g. a clock |
-| `anonymize` | The person's own `command` (program and arguments, JSON on stdin and stdout) and `keep` values for freezing data of a look; guarded |
 | `maxActions` | The agent's action budget per run (default 100) |
 | `keepRuns` | how many run folders in `.caw/runs` caw keeps (default 30, 0 keeps all); older ones go when a run starts |
 | `lintCommand` | The project's lint command, named in recommendations |

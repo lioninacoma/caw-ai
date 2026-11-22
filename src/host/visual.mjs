@@ -463,12 +463,11 @@ export const lookImage = (test, step, platform = process.platform) => `${RECORDI
 
 /**
  * What a learned look is valid for: the state its step starts in (the previous step's recording time, as for effects), its
- * target design's content and, for a look on fixed data, that data's content (fixed-data.mjs). A re-recorded earlier step, a new
- * design or data frozen anew makes it learn anew.
+ * target design's content. A re-recorded earlier step or a new design makes it learn anew.
  */
-export const lookBasis = (spec, step, designHash, fixedHash) => {
+export const lookBasis = (spec, step, designHash) => {
     const previous = spec.steps[spec.steps.findIndex(({ id }) => id === step.id) - 1]?.recording?.recordedAt;
-    const parts = [...(previous === undefined ? [] : [previous]), ...(designHash === undefined ? [] : [`design:${designHash}`]), ...(fixedHash === undefined ? [] : [`fixed:${fixedHash}`])];
+    const parts = [...(previous === undefined ? [] : [previous]), ...(designHash === undefined ? [] : [`design:${designHash}`])];
     return parts.length === 0 ? undefined : parts.join(' ');
 };
 
@@ -511,12 +510,9 @@ const styleChanges = (learned, now) => {
  * @param save       (name, png) => the file name in the run folder, or undefined
  * @param readImage  (path) => Buffer or null
  * @param secrets    () => values the style lines must not show
- * @param fixed      the look steps compared on fixed data (fixed-data.mjs): { steps: Set, hash, pass }. In the normal run (pass
- *                   false) their look is left out, it is compared in the look pass (pass true) on the frozen answers, which then
- *                   compares only them; `hash` goes into their basis
  * @returns (id, { capture, page }) => { record, warnings, fail?, observed? }
  */
-export const createLook = ({ spec, cawDir, root, settings, tokens = null, compare, save, readImage, designFail = [], secrets = () => [], platform = process.platform, pixels = true, fixed }) => {
+export const createLook = ({ spec, cawDir, root, settings, tokens = null, compare, save, readImage, designFail = [], secrets = () => [], platform = process.platform, pixels = true }) => {
     const steps = new Map(spec.steps.map((step) => [step.id, step]));
     return async (id, { capture, page }) => {
         const record = {};
@@ -538,15 +534,8 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
             }
         }
         const step = steps.get(id);
-        const onFixed = fixed?.steps.has(id) === true;
-        if (fixed?.pass === true && !onFixed) return { record, warnings };
-        // On live data this look says nothing: the look pass compares it on the frozen answers, in a window not at all.
-        if (onFixed && fixed.pass !== true) {
-            record.visual = { verdict: 'skipped', fixed: pixels ? 'look-pass' : 'headless-only' };
-            return { record, warnings };
-        }
         if (step?.look === true && step.recording !== undefined) {
-            const basis = lookBasis(spec, step, designHashOf(cawDir, step), onFixed ? fixed.hash : undefined);
+            const basis = lookBasis(spec, step, designHashOf(cawDir, step));
             const learned = currentLook(step, basis);
             const shot = pixels ? await capture() : undefined;
             // Without the controls in masked areas: a list with one entry more has the same look.
@@ -564,7 +553,7 @@ export const createLook = ({ spec, cawDir, root, settings, tokens = null, compar
             const diff = changedPixels ? save(`step-${id}-look-diff.png`, compared.diffPng) : undefined;
             // In a window the styles alone decide; `pixels` says that the image was not looked at.
             const verdict = changed ? 'changed' : stylesLearned && (!pixels || imageRuns >= LEARN_RUNS) ? 'same' : 'learning';
-            record.visual = { verdict, ...(onFixed ? { fixed: 'served' } : {}), ...(pixels ? {} : { pixels: 'headless-only' }), ...(ratio === undefined ? {} : { ratio }), ...(diff === undefined ? {} : { diff }), ...(changedStyles.length === 0 ? {} : { styles: changedStyles }) };
+            record.visual = { verdict, ...(pixels ? {} : { pixels: 'headless-only' }), ...(ratio === undefined ? {} : { ratio }), ...(diff === undefined ? {} : { diff }), ...(changedStyles.length === 0 ? {} : { styles: changedStyles }) };
             observed = { ...(pixels ? { png: shot.png, imageRuns } : {}), styles, ...(ratio === undefined ? {} : { ratio }), ...(basis === undefined ? {} : { basis }), platform, changed };
             if (changed) {
                 // Only pixels see it: a window compares the styles, sees nothing and offers no "Adopt new look". The way out is

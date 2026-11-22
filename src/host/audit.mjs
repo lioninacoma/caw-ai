@@ -238,12 +238,6 @@ const stepChanges = (finding, { before, after, sameExpect }, failLists, designs)
     if (now.visual?.adopted !== undefined && now.visual.adopted !== was.visual?.adopted) {
         out.push(finding('look-adopted', 'listed', { ...at, before: was.visual?.styles, after: now.visual.styles, vars: { day: now.visual.adopted } }));
     }
-    // Data frozen for a look (fixed-data.mjs) can contain personal data: newly frozen data is listed with how it is stored, so the
-    // reviewer checks the file; data no longer frozen is listed too (the look is compared on live data again).
-    if (now.fixed !== undefined && !same(now.fixed, was.fixed)) {
-        out.push(finding('fixed-data-frozen', 'listed', { ...at, before: was.fixed, after: now.fixed, vars: { mode: t(`cli.audit.fixedMode.${now.fixed.mode}`), day: now.fixed.frozen } }));
-    }
-    if (was.fixed !== undefined && now.fixed === undefined) out.push(finding('fixed-data-removed', 'listed', { ...at, before: was.fixed }));
     out.push(...effectChanges(finding, at, was, now, failLists, sameExpect));
     return out;
 };

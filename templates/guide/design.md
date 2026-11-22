@@ -28,11 +28,7 @@ that differs replaces it and starts over), then it is compared. A run with a win
 (`pixels: "headless-only"` in `result.json`; a CI run without `--headless` warns about it). Only the person takes a changed
 look over ("{{label:run.button.adoptLook}}", which deletes the step's images of every platform). A change only pixels see has
 no such button: the failure names the image file `caw/recordings/<test>/<step>.<platform>.png`; only the person deletes it,
-the next two headless runs then learn it anew. For screens whose data changes,
-only the person freezes the data of the app's reads ("{{label:run.button.freezeData}}" after a passed run with a window, into
-`caw/recordings/<test>/fixed-data.json`); headless runs then compare those looks in a separate pass on the frozen answers. You
-cannot freeze data and never write that file; when the fixed data no longer fits the backend, say so and leave it to the
-person. The person sees the design over the app with `caw open <test>@S<n> --design` (F7
+the next two headless runs then learn it anew. The person sees the design over the app with `caw open <test>@S<n> --design` (F7
 toggles it); a deviation they click there reaches you as an element, as `/element` does.
 
 **Fetch and write a design.**

@@ -23,7 +23,6 @@ import { isDesignName } from './design.mjs';
 import { dialogProblem } from './dialogs.mjs';
 import { isPattern } from './patterns.mjs';
 import { lookImage } from './visual.mjs';
-import { FIXED_MODES } from './fixed-data.mjs';
 
 export { DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
@@ -41,7 +40,7 @@ const MAX_RETRY_WAIT_MS = 300_000;
 const HUMAN_STEP_FIELDS = ['design', 'needs', 'look'];
 const STEP_FIELDS = [...PLAN_STEP_FIELDS, ...HUMAN_STEP_FIELDS, 'recording'];
 // `locale`, `timezone` and `viewport`: the recording browser's, pinned on replay (the viewport headless, or browser.viewport).
-const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects', 'visual', 'fixed'];
+const RECORDING_FIELDS = ['hash', 'after', 'recordedOn', 'recordedAt', 'locale', 'timezone', 'viewport', 'actions', 'check', 'timeoutMs', 'network', 'effects', 'visual'];
 const EFFECT_FIELDS = new Set(['action', ...EFFECT_LISTS]);
 
 /** The learned effects: how many runs they were learned from, and per action number lists of lines without values. */
@@ -65,15 +64,6 @@ const checkVisual = (raw, at, report) => {
         && isObject(raw.images) && Object.entries(raw.images).every(([platform, runs]) => /^[a-z\d]+$/.test(platform) && Number.isInteger(runs) && runs > 0)
         && (raw.adopted === undefined || (typeof raw.adopted === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.adopted)));
     if (!ok) report(at, t('config.test.visual'));
-};
-/**
- * A look step compared on fixed data (fixed-data.mjs): how the frozen answers are stored and the day a person froze them. Only a
- * person's choice in the chat writes it; the data lives beside the recording.
- */
-const checkFixed = (raw, at, report) => {
-    const ok = isObject(raw) && Object.keys(raw).every((key) => key === 'mode' || key === 'frozen') && FIXED_MODES.includes(raw.mode)
-        && typeof raw.frozen === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.frozen);
-    if (!ok) report(at, t('config.test.fixed', { modes: FIXED_MODES.join(', ') }));
 };
 const NETWORK_FIELDS = new Set(['name', 'status', 'ms', 'count', 'params']);
 
@@ -272,7 +262,6 @@ const readRecording = (raw, at, problems, lineOf, { framework }) => {
     if (raw.network !== undefined) checkNetwork(raw.network, [...at, 'network'], report);
     if (raw.effects !== undefined) checkEffects(raw.effects, [...at, 'effects'], report);
     if (raw.visual !== undefined) checkVisual(raw.visual, [...at, 'visual'], report);
-    if (raw.fixed !== undefined) checkFixed(raw.fixed, [...at, 'fixed'], report);
     if (!Array.isArray(raw.actions)) {
         report([...at, 'actions'], t('config.test.recording.actions'));
         return undefined;
@@ -814,7 +803,6 @@ const recordingFields = (recording) => ({
     ...(recording.network === undefined ? {} : { network: recording.network }),
     ...(recording.effects === undefined ? {} : { effects: recording.effects }),
     ...(recording.visual === undefined ? {} : { visual: recording.visual }),
-    ...(recording.fixed === undefined ? {} : { fixed: recording.fixed }),
 });
 
 /** Actions and baselines on one line each: the recording gets much shorter and reads like a list. */
@@ -823,8 +811,6 @@ const compactRecording = (node) => {
     for (const action of node?.get('actions', true)?.items ?? []) if (isMap(action)) action.flow = true;
     const images = node?.get('visual', true)?.get('images', true);
     if (images !== undefined) images.flow = true;
-    const fixed = node?.get('fixed', true);
-    if (isMap(fixed)) fixed.flow = true;
 };
 
 /**

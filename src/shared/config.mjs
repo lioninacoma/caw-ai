@@ -60,7 +60,7 @@ export const todoFields = (config) => signInPlaces(config).flatMap(([at, signIn]
 export const sessionPath = (env, role) => posix.join(AUTH_DIR, String(env), `${role}.json`);
 
 const TOP_FIELDS = ['framework', 'start', 'source', 'environments', 'signIn', 'roles', 'messageSelectors', 'requestKeys', 'reads',
-    'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'design', 'visual', 'visualIgnore', 'anonymize', 'maxActions', 'keepRuns', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
+    'consoleIgnore', 'foreignCode', 'allowHosts', 'thirdPartyHosts', 'overlay', 'effects', 'design', 'visual', 'visualIgnore', 'maxActions', 'keepRuns', 'sandboxImage', 'sandboxUser', 'lintCommand', 'readyTimeoutMs',
     'browser', 'agent', 'language', 'readyIgnore'];
 const BROWSER_FIELDS = ['channel', 'executablePath', 'locale', 'timezone', 'viewport', 'noSandbox'];
 /** A CSS viewport { width, height } in whole pixels, as a recording stores it and browser.viewport sets it. */
@@ -459,9 +459,9 @@ export const validateConfig = (given) => {
         issues.push(t('config.effects', { lists: effectLists.join(', ') }));
     }
     // A target design that is not met fails its step (target), so does a changed learned look (visual) and, when named, the
-    // token lint (lint) and fixed data that no longer fits the backend (fixedData); `[]` only warns. Kept here, not imported
+    // token lint (lint); `[]` only warns. Kept here, not imported
     // from host/design.mjs: the config is shared code.
-    const designKinds = ['target', 'lint', 'visual', 'fixedData'];
+    const designKinds = ['target', 'lint', 'visual'];
     if (config.design !== undefined && !(isObject(config.design) && Object.keys(config.design).every((key) => key === 'fail')
         && (config.design.fail === undefined || (Array.isArray(config.design.fail) && config.design.fail.every((kind) => designKinds.includes(kind)))))) {
         issues.push(t('config.design', { kinds: designKinds.join(', ') }));
@@ -477,13 +477,6 @@ export const validateConfig = (given) => {
     }
     if (config.visualIgnore !== undefined && !(Array.isArray(config.visualIgnore) && config.visualIgnore.every((selector) => typeof selector === 'string' && selector.trim() !== ''))) {
         issues.push(t('config.visualIgnore'));
-    }
-    // Fixed data of a look (host/fixed-data.mjs): the person's own anonymizing command (no shell, JSON on stdin and stdout) and
-    // the values caw's own replacement keeps as they are.
-    if (config.anonymize !== undefined && !(isObject(config.anonymize) && Object.keys(config.anonymize).every((key) => key === 'command' || key === 'keep')
-        && (config.anonymize.command === undefined || (Array.isArray(config.anonymize.command) && config.anonymize.command.length > 0 && config.anonymize.command.every((part) => typeof part === 'string' && part !== '')))
-        && (config.anonymize.keep === undefined || (Array.isArray(config.anonymize.keep) && config.anonymize.keep.every((value) => typeof value === 'string'))))) {
-        issues.push(t('config.anonymize'));
     }
     if (config.overlay !== undefined) checkOverlay(config, issues);
     // Gaps from init: not wrong, but nothing that signs in can run until they are filled in.
@@ -581,7 +574,7 @@ const mergePatch = (base, patch) => {
 /** Per environment: the keys that run commands or decide what Claude and caw may do there (compared after extends). */
 const GUARDED_ENVIRONMENT_KEYS = [...LIFECYCLE_COMMANDS, 'ready', ...ENVIRONMENT_FLAGS];
 /** Top-level keys that run a command, start a program or choose where Claude runs. */
-const GUARDED_PATHS = [['lintCommand'], ['anonymize'], ['sandboxImage'], ['sandboxUser'], ['browser', 'executablePath'], ['agent', 'mode']];
+const GUARDED_PATHS = [['lintCommand'], ['sandboxImage'], ['sandboxUser'], ['browser', 'executablePath'], ['agent', 'mode']];
 const valueAt = (config, path) => path.reduce((value, key) => (isObject(value) ? value[key] : undefined), config);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /** What an environment that does not exist counts as: every flag off, no command, the default ready check. */
@@ -589,7 +582,7 @@ const absentEnvironment = () => effectiveEnvironment({ environments: { absent: {
 
 /**
  * The guarded keys a change touches, as paths: lifecycle commands, ready, the environment flags (production, agent, writable,
- * allowHttp, insecureTls) as runs see them after extends, overlay part start commands, lintCommand, anonymize, sandboxImage, sandboxUser,
+ * allowHttp, insecureTls) as runs see them after extends, overlay part start commands, lintCommand, sandboxImage, sandboxUser,
  * browser.executablePath and agent.mode. An environment added or removed counts with every guarded key it has, so deleting a
  * production environment or adding one with agent: true is a guarded change too. They change only by an edit the human sees.
  */

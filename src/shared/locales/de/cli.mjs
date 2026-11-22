@@ -728,9 +728,4 @@ Browser:
     'cli.audit.kind.look-adopted': 'Für {step} wurde am {day} ein neuer Look übernommen: seine Stile gelten ab jetzt, sein Bild lernen die nächsten Läufe headless neu.',
     'cli.audit.kind.look-on': '{step} lernt und vergleicht jetzt sein Aussehen (look: true).',
     'cli.audit.kind.look-off': '{step} vergleicht sein gelerntes Aussehen nicht mehr (look: true entfernt): Sieht der Schritt anders aus, scheitert er nicht mehr.',
-    'cli.audit.kind.fixed-data-frozen': 'Für das Aussehen von {step} wurden am {day} Daten eingefroren, {mode} gespeichert: die Datei neben der Aufzeichnung auf personenbezogene Daten prüfen.',
-    'cli.audit.kind.fixed-data-removed': '{step} vergleicht sein Aussehen nicht mehr auf festen Daten, sondern wieder auf Live-Daten.',
-    'cli.audit.fixedMode.anonymized': 'anonymisiert',
-    'cli.audit.fixedMode.obfuscated': 'verschleiert (kein Schutz)',
-    'cli.audit.fixedMode.plain': 'lesbar, nach der Bestätigung, dass der Datenschutz geprüft wurde',
 };

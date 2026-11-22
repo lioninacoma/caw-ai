@@ -543,12 +543,6 @@ Zwei Arten visueller Prüfung, beide ohne KI. Ein [Zielbild](#gegen-ein-zielbild
 - **Gewollte Änderung:** **Neuen Look übernehmen** im Chat übernimmt das neue Aussehen aller geänderten Schritte auf einmal; ihre Bilder aller Plattformen werden gelöscht, die nächsten headless Läufe lernen sie neu. Eine Änderung, die nur die Pixel sehen, bietet kein Übernehmen an, denn das Fenster sieht nichts: Der gescheiterte headless Lauf nennt die Bilddatei des Schritts; lösche sie, und die nächsten zwei headless Läufe lernen sie neu. `caw audit` listet das, und `look: true` an einem Schritt mit gelerntem Aussehen zu entfernen zählt als Schwächung.
 - **Grenzen:** Das Bild gilt je Plattform (Schriften rendern unter Windows und Linux verschieden), und die Schwellen sind Startwerte, bis sie gemessen sind ([Einzelheiten](test-files.de.md#visuelle-regression)).
 
-### Feste Daten
-
-Für einen Bildschirm, dessen Daten sich laufend ändern (ein Portal), friert **Daten einfrieren** in der Karte eines bestandenen Laufs mit Fenster die JSON-Antworten der Lesezugriffe der App für die Aussehens-Schritte ein. Du wählst, wie sie gespeichert werden: anonymisiert, verschleiert oder lesbar, nachdem du bestätigt hast, dass du den Datenschutz geprüft hast. Du prüfst sie, bevor etwas geschrieben wird. Sind sie eingefroren, fragt ein bestandener Lauf mit Fenster nicht mehr: Ein Hinweis sagt, dass die Aussehen die eingefrorenen Daten nutzen, und die Karte kommt erst wieder, wenn die Antworten des Backends nicht mehr passen.
-
-Headless Läufe vergleichen diese Aussehen dann in einem eigenen Durchlauf auf den eingefrorenen Antworten, Schreibzugriffe angehalten. Prüfungen, Wirkungen und Requests des Laufs laufen weiter gegen das echte Backend. Hat eine echte Antwort eine andere Struktur, warnt caw, dass die eingefrorenen Daten nicht mehr zum Backend passen. In CI wird nie etwas eingefroren ([Einzelheiten](test-files.de.md#feste-daten)).
-
 ## Produktion überwachen
 
 Ein Monitor ist ein `run` lesender Tests gegen Produktion, der nach Zeitplan läuft. Er braucht weder Agent noch Token: caw schreibt das Ergebnis, dein Scheduler oder dein CI schlägt Alarm. Berichte, Wiederholungen und alles Weitere zu CI: [In CI](#in-ci).

@@ -721,9 +721,4 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.audit.kind.look-adopted': 'A person adopted a new look for {step} on {day}: its styles count from now on, its image is learned anew by the next headless runs.',
     'cli.audit.kind.look-on': '{step} now learns and compares its look (look: true).',
     'cli.audit.kind.look-off': '{step} no longer compares its learned look (look: true removed): a step that looks different no longer fails.',
-    'cli.audit.kind.fixed-data-frozen': 'Data frozen for the look of {step} on {day}, stored {mode}: check the file beside the recording for personal data.',
-    'cli.audit.kind.fixed-data-removed': '{step} no longer compares its look on fixed data: it is compared on live data again.',
-    'cli.audit.fixedMode.anonymized': 'anonymized',
-    'cli.audit.fixedMode.obfuscated': 'obfuscated (no protection)',
-    'cli.audit.fixedMode.plain': 'readable, after the confirmation that data protection was checked',
 };

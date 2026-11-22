@@ -68,14 +68,14 @@ test('lifecycle keys: inherited, ready filled with defaults; validated per envir
     assert.match(issues({ dev: { url: 'http://localhost:1', start: 'x' }, live: { extends: 'dev', url: 'https://l.test', production: true } }).join('\n'), /live ist Produktion/);
 });
 
-test('design.fail: target, lint, visual and fixedData, or [] (only warn); anything else is named', () => {
+test('design.fail: target, lint and visual, or [] (only warn); anything else is named', () => {
     const plainConfig = { signIn: { type: 'none' }, environments: { local: { url: 'http://localhost:5173' } } };
     assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: ['target'] } }).issues, []);
-    assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: ['target', 'lint', 'visual', 'fixedData'] } }).issues, []);
+    assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: ['target', 'lint', 'visual'] } }).issues, []);
     assert.deepEqual(validateConfig({ ...plainConfig, design: { fail: [] } }).issues, []);
     assert.deepEqual(validateConfig({ ...plainConfig, design: {} }).issues, []);
     for (const design of [{ fail: ['pixels'] }, { fail: 'target' }, { strict: true }, ['target']]) {
-        assert.deepEqual(validateConfig({ ...plainConfig, design }).issues, ['design.fail muss eine Liste aus target, lint, visual, fixedData oder [] sein, etwa ["target"]'], JSON.stringify(design));
+        assert.deepEqual(validateConfig({ ...plainConfig, design }).issues, ['design.fail muss eine Liste aus target, lint, visual oder [] sein, etwa ["target"]'], JSON.stringify(design));
     }
 });
 
