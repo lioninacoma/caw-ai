@@ -21,6 +21,7 @@ import { checkLocator } from './locator.mjs';
 import { isDesignName } from './design.mjs';
 import { dialogProblem } from './dialogs.mjs';
 import { isPattern } from './patterns.mjs';
+import { splitLearning } from './learning.mjs';
 
 export { DRAFT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/names.mjs';
 const RECORDING_TOP_FIELDS = ['test', 'steps', 'knownMessages'];
@@ -929,20 +930,23 @@ const writeIfChanged = (path, text, raw) => {
 
 /**
  * Writes description and recording. Comments and untouched steps in the description stay as they are; a step from `only` is
- * only rewritten when its text changed. So when the tool learns baselines or effects, only the recording changes.
+ * only rewritten when its text changed. So when the tool learns baselines or effects, only the recording changes. Effects and
+ * looks that are not frozen yet go to .caw/learning instead (splitLearning): the recording gets them once, frozen.
  * @param only the steps that change; if omitted, the whole plan is replaced
  * @param withNotes also write `notes` when only some steps change
  * @param prune     with `only`: steps no longer in the plan are deleted and the order follows it (re-recording from a step on);
  *                  all other steps stay as they are in the file, byte for byte
  * @returns the changed files relative to the project, comma-separated
  */
-export const writeTest = (root, spec, only, { withNotes = false, prune = false } = {}) => {
-    if (spec.draft === true) return writeDraft(root, spec);
-    const path = testPath(root, spec.id);
+export const writeTest = (root, given, only, { withNotes = false, prune = false } = {}) => {
+    if (given.draft === true) return writeDraft(root, given);
+    const path = testPath(root, given.id);
     mkdirSync(join(root, TEST_DIR), { recursive: true });
     const changed = [];
     // The previous state: recordings of unchanged steps are taken from it.
-    const before = existsSync(path) ? loadTest(root, spec.id) : null;
+    const before = existsSync(path) ? loadTest(root, given.id) : null;
+    // Effects and looks still being learned go to .caw/learning, not into the recording.
+    const spec = splitLearning(root, given, (id) => only === undefined || only.has(id), { whole: only === undefined });
     if (before === null) {
         writeFileSync(path, renderDescription(spec));
         changed.push(`${TEST_DIR}/${spec.id}.yaml`);
@@ -991,7 +995,8 @@ const writeDraft = (root, spec) => {
     const path = draftPath(root, spec.id);
     mkdirSync(join(root, DRAFT_DIR), { recursive: true });
     const raw = existsSync(path) ? readFileSync(path, 'utf8') : undefined;
-    return writeIfChanged(path, renderTest(spec), raw) ? `${DRAFT_DIR}/${spec.id}.yaml` : t('config.test.unchanged');
+    const learning = splitLearning(root, spec, () => true, { whole: true });
+    return writeIfChanged(path, renderTest(learning), raw) ? `${DRAFT_DIR}/${spec.id}.yaml` : t('config.test.unchanged');
 };
 
 /**

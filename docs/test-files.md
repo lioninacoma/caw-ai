@@ -127,7 +127,7 @@ After the step's check passed, caw renders the `.html` design in a separate head
 
 ### Visual regression
 
-A step with `look: true` in the test file learns what it looks like, like the [effects](#recording): its style lines. Only people set `look`, by hand or with a tick in the chat (below); the agent's plan may not carry it, caw keeps it when it rewrites the step, and it never makes a step stale. A style line is a role and a style (the same styles as for a target design) with how many controls have it, `button ×3: font-size 13px, font-weight 400, color #ffffff, …`; names are left out, they carry data. A look learns when the step passes in a run outside CI on the environment it was recorded on; in CI only with `--learn`. The style lines learn in every such run, in a window and headless alike: the first stores them, the second confirms them (`runs: 2`); a count that differs meanwhile becomes `×?` (any number is right).
+A step with `look: true` in the test file learns what it looks like, like the [effects](#recording): its style lines. Only people set `look`, by hand or with a tick in the chat (below); the agent's plan may not carry it, caw keeps it when it rewrites the step, and it never makes a step stale. A style line is a role and a style (the same styles as for a target design) with how many controls have it, `button ×3: font-size 13px, font-weight 400, color #ffffff, …`; names are left out, they carry data. A look learns when the step passes in a run outside CI on the environment it was recorded on; in CI only with `--learn`. The style lines learn in every such run, in a window and headless alike: the first stores them, the second confirms them (`runs: 2`); a count that differs meanwhile becomes `×?` (any number is right). Until then the look learns on this machine in `.caw/learning/<test>.json`; the second run writes it into the recording, once.
 
 The look belongs to its basis, the previous step's recording time and the content of the step's design file: re-recording an earlier step or a new design makes it learn anew. Once learned, a run compares: a role and style that fewer or more controls have than learned, or that was not there (`1 button fewer with …`), fails the step with kind `visual` without stopping the replay (`design.fail` without `"visual"` only warns). A renamed button keeps its role and style: its look stays the same. If the new look is right, **Adopt new look** in the chat takes over the styles of every step whose look changed in that run, at once, and marks the day. `caw audit` lists the adoption (`look-adopted`); taking `look: true` off a step whose look was learned is a weakening (`look-off`).
 
@@ -166,7 +166,7 @@ steps:
       - {name: POST /api/tickets, status: 201, ms: 269, params: [json.customer, json.priority, json.title]}
       - {name: GET /api/tickets, status: 200, ms: 274, params: [q]}
     effects:
-      runs: 1
+      runs: 5
       actions:
         - action: 5
           controls:
@@ -184,8 +184,8 @@ steps:
 | `check` | A JavaScript expression that must return `true`. It runs in the signed-in page, so read it before you commit. |
 | `remember` | Reads a value the run creates, here the ticket number. Its `code` runs in the signed-in page like `check`, so read it before you commit. Later steps use it as `{{ticketnr}}`. Any value that is not empty; one shorter than four characters (an id like `7`) is replaced only in typed values, URLs, string literals of checks and target texts that are exactly that value. |
 | `network` | Requests per step from a healthy run. Used to tell app bugs from environment problems. |
-| `effects` | What each action changed on the page, learned from the first five healthy runs (`runs` counts them), then frozen. A change fails the step or shows as a warning. |
-| `visual` | The step's learned look ([visual regression](#visual-regression)): `runs`, `styles` (lines), `basis`, and `adopted` (the day a person adopted it). |
+| `effects` | What each action changed on the page, learned from the first five healthy runs (`runs` counts them), then frozen. A change fails the step or shows as a warning. Only frozen effects are in the recording: while they learn they live on this machine in `.caw/learning/<test>.json` (not checked in), and the run that freezes them writes them here once, for you to review and commit. A recording that still has effects with `runs` below 5 (written before this rule) is where learning starts: the next run that learns moves them to `.caw/learning`, one last change of the file. Frozen effects that learn anew because an earlier step was recorded again (their basis changed) leave the recording with the first learning run: no run compares against them any more. |
+| `visual` | The step's learned look ([visual regression](#visual-regression)): `runs`, `styles` (lines), `basis`, and `adopted` (the day a person adopted it). Like `effects` only once frozen (`runs: 2`); before that in `.caw/learning`. |
 | `knownMessages` | Messages that were visible during recording and are not errors. |
 
 On replay a locator must find exactly one element that is visible and not covered. Two matches are tolerated for two seconds, e.g. while one dialog closes and the next opens with the same button; then the step fails and names both. A locator chosen by position (`nth()`, `first()`) is listed after recording so you can check it.

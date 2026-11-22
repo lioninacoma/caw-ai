@@ -264,7 +264,8 @@ export default {
     'run.flow.adviceInReport': ' Die Empfehlungen stehen im Bericht.',
     'run.flow.effectForgotten': 'Gelernte Wirkung von {id} vergessen: {file}. Bitte prüfen und committen.',
     'run.flow.baselinesAdded': 'Vergleichswerte für {ids} eingetragen: {file}. Bitte prüfen und committen.',
-    'run.flow.effectsLearned': 'Wirkung je Aktion für {ids} gelernt: {file}. Bitte prüfen und committen.',
+    'run.flow.effectsLearning': 'Effekte lernen (in .caw/learning, bis sie eingefroren sind): {list}.',
+    'run.flow.effectsFrozen': 'Effekte eingefroren für {ids}: {file}. Bitte prüfen und committen.',
     'run.flow.rerunning': 'Erneut testen mit der geänderten Anwendung ...',
 
     // Developing in a state
@@ -504,7 +505,8 @@ export default {
     'run.button.adoptLook': 'Neuen Look übernehmen',
     'run.flow.lookNext': 'Was die Schritte tun, klappt; nur das Aussehen von {ids} weicht vom gelernten ab. Stimmt der neue Look, übernimm ihn: Das übernimmt die Stile aller dieser Schritte auf einmal.',
     'run.flow.lookAdopted': 'Neuer Look von {ids} übernommen: {file}. Bitte prüfen und committen.',
-    'run.flow.looksLearned': 'Aussehen von {ids} gelernt: {file}. Bitte prüfen und committen.',
+    'run.flow.looksLearning': 'Aussehen lernen (in .caw/learning, bis es eingefroren ist): {list}.',
+    'run.flow.looksFrozen': 'Aussehen eingefroren für {ids}: {file}. Bitte prüfen und committen.',
     'run.develop.noDesign': '{id} hat kein Zielbild („design:“ in der Testdatei), es gibt also nichts, was neben oder über der App zu zeigen wäre.',
     'run.develop.designFailed': 'Entwurf {file} ließ sich nicht zeigen: {message}',
     'run.develop.designShown': 'Entwurf {file} steht neben der App, {size}; F7 legt ihn über die App, blendet ihn aus und stellt ihn wieder daneben. Darunter stehen {count} Abweichungen.',

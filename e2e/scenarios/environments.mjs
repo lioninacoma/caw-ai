@@ -567,7 +567,7 @@ const callWith = async (env, fn) => {
     }
 };
 const files = (id) => [`caw/tests/${id}.yaml`, `caw/recordings/${id}.yaml`].map((path) => readFileSync(join(root, path), 'utf8'));
-/** The test with the learned parts of each recording taken out: what learning may change is network and effects only. */
+/** The test with the learned parts of each recording taken out: what learning may change is network and, once frozen, effects. */
 const withoutLearned = (id) => JSON.stringify(loadTest(root, id).steps.map(({ recording, ...step }) => {
     const rest = { ...recording };
     delete rest.network;
@@ -590,7 +590,7 @@ scenario('S3', 'Baselines are learned by every run outside CI: in the window wit
     const after = files('see-tickets');
     // S1 sends no request of its own (the list loads with the page before it): its learned baseline is the empty list.
     verify('(1) a chat run passes, says "learns: yes" and S1 gets its network baseline', first.value.exit === 0 && /learns: yes,/.test(first.output) && Array.isArray(learnedNetwork('see-tickets')), `${shown(first.value)} ${(/Mode on .*/.exec(first.output) ?? [''])[0]}`);
-    verify('(1) only network and effects changed: the plan file is identical, the recording otherwise too', after[0] === before[0] && after[1] !== before[1] && withoutLearned('see-tickets') === plain);
+    verify('(1) only network changed (effects still learning stay in .caw/learning): the plan file is identical, the recording otherwise too', after[0] === before[0] && after[1] !== before[1] && withoutLearned('see-tickets') === plain);
     writeSpaTest(root, 'see-tickets');
     const headless = await go(['see-tickets', '--env', 'local'], { env: { CI: '' } });
     verify('(2) a headless run learns too and says so', headless.exit === 0 && Array.isArray(learnedNetwork('see-tickets')) && /learns: yes,/.test(headless.output), `${shown(headless)} ${(/Mode on .*/.exec(headless.output) ?? [''])[0]}`);

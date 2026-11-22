@@ -426,7 +426,7 @@ test('junitXml: a pass with pending steps stays a pass and carries its note in s
 test('runMode: environment, team language and whether the run learns; open never', () => {
     const base = { withAgent: true, noChat: false, headless: false, inCi: false, withAdvice: false, environments: 'local', env: 'local', language: 'en' };
     assert.equal(runMode(base), 'Modus auf local (Teamsprache en): mit Chat; lernt: nein.');
-    assert.equal(runMode({ ...base, inCi: true, learn: true, file: 'caw/recordings/x.yaml' }), 'Modus auf local (Teamsprache en): ohne Chat, weil die Variable CI gesetzt ist; lernt: ja, fehlende Vergleichswerte und Effekte in caw/recordings/x.yaml.');
+    assert.equal(runMode({ ...base, inCi: true, learn: true, file: 'caw/recordings/x.yaml' }), 'Modus auf local (Teamsprache en): ohne Chat, weil die Variable CI gesetzt ist; lernt: ja, fehlende Vergleichswerte in caw/recordings/x.yaml; Effekte und Aussehen lernen in .caw/learning und kommen eingefroren hinein.');
     assert.match(runMode({ ...base, learn: true, opened: true, withAdvice: true }), /mit Chat; lernt: nein\.$/, 'open learns and advises nothing');
     // A PR preview's address from CAW_URL__<ENV> is named in the line (loadConfig has checked it).
     process.env.CAW_URL__PREVIEW = 'https://pr-3.preview.example.test';
