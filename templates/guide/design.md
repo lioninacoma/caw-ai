@@ -5,12 +5,21 @@ the test file (`design: design/order-form.html`), next to `needs:` (locators tha
 recorded). Both belong to the person: they are never part of a plan you write, and changing them never makes a step stale.
 
 **What caw judges.** In a run, after a step's check passed, caw renders its `.html` design in a separate headless browser
-(no scripts, no network, the step's recorded viewport) and compares the structure with the app's page: the controls (role,
-label, flags), the view lines (headings, buttons, links, landmarks, field labels) and per control font-size, font-weight,
-color, background-color, border-radius and padding. List rows, free text, numbers and whether a field is filled are data and
-do not count. Anything missing or a differing style: the step fails with kind `design` (with `design.fail: []` in the config it
-only warns). Controls only in the app are reported but do not fail. The replay goes on; the step is not retried and learns no
-effects in that run. `result.json` holds per judged step `design: { file, verdict, missing, extra, styleDiffs }`.
+(no scripts, no network, the step's recorded viewport) and compares it with the app's page. Met means: it looks like the
+design, except data. Compared are the controls (role, label, flags) and view lines (headings, buttons, links, landmarks); the
+static texts (headings, labels, paragraphs); the looks (per control font-size, font-weight, color, background-color,
+border-radius, padding and first font-family; per text first font-family, font-size, font-weight, font-style and color; per
+block with a background, border or shadow those); and the layout from neighbour to neighbour in document order: relation
+(below, above, right of, left of, inside), gap, indent in the block, sizes of controls, blocks and images, within 1 px.
+**Data** (the same rule in design and app) keeps its place and font but not its text: lists and tables with their rows,
+elements marked `data-caw-data`, field values and `<output>`, a text equal to a field's value, and texts with a digit, the
+run tag or a remembered value. A sample text without a digit that is data in the app (a name, a status) needs
+`data-caw-data` in the design and in the app. Anything missing, a changed text, a differing style or layout: the step fails
+with kind `design` (with `design.fail: []` in the config it only warns). Controls only in the app are reported but do not
+fail. The replay goes on; the step is not retried and learns no effects in that run. `result.json` holds per judged step
+`design: { file, verdict, missing, extra, styleDiffs, layoutDiffs, textDiffs }`; the lines read like
+`gap button "Save" → block "Note": 19px → 43px`, `block "Note": below button "Save" → above button "Save"`,
+`heading "Note": font-family Georgia → Arial`, `text: heading "Note" → "Notes"`.
 
 **A learned look.** `look: true` on a step (also only the person's: never set or remove it yourself; caw may suggest steps to
 the person after `record`) learns that step's look and then fails with kind `visual` when it changes. A look learns when

@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- Target design for first-errand S4 (the todo moved to "Tomorrow"), as a design tool exports one screen: self-contained,
      inline CSS, no scripts. Not linked yet; to try it, add `design: design/todo-detail.html` to S4 in caw/tests/first-errand.yaml.
-     Sample data: the title and number are data and do not count, only the structure and the styles of the controls. -->
+     Sample data: the title (it has a number) and the value "Tomorrow" are data and count only by their place and font; the
+     structure, the static texts, the layout and the styles do count. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -15,7 +16,7 @@ body{margin:0;min-height:100vh;color:var(--ink);font:15px/1.45 var(--sans);backg
 button,select{font:inherit;color:inherit}a{color:inherit}
 .app{max-width:30rem;margin:0 auto;padding:1.1rem 1.1rem 2rem}
 .back{display:inline-block;margin:1rem 0;color:var(--muted);text-decoration:none;font-weight:600}
-.detail{background:var(--card);border-radius:1.2rem;padding:1.3rem}
+.detail{background:var(--card);border-radius:1.2rem;padding:1.3rem;box-shadow:0 6px 16px -12px #5a3a2066}
 .detail h2{font:600 1.8rem/1.1 var(--serif);margin:0 0 .6rem}
 .meta{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;color:var(--muted);margin-bottom:1.1rem}
 .chip{border-radius:999px;padding:.15rem .55rem;font-size:.72rem;font-weight:700;background:var(--sage-soft);color:var(--sage)}
@@ -30,7 +31,7 @@ label{display:grid;gap:.3rem;font-weight:600;font-size:.85rem}
 <a class="back" href="/">← All todos</a>
 <div class="detail">
 <h2>#7 Feed the raven CAW-1</h2>
-<div class="meta"><span class="chip">#home</span><span>Open</span><span>When: <output id="when">Tomorrow</output></span></div>
+<div class="meta"><span class="chip">#home</span><span>Done</span><span>When: <output id="when">Tomorrow</output></span></div>
 <div class="row"><label>Move to <select id="next"><option>Today</option><option selected>Tomorrow</option><option>Someday</option></select></label><button class="btn" id="save">Save</button></div>
 </div>
 </main></div>

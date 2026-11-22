@@ -975,9 +975,10 @@ scenario('N13', 'Pending steps: run passes with S1–S2 and names S3, S4; --stri
 // and the needs of a pending S3.
 
 const DESIGNED = 'rec-design';
-// The fixture's own font and a default button: the same controls and styles as the site after S2. Free text and the rest of the
-// page are left out on purpose: what only the app has does not fail.
-const MATCHING = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}</style></head><body><main><h1>Errands</h1><p>Sample text</p><button>Save</button></main></body></html>';
+// The top of the site after S2 as a design tool exports it: the fixture's own font and section, the same texts, controls and
+// layout; one sample errand (list rows are data). The navigation and the rest of the page are left out on purpose: what only
+// the app has does not fail.
+const MATCHING = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}section{border:1px solid #ccc;margin:8px 0;padding:8px}</style></head><body><main><h1>Errands</h1><p role="status">Saved</p><section aria-label="Errand list"><label>New errand <input></label> <button>Add</button> <button>Save</button><ul><li><span>Errand Sample</span> <button>Complete</button></li></ul></section></main></body></html>';
 const OTHER = '<!doctype html><html lang="en"><head><style>body{font:14px system-ui,sans-serif;margin:16px}button{background:#e5533a;color:#fff}</style></head><body><main><h1>Errands</h1><button>Save</button><button>Export</button></main></body></html>';
 
 scenario('N18', 'Target design: a matching .html passes, another fails S2 with kind design and the replay goes on; needs of the pending S3', async () => {

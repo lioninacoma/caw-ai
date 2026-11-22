@@ -1120,7 +1120,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
     const judge = async (id, result) => {
         const design = replay.designs?.[id];
         if (design === undefined || judgeDesign === undefined) return;
-        const judged = await judgeDesign({ ...design, step: id }, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
+        const judged = await judgeDesign({ ...design, step: id, texts: varying() }, session.page()).catch((error) => ({ file: design.file, verdict: 'error', note: t('session.design.error', { file: design.file, error: firstLine(error) }) }));
         designs.set(id, judged);
         if (judged.verdict === 'met') return;
         const details = designText(judged);
@@ -1650,7 +1650,7 @@ export const stepRecords = ({ ids, results, broken = null, requests, effects, de
         ...(requests?.has(id) ? { requests: summarizeRequests(requests.get(id)) } : {}),
         ...(effectsShown && seen !== undefined ? { effects: [...seen].map(([action, effect]) => ({ action, ...effect })) } : {}),
         ...(shownDeviation === undefined ? {} : { deviation: shownDeviation }),
-        ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [] } }),
+        ...(design === undefined ? {} : { design: { file: design.file, verdict: design.verdict, missing: design.missing ?? [], extra: design.extra ?? [], styleDiffs: design.styleDiffs ?? [], layoutDiffs: design.layoutDiffs ?? [], textDiffs: design.textDiffs ?? [] } }),
         ...(looks?.get(id) ?? {}),
         ...(proposal === undefined ? {} : { proposal: effectsShown ? proposal : { ...proposal, evidence: { check: proposal.evidence.check } } }),
     };
