@@ -351,6 +351,37 @@ test('run --retry-env: only environment failures run again, at most n times, the
     assert.match(readFileSync(join(root, 'out', 'secret.xml'), 'utf8'), /<error type="credentials-missing" message="CAW_CLERK_PASSWORD fehlt"\/>/);
 });
 
+test('run --report: warnings (step and text) and the learning state reach JUnit, summary and JSON; verdict and exit stay', async (t) => {
+    const root = project(t);
+    // kaufen clicks: S1 has learned its effects twice of five times, S2 not yet at all.
+    const click = (plain, effects) => ({ ...plain, recording: { ...recorded(plain).recording, actions: [{ action: 'click', target: "getByRole('button', { name: 'Kaufen' })" }], ...(effects === undefined ? {} : { effects }) } });
+    writeTest(root, { role: 'tester', source: 'deployed', notes: '', id: 'kaufen', environments: ['local'], writes: true, steps: [click(step('S1', 'Korb'), { runs: 2, actions: [] }), click(step('S2', 'Kasse'))] });
+    const warnings = [{ type: 'effect', step: 'S2', text: 'S2 Aktion 1 wirkt anders: GET /api/preise fehlt.', count: 1 }, { type: 'console', text: 'Deprecation <x>', count: 2 }];
+    const runOne = async () => ({ code: 0, verdict: { status: 'pass', steps: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }], warnings }, report: '.caw/runs/r1/report.md' });
+    const reports = ['--report', 'junit=out/junit.xml', '--report', 'summary=out/summary.md', '--report', 'json=out/caw.json'];
+    const code = await inCi(() => run(root, ['kaufen', '--env', 'local', ...reports], { runOne }));
+    assert.equal(code, EXIT.pass);
+    const xml = readFileSync(join(root, 'out', 'junit.xml'), 'utf8');
+    assert.match(xml, /<testsuite name="caw local" tests="1" failures="0" errors="0"/);
+    assert.match(xml, /<system-out>[^<]*Warnung S2: S2 Aktion 1 wirkt anders: GET \/api\/preise fehlt\./);
+    assert.match(xml, /Warnung: Deprecation &lt;x&gt; \(2×\)/);
+    assert.match(xml, /Effekte noch im Lernen: S1 2\/5, S2 0\/5\. Dieser Lauf hat nichts gelernt \(CI ohne --learn\)\./);
+    const summary = readFileSync(join(root, 'out', 'summary.md'), 'utf8');
+    assert.match(summary, /\| PASS \| kaufen \|/);
+    assert.match(summary, /- `kaufen` S2: S2 Aktion 1 wirkt anders: GET \/api\/preise fehlt\./);
+    assert.match(summary, /- `kaufen`: Effekte noch im Lernen: S1 2\/5, S2 0\/5\./);
+    const json = JSON.parse(readFileSync(join(root, 'out', 'caw.json'), 'utf8'));
+    assert.deepEqual(json.tests[0].warnings, [{ type: 'effect', step: 'S2', text: 'S2 Aktion 1 wirkt anders: GET /api/preise fehlt.', count: 1 }, { type: 'console', text: 'Deprecation <x>', count: 2 }]);
+    assert.deepEqual(json.tests[0].learning, { learns: false, effects: [{ id: 'S1', runs: 2 }, { id: 'S2', runs: 0 }], of: 5 });
+    assert.equal(json.tests[0].status, 'pass');
+    // Outside CI the run learns: no note that nothing was learned; with everything learned nothing is named.
+    await run(root, ['kaufen', '--env', 'local', '--report', 'junit=out/local.xml'], { runOne, interactive: true });
+    assert.doesNotMatch(readFileSync(join(root, 'out', 'local.xml'), 'utf8'), /nichts gelernt/);
+    writeTest(root, { role: 'tester', source: 'deployed', notes: '', id: 'kaufen', environments: ['local'], writes: true, steps: [click(step('S1', 'Korb'), { runs: 5, actions: [] })] });
+    await inCi(() => run(root, ['kaufen', '--env', 'local', '--report', 'json=out/done.json'], { runOne }));
+    assert.equal(JSON.parse(readFileSync(join(root, 'out', 'done.json'), 'utf8')).tests[0].learning, undefined);
+});
+
 test('parseRunArgs: --report per kind once, --retry-env a whole number from 1 to 5', () => {
     const options = parseRunArgs('run', ['a', '--report', 'junit=j.xml', '--report=summary=s.md', '--report', 'json=r.json', '--retry-env', '2']);
     assert.deepEqual([options.reports, options.retryEnv], [{ junit: 'j.xml', summary: 's.md', json: 'r.json' }, 2]);

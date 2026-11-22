@@ -669,6 +669,11 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.attemptLine': 'Attempt {attempt}: {status}{why}',
     'cli.summary.heading': 'caw: {count} test(s) on {target}, exit {exit}',
     'cli.summary.columns': 'Result | Test | Failed step | Assessment | Finding | Report',
+    'cli.summary.notes': 'Warnings and learning (they change no result)',
+    'cli.reportWarning': 'Warning: {text}',
+    'cli.reportWarningAt': 'Warning {step}: {text}',
+    'cli.reportLearning': 'Effects still learning: {steps}.',
+    'cli.reportLearnsNot': 'This run learned nothing (CI without --learn).',
     // bisect.mjs: caw bisect <test> --env <name> for git bisect run
     'cli.help.bisect': `  bisect <test> --env <name>             One step of git bisect run: starts the environment with its start command, plays
                                          the test headless as it is in --tests-from, without chat and without learning

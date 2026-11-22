@@ -1123,7 +1123,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const details = judged.ratio === undefined ? designText(judged) : judged.note;
         const text = judged.verdict === 'not-met' ? t('session.design.notMet', { id, details }) : judged.note;
         if (judged.verdict === 'error' || !designFail.includes('target')) {
-            session.warn?.({ type: 'design', text });
+            session.warn?.({ type: 'design', step: id, text });
             return;
         }
         results.set(id, { ...result, status: 'fail', kind: 'design', evidence: { type: 'eval', value: judged.verdict === 'not-met' ? details : judged.note }, note: text });
@@ -1138,7 +1138,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         const seen = await look(id, { capture: shot, page: session.page() }).catch((error) => ({ warnings: [t('session.visual.error', { id, error: firstLine(error) })] }));
         if (seen.record !== undefined && Object.keys(seen.record).length > 0) looks.set(id, seen.record);
         if (seen.observed !== undefined) seenLooks.set(id, seen.observed);
-        for (const warning of seen.warnings ?? []) session.warn?.(typeof warning === 'string' ? { type: 'visual', text: warning } : warning);
+        for (const warning of seen.warnings ?? []) session.warn?.(typeof warning === 'string' ? { type: 'visual', step: id, text: warning } : { step: id, ...warning });
         const result = results.get(id);
         if (seen.fail === undefined || result?.status !== 'pass') return;
         results.set(id, { ...result, status: 'fail', kind: seen.fail.kind, evidence: { type: 'eval', value: seen.fail.evidence }, note: seen.fail.text });
@@ -1495,7 +1495,7 @@ export const playReplay = async ({ replay, handler, session, base, authMarker, s
         deviations.delete(id);
     }
     for (const [id, deviation] of deviations) {
-        if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', text: deviationText(deviation) });
+        if (results.get(id)?.status === 'pass' && deviation.learned) session.warn?.({ type: 'effect', step: id, text: deviationText(deviation) });
     }
     // Secret values stay in `remembered` for the run; in results and abort, i.e. in the report, they are redacted.
     return { results: new Map([...results].map(([id, result]) => [id, mask(result)])), broken: mask(broken), remembered, requests, effects: observed, deviations, retried, evaluated, designs: new Map([...designs].map(([id, judged]) => [id, mask(judged)])), looks: new Map([...looks].map(([id, record]) => [id, mask(record)])), seenLooks, lookHints };
@@ -1518,6 +1518,16 @@ export const missingBaselines = ({ spec, results, requests, target }) => {
     }
     return found;
 };
+
+/**
+ * The steps whose effects are still being learned on this target: recorded there, with an action that has effects, and fewer
+ * than LEARN_RUNS healthy runs learned. Until then a deviation of theirs fails nothing. For the CI reports.
+ * @returns [{ id, runs }]
+ */
+export const effectsLearning = (spec, target) => spec.steps
+    .filter(({ recording }) => recording !== undefined && recording.recordedOn === target && recording.actions.some(({ action }) => EFFECT_ACTIONS.has(action)))
+    .map((step) => ({ id: step.id, runs: currentEffects(spec, step)?.runs ?? 0 }))
+    .filter(({ runs }) => runs < LEARN_RUNS);
 
 /**
  * Learned effects per action from passed steps, only on the recording target. After LEARN_RUNS healthy runs they are

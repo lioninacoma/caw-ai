@@ -1008,7 +1008,7 @@ test('design: a .png design gets the step\'s capture; one capture per passed che
     assert.match(played.results.get('S1').note, /S1 entspricht nicht seinem Zielbild: design\/s1\.png: 20 % \(S1\)/);
     assert.equal(played.results.get('S2').kind, 'visual');
     assert.equal(played.broken, null, 'the replay went on');
-    assert.deepEqual(warnings, [{ type: 'lint', text: 'Token-Lint' }]);
+    assert.deepEqual(warnings, [{ step: 'S2', type: 'lint', text: 'Token-Lint' }]);
     const records = stepRecords({ ids: ['S1', 'S2'], ...played });
     assert.deepEqual(records[0].design, { file: 'design/s1.png', verdict: 'not-met', missing: [], extra: [], styleDiffs: [], ratio: 0.2, diff: 'step-S1-diff.png' });
     assert.equal(records[0].screenshot, 'step-S1.png');

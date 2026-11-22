@@ -674,6 +674,11 @@ Browser:
     'cli.attemptLine': 'Versuch {attempt}: {status}{why}',
     'cli.summary.heading': 'caw: {count} Test(s) auf {target}, Exit {exit}',
     'cli.summary.columns': 'Ergebnis | Test | Gescheiterter Schritt | Einschätzung | Befund | Bericht',
+    'cli.summary.notes': 'Warnungen und Lernstand (sie ändern kein Ergebnis)',
+    'cli.reportWarning': 'Warnung: {text}',
+    'cli.reportWarningAt': 'Warnung {step}: {text}',
+    'cli.reportLearning': 'Effekte noch im Lernen: {steps}.',
+    'cli.reportLearnsNot': 'Dieser Lauf hat nichts gelernt (CI ohne --learn).',
     // bisect.mjs: caw bisect <test> --env <name> für git bisect run
     'cli.help.bisect': `  bisect <test> --env <name>             Ein Schritt von git bisect run: startet die Umgebung mit ihrem Startbefehl und
                                          spielt den Test so, wie er in --tests-from steht, ohne Fenster, ohne Chat und

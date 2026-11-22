@@ -1167,11 +1167,20 @@ const attemptLine = (attempt, index) => t('cli.attemptLine', {
     why: [attempt.side === undefined ? attempt.code : assessmentText(attempt), attempt.report].filter(Boolean).map((part) => `, ${part}`).join(''),
 });
 
+/** A test's warnings as lines: "Warning S2: <text>", "(2×)" when one came more than once. They change no verdict. */
+const warningLines = (row) => (row.warnings ?? []).map(({ step, text, count = 1 }) => `${t(step === undefined ? 'cli.reportWarning' : 'cli.reportWarningAt', { step, text: firstLine(text) })}${count > 1 ? ` (${count}×)` : ''}`);
+/** Which steps still learn their effects (a deviation of theirs fails nothing yet) and whether this run learned; or undefined. */
+const learningLine = ({ learning }) => (learning === undefined ? undefined : [
+    t('cli.reportLearning', { steps: learning.effects.map(({ id, runs }) => `${id} ${runs}/${learning.of}`).join(', ') }),
+    ...(learning.learns ? [] : [t('cli.reportLearnsNot')]),
+].join(' '));
+
 /**
  * The run table as JUnit XML, as CI systems read it. A failed step is a failure typed by its assessment (app, environment, test,
  * unclear) with "S3: <reason>" as message and the findings as text; everything else that did not pass is an error typed by its
  * error code. Retried tests list every attempt in system-out. A pass with pending steps stays a pass and carries its note in
- * system-out: `<skipped>` would count the whole test as skipped, though its recorded steps ran and passed.
+ * system-out: `<skipped>` would count the whole test as skipped, though its recorded steps ran and passed. Warnings and the
+ * steps still learning their effects go into system-out too.
  */
 export const junitXml = ({ target, rows }) => {
     const failures = rows.filter(({ exit }) => exit === EXIT.fail).length;
@@ -1181,7 +1190,7 @@ export const junitXml = ({ target, rows }) => {
         const { test, exit, seconds = 0, note = '', attempts = [] } = row;
         const open = `    <testcase classname="caw.${xmlText(target)}" name="${xmlText(test)}" time="${seconds.toFixed(3)}"`;
         const pendingNote = exit === EXIT.pass && (row.pending ?? []).length > 0 ? [note] : [];
-        const lines = [...pendingNote, ...(attempts.length > 1 ? [row.retried, ...attempts.map(attemptLine)] : [])];
+        const lines = [...pendingNote, ...(attempts.length > 1 ? [row.retried, ...attempts.map(attemptLine)] : []), ...warningLines(row), learningLine(row)].filter((line) => line !== undefined);
         const out = lines.length > 0 ? [`      <system-out>${xmlText(lines.join('\n'))}</system-out>`] : [];
         if (exit === EXIT.pass) return out.length === 0 ? `${open}/>` : [`${open}>`, ...out, '    </testcase>'].join('\n');
         const failure = exit === EXIT.fail;
@@ -1221,6 +1230,12 @@ export const summaryMarkdown = ({ target, exit, rows }) => {
         const report = row.report === undefined ? '' : `\`${row.report}\``;
         return `| ${[result, row.test, failure, assessment, row.findings?.[0] ?? '', report].map((text, index) => (index === 5 ? text : cell(text))).join(' | ')} |`;
     });
+    // Below the table, one line each: what only warned and which steps still learn their effects.
+    const oneLine = (text) => String(text).replace(/\s*\n\s*/g, ' ');
+    const notes = rows.flatMap((row) => [
+        ...(row.warnings ?? []).map(({ step, text, count = 1 }) => `- \`${oneLine(row.test)}\`${step === undefined ? '' : ` ${step}`}: ${oneLine(text)}${count > 1 ? ` (${count}×)` : ''}`),
+        ...(row.learning === undefined ? [] : [`- \`${oneLine(row.test)}\`: ${learningLine(row)}`]),
+    ]);
     return [
         `### ${cell(t('cli.summary.heading', { count: rows.length, target, exit }))}`,
         '',
@@ -1228,6 +1243,7 @@ export const summaryMarkdown = ({ target, exit, rows }) => {
         `|${heads.map(() => ' --- ').join('|')}|`,
         ...lines,
         '',
+        ...(notes.length === 0 ? [] : [`**${t('cli.summary.notes')}**`, '', ...notes, '']),
     ].join('\n');
 };
 
@@ -1245,6 +1261,8 @@ export const reportJson = ({ target, startedAt, exit, rows }) => {
         ...outcome(row),
         seconds: Math.round((row.seconds ?? 0) * 1000) / 1000,
         steps: row.steps ?? [],
+        ...((row.warnings ?? []).length === 0 ? {} : { warnings: row.warnings }),
+        ...(row.learning === undefined ? {} : { learning: row.learning }),
         ...(row.report === undefined ? {} : { report: row.report }),
         attempts: (row.attempts ?? [row]).map((attempt) => ({ ...outcome(attempt), seconds: Math.round((attempt.seconds ?? 0) * 1000) / 1000, ...(attempt.report === undefined ? {} : { report: attempt.report }) })),
     }));
@@ -1314,6 +1332,9 @@ const attemptTest = async (root, options, deps, { test, target }) => {
             ...(diagnosis === undefined ? {} : { side: diagnosis.side, strength: diagnosis.strength, findings: diagnosis.findings ?? [], assessment: diagnosis.text }),
             ...(code === undefined ? {} : { code }),
             steps: (verdict?.steps ?? []).map(({ id, status, seconds: took }) => ({ id, status, ...(took === undefined ? {} : { seconds: took }) })),
+            // What only warned (an effect that deviates in a list outside effects.fail, a design, a console error of a third party):
+            // the verdict stays, the CI reports name them.
+            warnings: (verdict?.warnings ?? []).map(({ type, step: at, text, count }) => ({ type, ...(at === undefined ? {} : { step: at }), text, count: count ?? 1 })),
             ...(report === undefined ? {} : { report }),
         };
     } catch (error) {
@@ -1337,6 +1358,20 @@ const environmental = ({ exit, side }) => exit === EXIT.error || (exit === EXIT.
 const runBatch = async (root, options, deps, { tests, target }) => {
     const startedAt = new Date().toISOString();
     const rows = [];
+    // As runOne decides it: outside CI every run learns, in CI only with --learn.
+    const learns = options.learn === true || (deps.interactive ?? (process.env.CI === undefined || process.env.CI === ''));
+    const { effectsLearning } = await import('./replay.mjs');
+    const { LEARN_RUNS } = await import('./effects.mjs');
+    /** The test's effects still being learned after its run (the file as the run left it), or undefined when none are. */
+    const learningOf = (dir, test, env, learning) => {
+        let effects;
+        try {
+            effects = effectsLearning(testLoader(dir)(test), env);
+        } catch {
+            return undefined; // a test that does not load is reported as rejected by its own run
+        }
+        return effects.length === 0 ? undefined : { learns: learning, effects, of: LEARN_RUNS };
+    };
     for (const test of tests) {
         const attempts = [];
         for (;;) {
@@ -1349,7 +1384,8 @@ const runBatch = async (root, options, deps, { tests, target }) => {
         let retried = '';
         if (attempts.length > 1) retried = last.exit === EXIT.pass ? t('cli.retriedPass', { attempt: attempts.length }) : t('cli.retriedOther', { attempt: attempts.length });
         const seconds = attempts.reduce((sum, attempt) => sum + attempt.seconds, 0);
-        rows.push({ test, ...last, seconds, note: [last.note, retried].filter(Boolean).join('; '), attempts, ...(retried === '' ? {} : { retried }) });
+        const learning = learningOf(root, test, target, learns);
+        rows.push({ test, ...last, seconds, note: [last.note, retried].filter(Boolean).join('; '), attempts, ...(retried === '' ? {} : { retried }), ...(learning === undefined ? {} : { learning }) });
     }
     ui.batch({ target, rows });
     const exit = worstExit(rows.map((row) => row.exit));
