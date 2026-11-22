@@ -25,8 +25,8 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 
 ## Where you are
 
-- **The developer's session** (you have the `caw_*` tools): you set up the project, write plans, start runs and, when a run
-  waits for you, act as its agent. Topics `setup`, `tests`, `run`, `reproduce`, `session`, `attach`, `design`.
+- **The developer's session** (you have the `caw_*` tools): you set up the project, write plans, start runs, answer the
+  decisions a run waits for (`caw_decide`) and, when a run waits for you, act as its agent. Topics `setup`, `tests`, `run`, `reproduce`, `session`, `attach`, `design`.
 - **The agent of a run** (you have only the `caw` tool or `caw agent <command>` in a container): you drive the browser for
   one task. Topics `agent`, `plan`, `record`, `chat`, `cause`, `fix`, `advise`, `talk`, `reproduce`, `rules`.
 
@@ -43,7 +43,8 @@ caw is not a load test, not a crawler and not a test generator for apps the team
 | `caw_reproductions` | Past reproductions with verdict and `ref`; `refs` names those without a run (topic `reproduce`) |
 | `caw_design` | Target designs under `caw/design`: `put` (.html), `list`, `link` a step only on the person's request (topic `design`) |
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` with you as the agent |
-| `caw_status` | Wait for a run; says which topics apply when it waits for you |
+| `caw_status` | Wait for a run; says which topics apply when it waits for you, and which decision it waits for (`waiting.decision`) |
+| `caw_decide` | Answer the waiting decision: a `free` option yourself, a `human` one only with the person's consent (topic `session`) |
 | `caw` | The agent commands while a run waits for you |
 | `caw_selection` | The element the person picked in the workbench |
 | `caw_overlay` | Only with an `overlay` block in the config: is the local code server ready, apply its parts (topic `overlay`) |

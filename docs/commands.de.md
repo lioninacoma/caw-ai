@@ -127,9 +127,9 @@ Kein Test wird unbemerkt schwächer. caw selbst hält eine Prüfung fest, solang
 - ein gelerntes Aussehen aus der Aufnahme verworfen, während der Schritt `look: true` behält (nur solange die Aktionen des Schritts gleich bleiben)
 - Config: Einträge in `consoleIgnore`, `foreignCode`, `reads`, `visualIgnore` oder `readyIgnore` ergänzt, `messageSelectors` beobachten weniger, `effects.fail` oder `design.fail` enger, ein geschützter Schlüssel geändert (Befehle und Schalter der Umgebungen, `lintCommand`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
 
-**Geändert** (aufgelistet, keine Abschwächung): ein geändertes erwartetes Ergebnis, mit seiner Prüfung; neue Tests und Schritte; das Ziel einer Aktion getauscht, während Aktionen und gelernte Wirkung des Schritts blieben (ein übernommener Vorschlag für ein umbenanntes Element, siehe [Handbuch](guide.de.md#umbenannte-ziele)); gelernte Effektzeilen, an deren Stelle in derselben Liste einer Aktion neue stehen, wie wenn „Neue Wirkung übernehmen“ sie verworfen und fünf Läufe sie neu gelernt haben (`effects-replaced`, mit alten und neuen Zeilen; ein Entfernen ohne neue Zeilen ist eine Abschwächung). Das erwartete Ergebnis zu ändern ist der Weg, eine Prüfung bewusst zu ändern: Wer den PR prüft, sieht dann beides. **Zur Info:** geänderte Request-Baselines.
+**Geändert** (aufgelistet, keine Abschwächung): ein geändertes erwartetes Ergebnis, mit seiner Prüfung; neue Tests und Schritte; das Ziel einer Aktion getauscht, während Aktionen und gelernte Wirkung des Schritts blieben (ein übernommener Vorschlag für ein umbenanntes Element, siehe [Handbuch](guide.de.md#umbenannte-ziele)); gelernte Effektzeilen, an deren Stelle in derselben Liste einer Aktion neue stehen, wie wenn „Neue Wirkung übernehmen“ sie verworfen und fünf Läufe sie neu gelernt haben (`effects-replaced`, mit alten und neuen Zeilen; ein Entfernen ohne neue Zeilen ist eine Abschwächung). Das erwartete Ergebnis zu ändern ist der Weg, eine Prüfung bewusst zu ändern: Wer den PR prüft, sieht dann beides. **Zur Info:** geänderte Request-Baselines. **Außerhalb des Fensters entschieden:** wo `.caw/runs` liegt (dein Rechner, nicht CI), die Antworten seit der Merge-Basis, die etwas geändert haben und von caw selbst in einem Lauf ohne Fenster (`auto`), von deiner Session (`session`) oder von dir in deiner Session (`elicitation`) gegeben wurden: übernommen, angenommen, angewendet, verwendet, befördert. Sie ändern den Exit-Code nie.
 
-Exit `0` nichts abgeschwächt, `1` abgeschwächt, `3` die Ref ist unbekannt, hat keine gemeinsame Geschichte mit `HEAD` (`git-ref`) oder es gibt kein Git (`git-missing`). `--json` gibt `{ ref, base, weakened, findings }` aus, jeder Befund mit `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` für die Config), `step`, `before`, `after` und `text`.
+Exit `0` nichts abgeschwächt, `1` abgeschwächt, `3` die Ref ist unbekannt, hat keine gemeinsame Geschichte mit `HEAD` (`git-ref`) oder es gibt kein Git (`git-missing`). `--json` gibt `{ ref, base, weakened, findings, decided }` aus, jeder Befund mit `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` für die Config), `step`, `before`, `after` und `text`; `decided` nennt `run`, `test`, `decision`, `option` und `by`.
 
 ## bisect
 
@@ -197,6 +197,17 @@ Nur auf Umgebungen, auf denen der Agent arbeiten darf (`"agent": true`). Gibt es
 | `--agent-timeout <dauer>` | Zeitgrenze für den Agenten, Standard `60m`. |
 | `--max-actions <n>` | Grenze für die Browser-Aktionen des Agenten, Standard `maxActions` oder 100. |
 | `--step-timeout <dauer>` | Zeitgrenze je Schritt im Prüflauf, Standard `30s`. |
+| `--headless` | Ohne Fenster, für einen Test mit Plan; siehe [Ohne Fenster](#ohne-fenster). |
+
+### Ohne Fenster
+
+```bash
+npx caw record create-ticket --env local --headless
+```
+
+Nimmt einen Test mit Plan ohne Fenster und ohne Menschen auf, auch in CI. Der Agent folgt dem Plan; caw nimmt nur, was nichts an den Prüfungen des Tests ändert: Es gibt den Plan frei, wenn er der aus der Datei ist (dieselben Schritte und `writes`), übernimmt die Aufzeichnung, wenn sie diesen Plan aufnimmt, ohne geändertes erwartetes Ergebnis, ohne neu bekannte Meldung, ohne entfernten, reparierten oder noch veralteten Schritt und ohne harten Fehler unterwegs, speichert den roten Nachweis eines Entwurfs und schließt Karten, die nur sagen, was passiert ist. Ein schreibender Test läuft ohnehin nur auf einer Umgebung mit `writable`.
+
+Alles andere entscheidet ein Mensch: Der Lauf hält dort an und schreibt nichts. `result.json` nennt die Entscheidung als `openDecision` (ihre `id`, ihr `context` und ihre `options` mit Gate), `report.md` unter „Offene Entscheidung“, `caw_status` als `openDecision`; der Befehl endet mit Exit `5` und nennt den Befehl für die Aufnahme mit Fenster. Aus deiner Session gestartet (`caw_start` mit `headless`), wartet die Entscheidung zuerst bis zu 10 Minuten auf deine Zustimmung über [`caw_decide`](#mcp). Ein neuer Test (ohne Plan) und `@<schritt>` werden abgelehnt (Exit 3): Niemand würde vorführen oder lenken. Der Agent kann niemanden bitten, etwas zu zeigen, und es erscheint kein Token-Hinweis.
 
 ### Ab einem Schritt
 
@@ -410,11 +421,12 @@ Startet Claude Code über `.mcp.json` (`claude mcp add caw --scope project -- np
 | `caw_overlay` | Nur mit `overlay`-Block: `action: status` (`overlay status` im Prozess, schnell), `check` oder `apply` (`overlay check`, `--apply`; wartet bis zu 3 Minuten); `env`, `part` | nein |
 | `caw_attach` | Diese Session verbinden: liefert ihren Schlüssel und den Befehl, den sie mit dem Monitor-Werkzeug startet; jede Chat-Nachricht und jede Aufgabe eines verbundenen Fensters erreicht die Session dann als Zeile. |
 | `caw_start` | `run`, `record`, `open` oder `reproduce` mit dieser Session verbunden starten (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset` oder `args`; `step` bei `record` und `open`, nur mit `test`; `promote` bei `run` eines Entwurfs). Mit `overlay` prüft es zuerst den lokalen Code-Server: `down`, `wrong-app` oder `stale` liefert `state`, `url`, `start` und `partDir`, statt zu starten; `moved` startet mit `--overlay <foundUrl>`. Nie `--start` zusammen mit `overlay`: Die Session startet den lokalen Code-Server selbst, nachdem sie dich gefragt hat. `start` und `reset` führen die konfigurierten Befehle der Umgebung aus | nur deine Session |
-| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten; zu einer Nachstellung mit Entwurf und einem Lauf eines Entwurfs dessen `phase` und `next`. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
+| `caw_status` | Wartet ein Lauf auf die Sitzung? Letzte Zeilen der Ausgabe; Ergebnis und Artefakte des letzten Laufs als Daten; zu einer Nachstellung mit Entwurf und einem Lauf eines Entwurfs dessen `phase` und `next`. Eine Karte, auf die der Lauf wartet, kommt als `waiting.decision` (`id`, `context`, `options` je mit `gate`, Zustand `deciding`), die ein Lauf ohne Fenster offen ließ als `openDecision`; `next.decision` eines Entwurfs nennt die Karte des Fensters in seiner Phase. `wait` (bis 120 s) antwortet, sobald der Lauf die Sitzung braucht, endet oder etwas Neues meldet | nein |
+| `caw_decide` | Beantwortet die wartende Entscheidung wie ein Knopf: `decision`, `option`, `run` (Standard: der letzte), `message` (nur `revise` bei `plan.approve`). Eine `free`-Option darf die Session beantworten; eine `human`-Option nur mit Zustimmung des Menschen, als Formular über den Client (MCP-Elicitation) erfragt, und ohne das abgelehnt mit dem Weg von Hand. Die erste Antwort gilt, Fenster oder Session; das Fenster zeigt 
 | `caw` | Die Agenten-Befehle (`snapshot`, `click`, `plan`, `finish`, …) | im Lauf |
 | `caw_selection` | Das Element, das du mit `/element` im Chat der Werkbank gewählt hast | nein |
 
-Ergebnisse kommen als kurzer Text plus `structuredContent` (JSON).
+Ergebnisse kommen als kurzer Text plus `structuredContent` (JSON). Jedes Werkzeug lehnt Felder ab, die es nicht kennt.
 
 ## Agenten-Befehle
 
@@ -431,6 +443,7 @@ Nur über diese Befehle kann der Agent den Browser bedienen. Sie sind für den A
 | `2` | Fehler: Die Umgebung hat ein Urteil verhindert (Server aus, Anmeldung fehlgeschlagen, Chrome fehlt, …), oder ein unerwarteter interner Fehler (der Stack steht in der Ausgabe) |
 | `3` | abgewiesen: Aufruf, Config (auch `TODO`-Werte aus `init`) oder Testdatei ungültig. Es lief nichts. |
 | `4` | Aufnahme nötig: Die Aufzeichnung fehlt (`record`), ein Schritt hat sich seit der Aufnahme geändert (`record <test>@<schritt>`) oder `run --strict` traf auf offene Schritte. Es lief nichts. |
+| `5` | ein Mensch entscheidet: `record --headless` hat an einer Entscheidung angehalten, die es nicht treffen darf (`openDecision`), und nichts geschrieben |
 
 ## Umgebungsvariablen
 
@@ -452,6 +465,7 @@ Bricht caw ab oder endet ein Lauf mit `error`, nennt es zuerst den Grund und dan
 
 | Code | Exit | Abhilfe |
 |---|---|---|
+| `decision-needed` | 5 | `record --headless` hat beim Plan angehalten: Der Plan des Agenten ist nicht der aus der Datei, also gibt ihn der Mensch frei. Mit Fenster aufnehmen oder über `caw_decide` mit Zustimmung des Menschen beantworten |
 | `usage`, `unknown-command` | 3 | `npx caw <befehl> --help` |
 | `reproduce-not-allowed` | 3 | `reproduce` nur auf einer Umgebung mit `agent`, nie auf Produktion |
 | `reproduce-state` | 2 | Der Ausgangszustand von `--from` wurde nicht erreicht: den Test mit `run` laufen lassen und erst reparieren |

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import { TESTS, testText, writeTests } from '../native/project.mjs';
 import { setStepDesign, stepHash } from '../../src/host/test-file.mjs';
+import { sessionMcpHandler } from '../../src/host/session-mcp.mjs';
 import {
     appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
     runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
@@ -1496,5 +1497,66 @@ ${finishOf(['S1'])}`;
         verify('recording and test file unchanged', recordingText(HEADLESS) === before && readFileSync(join(native, 'caw/tests', `${HEADLESS}.yaml`), 'utf8').includes('Sie steht oben in der Liste.'));
     } finally {
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${HEADLESS}.yaml`), { force: true });
+    }
+});
+
+// ---- N22: caw_decide from the session while the window waits
+
+const DECIDE = 'rec-decide';
+
+scenario('N22', 'caw_decide: a human option (approve a changed plan) is refused without elicitation, the window approves; the free Discard from the session ends the check run, nothing written', async () => {
+    // The agent submits another expected result than the file's: approving that plan is the person's.
+    const changed = HEADLESS_PLAN.replace('Sie steht oben in der Liste.', 'Sie steht in der Liste.');
+    const agent = `A='caw agent'
+${tag}
+${planOf(changed)}
+$A plan --file /tmp/p.yaml > /dev/null
+${S1_COMMANDS}
+${finishOf(['S1'])}`;
+    rmSync(join(native, 'caw/recordings', `${DECIDE}.yaml`), { force: true });
+    const file = `id: ${DECIDE}\nenvironments: [test]\nwrites: false\n${HEADLESS_PLAN}\n`;
+    writeFileSync(join(native, 'caw/tests', `${DECIDE}.yaml`), file);
+    // The session's MCP server, in this process like the run: no client capability for forms.
+    const mcp = sessionMcpHandler({ root: native, windowWait: { decideMs: 10000, pollMs: 100 } });
+    await mcp({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } });
+    let id = 1;
+    const tool = async (name, args) => (await mcp({ jsonrpc: '2.0', id: id++, method: 'tools/call', params: { name, arguments: args } })).result;
+    const waitingFor = async (decision) => {
+        const deadline = Date.now() + 180000;
+        while (Date.now() < deadline) {
+            const status = (await tool('caw_status', {})).structuredContent;
+            if (status.waiting?.decision?.id === decision) return status.waiting.decision;
+            await sleep(300);
+        }
+        throw new Error(`no ${decision} within 3 minutes`);
+    };
+    try {
+        const follow = async (chat) => {
+            const button = chat.locator('#choices button', { hasText: 'Claude Code geht dem Testplan nach' });
+            await button.waitFor({ state: 'attached', timeout: 60000 });
+            await clickChoice(chat, button);
+        };
+        const plan = async (chat) => {
+            const waiting = await waitingFor('plan.approve');
+            verify('caw_status: plan.approve with a human approve', waiting.options.find(({ id: option }) => option === 'approve')?.gate === 'human' && waiting.context.changed === true, JSON.stringify(waiting));
+            const refused = await tool('caw_decide', { decision: 'plan.approve', option: 'approve' });
+            verify('caw_decide approve without elicitation: refused, names the window', refused.isError === true && refused.structuredContent.reason === 'needs-human' && /caw-Fenster/.test(refused.content[0].text), refused.content[0].text);
+            await chat.locator('body[data-state=planning] #approve').click();
+        };
+        const checkRun = async (chat) => {
+            const waiting = await waitingFor('recording.adopt');
+            verify('recording.adopt: adopting is human (the plan is not the file\'s), discarding free', waiting.options.find(({ id: option }) => option === 'adopt')?.gate === 'human' && waiting.options.find(({ id: option }) => option === 'discard')?.gate === 'free', JSON.stringify(waiting.options));
+            const answered = await tool('caw_decide', { decision: 'recording.adopt', option: 'discard' });
+            verify('caw_decide discard: answered by the session', answered.structuredContent.state === 'answered' && answered.structuredContent.by === 'session', JSON.stringify(answered.structuredContent));
+            await chat.locator('.message', { hasText: 'von der Session beantwortet' }).waitFor({ timeout: 30000 });
+        };
+        const h = humans(follow, plan, checkRun);
+        await record(native, [DECIDE, ...recordArgs], { interactive: true, containerCommand: ['bash', '-c', agent], onChatOpen: h.onChatOpen });
+        await h.done();
+        verify('nothing written: no recording, the test file as it was', !written(DECIDE) && readFileSync(join(native, 'caw/tests', `${DECIDE}.yaml`), 'utf8') === file);
+        const taken = runDirsOf(native, DECIDE).sort().flatMap((name) => (JSON.parse(readFileSync(join(native, '.caw/runs', name, 'result.json'), 'utf8')).decisions ?? []).map(({ id: decision, option, by }) => `${decision}:${option}:${by}`));
+        verify('result.json: plan approved in the window, recording discarded by the session', JSON.stringify(taken) === '["plan.approve:approve:window","recording.adopt:discard:session"]', JSON.stringify(taken));
+    } finally {
+        for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DECIDE}.yaml`), { force: true });
     }
 });

@@ -14,7 +14,8 @@ import { AGENT_NAME, t } from '../shared/i18n.mjs';
 import { PROJECT_DIR, REF_PATTERN, RUN_DIR, SELECTION_FILE } from '../shared/names.mjs';
 import { listenerOf, newKey, registerListener } from '../shared/attach.mjs';
 import { findSessionAgent } from '../shared/session-agent.mjs';
-import { readDecision } from './decision-desk.mjs';
+import { answerRefusal, readDecision, writeAnswer } from './decision-desk.mjs';
+import { cawCommand } from '../shared/invocation.mjs';
 import { cawTool, createMcpHandler } from '../sandbox/mcp.mjs';
 import { SESSION_INSTRUCTIONS, activeExtensions, guideIndex, guideTopic, listedTopics } from './guide.mjs';
 
@@ -39,10 +40,6 @@ const FIELDS = {
 const TYPED = ['test', 'env', 'step', 'overlay', 'headless', 'learn', 'promote', 'start', 'reset', 'bug', 'from', 'role', 'ref'];
 /** Switches of caw_start: true adds the flag, false is the same as leaving it out. */
 const SWITCH_FLAGS = { headless: '--headless', learn: '--learn', promote: '--promote', start: '--start', reset: '--reset' };
-/** A field renamed before 1.0: named with its new name instead of "does not apply". */
-const renamedField = (input) => {
-    if (input?.target !== undefined) throw new Error(t('run.mcp.fieldRenamed', { field: 'target', now: 'env' }));
-};
 const RESULT_FIELDS = ['status', 'code', 'reason', 'results', 'failures', 'warnings', 'decisions'];
 const RUN_ARTEFACTS = ['report.md', 'result.json', 'fix-report.md', 'chat.log', 'failures.json', 'network.json', 'demonstration.json'];
 
@@ -164,7 +161,6 @@ const isOverlayInput = (value) => value === true || (typeof value === 'string' &
 
 /** The command line from the typed fields of caw_start, or the raw `args`. Throws with a message for Claude. */
 export const startArgs = (input) => {
-    renamedField(input);
     const { command } = input;
     if (!START_COMMANDS.includes(command)) throw new Error(t('run.mcp.commandInvalid', { list: START_COMMANDS.join(', ') }));
     const given = TYPED.filter((field) => input[field] !== undefined && input[field] !== false);
@@ -280,6 +276,20 @@ const lastRun = (root) => {
     const [newest] = readdirSync(runs).filter((name) => statSync(join(runs, name)).isDirectory()).sort().reverse();
     return newest === undefined ? undefined : { runId: newest, runDir: join(runs, newest) };
 };
+
+/** A run by its id: its folder, and from .caw/last-run.json its process and test when it is the last one; undefined if unknown. */
+const runNamed = (root, runId) => {
+    if (!/^\w[\w.-]*$/.test(runId)) return undefined;
+    const runDir = join(root, RUN_DIR, 'runs', runId);
+    if (!existsSync(runDir)) return undefined;
+    const last = lastRun(root);
+    return last?.runId === runId ? last : { runId, runDir };
+};
+
+/** A decision's context in one line for the person's form: its plain values (test, step, reason …). */
+const contextLine = (context = {}) => Object.entries(context)
+    .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
+    .map(([key, value]) => `${key}: ${String(value).slice(0, 200)}`).join(', ');
 
 /** The paths (relative to the project, with /) of what a run left behind. */
 const artefactsOf = (root, runDir) => {
@@ -540,6 +550,70 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         },
     },
     {
+        name: 'caw_decide',
+        description: 'Answers the decision a run waits for (caw_status: waiting.decision, also of a run without a window), as a button in the window would. '
+            + 'decision: its id, option: the option id, run: the run id (default the last run), message: only with option revise of plan.approve (what should change). '
+            + 'An option with gate free (close, later, discard, test again, record red, ask the agent) you may answer when it fits the person\'s request. '
+            + 'An option with gate human changes the standard of the test (approve a changed or writing plan, adopt a recording that changes what the test '
+            + 'checks, accept an effect or a look, use a target, ignore errors, promote, apply app code, fix a step the app is blamed for): caw then asks '
+            + 'the person through your client (a form they confirm, you cannot answer it); a client without that is refused with the way to decide by hand. '
+            + 'The first answer wins, the window\'s or yours; the result says who answered. Nothing to guess: read the decision\'s context first. No tokens.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                decision: { type: 'string', description: 'The id of the waiting decision, e.g. recording.adopt' },
+                option: { type: 'string', description: 'The id of one of its options, e.g. adopt, close' },
+                run: { type: 'string', description: 'The run id; default the last run' },
+                message: { type: 'string', description: 'Only for option revise of plan.approve: what should change' },
+            },
+            required: ['decision', 'option'],
+            additionalProperties: false,
+        },
+        call: async (input, { elicit } = {}) => {
+            for (const field of ['decision', 'option', ...(input.run === undefined ? [] : ['run'])]) textField(input, field);
+            if (input.message !== undefined && (typeof input.message !== 'string' || input.option !== 'revise')) throw new Error(t('run.mcp.decideMessage'));
+            const target = input.run === undefined ? lastRun(root) : runNamed(root, input.run);
+            if (target === undefined) throw new Error(input.run === undefined ? t('run.mcp.decideNoRun') : t('run.mcp.decideUnknownRun', { run: input.run }));
+            const waiting = waitingDecision(target);
+            if (waiting === undefined) {
+                const last = readDecision(target.runDir);
+                const answered = last?.state === 'answered' ? { id: last.id, option: last.option, by: last.by } : undefined;
+                return answer(answered === undefined ? t('run.mcp.decideNone', { runId: target.runId }) : t('run.mcp.decideAnswered', { runId: target.runId, ...answered }), { state: 'none', runId: target.runId, ...(answered === undefined ? {} : { answered }) }, true);
+            }
+            if (waiting.id !== input.decision) throw new Error(t('run.mcp.decideOther', { id: waiting.id, given: input.decision }));
+            const by = 'session';
+            const refusal = answerRefusal(waiting, { option: input.option, message: input.message, by });
+            if (refusal === 'unknown-option') throw new Error(t('run.mcp.decideOption', { option: input.option, options: waiting.options.map(({ id }) => id).join(', ') }));
+            if (refusal === 'message-not-taken') throw new Error(t('run.mcp.decideMessage'));
+            const offered = waiting.options.find(({ id }) => id === input.option);
+            const about = { runId: target.runId, decision: waiting.id, option: offered.id, gate: offered.gate };
+            // The way to decide by hand when the client cannot ask the person: the window, or a run with one.
+            const byHand = waiting.window === false ? t('run.mcp.decideByHandHeadless', { command: `${cawCommand()} record ${target.test ?? '<test>'}` }) : t('run.mcp.decideByHandWindow');
+            let who = by;
+            if (refusal === 'needs-human') {
+                if (elicit === undefined) return answer(t('run.mcp.decideHuman', { option: offered.id, way: byHand }), { state: 'refused', reason: 'needs-human', ...about, byHand }, true);
+                // The client shows the person a form; the model cannot fill it in.
+                const reply = await elicit({
+                    message: t('run.mcp.decideAsk', { runId: target.runId, decision: waiting.id, label: offered.label, option: offered.id, context: contextLine(waiting.context) }),
+                    requestedSchema: { type: 'object', properties: { confirm: { type: 'boolean', title: t('run.mcp.decideConfirm', { label: offered.label }), description: t('run.mcp.decideConfirmWhy') } }, required: ['confirm'] },
+                });
+                if (reply?.action !== 'accept' || reply.content?.confirm !== true) return answer(t('run.mcp.decideDeclined', { option: offered.id, way: byHand }), { state: 'declined', action: reply?.action ?? 'cancel', ...about, byHand });
+                who = 'elicitation';
+            }
+            // The person may have answered in the window meanwhile: the run takes only an answer to the decision still waiting.
+            writeAnswer(target.runDir, { seq: waiting.seq, id: waiting.id, option: offered.id, ...(input.message === undefined ? {} : { message: input.message }), by: who });
+            const until = Date.now() + (windowWait.decideMs ?? 10_000);
+            for (;;) {
+                const now = readDecision(target.runDir);
+                const taken = now?.state === 'answered' && now.seq === waiting.seq ? now : now?.answered?.seq === waiting.seq ? now.answered : undefined;
+                if (taken !== undefined && taken.by === who && taken.option === offered.id) return answer(t('run.mcp.decided', { decision: waiting.id, option: offered.id, by: who }), { state: 'answered', ...about, by: who });
+                if (taken !== undefined) return answer(t('run.mcp.decideLost', { decision: waiting.id, option: taken.option, by: taken.by }), { state: 'answered-elsewhere', ...about, answered: { option: taken.option, by: taken.by } }, true);
+                if (now?.state === 'closed' || Date.now() >= until) return answer(t('run.mcp.decideSent', { decision: waiting.id }), { state: 'sent', ...about, by: who });
+                await new Promise((done) => { setTimeout(done, windowWait.pollMs ?? 200); });
+            }
+        },
+    },
+    {
         name: 'caw_selection',
         description: 'The element the human last selected with the element button in the chat while developing in a state: label, target (a Playwright locator as code, null if there is no stable one), component or source, page and requests.',
         inputSchema: EMPTY,
@@ -662,7 +736,7 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
     {
         name: 'caw_design',
         description: 'Target designs for test steps, under caw/design. You fetch a design yourself (a Claude Design artifact, a Figma export) '
-            + 'and write it here; never write into caw/ with your own tools. {action: "put", file, content | base64}: writes '
+            + 'and write it here; never write into caw/ with your own tools. {action: "put", file, content}: writes '
             + 'design/<name>.html (one screen, inline CSS; rendered later without scripts or network). '
             + 'Replacing a design a step links needs personAsked: true, like link. {action: "list"}: the design files and which steps link them '
             + '(or carry look: true, a learned look the person set by hand). '
@@ -818,7 +892,6 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
             additionalProperties: false,
         },
         call: async (input) => {
-            renamedField(input);
             const { roleOverview, removeRole } = await import('./role-command.mjs');
             const { addRole } = await import('./test-users.mjs');
             if (input.action === 'list') {
@@ -872,7 +945,6 @@ export const sessionTools = ({ root, spawnRun, run, execCli = execCliIn(root), p
         },
         call: async (input) => {
             if (!['status', 'check', 'apply'].includes(input.action)) throw new Error(t('run.mcp.overlayAction'));
-            renamedField(input);
             for (const field of ['env', 'part']) if (input[field] !== undefined) textField(input, field);
             if (input.action === 'status') {
                 // In-process and silent: the MCP stdout carries only JSON-RPC.

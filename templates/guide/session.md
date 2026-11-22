@@ -4,14 +4,14 @@ The person wants to record, re-record, develop in a state or reproduce a bug wit
 agent of its own: runs you start are attached to you (`--attach`, topic `attach`).
 
 1. **Start:** `caw_start` with `command` (`run`, `record`, `open` or `reproduce`) and typed fields: `test`, `env`, `step` (e.g.
-   `S3`, needs `test`: `record` re-records from there, `open` lands at its entry), `headless`, `learn` and `promote` (only `run`;
-   each only when the person asks), `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (topic `reproduce`). Or
+   `S3`, needs `test`: `record` re-records from there, `open` lands at its entry), `headless` (`run`, and `record` of a test
+   with a plan: see 7.), `learn` and `promote` (only `run`; each only when the person asks), `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (topic `reproduce`). Or
    `args` as on the command line, not both. You are the agent: caw asks neither about tokens nor who demonstrates. `record`
    follows an existing plan without a demonstration; a new test without a plan starts with the person's demonstration.
 2. **Wait:** `caw_status` with `wait: 120`, again and again, until the run waits for you or ends. It returns early as soon as
    something changes, so don't poll without `wait` or read the log in between. With `run` it only waits for you once the person
-   chooses "{{label:run.button.fix}}" or asks in the chat. While the window waits for the person's decision, say once what they have to
-   choose and keep waiting.
+   chooses "{{label:run.button.fix}}" or asks in the chat. While the window waits for a decision, `caw_status` shows it as
+   `waiting.decision` (state `deciding`); see 8.
 3. **Work:** when the run waits for you, `caw_status` names its task and the guide topics for it (`waiting.guide`, e.g. `agent`,
    `plan`, `record`, `chat`, `rules`). Read them with `caw_guide` and work with the tool `caw`: `args` as after `caw agent`
    (`["snapshot"]`, `["click", "e12"]`); for `plan`, `finish` and `advise` the content goes in `file`, never a path to a file:
@@ -25,6 +25,16 @@ agent of its own: runs you start are attached to you (`--attach`, topic `attach`
 6. **Reproduce a bug:** `caw_start` with `command: "reproduce"` and `bug`. You reproduce alone, without a plan or questions,
    and finish with the verdict; `caw_status` then names the report and, when reproduced, the draft in `caw/drafts` and the
    command that records it red. From there to a proven fix: topic `reproduce`.
+7. **Record without a window:** `caw_start` with `command: "record"`, `test` and `headless: true` records a test that has a
+   plan, without the person. You follow the plan unchanged; caw approves it when it is the file's own and adopts the recording
+   when nothing changes that the test checks. Anything else is the person's: the decision waits up to 10 minutes for their
+   consent through `caw_decide` (see 8.); unanswered, the run stops, writes nothing and `caw_status` names it as `openDecision`.
+8. **Decisions:** `waiting.decision` has an `id` (e.g. `recording.adopt`, `step.failed`, `fix.green`), a `context` (test, step,
+   reason, diagnosis …) and `options`, each with a `gate`. `caw_decide` with `decision` and `option` answers it like a button:
+   a `free` option (close, later, discard, test again, record red, ask the agent) when it fits what the person asked for; a
+   `human` option changes the standard of the test, so caw asks the person through your client (a form only they can
+   confirm). If your client cannot, caw refuses and you tell the person to answer in the window. Never answer a decision the
+   person did not ask you to; the first answer wins, the window's or yours.
 
 **Rights.** As the agent of a run, the rules of topic `rules` apply, including "do not change application code" (attached, the person may ask you to: topic `attach`). Outside of a
 run you change application code only if the person explicitly asks. Recordings are written only by caw. After a code change

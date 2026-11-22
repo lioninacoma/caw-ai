@@ -90,23 +90,66 @@ export const cawTool = ({ agentDir, env = process.env, run = runCli }) => ({
 });
 
 /**
- * Answers a JSON-RPC message; undefined for notifications.
- * @param tools entries { name, description, inputSchema, call(input) -> { text, data?, isError, listChanged? } }, or a function
- *              returning the entries currently offered; by default only caw with `agentDir`. With `data` the result also
- *              carries it as `structuredContent`, next to the text. `listChanged` sends notifications/tools/list_changed.
- * @param instructions the `instructions` of the initialize result
- * @returns (message, notify?) -> answer; notify(message) sends a notification to the client
+ * Fields a tool does not take: its schema closes the input (`additionalProperties: false`), so they are refused rather than
+ * silently dropped.
+ * @returns the unknown field names
  */
-export const createMcpHandler = ({ agentDir, env = process.env, run = runCli, tools, name = 'caw', instructions } = {}) => {
+export const unknownFields = (schema, input) => {
+    if (schema?.additionalProperties !== false || typeof input !== 'object' || input === null || Array.isArray(input)) return [];
+    const known = Object.keys(schema.properties ?? {});
+    return Object.keys(input).filter((field) => !known.includes(field));
+};
+
+// How long the person may take to answer a form the client shows them (elicitation).
+const ELICIT_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * Answers a JSON-RPC message; undefined for notifications and for the client's answers to our own requests.
+ * @param tools entries { name, description, inputSchema, call(input, { elicit }) -> { text, data?, isError, listChanged? } }, or
+ *              a function returning the entries currently offered; by default only caw with `agentDir`. With `data` the result
+ *              also carries it as `structuredContent`, next to the text. `listChanged` sends notifications/tools/list_changed.
+ *              `elicit(params)` asks the person through the client (MCP elicitation/create: the client shows a form to the user,
+ *              the model cannot answer it) and resolves with the client's result ({ action, content? }); undefined when the
+ *              client did not declare the `elicitation` capability.
+ * @param instructions the `instructions` of the initialize result
+ * @returns (message, notify?) -> answer; notify(message) sends a message to the client
+ */
+export const createMcpHandler = ({ agentDir, env = process.env, run = runCli, tools, name = 'caw', instructions, elicitTimeoutMs = ELICIT_TIMEOUT_MS } = {}) => {
     const offered = typeof tools === 'function' ? tools : () => tools ?? [cawTool({ agentDir, env, run })];
     const dynamic = typeof tools === 'function';
+    // What the client declared in initialize, and our requests to it that wait for its answer.
+    let capabilities = {};
+    let sent = 0;
+    const waiting = new Map();
+    const elicitWith = (notify) => (params) => new Promise((resolve) => {
+        sent += 1;
+        const requestId = `caw-elicit-${sent}`;
+        const timer = setTimeout(() => {
+            waiting.delete(requestId);
+            resolve({ action: 'cancel' });
+        }, elicitTimeoutMs);
+        timer.unref?.();
+        waiting.set(requestId, (answer) => {
+            clearTimeout(timer);
+            resolve(answer.error === undefined ? answer.result ?? { action: 'cancel' } : { action: 'cancel', error: answer.error.message });
+        });
+        notify({ jsonrpc: '2.0', id: requestId, method: 'elicitation/create', params });
+    });
     return async (message, notify = () => {}) => {
         const { id, method, params } = message ?? {};
+        // The client's answer to a request of ours: it has our id and no method.
+        if (method === undefined && waiting.has(id)) {
+            const settle = waiting.get(id);
+            waiting.delete(id);
+            settle(message);
+            return undefined;
+        }
         const reply = (result) => ({ jsonrpc: '2.0', id, result });
         const failure = (code, text) => ({ jsonrpc: '2.0', id, error: { code, message: text } });
         if (id === undefined || id === null) return undefined;
         switch (method) {
             case 'initialize':
+                capabilities = typeof params?.capabilities === 'object' && params.capabilities !== null ? params.capabilities : {};
                 return reply({
                     protocolVersion: typeof params?.protocolVersion === 'string' ? params.protocolVersion : PROTOCOL,
                     capabilities: { tools: dynamic ? { listChanged: true } : {} },
@@ -118,8 +161,14 @@ export const createMcpHandler = ({ agentDir, env = process.env, run = runCli, to
             case 'tools/call': {
                 const tool = offered().find((candidate) => candidate.name === params?.name);
                 if (tool === undefined) return failure(-32602, `Unknown tool: ${params?.name}`);
+                const unknown = unknownFields(tool.inputSchema, params.arguments ?? {});
+                if (unknown.length > 0) {
+                    const allowed = Object.keys(tool.inputSchema.properties ?? {});
+                    return reply({ content: [{ type: 'text', text: `${tool.name} does not take ${unknown.join(', ')}. Its fields: ${allowed.join(', ') || 'none'}.` }], isError: true });
+                }
                 try {
-                    const { text, data, isError = false, listChanged = false } = await tool.call(params.arguments ?? {});
+                    const elicit = capabilities.elicitation === undefined ? undefined : elicitWith(notify);
+                    const { text, data, isError = false, listChanged = false } = await tool.call(params.arguments ?? {}, { elicit });
                     if (listChanged) notify({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
                     return reply({ content: [{ type: 'text', text }], ...(data === undefined ? {} : { structuredContent: data }), isError });
                 } catch (error) {

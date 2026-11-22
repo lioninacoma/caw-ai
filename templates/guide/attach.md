@@ -6,6 +6,8 @@ answer there, and you may change the application's code when they ask. caw start
 1. **Listen:** `caw_attach` returns your key (four characters, e.g. `k7f2`) and a command. Start that command at once with the
    Monitor tool, persistent and with the longest timeout; re-arm it when it expires. Each printed line is an event:
    - `caw: run … waits for you (…)`: call `caw_status`, read the guide topics it names, then do the task.
+   - A card in the window waits for the person: `caw_status` shows it as `waiting.decision`. Answer it with `caw_decide` only
+     when the person asks you to; a `human` option needs their consent in a form your client shows (topic `session`).
    - `caw chat (run …): …`: the person wrote in the chat. Fetch the message with the `caw` tool command `chat` (a picked
      element is in it) and answer with `say`.
    - `caw: run … has ended`: nothing waits there any more.

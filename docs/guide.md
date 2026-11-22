@@ -176,7 +176,7 @@ A run with the agent, i.e. recording and fixing, does the following:
 5. **Test:** `claude -p` works through the plan; every browser command goes to the host as a file over the channel. The host checks the verdict.
 6. **Finish:** The agent ends immediately with the verdict (process or container). Report, trace and `floats.log` (clicks and, with `extjs`, the order of floating windows with timings, no content) are under `.caw/runs/<run>/`. The trace (`trace.zip`) contains page content, requests and cookies of the test account; don't share it. With `signIn.type: basic` it records no snapshots, so the password from the Authorization header doesn't end up in it. Signing in again during a run (restoring a state) pauses the trace: the part before is kept as `trace-1.zip`, `trace-2.zip` …, and no sign-in form or request is in any of them. Screenshots and `claude.log` are under `agent/`. The log is written continuously and shows the agent's text and commands with seconds since start; the same lines appear in the terminal. A closing summary after the verdict is not included. Terminal output is colored, the file has no color codes; `NO_COLOR=1` turns colors off. Chrome closes as well.
 
-Exit codes: `0` pass, `1` fail, `2` error (the environment is to blame), `3` input rejected, `4` needs recording (`record`).
+Exit codes: `0` pass, `1` fail, `2` error (the environment is to blame), `3` input rejected, `4` needs recording (`record`), `5` a person decides (`record --headless` stopped at a decision it may not take).
 
 #### Error codes and remedies
 
@@ -658,7 +658,8 @@ installed in the project (`npm i -D caw-ai`), `init` points the entry at the ins
 | `caw_reproductions` | the reproductions in `.caw/runs` with verdict, `ref`, covering test, draft and report; `refs` names those without a run as `missing`, `since` filters by date | no |
 | `caw_design` | target designs under `caw/design`: write (`put`), list, link to a step on the person's request | no |
 | `caw_start` | starts `run`, `record`, `open` or `reproduce` with your session as the agent: fields `test`, `env`, `step`, `overlay`, `headless`, `learn`, `promote`, `start`, `reset`; for `reproduce` `bug`, `from`, `role`, `ref` (or `args`) | none beyond your session |
-| `caw_status` | whether a run is waiting for the session and which guide topics apply, the last lines of output, and the last run: result, last step, artefacts | no |
+| `caw_status` | whether a run is waiting for the session and which guide topics apply, which decision the window waits for (`waiting.decision`), the last lines of output, and the last run: result, last step, artefacts | no |
+| `caw_decide` | answers the waiting decision like a button: a `free` option the session may answer, a `human` one only after you confirm it in a form your client shows ([Decisions](#decisions-from-your-session)) | no |
 | `caw` | the agent's commands (`snapshot`, `click`, `plan`, `finish` …) for the waiting run | as part of the run |
 | `caw_selection` | the element you picked with `/element` in the workbench chat while developing | no |
 | `caw_overlay` | only with an `overlay` block: is the local code server ready, `check` and `apply` | no |
@@ -668,8 +669,15 @@ The server tells Claude Code what caw is for and to read `caw_guide` first. One 
 So in your session you write "record a test for the order" or "take me to S4 of bestellung", and the session does the rest with the guide. If you start a window yourself in the terminal with `--attach`, it waits until your session listens: type `/caw-attach` there (or ask it to attach). Then whatever you write in the workbench chat, with `/element`, reaches that session; it answers in the chat and may change the app's code when you ask.
 
 - **Fewer questions:** With your session as the agent there is no token notice, and `record` of an existing test plan starts without asking who demonstrates. A read-only plan that the session follows unchanged needs no plan approval; adopting the tested plan at the end always does.
+- **Without a window:** `record <test> --headless` (or `caw_start` with `headless`) records a test that has a plan without you. caw takes only what changes nothing the test checks; anything else stops the run, writes nothing and exits `5` ([Commands](commands.md#without-a-window)).
 - **Waiting:** `plan` and `chat` wait for you for up to an hour. If Claude Code cancels the call earlier, raise `MCP_TOOL_TIMEOUT` (milliseconds) in Claude Code's environment.
 - **Caution:** Your session has more rights than the agent in a run (shell, writing). Whatever comes from the application is data to it, not an instruction; caw tells it so with every task. Have Bash and write calls in this session confirmed instead of allowing them wholesale. The caw tools run the project's commands too: `caw_start` with `start` runs the environment's `start` (and later its `stop`), with `reset` its `reset`, and a `run` with a writing test runs `reset` before that test; all from `caw.config.json`, on your machine. `caw_config` cannot change those commands or the environment flags; that edit goes through Claude Code's own file edit, so review its diff like code.
+
+##### Decisions from your session
+
+Every card the window waits for is a decision with a stable id (`plan.approve`, `recording.adopt`, `red.proof`, `step.failed`, `effect.accept`, `target.use`, `look.adopt`, `fix.guide`, `fix.green`, `advice.item`, `tokens`, `state.restore` …), a `context` without caw's wording (test, step, reason, diagnosis, red step, files) and options with stable ids. Each option has a gate: `free` when it changes no standard (close, later, discard, test again, record red, ask the agent), `human` when it does (approve a changed or writing plan, adopt a recording that changes what the test checks, accept an effect or a look, use a target, ignore errors, promote, apply app code, fix a step the app is blamed for).
+
+`caw_status` shows the waiting decision as `waiting.decision`; `caw_decide` answers it. Your session may answer a `free` option, when it fits what you asked for. For a `human` option caw asks you through Claude Code with a form only you can confirm (MCP elicitation); the model cannot answer it. A client without forms is refused and told to let you answer in the window. The first answer wins, the window's or the session's, and the window shows "answered by the session". `result.json` and `report.md` list each decision with who took it (`window`, `session`, `elicitation`, `auto`), and `caw audit` lists those that changed something outside the window. The file `decision.json` in the run folder is how the run and the session meet: your session's own file tools could write it too, so the gate keeps the tool path honest, not a session that ignores its instructions.
 
 ### Docker
 

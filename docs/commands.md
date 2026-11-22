@@ -127,9 +127,9 @@ No test gets weaker unnoticed. caw itself keeps a check as long as its expected 
 - a learned look dropped from the recording while the step keeps `look: true` (only while the step's actions stay the same)
 - config: `consoleIgnore`, `foreignCode`, `reads`, `visualIgnore` or `readyIgnore` entries added, `messageSelectors` watching less, `effects.fail` or `design.fail` narrowed, a guarded key changed (environment commands and flags, `lintCommand`, `sandboxImage`, `sandboxUser`, `browser.executablePath`, `agent.mode`)
 
-**Changed** (listed, not a weakening): a changed expected result, with its check; new tests and steps; an action's target swapped while the step's actions and learned effects stayed (an adopted proposal for a renamed element, see [Guide](guide.md#renamed-targets)); learned effect lines replaced by new ones in the same list of an action, as when "Accept new effect" forgot them and five runs learned them anew (`effects-replaced`, with the old and new lines; a removal without new lines is a weakening). Changing the expected result is the way to change a check on purpose: the reviewer then sees both. **For information:** changed request baselines.
+**Changed** (listed, not a weakening): a changed expected result, with its check; new tests and steps; an action's target swapped while the step's actions and learned effects stayed (an adopted proposal for a renamed element, see [Guide](guide.md#renamed-targets)); learned effect lines replaced by new ones in the same list of an action, as when "Accept new effect" forgot them and five runs learned them anew (`effects-replaced`, with the old and new lines; a removal without new lines is a weakening). Changing the expected result is the way to change a check on purpose: the reviewer then sees both. **For information:** changed request baselines. **Decided outside the window:** where `.caw/runs` is kept (your machine, not CI), the answers since the merge base that changed something and were taken by caw itself in a run without a window (`auto`), by your session (`session`) or by you in your session (`elicitation`): adopted, accepted, applied, used, promoted. They never change the exit code.
 
-Exit `0` nothing weakened, `1` weakened, `3` the ref is unknown, has no common history with `HEAD` (`git-ref`), or there is no Git (`git-missing`). `--json` prints `{ ref, base, weakened, findings }`, each finding with `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` for the config), `step`, `before`, `after` and `text`.
+Exit `0` nothing weakened, `1` weakened, `3` the ref is unknown, has no common history with `HEAD` (`git-ref`), or there is no Git (`git-missing`). `--json` prints `{ ref, base, weakened, findings, decided }`, each finding with `id`, `kind`, `severity` (`weakening`, `listed`, `info`), `test` (`null` for the config), `step`, `before`, `after` and `text`; `decided` lists `run`, `test`, `decision`, `option` and `by`.
 
 ## bisect
 
@@ -196,6 +196,17 @@ Runs only on environments where the agent may work (`"agent": true`). `--env` ca
 | `--agent-timeout <duration>` | Time limit for the agent, default `60m`. |
 | `--max-actions <n>` | Limit on the agent's browser actions, default `maxActions` or 100. |
 | `--step-timeout <duration>` | Time limit per step in the check run, default `30s`. |
+| `--headless` | No window, for a test that has a plan; see [Without a window](#without-a-window). |
+
+### Without a window
+
+```bash
+npx caw record create-ticket --env local --headless
+```
+
+Records a test that has a plan without a window and without a person, also in CI. The agent follows the plan; caw takes only what changes nothing the test checks: it approves the plan when it is the file's own (same steps and `writes`), adopts the recording when it records that plan with no changed expected result, no message newly known, no step removed, fixed or still stale and no hard error on the way, saves a draft's red proof, and closes cards that only say what happened. A writing test only runs on a `writable` environment anyway.
+
+Anything else is a decision for a person: the run stops there and writes nothing. `result.json` names it as `openDecision` (its `id`, `context` and `options` with their gate), `report.md` under "Open decision", `caw_status` as `openDecision`; the command exits `5` and names the command to record with a window. Started from your session (`caw_start` with `headless`), the decision first waits up to 10 minutes for the person's consent through [`caw_decide`](#mcp). A new test (no plan) and `@<step>` are refused (exit 3): nobody would demonstrate or steer. The agent cannot ask anyone to show something, and no token notice is shown.
 
 ### From a step on
 
@@ -405,11 +416,12 @@ Started by Claude Code through `.mcp.json` (`claude mcp add caw --scope project 
 | `caw_overlay` | Only with an `overlay` block: `action: status` (`overlay status` in-process, fast), `check` or `apply` (`overlay check`, `--apply`; waits up to 3 minutes); `env`, `part` | no |
 | `caw_attach` | Attach this session: returns its key and the command to start with the Monitor tool; every chat message and task of an attached window then reaches the session as a line. |
 | `caw_start` | Start `run`, `record`, `open` or `reproduce` attached to this session (`--attach=<key>`) (`reproduce`: `bug`, `from`, `role`, `env`, `ref`, `headless`; `test`, `env`, `step`, `overlay`, `headless`, `learn`, `start`, `reset`, or `args`; `step` for `record` and `open`, only with `test`; `promote` for `run` of a draft). With `overlay` it checks the local code server first: `down`, `wrong-app` or `stale` returns `state`, `url`, `start` and `partDir` instead of starting; `moved` starts with `--overlay <foundUrl>`. Never `--start` together with `overlay`: the session starts the local code server itself after asking you. `start` and `reset` run the environment's configured commands | none beyond your session |
-| `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data; for a reproduction with a draft and a run of a draft its `phase` and `next`. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
+| `caw_status` | Is a run waiting for the session? Last lines of output; last run's result and artefacts as data; for a reproduction with a draft and a run of a draft its `phase` and `next` (`next.decision` names the window's card for that phase). A card the run waits for comes as `waiting.decision` (`id`, `context`, `options` each with `gate`, state `deciding`); the one a run without a window left open as `openDecision`. `wait` (up to 120 s) returns as soon as the run needs the session, ends or reports something new | no |
+| `caw_decide` | Answers the waiting decision like a button: `decision`, `option`, `run` (default the last), `message` (only `revise` of `plan.approve`). A `free` option the session may answer; a `human` one only with the person's consent, asked as a form through the client (MCP elicitation), and refused with the way by hand when the client has none. The first answer wins, window or session; the window shows "answered by the session" | no |
 | `caw` | The agent commands (`snapshot`, `click`, `plan`, `finish`, …) | in the run |
 | `caw_selection` | The element you picked with `/element` in the workbench chat | no |
 
-Results come as short text plus `structuredContent` (JSON).
+Results come as short text plus `structuredContent` (JSON). Every tool refuses fields it does not take.
 
 ## Agent commands
 
@@ -426,6 +438,7 @@ These are the only way the agent can touch the browser. They exist for the agent
 | `2` | error: the environment prevented a verdict (server down, login failed, Chrome missing, …), or an unexpected internal error (the stack is printed) |
 | `3` | rejected: invalid call, config (also `TODO` values left from `init`) or test file. Nothing ran. |
 | `4` | needs recording: the recording is missing (`record`), a step changed since it was recorded (`record <test>@<step>`), or `run --strict` met pending steps. Nothing ran. |
+| `5` | a person decides: `record --headless` stopped at a decision it may not take (`openDecision`) and wrote nothing |
 
 ## Environment variables
 
@@ -447,6 +460,7 @@ When caw stops, or a run ends with `error`, it prints the reason and then the co
 
 | Code | Exit | Fix |
 |---|---|---|
+| `decision-needed` | 5 | `record --headless` stopped at the plan: the agent's plan is not the file's, so the person approves it. Record with a window, or answer through `caw_decide` with the person's consent |
 | `usage`, `unknown-command` | 3 | `npx caw <command> --help` |
 | `reproduce-not-allowed` | 3 | `reproduce` only on an environment with `agent`, never production |
 | `reproduce-state` | 2 | The starting state of `--from` was not reached: `run` the test and fix it first |

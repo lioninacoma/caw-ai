@@ -15,7 +15,8 @@ import { CONFIG_FILE, PROJECT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/nam
 import { DEFAULT_DESIGN_FAIL, designPath, isDesignName } from './design.mjs';
 import { DEFAULT_EFFECT_FAIL, EFFECT_LISTS, LEARN_RUNS } from './effects.mjs';
 import { frameworkOf } from './framework/index.mjs';
-import { auditFiles, isAuditFile, mergeBase, readAtCommit } from './git.mjs';
+import { auditFiles, commitDate, isAuditFile, mergeBase, readAtCommit } from './git.mjs';
+import { decisionsOutsideWindow } from './runs.mjs';
 import { mergeRecordings, parseRecordings, parseTest } from './test-file.mjs';
 import { LOOK_LEARN_RUNS } from './visual.mjs';
 
@@ -395,10 +396,20 @@ const code = (value) => {
     return `${fence}${text.startsWith('`') || text.endsWith('`') ? ` ${text} ` : text}${fence}`;
 };
 
+/**
+ * The decisions this machine's runs took outside the window since the merge base and that changed something (runs.mjs
+ * decisionsOutsideWindow): for information, they never fail the audit. Empty where .caw/runs is not kept (CI).
+ */
+const decidedLines = (decided = []) => (decided.length === 0 ? [] : [
+    `### ${t('cli.audit.decided')} (${decided.length})`, '', t('cli.audit.decided.intro'), '',
+    ...decided.map(({ run, test, decision, option, by }) => `- ${code(test)}: ${t('cli.audit.decided.item', { decision, option, by, run })}`),
+    '',
+]);
+
 /** The findings as Markdown for a PR comment, in the current language. */
-export const renderAudit = ({ ref, base, findings }) => {
+export const renderAudit = ({ ref, base, findings, decided = [] }) => {
     const lines = [`## ${t('cli.audit.title', { ref, base: base.slice(0, 10) })}`, ''];
-    if (findings.length === 0) return [...lines, t('cli.audit.unchanged'), ''].join('\n');
+    if (findings.length === 0) return [...lines, t('cli.audit.unchanged'), '', ...decidedLines(decided)].join('\n');
     const weakened = findings.filter(({ severity }) => severity === 'weakening').length;
     lines.push(weakened === 0 ? t('cli.audit.ok') : t('cli.audit.weakened', { count: weakened }), '');
     for (const severity of SEVERITIES) {
@@ -413,7 +424,7 @@ export const renderAudit = ({ ref, base, findings }) => {
         }
         lines.push('');
     }
-    return lines.join('\n');
+    return [...lines, ...decidedLines(decided)].join('\n');
 };
 
 /** `caw audit <ref> [--json]`: exit 0 nothing weakened, 1 weakenings, 3 bad ref or no git. */
@@ -424,12 +435,13 @@ export const auditCommand = (root, args, { print = (text) => process.stdout.writ
     if (refs.length !== 1) throw new CawError('usage', t('cli.audit.refMissing'));
     const [ref] = refs;
     const { base, before, after } = auditProject(root, ref);
+    const decided = decisionsOutsideWindow(root, { since: commitDate(root, base) });
     // The comment is for the team: its language, like report.md.
     const result = inLanguage(teamLanguage(after.config ?? before.config), () => {
         const findings = auditChanges(before, after);
-        return { findings, markdown: renderAudit({ ref, base, findings }) };
+        return { findings, markdown: renderAudit({ ref, base, findings, decided }) };
     });
     const weakened = result.findings.filter(({ severity }) => severity === 'weakening').length;
-    print(args.includes('--json') ? JSON.stringify({ ref, base, weakened, findings: result.findings }, null, 2) : result.markdown);
+    print(args.includes('--json') ? JSON.stringify({ ref, base, weakened, findings: result.findings, decided }, null, 2) : result.markdown);
     return weakened > 0 ? EXIT.fail : EXIT.pass;
 };

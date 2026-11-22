@@ -82,6 +82,27 @@ export const runsWithResult = (root, name) => {
         .sort((a, b) => b.runId.localeCompare(a.runId));
 };
 
+// Answers that change a test, a recording, the config or the app's code, as a person clicks them in the window.
+const CHANGING = new Set(['adopt', 'accept', 'apply', 'use-target', 'adopt-look', 'forget-effect', 'ignore-errors', 'promote']);
+const OUTSIDE_WINDOW = new Set(['auto', 'session', 'elicitation']);
+
+/**
+ * The decisions taken outside the window that changed something: by caw itself (a run without a window), by the session
+ * (caw_decide) or by the person in the session (elicitation). Newest first; for caw audit.
+ * @param since a date: only runs started at or after it
+ * @returns [{ run, test, decision, option, by }]
+ */
+export const decisionsOutsideWindow = (root, { since } = {}) => {
+    const runs = join(root, RUN_DIR, 'runs');
+    if (!existsSync(runs)) return [];
+    const from = since === undefined ? undefined : Date.parse(since);
+    return readdirSync(runs).filter((runId) => RUN_ID.test(runId) && (from === undefined || Date.parse(runDate(runId)) >= from))
+        .flatMap((runId) => (readResult(join(runs, runId))?.decisions ?? [])
+            .filter(({ by, option }) => OUTSIDE_WINDOW.has(by) && CHANGING.has(option))
+            .map(({ id, option, by }) => ({ run: runId, test: RUN_ID.exec(runId)[6], decision: id, option, by })))
+        .sort((a, b) => b.run.localeCompare(a.run));
+};
+
 /** A test's newest run with a result (run, record or open): { status, runId, date }, or undefined if none is left. */
 export const newestRunOf = (root, testId) => {
     const [newest] = runsWithResult(root, testId);

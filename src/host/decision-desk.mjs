@@ -63,9 +63,11 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
     // The decisions waiting, innermost last: a token notice or an advice card can come in between a conversation.
     const stack = [];
     let poll = null;
+    // The decision answered last: caw_decide reads who answered it, also when the next one already waits.
+    let last;
     const show = () => {
         const top = stack.at(-1);
-        if (top !== undefined) writeJson(file, { state: 'waiting', ...top.entry });
+        if (top !== undefined) writeJson(file, { state: 'waiting', ...top.entry, ...(last === undefined ? {} : { answered: last }) });
     };
     const take = () => {
         const top = stack.at(-1);
@@ -87,7 +89,8 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
     return {
         open: (decision, inject) => {
             seq += 1;
-            const held = { decision, inject, entry: { seq, ...decision, since: new Date().toISOString() } };
+            // window: a person can answer in the window; a run without one only through the session (caw_decide).
+            const held = { decision, inject, entry: { seq, ...decision, window: !auto, since: new Date().toISOString() } };
             stack.push(held);
             show();
             poll ??= setInterval(take, pollMs);
@@ -107,7 +110,9 @@ export const createDesk = ({ dir, onSettled = () => {}, auto = false, waitMs = 0
             const [held] = stack.splice(index, 1);
             clearTimeout(held.timer);
             const option = answerOption(answer);
-            const entry = { seq: held.entry.seq, id: held.entry.id, option, by, at: new Date().toISOString() };
+            const gate = held.entry.options.find((offered) => offered.id === option)?.gate;
+            const entry = { seq: held.entry.seq, id: held.entry.id, option, ...(gate === undefined ? {} : { gate }), by, at: new Date().toISOString() };
+            last = entry;
             if (option !== null) onSettled(entry);
             if (stack.length > 0) show();
             else {

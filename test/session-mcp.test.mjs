@@ -292,7 +292,8 @@ test('caw_start: typed fields build the command line, mixing with args and wrong
     assert.deepEqual(startArgs({ command: 'record', test: 'bestellung', headless: true }), ['bestellung', '--headless']);
     assert.deepEqual(startArgs({ command: 'open', test: 'bestellung', step: 'S2', env: 'dev' }), ['bestellung@S2', '--env', 'dev']);
     assert.deepEqual(startArgs({ command: 'open', test: 'bestellung' }), ['bestellung']);
-    assert.throws(() => startArgs({ command: 'run', test: 'bestellung', target: 'dev' }), /target heißt jetzt env/);
+    // No trace of names from before 1.0: target is a field like any unknown one.
+    assert.throws(() => startArgs({ command: 'run', test: 'bestellung', target: 'dev' }), /target gilt nicht für run/);
     assert.deepEqual(startArgs({ command: 'open', env: 'dev', overlay: 'http://localhost:1841' }), ['--env', 'dev', '--overlay=http://localhost:1841']);
     assert.deepEqual(startArgs({ command: 'record', args: ['x', '--env', 'local'] }), ['x', '--env', 'local']);
     assert.throws(() => startArgs({ command: 'run', test: 'x', args: ['x'] }), /nicht beides/);
@@ -687,7 +688,7 @@ test('caw_design: put checks name, kind and content, link needs the person\'s re
     for (const [args, pattern] of [
         [{ action: 'put', file: 'design/../tests/x.html', content: html }, /unter design\//],
         [{ action: 'put', file: 'tests/bestellung.yaml', content: html }, /unter design\//],
-        [{ action: 'put', file: 'design/x.html', base64: Buffer.from(html).toString('base64') }, /put nimmt content/],
+        [{ action: 'put', file: 'design/x.html', base64: Buffer.from(html).toString('base64') }, /caw_design does not take base64\. Its fields: action, file, content/],
         [{ action: 'put', file: 'design/x.png', content: 'x' }, /unter design\//],
         [{ action: 'put', file: 'design/x.tokens.json', content: '{"farbe":{"tinte":"#231c17"}}' }, /unter design\//],
         [{ action: 'link', test: 'bestellung', step: 'S2', file: 'design/bestellung.html' }, /nur auf seinen Wunsch/],

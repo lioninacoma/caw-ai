@@ -65,6 +65,9 @@ export const resolveCommit = (root, ref) => {
     }
 };
 
+/** When a commit was made (ISO 8601), e.g. the merge base: caw audit lists what was decided since. */
+export const commitDate = (root, commit) => git(root, ['show', '-s', '--format=%cI', commit]).toString('utf8').trim();
+
 /** The short hash of what is checked out (`git rev-parse --short HEAD`), for one line per bisect step. */
 export const shortHead = (root) => git(root, ['rev-parse', '--short', 'HEAD']).toString('utf8').trim();
 
