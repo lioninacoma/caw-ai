@@ -292,3 +292,19 @@ test('Seam: open --design at a pending step names the step whose recorded size t
     assert.match(shown, /S2/, 'the size is the one S2 was recorded in');
     assert.doesNotMatch(shown, /S3/, 'S3 is not recorded');
 });
+
+test('Seam: the window with a design does not report a passed test in the terminal; it names the step it replayed to', async () => {
+    const spec = testOf();
+    spec.steps[1] = { ...spec.steps[1], design: 'design/form.html' };
+    const lines = [];
+    const log = console.log;
+    console.log = (text) => lines.push(String(text));
+    try {
+        await openDesign(spec, { through: 'S2' }, async (given) => ({ src: 'data:image/png;base64,AA', width: given.viewport.width, rows: [] }));
+    } finally {
+        console.log = log;
+    }
+    const text = lines.join('\n');
+    assert.doesNotMatch(text, /: pass\b|Bestanden\.|von \d+ Schritten bestanden/, text);
+    assert.match(text, /kauf auf dev: Bis S2 abgespielt, um sein Zielbild zu zeigen; weder der Test noch das Zielbild wird hier bewertet./, text);
+});

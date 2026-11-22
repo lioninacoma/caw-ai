@@ -79,7 +79,7 @@ To see where the screen is off, open the step with its design:
 caw open <test>@S4 --design --env local
 ```
 
-It plays through S4 (a pending S4: up to its entry) and shows the design beside the app, both at the recorded size and the same scale (a pending step has none of its own: the chat names the step whose size it is). Side by side, text that is data (a long run tag, a name) cannot shift anything. **F7** goes round the views: beside the app, over the app half transparent (pixel for pixel), hidden, beside again; the view stays across reloads. Below it the deviations are listed: missing controls and differing styles. They are listed anew after F5, a reload of the window and **Open again** (or a state picked with F1), so they always belong to the page you see; a design file that is missing is named in the chat with its step.
+It plays through S4 (a pending S4: up to its entry) and shows the design beside the app, both at the recorded size and the same scale (a pending step has none of its own: the chat names the step whose size it is). Side by side, text that is data (a long run tag, a name) cannot shift anything. **F7** goes round the views: beside the app, over the app half transparent (pixel for pixel), hidden, beside again; the view stays across reloads. Below it the deviations are listed: missing controls and differing styles. They are listed anew after F5, a reload of the window and **Open again** (or a state picked with F1), so they always belong to the page you see; a design file that is missing is named in the chat with its step. The window judges neither the test nor the design: the terminal says it replayed up to S4 to show the design, not that the test passed.
 
 ## Plain-language tests: record once, replay without AI
 

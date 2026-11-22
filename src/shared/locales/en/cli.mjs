@@ -583,6 +583,7 @@ Exit codes: 0 pass, 1 fail, 2 error (environment), 3 rejected (input), 4 needs r
     'cli.uiStatus.pass': 'Passed.',
     'cli.uiStatus.fail': 'Failed.',
     'cli.uiStatus.error': 'Error.',
+    'cli.uiReplayedTo': 'Replayed up to {step} to show its target design; neither the test nor the design is judged here.',
     'cli.uiStepsPassed': ({ passed, total }) => `${passed} of ${total} ${total === 1 ? 'step' : 'steps'} passed.`,
     'cli.uiWarningCount': ({ count }) => `${count} ${count === 1 ? 'warning' : 'warnings'}`,
     'cli.uiReportLabel': 'report',

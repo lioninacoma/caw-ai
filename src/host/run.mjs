@@ -623,7 +623,11 @@ ${text}`) ?? 0;
         writeFileSync(join(runDir, 'report.md'), inLanguage(teamLanguage(config), () => (reproduce === undefined ? renderReport : renderReproduceReport)(verdict)));
     };
     const finishRun = () => {
-        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000, names: stepNames(), durations: durations() });
+        // The window with a design (open --design, "Open with design") only replays up to the step to show its design next to
+        // it; it judges neither the test nor the design, so a replay that went through is not reported as a passed test.
+        const shownAt = replay?.entry?.id ?? replay?.until;
+        const replayedTo = withDesign && verdict.status === 'pass' && shownAt !== undefined ? shownAt : undefined;
+        ui.verdict(verdict, { report: posix.join(relativeRun, 'report.md'), reportUrl: pathToFileURL(join(runDir, 'report.md')).href, elapsed: (Date.now() - startedAt) / 1000, names: stepNames(), durations: durations(), replayedTo });
         // Missing saved sign-in or a TODO left in the config means nothing ran: an invalid invocation (3), not the environment (2).
         if (verdict.status === 'error' && NOTHING_RAN.has(verdict.code)) return EXIT.rejected;
         if (verdict.status === 'error' && verdict.code === 'decision-needed') return EXIT.decision;

@@ -125,6 +125,11 @@ test('in a terminal: the format of a run, passed and failed', () => {
     passed.ui.verdict({ status: 'pass', testId: 'erste', target: 'local', expectations: steps.slice(0, 2), results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }] },
         { report: 'r.md', elapsed: 5, names });
     assert.deepEqual(passed.lines.map(plain).slice(2), ['  ✓ S1  Aufgabe anlegen', '  ✓ S2  Finden', '', 'Bestanden. 2 von 2 Schritten bestanden. · 5.0s', 'Bericht  r.md']);
+    // The window with a design only replayed up to S2: no passed test, no count of passed steps.
+    const shown = capture(true, true);
+    shown.ui.verdict({ status: 'pass', testId: 'erste', target: 'local', expectations: steps.slice(0, 2), results: [{ id: 'S1', status: 'pass' }, { id: 'S2', status: 'pass' }] },
+        { report: 'r.md', elapsed: 5, names, replayedTo: 'S2' });
+    assert.deepEqual(shown.lines.map(plain).slice(2), ['  ✓ S1  Aufgabe anlegen', '  ✓ S2  Finden', '', 'Bis S2 abgespielt, um sein Zielbild zu zeigen; weder der Test noch das Zielbild wird hier bewertet. · 5.0s', 'Bericht  r.md']);
 });
 
 test('in a terminal: the run header, the head once with the version, the next commands in the accent colour', () => {
