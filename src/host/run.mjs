@@ -16,7 +16,7 @@ import { agentHosts, effectiveEnvironment, startPath, usesTotp } from '../shared
 import { browserLaunch, buildDevlinkConfig, todoFields, claudeLimits, isLoopback, navigationHosts, sessionPath } from '../shared/config.mjs';
 import { CawError, EXIT } from '../shared/errors.mjs';
 import { foldAction } from './activity.mjs';
-import { DEFAULT_KEEP_RUNS, REPRODUCE_RUN, markRunAlive, pruneRuns } from './runs.mjs';
+import { DEFAULT_KEEP_RUNS, REPRODUCE_RUN, markRunAlive, pruneRuns, runsWithResult } from './runs.mjs';
 import { AGENT_NAME, inLanguage, language, languageSource, t, teamLanguage } from '../shared/i18n.mjs';
 import { cawCommand } from '../shared/invocation.mjs';
 import { pollChannel } from '../shared/channel.mjs';
@@ -57,7 +57,7 @@ import { agentGuide, runTopics } from './guide.mjs';
 import { SELECTION_FILE } from '../shared/names.mjs';
 import { withStepBudget } from './step-budget.mjs';
 import { redactDeep } from './secrets.mjs';
-import { captureStep, createLook, designOverlay, learnedLooks, maskProbe, visualSettings } from './visual.mjs';
+import { captureStep, createLook, designComparison, learnedLooks, maskProbe, visualSettings } from './visual.mjs';
 import { MAX_TEXTS, lookCandidates, showsServed, textProbe } from './look-hints.mjs';
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
@@ -500,8 +500,8 @@ export const sessionHint = (mode, runId, { creating = false } = {}) => {
 };
 
 export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, seams = {} }) => {
-    // Tests only: the browser session, the chat, the playback and the design overlay without Chrome (test/run-seam.test.mjs).
-    const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designOverlay: overlayOf = designOverlay } = seams;
+    // Tests only: the browser session, the chat, the playback and the design comparison without Chrome (test/run-seam.test.mjs).
+    const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designComparison: compareWith = designComparison } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -1346,10 +1346,36 @@ ${text}`) ?? 0;
     };
 
     /**
-     * open <test>@S3 --design: the step's target design beside the app (F7: over it, hidden, beside again), its deviations as
-     * rows. A row with an element hands that element to the attached session, as /element does. The rows are the page's:
-     * after F5, a reload of the window or a restored state (`again`) they are listed anew, the mode F7 left stays, and the
-     * chat says so only when they changed; a design that is gone by then (another state, the file removed) leaves the app.
+     * The steps of the test that carry a design, for the comparison page's rail: the shown one as just compared, the others as
+     * the newest run that judged their design left them (a test run, or the pending step at its entry); a pending step nobody
+     * judged yet is pending, any other one not compared.
+     * @returns [{ id, name, status: 'met' | 'deviations' | 'pending' | 'unknown', count? }]
+     */
+    const designRail = (current, compared) => {
+        const runs = runsWithResult(root, chosen.spec.id);
+        const judged = (id) => {
+            for (const { result } of runs) {
+                const found = (result.results ?? []).find((entry) => entry.id === id)?.design ?? (result.pendingDesign?.step === id ? result.pendingDesign : undefined);
+                if (found?.verdict === 'met' || found?.verdict === 'not-met') return found;
+            }
+            return undefined;
+        };
+        const count = (found) => ['missing', 'textDiffs', 'styleDiffs', 'layoutDiffs'].reduce((sum, key) => sum + (found[key]?.length ?? 0), 0);
+        return chosen.spec.steps.filter(({ design }) => design !== undefined).map(({ id, name, recording }) => {
+            if (id === current) return { id, name, status: compared.met ? 'met' : 'deviations', count: compared.deviations.length };
+            const found = judged(id);
+            if (found !== undefined) return { id, name, status: found.verdict === 'met' ? 'met' : 'deviations', count: count(found) };
+            return { id, name, status: recording === undefined ? 'pending' : 'unknown' };
+        });
+    };
+
+    /**
+     * open <test>@S3 --design: the step's target design compared with the app on a page of its own over the workbench (F7
+     * opens and closes it, Esc closes it): app and design side by side, overlaid or only their differences, the deviations as
+     * numbered cards that mark their element in both images. The app side is a capture of the app frame at the recorded size,
+     * taken when the comparison is computed: after F5, a reload of the window or a restored state (`again`) it is computed
+     * anew, the page stays open or closed as it was, and the chat says so only when the deviations changed; a design that is
+     * gone by then (another state, the file removed) leaves the app.
      * @returns whether the design is shown
      */
     let designShown = null;
@@ -1358,10 +1384,8 @@ ${text}`) ?? 0;
         const index = chosen.spec.steps.findIndex((entry) => entry.id === id);
         const step = chosen.spec.steps[index];
         const gone = async () => {
-            if (designShown !== null) {
-                await bench.design(null);
-                await bench.viewport(null);
-            }
+            if (designShown !== null) await bench.design(null);
+            await bench.viewport(null);
             designShown = null;
             return false;
         };
@@ -1373,13 +1397,16 @@ ${text}`) ?? 0;
         const sizedBy = chosen.spec.steps.slice(0, index + 1).findLast((entry) => entry.recording?.viewport !== undefined);
         const viewport = step.recording?.viewport ?? chosen.replay?.browser?.viewport ?? config.browser?.viewport ?? { width: 1280, height: 720 };
         const cawDir = join(root, PROJECT_DIR);
-        let overlay;
+        // The frame keeps the recorded size: the design is rendered at it and the app captured at it.
+        await bench.viewport(viewport);
+        let compared;
         try {
-            overlay = await overlayOf({
+            compared = await compareWith({
                 cawDir,
                 file: step.design,
                 viewport,
                 page: session.page(),
+                capture: () => captureStep(session.page(), { unscaled: bench.unscaled }),
                 launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
                 secrets: session.secrets?.() ?? [],
             });
@@ -1387,22 +1414,34 @@ ${text}`) ?? 0;
             chat?.notice(t('run.develop.designFailed', { file: step.design, message: String(error?.message ?? error).split(/\r?\n/)[0] }));
             return gone();
         }
-        if (overlay === null) {
+        if (compared === null) {
             if (!again || designShown !== null) chat?.notice(t('run.develop.designMissing', { file: step.design, id }));
             return gone();
         }
-        const rows = overlay.rows.map(({ text }) => text).join('\n');
+        const rows = compared.deviations.map(({ text }) => text).join('\n');
         const changed = designShown === null || designShown.file !== step.design || designShown.rows !== rows;
         const kept = again && designShown !== null && designShown.file === step.design;
-        await bench.viewport(viewport);
-        await bench.design({ ...overlay, opacity: 0.5, blend: 'normal', ...(kept ? {} : { mode: 'side' }) });
-        designShown = { file: step.design, rows };
+        // The run as the page names it: the time of its id (2026-11-23T21-45-37-123Z-test: 21-45-37).
+        const runTime = /T(\d{2}-\d{2}-\d{2})/.exec(runId)?.[1] ?? runId;
+        await bench.design({
+            step: { id, name: step.name ?? '' },
+            file: step.design,
+            viewport,
+            run: runTime,
+            met: compared.met,
+            design: compared.design,
+            app: compared.app,
+            deviations: compared.deviations,
+            extra: compared.extra ?? [],
+            steps: designRail(id, compared),
+        }, kept ? {} : { open: true });
+        designShown = { file: step.design, rows, id, deviations: compared.deviations };
         if (kept) {
-            if (changed) chat?.notice(t('run.develop.designUpdated', { file: step.design, count: overlay.rows.length }));
+            if (changed) chat?.notice(t('run.develop.designUpdated', { file: step.design, count: compared.deviations.length }));
         } else {
             const sized = sizedBy?.recording.viewport;
-            const size = sized?.width === viewport.width && sized?.height === viewport.height ?t('run.develop.designSize.step', { id: sizedBy.id }) : t('run.develop.designSize.none', { id, width: viewport.width, height: viewport.height });
-            chat?.notice(t('run.develop.designShown', { file: step.design, size, count: overlay.rows.length }));
+            const size = sized?.width === viewport.width && sized?.height === viewport.height ? t('run.develop.designSize.step', { id: sizedBy.id }) : t('run.develop.designSize.none', { id, width: viewport.width, height: viewport.height });
+            chat?.notice(t('run.develop.designShown', { file: step.design, size, count: compared.deviations.length }));
         }
         return true;
     };
@@ -1545,11 +1584,14 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                         designing = designing.then(() => showDesign(bench, { again: true })).catch(() => {});
                         return designing;
                     };
-                    const designed = (work) => async (...args) => {
+                    // Restoring a state operates the app: the comparison page, which lies over it, steps aside meanwhile (`aside`).
+                    const designed = (work, { aside = false } = {}) => async (...args) => {
+                        if (aside) await bench?.designAside?.(true);
                         try {
                             return await work(...args);
                         } finally {
                             await redesign();
+                            if (aside) await bench?.designAside?.(false);
                         }
                     };
                     const refresh = designed(async () => {
@@ -1563,7 +1605,7 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                     });
                     // After the handover (open) the workbench stays as it is, with steps and chat; F8 shows the application alone
                     // and stays so across reloads. The recorded size held while replaying; the window is the human's now. With
-                    // --design the frame keeps it: the design is drawn at that size, else design and app would not line up.
+                    // --design the frame keeps it: the app is compared and captured at the size the design is rendered at.
                     if (!(withDesign && bench !== undefined && await showDesign(bench))) await bench?.viewport?.(null);
                     // F1: states from all tests of this target, each in its role's account. Without a step the test runs to the last
                     // restorable one. With basic auth the account is tied to the browser: only the own role.
@@ -1584,9 +1626,12 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                         const until = stepId ?? entry?.steps.filter(({ ok }) => ok).at(-1)?.id;
                         if (entry === undefined || until === undefined || !canRestore(catalog, testId, until)) throw new CawError('step-unknown', t('run.develop.cannotRestore', { test: testId, step: stepId ?? '' }));
                         return restoreOther(loadStateTest(root, config, testId), until, { entry: stepId !== undefined });
-                    });
-                    const restore = designed(() => (chosen.replay === undefined ? reloadApp() : restoreState()));
-                    await Promise.race([develop({ chat, talk: ask, signedIn: session.signedIn, until: replay?.entry?.id ?? replay?.until, entry: replay?.entry !== undefined, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
+                    }, { aside: true });
+                    const restore = designed(() => (chosen.replay === undefined ? reloadApp() : restoreState()), { aside: true });
+                    // "Have the agent build it" on the comparison page: the shown step, its design and its deviations as lines.
+                    const onDesignBuild = (handler) => bench?.onDesignBuild?.(typeof handler !== 'function' ? null : () => (designShown === null ? undefined
+                        : handler({ step: designShown.id, file: designShown.file, deviations: designShown.deviations.map(({ text }) => text) })));
+                    await Promise.race([develop({ chat, talk: ask, signedIn: session.signedIn, until: replay?.entry?.id ?? replay?.until, entry: replay?.entry !== undefined, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode, ...(withDesign ? { onDesignBuild } : {}) }), session.closed, aborted]);
                 } catch (error) {
                     ui.warn(t('run.develop.error', { message: String(error?.message ?? error).split(/\r?\n/)[0] }));
                 } finally {

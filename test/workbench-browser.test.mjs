@@ -1408,81 +1408,145 @@ test('chat follows the end: new entries, a card that grows in place; scrolled up
     return undefined;
 });
 
-test('workbench: the target design stands beside the scaled app frame at its scale; F7 lays it over the app, hides it, puts it beside again; a reload keeps the view; a capture is unscaled', async (t) => {
+test('workbench: the comparison with the target design is a page of its own (F7, Esc); tabs side by side, overlaid and differences only; a card marks its element in both images; a reload keeps it and compares anew; a capture shows the app', async (t) => {
     if (browser === null) return t.skip('no Chrome');
     const { bench, context } = await open(t);
     const page = bench.page;
-    // A design as large as the pinned viewport, which is larger than the pane: the frame is scaled down.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // Two images at the recorded size: the app with a red button, the design with a green one at the same place.
     const maker = await context.newPage();
-    await maker.setViewportSize({ width: 1600, height: 900 });
-    await maker.setContent('<body style="margin:0;background:#e5533a"></body>');
-    const src = `data:image/png;base64,${(await maker.screenshot()).toString('base64')}`;
+    await maker.setViewportSize({ width: 1280, height: 720 });
+    const shot = async (color) => {
+        await maker.setContent(`<body style="margin:0;background:#fff"><button style="position:absolute;left:100px;top:200px;width:160px;height:40px;background:${color}">Speichern</button></body>`);
+        return { src: `data:image/png;base64,${(await maker.screenshot()).toString('base64')}`, width: 1280, height: 720 };
+    };
+    const app = await shot('#e5533a');
+    const design = await shot('#5f8f6b');
     await maker.close();
-    await bench.viewport({ width: 1600, height: 900 });
-    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [{ text: 'Fehlt: button "Speichern"' }, { text: 'button "Speichern": color #ffffff → #000000' }] });
-    const boxes = () => page.evaluate(() => {
-        const box = (id) => {
-            const rect = document.getElementById(id).getBoundingClientRect();
-            return { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) };
-        };
-        const design = document.getElementById('design');
-        const style = getComputedStyle(design);
-        return {
-            app: box('app'), design: box('design'), pane: box('appBox'), hidden: design.hidden, caption: !document.getElementById('designCap').hidden,
-            blend: style.mixBlendMode, opacity: style.opacity, pointer: style.pointerEvents, mode: document.getElementById('appBox').dataset.design,
-            next: document.querySelector('#mDesign .nm').textContent,
-        };
+    const button = { x: 100, y: 200, width: 160, height: 40 };
+    const data = (deviations, met = false) => ({
+        step: { id: 'S2', name: 'Notiz speichern' }, file: 'design/note.html', viewport: { width: 1280, height: 720 }, run: '21-45-37', met,
+        design, app, deviations, extra: ['link "Hilfe"'],
+        steps: [{ id: 'S1', name: 'Anmelden', status: 'met', count: 0 }, { id: 'S2', name: 'Notiz speichern', status: met ? 'met' : 'deviations', count: deviations.length }, { id: 'S3', name: 'Exportieren', status: 'pending' }],
     });
-    assert.ok(await until(async () => (await boxes()).design.width > 0), 'the design shows');
-    // Side by side by default: the same size and top, the design to the right of the frame, both inside the pane.
-    const side = await boxes();
-    assert.equal(side.mode, 'side');
-    assert.ok(side.app.width < 1600, 'the frame is scaled down');
-    assert.deepEqual([side.design.width, side.design.height, side.design.top], [side.app.width, side.app.height, side.app.top], 'design and frame at one scale');
-    assert.ok(side.design.left >= side.app.left + side.app.width, 'the design beside the frame, not over it');
-    assert.ok(side.design.left + side.design.width <= side.pane.left + side.pane.width + 1, 'both fit the pane');
-    assert.equal(side.opacity, '1', 'beside the app the design is opaque');
-    assert.equal(side.blend, 'normal');
-    assert.equal(side.caption, true, 'named as the target design');
-    assert.equal(side.next, 'Zielbild über der App', 'the menu names what F7 does next');
-    assert.equal(side.pointer, 'none', 'clicks go through');
-    // The deviations as rows below the design.
-    const rows = page.locator('#designRows li');
-    assert.equal(await rows.count(), 2);
-    assert.equal(await rows.nth(0).textContent(), 'Fehlt: button "Speichern"');
-    // F7: over the app, pixel for pixel, half transparent; the frame is as large as it can be again.
+    const two = [
+        { kind: 'style', text: 'button "Speichern": background-color #5f8f6b → #e5533a', design: button, app: button },
+        { kind: 'missing', text: 'heading "Notiz"', design: { x: 100, y: 120, width: 200, height: 30 } },
+    ];
+    await bench.viewport({ width: 1280, height: 720 });
+    await bench.design(data(two), { open: true });
+    const state = () => page.evaluate(() => ({
+        design: document.body.dataset.design,
+        shown: !document.getElementById('cmp').hidden,
+        benchInert: document.querySelector('#bench>.panes').inert,
+        view: document.getElementById('cmpPanel').dataset.view,
+        tabs: [...document.querySelectorAll('.cmp-tabs [role=tab]')].map((tab) => `${tab.textContent}:${tab.getAttribute('aria-selected')}:${tab.tabIndex}`),
+        shots: [...document.querySelectorAll('#cmpPanel .shot-s')].map((box) => box.dataset.kind),
+        focus: document.activeElement?.id ?? '',
+        title: document.getElementById('cmpStep').textContent,
+        badge: document.getElementById('cmpBadge').textContent,
+        cards: [...document.querySelectorAll('#cmpCards .dev')].map((card) => `${card.querySelector('.num').textContent} ${card.querySelector('.kind').textContent}:${card.getAttribute('aria-pressed')}`),
+        rail: [...document.querySelectorAll('#cmpSteps li')].map((li) => `${li.querySelector('.sid').textContent} ${li.querySelector('.stt').textContent}${li.getAttribute('aria-current') === 'step' ? ' *' : ''}`),
+        build: !document.getElementById('cmpBuild').hidden,
+    }));
+    assert.ok(await until(async () => (await state()).shown), 'the comparison opens on the first comparison');
+    const first = await state();
+    assert.equal(first.design, 'open');
+    assert.equal(first.benchInert, true, 'the workbench below is inert');
+    assert.equal(first.view, 'side');
+    assert.deepEqual(first.tabs, ['Nebeneinander:true:0', 'Überlagert:false:-1', 'Nur Unterschiede:false:-1']);
+    assert.deepEqual(first.shots, ['app', 'design']);
+    assert.equal(first.focus, 'cmpStep', 'the focus is on the page');
+    assert.equal(first.title, 'S2 Notiz speichern');
+    assert.equal(first.badge, 'nicht erfüllt');
+    assert.deepEqual(first.cards, ['1 Stil:true', '2 Fehlt:false'], 'numbered, the first selected');
+    assert.deepEqual(first.rail, ['S1 erfüllt', 'S2 2 Abw. *', 'S3 ausstehend']);
+    assert.equal(first.build, false, 'nobody answers the build button yet');
+    // Side by side: both images at one scale (the readable minimum here), the selected deviation marked in both.
+    const marks = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#cmpPanel .shot-s')].map((box) => [box.dataset.kind,
+        [...box.querySelectorAll('.mk-box')].map((mark) => ({ i: mark.dataset.i, left: Math.round(parseFloat(mark.style.left)), top: Math.round(parseFloat(mark.style.top)), width: Math.round(parseFloat(mark.style.width)) }))])));
+    const scales = () => page.evaluate(() => [...document.querySelectorAll('#cmpPanel .shot-in')].map((inner) => inner.getBoundingClientRect().width / 1280));
+    const [scale] = await scales();
+    assert.ok(scale >= 0.75 && scale <= 1, String(scale));
+    // The frame lies 2 px around the element's box.
+    const at = (value, by = 0) => Math.round(value * scale + by);
+    assert.deepEqual(await marks(), { app: [{ i: '0', left: at(100, -2), top: at(200, -2), width: at(160, 4) }], design: [{ i: '0', left: at(100, -2), top: at(200, -2), width: at(160, 4) }] });
+    // The second card: missing, so only in the design.
+    await page.click('#cmpCards li:nth-child(2) .dev');
+    assert.deepEqual((await state()).cards, ['1 Stil:false', '2 Fehlt:true']);
+    assert.deepEqual(await marks(), { app: [], design: [{ i: '1', left: at(100, -2), top: at(120, -2), width: at(200, 4) }] });
+    assert.match(await page.locator('#cmpCards li:nth-child(2) small').textContent(), /Fehlt in der App/);
+    await page.click('#cmpCards li:nth-child(1) .dev');
+    // Scrolling one image scrolls the other.
+    await page.evaluate(() => { document.querySelector('.shot-s[data-kind=app]').scrollTop = 60; });
+    assert.ok(await until(() => page.evaluate(() => document.querySelector('.shot-s[data-kind=design]').scrollTop === document.querySelector('.shot-s[data-kind=app]').scrollTop)), 'scrolled together');
+    // Tabs: a click, then the arrow keys go round them.
+    await page.click('#cmpTab-overlay');
+    const overlay = await state();
+    assert.equal(overlay.view, 'overlay');
+    assert.deepEqual(overlay.shots, ['overlay']);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.shot-in img.over')).opacity), '0.5', 'the design half transparent over the app');
+    assert.equal(await page.locator('.shot-s[data-kind=overlay] .mk-box').count(), 2, 'the element in the app and in the design');
+    await page.keyboard.press('ArrowRight');
+    const diff = await state();
+    assert.equal(diff.view, 'diff');
+    assert.equal(diff.focus, 'cmpTab-diff');
+    assert.equal(await page.locator('.shot-s[data-kind=design] .mk-box').count(), 2, 'differences only: every deviation marked');
+    assert.equal(await page.locator('.shot-s[data-kind=design] svg mask rect').count(), 3, 'the rest faded, two holes');
+    await page.keyboard.press('ArrowRight');
+    assert.equal((await state()).view, 'side', 'round again');
+    // F7 closes and opens; Esc closes, the workbench is no longer inert.
     await page.keyboard.press('F7');
-    assert.ok(await until(async () => (await boxes()).mode === 'overlay'));
-    const over = await boxes();
-    assert.ok(over.app.width > side.app.width, 'alone the frame is larger');
-    assert.deepEqual(over.design, over.app, 'design and frame cover the same pixels');
-    assert.equal(over.blend, 'difference');
-    assert.equal(over.opacity, '0.4');
-    assert.equal(over.caption, false);
-    assert.equal(over.next, 'Zielbild ausblenden');
-    // F7 hides it; a reload of the whole workbench keeps that.
+    assert.ok(await until(async () => (await state()).design === 'closed'));
+    assert.equal((await state()).shown, false);
     await page.keyboard.press('F7');
-    assert.ok(await until(async () => (await boxes()).hidden));
-    assert.equal(await page.locator('#designRows').isHidden(), true, 'the rows go with it');
+    assert.ok(await until(async () => (await state()).shown));
+    await page.keyboard.press('Escape');
+    assert.ok(await until(async () => (await state()).design === 'closed'), 'Esc closes it');
+    assert.equal((await state()).benchInert, false);
+    // A reload keeps it closed and, as the host does, compares anew: the page shows what the host passes then.
+    bench.onReload(() => bench.design(data([two[0]])));
     await page.reload({ waitUntil: 'domcontentloaded' });
-    assert.ok(await until(() => page.evaluate(() => document.getElementById('design')?.getAttribute('src')?.startsWith('data:image/png') === true).catch(() => false)), 'the design is back');
-    assert.equal((await boxes()).hidden, true, 'still hidden after the reload');
-    // F7 from the app: beside it again.
-    await page.frameLocator('#app').locator('body').click();
+    assert.ok(await until(async () => (await state()).design === 'closed'), 'still closed');
+    await pause(300);
     await page.keyboard.press('F7');
-    assert.ok(await until(async () => !(await boxes()).hidden && (await boxes()).mode === 'side'), 'F7 from the app puts it beside the app again');
-    assert.ok(await until(async () => JSON.stringify((await boxes()).app) === JSON.stringify(side.app)), 'at the same place as at first');
-    // Rows listed anew without a mode keep the view F7 left.
-    await bench.design({ src, opacity: 0.4, blend: 'difference', width: 1600, rows: [] });
-    assert.equal((await boxes()).mode, 'side');
-    // A step's capture: the frame unscaled at its recorded size, without the design; afterwards scaled as before.
+    assert.ok(await until(async () => (await state()).shown));
+    assert.ok(await until(async () => (await state()).rail[1] === 'S2 1 Abw. *'), 'compared anew');
+    assert.deepEqual((await state()).cards, ['1 Stil:true']);
+    assert.equal((await state()).view, 'side', 'the view stays per window');
+    // Open across a reload too.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    assert.ok(await until(async () => (await state()).shown), 'open after the reload');
+    // While the host operates the app the page steps aside.
+    await bench.designAside(true);
+    assert.equal((await state()).shown, false);
+    assert.equal((await state()).benchInert, false);
+    await bench.designAside(false);
+    assert.equal((await state()).shown, true);
+    // A capture of the app: the frame unscaled at its size, over the page.
     const png = await bench.unscaled(() => bench.view.screenshot({ scale: 'css' }));
-    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1600, 900]);
-    assert.ok(await until(async () => JSON.stringify((await boxes()).app) === JSON.stringify(side.app)), 'scaled again');
-    assert.equal(await page.evaluate(() => document.body.classList.contains('capture')), false);
+    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1280, 720]);
+    // The build button, once someone answers it: back to the workbench, the host asked.
+    let asked = 0;
+    await bench.onDesignBuild(() => { asked += 1; });
+    assert.ok(await until(async () => (await state()).build));
+    await page.click('#cmpBuild');
+    assert.ok(await until(() => asked === 1));
+    assert.equal((await state()).design, 'closed');
+    // Met: no cards, no build button.
+    await bench.design(data([], true), { open: true });
+    assert.ok(await until(async () => (await state()).shown));
+    const met = await state();
+    assert.equal(met.badge, 'erfüllt');
+    assert.deepEqual(met.cards, []);
+    assert.equal(met.build, false);
+    assert.equal(await page.locator('#cmpNone').isVisible(), true);
+    // Gone: the page closes, F7 does nothing.
     await bench.design(null);
-    assert.equal(await page.evaluate(() => document.getElementById('design').hidden && document.getElementById('mDesign').hidden && document.getElementById('designCap').hidden && document.getElementById('appCap').hidden), true);
-    assert.equal(await page.evaluate(() => document.getElementById('appBox').classList.contains('side')), false, 'without a design the frame fills the pane alone');
+    assert.ok(await until(async () => (await state()).design === undefined && !(await state()).shown));
+    await page.keyboard.press('F7');
+    assert.equal((await state()).shown, false);
+    assert.equal(await page.evaluate(() => document.getElementById('mDesign').hidden), true);
     return undefined;
 });
 

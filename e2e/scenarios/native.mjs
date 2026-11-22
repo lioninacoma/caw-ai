@@ -1309,13 +1309,13 @@ $A advise --file /tmp/a.json; echo "ADVISE Exit=$?"`;
 // ---- N17: the visual layer on n9-shadow. Screenshots per step; visual regression (look: true on S1 and S2) learns both
 // looks' style lines over two runs. The rename switch ("Archive" to "Archive all") keeps role and style: the look stays the
 // same. The restyle switch (Archive bold) changes a style: the chat window fails S1 and S2, "Neuen Look übernehmen" adopts
-// both at once and the next run compares the new look; open @S2 --design shows an .html design beside the app and F7 goes
-// round its views (over the app, hidden, beside again).
+// both at once and the next run compares the new look; open @S2 --design opens the comparison page with an .html design (tabs,
+// F7 and Esc).
 
 const LOOKED = 'rec-visual';
 const restyleSwitch = (on) => fetch(`http://127.0.0.1:${PORT}/api/restyle?on=${on ? 1 : 0}`, { method: 'POST' });
 
-scenario('N17', 'Visual layer: step screenshots, learned look by style lines changed and adopted for all steps, open --design with F7', async () => {
+scenario('N17', 'Visual layer: step screenshots, learned look by style lines changed and adopted for all steps, open --design with the comparison page', async () => {
     const designDir = join(native, 'caw/design');
     mkdirSync(designDir, { recursive: true });
     const parsed = parseTest(testText(LOOKED, TESTS['n9-shadow']));
@@ -1373,25 +1373,38 @@ scenario('N17', 'Visual layer: step screenshots, learned look by style lines cha
         verify('the next run with the new look: Exit 0, S2 the same', green.code === 0 && greenStep?.visual?.verdict === 'same', `${green.code} ${green.note} ${JSON.stringify(greenStep?.visual)}`);
         await restyleSwitch(false);
 
-        // open @S2 --design: through S2, the design beside the app; F7 lays it over the app, hides it, puts it beside again.
+        // open @S2 --design: through S2, the comparison page over the workbench with app and design side by side; the tabs
+        // overlaid and differences only; F7 closes and opens it, Esc closes it (then the chat is reachable again).
         writeFileSync(join(designDir, 'n17.html'), MATCHING);
         writeWith('design/n17.html');
         const overlay = humans(async (chat) => {
             const bench = chat.page();
             await benchBack(chat);
             await stateOf(chat, 'developing');
-            const shown = () => bench.evaluate(() => !document.getElementById('design').hidden && document.getElementById('design').getAttribute('src')?.startsWith('data:image/png') === true);
-            const view = () => bench.evaluate(() => document.getElementById('appBox').dataset.design);
-            const beside = () => bench.evaluate(() => document.getElementById('design').getBoundingClientRect().left >= document.getElementById('app').getBoundingClientRect().right);
-            verify('open --design: the design stands beside the app', await shown() && await view() === 'side' && await beside(), await bench.evaluate(() => document.getElementById('design')?.outerHTML.slice(0, 120)));
+            await bench.locator('body[data-design=open]').waitFor({ state: 'attached', timeout: 30000 }).catch(() => {});
+            const view = () => bench.evaluate(() => ({
+                design: document.body.dataset.design ?? '',
+                shown: !document.getElementById('cmp').hidden,
+                tab: document.getElementById('cmpPanel').dataset.view,
+                images: [...document.querySelectorAll('#cmpPanel .shot-in img')].filter((img) => img.getAttribute('src')?.startsWith('data:image/png') === true).length,
+                step: document.getElementById('cmpStep').textContent,
+                badge: document.getElementById('cmpBadge').textContent,
+            }));
+            const opened = await view();
+            verify('open --design: the comparison page is open, app and design side by side', opened.design === 'open' && opened.shown && opened.tab === 'side' && opened.images === 2 && opened.step.startsWith('S2'), JSON.stringify(opened));
             const status = await appOf(bench).evaluate(() => document.getElementById('status').textContent);
             verify('open --design: through S2 (Saved)', status === 'Saved', status);
+            await bench.click('#cmpTab-overlay');
+            const over = await view();
+            verify('Überlagert: the design over the app', over.tab === 'overlay' && over.images === 2 && await bench.locator('.shot-in img.over').count() === 1, JSON.stringify(over));
+            await bench.keyboard.press('ArrowRight');
+            verify('the arrow key goes on to Nur Unterschiede', (await view()).tab === 'diff', JSON.stringify(await view()));
             await bench.keyboard.press('F7');
-            verify('F7 lays it over the app', await shown() && await view() === 'overlay' && !(await beside()), await view());
+            verify('F7 closes the comparison', (await view()).design === 'closed' && !(await view()).shown, JSON.stringify(await view()));
             await bench.keyboard.press('F7');
-            verify('F7 hides it', !(await shown()) && await view() === 'off', await view());
-            await bench.keyboard.press('F7');
-            verify('F7 puts it beside the app again', await shown() && await view() === 'side', await view());
+            verify('F7 opens it again', (await view()).design === 'open' && (await view()).shown, JSON.stringify(await view()));
+            await bench.keyboard.press('Escape');
+            verify('Esc closes it', (await view()).design === 'closed', JSON.stringify(await view()));
             await decide(chat, 'Beenden');
         });
         const openCode = await open(native, [`${LOOKED}@S2`, '--design', ...target], { interactive: true, onChatOpen: overlay.onChatOpen });
