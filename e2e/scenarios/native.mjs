@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { TESTS, testText, writeTests } from '../native/project.mjs';
 import { setStepDesign, stepHash } from '../../src/host/test-file.mjs';
 import { sessionMcpHandler } from '../../src/host/session-mcp.mjs';
+import { liveListeners, unregisterListener } from '../../src/shared/attach.mjs';
 import {
     appOf, benchBack, clickChoice, decide, endAction, finishOf, here, humans, lastDemonstration, loadTest, newestRunOf, open, parseTest, patchJson, planOf, print, record, reproduce, run,
     runDirsOf, showMyself, slash, sleep, startServer, stateOf, tag, verify, writeTest,
@@ -1559,5 +1560,7 @@ ${finishOf(['S1'])}`;
         verify('result.json: plan approved in the window, recording discarded by the session', JSON.stringify(taken) === '["plan.approve:approve:window","recording.adopt:discard:session"]', JSON.stringify(taken));
     } finally {
         for (const dir of ['caw/tests', 'caw/recordings']) rmSync(join(native, dir, `${DECIDE}.yaml`), { force: true });
+        // caw_decide registered this process as a listening session, so the run trusted its proof: gone again for what follows.
+        for (const { key } of liveListeners(native)) unregisterListener(native, key);
     }
 });
