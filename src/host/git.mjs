@@ -116,10 +116,9 @@ export const auditFiles = (root, commit) => {
 /**
  * Reads files at a commit in one `git cat-file --batch` call. The output is parsed as bytes: each object is
  * `<oid> <type> <size>\n<content>\n`, and the size counts bytes, not characters.
- * @param raw the bytes as a Buffer instead of text (an image)
  * @returns Map path -> text (UTF-8); a path missing at the commit is left out
  */
-export const readAtCommit = (root, commit, paths, { raw = false } = {}) => {
+export const readAtCommit = (root, commit, paths) => {
     const files = new Map();
     if (paths.length === 0) return files;
     const prefix = git(root, ['rev-parse', '--show-prefix']).toString('utf8').trim();
@@ -135,8 +134,39 @@ export const readAtCommit = (root, commit, paths, { raw = false } = {}) => {
         // "<name> missing" (or ambiguous): nothing follows the header.
         if (match === null) continue;
         const size = Number(match[2]);
-        if (match[1] === 'blob') files.set(path, raw ? Buffer.from(out.subarray(at, at + size)) : out.subarray(at, at + size).toString('utf8'));
+        if (match[1] === 'blob') files.set(path, out.subarray(at, at + size).toString('utf8'));
         at += size + 1;
     }
     return files;
+};
+
+/**
+ * The blob ids of files at a commit, in one `git cat-file --batch-check` call.
+ * @returns Map path -> object id; a path missing at the commit (or no file there) is left out
+ */
+export const blobIdsAtCommit = (root, commit, paths) => {
+    const ids = new Map();
+    if (paths.length === 0) return ids;
+    const prefix = git(root, ['rev-parse', '--show-prefix']).toString('utf8').trim();
+    const input = paths.map((path) => `${commit}:${prefix}${path}\n`).join('');
+    const lines = git(root, ['cat-file', '--batch-check'], { input }).toString('utf8').split('\n');
+    paths.forEach((path, index) => {
+        const match = /^([0-9a-f]+) blob \d+$/.exec(lines[index] ?? '');
+        if (match !== null) ids.set(path, match[1]);
+    });
+    return ids;
+};
+
+/**
+ * The blob ids files in the working tree would get when added, with the filters git applies to them (core.autocrlf,
+ * .gitattributes): comparable with blobIdsAtCommit, where hashing the raw bytes would differ in the line ends alone.
+ * @param paths absolute, each an existing file in the repository (with --stdin-paths git does not resolve relative paths
+ *   against a subfolder)
+ * @returns Map path -> object id
+ */
+export const workingBlobIds = (root, paths) => {
+    if (paths.length === 0) return new Map();
+    const input = paths.map((path) => `${path}\n`).join('');
+    const ids = git(root, ['hash-object', '--stdin-paths'], { input }).toString('utf8').trim().split('\n');
+    return new Map(paths.map((path, index) => [path, ids[index]]));
 };

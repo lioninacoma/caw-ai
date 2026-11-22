@@ -180,6 +180,21 @@ test('caw audit: a design file a step links, replaced in the working tree, weake
     assert.equal(auditCommand(root, ['main', '--json'], { print }), 1, 'a linked design that is gone weakens too');
 });
 
+test('caw audit: an unchanged linked design with core.autocrlf=true (CRLF in the working tree, LF in the commit) is unchanged', (t) => {
+    const { root, git, write } = repository(t);
+    git('config', 'core.autocrlf', 'true');
+    write('caw/tests/bestellung.yaml', TEST.replace('    expect: Eine', '    design: design/form.html\n    expect: Eine'));
+    write('caw/design/form.html', '<main>\r\n<button>Bestellen</button>\r\n</main>\r\n');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'Design');
+    git('checkout', '-q', '-b', 'feature');
+    let printed = '';
+    const print = (text) => { printed = text; };
+    assert.equal(auditCommand(root, ['main', '--json'], { print }), 0, printed);
+    write('caw/design/form.html', '<main>\r\n</main>\r\n');
+    assert.equal(auditCommand(root, ['main', '--json'], { print }), 1, 'a real change still weakens');
+});
+
 test('caw audit: decisions this machine took outside the window since the merge base that changed something, for information', (t) => {
     const { root, git } = repository(t);
     git('checkout', '-q', '-b', 'feature');

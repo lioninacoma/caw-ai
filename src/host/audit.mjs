@@ -3,7 +3,6 @@
 // data at the merge base of <ref> and HEAD with the working tree and names every weakening in plain words, for PR review and CI.
 // The one deliberate way to change a check is to change the step's expected result: that is listed, not a weakening.
 
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -15,7 +14,7 @@ import { CONFIG_FILE, PROJECT_DIR, RECORDING_DIR, TEST_DIR } from '../shared/nam
 import { DEFAULT_DESIGN_FAIL, designPath, isDesignName } from './design.mjs';
 import { DEFAULT_EFFECT_FAIL, EFFECT_LISTS, LEARN_RUNS } from './effects.mjs';
 import { frameworkOf } from './framework/index.mjs';
-import { auditFiles, commitDate, isAuditFile, mergeBase, readAtCommit } from './git.mjs';
+import { auditFiles, blobIdsAtCommit, commitDate, isAuditFile, mergeBase, readAtCommit, workingBlobIds } from './git.mjs';
 import { decisionsOutsideWindow } from './runs.mjs';
 import { mergeRecordings, parseRecordings, parseTest } from './test-file.mjs';
 import { LOOK_LEARN_RUNS } from './visual.mjs';
@@ -368,11 +367,10 @@ export const auditChanges = (before, after) => {
 
 /** The design files the steps of these tests link, as the steps name them (relative to the caw folder). */
 const linkedDesigns = (tests) => [...tests.values()].flatMap(({ steps }) => steps.map(({ design }) => design)).filter(isDesignName);
-const hashOf = (data) => createHash('sha256').update(data).digest('hex');
 
 /**
- * Reads both sides and compares them. Besides the test data, the design files a step links on either side, as hashes
- * (`designs`: Map name -> hash, a missing file left out): a replaced design changes what its step is judged against.
+ * Reads both sides and compares them. Besides the test data, the design files a step links on either side, as git blob ids
+ * (`designs`: Map name -> blob id, a missing file left out): a replaced design changes what its step is judged against.
  * @returns { base, before, after }
  */
 export const auditProject = (root, ref) => {
@@ -380,12 +378,16 @@ export const auditProject = (root, ref) => {
     const before = readProjectData(readAtCommit(root, base, auditFiles(root, base)));
     const after = readProjectData(workingTreeFiles(root));
     const names = [...new Set([...linkedDesigns(before.tests), ...linkedDesigns(after.tests)])];
-    const atBase = readAtCommit(root, base, names.map((name) => `${PROJECT_DIR}/${name}`), { raw: true });
-    before.designs = new Map(names.filter((name) => atBase.has(`${PROJECT_DIR}/${name}`)).map((name) => [name, hashOf(atBase.get(`${PROJECT_DIR}/${name}`))]));
-    after.designs = new Map(names.flatMap((name) => {
+    // Blob ids on both sides, as git compares: the working file goes through git's filters (core.autocrlf, .gitattributes),
+    // so a design checked out with CRLF is the same as its LF blob.
+    const atBase = blobIdsAtCommit(root, base, names.map((name) => `${PROJECT_DIR}/${name}`));
+    before.designs = new Map(names.filter((name) => atBase.has(`${PROJECT_DIR}/${name}`)).map((name) => [name, atBase.get(`${PROJECT_DIR}/${name}`)]));
+    const present = names.flatMap((name) => {
         const path = designPath(join(root, PROJECT_DIR), name);
-        return path === null ? [] : [[name, hashOf(readFileSync(path))]];
-    }));
+        return path === null ? [] : [[name, path]];
+    });
+    const inTree = workingBlobIds(root, present.map(([, path]) => path));
+    after.designs = new Map(present.map(([name, path]) => [name, inTree.get(path)]));
     return { base, before, after };
 };
 
