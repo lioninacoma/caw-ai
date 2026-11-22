@@ -1201,11 +1201,12 @@ export const openWorkbench = async (context, { appUrl, hosts, title = 'caw', rew
         },
         /**
          * The step's target design over the app frame (F7 toggles it): { src (data URL), opacity, blend ('normal' or
-         * 'difference'), width (CSS px, the recorded viewport's), rows: [{ text, element? }], on }; null removes it. The page
-         * gets the rows' texts only; a row's element (a CSS path in the app) stays with the host.
+         * 'difference'), width (CSS px, the recorded viewport's), rows: [{ text, element? }], on }; null removes it. Without
+         * `on` a design already shown keeps whether F7 showed or hid it (rows listed anew). The page gets the rows' texts only;
+         * a row's element (a CSS path in the app) stays with the host.
          */
         design: (given) => {
-            shown.design = given ?? null;
+            shown.design = given === null || given === undefined ? null : { ...given, on: given.on ?? shown.design?.on ?? true };
             return call('design', shown.design === null ? null : pageDesign(shown.design));
         },
         /**

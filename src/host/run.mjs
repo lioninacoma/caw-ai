@@ -476,8 +476,8 @@ export const keptCheck = (olds, step, check) => {
 };
 
 export const executeRun = async (root, config, sandbox, { spec: givenSpec, checked, target, handover, timeoutMin, containerCommand, adviseCommand, talkCommand, repair, replay, stepTimeoutMs, note, maxActions, demonstration, previous, conversation, conclude, develop, command: runAs, headless = false, learns = true, reproduce, withDesign = false, suggestLooks = false, terminal, seams = {} }) => {
-    // Tests only: the browser session, the chat and the playback without Chrome (test/run-seam.test.mjs).
-    const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay } = seams;
+    // Tests only: the browser session, the chat, the playback and the design overlay without Chrome (test/run-seam.test.mjs).
+    const { openRunSession: openSession = openRunSession, openChat: openWindowChat = openChat, playReplay: replayWith = playReplay, designOverlay: overlayOf = designOverlay } = seams;
     // Mutable: repairing in the same browser turns the test run into a run that fixes exactly this step.
     let repairing = repair === undefined ? undefined : givenSpec.steps.find(({ id }) => id === repair.id);
     // Re-recording from a step on: that step and all after it, as they are in the test file.
@@ -1323,33 +1323,63 @@ ${text}`) ?? 0;
 
     /**
      * open <test>@S3 --design: the step's target design over the app (F7 toggles it), its deviations as rows. A row with an
-     * element hands that element to the attached session, as /element does.
+     * element hands that element to the attached session, as /element does. The rows are the page's: after F5, a reload of
+     * the window or a restored state (`again`) they are listed anew, F7's on or off stays, and the chat says so only when
+     * they changed; a design that is gone by then (another state, the file removed) leaves the app.
      * @returns whether the overlay is shown
      */
-    const showDesign = async (bench) => {
+    let designShown = null;
+    const showDesign = async (bench, { again = false } = {}) => {
         const id = chosen.replay?.entry?.id ?? chosen.replay?.until;
-        const step = chosen.spec.steps.find((entry) => entry.id === id);
-        if (step?.design === undefined) {
-            chat?.notice(t('run.develop.noDesign', { id: id ?? '-' }));
+        const index = chosen.spec.steps.findIndex((entry) => entry.id === id);
+        const step = chosen.spec.steps[index];
+        const gone = async () => {
+            if (designShown !== null) {
+                await bench.design(null);
+                await bench.viewport(null);
+            }
+            designShown = null;
             return false;
+        };
+        if (step?.design === undefined) {
+            if (!again || designShown !== null) chat?.notice(t('run.develop.noDesign', { id: id ?? '-' }));
+            return gone();
         }
+        // A pending step has no size of its own: the replay ran at the size of the last step recorded with one.
+        const sizedBy = chosen.spec.steps.slice(0, index + 1).findLast((entry) => entry.recording?.viewport !== undefined);
         const viewport = step.recording?.viewport ?? chosen.replay?.browser?.viewport ?? config.browser?.viewport ?? { width: 1280, height: 720 };
         const cawDir = join(root, PROJECT_DIR);
-        const overlay = await designOverlay({
-            cawDir,
-            file: step.design,
-            viewport,
-            page: session.page(),
-            launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
-            secrets: session.secrets?.() ?? [],
-        }).catch((error) => {
+        let overlay;
+        try {
+            overlay = await overlayOf({
+                cawDir,
+                file: step.design,
+                viewport,
+                page: session.page(),
+                launch: () => chromium.launch({ ...browserLaunch(config), headless: true }),
+                secrets: session.secrets?.() ?? [],
+            });
+        } catch (error) {
             chat?.notice(t('run.develop.designFailed', { file: step.design, message: String(error?.message ?? error).split(/\r?\n/)[0] }));
-            return null;
-        });
-        if (overlay === null) return false;
+            return gone();
+        }
+        if (overlay === null) {
+            if (!again || designShown !== null) chat?.notice(t('run.develop.designMissing', { file: step.design, id }));
+            return gone();
+        }
+        const rows = overlay.rows.map(({ text }) => text).join('\n');
+        const changed = designShown === null || designShown.file !== step.design || designShown.rows !== rows;
+        const kept = again && designShown !== null && designShown.file === step.design;
         await bench.viewport(viewport);
-        await bench.design({ ...overlay, opacity: 0.5, blend: 'normal', on: true });
-        chat?.notice(t('run.develop.designShown', { file: step.design, id, count: overlay.rows.length }));
+        await bench.design({ ...overlay, opacity: 0.5, blend: 'normal', ...(kept ? {} : { on: true }) });
+        designShown = { file: step.design, rows };
+        if (kept) {
+            if (changed) chat?.notice(t('run.develop.designUpdated', { file: step.design, count: overlay.rows.length }));
+        } else {
+            const sized = sizedBy?.recording.viewport;
+            const size = sized?.width === viewport.width && sized?.height === viewport.height ?t('run.develop.designSize.step', { id: sizedBy.id }) : t('run.develop.designSize.none', { id, width: viewport.width, height: viewport.height });
+            chat?.notice(t('run.develop.designShown', { file: step.design, size, count: overlay.rows.length }));
+        }
         return true;
     };
 
@@ -1478,11 +1508,27 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                     const bench = session.workbench;
                     // Refresh reloads the current page without cache, like F5 while developing. After the handover reloading is work,
                     // not an incident: the steps stay as they are, without "left" and without a warning.
-                    const refresh = async () => {
+                    // --design: the deviations are the page's, so after F5, a reload of the window (also one the app made) and a
+                    // restored state they are listed anew, one after another.
+                    let designing = Promise.resolve();
+                    const redesign = () => {
+                        if (!withDesign || bench === undefined) return designing;
+                        designing = designing.then(() => showDesign(bench, { again: true })).catch(() => {});
+                        return designing;
+                    };
+                    const designed = (work) => async (...args) => {
+                        try {
+                            return await work(...args);
+                        } finally {
+                            await redesign();
+                        }
+                    };
+                    const refresh = designed(async () => {
                         await session.reloadPage();
                         return '';
-                    };
+                    });
                     const onReload = (listener) => bench?.onReload?.(async ({ human = true } = {}) => {
+                        await redesign();
                         if (!human) return;
                         await listener();
                     });
@@ -1504,13 +1550,13 @@ ${text}`, count])), failures: (session.failures?.() ?? []).length };
                         if (fresh !== undefined && canRestore(catalog, testId, stepId)) choose(fresh, stepId, { entry: atEntry });
                     };
                     // A picked step: at its entry, like open <test>@<step>. Without a step: up to the last restorable step.
-                    const restoreTo = async (testId, stepId) => {
+                    const restoreTo = designed(async (testId, stepId) => {
                         const entry = catalog.find(({ id }) => id === testId);
                         const until = stepId ?? entry?.steps.filter(({ ok }) => ok).at(-1)?.id;
                         if (entry === undefined || until === undefined || !canRestore(catalog, testId, until)) throw new CawError('step-unknown', t('run.develop.cannotRestore', { test: testId, step: stepId ?? '' }));
                         return restoreOther(loadStateTest(root, config, testId), until, { entry: stepId !== undefined });
-                    };
-                    const restore = () => (chosen.replay === undefined ? reloadApp() : restoreState());
+                    });
+                    const restore = designed(() => (chosen.replay === undefined ? reloadApp() : restoreState()));
                     await Promise.race([develop({ chat, talk: ask, signedIn: session.signedIn, until: replay?.entry?.id ?? replay?.until, entry: replay?.entry !== undefined, refresh, restore, restoreTo, onPickState: (handler) => bench?.onState?.(handler), onRefresh: (handler) => bench?.onRefresh?.(handler), onReload, toCode: handToCode }), session.closed, aborted]);
                 } catch (error) {
                     ui.warn(t('run.develop.error', { message: String(error?.message ?? error).split(/\r?\n/)[0] }));

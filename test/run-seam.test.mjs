@@ -49,20 +49,25 @@ const playback = (fail) => async ({ replay, log }) => {
 
 /**
  * A run of caw with the seams in place: the chat answers with `answers` in order, one per decision, as the window's buttons do.
+ * After the handover (`develop`) the chat hands its options to `developing` instead; `session`, `seams` and `extra` replace
+ * the fake session, add seams and add options of executeRun (such as withDesign).
  * @returns { execute, decisions } with what each decision offered
  */
-const harness = ({ fail, answers = [], headless = false }) => {
+const harness = ({ fail, answers = [], headless = false, session = fakeSession, seams = {}, extra = {}, developing }) => {
     const root = mkdtempSync(join(tmpdir(), 'caw-seam-'));
     mkdirSync(join(root, 'caw'), { recursive: true });
     const wishes = [...answers];
     const decisions = [];
+    const notices = [];
     const openChat = async ({ desk }) => {
         const chat = createChat({
             desk,
             show: (who, text, about) => {
+                if (who === 'notice') notices.push(text);
                 if (['result', 'failure', 'decision'].includes(who)) decisions.push({ who, text, card: about });
             },
             status: (state, options) => {
+                if (state === 'developing' && options !== undefined && options !== null) developing?.(options.map(({ id }) => id), chat);
                 if (options === undefined || options === null || !['deciding', 'discussing'].includes(state)) return;
                 const ids = options.map(({ id }) => id);
                 decisions.at(-1).options = ids;
@@ -84,8 +89,9 @@ const harness = ({ fail, answers = [], headless = false }) => {
             maxActions: 10,
             headless,
             ...call,
+            ...extra,
             ...(call.conclude === undefined ? {} : { conversation: { transcript: [], lazy: lazyChat !== undefined, testing: testing === true } }),
-            seams: { openRunSession: async () => fakeSession(), openChat, playReplay: playback(fail) },
+            seams: { openRunSession: async () => session(), openChat, playReplay: playback(fail), ...seams },
         });
         runs.push(result);
         return result;
@@ -95,7 +101,7 @@ const harness = ({ fail, answers = [], headless = false }) => {
         adopted.push({ draft, only });
         return `caw/tests/${draft.id}.yaml`;
     };
-    return { root, execute, decisions, runs, adopted, adopt, result: (index = -1) => JSON.parse(readFileSync(join(root, runs.at(index).report.replace(/report\.md$/, 'result.json')), 'utf8')) };
+    return { root, execute, decisions, notices, runs, adopted, adopt, result: (index = -1) => JSON.parse(readFileSync(join(root, runs.at(index).report.replace(/report\.md$/, 'result.json')), 'utf8')) };
 };
 
 test('Seam: a passed check run of a new recording waits for adopting, then writes the test', async () => {
@@ -180,4 +186,93 @@ test('Seam without a window: a failed step stops at its card without fixing; a d
     assert.equal(await fixFlow({ draft: testOf({ draft: true }), whole: true, previous: testOf({ draft: true }), execute: red.execute, adopt: red.adopt, log: () => {}, advising: false, head: () => undefined }), EXIT.pass);
     assert.deepEqual(red.adopted[0].draft.red, { step: 'S2', run: red.runs[0].runId });
     assert.equal(red.runs[0].undecided, undefined);
+});
+
+/**
+ * A session with a workbench after the handover: every workbench call is recorded (as [name, ...args]), the handlers for
+ * refresh (F5), reloading the whole window and picking a state (F1) are kept for the test to call.
+ */
+const benchSession = () => {
+    const calls = [];
+    const handlers = { refresh: null, reloads: new Set(), state: null };
+    const own = {
+        onRefresh: (handler) => { handlers.refresh = handler; },
+        onReload: (listener) => {
+            handlers.reloads.add(listener);
+            return () => handlers.reloads.delete(listener);
+        },
+        onState: (handler) => { handlers.state = handler; },
+    };
+    const workbench = new Proxy(own, {
+        get: (target, name) => {
+            if (name === 'then') return undefined;
+            if (name in target) return target[name];
+            return async (...args) => { calls.push([name, ...args]); };
+        },
+    });
+    const make = () => ({ ...fakeSession(), workbench, page: () => ({}), signedIn: false, reloadPage: async () => {}, restart: async () => ({ settled: true }) });
+    return { make, calls, handlers };
+};
+
+test('Seam: open --design lists the deviations anew after F5, a reload of the window and restoring the state', async () => {
+    const bench = benchSession();
+    let computed = 0;
+    const designOverlay = async () => {
+        computed += 1;
+        return { src: 'data:image/png;base64,AA', width: 1280, rows: [{ text: `Abweichung ${computed}` }] };
+    };
+    let round = 0;
+    const developing = (ids, chat) => {
+        round += 1;
+        if (round === 1) {
+            setImmediate(async () => {
+                await bench.handlers.refresh();
+                for (const listener of [...bench.handlers.reloads]) await listener({ human: true });
+                chat.human.choose('restore');
+            });
+        } else if (round === 2) setImmediate(() => chat.human.choose('end'));
+    };
+    const h = harness({ session: bench.make, seams: { designOverlay }, extra: { withDesign: true }, developing });
+    const spec = testOf();
+    spec.steps[1] = { ...spec.steps[1], design: 'design/form.html' };
+    const code = await runFlow({ spec, through: 'S2', handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
+    assert.equal(code, EXIT.pass);
+    const designs = bench.calls.filter(([name]) => name === 'design').map(([, given]) => given.rows.map(({ text }) => text).join());
+    assert.deepEqual(designs, ['Abweichung 1', 'Abweichung 2', 'Abweichung 3', 'Abweichung 4'], 'once at open, then after F5, the window reload and restoring');
+    assert.deepEqual(bench.calls.filter(([name]) => name === 'design').map(([, given]) => given.on), [true, undefined, undefined, undefined], 'F7 shown or hidden stays');
+    assert.equal(h.notices.filter((text) => /neu aufgelistet/.test(text)).length, 3);
+});
+
+/** open <test>@<step> --design in the seam: ends developing at once; @returns the harness after the run. */
+const openDesign = async (spec, at, designOverlay) => {
+    const bench = benchSession();
+    const h = harness({ session: bench.make, seams: { designOverlay }, extra: { withDesign: true }, developing: (ids, chat) => setImmediate(() => chat.human.choose('end')) });
+    const code = await runFlow({ spec, ...at, handover: true, canFix: true, execute: h.execute, adopt: h.adopt, log: () => {}, openSandbox: async () => null });
+    assert.equal(code, EXIT.pass);
+    return { ...h, bench };
+};
+
+test('Seam: open --design with the design file missing names the file and the step', async () => {
+    const spec = testOf();
+    spec.steps[1] = { ...spec.steps[1], design: 'design/fehlt.html' };
+    const h = await openDesign(spec, { through: 'S2' }, async () => null);
+    assert.ok(h.notices.some((text) => /design\/fehlt\.html/.test(text) && /S2/.test(text)), h.notices.join('\n'));
+    assert.equal(h.bench.calls.filter(([name]) => name === 'design').length, 0);
+});
+
+test('Seam: open --design at a pending step names the step whose recorded size the design is drawn at', async () => {
+    const spec = testOf();
+    spec.steps[1] = { ...spec.steps[1], recording: { ...spec.steps[1].recording, viewport: { width: 1024, height: 700 } } };
+    const pending = { id: 'S3', name: 'Schritt S3', do: 'tun', expect: 'S3 da', design: 'design/form.html' };
+    spec.steps.push(pending);
+    spec.expectations.push({ id: 'S3', text: pending.expect });
+    let viewport;
+    const h = await openDesign(spec, { entry: 'S3' }, async (given) => {
+        viewport = given.viewport;
+        return { src: 'data:image/png;base64,AA', width: given.viewport.width, rows: [] };
+    });
+    assert.deepEqual(viewport, { width: 1024, height: 700 });
+    const shown = h.notices.find((text) => /design\/form\.html/.test(text));
+    assert.match(shown, /S2/, 'the size is the one S2 was recorded in');
+    assert.doesNotMatch(shown, /S3/, 'S3 is not recorded');
 });
