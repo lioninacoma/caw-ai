@@ -131,10 +131,10 @@ erwartete Ergebnis.
 
 **Zielbilder.** Schreib die nächsten Schritte, bevor die App sie kann. Schritte am Ende, die noch nicht aufgenommen sind, bleiben
 offen: `run` spielt den Rest ab, besteht und nennt sie. Ein Schritt kann den Bildschirm nennen, auf dem er enden soll
-(`design:`, eine `.html` oder `.png` in `caw/design`), und was auf der Seite sein muss, bevor er aufgenommen werden kann
+(`design:`, eine `.html` in `caw/design`), und was auf der Seite sein muss, bevor er aufgenommen werden kann
 (`needs:`). Beides schreiben nur Menschen. Ein Lauf prüft die `needs` des ersten offenen Schritts und meldet „S4 ist bereit zum
 Aufnehmen“, sobald sie da sind. Ist S4 aufgenommen, beurteilt jeder Lauf seinen Bildschirm ohne KI, nachdem seine Prüfung
-bestanden hat (Bedienelemente, Überschriften, einige Stile je Bedienelement; bei `.png` die Pixel): Ist das Zielbild nicht
+bestanden hat (Bedienelemente, Überschriften, einige Stile je Bedienelement): Ist das Zielbild nicht
 erreicht, scheitert der Schritt mit kind `design`, bis der Bildschirm passt. `caw open <test>@S4 --design` legt das Zielbild über
 die App.
 
@@ -257,22 +257,11 @@ Sitzungen. Was die Maske kann und was nicht: [Daten und Datenschutz](#daten-und-
 ## Visuelle Prüfungen
 
 - **Je Schritt:** `look: true` an einem Schritt (das setzen nur Menschen) lernt sein Aussehen: Stilzeilen je Rolle über zwei
-  bestandene Läufe, ein Bild über zwei passende headless Läufe. Eine spätere Änderung lässt den Schritt mit kind `visual` scheitern; **Neuen Look übernehmen** im Chat
+  bestandene Läufe. Eine spätere Änderung lässt den Schritt mit kind `visual` scheitern; **Neuen Look übernehmen** im Chat
   übernimmt sie, und `caw audit` nennt das. Nach `caw record` schlägt der Prüflauf Schritte vor, deren Bildschirm keine Daten
   vom Server zeigt.
-- **Pixel nur headless:** Pixel lernt und vergleicht caw in `--headless`-Läufen mit festem Viewport; ein Lauf im Fenster
-  vergleicht nur die Stile.
-- **Feste Daten:** Für einen Bildschirm, dessen Daten sich ändern, speichert **Daten einfrieren** die JSON-Antworten der
-  Lesezugriffe der App in `caw/recordings/<test>/fixed-data.json`. Sie können personenbezogene Daten enthalten: Du wählst
-  anonymisiert, verschleiert (kein Schutz) oder lesbar, nachdem du bestätigt hast, dass du den Datenschutz geprüft hast, und
-  siehst sie vorher durch. Headless Läufe vergleichen diese Aussehen in einem eigenen Durchlauf; die Prüfungen des Laufs sehen
-  immer das echte Backend. Nie in CI.
-- **Design-Tokens:** Mit Tokens in `caw/design` prüft jeder Lauf Farben, Abstände, Kontrast, abgeschnittenen Text und
-  unbenannte Bedienelemente.
 
-Grenzen: Bilder gelten je Plattform (Schriften rendern unter Windows und Linux verschieden), die Schwellen sind Startwerte, und
-eingefroren werden nur JSON-Antworten (serverseitig gerendertes HTML und WebSocket-Daten bleiben live). Details:
-[Visuelle Regression](docs/guide.de.md#visuelle-regression), [feste Daten](docs/test-files.de.md#feste-daten).
+Details: [Visuelle Regression](docs/guide.de.md#visuelle-regression).
 
 ## Aus Claude Code steuern
 
@@ -399,8 +388,7 @@ weitergeben kann, was sie sieht. Ohne Agent (Wiedergaben, CI) laden Seiten von j
 
 **Laufdaten** bleiben auf deinem Rechner in `.caw/runs/<lauf>/`: Bericht, `result.json`, Screenshots, die Logs des Agenten und
 `trace.zip`. Der Trace enthält Seiteninhalte und Netzwerkdaten samt Cookies; lade ihn und Laufordner nicht öffentlich hoch.
-`init` trägt `.caw/` in `.gitignore` ein. Feste Daten für ein Aussehen sind eine Datei im Repository; prüf sie vor dem
-Einchecken auf personenbezogene Daten.
+`init` trägt `.caw/` in `.gitignore` ein.
 
 ## Was caw nicht ist
 
@@ -409,7 +397,7 @@ Einchecken auf personenbezogene Daten.
 - Ein Dienst für visuelle Tests ganzer Websites: Visuell geprüft werden nur Schritte mit `look: true` oder einem Zielbild.
 - Ein Werkzeug für API-, Last- oder Sicherheitstests: Schritte prüfen, was ein Nutzer im Browser sieht und tut.
 - Ein Cross-Browser-Grid: nur Chromium.
-- Ein Framework für Netzwerk-Mocks: Tests laufen gegen das echte Backend; nur ein Aussehens-Durchlauf bekommt eingefrorene Daten.
+- Ein Framework für Netzwerk-Mocks: Tests laufen gegen das echte Backend.
 - Parallel: Tests laufen nacheinander.
 - Ein Ticketsystem-Client: caw hält eine Ticket-ID fest, schlägt sie aber nie nach.
 

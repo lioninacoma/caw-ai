@@ -124,10 +124,10 @@ Each check belongs to its expected result. While the expectation stays, an agent
 the check: caw refuses the recording otherwise. To change a check on purpose, change the expected result.
 
 **Target designs.** Write the next steps before the app can do them. Steps at the end that are not recorded yet are pending:
-`run` plays the rest and passes, and names them. A step can name the screen it should end on (`design:`, an `.html` or `.png`
+`run` plays the rest and passes, and names them. A step can name the screen it should end on (`design:`, an `.html`
 in `caw/design`) and what must be on the page before it can be recorded (`needs:`). Only people write both. A run checks the
 first pending step's `needs` and says "S4 is ready to record" once they are there. Once S4 is recorded, every run judges its
-screen without AI after its check passed (controls, headings, a few styles per control; pixels for a `.png`): not met, the
+screen without AI after its check passed (controls, headings, a few styles per control): not met, the
 step fails with kind `design` until the screen matches. `caw open <test>@S4 --design` lays the design over the app.
 
 ```bash
@@ -246,20 +246,11 @@ can and cannot do: [Data and privacy](#data-and-privacy).
 
 ## Visual checks
 
-- **Per step:** `look: true` on a step (only people set it) learns its look: style lines per role over two passed runs,
-  an image over two matching headless runs. A later change fails the step with kind `visual`; **Adopt new look** in the chat takes it over, and `caw audit` lists
+- **Per step:** `look: true` on a step (only people set it) learns its look: style lines per role over two passed runs.
+  A later change fails the step with kind `visual`; **Adopt new look** in the chat takes it over, and `caw audit` lists
   that. After `caw record` the check run suggests steps whose screen shows no data from the server.
-- **Pixels headless only:** pixels are learned and compared in `--headless` runs at a fixed viewport; a run in the window
-  compares the styles only.
-- **Fixed data:** for a screen whose data changes, **Freeze data** stores the JSON answers of the app's reads in
-  `caw/recordings/<test>/fixed-data.json`. They can contain personal data: you choose anonymized, obfuscated (no protection)
-  or readable after confirming you checked data protection, and review them first. Headless runs compare those looks in a
-  pass of their own; the run's checks always see the real backend. Never in CI.
-- **Design tokens:** with tokens in `caw/design`, every run lints colors, spacing, contrast, clipped text and unnamed controls.
 
-Limits: images are per platform (fonts render differently on Windows and Linux), thresholds are starting values, and only JSON
-answers are frozen (server-rendered HTML and WebSocket data stay live). Details:
-[Visual regression](docs/guide.md#visual-regression), [fixed data](docs/test-files.md#fixed-data).
+Details: [Visual regression](docs/guide.md#visual-regression).
 
 ## Drive it from Claude Code
 
@@ -383,7 +374,7 @@ elsewhere. Without an agent (replays, CI) pages load from any host except produc
 
 **Run data** stays on your machine in `.caw/runs/<run>/`: report, `result.json`, screenshots, the agent's logs and `trace.zip`.
 The trace contains page contents and network data including cookies; don't upload it or run folders publicly. `init` adds
-`.caw/` to `.gitignore`. Fixed data for a look is a file in the repository; check it for personal data before you commit it.
+`.caw/` to `.gitignore`.
 
 ## What caw is not
 
@@ -392,7 +383,7 @@ The trace contains page contents and network data including cookies; don't uploa
 - A visual testing service for whole sites: visual checks run only on steps you mark with `look: true` or give a design.
 - An API, load or security testing tool: steps check what a user sees and does in the browser.
 - A cross-browser grid: Chromium only.
-- A network-mocking framework: tests run against the real backend; only a look pass serves frozen data.
+- A network-mocking framework: tests run against the real backend.
 - Parallel: tests run one after another.
 - A ticket system client: caw keeps a ticket id, it never looks it up.
 
